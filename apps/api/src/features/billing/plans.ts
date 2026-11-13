@@ -86,6 +86,25 @@ type Service = Accounting;
 const key = (d: Pick<Accounting, 'cfg'>) => serviceKey(unb64u(d.cfg.KSERVICE, 32), 'accounting');
 const header = (ownerId: string) => ({ v: 1 as const, kind: 'plan-account', ownerId, keyVersion: '1' });
 const seal = (d: Pick<Accounting, 'cfg'>, ownerId: string, a: PlanAccount) => sealJson(key(d), header(ownerId), toJson(a));
+/** How a balance of credits from before plans is sealed (`billing_accounts`, which plans don't read; a later release drops it). */
+const creditsHeader = (ownerId: string) => ({ v: 1 as const, kind: 'billing', ownerId, keyVersion: '1' });
+
+/**
+ * Whether `kservice` opens an account's accounting as it's stored: its plan, or its credits from before plans. How the
+ * KSERVICE a TEE carries over is checked before it's sealed in the server keys (serverKeys.ts), since another one would leave
+ * every plan, balance and payment unreadable. Only whether it opens is asked: what's in it is read where it's used.
+ */
+export function opensAccounting(kservice: Uint8Array, kind: 'plan-account' | 'billing', ownerId: string, stateCiphertext: Uint8Array): boolean {
+  const accounting = serviceKey(kservice, 'accounting');
+  try {
+    openJson(accounting, kind === 'plan-account' ? header(ownerId) : creditsHeader(ownerId), stateCiphertext, z.unknown());
+    return true;
+  } catch {
+    return false;
+  } finally {
+    accounting.fill(0);
+  }
+}
 const Row = z.object({ state_ciphertext: bytea });
 
 /** An account's plan as it starts: Free from `freeFrom`, nothing bought. */

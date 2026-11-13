@@ -359,7 +359,7 @@ describe('memory across a series', () => {
     // Reading 25 of the organizer's notes opens the organizer's keys once: Bea's for her session, and Opal's.
     const requestId = `series-read-${tag()}`;
     expect((await bea.fetch(`${h.baseUrl}/v1/series/${seriesId}`, { headers: { [REQUEST_ID_HEADER]: requestId } })).status).toBe(200);
-    expect(h.logs.filter((l) => l.includes(requestId) && l.includes('SELECT root_envelope, root_check FROM owners'))).toHaveLength(2);
+    expect(h.logs.filter((l) => l.includes(requestId) && l.includes('SELECT root_envelope_v2, root_envelope, root_check FROM owners'))).toHaveLength(2);
     for await (const p of org.api.notes.progress(last)) if (p.ready) break;
   });
 

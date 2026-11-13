@@ -81,8 +81,11 @@ Beside every page, dark in both themes, in two groups: your work at the top, and
   the call, when it starts (or **Happening now** once someone's in it), and **Join**. A meeting on your calendar is offered when it has a video link (unless **Show my
   other meetings on Home** is off). The rest of the day is on Home, under Upcoming. On Home it makes way while Home's own
   line offers the call (from 5 minutes before, and while it's going), so there's one **Join** at a time.
-- At the bottom: the confidential-compute check (**Confidential compute · verified** when the server's
-  hardware answer is bound to this browser's request), then your plan (16.7), in one row. On Free, about how much of the
+- At the bottom: the confidential-compute check (**Confidential compute · verified** when this browser's check of the
+  server passed: its attestation token, and its release in Sigstore's public log, which the server hands over with it;
+  pointing at it says when, or why the check didn't pass, beside a shield without its tick; a check that doesn't pass
+  blocks nothing, and a server that can't be asked isn't verified: what an earlier check said doesn't stay), then your
+  plan (16.7), in one row. On Free, about how much of the
   period's notes is left, "About 1 h 26 min of notes left" over a meter (warm under an hour, "No notes left until 1 Dec" in
   caution once they've stopped), which opens Settings at your plan. On Pro or Team, a row like the places: the plan's small
   sun, **Pro** and "Until 4 Nov 2027", opening Settings at your plan; once notes are low or out it says that instead ("About
@@ -469,8 +472,8 @@ time, slides in on the right.
 - **Top bar.** On the left, the title and clock; the notes sign (**Notes on** in crimson, **Notes paused**, **Notes
   unavailable** when the host's browser can't record or listen or is out of the call, **Notes off**, or **Notes requested**
   while someone has asked; the organizer's own says **Pausing…** until their pause lands), the same for everyone; and the
-  shield, whose hover says what confidential compute covers (verified only when the server's hardware check is bound to
-  this browser's request). The notes sign opens what's captured, the card the pill in **Notes** opens too. It has the sign
+  shield, whose hover says what confidential compute covers (verified only when this browser's check of the server
+  passed, and if it didn't, why). The notes sign opens what's captured, the card the pill in **Notes** opens too. It has the sign
   and when it changed ("Since 16:02", "By you at 16:12"), then one sentence on what's captured now, which says in words
   what isn't working (there's no list of each kind of capture), and for anyone but the organizer who can change it ("Only
   Priya can pause or turn them off."). The organizer sees who asked for notes, in rose; whoever asked sees "You asked
@@ -1951,7 +1954,8 @@ notes on new calls while the oldest request fails.
   server that takes payments the balance has no **Add money**. On a team, the plan row says whose team it is and until when
   your license runs, with **Open Team**, and Storage is the team's pool; its admin has the licenses too (16.18).
 - **Privacy**: what account and call information Alcove processes, then confidential compute: the time the hardware
-  was verified when this browser could check it, or where your audio is opened and your notes are written. The **Privacy policy** explains how Alcove uses account and service
+  was verified when this browser could check it, **Not verified** and why when its check of the server didn't pass, or
+  where your audio is opened and your notes are written. The **Privacy policy** explains how Alcove uses account and service
   data and how to disconnect Google services. Then, in its own panel at the end, **Delete account**.
 
 **Delete account** opens one step where it is (never a window over the page): the row becomes the question, **Delete

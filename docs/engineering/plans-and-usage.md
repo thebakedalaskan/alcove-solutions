@@ -531,19 +531,20 @@ a seat in a call, falls back to the workspace's payer, on the default model.
 
 `pnpm --filter @alcove/server billing` (`apps/api/src/billing-cli.ts`, `dist/billing-cli.js` in the image) is support's
 way into an account's plan, in whichever database `DATABASE_URL` names. It reads only `DATABASE_URL`, `KSERVICE` (to open
-and seal plans), `LIMITS_CACHE_MS` and `LOG_*`, with `KMASTER` where it's set, and none of the API's other settings. In
-production it's the Cloud Run job `alcove-billing`, which each deploy keeps on the current image with only the database and `KSERVICE` bound,
-so the key never reaches a laptop ([Deployment › Support's billing job](deployment-and-acceptance.md#supports-billing-job)).
+and seal plans), `LIMITS_CACHE_MS` and `LOG_*`, with `KMASTER` where it's set, and none of the API's other settings, so it
+runs where `KSERVICE` is at hand: outside a TEE, locally, from `.env`. In production the API runs in Confidential Space, where
+`KSERVICE` is sealed in its server keys and opened only inside the VM, so no deploy runs it as a job
+([Deployment › Support's billing](deployment-and-acceptance.md#supports-billing)).
 
-`<who>` names the account: a top-up's reference (its deposit ID, which the person gives support), or the account's ID. A
-job's arguments are kept with its execution and in Cloud Audit Logs, which Alcove can't delete, so an address is never one:
-only where `KMASTER` is set too, which is locally, does an address name an account, found as sign-in finds it (its blind
-index). An address signed in to more than one account (through different providers) is refused, and nothing is done.
+`<who>` names the account: a top-up's reference (its deposit ID, which the person gives support), or the account's ID.
+Wherever a run is recorded (a job's arguments are kept with its execution and in Cloud Audit Logs, which Alcove can't
+delete), an address is never one: only where `KMASTER` is set too, which is locally, does an address name an account, found
+as sign-in finds it (its blind index, under the index key derived from `KMASTER`). An address signed in to more than one account (through different providers) is refused, and nothing is done.
 
 - `billing show <who>`: the account, the top-up it was named by and its state, its plan and whether Pro renews, how many
   months of Pro aren't over, whether the balance covers a month of Pro at its price now, how many changes to the balance are
-  kept, how many notices wait and how many top-ups it has in each state. What the job prints is kept in Cloud Logging, so
-  that's all it says: what a log may hold, never an amount, a history, a date or an address.
+  kept, how many notices wait and how many top-ups it has in each state. What it prints may be kept in a log, so that's all
+  it says: what a log may hold, never an amount, a history, a date or an address.
 - `billing credit <who> <usd>`: adds dollars (`20`, `4.50`, at most $10,000) to the balance, as "Added by support", logged
   `balance added by support` with the owner and the top-up, never the amount. Named by a top-up's reference, it's that
   top-up's money, added in its place, once: the top-up is never asked about again, and the answer to a check of it already
@@ -699,42 +700,48 @@ The server never holds a key that can move treasury money. By hand, in near.com,
 
 ## How it upgrades
 
-The previous release is `main` at `d62c2de1b`, which has credits, not plans. The deploy migrates while it still serves.
+The previous release is `main` at `a221e1f1d`, which runs in Confidential Space and has credits, not plans. The deploy
+migrates while it still serves: the migration job runs first, with only `DATABASE_URL`, then the group rolls onto the new
+image, a new VM first, and `a221e1f1d`'s VM serves until the new one is healthy
+([Confidential Space runbook › Deploying](../../infra/confidential-space/README.md#deploying)). Nothing rolls back past this
+release: `a221e1f1d` refuses at start a database that applied migrations it doesn't have
+([Rolling back](../../infra/confidential-space/README.md#rolling-back)), so recovery is a fix forward.
 
-**Migrations: `0029` to `0032`.** Four, each in a transaction of its own, all additive. `d62c2de1b` keeps serving while
-they run, and ignores everything they add: its inserts name their columns, so the new ones stay null, and every new
-foreign key into `owners` is `SET NULL` or `CASCADE`.
+**Migrations: `0031` to `0034`.** Four, each in a transaction of its own, all additive, after main's `0029_tee_keys.sql` and
+`0030_tls_certificates.sql`, which nothing in them depends on. `a221e1f1d` keeps serving while they run, and ignores
+everything they add: its inserts name their columns, so the new ones stay null, and every new foreign key into `owners` is
+`SET NULL` or `CASCADE`.
 
-- `0029_plans.sql`: new tables `plan_accounts` (record kind `plan-account`) and `ai_meters` (`ai-meter`).
-- `0030_workspace_payers.sql`: nullable `workspaces.payer_owner_id`, `payer_grace_until` and `payer_grace_bytes`, a CHECK
+- `0031_plans.sql`: new tables `plan_accounts` (record kind `plan-account`) and `ai_meters` (`ai-meter`).
+- `0032_workspace_payers.sql`: nullable `workspaces.payer_owner_id`, `payer_grace_until` and `payer_grace_bytes`, a CHECK
   that the last two are null together, the index `workspaces_payer`, and new tables `media_others_days` and
   `media_guest_payer_days`.
-- `0031_teams.sql`: new tables `teams`, `team_members`, `team_invites` and `team_notes`, and nullable `workspaces.team_id`
+- `0033_teams.sql`: new tables `teams`, `team_members`, `team_invites` and `team_notes`, and nullable `workspaces.team_id`
   and `team_access` (null on every workspace there is) with a partial index. `team_members` keeps no hash of a member's
   address: their name and address are only in their sealed `team-member` record, which their sign-in keeps as their
   account has them.
-- `0032_workspace_payers_backfill.sql`: gives every workspace its longest-standing admin with an account as its payer,
-  the rule upkeep's `settlePayers` and new workspaces follow. On `d62c2de1b` that's a shared workspace's maker, and a call
+- `0034_workspace_payers_backfill.sql`: gives every workspace its longest-standing admin with an account as its payer,
+  the rule upkeep's `settlePayers` and new workspaces follow. On `a221e1f1d` that's a shared workspace's maker, and a call
   home's organizer. It holds only the rows it writes, which are every workspace's: the previous release's reads go on,
   and its writes to a workspace wait for it (about 1.5 s for 50,000 workspaces). A workspace none of whose admins has an
   account stays unpaid until one signs in.
 
-The two new foreign-key columns are `text`, not a domain, so neither `0030` nor `0031` rewrites `workspaces`. Each holds
-its lock on the table (and `0030` its foreign key's on `owners`) while it reads the table twice, to check a new column's
+The two new foreign-key columns are `text`, not a domain, so neither `0032` nor `0033` rewrites `workspaces`. Each holds
+its lock on the table (and `0032` its foreign key's on `owners`) while it reads the table twice, to check a new column's
 CHECK and to build an index. That grows with the table: under 35 ms a file for 50,000 workspaces, measured on Postgres 17
 from cache, where the domain-typed columns rewrote the whole table twice, for up to 3 s each.
 `scripts/check-migrations.mjs` now refuses a domain-typed column added to a table that's already there.
 
 **Credits become dollars.**
 
-- `billing_accounts` is no longer read or written. It stays for `d62c2de1b`, and goes in a later release.
+- `billing_accounts` is no longer read or written. It stays for `a221e1f1d`, and goes in a later release.
 - Every account starts on Free at $0. Its credits are ignored, and welcome credits aren't carried.
-- Every top-up `d62c2de1b` settled (`credited`), before the deploy or while it still serves, is added once as dollars at
+- Every top-up `a221e1f1d` settled (`credited`), before the deploy or while it still serves, is added once as dollars at
   face value by upkeep (`creditCarried`, at boot and every 5 minutes, 100 a pass). It's then never looked at again
   (`check_after` infinity). Credits spent on notes aren't taken off.
-- A `deposit` record from `d62c2de1b` opens as before. Its `credits` and `rate` are ignored, and kept on every save. Its
+- A `deposit` record from `a221e1f1d` opens as before. Its `credits` and `rate` are ignored, and kept on every save. Its
   `purchase` reads as `null`, so it only adds money. Its `settled.addedMicroUsd` reads as `null` until it's carried.
-- A payment to an address `d62c2de1b` handed out is added as dollars: what was sent, or exactly what was asked when it's
+- A payment to an address `a221e1f1d` handed out is added as dollars: what was sent, or exactly what was asked when it's
   within 1Click's band.
 
 **Accounts and workspaces.**
@@ -744,36 +751,36 @@ from cache, where the domain-typed columns rewrote the whole table twice, for up
 - An account already over Free's 10 GB (its recordings plus the workspaces it now pays for) gets 15 days with no storage
   limit.
 - Its AI meter starts at its first AI request, with Free's allowance.
-- Workspaces `d62c2de1b` makes while both serve (a call's home, a shared workspace) get a payer within 5 minutes: upkeep
+- Workspaces `a221e1f1d` makes while both serve (a call's home, a shared workspace) get a payer within 5 minutes: upkeep
   settles them when the new release starts, then every 5 minutes. Nobody is told, and no grace runs. Until then, on the
   new release, nothing can be uploaded to one, its call doesn't open it to guests, its boards seat nobody, and a guest's
   document AI is refused.
 - **Calls and meetings stop opening a workspace someone other than their organizer pays for, from the deploy.** A call
   opens its workspace, and that workspace's boards, to everyone in it only while the organizer pays for the workspace. On
-  `d62c2de1b` an organizer could pick a shared workspace a colleague made, and its payer is now that colleague. From the
+  `a221e1f1d` an organizer could pick a shared workspace a colleague made, and its payer is now that colleague. From the
   deploy such a call opens it only to the workspace's own members: its guests, and invitees who aren't members, lose it.
   That includes calls in progress, whose streams reconnect to the new API and are refused, and meetings already
   scheduled. What such a call makes there from the deploy (its board, each room's board) is given by address only to the
-  workspace's own people too; what `d62c2de1b` already gave by address stays given. A call's own home is unaffected,
+  workspace's own people too; what `a221e1f1d` already gave by address stays given. A call's own home is unaffected,
   since its organizer pays for it. Nothing is deleted.
 
 **Calls in progress.**
 
-- They're metered from the deploy on. A live call's state from `d62c2de1b` reads as not stopped by the plan
+- They're metered from the deploy on. A live call's state from `a221e1f1d` reads as not stopped by the plan
   (`notes.limit` `.default`), and its notes are charged from its next transcript clip, against its organizer's fresh Free
   allowance. That first clip may reckon what writing the whole call's notes will cost, which can warn the organizer that
   notes are running out, or stop them at once for a long call with much screen shared. While both serve, a save of the
-  call by `d62c2de1b` drops such a stop: the banner can go and the organizer be warned twice, and notes stay off.
+  call by `a221e1f1d` drops such a stop: the banner can go and the organizer be warned twice, and notes stay off.
 - Calls live for more than `call.max_seconds` (10 hours) end shortly after the deploy: within 30 seconds of the new
   release starting, without the 5-minute warning. Their notes are written.
 - Asking to be let in no longer takes a place: a call is full only by the people in it, checked as someone is let in,
   and one network has at most `call.asks_per_address` (10) asks waiting in a call, a new limit. A live call's asks from
-  `d62c2de1b` have no `askedFrom` (a keyed hash of the network an ask came from): they read as null (`.default`), count
+  `a221e1f1d` have no `askedFrom` (a keyed hash of the network an ask came from): they read as null (`.default`), count
   against no network's limit, and are written with it as null the next time the call is saved. While both serve,
-  `d62c2de1b` still counts fresh asks among a call's places when it takes a join, so it can turn someone away that this
+  `a221e1f1d` still counts fresh asks among a call's places when it takes a join, so it can turn someone away that this
   release would let ask; it ignores `askedFrom`, and saves the asks it keeps without it.
 - A live call's `call-notes` record has a new flag, `guests`: its last refresh didn't work because guests had used their
-  share of the organizer's plan. A record without it, from `d62c2de1b` or written by it while both serve, reads as false
+  share of the organizer's plan. A record without it, from `a221e1f1d` or written by it while both serve, reads as false
   (`.default`), so a view that failed before says what it always did.
 
 **Tabs opened before the deploy see errors until they reload.**
@@ -788,31 +795,34 @@ from cache, where the domain-typed columns rewrote the whole table twice, for up
 - An old tab can't open a note it has only through a team ("Couldn't open this call").
 - A reload fixes all of these.
 
-**While both serve,** `d62c2de1b` can't open a deposit this release opened or settled: its `/v1/credits/top-ups` fails
+**While both serve,** `a221e1f1d` can't open a deposit this release opened or settled: its `/v1/credits/top-ups` fails
 for that person. Its watcher never settles one, so nothing is added twice; one it claims waits about 17 minutes for the
 new watcher, unless its owner's own check settles it first.
 
-**Deposits this release writes don't open in `d62c2de1b`, so recovery is a fix forward, never a rollback past this
-release.**
+**Deposits this release writes don't open in `a221e1f1d`,** which knows nothing of Pro, more notes, teams or who pays for
+a workspace either. Nothing rolls back to it past this release (above), so that holds only while its VM still serves.
 
-- Rolled back, `d62c2de1b`'s watcher marks every new deposit it gives up on as failed and unwatched. Back on this
-  release, a late payment to one is then added only by support, by account ID, and meanwhile `/v1/credits/top-ups` fails
-  for everyone with one.
-- `d62c2de1b` knows nothing of Pro, more notes, teams or who pays for a workspace.
+**Keys.** Plans seal their records (`plan-account`, `ai-meter`, `team-billing`, deposits) under `KSERVICE`'s accounting key,
+as credits did, so the TEE changes nothing of them: inside it, `KSERVICE` is the one in the server keys, carried over from
+the old one ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)).
+Carrying the old keys over checks the old `KSERVICE` against accounts' plans as well as their credits from before plans
+(`serverKeys.ts`, `opensAccounting` in `features/billing/plans.ts`), so it's refused on a database whose plans it doesn't
+open. Blind indexes plans make (a guest's uploads, the workspaces an address made) use the index key the server keeps, as
+everything else does. Support's billing CLI has no job in production: [Support](#support).
 
 **Before deploying,** check production:
 
 ```sql
--- How big workspaces is: 0030 and 0031 each read it twice under their locks.
+-- How big workspaces is: 0032 and 0033 each read it twice under their locks.
 SELECT pg_size_pretty(pg_relation_size('workspaces')) AS heap, pg_size_pretty(pg_total_relation_size('workspaces')) AS total;
 -- Top-ups still waiting on a payment, which old tabs stop following: deploy at 0, or accept the reloads.
 SELECT count(*) FROM deposits WHERE state IN ('waiting', 'arriving', 'short') AND give_up_at > now();
 -- Calls live for more than 10 hours, which end at once. If any matter, raise call.max_seconds in service_limits first
--- (d62c2de1b ignores names it doesn't know), and lower it again after.
+-- (a221e1f1d ignores names it doesn't know), and lower it again after.
 SELECT count(*) FROM calls WHERE state = 'live' AND started_at < now() - interval '10 hours';
 ```
 
-Once `0032` has run, live calls whose workspace their organizer doesn't pay for:
+Once `0034` has run, live calls whose workspace their organizer doesn't pay for:
 
 ```sql
 SELECT count(*) FROM workspace_calls c
@@ -821,6 +831,7 @@ JOIN workspaces w ON w.owner_id = c.owner_id
 WHERE w.payer_owner_id IS DISTINCT FROM k.owner_id;
 ```
 
-**Local databases** that applied `0029` to `0031` before they shipped (under the plans branches' numbers, or before
-`0029` lost `ai_meters.version`, `0030` and `0031` their domain-typed columns, and `0031` `team_members.email_index`) are
-refused by `migrate.ts`: start them over (`pnpm db:reset`). Neither main nor production has run them.
+**Local databases** that applied these migrations before they shipped (under the plans branches' numbers, or as `0029` to
+`0032` before main's `0029_tee_keys.sql` and `0030_tls_certificates.sql` took those numbers, or before `0031_plans.sql` lost
+`ai_meters.version`, `0032` and `0033` their domain-typed columns, and `0033` `team_members.email_index`) are refused by
+`migrate.ts`: start them over (`pnpm db:reset`). Neither main nor production has run them.

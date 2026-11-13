@@ -19,7 +19,7 @@ import { publish, type StreamPlace } from '../../live/hub';
 import { announce, roomFor, type Room, type Snapshot } from '../../live/room';
 import { LiveStream, type Line, type Step } from '../../live/stream';
 import { log } from '../../log';
-import { createOwner, findOwner, lockOwner, masterKey, ownerFrom } from '../../owners';
+import { createOwner, findOwner, indexKey, lockOwner, ownerFrom } from '../../owners';
 import {
   TREE_NOTICE, canOpen, change, emailIndex, entriesOn, givenByCall, grant, grantsFor, limitKey, openSharedPerson, openState, personIn, personKey, placeableIn, requireEditable, requireItem, requireRole, requireSharing, roleOf, saveState, sealSharedPerson, sealState, seatEnded, seatIndex,
   serverWorkspace, standingIn, trashOf, workspaceFor, workspaceKey, type Credentials, type Grant, type MadeFor, type Maker, type Reader, type Standing, type StoredCall, type StoredItem, type Who, type Workspace, type WorkspaceState
@@ -151,7 +151,7 @@ function withoutItems(s: WorkspaceState, ids: string[]): WorkspaceState {
 const holdsContent = (kind: ItemKind): boolean => kind !== 'folder';
 /** Remembers that an address's name is on something here, so deleting that account can find this workspace after it has left. */
 const noteAuthor = (w: { owner: Owner }, db: Db, email: string, madeWorkspace = false): Promise<number> => exec(db, `INSERT INTO workspace_authors (owner_id, email_index, made_workspace) VALUES ($1,$2,$3)
-  ON CONFLICT (owner_id, email_index) DO UPDATE SET made_workspace = workspace_authors.made_workspace OR EXCLUDED.made_workspace`, [w.owner.ownerId, blindIndex(masterKey(w.owner), 'email', email), madeWorkspace]);
+  ON CONFLICT (owner_id, email_index) DO UPDATE SET made_workspace = workspace_authors.made_workspace OR EXCLUDED.made_workspace`, [w.owner.ownerId, blindIndex(indexKey(w.owner), 'email', email), madeWorkspace]);
 /** Who's making something: an account by its name and address, a guest in a call by the name they're in it under. */
 const makerOf = (r: Reader): Maker => ({ name: r.account?.name ?? r.seat?.name ?? '', email: (r.email ?? '').trim().toLowerCase() });
 
@@ -300,7 +300,7 @@ export async function createIn(o: Owner, c: Db, name: string, madeFor: Omit<Made
   const id = id128();
   // One at a time for an account, so two at once can't both be the last one.
   await lockOwner(o, c);
-  const made = await maybeOne(c, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM workspace_authors WHERE email_index = $1 AND made_workspace', [blindIndex(masterKey(o), 'email', me.email)]);
+  const made = await maybeOne(c, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM workspace_authors WHERE email_index = $1 AND made_workspace', [blindIndex(indexKey(o), 'email', me.email)]);
   // How many one address can have made and not deleted, in or out of them (`workspaces.max_made`).
   const max = (await limitsNow(o, c)).get('workspaces.max_made');
   if ((made?.n ?? 0) >= max) throw new ConflictError('You’ve made as many workspaces as you can. Delete one first.', { context: { ownerId: o.ownerId, made: made?.n, limit: max } });
@@ -399,7 +399,7 @@ export async function followInvite(w: HeldWorkspace, db: Db, organizer: string, 
   const made = w.state.madeFor;
   if (!made) return { added: 0, removed: 0 };
   const members = await rows(db, Member, 'SELECT member_id, email_index, role, person_ciphertext, created_at FROM workspace_members WHERE owner_id = $1', [w.owner.ownerId]);
-  const indexOf = (email: string) => blindIndex(masterKey(w.owner), 'email', email);
+  const indexOf = (email: string) => blindIndex(indexKey(w.owner), 'email', email);
   const memberOf = (email: string) => { const at = indexOf(email); return members.find((m) => Buffer.compare(m.email_index, at) === 0); };
   const leaving = inviteesOf(change.gone ?? [], organizer).flatMap((e) => {
     const m = memberOf(e);
@@ -467,7 +467,7 @@ const personOfMember = (w: Pick<HeldWorkspace, 'owner' | 'workspaceId'>, m: z.in
 async function addMember(o: Owner, db: Db, workspaceId: string, email: string, role: WorkspaceRole, name?: string | undefined, invited = false): Promise<string> {
   const memberId = id128();
   const person = sealMember(o, workspaceId, memberId, { email: email.trim().toLowerCase(), ...(name ? { name } : {}), ...(invited ? { invited } : {}) });
-  await exec(db, 'INSERT INTO workspace_members (owner_id, member_id, email_index, role, person_ciphertext) VALUES ($1,$2,$3,$4,$5)', [o.ownerId, memberId, blindIndex(masterKey(o), 'email', email), role, person]);
+  await exec(db, 'INSERT INTO workspace_members (owner_id, member_id, email_index, role, person_ciphertext) VALUES ($1,$2,$3,$4,$5)', [o.ownerId, memberId, blindIndex(indexKey(o), 'email', email), role, person]);
   return memberId;
 }
 /** Someone's place changed by hand: from now on it's theirs, not the invite's, and an address back by hand isn't out any more. */
@@ -503,12 +503,12 @@ export async function idsOf(d: Deps, reader: Reader, workspaceId: string, emails
   const inCall = w.role === null && reader.seat ? await addressesIn(reader.seat.viewer) : new Set<string>();
   const may = w.role !== null ? wanted : wanted.filter((e) => inCall.has(e));
   wlog.debug('people’s IDs given', { workspaceId, asked: wanted.length, given: may.length, member: w.role !== null });
-  return Object.fromEntries(may.map((e) => [e, personKey(w.owner, blindIndex(masterKey(d), 'email', e))]));
+  return Object.fromEntries(may.map((e) => [e, personKey(w.owner, blindIndex(indexKey(d), 'email', e))]));
 }
 export async function addPerson(d: Deps, reader: Reader, workspaceId: string, email: string, role: WorkspaceRole): Promise<{ id: string }> {
   return change(d, reader, workspaceId, async (w, c) => {
     requireRole(w, 'admin');
-    const index = blindIndex(masterKey(d), 'email', email);
+    const index = blindIndex(indexKey(d), 'email', email);
     const there = await maybeOne(c, Member, 'SELECT member_id, email_index, role, person_ciphertext, created_at FROM workspace_members WHERE owner_id = $1 AND email_index = $2', [w.owner.ownerId, index]);
     if (!there) {
       if (w.people >= MAX_PEOPLE) throw new ConflictError('This workspace has as many people as it can. Take someone out first.', { context: { workspaceId, people: w.people } });
@@ -976,7 +976,7 @@ async function strandedIn(w: HeldWorkspace, db: Db): Promise<string[]> {
   const indexes = new Map<string, string>();
   const inHere = (email: string | null | undefined): boolean => {
     if (!email) return false;
-    const index = indexes.get(email) ?? b64u(blindIndex(masterKey(w.owner), 'email', email));
+    const index = indexes.get(email) ?? b64u(blindIndex(indexKey(w.owner), 'email', email));
     indexes.set(email, index);
     return members.has(index);
   };
@@ -1129,7 +1129,7 @@ export async function sweepSeats(d: Deps): Promise<SeatsEnded> {
  */
 export async function forgetAccount(o: Owner, db: Db, email: string, callIds: string[]): Promise<{ workspaces: number; deleted: number; owners: string[]; moves: PayerMove[] }> {
   const address = email.trim().toLowerCase();
-  const index = blindIndex(masterKey(o), 'email', address);
+  const index = blindIndex(indexKey(o), 'email', address);
   const elsewhere = await maybeOne(db, z.object({ n: z.number() }), 'SELECT 1 AS n FROM identities WHERE email_index = $1 AND owner_id <> $2 LIMIT 1', [index, o.ownerId]);
   const found = await rows(db, OwnerRow, `SELECT owner_id FROM document_access WHERE kind = 'seat' AND call_id = ANY($2::text[])
     UNION SELECT owner_id FROM workspace_calls WHERE call_id = ANY($2::text[])
@@ -1208,7 +1208,7 @@ async function moveShares(w: HeldWorkspace, db: Db, from: Uint8Array, to: Uint8A
  */
 export async function moveAddress(d: Deps, db: Db, ownerId: string, from: Uint8Array, to: string): Promise<number> {
   const address = to.trim().toLowerCase();
-  const index = blindIndex(masterKey(d), 'email', address);
+  const index = blindIndex(indexKey(d), 'email', address);
   if (await maybeOne(db, z.object({ n: z.number() }), 'SELECT 1 AS n FROM identities WHERE email_index = $1 AND owner_id <> $2 LIMIT 1', [from, ownerId])) return 0;
   const found = await rows(db, OwnerRow, `SELECT owner_id FROM workspace_members WHERE email_index = $1
     UNION SELECT owner_id FROM workspace_authors WHERE email_index = $1
@@ -1231,7 +1231,7 @@ export async function moveAddress(d: Deps, db: Db, ownerId: string, from: Uint8A
     const was = new Map<string, boolean>();
     const theirs = (email: string | null | undefined): boolean => {
       if (!email) return false;
-      const known = was.get(email) ?? Buffer.compare(blindIndex(masterKey(d), 'email', email), from) === 0;
+      const known = was.get(email) ?? Buffer.compare(blindIndex(indexKey(d), 'email', email), from) === 0;
       was.set(email, known);
       return known;
     };

@@ -1,8 +1,8 @@
 import { type HttpTransport } from '../transport/http';
-import { type AlcoveApi, AttestationSchema, FeatureFlagsSchema, MyTeamSchema, NoteSummarySchema, PersonSuggestionSchema, PlanOffersSchema, PlanSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamInvitePeekSchema, TeamInviteSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema } from '@alcove/api';
+import { type AlcoveApi, FeatureFlagsSchema, MyTeamSchema, NoteSummarySchema, PersonSuggestionSchema, PlanOffersSchema, PlanSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamInvitePeekSchema, TeamInviteSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema } from '@alcove/api';
 import { z } from 'zod';
 
-export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'plans' | 'teams' | 'trust' | 'featureFlags'> {
+export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'plans' | 'teams' | 'featureFlags'> {
   const { base, req } = t;
   return {
     auth: {
@@ -58,9 +58,6 @@ export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'ac
       refundLicenses: () => req(MyTeamSchema, 'POST', '/team/licenses/refund', {}),
       setAutoPurchase: (on) => req(MyTeamSchema, 'PUT', '/team/auto-purchase', { on }),
       notes: () => req(z.array(NoteSummarySchema), 'GET', '/team/notes')
-    },
-    trust: {
-      attestation: (nonce) => req(AttestationSchema, 'GET', `/attestation?nonce=${encodeURIComponent(nonce)}`)
     },
     featureFlags: {
       on: async () => (await req(FeatureFlagsSchema, 'GET', '/feature-flags')).on

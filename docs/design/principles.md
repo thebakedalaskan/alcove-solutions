@@ -260,8 +260,10 @@ Everything comes from the tokens in `styles.css`. Don't invent values.
 - The promise in the product's own words: "Written in confidential compute", "Alcove can't read them", "Confidential compute
   · verified", "Hardware verified 11:58". No hedging or status caveats in the UI; the engineering docs say what's built.
   The call's shield, the side panel's check, Home's badge, the join page, the page a call leaves you on and Settings ›
-  Privacy say Confidential compute, adding "· verified" and the time only when this browser's check is bound to the
-  server's hardware, and the tick in a shield never sits beside a negative.
+  Privacy say Confidential compute, adding "· verified" and the time only when this browser's check of the server
+  passed. A check that didn't pass blocks nothing and is no caveat: it says why ("Not verified. The token has expired.")
+  only where the check's details are (Settings › Privacy, the shield's card, pointing at the side panel's check), beside a
+  shield without its tick, which never sits beside a negative.
 - Times read `6:12`, `Thu 17:55`, `Yesterday`. Durations read `1 h 12 min`.
 - People: use names or "they". Demo data uses made-up people only (the demo company is Vandelay Industries); never a real
   person's name.

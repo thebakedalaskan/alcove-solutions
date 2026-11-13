@@ -9,7 +9,7 @@
 import { TopUpStateSchema, type TopUpState } from '@alcove/api';
 import { z } from 'zod';
 import type { Config } from '../../config';
-import { blindIndex, unb64u } from '../../crypto';
+import { blindIndex, deriveIndexKey, unb64u } from '../../crypto';
 import { maybeOne, rows, tx, type Db } from '../../db';
 import { conflict, NotFoundError, ValidationError } from '../../errors';
 import { limitsNow } from '../../limits';
@@ -28,9 +28,12 @@ const REFERENCE = /^[A-Za-z0-9_-]{22}$/;
 /** An account's ID: 43 characters of base64url. */
 const ACCOUNT = /^[A-Za-z0-9_-]{43}$/;
 
-/** The account signed in with `email`. Refused when there's none, or more than one (signed in with different providers). */
-async function accountByEmail(db: Db, kmaster: Uint8Array, email: string): Promise<string> {
-  const index = blindIndex(kmaster, 'email', email.trim().toLowerCase());
+/**
+ * The account signed in with `email`, found by its blind index under `indexKey` as sign-in finds it. Refused when there's none,
+ * or more than one (signed in with different providers).
+ */
+async function accountByEmail(db: Db, indexKey: Uint8Array, email: string): Promise<string> {
+  const index = blindIndex(indexKey, 'email', email.trim().toLowerCase());
   const found = await rows(db, z.object({ owner_id: z.string() }), 'SELECT DISTINCT owner_id FROM identities WHERE email_index = $1', [index]);
   const [one, ...more] = found;
   if (!one) throw new NotFoundError('No account has signed in with that address.');
@@ -57,7 +60,9 @@ export async function named(d: Support, who: string): Promise<Named> {
   }
   if (!typed.includes('@')) throw new ValidationError('Name the account by a top-up’s reference or by its ID.');
   if (d.cfg.KMASTER === undefined) throw new ValidationError('An address finds an account only where KMASTER is set, as it is locally. Name it by a top-up’s reference or by its ID.');
-  return { ownerId: await accountByEmail(d.pool, unb64u(d.cfg.KMASTER, 32), typed), depositId: null };
+  // The key the blind indexes are keyed by, as the API derives it from KMASTER outside a TEE (crypto.ts deriveIndexKey).
+  const indexKey = deriveIndexKey(unb64u(d.cfg.KMASTER, 32));
+  try { return { ownerId: await accountByEmail(d.pool, indexKey, typed), depositId: null }; } finally { indexKey.fill(0); }
 }
 
 /**

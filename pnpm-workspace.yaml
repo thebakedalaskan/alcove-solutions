@@ -1,6 +1,7 @@
 packages:
   - "apps/*"
   - "packages/*"
+  - "infra/confidential-space"
 minimumReleaseAgeExclude:
   - '@tanstack/query-core@5.105.3'
   - '@tanstack/react-query@5.105.3'
@@ -21,3 +22,8 @@ allowBuilds:
   esbuild: true
   ffmpeg-static: true
   cbor-extract: false
+# acme-client (the edge's certificates, in the attested image) pulls these in; held to releases at least two weeks old.
+overrides:
+  axios: 1.21.0
+  follow-redirects: 1.16.2
+  node-forge: 1.4.2

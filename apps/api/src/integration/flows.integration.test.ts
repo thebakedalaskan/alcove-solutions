@@ -6,7 +6,7 @@
 import { DEFAULT_NOTIFICATION_PREFERENCES, DEFAULT_SOUND_PREFERENCES, AlcoveApiError, OPERATION_HEADER, REQUEST_ID_HEADER, firstName, type AlcoveApi, type AnswerPart, type AudioPiece, type CallSession, type CallState, type NoteProgress, type TranscriptClip } from '@alcove/api';
 import { createHttpApi, type ClientEvent } from '@alcove/api-http';
 import { z } from 'zod';
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { addObject, boardText, newId, readBoard, tableCell } from '@alcove/board';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { standing } from '../features/billing/meter';
@@ -14,8 +14,9 @@ import { setLimit } from '../limits';
 import { loadConfig, loadEnv } from '../config';
 import { b64u, openJson, sealJson, signInAttemptKey, unb64u } from '../crypto';
 import { masterKey } from '../owners';
+import { resolveKeys } from '../serverKeys';
 import { cookieName } from '../sessions';
-import { startFakeDstack } from '../testing/fake-dstack';
+import { fakeKms } from '../testing/fake-kms';
 import { acceptNoteSuggestions } from '../testing/follow-ups';
 import { PNG, type GoogleUser, type Spoil } from '../testing/fake-google';
 import { NOTES_MODEL, speechWav, startFakeNear, type Tamper } from '../testing/fake-near';
@@ -3993,6 +3994,10 @@ describe('privacy at rest', () => {
       ['list_notes', 1], ['get_note', 'CANARY-ROOM title'], ['get_meeting', 'CANARY-EDIT renamed merger']
     ]);
 
+    // What a TEE carries this database's accounts over with: the keys they were made under, sealed in server_keys under its
+    // master, which is there wrapped by Cloud KMS.
+    const carried = await resolveKeys(h.pool, { tee: 'confidential-space', wrapper: fakeKms(), legacy: { kmaster: h.deps.cfg.KMASTER, kservice: h.deps.cfg.KSERVICE }, retire: false });
+
     // Every table there is, so a table added later is read here without anyone remembering to list it.
     const everyTable = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'")).rows.map((r) => r.table_name);
     expect(everyTable).toEqual(expect.arrayContaining(['workspaces', 'workspace_members', 'workspace_authors', 'documents', 'document_access', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'owners', 'items', 'revisions', 'operations']));
@@ -4058,6 +4063,16 @@ describe('privacy at rest', () => {
     expect(logText).toContain(session.ownerId);
     for (const canary of canaries) for (const enc of encodings(canary)) expect(logText.includes(enc), `${canary} as ${enc} in logs`).toBe(false);
     for (const secret of secrets) expect(logText.includes(secret), 'a session cookie or move code in logs').toBe(false);
+    // The TEE's keys are sealed and wrapped: the master, the index and photo keys, KSERVICE and the old master are in no row
+    // and no log line, in any encoding.
+    expect(everyTable).toContain('server_keys');
+    for (const key of [carried.KMASTER, carried.INDEX_KEY, carried.PHOTO_KEY, carried.KSERVICE, h.deps.cfg.KMASTER]) {
+      const bytes = Buffer.from(unb64u(key, 32));
+      for (const enc of [key, bytes.toString('hex'), bytes.toString('base64')]) {
+        expect(rowsText.includes(enc), 'a server key in rows').toBe(false);
+        expect(logText.includes(enc), 'a server key in logs').toBe(false);
+      }
+    }
     for (const enc of encodings(moveCode)) expect(rowsText.includes(enc), 'a move code in rows').toBe(false);
     for (const enc of encodings(noteLink.secret)) expect(rowsText.includes(enc), 'a note link’s secret in rows').toBe(false);
     for (const enc of encodings(teamSecret)) expect(rowsText.includes(enc) || logText.includes(enc), 'a team invite’s secret in rows or logs').toBe(false);
@@ -4076,42 +4091,46 @@ describe('privacy at rest', () => {
 
 describe('confidential computing', () => {
   it('says plainly when it isn’t running in a TEE, and which build it is', async () => {
-    const nonce = randomBytes(32).toString('hex');
-    expect(await h.browser().api.trust.attestation(nonce)).toEqual({ tee: 'none', nonce, build: { commit: 'dev' } });
-    expect((await h.browser().fetch(`${h.baseUrl}/v1/attestation?nonce=not-hex`)).status).toBe(400);
+    expect(await h.browser().api.trust.attestation()).toEqual({ tee: 'none', build: { commit: 'dev' } });
     expect(await (await fetch(`${h.baseUrl}/health`)).json()).toMatchObject({ ok: true, tee: 'none', commit: 'dev' });
   });
 
-  it('inside a TEE takes its keys only from the TEE, and attests to its build with the verifier’s nonce', async () => {
-    const tee = await startFakeDstack();
-    try {
-      // Whoever can set the environment would hold keys put there, so inside a TEE they're refused.
-      await expect(loadConfig({ ...process.env, TEE: 'dstack', DSTACK_SOCKET: tee.socket })).rejects.toThrow(/key service/);
-      const withoutKeys = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'KMASTER' && k !== 'KSERVICE'));
-      const cfg = await loadConfig({ ...withoutKeys, TEE: 'dstack', DSTACK_SOCKET: tee.socket, ALCOVE_COMMIT: 'abc1234' });
-      expect([cfg.KMASTER, cfg.KSERVICE]).toEqual([tee.key('alcove/kmaster/v1'), tee.key('alcove/kservice/v1')]);
-      await expect(loadConfig({ ...withoutKeys, TEE: 'none' })).rejects.toThrow(/required outside a TEE/);
-      // So would whoever sets the roots inference is verified against, or the services it's checked with.
-      const { INTEL_ROOT_CA, NVIDIA_ROOT_CA, INTEL_PCS_URL, NVIDIA_NRAS_URL } = h.near.settings;
-      for (const [name, value] of Object.entries({ INTEL_ROOT_CA, NVIDIA_ROOT_CA, INTEL_PCS_URL, NVIDIA_NRAS_URL })) {
-        await expect(loadConfig({ ...withoutKeys, TEE: 'dstack', DSTACK_SOCKET: tee.socket, [name]: value })).rejects.toThrow(new RegExp(`${name}: inside a TEE, inference is verified only against the built-in roots`));
-      }
+  it('inside a TEE takes no keys from the environment, and carries the database’s over under a master Cloud KMS keeps', async () => {
+    const kms = fakeKms();
+    // This database has accounts, made under the harness's keys: they're carried over, as the old keys.
+    const legacy = { kmaster: h.deps.cfg.KMASTER, kservice: h.deps.cfg.KSERVICE };
+    // As a TEE's environment has it: its own TLS, through Cloudflare, and what it reaches Google Cloud with.
+    const tee = { TEE: 'confidential-space', TLS_HOSTS: 'alcove.test,api.alcove.test', CLOUDFLARE_ZONE: 'alcove.test', CLOUDFLARE_API_TOKEN: 'a-token', GCP_PROJECT: 'alcove-tests',
+      KMS_MASTER_KEY: 'projects/alcove-tests/locations/us-central1/keyRings/alcove/cryptoKeys/alcove-master', WIF_PROVIDER: 'projects/123456789012/locations/global/workloadIdentityPools/alcove/providers/confidential-space' };
+    // Whoever can set the environment would hold keys put there, so inside a TEE they're refused.
+    expect(() => loadEnv({ ...process.env, ...tee })).toThrow(/never come from the environment/);
+    const withoutKeys = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'KMASTER' && k !== 'KSERVICE'));
+    const cfg = await loadConfig(loadEnv({ ...withoutKeys, ...tee, ALCOVE_COMMIT: 'abc1234' }), h.pool, { wrapper: kms, legacy });
+    // The master is the TEE's own, kept wrapped by Cloud KMS; the index and photo keys and KSERVICE are the database's, sealed under it, and so is the old master.
+    const wrapped = z.object({ record: z.instanceof(Uint8Array) }).parse((await h.pool.query("SELECT record FROM server_keys WHERE id = 'master'")).rows[0]).record;
+    expect(cfg.KMASTER).toBe(b64u(await kms.unwrap(wrapped)));
+    expect(cfg.KMASTER).not.toBe(h.deps.cfg.KMASTER);
+    expect([cfg.INDEX_KEY, cfg.PHOTO_KEY, cfg.KSERVICE, cfg.LEGACY_KMASTER]).toEqual([h.deps.cfg.INDEX_KEY, h.deps.cfg.PHOTO_KEY, h.deps.cfg.KSERVICE, h.deps.cfg.KMASTER]);
+    expect(cfg.edge).toEqual({ hosts: ['alcove.test', 'api.alcove.test'], zone: 'alcove.test', token: 'a-token' });
+    // Nothing but Cloud KMS unwraps the master.
+    await expect(loadConfig(loadEnv({ ...withoutKeys, ...tee }), h.pool, undefined)).rejects.toThrow(/Cloud KMS/);
+    expect(() => loadEnv({ ...withoutKeys, TEE: 'none' })).toThrow(/required outside a TEE/);
+    // Retiring an old master is for a TEE, and so is everything a TEE reaches Google Cloud with.
+    expect(() => loadEnv({ ...process.env, RETIRE_LEGACY_KMASTER: 'true' })).toThrow(/RETIRE_LEGACY_KMASTER: only inside a TEE/);
+    expect(() => loadEnv({ ...process.env, GCP_PROJECT: 'alcove-tests', LEGACY_SECRETS: 'a,b' })).toThrow(/GCP_PROJECT, LEGACY_SECRETS: only inside a TEE/);
+    // So would whoever sets the roots inference is verified against, or the services it's checked with.
+    const { INTEL_ROOT_CA, NVIDIA_ROOT_CA, INTEL_PCS_URL, NVIDIA_NRAS_URL } = h.near.settings;
+    for (const [name, value] of Object.entries({ INTEL_ROOT_CA, NVIDIA_ROOT_CA, INTEL_PCS_URL, NVIDIA_NRAS_URL })) {
+      expect(() => loadEnv({ ...withoutKeys, ...tee, [name]: value })).toThrow(new RegExp(`${name}: inside a TEE, inference is verified only against the built-in roots`));
+    }
 
-      const server = await h.secondServer({ TEE: 'dstack', DSTACK_SOCKET: tee.socket, ALCOVE_COMMIT: 'abc1234' });
-      try {
-        const nonce = randomBytes(32).toString('hex');
-        const a = await createHttpApi({ baseUrl: server.baseUrl, fetch: cookieFetch(ORIGIN) }).trust.attestation(nonce);
-        if (a.tee !== 'dstack') throw new Error('expected a TEE attestation');
-        const expected = createHash('sha512').update(`alcove-attestation/v1\n${nonce}\nabc1234`).digest('hex');
-        expect(a).toMatchObject({ nonce, build: { commit: 'abc1234' }, reportData: expected, appId: tee.appId, instanceId: 'fake-instance', composeHash: 'ab'.repeat(32) });
-        // The quote vouches for exactly that: this nonce and this build.
-        expect(a.quote.endsWith(expected)).toBe(true);
-        expect(JSON.parse(a.eventLog)).toEqual([expect.objectContaining({ imr: 3, event: 'compose-hash' })]);
-      } finally {
-        await server.close();
-      }
+    // A server started there runs with those keys, and says where it runs and which build it is.
+    const server = await h.secondServer({ TEE: 'confidential-space', ALCOVE_COMMIT: 'abc1234', legacy });
+    try {
+      expect(server.cfg.KMASTER).toBe(cfg.KMASTER);
+      expect(await (await fetch(`${server.baseUrl}/health`)).json()).toMatchObject({ ok: true, tee: 'confidential-space', commit: 'abc1234' });
     } finally {
-      await tee.close();
+      await server.close();
     }
   });
 });

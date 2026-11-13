@@ -26,7 +26,7 @@ import { AppError, AuthError, ConflictError, ForbiddenError, ValidationError, no
 import { publish, type Hub } from '../../live/hub';
 import { log } from '../../log';
 import type { MediaToken } from '../../mediaToken';
-import { findOwner, masterKey, openOwner } from '../../owners';
+import { findOwner, indexKey, openOwner } from '../../owners';
 import { findSession } from '../../sessions';
 import { profile } from '../account/account';
 import { inSeat, seated, seatedIn, seatOfViewer, viewerOf, type Viewer } from '../calls/participants';
@@ -140,13 +140,13 @@ export interface Reader extends Who {
   seat: Seat | undefined;
 }
 
-export const emailIndex = (d: Deps, email: string): Uint8Array => blindIndex(masterKey(d), 'email', email);
-export const seatIndex = (d: Deps, callId: string, seat: string): Uint8Array => blindIndex(masterKey(d), 'call-seat', `${callId}:${seat}`);
+export const emailIndex = (d: Deps, email: string): Uint8Array => blindIndex(indexKey(d), 'email', email);
+export const seatIndex = (d: Deps, callId: string, seat: string): Uint8Array => blindIndex(indexKey(d), 'call-seat', `${callId}:${seat}`);
 /**
  * What everyone in a call carries while it uses one workspace, and what that workspace's `workspace_calls` row names: the call
  * and the workspace together, so a call that moves to another carries something else at once, and this one closes to it.
  */
-export const callIndex = (d: Deps, callId: string, workspaceId: string): Uint8Array => blindIndex(masterKey(d), 'call-workspace', `${callId}:${workspaceId}`);
+export const callIndex = (d: Deps, callId: string, workspaceId: string): Uint8Array => blindIndex(indexKey(d), 'call-workspace', `${callId}:${workspaceId}`);
 /** What being in a call opens to someone in a seat (`Who.calls`): while the call uses a workspace, the call there. */
 const callsOf = (d: Deps, s: { callId: string; workspace: string | null }): Uint8Array[] => (s.workspace === null ? [] : [callIndex(d, s.callId, s.workspace)]);
 

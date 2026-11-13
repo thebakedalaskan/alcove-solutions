@@ -1,8 +1,9 @@
 # Alcove (the-privacy-suite)
 
 Video calls with end-to-end encrypted live media and built-in notes. Stored recordings, transcripts
-and notes are encrypted. The public beta runs on Cloud Run, where the API can decrypt stored content
-to provide the service. It does not run in an attested confidential environment.
+and notes are encrypted. The API and the web app run in Google Cloud Confidential Space on Intel TDX: the key that
+opens stored content is made there and released by Cloud KMS only to attested images signed into Sigstore's public log,
+TLS ends inside it, and the app checks its attestation ([infra/confidential-space](infra/confidential-space/README.md)).
 
 Start with the **[docs](docs/README.md)**.
 

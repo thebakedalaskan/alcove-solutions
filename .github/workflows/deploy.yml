@@ -1,7 +1,7 @@
 name: Deploy
 
-# Deploys only after CI passes on main, and only once infrastructure exists:
-# set the repository variable DEPLOY_ENABLED=true when infra/README.md is done.
+# Deploys only after CI passes on main, and only once infrastructure exists: set the repository variable
+# DEPLOY_ENABLED=true when infra/confidential-space/README.md › First setup is done.
 on:
   workflow_run:
     workflows: [CI]
@@ -9,6 +9,8 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# One deploy at a time; a newer one waits. refresh.yml has a group of its own (a run waiting in this one would cancel a
+# deploy waiting behind it) and skips while a deploy is queued or running.
 concurrency:
   group: deploy-production
   cancel-in-progress: false
@@ -48,31 +50,32 @@ jobs:
             echo 'This commit has been superseded on main; its deployment is skipped.'
           fi
 
-  api:
-    name: API → Cloud Run
+  release:
+    name: API and web app → Confidential Space
     needs: prepare
     if: needs.prepare.outputs.current == 'true'
     runs-on: ubuntu-latest
     environment: production
+    timeout-minutes: 120
     permissions:
       contents: read
       id-token: write # Workload Identity Federation: no long-lived GCP keys in GitHub.
+    # This job holds the identity that signs images and rolls the group, so it runs only our scripts and pinned tools:
+    # the check, which installs and runs workspace code, is the next job, with no Google credentials.
+    outputs:
+      image: ${{ steps.deploy.outputs.image }}
+      address: ${{ steps.deploy.outputs.address }}
     env:
-      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      GCP_REGION: ${{ vars.GCP_REGION }}
-      IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/alcove/api:${{ needs.prepare.outputs.sha }}
-      RUNTIME_SERVICE_ACCOUNT: ${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }}
-      CLOUDSQL_INSTANCE: ${{ vars.GCP_CLOUDSQL_INSTANCE }}
-      OBJECTS_ENDPOINT: ${{ vars.OBJECTS_ENDPOINT }}
-      OBJECTS_BUCKET: ${{ vars.OBJECTS_BUCKET }}
-      WEB_ORIGIN: ${{ vars.WEB_ORIGIN }}
-      API_ORIGIN: ${{ vars.API_ORIGIN }}
-      LIVEKIT_URL: ${{ vars.LIVEKIT_URL }}
-      NEAR_AI_ENABLED: ${{ vars.NEAR_AI_ENABLED }}
-      GOOGLE_AUTH_ENABLED: ${{ vars.GOOGLE_AUTH_ENABLED }}
-      # The Cloud Run beta uses verified Google sign-in. Demo identities are local only.
-      GOOGLE_SIGNUP_MODE: ${{ vars.GOOGLE_SIGNUP_MODE || 'testers' }}
-      DEMO_AUTH_ENABLED: 'false'
+      DEPLOY_SHA: ${{ needs.prepare.outputs.sha }}
+      # Not secret; infra/confidential-space/env.sh reads them (README.md › Settings).
+      ALCOVE_LIVEKIT_URL: ${{ vars.LIVEKIT_URL }}
+      ALCOVE_OBJECTS_ENDPOINT: ${{ vars.OBJECTS_ENDPOINT }}
+      ALCOVE_GOOGLE_SIGNUP_MODE: ${{ vars.GOOGLE_SIGNUP_MODE }}
+      ALCOVE_NEAR_AI_ENABLED: ${{ vars.NEAR_AI_ENABLED }}
+      ALCOVE_GOOGLE_AUTH_ENABLED: ${{ vars.GOOGLE_AUTH_ENABLED }}
+      # cosign v2: v3 stores signatures as OCI referrers, which Confidential Space's launcher doesn't look for.
+      COSIGN_VERSION: 2.6.5
+      COSIGN_SHA256: c3b4f5410e608af03a5eb0aaac84a4313d8da131248e08ff1759ac70c79d1644
     steps:
       - uses: actions/checkout@v4
         with: { ref: '${{ needs.prepare.outputs.sha }}', persist-credentials: false }
@@ -82,11 +85,30 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v2
-      - run: gcloud --project="$GCP_PROJECT_ID" auth configure-docker "$GCP_REGION-docker.pkg.dev" --quiet
+      - run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+      - name: Install cosign
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -fsSL -o "$RUNNER_TEMP/bin/cosign" \
+            "https://github.com/sigstore/cosign/releases/download/v$COSIGN_VERSION/cosign-linux-amd64"
+          echo "$COSIGN_SHA256  $RUNNER_TEMP/bin/cosign" | sha256sum -c -
+          chmod 0755 "$RUNNER_TEMP/bin/cosign"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: Build and push the image
-        run: docker build -f apps/api/Dockerfile --build-arg ALCOVE_COMMIT="${{ needs.prepare.outputs.sha }}" -t "$IMAGE" . && docker push "$IMAGE"
+        id: build
+        run: infra/confidential-space/build.sh production "$DEPLOY_SHA" >> "$GITHUB_OUTPUT"
+      - name: Sign it, in Sigstore's public log
+        env:
+          IMAGE: ${{ steps.build.outputs.image }}
+        run: infra/confidential-space/sign.sh "$IMAGE" "$DEPLOY_SHA"
       - name: Run database migrations
         # Migrations only shape tables: the job gets the database and nothing else, no keys or provider secrets.
+        env:
+          IMAGE: ${{ steps.build.outputs.image }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          RUNTIME_SERVICE_ACCOUNT: ${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }}
+          CLOUDSQL_INSTANCE: ${{ vars.GCP_CLOUDSQL_INSTANCE }}
         run: |
           SECRET_BINDINGS='DATABASE_URL=alcove-database-url:latest'
           gcloud --project="$GCP_PROJECT_ID" run jobs deploy alcove-migrate --image "$IMAGE" --region "$GCP_REGION" \
@@ -96,82 +118,33 @@ jobs:
             --set-env-vars "LOG_FORMAT=json,LOG_LEVEL=info" \
             --set-secrets "$SECRET_BINDINGS" --quiet
           gcloud --project="$GCP_PROJECT_ID" run jobs execute alcove-migrate --region "$GCP_REGION" --wait --quiet
-      - name: Deploy the API
-        run: |
-          SECRET_BINDINGS='DATABASE_URL=alcove-database-url:latest,KMASTER=alcove-kmaster:latest,KSERVICE=alcove-kservice:latest,OBJECTS_ACCESS_KEY=alcove-objects-access-key:latest,OBJECTS_SECRET_KEY=alcove-objects-secret-key:latest,LIVEKIT_API_KEY=alcove-livekit-api-key:latest,LIVEKIT_API_SECRET=alcove-livekit-api-secret:latest'
-          if [ "$NEAR_AI_ENABLED" = true ]; then
-            SECRET_BINDINGS="$SECRET_BINDINGS,NEAR_AI_API_KEY=alcove-near-ai-api-key:latest"
-          fi
-          if [ "$GOOGLE_AUTH_ENABLED" = true ]; then
-            SECRET_BINDINGS="$SECRET_BINDINGS,GOOGLE_CLIENT_ID=alcove-google-client-id:latest,GOOGLE_CLIENT_SECRET=alcove-google-client-secret:latest"
-            if [ "$GOOGLE_SIGNUP_MODE" = testers ]; then
-              SECRET_BINDINGS="$SECRET_BINDINGS,GOOGLE_SIGNUP_TESTERS=alcove-google-signup-testers:latest"
-            fi
-          fi
-          gcloud --project="$GCP_PROJECT_ID" run deploy alcove-api --image "$IMAGE" --region "$GCP_REGION" \
-            --service-account "$RUNTIME_SERVICE_ACCOUNT" --set-cloudsql-instances "$CLOUDSQL_INSTANCE" \
-            --allow-unauthenticated --min 1 --max 1 --concurrency 1000 --session-affinity \
-            --execution-environment gen2 --port 8080 --timeout 300s --cpu 1 --memory 2Gi --no-cpu-throttling \
-            --set-env-vars "OBJECTS_ENDPOINT=$OBJECTS_ENDPOINT,OBJECTS_BUCKET=$OBJECTS_BUCKET,WEB_ORIGIN=$WEB_ORIGIN,API_URL=$API_ORIGIN,LIVEKIT_URL=$LIVEKIT_URL,GOOGLE_SIGNUP_MODE=$GOOGLE_SIGNUP_MODE,DEMO_AUTH_ENABLED=$DEMO_AUTH_ENABLED,NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1,TREASURY_INTENTS_ACCOUNT=alcove-treasury.near,LOG_FORMAT=json,LOG_LEVEL=info" \
-            --set-secrets "$SECRET_BINDINGS" --quiet
-      - name: Deploy the feature-flags job
-        # Feature flags are switched from this job, never from a laptop: it hashes the addresses it's given, so it needs
-        # KMASTER, and gets that and the database only. Deployed after the API, so it knows the flags the API serves.
-        # Nothing runs it here; an operator does, with the command's words as --args, which replace `list`:
-        # gcloud run jobs execute alcove-feature-flags --args=everyone,<feature-flag>,on (docs: engineering/feature-flags.md).
-        run: |
-          gcloud --project="$GCP_PROJECT_ID" run jobs deploy alcove-feature-flags --image "$IMAGE" --region "$GCP_REGION" \
-            --command node,dist/feature-flags-cli.js --args list \
-            --service-account "$RUNTIME_SERVICE_ACCOUNT" --set-cloudsql-instances "$CLOUDSQL_INSTANCE" \
-            --tasks 1 --parallelism 1 --max-retries 0 --task-timeout 120s --cpu 1 --memory 512Mi \
-            --set-env-vars "LOG_FORMAT=json,LOG_LEVEL=info" \
-            --set-secrets 'DATABASE_URL=alcove-database-url:latest,KMASTER=alcove-kmaster:latest' --quiet
-      - name: Deploy the billing job
-        # Support adds to a balance from this job, never from a laptop (docs: engineering/plans-and-usage.md › Support): it opens
-        # and seals plans with KSERVICE, and gets that and the database only, never KMASTER, so it finds no account by its
-        # address. No retries, so a credit is never run twice by itself. Nothing runs it here; an operator does,
-        # naming the account by a top-up's reference or its ID: gcloud run jobs execute alcove-billing --args=credit,<reference>,<usd>
-        run: |
-          gcloud --project="$GCP_PROJECT_ID" run jobs deploy alcove-billing --image "$IMAGE" --region "$GCP_REGION" \
-            --command node,dist/billing-cli.js \
-            --service-account "$RUNTIME_SERVICE_ACCOUNT" --set-cloudsql-instances "$CLOUDSQL_INSTANCE" \
-            --tasks 1 --parallelism 1 --max-retries 0 --task-timeout 120s --cpu 1 --memory 512Mi \
-            --set-env-vars "LOG_FORMAT=json,LOG_LEVEL=info" \
-            --set-secrets 'DATABASE_URL=alcove-database-url:latest,KSERVICE=alcove-kservice:latest' --quiet
-      - name: Health check
-        run: |
-          SERVICE_URL="$(gcloud --project="$GCP_PROJECT_ID" run services describe alcove-api --region "$GCP_REGION" --format='value(status.url)')"
-          test -n "$SERVICE_URL"
-          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 3 --max-time 30 "$SERVICE_URL/health" | tee /dev/stderr | grep -q '"livekit":"reachable"'
+      - name: Roll it out
+        id: deploy
+        env:
+          IMAGE: ${{ steps.build.outputs.image }}
+        # deploy.sh writes only its key=value lines to stdout; gcloud's own output goes to stderr.
+        run: infra/confidential-space/deploy.sh "$IMAGE" production >> "$GITHUB_OUTPUT"
 
-  web:
-    name: Web → Cloudflare Pages
-    needs: [prepare, api]
+  verify:
+    name: Check the server as the app does, and its TLS key
+    needs: [prepare, release]
     runs-on: ubuntu-latest
-    environment: production
+    timeout-minutes: 30
+    # No Google credentials and no OIDC token: it only reads the public endpoint.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with: { ref: '${{ needs.prepare.outputs.sha }}', persist-credentials: false }
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: pnpm }
-      - run: pnpm install --frozen-lockfile
-      - name: Build
+      - run: pnpm install --frozen-lockfile --filter @alcove/confidential-space...
+      - name: Through the load balancer's own address, so it checks this rollout whatever DNS says
         env:
-          VITE_ALCOVE_API_URL: ${{ vars.API_ORIGIN }}
-          VITE_ALCOVE_DEMO_AUTH_ENABLED: 'false'
-        run: pnpm --filter @alcove/web build
-      - name: Content security policy for this API origin
-        env:
-          LIVEKIT_URL: ${{ vars.LIVEKIT_URL }}
-        run: node apps/web/scripts/csp.mjs apps/web/dist/client "${{ vars.API_ORIGIN }}" "$LIVEKIT_URL"
-      - name: Publish to Cloudflare Pages
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
           DEPLOY_SHA: ${{ needs.prepare.outputs.sha }}
-          WRANGLER_SEND_METRICS: 'false'
+          IMAGE: ${{ needs.release.outputs.image }}
+          ADDRESS: ${{ needs.release.outputs.address }}
         run: |
-          pnpm dlx wrangler@4.157.0 pages deploy apps/web/dist/client \
-            --project-name "$CLOUDFLARE_PAGES_PROJECT" --branch main --commit-hash "$DEPLOY_SHA"
+          pnpm --filter @alcove/confidential-space exec tsx verify-server.ts https://api.alcove.solutions \
+            --web https://alcove.solutions --connect "$ADDRESS" --commit "$DEPLOY_SHA" --digest "${IMAGE#*@}"

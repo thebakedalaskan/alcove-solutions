@@ -19,7 +19,7 @@ import { bigintText, bytea, exec, maybeOne, rows, timestamp, tx, type Db } from 
 import { ConflictError, ForbiddenError, NotFoundError, conflict } from '../../errors';
 import { limitsNow, type Limits } from '../../limits';
 import { log } from '../../log';
-import { createOwner, lockOwner, openRoot } from '../../owners';
+import { createOwner, lockOwner, openRootKey } from '../../owners';
 import { publish } from '../../live/hub';
 import { personOf } from '../account/portraits';
 import { TREE_NOTICE } from '../workspaces/access';
@@ -93,7 +93,7 @@ const isLive = (m: Pick<MemberRow, 'licensed_from' | 'licensed_until'>, now: num
 
 /** A team's key, for one request. A team whose row was just read is there unless it was deleted since. */
 async function teamKeyOf(d: Service, t: Pick<TeamRow, 'owner_id' | 'team_id'>): Promise<TeamKey> {
-  const root = await openRoot(d, t.owner_id);
+  const root = await openRootKey(d, t.owner_id);
   if (!root) throw new NotFoundError('That team no longer exists.', { context: { teamId: t.team_id } });
   try { return teamKeyFrom(t.owner_id, root); } finally { root.fill(0); }
 }

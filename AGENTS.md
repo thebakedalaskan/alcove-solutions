@@ -10,7 +10,9 @@ packages/ui         The design system: tokens, components, illustrations. Everyt
 packages/api        The contract: zod schemas, the AlcoveApi interface, wire shapes. No implementation.
 packages/api-http   The browser client: REST, NDJSON, audio uploads, live sessions.
 packages/board      The shape of a board's Y.Doc and the logic the app and API share. No React.
-infra/              Deployment guide and GCP bootstrap. .github/ holds CI, deploy and the branch ruleset.
+infra/              Deployment guide and GCP bootstrap; confidential-space/ sets up, builds, signs and deploys the image to
+                    Confidential Space (and is a small workspace package, for verify-server.ts). .github/ holds CI,
+                    deploy, the monthly image refresh and the branch ruleset.
 docs/               Product, engineering and design docs. Keep them true to the code. docs/design/ also holds the design canvas.
 ```
 
@@ -149,7 +151,8 @@ See `.claude/skills/strict-typescript/SKILL.md` for worked examples.
   pull request. A branch that changes `packages/api` extends it when it merges.
 - Live things (calls, room recordings) are `LiveStore`s that push whole snapshots. Read them with
   `useLive()`. Don't mirror their state in React state.
-- The app reaches the API at `/api` (Vite proxy locally) or `VITE_ALCOVE_API_URL` in production.
+- The app reaches the API at `/api` (Vite proxy locally) or `VITE_ALCOVE_API_URL` in production, where the API serves the
+  web app itself, from the same signed image in Confidential Space (`infra/confidential-space/README.md`).
 
 ## Privacy (enforced by review and tests)
 

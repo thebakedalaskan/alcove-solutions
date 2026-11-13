@@ -20,7 +20,7 @@ import { checkoutFor, payable, purchaseName, restToSend, settlingPurchase, token
 import { recordOfflineHere } from '~/lib/device';
 import { log } from '~/lib/log';
 import { useNow, useOnline } from '~/lib/live';
-import { q, trustLine, verifiedAt } from '~/lib/queries';
+import { q, trustLine, unverifiedBecause, verifiedAt } from '~/lib/queries';
 import { dayMonth, hm, shortDate } from '~/lib/time';
 import { plural } from '~/lib/words';
 import { NAV, NAV_FOOT, inWorkspace, places, useCounts, type NavPlace } from './places';
@@ -162,14 +162,16 @@ function Pinned({ onPin }: { onPin: () => void }) {
   );
 }
 
-/** The check, then your plan (Settings' Plan). */
+/** The check (pointing at it says when it passed, or why it didn't), then your plan (Settings' Plan). */
 function Foot({ online }: { online: boolean }) {
   const plan = useQuery(q.plan()).data;
   const trust = useQuery(q.trust()).data;
   const verified = verifiedAt(trust);
+  const failed = unverifiedBecause(trust);
   return (
     <div className="sb-foot">
-      {online && <p className="sb-seal" title={verified === null ? undefined : `Hardware checked at ${hm(new Date(verified))}`}><Icon name="sealed" size={15} />{trustLine(trust)}</p>}
+      {/* A check that didn't pass says why beside a shield without its tick, never a ticked one. */}
+      {online && <p className="sb-seal" title={verified === null ? failed ?? undefined : `Hardware checked at ${hm(new Date(verified))}`}><Icon name={failed === null ? 'sealed' : 'shieldOff'} size={15} />{trustLine(trust)}</p>}
       {plan && <PlanFoot plan={plan} />}
     </div>
   );

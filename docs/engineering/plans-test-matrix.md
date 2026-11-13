@@ -166,7 +166,7 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 Every call has a home again, made when it's needed, and the call opens the workspace it uses to everyone in it
 ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)). What plans add: the organizer
 pays for a home whoever's action made it, and a call opens a workspace to everyone in it only while its organizer can edit
-there and pays for it. Migration `0032_workspace_payers_backfill.sql` and upkeep's `settlePayers` give a home the payer
+there and pays for it. Migration `0034_workspace_payers_backfill.sql` and upkeep's `settlePayers` give a home the payer
 `makeHome` does, its first admin, the organizer; no test reaches the backfill, since tests start from an empty database.
 
 | ID | Scenario | Where | Phase | Status |

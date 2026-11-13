@@ -91,7 +91,7 @@ async function revisionsOf(ownerId: string, noteId: string) {
   const o = await openOwner(h.deps, ownerId, undefined);
   const found = z.array(StoredRevision).parse((await h.pool.query('SELECT revision_id, parent_revision_id, key_envelope, manifest_ciphertext FROM revisions WHERE owner_id = $1 AND item_id = $2', [ownerId, noteId])).rows);
   return found.map((r) => {
-    const k = openKey(o.wrapKey, ownerId, `revision:${r.revision_id}`, r.key_envelope);
+    const k = openKey(o.wrapKey, ownerId, `revision:${r.revision_id}`, r.key_envelope, '1');
     const header = { v: 1, kind: 'manifest', ownerId, itemId: noteId, revisionId: r.revision_id, recordId: r.revision_id, keyVersion: '1' } as const;
     return { parent: r.parent_revision_id, text: JSON.stringify(openJson(k, header, r.manifest_ciphertext, z.unknown())) };
   });

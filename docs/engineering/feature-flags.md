@@ -10,14 +10,18 @@ Making it unconditional in the code comes later, in its own pull request.
   `internal` plus two people outside it: everyone in `internal`, and those two, have it.
 - **The server decides.** The API works out which flags are on for whoever asks, and refuses a flagged endpoint when its
   flag is off for them. Hiding something in the app is only what people see; anyone can call the API directly.
-- **People are addresses, hashed.** A group member or a person granted a flag is the keyed hash of their email
-  (`blindIndex(KMASTER, 'email', …)`, the same hash `identities` and `workspace_members` hold). Nothing readable is stored.
-  So a grant follows the address: you can grant someone before they sign up, and it applies the moment they do. Deleting
-  an account removes its address from every group and grant (unless another account signs in with the same address).
+- **People are addresses, hashed.** A group member or a person granted a flag is the keyed hash of their email, with a
+  purpose of its own (`blindIndex(indexKey, 'flag-email', …)`, `flagHash` in `feature-flags.ts`): no other table holds it,
+  so a flag's rows join to no account, share or workspace, and an operator who switches a flag for an address learns
+  nothing about whose account it is. Nothing readable is stored. A grant follows the address: you can grant someone before
+  they sign up, and it applies the moment they do. The API hashes the address of whoever asks the same way, from their
+  opened profile. Deleting an account removes its address from every group and grant (unless another account signs in
+  with the same address).
 
 Where it lives: the names in `packages/api/src/feature-flags/names.ts`; the server side in `apps/api/src/feature-flags.ts`; the endpoint
-`GET /v1/feature-flags` in `apps/api/src/http/system-routes.ts`; `useFeatureFlag` in `apps/web/src/lib/queries.ts`; the CLI in
-`apps/api/src/feature-flags-cli.ts`; the tables in [Data and storage](data-and-storage.md).
+`GET /v1/feature-flags` in `apps/api/src/http/system-routes.ts`; `useFeatureFlag` in `apps/web/src/lib/queries.ts`; the commands in
+`apps/api/src/featureFlagCommands.ts`, which the CLI (`apps/api/src/feature-flags-cli.ts`) and the operator route
+(`POST /v1/operator/feature-flags`, in `system-routes.ts`) both run; the tables in [Data and storage](data-and-storage.md).
 
 ## Building a feature behind a flag
 
@@ -57,8 +61,8 @@ Where it lives: the names in `packages/api/src/feature-flags/names.ts`; the serv
 
 ## Switching flags: the `feature-flags` CLI
 
-Every command works against whichever database `DATABASE_URL` names, and needs `KMASTER` to hash addresses. Locally both
-come from `.env`:
+Every command works against whichever database `DATABASE_URL` names, and needs `KMASTER` to hash addresses (the index key
+derives from it), so the CLI is for a database whose `KMASTER` is at hand. Locally both come from `.env`:
 
 ```
 pnpm --filter @alcove/server feature-flags list
@@ -88,23 +92,35 @@ it, how many people have it directly and how many through those groups) when it 
 
 ### In production
 
-`KMASTER` never leaves Secret Manager, so production flags are switched from the Cloud Run job `alcove-feature-flags`, which the
-deploy keeps on the current image with `DATABASE_URL` and `KMASTER` bound. Its command is `node dist/feature-flags-cli.js` and its
-arguments default to `list`; give it the command's words as `--args`, comma-separated:
+Production flags are switched through the API itself, which hashes addresses where nothing outside it can see them:
+`POST /v1/operator/feature-flags` takes a command's words and answers with the lines the CLI would print for them, from the
+same commands. It isn't part of the app's API: operators call it with curl and a token. It's off, answering 404 as if it
+weren't there, until the API has `OPERATOR_TOKEN_SHA256`, the SHA-256 of that token as 64 lowercase hex characters. Any other
+token gets 401, compared in constant time. Make a token, and the hash the API is given:
 
 ```
-gcloud run jobs execute alcove-feature-flags --region "$GCP_REGION" --wait
-gcloud run jobs execute alcove-feature-flags --region "$GCP_REGION" --wait --args=group,create,staff
-gcloud run jobs execute alcove-feature-flags --region "$GCP_REGION" --wait --args=group,add,staff,ann@vandelay.test,bob@vandelay.test
-gcloud run jobs execute alcove-feature-flags --region "$GCP_REGION" --wait --args=grant,board.templates,group,staff
-gcloud run jobs execute alcove-feature-flags --region "$GCP_REGION" --wait --args=everyone,board.templates,on
+TOKEN=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')
+printf %s "$TOKEN" | shasum -a 256 | cut -d' ' -f1
 ```
 
-What it printed is in the execution's logs in Cloud Logging; it never repeats an address. **But the addresses you pass are
-the execution's arguments**, and Google Cloud keeps those readable outside Alcove: on the execution itself, and in Cloud
-Audit Logs' record of the request, which Alcove can't delete, so deleting someone's account doesn't remove them. Until
-flags are switched through a route that hashes inside the API (the open question below), pass addresses only for people
-who've agreed to test (staff and testers), and say so to them.
+Then send the command's words as JSON, 1 to 100 of them, each at most 320 characters:
+
+```
+curl -sS https://api.alcove.solutions/v1/operator/feature-flags -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"words":["group","add","staff","ann@vandelay.test"]}'
+{"lines":["Added 1 of 1 to staff."]}
+```
+
+Words it can't run (a name that isn't a flag, no such group, words that aren't a command) are refused with the API's usual
+error, `{ code, message, requestId }`, whose message is what the CLI would print. It takes 30 requests a minute from an
+address, and, unlike the app's routes, needs no `Origin` (the body must still be JSON). The addresses you send are hashed
+inside the API, under flags' own purpose, and kept nowhere else: not in a row, an argument list or a log line, and the
+hash stored joins to nothing but a flag. It logs `operator feature flags` with the command (`unknown` for words that
+aren't one) and whether it ran, and nothing else.
+
+Flags' hashes had the `email` purpose before (the hash `identities` holds); a group member or person grant made then no
+longer matches anyone. Production had none when that changed, so nothing was converted: add such an address again with
+the commands above.
 
 ## Releasing and retiring a flag
 
@@ -134,5 +150,6 @@ again. Deleting rows can only ever take a feature away from people; the name in 
 - **Groups that come from the product** (a workspace's members, a company's domain). Not built yet; a new kind of group
   would be a new way of answering "which groups is this person in" in `feature-flags.ts`.
 
-Once the API runs inside the confidential VM, `KMASTER` exists only there and the `alcove-feature-flags` job can't hash addresses.
-Switching flags would then move behind an operator-only route that calls `emailHash` inside the VM.
+Inside the confidential VM the key addresses are hashed with exists only there, so nothing outside the API can switch a flag
+for a person or a group: the operator route does it inside the VM. The Cloud Run job `alcove-feature-flags` ran the CLI with
+`KMASTER` bound, which outside the VM nothing has once the old master is retired; it goes with the move into the VM.

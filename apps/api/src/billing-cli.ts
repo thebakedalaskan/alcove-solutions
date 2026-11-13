@@ -6,12 +6,13 @@ import { configureLogging, flushLogs, log } from './log';
 
 /**
  * `pnpm --filter @alcove/server billing …` is support's way into an account's plan (docs: Plans and usage › Support), in
- * whichever database DATABASE_URL names. It opens and seals plans with KSERVICE, and needs nothing else of the API's settings:
- * in production it's the Cloud Run job alcove-billing, with only the database and KSERVICE bound. An account is named by a
- * top-up's reference or by its ID, never by an address there, as a job's arguments are kept with its execution and in Cloud
- * Audit Logs. Where KMASTER is set too, which is locally, an address finds one as sign-in does, so a developer can give an
- * account money to buy with, without 1Click. In the job, what it prints and logs goes to Cloud Logging, so it says only what a
- * log may hold (support.ts) and never repeats what was typed.
+ * whichever database DATABASE_URL names. It opens and seals plans with KSERVICE, and needs nothing else of the API's settings,
+ * so it runs where KSERVICE is at hand, as it is outside a TEE (locally, from .env). Inside Confidential Space KSERVICE is in
+ * the API's sealed server keys (serverKeys.ts), so no deploy runs this as a job. An account is named by a top-up's reference
+ * or by its ID, never by an address where a run is recorded, as a job's arguments are kept with its execution and in Cloud
+ * Audit Logs. Where KMASTER is set too, which is locally, an address finds one as sign-in does, by the index key derived from
+ * it, so a developer can give an account money to buy with, without 1Click. What it prints and logs says only what a log may
+ * hold (support.ts), and never repeats what was typed.
  */
 const Key = (name: string) => z.string().regex(/^[A-Za-z0-9_-]{43}$/, `${name} must be 32 bytes, base64url`);
 const env = z.object({

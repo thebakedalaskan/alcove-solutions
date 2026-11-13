@@ -1,4 +1,4 @@
--- Who pays for every workspace there is (docs: Plans and usage › Storage), apart from 0030's columns so it never runs under
+-- Who pays for every workspace there is (docs: Plans and usage › Storage), apart from 0032's columns so it never runs under
 -- their locks: this holds only the rows it writes, so the previous release, serving while this one deploys, keeps reading
 -- workspaces and counting what's stored throughout. A workspace's payer is its longest-standing admin with an account
 -- (whoever made a shared one; a call's organizer for its own), the rule upkeep settles one by (features/billing/storage.ts

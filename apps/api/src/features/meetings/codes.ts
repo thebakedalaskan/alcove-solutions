@@ -1,14 +1,14 @@
 /*
  * The call-code index: anyone with a call's link can find its meeting, not only its organizer. Rows hold a
- * keyed hash of the code (under KMASTER) and opaque IDs, so the database can't be matched to links.
+ * keyed hash of the code (under the index key) and opaque IDs, so the database can't be matched to links.
  */
 import { z } from 'zod';
 import type { Deps } from '../../context';
 import { blindIndex } from '../../crypto';
 import { exec, maybeOne, type Db } from '../../db';
-import { masterKey } from '../../owners';
+import { indexKey } from '../../owners';
 
-const hashOf = (d: Deps, code: string) => blindIndex(masterKey(d), 'call-code', code);
+const hashOf = (d: Deps, code: string) => blindIndex(indexKey(d), 'call-code', code);
 
 /** Records where a call's code leads. Safe to repeat. */
 export async function indexCode(d: Deps, db: Db, m: { ownerId: string; meetingId: string; code: string }): Promise<void> {

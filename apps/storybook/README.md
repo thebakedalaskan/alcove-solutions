@@ -29,6 +29,8 @@ src/api/trouble.ts        a part of Alcove that fails, can't be reached or keeps
 src/api/kept.ts           recordings kept on this device that haven't uploaded, through the app's own way of keeping them
 src/api/move.ts           a call being moved to this device, as /move sees it
 src/api/payments.ts       payments opened to buy something, played out by 1Click's side and the server's as the scenario says
+src/api/attestation.ts    what the stand-in's server runs on: Confidential Space, attested with anchors Storybook makes at
+                          first use (a test root, a token, the release in a log of its own), and the app's check with them
 src/world/                the demo world, in the contract's types: people, notes, calls, the demo clock
 src/world/boards.ts       the boards in it, written by the board package's own writes: in-memory for board stories, and into
                           the stand-in's workspaces for the board's page
@@ -57,7 +59,10 @@ stories/journeys/         one file per section of docs/product/user-flows.md, an
 **The stand-ins.** `main.ts` swaps two of the app's files for Storybook's, by the file an import lands on (so `~/lib/api`,
 `./api` and `../lib/api` all get it): `apps/web/src/lib/api.ts` becomes `src/api/index.ts`, and
 `apps/web/src/features/call/media/livekit.ts` becomes `src/media/livekit.ts`. Nothing else in the app changes, and nothing in
-`apps/web` or `packages/*` knows Storybook exists.
+`apps/web` or `packages/*` knows Storybook exists. The app's check of the server comes through the same swap: the real
+module checks with production's anchors, and `src/api/index.ts` hands it `checkServer` from `src/api/attestation.ts`, the
+same `verifyServer` with Storybook's own, so every page says Confidential compute · verified unless a story changes it
+(`notAttested`, or `checkFails` for each kind of reason a check doesn't pass, in `stories/pages/changes.ts`).
 
 **Before every story** the preview starts its scenario: a fresh world for the stand-in, the demo clock at the scenario's
 moment, the browser as the scenario says, and what this browser remembers (the tour, being signed in here), with nothing

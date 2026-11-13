@@ -97,7 +97,7 @@ export function CallLines({ lines, gaps = [], me, marks, quote, when = position 
   const starts = groupStarts(lines);
   return (
     <div className="tx-wrap">
-      <div ref={ref} className="tx" onScroll={onScroll} role="log" aria-label="What’s been said">
+      <div ref={ref} className="tx-log" onScroll={onScroll} role="log" aria-label="What’s been said">
         <UnsureKey words={lines.some((l) => l.unsure?.words)} speaker={lines.some((l) => l.unsure?.speaker)} className="tx-key" />
         {lines.map((l, i) => {
           const before = gapsBefore(gaps, lines, i);

@@ -37,9 +37,32 @@ clog.warn('object delete failed; queued for retry', { objectId, err: e });
   auth middleware adds `ownerId`. `withLogContext()` and `addLogContext()` do the same for background
   work. Errors go in `err` and are serialized with their `cause` chain.
 - **Config.** `LOG_LEVEL` (`debug | info | warn | error | silent`, default `info`) and `LOG_FORMAT`
-  (`pretty` for a terminal, `json` in production, where Cloud Run parses each line).
+  (`pretty` for a terminal, `json` in production, where each line is one JSON object Cloud Logging reads: pino's numeric
+  `level`, and beside it the `severity` Cloud Logging files it under (`DEBUG`, `INFO`, `WARNING`, `ERROR`), so an API line at
+  error is an error there too).
 - **Lifecycle.** Startup, migrations, listening, maintenance runs, `SIGTERM`/`SIGINT` shutdown (server and
   pool closed), unhandled rejections and uncaught exceptions are all logged.
+
+### Where production logs are
+
+The API runs in Confidential Space ([its runbook](../../infra/confidential-space/README.md#logs)). The launcher sends the
+container's stdout and stderr to Cloud Logging, as resource `gce_instance` and log `confidential-space-launcher`, so a
+request ID is found with:
+
+```sh
+gcloud --project=alcove-solutions logging read \
+  'resource.type="gce_instance" AND logName="projects/alcove-solutions/logs/confidential-space-launcher" AND "<request id>"'
+```
+
+Each API line reaches Cloud Logging as text in `jsonPayload.message` (the launcher sends it through journald unparsed), so
+filter on its own level as text: `jsonPayload.message:"\"level\":50"` for errors, and `"\"level\":40"` for warnings.
+
+The Cloud SQL Auth Proxy beside the API logs there too, as JSON, and so does the launcher itself: when it starts, the
+image's labels and ports, and the full claims of every attestation token it refreshes, the container's environment
+included. That's why the environment carries no secrets ([Settings](../../infra/confidential-space/README.md#settings)).
+The production image has no SSH and shows nothing of a failed workload but its exit, so these lines are what there is.
+The load balancer keeps no request logs, so client addresses aren't logged there either. The migration job still runs
+on Cloud Run, and logs there.
 
 ## Errors: `apps/api/src/errors.ts`
 
@@ -145,6 +168,18 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   one account, a top-up still watched, an amount that isn't one) logs `billing refused` at warn with its `code` or `why`, and
   anything else `billing failed` at error. Never an amount, and never what was typed, which may be an address
   ([Plans and usage › Support](plans-and-usage.md#support)).
+- Inside a TEE, start-up logs `secrets read` with the names of the settings read from Secret Manager (`component: 'gcp'`),
+  never a value, and `attestation exchanged for an access token` with how long it lasts. Whatever stops it starting (a secret
+  Secret Manager won't give, an attestation the Security Token Service refuses, or Cloud KMS refusing the master, each a
+  `KeyError` naming the secret, the provider or the key) is `refused to start`, at error, with Google's status codes only.
+  The shared attestation token logs `attestation token issued` with when it was issued and runs out, and `no attestation
+  token` at warn with the launcher's status and its line of explanation; never the token.
+- The edge (`component: 'edge'`) logs `tls key` with the TLS key's SPKI hash, `web app loaded` with how many files and
+  header rules, `listening for http` and `listening for https` with ports, `tls certificate found`, `acme account` with the
+  account's URI (for the CAA record), `tls certificate issued` with how many hosts, when it runs out and how long ordering
+  took, `tls certificate replaced` and `tls certificate renewed`, and at error `tls certificate not ordered; trying again` and
+  `tls certificate not renewed; trying again later`. A connection to the HTTPS port without the load balancer's PROXY line is
+  `connection without a PROXY line refused`, at warn, with why and how many bytes came: never the address.
 - A piece of a shared screen's video is refused as `403 forbidden` when it isn't the sender's share or the share
   doesn't go in the notes, `404 not-found` when the share is unknown or has ended, and `409 conflict` while notes are
   paused or off, or when a different piece is already stored in its place. ffmpeg failing to join or decode a share's

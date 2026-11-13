@@ -10,7 +10,7 @@ import { changing, page, pages, type PageArgs, type PageStory } from '../../src/
 import { withTopUp } from '../../src/world/payments';
 import { withDriveJustConnected, withDriveReconnect } from '../../src/world/drive-exports';
 import type { World } from '../../src/world';
-import { adminWithoutLicense, keptHere, mayaWaits, noCalendar, notAttested, paysForLaunch, replacedPro, sharedDemo, troubled, unencryptedDefault } from './changes';
+import { adminWithoutLicense, checkFails, keptHere, mayaWaits, noCalendar, notAttested, paysForLaunch, replacedPro, sharedDemo, troubled, unencryptedDefault } from './changes';
 
 const meta = { title: 'Pages/Settings', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -61,13 +61,24 @@ export const ConnectionsNight = night(Connections);
 export const Plan = page('/settings#plan', 'busy');
 export const PlanNight = night(Plan);
 export const PlanPhone = phone(Plan);
-/** Confidential compute, with the time this browser verified the hardware the server runs on. */
+/** Confidential compute, with the time this browser checked the server: its token and its release in the public log. */
 export const Privacy = page('/settings#privacy', 'busy');
 export const PrivacyNight = night(Privacy);
 export const PrivacyPhone = phone(Privacy);
 /** The server says it doesn't run in a TEE: Confidential compute just says what it is, with no caveat. */
 export const PrivacyNotAttested = page('/settings#privacy', 'busy', { beforeEach: notAttested });
 export const PrivacyNotAttestedNight = night(PrivacyNotAttested);
+/**
+ * The server is in confidential compute, but this browser's check of it didn't pass: the row says why, beside a shield
+ * without its tick, and nothing is blocked. One story for each kind of reason (`checkFails` in changes.ts).
+ */
+export const PrivacyCheckFailedRoot = page('/settings#privacy', 'busy', { name: 'Privacy, check failed: not Google’s root', beforeEach: checkFails('another-root') });
+export const PrivacyCheckFailedOld = page('/settings#privacy', 'busy', { name: 'Privacy, check failed: an old token', beforeEach: checkFails('too-old') });
+export const PrivacyCheckFailedDebug = page('/settings#privacy', 'busy', { name: 'Privacy, check failed: could be debugged', beforeEach: checkFails('debuggable') });
+export const PrivacyCheckFailedBuild = page('/settings#privacy', 'busy', { name: 'Privacy, check failed: another build', beforeEach: checkFails('another-build') });
+export const PrivacyCheckFailedLog = page('/settings#privacy', 'busy', { name: 'Privacy, check failed: not in the public log', beforeEach: checkFails('unreleased') });
+export const PrivacyCheckFailedLogNight = { ...night(PrivacyCheckFailedLog), name: 'Privacy, check failed: not in the public log, at night' };
+export const PrivacyCheckFailedLogPhone = phone(PrivacyCheckFailedLog);
 
 /* ------------------------------------------------------------------ calls and notes */
 /** An AI model that isn't in a secure enclave is the default: Unencrypted shows on the choice and in the list, and the row says what that means. */

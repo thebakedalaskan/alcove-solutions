@@ -149,7 +149,7 @@ Fixed in the commit that added this page, with integration tests (rows B2′ and
    a notice, and a payer's leaving is refused while none has one). Taking anyone out of a workspace runs it for that workspace at once (`dropMember` in
    `features/workspaces/service.ts`: leaving, being taken out, and a call's invite), and upkeep runs it for every
    workspace every 5 minutes, which catches any other way a payer stops being in one. That also fixes workspaces the
-   `0030` backfill gave to a maker who had already left. Upkeep only writes workspaces whose payer changes.
+   payer backfill (now `0034_workspace_payers_backfill.sql`) gave to a maker who had already left. Upkeep only writes workspaces whose payer changes.
 
 3. **A workspace nobody paid for had no storage limit.** With `media.workspace_bytes` gone, a workspace with a null
    payer was checked against nothing (`allowedIn` in `features/workspaces/media.ts`). `settlePayers` only picks an admin

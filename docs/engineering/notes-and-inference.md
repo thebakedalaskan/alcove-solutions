@@ -1825,7 +1825,7 @@ shows the default as "<name> (default)".
 
 The deploy pipeline sets the base URL and uses the defaults for everything else. The two roots are
 configuration so that tests can run the same checks against their own; `roots.ts` says where each real one
-is published and its SHA-256 fingerprint. Inside a TEE (`TEE=dstack`) only the built-in roots and Intel's and
+is published and its SHA-256 fingerprint. Inside a TEE (`TEE=confidential-space`) only the built-in roots and Intel's and
 NVIDIA's own services are accepted, so whoever sets the environment there can't choose what inference is
 verified against. The measured OS images aren't configuration at all.
 
@@ -2272,8 +2272,9 @@ What goes with each choice:
   it, the host's for the main room and each breakout room's scribe's for the room: they send what they hear to the
   API, everyone's speech as clips to transcribe and (the host's) the recording's pieces, over TLS but outside the
   media's end-to-end encryption. The API seals both at rest and sends speech on
-  only sealed to NEAR AI's verified Whisper, but the API itself runs on Cloud Run and isn't attested, so whoever
-  operates it could read them ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)).
+  only sealed to NEAR AI's verified Whisper. It runs attested in Confidential Space, where only images signed into
+  Sigstore's public log get its keys ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)),
+  but the audio still reaches the API rather than an attested member of the call's MLS group.
   What's verified today is the inference: NEAR AI's models, before anything is sent to them. An attested notes
   participant, a member of the call's MLS group running in a TEE whose attestation the browsers check before
   adding it, would take the media itself, so no browser sends audio to the API. Not built.

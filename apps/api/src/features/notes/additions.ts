@@ -20,7 +20,7 @@ import { b64u, blindIndex, equalBytes, id128, jcs, mac, openJson, sealJson, stat
 import { bytea, exec, maybeOne, rows, tx, type Db } from '../../db';
 import { ConflictError, ForbiddenError, ValidationError, notFound } from '../../errors';
 import { log } from '../../log';
-import { masterKey } from '../../owners';
+import { indexKey } from '../../owners';
 import { lockItem } from '../../vault';
 import { me, profile } from '../account/account';
 import { asRead, audienceOf, holdAccess, locate, type Audience, type Seen } from './service';
@@ -46,7 +46,7 @@ const header = (owner: Owner, noteId: string, additionId: string) => ({ v: 1 as 
 const Row = z.object({ addition_id: z.string(), body_ciphertext: bytea });
 const opened = (owner: Owner, noteId: string, r: z.infer<typeof Row>) => openJson(key(owner, noteId), header(owner, noteId, r.addition_id), r.body_ciphertext, Stored);
 /** Finds everything an account added, on anyone's notes, without opening any of them. */
-const authorIndex = (o: Owner) => blindIndex(masterKey(o), 'addition-author', o.ownerId);
+const authorIndex = (o: Owner) => blindIndex(indexKey(o), 'addition-author', o.ownerId);
 
 /**
  * Takes everything an account added out of everyone's notes, in the transaction that deletes it. Its own words go with

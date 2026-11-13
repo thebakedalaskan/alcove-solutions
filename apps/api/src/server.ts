@@ -1,56 +1,37 @@
-import { serve } from '@hono/node-server';
-import { createApp } from './app';
-import { loadConfig } from './config';
-import { createPool } from './db';
-import { inference } from './inference';
-import { startWatching } from './features/billing/deposits';
-import { startEndingOverdue } from './features/calls/lifecycle';
-import { createDocPool } from './live/docPool';
-import { createHub } from './live/hub';
+import { loadBoot, type Boot } from './config';
 import { configureLogging, flushLogs, log } from './log';
-import { maintain } from './maintenance';
-import { createLiveKit } from './livekit';
-import { migrate } from './migrate';
-import { createObjectStore } from './objects';
+import { startServer } from './start';
 
 const slog = log.child({ component: 'server' });
 process.on('unhandledRejection', (e) => slog.error('unhandled promise rejection', { err: e }));
 process.on('uncaughtException', (e) => { slog.error('uncaught exception, exiting', { err: e }); flushLogs(); process.exit(1); });
 
-const cfg = await loadConfig();
-configureLogging({ level: cfg.LOG_LEVEL, format: cfg.LOG_FORMAT });
-slog.info('starting', { node: process.version, logLevel: cfg.LOG_LEVEL, webOrigin: cfg.WEB_ORIGIN, tee: cfg.TEE, commit: cfg.ALCOVE_COMMIT });
+// Settings it can't start with, as inside a TEE a secret SECRETS may not name, are refused here, with the reason.
+let boot: Boot;
+try {
+  boot = loadBoot(process.env);
+} catch (e) {
+  slog.error('refused to start', { err: e });
+  flushLogs();
+  process.exit(1);
+}
+const { LOG_LEVEL, LOG_FORMAT, WEB_ORIGIN, TEE, ALCOVE_COMMIT } = boot;
+configureLogging({ level: LOG_LEVEL, format: LOG_FORMAT });
+slog.info('starting', { node: process.version, logLevel: LOG_LEVEL, webOrigin: WEB_ORIGIN, tee: TEE, commit: ALCOVE_COMMIT });
 
-const pool = createPool(cfg.DATABASE_URL);
-const applied = await migrate(pool);
-slog.info(applied.length ? 'migrations applied' : 'database up to date', { applied });
-const objects = await createObjectStore(cfg);
-const deps = { cfg, pool, objects, livekit: createLiveKit(cfg), hub: createHub(cfg.DATABASE_URL, { checkMs: cfg.HUB_CHECK_MS, timeoutMs: cfg.HUB_TIMEOUT_MS, maxStreams: cfg.LIVE_STREAMS_MAX, maxPerAddress: cfg.LIVE_STREAMS_PER_ADDRESS, makeRoomAfterMs: cfg.LIVE_MAKE_ROOM_MS }), docs: createDocPool({ workers: cfg.DOC_WORKERS, timeoutMs: cfg.DOC_WORK_MS, heapMb: cfg.DOC_HEAP_MB, waitingPerPerson: cfg.DOC_WAITING_PER_PERSON }) };
-const stopping = new AbortController();
-const app = createApp(deps, stopping.signal);
-
-const mlog = log.child({ component: 'maintenance' });
-const upkeep = () => mlog.timed('maintenance run', {}, () => maintain(deps), 30_000)
-  .then((r) => (r.sessions || r.retried || r.orphans || r.receipts || r.videos || r.notes ? mlog.info('maintenance done', r) : mlog.debug('maintenance done', r)))
-  .catch((e: unknown) => mlog.error('maintenance failed', { err: e }));
-void upkeep();
-const timer = setInterval(() => void upkeep(), 5 * 60_000);
-timer.unref();
-const stopWatchingDeposits = startWatching(deps);
-const stopEndingOverdue = startEndingOverdue(deps);
-
-const server = serve({ fetch: app.fetch, port: cfg.API_PORT, hostname: cfg.API_HOST }, (info) => {
-  slog.info('listening', { url: `http://${cfg.API_HOST}:${info.port}`, inference: inference(cfg).configured ? 'configured' : 'not configured' });
+// Inside a TEE, a key that won't open, a secret that can't be read or a refused attestation stops it here, with the reason.
+const running = await startServer(process.env).catch((e: unknown) => {
+  slog.error('refused to start', { err: e });
+  flushLogs();
+  process.exit(1);
 });
 
 function shutdown(signal: string) {
   slog.info('shutting down', { signal });
-  clearInterval(timer);
-  stopWatchingDeposits();
-  stopEndingOverdue();
-  stopping.abort();
-  // Live streams go first: they'd hold the server open, and their browsers open them again on another instance.
-  void Promise.all([deps.hub.close(), deps.docs.close()]).finally(() => server.close(() => { void pool.end().finally(() => { slog.info('stopped'); flushLogs(); process.exit(0); }); }));
+  void running.close().then(
+    () => { slog.info('stopped'); flushLogs(); process.exit(0); },
+    (e: unknown) => { slog.error('stopping failed', { err: e }); flushLogs(); process.exit(1); }
+  );
   setTimeout(() => { slog.warn('forced exit after 10s'); flushLogs(); process.exit(1); }, 10_000).unref();
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));

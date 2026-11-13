@@ -36,6 +36,12 @@ const MEDIA_PREVIEW = /^\/v1\/workspaces\/[^/]+\/documents\/[^/]+\/media\/[^/]+\
 const MEDIA_PIECES = /^\/v1\/workspaces\/[^/]+\/documents\/[^/]+\/media\/[^/]+\/pieces\/[^/]+$/;
 
 /**
+ * Routes only operators call, with curl (http/system-routes.ts): they take a bearer token and no cookie, so another site's
+ * page has nothing of anyone's to send them, and curl sends no Origin.
+ */
+const OPERATOR = /^\/v1\/operator\//;
+
+/**
  * Reads what's left of a request that was answered before all of it arrived, as a refused piece is, once the answer has
  * gone, and drops it, so the connection is ready for the next request. The Node adapter means to do this itself, but the
  * request's body stream keeps the request paused. So on its own the adapter reads one chunk and closes the connection
@@ -95,7 +101,7 @@ export function registerMiddleware(app: Hono<Env>, runtime: HttpRuntime): void {
   app.use('/v1/*', async (c, next) => {
     if (!MUTATING.has(c.req.method)) return next();
     const origin = c.req.header('origin');
-    if (origin !== d.cfg.WEB_ORIGIN) throw new ForbiddenError('Requests must come from the Alcove app.', { context: { origin: origin ?? 'none' } });
+    if (origin !== d.cfg.WEB_ORIGIN && !OPERATOR.test(c.req.path)) throw new ForbiddenError('Requests must come from the Alcove app.', { context: { origin: origin ?? 'none' } });
     const type = (c.req.header('content-type') ?? '').toLowerCase();
     const hasBody = c.req.header('content-length') !== '0' && c.req.header('content-length') !== undefined;
     const image = type.startsWith('image/jpeg') && MEDIA_PREVIEW.test(c.req.path);

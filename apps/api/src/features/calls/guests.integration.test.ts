@@ -638,9 +638,11 @@ describe('what a guest’s pass reaches', () => {
     const MOVES = ['/v1/moves/claim', '/v1/moves/status', '/v1/moves/ready', '/v1/moves/arrive', '/v1/moves/cancel'];
     // A file's URL is public too: its token says who's asking, and it answers for nobody else, a pass included.
     const PUBLIC = new Set(['/health', '/healthz', '/hooks/livekit', '/v1/telemetry', '/v1/attestation', '/v1/feature-flags', '/v1/session', '/v1/auth/sign-in', '/v1/auth/google', '/v1/auth/google/callback', '/v1/calls/:code/card', '/v1/calls/:code/join', '/v1/media/:token', '/v1/calls/:code/pick', ...MOVES]);
-    // OAuth discovery and callbacks are public; each validates its own inputs and credentials, never a call pass.
+    // OAuth discovery and callbacks are public; each validates its own inputs and credentials, never a call pass. So does the
+    // operators' route for feature flags, which takes only its bearer token, and isn't there while it has none (as here).
     // Match methods and paths exactly so another endpoint cannot inherit this exception by sharing a prefix.
     const PUBLIC_PROTOCOL_ROUTES = [
+      { method: 'POST', path: '/v1/operator/feature-flags', status: 404 },
       { method: 'GET', path: '/.well-known/oauth-authorization-server', status: 200 },
       { method: 'GET', path: '/.well-known/oauth-protected-resource/mcp', status: 200 },
       { method: 'POST', path: '/oauth/register', status: 400 },

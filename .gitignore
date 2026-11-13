@@ -11,3 +11,5 @@ dist
 .DS_Store
 gha-creds-*.json
 storybook-static
+# infra/confidential-space/dns.sh --switch saves what it replaced here, to put back; it never belongs in the repository
+dns-rollback-*.json
