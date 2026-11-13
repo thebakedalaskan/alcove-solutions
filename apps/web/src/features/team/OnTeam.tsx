@@ -90,7 +90,8 @@ export function OnTeam({ team, me, between, now, groups, shared }: {
   const leave = useLeaveTeam();
   const del = useDeleteTeam();
   const auto = useSetAutoPurchase();
-  const periodDays = useQuery(q.offers()).data?.periodDays;
+  const offers = useQuery(q.offers()).data;
+  const periodDays = offers?.periodDays;
   const teamNotes = useQuery({ ...q.teamNotes(), enabled: team.licensed });
   const notes = teamNotes.data ?? NO_NOTES;
   const [asking, setAsking] = useState<Asking>(null);
@@ -197,7 +198,8 @@ export function OnTeam({ team, me, between, now, groups, shared }: {
   /* One filled button: Buy licenses while someone waits, unless a question or someone's popover has its own. */
   const urgent = waiting.length > 0 && asking === null && open === undefined;
   const autoOn = auto.isPending && auto.variables !== undefined ? auto.variables : licenses?.autoPurchase ?? false;
-  const how = `Each is taken as someone next opens Alcove${periodDays === undefined ? '' : `, for ${plural(periodDays, 'day')}`}.`;
+  // A license runs a period from when it's taken, or a year's periods when it was bought for a year.
+  const how = `Each is taken as someone next opens Alcove${periodDays === undefined ? '' : `, for ${plural(periodDays, 'day')}${offers?.team.yearly ? ', or a year if bought for one' : ''}`}.`;
 
   return (
     <Evening moment="team" className="tq" style={{ '--tq-n': standing.length + (more > 0 ? 1 : 0) }}>

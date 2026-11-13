@@ -81,8 +81,21 @@ export function teamView(t: TeamWorld, email: string, now = Date.now()): MyTeam 
 }
 
 /**
+ * The period of a live license running at `now`, as the server runs it (plans.ts › planAt): one period from when it was
+ * taken, then each after it, the last ending with the license. A license for one period is that period.
+ */
+function licensePeriod(license: { from: string; until: string }, now: number): { from: string; to: string } {
+  const from = Date.parse(license.from);
+  const n = Math.max(0, Math.floor((now - from) / PERIOD_MS));
+  const start = from + n * PERIOD_MS;
+  const end = start + PERIOD_MS;
+  return { from: n === 0 ? license.from : new Date(start).toISOString(), to: end >= Date.parse(license.until) ? license.until : new Date(end).toISOString() };
+}
+
+/**
  * The plan as the team makes it: on Team while the license is live, with a fresh period and the whole of a person's notes
- * when the license is a new one, and storage from the team's pool. Without a live license, Free (with the team named).
+ * when a new period of it starts (a license for a year runs 12 of them, each with all its notes), and storage from the
+ * team's pool. Without a live license, Free (with the team named).
  */
 export function planWithTeam(plan: Plan, t: TeamWorld | null, email: string, now = Date.now()): Plan {
   const mine = t ? meOn(t, email) : undefined;
@@ -90,10 +103,10 @@ export function planWithTeam(plan: Plan, t: TeamWorld | null, email: string, now
   const licensed = isLive(mine, now);
   const team: Plan['team'] = { id: t.id, name: t.name, role: mine.role, licensed };
   if (!licensed || !mine.license) return plan.kind === 'team' ? onFree({ ...plan, team }, now) : { ...plan, team };
-  const fresh = plan.kind !== 'team' || plan.period.from !== mine.license.from;
+  const period = licensePeriod(mine.license, now);
+  const fresh = plan.kind !== 'team' || plan.period.from !== period.from;
   return {
-    ...plan, team, kind: 'team',
-    period: { from: mine.license.from, to: mine.license.until },
+    ...plan, team, kind: 'team', period,
     notes: fresh ? { minutesLeft: TEAM.minutes, minutesPerPeriod: TEAM.minutes, stopped: false } : plan.notes,
     storage: { usedBytes: t.usedBytes, limitBytes: poolOf(t, now), fileBytes: TEAM.file },
     grace: null, over: { storage: false }

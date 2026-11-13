@@ -13,7 +13,7 @@ import { screen, waitFor, within } from 'storybook/test';
 import { setOnline } from '../../src/browser';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
-import { paymentsOff } from '../../src/world/payments';
+import { noTeamYear, paymentsOff } from '../../src/world/payments';
 import { carriedOverInGrace } from '../../src/world/plans';
 import { troubled } from './changes';
 
@@ -89,6 +89,12 @@ export const TeamAdminNight = night(TeamAdmin);
 export const TeamAdminPhone = phone(TeamAdmin);
 /** Month by month, as Vandelay's admin: $40 a person, or $32 a month for a year. */
 export const TeamAdminMonthly = page('/plans', 'team-admin', { play: monthByMonth });
+/**
+ * No license for a year on offer (as it ships at first): Team is $40 a person on Yearly too, with nothing about a year, while Pro
+ * keeps its yearly price; Start a team opens checkout on a period's licenses.
+ */
+export const TeamYearOff = page('/plans', 'payments', { beforeEach: changing(noTeamYear) });
+export const TeamYearOffNight = night(TeamYearOff);
 /** On Priya's team, licensed: Team is Art's plan, Priya buys its licenses, and Pro says not while Art is on the team's plan. */
 export const TeamMember = page('/plans', 'team-member');
 export const TeamMemberNight = night(TeamMember);

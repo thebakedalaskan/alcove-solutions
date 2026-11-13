@@ -144,9 +144,10 @@ export function proPriceOf(offers: PlanOffers, months: number): number {
 /** About how many hours `packs` of more notes are, as the offers have it. */
 export const hoursOf = (offers: PlanOffers, packs: number): number => (packs * (offers.hours?.minutes ?? 0)) / 60;
 
+/** How long a team license is bought for, after "license" as the server says it: nothing for one period, " for a year" for 12. */
+export const forPeriods = (periods: number): string => (periods <= 1 ? '' : periods === 12 ? ' for a year' : ` for ${periods} months`);
 /** "6 licenses", "6 licenses for a year": licenses bought, and how long each runs when it's more than a period. */
-export const licensesFor = (count: number, periods: number): string =>
-  `${count} ${count === 1 ? 'license' : 'licenses'}${periods <= 1 ? '' : periods === 12 ? ' for a year' : ` for ${periods} months`}`;
+export const licensesFor = (count: number, periods: number): string => `${count} ${count === 1 ? 'license' : 'licenses'}${forPeriods(periods)}`;
 /** What a purchase costs at the price it carries: licenses are a price a period, for each of their periods. */
 export const costOf = (buys: Purchase): number =>
   (buys.kind === 'pro' ? buys.months * buys.microUsdPerMonth : buys.kind === 'licenses' ? buys.count * buys.periods * buys.microUsdPerLicense : buys.packs * buys.microUsdPerPack);

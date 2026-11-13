@@ -2,7 +2,7 @@
 import type { PlanOffers, Purchase, TopUp, TopUpRoute, TopUpRoutes, TopUpState } from '@alcove/api';
 import { iso } from './clock';
 import type { World } from './index';
-import { buyFromBalance, LICENSE_YEAR, PLAN_OFFERS, PRO_PRICE } from './plans';
+import { buyFromBalance, forPeriods, LICENSE_YEAR, PLAN_OFFERS, PRO_PRICE } from './plans';
 import { addLicenses } from './teams';
 
 /**
@@ -89,6 +89,11 @@ export function boughtFromBalance(w: World, buys: Purchase, entry: string, now =
   if (buys.kind === 'licenses' && w.myTeam) addLicenses(w.myTeam, buys.count, buys.microUsdPerLicense * buys.periods, buys.periods);
 }
 
+/** No team license for a year on offer, as the release that brings them ships at first: a license is a period's alone. */
+export function noTeamYear(w: World): void {
+  w.payments.offers = { ...w.payments.offers, team: { ...w.payments.offers.team, yearly: null } };
+}
+
 /** An ID for a new line of the balance that none of its lines has yet: a list of them keys on it. */
 export function freshEntryId(w: World): string {
   const taken = new Set(w.plan.balance.history.map((e) => e.id));
@@ -136,11 +141,9 @@ export const TEAM_SIX: Purchase = { kind: 'licenses', count: 6, microUsdPerLicen
 /** The same six for a year, at $32 a period: $2,304. */
 export const TEAM_SIX_YEAR: Purchase = { kind: 'licenses', count: 6, ...LICENSE_YEAR };
 /** Why a purchase whose price went up before its payment arrived wasn't bought, as the server says it. */
-const PRICE_CHANGED: Record<Purchase['kind'], string> = {
-  pro: 'The price of Pro changed before your payment arrived. It’s in your balance.',
-  hours: 'The price of more notes changed before your payment arrived. It’s in your balance.',
-  licenses: 'The price of a team license changed before your payment arrived. It’s in your balance.'
-};
+const priceChanged = (buys: Purchase): string => (buys.kind === 'pro' ? 'The price of Pro changed before your payment arrived. It’s in your balance.'
+  : buys.kind === 'hours' ? 'The price of more notes changed before your payment arrived. It’s in your balance.'
+  : `The price of a team license${forPeriods(buys.periods)} changed before your payment arrived. It’s in your balance.`);
 
 /** Where a payment opened to buy something is, for a story that opens on it. */
 export type PurchaseAt = 'waiting' | 'short' | 'closed-short' | 'seen' | 'bought' | 'over' | 'refused' | 'expired' | 'cancelled' | 'failed';
@@ -173,7 +176,7 @@ export const purchaseAt = (at: PurchaseAt, buys: Purchase = PRO_YEAR, asked = 19
     case 'refused':
       raisePrices(w);
       addToBalance(w, settled.microUsd, String(sent));
-      now = { ...t, ...closed, state: 'credited', received: settled, purchase: { buys, outcome: 'refused', why: PRICE_CHANGED[buys.kind] } };
+      now = { ...t, ...closed, state: 'credited', received: settled, purchase: { buys, outcome: 'refused', why: priceChanged(buys) } };
       break;
     case 'expired': now = { ...t, ...closed, state: 'expired', expiresAt: new Date(Date.now() - 60_000).toISOString() }; break;
     case 'cancelled': now = { ...t, ...closed, state: 'cancelled' }; break;

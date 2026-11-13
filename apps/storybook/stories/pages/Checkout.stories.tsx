@@ -13,7 +13,7 @@ import { current } from '../../src/api/state';
 import { setOnline } from '../../src/browser';
 import { checkout, checkouts, type CheckoutArgs, type CheckoutStory } from '../../src/checkout';
 import { changing } from '../../src/page';
-import { addToBalance, PREVIEW_TOP_UP, PRO_YEAR, purchaseAt, raisePrices, TEAM_SIX, TEAM_SIX_YEAR, withPayments, type PaymentPlay, type PurchaseAt } from '../../src/world/payments';
+import { addToBalance, noTeamYear, PREVIEW_TOP_UP, PRO_YEAR, purchaseAt, raisePrices, TEAM_SIX, TEAM_SIX_YEAR, withPayments, type PaymentPlay, type PurchaseAt } from '../../src/world/payments';
 import { ART } from '../../src/world/people';
 import { planWithTeam, priyasTeam } from '../../src/world/teams';
 import { LATER, pressable, SOON } from '../journeys/play';
@@ -279,6 +279,11 @@ export const BoughtLicensesForAYear = checkout('/plans', 'team-admin-none', { pl
   play: press('Buy with your balance')
 });
 export const BoughtLicensesForAYearNight: CheckoutStory = { ...BoughtLicensesForAYear, globals: DARK };
+/**
+ * No license for a year on offer (as it ships at first), though Plans was on Yearly: no How long, and six licenses a period at a
+ * time, $40 each.
+ */
+export const StartATeamYearOff = checkout('/plans', 'payments', { plan: 'team', from: 'plans', yearly: true }, { beforeEach: changing(noTeamYear) });
 
 /* ---------- Team: paying for its licenses ---------- */
 
