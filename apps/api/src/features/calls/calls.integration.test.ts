@@ -2203,6 +2203,20 @@ describe('ending', () => {
     await host.leave();
   });
 
+  it('takes a webhook LiveKit dated up to a minute ahead of the API’s clock, and refuses one dated further ahead', async () => {
+    // LiveKit dates a webhook by its own clock, and Confidential Space's VMs ran up to 9.5 s behind (2026-11-13).
+    const org = await account();
+    const host = await org.api.calls.join((await org.api.calls.startNow({})).code, { mic: true, cam: false });
+    const body = JSON.stringify({ event: 'room_finished', room: { name: host.ticket.roomName } });
+    const post = async (aheadS: number) => fetch(`${h.baseUrl}/hooks/livekit`, {
+      method: 'POST', headers: { 'content-type': 'application/webhook+json', authorization: await signWebhook(h.deps.cfg, body, aheadS) }, body
+    });
+    expect((await post(5 * 60)).status).toBe(401);
+    expect(await callState(host.ticket.callId)).toBe('live');
+    expect((await post(30)).status).toBe(200);
+    expect(await callState(host.ticket.callId)).toBe('ended');
+  });
+
   it('ends calls whose room is gone during upkeep', async () => {
     const org = await account();
     const host = await org.api.calls.join((await org.api.calls.startNow({})).code, { mic: true, cam: false });

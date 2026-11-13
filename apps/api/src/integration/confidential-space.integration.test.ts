@@ -189,7 +189,14 @@ describe('confidential space', () => {
     const environment = JSON.stringify(process.env);
     const given = env();
     const asGiven = JSON.stringify(given);
+    // Google's clock is 8 s ahead of the VM's, as production's VMs ran behind (2026-11-13): the API says how far, at start.
+    gcp.clockAheadMs = 8_000;
+    const starting = h.logs.length;
     a = await start();
+    gcp.clockAheadMs = 0;
+    const offset = z.object({ level: z.number(), behindGoogleS: z.number() }).parse(JSON.parse(h.logs.slice(starting).find((l) => l.includes('"msg":"clock offset"')) ?? 'null'));
+    // Info, not a warning: the checks of other services' tokens allow a minute (the header is in whole seconds).
+    expect([Math.abs(offset.behindGoogleS - 8) <= 1, offset.level]).toEqual([true, 30]);
     // Nothing was put in the environment, its own or the process's: Confidential Space puts the environment in its attestation.
     expect(JSON.stringify(given)).toBe(asGiven);
     expect(JSON.stringify(process.env)).toBe(environment);
