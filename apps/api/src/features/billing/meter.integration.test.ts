@@ -4,11 +4,12 @@
  * request, what it's charged, how a call's notes stop when the organizer's allowance is spent, the one note written past
  * it, and holds keeping requests at once from spending the same money twice.
  */
-import { AlcoveApiError, DEFAULT_NOTES_CHOICES, type AlcoveApi, type AnswerPart, type AudioPiece, type CallSession, type CallState, type TranscriptClip } from '@alcove/api';
+import { AlcoveApiError, DEFAULT_NOTES_CHOICES, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type TranscriptClip } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { HALF_PRICED_MODEL, UNENCRYPTED_MODEL, speechWav } from '../../testing/fake-near';
+import { maintain } from '../../maintenance';
+import { HALF_PRICED_MODEL, NOTES_MODEL, UNENCRYPTED_MODEL, speechWav } from '../../testing/fake-near';
 import { startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
 import { standing } from './meter';
@@ -45,8 +46,8 @@ async function settle(call: CallSession, pred: (s: CallState) => boolean): Promi
 }
 /** The call as it is now. */
 async function now(call: CallSession): Promise<CallState> { await call.refresh(); return call.getSnapshot(); }
-async function answer(parts: AsyncIterable<AnswerPart>): Promise<AnswerPart[]> {
-  const out: AnswerPart[] = [];
+async function answer<T>(parts: AsyncIterable<T>): Promise<T[]> {
+  const out: T[] = [];
   for await (const p of parts) out.push(p);
   return out;
 }
@@ -616,6 +617,53 @@ describe('running out', () => {
     expect(outcomes).toContain('answered');
     expect(outcomes).toContain('plan-limit');
     expect(after.spentNano).toBeLessThanOrEqual(after.allowanceNano);
+  });
+});
+
+describe('AI in a workspace', () => {
+  it('is paid by whoever asks, signed in; a guest’s by the workspace’s payer on the default model, and none while nobody pays', async () => {
+    const ann = await account(unique('maker'));
+    const bob = await account(unique('admin'));
+    const { id } = await ann.api.workspaces.create('Product');
+    await ann.api.workspaces.addPerson(id, bob.email, 'admin');
+    const plan = (await ann.api.workspaces.items.create(id, { kind: 'document', name: 'Plan', parent: null })).id;
+    const spent = async (who: Account) => (await meter(who)).byKind['documents'] ?? 0;
+    const shorter = { action: 'shorter' as const, text: 'A long way of saying it' };
+    // Bob asks: he's signed in, so his own plan pays, though the workspace counts against Ann.
+    await answer(bob.api.workspaces.ask(id, plan, shorter));
+    expect(await spent(bob)).toBeGreaterThan(0);
+    expect(await spent(ann)).toBe(0);
+    // Ann deletes her account, and the workspace counts against nobody until upkeep. Bob still pays for his own.
+    await ann.api.account.delete();
+    let before = await spent(bob);
+    await answer(bob.api.workspaces.ask(id, plan, shorter));
+    expect(await spent(bob)).toBeGreaterThan(before);
+    // Bob's call, with the workspace: a guest gets no AI there while nobody pays for it, and nothing is sent.
+    const { host, meeting } = await call(bob);
+    await host.setWorkspace(id);
+    await host.setModel(UNENCRYPTED_MODEL);
+    const g = h.browser();
+    const jamie = await g.api.calls.join(meeting.code, { mic: false, cam: false, name: 'Jamie Guest' });
+    await letIn(host, jamie);
+    const pass = { pass: jamie.ticket.pass };
+    const sent = h.near.prompts.length;
+    expect(await refusal(answer(g.api.workspaces.ask(id, plan, shorter, pass)))).toBe('not-found: That workspace doesn’t exist, or you don’t have access to it.');
+    expect(h.near.prompts.length).toBe(sent);
+    // Upkeep counts it against Bob, its admin with an account: what the guest asks for is his to pay, on the default model,
+    // not the one he chose for the call.
+    await maintain(h.deps);
+    before = await spent(bob);
+    expect(await answer(g.api.workspaces.ask(id, plan, shorter, pass))).toEqual([{ type: 'text', text: 'Shorter: A long way of saying it' }]);
+    expect(h.near.chats.at(-1)?.model).toBe(NOTES_MODEL);
+    expect(await spent(bob)).toBeGreaterThan(before);
+    // Bob's own in the call goes to the call's model, from his own plan.
+    await answer(bob.api.workspaces.ask(id, plan, shorter, { pass: host.ticket.pass }));
+    expect(h.near.chats.at(-1)?.model).toBe(UNENCRYPTED_MODEL);
+    // A guest asks a few times a minute, as their questions in a call; Bob, paying for his own, more.
+    const guests = await Promise.all(Array.from({ length: 7 }, () => answer(g.api.workspaces.ask(id, plan, shorter, pass)).then(() => 'answered', code)));
+    expect(guests).toContain('unavailable');
+    const his = await Promise.all(Array.from({ length: 7 }, () => answer(bob.api.workspaces.ask(id, plan, shorter)).then(() => 'answered', code)));
+    expect(his.every((x) => x === 'answered')).toBe(true);
   });
 });
 

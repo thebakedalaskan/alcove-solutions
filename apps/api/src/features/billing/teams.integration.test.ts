@@ -591,7 +591,7 @@ describe('team notes, Ask and team workspaces', () => {
     vi.useRealTimers();
   });
 
-  it('G13: AI in a team workspace is paid for by whoever pressed it; elsewhere by the workspace’s payer', async () => {
+  it('G13: AI in a team workspace is paid for by whoever pressed it, from their own plan, as it is in any other', async () => {
     const [ann, bob, eve] = await Promise.all([account(), account(), account()]);
     await team(ann, 2);
     await ann.api.auth.visit();
@@ -601,13 +601,13 @@ describe('team notes, Ask and team workspaces', () => {
     expect(await drain(bob.api.workspaces.ask(ours.id, ours.doc, { action: 'shorter', text: 'A long way of saying it' }))).toEqual([{ type: 'text', text: 'Shorter: A long way of saying it' }]);
     expect(await spent(bob)).toBeGreaterThan(0);
     expect(await spent(ann)).toBe(0);
-    // Eve's workspace isn't a team's: whoever presses it there, Eve pays.
+    // Eve's workspace isn't a team's, and it's the same there: Bob pressed it, so Bob pays, not Eve.
     const hers = await workspace(eve, 'Hers');
     await eve.api.workspaces.addPerson(hers.id, bob.email, 'edit');
     const before = await spent(bob);
     await drain(bob.api.workspaces.ask(hers.id, hers.doc, { action: 'checklist', text: 'Book the room; send the brief' }));
-    expect(await spent(bob)).toBe(before);
-    expect(await spent(eve)).toBeGreaterThan(0);
+    expect(await spent(bob)).toBeGreaterThan(before);
+    expect(await spent(eve)).toBe(0);
   });
 
   it('I2: a note, a reference or a workspace from a request only reaches what its caller can open', async () => {

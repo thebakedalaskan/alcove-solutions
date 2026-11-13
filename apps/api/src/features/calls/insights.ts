@@ -1,7 +1,7 @@
 import { firstName, type Speaker } from '@alcove/api';
 import { CAPTION_LANGUAGES, MAIN_PLACE, MAX_CALL_IDEAS, type CallAction, type CallBoard, type CallBoardIdea, type CallAnswer, type CallMoment, type CaptionLanguage, type CaptionTranslation, type CaptureGap, type CatchUp, type CatchUpRange, type CatchUpWindow, type Changer, type LiveNotes, type Person, type CallFollowUps, type DocFollowUpTick, type SeriesAnswerPart } from '@alcove/api';
 import type { Owner } from '../../context';
-import type { ChatModel } from '../../inference';
+import { defaultModel, type ChatModel } from '../../inference';
 import { id128 } from '../../crypto';
 import { exec, tx, type Db } from '../../db';
 import { AuthError, ConflictError, ForbiddenError, notFound } from '../../errors';
@@ -67,9 +67,10 @@ export async function tickDocumentFollowUp(v: Viewer, callId: string, t: DocFoll
 /**
  * Asking about a selection needs in a call what catching up does: everything that reaches the AI from a call waits while
  * notes, or the room someone's in, are paused, and a call whose notes have never been on sends it nothing. Says which
- * model the call's AI goes to.
+ * model it goes to: the one chosen for the call, or the default (`model`), for a guest, whose ask is paid by a plan that
+ * didn't choose the call's.
  */
-export async function mayAskInCall(v: Viewer): Promise<ChatModel> {
+export async function mayAskInCall(v: Viewer, model: 'call' | 'default'): Promise<ChatModel> {
   const { row, state } = await load(v.organizer, v.organizer.pool, v.pass.callId);
   const s = settle(state, row);
   const mine = s.people.find((j) => j.identity === v.pass.identity);
@@ -77,6 +78,7 @@ export async function mayAskInCall(v: Viewer): Promise<ChatModel> {
   const call = capturing(row, s, mine ? placeOf(s, mine) : MAIN_PLACE);
   capture.mayReachAi(call, 'ask', ctx);
   if (!call.noteId) throw new ConflictError('Notes aren’t on in this call, so nothing goes to the AI from it.', { context: ctx });
+  if (model === 'default') return defaultModel(v.organizer.cfg);
   // What's asked in a call goes to the model chosen for it.
   const via = await models.resolveModel(v.organizer.cfg, s.notes.model);
   await recordUnencryptedUse(v.organizer, call.noteId, via);

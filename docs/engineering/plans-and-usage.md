@@ -89,7 +89,7 @@ fallback`, with their IDs), never with every request.
 | A room recording's transcript and notes | Whoever records |
 | A question or a catch-up in a call | Whoever asks, from their own plan; a guest's, the organizer (6 a minute for each guest) |
 | Asking a note, or every note; asking a series; an agent's questions (MCP) | Whoever asks |
-| AI on a document or board (shorter, checklist, what was said, sort into themes) | Whoever the workspace counts against |
+| AI on a document or board (shorter, checklist, what was said, sort into themes) | Whoever asks, from their own plan, in any workspace; a guest's, whoever the workspace counts against, on the default model (6 a minute for each guest), and none while nobody does |
 
 Spend is kept by kind (`transcript`, `notes`, `live-notes`, `ideas`, `captions`, `catch-up`, `ask`, `series`,
 `documents`) with the allowance, so it can be explained, and logged when a period closes. Every change is made under the
@@ -147,7 +147,7 @@ and takes no files ("Files can't be added until one of this workspace's admins s
 next pass after an admin signs in.
 
 A call opens the workspace it uses to everyone in it, guests included, so whatever they add there counts against its payer,
-and AI they ask for there is paid by it. So it does that only while the organizer pays for it: its payer is the account the
+and AI a guest asks for there is paid by it (on the default model: anyone signed in pays for their own). So it does that only while the organizer pays for it: its payer is the account the
 call is kept in, and the organizer can still edit there (`access.ts › holdersOf`, asked on every request, so a change of
 payer or role takes effect at once). A workspace someone else pays for, made the call's by an organizer who can edit there,
 opens only for its own people; the Switch workspace question says so ("Its files don’t count against your storage, so it
@@ -395,8 +395,8 @@ as `read` edits too, an admin stays admin): `access.ts › standingIn`, from the
 It's in their Drive, and `WorkspaceTree.teamAccess` / `WorkspaceSummary.teamAccess` say which it is. Anything remembered
 of that access ends when their license does, and someone leaving or taken off the team, or the team deleted, moves the
 team's workspaces on, so nothing remembered outlasts it and every stream looks again. **AI in a team's workspace**
-(documents, boards) is paid for by whoever pressed it, from their own allowance; someone there only by a seat in a call
-falls back to the workspace's payer. Elsewhere the workspace's payer pays, as before.
+(documents, boards) is paid for by whoever pressed it, from their own allowance, as in any workspace; a guest, there only by
+a seat in a call, falls back to the workspace's payer, on the default model.
 
 ## Support
 

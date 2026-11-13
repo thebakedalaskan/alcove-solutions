@@ -1327,7 +1327,9 @@ tags out of the selection couldn't promise that. What comes back is for the pers
 document: nothing is written to it from here, nothing is kept, and it has no receipt.
 
 It works as catching up does. It's one answer in one response, which `@alcove/api-http` hands over as parts (an
-`AsyncIterable`, as `notes.ask`); whoever the workspace counts against pays for it; and it has the same limit, 20 a minute per person. Asked from
+`AsyncIterable`, as `notes.ask`); whoever asks pays for it from their own plan, and a guest's ask goes to the default model
+and is paid by whoever the workspace counts against ([Plans and usage › Who pays](plans-and-usage.md)); and it has the same
+limit, 20 a minute per person, 6 for a guest. Asked from
 inside a call, it needs what catching up needs: the call is live, nothing's paused where this person is, and its notes have
 been on, so a call with notes off sends the AI nothing. Outside a call there's no call to rest on, so it needs an account that
 can edit the document. A demo account has the same limit as any other account.
@@ -1352,7 +1354,8 @@ offers nothing.
 `</stickies-…>` with a random mark, as a selection is, so nothing on a sticky can end the list early or be read as an
 instruction. Back comes `{themes: [{name, stickies}]}`: up to six themes of one to three words, every sticky in one. A label it
 wasn't given is nothing, one it uses twice stays where it was first, and a theme left with no stickies goes. It's one answer in
-one response, 20 a minute per person, and whoever the workspace counts against pays for it. In a call it needs the call to be live and nothing paused
+one response, 20 a minute per person (6 for a guest), and whoever asks pays for it, a guest's whoever the workspace counts
+against. In a call it needs the call to be live and nothing paused
 where this person is; with notes off it still works, as someone asked, about what people wrote. Outside a call it needs an
 account that can edit the board. Nothing is kept, and it has no receipt.
 

@@ -949,30 +949,32 @@ export async function searchText(d: Deps, reader: Reader, workspaceId: string, a
 }
 
 /**
- * What AI in a workspace is paid from (docs: Plans and usage): the plan of whoever the workspace counts against, its
- * maker or, for a call's own, the organizer. In a team's workspace, whoever pressed it pays, from their own allowance (docs:
- * Plans and usage › Team); someone there only by a seat in a call, with no account, falls back to the workspace's payer. A
- * workspace nobody pays for yet (its payer just deleted their account, until upkeep settles it) is paid for by whoever asks,
- * if they're signed in.
+ * What AI in a workspace is paid from (docs: Plans and usage › Who pays): whoever pressed it, signed in, from their own
+ * plan, in any workspace, as their questions in a call are. A guest, there by a seat in a call with no account, falls back
+ * to whoever the workspace counts against (its maker or, for a call's home, the organizer), on the default model
+ * (`mayAskInCall`) and within a guest's limit (reader-routes.ts), so nobody else's choice of model is spent from a plan that
+ * didn't make it. A workspace nobody pays for has no AI for a guest.
  */
 async function workspaceMeter(d: Deps, reader: Reader, w: Workspace, spend: Spend) {
   const asker = reader.account?.owner.ownerId;
-  const team = await maybeOne(d.pool, z.object({ team_id: z.string().nullable() }), 'SELECT team_id FROM workspaces WHERE owner_id = $1', [w.owner.ownerId]);
-  const payer = (asker && team?.team_id ? asker : null) ?? (await payerOf(d.pool, w.owner.ownerId)) ?? asker;
+  if (asker) return meterFor(d, { payer: asker, spend, whose: 'yours' });
+  const payer = await payerOf(d.pool, w.owner.ownerId);
   if (!payer) throw new ConflictError('AI isn’t available in this workspace right now.', { context: { workspaceId: w.workspaceId, why: 'no payer' } });
-  return meterFor(d, { payer, spend, whose: payer === asker ? 'yours' : 'workspace' });
+  return meterFor(d, { payer, spend, whose: 'workspace' });
 }
 
 /**
  * The format bar's Make this shorter and Turn this into a checklist. What's selected goes to the chosen model and nowhere
- * else, like catching up: nothing is kept, and the workspace's payer pays for it. In a call it waits while notes are paused, as
- * everything that reaches the AI does. Whoever lost the document while the model wrote isn't sent what came back.
+ * else, like catching up: nothing is kept, and whoever asks pays for it, a guest's the workspace's payer (`workspaceMeter`).
+ * In a call it waits while notes are paused, as everything that reaches the AI does. Whoever lost the document while the
+ * model wrote isn't sent what came back.
  */
 export async function askAlcove(d: Deps, reader: Reader, workspaceId: string, documentId: string, body: DocAskBody): Promise<DocAskPart[]> {
   const w = await workspaceFor(d, reader, workspaceId);
   requireDocument(reader, w, documentId, 'edit');
-  // In a call, the model chosen for it; otherwise the asker's own choice, or the default for a guest.
-  const via = reader.seat ? await mayAskInCall(reader.seat.viewer)
+  // In a call, the model chosen for it, but the default for a guest, whose ask the workspace's payer pays for; otherwise the
+  // asker's own choice.
+  const via = reader.seat ? await mayAskInCall(reader.seat.viewer, reader.account ? 'call' : 'default')
     : await resolveModel(d.cfg, reader.account ? (await profile(reader.account.owner)).preferences.model : null);
   const t0 = performance.now();
   const parts = await editSelection(d.cfg, await workspaceMeter(d, reader, w, 'documents'), body.action, body.text, via);
