@@ -68,6 +68,15 @@ function buyNow(w: World, buys: Purchase) {
   return planOf(w);
 }
 const offline = () => new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.');
+/**
+ * A question about your notes is paid from your own notes (apps/api/src/features/billing/meter.ts): once this period's have
+ * run out, the server refuses it before anything is written, in its own words.
+ */
+function mayAsk(w: World): void {
+  if (w.plan.notes.stopped || w.plan.notes.minutesLeft <= 0) {
+    throw new AlcoveApiError('plan-limit', 'Your notes for this period have run out. They start again when your plan renews.', { requestId: nextId('sb-req') });
+  }
+}
 /** With a call's pass, anyone in the call asks, a guest too, as the API reads it with the pass; without one, an account. */
 const asWho = (o?: WorkspaceReadOptions | undefined): 'anyone' | 'signed-in' => (o?.pass ? 'anyone' : 'signed-in');
 /**
@@ -761,8 +770,13 @@ export const standIn: AlcoveApi = {
       if (w.writing?.id === noteId) w.writing = null;
       return { ...n, writingAgain: false };
     }),
-    ask: (noteId: ID, question: string) => stream((w) => asWritten(answerAbout(teamNoteIn(w, noteId) ?? noteIn(w, noteId), question))),
+    ask: (noteId: ID, question: string) => stream((w) => {
+      const n = teamNoteIn(w, noteId) ?? noteIn(w, noteId);
+      mayAsk(w);
+      return asWritten(answerAbout(n, question));
+    }),
     // Your notes, the ones shared with you and your team's; the ones @-referenced first, and one you can't open refused.
+    // With written notes to answer from and none of your notes left this period, it's refused before anything is written.
     askAll: (question: string, refs?: ID[]) => stream((w) => {
       const team = teamNotesFor(w).filter((n) => n.received?.role === 'team');
       const all = [...w.notes, ...team];
@@ -771,6 +785,7 @@ export const standIn: AlcoveApi = {
         if (!n) throw refused('not-found', 'One of the notes you referred to isn’t there, or you can’t open it.');
         return n;
       });
+      if (all.some((n) => n.status === 'ready')) mayAsk(w);
       const about = named.filter((n) => n.status === 'ready').flatMap((n) => answerAbout(n, question));
       return asWritten([...about, ...(about.length ? [] : answerAcross({ ...w, notes: all }, question))]);
     }),
@@ -856,6 +871,7 @@ export const standIn: AlcoveApi = {
     get: (id: ID) => answer((w) => seriesIn(w, id)),
     ask: (id: ID, question: string): AsyncIterable<SeriesAnswerPart> => stream((w) => {
       const s = seriesIn(w, id);
+      mayAsk(w);
       const parts = answerAcross({ ...w, notes: w.notes.filter((n) => n.seriesId === id) }, question);
       return parts.flatMap((p): SeriesAnswerPart[] => {
         if (p.type === 'text') return [p];

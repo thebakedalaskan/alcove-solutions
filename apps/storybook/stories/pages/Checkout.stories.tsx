@@ -110,7 +110,10 @@ const lands = (scenario: CheckoutArgs['scenario'], open: Partial<CheckoutArgs>, 
     beforeEach: changing(purchaseAt('waiting', buys, asked), playsOut(PREVIEW_TOP_UP, play)), ...more
   });
 
-/** 128 of 192 USDC arrived: send the rest to the same address, or keep it in the balance. */
+/**
+ * 128 of 192 USDC arrived: send the rest to the same address, or keep it in the balance. A payment something has reached
+ * can't be cancelled (the server cancels only one nothing has reached), so the foot has Close alone.
+ */
 export const LessArrived = at('short');
 export const LessArrivedNight: CheckoutStory = { ...LessArrived, globals: DARK };
 /**
@@ -267,9 +270,14 @@ export const BoughtLicensesPhone: CheckoutStory = { ...BoughtLicenses, globals: 
 export const BuyLicensesNobodyWaiting = checkout('/settings#plan', 'team-admin-low', { plan: 'team', from: 'settings' });
 /** Six more with a payment for what the balance is short of (60 USDC): seen, then bought. */
 export const BoughtLicensesWithAPayment = lands('team-admin-none', { path: '/plans', from: 'plans', licenses: 6 }, 'pays', TEAM_SIX, 60);
-/** On Priya's team: Priya buys its licenses, so there's nothing to buy here. */
+/** On Priya's team: Priya buys its licenses, so there's nothing to buy here: no steps, and one note says who buys them. */
 export const OnSomeoneElsesTeam = checkout('/plans', 'team-member', { plan: 'team', from: 'plans' });
-/** Art stopped being the admin after checkout opened: buying is refused, and the window says who buys them now. */
+export const OnSomeoneElsesTeamNight: CheckoutStory = { ...OnSomeoneElsesTeam, globals: DARK };
+export const OnSomeoneElsesTeamPhone: CheckoutStory = { ...OnSomeoneElsesTeam, globals: PHONE };
+/**
+ * Art stopped being the admin after checkout opened: buying is refused, the steps go, and the window says once who buys them
+ * now.
+ */
 export const NotTheAdminAnyMore = checkout('/plans', 'team-admin', { plan: 'team', from: 'plans', licenses: 3 }, {
   play: async ({ userEvent }) => {
     await within(await win()).findByRole('radiogroup', { name: 'How many licenses' }, LATER);
@@ -279,4 +287,15 @@ export const NotTheAdminAnyMore = checkout('/plans', 'team-admin', { plan: 'team
     w.plan = planWithTeam(w.plan, w.myTeam, ART.email);
     await userEvent.click(await pressable('button', 'Buy with your balance', LATER, within(await win())));
   }
+});
+/**
+ * Art stopped being the admin while a payment for six licenses was on its way: it arrives and buys nothing, and one note says
+ * the money is in the balance and who buys them now, with no steps.
+ */
+export const NotTheAdminWhenItArrived = lands('team-admin-none', { path: '/plans', from: 'plans', licenses: 6 }, 'pays', TEAM_SIX, 60, {
+  beforeEach: changing(purchaseAt('waiting', TEAM_SIX, 60), playsOut(PREVIEW_TOP_UP, 'pays'), (w) => {
+    // Vandelay's admin is Priya now (as the server would have it), and Art is on it as a member.
+    w.myTeam = priyasTeam();
+    w.plan = planWithTeam(w.plan, w.myTeam, ART.email);
+  })
 });

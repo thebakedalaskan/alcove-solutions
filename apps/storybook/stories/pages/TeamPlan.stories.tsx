@@ -50,20 +50,26 @@ const bigTeam = (w: World): void => {
 
 /**
  * Art runs Vandelay's team: its six people on the horizon under their licenses (Maya's ended last week), the people as rows
- * with Remove, the notes visible to the team, and beside them three licenses left and Make an invite link.
+ * with Remove, the notes visible to the team, and beside them three licenses left and Make an invite link. The water is at
+ * most 1120px, centred under the team, as the board has it (Wide). Where the cards would squeeze the people (Tablet, 1024
+ * with the side panel), they fold under them, side by side; on a phone they stand one under another, and the line wraps
+ * onto a second row, its first on the horizon.
  */
 export const AsAdmin = page('/team', 'team-admin');
 export const AsAdminNight = night(AsAdmin);
 export const AsAdminPhone = phone(AsAdmin);
 export const AsAdminPhoneNight = night(AsAdminPhone);
 export const AsAdminTablet = tablet(AsAdmin);
+export const AsAdminTabletNight = night(AsAdminTablet);
 export const AsAdminWide = wide(AsAdmin);
+export const AsAdminWideNight = night(AsAdminWide);
 /** Two licenses left: the head and the licenses say so. */
 export const LicensesLow = page('/team', 'team-admin-low');
 /** None left, and Maya waiting for one: Maya waits on the horizon and in their row, and Buy licenses is filled. */
 export const SomeoneWaiting = page('/team', 'team-admin-none');
 export const SomeoneWaitingNight = night(SomeoneWaiting);
 export const SomeoneWaitingPhone = phone(SomeoneWaiting);
+export const SomeoneWaitingTablet = tablet(SomeoneWaiting);
 /** Buy licenses opens checkout on Team, over the page. */
 export const BuyLicenses = page('/team', 'team-admin-none', { play: pressing('Buy licenses', 'Press Buy licenses: checkout opens over the page') });
 /** Buying one when it's needed, turned on. */

@@ -405,6 +405,12 @@ The sun is low and to the left, behind the people.
   Team, and buying one whenever it's needed) and invite links (Make an invite link, then Copy, and Make another). A member
   without a live license is told first, at the top of the water. Not on a team, a quiet Start a team row on a company's
   water opens checkout on Team (`features/team/StartTeam.tsx`).
+  - The water is at most 1120px and centred under the team, though other pages run to `--page-max`: the TeamPlan board
+    has it so, and it reads as one block under the line, while the page's title, search and you keep the page's width.
+  - Where the admin's cards would squeeze the people (the page under 1000px, as at 1024 with the side panel open), they
+    fold under the people, side by side, before the notes. On a phone they stand one under another there.
+  - On a phone the line wraps, as the board's does, and never slides: its first row stands on the horizon and the rest
+    on the water under it, the sun set off to the left.
 - **Joining** (`/team/join#…`, `features/team/Join.tsx`) is one card on the team's evening: whose team it is and what
   joining gives you, Join (filled) and Not now; signed out, the ways in first, while the invite waits in the tab.
 - Every number on the page is real: a group's calls are calls everyone in it was on. Someone on their own, with no
@@ -526,21 +532,29 @@ The last of the light, with you in it, then seven groups. Change one thing and l
   their own: the agent tile, who's connected (or what agents are for, while none is), and Open Agents →, or Connect an
   agent → while none is. On a phone it's the way to Agents.
 - **Plan says what you have, then what you pay with.** The first panel: the plan row (Free or Pro with its help, See plans
-  quiet and Get Pro or Extend secondary, filled only when notes have run out or Pro is ending), Notes left this period with
+  quiet and Get Pro or Extend secondary, filled only when notes have stopped (run out, or over Free's storage) or Pro is
+  ending), Notes left this period with
   a `SunLine` on the row's own hairline (the sun at the end in a fresh period and moving back as it's used), Storage saying
   what's used of the limit ("2.1 GB of 10 GB", in caution once it's over), and More notes on Free (or on any plan once notes
   are low or out). The AI allowance is kept in dollars and never
-  shown: notes left is said as time, as an estimate, with a small "About" before the number. Over the plan's limits, one
-  `SettingNote` says until when everything works as before. Pro renewed and Pro ended are `SettingNote`s with × at the top
-  until dismissed, and so is a workspace whose payment moved to you because whoever paid left it: by the name you see it by
-  (read from your workspaces, never kept with the plan), and the day its files start to count against your storage; ending is
-  said once, in warm, in the plan row. The second panel: Balance with Add money (a sheet that
-  follows the payment with checkout's own parts and words, `features/plans/paying.tsx`: the deposit address with its QR code
-  and bold ends, never a window over the page), then on Pro Renew from balance and Refund. Renew says, in caution, why it
-  won't renew when it won't, as the server decides it (`pro.renewal`): the balance short of a month, or a month costing more
-  than the last did ("A month of Pro costs $24.00 now, more than your last did, so it won't renew by itself. Extend to keep it
-  at that price."). Refund asks in place: what goes back, that renewing turns off (while it's on), and that Pro ends with
-  the month running now. Then Payments (`SettingPayments`, `PaymentRow`): first what's on its way or needs a person, then
+  shown: notes left is said as time, as an estimate, with a small "About" before the number. Over the plan's storage, one
+  `SettingNote` says until when everything works as before, or that uploads and notes have stopped, with Make room at its end
+  (its `action`, under its words on a phone), which opens the Drive. Once they've stopped, the way out is the filled button:
+  Get Pro on Free, beside which Make room is secondary, and Make room on Pro or a team, unless Extend (Pro ending) or Buy
+  licenses (someone waiting) already is. Pro renewed and Pro ended are `SettingNote`s with × at the top until dismissed, and
+  so is a workspace whose payment moved to you because whoever paid left it: by the name you see it by (read from your
+  workspaces, never kept with the plan), and the day its files start to count against your storage; ending is said once, in
+  warm, in the plan row. The second panel: Balance with Add money, then on Pro
+  Renew from balance and Refund. Add money opens a window over Settings (`features/settings/topup.tsx`, the kit's `Sheet`:
+  560px, centred over the veiled page, and the width of a phone from its top), a small checkout of its own that shares
+  checkout's paying flow: how much and the network, Get an address, then the payment followed with checkout's own parts and
+  words (`features/plans/paying.tsx`: the status, the amount to send, the deposit address with its QR code and bold ends,
+  the track), with Cancel payment while nothing has arrived, and Done; a payment's Open in Payments opens it again on that
+  payment. Renew says, in caution, why it won't renew when it won't, as the server decides it (`pro.renewal`): the balance
+  short of a month, or a month costing more than the last did ("A month of Pro costs $24.00 now, more than your last did, so
+  it won't renew by itself. Extend to keep it at that price."). Refund asks in place: what goes back, that renewing turns off
+  (while it's on), and that Pro ends with the month running now, with Keep them filled (the answer that loses nothing), as a
+  team's Refund of its licenses asks. Then Payments (`SettingPayments`, `PaymentRow`): first what's on its way or needs a person, then
   the balance's latest changes, each with Receipt opening `PaymentReceipt`, paper in both themes and alone on the page when
   printed. Buying is checkout's, never this page's. Controls drop under their words on a phone. The code is
   `features/settings/Plan.tsx`, with `features/plans/plan-state.ts`, which the side panel's foot and Plans share.
@@ -598,7 +612,11 @@ you're buying on the right, under its own small evening (`PlanWindow`) whose sun
   the address with its QR code and the track (`PayStatus`, `PayAmount`, `PayAddress`, `PayTrack`); Done draws its tick
   (`CheckoutDone`), with the receipt (`PaymentReceipt`) in the same window, as paper.
 - **One filled button per view:** Get the address, or Buy with your balance; on a phone while paying, Open in wallet.
-  Cancel payment asks in the foot (`CheckoutAsk`), with Keep waiting filled.
+  Cancel payment asks in the foot (`CheckoutAsk`), with Keep waiting filled, while nothing has arrived. Once part of the
+  payment has (Less than asked arrived), the foot has Close alone, though the board's has Cancel payment beside it: the server
+  cancels only a payment nothing has reached yet (`deposits.ts` › `cancel`; docs/engineering/plans-and-usage.md, Cancelling
+  a top-up), and refuses the rest. What arrived is added to the balance when the payment settles, whether or not the rest
+  comes, so there's nothing to cancel: the address waits for the rest until it closes.
 - **Motion** is one move a stage, transform and opacity only: waiting, the sun on its horizon and its glow breathing; seen,
   the sun lifts and the amount counts up; done, it clears the horizon and the sky warms. With reduced motion every stage
   shows at once and only the dots and glints fade.
@@ -607,7 +625,9 @@ you're buying on the right, under its own small evening (`PlanWindow`) whose sun
   and Another number). The summary is Team's window with people on its horizon, and each license runs 30 days from when
   it's taken. The team is made only as you pay, and the app tells Alcove you're here as soon as the licenses are bought, so
   the admin's own license is taken at once. Done has inviting under the receipt (`CheckoutDone`'s `invite`, a bare
-  `TeamInvite`) and no renewal reminder.
+  `TeamInvite`) and no renewal reminder. Someone on another's team (a member, or an admin who stopped being one) has nothing
+  to buy here: the window has no steps (`CheckoutPanel`'s `step` is null) and says it once, in one note, who buys the
+  licenses, after what became of a payment that couldn't buy them (its money is in the balance), with Close.
 - **On a phone** it fills the screen, with what you're buying in one line at the top. Its foot keeps only the buttons, but
   offline, why the button waits ("You're offline…") is said on a line over them, as it is beside them on a wider screen.
 
@@ -874,8 +894,10 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
 - **Recording in the room** is Record's night, inset on the water (`RecordScene`): the recorder stands on the horizon,
   records offline and sets, then the session notes rise. **What Alcove can see** (`SealedScene`) sits on its water.
 - **Plans** looks out of a cove of its own (seed 8) on the plans moment, the last of the sun on its horizon: Free and Pro as small
-  cards on the water, Pro raised with a warm edge, then Start free and Get Pro, the filled one, which signs in and opens
-  Plans with checkout on Pro. Its prices are kept beside it, since the server's offers need a session.
+  cards on the water, Pro raised with a warm edge, then Start free and Get Pro, which signs in and opens Plans with checkout
+  on Pro. Both are secondary, though the Doors board fills Get Pro: the page's one filled button is its way in, and the last
+  ask's Continue with Google comes into view with them as the page scrolls on. Its prices are kept beside it, since the
+  server's offers need a session.
 - **The last ask** is morning on the same sea, in a cove of its own (seed 11): the sun comes up as the page reaches it.
   The footer sits on the water.
 - **Signing in sails out of the cove to Home.** Every way in on the page keeps where the hero's cove stands on screen as

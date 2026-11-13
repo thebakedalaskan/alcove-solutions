@@ -1,7 +1,7 @@
 /*
  * SettingNote: something said inside a panel, on no hairline of its own: what just happened (back from Google, in the
- * horizon's tint), or what's in the way (`caution`). The icon says which unless `icon` says otherwise. With `onDismiss` it stays
- * until its × is pressed.
+ * horizon's tint), or what's in the way (`caution`). The icon says which unless `icon` says otherwise. `action` is what to do
+ * about it, at its end (under its words on a phone). With `onDismiss` it stays until its × is pressed.
  */
 import { Button, ICON_NAMES, ProviderMark, SettingFact, SettingNote, SettingRow, SettingsPanel } from '@alcove/ui';
 import type { Decorator, Meta, StoryObj } from '@storybook/react-vite';
@@ -23,7 +23,7 @@ const meta = {
   component: SettingNote,
   decorators: [inPanel],
   args: { icon: 'check', children: 'Google Drive is connected. Choose a folder, and what to send to it.' },
-  argTypes: { icon: { control: 'select', options: ICON_NAMES }, tone: { control: 'inline-radio', options: ['info', 'caution'] }, children: { control: 'text' }, className: { control: false } }
+  argTypes: { icon: { control: 'select', options: ICON_NAMES }, tone: { control: 'inline-radio', options: ['info', 'caution'] }, children: { control: 'text' }, className: { control: false }, action: { control: false } }
 } satisfies Meta<typeof SettingNote>;
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -40,3 +40,12 @@ export const ConnectedPhone: Story = { ...Connected, name: 'Connected, phone', g
 /** Said until it's dismissed: Pro renewed, at the top of Settings › Plan, with its × (`onDismiss`). */
 export const Dismissable: Story = { args: { icon: 'repeat', children: 'Pro renewed from your balance, for another month.', onDismiss: did('onDismiss'), dismissLabel: 'Dismiss this notice' } };
 export const DismissableNight: Story = { ...Dismissable, name: 'Dismissable, night', globals: { theme: 'dark' } };
+/** What's in the way, with what to do about it at its end: over Free's storage, Make room opens the Drive. */
+export const WithAnAction: Story = {
+  args: {
+    icon: undefined, tone: 'caution', children: 'Uploads and notes have stopped: you’re over Free’s 10 GB of storage. Get Pro, or make room.',
+    action: <Button size="sm" onClick={did('Make room')}>Make room</Button>
+  }
+};
+export const WithAnActionNight: Story = { ...WithAnAction, name: 'With an action, night', globals: { theme: 'dark' } };
+export const WithAnActionPhone: Story = { ...WithAnAction, name: 'With an action, phone', globals: { viewport: { value: 'phone' } } };

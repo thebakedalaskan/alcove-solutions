@@ -112,6 +112,13 @@ export const Asking = page('/home', 'busy', {
 export const Answered = page('/home', 'busy', {
   play: typing(`${QUESTION}{Enter}`, 'Type a question, and press Enter', () => screen.findByRole('listbox', { name: 'From your notes' }, SOON))
 });
+/**
+ * Asked with none of this period's notes left: the server refuses the question, and the answer's place says until when there
+ * are none, with Get Pro (user-flows 16.10). Typing again puts it away.
+ */
+export const AskWithNoNotesLeft = page('/home', 'plan-stopped', {
+  play: typing(`${QUESTION}{Enter}`, 'Type a question, and press Enter, with no notes left this period', () => screen.findByText(/^No notes left until/, {}, SOON))
+});
 /** Nothing has the word: it says what it looked through, with Ask lit above it. */
 export const NothingMatches = page('/home', 'busy', { play: typing('cake', 'Type “cake”', () => screen.findByText('Nothing matches “cake”', {}, SOON)) });
 /** The search didn't go through: Try again, or ask instead. */
@@ -130,6 +137,7 @@ export const FirstDay = page('/home', 'first-day', { play: async (c) => { await 
 export const BeforeTypingPhone = phone(BeforeTyping, 'Before typing, on a phone');
 export const AWordPhone = phone(AWord, 'A word, on a phone');
 export const AnsweredPhone = phone(Answered, 'Answered, on a phone');
+export const AskWithNoNotesLeftPhone = phone(AskWithNoNotesLeft, 'Ask with no notes left, on a phone');
 
 /** The pin beside Pinned, in the side panel: a wide screen's, since a phone has no side panel. */
 const pinning = {

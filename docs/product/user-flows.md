@@ -2578,8 +2578,9 @@ notes; they don't carry into the next period. Done says "10 more hours of notes"
    that arrives after all is added to your balance and buys nothing, so a new address never buys the same thing twice:
    checkout and your payments say "Your payment arrived after its address closed, so nothing was bought. It's in your
    balance.", with **Buy with your balance**.
-5. **Cancel.** **Cancel payment** in the foot asks first: a payment sent to that address anyway still counts when it arrives,
-   added to your balance as in 4.
+5. **Cancel.** While nothing has arrived, **Cancel payment** in the foot asks first: a payment sent to that address anyway
+   still counts when it arrives, added to your balance as in 4. Once part of it has arrived it can't be cancelled: what
+   arrived goes into your balance when the payment settles, and the address waits for the rest until it closes (1).
 6. **Something went wrong.** Checkout says so, with the reference to give support.
 7. **Payments off.** Choose says paying isn't available right now; a balance that covers it can still buy.
 

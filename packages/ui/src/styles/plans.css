@@ -20,6 +20,9 @@
 .pl-cycle button[aria-pressed="true"] { background: var(--surface-raised); color: var(--ink); box-shadow: var(--shadow-1); }
 .dark .pl-cycle button[aria-pressed="true"] { background: color-mix(in oklch, var(--ink) 16%, transparent); box-shadow: none; }
 .pl-cycle .off { font-weight: 600; color: var(--horizon); }
+/* At night the chosen segment, over the glow, is lighter than horizon text takes at 4.5:1: the discount's horizon is drawn
+   toward the ink (in oklab, so the blue never turns), and reads at 5:1 there. */
+.dark .pl-cycle .off { color: color-mix(in oklab, var(--horizon) 45%, var(--ink)); }
 
 /*
  * The last of the sun, drawn on the evening's sky behind whatever passes through (Evening's `sky`): a sliver of its disc

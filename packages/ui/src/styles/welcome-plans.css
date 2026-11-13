@@ -1,8 +1,9 @@
 /*
  * Plans, on the welcome page (features/welcome/PlansScene.tsx, `lp-`): a cove at night with the last of the sun, a sliver of it
  * on the horizon under the title, and Free and Pro on the water as small cards whose parts line up, Pro raised with a warm
- * edge as on the Plans page. The ways in sit under them: Start free beside Get Pro, the one filled button here. The sky's
- * colours are the scene's own, as the other parts' are.
+ * edge as on the Plans page. The ways in sit under them: Start free beside Get Pro, both secondary, since the page's filled
+ * button is its way in and the last ask's comes into view with them. The sky's colours are the scene's own, as the other
+ * parts' are.
  */
 .lp-plans .hz[data-moment="plans"] {
   --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.06 252) 0%, oklch(0.86 0.05 290) 62%, oklch(0.9 0.06 22) 100%);

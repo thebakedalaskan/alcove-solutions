@@ -126,7 +126,8 @@ page. Blue Hour takes the page and the pressable colour from the logo's own sky 
 | Text | `ink`, `ink-2`, `ink-3` |
 | The one thing you press | `sun`, `on-sun` |
 | Warmth and highlights | `sun-text`, `sun-soft`, `sun-glow` |
-| Meaning | `rose`, `horizon`, `rec`, `caution`, each with a `-soft` |
+| Meaning | `rose`, `horizon`, `rec`, `caution`, each with a `-soft`; `caution-text` for small caution text out on the scene |
+| Someone with no portrait: their arch and its initial, pale in both themes as portraits are, never a gap at night | `arch-fill`, `arch-ink` |
 | The call stage, always night | `stage`, `stage-tile`, `stage-raised`, `stage-ink`, `stage-ink-2`, `speak`, `stage-point` (pointers on a shared screen) |
 | Drawing on the evening | `dusk-sun`, `dusk-haze` |
 | Illustration, tour art and covers only | `dawn-1` to `dawn-4`, `gold`, the `cover-*` gradients |
@@ -166,7 +167,8 @@ the same parts), a receipt's title (`PaymentReceipt`), and the plans' prices, on
 else does: a new place for Newsreader is a design decision, not a style.
 
 In the light theme, `ink-3` doesn't reach 4.5:1 out on the sky or the sea. Meta text on the scene uses `ink-2`; `ink-3` is
-for text on `surface` and `ground`. Warm `sun-text` on the light sky is kept large or put on an icon.
+for text on `surface` and `ground`. Warm `sun-text` on the light sky is kept large or put on an icon. Small caution text out
+on the scene (Waiting for a license on Team's water) takes `caution-text`, which by day is deep enough to read there.
 
 Truncate with `ac-clamp-1` or `ac-clamp-2` rather than `nowrap`, so long text can't widen a column. Don't also set
 `display: block` on it: that cancels the clamp.
@@ -197,6 +199,8 @@ Truncate with `ac-clamp-1` or `ac-clamp-2` rather than `nowrap`, so long text ca
   - 1320px: Home's widgets stack
   - 1241px: narrower than this, Calls' rows tighten their columns
   - 1240px and 1000px: Settings tightens, then its index becomes a strip
+  - a page under 1000px wide (a window under about 1256px with the side panel open): Team's admin cards fold under its
+    people
   - 1180px: the welcome page's top bar drops its links
   - 1100px: the top search becomes an icon, and Calls' rail narrows, its counts stepping back
   - 860px: the side panel becomes a top bar and a tab bar, with Record standing up out of it

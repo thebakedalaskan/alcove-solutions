@@ -76,12 +76,18 @@ export const LeftNotesPaused: Story = { ...LeftItGoesOn, name: 'You left, notes 
 export const LeftNotesOff: Story = { ...LeftItGoesOn, name: 'You left, notes off', args: { ...LeftItGoesOn.args, notes: { kind: 'going', mode: 'off' } } };
 /**
  * Your plan stopped the notes, and you left it going: it says so in caution, not that they're off, with the call's ways to more
- * (docs/product/user-flows.md 16.9), none filled, since Rejoin is the page's.
+ * (docs/product/user-flows.md 16.9), Get Pro and 10 more hours for this period while they're offered, none filled, since
+ * Rejoin is the page's.
  */
-const getPro = <Button variant="secondary" size="sm" onClick={did('Get Pro')}>Get Pro</Button>;
+const moreNotes = (
+  <>
+    <Button variant="secondary" size="sm" onClick={did('Get Pro')}>Get Pro</Button>
+    <Button variant="secondary" size="sm" onClick={did('Add 10 hours · $15')}>Add 10 hours · $15</Button>
+  </>
+);
 export const LeftNotesStopped: Story = {
   ...LeftItGoesOn, name: 'You left, your plan stopped the notes',
-  args: { ...LeftItGoesOn.args, notes: { kind: 'going', mode: 'off', stopped: { said: 'Your notes for this period have run out. What was said until then is in the notes.', ways: getPro } } }
+  args: { ...LeftItGoesOn.args, notes: { kind: 'going', mode: 'off', stopped: { said: 'Your notes for this period have run out. What was said until then is in the notes.', ways: moreNotes } } }
 };
 /** Someone else's call, stopped by its organizer's plan: whose notes ran out, and nothing to buy. */
 export const LeftTheirNotesStopped: Story = {

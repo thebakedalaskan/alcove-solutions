@@ -139,7 +139,7 @@ export const WhenAPaymentIsntRight: CheckoutStory = {
       await userEvent.click(await pressable('button', 'Cancel payment', SOON, await win()));
       await userEvent.click(await pressable('button', 'Keep waiting', SOON, await win()));
     });
-    await step('Less than asked arrives: send the rest to the same address, or what arrived stays in the balance', async () => {
+    await step('Less than asked arrives: send the rest to the same address, or what arrived stays in the balance. Something has reached it, so Cancel payment has gone', async () => {
       await says('Less than asked arrived');
     });
     await step('The rest arrives: seen, then Pro is on', async () => {
