@@ -395,9 +395,9 @@ falls back to the workspace's payer. Elsewhere the workspace's payer pays, as be
 ## Support
 
 `pnpm --filter @alcove/server billing` (`apps/api/src/billing-cli.ts`, `dist/billing-cli.js` in the image) is support's
-way into an account's plan, in whichever database `DATABASE_URL` names. It opens and seals plans with `KSERVICE` and reads
-none of the API's other settings (`DATABASE_URL`, `KSERVICE`, `LIMITS_CACHE_MS` and `LOG_*`). In production it's the
-Cloud Run job `alcove-billing`, which each deploy keeps on the current image with only the database and `KSERVICE` bound,
+way into an account's plan, in whichever database `DATABASE_URL` names. It reads only `DATABASE_URL`, `KSERVICE` (to open
+and seal plans), `LIMITS_CACHE_MS` and `LOG_*`, with `KMASTER` where it's set, and none of the API's other settings. In
+production it's the Cloud Run job `alcove-billing`, which each deploy keeps on the current image with only the database and `KSERVICE` bound,
 so the key never reaches a laptop ([Deployment › Support's billing job](deployment-and-acceptance.md#supports-billing-job)).
 
 `<who>` names the account: a top-up's reference (its deposit ID, which the person gives support), or the account's ID. A
