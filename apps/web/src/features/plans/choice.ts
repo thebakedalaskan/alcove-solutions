@@ -14,7 +14,7 @@
  * show them again and a new tab asks the server afresh. The tour of Home waits while they're up (`usePlanChoiceUp`).
  */
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { useRouterState } from '@tanstack/react-router';
+import { useMatches } from '@tanstack/react-router';
 import { useCallback, useEffect, useState, useSyncExternalStore, type RefObject } from 'react';
 import { overlayOpen } from '~/lib/keys';
 import { log } from '~/lib/log';
@@ -94,13 +94,32 @@ export async function planChoiceReady(qc: QueryClient): Promise<void> {
 }
 
 /**
+ * Whether Home opens on the plans for whoever is signed in, as things stand: what the arrival of a new account says opens
+ * (`Opening Plans`), decided as Home decides, from the plan /ready reads before the account screen goes up.
+ */
+export function usePlansFirst(): boolean {
+  const owner = useQuery(q.session()).data?.ownerId ?? null;
+  const choose = useQuery(q.plan()).data?.choose;
+  return owner !== null && planChoiceShows({ page: '/home', choose, doneHere: doneHere(owner) });
+}
+
+/**
+ * The page being shown, as the frame has it (routes/_app.tsx): the router's location moves as soon as a navigation starts, and
+ * an index page's path ends in a slash.
+ */
+function shownPath(matches: readonly { pathname: string }[]): string {
+  const path = matches[matches.length - 1]?.pathname ?? '/';
+  return path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path;
+}
+
+/**
  * Home's question: whether the plans are up in its place, and how to leave them (`leave`: on with the plan you're on, or once
  * what was bought from them is yours). Decided as Home opens, from the plan its loader read, and kept until they're left: the
  * server's answer changing meanwhile (telling it they were seen does) never swaps the page under the reader.
  */
 export function usePlanChoice(): { up: boolean; leave: () => void } {
   const qc = useQueryClient();
-  const page = useRouterState({ select: (s) => s.location.pathname });
+  const page = useMatches({ select: shownPath });
   const owner = useQuery(q.session()).data?.ownerId ?? null;
   const [shown, setShown] = useState(() => owner !== null
     && planChoiceShows({ page, choose: qc.getQueryData(q.plan().queryKey)?.choose, doneHere: doneHere(owner) }));
