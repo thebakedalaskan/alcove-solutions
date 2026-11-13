@@ -901,13 +901,12 @@ describe('a saved board', () => {
   });
 
   it('gives the organizer a seat too when they come back to what they can’t open: being organizer gives nothing', async () => {
-    const lena = await account();
     const art = await account();
     const priya = await account();
-    const id = await workspace(lena, 'Lena’s', [[art, 'edit'], [priya, 'edit']]);
-    const board = await saved(lena, id, 'Priya’s only');
-    await lena.api.workspaces.share.restrict(id, board, true);
-    await lena.api.workspaces.share.set(id, board, [{ email: priya.email }], 'edit');
+    // Art pays for the workspace, so the call can let everyone in there; Priya's board in it is closed to everyone else.
+    const id = await workspace(art, 'Art’s', [[priya, 'edit']]);
+    const board = await saved(priya, id, 'Priya’s only');
+    await priya.api.workspaces.share.restrict(id, board, true);
     const { host, code: c } = await callBy(art, { guests: [priya.email], home: id });
     const p = await invited(host, c, priya);
     inRoom.push(await connect(await p.room(), { sending: p.crypto }));
@@ -961,8 +960,9 @@ describe('a saved board', () => {
     const { host, code: c } = await callBy(art, { guests: [priya.email, theo.email], title: 'Weekly', home });
     const p = await invited(host, c, priya);
     const t = await invited(host, c, theo);
-    // Art can read it and Theo can't open it: Priya is asked about Theo alone, and she may let him in.
-    expect(await p.boardCheck(team, flow)).toEqual({ cannot: [first(theo)], mayLetIn: true });
+    // Art can read it and Theo can't open it: Priya is asked about Theo alone. Design is hers to pay for, not Art's, so the
+    // call can't let him in: it opens only for its own people.
+    expect(await p.boardCheck(team, flow)).toEqual({ cannot: [first(theo)], mayLetIn: false });
     // Art can only read it, so he can't bring it, as anywhere.
     expect(await code(host.openBoard({ workspaceId: team, documentId: flow, letIn: false }))).toBe('forbidden');
     await p.openBoard({ workspaceId: team, documentId: flow, letIn: false });
@@ -972,10 +972,10 @@ describe('a saved board', () => {
     // Nothing moved: it's still where it was, and the call's home has nothing new.
     expect((await priya.api.workspaces.get(team)).items.map((x) => x.id)).toEqual([flow]);
     expect(inTree(await art.api.workspaces.get(home))).toEqual([]);
-    // Letting him in is Priya's to do, from there, and he gets a seat for the call.
-    await p.openBoard({ workspaceId: team, documentId: flow, letIn: true });
-    await until(async () => (await opened(t))?.role === 'edit', 'a seat for Theo');
-    expect(await opened(t)).toMatchObject({ workspaceId: team, documentId: flow, name: 'Onboarding flow' });
+    // Letting him in would be on Priya's word, at her cost: refused, and Theo still can't open it.
+    expect(await refusal(p.openBoard({ workspaceId: team, documentId: flow, letIn: true }))).toMatchObject({ code: 'conflict', message: 'Its files don’t count against the organizer’s storage, so it opens only for its own people.' });
+    expect(await seats(flow)).toBe(0);
+    expect(await opened(t)).toMatchObject({ workspaceId: null, documentId: null, role: null });
   });
 
   it('tells someone left out nothing about it: not in the call, an error or a log', async () => {
@@ -1113,7 +1113,8 @@ describe('a board the call made', () => {
     const lena = await account();
     const art = await account();
     const nora = await account();
-    const id = await workspace(lena, 'Lena’s', [[art, 'edit']]);
+    // Art made it and pays for it; Lena runs it with him.
+    const id = await workspace(art, 'Product', [[lena, 'admin']]);
     const { host, code: c } = await callBy(art, { home: id });
     await host.openBoard({ template: 'blank' });
     const board = host.getSnapshot().board.open?.documentId ?? '';
@@ -2818,5 +2819,95 @@ describe('what the previous release stored', () => {
     expect(JSON.stringify((await storedCall(art.ownerId, callId)).state['board'])).toContain(art.name);
     await host.leave();
     expect((await storedCall(art.ownerId, callId)).state['board']).toEqual({ open: {}, letIn: [], rooms: [], landing: null, ideas: {} });
+  });
+});
+
+describe('a board in a workspace someone else pays for', () => {
+  /** A file to put on a board, as a picture. */
+  const fileOf = (n: number) => { const out = new Uint8Array(new ArrayBuffer(n)); out.set(randomBytes(n)); return new File([out], 'sketch.png', { type: 'image/png' }); };
+  const stickies = [{ id: 's1', text: 'Staging data was two days stale' }, { id: 's2', text: 'Changelog went out late' }];
+
+  it('seats nobody on what the call makes there: a guest can’t open it, add a file to it or ask its AI, while its own people work on it', async () => {
+    const lena = await account();
+    const art = await account();
+    const priya = await account();
+    // Lena made it, so its files count against her storage and its AI against her plan. Art and Priya can edit there.
+    const id = await workspace(lena, 'Lena’s', [[art, 'edit'], [priya, 'edit']]);
+    const { host, code: c } = await callBy(art, { guests: [priya.email], title: 'Weekly', home: id });
+    const p = await invited(host, c, priya);
+    const jamie = await guest(host, c);
+    const pass = { pass: jamie.call.ticket.pass };
+    await host.openBoard({ template: 'blank' });
+    const made = await opened(host);
+    const board = made?.documentId ?? '';
+    // It's made in the home, for the workspace's own people: nobody's seated on it, and nobody's told everyone here can edit it.
+    expect(made).toMatchObject({ workspaceId: id, name: 'Weekly', role: 'edit', everyone: false });
+    expect(await opened(p)).toMatchObject({ documentId: board, role: 'edit', everyone: false });
+    expect(await opened(jamie.call)).toMatchObject({ workspaceId: null, documentId: null, name: null, role: null, everyone: false });
+    expect(await seats(board)).toBe(0);
+    // Jamie can't open it, put a file on it at Lena's cost, or have its stickies sorted on her plan: each refused as what was
+    // never there.
+    expect(await refusal(open(jamie, id, board, pass))).toEqual(await refusal(open(jamie, id, madeUp(), pass)));
+    const used = (await lena.api.plans.plan()).storage.usedBytes;
+    expect(await code(jamie.api.workspaces.media.upload(id, board, fileOf(4096), pass))).toBe('not-found');
+    const asked = h.near.prompts.length;
+    expect(await code(jamie.api.workspaces.sortStickies(id, board, { stickies }, pass))).toBe('not-found');
+    expect(h.near.prompts.length).toBe(asked);
+    expect((await lena.api.plans.plan()).storage.usedBytes).toBe(used);
+    // Priya is one of its own people: she works on it as ever.
+    const page = await open(priya, id, board, { pass: p.ticket.pass });
+    expect(page.getSnapshot().role).toBe('edit');
+    page.close();
+    // Nobody admitted later is seated on it either.
+    const sam = await guest(host, c, 'Sam Guest');
+    await rest(300);
+    expect(await opened(sam.call)).toMatchObject({ role: null });
+    expect(await seats(board)).toBe(0);
+    await host.leave();
+  });
+
+  it('lets nobody in on a saved board there: it says who can’t open it, with no way to let them in', async () => {
+    const lena = await account();
+    const art = await account();
+    const id = await workspace(lena, 'Lena’s', [[art, 'edit']]);
+    const board = await saved(lena, id, 'Roadmap');
+    const { host, code: c } = await callBy(art, { title: 'Weekly' });
+    await guest(host, c);
+    expect(await host.boardCheck(id, board)).toEqual({ cannot: ['Jamie'], mayLetIn: false });
+    expect(await refusal(host.openBoard({ workspaceId: id, documentId: board, letIn: true }))).toMatchObject({
+      code: 'conflict', message: 'Its files don’t count against the organizer’s storage, so it opens only for its own people.'
+    });
+    expect(await seats(board)).toBe(0);
+    // Without letting anyone in, it opens for whoever can open it.
+    await host.openBoard({ workspaceId: id, documentId: board, letIn: false });
+    expect(await opened(host)).toMatchObject({ documentId: board, everyone: false });
+  });
+
+  it('stops a seat opening anything the moment the organizer stops paying for its workspace: asked on every read', async () => {
+    const art = await account();
+    const priya = await account();
+    // Art made it and pays for it, so the call seats a guest on its board, as ever: Jamie works on it, files and AI included.
+    const id = await workspace(art, 'Product', [[priya, 'admin']]);
+    const { host, code: c } = await callBy(art, { home: id });
+    await host.openBoard({ template: 'blank' });
+    const board = (await opened(host))?.documentId ?? '';
+    const jamie = await guest(host, c);
+    const pass = { pass: jamie.call.ticket.pass };
+    await until(async () => (await opened(jamie.call))?.role === 'edit', 'a seat for Jamie');
+    expect(await seats(board)).toBe(1);
+    const page = await open(jamie, id, board, pass);
+    expect(page.getSnapshot().role).toBe('edit');
+    page.close();
+    expect(await code(jamie.api.workspaces.media.upload(id, board, fileOf(4096), pass))).toBe('allowed');
+    expect(await code(jamie.api.workspaces.sortStickies(id, board, { stickies }, pass))).toBe('allowed');
+    // Priya takes Art out of it, so it counts against her now. Jamie's seat is still there, and opens nothing.
+    const artIn = (await priya.api.workspaces.people(id)).find((x) => x.person.email === art.email)?.id ?? '';
+    await priya.api.workspaces.removePerson(id, artIn);
+    expect(await seats(board)).toBe(1);
+    expect(await refusal(open(jamie, id, board, pass))).toEqual(await refusal(open(jamie, id, madeUp(), pass)));
+    expect(await code(jamie.api.workspaces.media.upload(id, board, fileOf(4096), pass))).toBe('not-found');
+    expect(await code(jamie.api.workspaces.sortStickies(id, board, { stickies }, pass))).toBe('not-found');
+    expect(await opened(jamie.call)).toMatchObject({ role: null, everyone: false });
+    await host.leave();
   });
 });

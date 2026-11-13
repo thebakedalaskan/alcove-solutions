@@ -13,7 +13,7 @@ import { HALF_PRICED_MODEL, NOTES_MODEL, UNENCRYPTED_MODEL, speechWav } from '..
 import { startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
 import { standing } from './meter';
-import { creditByEmail } from './support';
+import { creditBySupport } from './support';
 
 vi.setConfig({ testTimeout: 90_000 });
 
@@ -498,7 +498,7 @@ describe('running out', () => {
     await h.setLimit('ai.stop_micro_usd', 0);
     const org = await account(unique('organizer'));
     const kofi = await account(unique('kofi'));
-    await creditByEmail(h.deps, kofi.email, 20_000_000);
+    await creditBySupport(h.deps, kofi.email, 20_000_000);
     await kofi.api.plans.buyPro(1, 20_000_000);
     const { host, meeting } = await call(org, [kofi.email]);
     const theirs = await kofi.api.calls.join(meeting.code, { mic: true, cam: false });
@@ -580,7 +580,7 @@ describe('running out', () => {
       await host.appendAudio(piece(buys, 0));
       await host.transcribe(speech('We agreed to ship on Monday.', 0), host.ticket.identity);
       expect((await settle(host, (s) => s.capture.stopped !== null)).capture).toMatchObject({ mode: 'off', stopped: { reason: 'notes' } });
-      await creditByEmail(h.deps, org.email, 20_000_000);
+      await creditBySupport(h.deps, org.email, 20_000_000);
       const bought = buys === 'hours' ? await org.api.plans.buyHours(1, 15_000_000, 600) : await org.api.plans.buyPro(1, 20_000_000);
       expect(bought.notes.stopped).toBe(false);
       await host.setNotes(true);

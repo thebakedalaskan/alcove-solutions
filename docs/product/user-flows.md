@@ -331,8 +331,9 @@ send to anyone".
 7. **Details** shows once someone's in or a time is picked. **Notes** is a switch ("Everyone invited gets them", or
    "Nothing is recorded"), and **What the notes keep** opens under it: **Keep the transcript** (without it, it's used to
    write the notes and then deleted), **Keep the recording**, **Read shared screens** (whoever shares is asked whether
-   theirs goes in the notes), and **Where they go** (a new workspace, or one of yours). Past 25 people, **Everyone joins
-   muted** is on. **Bring** adds an agenda, documents and boards you can open, as chips, up to 12; anyone who can't open
+   theirs goes in the notes), and **Where they go** (a new workspace, or one of yours). One someone else pays for says so
+   once under it: "Its files don’t count against your storage, so its boards and files open only for its own people." Past
+   25 people, **Everyone joins muted** is on. **Bring** adds an agenda, documents and boards you can open, as chips, up to 12; anyone who can't open
    one is told whose it is, without seeing its name, so they can ask for it.
 8. **The foot** says what will happen beside the one button: "Google Calendar invites Priya and Kofi." and
    **Schedule** (**Schedule 6 calls** for a repeat). With nobody and no time the button waits and the line says "Add who
@@ -872,9 +873,10 @@ time, slides in on the right.
   the organizer is asked, "Your plan has notes again", with **Turn notes on**. While they're stopped, turning notes on or starting a room recording says "Your notes for this
   period have run out. They start again when your plan renews."
 - **How long a call runs.** A call ends at 10 hours, and everyone is told 5 minutes before ("This call ends at
-  14:30"); its notes are written as when anyone ends it. At most 100 people are in a call or waiting to be let in: one
+  14:30"); its notes are written as when anyone ends it. At most 100 people are in a call or asking to be let in: one
   more is told "This call is full: 100 people are in it, the most a call can have", and whoever hosts is told someone
-  tried.
+  tried. An ask whose browser closed stops holding a place once it's gone from the host's list, and someone who reloads
+  while asking asks again in place of their earlier ask.
 - **Asking for notes.** While notes are off or paused, anyone can ask for them: **Ask for notes** in what's captured,
   or in Notes, whose bar says **Ask to resume** while they're paused. Everyone sees who asked. The organizer gets a toast
   and sees the ask in People, and while notes are off, Notes says how many asked in its pill, in rose, with **Not now**

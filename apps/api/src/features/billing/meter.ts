@@ -12,6 +12,10 @@
  * pace. Writing those notes is never refused, and is the one way past an allowance: what it costs over is Alcove's. What
  * it holds and is charged comes out of what the call held for it, and counts on top only once it's past that.
  *
+ * Guests in a call ask from its organizer's allowance (docs: Plans and usage › Notes), so what every guest in one call spends
+ * between them is a share of it, `ai.guests_call_percent`, kept with the allowance by the call's ID: past it, guests' asks
+ * there are refused, and the organizer's own notes keep the rest.
+ *
  * Every change is made under the meter's row lock, so requests at once on any instance can't spend the same money
  * twice. A new period starts the first time a meter is touched after its period ends, or after its plan changes:
  * what was left doesn't carry over. What the meter is now (`current`) is worked out one way, for changing it and for
@@ -62,6 +66,8 @@ export interface Bill {
    * logged, and the request goes on.
    */
   onLimit?: ((what: Limit) => Promise<void>) | undefined;
+  /** A guest's request in a call, by the call's ID: every guest there spends from the one share of the payer's allowance. */
+  guests?: string | undefined;
 }
 /** A limit an allowance reached: about to run out at a source's pace, or spent. */
 export type Limit = 'warn' | 'stop';
@@ -84,6 +90,17 @@ function leftOf(m: MeterState): number {
   return m.allowanceNano - m.spentNano - loose - writing;
 }
 
+/** The most guests in one call may spend between them this period: their share of the allowance. */
+const guestsShareOf = (m: MeterState, l: Limits) => Math.floor((m.allowanceNano * l.get('ai.guests_call_percent')) / 100);
+/** What guests in the call `id` have spent this period, and what their requests in flight hold. */
+const guestsUsed = (m: MeterState, id: string) =>
+  (m.guests.find((g) => g.id === id)?.spentNano ?? 0) + m.holds.reduce((n, h) => n + (h.guests === id ? h.nano : 0), 0);
+/** `charged` more spent by guests in the call `id`, at `now` (less, never below nothing, when a late answer sets one right). */
+function guestsSpent(m: MeterState, id: string, charged: number, now: number): MeterState {
+  const had = m.guests.find((g) => g.id === id);
+  return { ...m, guests: [...m.guests.filter((g) => g !== had), { id, spentNano: Math.max(0, (had?.spentNano ?? 0) + charged), touched: now }] };
+}
+
 /** A model's price, or the fallback's for one NEAR AI doesn't price (said once each time the catalog is read: models.ts). */
 async function priced(d: Service, l: Limits, model: string): Promise<Price> {
   const p = await priceOf(d.cfg, model);
@@ -97,14 +114,14 @@ const usageOf = (most: Most, l: Limits): Usage => ({ input: most.input + most.im
 
 /** A new period's meter for the plan in force: all of its allowance, carrying what's held over from the one before. */
 const fresh = (p: InForce, l: Limits, carried: Pick<MeterState, 'holds' | 'sources' | 'closed'>): MeterState => ({
-  plan: p.kind, from: p.from, to: p.to, allowanceNano: allowanceOf(p, l), spentNano: 0, byKind: {}, ...carried, stopped: null
+  plan: p.kind, from: p.from, to: p.to, allowanceNano: allowanceOf(p, l), spentNano: 0, byKind: {}, ...carried, stopped: null, guests: []
 });
 
 /**
  * The meter as it stands at `now`, from what's stored (null before the account's first request), for the plan in force
  * (`p`): holds nothing settled in time are charged in full, as if answered and lost, and come out of what their source held
- * for its notes; sources nothing has charged for in a day go; a period that's over, or a plan that changed, starts a new
- * period carrying what's held; the allowance is what the limits make it now, a change to them in force at once; and a stop
+ * for its notes, or out of their call's guests' share; sources and guests' shares nothing has charged for in a day go; a
+ * period that's over, or a plan that changed, starts a new period carrying what's held, with no guest's share spent; the allowance is what the limits make it now, a change to them in force at once; and a stop
  * is lifted once the allowance itself has outgrown it. It's what `locked` saves and `standing` shows, so the two never
  * differ. Says how many holds were charged in full (`lost`), and the period that closed, if one did.
  */
@@ -117,8 +134,12 @@ function current(stored: MeterState | null, p: InForce, l: Limits, now: number):
       ...m, spentNano: m.spentNano + gone.reduce((n, h) => n + h.nano, 0), holds: m.holds.filter((h) => h.until > now),
       sources: m.sources.map((s) => ({ ...s, drawnNano: s.drawnNano + drawn(s.id) }))
     };
+    for (const h of gone) if (h.guests !== null) m = guestsSpent(m, h.guests, h.nano, now);
   }
-  m = { ...m, sources: m.sources.filter((s) => now - s.touched < SOURCE_GONE_MS), closed: m.closed.filter((c) => now - c.at < SOURCE_GONE_MS) };
+  m = {
+    ...m, sources: m.sources.filter((s) => now - s.touched < SOURCE_GONE_MS), closed: m.closed.filter((c) => now - c.at < SOURCE_GONE_MS),
+    guests: m.guests.filter((g) => now - g.touched < SOURCE_GONE_MS)
+  };
   let closed: MeterState | null = null;
   if (m.from !== p.from || m.plan !== p.kind) {
     closed = m;
@@ -200,9 +221,9 @@ export function meterFor(d: Service, bill: Bill): Meter {
       const heldNano = costOf(price, usageOf(most, l));
       const holdId = id128();
       // Writing a source's notes holds from what the source held for them.
-      const hold = (now: number): Hold => ({ id: holdId, nano: heldNano, until: now + HOLD_MS, source: bill.final && bill.source ? bill.source.id : null });
+      const hold = (now: number): Hold => ({ id: holdId, nano: heldNano, until: now + HOLD_MS, source: bill.final && bill.source ? bill.source.id : null, guests: bill.guests ?? null });
       const stop = l.get('ai.stop_micro_usd') * 1000;
-      const held = await changing(d, bill.payer, (m, _l, now): { m: MeterState; result: 'held' | 'refused' | 'stopped' } => {
+      const held = await changing(d, bill.payer, (m, _l, now): { m: MeterState; result: 'held' | 'refused' | 'stopped' | 'guests' } => {
         if (bill.final) return { m: { ...m, holds: [...m.holds, hold(now)] }, result: 'held' };
         if (m.stopped !== null) return { m, result: 'stopped' };
         // Spent: nothing more this period. Only too little for this one request: it's refused, and smaller ones still go.
@@ -211,6 +232,8 @@ export function meterFor(d: Service, bill: Bill): Meter {
           return { m: { ...m, stopped: { at: now, allowanceNano: m.allowanceNano } }, result: 'stopped' };
         }
         if (leftOf(m) - heldNano < stop) return { m, result: 'refused' };
+        // Guests in a call have spent their share, or this would take them past it.
+        if (bill.guests !== undefined && guestsUsed(m, bill.guests) + heldNano > guestsShareOf(m, l)) return { m, result: 'guests' };
         return { m: { ...m, holds: [...m.holds, hold(now)] }, result: 'held' };
       });
       const context = { ownerId: bill.payer, spend: bill.spend, whose: bill.whose };
@@ -219,6 +242,10 @@ export function meterFor(d: Service, bill: Bill): Meter {
         throw ranOut(bill.whose, context);
       }
       if (held === 'refused') throw new PlanLimitError(SHORT[bill.whose], 'notes', { context: { ...context, why: 'short' } });
+      if (held === 'guests') {
+        alog.info('guests in a call asked as much as its share allows', { ownerId: bill.payer, callId: bill.guests ?? null, spend: bill.spend });
+        throw new PlanLimitError('Guests in this call have asked as much as the organizer’s plan allows. Sign in to ask from your own plan.', 'notes', { context: { ...context, why: 'guests' } });
+      }
       // What it cost, charged under the lock; what that came to is said once it's saved.
       const charge = (cost: (m: MeterState) => number, what: string) => changing(d, bill.payer, (m, _l, now): { m: MeterState; result: Limit | null } => {
         const used = cost(m);
@@ -240,6 +267,7 @@ export function meterFor(d: Service, bill: Bill): Meter {
           ...m, spentNano: m.spentNano + charged, byKind: { ...m.byKind, [bill.spend]: (m.byKind[bill.spend] ?? 0) + used },
           holds: m.holds.filter((h) => h.id !== holdId), sources
         };
+        if (bill.guests !== undefined) next = guestsSpent(next, bill.guests, charged, now);
         let reached: Limit | null = null;
         if (next.stopped === null && leftOf(next) <= stop) {
           next = { ...next, stopped: { at: now, allowanceNano: next.allowanceNano } };

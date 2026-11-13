@@ -8,8 +8,9 @@ models as NEAR AI's catalog does) and the fake 1Click (the "fake money"). Limits
 a minute of notes, an hour's period, a few kilobytes of storage. Rows for later phases say which; rows marked
 "frontend" are the backend additions the plans frontend needs (a year for less, more notes, payments that buy).
 
-Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.ts`), `billing/plans`, `billing/teams`, `billing/topups`,
-`calls/liveNotes`, `calls/callWorkspace`, `recordings/transcripts`, `workspaces/media`, `integration/flows`.
+Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.ts`), `billing/plans`, `billing/support`, `billing/teams`,
+`billing/topups`, `calls/liveNotes`, `calls/callWorkspace`, `calls/boards-in-calls`, `calls/catchup`, `calls/guests`,
+`recordings/transcripts`, `workspaces/media`, `integration/flows`.
 
 | ID | Scenario | Where | Phase | Status |
 | --- | --- | --- | --- | --- |
@@ -39,7 +40,9 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | C4′ | In a call, the refusal of a piece with storage full, and of notes turned on again without room, is logged with the limit by name (`plan.free.storage_bytes`), what's stored, what was being added and the limit | billing/meter › stops notes when the organizer’s storage fills, logging the limit… | 1 | Passes |
 | C5 | A payer who leaves a workspace, or is taken out, stops paying for it; it counts against the admin in charge now | billing/plans › stops counting a workspace against whoever leaves it… | 1 | Passes |
 | C6 | A workspace none of whose admins has an account counts against nobody and takes no files, after upkeep too | billing/plans › takes no files in a workspace none of whose admins… | 1 | Passes |
-| C7 | A guest asks or catches up 6 times a minute; someone signed in, paying for their own, 20 | calls/catchup › lets a guest, whose questions the organizer pays for… | 1 | Passes |
+| C7 | A guest asks or catches up 6 times a minute, counted by the call and the person, so coming back with the earlier pass doesn't start over; someone signed in, paying for their own, 20 | calls/catchup › lets a guest, whose questions the organizer pays for… | 1 | Passes |
+| C8 | Every guest in one call spends from one share of the organizer's allowance (`ai.guests_call_percent`): past it any guest there is refused, someone signed in isn't, the organizer's notes go on, and another call has a share of its own | calls/catchup › lets the guests in a call spend only a share of the organizer’s allowance… | 1 | Passes |
+| C9 | A full call (`call.max_people`): someone coming back keeps their place; a reload of someone still asking takes their earlier ask's place; one of several asking at once gets the last place; an ask quiet for 90 seconds holds none, and upkeep turns it away | calls/guests › a full call | 1 | Passes |
 | **D: metering** |  |  |  |  |
 | D1 | Each request charges the right payer: organizer (transcript, captions, live notes, notes), asker (ask, catch-up, ask a note, ask all, document AI), organizer for a guest, the workspace's payer for a guest's document AI | billing/meter › who pays; calls/liveNotes; calls/callWorkspace; recordings/transcripts; flows | 1 | Passes |
 | D2 | A reply without usage is reckoned and charged | billing/meter › charges what NEAR AI says… | 1 | Passes |
@@ -76,7 +79,7 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | F4 | The reminder before the end and the notice at it, once each; dismissing hides one; another account can't; within Free's storage once Pro has ended, no grace is shown and nothing is over | billing/plans › Pro › tells its owner before Pro ends… | 2 | Passes |
 | F5 | Pro ends over Free's storage: the grace (uploads go in), then uploads refused, files readable and deletable; buying Pro lifts it at once; buying in the release grace ends it | billing/plans › Pro › holds storage to Pro’s through the grace… | 2 | Passes |
 | F6 | Pro's storage and file size, from the limits table, are what's enforced; every plan's file limit is 512 MiB and set higher is held there, at its ceiling, until downloads resume | billing/plans › Pro › holds an account on Pro to Pro’s storage and file size… | 2 | Passes |
-| F7 | Support finds an account by its address and adds dollars (`pnpm billing credit`) | billing/plans › support | 2 | Passes |
+| F7 | Support's command line, run in its own process with only the job's settings: adds dollars to an account named by its ID, a top-up's reference (which then can't add itself again; one still watched is refused) or, with KMASTER, its address; `show` says no amount; bad amounts, unknown commands, nobody found and an address two accounts share are refused with exit 1 and a `billing refused` line; nothing printed or logged repeats an address | billing/support | 2 | Passes |
 | F8 | A year or more for less: 12 months at the yearly price ($16), fewer at a month's; each refused at the other's price, nothing charged | billing/plans › Pro › sells a year or more for less…; … buys 1 to 12 months at a time… | frontend | Passes |
 | F8′ | A refund that leaves a yearly purchase short of 12 months takes back the difference on the months kept: $172 for a year refunded at once; a second year refunded whole, the first keeping its price; nothing refunded when nothing would come back; months at a month's price refunded as paid | billing/plans › Pro › refunds a year bought at its lower price less the difference… | frontend | Passes |
 | F9 | No yearly offer while its price is 0, isn't below a month's, or needs more months than one purchase buys; a year is a month's price then, and never free | billing/plans › Pro › offers no yearly price while it’s 0… | frontend | Passes |
@@ -155,6 +158,9 @@ there and pays for it. Migration `0030_workspace_payers.sql`'s backfill and upke
 | --- | --- | --- | --- | --- |
 | W1 | A guest in a call opens the organizer's own home, and what they upload there counts against the organizer's storage | calls/callWorkspace › everyone in the call › opens the organizer’s own home to a guest… | 1 | Passes |
 | W2 | A workspace someone else pays for, made the call's by an organizer who can edit there, doesn't open to a guest in the call: they can't open it, upload to it or ask AI in it, and `everyone` is false, in the Switch question too | calls/callWorkspace › everyone in the call › opens only while its organizer pays for it… | 1 | Passes |
+| W5 | Boards follow the same payer: in a home someone else pays for, the call seats nobody on the board it makes, so a guest can't open it, add a file to it or have AI sort it, while the workspace's own people work on it; nobody can let everyone in on a saved board there (`mayLetIn` false, `letIn` refused) | calls/boards-in-calls › a board in a workspace someone else pays for › seats nobody…; lets nobody in… | 1 | Passes |
+| W6 | In the organizer's own home a guest is seated, adds files and sorts as before, and the seat stops opening anything the moment the organizer stops paying (taken out of it), asked on every read | calls/boards-in-calls › a board in a workspace someone else pays for › stops a seat opening anything… | 1 | Passes |
+| W7 | The scheduler says, once, that a workspace someone else pays for opens only for its own people, boards and files included, when one is chosen for where a call's notes go (`WorkspaceSummary.youPay`) | Storybook › Pages/Scheduling › Notes in someone else's | 1 | A story; not run by hand |
 | W3 | An account makes workspaces up to `workspaces.max_made`; leaving one doesn't make room, deleting one does. A call's home doesn't count (`makeHome` notes its author with `made_workspace` false), which no test checks | workspaces/workspaces › … lets an account make as many workspaces as workspaces.max_made says… | 1 | Passes |
 | W4 | A workspace is deleted by an admin alone (`DELETE /v1/workspaces/:id`); the app has no button for it | workspaces/workspaces › … is deleted by an admin alone… | 1 | Passes |
 

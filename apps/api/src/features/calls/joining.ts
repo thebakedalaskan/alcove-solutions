@@ -17,7 +17,7 @@ import { callFor } from '../meetings/repeats';
 import type { Loaded } from '../../vault';
 import { findItem, getItem } from '../../vault';
 import { mayStandIn } from './hosting';
-import { Joined } from './places';
+import { Joined, admissionFresh } from './places';
 import { attentionPrincipalOf } from './attention';
 import * as rings from './rings';
 import { log } from '../../log';
@@ -345,14 +345,21 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
       return { callId: live.call_id, roomName: live.room_name, replaced: before.identity, row: live, state: s, admit: 'auto', generation, person: me.person, hosts: true };
     }
     if (!hostHere(live)) throw new ConflictError('Waiting for the host to start the call.', { context: { meetingId: meeting.itemId, role: joined.role } });
-    // At most `call.max_people` at once, those waiting to be let in included (docs: Plans and usage): someone coming back
-    // keeps their place, anyone more is turned away, and whoever hosts is told.
+    // The same browser asking again while it still waited (a reload): its earlier ask gives way to this one, as the same
+    // account (or still none), so it holds no place of its own and the host isn't asked twice.
+    const again = earlier && earlier.callId === live.call_id && !before
+      ? state.people.find((j) => j.identity === earlier.identity && j.person === earlier.person && j.status === 'waiting' && (j.email ?? '') === (joined.email ?? '')) : undefined;
+    // At most `call.max_people` at once (docs: Plans and usage): everyone let in, and everyone asking to be who can still be
+    // let in, whose ask hasn't gone quiet (`admissionFresh`), so an ask nobody follows up holds no place once the host can't
+    // see it. Someone coming back keeps their place, anyone more is turned away, and whoever hosts is told.
     if (!before) {
       const most = (await limitsNow(o, c)).get('call.max_people');
-      const here = new Set(state.people.filter((j) => j.status === 'in' || j.status === 'waiting').map((j) => j.person)).size;
+      const holding = (j: Joined) => j !== again && (j.status === 'in' || (j.status === 'waiting' && admissionFresh(j)));
+      const here = new Set(state.people.filter(holding).map((j) => j.person)).size;
       if (here >= most) throw new ConflictError(`This call is full: ${most} people are in it, the most a call can have.`, { context: { callId: live.call_id, reason: 'full', people: here } });
     }
     let s: Stored = { ...state, people: [...state.people, me], spotlight: before && state.spotlight === before.identity ? me.identity : state.spotlight };
+    if (again) s = withPerson(s, again.identity, (j) => ({ ...j, status: 'denied' }));
     // An old connection still in never said it went (its page crashed, or its goodbye hasn't come): its stay ends when it
     // was last heard from, not now, so the time between isn't counted as theirs for a guest coming back to read.
     if (before) s = await sharesEnd(o, c, withPerson(s, before.identity, (j) => ({ ...j, status: 'left', replaced: true, left: j.status === 'in' ? knownUntil(live.call_id, j, Date.now()) : j.left })), before.status === 'in' ? [before.identity] : [], tenthsIn(live.started_at));

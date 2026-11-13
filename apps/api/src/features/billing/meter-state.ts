@@ -5,7 +5,7 @@
  */
 import { PlanKindSchema, type PlanKind } from '@alcove/api';
 import { z } from 'zod';
-import type { Deps } from '../../context';
+import type { Config } from '../../config';
 import { openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
 import { bytea, maybeOne, type Db } from '../../db';
 
@@ -19,8 +19,13 @@ const SourceState = z.object({
   kind: z.enum(['call', 'recording']), id: z.string(), since: z.number(), touched: z.number(),
   spentNano: nano, reserveNano: nano, drawnNano: nano.default(0), warned: z.boolean()
 });
-/** What a request on its way holds until it's charged, and until when; `source`: the source whose notes it writes, whose reserve it's part of. */
-const Hold = z.object({ id: z.string(), nano, until: z.number(), source: z.string().nullable().default(null) });
+/**
+ * What a request on its way holds until it's charged, and until when; `source`: the source whose notes it writes, whose
+ * reserve it's part of; `guests`: for a guest's request, the call whose guests' share it comes out of.
+ */
+const Hold = z.object({ id: z.string(), nano, until: z.number(), source: z.string().nullable().default(null), guests: z.string().nullable().default(null) });
+/** What guests in one call have spent of this period's allowance, by the call's ID. */
+const GuestShare = z.object({ id: z.string(), spentNano: nano, touched: z.number() });
 export const MeterState = z.object({
   plan: PlanKindSchema, from: z.number(), to: z.number(),
   allowanceNano: nano, spentNano: nano,
@@ -29,16 +34,20 @@ export const MeterState = z.object({
   /** Sources whose notes were written lately (ms): a charge still on its way for one never holds for its notes again. */
   closed: z.array(z.object({ id: z.string(), at: z.number() })),
   /** When the allowance was spent this period: nothing more until the next. */
-  stopped: z.object({ at: z.number(), allowanceNano: nano }).nullable()
+  stopped: z.object({ at: z.number(), allowanceNano: nano }).nullable(),
+  /** What guests in each call have spent this period (`Bill.guests`); a meter kept before there were shares has none. */
+  guests: z.array(GuestShare).default([])
 });
 export type MeterState = z.infer<typeof MeterState>;
 export type SourceState = MeterState['sources'][number];
 export type Hold = MeterState['holds'][number];
 
-const key = (d: Pick<Deps, 'cfg'>) => serviceKey(unb64u(d.cfg.KSERVICE, 32), 'accounting');
+/** What sealing and opening the record needs of the service: Kservice alone, so whatever reads plans can read the period. */
+type Keyed = { cfg: Pick<Config, 'KSERVICE'> };
+const key = (d: Keyed) => serviceKey(unb64u(d.cfg.KSERVICE, 32), 'accounting');
 const header = (ownerId: string) => ({ v: 1 as const, kind: 'ai-meter', ownerId, keyVersion: '1' });
-export const sealMeter = (d: Pick<Deps, 'cfg'>, ownerId: string, m: MeterState): Uint8Array => sealJson(key(d), header(ownerId), toJson(m));
-export const openMeter = (d: Pick<Deps, 'cfg'>, ownerId: string, sealed: Uint8Array): MeterState => openJson(key(d), header(ownerId), sealed, MeterState);
+export const sealMeter = (d: Keyed, ownerId: string, m: MeterState): Uint8Array => sealJson(key(d), header(ownerId), toJson(m));
+export const openMeter = (d: Keyed, ownerId: string, sealed: Uint8Array): MeterState => openJson(key(d), header(ownerId), sealed, MeterState);
 export const MeterRow = z.object({ state_ciphertext: bytea });
 
 /**
@@ -49,7 +58,7 @@ export interface KeptPeriod { plan: PlanKind; from: number; to: number }
 export const keptOf = (m: Pick<MeterState, 'plan' | 'from' | 'to'>): KeptPeriod => ({ plan: m.plan, from: m.from, to: m.to });
 
 /** The period an account's meter keeps, read without holding it (null: it has no meter yet). */
-export async function keptPeriodOf(d: Pick<Deps, 'cfg'>, db: Db, ownerId: string): Promise<KeptPeriod | null> {
+export async function keptPeriodOf(d: Keyed, db: Db, ownerId: string): Promise<KeptPeriod | null> {
   const r = await maybeOne(db, MeterRow, 'SELECT state_ciphertext FROM ai_meters WHERE owner_id = $1', [ownerId]);
   return r ? keptOf(openMeter(d, ownerId, r.state_ciphertext)) : null;
 }

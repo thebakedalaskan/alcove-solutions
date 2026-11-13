@@ -952,15 +952,16 @@ export async function searchText(d: Deps, reader: Reader, workspaceId: string, a
  * What AI in a workspace is paid from (docs: Plans and usage › Who pays): whoever pressed it, signed in, from their own
  * plan, in any workspace, as their questions in a call are. A guest, there by a seat in a call with no account, falls back
  * to whoever the workspace counts against (its maker or, for a call's home, the organizer), on the default model
- * (`mayAskInCall`) and within a guest's limit (reader-routes.ts), so nobody else's choice of model is spent from a plan that
- * didn't make it. A workspace nobody pays for has no AI for a guest.
+ * (`mayAskInCall`), within a guest's limit (reader-routes.ts) and out of the share every guest in their call spends from
+ * (billing/meter.ts), as their questions in the call do, so nobody else's choice of model is spent from a plan that didn't
+ * make it. A workspace nobody pays for has no AI for a guest.
  */
 async function workspaceMeter(d: Deps, reader: Reader, w: Workspace, spend: Spend) {
   const asker = reader.account?.owner.ownerId;
   if (asker) return meterFor(d, { payer: asker, spend, whose: 'yours' });
   const payer = await payerOf(d.pool, w.owner.ownerId);
   if (!payer) throw new ConflictError('AI isn’t available in this workspace right now.', { context: { workspaceId: w.workspaceId, why: 'no payer' } });
-  return meterFor(d, { payer, spend, whose: 'workspace' });
+  return meterFor(d, { payer, spend, whose: 'workspace', ...(reader.seat ? { guests: reader.seat.callId } : {}) });
 }
 
 /**
