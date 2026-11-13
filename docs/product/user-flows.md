@@ -2523,7 +2523,7 @@ loses a payment on its way: the side panel and Settings show it, and opening it 
 ### 16.1 See the plans
 
 **Plans** (`/plans`) is what each plan brings and what it costs: Free and Pro side by side (Team joins when it's offered), on
-the last of the sunset. It's reached from Settings › Plan's **See plans**, checkout's
+the last of the sunset. It's reached from the side panel's **Free plan · See plans** (16.7), Settings › Plan's **See plans**, checkout's
 **Compare plans**, and the welcome page's **Get Pro** (16.13), which opens it with checkout open on Pro (`/plans?checkout=pro`;
 `?checkout=hours` opens it on more notes); the address forgets it once checkout is open.
 
@@ -2602,6 +2602,13 @@ notes; they don't carry into the next period. Done says "10 more hours of notes"
 7. **Payments off.** Choose says paying isn't available right now; a balance that covers it can still buy.
 
 ### 16.7 Your plan in the side panel
+
+Your plan is at the side panel's foot, under the confidential-compute check. On Free, about how much of the period's notes is
+left sits over a meter (warm under an hour, in caution once out) and opens Settings at your plan; under it, Free's row is the
+panel's way into Plans: **Free plan · See plans** opens Plans (16.1), **Free plan · Get Pro** opens checkout on Pro once notes
+are low or out, and on a team without a license **Free plan · Team** opens Team (16.19). On Pro or Team, the plan's own row
+(its small sun, and until when, the team's name, or ending with **Extend**, 16.14) opens Settings at your plan. On Plans,
+whichever row it is is the place you're on.
 
 A payment for a year of Pro is on its way: the foot says "Waiting for 192 USDC", and **Pro, 12 months · Open** reopens it in
 checkout. When it arrives, Pro is bought from it in the same go, and within half a minute the foot becomes Pro's own row: its
