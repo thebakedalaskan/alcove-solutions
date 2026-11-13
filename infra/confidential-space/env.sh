@@ -122,6 +122,8 @@ cs_env() {
       CS_GOOGLE_AUTH="${ALCOVE_GOOGLE_AUTH_ENABLED:-true}"
       CS_GOOGLE_SIGNUP_MODE="${ALCOVE_GOOGLE_SIGNUP_MODE:-testers}"
       CS_NEAR_AI="${ALCOVE_NEAR_AI_ENABLED:-true}"
+      # Top-ups pay this account's confidential Intents balance. With it, the API reads the treasury's key and 1Click's
+      # partner key too (cs_secrets).
       CS_TREASURY_ACCOUNT=alcove-treasury.near
       # The KMASTER and KSERVICE from before Confidential Space, which production's accounts were made under, were carried
       # (carry: the API read them once, LEGACY_SECRETS, and re-wrapped every account under its own master), then retired on
@@ -158,7 +160,7 @@ cs_env() {
       CS_GOOGLE_SIGNUP_MODE=testers
       # No NEAR AI key of its own: recordings are kept, and their notes wait.
       CS_NEAR_AI=false
-      # Credit top-ups stay off: they'd watch production's treasury.
+      # Top-ups stay off: they'd watch production's treasury. So it reads neither of the treasury's secrets.
       CS_TREASURY_ACCOUNT=''
       # Old keys of its own, made fresh by setup.sh, so its first start carries them as production's does.
       CS_LEGACY_KEY_SECRETS=(alcove-kmaster-staging alcove-kservice-staging)
@@ -188,8 +190,8 @@ cs_env() {
   CS_KMS_MASTER_KEY="projects/$CS_PROJECT/locations/$CS_REGION/keyRings/$CS_KEYRING/cryptoKeys/$CS_MASTER_KEY"
 }
 
-# cs_secrets: the Secret Manager names an environment's API reads (after cs_env): CS_SECRETS as ENV=secret, and
-# CS_LEGACY_SECRETS, the old keys while they're carried.
+# cs_secrets: the Secret Manager names an environment's API reads (after cs_env): CS_SECRETS as ENV=secret, of which
+# CS_TOPUP_SECRETS only a person makes, and CS_LEGACY_SECRETS, the old keys while they're carried.
 cs_secrets() {
   local bad=()
   [[ "$CS_GOOGLE_SIGNUP_MODE" =~ ^(open|testers|public)$ ]] || bad+=("ALCOVE_GOOGLE_SIGNUP_MODE must be open, testers or public")
@@ -213,6 +215,14 @@ cs_secrets() {
   if [[ "$CS_GOOGLE_AUTH" == true ]]; then
     CS_SECRETS+=(GOOGLE_CLIENT_ID=alcove-google-client-id GOOGLE_CLIENT_SECRET=alcove-google-client-secret)
     if [[ "$CS_GOOGLE_SIGNUP_MODE" == testers ]]; then CS_SECRETS+=(GOOGLE_SIGNUP_TESTERS=alcove-google-signup-testers); fi
+  fi
+  # Top-ups, wherever there's a treasury: its NEAR key, with which the API signs in to 1Click as the treasury, and 1Click's
+  # partner key. Only a person makes these two secrets, with their values (README.md › The top-up secrets): setup.sh
+  # reports one that doesn't exist yet and grants it once it does, and deploy.sh won't roll out until both can be read.
+  CS_TOPUP_SECRETS=()
+  if [[ -n "$CS_TREASURY_ACCOUNT" ]]; then
+    CS_TOPUP_SECRETS=(TREASURY_INTENTS_KEY=alcove-treasury-intents-key ONECLICK_API_KEY=alcove-oneclick-api-key)
+    CS_SECRETS+=("${CS_TOPUP_SECRETS[@]}")
   fi
   # The old keys, read once to carry accounts over, and only while they're carried.
   CS_LEGACY_SECRETS=()
@@ -284,6 +294,9 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   printf '  %s\n' "${CS_TEE_ENV[@]}"
   printf '\nSecrets the API reads (ENV=secret), granted to %s alone:\n' "$CS_PRINCIPAL_SET"
   printf '  %s\n' "${CS_SECRETS[@]}" ${CS_LEGACY_SECRETS[@]+"${CS_LEGACY_SECRETS[@]/#/legacy: }"}
+  if ((${#CS_TOPUP_SECRETS[@]})); then
+    printf 'Of these, a person makes the top-up secrets by hand (README.md › The top-up secrets): %s\n' "${CS_TOPUP_SECRETS[*]#*=}"
+  fi
   printf '\nWeb build:\n'
   printf '  %s\n' "${CS_BUILD_ARGS[@]}"
 fi

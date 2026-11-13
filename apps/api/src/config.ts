@@ -154,7 +154,8 @@ const EnvSchema = z.object({
   NEAR_AI_ENDPOINTS_URL: z.string().url().default('https://completions.near.ai/endpoints'),
   /**
    * NEAR Intents 1Click, for top-ups: the partner key from partners.near-intents.org, sent as X-API-Key. 1Click takes
-   * the treasury's session for a confidential quote only beside a partner key, so top-ups are off without it.
+   * the treasury's session for a confidential quote only beside a partner key, so top-ups are off without it. A secret:
+   * inside a TEE it comes through SECRETS.
    */
   ONECLICK_API_KEY: optional,
   /** The NEAR account whose confidential Intents balance receives every top-up, and every refund. Top-ups are off without it. */
@@ -162,7 +163,7 @@ const EnvSchema = z.object({
   /**
    * A full access key of TREASURY_INTENTS_ACCOUNT, in NEAR's format (`ed25519:` and 64 bytes, base58), registered for
    * it in intents.near: it signs Alcove in to 1Click as the treasury. It can move everything the treasury holds.
-   * Top-ups are off without it.
+   * Top-ups are off without it. A secret: inside a TEE it comes through SECRETS.
    */
   TREASURY_INTENTS_KEY: TreasuryKeySetting,
   /** 1Click's API. Tests point it at their stand-in. */
@@ -231,13 +232,14 @@ type Settings = z.infer<typeof EnvSchema>;
 /** Settings only a TEE reads, before anything else: how it reaches Google Cloud through its attestation (gcp.ts). */
 const TEE_ONLY = ['GCP_PROJECT', 'KMS_MASTER_KEY', 'WIF_PROVIDER', 'SECRETS', 'LEGACY_SECRETS'] as const;
 /**
- * The settings SECRETS may name, inside a TEE: the credentials the providers give Alcove, and Google's tester list, which
- * holds addresses. Nothing else comes from Secret Manager: what decides where people sign in, or what's trusted, is the
- * environment's, which the image's launch policy limits and the attestation shows.
+ * The settings SECRETS may name, inside a TEE: the credentials the providers give Alcove, the treasury's NEAR key, and
+ * Google's tester list, which holds addresses. Nothing else comes from Secret Manager: what decides where people sign in,
+ * where top-ups are paid, or what's trusted, is the environment's, which the image's launch policy limits and the
+ * attestation shows.
  */
 const SECRET_SETTINGS = [
   'DATABASE_URL', 'OBJECTS_ACCESS_KEY', 'OBJECTS_SECRET_KEY', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET', 'NEAR_AI_API_KEY',
-  'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_SIGNUP_TESTERS', 'CLOUDFLARE_API_TOKEN'
+  'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_SIGNUP_TESTERS', 'CLOUDFLARE_API_TOKEN', 'TREASURY_INTENTS_KEY', 'ONECLICK_API_KEY'
 ] as const satisfies readonly (keyof Settings)[];
 type SecretName = (typeof SECRET_SETTINGS)[number];
 const isSecretName = (name: string): name is SecretName => SECRET_SETTINGS.some((s) => s === name);

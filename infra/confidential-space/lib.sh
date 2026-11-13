@@ -95,6 +95,60 @@ cs_check_env_allowed() {
   ((${#missing[@]} == 0)) || cs_die "the image doesn't allow ${missing[*]}: add them to the allow_env_override label in apps/api/Dockerfile"
 }
 
+# Whether ENV=secret ($1) is one of the top-up secrets (CS_TOPUP_SECRETS, after cs_secrets), which only a person makes.
+cs_topup_secret() { [[ " ${CS_TOPUP_SECRETS[*]-} " == *" $1 "* ]]; }
+
+# The command that adds a secret's value without printing it, for ENV=secret ($1): `create` makes the secret with it, and
+# `version` adds it to one that exists. The value comes from the person's own shell, in a variable named after the setting.
+cs_add_secret_command() {
+  local setting="${1%%=*}" secret="${1#*=}"
+  # shellcheck disable=SC2016 # The $ is the person's variable, written out for them to run, not expanded here.
+  case "$2" in
+    create) printf 'printf %%s "$%s" | gcloud --project=%s secrets create %s --replication-policy=automatic --data-file=-' "$setting" "$CS_PROJECT" "$secret" ;;
+    version) printf 'printf %%s "$%s" | gcloud --project=%s secrets versions add %s --data-file=-' "$setting" "$CS_PROJECT" "$secret" ;;
+  esac
+}
+
+# Refuses, before anything changes, while a secret the environment's API reads (CS_SECRETS, after cs_secrets) doesn't exist,
+# has no enabled version, or isn't granted to the environment's VMs (CS_PRINCIPAL_SET): a VM that can't read one never
+# starts, so a rollout would only stall until its timeout. It reads names, versions' states and policies, never a value:
+# the deploy account may (roles/secretmanager.viewer, which setup.sh grants), and can't read one. A top-up secret
+# (CS_TOPUP_SECRETS), which only a person makes, is named with the command that adds it. In a dry run, only a warning.
+cs_check_secrets() {
+  local entry secret policy line unseen=0
+  local -a problems=() commands=()
+  for entry in "${CS_SECRETS[@]}"; do
+    secret="${entry#*=}"
+    if ! cs_gc secrets describe "$secret" --format='value(name)' >/dev/null 2>&1; then
+      problems+=("$secret (${entry%%=*}) doesn't exist, or these credentials can't see it")
+      if cs_topup_secret "$entry"; then commands+=("$(cs_add_secret_command "$entry" create)"); fi
+      unseen=$((unseen + 1))
+      continue
+    fi
+    if [[ -z "$(cs_gc secrets versions list "$secret" --filter=state=ENABLED --limit=1 --format='value(name)' 2>/dev/null || true)" ]]; then
+      problems+=("$secret (${entry%%=*}) has no enabled version")
+      if cs_topup_secret "$entry"; then commands+=("$(cs_add_secret_command "$entry" version)"); fi
+    fi
+    policy="$(cs_gc secrets get-iam-policy "$secret" --format=json 2>/dev/null || true)"
+    jq -e --arg m "$CS_PRINCIPAL_SET" 'any(.bindings[]?; .role == "roles/secretmanager.secretAccessor" and .condition == null and any(.members[]?; . == $m))' \
+      <<<"${policy:-null}" >/dev/null 2>&1 || problems+=("$secret (${entry%%=*}) isn't granted to $CS_ENV's VMs")
+  done
+  if ((${#problems[@]} == 0)); then
+    cs_say "every secret $CS_ENV's API reads exists, has a version and is granted to its VMs"
+    return 0
+  fi
+  for line in "${problems[@]}"; do cs_warn "$line"; done
+  if ((unseen == ${#CS_SECRETS[@]})); then
+    cs_warn "none of them could be seen: if they exist, these credentials can't see secrets, which setup.sh lets the deploy account do (roles/secretmanager.viewer)"
+  fi
+  if ((${#commands[@]})); then
+    printf 'Add what the top-up secrets are missing (README.md › The top-up secrets), never printing their values:\n' >&2
+    printf '  %s\n' "${commands[@]}" >&2
+  fi
+  [[ "$CS_DRY_RUN" == true ]] && return 0
+  cs_die "$CS_ENV's API can't start without every secret it reads, so nothing was rolled out. Once each exists with a version, run infra/confidential-space/setup.sh $CS_ENV, which grants them to $CS_ENV's VMs (and lets the deploy account see them), then deploy again."
+}
+
 # The VM metadata for an image: what the launcher runs, how, and with which environment. Several values hold commas, so
 # entries are separated by ~ (gcloud's ^~^ prefix).
 cs_metadata() {
