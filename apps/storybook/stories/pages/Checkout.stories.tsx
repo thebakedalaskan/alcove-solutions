@@ -80,7 +80,7 @@ export const Offline = checkout('/record', 'payments', { plan: 'pro' }, {
 });
 /** Offline on a phone: the window fills the screen, the button waits, and why is said over it. */
 export const OfflinePhone: CheckoutStory = { ...Offline, globals: PHONE };
-/** Extending Pro, which ends in 3 days: counted from its end, with the days left said. */
+/** Extending Pro, which ends in 6 days: counted from its end, with the days left said. */
 export const Extend = checkout('/settings#plan', 'plan-pro-ending', { plan: 'pro', from: 'settings' });
 /** More notes for this period, with notes stopped: 10, 20 or 50 hours. */
 export const MoreNotes = checkout('/home', 'plan-stopped', { plan: 'hours', from: 'side' }, { beforeEach: changing((w) => withPayments(w)) });

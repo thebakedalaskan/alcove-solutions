@@ -69,8 +69,12 @@ export const PlanAccount = z.object({
   renew: z.boolean().default(false),
   /** What the owner has been told about the plan, oldest first (the latest NOTICES). */
   notices: z.array(Notice).default([]),
-  /** The end of Pro (its last month's `to`) whose reminder upkeep has done, and the one it has handled at the end. */
+  /**
+   * The end of Pro (its last month's `to`) whose first reminder upkeep has done, the one whose second it has (`remindAgainAt`;
+   * a record from before there was a second reads as null, so it's told again too), and the one it has handled at the end.
+   */
   reminded: z.string().nullable().default(null),
+  remindedAgain: z.string().nullable().default(null),
   ended: z.string().nullable().default(null),
   /** More notes bought for the latest period any were bought in: they don't carry over into another. */
   hours: Hours.nullable().default(null)
@@ -109,7 +113,7 @@ const Row = z.object({ state_ciphertext: bytea });
 
 /** An account's plan as it starts: Free from `freeFrom`, nothing bought. */
 const fresh = (freeFrom: string, grace: PlanAccount['grace']): PlanAccount =>
-  ({ balanceMicroUsd: 0, history: [], freeFrom, choose: true, grace, pro: [], renew: false, notices: [], reminded: null, ended: null, hours: null });
+  ({ balanceMicroUsd: 0, history: [], freeFrom, choose: true, grace, pro: [], renew: false, notices: [], reminded: null, remindedAgain: null, ended: null, hours: null });
 
 /** What a plan brings: notes as minutes a period, storage and the largest file. */
 export interface PlanBrings { notesMinutes: number; storageBytes: number; fileBytes: number }
@@ -216,13 +220,23 @@ export const graceUntil = (a: PlanAccount, p: InForce, l: Limits, now = Date.now
   gracesOf(a, p, l, now).reduce<number | null>((n, g) => (n === null || g.until > n ? g.until : n), null);
 
 /**
- * When Pro's end is told: `plan.pro.remind_seconds` before it, but never before its last month starts, so a month bought
- * at the reminder is never due a reminder of its own at once, however the limits are set.
+ * When Pro's end is told, `seconds` before it, but never before its last month starts, so a month bought at a reminder is
+ * never due a reminder of its own at once, however the limits are set.
  */
-const remindAt = (a: PlanAccount, l: Limits, end: string): number =>
-  Math.max(Date.parse(end) - l.get('plan.pro.remind_seconds') * 1000, Date.parse(a.pro.at(-1)?.from ?? end));
+const toldAt = (a: PlanAccount, end: string, seconds: number): number =>
+  Math.max(Date.parse(end) - seconds * 1000, Date.parse(a.pro.at(-1)?.from ?? end));
+/** The first reminder: `plan.pro.remind_seconds` (a week) before Pro ends. */
+const remindAt = (a: PlanAccount, l: Limits, end: string): number => toldAt(a, end, l.get('plan.pro.remind_seconds'));
+/**
+ * The second: `plan.pro.remind_again_seconds` (a day) before Pro ends. None (null) while that isn't below
+ * `plan.pro.remind_seconds`, so it never comes before the first.
+ */
+function remindAgainAt(a: PlanAccount, l: Limits, end: string): number | null {
+  const again = l.get('plan.pro.remind_again_seconds');
+  return again < l.get('plan.pro.remind_seconds') ? toldAt(a, end, again) : null;
+}
 
-/** When upkeep should next look at an account: its grace ending, Pro's end to be told, or Pro's end to be handled. */
+/** When upkeep should next look at an account: its grace ending, Pro's end to be told (twice), or Pro's end to be handled. */
 function dueAt(a: PlanAccount, l: Limits): Date | null {
   const at: number[] = [];
   if (a.grace) at.push(Date.parse(a.grace.until));
@@ -230,6 +244,8 @@ function dueAt(a: PlanAccount, l: Limits): Date | null {
   if (end !== null && a.ended !== end) {
     at.push(Date.parse(end));
     if (a.reminded !== end) at.push(remindAt(a, l, end));
+    const again = a.remindedAgain === end ? null : remindAgainAt(a, l, end);
+    if (again !== null) at.push(again);
   }
   return at.length ? new Date(Math.min(...at)) : null;
 }
@@ -682,13 +698,15 @@ function notRenewed(a: PlanAccount, price: number): 'off' | 'price' | 'short' | 
 }
 
 /**
- * What upkeep does for one account that's due at `now`: ends a grace that's over; at the reminder before Pro ends, buys a
- * month if renewing will (`notRenewed`), else tells its owner Pro is ending; at the end, buys a month the same way
- * (renewing turned on, or money added, since), else tells them Pro has ended. Each happens once for each end. A month
- * bought at the reminder follows the last; one bought at the end starts now, which is the end unless upkeep is late: a
- * month that's already over is never bought. While a team license is live (`license`) Team is the plan in force, so
- * nothing is bought or told and the end is handled, as `replacedByLicense` does when a license is taken while Pro runs:
- * a license taken after Pro ended and before upkeep came has no Pro left to replace.
+ * What upkeep does for one account that's due at `now`: ends a grace that's over; at each reminder before Pro ends, a week
+ * and a day before it (`remindAt`, `remindAgainAt`), buys a month if renewing will (`notRenewed`), else tells its owner Pro
+ * is ending; at the end, buys a month the same way (renewing turned on, or money added, since), else tells them Pro has
+ * ended. Each happens once for each end, and a pass that comes late does what it missed as one: at the second reminder or
+ * the end, the first is done too, with one notice. A month bought at a reminder follows the last; one bought at the end
+ * starts now, which is the end unless upkeep is late: a month that's already over is never bought. While a team license is
+ * live (`license`) Team is the plan in force, so nothing is bought or told and the end is handled, as `replacedByLicense`
+ * does when a license is taken while Pro runs: a license taken after Pro ended and before upkeep came has no Pro left to
+ * replace.
  */
 function kept(a: PlanAccount, l: Limits, now: number, license: License | null, ownerId: string): PlanAccount {
   let next = a;
@@ -699,20 +717,22 @@ function kept(a: PlanAccount, l: Limits, now: number, license: License | null, o
   const end = proEnd(next);
   if (end === null || next.ended === end) return pruned(next, now);
   const atEnd = Date.parse(end) <= now;
-  if (!atEnd && (next.reminded === end || remindAt(next, l, end) > now)) return pruned(next, now);
+  const againAt = next.remindedAgain === end ? null : remindAgainAt(next, l, end);
+  const again = againAt !== null && againAt <= now;
+  if (!atEnd && !again && (next.reminded === end || remindAt(next, l, end) > now)) return pruned(next, now);
   if (isLive(license, now)) {
     plog.info('pro ended', { ownerId, why: 'team' });
     return pruned({ ...next, reminded: end, ended: end }, now);
   }
   const price = l.get('plan.pro.price_micro_usd');
-  const marked = atEnd ? { ...next, reminded: end, ended: end } : { ...next, reminded: end };
+  const marked: PlanAccount = { ...next, reminded: end, remindedAgain: atEnd || again ? end : next.remindedAgain, ended: atEnd ? end : next.ended };
   const why = notRenewed(next, price);
   if (why === null) {
     const renewed = withEntry(withMonths(marked, l, 1, price, now), -price, 'Pro, renewed for a month');
     plog.info('pro renewed', { ownerId });
     return pruned(withNotice(renewed, 'pro-renewed', now, { until: proEnd(renewed) ?? end }), now);
   }
-  plog.info(atEnd ? 'pro ended' : 'pro ending', { ownerId, why });
+  plog.info(atEnd ? 'pro ended' : 'pro ending', atEnd ? { ownerId, why } : { ownerId, why, again });
   return pruned(withNotice(marked, atEnd ? 'pro-ended' : 'pro-ending', now, { until: end }), now);
 }
 

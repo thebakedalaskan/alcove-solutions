@@ -117,9 +117,9 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `plan-over` | The grace is over: uploads have stopped |
 | `plan-balance` | $60 in the balance, with a $20 top-up waiting for its payment and a $40 one already added |
 | `plan-pro` | Art on Pro: the month running and two bought after it, renewing off, $35 left in the balance |
-| `plan-pro-ending` | Pro ends in 3 days and won't renew (renewing off, $5 doesn't buy a month): a `pro-ending` notice |
-| `plan-pro-ending-price` | Pro ends in 3 days and won't renew though renewing is on with $60: Pro costs $24 now, more than the $20 the last month did (`renewal: price`), with a `pro-ending` notice |
-| `plan-pro-renewed` | Renewing is on and a month was bought from the balance 3 days before Pro ended: a `pro-renewed` notice |
+| `plan-pro-ending` | Pro ends in 6 days and won't renew (renewing off, $5 doesn't buy a month): a `pro-ending` notice from yesterday, a week before |
+| `plan-pro-ending-price` | Pro ends in 6 days and won't renew though renewing is on with $60: Pro costs $24 now, more than the $20 the last month did (`renewal: price`), with a `pro-ending` notice |
+| `plan-pro-renewed` | Renewing is on and a month was bought from the balance yesterday, a week before Pro was to end: a `pro-renewed` notice |
 | `plan-pro-ended` | Pro ended two days ago: back on Free, over its storage with 14.2 GB, in the grace, with a `pro-ended` notice |
 | `plan-buying-pro` | Art is on Free and has opened a payment of 192 USDC on Base for a year of Pro at the yearly price, then closed checkout: it waits for the payment, in the side panel and in Settings › Plan |
 | `plan-pro-extended` | Pro extended by a year yesterday, paid with 192 USDC on Base at the yearly price: the month running, twelve after it to refund, $5 left |

@@ -45,7 +45,7 @@ export const FreeMonthlyPhone = phone(FreeMonthly);
 export const Pro = page('/plans', 'plan-pro');
 export const ProNight = night(Pro);
 export const ProPhone = phone(Pro);
-/** Pro ends in 3 days and won't renew: it says so beside its name, and Extend is the one filled button. */
+/** Pro ends in 6 days and won't renew: it says so beside its name, and Extend is the one filled button. */
 export const ProEnding = page('/plans', 'plan-pro-ending');
 export const ProEndingNight = night(ProEnding);
 export const ProEndingPhone = phone(ProEnding);

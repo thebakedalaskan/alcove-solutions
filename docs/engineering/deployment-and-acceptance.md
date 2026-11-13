@@ -225,7 +225,8 @@ everywhere within a minute.
 | `plan.pro.yearly_price_micro_usd` | $16 | $0 | $10,000 | Pro: one period, bought `plan.pro.yearly_from_months` or more at once. None while it's 0 or not below `plan.pro.price_micro_usd`. |
 | `plan.pro.yearly_from_months` | 12 | 1 | 120 | The fewest months of Pro one purchase buys at `plan.pro.yearly_price_micro_usd`. None while it's more than `plan.pro.max_months`. |
 | `plan.pro.max_months` | 12 | 1 | 120 | The most months of Pro one purchase buys. |
-| `plan.pro.remind_seconds` | 3 d | 0 | 30 d | How long before Pro ends its owner is told, and a month is bought if renewing is on. |
+| `plan.pro.remind_seconds` | 7 d | 0 | 30 d | How long before Pro ends its owner is told, and a month is bought if renewing is on. |
+| `plan.pro.remind_again_seconds` | 1 d | 0 | 30 d | How long before Pro ends its owner is told again, and a month is bought if renewing will buy one by then. None while it's not below `plan.pro.remind_seconds`. |
 | `plan.team.price_micro_usd` | $40 | $0 | $10,000 | Team: one license, a person for one period. |
 | `plan.team.notes_minutes` | 3,000 | 0 | 600,000 | Team: the minutes of notes a license's period brings its member, reckoned at `ai.hour_micro_usd` an hour. |
 | `plan.team.storage_bytes` | 100 GiB | 0 | 10 TiB | Team: the storage each live license adds to its team's pool; also what someone who leaves a team is held to through `plan.grace_seconds`. |

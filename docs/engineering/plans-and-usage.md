@@ -322,18 +322,22 @@ add, by the same rule. Each month keeps the purchase it was one of, so the recor
 month still to come; the rest of the months that have ended go, as before. A refund turns renewing off (`Plan.pro.renew`
 false, logged `pro renewing set` with `why: refund`): otherwise upkeep would buy back what was just given back, at the
 reminder or at the end, paid for by the refund itself. Pro then ends when the month running now does, with `pro-ended`
-(and `pro-ending` first, if its reminder hasn't come yet), unless its owner turns renewing on again or buys more months. A
-`pro-renewed` notice about a month refunded is dismissed: Pro no longer runs to its `until`.
+(and `pro-ending` first, at each reminder that hasn't come yet), unless its owner turns renewing on again or buys more
+months. A `pro-renewed` notice about a month refunded is dismissed: Pro no longer runs to its `until`.
 
 **Renewing** (`PUT /v1/plan/renew { renew }`) is off by default. Upkeep (`upkeep` in `plans.ts`, every 5 minutes, by
-`plan_accounts.due_at`) looks at an account at the earliest of: its release grace ending; `plan.pro.remind_seconds` (3
-days) before Pro ends, never before the last month starts; and Pro's end (the last month's `to`). The record keeps which
-end it has reminded about (`reminded`) and handled (`ended`), so each happens once for each end:
+`plan_accounts.due_at`) looks at an account at the earliest of: its release grace ending; Pro's two reminders, a week
+before it ends (`plan.pro.remind_seconds`, 7 days) and a day before (`plan.pro.remind_again_seconds`, 1 day; none while
+it isn't below the first), each never before the last month starts; and Pro's end (the last month's `to`). The record
+keeps which end it has reminded about the first time (`reminded`) and the second (`remindedAgain`), and handled
+(`ended`), so each happens once for each end:
 
-- **At the reminder:** when renewing will buy (below), a month is bought after the last at the price in force ("Pro,
-  renewed for a month") and the owner told `pro-renewed`. Otherwise they're told `pro-ending`. Logged `pro renewed`, or
-  `pro ending` with why not (`off`, `price` or `short`).
-- **At the end:** when renewing will buy now (turned on, or money added, since the reminder), a month is bought from
+- **At each reminder:** when renewing will buy (below), a month is bought after the last at the price in force ("Pro,
+  renewed for a month") and the owner told `pro-renewed`; that month's end has reminders of its own. Otherwise they're
+  told `pro-ending`, so twice: a week before the end and a day before, and money added in between renews at the second.
+  Logged `pro renewed`, or `pro ending` with why not (`off`, `price` or `short`) and whether it's the second (`again`).
+  Upkeep that first comes late does what it missed as one: within the last day, both reminders, with one notice.
+- **At the end:** when renewing will buy now (turned on, or money added, since the reminders), a month is bought from
   when upkeep comes, `pro-renewed`: that's the end, or later when upkeep is late, so a month already over is never
   bought, and a late pass buys one month, not one for each it missed. Otherwise the account is on Free and told
   `pro-ended`. Logged `pro ended`, with why not.
@@ -341,15 +345,16 @@ end it has reminded about (`reminded`) and handled (`ended`), so each happens on
 Renewing buys only while it's on, the balance has the price in force, and that price is no higher than what a month cost
 when the last month was bought (its `monthlyMicroUsd`: a month's price then, so a year bought at $16 a month renews at a
 month's $20 as it was, not at $16). A higher price is never taken from the balance without the owner seeing it: Pro isn't
-renewed, they're told `pro-ending` at the reminder and `pro-ended` at the end, and the money stays in the balance. Once
+renewed, they're told `pro-ending` at each reminder and `pro-ended` at the end, and the money stays in the balance. Once
 they buy at the new price themselves, it's what renewing goes by. A lower price renews, and becomes what it goes by.
 Nothing renews while a team license is live: Team is the plan in force, so upkeep marks Pro's end handled without buying
 or telling anything (logged `pro ended`, `why: team`), as when a license replaces Pro. That includes a license taken after
 Pro ended and before upkeep came, which has no month to replace: upkeep reads the license once it holds the plan's row.
 
 **Notices** (`Plan.notices`, newest first, those not dismissed) are shown in the app and, with `NotificationPrefs.plan`
-on (the default), from the browser. `POST /v1/plan/notices/:id/dismiss` hides one; another account's ID, or an unknown
-one, is `not-found`. The record keeps the latest 20.
+on (the default), from the browser. Each reminder's `pro-ending` is a notice of its own, so the browser says Pro is
+ending a week before and again a day before. `POST /v1/plan/notices/:id/dismiss` hides one; another account's ID, or an
+unknown one, is `not-found`. The record keeps the latest 20.
 
 **The grace after Pro.** On Free, for `plan.grace_seconds` after the last month of Pro ended, storage is held to Pro's;
 nothing runs for it, so it ends on time without upkeep. `Plan.grace` shows it while the account is over Free's storage.
@@ -358,9 +363,10 @@ After it, uploads and notes stop while over Free's storage, as above. Buying Pro
 `Plan.pro` gives the months running and bought (oldest first), when the last ends, whether renewing is on and what a
 refund would add. `Plan.pro.renewal` says whether renewing will buy the next month as Pro ends, as upkeep would decide it
 now, and why not when it won't: `buys`, or `off`, `price` (a month costs more than the last did) or `short`; null with no
-month of Pro left. The app says Pro is ending by it, so after a price rise Settings and the side panel say so once the
-owner is told. The record keeps the months that haven't ended and the latest that has (the grace and Free's periods
-count from it).
+month of Pro left. The app says Pro is ending by it and a `pro-ending` about the end Pro has now (`proEnding` in
+`plan-state.ts`): from the first reminder, a week out, the side panel says "Ends in 7 days · Extend" and Settings and Plans
+say when, and after a price rise they say so once the owner is told. The record keeps the months that haven't ended and
+the latest that has (the grace and Free's periods count from it).
 
 ## More notes
 
@@ -809,6 +815,14 @@ Carrying the old keys over checks the old `KSERVICE` against accounts' plans as 
 (`serverKeys.ts`, `opensAccounting` in `features/billing/plans.ts`), so it's refused on a database whose plans it doesn't
 open. Blind indexes plans make (a guest's uploads, the workspaces an address made) use the index key the server keeps, as
 everything else does. Support's billing CLI has no job in production: [Support](#support).
+
+**Pro's second reminder** (a release after plans shipped) needs no migration. A `plan-account` record gains
+`remindedAgain`; one written before reads it as null (`.default`), so its end's second reminder is still to come, and is
+written with it at its next save. While both releases serve, the previous one drops the field when it saves a record, so
+an account it saves in Pro's last day can be told `pro-ending` once more. `plan.pro.remind_seconds` now defaults to 7 days
+(a `service_limits` row for it still decides), so with renewing on the next month is bought a week before the end, not 3
+days; `plan.pro.remind_again_seconds` (1 day) is new. A row's `due_at` is what the release that last saved it worked out:
+an account whose Pro ends within the week, already due at the 3-day reminder, is told then, and again a day before.
 
 **Before deploying,** check production:
 

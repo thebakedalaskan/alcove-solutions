@@ -23,8 +23,9 @@ export type ProMonth = z.infer<typeof ProMonthSchema>;
 /**
  * Something about the plan its owner is told, in the app and, if they've turned it on, from the browser
  * (`NotificationPrefs.plan`), until they dismiss it:
- * - `pro-ending`: Pro ends at `until`, a few days from now, and won't renew: renewing is off, the balance is short, or a month
- *   costs more now than when the last was bought, which renewing never pays without its owner buying at it first.
+ * - `pro-ending`: Pro ends at `until`, a week from now (told again a day before), and won't renew: renewing is off, the
+ *   balance is short, or a month costs more now than when the last was bought, which renewing never pays without its owner
+ *   buying at it first.
  * - `pro-renewed`: a month was bought from the balance, so Pro now runs to `until`.
  * - `pro-ended`: Pro ended at `until`; the account is on Free.
  * - `licenses-low` (a team's admin): `count` licenses are left unconsumed, fewer than the team's low mark.
