@@ -331,8 +331,9 @@ send to anyone".
 7. **Details** shows once someone's in or a time is picked. **Notes** is a switch ("Everyone invited gets them", or
    "Nothing is recorded"), and **What the notes keep** opens under it: **Keep the transcript** (without it, it's used to
    write the notes and then deleted), **Keep the recording**, **Read shared screens** (whoever shares is asked whether
-   theirs goes in the notes), and **Where they go** (a new workspace, or one of yours). Past 25 people, **Everyone joins
-   muted** is on. **Bring** adds an agenda, documents and boards you can open, as chips, up to 12; anyone who can't open
+   theirs goes in the notes), and **Where they go** (a new workspace, or one of yours). One someone else pays for says so
+   once under it: "Its files don’t count against your storage, so its boards and files open only for its own people." Past
+   25 people, **Everyone joins muted** is on. **Bring** adds an agenda, documents and boards you can open, as chips, up to 12; anyone who can't open
    one is told whose it is, without seeing its name, so they can ask for it.
 8. **The foot** says what will happen beside the one button: "Google Calendar invites Priya and Kofi." and
    **Schedule** (**Schedule 6 calls** for a repeat). With nobody and no time the button waits and the line says "Add who
