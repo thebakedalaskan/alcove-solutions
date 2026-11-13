@@ -38,8 +38,8 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
    * signed in gets.
    */
   const asking = async (v: callsParticipants.Viewer, what: string) => {
-    const signedIn = await v.session();
-    if (signedIn) { askLimiter(signedIn.ownerId, what); return; }
+    const account = await v.session();
+    if (account) { askLimiter(account.ownerId, what); return; }
     const guest = `${v.pass.callId}:${v.pass.person}`;
     askLimiter(guest, what);
     guestAskLimiter(guest, `guest ${what}`);
