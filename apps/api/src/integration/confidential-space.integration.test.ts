@@ -692,19 +692,21 @@ describe('confidential space', () => {
       expect((await plainRequest(ports(r).http, 'api.alcove.test', '/health')).status).toBe(200);
 
       // A database it never reaches: it tries until DATABASE_WAIT_MS has gone, each wait twice the last, then refuses,
-      // saying how many tries, with the last one's failure as the cause.
+      // saying how many tries, with the last one's failure as the cause. Six seconds leaves the first two waits whole
+      // however slowly the tries go, short of three seconds of delay.
       from = h.logs.length;
-      const refused = await startServer(env({ SECRETS: withDatabase('alcove-database-url-down'), DATABASE_WAIT_MS: '3500' }), outside())
+      const refused = await startServer(env({ SECRETS: withDatabase('alcove-database-url-down'), DATABASE_WAIT_MS: '6000' }), outside())
         .then((x) => { started.push(x); return undefined; }, (e: unknown) => e);
       const tries = logged(from, NOT_YET, Waited);
       expect(tries.length).toBeGreaterThanOrEqual(2);
       expect(tries.map((t) => [t.attempt, t.code])).toEqual(tries.map((_, i) => [i + 1, 'connection-ended']));
       expect(tries.slice(0, 2).map((t) => t.retryInMs)).toEqual([1_000, 2_000]);
       expect(refused).toBeInstanceOf(UnavailableError);
-      expect(refused instanceof UnavailableError ? [refused.message, refused.context] : []).toEqual([
-        expect.stringMatching(new RegExp(`^The database couldn’t be reached: ${tries.length + 1} tries in \\d+ s\\.$`)),
-        { attempts: tries.length + 1, code: 'connection-ended', ms: expect.any(Number) }
-      ]);
+      expect(refused instanceof UnavailableError ? refused.message : '').toMatch(new RegExp(`^The database couldn’t be reached: ${tries.length + 1} tries in \\d+ s\\.$`));
+      const why = z.object({ attempts: z.number(), code: z.string(), ms: z.number() }).parse(refused instanceof UnavailableError ? refused.context : {});
+      expect(why).toEqual({ attempts: tries.length + 1, code: 'connection-ended', ms: expect.any(Number) });
+      // Not before the time it had was gone.
+      expect(why.ms).toBeGreaterThanOrEqual(6_000);
       expect(down.connections()).toBe(tries.length + 1);
 
       // A database that answers that it won't take this connection is refused at once: asking again won't change it.
