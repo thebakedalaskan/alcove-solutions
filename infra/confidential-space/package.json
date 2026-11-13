@@ -1,0 +1,19 @@
+{
+  "name": "@alcove/confidential-space",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "verify-server": "tsx verify-server.ts"
+  },
+  "dependencies": {
+    "@alcove/api": "workspace:*",
+    "@alcove/api-http": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

@@ -3,20 +3,23 @@
  * have every browser that shows someone's face ask Google for it, telling Google who looked at whom
  * and when. Instead the app gets an opaque, stable URL on the API (/v1/photos/<token>); only this
  * server can read the provider URL inside the token, fetches the image itself, and keeps a short-lived
- * copy in memory. Only signed-in people get photos, and only from the hosts in PHOTO_HOSTS.
+ * copy in memory. Only signed-in people get photos, and only from the hosts in PHOTO_HOSTS. Notes keep
+ * these URLs (who spoke), so the token's key is one the server keys carry over (PHOTO_KEY), never one
+ * that changes with the master.
  */
 import type { Config } from '../../config';
 import type { Deps } from '../../context';
-import { fromUtf8, openStable, photoTokenKey, sealStable, utf8 } from '../../crypto';
+import { fromUtf8, openStable, sealStable, unb64u, utf8 } from '../../crypto';
 import { NotFoundError, UnavailableError } from '../../errors';
 import { log } from '../../log';
-import { masterKey } from '../../owners';
 
 const plog = log.child({ component: 'photos' });
 const LABEL = 'alcove/photo/v1';
 const MAX_BYTES = 512 * 1024;
 const TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const KEEP_MS = 60 * 60_000;
+/** The key photo tokens are sealed under: HKDF(KMASTER, "alcove/photo-token/v1") of the master they were first made under. */
+const photoKey = (cfg: Config) => unb64u(cfg.PHOTO_KEY, 32);
 
 /** A provider URL Alcove will fetch: https (http only for a local test server) on an allowed host. */
 function allowed(cfg: Config, raw: string): URL | undefined {
@@ -36,7 +39,7 @@ export function photoUrl(d: Deps, stored: string | undefined): string | undefine
   if (!stored) return undefined;
   if (stored.startsWith('/') && !stored.startsWith('//')) return stored;
   if (!allowed(d.cfg, stored)) return undefined;
-  return `${d.cfg.API_URL.replace(/\/$/, '')}/v1/photos/${sealStable(photoTokenKey(masterKey(d)), LABEL, utf8(stored))}`;
+  return `${d.cfg.API_URL.replace(/\/$/, '')}/v1/photos/${sealStable(photoKey(d.cfg), LABEL, utf8(stored))}`;
 }
 
 const kept = new Map<string, { bytes: Uint8Array; type: string; until: number }>();
@@ -46,7 +49,7 @@ export async function photo(d: Deps, token: string): Promise<{ bytes: Uint8Array
   const hit = kept.get(token);
   if (hit && hit.until > Date.now()) return hit;
   let stored: string;
-  try { stored = fromUtf8(openStable(photoTokenKey(masterKey(d)), LABEL, token)); } catch { throw new NotFoundError('That photo isn’t available.', { context: { reason: 'token' } }); }
+  try { stored = fromUtf8(openStable(photoKey(d.cfg), LABEL, token)); } catch { throw new NotFoundError('That photo isn’t available.', { context: { reason: 'token' } }); }
   const url = allowed(d.cfg, stored);
   if (!url) throw new NotFoundError('That photo isn’t available.', { context: { reason: 'host' } });
   const t0 = performance.now();

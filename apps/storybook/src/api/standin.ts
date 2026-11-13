@@ -17,7 +17,7 @@ import {
   type CallDocument, type CallSession, type Change, type ChangeScope, type DecisionPatch, type DecisionProposal, type ID, type Inbox, type IncomingRing,
   type InstantCallInput, type Interval, type LinePatch, type Meeting, type MeetingInput, type Note, type NoteFound, type NoteKind, type NoteProgress, type NoteSaid,
   type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series, type SharedAudience, type SharedWrite,
-  type SeriesAnswerPart, type SeriesNote, type SignInResult, type DemoProvider, type RoomRecordingInput, type RoomRecording, type CallMoveIn, type TranscriptLine
+  type SeriesAnswerPart, type SeriesNote, type SignInResult, type DemoProvider, type RoomRecordingInput, type RoomRecording, type CallMoveIn, type TranscriptLine, type Attestation
 } from '@alcove/api';
 import { isOnline } from '../browser';
 import { canvasTheme } from '../world/boards';
@@ -37,6 +37,7 @@ import * as spaces from './workspaces';
 import type { CallAheadMake, ProposalAnswer } from '@alcove/api';
 import { readyIn } from '../world/call-page';
 import { previewsIn, trashIn } from './drive';
+import { attested } from './attestation';
 
 /* ---------- how every answer comes back ---------- */
 
@@ -368,12 +369,14 @@ export function stopLive(): void {
 
 /* ---------- what the API runs on ---------- */
 
-const hex = (b: ArrayBuffer) => Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, '0')).join('');
-/** As a deployment inside a TEE answers: bound to this browser's nonce, so the app reports receipt of hosting hardware evidence. */
-async function attest(nonce: string) {
-  const commit = 'storybook';
-  const reportData = hex(await crypto.subtle.digest('SHA-512', new TextEncoder().encode(`alcove-attestation/v1\n${nonce}\n${commit}`)));
-  return answer(() => ({ tee: 'dstack' as const, nonce, build: { commit }, reportData, quote: 'storybook', eventLog: '[]', appId: 'storybook', instanceId: 'storybook' }), 'anyone');
+/**
+ * As Alcove's server answers from Confidential Space: a token made now with Storybook's own anchors, which the app checks
+ * in full with them (attestation.ts), so it says verified. Stories change it for a server outside a TEE, or a check that
+ * fails (stories/pages/changes.ts).
+ */
+async function attest(): Promise<Attestation> {
+  await answer(() => null, 'anyone');
+  return attested();
 }
 
 /* ---------- the stand-in ---------- */

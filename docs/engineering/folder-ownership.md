@@ -12,12 +12,14 @@ This is the target map for [#144](https://github.com/thebakedalaskan/the-privacy
 | `apps/web/src/lib` | App-wide API construction, query definitions, logging and shared browser infrastructure. |
 | `apps/api/src/features` | Feature behavior, HTTP registration and feature integration suites. The owners are account, agents, meetings, calls, notes, recordings, workspaces and billing. |
 | `apps/api/src/http` | Shared HTTP types, request parsing, middleware and request limits. |
+| `apps/api/src/edge` | Where TLS ends inside the process: the listeners (the PROXY protocol, HTTP/2, routing by host), the keys derived for TLS and ACME, certificates and their renewal, and serving the web app's built files. It owns no API route: it hands `api.` hosts to the app `app.ts` composes. |
 | `apps/api/src/testing` | Shared integration harness and external-provider fixtures, never production behavior. |
 | `apps/api/src/integration` | Flows that intentionally exercise several features and service infrastructure. |
 | `apps/api/src/live` | Shared realtime transport, document workers and their build entry points. |
 | `packages/api/src` | Contracts only. Feature schemas, types, wire shapes and API interfaces; `client.ts` composes `AlcoveApi`. |
-| `packages/api-http/src` | HTTP transport and browser implementations grouped by account, meetings, calls, notes, recordings and workspaces. `index.ts` constructs the client. |
+| `packages/api-http/src` | HTTP transport and browser implementations grouped by account, meetings, calls, notes, recordings and workspaces, and `trust`: asking the API what it runs on and checking that answer (`verifyServer`) in a browser or Node. `index.ts` constructs the client. One other entry, `@alcove/api-http/release` (`trust/release.ts`), is the release in Sigstore's public log: the API looks its own up with it (`findRelease`, from `apps/api/src/tee.ts`), so it and every client check a release with the same code. |
 | `packages/ui`, `packages/board` | Reusable visuals and shared board document logic, respectively. Their package responsibilities do not change. |
+| `infra/confidential-space` | Deploying to Confidential Space: its scripts and `env.sh`, and `verify-server.ts`, which checks a deployed server with the app's own `verifyServer`. A workspace package (`@alcove/confidential-space`) only so that file type-checks and resolves `@alcove/api-http`; the strict-typing guard covers it. It holds no app behavior. |
 
 ## Target feature layout
 
@@ -58,6 +60,7 @@ apps/api/src/
     workspaces/      tree, access, documents, media and mentions
     billing/         service accounting
   http/              shared request infrastructure
+  edge/              TLS inside the process, certificates, the web app's files
   integration/       cross-feature and infrastructure suites
   live/              shared realtime/worker infrastructure
   testing/           shared fixtures
@@ -70,9 +73,11 @@ packages/api-http/src/
   index.ts           public exports and client composition
   transport/         request, parse, stream and client options
   account/ agents/ meetings/ calls/ notes/ recordings/ workspaces/
+  trust/             the attestation call, and verifyServer: the token's chain, its claims, the release in Rekor the
+                     server hands over; and findRelease, which the API looks its own up with (@alcove/api-http/release)
 ```
 
-Exact filenames follow the responsibility they implement; this map is not a request to fill every directory with scaffolding. Existing shared API infrastructure (`db`, `crypto`, `owners`, `sessions`, `objects`, configuration, logging, inference, attestation, maintenance and feature flags) keeps its deliberately stable location. Server, migration, limits CLI, feature-flags CLI and document-worker entry paths stay stable.
+Exact filenames follow the responsibility they implement; this map is not a request to fill every directory with scaffolding. Existing shared API infrastructure (`db`, `crypto`, `owners`, `sessions`, `objects`, configuration, logging, inference, attestation, maintenance and feature flags, with the commands the feature-flags CLI and the operator route both run, `featureFlagCommands.ts`) keeps its deliberately stable location. So do the server's keys (`serverKeys.ts`: the sealed server keys a TEE runs with, and carrying a database's accounts over to them), which configuration resolves at start beside `crypto`, `owners` and `tee`, and which belong to no one feature; Google Cloud as the TEE reaches it (`gcp.ts`: the attested identity, Secret Manager and Cloud KMS), which start-up reads before configuration; and starting the server (`start.ts`: what `server.ts` runs, with what it reaches outside the environment explicit, so integration tests start one as production does). The edge (`edge/`) is its own home rather than part of `http/`: it sits in front of the app, terminating TLS and serving files, and nothing in it handles an API request. Server, migration, limits CLI, feature-flags CLI and document-worker entry paths stay stable.
 
 ## Rules for every change
 
@@ -80,7 +85,7 @@ Exact filenames follow the responsibility they implement; this map is not a requ
 2. In the active call and scheduling features, choose the existing subfeature directory. Do not add another loose file at either root. Add a new directory only for a distinct responsibility and document its ownership here.
 3. A route, app entry point or client factory composes feature behavior. A new connection, recorder, polling loop, HTTP handler or lifecycle belongs in its owner, not in the composition file. Extract coherent behavior with explicit inputs and cleanup; do not just relocate a giant entry point.
 4. Keep a feature's integration suites beside its server implementation. Use `integration/` only for genuinely cross-feature or infrastructure flows. Keep reusable fixtures in `testing/`; never copy a fixture into several features.
-5. Import the owning file directly inside a package. Do not add a folder `index.ts`, a wildcard export tree, a forwarding file at an old path or a second name for the same behavior. Deliberate package entry points remain supported: `@alcove/api`, `@alcove/api/retire`, `@alcove/api-http` and the existing UI/board entry points.
+5. Import the owning file directly inside a package. Do not add a folder `index.ts`, a wildcard export tree, a forwarding file at an old path or a second name for the same behavior. Deliberate package entry points remain supported: `@alcove/api`, `@alcove/api/retire`, `@alcove/api-http`, `@alcove/api-http/release` and the existing UI/board entry points.
 6. Avoid `utils`, `common`, `misc` and undifferentiated `helpers` directories. Shared code needs a concrete responsibility and real callers in more than one feature. Do not introduce a generic abstraction for a single implementation or split a file merely to meet a line count.
 7. Preserve the app's backend access through `lib/api.ts`, its TanStack query layer, and `LiveStore`/`useLive` ownership. Contract packages cannot import runtime implementations or apps; reusable UI cannot import apps. Browser HTTP implementations do not depend on app internals.
 8. A move updates every consumer in the same change: direct imports, package export targets, worker/assets, Storybook's existing imports, build outputs, CI timing keys, policy scans and documentation. Delete the old path. Renaming source never renames persisted record kinds, key labels, SQL tables, migrations, wire fields or routes.

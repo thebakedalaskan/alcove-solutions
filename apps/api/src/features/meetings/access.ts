@@ -1,7 +1,7 @@
 /*
  * Who's invited to a call, so they can find it from their own account (docs: privacy-keys-and-sessions › Who can see a
  * call). A call lives in its organizer's vault. meeting_access lists everyone on its invite, one row each, by a keyed
- * hash of their address: a hash of its own (`invite`), so these rows can't be joined to accounts without KMASTER.
+ * hash of their address: a hash of its own (`invite`), so these rows can't be joined to accounts without the index key.
  * Someone's answer sits in their row, sealed under the organizer's keys, and so does the time they've asked to move the
  * call to, if they have. Someone else's call is opened with its organizer's keys, and only after that check, as notes are.
  */
@@ -12,7 +12,7 @@ import { b64u, blindIndex, fromUtf8, openRecord, sealRecord, stateKey, utf8, typ
 import { bytea, exec, maybeOne, rows, tx, type Db } from '../../db';
 import { ConflictError, ValidationError, notFound } from '../../errors';
 import { log } from '../../log';
-import { findOwner, masterKey } from '../../owners';
+import { findOwner, indexKey } from '../../owners';
 import { findItem, findItems, lockItem, type Loaded } from '../../vault';
 import { profile } from '../account/account';
 import { MeetingManifest, isOver, unjoined } from './service';
@@ -32,7 +32,7 @@ export const notesCanGo = (asker: { sample: boolean }, organizer: { sample: bool
  */
 const sameKind = (asker: { sample: boolean }, organizer: { sample: boolean }) => asker.sample === organizer.sample;
 
-const indexOf = (o: Owner, email: string) => Buffer.from(blindIndex(masterKey(o), 'invite', email));
+const indexOf = (o: Owner, email: string) => Buffer.from(blindIndex(indexKey(o), 'invite', email));
 /** Someone on an invite, as `Access` keys them: by their address's hash. */
 export const inviteKey = (o: Owner, email: string): string => b64u(indexOf(o, email));
 
@@ -175,7 +175,7 @@ export async function reconcileAccess(o: Owner, meetings: Loaded<MeetingManifest
 export async function forgetAnswers(o: Owner, db: Db, email: string): Promise<number> {
   return exec(db, `UPDATE meeting_access SET answer_ciphertext = NULL, proposal_ciphertext = NULL WHERE email_index = $1 AND owner_id <> $2
                    AND (answer_ciphertext IS NOT NULL OR proposal_ciphertext IS NOT NULL)
-                   AND NOT EXISTS (SELECT 1 FROM identities WHERE email_index = $3 AND owner_id <> $2)`, [indexOf(o, email), o.ownerId, blindIndex(masterKey(o), 'email', email)]);
+                   AND NOT EXISTS (SELECT 1 FROM identities WHERE email_index = $3 AND owner_id <> $2)`, [indexOf(o, email), o.ownerId, blindIndex(indexKey(o), 'email', email)]);
 }
 
 /* ---------- the invited side: finding a call by your own address ---------- */

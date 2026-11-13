@@ -12,7 +12,7 @@ import { demoDay, demoIdentity, isSharedDemo } from '../../demo';
 import type { GoogleIdentity, Identity } from '../../identity';
 import { ForbiddenError, GoogleEmailRequiredError, GoogleSignupInviteRequiredError, NotFoundError } from '../../errors';
 import { log } from '../../log';
-import { createOwner, masterKey, openOwner, ownerFrom } from '../../owners';
+import { createOwner, indexKey, openOwner, ownerFrom } from '../../owners';
 import { closeSession, openSession } from '../../sessions';
 import { createItem, listItems, saveRevision, lockItem } from '../../vault';
 import { forgetAnswers } from '../meetings/access';
@@ -102,7 +102,7 @@ export const demoSignIn = (d: Deps, body: SignInBody) => signIn(d, { provider: b
 
 /** An integration granted by Google must belong to the signed-in account's provider identity. */
 export async function hasIdentity(d: Deps, ownerId: string, who: Identity): Promise<boolean> {
-  const subject = blindIndex(masterKey(d), 'subject', who.subject);
+  const subject = blindIndex(indexKey(d), 'subject', who.subject);
   return (await exec(d.pool, 'SELECT 1 FROM identities WHERE owner_id = $1 AND subject_index = $2', [ownerId, subject])) > 0;
 }
 
@@ -113,8 +113,8 @@ type SignIn = { provider: 'google'; who: GoogleIdentity } | { provider: DemoProv
  * its profile from the provider, and its credits; a demo identity also gets the sample calendar.
  */
 export async function signIn(d: Deps, { provider, who }: SignIn): Promise<{ owner: Owner; sessionId: string; isNew: boolean }> {
-  const subject = blindIndex(masterKey(d), 'subject', who.subject);
-  const email = blindIndex(masterKey(d), 'email', who.email);
+  const subject = blindIndex(indexKey(d), 'subject', who.subject);
+  const email = blindIndex(indexKey(d), 'email', who.email);
 
   const found = await tx(d.pool, async (c) => {
     // Two first sign-ins at once must not make two accounts: serialise on the identity.
@@ -236,12 +236,12 @@ export async function deleteAccount(o: Owner): Promise<void> {
     }
     // Its profile's address is the one it has other people's notes under (notes.ts › locate).
     const received = await exec(c, `DELETE FROM note_access WHERE email_index = $1 AND owner_id <> $2
-                                    AND NOT EXISTS (SELECT 1 FROM identities WHERE email_index = $1 AND owner_id <> $2)`, [blindIndex(masterKey(o), 'email', p.manifest.email), o.ownerId]);
+                                    AND NOT EXISTS (SELECT 1 FROM identities WHERE email_index = $1 AND owner_id <> $2)`, [blindIndex(indexKey(o), 'email', p.manifest.email), o.ownerId]);
     const answers = await forgetAnswers(o, c, p.manifest.email);
     // Rings to its address, in other people's calls: its own calls' went with its meetings.
     const rings = await forgetRings(o, c, p.manifest.email);
     // Its address in feature flags' groups and grants, on the same condition as note_access.
-    const featureFlags = await forgetFeatureFlags(c, blindIndex(masterKey(o), 'email', p.manifest.email), o.ownerId);
+    const featureFlags = await forgetFeatureFlags(c, indexKey(o), p.manifest.email, o.ownerId);
     const workspaces = await forgetAccount(o, c, p.manifest.email, callIds);
     // Every other table keyed by the account cascades from its row.
     await exec(c, 'DELETE FROM owners WHERE owner_id = $1', [o.ownerId]);

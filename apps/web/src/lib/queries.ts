@@ -1,5 +1,5 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import type { AgentDecisionInput, AgentTokenInput, AgentUpdateInput, Calendar, DriveExportInput, FollowUpReview } from '@alcove/api';
+import type { AgentDecisionInput, AgentTokenInput, AgentUpdateInput, Attestation, Calendar, DriveExportInput, FollowUpReview, Trust } from '@alcove/api';
 import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Series, type SharedWrite, type ShareTarget, type DocumentLibrary, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree } from '@alcove/api';
 import { infiniteQueryOptions, queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
@@ -12,7 +12,7 @@ import { forgetPlaces } from '~/features/workspace/places';
 import { forgetWords } from '~/features/workspace/words';
 import { accountGeneration, announceSignIn, announceSignOut } from './signedOut';
 import { announceNotificationPreferences, settleNotificationPreferences } from './notification-preference-channel';
-import { api } from './api';
+import { api, checkServer } from './api';
 import { log } from './log';
 import { weekOn } from './time';
 import { openGoogleSignIn, waitForGoogleReturn } from './googleSignIn';
@@ -113,22 +113,43 @@ async function boardsToBring(spaces: readonly WorkspaceSummary[]): Promise<Board
     .sort((a, b) => b.editedAt.localeCompare(a.editedAt));
 }
 
-/** What the API says it runs on, whether its answer is bound to the nonce this browser sent, and when it answered. */
-export interface Trust { tee: 'none' | 'dstack'; bound: boolean; at: number }
-async function checkTrust(): Promise<Trust> {
-  const nonce = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
-  const a = await api.trust.attestation(nonce);
-  if (a.tee === 'none') return { tee: 'none', bound: false, at: Date.now() };
-  // The quote's report data must be SHA-512 of this request's nonce and the running commit.
-  const want = await crypto.subtle.digest('SHA-512', new TextEncoder().encode(`alcove-attestation/v1\n${nonce}\n${a.build.commit}`));
-  const hex = Array.from(new Uint8Array(want), (b) => b.toString(16).padStart(2, '0')).join('');
-  return { tee: 'dstack', bound: a.nonce === nonce && a.reportData.toLowerCase() === hex && a.quote.length > 0, at: Date.now() };
+const trustLog = log.child({ component: 'trust' });
+/** Why a server that couldn't be asked isn't verified: whatever it said before no longer counts. */
+const UNASKED = 'Alcove’s server couldn’t be asked what it runs on.';
+/** What the API says it runs on, asked twice before giving up, a second apart: one dropped request doesn't count against it. */
+async function attestation(): Promise<Attestation | undefined> {
+  for (let tries = 1; ; tries++) {
+    try {
+      return await api.trust.attestation();
+    } catch (e) {
+      if (tries >= 2) {
+        trustLog.warn('the server couldn’t be asked what it runs on', { code: errorCode(e) });
+        return undefined;
+      }
+      await new Promise((go) => { setTimeout(go, 1000); });
+    }
+  }
 }
-/** When the server's hardware answer was bound to this browser's own request, or null: only then is it verified. */
-export const verifiedAt = (t: Trust | undefined): number | null => (t?.tee === 'dstack' && t.bound ? t.at : null);
 /**
- * The promise in the product's own words, verified only when the hardware answer is bound to this browser's request. No
- * caveats (docs/design/principles.md › Copy): the engineering docs say what's built.
+ * What the API says it runs on, checked in this browser (`checkServer`: its token, then its release in Sigstore's public
+ * log, as the server hands it on). A check that doesn't pass blocks nothing; it's logged with its reason, so the server's log
+ * shows it too. A server that can't be asked isn't verified, so a check that passed before never stays on screen for it.
+ */
+async function checkTrust(): Promise<Trust> {
+  const a = await attestation();
+  if (!a) return { state: 'unverified', reason: UNASKED, commit: 'unknown', at: Date.now() };
+  const t = await checkServer(a);
+  if (t.state === 'unverified') trustLog.warn('the server’s attestation didn’t check out', { reason: t.reason, commit: t.commit, digest: t.digest ?? null });
+  return t;
+}
+/** When this browser's check of the server passed, or null: only then is it verified. */
+export const verifiedAt = (t: Trust | undefined): number | null => (t?.state === 'verified' ? t.at : null);
+/** Why this browser's check of a server in a TEE didn't pass, or null: it passed, it's still to come, or there's no TEE. */
+export const unverifiedBecause = (t: Trust | undefined): string | null => (t?.state === 'unverified' ? `Not verified. ${t.reason}` : null);
+/**
+ * The promise in the product's own words, verified only when this browser's check of the server passes. No caveats
+ * (docs/design/principles.md › Copy): the engineering docs say what's built, and a check that fails says why only where
+ * the check's details are (`unverifiedBecause`).
  */
 export const trustLine = (t: Trust | undefined): string => (verifiedAt(t) === null ? 'Confidential compute' : 'Confidential compute · verified');
 
@@ -261,7 +282,7 @@ export const q = {
     refetchInterval: (query) => (query.state.data && topUpOpen(query.state.data) ? 5000 : false)
   }),
   /** Checked when the app opens (the side panel and the call both show it), then every ten minutes. */
-  trust: () => queryOptions({ queryKey: qk.trust, queryFn: checkTrust, staleTime: 10 * 60_000, refetchInterval: 10 * 60_000, retry: 1 }),
+  trust: () => queryOptions({ queryKey: qk.trust, queryFn: checkTrust, staleTime: 10 * 60_000, refetchInterval: 10 * 60_000 }),
   /** The feature flags on for whoever's here. Signing in or out clears the cache, so they're asked again for the new session. */
   featureFlags: () => queryOptions({ queryKey: qk.featureFlags, queryFn: () => api.featureFlags.on(), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true }),
 

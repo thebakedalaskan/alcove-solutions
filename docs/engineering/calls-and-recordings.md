@@ -76,7 +76,7 @@ sequenceDiagram
   who has the note. That number makes it one file however much more is recorded: a browser holds a URL to the length it
   first said, and reading further is a new URL, from the note's own count of pieces. A range is what the browser's audio
   element asks for, so it starts at once and goes to any moment: 206 with the exact length, from what the pieces are
-  stored at (`recordPlainBytes`) with nothing read, and at most 24 MiB, because Cloud Run refuses a reply of a known
+  stored at (`recordPlainBytes`) with nothing read, and at most 24 MiB, a limit kept from Cloud Run, which refused a reply of a known
   length over 32 MiB; the browser asks again for the rest. A recording has no cues, so going far ahead reads through
   what's between, once. Firefox won't do that: for a recording with no cues it seeks only inside what it has read, says
   that's the duration, and stops there. So the player compares where it's going with `seekable` and with where a seek
@@ -353,8 +353,9 @@ order, and nothing a message carries can stop it: anything unreadable is skipped
   over). The old host's commits are refused from then on: as out of date (`409`) when it hosted before, for its old
   generation and the new one alike.
 - **Who vouches for whom.** The API says who each identity is, who's invited, what their names are and who's in
-  which room; it can't read media or chat. It's built to run attested, but it runs on Cloud Run today, so whoever
-  operates it could run other code (privacy › Moving to confidential computing). There are no safety codes. An
+  which room; it can't read media or chat. It runs attested in Confidential Space, where only images signed into
+  Sigstore's public log get its keys, so other code would have to be signed and published first (privacy › Moving to
+  confidential computing). There are no safety codes. An
   API running other code could have the host's browser add someone as an invitee, or put them in a room they
   weren't sent to, but never silently: everyone sees every member of their part of the call's group in People (as
   "Someone" if the API doesn't name them), and their tile if they connect.
@@ -965,7 +966,7 @@ always gets in, and a tab still there opens another. Someone with none, on a ful
 their browser tries again, more slowly each time.
 
 **The stream.** It ends after about 4 minutes (`RING_STREAM_SECONDS`: 210 to 240 seconds, so streams that opened
-together don't end together), under Cloud Run's 300-second limit, and the browser opens another within a second, or
+together don't end together), well inside the load balancer's idle timeout, and the browser opens another within a second, or
 backs off to at most 30 seconds while the API can't be reached. Each line says everything, so reconnecting shows the
 right thing with nothing to replay. The server repeats itself every 20 seconds, so a browser that hears nothing for 50
 gives up and opens another: a laptop waking up can hold a connection that's dead without knowing it. A stream keeps

@@ -22,7 +22,7 @@ import { b64u, blindIndex, id128, openJson, sealJson, stateKey, toJson, utf8 } f
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { AuthError, UnavailableError, ValidationError, notFound } from '../../errors';
 import { log, withLogContext } from '../../log';
-import { findOwner, masterKey } from '../../owners';
+import { findOwner, indexKey } from '../../owners';
 import { stillOpen } from '../../sessions';
 import { findItem, getItem } from '../../vault';
 import { saidYes } from '../meetings/access';
@@ -67,8 +67,8 @@ const key = (o: Owner, meetingId: string) => stateKey(o.root, o.ownerId, `ring:$
 const header = (o: Owner, meetingId: string, ringId: string) => ({ v: 1 as const, kind: 'call-ring', ownerId: o.ownerId, meetingId, ringId });
 const seal = (o: Owner, meetingId: string, ringId: string, r: Ring) => sealJson(key(o, meetingId), header(o, meetingId, ringId), toJson(r));
 const open = (o: Owner, r: Row): Ring => openJson(key(o, r.meeting_item_id), header(o, r.meeting_item_id, r.ring_id), r.ring_ciphertext, Ring);
-/** The keyed hash a ring finds its person by: its own purpose, so a row joins to no other table without KMASTER. */
-const indexOf = (d: Deps, email: string) => blindIndex(masterKey(d), 'ring', email.trim().toLowerCase());
+/** The keyed hash a ring finds its person by: its own purpose, so a row joins to no other table without the index key. */
+const indexOf = (d: Deps, email: string) => blindIndex(indexKey(d), 'ring', email.trim().toLowerCase());
 /** A demo account's name and address are checked by nobody, so a ring never crosses between one and a real account. */
 const reaches = (organizer: { sample: boolean }, rung: { sample: boolean }) => organizer.sample === rung.sample;
 

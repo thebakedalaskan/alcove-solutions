@@ -522,6 +522,12 @@
    "guests in a call": 1.9
   }
  },
+ "src/integration/confidential-space.integration.test.ts": {
+  "seconds": 4.1,
+  "groups": {
+   "confidential space": 4.1
+  }
+ },
  "src/integration/feature-flags.integration.test.ts": {
   "seconds": 8.9,
   "groups": {
@@ -572,6 +578,12 @@
   "seconds": 7.4,
   "groups": {
    "immediate query actions through the real API": 7.4
+  }
+ },
+ "src/integration/tee-keys.integration.test.ts": {
+  "seconds": 3.4,
+  "groups": {
+   "server keys": 3.4
   }
  }
 }

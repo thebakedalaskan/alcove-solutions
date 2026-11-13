@@ -14,3 +14,9 @@ Read root rules and `docs/engineering/folder-ownership.md`.
   through the real API/client integration suite; no isolated client/function tests.
 
 - Agent-connection management belongs in `src/agents`, composed by the root factory like the other feature APIs.
+- Checking the server belongs in `src/trust`: the attestation call and `verifyServer`, which the app, Storybook's
+  stand-in and CI's `infra/confidential-space/verify-server.ts` all run. It runs in browsers and Node alike, so it uses
+  only WebCrypto, `fetch` and zod, and its trust anchors (`pins.ts`) are options a caller can replace, never a flag.
+  `verifyServer` fetches nothing: the release's entry in Sigstore's public log comes with the attestation. Finding that
+  entry (`findRelease`) is in `trust/release.ts`, which the API imports as `@alcove/api-http/release`, the one entry
+  besides `index.ts`: keep that file to the log, its checks and its pins, so the API takes nothing else of the client.

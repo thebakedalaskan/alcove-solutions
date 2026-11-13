@@ -24,7 +24,7 @@ export async function createRecording(o: Owner, db: Db, noteItemId: string, star
   const recordingId = id128();
   const krec = random(32);
   await exec(db, `INSERT INTO recordings (owner_id, recording_id, note_item_id, state, key_envelope, started_at, version)
-                  VALUES ($1,$2,$3,'recording',$4,$5,0)`, [o.ownerId, recordingId, noteItemId, sealKey(o.wrapKey, o.ownerId, scope(recordingId), krec), startedAt]);
+                  VALUES ($1,$2,$3,'recording',$4,$5,0)`, [o.ownerId, recordingId, noteItemId, sealKey(o.wrapKey, o.ownerId, scope(recordingId), krec, '1'), startedAt]);
   krec.fill(0);
   return recordingId;
 }
@@ -38,7 +38,7 @@ const RecRow = z.object({ key_envelope: bytea, state: z.string() });
 export async function krecOf(o: Owner, recordingId: string): Promise<{ krec: Uint8Array; state: string }> {
   const r = await maybeOne(o.pool, RecRow, 'SELECT key_envelope, state FROM recordings WHERE owner_id = $1 AND recording_id = $2', [o.ownerId, recordingId]);
   if (!r) throw new NotFoundError('That recording doesn’t exist.');
-  return { krec: openKey(o.wrapKey, o.ownerId, scope(recordingId), r.key_envelope), state: r.state };
+  return { krec: openKey(o.wrapKey, o.ownerId, scope(recordingId), r.key_envelope, '1'), state: r.state };
 }
 
 /** A piece from the browser: its place in the recording, where it starts in its segment (pauses not counted), and its bytes. */

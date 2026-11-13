@@ -20,11 +20,15 @@ import { registerRecordingRoutes } from './features/recordings/routes';
 import { registerNoteRoutes } from './features/notes/routes';
 import { registerWorkspaceRoutes } from './features/workspaces/routes';
 import { registerBillingRoutes } from './features/billing/routes';
+import { createAttester, type Attester } from './tee';
 
-/** Registration order is an access boundary: guest routes precede sign-in and stored receipts. */
-export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
+/**
+ * Registration order is an access boundary: guest routes precede sign-in and stored receipts. `attester`: what says what's
+ * running, the launcher's token inside a TEE (tee.ts).
+ */
+export function createApp(d: Deps, stopping?: AbortSignal | undefined, attester: Attester = createAttester(d)) {
   const app = new Hono<Env>();
-  const runtime = createHttpRuntime(d, stopping);
+  const runtime = createHttpRuntime(d, stopping, attester);
 
   registerMiddleware(app, runtime);
   registerAgentPublicRoutes(app, runtime);

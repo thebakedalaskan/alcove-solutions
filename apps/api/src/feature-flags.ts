@@ -1,23 +1,30 @@
 /*
  * Feature flags (docs: engineering/feature-flags.md). A flag only switches something on, and is on for someone when any of
- * these says so: it's on for everyone; it's granted to a group one of their addresses is in; it's granted to one of their
- * addresses. Nothing says no. The names are in packages/api (FEATURE_FLAGS); the database says which are on, and for whom, as
- * hashes of addresses, never addresses. Each instance keeps a copy of all of it and reads it again once the copy is
- * FEATURE_FLAGS_CACHE_MS old, as limits.ts does, so a flag switched from `feature-flags` is in force everywhere within that, and every
- * instance that sees a change says so. The functions below `featureFlagsFor` are what the feature-flags CLI does.
+ * these says so: it's on for everyone; it's granted to a group their address is in; it's granted to their address. Nothing
+ * says no. The names are in packages/api (FEATURE_FLAGS); the database says which are on, and for whom, as keyed hashes of
+ * addresses with a purpose of their own (`flag-email`), never addresses: those rows join to nothing else, so switching a flag
+ * for an address, as operators do through the API, says nothing of whose account it is. Each instance keeps a copy of all of
+ * it and reads it again once the copy is FEATURE_FLAGS_CACHE_MS old, as limits.ts does, so a flag switched from
+ * `feature-flags` is in force everywhere within that, and every instance that sees a change says so. The functions below
+ * `featureFlagsFor` are what the feature-flags CLI does.
  */
 import { FEATURE_FLAG_NAMES, isFeatureFlagName, type FeatureFlagName } from '@alcove/api';
 import { z } from 'zod';
-import type { Deps } from './context';
+import type { Deps, Owner } from './context';
 import { b64u, blindIndex } from './crypto';
 import { bytea, exec, maybeOne, rows, type Db } from './db';
 import { NotFoundError, ValidationError } from './errors';
 import { log } from './log';
+import { indexKey } from './owners';
+import { listItems } from './vault';
 
 const featureFlagLog = log.child({ component: 'feature-flags' });
 
-/** The one place flags hash an address: the hash identities and workspace_members hold for it. */
-export const emailHash = (kmaster: Uint8Array, email: string): Uint8Array => blindIndex(kmaster, 'email', email);
+/**
+ * The one place flags hash an address: its own purpose, `flag-email`, so no hash a flag keeps is one identities, sharing or a
+ * workspace keeps, and none can be joined to them.
+ */
+export const flagHash = (key: Uint8Array, email: string): Uint8Array => blindIndex(key, 'flag-email', email);
 
 /** What the database says, as one instance has it. Hashes are base64url, to compare by value. */
 interface State {
@@ -106,17 +113,21 @@ function onFor(s: State, hashes: string[]): ReadonlySet<FeatureFlagName> {
 
 /** One answer per asker per request: the asker is the request's own object (its Owner), so the next request asks again. */
 const answered = new WeakMap<object, Promise<ReadonlySet<FeatureFlagName>>>();
+/** What flags read of a profile: the address it signs in with, which the provider keeps it up to date with. */
+const Address = z.object({ email: z.string() });
 
 /**
- * The flags on for someone: for an account, by every address it signs in with (its identities); for nobody signed in,
- * only those on for everyone.
+ * The flags on for someone: for an account, by the address it signs in with, hashed as flags hash it from its opened
+ * profile; for nobody signed in, only those on for everyone.
  */
-export function featureFlagsFor(d: Pick<Deps, 'pool' | 'cfg'>, who: { ownerId: string } | undefined): Promise<ReadonlySet<FeatureFlagName>> {
+export function featureFlagsFor(d: Pick<Deps, 'pool' | 'cfg'>, who: Owner | undefined): Promise<ReadonlySet<FeatureFlagName>> {
   if (!who) return stateNow(d).then((s) => onFor(s, []));
   let found = answered.get(who);
   if (!found) {
     found = (async () => {
-      const hashes = (await rows(d.pool, z.object({ email_index: bytea }), 'SELECT email_index FROM identities WHERE owner_id = $1', [who.ownerId])).map((r) => b64u(r.email_index));
+      const key = indexKey(who);
+      const hashes = (await listItems(who, d.pool, 'profile', Address)).map((p) => b64u(flagHash(key, p.manifest.email)));
+      key.fill(0);
       return onFor(await stateNow(d), hashes);
     })();
     answered.set(who, found);
@@ -232,11 +243,12 @@ export async function featureFlagReport(db: Db): Promise<{ featureFlags: { name:
 
 /**
  * When an account is deleted: takes its address out of every group and grant, unless another account signs in with the
- * same address too (as note_access does). How many rows went.
+ * same address too (as note_access does). `key`: the index key. How many rows went.
  */
-export async function forgetEmail(c: Db, emailIndex: Uint8Array, ownerId: string): Promise<number> {
-  const others = await maybeOne(c, z.object({ one: z.number() }), 'SELECT 1 AS one FROM identities WHERE email_index = $1 AND owner_id <> $2 LIMIT 1', [emailIndex, ownerId]);
+export async function forgetEmail(c: Db, key: Uint8Array, email: string, ownerId: string): Promise<number> {
+  const others = await maybeOne(c, z.object({ one: z.number() }), 'SELECT 1 AS one FROM identities WHERE email_index = $1 AND owner_id <> $2 LIMIT 1', [blindIndex(key, 'email', email), ownerId]);
   if (others) return 0;
-  return (await exec(c, 'DELETE FROM feature_flag_group_members WHERE email_index = $1', [emailIndex]))
-    + (await exec(c, 'DELETE FROM feature_flag_person_grants WHERE email_index = $1', [emailIndex]));
+  const hash = flagHash(key, email);
+  return (await exec(c, 'DELETE FROM feature_flag_group_members WHERE email_index = $1', [hash]))
+    + (await exec(c, 'DELETE FROM feature_flag_person_grants WHERE email_index = $1', [hash]));
 }

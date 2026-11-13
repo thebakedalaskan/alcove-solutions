@@ -19,7 +19,7 @@ import { blindIndex } from '../../crypto';
 import { LIMITS } from '../../limits';
 import { maintain } from '../../maintenance';
 import { MEDIA_LIMITS } from './media';
-import { masterKey } from '../../owners';
+import { indexKey } from '../../owners';
 import { pictureJpeg } from '../../testing/video';
 import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from '../../testing/harness';
 
@@ -1368,7 +1368,7 @@ describe('guests in a call', () => {
     if (!sam) throw new Error('nobody joined');
     await org.api.workspaces.share.set(id, agenda, [{ seat: sam.seat }], 'edit', { pass: host.ticket.pass });
     // Under a blind index of the person their pass names, never the pass, the person, the call or a name.
-    const index = blindIndex(masterKey(h.deps), 'upload-guest', readPass(h.deps.cfg, sam.pass)?.person ?? '');
+    const index = blindIndex(indexKey(h.deps), 'upload-guest', readPass(h.deps.cfg, sam.pass)?.person ?? '');
     const days = async () => (await h.pool.query<{ day: string; bytes: string }>("SELECT to_char(day, 'YYYY-MM-DD') AS day, bytes::text AS bytes FROM media_guest_upload_days WHERE guest_index = $1 ORDER BY day", [index])).rows.map((r) => [r.day, Number(r.bytes)]);
     const ago = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
     const send = (api: AlcoveApi, bytes: number) => api.workspaces.media.upload(id, agenda, fileOf(bytesOf(bytes)), { pass: sam.pass });
@@ -2351,7 +2351,7 @@ describe('storage limits', () => {
     expect(lines[0]).toEqual(expect.objectContaining({ workspaceId: id, limitBytes: 10 * MiB }));
     expect(lines[2]).toEqual(expect.objectContaining({ ownerId: ann.ownerId, uploadedBytes: 11.5 * MiB, limitBytes: 12 * MiB }));
     // Sizes and IDs, and nothing anyone wrote.
-    for (const l of lines) expect(Object.keys(l).filter((k) => !['level', 'time', 'service', 'msg', 'component', 'requestId', 'method', 'path', 'ownerId', 'workspaceId', 'storedBytes', 'uploadedBytes', 'limitBytes'].includes(k))).toEqual([]);
+    for (const l of lines) expect(Object.keys(l).filter((k) => !['level', 'severity', 'time', 'service', 'msg', 'component', 'requestId', 'method', 'path', 'ownerId', 'workspaceId', 'storedBytes', 'uploadedBytes', 'limitBytes'].includes(k))).toEqual([]);
   });
 
   it('keeps a day’s count through a restart, forgets it after two days, and deletes it with the account', async () => {

@@ -18,7 +18,7 @@ import { b64u, blindIndex, id128, openJson, random, sealJson, sha, stateKey, toJ
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError, notFound } from '../../errors';
 import { log } from '../../log';
-import { findOwner, masterKey } from '../../owners';
+import { findOwner, indexKey } from '../../owners';
 import { lockItem } from '../../vault';
 import { me, profile } from '../account/account';
 import { personOf } from '../account/portraits';
@@ -39,7 +39,7 @@ const header = (owner: Owner, noteId: string, linkId: string) => ({ v: 1 as cons
 const opened = (owner: Owner, r: Row): Made => openJson(key(owner, r.note_item_id), header(owner, r.note_item_id, r.link_id), r.body_ciphertext, Made);
 const hashOf = (secret: string) => sha(utf8(secret));
 /** Finds every link an account made, on anyone's notes, without opening any of them. */
-const makerIndex = (o: Owner) => blindIndex(masterKey(o), 'note-link-maker', o.ownerId);
+const makerIndex = (o: Owner) => blindIndex(indexKey(o), 'note-link-maker', o.ownerId);
 
 /** The same answer for a link that's run out, been revoked, or never was: it says nothing about which. */
 const gone = (context: Record<string, string | number | boolean>) => new NotFoundError('This link has run out or been revoked. Ask whoever sent it for a new one.', { context });

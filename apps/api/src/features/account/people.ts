@@ -11,7 +11,7 @@ import { bytea, rows } from '../../db';
 import { COMPANY, MET, TEAM, inCompany } from '../../demo';
 import { ValidationError } from '../../errors';
 import { log } from '../../log';
-import { masterKey } from '../../owners';
+import { indexKey } from '../../owners';
 import { profile, updateProfile } from './account';
 import { metEmails } from '../meetings/calendar';
 import { all as allMeetings } from '../meetings/service';
@@ -25,7 +25,7 @@ const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCa
 /** Which of these addresses belong to an Alcove account. */
 async function onAlcove(o: Owner, emails: string[]): Promise<Set<string>> {
   if (!emails.length) return new Set();
-  const byIndex = new Map(emails.map((e) => [Buffer.from(blindIndex(masterKey(o), 'email', e)).toString('hex'), e]));
+  const byIndex = new Map(emails.map((e) => [Buffer.from(blindIndex(indexKey(o), 'email', e)).toString('hex'), e]));
   const found = await rows(o.pool, z.object({ email_index: bytea }), 'SELECT DISTINCT email_index FROM identities WHERE email_index = ANY($1)', [[...byIndex.keys()].map((h) => Buffer.from(h, 'hex'))]);
   return new Set(found.flatMap((r) => { const e = byIndex.get(Buffer.from(r.email_index).toString('hex')); return e ? [e] : []; }));
 }

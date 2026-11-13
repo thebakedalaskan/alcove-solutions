@@ -19,7 +19,7 @@ import { bytea, exec, maybeOne, rows, tx, type Db } from '../../db';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError, notFound } from '../../errors';
 import { inference, type ChatModel } from '../../inference';
 import { log } from '../../log';
-import { findOwner, masterKey } from '../../owners';
+import { findOwner, indexKey } from '../../owners';
 import { createItem, findItem, findItems, getItem, listItems, lockItem, saveRevision, type Loaded } from '../../vault';
 import { me, profile, unpin } from '../account/account';
 import { carryModel } from './carryModel';
@@ -189,7 +189,7 @@ export async function updateNote(o: Owner, db: Db, noteId: string, fn: (n: NoteM
   return next;
 }
 
-const emailIndex = (o: Owner, email: string) => blindIndex(masterKey(o), 'email', email);
+const emailIndex = (o: Owner, email: string) => blindIndex(indexKey(o), 'email', email);
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 async function grant(o: Owner, db: Db, noteId: string, emails: string[], role: 'invited' | 'shared'): Promise<void> {
   for (const e of emails) {
