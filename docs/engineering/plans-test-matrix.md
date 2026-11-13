@@ -14,11 +14,11 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | --- | --- | --- | --- | --- |
 | **A: signing up** |  |  |  |  |
 | A1 | A new account is on Free, with all its notes, $0, and the plans to pick first | billing/plans › a new account starts on Free…; flows › sign-in | 1 | Passes |
-| A1′ | The tier screen after the first sign-in | — | 4 | Not built |
+| A1′ | The plans are shown until the app says they were: `choose` is true for a new account and one from before plans, reading the plan or the session doesn't change it, `chose()` makes it false for that account alone, and saying it again changes nothing. The tier screen is the app's | billing/plans › a new account starts on Free…; carries over an account within Free’s limits…, and shows the plans once | 4 | Passes (server); screen: frontend |
 | A2 | New account picks Pro with $0: refused, deposit, then buy: Pro's 3,000 minutes, 100 GiB and the whole allowance after spending on Free | billing/plans › Pro › a new account buys Pro once it has the money… | 2 | Passes |
 | A3 | New account picks Team: deposit, make a team, buy licenses, the admin takes one on a visit (not by reading the session or plan) | billing/teams › A3: a new account picks Team… | 3 | Passes |
 | A4 | An account from before plans: Free from now, credits gone, the plans shown once, 15 days' grace if over Free's storage | billing/plans › accounts from before plans (3 tests) | 1 | Passes |
-| A5 | A sign-in from a call link skips the tier screen, which shows on the next load | — | 4 | Not built |
+| A5 | A sign-in from a call link skips the tier screen, which shows on the next load | — (the app's: it calls `chose()` only once the screen was seen; the server needs nothing more) | 4 | Frontend |
 | A6 | Delete the account and sign in again: a fresh Free account | flows › deleting an account | 1 | Passes |
 | **B: money** |  |  |  |  |
 | B1 | Every 1Click outcome adds dollars at face value: exact, over, within the band, below it, refunded, part refunded, doubtful, late | billing/topups (53 tests) | 1 | Passes |

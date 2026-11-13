@@ -31,6 +31,7 @@ export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'ac
     plans: {
       plan: () => req(PlanSchema, 'GET', '/plan'),
       offers: () => req(PlanOffersSchema, 'GET', '/plan/offers'),
+      chose: () => req(PlanSchema, 'POST', '/plan/chosen', {}),
       buyPro: (months, microUsdPerMonth) => req(PlanSchema, 'POST', '/plan/pro', { months, microUsdPerMonth }),
       refundPro: () => req(PlanSchema, 'POST', '/plan/pro/refund', {}),
       setRenew: (renew) => req(PlanSchema, 'PUT', '/plan/renew', { renew }),

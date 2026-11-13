@@ -75,6 +75,15 @@ describe('Free', () => {
     });
     // Its period is 30 days from when it began.
     expect(Date.parse(plan.period.to) - Date.parse(plan.period.from)).toBe(30 * 86_400_000);
+    // The plans stay to be shown until the app says they were, and reading the plan or the session doesn't say so.
+    await ann.api.auth.getSession();
+    expect((await ann.api.plans.plan()).choose).toBe(true);
+    expect(await ann.api.plans.chose()).toMatchObject({ kind: 'free', choose: false, notes: { minutesLeft: 300 } });
+    // Saying it again changes nothing, and nobody else's is touched.
+    const bob = await account();
+    expect((await ann.api.plans.chose()).choose).toBe(false);
+    expect((await ann.api.plans.plan()).choose).toBe(false);
+    expect((await bob.api.plans.plan()).choose).toBe(true);
   });
 
   it('renews its notes every period from when it began, and what was left doesn’t carry over', async () => {
@@ -211,6 +220,9 @@ describe('accounts from before plans', () => {
     const ann = await account();
     await beforePlans(ann);
     expect(await ann.api.plans.plan()).toMatchObject({ kind: 'free', choose: true, grace: null });
+    // Once shown, not again: the carried-over plan keeps that.
+    await ann.api.plans.chose();
+    expect(await ann.api.plans.plan()).toMatchObject({ kind: 'free', choose: false, grace: null });
   });
 
   it('gives every account from before plans its plan in upkeep, so a grace runs out even for someone who never comes back', async () => {
