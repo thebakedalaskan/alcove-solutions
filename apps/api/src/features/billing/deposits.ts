@@ -282,17 +282,27 @@ async function buyWith(d: Deps, c: Db, ownerId: string, depositId: string, provi
   dlog.info('top-up didn’t buy what it was for; its money is in the balance', { depositId, provider, buys: p.buys.kind, why: r.refusal.why });
   return { ...p, outcome: 'refused', why: r.refusal.arrived(lessThanAsked) };
 }
+/**
+ * What a payment that settles once its top-up stopped being live (cancelled, expired or failed) does with its purchase:
+ * nothing. Its money is in the balance, where Buy with your balance can use it; a payment made again for the same thing,
+ * from checkout's Get a new address, can't buy it twice. Logged as any refusal is, `late`.
+ */
+function tooLate(depositId: string, provider: DepositProviderName, p: DepositPurchase, was: TopUpState): DepositPurchase {
+  dlog.info('top-up didn’t buy what it was for; its money is in the balance', { depositId, provider, buys: p.buys.kind, why: 'late', was });
+  return { ...p, outcome: 'refused', why: 'Your payment arrived after its address closed, so nothing was bought. It’s in your balance.' };
+}
 
 /**
  * Records what the provider says, in one transaction with the deposit row locked, so a deposit credits at most once
  * however many watchers and requests race on it. A settled answer that can be trusted adds `addedFor` to the balance
- * (or is held when that comes to nothing) from any state but `credited` or `held`, and then buys what the top-up was
- * opened to buy, under the same locks (the deposit's, then for licenses the team's, then the plan's), so that's tried
- * once too: a payment 1Click settles after the deposit failed,
- * expired or was cancelled is still credited, and still buys. A doubtful answer credits nothing: the deposit is
- * `arriving` (a failed or expired one `failed`), logged at error once per reason, and reaches support at its deadline. Otherwise `arriving` never goes
- * back to `waiting`, a cancelled one moves on only when a payment reaches it (and is then due for the watcher at once),
- * and a failed or expired one stays as it is. A status the provider doesn't explain leaves the deposit as it is.
+ * (or is held when that comes to nothing) from any state but `credited` or `held`, and then, while its payment was live
+ * (waiting, arriving or short), buys what the top-up was opened to buy, under the same locks (the deposit's, then for
+ * licenses the team's, then the plan's), so that's tried once too. A payment 1Click settles after the deposit failed,
+ * expired or was cancelled is still credited, and buys nothing (`tooLate`). A doubtful answer credits nothing: the
+ * deposit is `arriving` (a failed or expired one `failed`), logged at error once per reason, and reaches support at its
+ * deadline. Otherwise `arriving` never goes back to `waiting`, a cancelled one moves on only when a payment reaches it
+ * (and is then due for the watcher at once), and a failed or expired one stays as it is. A status the provider doesn't
+ * explain leaves the deposit as it is.
  */
 export async function apply(d: Deps, ownerId: string, depositId: string, check: DepositCheck): Promise<TopUpState> {
   return tx(d.pool, async (c) => {
@@ -322,7 +332,9 @@ export async function apply(d: Deps, ownerId: string, depositId: string, check: 
       const added = addedFor(rec, check);
       const state: TopUpState = added > 0n ? 'credited' : 'held';
       const p = rec.purchase;
-      const buying = p && p.outcome === 'waiting' ? p : null;
+      // Bought only while its payment is live (waiting, arriving or short): later, it only adds money (`tooLate`).
+      const waiting = p && p.outcome === 'waiting' ? p : null;
+      const buying = waiting && isOpen(r.state) ? waiting : null;
       // Licenses go to the team its owner is the admin of. Every change to a team locks its row before any plan's
       // (teams.ts), so it's locked here, after the deposit's and before the money is added: never after a plan's.
       const team = buying?.buys.kind === 'licenses' ? await adminsTeam(c, ownerId) : null;
@@ -334,7 +346,7 @@ export async function apply(d: Deps, ownerId: string, depositId: string, check: 
           sentMicroUsd: check.sentMicroUsd.toString(), outMicroUsd: check.outMicroUsd.toString(), refundedMicroUsd: check.refundedMicroUsd.toString(),
           addedMicroUsd: added.toString(), providerRef: check.providerRef
         },
-        purchase: buying ? await buyWith(d, c, ownerId, depositId, provider, buying, team, lessThanAsked) : p
+        purchase: buying ? await buyWith(d, c, ownerId, depositId, provider, buying, team, lessThanAsked) : waiting ? tooLate(depositId, provider, waiting, r.state) : p
       });
       if (late) dlog.warn('top-up settled after it was given up', { depositId, provider, was: r.state, state });
       else dlog.info('top-up settled', { depositId, provider, state });

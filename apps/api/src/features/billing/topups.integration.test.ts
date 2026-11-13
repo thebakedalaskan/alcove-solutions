@@ -1185,6 +1185,8 @@ const hours = (packs: number, microUsdPerPack = HOURS, minutesPerPack = PACK): P
 const LICENSE = 40_000_000;
 /** Licenses for the buyer's team, at a license's price. */
 const licenses = (count: number, microUsdPerLicense = LICENSE): Purchase => ({ kind: 'licenses', count, microUsdPerLicense });
+/** Why a purchase isn't made when its payment settles after its top-up was cancelled, expired or failed. */
+const LATE = 'Your payment arrived after its address closed, so nothing was bought. It’s in your balance.';
 /** What a request came to: its code and message when it was refused. */
 const said = (p: Promise<unknown>) => p.then(() => 'succeeded', (e: unknown) => (e instanceof AlcoveApiError ? `${e.code}: ${e.message}` : String(e)));
 /** What `p` comes to, or "still waiting" when it hasn't in `ms`. */
@@ -1394,25 +1396,35 @@ describe('top-ups that buy', () => {
     expect(await labels(one.api)).toEqual(['Pro, 1 month', 'Added, 20 USDC', 'Added by support']);
   });
 
-  it('still buys what it was for, once, when its payment settles after it was cancelled or expired', async () => {
+  it('buys only while its payment is live: one that settles after its top-up was cancelled or expired adds its money and buys nothing', async () => {
     const { api } = await account();
-    const cancelled = await api.plans.startTopUp(BASE_USDC, PRICE, pro(1));
-    expect(await api.plans.cancelTopUp(cancelled.id)).toMatchObject({ state: 'cancelled', purchase: { outcome: 'waiting' } });
-    // Sent before it was cancelled, and settled with the app closed.
-    h.oneclick.set(addr(cancelled), 'SUCCESS', { depositedAmount: String(PRICE), amountOut: String(PRICE), intentHashes: [`late-${cancelled.id}`] });
-    await dueOnly(cancelled.id);
+    // A payment for a month of Pro, cancelled, and made again from checkout: the second one buys the month.
+    const first = await api.plans.startTopUp(BASE_USDC, PRICE, pro(1));
+    expect(await api.plans.cancelTopUp(first.id)).toMatchObject({ state: 'cancelled', purchase: { outcome: 'waiting' } });
+    const again = await api.plans.startTopUp(BASE_USDC, PRICE, pro(1));
+    expect(await paid(api, again, PRICE)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
+    // The first was on its way all along, and 1Click settles it with the app closed: added, and nothing bought twice.
+    h.oneclick.set(addr(first), 'SUCCESS', { depositedAmount: String(PRICE), amountOut: String(PRICE), intentHashes: [`late-${first.id}`] });
+    await dueOnly(first.id);
+    const from = h.logs.length;
     expect(await watch(h.deps)).toEqual({ checked: 1, credited: 1 });
-    expect(await api.plans.topUp(cancelled.id)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
-    expect((await api.plans.plan()).kind).toBe('pro');
+    expect(await api.plans.topUp(first.id)).toMatchObject({ state: 'credited', received: { microUsd: PRICE }, purchase: { buys: pro(1), outcome: 'refused', why: LATE } });
+    expect(logsSince(from).some((l) => l.msg === 'top-up didn’t buy what it was for; its money is in the balance' && l.line.includes(first.id) && l.line.includes('"why":"late"'))).toBe(true);
+    const plan = await api.plans.plan();
+    expect(plan).toMatchObject({ kind: 'pro', balance: { microUsd: PRICE } });
+    expect(plan.pro.months).toHaveLength(1);
     // Nothing arrived by its deadline, then 1Click settles a payment after all.
     const expired = await api.plans.startTopUp(BASE_USDC, HOURS, hours(1));
     await h.pool.query("UPDATE deposits SET give_up_at = now() - interval '1 second' WHERE deposit_id = $1", [expired.id]);
     await dueOnly(expired.id);
     await watch(h.deps);
     expect(await api.plans.topUp(expired.id)).toMatchObject({ state: 'expired', purchase: { outcome: 'waiting' } });
-    expect(await paid(api, expired, HOURS)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
-    expect(await api.plans.plan()).toMatchObject({ kind: 'pro', notes: { minutesPerPeriod: 3600 }, balance: { microUsd: 0 } });
-    expect(await labels(api)).toEqual(['10 more hours of notes', 'Added, 15 USDC', 'Pro, 1 month', 'Added, 20 USDC']);
+    expect(await paid(api, expired, HOURS)).toMatchObject({ state: 'credited', purchase: { buys: hours(1), outcome: 'refused', why: LATE } });
+    expect(await api.plans.plan()).toMatchObject({ kind: 'pro', notes: { minutesPerPeriod: 3000 }, balance: { microUsd: PRICE + HOURS } });
+    expect(await labels(api)).toEqual(['Added, 15 USDC', 'Added, 20 USDC', 'Pro, 1 month', 'Added, 20 USDC']);
+    // What the balance holds buys it from there.
+    await api.plans.buyHours(1, HOURS, PACK);
+    expect(await api.plans.plan()).toMatchObject({ notes: { minutesPerPeriod: 3600 }, balance: { microUsd: PRICE } });
   });
 
   it('reads a top-up the previous release stored, with no purchase, as one that only adds money', async () => {
@@ -1591,7 +1603,7 @@ describe('top-ups that buy', () => {
     expect(logsSince(from).filter((l) => l.level >= 50)).toEqual([]);
   });
 
-  it('still buys licenses, once, when its payment settles after it was cancelled or expired', async () => {
+  it('buys licenses only while its payment is live: one that settles after it was cancelled or expired adds its money and buys none', async () => {
     const { api } = await admin();
     const cancelled = await api.plans.startTopUp(BASE_USDC, LICENSE, licenses(1));
     expect(await api.plans.cancelTopUp(cancelled.id)).toMatchObject({ state: 'cancelled', purchase: { outcome: 'waiting' } });
@@ -1599,19 +1611,19 @@ describe('top-ups that buy', () => {
     h.oneclick.set(addr(cancelled), 'SUCCESS', { depositedAmount: String(LICENSE), amountOut: String(LICENSE), intentHashes: [`late-${cancelled.id}`] });
     await dueOnly(cancelled.id);
     expect(await watch(h.deps)).toEqual({ checked: 1, credited: 1 });
-    expect(await api.plans.topUp(cancelled.id)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
+    expect(await api.plans.topUp(cancelled.id)).toMatchObject({ state: 'credited', purchase: { buys: licenses(1), outcome: 'refused', why: LATE } });
     // Nothing arrived by its deadline, then 1Click settles a payment after all.
     const expired = await api.plans.startTopUp(BASE_USDC, 2 * LICENSE, licenses(2));
     await h.pool.query("UPDATE deposits SET give_up_at = now() - interval '1 second' WHERE deposit_id = $1", [expired.id]);
     await dueOnly(expired.id);
     await watch(h.deps);
     expect(await api.plans.topUp(expired.id)).toMatchObject({ state: 'expired', purchase: { outcome: 'waiting' } });
-    expect(await paid(api, expired, 2 * LICENSE)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
+    expect(await paid(api, expired, 2 * LICENSE)).toMatchObject({ state: 'credited', purchase: { buys: licenses(2), outcome: 'refused', why: LATE } });
     await forgetCheck(expired.id);
-    expect(await api.plans.topUp(expired.id)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
-    expect((await api.teams.mine())?.licenses?.unconsumed).toBe(3);
-    expect(await api.plans.plan()).toMatchObject({ balance: { microUsd: 0 } });
-    expect(await labels(api)).toEqual(['Team, 2 licenses', 'Added, 80 USDC', 'Team, 1 license', 'Added, 40 USDC']);
+    expect(await api.plans.topUp(expired.id)).toMatchObject({ state: 'credited', purchase: { outcome: 'refused' } });
+    expect((await api.teams.mine())?.licenses?.unconsumed).toBe(0);
+    expect(await api.plans.plan()).toMatchObject({ balance: { microUsd: 3 * LICENSE } });
+    expect(await labels(api)).toEqual(['Added, 80 USDC', 'Added, 40 USDC']);
   });
 });
 

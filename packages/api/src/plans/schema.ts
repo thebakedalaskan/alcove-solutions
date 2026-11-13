@@ -198,8 +198,9 @@ export const TopUpSchema = z.object({
   received: z.object({ amount: z.string(), microUsd: MicroUsdSchema.nullable() }).nullable(),
   /**
    * What it was opened to buy, and how that went once it was added: `waiting` until then, `bought`, or `refused` (the
-   * price changed, or too little arrived) with why, in words for people. A refused purchase leaves the money in the balance.
-   * Null for a top-up that only adds money.
+   * price changed, too little arrived, or the payment arrived after the top-up was cancelled, expired or failed, when only
+   * the money is added) with why, in words for people. A refused purchase leaves the money in the balance. Null for a
+   * top-up that only adds money.
    */
   purchase: z.object({ buys: PurchaseSchema, outcome: z.enum(['waiting', 'bought', 'refused']), why: z.string().nullable() }).nullable()
 });

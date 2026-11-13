@@ -2567,8 +2567,11 @@ notes; they don't carry into the next period. Done says "10 more hours of notes"
 3. **It couldn't buy.** The price changed before the payment arrived, or less arrived than the months cost: the money is in
    your balance and checkout says why, with **Buy with your balance** at today's price, or fewer months.
 4. **Nothing arrived in 24 hours.** The address closes and nothing was charged; **Get a new address** starts again. A payment
-   that arrives after all still counts, and still buys.
-5. **Cancel.** **Cancel payment** in the foot asks first: a payment sent to that address anyway still counts when it arrives.
+   that arrives after all is added to your balance and buys nothing, so a new address never buys the same thing twice:
+   checkout and your payments say "Your payment arrived after its address closed, so nothing was bought. It's in your
+   balance.", with **Buy with your balance**.
+5. **Cancel.** **Cancel payment** in the foot asks first: a payment sent to that address anyway still counts when it arrives,
+   added to your balance as in 4.
 6. **Something went wrong.** Checkout says so, with the reference to give support.
 7. **Payments off.** Choose says paying isn't available right now; a balance that covers it can still buy.
 

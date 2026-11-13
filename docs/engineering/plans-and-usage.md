@@ -434,9 +434,9 @@ is `arriving`, logged at error once with the reason, and fails at its deadline s
 | Top-up routes (`GET /v1/plan/routes`) | Working. USDC on NEAR, Ethereum, Solana, Base, Arbitrum, Polygon, BNB Chain, Optimism and Avalanche, in that order, while 1Click lists them, each with its minimum. USDT isn't offered; a USDT top-up opened before still settles and shows as before. A server without `TREASURY_INTENTS_ACCOUNT` answers `unavailable` on every top-up endpoint; `ONECLICK_API_KEY` is optional and only lowers 1Click's fee |
 | Opening a top-up (`POST /v1/plan/top-ups { routeId, microUsd, buys }`) | Working. With `buys`, what it's to buy is checked first ([below](#a-payment-that-buys)). A 1Click quote paying the treasury exactly that gives a one-off deposit address on the route's chain, open for 24 hours, kept sealed (`deposits`, record kind `deposit`). At most 10 a minute per account per API instance; refused with `conflict` while the account has 15 top-ups waiting for a payment to an address that hasn't expired, or has opened 30 in the last 24 hours (cancelled ones count). Both counts are checked in Postgres, again under a lock on the account in the transaction that inserts the deposit |
 | Cancelling a top-up (`POST /v1/plan/top-ups/:id/cancel`) | Working. Only a `waiting` top-up can be cancelled. Its address is no longer shown and it no longer counts toward the 15 waiting. 1Click can't cancel a quote, so a payment that reaches it is still added. It still counts toward the 30 a day |
-| Adding a top-up | Working. On `SUCCESS` or `REFUNDED` that passes the checks above, what was sent is added by the rules above, in the transaction that marks the deposit `credited`, under its row lock: once, however many checks race. What it was opened to buy is bought in that transaction. `FAILED` is `failed`, logged at error. A `failed`, `expired` or `cancelled` deposit is still added when 1Click later settles it, and still buys |
+| Adding a top-up | Working. On `SUCCESS` or `REFUNDED` that passes the checks above, what was sent is added by the rules above, in the transaction that marks the deposit `credited`, under its row lock: once, however many checks race. What it was opened to buy is bought in that transaction while the payment is live (`waiting`, `arriving` or `short`). `FAILED` is `failed`, logged at error. A `failed`, `expired` or `cancelled` deposit is still added when 1Click later settles it, and buys nothing |
 | Watching top-ups | Working, unchanged: every open deposit is asked about every 10 s for 15 minutes, every minute until 2 hours, then every 5 minutes, thinning out after its deadline (see below) |
-| A top-up paid for before plans, or settled by the previous release while this one deployed | Working. It added credits, which no longer count: upkeep adds it again as dollars, once (`creditCarried`: every `credited` deposit settled before a day after `billing_cutover`, looked at once each, then `check_after` infinity) |
+| A top-up paid for before plans, or settled by the previous release whenever it serves (while this one deploys, or after a rollback) | Working. It added credits, which no longer count: upkeep adds it again as dollars, once, on every pass (`creditCarried`: every `credited` deposit still looked at, under its row's lock, then `check_after` infinity). This release never looks at a deposit again once it's added or held, so the only `credited` ones still looked at are those a release before plans added |
 | Adding money in the app | Working. Settings › Plan › Add money opens a sheet: choose $20, $60, $120 or your own, then the network to send USDC on (under Pay with USDC; every route is USDC, so there's no token to pick), and get an address (with a QR code) for one payment of exactly that; the sheet follows it until it's added; while it waits for a payment it can be cancelled there; open and recent top-ups are listed under the balance |
 
 ### How a top-up works
@@ -489,15 +489,19 @@ closing the window: the top-up says what it's for, and the server buys it once t
    from the balance (`purchase` in `plans.ts`), or licenses as `POST /v1/team/licenses` buys them (`licensesBought` in
    `teams.ts`), for the team its owner is the admin of when the money arrives: the balance pays the whole total, what was
    there before and what just arrived, and anything over stays in it. The deposit is settled in that transaction, so the
-   purchase is tried once, however many checks race; a payment 1Click settles after the top-up failed, expired or was
-   cancelled buys then, the same way. Every change to a team locks its row before any plan's (teams.ts), so a payment for
+   purchase is tried once, however many checks race. It's bought only while the payment is live (`waiting`, `arriving` or
+   `short`): one 1Click settles after the top-up failed, expired or was cancelled is added to the balance and buys
+   nothing, so a payment made again for the same thing (checkout's Get a new address, or checkout opened again after a
+   cancel) never buys it twice. Every change to a team locks its row before any plan's (teams.ts), so a payment for
    licenses locks the team's row after the deposit's and before the money is added: deposit, team, plan. Nothing locks a
    team's row after a plan's, nor a deposit's after either, so a payment, a purchase from the balance, a visit taking a
    license and the team being deleted, all at once, take their locks in that one order and wait on one another rather
    than deadlock.
 3. **What it says.** `outcome` is `waiting` until the money is added (an expired, failed or cancelled top-up stays
-   `waiting`: a late payment can still buy), then `bought`, or `refused` with `why` in words for people. A refusal leaves
+   `waiting` until a late payment's money is), then `bought`, or `refused` with `why` in words for people. A refusal leaves
    the money in the balance, where "Buy with your balance" can use it:
+   - the payment arrived after the top-up was cancelled, expired or failed: "Your payment arrived after its address
+     closed, so nothing was bought. It’s in your balance.";
    - the price changed: "The price of Pro changed before your payment arrived. It’s in your balance." ("The price of more
      notes changed…" for notes, "The price of a team license changed…" for licenses), or a pack's minutes did: "The hours
      more notes bring changed before your payment arrived. It’s in your balance.";
@@ -516,7 +520,7 @@ refunded while nobody has, and the admin is told again when few or none are left
 
 Logged `top-up bought what it was for` or `top-up didn’t buy what it was for; its money is in the balance`, with the
 deposit's ID, provider, what it buys (`pro`, `hours`, `licenses`) and why not (`price`, `short`, `too-many`, `off`,
-`not-admin`): never an amount. Licenses bought are also logged `team licenses bought`, with the owner, team and count.
+`not-admin`, and `late` with the state it had then): never an amount. Licenses bought are also logged `team licenses bought`, with the owner, team and count.
 
 ## Treasury runbook
 
