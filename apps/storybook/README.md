@@ -489,7 +489,7 @@ Native two tabs is the explicit browser-receipt scene: open it twice, enable onc
 
 
 The plan lives under **Pages / Settings / Plan**, **Notes nearly out**, **No notes left**, **Over Free's limits (in
-grace)** and **A balance**. Top-ups live under **Payments**, **Add money picker** and **Payment…**: waiting, arriving,
+grace)**, **Over Pro's storage** (Make room filled, as the way out) and **A balance**. Top-ups live under **Payments**, **Add money picker** and **Payment…**: waiting, arriving,
 short, short after the address expired, added, held, failed, cancelled and expired, plus the deletion warnings.
 Phone and night variants show the picker and waiting address, and the expired-short phone at night. The default scenarios
 keep payments unavailable. **Journeys / 11 Settings / 11.24 Add money** chooses an amount, a token and network, opens a top-up,
