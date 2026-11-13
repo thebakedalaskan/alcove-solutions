@@ -206,8 +206,8 @@ const Row = z.object({ deposit_id: z.string(), state: TopUpStateSchema, record_c
 const Locked = Row.extend({ closed: z.boolean() });
 const record = (d: Deps, ownerId: string, r: z.infer<typeof Row>) => openJson(key(d), header(ownerId, r.deposit_id), r.record_ciphertext, DepositRecord);
 const open = (d: Deps, ownerId: string, r: z.infer<typeof Row>) => toTopUp(r.deposit_id, record(d, ownerId, r), r.state);
-/** Where the deposit is paid, to ask its provider about it. */
-const addressOf = (r: DepositRecord): DepositAddress => ({ route: { ...r.route, minimum: BigInt(r.route.minimum) }, address: r.address, memo: r.memo });
+/** Where the deposit is paid, and its provider's quote, to ask its provider about it. */
+const addressOf = (r: DepositRecord): DepositAddress => ({ route: { ...r.route, minimum: BigInt(r.route.minimum) }, address: r.address, memo: r.memo, quote: r.quote });
 
 const find = (db: Db, ownerId: string, depositId: string) =>
   maybeOne(db, Row, 'SELECT deposit_id, state, record_ciphertext, created_at FROM deposits WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId]);

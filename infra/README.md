@@ -67,7 +67,9 @@ bindings retry briefly to allow new service accounts to propagate.
 Then Confidential Space: `infra/confidential-space/setup.sh production` (with `--dry-run` first) makes the network, the
 Cloud KMS keys, the Workload Identity pool that only an attested, signed image passes, the VMs' service account, the
 deploy account's grants, and the load balancer, and grants production's master key and secrets to production's attested
-VMs alone ([its First setup](confidential-space/README.md#first-setup)).
+VMs alone ([its First setup](confidential-space/README.md#first-setup)). Two of those secrets, the treasury's NEAR key
+and 1Click's partner key for top-ups, neither script makes: a person adds them, and setup.sh grants each once it exists
+([The top-up secrets](confidential-space/README.md#the-top-up-secrets)).
 
 ## Cloudflare storage and DNS
 

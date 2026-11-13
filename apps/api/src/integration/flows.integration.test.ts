@@ -3993,7 +3993,8 @@ describe('privacy at rest', () => {
     for (const [id, refusal] of refusals) expect(code(await g.api.calendar.adopt(id).catch((e: unknown) => e))).toBe(refusal);
 
     // A top-up paid and credited, which bought more notes once it was: its deposit address, the settlement's hash, what it
-    // bought and the history's labels stay sealed.
+    // bought and the history's labels stay sealed. Opening it signed the API in to 1Click with the treasury's key, and
+    // neither that key nor a token 1Click gave it is anywhere but in the API's memory (canaries below).
     const topUp = await c.api.plans.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 25_000_000, { kind: 'hours', packs: 1, microUsdPerPack: 15_000_000, minutesPerPack: 600 });
     expect(topUp.address).toContain('canary-deposit-address');
     h.oneclick.set(topUp.address ?? '', 'SUCCESS', { depositedAmount: '25000000', amountOut: '25000000', intentHashes: ['canary-intent-hash'] });
@@ -4043,6 +4044,17 @@ describe('privacy at rest', () => {
     // master, which is there wrapped by Cloud KMS.
     const carried = await resolveKeys(h.pool, { tee: 'confidential-space', wrapper: fakeKms(), legacy: { kmaster: h.deps.cfg.KMASTER, kservice: h.deps.cfg.KSERVICE }, retire: false });
 
+    // The treasury's NEAR key (its text, and the base58 in it), the public key it makes, the partner key, and every access
+    // and refresh token 1Click gave the treasury for these top-ups.
+    const treasuryKey = h.oneclick.settings.TREASURY_INTENTS_KEY;
+    const treasuryPublicKey = h.oneclick.treasuryPublicKey;
+    const oneClickTokens = h.oneclick.tokens();
+    expect(oneClickTokens.length).toBeGreaterThanOrEqual(2);
+    const treasurySecrets = [
+      treasuryKey, treasuryKey.slice('ed25519:'.length), treasuryPublicKey, treasuryPublicKey.slice('ed25519:'.length),
+      h.oneclick.settings.ONECLICK_API_KEY, ...oneClickTokens
+    ];
+
     // Every table there is, so a table added later is read here without anyone remembering to list it.
     const everyTable = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'")).rows.map((r) => r.table_name);
     expect(everyTable).toEqual(expect.arrayContaining(['workspaces', 'workspace_members', 'workspace_authors', 'documents', 'document_access', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'owners', 'items', 'revisions', 'operations']));
@@ -4069,16 +4081,17 @@ describe('privacy at rest', () => {
       'CANARY-CUE', 'as you can see the chart', 'CANARY-VIDEO', 'Person’s screen', 'CANARY-LIVEQUESTION', 'private launch',
       'canary-deposit-address', 'Credits added', 'canary-intent-hash', 'more hours of notes', 'microUsdPerPack', 'minutesPerPack',
       'CANARY-TEAM', 'merger crew', 'Team, 1 license', '"autoPurchase"', '"pool"', 'microUsdPerLicense', 'CANARY-AGENT',
-      proposedTime, 'CANARY-HOLD', 'canary-hold-guest', ...holdIds
+      proposedTime, 'CANARY-HOLD', 'canary-hold-guest', ...holdIds, ...treasurySecrets
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
     // An answer is one short word, so it has a check of its own, in the only rows that hold one.
     for (const enc of encodings('maybe')) expect(invited.includes(enc), `an answer as ${enc}`).toBe(false);
 
-    // Every object in the bucket, not only the referenced ones.
+    // Every object in the bucket, not only the referenced ones: its bytes, and its name for the treasury's key and tokens.
     for await (const obj of h.objects.list()) {
       const bytes = Buffer.from(await h.objects.get(obj.id));
       for (const canary of canaries) for (const enc of encodings(canary)) expect(bytes.includes(Buffer.from(enc)), `${canary} in ${obj.id}`).toBe(false);
+      for (const secret of treasurySecrets) for (const enc of encodings(secret)) expect(obj.id.includes(enc), 'the treasury’s key or a token in an object’s name').toBe(false);
     }
 
     // Deleting an account logs IDs and counts, like everything else: nothing of who it was. It happens after

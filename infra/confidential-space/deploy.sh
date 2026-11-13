@@ -9,7 +9,9 @@
 # gives it, and moves it onto the newest Confidential Space image (.github/workflows/refresh.yml runs it monthly). It
 # refuses while the group is mid-rollout or stalled, when its template may not be what runs. The image must be signed
 # (sign.sh) or its VM can't unwrap the master. The first deploy to an environment makes its group. Both refuse, before
-# changing anything, when the region's C3 quota can't hold the VM a rollout adds. Waits until the group is stable and both
+# changing anything, when the region's C3 quota can't hold the VM a rollout adds; a deploy also refuses while a secret its
+# API reads doesn't exist, has no version or isn't granted to the environment's VMs, saying what to add (cs_check_secrets:
+# the top-up secrets, which only a person makes, until they're added). Waits until the group is stable and both
 # of the load balancer's backend services call the new VM healthy, then prints image=, instance=, template= and address=
 # lines on stdout (for $GITHUB_OUTPUT), and nothing else there: everything else, gcloud's own output included, goes to
 # stderr. Old templates beyond the newest five are deleted.
@@ -64,6 +66,9 @@ else
   cs_settings || cs_die "set the values above (README.md › Settings)"
   cs_check_env_allowed
   cs_banner "deploy" "$CS_ENV"
+  # A new VM reads every secret in SECRETS at start and won't start without one, so a secret that isn't there, or isn't
+  # granted, is refused here, before anything changes: the top-up secrets, which only a person makes, above all.
+  cs_check_secrets
   metadata="$(cs_metadata "$image")"
   account="$CS_RUNTIME_SA"
   if [[ -n "$group" ]] && ! settled; then cs_warn "$CS_MIG hasn't settled since its last rollout; this one takes its place"; fi

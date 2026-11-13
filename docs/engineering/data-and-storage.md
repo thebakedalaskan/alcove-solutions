@@ -763,7 +763,8 @@ and this way it runs through the same auth, origin check and tests as everything
 A top-up is a sealed `deposit` record, header `{ v: 1, kind: 'deposit', ownerId, depositId, keyVersion: '1' }`,
 under `Kservice`'s accounting key like the billing state, so the watcher opens it without anyone signed in: the
 route (chain, token, decimals, minimum), the deposit address and memo, the expiry, the amount asked and the quote's
-`minAmountIn` (token units), the provider's whole signed quote,
+`minAmountIn` (token units), the provider's whole signed quote (whose repeated request says which of the treasury's
+balances it pays, confidential or, for one opened before confidential top-ups, public, and so how 1Click is asked about it),
 what the provider last said arrived while it was open (micro-USD), and once settled what was sent, what reached the treasury and what was refunded (micro-USD), what it added to the balance in dollars (`addedMicroUsd`, micro-USD)
 and the provider's reference, whether it was logged that the provider couldn't answer past its deadline
 (`unanswered`, default false), and why the provider's last finished answer wasn't added (`doubt`, default null)

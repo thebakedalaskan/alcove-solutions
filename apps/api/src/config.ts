@@ -3,12 +3,24 @@ import { MAX_DOC_ITEMS } from '@alcove/api';
 import type pg from 'pg';
 import { z } from 'zod';
 import { KeyError } from './errors';
+import { TreasuryKey } from './features/billing/treasury-key';
 import { INTEL_SGX_ROOT_CA, NVIDIA_NRAS_ROOT_CA } from './roots';
 import { resolveKeys, type KeyWrapper, type LegacyKeys } from './serverKeys';
 
 /** An optional setting: unset, or set to nothing (as in .env.example), means it isn't configured. */
 const blank = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
 const optional = z.preprocess(blank, z.string().min(1).optional());
+/**
+ * The treasury's NEAR key, made a signer here, once, so no setting holds its text. One that isn't a key stops the server
+ * from starting, with a message that names the setting and never what it was set to.
+ */
+const TreasuryKeySetting = optional.transform((text, ctx) => {
+  if (text === undefined) return undefined;
+  const key = TreasuryKey.parse(text);
+  if (key) return key;
+  ctx.issues.push({ code: 'custom', input: undefined, message: 'TREASURY_INTENTS_KEY must be the treasury’s NEAR secret key: ed25519: and 64 bytes, base58' });
+  return z.NEVER;
+});
 
 const Key = (name: string) => z.string().regex(/^[A-Za-z0-9_-]{43}$/, `${name} must be 32 bytes, base64url`);
 /** A secret's name in Secret Manager. */
@@ -140,12 +152,24 @@ const EnvSchema = z.object({
    * and is sent requests sealed to its attested key; any other is unencrypted (features/notes/models.ts).
    */
   NEAR_AI_ENDPOINTS_URL: z.string().url().default('https://completions.near.ai/endpoints'),
-  /** NEAR Intents 1Click, for credit top-ups: the partner JWT from partners.near-intents.org. Optional: without it 1Click still quotes, with a higher fee. */
+  /**
+   * NEAR Intents 1Click, for top-ups: the partner key from partners.near-intents.org, sent as X-API-Key. 1Click takes
+   * the treasury's session for a confidential quote only beside a partner key, so top-ups are off without it. A secret:
+   * inside a TEE it comes through SECRETS.
+   */
   ONECLICK_API_KEY: optional,
-  /** The NEAR account whose Intents balance receives every top-up, and every refund. Top-ups are off without it. */
+  /** The NEAR account whose confidential Intents balance receives every top-up, and every refund. Top-ups are off without it. */
   TREASURY_INTENTS_ACCOUNT: optional,
+  /**
+   * A full access key of TREASURY_INTENTS_ACCOUNT, in NEAR's format (`ed25519:` and 64 bytes, base58), registered for
+   * it in intents.near: it signs Alcove in to 1Click as the treasury. It can move everything the treasury holds.
+   * Top-ups are off without it. A secret: inside a TEE it comes through SECRETS.
+   */
+  TREASURY_INTENTS_KEY: TreasuryKeySetting,
   /** 1Click's API. Tests point it at their stand-in. */
   ONECLICK_BASE_URL: z.string().url().default('https://1click.chaindefuser.com'),
+  /** NEAR's JSON-RPC, read for intents.near's current salt, which every sign-in to 1Click carries. Tests point it at their stand-in. */
+  NEAR_RPC_URL: z.string().url().default('https://near-rpc.defuse.org'),
   /** Intel's Provisioning Certification Service: the TCB info, QE identity and revocation lists a TDX quote is checked against. */
   INTEL_PCS_URL: z.string().url().default(INTEL_PCS),
   /** The root every TDX quote and Intel collateral must chain to: Intel's SGX Root CA. Tests set their own. */
@@ -208,13 +232,14 @@ type Settings = z.infer<typeof EnvSchema>;
 /** Settings only a TEE reads, before anything else: how it reaches Google Cloud through its attestation (gcp.ts). */
 const TEE_ONLY = ['GCP_PROJECT', 'KMS_MASTER_KEY', 'WIF_PROVIDER', 'SECRETS', 'LEGACY_SECRETS'] as const;
 /**
- * The settings SECRETS may name, inside a TEE: the credentials the providers give Alcove, and Google's tester list, which
- * holds addresses. Nothing else comes from Secret Manager: what decides where people sign in, or what's trusted, is the
- * environment's, which the image's launch policy limits and the attestation shows.
+ * The settings SECRETS may name, inside a TEE: the credentials the providers give Alcove, the treasury's NEAR key, and
+ * Google's tester list, which holds addresses. Nothing else comes from Secret Manager: what decides where people sign in,
+ * where top-ups are paid, or what's trusted, is the environment's, which the image's launch policy limits and the
+ * attestation shows.
  */
 const SECRET_SETTINGS = [
   'DATABASE_URL', 'OBJECTS_ACCESS_KEY', 'OBJECTS_SECRET_KEY', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET', 'NEAR_AI_API_KEY',
-  'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_SIGNUP_TESTERS', 'CLOUDFLARE_API_TOKEN'
+  'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_SIGNUP_TESTERS', 'CLOUDFLARE_API_TOKEN', 'TREASURY_INTENTS_KEY', 'ONECLICK_API_KEY'
 ] as const satisfies readonly (keyof Settings)[];
 type SecretName = (typeof SECRET_SETTINGS)[number];
 const isSecretName = (name: string): name is SecretName => SECRET_SETTINGS.some((s) => s === name);

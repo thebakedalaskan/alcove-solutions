@@ -80,7 +80,10 @@ export interface Harness {
   google: FakeGoogle;
   /** The NEAR AI Cloud the API transcribes speech and writes notes with, and the stand-ins that vouch for it. */
   near: FakeNear;
-  /** The NEAR Intents 1Click that quotes deposit addresses for credit top-ups. */
+  /**
+   * The NEAR Intents 1Click that quotes deposit addresses for top-ups, with NEAR's RPC for the salt a sign-in carries. It
+   * made the treasury's key the API signs in with: a test key, registered for the treasury there and nowhere else.
+   */
   oneclick: FakeOneClick;
   /** A fresh browser with its own cookie jar, or one around a fetch the test supplies. */
   browser(o?: { fetch?: typeof fetch | undefined; onEvent?: ((e: ClientEvent) => void) | undefined; callPollMs?: number | undefined; callNotesMs?: number | undefined; callRekeyMs?: number | undefined; ringSilenceMs?: number | undefined }): Browser;
@@ -154,7 +157,7 @@ export async function startHarness(): Promise<Harness> {
     GOOGLE_ISSUER: google.issuer, GOOGLE_API_URL: google.issuer, GOOGLE_CLIENT_ID: google.clientId, GOOGLE_CLIENT_SECRET: google.clientSecret,
     // NEAR AI, and the stand-in Intel and NVIDIA roots its evidence is checked against.
     ...near.settings,
-    // 1Click, paying the treasury for credit top-ups.
+    // 1Click, paying the treasury's confidential balance for top-ups, signed in to with a test key made for the treasury.
     ...oneclick.settings,
     // Sign-in photos come from the stand-in Google here, as they come from lh3.googleusercontent.com in production.
     PHOTO_HOSTS: 'googleusercontent.com,127.0.0.1',

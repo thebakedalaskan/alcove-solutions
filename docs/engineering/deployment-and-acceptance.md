@@ -15,7 +15,7 @@ own verification.
 | API | `tsx watch` on `:8787`, proxied at `/api` | Google Cloud Confidential Space on Intel TDX: managed instance group `alcove-api` (one c3-standard-4 VM, `us-central1-a`) behind a regional external proxy Network Load Balancer, `alcove-api-ip`, for `api.alcove.solutions`. TLS ends in the VM ([Confidential Space runbook](../../infra/confidential-space/README.md)) |
 | Database | Postgres 17 in Docker | Cloud SQL `alcove-db`, Postgres 17 Enterprise; SSL, 03:00 UTC daily backup window, seven retained backups, PITR; reached through the Cloud SQL Auth Proxy in the image |
 | Objects | RustFS in Docker | Private Cloudflare R2 `alcove-objects`, accessed through the API |
-| Secrets | `.env`, gitignored | GCP Secret Manager: database, storage, LiveKit and Cloudflare DNS credentials; optional inference and Google credentials; the keys from before Confidential Space, until they're retired. Only an attested, signed image may read them, or use the Cloud KMS key that wraps the master ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)) |
+| Secrets | `.env`, gitignored | GCP Secret Manager: database, storage, LiveKit and Cloudflare DNS credentials; the treasury's NEAR key and 1Click's partner key, for top-ups; optional inference and Google credentials; the keys from before Confidential Space, until they're retired. Only an attested, signed image may read them, or use the Cloud KMS key that wraps the master ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)) |
 | DNS | Localhost | GoDaddy registrar; Cloudflare nameservers `johnny.ns.cloudflare.com` and `maleah.ns.cloudflare.com`; DNS-only records |
 
 Run locally with `pnpm install && pnpm dev`. The [runbook](../../infra/README.md) contains bootstrap,
@@ -52,7 +52,8 @@ the setup, deploys, rollbacks, staging, certificates and release verification.
    Sigstore's public log, Rekor, which the app reads to check the server). Sign it
    with cosign and the Cloud KMS key `alcove-image-signing`, which records it, with its commit, in Sigstore's public log.
    Execute the migration job, which gets only `DATABASE_URL`, and wait. Roll the group onto the image, a new VM first
-   (refused up front when the region's C3 quota can't hold it), and, in a job with no Google credentials, check it
+   (refused up front when the region's C3 quota can't hold it, or while a secret the API reads doesn't exist, has no
+   version or isn't granted to production's VMs, which the VM couldn't start without), and, in a job with no Google credentials, check it
    through the load balancer's address: the attestation the app checks, that the TLS key is the attested
    one, `/health`, and the commit and image. The migration job applies only the migrations
    the database hasn't had, and refuses one whose applied migrations were since edited or removed, so such a
@@ -176,11 +177,52 @@ with `NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1` and the default models, spe
 it isn't read and no placeholder secret version is needed: the API keeps recordings but
 doesn't transcribe them, notes wait, and `/health` reports `inference: missing`.
 
-Top-ups are on in production, which runs with `TREASURY_INTENTS_ACCOUNT=alcove-treasury.near`,
-the NEAR account whose Intents balance receives every top-up and refund, and without `ONECLICK_API_KEY`, so 1Click
-quotes at its own fee ([Plans and usage](plans-and-usage.md)). The migration job doesn't need either. To turn
-top-ups off, take the setting out of `infra/confidential-space/env.sh` and redeploy: nothing is checked or added meanwhile, and once it's back the watcher
-picks up every deposit it still watches.
+Top-ups are on in production, which runs with `TREASURY_INTENTS_ACCOUNT=alcove-treasury.near` (`CS_TREASURY_ACCOUNT` in
+`infra/confidential-space/env.sh`), the NEAR account whose confidential Intents balance receives every top-up and refund.
+They also take two secrets, which production's API reads from Secret Manager at start as its attested identity
+(`SECRETS`), never through its environment, which the attestation shows: `TREASURY_INTENTS_KEY` from
+`alcove-treasury-intents-key`, a full access key of that account, with which the API signs in to 1Click as the treasury,
+and `ONECLICK_API_KEY` from `alcove-oneclick-api-key`, the partner key from partners.near-intents.org, beside which alone
+1Click takes that session on a quote ([Plans and usage › Treasury runbook](plans-and-usage.md#treasury-runbook) says
+what the key can do and how to rotate it). Both are granted to production's attested VMs alone: the migration job gets
+neither, and staging, which has no treasury, reads neither and has top-ups off. Without any of the three, top-ups are
+off: every top-up endpoint answers `unavailable`.
+
+**Before deploying the release that brought confidential top-ups**, and on any new installation, with the `alcove` gcloud
+configuration ([Confidential Space runbook › The top-up secrets](../../infra/confidential-space/README.md#the-top-up-secrets)):
+
+1. Add both secrets, never printing them. Put each value in a variable of your own shell without echoing it
+   (`read -rs TREASURY_INTENTS_KEY`, paste, Enter; the same for `ONECLICK_API_KEY`), then:
+
+   ```sh
+   printf %s "$TREASURY_INTENTS_KEY" | gcloud --project=alcove-solutions secrets create alcove-treasury-intents-key --replication-policy=automatic --data-file=-
+   printf %s "$ONECLICK_API_KEY" | gcloud --project=alcove-solutions secrets create alcove-oneclick-api-key --replication-policy=automatic --data-file=-
+   unset TREASURY_INTENTS_KEY ONECLICK_API_KEY
+   ```
+
+   The key is NEAR's secret key format, `ed25519:` and 64 bytes in base58 (a wallet's export of a full access key); the
+   API won't start with anything else, and says which setting is wrong but never its value.
+2. `CLOUDSDK_ACTIVE_CONFIG_NAME=alcove infra/confidential-space/setup.sh production --dry-run`, then without
+   `--dry-run`. It grants both secrets to production's attested VMs alone (`roles/secretmanager.secretAccessor` for
+   production's principal set), and lets the deploy account see that the API's secrets are there
+   (`roles/secretmanager.viewer`, which reads no value). Run before a secret exists, it says so, with the command above,
+   grants nothing for it and carries on.
+3. The key is registered for `alcove-treasury.near` in intents.near. It is if the treasury has signed in to near.com with
+   that key; otherwise near.com asks to add it on the first sign-in (`add_public_key`). `public_keys_of` on intents.near
+   lists the registered keys. A key that isn't registered is refused at sign-in: top-ups are unavailable, and the API logs
+   `1Click refused the treasury’s sign-in` at error, with the status.
+
+Then merge. The deploy's `deploy.sh` checks, before it changes anything, that every secret the API reads exists, has an
+enabled version and is granted to production's VMs, and refuses otherwise, naming what's missing and the command that
+adds a missing top-up secret: production goes on running the release before it, whose top-ups pay the public balance.
+Once both are added and `setup.sh` has run, run the deploy workflow again (Actions › Deploy › Run workflow, on `main`).
+
+After deploying, the API logs `treasury signed in to 1Click` on its first top-up. Besides 1Click, a sign-in reaches
+NEAR's RPC (`NEAR_RPC_URL`, by default `https://near-rpc.defuse.org`) for intents.near's current salt, which takes no
+credential; while it can't be reached, a sign-in is unavailable (a token already held, and refreshing it, don't need it).
+Both are reached through Cloud NAT, as NEAR AI is. To turn top-ups off, set `CS_TREASURY_ACCOUNT=''` for production in
+`infra/confidential-space/env.sh` and deploy: the API then reads neither secret, nothing is checked or added meanwhile,
+and once it's back the watcher picks up every deposit it still watches.
 
 With NEAR AI enabled the API also reaches, over HTTPS through Cloud NAT, the models' own endpoints
 (`whisper-large-v3.completions.near.ai` and `deepseek-v4-1-flash.completions.near.ai`, and the host of any other private model chosen), where everything with

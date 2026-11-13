@@ -54,26 +54,63 @@ The meeting VM runs the ordinary browser, isolated audio daemon, native recorder
 
 ### 1Click as built
 
-Top-ups call 1Click's REST API directly (`apps/api/src/features/billing/oneclick.ts`, no SDK) at `ONECLICK_BASE_URL`
-(default `https://1click.chaindefuser.com`), sending `X-API-Key: ONECLICK_API_KEY` (the partner JWT from
-partners.near-intents.org) when it is set, and `User-Agent: alcove-api`, with a 15 s timeout. Top-ups are off unless
-`TREASURY_INTENTS_ACCOUNT` is set. Without the key 1Click still quotes and swaps the same way, adding its own fee
-(about 0.013% on USDC on Base when checked on 6 November 2026, against 0.01% with a key); a key that is set but wrong is
-refused (401), which makes top-ups unavailable.
+Top-ups call 1Click's REST API directly (`apps/api/src/features/billing/oneclick.ts` and `oneclick-session.ts`, no SDK) at
+`ONECLICK_BASE_URL` (default `https://1click.chaindefuser.com`), sending `X-API-Key: ONECLICK_API_KEY` (the partner JWT
+from partners.near-intents.org) and `User-Agent: alcove-api` on every request, with a 15 s timeout. Every quote pays the
+treasury's **confidential** Intents balance, which 1Click quotes only for the treasury signed in, so top-ups are off
+unless `TREASURY_INTENTS_ACCOUNT`, `TREASURY_INTENTS_KEY` (a full access key of that account) and `ONECLICK_API_KEY` are
+all set. The partner key is required, not just cheaper: 1Click reads `Authorization: Bearer` on `/v0/quote` and
+`/v0/status` as the treasury's session only beside a valid `X-API-Key`, and without one as a partner JWT, refusing a
+session token as `401 Invalid token` (checked live on 12 November 2026, with a throwaway account, as near.com sends both).
 
+In production, in Confidential Space, `TREASURY_INTENTS_ACCOUNT=alcove-treasury.near` is in the API's environment
+(`infra/confidential-space/env.sh`), and the key and the partner key are secrets it reads from Secret Manager at start as
+its attested identity, never through the environment: `alcove-treasury-intents-key` and `alcove-oneclick-api-key`. A
+person adds each without printing it, then `setup.sh production` grants them to production's attested VMs alone:
+
+```sh
+printf %s "$TREASURY_INTENTS_KEY" | gcloud --project=alcove-solutions secrets create alcove-treasury-intents-key --replication-policy=automatic --data-file=-
+printf %s "$ONECLICK_API_KEY" | gcloud --project=alcove-solutions secrets create alcove-oneclick-api-key --replication-policy=automatic --data-file=-
+CLOUDSDK_ACTIVE_CONFIG_NAME=alcove infra/confidential-space/setup.sh production
+```
+
+A deploy refuses to roll out until both exist with a version and are granted ([Confidential Space runbook › The top-up
+secrets](../../infra/confidential-space/README.md#the-top-up-secrets)). Staging has no treasury and reads neither.
+
+- **Signing in** (`oneclick-session.ts`, as near.com's `createVerificationMessage` does): `POST /v0/auth/authenticate
+  { signedData }`, where `signedData` is a NEP-413 MultiPayload `{ standard: 'nep413', payload: { message, nonce,
+  recipient: 'intents.near' }, public_key: 'ed25519:…', signature: 'ed25519:…' }`. `message` is the empty intent
+  `{"deadline":"<5 minutes out>","intents":[],"signer_id":"<treasury>"}`. `nonce` (32 bytes, base64) is versioned:
+  `56 28 f6 c6`, version `00`, intents.near's current salt (4 bytes, its `current_salt` view method, read from NEAR's RPC
+  at `NEAR_RPC_URL`, default `https://near-rpc.defuse.org`), the deadline in nanoseconds (u64, little-endian), when it
+  was made in nanoseconds (8 bytes) and 7 random bytes. The signature is ed25519 over SHA-256 of `2^31 + 413` (u32,
+  little-endian) and the borsh payload `{ message, nonce, recipient, callback_url: None }`. The key must be registered
+  for the treasury in intents.near (an implicit account's own key always is). 1Click answers `201 { accessToken,
+  refreshToken, expiresIn: 900, refreshExpiresIn: 604800 }` (RS256 JWTs); a wrong salt or signature, a key not
+  registered for the signer, or a passed deadline is `401 signature verification failed`, and a nonce not made in the last
+  few minutes `401 timestamp validation failed`. No partner key is needed to sign in.
+- **Refreshing**: `POST /v0/auth/refresh { refreshToken }` answers `201 { accessToken, expiresIn: 900 }`; the refresh
+  token isn't rotated, and a second sign-in or a refresh leaves earlier tokens working. The API holds the tokens in
+  memory only, refreshes while under a minute of the access token is left, signs in again once the refresh token has run
+  out or is refused (400, 401, 403), and does one sign-in or refresh at a time. A quote or status call answered 401 signs
+  in again once and is made again; 401 again is unavailable, logged at error. A refused sign-in makes top-ups unavailable
+  for a minute, logged once at error with its status.
 - `GET /v0/tokens`: intersected with the allowlist of USDC asset IDs, each with its decimals pinned (checked
   5 November 2026 and again 6 November: 18 for BNB Chain's USDC, 6 for the rest), cached for 10 minutes; a
   route listed with other decimals isn't offered and is logged at error. A failure is remembered for 30 s.
-- `POST /v0/quote`: `swapType: FLEX_INPUT` (any deposit from the quote's `minAmountIn` up is swapped in full),
+- `POST /v0/quote`, with `Authorization: Bearer <the treasury's access token>`: `swapType: FLEX_INPUT` (any deposit from the quote's `minAmountIn` up is swapped in full),
   `depositType: ORIGIN_CHAIN`, `originAsset` the route's asset, `amount` the dollars chosen (a token is a dollar), in the
   token's smallest unit (the response's `amountIn` must equal it and its `minAmountIn` be within 1.5% below it, its
   `quoteRequest` must repeat what was asked, and its `deadline` be between 1 hour and 7 days away, or the top-up is
   refused as unavailable and logged at error; `amountIn` and `minAmountIn` are kept),
   `destinationAsset` USDC on NEAR (`nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1`),
-  `recipient` and `refundTo` the treasury with `recipientType` and `refundType` `INTENTS`, `slippageTolerance: 100`,
+  `recipient` and `refundTo` the treasury with `recipientType` and `refundType` `CONFIDENTIAL_INTENTS` (a quote repeating
+  any other type, `INTENTS` included, is refused), `slippageTolerance: 100`,
   `deadline` 24 hours ahead (1Click sets its own, later one: 3 days out when checked on 6 November 2026; the
   response's `deadline` is the one used), `dry: false`. The whole response, signature included, is kept sealed for disputes.
-- `GET /v0/status?depositAddress=…` (and `depositMemo`): the status; while open, `swapDetails.depositedAmount` when
+- `GET /v0/status?depositAddress=…` (and `depositMemo`), with the treasury's Bearer token for a deposit whose kept quote
+  says `CONFIDENTIAL_INTENTS`, and without one for a deposit opened before (its quote says `INTENTS`), exactly as then: a
+  Bearer token without a partner key would be refused, and an unknown address is `404`. The status; while open, `swapDetails.depositedAmount` when
   it's there (what arrived so far, shown on a `short` deposit); on `SUCCESS` or `REFUNDED` the `swapDetails`
   (`depositedAmount`, `amountOut`, `refundedAmount`, `intentHashes`) that are added.
   `depositedAmount` and `refundedAmount` are read in the token's pinned decimals and `amountOut` in USDC's 6; each
@@ -89,10 +126,13 @@ refused (401), which makes top-ups unavailable.
   are checked before that long tail, and a failed, expired or cancelled deposit is asked about until 30 days after its address expired, and is
   added if 1Click settles it then. A `SUCCESS` or `REFUNDED` whose `swapDetails` don't read counts as still
   arriving. A quote's `depositMemo` may be missing, null or empty: all mean no memo.
-- **Fees** (checked against live quotes, 5 November 2026): 0.01% on stablecoin pairs with a partner key (without one
-  1Click adds 0.25%), taken out of what reaches the treasury; Alcove absorbs it, adding by what was sent ([Plans and usage › Adding money](../engineering/plans-and-usage.md#adding-money)). Withdrawing from the Intents balance costs
-  a flat 0.004615 USDC each time, so the treasury withdraws in batches
+- **Fees** (checked against live quotes, 5 November 2026): 0.01% on stablecoin pairs with a partner key, which top-ups
+  now always have, taken out of what reaches the treasury; Alcove absorbs it, adding by what was sent ([Plans and usage › Adding money](../engineering/plans-and-usage.md#adding-money)). Withdrawing from an Intents balance cost
+  a flat 0.004615 USDC each time when checked, so the treasury withdraws in batches
   ([Plans and usage › Treasury runbook](../engineering/plans-and-usage.md#treasury-runbook)).
+- **Not yet seen live** (they take a partner key, or money): a confidential quote's answer and a confidential deposit's
+  status. Both are taken to have the public ones' shapes, as 1Click's OpenAPI schema and near.com's code give them, and are
+  read with the same checks.
 
 ## Setup order and required configuration
 
@@ -105,7 +145,7 @@ refused (401), which makes top-ups unavailable.
 | 5. C01 deployment | API and meeting application IDs, accepted OS/node/instance configuration, measurements, verified channel/key binding, distinct service-seal paths | Actual attestation and permitted secret bootstrap; invalid evidence rejected |
 | 6. Sign-in and keys | Google and Microsoft OAuth clients and the OIDC SSO configuration; `KMASTER` released only to the attested API VM | Verified sign-in, session expiry, cross-owner and ciphertext tests |
 | 7. I01 route | Canonical model ID, approved endpoint, SDK/source integrity, request/receipt handling, supplier funding and deadlines | Actual protected request, cited usable answer and truthful expense/verification state |
-| 8. P01 top-ups | `TREASURY_INTENTS_ACCOUNT` (and `ONECLICK_API_KEY` for the lower fee); the allowlisted routes still listed in `/v0/tokens` | Real supported SUCCESS outcome linked to its top-up; once-only adding and retry checks |
+| 8. P01 top-ups | `TREASURY_INTENTS_ACCOUNT` (env.sh), `TREASURY_INTENTS_KEY` (a full access key registered for it in intents.near) and `ONECLICK_API_KEY`, in production the secrets `alcove-treasury-intents-key` and `alcove-oneclick-api-key`, granted by `setup.sh`; the allowlisted routes still listed in `/v0/tokens` | The treasury signs in; a real supported SUCCESS outcome in the confidential balance linked to its top-up; once-only adding and retry checks |
 | 9. Meet route | Guest-enabled meeting permission, visible attendee name, actual browser/media egress, frozen source selectors and local speech image | Host-admitted actual remote audio, stop/leave, timed encrypted transcript and import |
 | 10. Release rehearsal | The linked engineering acceptance checklist and MVP task dependencies | Real purchase → documents → paid chat → actual meeting → cross-source answer → private receipt/storage inspection |
 

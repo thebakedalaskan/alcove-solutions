@@ -12,8 +12,9 @@
 # pool may use any of it), its static IP, health checks, load balancer, and with --image (a signed image) its managed
 # instance group; otherwise the first deploy.sh makes the group. Staging also gets its own empty database, bucket, old
 # keys and LiveKit placeholders: nothing of production's. Wherever the whole pool was granted something, it takes that
-# away. Having done everything else, it fails while a secret the API reads has no version. README.md says what each
-# piece is for and when to run this.
+# away. Having done everything else, it fails while a secret the API reads has no version, but for the top-up secrets,
+# which only a person makes: one of those that doesn't exist yet is reported with the command that adds it and granted
+# once it does, and deploy.sh refuses to roll out without it. README.md says what each piece is for and when to run this.
 set -euo pipefail
 # shellcheck source=infra/confidential-space/lib.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -64,7 +65,8 @@ if [[ -z "$proxy_range" ]]; then
 fi
 exists cs_gc compute routers describe "$CS_ROUTER" --region="$CS_REGION" ||
   cs_gcm compute routers create "$CS_ROUTER" --network="$CS_NETWORK" --region="$CS_REGION"
-# Let's Encrypt, Cloudflare's API, LiveKit, NEAR AI and R2 are reached through NAT; Google's APIs stay on Google's network.
+# Let's Encrypt, Cloudflare's API, LiveKit, NEAR AI, R2, 1Click and NEAR's RPC are reached through NAT; Google's APIs stay
+# on Google's network.
 exists cs_gc compute routers nats describe "$CS_NAT" --router="$CS_ROUTER" --region="$CS_REGION" ||
   cs_gcm compute routers nats create "$CS_NAT" --router="$CS_ROUTER" --region="$CS_REGION" \
     --nat-custom-subnet-ip-ranges="$CS_SUBNET" --auto-allocate-nat-external-ips --min-ports-per-vm=1024
@@ -315,14 +317,27 @@ cs_iam kms keys add-iam-policy-binding "$CS_MASTER_KEY" --keyring="$CS_KEYRING" 
 revoke_pool key "$CS_MASTER_KEY" "$CS_PRINCIPAL_SET"
 # Exactly the secrets in SECRETS, and the old KMASTER and KSERVICE only while CS_LEGACY is carry (env.sh). Once they're
 # retired this grants them no more, and README.md › The old keys deletes them, which takes their bindings with them.
+# The top-up secrets (CS_TOPUP_SECRETS) only a person makes, with their values, so this runs before they exist: one that
+# doesn't exist yet, or has no version, is reported at the end with the command that adds it, and granted once it exists.
+# deploy.sh won't roll out until both can be read.
 declare -A handled=()
-unversioned=()
-for secret in "${CS_SECRETS[@]#*=}" ${CS_LEGACY_SECRETS[@]+"${CS_LEGACY_SECRETS[@]}"}; do
-  exists cs_gc secrets describe "$secret" || [[ "$CS_DRY_RUN" == true ]] ||
-    cs_die "secret $secret doesn't exist: infra/bootstrap-gcp.sh makes production's, and this script staging's"
+unversioned=() topups_missing=() topups_unversioned=()
+for entry in "${CS_SECRETS[@]}" ${CS_LEGACY_SECRETS[@]+"${CS_LEGACY_SECRETS[@]/#/legacy=}"}; do
+  secret="${entry#*=}"
+  if ! exists cs_gc secrets describe "$secret"; then
+    if cs_topup_secret "$entry"; then
+      cs_warn "$secret doesn't exist yet, or couldn't be read: $CS_ENV's VMs aren't granted it (a person adds it, below)"
+      topups_missing+=("$entry")
+      continue
+    fi
+    [[ "$CS_DRY_RUN" == true ]] ||
+      cs_die "secret $secret doesn't exist: infra/bootstrap-gcp.sh makes production's, and this script staging's"
+  fi
   cs_iam secrets add-iam-policy-binding "$secret" --member="$CS_PRINCIPAL_SET" --role=roles/secretmanager.secretAccessor
   revoke_pool secret "$secret" "$CS_PRINCIPAL_SET"
-  [[ -n "${filled[$secret]:-}" || -n "$(latest_version "$secret")" ]] || unversioned+=("$secret")
+  if [[ -z "${filled[$secret]:-}" && -z "$(latest_version "$secret")" ]]; then
+    if cs_topup_secret "$entry"; then topups_unversioned+=("$entry"); else unversioned+=("$secret"); fi
+  fi
   handled[$secret]=1
 done
 cs_say "Nothing granted to the whole pool: every key in $CS_KEYRING and every secret"
@@ -349,7 +364,7 @@ else
   [[ -z "$exempted" ]] || cs_warn "Cloud KMS's Data Access audit logs leave out $exempted: nothing should be exempt"
 fi
 
-cs_say "The deploy account, $CS_DEPLOY_SA: templates and the groups, the signing key, the registry, the migration job"
+cs_say "The deploy account, $CS_DEPLOY_SA: templates and the groups, the signing key, the registry, the migration job, and seeing the API's secrets are there"
 exists cs_gc iam service-accounts describe "$CS_DEPLOY_SA" || [[ "$CS_DRY_RUN" == true ]] ||
   cs_die "$CS_DEPLOY_SA doesn't exist: run infra/bootstrap-gcp.sh first"
 deployer_permissions=(
@@ -396,6 +411,10 @@ cs_iam projects add-iam-policy-binding "$CS_PROJECT" --member="serviceAccount:$C
 # Making or rolling a group makes its VMs as the caller, which needs compute.instances.create and the permissions around
 # it (disks, the subnet, metadata, the attached account): the first production deploy (13 Nov 2026) failed without them.
 cs_iam projects add-iam-policy-binding "$CS_PROJECT" --member="serviceAccount:$CS_DEPLOY_SA" --role=roles/compute.instanceAdmin.v1
+# deploy.sh checks, before it rolls anything out, that each secret the API reads exists, has a version and is granted to
+# the environment's VMs (cs_check_secrets). Secret Manager's viewer reads secrets' names, versions and policies, and no
+# value: it has no secretmanager.versions.access.
+cs_iam projects add-iam-policy-binding "$CS_PROJECT" --member="serviceAccount:$CS_DEPLOY_SA" --role=roles/secretmanager.viewer
 
 cs_say "$CS_ENV's load balancer: a regional external proxy Network Load Balancer on $CS_ADDRESS"
 exists cs_gc compute addresses describe "$CS_ADDRESS" --region="$CS_REGION" ||
@@ -454,6 +473,8 @@ if cs_mig_exists; then
   cs_converge_mig
   [[ -z "$image" ]] || cs_say "$CS_MIG exists; deploy.sh rolls it onto an image"
 elif [[ -n "$image" ]]; then
+  # A group's first VM reads every secret the API reads, as a deploy's does: refused while one can't be read.
+  cs_check_secrets
   cs_check_quota
   cs_image="$(cs_confidential_space_image)"
   template="$(cs_template_name "$image")"
@@ -474,6 +495,17 @@ Done: $CS_ENV in Confidential Space.
   Signing key id    $CS_SIGNING_KEY_ID ($CS_SIGNING_ALGORITHM)
   Group             $CS_MIG in $CS_ZONE
 DONE
+# The top-up secrets this run couldn't make ready, which only a person can: setup doesn't fail for them, deploy.sh does.
+if ((${#topups_missing[@]} + ${#topups_unversioned[@]})); then
+  cs_warn "top-ups need ${CS_TOPUP_SECRETS[*]#*=}, which only a person adds; $CS_ENV's API reads them, and deploy.sh won't roll out until each exists with a version and is granted to $CS_ENV's VMs"
+  {
+    printf 'Add what they are missing, never printing a value (README.md › The top-up secrets), then run this script again to grant them:\n'
+    for entry in ${topups_missing[@]+"${topups_missing[@]}"}; do printf '  %s\n' "$(cs_add_secret_command "$entry" create)"; done
+    for entry in ${topups_unversioned[@]+"${topups_unversioned[@]}"}; do printf '  %s\n' "$(cs_add_secret_command "$entry" version)"; done
+    printf 'TREASURY_INTENTS_KEY is a full access key of %s (ed25519: and 64 bytes, base58), registered for it in intents.near;\n' "$CS_TREASURY_ACCOUNT"
+    printf 'ONECLICK_API_KEY is the partner key from partners.near-intents.org.\n'
+  } >&2
+fi
 if ((${#unversioned[@]})); then
   if [[ "$CS_DRY_RUN" == true ]]; then
     cs_warn "these secrets have no version yet, or couldn't be read; the API can't start until each has one: ${unversioned[*]}"

@@ -43,8 +43,12 @@ const LIVEKIT_SECRET = marker('livekit-secret');
 const SECRET_NAMES = {
   DATABASE_URL: 'alcove-database-url', OBJECTS_ACCESS_KEY: 'alcove-objects-access-key', OBJECTS_SECRET_KEY: 'alcove-objects-secret-key',
   LIVEKIT_API_KEY: 'alcove-livekit-api-key', LIVEKIT_API_SECRET: 'alcove-livekit-api-secret', GOOGLE_CLIENT_ID: 'alcove-google-client-id',
-  GOOGLE_CLIENT_SECRET: 'alcove-google-client-secret', CLOUDFLARE_API_TOKEN: 'alcove-cloudflare-api-token'
+  GOOGLE_CLIENT_SECRET: 'alcove-google-client-secret', CLOUDFLARE_API_TOKEN: 'alcove-cloudflare-api-token',
+  // Top-ups: the treasury's NEAR key and 1Click's partner key.
+  TREASURY_INTENTS_KEY: 'alcove-treasury-intents-key', ONECLICK_API_KEY: 'alcove-oneclick-api-key'
 };
+/** USDC on Base, a route the stand-in 1Click lists. */
+const BASE_USDC = 'nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near';
 
 let h: Harness;
 let gcp: FakeGcp;
@@ -83,6 +87,9 @@ const env = (more: Record<string, string> = {}): NodeJS.ProcessEnv => ({
   WEB_ORIGIN: WEB, API_URL: API, OBJECTS_ENDPOINT: h.deps.cfg.OBJECTS_ENDPOINT, OBJECTS_BUCKET: h.deps.cfg.OBJECTS_BUCKET,
   LIVEKIT_URL: h.deps.cfg.LIVEKIT_URL, GOOGLE_ISSUER: h.google.issuer, GOOGLE_API_URL: h.google.issuer, PHOTO_HOSTS: 'googleusercontent.com,127.0.0.1',
   DEMO_AUTH_ENABLED: 'false', LIMITS_CACHE_MS: '0', FEATURE_FLAGS_CACHE_MS: '0', DOC_WORKERS: '1', CLOUDFLARE_ZONE: acme.zone, ACME_DIRECTORY: acme.directory,
+  // The treasury top-ups pay, which the environment names; its key and the partner key are secrets. And where the stand-in
+  // 1Click and NEAR's RPC are, which production leaves at their defaults.
+  TREASURY_INTENTS_ACCOUNT: h.oneclick.settings.TREASURY_INTENTS_ACCOUNT, ONECLICK_BASE_URL: h.oneclick.settings.ONECLICK_BASE_URL, NEAR_RPC_URL: h.oneclick.settings.NEAR_RPC_URL,
   ...more
 });
 /** What the server reaches here in place of production's: the stand-ins. */
@@ -152,6 +159,8 @@ beforeAll(async () => {
       [SECRET_NAMES.DATABASE_URL]: `${url}\n`, [SECRET_NAMES.OBJECTS_ACCESS_KEY]: h.deps.cfg.OBJECTS_ACCESS_KEY, [SECRET_NAMES.OBJECTS_SECRET_KEY]: h.deps.cfg.OBJECTS_SECRET_KEY,
       [SECRET_NAMES.LIVEKIT_API_KEY]: LIVEKIT_KEY, [SECRET_NAMES.LIVEKIT_API_SECRET]: LIVEKIT_SECRET,
       [SECRET_NAMES.GOOGLE_CLIENT_ID]: h.google.clientId, [SECRET_NAMES.GOOGLE_CLIENT_SECRET]: h.google.clientSecret, [SECRET_NAMES.CLOUDFLARE_API_TOKEN]: acme.token,
+      // The test key the stand-in 1Click registered for the treasury, and its partner key.
+      [SECRET_NAMES.TREASURY_INTENTS_KEY]: h.oneclick.settings.TREASURY_INTENTS_KEY, [SECRET_NAMES.ONECLICK_API_KEY]: h.oneclick.settings.ONECLICK_API_KEY,
       // The keys the database's accounts were made under, until the old master is retired.
       'alcove-kmaster': h.deps.cfg.KMASTER, 'alcove-kservice': h.deps.cfg.KSERVICE
     }
@@ -206,6 +215,9 @@ describe('confidential space', () => {
     expect(a.deps.cfg.GOOGLE_CLIENT_SECRET).toBe(h.google.clientSecret);
     expect(a.deps.cfg.edge?.token).toBe(acme.token);
     expect(a.deps.cfg.DATABASE_URL).toBe(process.env['TEST_DATABASE_URL']);
+    // The treasury's key, made a signer as it was read, and 1Click's partner key: top-ups are on.
+    expect(a.deps.cfg.TREASURY_INTENTS_KEY?.publicKey).toBe(h.oneclick.treasuryPublicKey);
+    expect(a.deps.cfg.ONECLICK_API_KEY).toBe(h.oneclick.settings.ONECLICK_API_KEY);
     expect([...gcp.read].sort()).toEqual([...Object.values(SECRET_NAMES), 'alcove-kmaster', 'alcove-kservice'].sort());
     expect(gcp.exchanged).toEqual([await readFile(gcp.google.tokenFile, 'utf8')]);
     // The master is what Cloud KMS gave back, as it gave it; it isn't the old one, and what the database's accounts need is carried.
@@ -219,6 +231,12 @@ describe('confidential space', () => {
     expect(await viaGoogle(there, ann, WEB)).toBe('/home');
     expect((await there.api.auth.getSession())?.ownerId).toBe(annId);
     expect((await there.api.meetings.get(meetingId)).guests.map((g) => g.email)).toEqual(['guest@vandelay.test']);
+    // She adds money: a quote paying the treasury's confidential balance, asked for beside the partner key and signed in as
+    // the treasury with the key Secret Manager gave the TEE.
+    expect((await there.api.plans.startTopUp(BASE_USDC, 10_000_000)).state).toBe('waiting');
+    expect(h.oneclick.quotes.at(-1)).toMatchObject({ recipientType: 'CONFIDENTIAL_INTENTS', refundType: 'CONFIDENTIAL_INTENTS' });
+    expect(h.oneclick.apiKeys.at(-1)).toBe(h.oneclick.settings.ONECLICK_API_KEY);
+    expect(h.oneclick.accountOf(h.oneclick.bearers.at(-1) ?? '')).toBe(h.oneclick.settings.TREASURY_INTENTS_ACCOUNT);
     // And every account is wrapped again under the TEE's master, in the background.
     await until(() => h.logs.some((l) => l.includes('"msg":"owners rewrapped"')), 'the accounts rewrapped');
     expect(z.object({ n: z.number() }).parse((await h.pool.query('SELECT count(*)::int AS n FROM owners WHERE root_envelope_v2 IS NULL')).rows[0]).n).toBe(0);
@@ -240,7 +258,10 @@ describe('confidential space', () => {
     const pemLines = (pem: string) => pem.split('\n').filter((l) => l.length === 64);
     const unlocking = [...gcp.exchanged, ...gcp.accessTokens, ...pemLines(tlsKey(master).privateKeyPem), ...pemLines(acmeAccountKey(master).privateKeyPem)];
     expect(gcp.accessTokens.length).toBeGreaterThan(0);
-    for (const secret of [LIVEKIT_KEY, LIVEKIT_SECRET, h.google.clientSecret, acme.token, h.deps.cfg.KMASTER, h.deps.cfg.KSERVICE, a.deps.cfg.KMASTER, process.env['TEST_DATABASE_URL'] ?? 'no url', ...unlocking]) {
+    const treasuryKey = h.oneclick.settings.TREASURY_INTENTS_KEY;
+    const topUpSecrets = [treasuryKey, treasuryKey.slice('ed25519:'.length), h.oneclick.settings.ONECLICK_API_KEY, ...h.oneclick.tokens()];
+    expect(h.oneclick.tokens().length).toBeGreaterThanOrEqual(2);
+    for (const secret of [LIVEKIT_KEY, LIVEKIT_SECRET, h.google.clientSecret, acme.token, h.deps.cfg.KMASTER, h.deps.cfg.KSERVICE, a.deps.cfg.KMASTER, process.env['TEST_DATABASE_URL'] ?? 'no url', ...unlocking, ...topUpSecrets]) {
       expect(logs.includes(secret), 'a secret in the logs').toBe(false);
     }
     expect(logs).toContain('"msg":"secrets read"');
@@ -370,6 +391,8 @@ describe('confidential space', () => {
     // Nor does it start without its own TLS, or with a secret in its environment.
     await expect(start({ TLS_HOSTS: '' })).rejects.toThrow(/TLS_HOSTS: inside a TEE/);
     await expect(start({ LIVEKIT_API_SECRET: LIVEKIT_SECRET })).rejects.toThrow(/LIVEKIT_API_SECRET is in the environment too/);
+    // Least of all the treasury's key, which the attestation, and so the launcher's log, would show.
+    await expect(start({ TREASURY_INTENTS_KEY: h.oneclick.settings.TREASURY_INTENTS_KEY })).rejects.toThrow(/TREASURY_INTENTS_KEY is in the environment too/);
   });
 
   it('stops at start, naming what refused, when its attestation isn’t exchanged, a secret isn’t there, or there’s no token', async () => {
