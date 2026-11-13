@@ -18,7 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { useCheckout } from '~/features/plans/checkout';
-import { PLAN_NAMES, endsIn, nextPeriodMinutes, noticesLike, noticesNow, notesLeft, notesLow, notesOut, notesShare, proEnding, renews, teamLicenses } from '~/features/plans/plan-state';
+import { PLAN_NAMES, endsIn, nextPeriodMinutes, noticesLike, noticesNow, notesLeft, notesLow, notesOut, notesShare, paidFor, payingNow, proEnding, renews, teamLicenses } from '~/features/plans/plan-state';
 import { checkoutFor, purchaseName, restToSend, tokensExact } from '~/features/plans/purchase';
 import { hoursOfNotes } from '~/features/plans/words';
 import { useNow } from '~/lib/live';
@@ -60,13 +60,16 @@ export function PlanGroup({ plan }: { plan: Plan }) {
 /* ------------------------------------------------------------------ what you have */
 
 /**
- * What the plan's owner was told, at the top until dismissed (plan-state's noticesNow): Pro renewed or ended, and a team's
- * (PlanTeam.tsx). Dismissing one dismisses those of its kind it stood for too, and leaves focus on the next, or on the plan.
+ * What the plan's owner was told, at the top until dismissed (plan-state's noticesNow): Pro renewed or ended, a team's
+ * (PlanTeam.tsx), and that you pay for a workspace now, named from the workspaces you're in. Dismissing one dismisses those
+ * it stood for too, and leaves focus on the next, or on the plan.
  */
 function Notices({ plan, team }: { plan: Plan; team: MyTeam | null | undefined }) {
   const dismiss = useDismissPlanNotice();
   const toast = useToast();
-  const shown = noticesNow(plan, team);
+  // The workspaces you're in, read only while a notice names one: the plan keeps its ID, never its name.
+  const spaces = useQuery({ ...q.workspaces(), enabled: plan.notices.some(payingNow) }).data;
+  const shown = noticesNow(plan, team, spaces);
   const close = (n: PlanNotice) => {
     const all = async () => { for (const id of noticesLike(plan, n)) await dismiss.mutateAsync(id); };
     void all().then(() => requestAnimationFrame(() => {
@@ -77,6 +80,14 @@ function Notices({ plan, team }: { plan: Plan; team: MyTeam | null | undefined }
   };
   return shown.map((n) => {
     const teams = teamNoticeSays(n, plan, team);
+    const paying = paidFor(n, spaces);
+    if (paying) {
+      return (
+        <SettingNote key={n.id} icon="hardDrive" onDismiss={() => close(n)} dismissLabel="Dismiss this notice">
+          {`You now pay for ${paying.name}, since whoever paid for it isn’t in it any more. Its files count against your storage ${n.until === null ? 'from now' : `from ${longDay(new Date(n.until))}`}.`}
+        </SettingNote>
+      );
+    }
     return (
       <SettingNote key={n.id} icon={teams?.icon ?? (n.kind === 'pro-renewed' ? 'repeat' : 'info')} onDismiss={() => close(n)} dismissLabel="Dismiss this notice">
         {teams ? teams.text : n.kind === 'pro-renewed'

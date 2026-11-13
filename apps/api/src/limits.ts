@@ -49,8 +49,10 @@ const WHOLE_DOWNLOAD_BYTES = 512 * MiB;
  * a team license's price and Pro's lower price for a year or more, the most months or licenses one purchase buys and when
  * Pro's end is told; more notes for a period, their price and the most bought at once; when a team's admin is told licenses
  * are low and how long an invite works; what an hour of notes is reckoned at, when AI stops and when an organizer is told
- * it's close, and how much of it guests in one call may spend; how long a plan's period and its grace last; the longest call and the most people in one; and what one
- * person uploads in a day, everywhere. A ceiling leaves room to raise a default a long way, except a file's, which is
+ * it's close, and how much of it guests in one call may spend; how long a plan's period and its grace last; the longest call and the most people in one; what one
+ * person uploads in a day, everywhere, and what others add in a day to an account's storage, what's kept of it for the
+ * account's own notes, and how long a workspace's files wait to count against whoever its payment moves to. A ceiling
+ * leaves room to raise a default a long way, except a file's, which is
  * WHOLE_DOWNLOAD_BYTES for every plan: a whole file is read in one response, which is cut at 280 seconds, so 512 MiB
  * already needs about 15 Mbit/s to download whole. Zero is a value: none.
  */
@@ -88,7 +90,11 @@ export const LIMITS = {
   'team.low_licenses': { default: 5, floor: 0, ceiling: 100_000, unit: 'count', measures: 'Unconsumed licenses below which a team’s admin is told they’re running low.' },
   'team.invite_seconds': { default: DAY, floor: MINUTE, ceiling: 30 * DAY, unit: 'seconds', measures: 'How long a link to join a team works, once.' },
   'workspaces.max_made': { default: 1_000, floor: 1, ceiling: 100_000, unit: 'count', measures: 'The most workspaces one account makes, to stop one from making them without end.' },
-  'media.account_day_bytes': { default: 20 * GiB, floor: 0, ceiling: 200 * GiB, unit: 'bytes', measures: 'What one person uploads in a day (UTC), in every workspace.' }
+  'media.account_day_bytes': { default: 20 * GiB, floor: 0, ceiling: 200 * GiB, unit: 'bytes', measures: 'What one person uploads in a day (UTC), in every workspace.' },
+  'media.others_day_bytes': { default: 2 * GiB, floor: 0, ceiling: 200 * GiB, unit: 'bytes', measures: 'What someone signed in adds in a day (UTC) to another account’s storage, through the workspaces it pays for: four of Free’s largest files. Someone licensed on the same team adds to its pool as to their own.' },
+  'media.guests_day_bytes': { default: 256 * MiB, floor: 0, ceiling: 200 * GiB, unit: 'bytes', measures: 'What guests in calls add between them in a day (UTC) to the storage of the account whose workspaces they work in.' },
+  'media.payer_reserve_bytes': { default: GiB, floor: 0, ceiling: TiB, unit: 'bytes', measures: 'What’s kept of an account’s storage for its own notes and recordings: uploads by anyone else stop once its room would fall below this. About five hours of a call with a screen shared.' },
+  'workspaces.payer_grace_seconds': { default: 15 * DAY, floor: 0, ceiling: 90 * DAY, unit: 'seconds', measures: 'When payment for a workspace moves to one of its admins because whoever paid for it left: how long until the files it held then count against their storage. As long as plan.grace_seconds, so every storage grace is the same time to sort things out.' }
 } as const satisfies Record<string, LimitSpec>;
 export type LimitName = keyof typeof LIMITS;
 export const isLimitName = (name: string): name is LimitName => Object.hasOwn(LIMITS, name);

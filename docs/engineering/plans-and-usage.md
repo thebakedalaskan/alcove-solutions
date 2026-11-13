@@ -150,15 +150,41 @@ after notes stop too; a cheaper one always goes.
 ## Storage
 
 What an account stores is its own row's `stored_bytes` (its calls' audio and shared screens, its room recordings) and
-every workspace it pays for (`workspaces.payer_owner_id`): the shared ones it made, and its calls' homes, whose files count
-against the organizer whoever adds them, guests included (`features/billing/storage.ts`). A home's payer is the call's
-organizer whoever's action made it: their scheduling choice, getting the call ready before it starts (`calls.ready`), the
-first time anyone opens Workspace in it, or its end with notes (`makeHome`).
-Only someone in a workspace pays for it: when its payer leaves it or is taken out, it counts against whoever made
-it if they're still in it, else its first admin with an account, at once. Upkeep settles any it missed every 5 minutes,
-whatever made a payer stop being in a workspace. A workspace none of whose admins has an account counts against nobody,
-and takes no files ("Files can't be added until one of this workspace's admins signs in to Alcove."), until upkeep's
-next pass after an admin signs in.
+every workspace it pays for (`workspaces.payer_owner_id`): the shared ones it made, its calls' homes, whose files count
+against the organizer whoever adds them, guests included, and any whose payment moved to it (`features/billing/storage.ts`).
+A workspace is paid for by its longest-standing admin with an account: for a new one, whoever made it. A home's payer is
+the call's organizer whoever's action made it: their scheduling choice, getting the call ready before it starts
+(`calls.ready`), the first time anyone opens Workspace in it, or its end with notes (`makeHome`).
+
+### When whoever pays leaves
+
+Only someone in a workspace pays for it. When its payer leaves it, is taken out of it or deletes their account, its payment
+moves at once to its longest-standing admin with an account (`settlePayer`, run for that workspace by the change itself, in
+its transaction; upkeep's `settlePayers` settles any it missed every 5 minutes, each in a transaction of its own, whatever made
+a payer stop being in a workspace). An admin whose account is being deleted at that very moment is passed over, not waited
+for.
+
+- **A grace.** For `workspaces.payer_grace_seconds` (15 days) what the workspace held as it moved is on top of the new
+  payer's storage (`workspaces.payer_grace_until` and `payer_grace_bytes`, counted at most at what it holds now; on Team, on
+  top of the pool): the move refuses none of their uploads and stops none of their notes until then. What's added to it
+  meanwhile counts as anything else does. 15 days is `plan.grace_seconds`, so every storage grace gives the same time to
+  sort things out (look through its files, delete or move what isn't needed, get Pro, or hand the workspace to someone
+  else), and it's a limit of its own so it can change by itself. A grace still running when payment moves again goes on as
+  it was, to the same end and over the same bytes, so passing a workspace back and forth makes no more room than moving it
+  once. Once it ends, the workspace's files count like any others, with no second grace.
+- **Told.** The new payer is told once the move has committed: a `workspace-payer` notice in `Plan.notices`, with the
+  workspace's ID and when its files start to count (`until`; null with no grace). The plan never keeps the workspace's name:
+  Settings › Plan and the side panel name it from the workspaces they're in ("You now pay for Harbour launch, since whoever
+  paid for it isn’t in it any more. Its files count against your storage from Friday 27 November."), and the browser's
+  notification says only that the plan changed.
+- **Refused.** A payer's leaving, or being taken out, while none of the other admins has an account is refused (`conflict`,
+  "You pay for this workspace’s storage, and none of its other admins has an Alcove account to take that on. Make someone
+  who has one an admin, then leave."), and nothing changes. Deleting an account is never refused for it: a workspace it paid
+  for with no other admin who has an account counts against nobody, and takes no files ("Files can't be added until one of
+  this workspace's admins signs in to Alcove."), until upkeep's next pass after one signs in. It counts against them from
+  then, with no grace or notice: nothing moved from anyone.
+- Logged `workspace payer moved` (the workspace, who from, who to and when its grace ends), `workspace left with nobody to
+  pay for it`, and the refusal at info with `why: 'nobody to pay'`.
 
 A call opens the workspace it uses to everyone in it, guests included, so whatever they add there counts against its payer,
 and AI a guest asks for there is paid by it (on the default model: anyone signed in pays for their own). So it does that only while the organizer pays for it: its payer is the account the
@@ -178,9 +204,32 @@ opening one a teammate pays for would spend that teammate's allowance.
   shared screens too: then notes stop for everyone, as when the allowance is spent, with reason `storage`. Notes don't come
   on again without 1 MiB free.
 - `media.account_day_bytes` still caps what one person uploads in a day, everywhere.
+- Each refusal logs the plan's limit by its name (`plan.free.file_bytes`, `plan.free.storage_bytes`, …) with what's stored,
+  what was being added and what the storage is held to (`held.ts › roomOf`, `roomContext`).
 - Workspaces aren't counted against a plan: an account makes as many as it likes, and storage is the only limit. One
   account can make at most `workspaces.max_made` (1,000), an abuse guard that a plan doesn't change.
 - An account warns, once, at 80% of its storage (logged with IDs and sizes).
+
+### What others can add
+
+Files anyone adds to a workspace count against its payer, so what others add is held apart from what the payer adds
+(`features/workspaces/media.ts › withinLimits`). "Others" is everyone but the payer and, on Team, the people licensed on the
+same team, whose pool it is as much as theirs:
+
+- **A day's allowance.** Someone signed in adds at most `media.others_day_bytes` (2 GiB) a day (UTC) to one account's
+  storage, through all the workspaces it pays for: four of Free's largest files, more than a person adds to someone else's
+  storage on an ordinary day, and five days of it to fill Free. Guests in its calls add at most `media.guests_day_bytes`
+  (256 MiB) a day between them: a guest is someone new each time they join, so only the payer stays the same to count
+  against, and 256 MiB is still about 80 photos (a guest's file can be no bigger, then). Past it: `409 conflict`, "That’s all you can add today to the storage this
+  workspace counts against. You can add more tomorrow." Counted in `media_others_days` (by the payer and the uploader's
+  account) and `media_guest_payer_days` (by the payer), sizes and IDs only; upkeep keeps today and yesterday.
+- **Room kept for notes.** Others' uploads stop once the payer's room would drop below `media.payer_reserve_bytes`
+  (1 GiB), which only the payer's own uploads, notes and recordings use: `402 plan-limit`, "This workspace can’t take more
+  files now: the rest of the storage it counts against is kept for notes and recordings." (and once it's full, "This
+  workspace can’t take more files: the storage it counts against is full."). 1 GiB is about five hours of a call with a
+  screen shared all through (audio at 32 kbps, a shared screen's video at about 400 kbps: some 200 MB an hour) or seventy
+  of audio alone, and a tenth of Free's storage, so nobody else's files can stop a payer's notes.
+- The words never say whose storage it is or what's left. The log line has the limit's name, the sizes and the reserve.
 
 ### Over the limit: the grace
 
@@ -189,7 +238,8 @@ An account over its plan's storage gets `plan.grace_seconds` (15 days) with ever
 then; upkeep ends it). Then uploads stop everywhere the account pays for, and notes stop for everyone, as above. Making
 room, or buying Pro, lifts it; nothing is ever deleted for being over, and every workspace stays readable and editable.
 While both graces run the larger holds, and the plan shows the later end (`Plan.grace`). Buying Pro ends either at once:
-only Pro's limits apply on Pro.
+only Pro's limits apply on Pro. A workspace whose payment moved to the account adds its own grace on top, whatever the plan
+([above](#when-whoever-pays-leaves)); while one runs, `Plan.grace` shows the soonest end there is.
 
 ## Calls
 
@@ -452,14 +502,18 @@ index). An address signed in to more than one account (through different provide
   kept, how many notices wait and how many top-ups it has in each state. What the job prints is kept in Cloud Logging, so
   that's all it says: what a log may hold, never an amount, a history, a date or an address.
 - `billing credit <who> <usd>`: adds dollars (`20`, `4.50`, at most $10,000) to the balance, as "Added by support", logged
-  `balance added by support` with the owner and the top-up, never the amount. Named by a top-up's reference, that top-up
-  is never asked about again, so a payment 1Click settles for it later can't add it a second time, and one Alcove still
-  watches (open, or cancelled while its address takes a payment) is refused, since what reaches it is added by itself. One
-  that was added already is left as it was: what support adds then is a stray payment of its own. Locally, with an
-  address, it's the fake money for buying Pro without 1Click.
+  `balance added by support` with the owner and the top-up, never the amount. Named by a top-up's reference, it's that
+  top-up's money, added in its place, once: the top-up is never asked about again, and the answer to a check of it already
+  on its way to 1Click adds nothing, so a payment 1Click settles for it later can't add it a second time, whichever comes
+  first. One given up on with no answer from 1Click reads as failed from then on. Refused by its reference, with nothing
+  added: one Alcove still watches (open, or cancelled while its address takes a payment), since what reaches it is added by
+  itself; one added already, by itself or by support; one settled with nothing to add; and one past the 30 days it's
+  watched for. Anything else, such as a second payment to a used address, is added by the account's ID, which
+  `billing show <reference>` says. Locally, with an address, it's the fake money for buying Pro without 1Click.
 
-Every refusal (an amount that isn't one, nobody found, more than one account, a top-up still watched) exits 1 and logs
-`billing refused` at warn, with its code or why, never what was typed: it may be an address put in the wrong place.
+Every refusal (an amount that isn't one, nobody found, more than one account, a top-up still watched or added already)
+exits 1 and logs `billing refused` at warn, with its code or why, never what was typed: it may be an address put in the
+wrong place.
 
 ## Adding money
 
@@ -490,9 +544,9 @@ is `arriving`, logged at error once with the reason, and fails at its deadline s
 | Top-up routes (`GET /v1/plan/routes`) | Working. USDC on NEAR, Ethereum, Solana, Base, Arbitrum, Polygon, BNB Chain, Optimism and Avalanche, in that order, while 1Click lists them, each with its minimum. USDT isn't offered; a USDT top-up opened before still settles and shows as before. A server without `TREASURY_INTENTS_ACCOUNT` answers `unavailable` on every top-up endpoint; `ONECLICK_API_KEY` is optional and only lowers 1Click's fee |
 | Opening a top-up (`POST /v1/plan/top-ups { routeId, microUsd, buys }`) | Working. With `buys`, what it's to buy is checked first ([below](#a-payment-that-buys)). A 1Click quote paying the treasury exactly that gives a one-off deposit address on the route's chain, open for 24 hours, kept sealed (`deposits`, record kind `deposit`). At most 10 a minute per account per API instance; refused with `conflict` while the account has 15 top-ups waiting for a payment to an address that hasn't expired, or has opened 30 in the last 24 hours (cancelled ones count). Both counts are checked in Postgres, again under a lock on the account in the transaction that inserts the deposit |
 | Cancelling a top-up (`POST /v1/plan/top-ups/:id/cancel`) | Working. Only a `waiting` top-up can be cancelled. Its address is no longer shown and it no longer counts toward the 15 waiting. 1Click can't cancel a quote, so a payment that reaches it is still added. It still counts toward the 30 a day |
-| Adding a top-up | Working. On `SUCCESS` or `REFUNDED` that passes the checks above, what was sent is added by the rules above, in the transaction that marks the deposit `credited`, under its row lock: once, however many checks race. What it was opened to buy is bought in that transaction. `FAILED` is `failed`, logged at error. A `failed`, `expired` or `cancelled` deposit is still added when 1Click later settles it, and still buys |
+| Adding a top-up | Working. On `SUCCESS` or `REFUNDED` that passes the checks above, what was sent is added by the rules above, in the transaction that marks the deposit `credited`, under its row lock: once, however many checks race. What it was opened to buy is bought in that transaction while the payment is live (`waiting`, `arriving` or `short`). `FAILED` is `failed`, logged at error. A `failed`, `expired` or `cancelled` deposit is still added when 1Click later settles it, and buys nothing |
 | Watching top-ups | Working, unchanged: every open deposit is asked about every 10 s for 15 minutes, every minute until 2 hours, then every 5 minutes, thinning out after its deadline (see below) |
-| A top-up paid for before plans, or settled by the previous release while this one deployed | Working. It added credits, which no longer count: upkeep adds it again as dollars, once (`creditCarried`: every `credited` deposit settled before a day after `billing_cutover`, looked at once each, then `check_after` infinity) |
+| A top-up paid for before plans, or settled by the previous release whenever it serves (while this one deploys, or after a rollback) | Working. It added credits, which no longer count: upkeep adds it again as dollars, once, on every pass (`creditCarried`: every `credited` deposit still looked at, under its row's lock, then `check_after` infinity). This release never looks at a deposit again once it's added or held, so the only `credited` ones still looked at are those a release before plans added |
 | Adding money in the app | Working. Settings › Plan › Add money opens a sheet: choose $20, $60, $120 or your own, then the network to send USDC on (under Pay with USDC; every route is USDC, so there's no token to pick), and get an address (with a QR code) for one payment of exactly that; the sheet follows it until it's added; while it waits for a payment it can be cancelled there; open and recent top-ups are listed under the balance |
 
 ### How a top-up works
@@ -545,15 +599,19 @@ closing the window: the top-up says what it's for, and the server buys it once t
    from the balance (`purchase` in `plans.ts`), or licenses as `POST /v1/team/licenses` buys them (`licensesBought` in
    `teams.ts`), for the team its owner is the admin of when the money arrives: the balance pays the whole total, what was
    there before and what just arrived, and anything over stays in it. The deposit is settled in that transaction, so the
-   purchase is tried once, however many checks race; a payment 1Click settles after the top-up failed, expired or was
-   cancelled buys then, the same way. Every change to a team locks its row before any plan's (teams.ts), so a payment for
+   purchase is tried once, however many checks race. It's bought only while the payment is live (`waiting`, `arriving` or
+   `short`): one 1Click settles after the top-up failed, expired or was cancelled is added to the balance and buys
+   nothing, so a payment made again for the same thing (checkout's Get a new address, or checkout opened again after a
+   cancel) never buys it twice. Every change to a team locks its row before any plan's (teams.ts), so a payment for
    licenses locks the team's row after the deposit's and before the money is added: deposit, team, plan. Nothing locks a
    team's row after a plan's, nor a deposit's after either, so a payment, a purchase from the balance, a visit taking a
    license and the team being deleted, all at once, take their locks in that one order and wait on one another rather
    than deadlock.
 3. **What it says.** `outcome` is `waiting` until the money is added (an expired, failed or cancelled top-up stays
-   `waiting`: a late payment can still buy), then `bought`, or `refused` with `why` in words for people. A refusal leaves
+   `waiting` until a late payment's money is), then `bought`, or `refused` with `why` in words for people. A refusal leaves
    the money in the balance, where "Buy with your balance" can use it:
+   - the payment arrived after the top-up was cancelled, expired or failed: "Your payment arrived after its address
+     closed, so nothing was bought. It’s in your balance.";
    - the price changed: "The price of Pro changed before your payment arrived. It’s in your balance." ("The price of more
      notes changed…" for notes, "The price of a team license changed…" for licenses), or a pack's minutes did: "The hours
      more notes bring changed before your payment arrived. It’s in your balance.";
@@ -572,7 +630,7 @@ refunded while nobody has, and the admin is told again when few or none are left
 
 Logged `top-up bought what it was for` or `top-up didn’t buy what it was for; its money is in the balance`, with the
 deposit's ID, provider, what it buys (`pro`, `hours`, `licenses`) and why not (`price`, `short`, `too-many`, `off`,
-`not-admin`): never an amount. Licenses bought are also logged `team licenses bought`, with the owner, team and count.
+`not-admin`, and `late` with the state it had then): never an amount. Licenses bought are also logged `team licenses bought`, with the owner, team and count.
 
 ## Treasury runbook
 
@@ -585,25 +643,29 @@ The server never holds a key that can move treasury money. By hand, in near.com,
 - **A stray payment** (a second payment to a used address, or one after it expired) reaches the treasury as a 1Click
   refund and isn't added. The person gives support the top-up's reference (its deposit ID). Support opens that deposit's
   sealed record (`deposits`, under `Kservice`'s accounting key) to find its address, confirms the payment in 1Click's
-  status for it, and adds what reached the treasury to their balance with `billing credit <reference> <usd>` ([Support](#support)).
+  status for it, and adds what reached the treasury to their balance by their account's ID, which `billing show <reference>`
+  says: `billing credit <account> <usd>` ([Support](#support)). The top-up's reference adds only its own payment, once.
 - **A failed top-up** (logged at error with its deposit ID and a reason) is one 1Click reported money for that wasn't
   added. Support opens its record and 1Click's status as above, and adds only what 1Click shows reached the treasury
-  (`billing credit <reference> <usd>`). Until then, if 1Click settles it cleanly within 30 days, it's added by itself; once
-  support has added it, it never is, so its money is never added twice. It still reads as failed in the person's list of
-  top-ups, and their balance's history says "Added by support".
+  (`billing credit <reference> <usd>`). Until then, if 1Click settles it cleanly within 30 days, it's added by itself, and
+  then its reference is refused; once support has added it, it never is, even by a check that was on its way to 1Click as
+  support added it, so its money is never added twice. It still reads as failed in the person's list of top-ups, and
+  their balance's history says "Added by support".
 - **A depeg (accepted risk).** Every amount sent is valued at face (1 token = 1 USD). When a stablecoin depegs, turn
   top-ups off (take `TREASURY_INTENTS_ACCOUNT` out of the API's settings in `deploy.yml` and redeploy) until it recovers.
 
 ## How it upgrades
 
-- Migration `0029_plans.sql` adds `plan_accounts` (record kind `plan-account`), `ai_meters` (`ai-meter`), and
-  `billing_cutover` with the time it ran. `0030_workspace_payers.sql` adds a nullable `payer_owner_id` to
-  `workspaces` and backfills who pays from `workspace_authors` and the first admin: a shared workspace's maker
-  (`made_workspace`), and a call's home's first admin, its organizer, since a home is made with `made_workspace` false.
-  That's who `makeHome` and `createIn` name now, and what upkeep's `settlePayers` gives a workspace nobody pays for, so the
-  backfill, upkeep and new homes agree. The previous release ignores all of it while the deploy migrates. These three
-  migrations follow main's `0026_workspace_calls.sql`, `0027_agent_activity.sql` and `0028_meeting_proposals.sql`, and
-  nothing in them depends on those. No shared database ran them under the numbers they had on the plans branches
+- Migration `0029_plans.sql` adds `plan_accounts` (record kind `plan-account`) and `ai_meters` (`ai-meter`).
+  `0030_workspace_payers.sql` adds nullable `payer_owner_id`, `payer_grace_until` and `payer_grace_bytes` to `workspaces`,
+  and the index on who pays: columns and an index only, so its lock on `workspaces` (and the foreign key's on `owners`)
+  lasts as long as those take, whatever the number of workspaces. `0032_workspace_payers_backfill.sql` then gives every
+  workspace its longest-standing admin with an account as its payer, in a transaction of its own that holds only the rows
+  it writes: the previous release keeps reading workspaces, and counting what's stored, while it runs. That's who `makeHome`
+  and `createIn` name now, and what upkeep's `settlePayers` gives a workspace nobody pays for, so the backfill, upkeep and
+  new workspaces agree. The previous release ignores all of it while the deploy migrates. These migrations follow main's
+  `0026_workspace_calls.sql`, `0027_agent_activity.sql` and `0028_meeting_proposals.sql`, and nothing in them depends on
+  those. No shared database ran them under the numbers they had on the plans branches
   (`0026_plans.sql`, `0027_workspace_payers.sql`, `0028_teams.sql`); a local one that did is refused by `migrate.ts`
   until those three rows of `schema_migrations` are renamed to the new names. `0029_plans.sql` also lost
   `ai_meters.version` before it shipped (a count of each account's AI requests in the clear, which nothing read), so a
@@ -613,8 +675,10 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   added again as dollars, at face value (above): welcome credits aren't, and what credits were spent on notes isn't taken
   off. `billing_accounts` is no longer read, and goes in a later release.
 - An account's plan row is made the first time it's touched, or by upkeep. One already over Free's limits gets the grace
-  first. Workspaces the previous release makes while this one deploys, those whose payer deletes their account, and those
-  whose payer had left them before this release (the backfill counts them against whoever made them) are settled by upkeep.
+  first. Workspaces the previous release makes while this one deploys are settled by upkeep, as its first payer: nobody is
+  told, and no grace runs. The backfill names nobody who isn't an admin, so a workspace's payer is in it from the start.
+- A notice in a `plan-account` record from before has no `workspaceId`: it reads as null (`.default`), and the record is
+  written with it the next time it's saved.
 - A deposit record from before keeps its `credits` and `rate` (ignored now); one settled by a release before plans has no
   `addedMicroUsd` and is added again as dollars once (above).
 - A live call's state from before has no `notes.limit`, and reads as not stopped (`.default`).

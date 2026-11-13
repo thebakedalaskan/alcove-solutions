@@ -542,14 +542,20 @@ export async function refuseDeletingAdmin(db: Db, ownerId: string): Promise<void
 
 /**
  * An account being deleted, in its deletion's transaction: the admin's empty team goes with it (refused while anyone else
- * is on it); a member's place goes, and their team's pool is reckoned without them by upkeep. Says what went.
+ * is on it); a member's place goes, and their team's pool is reckoned without them by upkeep. The team's row is locked
+ * before the member's, as a visit and every other change to a team lock them, so a visit at the same moment waits for this
+ * or this for it, and the two never deadlock. Nobody joins a team meanwhile: the deletion holds the account's own row,
+ * which joining needs. Says what went.
  */
 export async function forgetMembership(c: Db, ownerId: string): Promise<{ left: boolean; teamDeleted: boolean }> {
+  const seen = await membership(c, ownerId);
+  if (!seen) return { left: false, teamDeleted: false };
+  const t = await teamRow(c, seen.team_id, true);
   const m = await membership(c, ownerId, true);
-  if (!m) return { left: false, teamDeleted: false };
+  // They left it while its row was waited for.
+  if (!m || m.team_id !== seen.team_id) return { left: false, teamDeleted: false };
   if (m.role === 'admin') {
     await refuseDeletingAdmin(c, ownerId);
-    const t = await teamRow(c, m.team_id, true);
     if (t) await deleteTeamIn(c, t);
     return { left: true, teamDeleted: t !== undefined };
   }

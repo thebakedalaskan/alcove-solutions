@@ -39,15 +39,14 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `note_additions` | owner (the note's organizer), note item, addition ID, when it was added | `author_index` (keyed hash of who added it, so deleting their account finds their additions on anyone's notes), `body_ciphertext` (the words, who added it, and the lines or shared screens it points at), sealed under the organizer's keys |
 | `note_links` | owner (the note's organizer), note item, link ID, when it runs out | `secret_hash` (SHA-256 of the link's secret, which is only ever in the link's fragment and a POST body), `maker_index` (keyed hash of who made it, so removing the note from theirs or deleting their account finds their links), `body_ciphertext` (who made it, as they were, and when), sealed under the organizer's keys. Deleted when it's revoked, once it's run out (upkeep), with the note, and with its maker's access or account (migration `0025_note_links.sql`) |
 | `billing_accounts` | owner, `version` | `state_ciphertext` (the credits balance and history of before plans, under `Kservice`). No longer read: it goes in a later release |
-| `plan_accounts` | owner, `version`, when upkeep next looks at it (`due_at`: a grace ending, Pro's end to be told, Pro ending) | `state_ciphertext` (a `plan-account` record under `Kservice`'s accounting key: the balance in micro-USD and its history, where Free's periods count from, whether the account hasn't been shown the plans yet, the grace it's in, if any, the months of Pro bought and what each cost, whether renewing is on, the latest 20 notices about Pro and whether each was dismissed, and which end of Pro upkeep has reminded about and handled). Migration `0029_plans.sql` ([Plans and usage](plans-and-usage.md)) |
+| `plan_accounts` | owner, `version`, when upkeep next looks at it (`due_at`: a grace ending, Pro's end to be told, Pro ending) | `state_ciphertext` (a `plan-account` record under `Kservice`'s accounting key: the balance in micro-USD and its history, where Free's periods count from, whether the account hasn't been shown the plans yet, the grace it's in, if any, the months of Pro bought and what each cost, whether renewing is on, the latest 20 notices about its plan (and for a workspace whose payment moved to it, that workspace's ID, never its name) and whether each was dismissed, and which end of Pro upkeep has reminded about and handled). Migration `0029_plans.sql` ([Plans and usage](plans-and-usage.md)) |
 | `ai_meters` | owner (nothing counts its changes: that would count the account's AI requests) | `state_ciphertext` (an `ai-meter` record under the same key: the period's AI allowance in dollars, what's been spent and on which kinds of request, the requests in flight and live calls' notes that hold some of it, and when it ran out). Kept apart from `plan_accounts` so the many small charges of a live call never wait behind a purchase |
-| `billing_cutover` | `at`: when migration `0029` ran, one row | — |
 | `teams` | `team_id` (the public handle, Id128), its own owner row (its key seals its name and who's on it, as a workspace's does), `admin_owner_id` (whoever made it), `version`, when upkeep next looks at it (`due_at`: a license ending, its pool's grace ending), created. Migration `0031_teams.sql` ([Plans and usage › Team](plans-and-usage.md#team)) | `name_ciphertext` (a `team-name` record under the team's state key `team`), `billing_ciphertext` (a `team-billing` record under `Kservice`'s accounting key: the unconsumed licenses and what each cost, auto-purchase, whether the admin has been told licenses are low or gone, and the pool as last reckoned with its grace) |
 | `team_members` | `member_id` (what the API calls them), team, `account_owner_id` (unique: one team for each account), role (`admin`/`member`), when their license runs (`licensed_from`, `licensed_until`), when they last needed one and none was there (`wanted_at`), created | `email_index`, `person_ciphertext` (a `team-member` record under the team's key: their name and address) |
 | `team_invites` | `secret_sha256` (SHA-256 of a one-time link's secret, which is only ever in the link's fragment and a POST body), team, `expires_at`, created. Deleted when used, and by upkeep once expired | — |
 | `team_notes` | owner (the note's organizer), note item, team, created: a note its organizer made visible to their team. Stays after they leave it; goes with the note or the team | — |
 | `deposits` | owner, deposit, provider (`oneclick`), state (`waiting`/`arriving`/`short`/`credited`/`held`/`failed`/`expired`/`cancelled`), created, when to check next (`check_after`), last checked, when to give up | `record_ciphertext` (a `deposit` record under `Kservice`'s accounting key, below) |
-| `workspaces` | owner, `workspace_id` (the public handle, Id128), `version`, when the oldest thing in its Trash went there (`trash_since`), created, `payer_owner_id` (the account its files count against, and whose plan pays for its AI: whoever made it, and for a call's home its organizer, whoever's action made it; null while nobody does, after its payer deleted their account), migration `0030_workspace_payers.sql`; `team_id` and `team_access` (`team`: every licensed member; `added`: only the people added; both null on any other workspace), migration `0031_teams.sql` | `state_ciphertext` (its name, tree and line on what it's for: [Workspaces](#workspaces)) |
+| `workspaces` | owner, `workspace_id` (the public handle, Id128), `version`, when the oldest thing in its Trash went there (`trash_since`), created, `payer_owner_id` (the account its files count against, and whose plan pays for its AI: its longest-standing admin with an account, so whoever made it, and for a call's home its organizer, whoever's action made it; null while none of its admins has an account), `payer_grace_until` and `payer_grace_bytes` (while payment moved from someone who left it runs its grace: until when, and what it held then), migration `0030_workspace_payers.sql`, filled by `0032_workspace_payers_backfill.sql`; `team_id` and `team_access` (`team`: every licensed member; `added`: only the people added; both null on any other workspace), migration `0031_teams.sql` | `state_ciphertext` (its name, tree and line on what it's for: [Workspaces](#workspaces)) |
 | `workspace_members` | owner (the workspace), `member_id` (what the API calls them), role (`admin`/`edit`/`read`), created | `email_index`, `person_ciphertext` (their address, their name if the workspace was made by them, and whether a call's invite put them there and nobody has changed their place by hand since: older records read as not) |
 | `documents` | owner (the workspace), `document_id`, `next_seq`, what it comes to in bytes, items and depth of nesting at its snapshot and since (`snapshot_bytes`, `bytes_since_snapshot`, `snapshot_items`, `items_since_snapshot`, `snapshot_nesting`, `nesting_since_snapshot`), how many of its items aren't on its page (`snapshot_retired_items`), `updates_since_snapshot`, how far the newest version reaches and when it was kept (`version_seq`, `version_at`), until when something's restoring it (`held_until`) or it stays closed because it wouldn't open (`closed_until`), created. One row for each document or board in the tree; a folder has none | — |
 | `document_updates` | owner (the workspace), document, `seq`, how much it adds in `bytes`, `items` and `nesting`, `deletes_tag` (a keyed hash of what it deletes, so the same deletes again cost no row), created | `update_ciphertext` (one Yjs update and who sent it: [Documents](#documents)) |
@@ -67,6 +66,8 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `workspace_media_uses` | owner, media, document: which documents and boards have a file | — |
 | `media_upload_days` | owner (an account), `day` (UTC), `bytes`: what it uploaded to workspaces that day, for the limit on a day ([Media](#media)) | — |
 | `media_guest_upload_days` | `guest_index`, `day` (UTC), `bytes`: what a guest in a call uploaded that day, for the same limit ([Media](#media)) | `guest_index`, a blind index of the person the guest's pass names |
+| `media_others_days` | the payer (an account), the uploader (an account), `day` (UTC), `bytes`: what someone signed in added that day to another account's storage, for `media.others_day_bytes` ([Media](#media)); migration `0030_workspace_payers.sql` | — |
+| `media_guest_payer_days` | the payer (an account), `day` (UTC), `bytes`: what guests in its calls added that day to its storage between them, for `media.guests_day_bytes`; migration `0030_workspace_payers.sql` | — |
 | `service_limits` | `name`, `value`, `updated_at`: a limit changed while the service runs, which overrides its default ([Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)). Numbers only | — |
 | `feature_flags_everyone` | `name`, `updated_at`: a feature flag switched on for everyone ([Feature flags](feature-flags.md)) | — |
 | `feature_flag_groups` | `name`, created: a hand-picked group for feature flags, an operator's label such as `staff` | — |
@@ -544,7 +545,14 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   MiB, the most a file can be here.", because only the server knows; a payer with no room left with `402 plan-limit`, "Your
   storage is full. Delete something, or move to a plan with more room."; and a day used up with
   `409 conflict`, "That’s all you can upload today. You can upload more tomorrow." A file size or a day at zero refuses
-  everything with "Files can’t be uploaded right now." A workspace that counts against nobody (none of its admins has an
+  everything with "Files can’t be uploaded right now." Anyone but whoever pays (and, on Team, the people licensed on the same
+  team) adds at most `media.others_day_bytes` (2 GiB) a day to that account's storage, guests in its calls
+  `media.guests_day_bytes` (256 MiB) between them, `409 conflict`, "That’s all you can add today to the storage this workspace
+  counts against. You can add more tomorrow."; and nobody else reaches into the last `media.payer_reserve_bytes` (1 GiB) of
+  it, kept for the payer's own notes and recordings: `402 plan-limit`, "This workspace can’t take more files now: the rest of
+  the storage it counts against is kept for notes and recordings." (once it's full, "This workspace can’t take more files:
+  the storage it counts against is full."), never saying whose it is or what's left. Every refusal logs the limit by its name
+  and the sizes. A workspace that counts against nobody (none of its admins has an
   account) takes no files: `409 conflict`, "Files can’t be added until one of this workspace’s admins signs in to Alcove."
   Lowering a limit refuses what comes next and deletes nothing. An account's day is counted in `media_upload_days` as its pieces are kept, and
   a guest's, who has no account, in `media_guest_upload_days`, by a blind index of the person their pass names: either way every
@@ -758,8 +766,9 @@ what the provider last said arrived while it was open (micro-USD), and once sett
 and the provider's reference, whether it was logged that the provider couldn't answer past its deadline
 (`unanswered`, default false), and why the provider's last finished answer wasn't added (`doubt`, default null)
 ([Plans and usage › How a top-up works](plans-and-usage.md#how-a-top-up-works)). A record from before plans also holds the credits it
-promised and their rate, which are ignored, and one the previous release settled has no `addedMicroUsd`: upkeep adds it again as
-dollars, once, if it settled after `billing_cutover`. No column holds anything readable.
+promised and their rate, which are ignored and kept by every save (the record is read loose), and one a release before plans
+settled has no `addedMicroUsd`: upkeep adds it again as dollars, once, whenever it was settled. No column holds anything
+readable.
 
 ## Writes, reads and deletes
 
@@ -941,8 +950,8 @@ and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
 - **A tag** lasts until its person has heard, for at most 30 days, and goes before that with its document or their access.
 - **A file in a workspace** stays until someone deletes it or every document that has it is deleted for good, Trash
   included, and an upload nobody finished for a day. A limit going down never deletes one.
-- **`media_upload_days`** and **`media_guest_upload_days`** keep today and yesterday: upkeep deletes anything older. An account's
-  rows also go with the account.
+- **`media_upload_days`**, **`media_guest_upload_days`**, **`media_others_days`** and **`media_guest_payer_days`** keep today and
+  yesterday: upkeep deletes anything older. An account's rows, as payer or as uploader, also go with the account.
 - **`service_limits`** keeps a value until someone changes or deletes it. A value for `media.file_bytes` or `media.workspace_bytes`,
   which are gone, is ignored with a warning.
 - **`plan_accounts` and `ai_meters`** go with the account. A period's AI allowance doesn't carry over: the next period's replaces

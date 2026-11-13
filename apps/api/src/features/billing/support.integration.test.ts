@@ -8,6 +8,7 @@ import type { TopUp } from '@alcove/api';
 import { spawn } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
+import { watch } from './deposits';
 
 vi.setConfig({ testTimeout: 90_000 });
 
@@ -69,6 +70,13 @@ async function topUp(who: Account, microUsd: number): Promise<TopUp & { address:
 const settled = (t: TopUp, microUsd: number) => ({ depositedAmount: String(microUsd), amountOut: String(microUsd), intentHashes: [`support-${t.id}`] });
 /** That the deposit's next check is due, so reading it asks 1Click again, as the app's next look would after a while. */
 const askAgain = (id: string) => h.pool.query('UPDATE deposits SET checked_at = NULL WHERE deposit_id = $1', [id]);
+/** Makes this top-up the one the watcher's next pass takes on: every other one still watched waits an hour. */
+const dueOnly = (id: string) => h.pool.query(
+  "UPDATE deposits SET check_after = CASE WHEN deposit_id = $1 THEN now() ELSE now() + interval '1 hour' END WHERE state NOT IN ('credited', 'held') AND check_after < 'infinity'", [id]);
+/** Whether nothing watches the top-up any more: no pass takes it on, and no look asks 1Click about it. */
+const unwatched = async (id: string) => (await h.pool.query<{ closed: boolean }>("SELECT check_after = 'infinity' AS closed FROM deposits WHERE deposit_id = $1", [id])).rows[0]?.closed;
+/** How many times the API logged `msg` since `from`. */
+const logged = (from: number, msg: string) => h.logs.slice(from).filter((l) => l.includes(`"msg":"${msg}"`)).length;
 const ADDED = (ownerId: string) => `Added to the balance of account ${ownerId}, as “Added by support”.`;
 
 describe('billing on the command line', () => {
@@ -133,7 +141,7 @@ describe('billing on the command line', () => {
     expect((await balance(two)).microUsd).toBe(0);
   });
 
-  it('adds a failed top-up’s money by its reference, after which it can’t add itself again; refuses one still watched', async () => {
+  it('adds a failed top-up’s money by its reference, once, after which it can’t add itself again; refuses one still watched or added already', async () => {
     const ann = await account();
     // Still waiting for a payment: Alcove adds what reaches it by itself, so support can't.
     const open = await topUp(ann, 25_000_000);
@@ -158,13 +166,85 @@ describe('billing on the command line', () => {
     await askAgain(open.id);
     expect(await ann.api.plans.topUp(open.id)).toMatchObject({ state: 'failed' });
     expect((await balance(ann)).microUsd).toBe(25_000_000);
-    // A second payment to a top-up already added is a payment of its own: added, and the top-up stays as it was.
+    // Nor by support again: its reference adds its money once.
+    const again = await billing(['credit', open.id, '25'], false);
+    expect(again.code).toBe(1);
+    expect(again.out).toContain('This top-up isn’t watched any more, so its reference adds nothing: support has added it already, or its 30 days are over. Add anything more by the account’s ID.');
+    expect((await balance(ann)).microUsd).toBe(25_000_000);
+    // One given up on with no answer from 1Click (it was down at the deadline) reached support: added, it reads as failed.
+    const quiet = await topUp(ann, 5_000_000);
+    await h.pool.query("UPDATE deposits SET give_up_at = now() - interval '1 minute' WHERE deposit_id = $1", [quiet.id]);
+    expect(await billing(['credit', quiet.id, '5'], false)).toMatchObject({ code: 0, out: expect.stringContaining(`Top-up ${quiet.id} (failed) is no longer watched, so it can’t add itself again.`) });
+    expect(await ann.api.plans.topUp(quiet.id)).toMatchObject({ state: 'failed' });
+    expect((await balance(ann)).microUsd).toBe(30_000_000);
+    // A top-up added by itself is refused by its reference, so support never adds it twice. A second payment to its
+    // address is a payment of its own, added by the account's ID.
     const used = await topUp(ann, 10_000_000);
     h.oneclick.set(used.address, 'SUCCESS', settled(used, 10_000_000));
     expect(await ann.api.plans.topUp(used.id)).toMatchObject({ state: 'credited' });
-    const stray = await billing(['credit', used.id, '3'], false);
-    expect(stray.out).toContain(`Top-up ${used.id} was credited already: what was added is a payment of its own.`);
-    expect((await balance(ann)).microUsd).toBe(38_000_000);
+    const twice = await billing(['credit', used.id, '10'], false);
+    expect(twice.code).toBe(1);
+    expect(twice.out).toContain('This top-up was added when its payment arrived. Add a payment of its own to its address by the account’s ID.');
+    expect((await balance(ann)).microUsd).toBe(40_000_000);
+    expect(await billing(['credit', ann.session.ownerId, '3'], false)).toMatchObject({ code: 0, out: expect.stringContaining(ADDED(ann.session.ownerId)) });
+    expect((await balance(ann)).microUsd).toBe(43_000_000);
+  });
+
+  it('adds a top-up once when support adds it while a check of it is on its way to 1Click, which answers that it settled', async () => {
+    const ann = await account();
+    const logsFrom = h.logs.length;
+    /** A top-up 1Click said failed, which the person has seen. */
+    const failed = async (microUsd: number) => {
+      const t = await topUp(ann, microUsd);
+      h.oneclick.set(t.address, 'FAILED');
+      expect(await ann.api.plans.topUp(t.id)).toMatchObject({ state: 'failed' });
+      return t;
+    };
+    // The person looks at it again, and 1Click answers only once support has added it by hand: that it settled after all.
+    const looked = await failed(25_000_000);
+    await askAgain(looked.id);
+    const answer = h.oneclick.hold(looked.address);
+    const looking = ann.api.plans.topUp(looked.id);
+    await answer.asked;
+    expect((await billing(['credit', looked.id, '25'], false)).code).toBe(0);
+    h.oneclick.set(looked.address, 'SUCCESS', settled(looked, 25_000_000));
+    answer.release();
+    expect(await looking).toMatchObject({ state: 'failed' });
+    expect(await balance(ann)).toMatchObject({ microUsd: 25_000_000, history: [{ label: 'Added by support', microUsd: 25_000_000 }] });
+
+    // The watcher's pass took one on just before support added it: 1Click's answer adds nothing either.
+    const watched = await failed(10_000_000);
+    await dueOnly(watched.id);
+    const passAnswer = h.oneclick.hold(watched.address);
+    const pass = watch(h.deps);
+    await passAnswer.asked;
+    expect((await billing(['credit', watched.id, '10'], false)).code).toBe(0);
+    h.oneclick.set(watched.address, 'SUCCESS', settled(watched, 10_000_000));
+    passAnswer.release();
+    expect(await pass).toEqual({ checked: 1, credited: 0 });
+    expect(await unwatched(watched.id)).toBe(true);
+
+    // And when 1Click can't answer that pass, it stays unwatched: nothing asks about it again, to add it when 1Click does.
+    const unanswered = await failed(5_000_000);
+    await dueOnly(unanswered.id);
+    const failing = h.oneclick.hold(unanswered.address);
+    const failedPass = watch(h.deps);
+    await failing.asked;
+    expect((await billing(['credit', unanswered.id, '5'], false)).code).toBe(0);
+    h.oneclick.down(true);
+    failing.release();
+    await failedPass;
+    h.oneclick.down(false);
+    expect(await unwatched(unanswered.id)).toBe(true);
+    h.oneclick.set(unanswered.address, 'SUCCESS', settled(unanswered, 5_000_000));
+    await askAgain(unanswered.id);
+    expect(await ann.api.plans.topUp(unanswered.id)).toMatchObject({ state: 'failed' });
+    expect(await watch(h.deps)).toMatchObject({ credited: 0 });
+
+    // Each once, by support alone, and each answer that came after is logged as changing nothing.
+    expect(await balance(ann)).toMatchObject({ microUsd: 40_000_000 });
+    expect((await balance(ann)).history.map((e) => e.label)).toEqual(['Added by support', 'Added by support', 'Added by support']);
+    expect(logged(logsFrom, 'top-up answered once it wasn’t watched any more; nothing changed')).toBe(2);
   });
 
   it('never says an address back, in what it printed or logged', async () => {
