@@ -56,7 +56,7 @@ export const ProEndedNight = night(ProEnded);
 /** Art pays for Launch now that whoever did left it: one short line over the notes left, by its name, until it's dismissed. */
 export const PayingForAWorkspace = page('/home', 'busy', { globals: LAPTOP, beforeEach: changing(paysForLaunch) });
 export const PayingForAWorkspaceNight = night(PayingForAWorkspace);
-/** On Plans: Free's notes left isn't a place, so nothing is shaded; Pro's row is the place you're on, the one shaded row. */
+/** On Plans: Free's row (Free plan · See plans) is the place you're on, shaded, as Pro's row is on Pro: one shaded row. */
 export const OnPlans = foot('/plans', 'busy');
 export const OnPlansNight = night(OnPlans);
 export const OnPlansPro = foot('/plans', 'plan-pro');

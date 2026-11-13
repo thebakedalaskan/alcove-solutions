@@ -186,7 +186,7 @@ function Foot({ online }: { online: boolean }) {
  * so in caution, and the row goes to Team, which says who has been told. A payment for a plan on its way takes the row's
  * place, saying what it's waiting for, and opens it again. Anything else said (Pro renewed or ended, Team replacing Pro, a
  * team's licenses) is one short line above it, until it's dismissed in Settings. On Plans, a paid plan's row, or a
- * payment's, is the place you're on, shaded; Free's is the minutes left, and isn't.
+ * payment's, is the place you're on, shaded, as is Free's row under its notes.
  */
 function PlanFoot({ plan }: { plan: Plan }) {
   // On a team: who its admin is, and for the admin how many licenses are left.
@@ -230,7 +230,7 @@ function PlanFoot({ plan }: { plan: Plan }) {
   const short = plan.kind === 'team' && !out ? notices.find(licensesShort) : undefined;
   const said = notices.find((n) => n !== short);
   const notice = said && <Link to="/settings" hash="plan" className="sb-said"><Said notice={said} plan={plan} team={team} spaces={spaces} /></Link>;
-  if (plan.kind === 'free') return <>{notice}<NotesLeft plan={plan} waiting={waiting} /></>;
+  if (plan.kind === 'free') return <>{notice}<NotesLeft plan={plan} waiting={waiting} /><FreeRow plan={plan} waiting={waiting} on={on} /></>;
   const ending = proEnding(plan, now);
   const until = plan.pro.until;
   return (
@@ -270,6 +270,20 @@ function PlanFoot({ plan }: { plan: Plan }) {
       )}
     </>
   );
+}
+
+/**
+ * Free's plan, under its notes left (docs/design/canvas/plans Side): Free plan · See plans, which opens Plans; once notes are
+ * low or out, Get Pro, which opens checkout; on a team without a license, Team, which says who has been told.
+ */
+function FreeRow({ plan, waiting, on }: { plan: Plan; waiting: boolean; on: boolean }) {
+  const checkout = useCheckout();
+  const label = (go: string) => <><span>Free plan</span><span className="go">{go}<Icon name="chevron" size={15} /></span></>;
+  if (waiting) return <Link to="/team" className="sb-plan">{label('Team')}</Link>;
+  if (notesOut(plan) || notesLow(plan)) {
+    return <button type="button" className={cn('sb-plan', on && 'is-on')} onClick={() => checkout.open({ plan: 'pro' }, 'side')}>{label('Get Pro')}</button>;
+  }
+  return <Link to="/plans" className={cn('sb-plan', on && 'is-on')}>{label('See plans')}</Link>;
 }
 
 /** How many licenses a team has left to take, as its row and its notice say it. */

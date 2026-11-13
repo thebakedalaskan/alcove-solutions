@@ -28,7 +28,9 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
     day is Home's Upcoming. It comes in under Agents, so the places at the top never move
   - the confidential-compute check, then your plan, in one row where the minutes of notes left were, so the foot is no
     taller than it was. On Free, notes left over a thin meter that runs from rose to the sun's warmth ("About 1 h 26 min of
-    notes left", warm under an hour, caution once out), which opens Settings at Plan. On Pro or Team, one calm row:
+    notes left", warm under an hour, caution once out), which opens Settings at Plan, and under it Free's row: "Free plan ·
+    See plans", which opens Plans, or "Free plan · Get Pro" (checkout) once notes are low or out, or "Free plan · Team" on a
+    team without a license. On Pro or Team, one calm row:
     `SunMark` (a 12px half sun on a 16px hairline, in the icon column under the shield), the plan in Newsreader 18px over a
     12.5px line in ink-2, and a chevron, with no box and no glow. The line says what matters most: "Ends in N days ·
     Extend" in sun-text 600 with the sun half set (it opens checkout), "No notes left until 1 Dec" in caution, for a team's
@@ -40,7 +42,7 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
     or ended, Team replacing Pro, a team's licenses while notes have stopped, a workspace you pay for now, by its name and
     held to two lines) is one short line above the row, and only
     while it shows (until it's dismissed in Settings). On Plans, Pro's or Team's row, or a payment's, is shaded as the place
-    you're on, so there's still one shaded row; Free's notes left isn't shaded. Plans is reached from Settings › Plan's See
+    you're on, so there's still one shaded row; on Free it's Free's row. Plans is reached from Settings › Plan's See
     plans and wherever a limit is met
 - **The page** scrolls under a rounded edge. Search ("Search or ask", ⌘K opens the palette) and you (your arch, which opens
   your menu) sit at its top right on every page, outside the page itself, so moving between pages leaves them alone. A page's
