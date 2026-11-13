@@ -455,6 +455,12 @@ docs/               Product, engineering and design docs
 
 <br>
 
+## License
+
+[MIT](LICENSE).
+
+<br>
+
 <p align="center">
   <a href="https://alcove.solutions"><img src="docs/readme/mark.svg" alt="Alcove" width="28"></a>
   <br>
