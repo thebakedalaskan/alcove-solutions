@@ -708,7 +708,11 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   ([Calls and recordings › A board in a call](calls-and-recordings.md#a-board-in-a-call)). Letting everyone into a saved
   board needs the right to share it, asked again for everyone who comes later: whoever here can't edit it gets a seat to
   edit it, and each seat ends with the call. A board the call made goes on being given to whoever comes only until it's
-  restricted or the organizer can't edit there.
+  restricted or the organizer can't edit there. A seat on a board opens it for anyone only while the call's organizer pays
+  for its workspace (`payer_owner_id`), as a call opens a workspace only then, asked on every read (`holdersOf`): what anyone
+  adds to a board, or asks AI to do on it, is its workspace's payer's. In a workspace someone else pays for, the call seats
+  nobody on the boards it makes there and nobody can let everyone in on a saved one, and a seat given there opens only for
+  the workspace's own people, its members and a team's licensed people.
   A breakout room's board is restricted with nobody as its creator: only the seats of whoever is in that room open it, the
   organizer's only while visiting, and someone moved out loses it at once. When rooms close its seats go and everyone invited
   has it by address; a workspace member who wasn't invited never does, nor do the workspace's admins: nothing strands a room's

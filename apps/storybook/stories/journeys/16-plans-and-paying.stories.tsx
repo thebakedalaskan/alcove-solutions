@@ -6,7 +6,7 @@
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { page, pages, type PageArgs, type PageStory } from '../../src/page';
-import { LAPTOP, SOON } from './play';
+import { LAPTOP, LATER, SOON } from './play';
 
 const meta = { title: 'Journeys/16 Plans and paying', ...pages, globals: LAPTOP } satisfies Meta<PageArgs>;
 export default meta;
@@ -20,9 +20,10 @@ export const SeeThePlans: PageStory = {
   name: '16.1 See the plans',
   ...page('/home', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('On Free, the side panel says how much of the period’s notes is left. Click See plans under it', async () => {
+    await step('On Free, the side panel says how much of the period’s notes is left, and opens Settings at your plan. Click See plans there', async () => {
       const side = await screen.findByRole('complementary', { name: 'Side panel' }, SOON);
-      await userEvent.click(await within(side).findByRole('link', { name: /See plans/ }, SOON));
+      await userEvent.click(await within(side).findByRole('link', { name: /of notes left/ }, SOON));
+      await userEvent.click(await within(await screen.findByRole('region', { name: 'Plan' }, LATER)).findByRole('link', { name: 'See plans' }, SOON));
     });
     await step('Plans opens: Free and Pro on the water, priced for a year. Get Pro is the one filled button', async () => {
       await screen.findByRole('heading', { name: 'Plans', level: 1 }, SOON);

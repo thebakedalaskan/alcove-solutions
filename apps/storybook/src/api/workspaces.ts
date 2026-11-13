@@ -43,10 +43,15 @@ export function treeOf(id: string): Space {
 /** Its tree, as the API sends it: what the Drive says of it besides stays out. */
 const treeOnly = ({ createdAt: _made, call: _call, ...tree }: Space): WorkspaceTree => tree;
 export const treeFor = (id: string): WorkspaceTree => treeOnly(treeOf(id));
-const summaryOf = ({ items: _items, inCall: _inCall, ...rest }: Space): WorkspaceSummary => rest;
+/**
+ * A workspace in `you`'s Drive, as the API sends it. They pay for it when the world says they do (`paidBy`), or, where it says
+ * nobody, when they're its admin, as whoever makes one is.
+ */
+export const summaryOf = ({ items: _items, inCall: _inCall, paidBy, ...rest }: Space, you: Person): WorkspaceSummary =>
+  ({ ...rest, youPay: rest.role !== null && (paidBy ? paidBy.email.toLowerCase() === you.email.toLowerCase() : rest.role === 'admin') });
 /** Your Drive: every workspace you're in, the newest first, then each one you only have documents in. */
 const drive = (a: WorkspaceSummary, b: WorkspaceSummary) => Number(a.role === null) - Number(b.role === null) || (b.createdAt ?? '').localeCompare(a.createdAt ?? '');
-export const workspaceList = (): WorkspaceSummary[] => current().workspaces.map(summaryOf).sort(drive);
+export const workspaceList = (): WorkspaceSummary[] => current().workspaces.map((w) => summaryOf(w, me())).sort(drive);
 
 const authorOf = () => { const p = me(); return p.portrait ? { name: p.name, portrait: p.portrait } : null; };
 

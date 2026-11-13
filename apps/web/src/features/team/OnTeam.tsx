@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useRef, useState, type ReactNode } from 'react';
 import { useCheckout } from '~/features/plans/checkout';
+import { teamLicenses, waitsForLicense } from '~/features/plans/plan-state';
 import { callName } from '~/lib/people';
 import { q, useDeleteTeam, useLeaveTeam, useRemoveTeamMember, useSetAutoPurchase } from '~/lib/queries';
 import { dayMonth, noteDay } from '~/lib/time';
@@ -33,7 +34,7 @@ const NOTES = 5;
 /** A license as the page says it, in one word of tone: live, waiting for one (none was left), ended, or never had one. */
 function toneOf(m: TeamMember): TeamLicenseTone {
   if (m.license.state === 'live') return 'live';
-  if (m.license.wanted !== null) return 'waiting';
+  if (waitsForLicense(m)) return 'waiting';
   return m.license.state;
 }
 const until = (m: TeamMember): string => (m.license.until === null ? '' : dayMonth(new Date(m.license.until)));
@@ -103,14 +104,15 @@ export function OnTeam({ team, me, between, now, groups, shared }: {
   const people = inOrder(team.members);
   const lead = people.find((m) => m.role === 'admin');
   const leadName = lead ? callName(lead.person) : 'The admin';
-  const live = people.filter((m) => m.license.state === 'live').length;
-  const waiting = people.filter((m) => toneOf(m) === 'waiting');
   const mine = people.find((m) => m.you);
   const licenses = admin ? team.licenses : null;
+  /* How many are left of how many, and who's waiting, in the page's order: the same count Settings › Plan and checkout say. */
+  const counts = licenses ? teamLicenses(team) : null;
+  const waiting = inOrder(counts?.waiting ?? []);
 
   const count = plural(people.length, 'person', 'people');
-  const say = licenses
-    ? `${count} · ${live} with a license · ${licenses.unconsumed ? `${plural(licenses.unconsumed, 'license')} left` : 'No licenses left'}`
+  const say = counts
+    ? `${count} · ${counts.live} with a license · ${counts.left ? `${plural(counts.left, 'license')} left` : 'No licenses left'}`
     : `${count} · ${lead?.you ? 'You’re' : `${leadName} is`} its admin`;
 
   /* The line on the horizon. */
@@ -208,7 +210,7 @@ export function OnTeam({ team, me, between, now, groups, shared }: {
         <TeamLine people={standing} more={more} label={`People on ${team.name}`}
           arch={(p, button) => { const m = byKey.get(p.key); return m ? <PersonPop person={m.person} me={m.you} between={between} anchor={button} /> : button; }} />
       </div>
-      <div className={cn('tq-water', !licenses && 'is-solo')} style={{ '--d': 1 }}>
+      <div className={cn('tq-water', !counts && 'is-solo')} style={{ '--d': 1 }}>
         <div className="tq-main">
           {!admin && !team.licensed && (
             <Notice tone="caution" icon="alert" className="tq-wait">
@@ -234,9 +236,9 @@ export function OnTeam({ team, me, between, now, groups, shared }: {
           {groups}
           {shared}
         </div>
-        {licenses && (
+        {counts && (
           <aside className="tq-side" aria-label="For the team’s admin">
-            <LicensesCard left={licenses.unconsumed} of={licenses.unconsumed + live} warm={waiting.length > 0} urgent={urgent}
+            <LicensesCard left={counts.left} of={counts.of} warm={waiting.length > 0} urgent={urgent}
               line={waiting.length ? `${waitingFor(waiting)} ${how}` : how}
               onBuy={() => checkout.open({ plan: 'team' }, 'team')}
               auto={autoOn} autoBusy={auto.isPending}

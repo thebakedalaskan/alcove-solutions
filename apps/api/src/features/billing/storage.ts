@@ -5,12 +5,13 @@
  * here, never what's stored.
  */
 import { z } from 'zod';
+import type { Config } from '../../config';
 import type { Deps } from '../../context';
 import { bigintText, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { limitsNow } from '../../limits';
 import { log } from '../../log';
 
-type Service = Pick<Deps, 'cfg' | 'pool'>;
+type Service = Pick<Deps, 'pool'> & { cfg: Pick<Config, 'LIMITS_CACHE_MS'> };
 const slog = log.child({ component: 'storage' });
 
 /** What an account stores: its own row's bytes and those of every workspace it pays for. */

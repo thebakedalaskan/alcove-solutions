@@ -2622,6 +2622,12 @@ describe('reading the call', () => {
   }
   /** How many times a read opened a workspace's tree. */
   const opensTree = (sql: string[]) => sql.filter((q) => q.includes('state_ciphertext FROM workspaces')).length;
+  /**
+   * A read's statements but the service limits' (limits.ts): every read of a call asks for them, and a request that asks while
+   * another's read of them is on its way waits for that one, which is logged under the request that started it. So whether a
+   * read logs it is timing alone, the same whatever is presented or played.
+   */
+  const ownStatements = (sql: string[]) => sql.filter((q) => !q.includes('service_limits'));
 
   it('opens a workspace once a version for everyone in it, and never for someone who can open nothing', async () => {
     const lena = await account();
@@ -2668,7 +2674,7 @@ describe('reading the call', () => {
     expect((await read(jamie.call)).workspace).toMatchObject({ present: { id: null }, play: null });
     const busy = await statementsOf(jamie, jamie.call);
     expect(opensTree(quiet)).toBe(0);
-    expect(busy).toEqual(quiet);
+    expect(ownStatements(busy)).toEqual(ownStatements(quiet));
     await host.leave();
   });
 });

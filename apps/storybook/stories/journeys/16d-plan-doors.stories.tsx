@@ -11,7 +11,8 @@ import { at, notesStop, run, type Present } from '../../src/api/script';
 import { current } from '../../src/api/state';
 import { inCall } from '../../src/call';
 import { caretAtEnd, page, pages, type PageArgs, type PageStory } from '../../src/page';
-import { monthsFrom, notesStopped, withProMonths } from '../../src/world/plans';
+import { addToBalance, boughtFromBalance, freshEntryId } from '../../src/world/payments';
+import { notesStopped, PRO_PRICE } from '../../src/world/plans';
 import { AIKO, KOFI, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK } from '../calls/talk';
 import { LAPTOP, LATER, SOON, first } from './play';
 
@@ -30,8 +31,13 @@ export const NotesRunOutInACall: PageStory = {
       ...LATE,
       cues: [
         ...at(4, run(() => { current().plan = notesStopped(); }), notesStop('notes')),
-        // The payment for a month of Pro lands from Art's phone, while the call goes on.
-        ...at(14, run(() => { const w = current(); w.plan = withProMonths(w.plan, monthsFrom(Date.now() - 60_000, 1)); }))
+        // Art pays for a month of Pro from his phone while the call goes on: the payment is added and buys it in the same go,
+        // as the server does, so the plan has Pro and the purchase since notes stopped.
+        ...at(14, run(() => {
+          const w = current();
+          addToBalance(w, PRO_PRICE, '20');
+          boughtFromBalance(w, { kind: 'pro', months: 1, microUsdPerMonth: PRO_PRICE }, freshEntryId(w));
+        }))
       ]
     }
   }, {
@@ -56,13 +62,23 @@ export const StartWithNoNotesLeft: PageStory = {
   name: '16.10 Start a call with no notes left',
   ...page('/home', 'plan-stopped', { globals: LAPTOP }),
   play: async ({ userEvent, step }) => {
+    /** Start a call's window, once it's open: the side panel says notes are out too, so what's in it is found in it. */
+    const flow = () => screen.findByRole('dialog', { name: 'Start a call' }, SOON);
     await step('This period’s notes are used up. Start a call says so under the ways to start, until they come back, with Get Pro', async () => {
       const side = await screen.findByRole('complementary', { name: 'Side panel' }, SOON);
       await userEvent.click(within(side).getByRole('button', { name: /^Start a call/ }));
-      await screen.findByText(/^No notes left until/, {}, SOON);
+      await within(await flow()).findByText(/^No notes left until/, {}, SOON);
+    });
+    await step('Get Pro: checkout opens in the window’s place, on Pro, since no window opens over another', async () => {
+      await userEvent.click(within(await flow()).getByRole('button', { name: 'Get Pro' }));
+      await within(await screen.findByRole('dialog', { name: 'Get Pro' }, SOON)).findByRole('radiogroup', { name: 'How long' }, SOON);
+    });
+    await step('Close checkout without buying. Start a call comes back as it was', async () => {
+      await userEvent.click(within(await screen.findByRole('dialog', { name: 'Get Pro' }, SOON)).getByRole('button', { name: 'Close' }));
+      await within(await flow()).findByText(/^No notes left until/, {}, SOON);
     });
     await step('Start without notes: the call is made with notes off, and its lobby opens', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Start without notes' }, SOON));
+      await userEvent.click(within(await flow()).getByRole('button', { name: 'Start without notes' }));
       await screen.findByRole('button', { name: 'Join' }, LATER);
     });
   }

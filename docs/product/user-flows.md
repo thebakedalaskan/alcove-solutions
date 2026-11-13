@@ -29,12 +29,14 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    team at** the company, with its size and faces, when it has people in it and has arrived by then (the screen
    doesn't wait for it), with who already uses Alcove, or **Invite them from Team** while nobody does. **Notes are
    written in confidential compute**, and only the people invited to a call get its notes. Then
-   "You’re in" and the arch opens into Home, where the plans to choose from come first, once (16.20). **Skip**,
+   "You’re in" and the arch opens into Home, where the plans to choose from come first, once (16.20): the screen says
+   "Opening Plans" then, and "Opening Home" when Home is next. **Skip**,
    **Escape** or **Enter** opens it straight away; with
    reduced motion the finished screen shows for a moment and Home follows. After that, signing in goes
    straight to Home. From the welcome page it sails out of the cove: the headlands go by, the horizon comes up to
    Home's, the side panel and the page's frame form round the sea, and Home rises in, in about three and a half
-   seconds (a press, a key or the wheel ends it at once; with reduced motion Home just opens).
+   seconds (a press, a key or the wheel ends it at once; with reduced motion Home just opens). While the plans haven't
+   been shown, it sails onto them in Home's place instead, the sun sinking to their last sliver (16.20).
 4. On first arriving in Home (past the plans), a tour goes through it, one stop at a time: a card with a short animation on the dawn sky,
    and the page dimmed around the real thing the stop is about, with a ring round it and an arrow to it. **Start or
    schedule a call** (Start now and Schedule, on Home's sky); **Join a call** (the line on Home that offers an Alcove
@@ -331,8 +333,9 @@ send to anyone".
 7. **Details** shows once someone's in or a time is picked. **Notes** is a switch ("Everyone invited gets them", or
    "Nothing is recorded"), and **What the notes keep** opens under it: **Keep the transcript** (without it, it's used to
    write the notes and then deleted), **Keep the recording**, **Read shared screens** (whoever shares is asked whether
-   theirs goes in the notes), and **Where they go** (a new workspace, or one of yours). Past 25 people, **Everyone joins
-   muted** is on. **Bring** adds an agenda, documents and boards you can open, as chips, up to 12; anyone who can't open
+   theirs goes in the notes), and **Where they go** (a new workspace, or one of yours). One someone else pays for says so
+   once under it: "Its files don’t count against your storage, so its boards and files open only for its own people." Past
+   25 people, **Everyone joins muted** is on. **Bring** adds an agenda, documents and boards you can open, as chips, up to 12; anyone who can't open
    one is told whose it is, without seeing its name, so they can ask for it.
 8. **The foot** says what will happen beside the one button: "Google Calendar invites Priya and Kofi." and
    **Schedule** (**Schedule 6 calls** for a repeat). With nobody and no time the button waits and the line says "Add who
@@ -872,9 +875,10 @@ time, slides in on the right.
   the organizer is asked, "Your plan has notes again", with **Turn notes on**. While they're stopped, turning notes on or starting a room recording says "Your notes for this
   period have run out. They start again when your plan renews."
 - **How long a call runs.** A call ends at 10 hours, and everyone is told 5 minutes before ("This call ends at
-  14:30"); its notes are written as when anyone ends it. At most 100 people are in a call or waiting to be let in: one
+  14:30"); its notes are written as when anyone ends it. At most 100 people are in a call or asking to be let in: one
   more is told "This call is full: 100 people are in it, the most a call can have", and whoever hosts is told someone
-  tried.
+  tried. An ask whose browser closed stops holding a place once it's gone from the host's list, and someone who reloads
+  while asking asks again in place of their earlier ask.
 - **Asking for notes.** While notes are off or paused, anyone can ask for them: **Ask for notes** in what's captured,
   or in Notes, whose bar says **Ask to resume** while they're paused. Everyone sees who asked. The organizer gets a toast
   and sees the ask in People, and while notes are off, Notes says how many asked in its pill, in rose, with **Not now**
@@ -1969,15 +1973,18 @@ Signing in again starts a new, empty account on Free.
 ### 11.24 Add money
 
 Open **Settings → Plan → Add money** beside **Balance**, choose **$20**, **$60**, **$120** or your own amount in dollars,
-then the network to send it on, under **Pay with USDC**. A USDC is a dollar, so $20 is 20 USDC. **Get an address** opens the
-amount to send, its QR code and one payment address. Send only USDC on that network. A short payment shows what
-arrived and how much remains; send the remainder before the address expires. After expiry it asks for no more money
-and waits for the payment or refund to settle. The money appears in the balance once settlement is confirmed, and the
-sheet follows the payment until it does. A payment on its way stays under the balance in **Payments** with **Open**, as do
-failed and held payments with their support reference; once it's added it shows as "Added, 20 USDC" with **Receipt**. A
-waiting payment can be cancelled; a payment already sent still counts when it settles. Deleting an account warns when one
-of its payment addresses could still receive money. Buying Pro or more notes is checkout's (16.2–16.5), which adds the
-money and buys with it in one go.
+then the network to send it on, under **Pay with USDC**. A USDC is a dollar, so $20 is 20 USDC. **Get an address** follows
+the payment as checkout's Pay step does (16.2), with the same parts and words: "Waiting for your payment" and until when
+the address is open, **Send exactly** the amount with Copy, the QR code and the address made for this one payment, its
+first six and last four characters in bold (on a phone, **Open in wallet** in place of the code), and "Only send USDC on
+Base". A short payment says "Less than asked arrived", with **Send the rest** to the same address before it closes; after
+that it asks for no more money, and what arrived goes into the balance once the payment settles. Seen, the amount that
+arrived counts up and the line runs to "Added to your balance"; then the tick, and how much is in the balance now. A
+payment on its way stays under the balance in **Payments** with **Open**, as do failed and held payments with their support
+reference; once it's added it shows as "Added, 20 USDC" with **Receipt**. **Cancel payment** stops a waiting one; a payment
+already sent still counts. Over, **Start a new payment** starts again. Deleting an account warns when one of its payment
+addresses could still receive money. Buying Pro or more notes is checkout's (16.2–16.5), which adds the money and buys with
+it in one go.
 
 ### 11.25 Choose what reaches you
 
@@ -2585,9 +2592,10 @@ place you're on.
 ### 16.8 Renew, refund and your payments
 
 On Pro, Settings › Plan says until when, with **Extend**. Turn on **Renew from balance**: it's kept and **Saved** shows. **Refund
-($40.00)** asks in place; **Refund $40.00** returns the months that haven't started to the balance, and "Pro refunded, 2
-months" is first in the payments. A refund turns **Renew from balance** off, so the months given back aren't bought again:
-Pro ends when the month running now does. **Receipt** opens a payment's receipt over the page as paper, with **Print**.
+($40.00)** asks in place: what goes back to the balance, that renewing from it turns off (while it's on), and that Pro ends
+when the month running now does. **Refund $40.00** returns the months that haven't started to the balance, and the toast says
+what came back; "Pro refunded, 2 months" is first in the payments. A refund turns **Renew from balance** off, so the months
+given back aren't bought again. **Receipt** opens a payment's receipt over the page as paper, with **Print**.
 
 ### 16.9 Notes run out in a call
 
@@ -2605,8 +2613,9 @@ more there, none of them filled, since **Rejoin** is the page's filled button.
 ### 16.10 Start a call with no notes left
 
 With none left this period and notes on by default, **Start a call** says "No notes left until 20 November" under the ways,
-with **Get Pro** (on a paid plan, **Add 10 hours · $15** while more are offered), which closes the window and opens
-checkout, and **Start without notes**. Scheduling a call with notes on for a time before the period renews says "None left
+with **Get Pro** (on a paid plan, **Add 10 hours · $15** while more are offered), which opens checkout in the window's place,
+and **Start without notes**. Once checkout closes, bought or not, **Start a call** opens again as it was, with whoever and
+whatever it was opened with. Scheduling a call with notes on for a time before the period renews says "None left
 until 20 November" under the Notes switch, with the same way to more, opening checkout over the Calls page, so the call
 being scheduled stays. A question asked across your calls (the palette's **Ask**, or the Calls page's) with none left says
 "No notes left until 20 November" in the answer's place, with the same way to more; typing again or putting the answer away
@@ -2720,7 +2729,8 @@ Alcove normally after plans came.
 4. A new account's tour of Home (1, step 4) starts once Home is there, never over the plans.
 5. Only Home opens on them. A link to a call, a call's page, a join link, an agent's consent page, a public page or a team
    invite is never interrupted, and nor is signing in from a call's link or for an agent: the plans wait for the next time Home
-   is reached.
+   is reached. Signing in from the welcome page sails out of its cove onto them, as it would onto Home (1, step 3), the sun
+   sinking to their last sliver; a new account's arrival says "Opening Plans" and its arch opens onto them.
 6. Once the plans have been on screen for a moment (the tab showing, nothing open over them), Alcove is told, and they aren't
    shown again. Plans itself counts too. If telling Alcove fails, it's tried again quietly, and this tab doesn't show them again;
    a later visit does. Left before their prices came (still loading, offline, or not loaded), they show again on a later visit.

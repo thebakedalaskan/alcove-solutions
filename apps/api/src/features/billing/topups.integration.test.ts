@@ -11,7 +11,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { z } from 'zod';
 import { openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
 import { creditCarried, DepositRecord, watch } from './deposits';
-import { creditByEmail } from './support';
+import { creditBySupport } from './support';
 import { NOT_ALLOWLISTED } from '../../testing/fake-oneclick';
 import { ORIGIN, cookieFetch, startHarness, type Harness } from '../../testing/harness';
 
@@ -1213,7 +1213,7 @@ describe('top-ups that buy', () => {
   async function withBalance(microUsd: number) {
     const email = unique();
     const who = await account(email);
-    await creditByEmail(h.deps, email, microUsd);
+    await creditBySupport(h.deps, email, microUsd);
     return who;
   }
   /** An account that has made a team, so it's the team's admin, with `microUsd` in its balance first. */
@@ -1446,7 +1446,7 @@ describe('top-ups that buy', () => {
     const one = await account(email);
     const two = await account(email);
     // Money for more, so a second purchase would go through if one were made.
-    await creditByEmail(h.deps, email, 5 * PRICE);
+    await creditBySupport(h.deps, email, 5 * PRICE);
     const t = await one.api.plans.startTopUp(BASE_USDC, PRICE, pro(1));
     h.oneclick.set(addr(t), 'SUCCESS', { depositedAmount: String(PRICE), amountOut: String(PRICE), intentHashes: [`race-${t.id}`] });
     await dueOnly(t.id);
@@ -1618,7 +1618,7 @@ describe('top-ups that buy', () => {
     const two = await account(email);
     await one.api.teams.create('Vandelay Industries');
     // Money for more, so a second purchase would go through if one were made.
-    await creditByEmail(h.deps, email, 5 * LICENSE);
+    await creditBySupport(h.deps, email, 5 * LICENSE);
     const t = await one.api.plans.startTopUp(BASE_USDC, 2 * LICENSE, licenses(2));
     h.oneclick.set(addr(t), 'SUCCESS', { depositedAmount: String(2 * LICENSE), amountOut: String(2 * LICENSE), intentHashes: [`race-${t.id}`] });
     await dueOnly(t.id);

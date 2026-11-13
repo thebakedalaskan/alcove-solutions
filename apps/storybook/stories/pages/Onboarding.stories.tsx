@@ -26,6 +26,8 @@ export const Arrival = page('/ready', 'first-day');
 export const ArrivalPhone = phone(Arrival);
 /** A new account that came with a calendar and a team: today's calls and the team arrive as rows too. */
 export const ArrivalWithACalendarAndATeam = page('/ready', 'busy');
+/** A new account whose plans haven't been shown, as every new account's haven't: "Opening Plans", and the arch opens onto them (16.20). */
+export const ArrivalOntoThePlans = page('/ready', 'plan-choice');
 /** Escape opens Home straight away, and the tour starts, since this browser hasn't seen it. */
 export const IntoTheTour = page('/ready', 'first-day', {
   play: async ({ userEvent, step }) => {

@@ -134,7 +134,7 @@ function Shell() {
             <TabBar />
           </div>
         )}
-        <CallFlowHost opened={calls.opened} open={calls.open} close={calls.close} />
+        <CallFlowHost opened={calls.opened} open={calls.open} close={calls.close} back={calls.back} />
         <Palette open={palette} onOpenChange={setPalette} start={start} />
         <TourHost />
         {!account.offline && <HourLeft ownerId={ownerOf(account)} />}

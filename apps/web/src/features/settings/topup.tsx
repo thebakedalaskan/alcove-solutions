@@ -1,16 +1,17 @@
 /*
  * Adding money to the balance with USDC, from Settings › Plan: choose how much, then the network to send it on, and get an
  * address made for one payment of exactly that, sent from any wallet or exchange. A USDC is added as a dollar. The sheet
- * follows the payment on its own until it's added (or isn't), and opens again on it from Plan's payments, so closing it
- * loses nothing. Buying Pro or more notes is checkout's (features/plans/checkout.tsx), which asks for what it needs.
+ * follows the payment on its own until it's added (or isn't), as checkout follows one, with the same parts and words
+ * (features/plans/paying.tsx), and opens again on it from Plan's payments, so closing it loses nothing. Buying Pro or more
+ * notes is checkout's (features/plans/checkout.tsx), which asks for what it needs.
  */
 import { errorMessage, MAX_TOP_UP_MICRO_USD } from '@alcove/api';
-import { Button, Chip, CopyField, CryptoMark, Dots, Icon, IconButton, Notice, QrCode, RequestRef, Select, Sheet, Spinner, type SelectOption } from '@alcove/ui';
+import { Button, CryptoMark, Dots, IconButton, Notice, Select, Sheet, Spinner, type SelectOption } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useId, useState, type ReactNode } from 'react';
-import { restToSend as rest } from '~/features/plans/purchase';
+import { useId, useState } from 'react';
+import { PayAdded, PayNow, PayOver, PaySeen, isOver, payingOf, useSeenWhileOpen } from '~/features/plans/paying';
+import { useNow } from '~/lib/live';
 import { q, useCancelTopUp, useStartTopUp } from '~/lib/queries';
-import { byWhen, minutesUntil } from '~/lib/time';
 import { usd } from '~/lib/words';
 
 const tokens = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 6, useGrouping: false });
@@ -22,14 +23,14 @@ const routeName = (r: { token: string; chainName: string }) => `${r.token} on ${
 const MIN_CUSTOM = '5';
 /**
  * What the custom amount field shows for what was typed: dollars and up to two places of cents, no leading zeros, and
- * never more than one top-up can add.
+ * never more than one top-up can add. The whole amount, cents and all, is held to that most ($8,000), however many digits
+ * were typed.
  */
 function dollarsInput(text: string): string {
   const [whole = '', ...rest] = text.replace(/[^\d.]/g, '').split('.');
-  const digits = whole.replace(/^0+(?=\d)/, '').slice(0, 4);
-  const cents = rest.length ? `.${rest.join('').slice(0, 2)}` : '';
-  const max = MAX_TOP_UP_MICRO_USD / 1_000_000;
-  return digits && Number(digits) > max ? String(max) : `${digits}${cents}`;
+  const typed = `${whole.replace(/^0+(?=\d)/, '')}${rest.length ? `.${rest.join('').slice(0, 2)}` : ''}`;
+  const micro = typedMicroUsd(typed);
+  return micro !== null && micro > MAX_TOP_UP_MICRO_USD ? String(MAX_TOP_UP_MICRO_USD / 1_000_000) : typed;
 }
 /** The micro-USD in the custom amount field, or null when it's empty or nothing. */
 function typedMicroUsd(text: string): number | null {
@@ -42,13 +43,6 @@ const periodsOf = (microUsd: number, presets: number[]): string => {
   const n = one ? Math.round(microUsd / one) : 0;
   return n > 0 ? `${n} ${n === 1 ? 'month' : 'months'} of Pro` : '';
 };
-
-/** The time now, a little stale: enough for "expires in 12 min" to keep up while the sheet stays open. */
-function useMinute(): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 30_000); return () => window.clearInterval(t); }, []);
-  return now;
-}
 
 /** `topUpId` opens the sheet on that top-up; null opens it on choosing how much to add. */
 export function AddMoneySheet({ open, onOpenChange, topUpId }: { open: boolean; onOpenChange: (open: boolean) => void; topUpId: string | null }) {
@@ -148,123 +142,42 @@ function Pick({ onStarted }: { onStarted: (id: string) => void }) {
   );
 }
 
-/** One top-up: what to send and where while a payment is awaited, and how it stands, read again until it's done. */
+/**
+ * One payment into the balance, followed as checkout follows one, with the same parts and words (features/plans/paying.tsx):
+ * how it stands and until when, what to send and where, then seen, added, or over and why, read again until it's done.
+ */
 function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose: () => void }) {
   const topUp = useQuery(q.topUp(id));
   const cancel = useCancelTopUp();
-  const now = useMinute();
+  const now = useNow();
   const t = topUp.data;
-  if (!t) {
+  const paying = t ? payingOf(t, now) : null;
+  const counting = useSeenWhileOpen(paying);
+  if (!t || !paying) {
     return (
       <div className="set-topup-body">
         {topUp.isError
           ? <Notice tone="caution">{errorMessage(topUp.error)}</Notice>
-          : <p className="set-topup-wait" role="status"><Dots />Opening the top-up</p>}
+          : <p className="set-topup-wait" role="status"><Dots />Opening your payment</p>}
       </div>
     );
   }
-  const { token, chainName } = t.route;
-  const left = minutesUntil(t.expiresAt, now);
-  // The server shows the address only while it can take money; past its expiry it can't, whatever the state says yet.
-  const address = left > 0 ? t.address : null;
-  /** Past its expiry while the server still has it open: nothing more can be sent to it. */
-  const lapsed = t.address !== null && address === null;
-  const r = t.received;
-  const done = t.state === 'credited' || t.state === 'held';
-  const short = t.state === 'short';
-
-  // What's sent and what it buys: what's still to send while it can be, what arrived once it's settled.
-  const send = done && r ? { label: 'You sent', amount: r.amount, more: null }
-    : t.state === 'arriving' ? { label: 'You sent', amount: r?.amount ?? t.asked.amount, more: null }
-    : short && lapsed ? { label: 'You sent', amount: r?.amount ?? '0', more: null }
-    : short ? { label: 'Send another', amount: rest(t), more: `${r?.amount ?? 'Part'} of ${t.asked.amount} ${token} arrived` }
-    : { label: 'Send exactly', amount: t.asked.amount, more: null };
-  // A token is added as a dollar: what was asked, until it's settled, then what was added.
-  const added = done && r ? r.microUsd ?? 0 : Math.round(Number(t.asked.amount) * 1_000_000);
-
-  // How it stands: a chip, and a line on what happens next.
-  let chip: ReactNode;
-  let next: ReactNode;
-  /** Where support is needed: the reference to give them, on its own line. */
-  let ref = false;
-  if (lapsed && t.state === 'waiting') {
-    chip = <Chip icon="clock">Address expired</Chip>;
-    next = 'Nothing arrived. To add money, start a new top-up.';
-  } else if (t.state === 'waiting') {
-    chip = <Chip tone="horizon"><Dots />Waiting for your payment</Chip>;
-    next = <>Scan it with a {chainName} wallet, or copy the address below. After you paste it, check the first and last characters.</>;
-  } else if (short && lapsed) {
-    chip = <Chip icon="clock">Address expired</Chip>;
-    next = 'Don’t send more to this address. What arrived is added after the payment or refund settles.';
-  } else if (short) {
-    chip = <Chip tone="caution" icon="alert">Less than asked arrived</Chip>;
-    next = <>Send the other {rest(t)} {token} to the same address. If you don’t, the {r?.amount ?? ''} {token} that arrived is added after the payment or refund settles.</>;
-  } else if (t.state === 'arriving') {
-    chip = <Chip tone="horizon"><Dots />Payment seen</Chip>;
-    next = 'Adding it to your balance. This usually takes a minute or two.';
-  } else if (t.state === 'credited') {
-    chip = <Chip tone="sun" icon="check">Added</Chip>;
-    next = 'It’s in your balance now.';
-  } else if (t.state === 'held') {
-    chip = <Chip tone="caution" icon="alert">Too small to add</Chip>;
-    next = 'What arrived is too little to add. If you think that’s wrong, contact support with this reference.';
-    ref = true;
-  } else if (t.state === 'failed') {
-    chip = <Chip tone="caution" icon="alert">Something went wrong</Chip>;
-    next = 'This payment needs a person to look at it. Contact support with this reference.';
-    ref = true;
-  } else if (t.state === 'cancelled') {
-    chip = <Chip icon="x">Cancelled</Chip>;
-    next = 'This top-up is cancelled. If you already sent a payment to its address, it’s still added when it arrives.';
-  } else {
-    chip = <Chip icon="clock">Address expired</Chip>;
-    next = 'Nothing arrived. To add money, start a new top-up.';
-  }
-  /** Nothing has reached it and its address can still be paid: it can be cancelled. */
-  const cancellable = t.state === 'waiting' && !lapsed;
-  const expires = address !== null && <p className="exp"><Icon name="clock" size={15} />Open until {byWhen(t.expiresAt, now)}</p>;
-
+  // Money for the balance buys nothing, so once it's added it's added.
+  const body = paying === 'send' || paying === 'short' ? <PayNow t={t} now={now} />
+    : paying === 'seen' ? <PaySeen t={t} count={counting} doing="Adding it to your balance. This takes a minute or two." last="Added to your balance" />
+    : isOver(paying) ? <PayOver t={t} over={paying} />
+    : <PayAdded t={t} />;
   return (
     <>
       <div className="set-topup-body">
-        <div className={`set-topup-sum${t.state === 'expired' || t.state === 'cancelled' || (lapsed && t.state === 'waiting') ? ' is-void' : ''}`}>
-          <div>
-            <span className="ac-eyebrow">{send.label}</span>
-            <p className="amt"><b>{send.amount}</b> {token}</p>
-            <p className="on"><CryptoMark name={t.route.chain} />on {chainName}</p>
-            {send.more && <p className="so-far">({send.more})</p>}
-          </div>
-          <div className="get">
-            <span className="ac-eyebrow">{done ? 'Added' : short && lapsed ? 'Your balance' : 'You add'}</span>
-            {short && lapsed ? <p className="added">Settlement pending</p>
-              : <p className="added"><b>{usd(added)}</b>{short && ' in total'}</p>}
-          </div>
-        </div>
-        {address !== null ? (
-          <>
-            <div className="set-topup-scan">
-              <QrCode value={address} size={152} label={`Address to send ${routeName(t.route)} to`} />
-              <div className="how" role="status">{chip}<p>{next}</p>{expires}</div>
-            </div>
-            <div className="set-topup-dest">
-              <div className="h">
-                <span>Deposit address · {chainName}</span>
-                {short ? <Chip tone="outline">Same address</Chip> : <Chip tone="horizon">Made for this payment</Chip>}
-              </div>
-              <CopyField value={address} label="Deposit address" />
-              {t.memo !== null && <CopyField value={t.memo} label="Memo" />}
-            </div>
-            <Notice tone="caution" icon="alert">Only send <b>{routeName(t.route)}</b>. Anything else may be lost. Sending from an exchange? Add its withdrawal fee on top.</Notice>
-          </>
-        ) : (
-          <div className="set-topup-how" role="status">{chip}<p>{next}</p>{ref && <RequestRef id={t.id} />}</div>
-        )}
+        <div className="set-topup-pay">{body}</div>
         <div role="status">{cancel.isError && <Notice tone="caution">{errorMessage(cancel.error)}</Notice>}</div>
       </div>
       <div className="set-topup-f">
-        {cancellable
-          ? <Button variant="quiet" loading={cancel.isPending} onClick={() => cancel.mutate(t.id)}>{cancel.isPending ? 'Cancelling' : 'Cancel top-up'}</Button>
-          : <Button variant="quiet" onClick={onNew}>Start a new top-up</Button>}
+        {/* Nothing has reached it and its address can still be paid: it can be cancelled. Once it's over, another can start. */}
+        {paying === 'send'
+          ? <Button variant="quiet" loading={cancel.isPending} onClick={() => cancel.mutate(t.id)}>{cancel.isPending ? 'Cancelling' : 'Cancel payment'}</Button>
+          : paying !== 'short' && paying !== 'seen' && <Button variant="quiet" onClick={onNew}>Start a new payment</Button>}
         <Button variant="secondary" onClick={onClose}>Done</Button>
       </div>
     </>

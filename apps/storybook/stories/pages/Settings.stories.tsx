@@ -322,14 +322,31 @@ export const OnPro = page('/settings#plan', 'plan-pro');
 export const OnProNight = night(OnPro);
 export const OnProPhone = phone(OnPro);
 export const OnProPhoneNight = phoneNight(OnPro);
+/** Renewing from the balance on, as a story's world needs it. */
+const renewing = (w: World) => { w.plan = { ...w.plan, pro: { ...w.plan.pro, renew: true } }; };
 /** Renewing from the balance is on: the plan says it renews before it ends. */
-export const OnProRenewing = page('/settings#plan', 'plan-pro', { beforeEach: changing((w) => { w.plan = { ...w.plan, pro: { ...w.plan.pro, renew: true } }; }) });
+export const OnProRenewing = page('/settings#plan', 'plan-pro', { beforeEach: changing(renewing) });
 /** Renewing is on, and the balance is short of a month: the row says Pro won't renew. */
 export const OnProRenewingShort = page('/settings#plan', 'plan-pro', { beforeEach: changing((w) => { w.plan = { ...w.plan, balance: { ...w.plan.balance, microUsd: 5_000_000 }, pro: { ...w.plan.pro, renew: true } }; }) });
 /** Refund asks in place: what goes back to the balance, and when Pro ends. */
 export const RefundAsked = page('/settings#plan', 'plan-pro', { play: pressing(/^Refund \(/, 'Ask to refund the months that haven’t started') });
 export const RefundAskedNight = night(RefundAsked);
 export const RefundAskedPhone = phone(RefundAsked);
+/** With renewing on, the refund turns it off, so the months given back aren't bought again: the question says so. */
+export const RefundAskedRenewing = page('/settings#plan', 'plan-pro', { beforeEach: changing(renewing), play: pressing(/^Refund \(/, 'Ask to refund the months that haven’t started, with renewing on') });
+/** Refunded with renewing on: the refund is first in the payments, and Renew from balance is off. */
+export const RefundedRenewing = page('/settings#plan', 'plan-pro', {
+  beforeEach: changing(renewing),
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Ask to refund the months that haven’t started, with renewing on', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: /^Refund \(/ }, { timeout: 8000 }));
+    });
+    await step('Refund them: the months go back to the balance, and renewing from it turns off', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: /^Refund \$/ }, { timeout: 8000 }));
+      await canvas.findByRole('switch', { name: 'Renew from balance', checked: false }, { timeout: 8000 });
+    });
+  }
+});
 /** A payment's receipt opens over the page, as paper, to print. */
 export const AReceipt = page('/settings#plan', 'plan-pro', { play: pressing(/^Receipt for Pro, 3 months/, 'Press Receipt beside Pro, 3 months') });
 export const AReceiptNight = night(AReceipt);
@@ -464,8 +481,8 @@ export const PaymentCancelled = page('/settings#plan', 'payments', {
   beforeEach: changing(withTopUp('waiting')),
   play: async (context) => {
     await openTopUp(context);
-    await context.step('Cancel the top-up', async () => {
-      await context.userEvent.click(await screen.findByRole('button', { name: 'Cancel top-up' }, { timeout: 8000 }));
+    await context.step('Cancel the payment', async () => {
+      await context.userEvent.click(await screen.findByRole('button', { name: 'Cancel payment' }, { timeout: 8000 }));
     });
   }
 });

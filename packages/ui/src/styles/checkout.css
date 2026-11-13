@@ -105,7 +105,7 @@
 .ck-b { flex: 1; min-height: 0; overflow: hidden auto; padding: 20px 28px 22px; scrollbar-width: thin; }
 .ck-f { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; padding: 14px 28px 20px; border-top: 1px solid var(--line); }
 .ck-f .ck-push { margin-right: auto; }
-.ck-f .hint { margin-right: auto; max-width: 34ch; font: 400 13px/18px var(--font-sans); color: var(--ink-2); }
+.ck-f .hint, .ck-f .ck-offline { margin-right: auto; max-width: 34ch; font: 400 13px/18px var(--font-sans); color: var(--ink-2); }
 .ac-icon-btn.ck-x { position: absolute; top: 14px; right: 14px; z-index: 3; width: 34px; height: 34px; background: color-mix(in oklch, var(--frame) 52%, transparent); color: var(--stage-ink); }
 .ac-icon-btn.ck-x:hover { background: color-mix(in oklch, var(--frame) 72%, transparent); color: var(--stage-ink); }
 
@@ -133,6 +133,8 @@
 .ck-card .p { margin-top: auto; font: 600 17px/22px var(--font-sans); color: var(--ink); font-variant-numeric: tabular-nums; }
 .ck-card .m { font: 400 12.5px/16px var(--font-sans); color: var(--ink-2); white-space: nowrap; }
 .ck-card .tag { display: none; }
+/* What a number of licenses is for ("24 spare after Maya’s") is longer than a length's price a month: it wraps in its card. */
+.ck-cards.is-licenses .ck-card .m { white-space: normal; text-wrap: balance; }
 /* The lower price, said once, over the lengths that get it. */
 .ck-brk { display: flex; align-items: center; gap: 8px; height: 22px; margin-bottom: 2px; color: var(--horizon); font: 600 12px/1 var(--font-sans); white-space: nowrap; }
 .ck-brk::before, .ck-brk::after { content: ""; flex: 1; height: 8px; margin-top: 8px; border-top: 1.5px solid color-mix(in oklch, var(--horizon) 55%, transparent); }
@@ -180,7 +182,8 @@
 .ck-b > .ck-note:first-child { margin-top: 0; }
 .ck-note + .ck-sec { margin-top: 20px; }
 .ck-wait { display: flex; align-items: center; gap: 10px; font: 400 14px/20px var(--font-sans); color: var(--ink-2); }
-.ck-b > .ac-ref { margin: 10px 0 0 -7px; }
+/* A payment's reference for support, under what happened to it: in checkout's step and in Add money alike. */
+.ac-ref.ck-ref { margin: 10px 0 0 -7px; }
 
 /* ------------------------------------------------------------------ paying: the exact amount, the address made for it, and how it stands */
 .ck-status { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; }
@@ -237,7 +240,8 @@
 /* Done. */
 .ck-done, .ck-done-said { display: grid; justify-items: start; }
 .ck-tick { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: color-mix(in oklch, var(--sun-text) 15%, transparent); color: var(--sun-text); animation: ck-pop calc(.45s * var(--pm, 1)) var(--ease-out) both; }
-.ck-tick .ac-i { stroke-width: 2.2; stroke-dasharray: 24; animation: ck-draw calc(.5s * var(--pm, 1)) calc(.15s * var(--pm, 1)) var(--ease-out) both; }
+/* The tick is CheckDraw, drawn by motion/react, at the weight the window's tick has always had. */
+.ck-tick svg { stroke-width: 2.2; }
 .ck-done .ck-big { margin-top: 16px; font-size: 36px; }
 .ck-receipt-row { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; column-gap: 12px; width: 100%; margin-top: 20px; padding: 12px 12px 12px 14px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line); }
 .ck-receipt-row > .ac-i { color: var(--ink-2); }
@@ -308,7 +312,6 @@
 @keyframes ck-in { from { opacity: 0; transform: translateY(8px); } }
 @keyframes ck-up { from { opacity: 0; transform: translateY(24px); } }
 @keyframes ck-pop { from { opacity: 0; transform: scale(.7); } }
-@keyframes ck-draw { from { stroke-dashoffset: 24; } }
 @keyframes ck-breathe { 50% { opacity: .62; } }
 @keyframes ck-listen { 50% { opacity: 1; } }
 @keyframes ck-ring { from { opacity: .8; transform: scale(.55); } to { opacity: 0; transform: scale(1.5); } }
@@ -344,6 +347,8 @@
   .ck-b { padding: 16px 16px 20px; }
   .ck-f { padding: 12px 16px calc(16px + env(safe-area-inset-bottom, 0px)); }
   .ck-f .hint { display: none; }
+  /* Offline, the button waits: why is said on a line of its own, over the buttons. */
+  .ck-f .ck-offline { order: -1; flex-basis: 100%; max-width: none; margin-right: 0; }
   .ck-f > .ac-btn, .ck-ask .row > .ac-btn { flex: 1; }
   .ck-cards { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .ck-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "n p" "m tag"; align-items: baseline; column-gap: 12px; min-height: 0; padding: 12px 14px; }

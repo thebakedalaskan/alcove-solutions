@@ -118,6 +118,8 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   unless what answered it says it's an ordinary refusal.
 - Whatever a plan's limits refuse is an ordinary refusal at info, `402 plan-limit` with its `reason` in the context
   (`notes`: the AI allowance is spent; `storage`: the account's storage is full), with IDs, sizes and kinds as its context, never an allowance, a balance or a title ([Plans and usage](plans-and-usage.md)).
+  Guests in a call who have spent their share of its organizer's allowance are refused the same way, with `why: 'guests'`,
+  after `guests in a call asked as much as its share allows` at info with the organizer's owner and the call's ID.
 - A purchase refused as it's asked for (`409 conflict`: a price that changed, a balance short of it; `400 invalid`: more
   than one purchase buys) is an ordinary refusal at info, with the owner, what it buys and `why`. Its words say what it
   costs, never the balance, since a refusal's message is its log line's.
@@ -138,6 +140,11 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   a flag; `feature flags not read; keeping what was in force` at warn. Each `feature-flags` command logs what it changed with the flag,
   group and counts, and `feature flags refused` at warn for a refusal. A flagged endpoint refusing logs at info with its `featureFlag`. No
   address or hash is ever logged.
+- Support's `billing` command (`service: 'alcove-billing'`) logs `balance added by support` at info with the owner and the
+  top-up it was named by, and `top-up added by support` with that top-up's ID and state; a refusal (nobody found, more than
+  one account, a top-up still watched, an amount that isn't one) logs `billing refused` at warn with its `code` or `why`, and
+  anything else `billing failed` at error. Never an amount, and never what was typed, which may be an address
+  ([Plans and usage › Support](plans-and-usage.md#support)).
 - A piece of a shared screen's video is refused as `403 forbidden` when it isn't the sender's share or the share
   doesn't go in the notes, `404 not-found` when the share is unknown or has ended, and `409 conflict` while notes are
   paused or off, or when a different piece is already stored in its place. ffmpeg failing to join or decode a share's

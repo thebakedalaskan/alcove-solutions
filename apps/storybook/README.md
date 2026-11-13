@@ -516,11 +516,13 @@ story. `purchaseAt()` and `playsOut()` put one where a story needs it. Every add
 motion and Play again. Section 16's journeys are **Journeys / 16 Plans and paying** (16.1, from the side panel to Plans),
 **16 Checkout** (16.2 to 16.6), **16 Your plan** (16.7, 16.8 and 16.14, in the side panel and Settings), **16 Where
 checkout shows** (16.9 to 16.13, the doors), **16 Team** (16.15, starting a team from Plans) and **16 The plan choice** (16.20:
-a new account's arrival onto the plans, Continue on Free, then Home and its tour; and Get Pro from them, paid, then Home).
+a new account's arrival onto the plans, saying "Opening Plans", Continue on Free, then Home and its tour; Get Pro from them, paid,
+then Home; and signing in from the welcome page, sailing out of its cove onto them).
 
 **Pages / Plans / Plan Choice…** is the plan choice, Plans in Home's place once while `Plan.choose` is true (the `plan-choice`
 and `plan-choice-before` scenarios): a new account, an account from before plans and one over Free's storage, on a team (where
 Pro says not while you're on your team's plan, as **Team Admin** and **Team Member** show on Plans), Pro bought from it, payments
 off, telling Alcove the plans were seen failing (they aren't shown again in that tab), and the prices loading, not loaded and
-offline, in both themes and on a phone. The first sign-in's journeys (1.1, 1.2) pass through it too.
+offline, in both themes and on a phone. The first sign-in's journeys (1.1, 1.2) pass through it too. **Components / The evening /
+SailOut / Onto the plans** sails out of the cove onto a stand-in for it, the sun easing down to the plans' last sliver.
 

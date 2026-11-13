@@ -23,7 +23,7 @@ import { checkoutFor, purchaseName, restToSend, tokensExact } from '~/features/p
 import { hoursOfNotes } from '~/features/plans/words';
 import { useNow } from '~/lib/live';
 import { q, topUpOpen, useCancelTopUp, useDismissPlanNotice, useRefundPro, useSetRenew } from '~/lib/queries';
-import { byDay, byWhen, dayFullMonth, fullDate, hm, longDay, shortDate, shortDay } from '~/lib/time';
+import { byDay, byWhen, dayFullMonth, fullDate, hm, longDay, shortDate } from '~/lib/time';
 import { plural, roomLabel, usd, usdCents } from '~/lib/words';
 import { AutoBuy, Licenses, RefundLicenses, TeamPlanRow, TeamStorageNote, WaitingNote, balanceBuys, teamNoticeSays, teamNotesHelp, teamStorageHelp } from './PlanTeam';
 import { useSaveState, useSaving } from './save';
@@ -36,7 +36,7 @@ export function PlanGroup({ plan }: { plan: Plan }) {
   // The team you're on, as you see it: its admin, and for the admin its licenses. Someone waiting for one makes Buy
   // licenses the one thing to do here.
   const team = useQuery({ ...q.myTeam(), enabled: plan.team !== null }).data;
-  const licenses = team ? teamLicenses(team) : null;
+  const licenses = teamLicenses(team);
   const [sheet, setSheet] = useState<{ open: boolean; topUpId: string | null }>({ open: false, topUpId: null });
   return (
     <SettingsGroup id="plan" title="Plan">
@@ -241,7 +241,12 @@ function Renew({ plan, offers, canAdd }: { plan: Plan; offers: PlanOffers | unde
 }
 
 
-/** Refunding the months that haven't started, asked in place: what goes back to the balance, and when Pro ends then. */
+/**
+ * Refunding the months that haven't started, asked in place: what goes back to the balance, that renewing from it turns off
+ * (a refund turns it off, so upkeep doesn't buy back a month just given back), and when Pro ends then. It's all the server's:
+ * on Pro, its months are the one running now and those bought after it, so the ones to refund are those after the first, and
+ * the one running now ends with the period. The toast says what the refund's answer says came back.
+ */
 function Refund({ plan }: { plan: Plan }) {
   const refund = useRefundPro();
   const toast = useToast();
@@ -250,32 +255,34 @@ function Refund({ plan }: { plan: Plan }) {
   const ask = useRef<HTMLButtonElement>(null);
   const back = plan.pro.refundableMicroUsd;
   if (back <= 0) return null;
-  const now = Date.now();
-  const later = plan.pro.months.filter((m) => Date.parse(m.from) > now);
-  const running = plan.pro.months.find((m) => Date.parse(m.from) <= now && Date.parse(m.to) > now);
+  const later = plan.pro.months.slice(1).length;
   const go = () => {
     setRefused(null);
     refund.mutate(undefined, {
-      onSuccess: () => { setAsking(false); toast(`Refunded ${usdCents(back)} to your balance.`, { icon: 'check' }); },
+      onSuccess: (after) => {
+        setAsking(false);
+        const entry = after.balance.history[0];
+        toast(entry && entry.microUsd > 0 ? `Refunded ${usdCents(entry.microUsd)} to your balance.` : 'Refunded to your balance.', { icon: 'check' });
+      },
       onError: (e) => setRefused(errorMessage(e))
     });
   };
   if (!asking) {
     return (
-      <SettingRow label={`Refund ${plural(later.length, 'month')} that ${later.length === 1 ? 'hasn’t' : 'haven’t'} started`}
+      <SettingRow label={`Refund ${plural(later, 'month')} that ${later === 1 ? 'hasn’t' : 'haven’t'} started`}
         help={`${usdCents(back)} goes back to your balance. A month that has started isn’t refunded.`}
         control={<Button ref={ask} variant="quiet" size="sm" onClick={() => { setRefused(null); setAsking(true); }}>Refund ({usdCents(back)})</Button>} />
     );
   }
   return (
     <>
-      <SettingStep title={`Refund ${plural(later.length, 'month')} of Pro?`}
-        help={`${usdCents(back)} goes back to your balance.${running ? ` Pro ends on ${shortDay(new Date(running.to))}, when the month running now does.` : ''}`}>
+      <SettingStep title={`Refund ${plural(later, 'month')} of Pro?`}
+        help={`${usdCents(back)} goes back to your balance${plan.pro.renew ? ', and renewing from your balance turns off' : ''}. Pro ends on ${longDay(new Date(plan.period.to))}, when the month running now does.`}>
         {refused !== null && <p className="set-err" role="alert">{refused}</p>}
       </SettingStep>
       <SettingFoot actions={
         <>
-          <Button variant="quiet" size="sm" disabled={refund.isPending} onClick={() => { setAsking(false); requestAnimationFrame(() => ask.current?.focus()); }}>{later.length === 1 ? 'Keep it' : 'Keep them'}</Button>
+          <Button variant="quiet" size="sm" disabled={refund.isPending} onClick={() => { setAsking(false); requestAnimationFrame(() => ask.current?.focus()); }}>{later === 1 ? 'Keep it' : 'Keep them'}</Button>
           <Button variant="secondary" size="sm" loading={refund.isPending} onClick={go}>Refund {usdCents(back)}</Button>
         </>
       } />
