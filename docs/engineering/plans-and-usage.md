@@ -554,8 +554,10 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   migrations follow main's `0026_workspace_calls.sql`, `0027_agent_activity.sql` and `0028_meeting_proposals.sql`, and
   nothing in them depends on those. No shared database ran them under the numbers they had on the plans branches
   (`0026_plans.sql`, `0027_workspace_payers.sql`, `0028_teams.sql`); a local one that did is refused by `migrate.ts`
-  until those three rows of `schema_migrations` are renamed to the new names (the files' contents, so their checksums,
-  are unchanged).
+  until those three rows of `schema_migrations` are renamed to the new names. `0029_plans.sql` also lost
+  `ai_meters.version` before it shipped (a count of each account's AI requests in the clear, which nothing read), so a
+  local database that ran it before is refused for that file too: drop the column and set that row's checksum to the
+  file's SHA-256, or start the database over (`pnpm db:reset`).
 - Credits are gone: every account starts on Free at $0, its old balance ignored, and then every top-up it paid for is
   added again as dollars, at face value (above): welcome credits aren't, and what credits were spent on notes isn't taken
   off. `billing_accounts` is no longer read, and goes in a later release.

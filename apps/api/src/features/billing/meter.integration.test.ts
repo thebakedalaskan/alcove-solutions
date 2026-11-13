@@ -715,6 +715,18 @@ describe('periods', () => {
   });
 });
 
+describe('what’s kept', () => {
+  it('keeps nothing of an account’s allowance in the clear but whose it is: nothing counts its requests', async () => {
+    const ann = await account();
+    const rec = await ann.api.recordings.start({ title: 'Kept' });
+    await rec.transcribe(speech('We agreed to ship on Monday.', 0));
+    await written(ann.api, (await rec.stop()).pendingNoteId);
+    const columns = (await h.pool.query<{ name: string }>("SELECT column_name AS name FROM information_schema.columns WHERE table_name = 'ai_meters' ORDER BY ordinal_position")).rows.map((r) => r.name);
+    expect(columns).toEqual(['owner_id', 'state_ciphertext']);
+    expect((await h.pool.query('SELECT 1 FROM ai_meters WHERE owner_id = $1', [ann.session.ownerId])).rowCount).toBe(1);
+  });
+});
+
 describe('what’s shown', () => {
   it('says notes left from what was spent, so it only goes down while a call goes on and its notes are written', async () => {
     // A minute of notes is a tenth of a cent here: anything held for a request would show as many minutes if it counted.
