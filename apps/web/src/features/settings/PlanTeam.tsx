@@ -133,7 +133,9 @@ export function Licenses({ licenses, offers }: { licenses: TeamLicenses; offers:
   const checkout = useCheckout();
   const { left, of, waiting } = licenses;
   const count = of === 0 ? 'None bought yet' : left === 0 ? `None of ${of} left` : `${left} of ${of} left`;
-  const help = `${count}${waiting.length ? `, and ${whoWaits(waiting)} for one` : ''}. Each is taken as someone next opens Alcove, for ${offers?.periodDays ?? 30} days.`;
+  // A license runs a period from when it's taken, or a year's periods when it was bought for a year.
+  const runs = `for ${offers?.periodDays ?? 30} days${offers?.team.yearly ? ', or a year if bought for one' : ''}`;
+  const help = `${count}${waiting.length ? `, and ${whoWaits(waiting)} for one` : ''}. Each is taken as someone next opens Alcove, ${runs}.`;
   return (
     <SettingRow label="Licenses" help={help} warm={waiting.length > 0}
       control={<Button variant={waiting.length ? 'primary' : 'secondary'} size="sm" onClick={() => checkout.open({ plan: 'team' }, 'settings')}>Buy licenses</Button>} />

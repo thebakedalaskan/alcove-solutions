@@ -19,8 +19,12 @@ export interface TeamsApi {
   leave(): Promise<void>;
   /** Admin only, once nobody else is on it: deletes the team and refunds its unconsumed licenses to your balance. */
   delete(): Promise<void>;
-  /** Admin only: buys `count` licenses from your balance at `microUsdPerLicense`, the price you were shown. */
-  buyLicenses(count: number, microUsdPerLicense: number): Promise<MyTeam>;
+  /**
+   * Admin only: buys `count` licenses from your balance at `microUsdPerLicense` a period, the price you were shown, each
+   * for `periods` periods (1, the default, at a license's price; a year's, `PlanOffers.team.yearly.periods`, at its lower
+   * price). It costs `count` × `periods` × `microUsdPerLicense`.
+   */
+  buyLicenses(count: number, microUsdPerLicense: number, periods?: number | undefined): Promise<MyTeam>;
   /** Admin only: refunds every unconsumed license to your balance. */
   refundLicenses(): Promise<MyTeam>;
   /** Admin only: buy a license from your balance when a member needs one and none is left. */

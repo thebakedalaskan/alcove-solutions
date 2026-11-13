@@ -4004,7 +4004,7 @@ describe('privacy at rest', () => {
     // an invite's secret only as a hash, in rows and nowhere in the logs. Its license is bought with a payment, so what the
     // payment buys (the `deposit` record's purchase) and the balance's line for it stay sealed too.
     await c.api.teams.create('CANARY-TEAM name of the merger crew');
-    const licensed = await c.api.plans.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 40_000_000, { kind: 'licenses', count: 1, microUsdPerLicense: 40_000_000 });
+    const licensed = await c.api.plans.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 40_000_000, { kind: 'licenses', count: 1, microUsdPerLicense: 40_000_000, periods: 1 });
     h.oneclick.set(licensed.address ?? '', 'SUCCESS', { depositedAmount: '40000000', amountOut: '40000000', intentHashes: ['canary-intent-hash-license'] });
     expect(await c.api.plans.topUp(licensed.id)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
     expect((await c.api.plans.plan()).balance.history.map((e) => e.label).slice(0, 2)).toEqual(['Team, 1 license', 'Added, 40 USDC']);

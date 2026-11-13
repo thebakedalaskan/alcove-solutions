@@ -11,6 +11,7 @@ import { current } from '../../src/api/state';
 import { visit } from '../../src/api/teams';
 import { page, pages, type PageArgs, type PageStory } from '../../src/page';
 import { LICENSE_PRICE } from '../../src/world/plans';
+import { addLicenses } from '../../src/world/teams';
 import { LAPTOP, LATER, SOON } from './play';
 
 const meta = { title: 'Journeys/16 Team in Settings', ...pages, globals: LAPTOP } satisfies Meta<PageArgs>;
@@ -82,7 +83,7 @@ export const OnATeamWithoutALicense: PageStory = {
     });
     await step('Priya buys more, and the next time you open Alcove one is yours. When Alcove next reads your plan, it’s Team: your license runs a period, and Priya buys them', async () => {
       const w = current();
-      if (w.myTeam) w.myTeam.unconsumed = [LICENSE_PRICE, LICENSE_PRICE];
+      if (w.myTeam) addLicenses(w.myTeam, 2, LICENSE_PRICE);
       visit(w);
       await within(await plan()).findByText(/Your license runs to .+; Priya buys them\.$/, {}, POLL);
     });

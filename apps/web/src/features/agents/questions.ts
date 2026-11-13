@@ -19,7 +19,7 @@ export function questionsFor(people: readonly string[]): Question[] {
     { id: 'decide', ask: 'What did we decide about the launch?', needs: 'notes:read', does: 'ask_notes' },
     { id: 'plate', ask: 'What’s on my plate this week?', needs: 'notes:read', does: 'get_inbox' },
     { id: 'book', ask: `Book 45 minutes with ${two} next week.`, needs: 'meetings:write', does: 'schedule_call' },
-    { id: 'follow', ask: one ? `Add a follow-up for ${one} from my last call.` : 'Add a follow-up from my last call.', needs: 'notes:write', does: 'propose_action' }
+    { id: 'follow', ask: one ? `Add a follow-up for ${one} from my last call.` : 'Add a follow-up from my last call.', needs: 'notes:write', does: 'add_follow_up' }
   ];
 }
 

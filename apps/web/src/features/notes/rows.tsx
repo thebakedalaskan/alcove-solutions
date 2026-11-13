@@ -34,14 +34,14 @@ function RowMenu({ label, acts, children }: { label: string; acts: Act[]; childr
   );
 }
 
-/** What backs a row and every change to it, in its menu, under `lead` when there's something above. */
-function Backed({ evidence, changes, me, onSeek, shown, lead, close }: { evidence: NoteEvidence; changes: Change[]; me: string | undefined; onSeek: ((s: number) => void) | undefined; shown: ScreenRefShown | undefined; lead: boolean; close: () => void }) {
+/** What backs a row and every change to it, in its menu, under `lead` when there's something above. `question`: it's an open question's. */
+function Backed({ evidence, changes, me, onSeek, shown, lead, close, question }: { evidence: NoteEvidence; changes: Change[]; me: string | undefined; onSeek: ((s: number) => void) | undefined; shown: ScreenRefShown | undefined; lead: boolean; close: () => void; question?: boolean | undefined }) {
   const said = evidence.moments.length > 0;
   const go = onSeek && ((s: number) => { close(); onSeek(s); });
   return (
     <>
       {said && <>{lead && <div className="ac-pop-sep" />}<div className="ac-pop-h">What was said</div><Moments evidence={evidence} me={me} moment={(at) => <Moment at={at} onSeek={go} />} shown={shown} /></>}
-      {changes.length > 0 && <>{(lead || said) && <div className="ac-pop-sep" />}<div className="ac-pop-h">Changes</div><ChangeList changes={changes} me={me} /></>}
+      {changes.length > 0 && <>{(lead || said) && <div className="ac-pop-sep" />}<div className="ac-pop-h">Changes</div><ChangeList changes={changes} me={me} question={question} /></>}
     </>
   );
 }
@@ -173,6 +173,12 @@ export function Decisions({ items, reader, onChange, ...row }: { items: readonly
   return <>{items.map((d) => <DecisionRow key={d.id} d={d} reader={reader} onChange={onChange} {...row} />)}</>;
 }
 
+/** Who asked a question someone added to the notes themselves (their own, or through their agent): nothing said names them. */
+function addedBy(x: Question, me: string | undefined): string | undefined {
+  const by = proposerOf(x);
+  return by ? `${capital(byName(by, me))} asked` : undefined;
+}
+
 function QuestionRow({ x, onChange, me, onSeek, shown, room }: { x: NoteQuestion; onChange?: ((x: Question, patch: QuestionPatch) => void) | undefined } & RowProps) {
   const [editing, setEditing] = useState(false);
   const answered = x.state === 'answered';
@@ -184,10 +190,10 @@ function QuestionRow({ x, onChange, me, onSeek, shown, room }: { x: NoteQuestion
   ] : [];
   return (
     <Row kind="ask" cls={answered ? 'is-off' : undefined} mark={mark} text={x.text}
-      line={<Line parts={[questionLine(x, me), saidBy(x.evidence, me, 'asked')]} chip={!room && <Moment at={x.at} onSeek={onSeek} />} />}
+      line={<Line parts={[questionLine(x, me), saidBy(x.evidence, me, 'asked') ?? addedBy(x, me)]} chip={!room && <Moment at={x.at} onSeek={onSeek} />} />}
       below={(x.screen || x.evidence.flags.length > 0) && <span className="cd-flags">{x.screen && shown?.(x.screen)}<EvidenceFlags evidence={x.evidence} me={me} /></span>}
       menu={(acts.length > 0 || x.evidence.moments.length > 0 || x.changes.length > 0) && (
-        <RowMenu label={acts.length ? 'Change this' : 'What was said'} acts={acts}>{(close) => <Backed evidence={x.evidence} changes={x.changes} me={me} onSeek={onSeek} shown={shown} lead={acts.length > 0} close={close} />}</RowMenu>
+        <RowMenu label={acts.length ? 'Change this' : 'What was said'} acts={acts}>{(close) => <Backed evidence={x.evidence} changes={x.changes} me={me} onSeek={onSeek} shown={shown} lead={acts.length > 0} close={close} question />}</RowMenu>
       )} />
   );
 }

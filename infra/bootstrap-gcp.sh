@@ -2,11 +2,11 @@
 # One-time GCP setup for Alcove. Safe to re-run; requires gcloud, Node and openssl.
 # Uses the caller's gcloud configuration without changing its default project.
 #   CLOUDSDK_ACTIVE_CONFIG_NAME=alcove PROJECT_ID=alcove-solutions REGION=us-central1 \
-#     GITHUB_REPO=thebakedalaskan/the-privacy-suite ./infra/bootstrap-gcp.sh
+#     GITHUB_REPO=thebakedalaskan/alcove-solutions ./infra/bootstrap-gcp.sh
 set -euo pipefail
 : "${PROJECT_ID:?set PROJECT_ID}" "${REGION:?set REGION}" "${GITHUB_REPO:?set GITHUB_REPO (owner/name)}"
 SQL_INSTANCE="${SQL_INSTANCE:-alcove-db}"
-if [[ "$GITHUB_REPO" == thebakedalaskan/the-privacy-suite ]]; then
+if [[ "$GITHUB_REPO" == thebakedalaskan/alcove-solutions ]]; then
   GITHUB_REPOSITORY_ID="${GITHUB_REPOSITORY_ID:-1442472668}"
   GITHUB_REPOSITORY_OWNER_ID="${GITHUB_REPOSITORY_OWNER_ID:-280182442}"
 fi

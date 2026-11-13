@@ -1,6 +1,6 @@
 /*
- * The agents people use, in the order they stand on the horizon, and how each connects: Alcove's address to paste as a
- * connector (Claude, ChatGPT), one button that opens the app, which asks to add Alcove (Cursor, VS Code), or one line for
+ * The agents people use, in the order they stand on the horizon, and how each connects: Alcove's address to paste where it
+ * adds a server (Claude, ChatGPT), one button that opens the app, which asks to add Alcove (Cursor, VS Code), or one line for
  * the terminal (Claude Code, Codex). Any other agent that works with MCP connects with the address, and a script with a
  * token. A connection's kind is read from its name, here and for display only: the client chooses its name, so nothing
  * Alcove allows or refuses ever depends on it.
@@ -49,13 +49,22 @@ export const markOrder = (mark: Mark): number => (mark === 'token' ? KINDS.lengt
  */
 export interface Connecting { line: string; well?: string | undefined; action: string; href?: string | undefined; newTab?: boolean | undefined; copy?: string | undefined; done: string }
 
-const CONNECTORS: Record<'claude' | 'chatgpt', string> = { claude: 'https://claude.ai/settings/connectors', chatgpt: 'https://chatgpt.com/#settings/Connectors' };
+/**
+ * Where each adds a server by its address, and what to press there: Claude's connectors are under Customize, and ChatGPT
+ * adds one as a plugin. Their own words for the buttons, so the line matches what's on the page that opens.
+ */
+const ADDING: Record<'claude' | 'chatgpt', { href: string; press: string }> = {
+  claude: { href: 'https://claude.ai/customize/connectors', press: 'Add, then Add custom connector' },
+  chatgpt: { href: 'https://chatgpt.com/plugins', press: '+, then Add custom MCP server' }
+};
 
 export function connecting(kind: AgentKind, address: string): Connecting {
   switch (kind.id) {
     case 'claude':
-    case 'chatgpt':
-      return { line: `Paste this address into ${kind.name}’s connectors.`, well: address, action: `Copy and open ${kind.name}`, href: CONNECTORS[kind.id], newTab: true, copy: address, done: `Copied. ${kind.name} opens in a new tab.` };
+    case 'chatgpt': {
+      const { href, press } = ADDING[kind.id];
+      return { line: `In ${kind.name}, press ${press}, and paste this address.`, well: address, action: `Copy and open ${kind.name}`, href, newTab: true, copy: address, done: `Copied. ${kind.name} opens in a new tab.` };
+    }
     case 'cursor':
       return {
         line: 'Cursor asks to add Alcove. Then you choose what it can do, here.', action: 'Add to Cursor', done: 'Cursor opens.',

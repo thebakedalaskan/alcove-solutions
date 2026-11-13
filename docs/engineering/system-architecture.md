@@ -3,7 +3,7 @@
 [Docs home](../README.md) · [Privacy, keys and sessions](privacy-keys-and-sessions.md) · [Data and storage](data-and-storage.md) · [Calls and recordings](calls-and-recordings.md) · [Notes and inference](notes-and-inference.md) · [Deployment and acceptance](deployment-and-acceptance.md)
 
 This page describes what is built and how it maps onto the confidential design the product requires.
-Where the local build differs from production requirements, the difference is stated explicitly.
+Where the local build differs from production, the difference is stated explicitly.
 
 ## Source ownership
 
@@ -200,15 +200,15 @@ with fewer than 30 days left, and each serves the newest stored, swapped in with
 
 ## Local versus production
 
-| Concern | Local build | Required for production |
+| Concern | Local build | Production |
 | --- | --- | --- |
-| Trusted compute | Plain Node process | Confidential VM (TEE) with remote attestation the client verifies before sending anything |
-| Master key | `KMASTER` from `.env` | Released only to the attested VM, never to operators or the deploy pipeline |
-| Sign-in | Google OpenID Connect when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set; stand-ins for Microsoft and SSO in `apps/api/src/demo.ts` | Google, Microsoft OAuth and OIDC single sign-on, all verified |
-| Calendar and directory | An optional Google Calendar connection for Google accounts, a sample day and week of busy times for demo accounts, and a demo directory for `vandelay.industries` | Every provider's calendar and the company's own directory |
-| Transport | HTTP on localhost behind the Vite proxy | TLS ending inside the TEE ([the edge](#the-edge)), plus an attested end-to-end channel (HPKE) so even a certificate someone else got for these hosts sees only ciphertext |
+| Trusted compute | Plain Node process | Google Cloud Confidential Space on Intel TDX: the API and the web app in one CI-signed image, whose attestation the app checks before trusting it and CI checks after every deploy |
+| Master key | `KMASTER` from `.env` | Made in the VM; Cloud KMS releases it only to an attested, CI-signed production image with debugging off, never to the deploy pipeline ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)) |
+| Sign-in | Google OpenID Connect when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set; stand-ins for Microsoft and SSO in `apps/api/src/demo.ts` | Google OpenID Connect; Microsoft OAuth and OIDC single sign-on, verified, are next |
+| Calendar and directory | An optional Google Calendar connection for Google accounts, a sample day and week of busy times for demo accounts, and a demo directory for `vandelay.industries` | Google Calendar; other providers' calendars and a company's own directory are next |
+| Transport | HTTP on localhost behind the Vite proxy | TLS ending inside the TEE with a key only the VM has ([the edge](#the-edge)), certificates pinned to its ACME account by a CAA record. Next: an attested end-to-end channel (HPKE), so even a certificate someone else got for these hosts would see only ciphertext |
 | Call media | LiveKit in Docker (`infra/livekit/dev.yaml`); LiveKit Cloud in production. End-to-end encrypted: MLS keys made in browsers, frames encrypted before they leave ([Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption)) | The same |
-| Invitations | Sent by Google Calendar when the organizer's calendar is connected; otherwise none | Email (SMTP) as well |
+| Invitations | Sent by Google Calendar when the organizer's calendar is connected; otherwise none | The same; email (SMTP) is next |
 | Object store | RustFS in Docker | Cloudflare R2 |
 | Database | Postgres 17 in Docker | Cloud SQL Postgres 17 |
-| Inference | NEAR AI Cloud when `NEAR_AI_API_KEY` is set: each model's attestation checked first (its OS image pinned), then everything by Oblivious HTTP sealed to its attested key | The same, with the model code pinned to published provenance |
+| Inference | NEAR AI Cloud when `NEAR_AI_API_KEY` is set: each model's attestation checked first (its OS image pinned), then everything by Oblivious HTTP sealed to its attested key | The same; pinning the model code to published provenance is next |

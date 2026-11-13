@@ -501,15 +501,15 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     make: () => { const world = busy(); withPayments(world); world.plan = proPlan(); return { world, opening: {} }; }
   },
   'plan-pro-ending': {
-    title: 'Pro ending', about: 'Art’s Pro ends in 3 days and won’t renew: renewing is off and $5 doesn’t buy a month. Art is told so.',
+    title: 'Pro ending', about: 'Art’s Pro ends in 6 days and won’t renew: renewing is off and $5 doesn’t buy a month. Art was told so yesterday, a week before, and is told again the day before.',
     make: () => { const world = busy(); withPayments(world); world.plan = proEnding(); return { world, opening: {} }; }
   },
   'plan-pro-ending-price': {
-    title: 'Pro ending, at a higher price', about: 'Art’s Pro ends in 3 days and won’t renew, though renewing is on and $60 is in the balance: a month of Pro costs $24 now, more than the $20 the last did, and renewing never pays a higher price without Art. Art is told Pro is ending.',
+    title: 'Pro ending, at a higher price', about: 'Art’s Pro ends in 6 days and won’t renew, though renewing is on and $60 is in the balance: a month of Pro costs $24 now, more than the $20 the last did, and renewing never pays a higher price without Art. Art is told Pro is ending.',
     make: () => { const world = busy(); withPayments(world); raisePrices(world); world.plan = proEndingPriceRose(); return { world, opening: {} }; }
   },
   'plan-pro-renewed': {
-    title: 'Pro renewed', about: 'Renewing is on, so 3 days before Pro ended a month was bought from the balance, and Art is told it runs a month further.',
+    title: 'Pro renewed', about: 'Renewing is on, so yesterday, a week before Pro was to end, a month was bought from the balance, and Art is told it runs a month further.',
     make: () => { const world = busy(); withPayments(world); world.plan = proRenewed(); return { world, opening: {} }; }
   },
   'plan-pro-ended': {

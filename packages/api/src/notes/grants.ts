@@ -19,7 +19,7 @@ const lastOf = (changes: Change[], what: Change['what']) => changes.findLast((c)
 
 type Changes = Pick<Decision, 'changes'>;
 
-/** Who proposed a decision or follow-up the notes didn't hear. Absent on what the notes wrote. */
+/** Who proposed a decision, open question or follow-up the notes didn't hear. Absent on what the notes wrote. */
 export const proposerOf = (x: Changes): Change['by'] | undefined => (x.changes[0]?.what === 'proposed' ? x.changes[0].by : undefined);
 
 /** Whether this person proposed it. */

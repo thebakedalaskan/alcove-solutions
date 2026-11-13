@@ -55,7 +55,7 @@
 
 ## Progress snapshot — 2026-11-03 16:04 UTC
 
-Automatic [Deploy run 41669226228](https://github.com/thebakedalaskan/the-privacy-suite/actions/runs/41669226228)
+Automatic [Deploy run 41669226228](https://github.com/thebakedalaskan/alcove-solutions/actions/runs/41669226228)
 succeeded for both API and web at commit `bd0928e`. The custom API hostname returns HTTPS 200 for
 `/health`, the web welcome page renders in a real browser, and main ruleset `26463921` is active with
 the required merge protections. DNS, native SPA routing, assets and the www redirect are verified.

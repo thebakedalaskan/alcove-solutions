@@ -1,6 +1,6 @@
 # Folder ownership
 
-This is the target map for [#144](https://github.com/thebakedalaskan/the-privacy-suite/issues/144), recorded before files move. It is also the rule for new code. Organize around the behavior a maintainer changes, with a small explicit interface and the implementation and integration coverage beside it.
+This is the target map for [#144](https://github.com/thebakedalaskan/alcove-solutions/issues/144), recorded before files move. It is also the rule for new code. Organize around the behavior a maintainer changes, with a small explicit interface and the implementation and integration coverage beside it.
 
 ## Package responsibilities
 
