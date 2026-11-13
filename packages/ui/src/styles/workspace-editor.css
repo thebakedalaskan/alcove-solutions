@@ -214,8 +214,7 @@ button.wb-drop:hover { color: var(--ink-2); box-shadow: inset 0 0 0 1.5px var(--
 .wb-lh b { font: 600 14px/1 var(--font-sans); } .wb-lh .d { margin-left: auto; font-size: 12.5px; color: var(--ink-3); }
 .wb-lr { display: flex; align-items: center; gap: 8px; min-height: 30px; font-size: 14.5px; line-height: 1.35; animation: wb-rise var(--duration-2) var(--ease-out); }
 .wb-lr.is-none { color: var(--ink-3); }
-/* `.tx` is also the call's transcript (call.css), which pads and scrolls it. */
-.wb-lr .tx { flex: 1; min-width: 0; padding: 0; overflow: visible; } .wb-lr .ac-time { flex: none; font-size: 12px; color: var(--ink-3); }
+.wb-lr .tx { flex: 1; min-width: 0; } .wb-lr .ac-time { flex: none; font-size: 12px; color: var(--ink-3); }
 .wb-mom { flex: 1; min-width: 0; display: flex; gap: 10px; margin: 8px 0; padding: 12px 14px; border-radius: 12px; background: color-mix(in srgb, var(--rec-soft) 40%, var(--surface)); }
 .wb-mom p { font: 500 15px/1.45 var(--font-sans); color: var(--ink); }
 .wb-mom .m { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; font-size: 12.5px; color: var(--ink-3); }
