@@ -274,7 +274,7 @@ function Offered({ offers: o, plan: p, yearly, teamYearly, now, team, people, go
           chip={onTeamPlan ? 'Your plan' : undefined}
           price={usd(perLicense)} per={`a person ${perPeriod(o.periodDays)}`} bill={teamBill} save={teamSave}
           action={onTeamPlan ? go ?? teamAction : teamAction}
-          facts={teamFactsOf(o.team)} more="A license is taken when someone next opens Alcove. Ones nobody takes can be refunded." />
+          facts={teamFactsOf(o.team)} more="Licenses start when people open Alcove. Unused ones can be refunded." />
       </PlanCards>
       <EveryPlan items={EVERY} />
       <PayingLine>

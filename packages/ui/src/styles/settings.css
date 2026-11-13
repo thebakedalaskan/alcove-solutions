@@ -85,9 +85,9 @@
 
 /* A panel: hairlines and space inside, never a card per row. --ctl is the column a list or a choice fills; wide rows get --ctl-wide. */
 .set-pn {
-  --ctl: 264px; --ctl-wide: 380px; --mx: 76px;
+  --ctl: 264px; --ctl-wide: 380px; --mx: 76px; --pn-x: 22px; --pn-r: 18px;
   --set-lift: 0 1px 3px color-mix(in oklch, var(--ink) 5%, transparent), 0 10px 30px -22px color-mix(in oklch, var(--ink) 22%, transparent);
-  position: relative; isolation: isolate; container-type: inline-size; padding: 0 22px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--set-lift);
+  position: relative; isolation: isolate; container-type: inline-size; padding: 0 var(--pn-x); border-radius: var(--pn-r); background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--set-lift);
 }
 .dark .set-pn { --set-lift: 0 0 transparent; }
 /* A list that's open rises over the panels after it. */
@@ -104,6 +104,16 @@
 /* Focus kept on a row whose control went. */
 .set-r:focus { outline: none; }
 .set-r:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-sm); }
+/*
+ * Where a link landed (Home's calendar, Record's recording in the room, a note's Google Drive, Agents): the place it named
+ * shows in the horizon's soft blue, across the panel, and fades as the eye finds it (Nav.tsx sets data-landed).
+ */
+.set-r[data-landed]::before, .set-blk[data-landed] > .set-pn::before { content: ""; position: absolute; z-index: -1; border-radius: inherit; background: var(--horizon-soft); pointer-events: none; animation: set-landed 1.8s var(--ease-in) forwards; }
+.set-r[data-landed]::before { inset: 0 calc(var(--pn-x, 0px) * -1); border-radius: 0; }
+.set-pn > .set-r[data-landed]:first-child::before { border-top-left-radius: var(--pn-r); border-top-right-radius: var(--pn-r); }
+.set-pn > .set-r[data-landed]:last-child::before { border-bottom-left-radius: var(--pn-r); border-bottom-right-radius: var(--pn-r); }
+.set-blk[data-landed] > .set-pn::before { inset: 0; }
+@keyframes set-landed { to { opacity: 0; } }
 /* Nested under the connection above it, its hairline too. */
 .set-r.is-sub, .set-foot.is-sub, .set-pn > .ac-drive-history { margin-left: 32px; }
 .set-l { min-width: 0; }
@@ -445,7 +455,7 @@
   .set-grp + .set-grp { margin-top: 48px; }
   .set-grh { margin-bottom: 12px; }
   .set-grh h2 { font-size: 19px; }
-  .set-pn { --mx: 56px; padding: 0 16px; border-radius: 16px; }
+  .set-pn { --mx: 56px; --pn-x: 16px; --pn-r: 16px; }
   .set-r { --ctl-col: auto; column-gap: 12px; min-height: 56px; }
   /* A list, a choice or something wide goes under its label, the width of the panel. */
   .set-r:has(> .set-c > .set-ctl > :is(.ac-seg, .ac-select, .set-vol)), .set-r.is-wide, .set-r.is-stack { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }

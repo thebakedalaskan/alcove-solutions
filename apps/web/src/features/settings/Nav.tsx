@@ -1,8 +1,9 @@
 /*
  * Getting around Settings: the index beside the page, which is a strip at its top at 1000px and narrower, with a small
  * sun that follows the group in view. An address can name a group, or one of the places inside one that other pages link
- * to (Record's recording in the room, Home's calendar, a note's Google Drive, agents): the page lands there, and the
- * index lights the group that holds it.
+ * to (Record's recording in the room, Home's calendar, a note's Google Drive, agents): the page lands there, with the
+ * group's heading over the place when it's near the group's top, the place glows for a moment so it's what's seen first,
+ * and the index lights the group that holds it.
  */
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type MouseEvent, type RefObject } from 'react';
@@ -26,11 +27,36 @@ const INSIDE: Readonly<Record<string, GroupId>> = { recording: 'calls', calendar
 /** The group an address's target is, or is in. */
 const groupOf = (target: string): GroupId | undefined => GROUPS.find((g) => g.id === target)?.id ?? INSIDE[target];
 
+/** How long a place a link named is marked once the page lands on it: a little longer than its glow fades (settings.css, `data-landed`). */
+const GLOW_MS = 2000;
+
+/**
+ * Scrolls to where the address points (`to`, in `group`). A place inside a group that sits in the top half of the window
+ * under its group's heading lands with that heading over it, so it's read as part of its group, rather than with the
+ * heading out of sight and the next group filling the window; one further down lands at the top. Returns the place, once
+ * it's there.
+ */
+function land(to: string, group: GroupId): HTMLElement | null {
+  const place = document.getElementById(to);
+  if (!place) return null;
+  const head = to === group ? null : document.getElementById(group);
+  const under = head !== null && place.getBoundingClientRect().top - head.getBoundingClientRect().top < innerHeight / 2;
+  (under ? head : place).scrollIntoView({ block: 'start' });
+  return place;
+}
+
+/** The place a link named glows for a moment, then fades: it's what the link was for. */
+function glow(place: HTMLElement): () => void {
+  place.dataset['landed'] = '';
+  const t = setTimeout(() => { delete place.dataset['landed']; }, GLOW_MS);
+  return () => { clearTimeout(t); delete place.dataset['landed']; };
+}
+
 /**
  * The group in view, for the index: the last whose top has passed a quarter of the way down the window, or the last one
- * once the page is scrolled to the end. Where the address points (`to`) the page lands, and it stays there as the groups
- * above it fill in, for a moment, unless the page is scrolled by hand meanwhile. A group picked in the index stays picked
- * until the page is scrolled by hand. `column` holds the groups.
+ * once the page is scrolled to the end. Where the address points (`to`) the page lands (see `land`), and it stays there as
+ * the groups above it fill in, for a moment, unless the page is scrolled by hand meanwhile; a place inside a group glows
+ * as it's landed on. A group picked in the index stays picked until the page is scrolled by hand. `column` holds the groups.
  */
 export function useGroupInView(ids: readonly GroupId[], to: string | undefined, column: RefObject<HTMLElement | null>): [GroupId | undefined, (id: GroupId) => void] {
   const [current, setCurrent] = useState<GroupId | undefined>(ids[0]);
@@ -46,10 +72,15 @@ export function useGroupInView(ids: readonly GroupId[], to: string | undefined, 
     // looked for each time, since what's named may only just have arrived itself.
     const box = column.current;
     if (!box) return;
-    const keep = new ResizeObserver(() => { if (held.current) document.getElementById(to)?.scrollIntoView({ block: 'start' }); });
+    let unglow: (() => void) | null = null;
+    const keep = new ResizeObserver(() => {
+      if (!held.current) return;
+      const place = land(to, group);
+      if (place && to !== group && !unglow) unglow = glow(place);
+    });
     keep.observe(box);
     const t = setTimeout(() => keep.disconnect(), 2000);
-    return () => { clearTimeout(t); keep.disconnect(); };
+    return () => { clearTimeout(t); keep.disconnect(); unglow?.(); };
   }, [to, column]);
   useEffect(() => {
     let frame = 0;

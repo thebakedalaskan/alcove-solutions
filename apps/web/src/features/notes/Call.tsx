@@ -391,7 +391,8 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
       </CallHead>
       <div className="cd-cols" style={{ '--d': 1 }}>
         <div className="cd-left">
-          <div ref={fullBox} className={cn('cd-player', full?.on && 'is-full')}>
+          {/* Full screen is night whatever the theme, so the line under the stage, and the speeds it opens, take night's colours. */}
+          <div ref={fullBox} className={cn('cd-player', full?.on && 'is-full dark')}>
             <Stage note={note} me={me} player={player} here={here} captions={captions && shownTab !== 'transcript'} />
             <CallLine player={player} span={span} chapters={settled ? note.chapters : []} marks={marks} shares={note.shares} gaps={note.gaps} here={here} edge={live ? heard : undefined}
               onScrub={canGo ? (s) => go(s) : undefined} captions={lines.length ? { on: captions, toggle: () => setCaptions((c) => !c) } : undefined} full={full} />

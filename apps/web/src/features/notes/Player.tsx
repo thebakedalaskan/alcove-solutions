@@ -40,8 +40,8 @@ export interface PlayerState {
   setRate: (rate: number) => void;
 }
 
-/** The speeds a recording plays at, in the order the button goes through them. */
-export const RATES = [1, 1.25, 1.5, 2, 0.75] as const;
+/** The speeds a recording plays at, slowest first, as the line's speed menu lists them. */
+export const RATES = [0.75, 1, 1.25, 1.5, 2] as const;
 
 /** Something worked out from where the player has got to, which draws again only when it changes. */
 export function usePlayerAt<T extends string | number | boolean | undefined>(player: PlayerState, read: (pos: number) => T): T {

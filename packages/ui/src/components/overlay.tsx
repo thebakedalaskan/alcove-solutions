@@ -84,15 +84,17 @@ export interface SelectOption<T extends string> {
  * page or panel scrolls). Arrow keys, Home and End move; Enter or Space picks; Escape or Tab closes
  * without changing anything; typing jumps to the option whose name starts with what was typed. Focus
  * goes back to the button. `label` names the choice for screen readers ("Language"). `stage` is for
- * the night recorder and the call.
+ * the night recorder and the call. `container` is where the list opens when that isn't the page: the
+ * element filling the screen, which hides everything outside it.
  */
-export function Select<T extends string>({ value, onChange, options, label, icon, placeholder, align = 'start', stage = false, disabled = false, className }: {
+export function Select<T extends string>({ value, onChange, options, label, icon, placeholder, align = 'start', stage = false, disabled = false, container, className }: {
   value: T | undefined; onChange: (value: T) => void; options: SelectOption<T>[]; label: string;
   /** Drawn before the value, e.g. `mic` for the microphone. */
   icon?: IconName | undefined;
   /** Shown when `value` isn't one of the options. */
   placeholder?: string | undefined;
-  align?: 'start' | 'center' | 'end' | undefined; stage?: boolean | undefined; disabled?: boolean | undefined; className?: string | undefined;
+  align?: 'start' | 'center' | 'end' | undefined; stage?: boolean | undefined; disabled?: boolean | undefined;
+  container?: Element | null | undefined; className?: string | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const scoped = useContext(Scoped);
@@ -190,7 +192,7 @@ export function Select<T extends string>({ value, onChange, options, label, icon
         {picked?.tag}
         <Icon name="down" size={15} className="caret" />
       </RPopover.Trigger>
-      <RPopover.Portal>
+      <RPopover.Portal container={container}>
         <RPopover.Content ref={list} role="listbox" aria-label={label} side="bottom" align={align} sideOffset={OFFSET} collisionPadding={EDGE} hideWhenDetached
           className={cn('ac-pop ac-select-list', stage && 'is-stage', scoped)} onKeyDown={onListKey}
           onOpenAutoFocus={(e) => {

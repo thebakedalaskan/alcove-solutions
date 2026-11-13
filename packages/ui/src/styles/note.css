@@ -136,8 +136,10 @@ button.cd-mk:focus-visible { box-shadow: 0 0 0 2px var(--focus); }
 .cd-ghost b { display: block; padding: 3px 7px; border-radius: 6px; background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line), var(--shadow-1); font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap; }
 .cd-ctl { display: inline-flex; align-items: center; gap: 2px; }
 .cd-ctl:empty { display: none; }
-.cd-speed { height: 30px; min-width: 38px; padding: 0 9px; border-radius: 8px; font: 600 12.5px/1 var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; }
-.cd-speed:hover { color: var(--ink); background: var(--cd-hl); }
+/* The speed: a quiet Select, its value and a small caret, opening the speeds to pick from. */
+.cd-speed.ac-select { gap: 3px; height: 30px; min-width: 38px; padding: 0 6px 0 9px; border-radius: 8px; background: none; box-shadow: none; font: 600 12.5px/1 var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.cd-speed.ac-select:hover, .cd-speed.ac-select[data-state="open"] { color: var(--ink); background: var(--cd-hl); }
+.cd-speed.ac-select > .caret { width: 13px; height: 13px; color: var(--ink-3); }
 .cd-ctl .ac-icon-btn { width: 32px; height: 32px; }
 .cd-ctl .ac-icon-btn.is-on { background: none; color: var(--ink); }
 .cd-kept { display: flex; align-items: center; gap: 8px; margin: 2px 0 0; font: 400 14px/1.4 var(--font-sans); color: var(--ink-2); }
