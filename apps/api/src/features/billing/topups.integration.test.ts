@@ -1183,8 +1183,10 @@ const pro = (months: number, microUsdPerMonth = months >= 12 ? YEARLY : PRICE): 
 const PACK = 600;
 const hours = (packs: number, microUsdPerPack = HOURS, minutesPerPack = PACK): Purchase => ({ kind: 'hours', packs, microUsdPerPack, minutesPerPack });
 const LICENSE = 40_000_000;
-/** Licenses for the buyer's team, at a license's price. */
-const licenses = (count: number, microUsdPerLicense = LICENSE): Purchase => ({ kind: 'licenses', count, microUsdPerLicense });
+/** A team license for a year: 12 periods at $32 each. */
+const YEARLY_LICENSE = 32_000_000;
+/** Licenses for the buyer's team, at a license's price a period, each for `periods` periods: one, or a year's 12. */
+const licenses = (count: number, microUsdPerLicense = LICENSE, periods = 1): Purchase => ({ kind: 'licenses', count, microUsdPerLicense, periods });
 /** Why a purchase isn't made when its payment settles after its top-up was cancelled, expired or failed. */
 const LATE = 'Your payment arrived after its address closed, so nothing was bought. It’s in your balance.';
 /** What a request came to: its code and message when it was refused. */
@@ -1610,6 +1612,89 @@ describe('top-ups that buy', () => {
     });
     expect(await bob.api.plans.plan()).toMatchObject({ balance: { microUsd: LICENSE } });
     expect((await bob.api.teams.mine())?.licenses?.unconsumed).toBe(1);
+  });
+
+  it('buys licenses for a year once its payment is added: each 12 periods at the yearly price a period', async () => {
+    const { api } = await admin();
+    // Two licenses for a year are 2 × 12 × $32: $768.
+    const year = licenses(2, YEARLY_LICENSE, 12);
+    const t = await api.plans.startTopUp(BASE_USDC, 24 * YEARLY_LICENSE, year);
+    expect(t).toMatchObject({ state: 'waiting', asked: { amount: '768' }, purchase: { buys: year, outcome: 'waiting', why: null } });
+    const from = h.logs.length;
+    expect(await paid(api, t, 24 * YEARLY_LICENSE)).toMatchObject({ state: 'credited', received: { microUsd: 24 * YEARLY_LICENSE }, purchase: { buys: year, outcome: 'bought', why: null } });
+    expect((await api.teams.mine())?.licenses).toEqual({ unconsumed: 2, refundableMicroUsd: 24 * YEARLY_LICENSE, autoPurchase: false });
+    expect(await api.plans.plan()).toMatchObject({ balance: { microUsd: 0 } });
+    expect(await labels(api)).toEqual(['Team, 2 licenses for a year', 'Added, 768 USDC']);
+    expect(logsSince(from).some((l) => l.msg === 'team licenses bought' && l.line.includes('"count":2') && l.line.includes('"periods":12'))).toBe(true);
+  });
+
+  it('refuses to open a payment for licenses for a year at a period’s price, for a length that isn’t offered, or while none is, before anything is quoted', async () => {
+    const ann = await admin();
+    const quotes = h.oneclick.quotes.length;
+    expect(await said(ann.api.plans.startTopUp(BASE_USDC, LICENSE, licenses(1, LICENSE, 12)))).toBe('conflict: The price of a team license for a year has changed. Look at it again before buying.');
+    expect(await said(ann.api.plans.startTopUp(BASE_USDC, LICENSE, licenses(1, YEARLY_LICENSE)))).toBe('conflict: The price of a team license has changed. Look at it again before buying.');
+    expect(await said(ann.api.plans.startTopUp(BASE_USDC, LICENSE, licenses(1, YEARLY_LICENSE, 6)))).toBe('conflict: The price of a team license for 6 months has changed. Look at it again before buying.');
+    for (const buys of [licenses(1, YEARLY_LICENSE, 0), licenses(1, YEARLY_LICENSE, 121), licenses(1, YEARLY_LICENSE, 1.5)]) {
+      expect(await said(ann.api.plans.startTopUp(BASE_USDC, LICENSE, buys)), JSON.stringify(buys)).toMatch(/^invalid: /);
+    }
+    // None offered: its price is 0, or it's for one period.
+    for (const [name, value] of [['plan.team.yearly_price_micro_usd', 0], ['plan.team.yearly_periods', 1]] as const) {
+      await h.setLimit(name, value);
+      expect((await ann.api.plans.offers()).team.yearly).toBeNull();
+      expect(await said(ann.api.plans.startTopUp(BASE_USDC, LICENSE, licenses(1, YEARLY_LICENSE, 12)))).toBe('conflict: Team licenses for a year can’t be bought right now.');
+      await h.resetLimits();
+    }
+    expect(h.oneclick.quotes.length).toBe(quotes);
+    expect(await depositRows(ann.session.ownerId)).toBe(0);
+  });
+
+  it('says why it didn’t buy licenses for a year when their price changed, they stopped being offered or less arrived, and leaves the money in the balance', async () => {
+    const year = licenses(1, YEARLY_LICENSE, 12);
+    // A license for a year costs more a period now.
+    const ann = await admin();
+    const priced = await ann.api.plans.startTopUp(BASE_USDC, 12 * YEARLY_LICENSE, year);
+    await h.setLimit('plan.team.yearly_price_micro_usd', 35_000_000);
+    expect((await paid(ann.api, priced, 12 * YEARLY_LICENSE)).purchase).toEqual({
+      buys: year, outcome: 'refused', why: 'The price of a team license for a year changed before your payment arrived. It’s in your balance.'
+    });
+    expect(await ann.api.plans.plan()).toMatchObject({ balance: { microUsd: 12 * YEARLY_LICENSE } });
+    expect((await ann.api.teams.mine())?.licenses?.unconsumed).toBe(0);
+    await h.resetLimits();
+    // Licenses for a year stopped being offered.
+    const bob = await admin();
+    const off = await bob.api.plans.startTopUp(BASE_USDC, 12 * YEARLY_LICENSE, year);
+    await h.setLimit('plan.team.yearly_periods', 0);
+    const fromOff = h.logs.length;
+    expect((await paid(bob.api, off, 12 * YEARLY_LICENSE)).purchase).toEqual({
+      buys: year, outcome: 'refused', why: 'Team licenses for a year stopped being offered before your payment arrived. It’s in your balance.'
+    });
+    expect((await bob.api.teams.mine())?.licenses?.unconsumed).toBe(0);
+    expect(logsSince(fromOff).some((l) => l.line.includes(off.id) && l.line.includes('"why":"off"'))).toBe(true);
+    await h.resetLimits();
+    // $200 of the $384 asked arrives: under 1Click's band, so $200 is added, and the year isn't bought.
+    const cy = await admin();
+    const short = await cy.api.plans.startTopUp(BASE_USDC, 12 * YEARLY_LICENSE, year);
+    h.oneclick.set(addr(short), 'SUCCESS', { depositedAmount: '200000000', amountOut: '199990000', intentHashes: [`short-${short.id}`] });
+    expect(await cy.api.plans.topUp(short.id)).toMatchObject({
+      state: 'credited', received: { microUsd: 200_000_000 },
+      purchase: { buys: year, outcome: 'refused', why: 'Less arrived than 1 team license for a year costs. It’s in your balance.' }
+    });
+    expect((await cy.api.teams.mine())?.licenses?.unconsumed).toBe(0);
+  });
+
+  it('reads licenses a payment opened before licenses for a year was to buy, kept with no periods, as licenses for one period', async () => {
+    const { api, session } = await admin();
+    const t = await api.plans.startTopUp(BASE_USDC, LICENSE, licenses(1));
+    const key = serviceKey(unb64u(h.deps.cfg.KSERVICE, 32), 'accounting');
+    const header = { v: 1 as const, kind: 'deposit', ownerId: session.ownerId, depositId: t.id, keyVersion: '1' };
+    const row = z.object({ record_ciphertext: z.instanceof(Uint8Array) }).parse((await h.pool.query('SELECT record_ciphertext FROM deposits WHERE deposit_id = $1', [t.id])).rows[0]);
+    // As the previous release wrote it: licenses with a count and a price a license, and no periods.
+    const older = { ...openJson(key, header, row.record_ciphertext, DepositRecord), purchase: { buys: { kind: 'licenses', count: 1, microUsdPerLicense: LICENSE }, outcome: 'waiting', why: null } };
+    await h.pool.query('UPDATE deposits SET record_ciphertext = $2 WHERE deposit_id = $1', [t.id, sealJson(key, header, toJson(older))]);
+    expect(await api.plans.topUp(t.id)).toMatchObject({ state: 'waiting', purchase: { buys: licenses(1), outcome: 'waiting', why: null } });
+    expect((await paid(api, t, LICENSE)).purchase).toEqual({ buys: licenses(1), outcome: 'bought', why: null });
+    expect((await api.teams.mine())?.licenses).toEqual({ unconsumed: 1, refundableMicroUsd: LICENSE, autoPurchase: false });
+    expect(await labels(api)).toEqual(['Team, 1 license', 'Added, 40 USDC']);
   });
 
   it('buys licenses once, however many checks race on it', async () => {

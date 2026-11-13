@@ -136,6 +136,25 @@ export function proPriceFor(l: Limits, months: number): number {
   const yearly = yearlyOf(l);
   return yearly && months >= yearly.fromMonths ? yearly.microUsdPerMonth : l.get('plan.pro.price_micro_usd');
 }
+/**
+ * A team license for a year: one person for `periods` periods (`plan.team.yearly_periods`, 12) at a lower price a period
+ * (`plan.team.yearly_price_micro_usd`). None while either is 0, it's for one period (a license's own length), or its price
+ * isn't below a license's.
+ */
+export function teamYearlyOf(l: Limits): PlanOffers['team']['yearly'] {
+  const microUsdPerLicense = l.get('plan.team.yearly_price_micro_usd');
+  const periods = l.get('plan.team.yearly_periods');
+  return microUsdPerLicense > 0 && microUsdPerLicense < l.get('plan.team.price_micro_usd') && periods >= 2 ? { periods, microUsdPerLicense } : null;
+}
+/**
+ * What a team license costs a period bought for `periods` periods: a license's price for one, the yearly price for a year's
+ * periods, and null for any other length, which isn't offered.
+ */
+function licensePriceFor(l: Limits, periods: number): number | null {
+  if (periods === 1) return l.get('plan.team.price_micro_usd');
+  const yearly = teamYearlyOf(l);
+  return yearly && periods === yearly.periods ? yearly.microUsdPerLicense : null;
+}
 /** More notes for the period they're bought in, on any plan, in packs: not offered while a pack's price is 0. */
 export function hoursOf(l: Limits): PlanOffers['hours'] {
   const microUsd = l.get('plan.hours.price_micro_usd');
@@ -170,25 +189,40 @@ export function inForce(a: PlanAccount, l: Limits, now: number, license: License
 }
 
 /**
- * The plan at `now`, as it brings it: Team while a license is live, its period the license's; Pro while a month bought
- * covers it, its period that month; otherwise Free, from `freeFrom`, the end of the last month of Pro or the end of a
- * license, whichever is latest, so Free starts afresh when Pro or a license ends. Each period of Free runs as it began:
- * the one the meter keeps (`kept`) to its end, then each after it at the length `plan.period_seconds` has when it begins,
- * so a change to that limit applies from each account's next period and never restarts one that's running. Without one
- * the meter keeps (an account it hasn't seen on Free since it started), they count from the start.
+ * The plan at `now`, as it brings it: Team while a license is live, its period the license's (one of a year's periods, for a
+ * license for a year); Pro while a month bought covers it, its period that month; otherwise Free, from `freeFrom`, the end of
+ * the last month of Pro or the end of a license, whichever is latest, so Free starts afresh when Pro or a license ends. Each
+ * period of Free, and of a license, runs as it began (`periodAt`): the one the meter keeps (`kept`) to its end, then each
+ * after it at the length `plan.period_seconds` has when it begins, so a change to that limit applies from each account's
+ * next period and never restarts one that's running. Without one the meter keeps (an account it hasn't seen on Free since it
+ * started), they count from the start.
  */
 function planAt(a: PlanAccount, l: Limits, now: number, license: License | null, kept: KeptPeriod | null): InForce {
-  if (license && isLive(license, now)) return { kind: 'team', from: license.from, to: license.to, ...teamBrings(l) };
+  if (license && isLive(license, now)) {
+    // A license for a year runs as periods of its own, each with all of Team's notes, as a year of Pro's months do; its last
+    // ends with it. A license for one period is that one period.
+    const p = periodAt('team', license.from, l, now, kept);
+    return { kind: 'team', from: p.from, to: Math.min(p.to, license.to), ...teamBrings(l) };
+  }
   const month = runningAt(a, now);
   if (month) return { kind: 'pro', from: Date.parse(month.from), to: Date.parse(month.to), ...proBrings(l) };
-  const period = l.get('plan.period_seconds') * 1000;
   const licenseEnded = license && license.to <= now ? license.to : -Infinity;
   const start = Math.max(Date.parse(a.freeFrom), lastEnded(a, now) ?? -Infinity, licenseEnded);
-  const on = kept && kept.plan === 'free' && kept.from >= start && kept.from <= now ? kept : null;
-  if (on && now < on.to) return { kind: 'free', from: on.from, to: on.to, ...freeBrings(l) };
+  return { kind: 'free', ...periodAt('free', start, l, now, kept), ...freeBrings(l) };
+}
+
+/**
+ * The period running at `now` of those `kind` runs on from `start`: the one the meter keeps (`kept`) to its end, then each
+ * after it at the length `plan.period_seconds` has when it begins, so a change to that limit never restarts one that's
+ * running. Without one the meter keeps since `start`, they count from `start`.
+ */
+function periodAt(kind: PlanKind, start: number, l: Limits, now: number, kept: KeptPeriod | null): { from: number; to: number } {
+  const period = l.get('plan.period_seconds') * 1000;
+  const on = kept && kept.plan === kind && kept.from >= start && kept.from <= now ? kept : null;
+  if (on && now < on.to) return { from: on.from, to: on.to };
   const from = on ? on.to : start;
   const n = Math.max(0, Math.floor((now - from) / period));
-  return { kind: 'free', from: from + n * period, to: from + (n + 1) * period, ...freeBrings(l) };
+  return { from: from + n * period, to: from + (n + 1) * period };
 }
 
 /**
@@ -350,6 +384,8 @@ const monthsOf = (n: number) => `${n} ${n === 1 ? 'month' : 'months'}`;
 const licensesOf = (n: number) => `${n} ${n === 1 ? 'license' : 'licenses'}`;
 /** Team licenses as a refusal says them: "1 team license", "3 team licenses". */
 const teamLicenses = (n: number) => `${n} team ${n === 1 ? 'license' : 'licenses'}`;
+/** How long a team license is bought for, as words say it after "license": nothing for one period, " for a year" for 12. */
+const forPeriods = (periods: number) => (periods === 1 ? '' : periods === 12 ? ' for a year' : ` for ${monthsOf(periods)}`);
 /** Minutes of notes as someone reads them, whole hours as hours: "10 hours", "1 hour", "90 minutes" (`more`: "10 more hours"). */
 function notesTime(minutes: number, more = ''): string {
   if (minutes % 60 === 0) return `${minutes / 60} ${more}${minutes === 60 ? 'hour' : 'hours'}`;
@@ -529,11 +565,17 @@ function termsOf(l: Limits, buys: Purchase, buyer: Buyer, now: number): Terms | 
     if (buys.count > max) {
       return refusal('too-many', `Buy 1 to ${max} licenses at a time.`, `Since your payment was made, one purchase buys at most ${teamLicenses(max)}. It’s in your balance.`);
     }
-    if (buys.microUsdPerLicense !== l.get('plan.team.price_micro_usd')) {
-      return refusal('price', 'The price of a team license has changed. Look at it again before buying.', 'The price of a team license changed before your payment arrived. It’s in your balance.');
+    const { count, microUsdPerLicense, periods } = buys;
+    const term = forPeriods(periods);
+    // For a year (more than one period) while there's no license for a year on offer.
+    if (periods > 1 && !teamYearlyOf(l)) {
+      return refusal('off', `Team licenses${term} can’t be bought right now.`, `Team licenses${term} stopped being offered before your payment arrived. It’s in your balance.`);
     }
-    const { count, microUsdPerLicense } = buys;
-    return { totalMicroUsd: count * microUsdPerLicense, label: `Team, ${licensesOf(count)}`, what: teamLicenses(count), one: count === 1, add: (a) => a };
+    // The price for that many periods, and no other: a period at a license's price, or a year's periods at the yearly one.
+    if (microUsdPerLicense !== licensePriceFor(l, periods)) {
+      return refusal('price', `The price of a team license${term} has changed. Look at it again before buying.`, `The price of a team license${term} changed before your payment arrived. It’s in your balance.`);
+    }
+    return { totalMicroUsd: count * periods * microUsdPerLicense, label: `Team, ${licensesOf(count)}${term}`, what: `${teamLicenses(count)}${term}`, one: count === 1, add: (a) => a };
   }
   const offer = hoursOf(l);
   if (!offer) return refusal('off', 'More notes can’t be bought right now.', 'More notes stopped being offered before your payment arrived. It’s in your balance.');

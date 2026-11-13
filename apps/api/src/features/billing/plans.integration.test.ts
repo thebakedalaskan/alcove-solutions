@@ -267,7 +267,7 @@ describe('Pro', () => {
       free: { notesMinutes: 300, storageBytes: 10 * GiB, fileBytes: 512 * MiB },
       pro: { notesMinutes: 3000, storageBytes: 100 * GiB, fileBytes: 512 * MiB, microUsdPerMonth: PRICE, maxMonths: 12, yearly: { fromMonths: 12, microUsdPerMonth: YEARLY } },
       hours: { minutes: 600, microUsd: HOURS, maxPacks: 5 },
-      team: { notesMinutes: 3000, storageBytes: 100 * GiB, fileBytes: 512 * MiB, microUsdPerLicense: 40_000_000, maxLicenses: 500 }
+      team: { notesMinutes: 3000, storageBytes: 100 * GiB, fileBytes: 512 * MiB, microUsdPerLicense: 40_000_000, maxLicenses: 500, yearly: { periods: 12, microUsdPerLicense: 32_000_000 } }
     });
     expect(await refusal(ann.api.plans.buyPro(1, PRICE))).toBe('conflict: Your balance is short of what 1 month of Pro costs ($20). Add money first.');
     const rec = await ann.api.recordings.start({ title: 'Used' });
