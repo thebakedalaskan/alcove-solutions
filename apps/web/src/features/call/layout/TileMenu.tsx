@@ -11,7 +11,9 @@ import { Avatar, CallMenuChips, Icon, Popover, VolumeControl, cn, useSettledPres
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { callName } from '~/lib/people';
 import { NUDGES, NUDGE_KINDS } from './nudges';
+import { PHONE_W } from './panels';
 import { STATUS, STATUS_KINDS, STATUS_MINUTES, statusMinutes } from './status';
+import { useWidth } from './useWidth';
 
 /** What a person's menu offers. A choice left out isn't offered there. */
 export interface PersonMenu {
@@ -52,6 +54,7 @@ export function TileMenu({ who, me, open, onOpenChange, menu, row = false }: {
 }) {
   const name = callName(who);
   const label = `Options for ${who.name}${me ? ' (you)' : ''}`;
+  const phone = useWidth() < PHONE_W;
   const { pinned, status, self, nudge, volume, following, board, spotlight, host } = menu;
   /** The menu, or its nudge step: "Only Kofi sees it". */
   const [step, setStep] = useState<'menu' | 'nudge'>('menu');
@@ -127,7 +130,7 @@ export function TileMenu({ who, me, open, onOpenChange, menu, row = false }: {
     ? <button type="button" className="ac-icon-btn ic-pmore" aria-label={label} title={label} aria-haspopup="menu"><Icon name="more" size={18} /></button>
     : <button type="button" tabIndex={-1} className={cn('ic-more', open && 'is-on')} aria-label={label} aria-haspopup="menu"><Icon name="more" size={16} /></button>;
   return (
-    <Popover open={open} onOpenChange={onOpenChange} side="bottom" align="end" label={label} className="ic-menu ic-tmenu" anchor={anchor}>
+    <Popover open={open} onOpenChange={onOpenChange} side="bottom" align="end" label={label} className={cn('ic-menu ic-tmenu', phone && 'is-sheet')} anchor={anchor}>
       <div ref={body}>
         {step === 'nudge' && nudge ? (
           <>
@@ -156,8 +159,9 @@ export function ThingMenu({ name, by, open, onOpenChange, go, onJoin, beside, so
 }) {
   const press = useSettledPress(['join', ...(beside ? ['beside'] : []), ...(sound ? ['sound'] : [])].join('\n'), open);
   const pick = (f: () => void) => press(() => { onOpenChange(false); f(); });
+  const phone = useWidth() < PHONE_W;
   return (
-    <Popover open={open} onOpenChange={onOpenChange} side="bottom" align="end" label={`Options for ${name}`} className="ic-menu ic-tmenu"
+    <Popover open={open} onOpenChange={onOpenChange} side="bottom" align="end" label={`Options for ${name}`} className={cn('ic-menu ic-tmenu', phone && 'is-sheet')}
       anchor={<button type="button" tabIndex={-1} className={cn('ic-more', open && 'is-on')} aria-label={`Options for ${name}`} aria-haspopup="menu"><Icon name="more" size={16} /></button>}>
       <div className="mh"><Avatar person={by} size={22} /><b>{name}</b></div>
       <Item icon="grow" label={go === 'Open' ? 'Go back to it' : 'Show it'} onPick={pick(onJoin)} />

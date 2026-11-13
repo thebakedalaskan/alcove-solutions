@@ -616,7 +616,8 @@ time, slides in on the right.
   **Chat** and the faces (People) open it from the top right; **Your notes** opens there beside a board you present, and
   **Breakout rooms** (in People or **More**) opens the rooms there. A panel's button is lit while it's open, and pressing it
   again, its **×**, or **Esc** (once no menu is open, you're not in focus, and nobody you pinned is here) puts it away. On a
-  phone a panel is a sheet over the call. A reload finds your side as it was, and a call you've just joined opens Notes
+  phone a panel is a sheet over the call, and so it is in a window too short for it between the top bar and the dock,
+  as a phone on its side is, where it stands at the right. A reload finds your side as it was, and a call you've just joined opens Notes
   beside the stage on a wide screen while notes are on. Nothing on your side changes anyone else's screen.
 - **Your view.** There are no layouts to choose: the stage lays itself out, everyone in a grid, and talking moves
   nobody (whoever's talking has the speak ring). Only someone you pin, or the organizer's spotlight, goes on the main

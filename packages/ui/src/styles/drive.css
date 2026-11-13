@@ -163,6 +163,8 @@
   /* The page's own search is the one: the top bar's steps aside, as it does on Calls. */
   .shell:has(> .main > .main-in > .dv) .ph-end > :first-child { display: none; }
   .dv { --hz: 150px; --behind: 66px; height: auto; margin-top: -66px; }
+  /* The sky here is all top bar and search: a cloud drifting across it would cross the logo and the buttons. */
+  .dv .hz-puff { display: none; }
   .dv .dusk-in { display: block; height: auto; padding-top: 66px; padding-bottom: 28px; }
   .dv-sky { display: flex; gap: 10px; height: auto; margin-top: 18px; padding-right: 0; }
   .dv-sky .dusk-title, .dv-sky-end { display: none; }
@@ -183,6 +185,9 @@
   .dv-grid .fc.is-lg { --fc-h: 116px; }
   .dv-grid.is-call .fc { --fc-h: 140px; }
   .dv-folders { grid-template-columns: minmax(0, 1fr); }
+  /* Nothing here yet keeps its three ways to make something in view, above the tab bar's Record. */
+  .ac-empty.dv-none { gap: 8px; padding: 14px 0 6px; }
+  .dv-none .ac-empty-act { margin-top: 4px; gap: 8px; }
   .dv-row-by, .dv-tag { display: none; }
   .dv-row { grid-template-columns: 34px minmax(0, 1fr) auto; }
 }

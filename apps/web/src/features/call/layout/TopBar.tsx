@@ -75,7 +75,8 @@ export function TopBar({ title, elapsed, sign, swap, people, asking, reconnectin
       <header className="ic-top is-phone">
         <span className="ttl">{title}</span>
         <div className="nz">{sign}</div>
-        {reconnecting && <span className="ic-recon" role="status"><Dots />Reconnecting</span>}
+        {/* The dots alone on a phone, where the word would push who's here off the screen; a screen reader still says it. */}
+        {reconnecting && <span className="ic-recon" role="status"><Dots /><span className="sr-only">Reconnecting</span></span>}
         <div className="end">{timer}{chat}{faces}</div>
       </header>
     );

@@ -61,7 +61,7 @@ import { BoardPagerFoot, Frame, FrameBox, type FrameBar } from '~/features/call/
 import { holding, useLandKeys } from '~/features/call/layout/landKeys';
 import { isScreen, screenOf, sharerOf, useOnStage, type Presented, type ThingId } from '~/features/call/layout/onStage';
 import { CallSettings, type SettingsTab } from '~/features/call/layout/CallSettings';
-import { STAGE_BESIDE_SIDE, sideWidth, useSide, type NotesTab, type SidePlace, type SideView } from '~/features/call/layout/side';
+import { SIDE_MIN_HEIGHT, STAGE_BESIDE_SIDE, sideWidth, useSide, type NotesTab, type SidePlace, type SideView } from '~/features/call/layout/side';
 import { PlayTogetherBar, useSharedVideo, useWorkspacePlaying } from '~/features/call/playback/PlayTogether';
 import { useBoardPresenting } from '~/features/call/boards/boardPresenting';
 import { useWorkspacePresenting } from '~/features/call/workspace/presenting';
@@ -1406,8 +1406,10 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
    * the call's whole width, so your side opening or closing never moves or resizes them.
    */
   const sideW = sideWidth(width);
-  /** Your side stands beside the stage, if there's room: never on a phone, where it's a sheet over the call, nor in focus. */
-  const sideWanted = side.view !== null && !phone && !focusOn;
+  /** Your side is a sheet over the call on a phone, and in a window too short for it between the bars (a phone on its side). */
+  const sideSheet = phone || (size.h > 0 && size.h < SIDE_MIN_HEIGHT);
+  /** Your side stands beside the stage, if there's room: never as a sheet over the call, nor in focus. */
+  const sideWanted = side.view !== null && !sideSheet && !focusOn;
   const edge = peopleEdge(size.w, { frames: shownThings.length, phone, focus: focusOn, rooms: !!stageRooms, small: panels.people === 'hidden', side: sideWanted ? sideW + GAP : 0 });
   const edgeRoom = edge ? edge.w + GAP : 0;
   /*
@@ -1415,9 +1417,9 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
    * too narrow, it sits over the stage instead, left of the people, rather than squeeze it. While it's over what's on your
    * stage, choosing something there (or the call showing you something there) puts it away.
    */
-  const sideOver = !phone && size.w - edgeRoom - (sideW + GAP) < STAGE_BESIDE_SIDE;
+  const sideOver = !sideSheet && size.w - edgeRoom - (sideW + GAP) < STAGE_BESIDE_SIDE;
   const sideRoom = sideWanted && !sideOver ? sideW + GAP : 0;
-  const sideCovers = side.view !== null && (phone || (sideOver && !focusOn));
+  const sideCovers = side.view !== null && (sideSheet || (sideOver && !focusOn));
   const mainW = Math.max(0, size.w - sideRoom - edgeRoom);
   /* What your side and the people take at the window's right edge, for toasts to keep to the stage left of them (call.css). */
   useLayoutEffect(() => {
@@ -1639,7 +1641,7 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
   };
   const sideNames: Record<SideView, string> = { notes: 'Notes', chat: 'Chat', people: 'People', rooms: open ? 'Rooms are open' : 'Breakout rooms', mine: 'Your notes' };
   const hostSide: HostSide | null = side.view === null || focusOn ? null
-    : { view: side.view, label: sideNames[side.view], width: sideW, phone, over: sideOver, theme, edge: edgeRoom, onClose: sideClose, children: sideBody(side.view) };
+    : { view: side.view, label: sideNames[side.view], width: sideW, phone: sideSheet, over: sideOver, theme, edge: edgeRoom, onClose: sideClose, children: sideBody(side.view) };
   /* The workspace's list: beside the page where its frame has the room, and otherwise over the page for now. */
   const wsBox = boxOf('ws');
   const listFits = wsBox !== null && wsBox.w >= 760 && !phone;
@@ -1972,7 +1974,8 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
   const moreBody = pop === 'board' ? (
     <BoardPicker {...openPicker.picker} />
   ) : pop === 'reactMore' ? (
-    <ReactPicker label="Send a reaction everyone sees" onPick={react} />
+    /* A phone's picker is a sheet over the foot of the call, where the burst rises: it goes as you pick, so you see yours. */
+    <ReactPicker label="Send a reaction everyone sees" onPick={(r) => { react(r); setPop(null); }} />
   ) : (
     <>
       {phone && (

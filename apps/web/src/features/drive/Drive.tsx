@@ -12,8 +12,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ariaShortcut, overlayOpen, shortcut, withMod } from '~/lib/keys';
 import { DocumentBeside } from '~/features/workspace/Beside';
+import { useMedia } from '~/lib/live';
 import { q } from '~/lib/queries';
-import { canEdit, useDriveActions, type DriveActions } from './actions';
+import { PHONE, canEdit, useDriveActions, type DriveActions } from './actions';
 import { CallSheet } from './CallSpace';
 import { CallsList, SpacesList } from './Lists';
 import { NewButton } from './New';
@@ -24,9 +25,13 @@ import { TrashSheet } from './Trash';
 import { Tree } from './Tree';
 import { callTitle, filesIn, isCallSpace, marksFor, type DriveAt, type DriveFile } from './places';
 
-/** The search in the sky. ⌘K comes here on this page, in place of the palette; Esc clears it. */
+/**
+ * The search in the sky. ⌘K comes here on this page, in place of the palette; Esc clears it. On a phone it shares the sky
+ * with New, so what it says there is short enough to read whole.
+ */
 function Search({ text, onText }: { text: string; onText: (text: string) => void }) {
   const field = useRef<HTMLInputElement>(null);
+  const phone = useMedia(PHONE);
   /* In the capture phase, so the shell doesn't open the palette as well. With something open over the page, it's the shell's. */
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
@@ -42,7 +47,7 @@ function Search({ text, onText }: { text: string; onText: (text: string) => void
   return (
     <div className="dv-q">
       <Icon name="search" size={18} />
-      <input ref={field} type="search" value={text} placeholder="Find a document, a board or a file" aria-label="Find a document, a board or a file" aria-keyshortcuts={ariaShortcut('K')}
+      <input ref={field} type="search" value={text} placeholder={phone ? 'Search the Drive' : 'Find a document, a board or a file'} aria-label="Find a document, a board or a file" aria-keyshortcuts={ariaShortcut('K')}
         autoComplete="off" spellCheck={false} enterKeyHint="search" maxLength={200} onChange={(e) => onText(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Escape' && text) { e.preventDefault(); onText(''); } }} />
       {text ? <IconButton icon="x" size={15} label="Clear search" className="dv-q-x" onClick={() => { onText(''); field.current?.focus(); }} /> : <Kbd className="dv-q-k">{shortcut('K')}</Kbd>}

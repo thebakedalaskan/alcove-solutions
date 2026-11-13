@@ -16,7 +16,7 @@ import { PhoneTop, TabBar } from '~/features/shell/TabBar';
 import { TopActions } from '~/features/shell/TopActions';
 import { useVisits } from '~/features/shell/visits';
 import { CallFlowContext, type PaletteStart } from '~/features/shell/context';
-import { ownerOf, requireAccount } from '~/lib/guards';
+import { onSessionAnswer, ownerOf, requireAccount } from '~/lib/guards';
 import { takeArrival } from '~/lib/live';
 import { overlayOpen, typing, withMod } from '~/lib/keys';
 
@@ -53,18 +53,20 @@ function shownPath(matches: readonly { pathname: string }[]): string {
 }
 
 function Shell() {
-  const { account } = Route.useRouteContext();
+  const { account, queryClient } = Route.useRouteContext();
   const router = useRouter();
   useKeptUploads(ownerOf(account));
   useKeptEdits(ownerOf(account));
   useSignedOutElsewhere(ownerOf(account));
   useVisits(ownerOf(account), account.offline);
+  /* Offline, everything is read again once the connection is back, or once Alcove answers a session check that was late. */
   useEffect(() => {
     if (!account.offline) return;
     const back = () => { void router.invalidate(); };
     addEventListener('online', back);
-    return () => removeEventListener('online', back);
-  }, [account.offline, router]);
+    const answered = onSessionAnswer(queryClient, back);
+    return () => { removeEventListener('online', back); answered(); };
+  }, [account.offline, queryClient, router]);
   const calls = useCallFlowHost();
   const { flow } = calls;
   const [palette, setPalette] = useState(false);

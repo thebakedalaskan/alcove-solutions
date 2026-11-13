@@ -849,7 +849,10 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   and the dock keeps the microphone, camera, Show everything and Leave.
 - **On a phone** (under 600px), the top is the title, the notes sign, Chat and the faces; the dock is the microphone,
   camera, Share, More and Leave; what's open fills the screen under a row of arches; More starts with a grid of Board,
-  Workspace, Notes, Chat and People; and your side, Settings, Close's question and Leave's are sheets.
+  Workspace, Notes, Chat, React and People, three across; and your side, a person's ⋯, React's emoji, Settings, Close's
+  question and Leave's are sheets. A window too short for your side between the top bar and the dock, as a phone on its
+  side is, has it as a sheet too, standing at the right the whole height of the window, and a menu there scrolls in the
+  room it has.
 
 ## After the call
 

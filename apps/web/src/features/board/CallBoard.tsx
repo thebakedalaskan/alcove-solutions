@@ -376,8 +376,23 @@ export function CallBoardMini({ session, width, height, pictures, links, theme }
 
 /** The size the next frame's picture is drawn at before it's shrunk into the side. */
 const NEXT = { w: 1114, h: 674 } as const;
-/** The room the next frame's picture has in the side. */
+/** The room the next frame's picture has in the side, until it's measured: on a phone, where the side is a sheet, it has more. */
 const NEXT_W = 316;
+
+/** How wide the next frame's picture has room to be, as its box is now. */
+function useRoom(box: HTMLElement | null): number {
+  const [room, setRoom] = useState(NEXT_W);
+  useLayoutEffect(() => {
+    if (!box) return undefined;
+    // Its layout width, not as drawn: a sheet rising on a phone is scaled while it does.
+    const measure = () => { if (box.offsetWidth > 0) setRoom(box.offsetWidth); };
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(box);
+    return () => watch.disconnect();
+  }, [box]);
+  return room;
+}
 
 /**
  * Your notes beside the board you present, in your side: which frame everyone's on, your words for it (only yours, kept for next
@@ -394,7 +409,8 @@ export function CallBoardMine({ session, section, notes, onNote, pictures, links
   const on = usePresentedFrame(slides, section);
   const frames = useMemo(() => new Map(readBoard(session.doc).frames.map((f) => [f.id, f.title])), [slides, session.doc]);
   const next = slides[on.at + 1] ?? null;
-  const k = NEXT_W / NEXT.w;
+  const [pic, setPic] = useState<HTMLSpanElement | null>(null);
+  const k = useRoom(pic) / NEXT.w;
   if (!on.id) return <p className="ic-mine-none">This board has no frames, so there’s nothing to keep notes beside.</p>;
   return (
     <div className="ic-mine">
@@ -407,7 +423,7 @@ export function CallBoardMine({ session, section, notes, onNote, pictures, links
       <div className="next">
         <span className="pos">{next ? `Next: ${frames.get(next) || 'Untitled frame'}` : 'That’s the last one'}</span>
         {next && (
-          <span className="pic" style={{ height: Math.round(NEXT.h * k) }} aria-hidden="true">
+          <span ref={setPic} className="pic" style={{ height: Math.round(NEXT.h * k) }} aria-hidden="true">
             <span style={{ width: NEXT.w, height: NEXT.h, transform: `scale(${k})` }}>
               <BoardSurface doc={session.doc} awareness={session.awareness} mode="tile" slide={next} pictures={pictures} links={links} theme={theme} />
             </span>

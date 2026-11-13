@@ -29,6 +29,12 @@
   .dusk { --behind: 0px; min-height: calc(100vh - 136px + var(--behind) - env(safe-area-inset-bottom, 0px)); min-height: calc(100dvh - 136px + var(--behind) - env(safe-area-inset-bottom, 0px)); }
   .dusk-in { padding: 6px 20px 28px; }
   .dusk-top { min-height: 44px; }
+  /*
+   * A phone's sky is short and full: the top bar, a page's title and its buttons stand in it, and a cloud as wide as the
+   * screen drifting through would strike them out. The clouds are left out; the water, its light and what passes through
+   * keep the evening moving.
+   */
+  .hz-puff { display: none; }
 }
 
 /* ------------------------------------------------------------ the colours of each moment */

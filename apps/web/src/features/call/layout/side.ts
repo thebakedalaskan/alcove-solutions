@@ -25,6 +25,11 @@ export const sideWidth = (windowWidth: number): number => (windowWidth < 1200 ? 
  * side sits over the stage, left of the people, and the stage keeps its width under it.
  */
 export const STAGE_BESIDE_SIDE = 480;
+/**
+ * The shortest the call's area gets with your side between the top bar and the dock: shorter, as a phone on its side is, and
+ * there's no room in it for what your side shows, so it's the sheet over the call a phone has, standing at the right (call.css).
+ */
+export const SIDE_MIN_HEIGHT = 360;
 
 export function useSide(opts: { phone: boolean }): { view: SideView | null; open: (v: SideView) => void; toggle: (v: SideView) => void; close: () => void } {
   const [view, setView] = useState<SideView | null>(null);

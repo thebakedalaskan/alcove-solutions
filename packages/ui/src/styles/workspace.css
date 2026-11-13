@@ -437,6 +437,8 @@
   .wt-acts { width: auto; padding-right: 3px; overflow: visible; }
   .ws-put { opacity: 1; }
   .wv-keyrow { display: none; }
+  /* What someone can do is a few words at a row's end: a finger presses the whole height of the row there. */
+  .wv-pr button.role { align-self: stretch; padding: 0 8px; margin: 0 -8px; }
 }
 /* The keyboard list takes the columns it has room for. */
 @media (max-width: 960px) {

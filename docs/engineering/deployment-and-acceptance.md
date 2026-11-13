@@ -115,11 +115,13 @@ registration or install as a warning.
 `sw.js` falls under the `/*` rule in `_headers` (`max-age=0, must-revalidate` and the CSP, whose
 `worker-src 'self'` allows it), so the browser finds a new worker on the next page load. A shell served
 from the cache keeps the headers it was cached with, its CSP included. Every screen's route asks the API for
-the session before it opens. When that can't reach the API (no connection, or the request doesn't get through),
-someone signed in on this browser carries on offline (`requireAccount` in `apps/web/src/lib/guards.ts`, from the
-flag in `apps/web/src/lib/device.ts`): Record and the stage recorder work, and every other page shows **You're
+the session before it opens. When that can't reach the API (no connection, the request doesn't get through, or, for
+someone signed in on this browser, it hasn't answered in five seconds, since a stalled connection neither answers nor
+fails), someone signed in on this browser carries on offline (`requireAccount` in `apps/web/src/lib/guards.ts`, from
+the flag in `apps/web/src/lib/device.ts`): Record and the stage recorder work, and every other page shows **You're
 offline** with the way to Record (`OfflinePage`, also the router's error page for any request that didn't get
-through). A 401 still signs out. With no connection at all, queries aren't retried, so a page says so at once.
+through). Once the connection is back, or the late answer comes, everything is read again. A 401 still signs out. With
+no connection at all, queries aren't retried, so a page says so at once.
 See [Calls and recordings › Recording without a connection](calls-and-recordings.md#recording-without-a-connection).
 
 Only the release job and the monthly refresh job can request a GCP OIDC token, and they run only the deploy scripts and
