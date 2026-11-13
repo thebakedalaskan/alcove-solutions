@@ -1080,6 +1080,9 @@ button.ic-facc:hover, button.ic-facc[aria-expanded="true"] { background: color-m
 .ic-frame-box.is-phone .ic-facc { flex: none; height: 18px; padding: 0 5px; border-radius: 6px; }
 .ic-frame-box.is-phone .ic-facc .ac-i { width: 12px; height: 12px; }
 .ic-frame-box.is-phone .ic-facc .t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* On a phone who can edit it is only its icon, small beside how it stands: a finger reaches it past its edges, short of the name over it and of the board under the bar. */
+.ic-frame-box.is-phone button.ic-facc { position: relative; }
+.ic-frame-box.is-phone button.ic-facc::after { content: ''; position: absolute; inset: -1px -12px -8px; }
 .ic-frame-box.is-phone .ic-fol { padding-left: 5px; }
 .ic-frame-box.is-phone :is(.ic-fol .t, .ic-follow .ft small) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .ic-frame-box.is-phone .ic-follow { padding: 0 10px 0 6px; }
