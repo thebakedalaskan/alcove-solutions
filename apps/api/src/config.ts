@@ -29,6 +29,8 @@ const RootCa = (name: string, fallback: string) => z.string().refine(isCert, `${
 
 const EnvSchema = z.object({
   DATABASE_URL: z.string().url(),
+  /** How long a starting server keeps trying to reach its database, in ms, before it refuses to start (db.ts › waitForDatabase). */
+  DATABASE_WAIT_MS: z.coerce.number().int().min(0).default(180_000),
   OBJECTS_ENDPOINT: z.string().url(),
   OBJECTS_BUCKET: z.string().min(3),
   OBJECTS_ACCESS_KEY: z.string(),

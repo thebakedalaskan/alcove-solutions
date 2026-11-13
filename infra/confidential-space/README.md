@@ -447,6 +447,21 @@ balancer keeps no request logs, so it logs no client addresses either.
   launcher logs "Boot completed" and "Workload setup completed" with their durations, to tune by. A crash reboots the whole VM
   (`tee-restart-policy=OnFailure`, about 2 minutes, a fresh pull and a fresh attestation). Never use `gcloud compute
   instances reset`, which counts against the vTPM's lockout; stop and start instead.
+- **A new VM's first database connection can stall.** On 2026-11-13, five of the eighteen VMs production started had their
+  first connection through the Cloud SQL Auth Proxy go unanswered past pg's 10 s, and their API refused to start
+  ("Connection terminated due to connection timeout"), costing each rollout a reboot; each connected at once after it, and
+  no other connection that day stalled. It isn't the proxy's certificate: Cloud SQL's audit log shows each VM's proxy got
+  one within a second of starting, before the API asked, and the API's own calls to Google through the same Cloud NAT (the
+  subnet has no Private Google Access) had just worked. What stalls is the proxy's connection to the instance's public IP.
+  All five stalls came 13–21 minutes after the previous VM's deletion finished; one other first start in that window
+  connected at once, and none of the twelve outside it (3–12 minutes after one, or 23 and more) stalled. That points at
+  Cloud NAT handing the new VM ports whose state from the deleted one lingers (an established TCP connection's idle timeout
+  there is 20 minutes), but nothing logs NAT's drops to confirm it. The API now tries again, with a fresh connection, after
+  1 s and then twice as long each time up to 15 s, for up to three minutes (`DATABASE_WAIT_MS`), saying each try at warn
+  (`database not reachable yet; trying again`), before it refuses. If a fresh connection gets through, as each did after
+  the reboot, a stall costs one try, about 11 s, rather than a reboot. Cloud NAT's error logging (`--enable-logging
+  --log-filter=ERRORS_ONLY` on `alcove-nat`) would show whether it drops them, and a private IP for Cloud SQL would take
+  the database off Cloud NAT altogether.
 - **Health is TLS's.** The health checks' `/health` on 8080 is the edge's own answer, 200 once it serves TLS, without
   touching the API or the database. A Cloud SQL outage takes no VM out of the load balancer and replaces none, which
   couldn't help; the API's own `/health`, over 443, runs `SELECT 1` and says whether LiveKit is reachable, and
