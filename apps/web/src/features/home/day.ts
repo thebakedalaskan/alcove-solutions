@@ -67,6 +67,12 @@ export function peopleOn(a: Ahead, me: string | undefined): Person[] {
   return me ? all.filter((p) => !sameEmail(p, { email: me })) : all;
 }
 
+/**
+ * A calendar event with nobody else on it: your own time, not a call. Upcoming counts these at its foot and lists them,
+ * quieter, only when you ask (Show events with only me on Home).
+ */
+export const isSolo = (a: Ahead, me: string | undefined) => a.kind === 'event' && peopleOn(a, me).length === 0;
+
 /** How long before a call Home offers to join it. */
 const JOIN_AHEAD_MS = 5 * 60_000;
 

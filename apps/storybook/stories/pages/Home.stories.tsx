@@ -9,7 +9,10 @@ import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import { on } from '../../src/world/clock';
 import { STATES, withNotes } from '../../src/world/states';
-import { calendarJustConnected, caughtUp, checkFails, firstNotesWriting, givenByMaya, invited, noCalendar, notAttested, nothingToAnswer, otherMeetingsOff, takenOn, troubled, yourMeeting } from './changes';
+import {
+  calendarJustConnected, caughtUp, checkFails, clearWeek, firstNotesWriting, givenByMaya, invited, noCalendar, noCallsAhead, notAttested, nothingToAnswer,
+  onlyOwnEvents, otherMeetingsOff, ownEventsShown, takenOn, troubled, yourMeeting
+} from './changes';
 
 const meta = { title: 'Pages/Home', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -34,7 +37,10 @@ const toAnswer: Play = async ({ canvas, userEvent, step }) => {
   });
 };
 
-/** Wednesday afternoon: eight things to answer in For you, the week ahead in Upcoming, and today's notes first in Recent notes. */
+/**
+ * Wednesday afternoon: eight things to answer in For you, the week ahead in Upcoming (with Art's two focus blocks, which have
+ * only him on them, counted at its foot), and today's notes first in Recent notes.
+ */
 export const Busy = page('/home', 'busy');
 export const BusyNight = page('/home', 'busy', { globals: NIGHT });
 export const BusyPhone = phone(Busy);
@@ -131,6 +137,29 @@ export const CalendarDidntLoadNothingAhead = page('/home', 'first-day', { before
 export const OtherMeetingsOff = page('/home', 'busy', { beforeEach: changing(noCalendar, otherMeetingsOff) });
 /** Other meetings off and the calendar doesn't load: Upcoming wasn't showing it, so it lists the calls and says nothing. */
 export const OtherMeetingsOffDidntLoad = page('/home', 'busy', { beforeEach: changing(otherMeetingsOff, troubled({ 'calendar.get': 'failed' })) });
+/** Other meetings off and no calls ahead: Upcoming isn't showing the calendar, so it says there are no calls. */
+export const OtherMeetingsOffNoCalls = page('/home', 'busy', { beforeEach: changing(otherMeetingsOff, noCallsAhead) });
+
+/**
+ * Art's own events shown (Show my own events on Home): his two focus blocks, one slim line each after the hatch, in their
+ * days among the calls, and the count at Upcoming's foot pressed.
+ */
+export const OwnEventsShown = page('/home', 'busy', { beforeEach: changing(ownEventsShown) });
+export const OwnEventsShownNight = { ...OwnEventsShown, globals: NIGHT };
+export const OwnEventsShownPhone = phone(OwnEventsShown);
+/**
+ * No calls ahead, and nobody else on anything on the calendar this week: Upcoming says there are no meetings with other
+ * people, and that Art's 12 events with only him on them aren't shown, with Show them.
+ */
+export const OnlyOwnEvents = page('/home', 'busy', { beforeEach: changing(onlyOwnEvents) });
+export const OnlyOwnEventsNight = { ...OnlyOwnEvents, globals: NIGHT };
+export const OnlyOwnEventsPhone = phone(OnlyOwnEvents);
+/** That week, shown: Art's own time in its days, quietly, then Show 4 more, and the count at the foot to hide it again. */
+export const OnlyOwnEventsShown = page('/home', 'busy', { beforeEach: changing(onlyOwnEvents, ownEventsShown) });
+export const OnlyOwnEventsShownNight = { ...OnlyOwnEventsShown, globals: NIGHT };
+/** No calls ahead and nothing on the calendar in the next 7 days: Upcoming says the calendar is clear. */
+export const NothingOnTheCalendar = page('/home', 'busy', { beforeEach: changing(clearWeek) });
+export const NothingOnTheCalendarNight = { ...NothingOnTheCalendar, globals: NIGHT };
 
 /** The first day: For you says what will show up, Upcoming is the way to connect the calendar, and Recent notes has the example. */
 export const FirstDay = page('/home', 'first-day');

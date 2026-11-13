@@ -130,6 +130,14 @@ Home is for starting a call and for what's yours. It's nearly all sky.
     whose time is being picked, then up to three small faces. At the right, only what needs saying: In 4 min in
     `sun-text` in its last few minutes and Now while it's going, Answer as a rose pill, or Use Alcove, a line button
     with the camera.
+    - **Events with only you on them** aren't calls, so they aren't listed: the end of the foot counts them, a quiet
+      pill with a small square of hatching (`Hatch`, the hatching scheduling's week gives the time you're busy) and "2
+      with only you", pressed while they show. Shown, each is one slim line in its day among the calls: the time in
+      `ink-3`, the hatch, the title in `ink-2`, no faces and nothing at the end. Eight rows come before Show N more then.
+    - **Nothing to list** says why, over the small drawing of a week: a week of hatched blocks, "No meetings with other
+      people in the next 7 days", how many events with only you aren't shown, and Show them; days with nothing in
+      them, "Nothing on your calendar in the next 7 days" and "Calls you schedule show up here."; or, with no calendar
+      to read, "No calls in the next 7 days".
     - **Not connected** and with nothing to show, the body is a small drawing of a week (three days, tinted blocks), See
       what's coming up and one line, Connect Google Calendar (a line button with the calendar mark), and under it, small
       in `ink-3`, what Alcove does with the calendar. With calls to show, the connect is a row at the widget's foot

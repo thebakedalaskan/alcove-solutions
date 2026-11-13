@@ -67,6 +67,11 @@ export function GoogleCalendar({ prefs, result }: { prefs: Preferences | undefin
             help={cal?.source === 'sample' ? 'Your sample calendar stands in for Google Calendar.' : 'When Google Calendar is connected, Google sends the invitations.'}
             checked={prefs.addToCalendar} onChange={(on) => save('Put calls I schedule on my calendar', { addToCalendar: on })} />
           <SwitchSetting sub label="Show my other meetings on Home" checked={prefs.showOtherMeetings} onChange={(on) => save('Show my other meetings on Home', { showOtherMeetings: on })} />
+          {/* Upcoming's own count does the same: these are among the other meetings, so they come and go with them. */}
+          {prefs.showOtherMeetings && (
+            <SwitchSetting sub label="Show my own events on Home" help="Events with nobody else on them, such as a focus block."
+              checked={prefs.showSoloEvents} onChange={(on) => save('Show my own events on Home', { showSoloEvents: on })} />
+          )}
         </>
       )}
     </>

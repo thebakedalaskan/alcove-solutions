@@ -29,6 +29,27 @@ export function busyEvents(): CalendarEvent[] {
 }
 
 /**
+ * A week with nobody else on anything: Art's own time, from tonight to next Tuesday. Home's Upcoming counts these rather than
+ * listing them, and lists them, quieter, when he asks.
+ */
+export function ownWeekEvents(): CalendarEvent[] {
+  return [
+    calendarEvent({ id: 'e-own-gym-wed', title: 'Gym', startsAt: iso(0, 19, 0), minutes: 60 }),
+    calendarEvent({ id: 'e-own-plan-thu', title: 'Write the Q4 plan', startsAt: iso(1, 9, 0), minutes: 120 }),
+    calendarEvent({ id: 'e-own-lunch', title: 'Lunch', startsAt: iso(1, 12, 30), minutes: 60 }),
+    calendarEvent({ id: 'e-own-gym-thu', title: 'Gym', startsAt: iso(1, 19, 0), minutes: 60 }),
+    calendarEvent({ id: 'e-own-dentist', title: 'Dentist', startsAt: iso(2, 16, 30), minutes: 45 }),
+    calendarEvent({ id: 'e-own-market', title: 'Farmers market', startsAt: iso(3, 10, 0), minutes: 90 }),
+    calendarEvent({ id: 'e-own-run', title: 'Long run', startsAt: iso(4, 8, 0), minutes: 90 }),
+    calendarEvent({ id: 'e-own-board', title: 'Prep for the board', startsAt: iso(5, 9, 0), minutes: 120 }),
+    calendarEvent({ id: 'e-own-gym-mon', title: 'Gym', startsAt: iso(5, 19, 0), minutes: 60 }),
+    calendarEvent({ id: 'e-own-plan-tue', title: 'Write the Q4 plan', startsAt: iso(6, 9, 0), minutes: 120 }),
+    calendarEvent({ id: 'e-own-chairs', title: 'Pick up the new chairs', startsAt: iso(6, 15, 0), minutes: 45 }),
+    calendarEvent({ id: 'e-own-gym-tue', title: 'Gym', startsAt: iso(6, 19, 0), minutes: 60 })
+  ];
+}
+
+/**
  * Art's own calendar on his first day, once it's connected: meetings set up elsewhere, with other people on them. He set up
  * the intro with Harbourline himself, on Google Meet, so it can move to Alcove.
  */

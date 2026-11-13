@@ -297,7 +297,7 @@ describe('signing in', () => {
     const patchRaw = async (body: unknown) => (await fetch(`${h.baseUrl}/v1/account/preferences`, { method: 'PATCH', headers: { 'content-type': 'application/json', origin: ORIGIN }, body: JSON.stringify(body) })).status;
     const defaults = {
       sounds: DEFAULT_SOUND_PREFERENCES,
-      notesDefault: 'on', notesLanguage: 'call', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
+      notesDefault: 'on', notesLanguage: 'call', addToCalendar: true, showOtherMeetings: true, showSoloEvents: false, recordOffline: true,
       notifications: DEFAULT_NOTIFICATION_PREFERENCES,
       pinned: [], groups: [], model: null, notificationsPausedUntil: null
     };
@@ -311,12 +311,17 @@ describe('signing in', () => {
     const sounds = { ...DEFAULT_SOUND_PREFERENCES, enabled: false, quiet: true, volume: 0.25, hands: false, replies: false };
     expect((await api.account.updatePreferences({ sounds })).sounds).toEqual(sounds);
     expect((await api.account.preferences()).sounds).toEqual(sounds);
+    // Upcoming's events with only you on them: hidden until asked for, then kept by patches that leave them out.
+    expect((await api.account.updatePreferences({ showSoloEvents: true })).showSoloEvents).toBe(true);
+    expect(await patchRaw({ showSoloEvents: 'yes' })).toBe(400);
     const other = await account();
     expect((await other.api.account.preferences()).sounds).toEqual(DEFAULT_SOUND_PREFERENCES);
+    expect((await other.api.account.preferences()).showSoloEvents).toBe(false);
     expect(await patchRaw({ sounds: { ...sounds, volume: 2 } })).toBe(400);
     const grouped = await api.account.updatePreferences({ groups: [{ id: 'g1', name: 'Design', emails: ['sam@example.com'] }] });
     expect(grouped.groups).toHaveLength(1);
     expect(grouped.sounds).toEqual(sounds);
+    expect(grouped.showSoloEvents).toBe(true);
     expect(await patchRaw({ notesLanguage: 'xx' })).toBe(400);
     expect(await patchRaw({ pinned: ['a', 'a'] })).toBe(400);
     expect(await api.account.preferences()).toEqual(grouped);

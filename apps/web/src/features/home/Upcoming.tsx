@@ -3,19 +3,22 @@
  * someone else on them, each under a block for its day: today, the next six days by weekday, later ones by date, and a call
  * still waiting for a time to be picked last, under Soon. A row says only what needs saying at its end: In 4 min or Now, Answer
  * for an invitation, Use Alcove on a meeting you organized. An Alcove call opens its card, and a calendar meeting its menu.
- * Until the calendar is connected, Upcoming is the way to connect it: straight to Google, and back to Home.
+ * Events with only you on them aren't calls: Upcoming counts them at its foot, and lists them, one slim hatched line each, when
+ * you ask (the `showSoloEvents` preference). With nothing to list, it says why: nothing with other people (and how many events
+ * it isn't showing), a calendar with nothing on it, or no calls. Until the calendar is connected, Upcoming is the way to
+ * connect it: straight to Google, and back to Home.
  */
-import type { CalendarConnectResult, CalendarEvent, Meeting } from '@alcove/api';
-import { Button, EmptyState, EmptyWeek, Faces, Icon, Popover, Widget, buttonClass, cn, useToast } from '@alcove/ui';
+import { errorMessage, type CalendarConnectResult, type CalendarEvent, type Meeting } from '@alcove/api';
+import { Button, EmptyState, EmptyWeek, Faces, Hatch, Icon, Popover, Widget, buttonClass, cn, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { pickerName } from '~/features/calls/scheduling/words';
 import { freshCalls } from '~/features/shell/context';
-import { calendarConnectUrl, q } from '~/lib/queries';
+import { calendarConnectUrl, q, usePreferences } from '~/lib/queries';
 import { dayMonth, daysFromToday, hm, longDay, minutesUntil, shortMonth, weekday } from '~/lib/time';
 import { capital } from '~/lib/words';
-import { isOffered, peopleOn, seriesIdOf, started, startsSoon, type Ahead } from './day';
+import { isOffered, isSolo, peopleOn, seriesIdOf, started, startsSoon, type Ahead } from './day';
 import { useMoveToAlcove, useShowMore } from './parts';
 
 /**
@@ -69,18 +72,30 @@ function dayOf(a: Ahead, now: number): Omit<Day, 'rows'> {
     : { key, word: shortMonth(at), num, label: longDay(at), said: dayMonth(at), today: false };
 }
 
+/** How many rows Upcoming shows before Show N more while your own events are listed: they're slimmer. */
+const ROOMY = 8;
+
 /** Under a call that offers times: whose pick it is. */
 const picking = (m: Meeting) => (m.isOrganizer ? `${capital(pickerName(m))} is picking a time` : 'A time is being picked');
 
 export function Upcoming({ ahead, me, now, result }: { ahead: readonly Ahead[]; me: string | undefined; now: number; result: CalendarConnectResult | undefined }) {
   const calendar = useQuery(q.calendar());
-  const others = useQuery(q.prefs()).data?.showOtherMeetings !== false;
+  const prefs = useQuery(q.prefs()).data;
+  const others = prefs?.showOtherMeetings !== false;
+  const showSolo = prefs?.showSoloEvents === true;
+  const save = usePreferences();
+  const toast = useToast();
   const heading = useRef<HTMLHeadingElement>(null);
   const cal = calendar.data;
-  /* Time blocked out with nobody else on it isn't a call. A call waiting for a time goes last. */
-  const listed = ahead.filter((a) => a.kind === 'call' || peopleOn(a, me).length > 0);
+  /*
+   * Time blocked out with nobody else on it isn't a call: it's counted, and listed only when asked for. A call waiting for a
+   * time goes last.
+   */
+  const solo = ahead.filter((a) => isSolo(a, me));
+  const listed = showSolo ? ahead : ahead.filter((a) => !isSolo(a, me));
   const rows = [...listed.filter((a) => !isOffered(a)), ...listed.filter(isOffered)];
-  const show = useShowMore<HTMLDivElement>(rows.length);
+  // Your own events are slim rows, so a few more show before Show N more while they're listed.
+  const show = useShowMore<HTMLDivElement>(rows.length, showSolo && solo.length > 0 ? ROOMY : undefined);
   // A call scheduled moments ago opens the list, so its row can rise.
   if (rows.slice(show.shown).some((a) => freshCalls.has(a.id))) show.open();
   const days: Day[] = [];
@@ -94,7 +109,16 @@ export function Upcoming({ ahead, me, now, result }: { ahead: readonly Ahead[]; 
   const gone = () => heading.current?.focus();
   /* Meetings just connected rise in, one after another. */
   const fresh = result === 'connected';
-  const turn = new Map(rows.slice(0, show.shown).filter((a) => a.kind === 'event').map((a, i) => [a.id, i]));
+  const turn = new Map(rows.slice(0, show.shown).filter((a) => a.kind === 'event' && !isSolo(a, me)).map((a, i) => [a.id, i]));
+  /* Shows or hides the events with only you on them: a preference, so it's the same wherever you're signed in, shown at once. */
+  const toggleSolo = () => save.mutate({ showSoloEvents: !showSolo }, { onError: (e) => toast(`Couldn’t save that. ${errorMessage(e)}`, { icon: 'x' }) });
+  /* While anything else is listed, the foot's end says how many events have only you on them; pressed while they show. */
+  const soloToggle = solo.length > 0 && rows.length > 0 ? (
+    <button type="button" className="hm-solo" aria-pressed={showSolo} onClick={toggleSolo}
+      title={showSolo ? 'Hide the events with only you on them' : 'Show the events with only you on them'}>
+      <Hatch />{solo.length} with only you
+    </button>
+  ) : undefined;
 
   /* With your other meetings off, what's on the calendar isn't shown here, so Upcoming doesn't wait for it or miss it. */
   const loading = others && cal === undefined && calendar.isPending;
@@ -108,6 +132,8 @@ export function Upcoming({ ahead, me, now, result }: { ahead: readonly Ahead[]; 
   const connect = calendarConnectUrl({ back: '/home' });
   const warn = <span className="hm-warn"><Icon name="alert" size={20} /></span>;
   const retry = () => void calendar.refetch();
+  /* The calendar was read for this list: what's on it would show here. Otherwise only calls do. */
+  const read = others && cal !== undefined && !cal.needsAccess && cal.source !== 'none';
 
   let body: ReactNode;
   let foot: ReactNode = null;
@@ -126,7 +152,16 @@ export function Upcoming({ ahead, me, now, result }: { ahead: readonly Ahead[]; 
       <EmptyState className="hm-empty" role="status" art={warn} title="Your calendar didn’t load" action={<Button loading={calendar.isFetching} onClick={retry}>Try again</Button>}>
         Calls still work without it.
       </EmptyState>
-    ) : <EmptyState className="hm-empty" art={null} title="Nothing in the next 7 days" />;
+    ) : solo.length ? (
+      <EmptyState className="hm-empty" art={<EmptyWeek blocks="own" />} title="No meetings with other people in the next 7 days"
+        action={<Button variant="secondary" size="sm" onClick={toggleSolo}>Show them</Button>}>
+        {solo.length === 1 ? 'One event with only you on it isn’t shown.' : `${solo.length} events with only you on them aren’t shown.`}
+      </EmptyState>
+    ) : read ? (
+      <EmptyState className="hm-empty" art={<EmptyWeek blocks="none" />} title="Nothing on your calendar in the next 7 days">
+        Calls you schedule show up here.
+      </EmptyState>
+    ) : <EmptyState className="hm-empty" art={<EmptyWeek blocks="none" />} title="No calls in the next 7 days" />;
   } else {
     body = (
       <div ref={show.list}>
@@ -135,6 +170,7 @@ export function Upcoming({ ahead, me, now, result }: { ahead: readonly Ahead[]; 
             <div className="hm-date" aria-hidden="true"><small>{d.word}</small>{d.num && <b>{d.num}</b>}</div>
             <ul className="hm-evs">
               {d.rows.map((a) => {
+                if (a.kind === 'event' && isSolo(a, me)) return <SoloRow key={a.id} a={a} said={d.said} />;
                 const i = turn.get(a.id) ?? 0;
                 return <Row key={a.id} a={a} said={d.said} me={me} now={now} fresh={fresh && a.kind === 'event'} delay={i > 0 ? { animationDelay: `${i * 45}ms` } : undefined} onGone={gone} />;
               })}
@@ -150,7 +186,7 @@ export function Upcoming({ ahead, me, now, result }: { ahead: readonly Ahead[]; 
             : null;
   }
   return (
-    <Widget icon="cal" title="Upcoming" className="hm-up" headingRef={heading} foot={foot} more={loading ? undefined : show.more}
+    <Widget icon="cal" title="Upcoming" className="hm-up" headingRef={heading} foot={foot} more={loading ? undefined : show.more} footEnd={soloToggle}
       end={<Link to="/settings" hash="calendar" className="hm-up-set" aria-label="Calendar settings" title="Calendar settings"><Icon name="settings" size={17} /></Link>}>
       {body}
     </Widget>
@@ -206,6 +242,21 @@ function Row({ a, said, me, now, fresh, delay, onGone }: {
   return (
     <li data-row className={cls}>
       <Link to="/calls/upcoming/$meetingId" params={{ meetingId: a.call.id }} className="hm-ev-b">{inner}</Link>
+    </li>
+  );
+}
+
+/**
+ * An event with only you on it, while they're shown: one slim, quiet line, the time, then the title after the hatch your own
+ * time has when you schedule, and no faces. It opens in Google Calendar, in a new tab: there's nobody to move it to Alcove for.
+ */
+function SoloRow({ a, said }: { a: Extract<Ahead, { kind: 'event' }>; said: string }) {
+  return (
+    <li data-row className="hm-ev is-solo">
+      <a href={a.event.calendarUrl} target="_blank" rel="noopener noreferrer" className="hm-ev-b" title="Open in Google Calendar, in a new tab">
+        <span className="hm-ev-tm"><span className="sr-only">{said} </span>{hm(a.startsAt)}</span>
+        <span className="hm-ev-own"><Hatch /><span className="ac-clamp-1">{a.title}</span><span className="sr-only">, only you</span></span>
+      </a>
     </li>
   );
 }
