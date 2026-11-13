@@ -29,12 +29,13 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    team at** the company, with its size and faces, when it has people in it and has arrived by then (the screen
    doesn't wait for it), with who already uses Alcove, or **Invite them from Team** while nobody does. **Notes are
    written in confidential compute**, and only the people invited to a call get its notes. Then
-   "You’re in" and the arch opens into Home. **Skip**, **Escape** or **Enter** opens it straight away; with
+   "You’re in" and the arch opens into Home, where the plans to choose from come first, once (16.20). **Skip**,
+   **Escape** or **Enter** opens it straight away; with
    reduced motion the finished screen shows for a moment and Home follows. After that, signing in goes
    straight to Home. From the welcome page it sails out of the cove: the headlands go by, the horizon comes up to
    Home's, the side panel and the page's frame form round the sea, and Home rises in, in about three and a half
    seconds (a press, a key or the wheel ends it at once; with reduced motion Home just opens).
-4. On first arriving in Home, a tour goes through it, one stop at a time: a card with a short animation on the dawn sky,
+4. On first arriving in Home (past the plans), a tour goes through it, one stop at a time: a card with a short animation on the dawn sky,
    and the page dimmed around the real thing the stop is about, with a ring round it and an arrow to it. **Start or
    schedule a call** (Start now and Schedule, on Home's sky); **Join a call** (the line on Home that offers an Alcove
    call, only while it does, from its last few minutes); **Notes for your calls** (the example note's card in Recent
@@ -1787,8 +1788,9 @@ a piece that reaches Alcove late, or twice, still lands where it was recorded, o
 
 **Team** is your company, standing on the horizon: the company directory where there is one (the demo directory
 today), otherwise the people at your work email domain you have calls or calendar meetings with. A personal address
-(gmail.com, outlook.com, icloud.com and the like) has no company, so its Team page is only **Start a team** (10.22).
-On a team of your own (10.22 to 10.25), the line is the team's people instead, each under their license.
+(gmail.com, outlook.com, icloud.com and the like) has no company, so someone there has no Team page until they're on a
+team: nothing links to it, and its address goes Home. On a team, the page is the team's instead (16.17), and a company's
+page has a quiet **Start a team** while you're on none (16.15).
 
 - **The line**: the company's name in the middle of the sky, and everyone on the horizon in their arch. You stand in
   the middle, whoever you met most recently beside you, one to each side, and people not on Alcove yet at the ends,
@@ -1841,44 +1843,6 @@ While the team is on its way, empty arches wait on the line beside you, and ever
 arrives. If it doesn't load, the page says why (or that you're offline, and it comes back by itself), with **Try again**.
 Your groups and notes load beside it: if your groups don't, their section says so, with **Try again**, and the rest of
 the page works.
-
-### 10.22 Start a team, buy licenses, invite
-
-A team is one admin (whoever starts it) and as many members as they invite; you're on one team at most. Not on a team,
-the Team page has a quiet **Start a team** beside Invite people (or, at a personal address, as the whole page): it opens
-a name in place, and **Make it** makes the team with you its admin. Its licenses are bought from the admin's balance on
-Team's card in **Settings → Plan** (11.28), reached from **Buy licenses in Settings** under the team's people. On the
-Team page the admin's **Invite** is the filled button: it makes a link for one person (`/team/join#…`), shown once with
-Copy, that works once and runs out after a day. Each press makes a new one.
-
-### 10.23 Join a team by its link
-
-The link's secret is after its `#`, so no server sees it, and it leaves the address bar at once. Signed in, the page asks
-"Join Vandelay Industries, Priya's team?" with **Join** and **Not now**; nothing happens until Join. Signed out, it asks
-you to sign in first, there, and then asks the same. Join takes one of the team's licenses if one is left and opens the
-Team page. A used or expired link, or being on a team already, is refused in Alcove's words.
-
-### 10.24 A team on the Team page
-
-The team's name stands in the sky, with how many people are on it (and, for its admin, how many licenses are left), and
-its people stand on the line. Under the water, **People on {team}** lists everyone with their role and license:
-"Licensed until 12 Dec", "License ended", or "Waiting for a license". The admin has **Remove** on each row, which asks in
-place (their license isn't refunded, they go back to Free, and notes they made visible to the team stay visible), and
-**Delete team** once nobody else is on it, which refunds the licenses nobody took. A member has **Leave team**, asked in
-place the same way. Beside them, **Visible to the team** lists the notes members made visible, each opening its note
-(8.51). Someone without a live license is told "You don't have a team license, so the team's notes and workspaces aren't
-open to you. Ask Priya to buy more." Groups and Shared with groups stay below, as ever.
-
-### 10.25 Licenses and visits
-
-A license is taken when someone without a live one uses Alcove: when the app opens signed in, when a tab comes back
-after 30 minutes or more away, or when they join. Nothing that reads in the background takes one. It runs a month from
-then, and an expired one is replaced only by the next visit. With none left, the admin's **Auto-purchase** buys one from
-their balance; otherwise the member stays on their own plan and is told to ask the admin, and the admin is told none
-were left. The admin is told too when fewer than 5 are left. A license replaces Pro at once: the month running is lost
-and the months that haven't started go back to the balance, which the member is told.
-
-Storybook's journeys **10.22** (start a team, buy licenses, invite) and **10.23** (join a team by its link) play these.
 
 ## 11. Settings
 
@@ -1973,7 +1937,8 @@ notes on new calls while the oldest request fails.
   a month) and, while months bought after this one haven't started, **Refund**, asked in place. Then **Payments**: first
   what's on its way or needs a person, each opening checkout (a payment for a plan) or the add-money sheet, with a cancel
   while nothing has reached it; then the balance's latest changes, each with **Receipt**, a receipt to print. Without a
-  server that takes payments the balance has no **Add money**. Team isn't on sale yet.
+  server that takes payments the balance has no **Add money**. On a team, the plan row says whose team it is and until when
+  your license runs, with **Open Team**, and Storage is the team's pool; its admin has the licenses too (16.18).
 - **Privacy**: what account and call information Alcove processes, then confidential compute: the time the hardware
   was verified when this browser could check it, or where your audio is opened and your notes are written. The **Privacy policy** explains how Alcove uses account and service
   data and how to disconnect Google services. Then, in its own panel at the end, **Delete account**.
@@ -2552,8 +2517,10 @@ the last of the sunset. It's reached from Settings › Plan's **See plans**, che
 4. **Get Pro** opens checkout over Plans (16.2), on 12 months with Yearly chosen and 1 with Monthly.
 
 On Pro, Pro says **Your plan**, **Extend** is a second choice, and Free says "Where you’re back to if a plan ends". While Pro is
-ending it says "Ends in 3 days" and **Extend** is filled. While the prices load, the cards wait in place; if they don't load,
-the page says why with **Try again**, and offline they show once you're back.
+ending it says "Ends in 3 days" and **Extend** is filled. On a team license Pro isn't sold, and its card says "Not while you’re on
+your team’s plan" where its button would be. While the prices load, the cards wait in place; if they don't load, the page says
+why with **Try again**, and offline they show once you're back. The first time Home opens for an account, it opens on Plans
+instead, once (16.20).
 
 ### 16.2 Get Pro, paying with USDC
 
@@ -2668,5 +2635,88 @@ top and in the foot until dismissed. When Pro ends without renewing you're back 
 top, with **Get Pro again**, and in the foot. Over Free's storage, everything works as before for a grace, then uploads and
 notes stop until you make room or get Pro again, which lifts it at once.
 
-Storybook's journeys use **16.1–16.14** above. The addresses, payments and networks in it are made up; a real payment through
-1Click needs a hand check with a wallet.
+### 16.15 Start a team
+
+A team is one admin (whoever starts it) and as many people as it has licenses for, and you're on one team at most. Team's card
+on Plans says what a license is (a price for each person, for a period: $40 for 30 days unless the limits say otherwise), and
+**Start a team** on it opens checkout on Team over the page; a company's Team page has the same as a quiet row while you're on
+none.
+
+1. The team's name, the company's to start with, with you its admin, and how many licenses: one for each person, you included.
+2. Pay from the balance, or with USDC on a network (16.2): the summary says exactly what to send. Getting the address makes the
+   team at once, with you its admin, and opens the payment for its licenses; the side panel waits for it as for Pro's.
+3. Once the payment is added, so are the licenses, with nothing to press: "{team} is on Team". Your license is taken then, and
+   each of the others when the person it's for next opens Alcove.
+4. **Done** has the way to invite them: a link for one person (16.17). Team is your plan on Plans from then, with **Buy
+   licenses** on its card. A license replaces Pro at once: the month running ends, and the months that haven't started go back
+   to the balance, which you're told.
+
+### 16.16 Join a team by its link
+
+An invite is a page of its own (`/team/join#…`), one card on the team's evening. Its secret is after the `#`, so no server sees
+it, and it leaves the address bar at once. Signed out, it asks you to sign in first, there (Google's way back comes back to it),
+while the invite waits in the tab. Then it says whose team it is and what joining gives you (notes of your own, what the team
+shares, its storage), with **Join** and **Not now**: nothing happens until Join. Join takes one of the team's licenses for a
+period if one is left, and **Open Alcove** opens the team's page, with you on it under your license. A used or expired link, or
+being on a team already, is refused in Alcove's words.
+
+### 16.17 Your team: people, licenses and invites
+
+On a team, Team is the team's page: its name in the sky over how many are on it, and its people on the horizon, each under
+their license, opening their popover as on a company's line. On the water, everyone as a row with their role and license
+("Licensed until 12 Dec", "License ended", "Waiting for a license"); the admin's **Remove** asks in place, under the row (their
+license isn't refunded, they go back to Free, and notes they made visible to the team stay visible). At the foot, **Leave team**
+for a member, asked the same way, or for the admin **Delete team** once nobody else is on it, which refunds the licenses nobody
+took. Then the notes made visible to the team, each opening its call's page (8.46), and your groups and what's shared with them,
+as ever. Beside them, for the admin: **Licenses**, how many are left and who's waiting for one, with **Buy licenses** (filled
+while someone waits), which opens checkout on Team, and buying one from the balance whenever it's needed; and **Invite
+people**: **Make an invite link** makes a link that lets one person join, for a day, shown with **Copy**; each press of **Make
+another** makes a new one. A member without a live license is told first, at the top of the water, why the team's notes and
+workspaces aren't open to them.
+
+### 16.18 Licenses running low
+
+A license is taken when someone without a live one uses Alcove: when the app opens signed in, when a tab comes back after 30
+minutes or more away, or when they join. Nothing that reads in the background takes one. It runs a period from then, and an
+ended one is replaced only by the next visit. With fewer than five left, the team's admin is told: the side panel's Team row
+says how many, in warm, with **Buy** ("2 licenses left · Buy"), which opens checkout on Team over the page you're on, and
+Settings › Plan says it at the top ("2 licenses left on Vandelay Industries. Buy more so nobody is left without one.") until
+it's dismissed, when the row says the team's name again. In Settings, **Licenses** says how many are left of how many, with
+**Buy licenses**; **Buy one when it’s needed** buys a license from the admin's balance whenever someone needs one and none is
+left; and **Refund** gives back the licenses nobody has taken, asked in place.
+
+### 16.19 On a team without a license
+
+When none was left for you, you stay on your own plan, and the team's admin is told. The side panel says it in caution, "No team
+license yet", under your notes left in place of the meter (on Pro, as the row's second line), and the row opens Team, which says
+who has been told. Settings › Plan says it once at the top, over your plan. The next time you open Alcove after the admin buys
+more, one is yours: your plan is Team, your license runs a period, and the side panel's foot is Team's row, over the team's name.
+
+### 16.20 Choose a plan
+
+The first time Home opens for an account, it opens on the plans instead, once: the plan choice, Plans in Home's place with a
+head of its own. That's every new account, after its arrival (1), and every account from before plans, the first time it opens
+Alcove normally after plans came.
+
+1. Someone with no notes yet reads **Choose a plan**: "Every plan has calls, workspaces and confidential compute. They differ in
+   hours of notes and storage." Someone who has used Alcove reads **Alcove has plans now** and which plan they're on, in the
+   server's numbers: "You’re on Free: about 5 hours of notes a month and 10 GB of storage." Over Free's storage, it says until
+   when everything works as before instead.
+2. Under the head, Plans as ever: Monthly / Yearly, then Free, Pro and Team. The plan you're on leads straight on: **Continue on
+   Free**, quiet, on Free's card (on Pro or Team, **Continue on Pro** or **Continue on Team** on theirs), goes to Home.
+3. **Get Pro** is the one filled button and opens checkout over the plans (16.2), as **Start a team** opens Team's (16.15). Once
+   what was bought is yours and checkout has closed, Home follows, with nothing more to choose. Closing checkout without buying
+   leaves the plans as they were.
+4. A new account's tour of Home (1, step 4) starts once Home is there, never over the plans.
+5. Only Home opens on them. A link to a call, a call's page, a join link, an agent's consent page, a public page or a team
+   invite is never interrupted, and nor is signing in from a call's link or for an agent: the plans wait for the next time Home
+   is reached.
+6. Once the plans have been on screen for a moment (the tab showing, nothing open over them), Alcove is told, and they aren't
+   shown again. Plans itself counts too. If telling Alcove fails, it's tried again quietly, and this tab doesn't show them again;
+   a later visit does. Left before their prices came (still loading, offline, or not loaded), they show again on a later visit.
+
+While the prices load, the cards wait in place and **Continue on Free** is already on Free's; offline it says the plans show once
+you're back, and when they don't load it says why, each with **Continue on Free** to go on.
+
+Storybook's journeys use **16.1–16.20** above. The addresses, payments and networks in it are made up; a real
+payment through 1Click needs a hand check with a wallet.

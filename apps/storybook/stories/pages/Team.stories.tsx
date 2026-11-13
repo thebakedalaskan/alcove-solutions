@@ -8,15 +8,6 @@ import { troubled } from './changes';
 const meta = { title: 'Pages/Team', ...pages } satisfies Meta<PageArgs>;
 export default meta;
 
-/** The same story at night. */
-const night = (story: PageStory): PageStory => ({ ...story, globals: { ...story.globals, theme: 'dark' } });
-/** Presses a button on the page, as a person would. */
-const pressing = (name: string | RegExp, said: string): NonNullable<PageStory['play']> => async ({ canvas, userEvent, step }) => {
-  await step(said, async () => {
-    await userEvent.click(await canvas.findByRole('button', { name }, { timeout: 8000 }));
-  });
-};
-
 /** Presses someone's arch on the line: their popover opens under it, or a sheet on a phone. */
 const opening = (who: RegExp, said: string): NonNullable<PageStory['play']> => async ({ canvas, userEvent, step }) => {
   await step(said, async () => {
@@ -40,9 +31,8 @@ export const DeleteAGroup = page('/team?group=g-product', 'busy', {
 });
 /** A new group being made: name it, then fill it. */
 export const NewGroup = page('/team?group=new', 'busy');
-/** Someone on their own has no company: the page is Start a team. */
+/** Someone on their own has no team: the address goes Home. */
 export const OnTheirOwn = page('/team', 'on-their-own');
-export const OnTheirOwnNight = night(OnTheirOwn);
 
 /** Priya's popover: when you're next in a call together, Ring, Schedule, and the notes you both have. */
 export const APerson = page('/team', 'busy', { play: opening(/^Priya Raman$/, 'Press Priya’s arch') });
@@ -84,42 +74,3 @@ export const OfflineBeforeItLoaded = page('/team', 'busy', {
 export const DidntLoad = page('/team', 'busy', { beforeEach: changing(troubled({ 'people.team': 'failed', 'account.preferences': 'failed' })) });
 /** Opened without a connection: Team needs one, and Record still works. */
 export const Offline = page('/team', 'offline');
-
-/* ------------------------------------------------------------------ a team (user-flows 10.22 to 10.25) */
-/**
- * Art runs Vandelay's team: its six people on the line under their licenses (Maya's ended last week), Invite, the people
- * with Remove on each row, three licenses left, and the notes visible to the team beside them.
- */
-export const OnATeamAsAdmin = page('/team', 'team-admin');
-export const OnATeamAsAdminNight = night(OnATeamAsAdmin);
-export const OnATeamAsAdminPhone = phone(OnATeamAsAdmin);
-/** Two licenses left: the head says so. */
-export const LicensesLow = page('/team', 'team-admin-low');
-/** None left: Maya came back and is waiting for a license. */
-export const NoLicensesLeft = page('/team', 'team-admin-none');
-export const NoLicensesLeftNight = night(NoLicensesLeft);
-/** Invite: a link for one person, shown once with Copy, until it runs out tomorrow. */
-export const InviteMade = page('/team', 'team-admin', { play: pressing(/^Invite$/, 'Press Invite') });
-export const InviteMadePhone = phone(InviteMade);
-/** Remove asks in place: their license isn't refunded, they go back to Free, and their team notes stay. */
-export const RemoveAsked = page('/team', 'team-admin', { play: pressing('Remove Maya Chen', 'Press Remove on Maya’s row') });
-/** Only Art is left on it: Delete team, asked in place, refunds the licenses nobody took. */
-export const DeleteTeamAsked = page('/team', 'team-admin', {
-  beforeEach: changing((w) => { if (w.myTeam) w.myTeam.members = w.myTeam.members.filter((m) => m.role === 'admin'); }),
-  play: pressing('Delete team', 'Press Delete team')
-});
-/** Art on Priya's team with a live license: the people, Leave team, and the notes visible to the team. */
-export const OnATeamAsMember = page('/team', 'team-member');
-export const OnATeamAsMemberNight = night(OnATeamAsMember);
-export const OnATeamAsMemberPhone = phone(OnATeamAsMember);
-/** Leave team asks in place. */
-export const LeaveAsked = page('/team', 'team-member', { play: pressing('Leave team', 'Press Leave team') });
-/** Without a license: the team's notes and workspaces aren't open, and Art is told to ask Priya. */
-export const WithoutALicense = page('/team', 'team-member-unlicensed');
-export const WithoutALicenseNight = night(WithoutALicense);
-export const WithoutALicensePhone = phone(WithoutALicense);
-/** Not on a team: the directory as ever, with Start a team beside Invite people. */
-export const NotOnATeam = page('/team', 'no-team');
-/** Start a team: its name in place. */
-export const StartATeam = page('/team', 'no-team', { play: pressing('Start a team', 'Press Start a team') });
-export const StartATeamPhone = phone(StartATeam);

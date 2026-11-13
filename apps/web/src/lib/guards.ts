@@ -4,6 +4,7 @@ import { redirect } from '@tanstack/react-router';
 import { linkWaiting, takeAgentReturn, takePlansReturn, takeReturn, teamWaiting } from './afterSignIn';
 import { signedInHere } from './device';
 import { q } from './queries';
+import { signedOut } from './signedOut';
 
 /**
  * Who's using the app: the signed-in session, or, when Alcove can't be asked (no connection), the account this
@@ -13,10 +14,12 @@ export type Account = { offline: false; session: Session } | { offline: true; ow
 
 /**
  * The session as Alcove says (null: signed out), or 'offline' when it can't be asked: no connection, or the request
- * didn't get through. A 401 is a signed-out session as ever; other failures throw.
+ * didn't get through. A 401 is a signed-out session as ever; other failures throw. An account signed out in this browser
+ * is signed out, though the app still holds its session while it leaves for the welcome page (useSignOut, lib/queries.ts).
  */
 export async function sessionOrOffline(qc: QueryClient): Promise<Session | null | 'offline'> {
   const known = qc.getQueryData(q.session().queryKey);
+  if (known && signedOut(known.ownerId)) return null;
   if (known !== undefined) return known;
   if (!navigator.onLine) return 'offline';
   try {

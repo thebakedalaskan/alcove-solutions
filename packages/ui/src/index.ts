@@ -27,6 +27,7 @@ export * from './components/ringing';
 export * from './components/screens';
 export * from './components/app';
 export * from './components/palette';
+export * from './components/team-plan';
 export * from './components/settings';
 export * from './components/you';
 export * from './components/agents';

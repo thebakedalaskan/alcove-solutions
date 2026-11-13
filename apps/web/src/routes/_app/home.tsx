@@ -4,7 +4,8 @@
  * and Recent notes (a row of cards). The day's calls don't lead: people join from their calendar, so a call only comes near
  * the top in its last few minutes. Google sends you back here after connecting the calendar from Upcoming (`?calendar=`,
  * which Home reads once and drops). Signed in from the welcome page, Home opens by sailing out of its cove
- * (features/home/SailOut.tsx).
+ * (features/home/SailOut.tsx). Once, while the plans haven't been shown to the account, Home opens on them instead
+ * (features/plans/choice.ts decides; PlanChoice.tsx is the page).
  */
 import { CalendarConnectResultSchema, type CalendarConnectResult } from '@alcove/api';
 import { Evening, SealedBadge } from '@alcove/ui';
@@ -17,6 +18,8 @@ import { Recent } from '~/features/home/Recent';
 import { SailOutHere } from '~/features/home/SailOut';
 import { Start } from '~/features/home/Start';
 import { Upcoming, useCalendarReturn } from '~/features/home/Upcoming';
+import { planChoiceReady, usePlanChoice } from '~/features/plans/choice';
+import { PlanChoice } from '~/features/plans/PlanChoice';
 import { overlayOpen, typing } from '~/lib/keys';
 import { useNow } from '~/lib/live';
 import { q, verifiedAt } from '~/lib/queries';
@@ -34,11 +37,19 @@ export const Route = createFileRoute('/_app/home')({
       // What's waiting on you can fail on its own: For you says so, and the rest of Home still works.
       qc.ensureQueryData(q.inbox()).catch(() => undefined),
       // Google can be slow: the calendar gets a moment, so the list doesn't change under the reader, and no longer.
-      Promise.race([calendar, new Promise((r) => setTimeout(r, 1200))])
+      Promise.race([calendar, new Promise((r) => setTimeout(r, 1200))]),
+      // Whether the plans come first, known as Home opens, with their prices when they do.
+      planChoiceReady(qc)
     ]);
   },
-  component: Home
+  component: HomeFirst
 });
+
+/** Home, or once the plans in its place, until they're left (features/plans/choice.ts). */
+function HomeFirst() {
+  const choice = usePlanChoice();
+  return choice.up ? <PlanChoice onLeave={choice.leave} /> : <Home />;
+}
 
 function Home() {
   const { calendar: inAddress } = Route.useSearch();

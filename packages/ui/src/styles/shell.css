@@ -158,6 +158,9 @@ a.sb-said:hover, a.sb-left:hover { color: var(--ink); }
 .sb-wait.is-settling { color: var(--ink-2); }
 .sb-wait .ac-dots { gap: 3px; }
 .sb-wait .ac-dots i { width: 4px; height: 4px; }
+/* On a team without a license: said in caution where the meter was. */
+.sb-left:has(.sb-nolic) { gap: 2px; }
+.sb-left .sb-nolic { font: 600 12.5px/16px var(--font-sans); color: var(--caution); }
 /* A payment on its way: what it buys, and the way back to it at the panel's edge. */
 .sb-plan { display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 36px; margin-top: 1px; padding: 0 10px 0 12px; border-radius: 10px; color: var(--ink-2); font: 500 13.5px/1 var(--font-sans); white-space: nowrap; transition: background-color var(--duration-1), color var(--duration-1); }
 .sb-plan .go { display: inline-flex; align-items: center; gap: 3px; color: var(--ink); font-weight: 600; }

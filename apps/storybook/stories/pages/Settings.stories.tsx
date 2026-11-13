@@ -10,7 +10,7 @@ import { changing, page, pages, type PageArgs, type PageStory } from '../../src/
 import { withTopUp } from '../../src/world/payments';
 import { withDriveJustConnected, withDriveReconnect } from '../../src/world/drive-exports';
 import type { World } from '../../src/world';
-import { keptHere, noCalendar, notAttested, sharedDemo, troubled, unencryptedDefault } from './changes';
+import { adminWithoutLicense, keptHere, mayaWaits, noCalendar, notAttested, replacedPro, sharedDemo, troubled, unencryptedDefault } from './changes';
 
 const meta = { title: 'Pages/Settings', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -284,7 +284,8 @@ export const NotificationLeafRefused = page('/settings#notifications', 'busy', {
 /*
  * The canvas's Plan group by plan (docs/design/canvas/plans/Settings.dc.html): plFree is Plan above, plLow NotesNearlyOut,
  * plOut NoNotesLeft, plWaiting PaymentForProOnItsWay, plPro OnPro, plEnding ProEnding, plExtended ProExtended, plEnded
- * ProEnded. Team isn't on sale yet, so it has no story.
+ * ProEnded; Team's plTeam OnTeam, plTeamAdmin TeamAdmin, plTeamLow LicensesLowSomeoneWaiting, plTeamMore BuyLicenses and
+ * plTeamWait NoTeamLicense.
  */
 export const PlanPhoneNight = phoneNight(Plan);
 /** Payments are separate from the default server-without-a-treasury scenario. Every address is an invalid preview. */
@@ -349,42 +350,66 @@ export const ProEndedNight = night(ProEnded);
 export const ProEndedPhone = phone(ProEnded);
 /** Dismissing a notice: it goes, here and from the side panel. */
 export const DismissANotice = page('/settings#plan', 'plan-pro-renewed', { play: pressing('Dismiss this notice', 'Dismiss the notice that Pro renewed') });
-/* Team: licenses bought by the team's admin (user-flows 11.28) */
-/** Not on a team: Team's card beside Free and Pro, $40 a person a month, with Start a team. */
-export const TeamCardNotOnATeam = page('/settings#plan', 'no-team');
-export const TeamCardNotOnATeamNight = night(TeamCardNotOnATeam);
-export const TeamCardNotOnATeamPhone = phone(TeamCardNotOnATeam);
-/** The team's admin: Team is the plan, 3 licenses left, how many to buy and Buy 1 license, then Auto-purchase and Refund. */
-export const TeamCardAdmin = page('/settings#plan', 'team-admin');
-export const TeamCardAdminNight = night(TeamCardAdmin);
-export const TeamCardAdminPhone = phone(TeamCardAdmin);
-/** Buying a license: one more left. */
-export const BuyALicense = page('/settings#plan', 'team-admin', { play: pressing('Buy 1 license', 'Buy a license from the balance') });
-/** Refund asks in place: what goes back to the balance. */
-export const RefundLicensesAsked = page('/settings#plan', 'team-admin', { play: pressing(/^Refund \(/, 'Ask to refund the licenses nobody has taken') });
-/** Auto-purchase is on. */
-export const AutoPurchaseOn = page('/settings#plan', 'team-admin', { beforeEach: changing((w) => { if (w.myTeam) w.myTeam.autoPurchase = true; }) });
-/** A member: on Team, and Priya buys the licenses. */
-export const TeamCardMember = page('/settings#plan', 'team-member');
-/** Licenses running low: a `licenses-low` notice. */
-export const LicensesLowNotice = page('/settings#plan', 'team-admin-low');
-export const LicensesLowNoticeNight = night(LicensesLowNotice);
-/** None left when someone needed one: a `licenses-none` notice. */
-export const NoLicensesLeftNotice = page('/settings#plan', 'team-admin-none');
-/** No license for Art: on Free, told to ask Priya (a `license-needed` notice). */
-export const LicenseNeededNotice = page('/settings#plan', 'team-member-unlicensed');
-export const LicenseNeededNoticePhone = phone(LicenseNeededNotice);
-/** A license replaced Pro: two months that hadn't started went back to the balance (a `license-replaced-pro` notice). */
-export const LicenseReplacedProNotice = page('/settings#plan', 'team-member', {
+/* Team: licenses, bought by the team's admin and taken as each person next opens Alcove (user-flows 16.18, 16.19) */
+/** A member with a license: Team, whose it is, until when the license runs and who buys them, with Open Team; notes of their own, and the team's storage. */
+export const OnTeam = page('/settings#plan', 'team-member');
+export const OnTeamNight = night(OnTeam);
+export const OnTeamPhone = phone(OnTeam);
+/**
+ * The team's admin: their license until when, then Licenses (3 of 8 left) with Buy licenses; beside the balance, buying one
+ * when it's needed and refunding those nobody has taken; and the license purchase in the payments.
+ */
+export const TeamAdmin = page('/settings#plan', 'team-admin');
+export const TeamAdminNight = night(TeamAdmin);
+export const TeamAdminPhone = phone(TeamAdmin);
+export const TeamAdminPhoneNight = phoneNight(TeamAdmin);
+/** Two left: said at the top until it's dismissed, and in warm in the side panel's Team row, with Buy. */
+export const LicensesLow = page('/settings#plan', 'team-admin-low');
+export const LicensesLowNight = night(LicensesLow);
+export const LicensesLowPhone = phone(LicensesLow);
+/** Two left, and Maya waiting for one: Licenses says so in warm, and Buy licenses is the one filled button. */
+export const LicensesLowSomeoneWaiting = page('/settings#plan', 'team-admin-low', { beforeEach: changing(mayaWaits) });
+export const LicensesLowSomeoneWaitingNight = night(LicensesLowSomeoneWaiting);
+export const LicensesLowSomeoneWaitingPhone = phone(LicensesLowSomeoneWaiting);
+/** None left when Maya needed one: said at the top, Maya waiting in warm, and Buy licenses filled. */
+export const NoLicensesLeft = page('/settings#plan', 'team-admin-none');
+export const NoLicensesLeftNight = night(NoLicensesLeft);
+/** Buy licenses opens checkout on Team, over Settings. */
+export const BuyLicenses = page('/settings#plan', 'team-admin-none', { play: pressing('Buy licenses', 'Press Buy licenses') });
+/** Buy one when it's needed is on: someone who needs a license gets one from the balance. */
+export const BuyOneWhenNeeded = page('/settings#plan', 'team-admin', { beforeEach: changing((w) => { if (w.myTeam) w.myTeam.autoPurchase = true; }) });
+/** On, with $10 in the balance: short of a license, so none would be bought. */
+export const BuyOneWhenNeededShort = page('/settings#plan', 'team-admin', {
   beforeEach: changing((w) => {
-    const at = new Date().toISOString();
-    w.plan = {
-      ...w.plan,
-      balance: { microUsd: w.plan.balance.microUsd + 40_000_000, history: [{ id: 'sb-entry-replaced', at, label: 'Refund: 2 months of Pro, for a team license', microUsd: 40_000_000 }, ...w.plan.balance.history] },
-      notices: [{ id: 'sb-notice-replaced', kind: 'license-replaced-pro', at, until: null, count: 2 }]
-    };
+    if (w.myTeam) w.myTeam.autoPurchase = true;
+    w.plan = { ...w.plan, balance: { ...w.plan.balance, microUsd: 10_000_000 } };
   })
 });
+/** Turning it on saves at once, and Saved shows beside it. */
+export const BuyOneWhenNeededSaved = page('/settings#plan', 'team-admin', {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Turn on Buy one when it’s needed', async () => {
+      await userEvent.click(await canvas.findByRole('switch', { name: 'Buy one when it’s needed' }, { timeout: 8000 }));
+    });
+  }
+});
+/** Refund asks in place: what goes back to the balance, and what happens when someone needs one then. */
+export const RefundLicensesAsked = page('/settings#plan', 'team-admin', { play: pressing('Refund', 'Ask to refund the licenses nobody has taken') });
+export const RefundLicensesAskedNight = night(RefundLicensesAsked);
+export const RefundLicensesAskedPhone = phone(RefundLicensesAsked);
+/** Dismissing a team's notice: it goes, and the side panel's Team row says the team's name again. */
+export const DismissATeamNotice = page('/settings#plan', 'team-admin-low', { play: pressing('Dismiss this notice', 'Dismiss the notice that licenses are low') });
+/** No license was left for Art: on Free, said once at the top, with who has been told; the side panel says it over Free. */
+export const NoTeamLicense = page('/settings#plan', 'team-member-unlicensed');
+export const NoTeamLicenseNight = night(NoTeamLicense);
+export const NoTeamLicensePhone = phone(NoTeamLicense);
+export const NoTeamLicensePhoneNight = phoneNight(NoTeamLicense);
+/** The admin's own license ran out with none left to take: on Free, waiting with the rest, and buying licenses gives them one. */
+export const AdminWithoutALicense = page('/settings#plan', 'team-admin', { beforeEach: changing(adminWithoutLicense) });
+export const AdminWithoutALicenseNight = night(AdminWithoutALicense);
+/** A license replaced Pro: two months that hadn't started went back to the balance, said at the top until it's dismissed. */
+export const LicenseReplacedPro = page('/settings#plan', 'team-member', { beforeEach: changing(replacedPro) });
+export const LicenseReplacedProNight = night(LicenseReplacedPro);
 
 export const AddMoneyPicker = page('/settings#plan', 'payments', {
   play: async ({ userEvent, step }) => {

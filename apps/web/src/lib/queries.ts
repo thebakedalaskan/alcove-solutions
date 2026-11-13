@@ -456,7 +456,18 @@ async function forgetHere(owner: string | undefined, deleted: boolean) {
   try { await forgetEdits(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete the edits this device kept for the account', { err: e }); }
   try { await forgetPictures(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete the backgrounds this device kept for the account', { err: e }); }
 }
-export function useSignOut() {
+/**
+ * The account's session ended here (signed out, or the account deleted): what this device kept goes, `leave` takes the
+ * screen to the welcome page, and only once the welcome page has replaced the app is what the app read for the account
+ * forgotten. Emptied first, the app would change under the person while the welcome page loaded. The guards count the
+ * account as signed out meanwhile (lib/guards.ts). `leave` runs even if the screen that asked has gone.
+ */
+async function endHere(qc: QueryClient, owner: string | undefined, deleted: boolean, leave: () => Promise<void>) {
+  await forgetHere(owner, deleted);
+  try { await leave(); } finally { qc.clear(); qc.setQueryData(qk.session, null); }
+}
+/** Signs out of this device, then `leave` takes the screen to the welcome page (`endHere`). */
+export function useSignOut(leave: () => Promise<void>) {
   const qc = useQueryClient();
   // With no connection it fails now. Queued, it would happen by itself at some moment nobody chose.
   return useMutation({
@@ -466,16 +477,16 @@ export function useSignOut() {
       await api.auth.signOut();
       return owner;
     },
-    onSuccess: async (owner) => { await forgetHere(owner, false); qc.clear(); qc.setQueryData(qk.session, null); }
+    onSuccess: (owner) => endHere(qc, owner, false, leave)
   });
 }
 /**
- * Deletes the account for good. Every browser it was signed in on is signed out, this one included. `onDeleted` runs
- * then, even if the screen that asked has gone meanwhile. It's never queued for later, as signing out isn't. The cookie
- * decides whose account goes and another tab can have changed it since this page was drawn, so it first asks who's
- * signed in, and goes ahead only for the account on this screen.
+ * Deletes the account for good. Every browser it was signed in on is signed out, this one included. `onDeleted` then
+ * takes the screen to the welcome page (`endHere`), even if the screen that asked has gone meanwhile. It's never queued
+ * for later, as signing out isn't. The cookie decides whose account goes and another tab can have changed it since this
+ * page was drawn, so it first asks who's signed in, and goes ahead only for the account on this screen.
  */
-export function useDeleteAccount(onDeleted: () => void) {
+export function useDeleteAccount(onDeleted: () => Promise<void>) {
   const qc = useQueryClient();
   return useMutation({
     networkMode: 'always',
@@ -486,7 +497,7 @@ export function useDeleteAccount(onDeleted: () => void) {
       await api.account.delete();
       return here;
     },
-    onSuccess: async (owner) => { await forgetHere(owner, true); qc.clear(); qc.setQueryData(qk.session, null); onDeleted(); }
+    onSuccess: (owner) => endHere(qc, owner, true, onDeleted)
   });
 }
 /** Each channel hint belongs to its exact immutable query command, including after this hook re-renders. */
@@ -549,12 +560,35 @@ export function useInviteTeam() {
   return useMutation({ mutationFn: (emails: string[]) => api.people.inviteToTeam(emails), onSuccess: (t) => qc.setQueryData(qk.team, t) });
 }
 
-/* ---------- buying Pro and more notes ---------- */
+/* ---------- buying Pro, more notes and Team's licenses ---------- */
+
+const plog = log.child({ component: 'plans' });
 
 /**
- * Buys a purchase from the balance at the price (and, for more notes, the size) shown: Pro's months, or packs of more notes
- * for this period. Refused when the price changed (409, with the server's words) or the balance is short; either way the
- * plan and offers are read again, so what's shown is what's true now.
+ * Licenses were just bought for the team you run (from the balance, or by a payment that bought them). You're using Alcove,
+ * so it's a visit, which takes one of them for you when you have no live license (docs: Plans and usage › Team); then the
+ * plan and the team are read again, so what's said next is what's true. A visit that isn't taken is logged and leaves yours
+ * for your next one. Null when the plan couldn't be read again: it's read again as soon as anything asks.
+ */
+async function licensesBought(qc: QueryClient): Promise<Plan | null> {
+  try {
+    await api.auth.visit();
+  } catch (e) {
+    plog.info('a visit after buying licenses wasn’t taken', { code: errorCode(e) });
+  }
+  void qc.invalidateQueries({ queryKey: qk.teamNotes });
+  const [plan, team] = await Promise.allSettled([api.plans.plan(), api.teams.mine()]);
+  if (team.status === 'fulfilled') qc.setQueryData(qk.myTeam, team.value); else void qc.invalidateQueries({ queryKey: qk.myTeam });
+  if (plan.status === 'fulfilled') return plan.value;
+  plog.info('the plan wasn’t read again after buying licenses', { code: errorCode(plan.reason) });
+  return null;
+}
+
+/**
+ * Buys a purchase from the balance at the price (and, for more notes, the size) shown: Pro's months, packs of more notes for
+ * this period, or licenses for the team you run (then it's a visit too, which takes yours if you have none). Refused when the
+ * price changed (409, with the server's words), the balance is short, or you don't run the team; either way the plan, offers
+ * and team are read again, so what's shown is what's true now. Null when it was bought but the plan couldn't be read again.
  */
 export function useBuy() {
   const qc = useQueryClient();
@@ -562,17 +596,28 @@ export function useBuy() {
     mutationFn: async (b: Purchase): Promise<Plan | null> => {
       if (b.kind === 'pro') return api.plans.buyPro(b.months, b.microUsdPerMonth);
       if (b.kind === 'hours') return api.plans.buyHours(b.packs, b.microUsdPerPack, b.minutesPerPack);
-      // Licenses are the team's: the team changes, and the plan is read again below.
-      qc.setQueryData(qk.myTeam, await api.teams.buyLicenses(b.count, b.microUsdPerLicense));
-      return null;
+      await api.teams.buyLicenses(b.count, b.microUsdPerLicense);
+      return licensesBought(qc);
     },
     // What's open on the plan (the side panel, Settings, a call's notes) follows at once.
     onSuccess: (p) => {
       if (p) qc.setQueryData(qk.plan, p); else void qc.invalidateQueries({ queryKey: qk.plan, exact: true });
       void qc.invalidateQueries({ queryKey: qk.topUps });
     },
-    // `plan` is the offers' prefix: both are read again.
-    onError: () => { void qc.invalidateQueries({ queryKey: qk.plan }); }
+    // `plan` is the offers' prefix: both are read again, and the team with them when it was licenses.
+    onError: (_e, b) => {
+      void qc.invalidateQueries({ queryKey: qk.plan });
+      if (b.kind === 'licenses') void qc.invalidateQueries({ queryKey: qk.myTeam });
+    }
+  });
+}
+
+/** A payment bought licenses for the team you run: the visit and the reads buying them from the balance makes. */
+export function useLicensesBought() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => licensesBought(qc),
+    onSuccess: (p) => { if (p) qc.setQueryData(qk.plan, p); else void qc.invalidateQueries({ queryKey: qk.plan, exact: true }); }
   });
 }
 
@@ -603,6 +648,25 @@ export function useDismissPlanNotice() {
     mutationFn: (id: string) => api.plans.dismissNotice(id),
     onSuccess: (p) => { qc.setQueryData(qk.plan, p); },
     onError: () => { void qc.invalidateQueries({ queryKey: qk.plan, exact: true }); }
+  });
+}
+
+/**
+ * Says the plans were shown (`Plan.choose` is false from then; saying it again changes nothing), once the plan choice or Plans
+ * itself has been on screen (features/plans/choice.ts). Nobody waits on it, so it's quiet: tried again a few times, and
+ * held while there's no connection, and a failure is logged and never shows the plans again in this tab. They show once
+ * more on a later visit, since the server still says they haven't been. It keeps going if the page that asked goes.
+ */
+export function useChosePlans() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationKey: ['plan', 'chosen'],
+    mutationFn: () => api.plans.chose(),
+    networkMode: 'online',
+    retry: 4,
+    retryDelay: (n) => Math.min(30_000, 2000 * 2 ** n),
+    onSuccess: (p) => { qc.setQueryData(qk.plan, p); plog.debug('the plans are marked shown', { choose: p.choose }); },
+    onError: (e) => { plog.warn('the plans weren’t marked shown; they show again on a later visit', { code: errorCode(e) }); }
   });
 }
 

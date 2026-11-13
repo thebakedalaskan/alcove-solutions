@@ -1,9 +1,12 @@
-import { CheckoutDone } from '@alcove/ui';
+import { Button, CheckoutDone } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { did } from '../../../src/component';
 import { Step } from './parts';
 
-/** Done: the tick pops and draws, what you have now, the receipt's row, and that nothing renews by itself. */
+/**
+ * Done: the tick pops and draws, what you have now, the receipt's row, and that nothing renews by itself. A team just started
+ * has inviting its people under the receipt: `invite`, under its heading and what an invite does.
+ */
 const meta = {
   title: 'Components/Checkout/CheckoutDone', component: CheckoutDone, parameters: { layout: 'centered' },
   args: {
@@ -42,3 +45,23 @@ export const MoreNotes: Story = {
   globals: { theme: 'dark' }
 };
 export const Phone: Story = { globals: { viewport: { value: 'phone' } } };
+/** A team started: whose licenses they are, and when each is taken. Licenses aren't renewed, so there's no reminder. */
+export const TeamStarted: Story = {
+  args: {
+    title: 'Vandelay Industries is on Team', reminder: null,
+    lines: ['6 licenses, for you and the people you invite. Yours is taken now, and each of theirs when they next open Alcove.'],
+    receipt: { title: '240.00 USDC on Base', sub: '4 Nov 2026 · Team, 6 licenses', reference: 'k3Fq9xZ2', onOpen: did('onOpen') }
+  }
+};
+/** With inviting its people, the slot under the receipt: here, a link to make. */
+export const TeamStartedInviting: Story = {
+  args: { ...TeamStarted.args, invite: <Button variant="secondary" icon="link" onClick={did('onMakeLink')}>Make an invite link</Button> },
+  globals: { theme: 'dark' }
+};
+/** More licenses for the team, from the balance: how many are left now, and who gets one. */
+export const MoreLicenses: Story = {
+  args: {
+    title: '3 more licenses', reminder: null, lines: ['3 licenses left now. Maya gets one the next time they open Alcove.'],
+    receipt: { title: '$120 from your balance', sub: '4 Nov 2026 · Team, 3 licenses', reference: 'Q8vT2mLx', onOpen: did('onOpen') }
+  }
+};

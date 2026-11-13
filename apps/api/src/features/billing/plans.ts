@@ -233,11 +233,22 @@ export async function accountOf(d: Service, db: Db, ownerId: string, lock = fals
   return openJson(key(d), header(ownerId), r.state_ciphertext, PlanAccount);
 }
 
-const LicenseRow = z.object({ team_id: z.string(), licensed_from: timestamp.nullable(), licensed_until: timestamp.nullable() });
+const PlaceRow = z.object({ team_id: z.string(), role: z.enum(['admin', 'member']), licensed_from: timestamp.nullable(), licensed_until: timestamp.nullable() });
+/** An account's place on a team (undefined: it's on none). */
+const placeOf = (db: Db, ownerId: string) =>
+  maybeOne(db, PlaceRow, 'SELECT team_id, role, licensed_from, licensed_until FROM team_members WHERE account_owner_id = $1', [ownerId]);
+const licenseIn = (r: z.infer<typeof PlaceRow> | undefined): License | null =>
+  (r?.licensed_from && r.licensed_until ? { teamId: r.team_id, from: r.licensed_from.getTime(), to: r.licensed_until.getTime() } : null);
 /** The team license an account has taken, live or ended (null: it's on no team, or has never taken one there). */
 export async function licenseOf(db: Db, ownerId: string): Promise<License | null> {
-  const r = await maybeOne(db, LicenseRow, 'SELECT team_id, licensed_from, licensed_until FROM team_members WHERE account_owner_id = $1', [ownerId]);
-  return r?.licensed_from && r.licensed_until ? { teamId: r.team_id, from: r.licensed_from.getTime(), to: r.licensed_until.getTime() } : null;
+  return licenseIn(await placeOf(db, ownerId));
+}
+/** What a purchase needs to know of its buyer: their team license, if any, and whether they're a team's admin. */
+export interface Buyer { license: License | null; admin: boolean }
+/** An account as a buyer, by its place on a team now: what a payment's purchase is checked against as it's opened. */
+export async function buyerOf(db: Db, ownerId: string): Promise<Buyer> {
+  const r = await placeOf(db, ownerId);
+  return { license: licenseIn(r), admin: r?.role === 'admin' };
 }
 /** Whether `license` is live at `now`. */
 export const isLive = (license: License | null, now: number): boolean => license !== null && license.from <= now && now < license.to;
@@ -296,6 +307,9 @@ function withHours(a: PlanAccount, l: Limits, minutes: number, now: number, lice
   return { ...a, hours: { plan: p.kind, from: new Date(p.from).toISOString(), minutes: boughtFor(a, p) + minutes } };
 }
 const monthsOf = (n: number) => `${n} ${n === 1 ? 'month' : 'months'}`;
+const licensesOf = (n: number) => `${n} ${n === 1 ? 'license' : 'licenses'}`;
+/** Team licenses as a refusal says them: "1 team license", "3 team licenses". */
+const teamLicenses = (n: number) => `${n} team ${n === 1 ? 'license' : 'licenses'}`;
 /** Minutes of notes as someone reads them, whole hours as hours: "10 hours", "1 hour", "90 minutes" (`more`: "10 more hours"). */
 function notesTime(minutes: number, more = ''): string {
   if (minutes % 60 === 0) return `${minutes / 60} ${more}${minutes === 60 ? 'hour' : 'hours'}`;
@@ -387,10 +401,11 @@ async function changing(d: Service, ownerId: string, change: (a: PlanAccount, l:
 
 /**
  * Why a purchase from the balance isn't made: what's asked for isn't offered (`off`), is more than one purchase buys
- * (`too-many`), isn't at the price in force for it (`price`), or costs more than the balance (`short`).
+ * (`too-many`), isn't at the price in force for it (`price`), or costs more than the balance (`short`); Pro while a team
+ * license is live (`team`); licenses for someone who isn't a team's admin (`not-admin`).
  */
 export interface Refusal {
-  why: 'off' | 'too-many' | 'price' | 'short' | 'team';
+  why: 'off' | 'too-many' | 'price' | 'short' | 'team' | 'not-admin';
   /** What its buyer is told as they ask for it: from the balance, or as they open a payment for it. */
   asked: string;
   /**
@@ -414,12 +429,13 @@ interface Terms {
 /**
  * What `buys` comes to at the limits in force, or why it isn't on offer at the price its buyer was shown. Pro's months go
  * after any already bought (on Free, from now), each keeping what was paid for it, which is what a refund gives back, and
- * end any grace: only Pro's limits apply from then. More notes go to the period in force, whatever the plan.
+ * end any grace: only Pro's limits apply from then. Licenses are for the team their buyer is the admin of, which keeps
+ * them (teams.ts): the balance only pays. More notes go to the period in force, whatever the plan.
  */
-function termsOf(l: Limits, buys: Purchase, license: License | null, now: number): Terms | Refusal {
+function termsOf(l: Limits, buys: Purchase, buyer: Buyer, now: number): Terms | Refusal {
   if (buys.kind === 'pro') {
     // While a team license is live it's the plan in force: months of Pro bought now would run unused.
-    if (isLive(license, now)) {
+    if (isLive(buyer.license, now)) {
       return refusal('team', 'You’re on your team’s plan while your license lasts, so Pro can’t be bought now.', 'You were on your team’s plan when your payment arrived, so Pro wasn’t bought. It’s in your balance.');
     }
     const max = l.get('plan.pro_max_months');
@@ -435,8 +451,20 @@ function termsOf(l: Limits, buys: Purchase, license: License | null, now: number
       add: (a, now) => ({ ...withMonths(pruned(a, now), l, months, microUsdPerMonth, now), grace: null })
     };
   }
-  // Licenses are bought with a payment once the server's Team checkout lands (until then, from the balance in Team).
-  if (buys.kind === 'licenses') return refusal('off', 'Licenses can’t be bought with a payment yet.', 'Licenses couldn’t be bought with this payment. It’s in your balance.');
+  if (buys.kind === 'licenses') {
+    if (!buyer.admin) {
+      return refusal('not-admin', 'Only a team’s admin buys its licenses.', 'You weren’t a team’s admin when your payment arrived, so no licenses were bought. It’s in your balance.');
+    }
+    const max = l.get('team.max_licenses');
+    if (buys.count > max) {
+      return refusal('too-many', `Buy 1 to ${max} licenses at a time.`, `Since your payment was made, one purchase buys at most ${teamLicenses(max)}. It’s in your balance.`);
+    }
+    if (buys.microUsdPerLicense !== l.get('plan.team.price_micro_usd')) {
+      return refusal('price', 'The price of a team license has changed. Look at it again before buying.', 'The price of a team license changed before your payment arrived. It’s in your balance.');
+    }
+    const { count, microUsdPerLicense } = buys;
+    return { totalMicroUsd: count * microUsdPerLicense, label: `Team, ${licensesOf(count)}`, what: teamLicenses(count), one: count === 1, add: (a) => a };
+  }
   const offer = hoursOf(l);
   if (!offer) return refusal('off', 'More notes can’t be bought right now.', 'More notes stopped being offered before your payment arrived. It’s in your balance.');
   if (buys.packs > offer.maxPacks) {
@@ -453,7 +481,7 @@ function termsOf(l: Limits, buys: Purchase, license: License | null, now: number
   const minutes = buys.packs * buys.minutesPerPack;
   return {
     totalMicroUsd: buys.packs * buys.microUsdPerPack, label: `${notesTime(minutes, 'more ')} of notes`, what: `${notesTime(minutes)} of notes`, one: minutes === 60 || minutes === 1,
-    add: (a, at) => withHours(a, l, minutes, at, license)
+    add: (a, at) => withHours(a, l, minutes, at, buyer.license)
   };
 }
 
@@ -461,8 +489,8 @@ function termsOf(l: Limits, buys: Purchase, license: License | null, now: number
  * Why `buys` isn't on offer at the price its buyer was shown (null: it is), whatever the balance: checked as a payment for
  * it is opened, so a price that has changed is said before anything is paid.
  */
-export function refusalOf(l: Limits, buys: Purchase, license: License | null, now = Date.now()): Refusal | null {
-  const t = termsOf(l, buys, license, now);
+export function refusalOf(l: Limits, buys: Purchase, buyer: Buyer, now = Date.now()): Refusal | null {
+  const t = termsOf(l, buys, buyer, now);
   return 'why' in t ? t : null;
 }
 
@@ -473,12 +501,14 @@ export type Purchased = { bought: true; totalMicroUsd: number } | { bought: fals
  * Buys `buys` from the balance, in the caller's transaction, with the account's row locked: the one lock buying and adding
  * money take, so purchases at once on any instance never spend the same money twice. Refused, changing nothing, when it
  * isn't on offer at the price its buyer was shown or the balance is short of it. What buyPro and buyHours do, and what a
- * top-up opened to buy something does once its money is added (deposits.ts).
+ * top-up opened to buy something does once its money is added (deposits.ts). Licenses are bought only by their team's
+ * admin, which the caller knows by holding the team's row, locked before this one (`admin`); it adds them to the team
+ * (teams.ts › licensesBought).
  */
-export async function purchase(d: Service, db: Db, ownerId: string, buys: Purchase): Promise<Purchased> {
+export async function purchase(d: Service, db: Db, ownerId: string, buys: Purchase, buyer: Pick<Buyer, 'admin'> = { admin: false }): Promise<Purchased> {
   const a = await accountOf(d, db, ownerId, true);
   const l = await limitsNow(d, db);
-  const t = termsOf(l, buys, await licenseOf(db, ownerId), Date.now());
+  const t = termsOf(l, buys, { license: await licenseOf(db, ownerId), admin: buyer.admin }, Date.now());
   if ('why' in t) return { bought: false, refusal: t };
   if (a.balanceMicroUsd < t.totalMicroUsd) {
     const cost = `${t.what} ${t.one ? 'costs' : 'cost'}`;

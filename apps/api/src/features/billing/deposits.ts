@@ -16,7 +16,8 @@ import {
   type DepositProvider, type DepositRoute, type DoubtReason, type OpenDepositState
 } from './provider';
 import { LIMITS, limitsNow } from '../../limits';
-import { credit, licenseOf, purchase, refusalOf, refusedError } from './plans';
+import { buyerOf, credit, purchase, refusalOf, refusedError } from './plans';
+import { adminsTeam, licensesBought, type TeamRow } from './teams';
 
 const dlog = log.child({ component: 'deposits' });
 /** IDs are 22 characters of base64url; anything else names nothing. */
@@ -160,7 +161,7 @@ async function withinLimits(db: Db, ownerId: string): Promise<void> {
 export async function start(d: Deps, ownerId: string, routeId: string, microUsd: number, buys: Purchase | null): Promise<TopUp> {
   const all = providers(d);
   if (buys) {
-    const refused = refusalOf(await limitsNow(d), buys, await licenseOf(d.pool, ownerId));
+    const refused = refusalOf(await limitsNow(d), buys, await buyerOf(d.pool, ownerId));
     if (refused) throw refusedError(refused, { kind: buys.kind });
   }
   await withinLimits(d.pool, ownerId);
@@ -267,11 +268,12 @@ function doubtAbout(s: Extract<DepositCheck, { state: 'settled' }>): DoubtReason
 
 /**
  * Makes the purchase a top-up was opened for, in the transaction that adds its money, once the money is in: as buying it
- * from the balance would (plans.ts `purchase`), so what isn't offered at that price any more, or a balance short of it, is
+ * from the balance would (plans.ts `purchase`; licenses, teams.ts `licensesBought` for `team`, the team its owner is the
+ * admin of, locked before the money was added), so what isn't offered at that price any more, or a balance short of it, is
  * refused with why, and the money stays in the balance. Logged with the deposit's ID and codes, never amounts.
  */
-async function buyWith(d: Deps, c: Db, ownerId: string, depositId: string, provider: DepositProviderName, p: DepositPurchase, lessThanAsked: boolean): Promise<DepositPurchase> {
-  const r = await purchase(d, c, ownerId, p.buys);
+async function buyWith(d: Deps, c: Db, ownerId: string, depositId: string, provider: DepositProviderName, p: DepositPurchase, team: TeamRow | null, lessThanAsked: boolean): Promise<DepositPurchase> {
+  const r = p.buys.kind === 'licenses' ? await licensesBought(d, c, team, ownerId, p.buys) : await purchase(d, c, ownerId, p.buys);
   if (r.bought) {
     dlog.info('top-up bought what it was for', { depositId, provider, buys: p.buys.kind });
     return { ...p, outcome: 'bought', why: null };
@@ -284,7 +286,8 @@ async function buyWith(d: Deps, c: Db, ownerId: string, depositId: string, provi
  * Records what the provider says, in one transaction with the deposit row locked, so a deposit credits at most once
  * however many watchers and requests race on it. A settled answer that can be trusted adds `addedFor` to the balance
  * (or is held when that comes to nothing) from any state but `credited` or `held`, and then buys what the top-up was
- * opened to buy, under the same locks, so that's tried once too: a payment 1Click settles after the deposit failed,
+ * opened to buy, under the same locks (the deposit's, then for licenses the team's, then the plan's), so that's tried
+ * once too: a payment 1Click settles after the deposit failed,
  * expired or was cancelled is still credited, and still buys. A doubtful answer credits nothing: the deposit is
  * `arriving` (a failed or expired one `failed`), logged at error once per reason, and reaches support at its deadline. Otherwise `arriving` never goes
  * back to `waiting`, a cancelled one moves on only when a payment reaches it (and is then due for the watcher at once),
@@ -315,8 +318,12 @@ export async function apply(d: Deps, ownerId: string, depositId: string, check: 
       if (reason) return doubted(reason);
       const added = addedFor(rec, check);
       const state: TopUpState = added > 0n ? 'credited' : 'held';
-      if (added > 0n) await credit(d, c, ownerId, Number(added), `Added, ${formatUnits(check.sentMicroUsd, 6)} ${rec.route.token}`);
       const p = rec.purchase;
+      const buying = p && p.outcome === 'waiting' ? p : null;
+      // Licenses go to the team its owner is the admin of. Every change to a team locks its row before any plan's
+      // (teams.ts), so it's locked here, after the deposit's and before the money is added: never after a plan's.
+      const team = buying?.buys.kind === 'licenses' ? await adminsTeam(c, ownerId) : null;
+      if (added > 0n) await credit(d, c, ownerId, Number(added), `Added, ${formatUnits(check.sentMicroUsd, 6)} ${rec.route.token}`);
       const lessThanAsked = added < toMicroUsd(BigInt(rec.asked), rec.route.decimals);
       await save(state, {
         ...rec,
@@ -324,7 +331,7 @@ export async function apply(d: Deps, ownerId: string, depositId: string, check: 
           sentMicroUsd: check.sentMicroUsd.toString(), outMicroUsd: check.outMicroUsd.toString(), refundedMicroUsd: check.refundedMicroUsd.toString(),
           addedMicroUsd: added.toString(), providerRef: check.providerRef
         },
-        purchase: p && p.outcome === 'waiting' ? await buyWith(d, c, ownerId, depositId, provider, p, lessThanAsked) : p
+        purchase: buying ? await buyWith(d, c, ownerId, depositId, provider, buying, team, lessThanAsked) : p
       });
       if (late) dlog.warn('top-up settled after it was given up', { depositId, provider, was: r.state, state });
       else dlog.info('top-up settled', { depositId, provider, state });

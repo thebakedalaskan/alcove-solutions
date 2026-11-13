@@ -31,12 +31,16 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
     notes left", warm under an hour, caution once out), which opens Settings at Plan. On Pro or Team, one calm row:
     `SunMark` (a 12px half sun on a 16px hairline, in the icon column under the shield), the plan in Newsreader 18px over a
     12.5px line in ink-2, and a chevron, with no box and no glow. The line says what matters most: "Ends in N days ·
-    Extend" in sun-text 600 with the sun half set (it opens checkout), "No notes left until 1 Dec" in caution, "About 40
-    min of notes left" in sun-text, or "Until 4 Nov 2027". A payment for a plan on its way takes the row's place: dots and
-    "Waiting for N USDC" in horizon, and the payment's row with Open. Pro renewed or ended is one short line above the row,
-    and only while it shows (until it's dismissed in Settings). On Plans, Pro's or Team's row, or a payment's, is shaded
-    as the place you're on, so there's still one shaded row; Free's notes left isn't shaded. Plans is reached from
-    Settings › Plan's See plans and wherever a limit is met
+    Extend" in sun-text 600 with the sun half set (it opens checkout), "No notes left until 1 Dec" in caution, for a team's
+    admin while its licenses run short "2 licenses left · Buy" in sun-text 600 (it opens checkout on Team), "About 40 min
+    of notes left" in sun-text, or "Until 4 Nov 2027" on Pro and the team's name on Team. On a team without a license,
+    "No team license yet" in caution takes the line's place (under the meter's place on Free), and the row opens Team,
+    which says who has been told. A payment for a plan on its way takes the row's place: dots and "Waiting for N USDC" in
+    horizon ("Payment seen, adding licenses" for a team's), and the payment's row with Open. Anything else said (Pro renewed
+    or ended, Team replacing Pro, a team's licenses while notes have stopped) is one short line above the row, and only
+    while it shows (until it's dismissed in Settings). On Plans, Pro's or Team's row, or a payment's, is shaded as the place
+    you're on, so there's still one shaded row; Free's notes left isn't shaded. Plans is reached from Settings › Plan's See
+    plans and wherever a limit is met
 - **The page** scrolls under a rounded edge. Search ("Search or ask", ⌘K opens the palette) and you (your arch, which opens
   your menu) sit at its top right on every page, outside the page itself, so moving between pages leaves them alone. A page's
   title sits at its top left, in the same place on every page, and keeps clear of them with `--top-room`.
@@ -390,16 +394,20 @@ The sun is low and to the left, behind the people.
   - **Not on Alcove yet** lists each person with their title and meetings coming up, and Invite, or Invited with Remind.
     "Invite all N" sits on the heading when more than one is left.
   - **Shared with groups** lists the notes shared with a group, who shared them and when.
-- **On a team** (`features/team/OurTeam.tsx`): the team's name in the sky with "6 people · 3 licenses left", and for its
-  admin Invite (filled), which shows a one-time link under it with Copy. The line is the team's people. On the water,
-  People on {team} (role and license on each row: "Licensed until 12 Dec", "License ended", "Waiting for a license"),
-  with Remove for the admin and Leave team or Delete team at its foot, each asked in place; Visible to the team beside it;
-  and, without a license, a caution notice above them. Not on a team, a quiet Start a team sits beside Invite people,
-  and opens the team's name in place.
-- **Joining** (`/team/join#…`, `features/team/JoinTeam.tsx`) is one guest card: the admin's arch, "Join {team}, Priya's
-  team?", Join (filled) and Not now; signed out, the ways in.
-- Every number on the page is real: a group's calls are calls everyone in it was on. Someone on their own sees only
-  Start a team.
+- **On a team** (`features/team/OnTeam.tsx`, the kit's `components/team-plan.tsx` and `styles/team-plan.css`): the team's
+  name in the sky over how many are on it, and its people on the horizon, up to ten, each under their license, opening
+  their popover as on a company's line (`PersonPop`). On the water, its people as rows (role and license on each:
+  "Licensed until 12 Dec", "License ended", "Waiting for a license"), with Remove for the admin, asked in place under the
+  row, and at their foot Leave team for a member or Delete team for the admin once nobody else is on it; then the notes
+  made visible to the team, and the company page's groups and what's shared with them, which stay. Beside them, for the
+  admin: Licenses (how many are left and who's waiting, Buy licenses, filled while someone waits, which opens checkout on
+  Team, and buying one whenever it's needed) and invite links (Make an invite link, then Copy, and Make another). A member
+  without a live license is told first, at the top of the water. Not on a team, a quiet Start a team row on a company's
+  water opens checkout on Team (`features/team/StartTeam.tsx`).
+- **Joining** (`/team/join#…`, `features/team/Join.tsx`) is one card on the team's evening: whose team it is and what
+  joining gives you, Join (filled) and Not now; signed out, the ways in first, while the invite waits in the tab.
+- Every number on the page is real: a group's calls are calls everyone in it was on. Someone on their own, with no
+  company and no team, has no Team page: its address goes Home.
 - The first day, loading, a failed load and offline each have their own look.
 
 ## Agents
@@ -529,7 +537,8 @@ The last of the light, with you in it, then seven groups. Change one thing and l
   checkout's, never this page's. Controls drop under their words on a phone. The code is `features/settings/Plan.tsx`,
   with `features/plans/plan-state.ts`, which the side panel's foot and Plans share.
 - **Sign out** signs you out at once. Only when recordings haven't uploaded does it ask first: the sky grows to hold the
-  question, it says they'll be deleted, and Stay signed in is the filled answer.
+  question, it says they'll be deleted, and Stay signed in is the filled answer. Signing out (from here or your menu), the
+  page holds until the welcome page replaces it in one step, rather than blanking or emptying first.
 - **Delete account** sits apart, in its own panel at the end, and opens in place, with what goes beside what stays. The
   shared demo account can't be deleted, and says so.
 
@@ -547,10 +556,21 @@ The last of the sunset, with the plans on the water: a page you compare on, so m
   lines, buttons and facts line up. Each is at most a third of 1120px, so Free and Pro stand together in the middle, and a
   third card joins when Team is offered. Pro is lifted: raised, a firmer edge, a 2px warm edge on top. A warm chip marks the
   plan you're on (never Free, whose button area says it) or "Ends in N days".
-- **One filled button:** Get Pro on Free, Extend only while Pro is ending. Both open checkout over the page.
+- **One filled button:** Get Pro on Free, Extend only while Pro is ending. Both open checkout over the page. On a team
+  license Pro isn't sold: its card says "Not while you’re on your team’s plan", quietly, where the button would be.
 - **Under them:** On every plan, as chips, and the paying line with its wallet.
 - **States:** waiting cards, failed with Try again, offline. On a phone the cards stand one under another.
 - On Pro or Team, or with a payment on its way, the side panel's plan row is the place you're on while you're here.
+- **The first time** (the plan choice, `features/plans/PlanChoice.tsx`): Home opens on Plans once, in its place, while the
+  server says the plans haven't been shown (`Plan.choose`): every new account, after its arrival, and once every account from
+  before plans. Its head is a short title in the page's own type (`dusk-title`) with one line under it (`pl-lede`), in place
+  of Plans: "Choose a plan" and how the plans differ for someone with no notes yet, "Alcove has plans now" and which one
+  they're on for someone who has used Alcove. The head and the sky are one block down to the horizon (`pl-lead`), so the
+  switch keeps its place over the sun however long the line. The plan you're on leads straight on, quiet, on its card
+  (Continue on Free, there even while the prices wait, and beside Try again or offline); Get Pro stays the one filled button,
+  and checkout opens over it as it does on Plans. Home follows once something bought is yours and checkout has closed.
+  Where it shows is decided in one place, `features/plans/choice.ts`: Home only, never over a deep link, and never twice in a
+  tab. Once the plans have been on screen there, or on Plans, the server is told. The tour of Home waits for Home.
 
 ## Checkout
 
@@ -860,7 +880,8 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
 
 - **The arrival** is always night. One arch draws itself, dawn fills it and the sun rises while what came with the account
   arrives a row at a time, each with a check: who signed in, the calendar, the team (or Invite them from Team), and notes
-  written in confidential compute. Then "You're in", and the arch opens into Home.
+  written in confidential compute. Then "You're in", and the arch opens into Home. The night comes up whole over the
+  welcome page before Home loads behind it, so Home is first seen through the opening arch, never through the night.
 - **The tour** is one card, 400px wide with a 180px dawn sky at its top, that travels to the real thing on Home. The page
   dims around a cut-out of the target, a ring in `sun` marks it, and an arrow is drawn from the card once it arrives. Under
   640px the card is a sheet along the bottom, standing above the tab bar when it points at it. Each slide is one loop on the

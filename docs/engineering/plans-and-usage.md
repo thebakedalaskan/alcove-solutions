@@ -36,10 +36,10 @@ when an organizer is told it's close; how much of an organizer's allowance guest
 | The USD balance, filled by stablecoin top-ups | Working |
 | Buying Pro, renewing, refunds, reminders, the grace after Pro | Working (server; see [Pro](#pro)) |
 | Pro for a year or more at a lower price; more notes for a period | Working (server; see [Pro](#pro) and [More notes](#more-notes)) |
-| A payment that buys what it was for (Pro or more notes) once it's added | Working (server; see [A payment that buys](#a-payment-that-buys)) |
+| A payment that buys what it was for (Pro, more notes or a team's licenses) once it's added | Working (server; see [A payment that buys](#a-payment-that-buys)) |
 | Teams, licenses, visits, alerts, the pool (server; see [Team](#team)) | Working |
 | Team notes, Ask across them, team workspaces (server; see [Team](#team)) | Working. Ask's `refs` (@-references) work on the server; the app's Ask, main's palette, has no way to add them |
-| Picking a plan at first sign-in | Server working: `Plan.choose` is true for every account until the app says the plans were shown (`POST /v1/plan/chosen`, `PlansApi.chose()`); an account from before plans is shown them once. The tier screen itself isn't built. |
+| Picking a plan at first sign-in | Working. `Plan.choose` is true for every account until the app says the plans were shown (`POST /v1/plan/chosen`, `PlansApi.chose()`); an account from before plans is shown them once. In the app it's the plan choice: Home opens on Plans once, in its place (`apps/web/src/features/plans/PlanChoice.tsx`), and only Home, never a deep link (decided in `features/plans/choice.ts`). Once the plans have been on screen there or on Plans, the app says so, quietly trying again if that fails ([user-flows 16.20](../product/user-flows.md#1620-choose-a-plan)) |
 | Withdrawing the balance | Not built, and not planned yet |
 
 ## Notes: the AI allowance
@@ -292,10 +292,14 @@ who's on it are sealed under the team's own key (it's an owner, as a workspace i
 (`team-billing`). Every change locks the team's row first, then the plans it touches, so takes and purchases at once on
 any instance never spend a license or money twice.
 
-**Licenses** are bought by the admin from their own balance (`POST /v1/team/licenses { count, microUsdPerLicense }`):
-1 to `team.max_licenses` (500) at a time ("Buy 1 to 500 licenses at a time."), at `plan.team.price_micro_usd` ($40), the
-price shown (a changed one is `conflict`, as Pro's is), refused with nothing changed when the balance is short ("Your
-balance is short: 2 licenses cost $80 and your balance is $40. Add money first."). The history says "Team, 3 licenses".
+**Licenses** are bought by the admin from their own balance (`POST /v1/team/licenses { count, microUsdPerLicense }`), or
+with a payment that buys them once it's added ([A payment that buys](#a-payment-that-buys)), through the same code
+(`teams.ts › licensesBought`, on the terms in `plans.ts › termsOf`): 1 to `team.max_licenses` (500) at a time ("Buy 1 to
+500 licenses at a time."), at `plan.team.price_micro_usd` ($40), the price shown (a changed one is `conflict`, "The price
+of a team license has changed. Look at it again before buying."), refused with nothing changed when the balance is short
+(`conflict`, "Your balance is short of what 2 team licenses cost ($80). Add money first.": what they cost, never the
+balance, as for Pro). The history says "Team, 3 licenses", or "Team, 1 license"; logged `team licenses bought` with the
+owner, team and count.
 `POST /v1/team/licenses/refund` returns every unconsumed license at what it cost ("Team licenses refunded, 2"); a taken one
 isn't refunded.
 
@@ -472,46 +476,61 @@ is `arriving`, logged at error once with the reason, and fails at its deadline s
    `failed`. A `failed`, `expired` or `cancelled` deposit is asked about on a thinning schedule (hourly for a day, every 6
    hours for a week, then daily) until 30 days after its address expired, so a payment 1Click settles late is still added.
 4. **Adding.** When the swap settles, the deposit's state and the balance change in one transaction with the deposit row
-   locked (then the plan's row), so a deposit is added at most once. The balance's history reads "Added, 25 USDC". What
-   the top-up was opened to buy is bought then, in the same transaction ([below](#a-payment-that-buys)).
+   locked (then, for licenses, the team's row, then the plan's row), so a deposit is added at most once. The balance's
+   history reads "Added, 25 USDC". What the top-up was opened to buy is bought then, in the same transaction
+   ([below](#a-payment-that-buys)).
 
 Logs about a deposit carry its ID, provider, states, counts and durations, never the address, amounts, hashes or the
 quote. Deleting an account deletes its deposits; a payment still on its way reaches the treasury and is added to nobody.
 
 ### A payment that buys
 
-Choosing how many months of Pro (or packs of more notes) and sending the total is one step that survives closing the
-window: the top-up says what it's for, and the server buys it once the money is in, whoever is watching.
+Choosing how many months of Pro (packs of more notes, a team's licenses) and sending the total is one step that survives
+closing the window: the top-up says what it's for, and the server buys it once the money is in, whoever is watching.
 
-1. **Opening.** `POST /v1/plan/top-ups { routeId, microUsd, buys }`, with `buys` `{ kind: 'pro', months, microUsdPerMonth }`
-   or `{ kind: 'hours', packs, microUsdPerPack, minutesPerPack }` (`null`, the default, only adds money). Before anything is
-   quoted, `buys` is checked as buying it now would be, but for the balance, with the same refusals and words: past the most
-   one purchase buys (`invalid`), a price other than the one in force for it (`conflict`, "The price of Pro has changed.
-   Look at it again before buying."), a pack of other minutes (`conflict`), more notes not offered (`conflict`). It's sealed in the `deposit` record with what's become of it
-   (`purchase`), and `TopUp.purchase` reports it: `{ buys, outcome: 'waiting', why: null }`. The app asks for what the
-   balance is short of the total (`max(0, total − balance)`), raised to the route's minimum, and opens no payment when the
-   balance covers it.
+1. **Opening.** `POST /v1/plan/top-ups { routeId, microUsd, buys }`, with `buys` `{ kind: 'pro', months, microUsdPerMonth }`,
+   `{ kind: 'hours', packs, microUsdPerPack, minutesPerPack }` or `{ kind: 'licenses', count, microUsdPerLicense }` (`null`,
+   the default, only adds money). Before anything is quoted, `buys` is checked as buying it now would be, but for the
+   balance, with the same refusals and words: past the most one purchase buys (`invalid`), a price other than the one in
+   force for it (`conflict`, "The price of Pro has changed. Look at it again before buying."), a pack of other minutes
+   (`conflict`), more notes not offered (`conflict`), licenses by anyone but a team's admin (`conflict`, "Only a team’s
+   admin buys its licenses.": a team is made before a payment for its licenses is opened). It's sealed in the `deposit`
+   record with what's become of it (`purchase`), and `TopUp.purchase` reports it: `{ buys, outcome: 'waiting', why: null }`.
+   The app asks for what the balance is short of the total (`max(0, total − balance)`), raised to the route's minimum, and
+   opens no payment when the balance covers it.
 2. **Buying.** In the transaction that adds the settled deposit, after the money is added and under the same locks (the
-   deposit's row, then the plan's), it's bought exactly as `buyPro` or `buyHours` would buy it from the balance (`purchase`
-   in `plans.ts`): the balance pays the whole total, what was there before and what just arrived, and anything over stays
-   in it. The deposit is settled in that transaction, so the purchase is tried once, however many checks race; a payment
-   1Click settles after the top-up failed, expired or was cancelled buys then, the same way.
+   deposit's row, for licenses the team's, then the plan's), it's bought exactly as `buyPro` or `buyHours` would buy it
+   from the balance (`purchase` in `plans.ts`), or licenses as `POST /v1/team/licenses` buys them (`licensesBought` in
+   `teams.ts`), for the team its owner is the admin of when the money arrives: the balance pays the whole total, what was
+   there before and what just arrived, and anything over stays in it. The deposit is settled in that transaction, so the
+   purchase is tried once, however many checks race; a payment 1Click settles after the top-up failed, expired or was
+   cancelled buys then, the same way. Every change to a team locks its row before any plan's (teams.ts), so a payment for
+   licenses locks the team's row after the deposit's and before the money is added: deposit, team, plan. Nothing locks a
+   team's row after a plan's, nor a deposit's after either, so a payment, a purchase from the balance, a visit taking a
+   license and the team being deleted, all at once, take their locks in that one order and wait on one another rather
+   than deadlock.
 3. **What it says.** `outcome` is `waiting` until the money is added (an expired, failed or cancelled top-up stays
    `waiting`: a late payment can still buy), then `bought`, or `refused` with `why` in words for people. A refusal leaves
    the money in the balance, where "Buy with your balance" can use it:
    - the price changed: "The price of Pro changed before your payment arrived. It’s in your balance." ("The price of more
-     notes changed…" for notes), or a pack's minutes did: "The hours more notes bring changed before your payment arrived.
-     It’s in your balance.";
+     notes changed…" for notes, "The price of a team license changed…" for licenses), or a pack's minutes did: "The hours
+     more notes bring changed before your payment arrived. It’s in your balance.";
    - less arrived than asked for, and the balance with it is short: "Less arrived than 3 months of Pro cost. It’s in your
-     balance.";
+     balance." ("Less arrived than 2 team licenses cost…" for licenses);
    - everything arrived but the balance it counted on was spent meanwhile: "Your balance was short of what 1 month of Pro
      costs when your payment arrived. It’s in your balance.";
    - one purchase buys fewer now: "Since your payment was made, one purchase buys at most 6 months of Pro. It’s in your
-     balance."; more notes not offered any more: "More notes stopped being offered before your payment arrived. It’s in
-     your balance."
+     balance." ("…at most 2 team licenses…"); more notes not offered any more: "More notes stopped being offered before
+     your payment arrived. It’s in your balance.";
+   - its owner is no team's admin any more (the team was deleted): "You weren’t a team’s admin when your payment arrived,
+     so no licenses were bought. It’s in your balance."
+
+Licenses bought this way are the team's as any bought from the balance: unconsumed until a member takes one on a visit,
+refunded while nobody has, and the admin is told again when few or none are left ([Team](#team)).
 
 Logged `top-up bought what it was for` or `top-up didn’t buy what it was for; its money is in the balance`, with the
-deposit's ID, provider, what it buys (`pro`, `hours`) and why not (`price`, `short`, `too-many`, `off`): never an amount.
+deposit's ID, provider, what it buys (`pro`, `hours`, `licenses`) and why not (`price`, `short`, `too-many`, `off`,
+`not-admin`): never an amount. Licenses bought are also logged `team licenses bought`, with the owner, team and count.
 
 ## Treasury runbook
 
@@ -587,3 +606,9 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   release ignores `buys` in a request (zod drops it), so a top-up opened there only adds money, and one this release
   opened that it settles then is added without its purchase: it saves the record without the field, so the money stays in
   the balance and the top-up reads as one that only added money.
+- Payments that buy licenses need no migration. `{ kind: 'licenses', count, microUsdPerLicense }` is a third kind of
+  `buys` in a `deposit` record's `purchase`, sealed with the rest under the same header and key, and a record from before
+  (no `purchase`, or one buying Pro or more notes) reads as it did. What such a payment buys is kept as a purchase from the
+  balance keeps it, in the shapes there are: a line in the `plan-account` record's history, and licenses in the
+  `team-billing` record. Only this release opens one (it takes a team's admin, and teams come with this release); while
+  the deploy runs, the previous release treats it as any payment that buys (above).

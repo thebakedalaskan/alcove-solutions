@@ -3,7 +3,7 @@
  * TABS (and, for a count, a line in useCounts). `tour` is the hook the tour of Home finds a place by
  * (features/onboarding/Tour.tsx).
  */
-import type { Team } from '@alcove/api';
+import type { MyTeam, Team } from '@alcove/api';
 import type { IconName } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { uploads } from '~/features/record/uploads';
@@ -51,8 +51,12 @@ export const NAV_FOOT: readonly NavPlace[] = [
   { to: '/agents', icon: 'agent', label: 'Agents', tour: 'agents' }
 ];
 
-/** The places someone has: on your own there's no Team page. Until that's known they're all there, so nothing appears late. */
-export const places = <P extends { to: Place }>(all: readonly P[], team: Team | null | undefined): readonly P[] => (team === null ? all.filter((p) => p.to !== '/team') : all);
+/**
+ * The places someone has: on your own, with no company around you (`company`) and no team on a plan (`mine`), there's no Team
+ * page. A team of your own has one even without a company. Until both are known they're all there, so nothing appears late.
+ */
+export const places = <P extends { to: Place }>(all: readonly P[], company: Team | null | undefined, mine: MyTeam | null | undefined): readonly P[] =>
+  (company === null && mine === null ? all.filter((p) => p.to !== '/team') : all);
 
 export interface Tab { to: Place; icon: IconName; label: string; raised?: boolean | undefined; tour?: string | undefined }
 /**
