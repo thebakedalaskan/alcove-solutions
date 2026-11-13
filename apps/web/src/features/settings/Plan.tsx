@@ -271,7 +271,8 @@ function Refund({ plan }: { plan: Plan }) {
       </SettingStep>
       <SettingFoot actions={
         <>
-          <Button variant="quiet" size="sm" disabled={refund.isPending} onClick={() => { setAsking(false); requestAnimationFrame(() => ask.current?.focus()); }}>{later === 1 ? 'Keep it' : 'Keep them'}</Button>
+          {/* The answer that loses nothing is the filled one, and takes the focus as the question opens. */}
+          <Button variant="primary" size="sm" autoFocus disabled={refund.isPending} onClick={() => { setAsking(false); requestAnimationFrame(() => ask.current?.focus()); }}>{later === 1 ? 'Keep it' : 'Keep them'}</Button>
           <Button variant="secondary" size="sm" loading={refund.isPending} onClick={go}>Refund {usdCents(back)}</Button>
         </>
       } />
