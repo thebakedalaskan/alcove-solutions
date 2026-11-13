@@ -64,7 +64,13 @@ export const StartWithNoNotesLeft: PageStory = {
   play: async ({ userEvent, step }) => {
     /** Start a call's window, once it's open: the side panel says notes are out too, so what's in it is found in it. */
     const flow = () => screen.findByRole('dialog', { name: 'Start a call' }, SOON);
-    await step('This period’s notes are used up. Start a call says so under the ways to start, until they come back, with Get Pro', async () => {
+    await step('This period’s notes are used up. Ask across your calls, from Search or ask: the answer’s place says none are left until they come back, with Get Pro', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Search or ask' }, SOON));
+      await userEvent.type(await screen.findByRole('combobox', { name: /Search or ask your notes/ }, SOON), 'When does onboarding ship?{Enter}');
+      await within(await screen.findByRole('dialog', { name: 'Search or ask' }, SOON)).findByText(/^No notes left until/, {}, LATER);
+    });
+    await step('Close it. Start a call says so too, under the ways to start, with Get Pro', async () => {
+      await userEvent.keyboard('{Escape}');
       const side = await screen.findByRole('complementary', { name: 'Side panel' }, SOON);
       await userEvent.click(within(side).getByRole('button', { name: /^Start a call/ }));
       await within(await flow()).findByText(/^No notes left until/, {}, SOON);

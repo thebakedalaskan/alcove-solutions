@@ -99,9 +99,9 @@
 .ac-checklist code { padding-top: 2px; font: 500 12px/1.35 var(--font-mono); color: var(--ink-3); white-space: nowrap; }
 
 /* ---- Avatar: the arch ---- */
-.ac-avatar { --size: 32px; position: relative; display: inline-block; flex: none; width: var(--size); height: calc(var(--size) * 1.08); border-radius: var(--radius-arch) var(--radius-arch) calc(var(--size) * .22) calc(var(--size) * .22); overflow: hidden; vertical-align: middle; background: var(--sunk); box-shadow: 0 0 0 2px var(--ring, transparent); }
+.ac-avatar { --size: 32px; position: relative; display: inline-block; flex: none; width: var(--size); height: calc(var(--size) * 1.08); border-radius: var(--radius-arch) var(--radius-arch) calc(var(--size) * .22) calc(var(--size) * .22); overflow: hidden; vertical-align: middle; background: var(--arch-fill); box-shadow: 0 0 0 2px var(--ring, transparent); }
 .ac-avatar svg, .ac-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.ac-avatar .initial { display: grid; place-items: center; width: 100%; height: 100%; padding-top: 8%; font: 480 calc(var(--size) * .46)/1 var(--font-display); color: var(--ink-2); }
+.ac-avatar .initial { display: grid; place-items: center; width: 100%; height: 100%; padding-top: 8%; font: 480 calc(var(--size) * .46)/1 var(--font-display); color: var(--arch-ink); }
 .ac-faces { display: inline-flex; align-items: flex-end; }
 .ac-faces .ac-avatar { --ring: var(--surface); margin-left: -6px; }
 .ac-faces .ac-avatar:first-child { margin-left: 0; }

@@ -107,6 +107,13 @@ export const SearchFailed = page('/calls', 'busy', {
 /** Asking every call: read in confidential compute, the answer lands on the sheet with the calls it read. */
 export const Ask = page('/calls', 'busy', { ...day, play: typing('What did we decide about the launch?{Enter}', 'Ask what was decided about the launch') });
 export const AskNight = page('/calls', 'busy', { ...day, ...night, play: typing('What did we decide about the launch?{Enter}', 'Ask what was decided about the launch') });
+/**
+ * Asked with none of this period's notes left: the server refuses the question, and the answer's place on the sheet says until
+ * when there are none, with Get Pro (user-flows 16.10). Typing again puts it away.
+ */
+export const AskWithNoNotesLeft = page('/calls', 'plan-stopped', { ...day, play: typing('What did we decide about the launch?{Enter}', 'Ask what was decided about the launch, with no notes left this period') });
+export const AskWithNoNotesLeftNight = page('/calls', 'plan-stopped', { ...day, ...night, play: typing('What did we decide about the launch?{Enter}', 'Ask what was decided about the launch, with no notes left this period') });
+export const AskWithNoNotesLeftPhone = phone(AskWithNoNotesLeft);
 /** The answer is still being written. */
 export const StillAsking = page('/calls', 'busy', {
   beforeEach: changing(callsDay, troubled({ 'notes.askAll': 'hold' })),

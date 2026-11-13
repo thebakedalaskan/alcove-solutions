@@ -264,6 +264,11 @@
 .set-note.has-x { grid-template-columns: 18px minmax(0, 1fr) auto; padding-right: 6px; }
 .set-note-x.ac-icon-btn { width: 30px; height: 30px; margin-block: -5px; color: var(--ink-2); }
 .set-note-x.ac-icon-btn:hover { background: color-mix(in oklch, var(--ink) 8%, transparent); color: var(--ink); }
+/* What to do about it, at the note's end, level with its words: under them on a phone (below). */
+.set-note.has-a { grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; padding-right: 10px; }
+.set-note.has-a.has-x { grid-template-columns: 18px minmax(0, 1fr) auto auto; padding-right: 6px; }
+.set-note.has-a > .ac-i { align-self: start; }
+.set-note-a { display: flex; align-items: center; gap: 8px; margin-block: -4px; }
 
 /* The foot of something open in place: what to know, and how to close it. */
 /* Something opened in place inside a panel: its title and what it is, then what to do. */
@@ -460,6 +465,10 @@
   .set-gs { grid-template-columns: minmax(0, 1fr); row-gap: 16px; }
   .set-foot-a { margin-left: 0; }
   .set-eves { gap: 12px; }
+  /* A note's action goes under its words, at their start. */
+  .set-note.has-a { grid-template-columns: 18px minmax(0, 1fr); align-items: start; padding-right: 14px; }
+  .set-note.has-a.has-x { grid-template-columns: 18px minmax(0, 1fr) auto; padding-right: 6px; }
+  .set-note-a { grid-column: 2; grid-row: 2; margin-block: 10px 0; }
 }
 
 /* ---- Add money: the sheet (topup.tsx), picking how much and how to pay, then where to send it ---- */

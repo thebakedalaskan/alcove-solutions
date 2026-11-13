@@ -2,7 +2,7 @@ import { CheckoutDone, CheckoutLine, CheckoutNote, CheckoutWindow, Button, Month
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import type { ReactNode } from 'react';
 import { did } from '../../../src/component';
-import { LENGTHS, NETWORKS, PREVIEW_BASE_ADDRESS, PRO_YEAR_SUMMARY } from './parts';
+import { LENGTHS, NETWORKS, PREVIEW_BASE_ADDRESS, PRO_YEAR_SUMMARY, TEAM_FOLK } from './parts';
 
 /**
  * The checkout window on the kit's Modal: the step on the left, what you're buying on the right, Close at the top right; on
@@ -12,7 +12,7 @@ import { LENGTHS, NETWORKS, PREVIEW_BASE_ADDRESS, PRO_YEAR_SUMMARY } from './par
 const meta = {
   title: 'Components/Checkout/CheckoutWindow', component: CheckoutWindow, parameters: { layout: 'fullscreen' },
   args: { title: 'Get Pro', step: 1, stage: 'choose', summary: PRO_YEAR_SUMMARY, onClose: did('onClose'), foot: null, children: null },
-  argTypes: { stage: { control: 'select', options: ['choose', 'send', 'short', 'seen', 'done', 'closed'] }, step: { control: 'inline-radio', options: [1, 2, 3] } }
+  argTypes: { stage: { control: 'select', options: ['choose', 'send', 'short', 'seen', 'done', 'closed'] }, step: { control: 'inline-radio', options: [1, 2, 3, null] } }
 } satisfies Meta<typeof CheckoutWindow>;
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -57,3 +57,16 @@ export const Done = at('done', 3, done, <Button variant="primary" onClick={did('
 export const DoneNight: Story = { ...Done, globals: { theme: 'dark' } };
 /** Over a call, in your own theme whatever the call's night: here light. */
 export const OverACallInYourTheme: Story = { ...Done, args: { ...Done.args, theme: 'light', foot: <Button variant="primary" onClick={did('onDone')}>Back to the call</Button> }, globals: { theme: 'dark' } };
+/**
+ * Nothing to buy here: on Priya's team, Priya buys its licenses. No steps, since none can be taken, and it's said once, in one
+ * note, with Close.
+ */
+export const NothingToBuy: Story = {
+  args: {
+    title: 'Buy licenses', step: null, stage: 'choose',
+    summary: { art: 'team', people: TEAM_FOLK, name: 'Team', sub: 'For Vandelay Industries', brief: '', lines: [], total: null, foot: 'Each license is one person for 30 days.' },
+    children: <CheckoutNote tone="info">Priya, its admin, buys the licenses for Vandelay Industries.</CheckoutNote>, foot: close
+  }
+};
+export const NothingToBuyNight: Story = { ...NothingToBuy, globals: { theme: 'dark' } };
+export const NothingToBuyPhone: Story = { ...NothingToBuy, globals: { viewport: { value: 'phone' } } };
