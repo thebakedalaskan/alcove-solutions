@@ -21,7 +21,7 @@ import { getItem } from '../../vault';
 import { finishRecording, updateNote, type HeldRoom } from '../notes/service';
 import { storedMoments } from '../recordings/storedFrames';
 import { standIns, type HostChange } from './hosting';
-import { Joined, relocate } from './places';
+import { Joined, admissionFresh, relocate } from './places';
 import * as rings from './rings';
 import * as screens from '../recordings/screens';
 import { endSeats } from '../workspaces/service';
@@ -346,8 +346,23 @@ async function goneFromRoom(d: Deps, ownerId: string, callId: string, roomName: 
 export const ARRIVAL_MS = 90_000;
 
 /**
+ * Asks to join that went quiet: no browser has said it's still asking for 90 seconds (`admissionFresh`), so whoever hosts
+ * can't see them and nobody can let them in. They're turned away, as their own browser would be the next time it asked, so
+ * nothing kept of them still reads as asking. In one transaction, under the call's row.
+ */
+async function turnAwayQuiet(o: Owner, callId: string, now: number): Promise<void> {
+  const quiet = await tx(o.pool, async (c) => {
+    const { row, state } = await load(o, c, callId, true);
+    const gone = new Set(row.state === 'live' ? state.people.flatMap((j) => (j.status === 'waiting' && !admissionFresh(j, now) ? [j.identity] : [])) : []);
+    if (gone.size) await save(o, c, callId, { ...state, people: state.people.map((j): Joined => (gone.has(j.identity) ? { ...j, status: 'denied' } : j)) });
+    return gone.size;
+  });
+  if (quiet) clog.info('asks to join that went quiet turned away', { callId, people: quiet });
+}
+
+/**
  * Takes out whoever was let in at least ARRIVAL_MS ago and isn't in the room: they never got there, or LiveKit's
- * word that they left was missed. Nobody is taken out while LiveKit can't be asked.
+ * word that they left was missed. Nobody is taken out while LiveKit can't be asked. Asks that went quiet are turned away.
  */
 export async function arrivals(d: Deps, ownerId: string, callId: string, roomName: string, now: number): Promise<void> {
   const o = await openOwner(d, ownerId, undefined);
@@ -357,6 +372,7 @@ export async function arrivals(d: Deps, ownerId: string, callId: string, roomNam
   if (row.state === 'live' && state.board.letIn.length) await syncBoardSeats({ organizer: o, callId });
   if (row.state === 'live' && state.board.rooms.some((r) => !r.kept)) await syncRoomBoards({ organizer: o, callId });
   if (row.state === 'live' && state.board.landing) await landRooms({ organizer: o, callId });
+  if (row.state === 'live' && state.people.some((j) => j.status === 'waiting' && !admissionFresh(j, now))) await turnAwayQuiet(o, callId, now);
   const due = row.state === 'live' ? state.people.filter((j) => j.role !== 'host' && j.identity !== state.host && j.status === 'in' && now - j.since >= ARRIVAL_MS) : [];
   if (!due.length) return;
   const here = new Set((await d.livekit.participants(roomName)).map((p) => p.identity));

@@ -1,16 +1,21 @@
 /**
  * Joining a call by its link without being invited: what the link tells anyone before they join; signed-in people the
  * organizer lets in (added to the invite, so they get the notes, but only from accounts the notes may go to, only when
- * the organizer saw who, and only as long as they're let in) next to guests (who don't); how every refusal fails
- * safely with a request ID; and what a guest's call pass can reach (its own call, nothing else). The real API over
+ * the organizer saw who, and only as long as they're let in) next to guests (who don't); who a full call still takes;
+ * how every refusal fails safely with a request ID; and what a guest's call pass can reach (its own call, nothing else). The real API over
  * HTTP via @alcove/api-http, real Postgres, the object store and the local LiveKit server.
  */
 import { AlcoveApiError, type AlcoveApi, type CallSession, type CallState, type TranscriptClip } from '@alcove/api';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { createApp } from '../../app';
+import { openJson, sealJson, toJson } from '../../crypto';
+import { maintain } from '../../maintenance';
+import { openOwner } from '../../owners';
 import { speechWav } from '../../testing/fake-near';
 import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
+import { header as callHeader, key as callKey } from './state';
 
 // Calls go through the real LiveKit server; every wait below is bounded and says what it was waiting for.
 vi.setConfig({ testTimeout: 90_000 });
@@ -18,7 +23,7 @@ vi.setConfig({ testTimeout: 90_000 });
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
 afterAll(async () => { await h?.close(); await disposeLiveKit(); });
-afterEach(() => { vi.useRealTimers(); h.closeCalls(); });
+afterEach(async () => { vi.useRealTimers(); h.closeCalls(); await h.resetLimits(); });
 
 const code = (e: unknown) => (e instanceof AlcoveApiError ? e.code : 'not-an-api-error');
 let seq = 0;
@@ -407,6 +412,93 @@ describe('what guests see', () => {
     // Of the people sent to rooms, the guest sees those in the call by name, and nobody's address.
     expect(JSON.stringify(seen)).not.toContain('@');
     expect(seen.breakouts.open?.rooms.map((r) => r.people.map((p) => p.name))).toEqual([[asker.session.user.name], []]);
+    await host.leave();
+  });
+});
+
+describe('a full call', () => {
+  /** A call with room for `most` people at once (docs: Plans and usage › Calls), its organizer hosting. */
+  async function roomFor(most: number) {
+    await h.setLimit('call.max_people', most);
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    return { org, c, host };
+  }
+  const full = (most: number) => `conflict: This call is full: ${most} people are in it, the most a call can have.`;
+  const joining = (p: Promise<CallSession>) => p.then((call) => ({ call, said: 'asked' }), (e: unknown) => ({ call: null, said: e instanceof AlcoveApiError ? `${e.code}: ${e.message}` : String(e) }));
+  const ask = (c: string, name: string, api = guestBrowser(), previous?: string | undefined) => joining(api.calls.join(c, { mic: true, cam: false, name, ...(previous ? { previous } : {}) }));
+  /** As if the browser asking as `identity` went quiet `ms` ago: its ask was made, and last said it was still asking, then. */
+  async function quietSince(ownerId: string, callId: string, identity: string, ms: number) {
+    const o = await openOwner(h.deps, ownerId, undefined);
+    const row = z.object({ state_ciphertext: z.instanceof(Uint8Array) }).parse((await h.pool.query('SELECT state_ciphertext FROM calls WHERE owner_id = $1 AND call_id = $2', [ownerId, callId])).rows[0]);
+    const s = openJson(callKey(o, callId), callHeader(o, callId), row.state_ciphertext, z.object({ people: z.array(z.looseObject({ identity: z.string() })) }).loose());
+    const people = s.people.map((p) => (p.identity === identity ? { ...p, since: Date.now() - ms, askedAt: Date.now() - ms } : p));
+    await h.pool.query('UPDATE calls SET state_ciphertext = $3 WHERE owner_id = $1 AND call_id = $2', [ownerId, callId, sealJson(callKey(o, callId), callHeader(o, callId), toJson({ ...s, people }))]);
+  }
+
+  it('keeps their place for someone coming back, and a reload of someone still asking takes the place of their earlier ask', async () => {
+    const { c, host } = await roomFor(3);
+    const sams = guestBrowser();
+    const sam = await sams.calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    const lees = guestBrowser();
+    const lee = await lees.calls.join(c, { mic: true, cam: false, name: 'Lee' });
+    await settle(host, (s) => s.waiting.some((w) => w.id === lee.ticket.identity));
+    // The organizer, Sam let in and Lee asking: three, so nobody else gets in.
+    expect((await ask(c, 'Ada')).said).toBe(full(3));
+    // Sam reloads: back in their place, without asking.
+    const samBack = await sams.calls.join(c, { mic: true, cam: false, name: 'Sam', previous: sam.ticket.pass });
+    sam.close();
+    await inGroup(samBack);
+    // Lee reloads while still asking: the new ask takes the earlier one's place, so it isn't turned away by its own ask,
+    // and whoever hosts is asked once.
+    const leeAgain = await ask(c, 'Lee', lees, lee.ticket.pass);
+    lee.close();
+    expect(leeAgain.said).toBe('asked');
+    const asking = await settle(host, (s) => s.waiting.some((w) => w.id === leeAgain.call?.ticket.identity));
+    expect(asking.waiting.map((w) => w.id)).toEqual([leeAgain.call?.ticket.identity]);
+    if (leeAgain.call) await letIn(host, leeAgain.call);
+    const all = await settle(host, (s) => s.participants.length === 3);
+    expect(all.participants.filter((p) => p.id !== host.ticket.identity).map((p) => p.person.name).sort()).toEqual(['Lee', 'Sam']);
+    expect((await ask(c, 'Ada')).said).toBe(full(3));
+    await host.leave();
+  });
+
+  it('gives the last place to one of several asking at once', async () => {
+    const { c, host } = await roomFor(3);
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    const asked = await Promise.all(['Ada', 'Bo', 'Cy'].map((name) => ask(c, name)));
+    expect(asked.filter((a) => a.said === 'asked')).toHaveLength(1);
+    expect(asked.filter((a) => a.said === full(3))).toHaveLength(2);
+    const one = asked.find((a) => a.call)?.call;
+    expect((await settle(host, (s) => s.waiting.length > 0)).waiting.map((w) => w.id)).toEqual([one?.ticket.identity]);
+    await host.leave();
+  });
+
+  it('holds no place for an ask that went quiet, and upkeep turns it away', async () => {
+    const { org, c, host } = await roomFor(2);
+    const lee = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Lee' });
+    await settle(host, (s) => s.waiting.some((w) => w.id === lee.ticket.identity));
+    expect((await ask(c, 'Ada')).said).toBe(full(2));
+    // Lee's browser closed while it asked, and last said it was still asking 91 seconds ago: whoever hosts can't see the
+    // ask any more, so it holds no place.
+    lee.close();
+    await quietSince(org.session.ownerId, host.ticket.callId, lee.ticket.identity, 91_000);
+    expect((await settle(host, (s) => s.waiting.length === 0)).waiting).toEqual([]);
+    const ada = await ask(c, 'Ada');
+    expect(ada.said).toBe('asked');
+    // Upkeep turns the quiet ask away, so nothing kept of it reads as asking: its pass finds it turned away.
+    const from = h.logs.length;
+    await maintain(h.deps);
+    expect(h.logs.slice(from).some((l) => l.includes('asks to join that went quiet turned away') && l.includes(host.ticket.callId))).toBe(true);
+    const admission = await h.browser().fetch(`${h.baseUrl}/v1/live/calls/${lee.ticket.callId}/mls?after=0`, { headers: { 'x-alcove-call': lee.ticket.pass } });
+    expect(await admission.json()).toMatchObject({ admission: 'denied' });
+    // Ada's ask is fresh, and still holds the second place.
+    expect((await settle(host, (s) => s.waiting.length > 0)).waiting.map((w) => w.id)).toEqual([ada.call?.ticket.identity]);
+    expect((await ask(c, 'Bo')).said).toBe(full(2));
     await host.leave();
   });
 });

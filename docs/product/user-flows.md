@@ -871,9 +871,10 @@ time, slides in on the right.
   the organizer is asked, "Your plan has notes again", with **Turn notes on**. While they're stopped, turning notes on or starting a room recording says "Your notes for this
   period have run out. They start again when your plan renews."
 - **How long a call runs.** A call ends at 10 hours, and everyone is told 5 minutes before ("This call ends at
-  14:30"); its notes are written as when anyone ends it. At most 100 people are in a call or waiting to be let in: one
+  14:30"); its notes are written as when anyone ends it. At most 100 people are in a call or asking to be let in: one
   more is told "This call is full: 100 people are in it, the most a call can have", and whoever hosts is told someone
-  tried.
+  tried. An ask whose browser closed stops holding a place once it's gone from the host's list, and someone who reloads
+  while asking asks again in place of their earlier ask.
 - **Asking for notes.** While notes are off or paused, anyone can ask for them: **Ask for notes** in what's captured,
   or in Notes, whose bar says **Ask to resume** while they're paused. Everyone sees who asked. The organizer gets a toast
   and sees the ask in People, and while notes are off, Notes says how many asked in its pill, in rose, with **Not now**

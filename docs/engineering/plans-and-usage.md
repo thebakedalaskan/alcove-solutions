@@ -156,8 +156,11 @@ only Pro's limits apply on Pro.
 
 A call ends at its longest (`call.max_seconds`, 10 hours): `CallState.endsAt` says when, everyone is told 5 minutes
 before, and upkeep ends it every 30 seconds (`lifecycle.endOverdue`), writing its notes as when anyone ends it. At most
-`call.max_people` (100) are in a call or waiting to be let in: anyone more is refused ("This call is full…") and whoever
-hosts is told, at most once a minute. Someone coming back keeps their place.
+`call.max_people` (100) are in a call or asking to be let in (`joining.ts › guestJoin`, under the call's row lock, so
+several asking at once for the last place can't all take it): anyone more is refused ("This call is full…") and whoever
+hosts is told, at most once a minute. Someone coming back keeps their place. An ask holds a place only while its browser
+keeps saying it's asking: one quiet for 90 seconds (`places.ts › admissionFresh`) can't be seen or let in, so it holds none, and upkeep turns it away (`lifecycle.ts › arrivals`). A reload of someone still asking takes the
+place of their earlier ask, which is turned away, so nobody is kept out by their own ask and whoever hosts is asked once.
 
 ## Pro
 
