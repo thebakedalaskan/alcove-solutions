@@ -8,8 +8,9 @@
  * Nothing here decides who can open what: features/workspaces/access.ts does. `calls.ts` holds the call's row and says when to do
  * what; this is what's done. A board the call seats everyone on is the organizer's to pay for, its files and its AI, so the call
  * seats everyone only in a workspace its organizer pays for (`organizerPays`), as a call opens a workspace only then: in one
- * someone else pays for, a board opens only for that workspace's own people, and access.ts asks that again on every read. A live call comes first, so what touches a workspace is done with nothing of the call held, in
- * the workspace's own transaction, and the call's row is held only to save what came of it.
+ * someone else pays for, a board opens only for that workspace's own people, and access.ts asks that again on every read. A
+ * live call comes first, so what touches a workspace is done with nothing of the call held, in the workspace's own
+ * transaction, and the call's row is held only to save what came of it.
  *
  * A board's vote is kept with it in the call's state, because it's this session's: closing the board ends it, and a saved
  * board has none. Votes are kept here and nowhere else: each person is told their own, and nobody a count until the vote ends,
