@@ -174,10 +174,10 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
         <div role="status">{cancel.isError && <Notice tone="caution">{errorMessage(cancel.error)}</Notice>}</div>
       </div>
       <div className="set-topup-f">
-        {/* Nothing has reached it and its address can still be paid: it can be cancelled. */}
+        {/* Nothing has reached it and its address can still be paid: it can be cancelled. Once it's over, another can start. */}
         {paying === 'send'
           ? <Button variant="quiet" loading={cancel.isPending} onClick={() => cancel.mutate(t.id)}>{cancel.isPending ? 'Cancelling' : 'Cancel payment'}</Button>
-          : <Button variant="quiet" onClick={onNew}>Start a new payment</Button>}
+          : paying !== 'short' && paying !== 'seen' && <Button variant="quiet" onClick={onNew}>Start a new payment</Button>}
         <Button variant="secondary" onClick={onClose}>Done</Button>
       </div>
     </>

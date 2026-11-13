@@ -180,7 +180,8 @@
 .ck-b > .ck-note:first-child { margin-top: 0; }
 .ck-note + .ck-sec { margin-top: 20px; }
 .ck-wait { display: flex; align-items: center; gap: 10px; font: 400 14px/20px var(--font-sans); color: var(--ink-2); }
-.ck-b > .ac-ref { margin: 10px 0 0 -7px; }
+/* A payment's reference for support, under what happened to it: in checkout's step and in Add money alike. */
+.ac-ref.ck-ref { margin: 10px 0 0 -7px; }
 
 /* ------------------------------------------------------------------ paying: the exact amount, the address made for it, and how it stands */
 .ck-status { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; }
