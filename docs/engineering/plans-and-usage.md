@@ -24,7 +24,7 @@ changeable without a deploy: each plan's notes, storage, files and price; Pro's 
 months of Pro one purchase buys and how long before Pro ends its owner is told; more notes for a period, their price and
 the most bought at once; the most workspaces one account makes; what an hour of notes is reckoned at; when AI stops and
 when an organizer is told it's close; how much of an organizer's allowance guests in one call spend; how long a period
-and a grace last; a call's longest and its most people. A period's length changes from each account's next period: each
+and a grace last; a call's longest, its most people, and how many asks to join it one network may have waiting. A period's length changes from each account's next period: each
 account's AI meter keeps the period it's in ([Pro › The plan in force](#pro)).
 
 ## Status
@@ -86,7 +86,7 @@ fallback`, with their IDs), never with every request.
 
 | Request | Paid by |
 | --- | --- |
-| The live transcript, live notes, board ideas and captions in a call, for everyone | The call's organizer |
+| The live transcript, live notes, board ideas and captions in a call, for everyone | The call's organizer; a guest's captions in another language and live notes of their own (from less than everyone's read), the organizer, out of the guests' share (below) |
 | Writing a call's notes, reading its shared screens, comparing it with its series | The organizer |
 | A room recording's transcript and notes | Whoever records |
 | A question or a catch-up in a call | Whoever asks, from their own plan; a guest's, the organizer, out of the guests' share (below), 6 a minute for each guest |
@@ -98,10 +98,16 @@ Spend is kept by kind (`transcript`, `notes`, `live-notes`, `ideas`, `captions`,
 meter's row lock (`ai_meters`), so requests at once on any instance can't spend the same money twice.
 
 **Guests' share.** A guest has no plan, so what they ask for in a call (questions, catch-ups, and AI on the call's documents
-and boards) is the organizer's. Every guest in one call spends from one share of the organizer's allowance for the period,
-`ai.guests_call_percent` (10%), kept with the allowance by the call's ID (`Bill.guests` in `meter.ts`): a request that
-would take them past it is refused ("Guests in this call have asked as much as the organizer’s plan allows. Sign in to ask
-from your own plan."), whichever guest asks, and the organizer's own notes keep the rest. On Free that's $0.25 a call, about
+and boards) is the organizer's, and so is what the call does for a guest alone: captions in another language (each line once
+a language, so one already translated costs nothing again), and live notes of their own, which a guest who came late, or
+left and came back, gets because they can't read all of everyone's. Every guest in one call spends from one share of the
+organizer's allowance for the period, `ai.guests_call_percent` (10%), kept with the allowance by the call's ID (`Bill.guests`
+in `meter.ts`, `callMeter`'s `guests` in `calls/recording.ts`): a request that would take them past it is refused ("Guests in
+this call have asked as much as the organizer’s plan allows. Sign in to ask from your own plan."; for captions and notes of
+their own, "Guests in this call have used as much of the organizer’s plan as it allows them.", and those notes say "These notes
+aren’t being updated: …" until there's room again), whichever guest asks, and the organizer's own notes keep the rest.
+Everyone's live notes, board ideas and the captions of anyone invited are the call's, for everyone, and the organizer's to pay
+for outside the share. A guest here is anyone in the call who isn't invited (`role` guest). On Free that's $0.25 a call, about
 30 minutes of notes, which is dozens of questions about a long call at the default model; a guest is also held to 6
 questions, catch-ups and asks of AI on a document or board a minute between them, counted by the call and the person their
 pass names, so coming back on a new connection doesn't start again (`http/limits.ts › guestAskLimiter`, `calls/routes.ts`,
@@ -162,7 +168,8 @@ Only someone in a workspace pays for it. When its payer leaves it, is taken out 
 moves at once to its longest-standing admin with an account (`settlePayer`, run for that workspace by the change itself, in
 its transaction; upkeep's `settlePayers` settles any it missed every 5 minutes, each in a transaction of its own, whatever made
 a payer stop being in a workspace). An admin whose account is being deleted at that very moment is passed over, not waited
-for.
+for. A team's workspace whose payment moves to someone who isn't on its team, or to nobody, stops being the team's then
+(`offTeam`, [Team workspaces](#team)).
 
 - **A grace.** For `workspaces.payer_grace_seconds` (15 days) what the workspace held as it moved is on top of the new
   payer's storage (`workspaces.payer_grace_until` and `payer_grace_bytes`, counted at most at what it holds now; on Team, on
@@ -193,7 +200,9 @@ payer or role takes effect at once). A workspace someone else pays for, made the
 opens only for its own people; the Switch workspace question says so ("Its files don’t count against your storage, so it
 opens only for its own people."). Its boards go by the same payer: a seat the call gives on a board opens it for anyone only
 while the organizer pays for its workspace, asked on every read too, so in one someone else pays for the call seats nobody
-on the boards it makes, and nobody can let everyone in on a saved one (`calls/boards.ts › organizerPays`). The scheduler says
+on the boards it makes, and nobody can let everyone in on a saved one (`calls/boards.ts › organizerPays`); and the boards it
+makes there go by address only to its own people (`access.ts › givenByCall`), never to someone invited from outside it, to
+someone let in from the link, or, as rooms close, to anyone outside it. The scheduler says
 so when such a workspace is chosen for where a call's notes go ("Its files don’t count against your storage, so its boards
 and files open only for its own people.", `WorkspaceSummary.youPay`). A team's pool isn't counted as the organizer's here, though a teammate's
 workspace counts against the same pool: AI a guest asks for in a team's workspace is paid by the workspace's payer, so a call
@@ -245,11 +254,22 @@ only Pro's limits apply on Pro. A workspace whose payment moved to the account a
 
 A call ends at its longest (`call.max_seconds`, 10 hours): `CallState.endsAt` says when, everyone is told 5 minutes
 before, and upkeep ends it every 30 seconds (`lifecycle.endOverdue`), writing its notes as when anyone ends it. At most
-`call.max_people` (100) are in a call or asking to be let in (`joining.ts › guestJoin`, under the call's row lock, so
-several asking at once for the last place can't all take it): anyone more is refused ("This call is full…") and whoever
-hosts is told, at most once a minute. Someone coming back keeps their place. An ask holds a place only while its browser
-keeps saying it's asking: one quiet for 90 seconds (`places.ts › admissionFresh`) can't be seen or let in, so it holds none, and upkeep turns it away (`lifecycle.ts › arrivals`). A reload of someone still asking takes the
-place of their earlier ask, which is turned away, so nobody is kept out by their own ask and whoever hosts is asked once.
+`call.max_people` (100) are in a call at once, and only the people in it take places, with those it's letting in by itself,
+invited or coming back, each person once (`places.ts › placesTaken`). Asking to be let in takes none, so asks can't fill a
+call and keep out whoever's invited: anyone with the link can ask, whatever the call holds, and it's letting someone in who
+asked that takes a place, only while there's one. Let in past it is refused ("This call is full: 100 people are in it, the
+most a call can have.", `mls.ts › mlsCommit`, under the call's row lock), and they go on asking. Someone invited is let in
+by the invite as they join, so that's when they take a place: with none left they're refused in those words and whoever
+hosts is told, at most once a minute (`joining.ts › guestJoin`, under the call's row lock, so several joining at once for
+the last place can't all take it). Someone coming back keeps their place. So that nobody can fill the list of asks whoever
+hosts answers, one network has at most `call.asks_per_address` (10) asks waiting in a call at once: an address, or an IPv6
+/64. The call keeps beside each ask only 16 bits of a keyed hash of its network under the call's own key (`Joined.askedFrom`,
+state key `call-asks:<id>`), different in every call, which says that two asks may share a network and never which; an ask
+past it is refused ("Too many people on your network are already asking to join this call. Try again once the host has
+answered them."). An ask counts only while its browser keeps saying it's asking: one quiet for 90 seconds
+(`places.ts › admissionFresh`) can't be seen or let in, so it counts for nothing, and upkeep turns it away
+(`lifecycle.ts › arrivals`). A reload of someone still asking takes the place of their earlier ask, which is turned away, so
+whoever hosts is asked once and it isn't counted twice.
 
 ## Pro
 
@@ -431,7 +451,8 @@ the same `not-found`; someone on a team already is `conflict`, and the link is l
 
 **Leaving.** The admin takes people off (`DELETE /v1/team/members/:id`); a member leaves (`POST /v1/team/leave`). A live
 license isn't refunded: they're on Free from then, a fresh period, with `plan.grace_seconds` held to
-`plan.team.storage_bytes`. Notes they made visible to the team stay so. The admin can't leave or take themselves off, and
+`plan.team.storage_bytes`. Notes they made visible to the team stay so. The team's workspaces they pay for stop being the
+team's (below): they stay theirs, with the people in them, counted against them alone. The admin can't leave or take themselves off, and
 deletes the team (`DELETE /v1/team/mine`) once nobody else is on it: its unconsumed licenses go back to their balance, its
 workspaces stop being the team's. Deleting the admin's account is refused while anyone else is on the team; once nobody
 is, the team goes with it. A member's account going takes their place with it.
@@ -454,6 +475,10 @@ with their account, and with the team. Notes find it third, after their own and 
 (`notes/service.ts › locateToRead`): a live-licensed member of that team can read it (`Note`, audio, shared screens,
 progress), ask about it, and Ask across notes reads it. `NoteSummary.teamVisible` says whether it's visible;
 `received` is `{ role: 'team', by: the organizer, at: when it was made visible }` for someone who has it only that way.
+Everyone else who has the note and adds to its shared notes is told the team reads what they add (`PromotionPreview.team`,
+`SharedAudience.team`: its name and how many licensed on it aren't otherwise listed), and the seal they add with covers the
+team, so making the note visible, or not, after they looked (under the note's lock, `setTeamVisible`) refuses their add
+(`409`) until they've seen who reads it now.
 Everything else, every change and anything of the reader's on it (sharing, links and their list, decisions, follow-ups,
 questions, transcript lines, writing it again, additions and who'd read them, their own notes on it, Drive exports,
 removing it from their notes), goes through `locate`, which refuses a note they have only through the team: `forbidden`,
@@ -469,7 +494,12 @@ written yet. Ask again once it’s ready."). Referenced notes go first, and send
 with the question; nothing else goes that the search didn't pick. The asker pays, as for any question.
 
 **Team workspaces.** A workspace made by someone live-licensed on a team is the team's (`workspaces.team_id`), counted
-against its pool through its maker, who pays for it. `POST /v1/workspaces { name, access? }`, the Drive's New workspace,
+against its pool through its maker, who pays for it. It's the team's only while whoever pays for it is on the team: when
+they leave the team, are taken off it or delete their account, the team's workspaces they pay for stop being the team's at
+once (`teams.ts › leftWith`: `team_id` and `team_access` go null), and so does one that comes to be paid for by someone who
+isn't on the team, or by nobody, as its payer is settled (`storage.ts › settlePayer`, [When whoever pays leaves](#when-whoever-pays-leaves)). Each stays with its own
+people, counted against whoever pays for it, nobody is in it through the team any more, and nobody can open it to a team
+again; one handed to someone else on the team stays the team's. `POST /v1/workspaces { name, access? }`, the Drive's New workspace,
 makes it the whole team's (`team_access = 'team'`) unless `access` is `added` (only the people added); off a team,
 `access` means nothing. One made in a call, and a call's home made for an organizer on a team, is `added`, so a call's
 notes never reach the whole team without someone choosing that. Its admins change it (`PUT /v1/workspaces/:id/team-access { access }` →
@@ -681,15 +711,27 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   written with it the next time it's saved.
 - A deposit record from before keeps its `credits` and `rate` (ignored now); one settled by a release before plans has no
   `addedMicroUsd` and is added again as dollars once (above).
-- A live call's state from before has no `notes.limit`, and reads as not stopped (`.default`).
+- A live call's state from before has no `notes.limit`, and reads as not stopped (`.default`). Its asks have no
+  `askedFrom`: they read as null (`.default`) and count against no network's `call.asks_per_address`, and are written with it
+  as null the next time the call is saved. While both serve, the previous release still counts fresh asks among a call's
+  places when it takes a join, so a call can turn someone away there that this release would let ask; it ignores
+  `askedFrom` and saves the asks it keeps without it.
 - The guests' share needs no migration: an `ai-meter` record kept without it has no shares and holds for no call's guests,
-  and reads as none spent (`.default`); it's written with them the next time it's saved.
+  and reads as none spent (`.default`); it's written with them the next time it's saved. A live call's `call-notes` record kept
+  without `guests` (why its last refresh didn't work) reads as false (`.default`), so a view that failed before says what it
+  always did; the previous release, while both serve, ignores the field, and a record it writes reads as false.
 - Team is migration `0031_teams.sql`: `teams`, `team_members`, `team_invites`, `team_notes`, and `team_id` and
   `team_access` on `workspaces` (null on every workspace there is). The previous release ignores them: while both serve,
   it opens a team's note or workspace only for people who have it otherwise, and its workspaces aren't a team's. A notice in a
   `plan-account` record from before has no `count`: it reads as null (`.default`), and its `until` stays as it was. The
   previous release can't open a plan record holding a team's notice (a kind it doesn't know), which only an account on a
-  team, made by this release, has while both serve.
+  team, made by this release, has while both serve. `0031_teams.sql` lost `team_members.email_index` before it shipped (a
+  keyed hash of each member's address that nothing read, and that kept an address they'd left): a member's name and address
+  are only in their sealed `team-member` record, which their sign-in keeps as their account has them. So a local database
+  that ran `0031` before is refused for that file (`migrate.ts`: it changed after it was applied). Drop the column and set
+  that row's checksum to the file's SHA-256 (`ALTER TABLE team_members DROP COLUMN email_index;` then `UPDATE
+  schema_migrations SET checksum = '<sha256sum of apps/api/migrations/0031_teams.sql>' WHERE name = '0031_teams.sql';`), or
+  start the database over (`pnpm db:reset`). Neither main nor production has run it.
 - Pro needs no migration. A `plan-account` record from before has no `pro`, `renew`, `notices`, `reminded` or `ended`:
   each has a `.default` (none bought, renewing off, no notices), and the record is written in the new shape the next
   time it's saved. The previous release reads a record this one wrote (zod ignores the new fields), so an account that

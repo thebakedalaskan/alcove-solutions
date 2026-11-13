@@ -5,7 +5,9 @@ import { exec, rows, tx } from '../../db';
 import { ConflictError, ValidationError } from '../../errors';
 import * as space from './workspace';
 import { addToInvite } from '../meetings/invites';
-import { chatSince, committerOf, departedFrom, epochIn, groupOf, needsKeys, pendingFor, placeOf, placesOf } from './places';
+import { chatSince, committerOf, departedFrom, epochIn, groupOf, needsKeys, pendingFor, placeOf, placesOf, placesTaken } from './places';
+import { callFull } from './joining';
+import { limitsNow } from '../../limits';
 import * as rings from './rings';
 import { log } from '../../log';
 import { requireIn, type Viewer } from './participants';
@@ -106,7 +108,8 @@ async function groupsFor(o: Owner, callId: string, row: Row, s: Stored): Promise
  * and only from the connection hosting in this generation, checked again here under the call's row lock: a host that
  * was replaced a moment ago can't slip one in. Everyone added must be someone the host's browser may add to that group
  * now (in no other group); anyone removed is out of that group, and nothing else; a commit adding nobody and removing
- * nobody just moves the keys on.
+ * nobody just moves the keys on. Letting in someone who asked takes a place (docs: Plans and usage › Calls): a commit that
+ * would let in more of them than the call has room for is refused, in the words joining a full call is (`callFull`).
  */
 export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof CallCommitBodySchema>): Promise<{ epoch: number }> {
   const o = v.organizer;
@@ -132,6 +135,14 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
     }
     if (new Set(b.added).size !== b.added.length) throw new ValidationError('Someone is in that commit twice.', { context: ctx });
     if (b.added.length && !b.welcome) throw new ValidationError('Adding people needs a welcome for them.', { context: ctx });
+    // Someone who asked takes a place as they're let in, and only while there's one: the people in the call, and those it's
+    // letting in by itself, hold theirs already (`placesTaken`).
+    const asked = new Set(b.added.flatMap((id) => { const j = people.get(id); return j?.status === 'waiting' && j.admit === 'ask' ? [j.person] : []; }));
+    if (asked.size) {
+      const most = (await limitsNow(o, c)).get('call.max_people');
+      const here = placesTaken(s);
+      if (here + asked.size > most) throw callFull(most, { ...ctx, people: here, asked: asked.size });
+    }
     const at = row.mls_seq + 1;
     await appendMls(o, c, callId, { seq: at, generation: row.mls_generation, epoch: b.epoch, grp: b.group }, 'commit', null, b.commit);
     let seq = at;

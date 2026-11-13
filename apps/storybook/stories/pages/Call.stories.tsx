@@ -108,6 +108,22 @@ export const AddingToTheSharedNotes = page('/calls/n2?tab=yours', 'busy', {
 });
 /** On a phone, what was shared and made is the Shared tab: Kofi's screen and the document, two across. */
 export const SharedOnAPhone = phone(page('/calls/n2?tab=shared', 'busy'));
+/**
+ * Art's standup, which he made visible to Vandelay's team: the shared notes' box says everyone on the team reads what's written
+ * there, as well as the people who have the notes.
+ */
+export const SharedNotesTheTeamReads = page('/calls/n2', 'team-admin');
+export const SharedNotesTheTeamReadsNight = page('/calls/n2', 'team-admin', { globals: night });
+/** The same note: adding from Art's own notes says the team reads it too, and counts its licensed people in. */
+export const AddingWhileTheTeamReads = page('/calls/n2?tab=yours', 'team-admin', {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Add Art’s own note to the shared notes. Who reads it names everyone on the team too', async () => {
+      const [first] = await canvas.findAllByRole('button', { name: 'Add to the shared notes' }, { timeout: 30000 });
+      if (first) await userEvent.click(first);
+    });
+  }
+});
+export const AddingWhileTheTeamReadsPhone = phone(AddingWhileTheTeamReads);
 
 /** Confirm, then I'll do it: each says what happened with Undo, and For you says nothing is waiting on Art any more. */
 export const ForYouDone = page('/calls/n2', 'busy', {

@@ -42,7 +42,7 @@ import { nameOf, personOf } from '../account/portraits';
 import * as screens from '../recordings/screens';
 import * as transcripts from '../recordings/transcripts';
 import { workedOnFor } from './worked-on';
-import { licensedOn } from '../billing/teams';
+import { licensedOn, teamReaders } from '../billing/teams';
 import { homeFor } from './home';
 
 const nlog = log.child({ component: 'notes' });
@@ -451,18 +451,20 @@ export async function setTeamVisible(o: Owner, id: string, visible: boolean): Pr
   const l = await locate(o, id);
   const context = { noteId: id, visible };
   if (!l.mine) throw new ForbiddenError('Only the organizer can make these notes visible to their team.', { context });
-  if (!visible) {
-    const gone = await exec(o.pool, 'DELETE FROM team_notes WHERE owner_id = $1 AND note_item_id = $2', [o.ownerId, id]);
-    nlog.info('note team visibility set', { ...context, changed: gone > 0 });
-    return;
-  }
-  if (l.note.manifest.status === 'recording') throw new ValidationError('These notes can be made visible to your team once the call ends.', { context });
-  const licensed = await licensedOn(o.pool, o.ownerId);
-  if (!licensed) throw new ForbiddenError('You need a license on a team to make notes visible to it.', { context });
-  // Made visible to another team before, while they were on it: it's this one's now.
-  const changed = await exec(o.pool, `INSERT INTO team_notes (owner_id, note_item_id, team_id) VALUES ($1,$2,$3)
-    ON CONFLICT (owner_id, note_item_id) DO UPDATE SET team_id = EXCLUDED.team_id, created_at = now() WHERE team_notes.team_id <> EXCLUDED.team_id`, [o.ownerId, id, licensed.teamId]);
-  nlog.info('note team visibility set', { ...context, teamId: licensed.teamId, changed: changed > 0 });
+  if (visible && l.note.manifest.status === 'recording') throw new ValidationError('These notes can be made visible to your team once the call ends.', { context });
+  // Under the note's lock, as what's added to it is: whoever adds reads who'd read it under the same lock, so a team that can
+  // read the notes from now on is a change in who reads it, which their seal won't pass.
+  const done = await tx(o.pool, async (c) => {
+    await lockItem(o, c, id);
+    if (!visible) return { changed: await exec(c, 'DELETE FROM team_notes WHERE owner_id = $1 AND note_item_id = $2', [o.ownerId, id]), teamId: null };
+    const licensed = await licensedOn(c, o.ownerId);
+    if (!licensed) throw new ForbiddenError('You need a license on a team to make notes visible to it.', { context });
+    // Made visible to another team before, while they were on it: it's this one's now.
+    const changed = await exec(c, `INSERT INTO team_notes (owner_id, note_item_id, team_id) VALUES ($1,$2,$3)
+      ON CONFLICT (owner_id, note_item_id) DO UPDATE SET team_id = EXCLUDED.team_id, created_at = now() WHERE team_notes.team_id <> EXCLUDED.team_id`, [o.ownerId, id, licensed.teamId]);
+    return { changed, teamId: licensed.teamId };
+  });
+  nlog.info('note team visibility set', { ...context, ...(done.teamId ? { teamId: done.teamId } : {}), changed: done.changed > 0 });
 }
 /** Titles of whichever of these notes are the account's own, read together from their manifests. */
 export async function ownNoteTitles(o: Owner, ids: string[]): Promise<Map<string, string>> {
@@ -515,9 +517,16 @@ async function recipients(l: Seen, organizer: Person, db: Db = l.owner.pool): Pr
   ];
 }
 
-/** Everyone who has a note now, organizer first: who reads whatever is added to it. */
-export async function audienceOf(l: Located, db: Db = l.owner.pool): Promise<Person[]> {
-  return (await recipients(l, await me(l.owner), db)).map((r) => r.person);
+/**
+ * Who reads whatever is added to a note now: everyone who has it, organizer first, and, while its organizer has it visible to
+ * their team, that team, by its ID, its name and how many people live-licensed on it aren't among them (`people`).
+ */
+export interface Audience { people: Person[]; team: { id: string; name: string; people: number } | null }
+export async function audienceOf(l: Located, db: Db = l.owner.pool): Promise<Audience> {
+  const people = (await recipients(l, await me(l.owner), db)).map((r) => r.person);
+  const row = await maybeOne(db, z.object({ team_id: z.string() }), 'SELECT team_id FROM team_notes WHERE owner_id = $1 AND note_item_id = $2', [l.owner.ownerId, l.note.itemId]);
+  const team = row && await teamReaders(l.owner, db, row.team_id, people.map((p) => emailIndex(l.owner, p.email)));
+  return { people, team: row && team ? { id: row.team_id, ...team } : null };
 }
 
 /** How someone came to have a note that isn't theirs, from the address they have it under. */

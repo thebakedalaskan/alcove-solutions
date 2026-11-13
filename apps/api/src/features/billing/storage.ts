@@ -9,7 +9,9 @@ import type { Config } from '../../config';
 import type { Deps } from '../../context';
 import { bigintText, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { limitsNow } from '../../limits';
+import { publish } from '../../live/hub';
 import { log } from '../../log';
+import { TREE_NOTICE } from '../workspaces/access';
 
 type Service = Pick<Deps, 'pool'> & { cfg: Pick<Config, 'LIMITS_CACHE_MS'> };
 const slog = log.child({ component: 'storage' });
@@ -64,8 +66,9 @@ const Held = z.object({ workspace_id: z.string(), payer_owner_id: z.string().nul
  * deletion may be waiting for this workspace. When payment moves from someone to someone else, its files don't count
  * against the new payer for `workspaces.payer_grace_seconds`: what it holds then is on top of their storage until that ends
  * (`takenOver`). A grace still running when it moves again goes on as it was, to the same end and over the same bytes, so
- * passing a workspace back and forth makes no more room than moving it once. Says what moved (null: nothing did), for the
- * caller to refuse or tell (plans.ts `tellPayers`) once it has committed.
+ * passing a workspace back and forth makes no more room than moving it once. A team's workspace whose payment moves to
+ * someone who isn't on its team, or to nobody, stops being the team's (`offTeam`). Says what moved (null: nothing did), for
+ * the caller to refuse or tell (plans.ts `tellPayers`) once it has committed.
  */
 export async function settlePayer(d: Service, c: Db, workspaceOwnerId: string): Promise<PayerMove | null> {
   const w = await maybeOne(c, Held, `
@@ -91,7 +94,26 @@ export async function settlePayer(d: Service, c: Db, workspaceOwnerId: string): 
       payer_grace_bytes = CASE WHEN NOT $3::boolean THEN NULL WHEN payer_grace_until > now() THEN payer_grace_bytes
         ELSE (SELECT coalesce(o.stored_bytes, 0) FROM owners o WHERE o.owner_id = $1) END
     WHERE owner_id = $1 RETURNING payer_grace_until`, [workspaceOwnerId, payer, moved, graceSeconds]);
+  await offTeam(c, workspaceOwnerId);
   return { workspaceOwnerId, workspaceId: w.workspace_id, from: w.payer_owner_id, to: payer, graceUntil: r?.payer_grace_until ?? null };
+}
+
+/**
+ * A team's workspace counts against the team's pool through whoever pays for it (docs: Plans and usage › Team), so it's the
+ * team's only while they're on that team. Paid for now by someone who isn't on it (its payer left it, and an admin who isn't
+ * on the team is in charge of it now), or by nobody, it stops being the team's, in the caller's transaction: it stays its own
+ * people's, nobody is in it through the team any more, and its readers look again. Someone leaving a team takes what they pay
+ * for off it at once (teams.ts `leftWith`); this is the rest. Says whether it did.
+ */
+async function offTeam(c: Db, workspaceOwnerId: string): Promise<boolean> {
+  const off = await maybeOne(c, z.object({ workspace_id: z.string() }), `UPDATE workspaces w SET team_id = NULL, team_access = NULL, version = version + 1
+    WHERE w.owner_id = $1 AND w.team_id IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM team_members m WHERE m.team_id = w.team_id AND m.account_owner_id = w.payer_owner_id)
+    RETURNING w.workspace_id`, [workspaceOwnerId]);
+  if (!off) return false;
+  await publish(c, off.workspace_id, TREE_NOTICE);
+  slog.info('workspace off its team: paid for by someone not on it', { workspaceId: off.workspace_id });
+  return true;
 }
 
 /**

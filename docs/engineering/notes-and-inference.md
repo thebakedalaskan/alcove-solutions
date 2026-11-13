@@ -1123,12 +1123,15 @@ once the notes are written. During a call the people who'll get the notes aren't
 joins the invite), so a preview couldn't say who reads it.
 
 - **Preview.** `POST /v1/notes/:id/personal/:entryId/preview` sends nothing. It says the words that would go, the moments
-  with them, where (**Shared notes** on that note) and everyone who has the notes now, and it gives a seal: a keyed
-  hash, under the author's keys, of the entry, its moments and those people.
+  with them, where (**Shared notes** on that note), everyone who has the notes now, and the team its organizer made it
+  visible to, if they did (`team`: its name and how many people live-licensed on it aren't among them, since every one of
+  them reads the note and what's added to it, [Plans and usage › Team](plans-and-usage.md#team)), and it gives a seal: a
+  keyed hash, under the author's keys, of the entry, its moments, those people and that team.
 - **Add.** `POST /v1/notes/:id/personal/:entryId/add` takes the words as they stand in the preview, cut down or changed by
   the person, and the seal. Everything is read again holding the note's lock, and the seal has to match: if anyone
-  got the notes since, or the moments changed, it's `409 conflict` and the app shows the preview again, so nothing
-  reaches more people than the person saw.
+  got the notes since, the note was made visible to a team or stopped being, or the moments changed, it's `409 conflict`
+  and the app shows the preview again, so nothing reaches more people than the person saw. Making a note visible to the
+  team, or not, takes the same lock (`setTeamVisible`), so it lands before an add or after it, never in between.
 - **What goes.** Only that entry, and only the words left in the box: never the rest of their notes. An answer's
   question doesn't go, nor does the fact that there was one: an addition says who added it, not where it came from. An
   answer goes only if it has moments and every one of them is in this note, so everyone reading it can check it against
@@ -1157,12 +1160,12 @@ Beside a written note, **Shared notes** has a box of its own, so something meant
 Your notes first (`write` in `additions.ts`). It's an addition like any other, with no private entry behind it.
 
 - **Who reads it, first.** `GET /v1/notes/:id/additions/audience` sends nothing. It says everyone who has the notes now,
-  organizer first, and gives a seal: a keyed hash, under the writer's keys (`promotion:<noteId>`), of those people. Its
-  shape differs from a preview's (no entry, no moments), so neither seal stands in for the other. The box shows them
-  before anything is typed.
+  organizer first, and the team they're visible to, if they are (`team`, as a preview says it), and gives a seal: a keyed
+  hash, under the writer's keys (`promotion:<noteId>`), of those people and that team. Its shape differs from a preview's
+  (no entry, no moments), so neither seal stands in for the other. The box shows them before anything is typed.
 - **Posting.** `POST /v1/notes/:id/additions` with the words (1 to 8,000 characters) and the seal. Holding the note's
-  lock, who has the notes is read again and the seal has to match: if anyone got the notes since, it's `409 conflict`,
-  and the box says who got them since and keeps the words. It's only once the notes are written (`409 conflict` before),
+  lock, who reads it is read again and the seal has to match: if anyone got the notes since, or a team could read them
+  since or no longer can, it's `409 conflict`, and the box says who got them since and keeps the words. It's only once the notes are written (`409 conflict` before),
   for the same reason as adding from your own notes, under the same `MAX_NOTE_ADDITIONS`. During a call the shared place
   to write is the call's workspace pages.
 - **Stored** exactly as an addition from someone's own notes is (`note_additions`, sealed under the organizer's keys, with
@@ -1269,8 +1272,11 @@ the notes worker. Accepted tasks, pending suggestions and review decisions are h
   summary and all four lists, each item as asked down to the lines it cites, it's a failed refresh, never blank notes.
 - **What it costs.** The call's organizer pays for it, whoever is watching: each refresh is a request to NEAR AI, charged to
   their AI allowance with the transcript, captions and the notes written at the end ([The notes worker](#the-notes-worker)).
-  When that's spent, refreshes stop with everything else the organizer pays for ([Plans and usage](plans-and-usage.md)). Catching up and
-  asking are paid for by whoever asks.
+  When that's spent, refreshes stop with everything else the organizer pays for ([Plans and usage](plans-and-usage.md)). A view
+  of its own refreshed for a guest's look is for that guest alone, so it comes out of the share every guest in the call spends
+  from (`ai.guests_call_percent`, [Plans and usage › Guests' share](plans-and-usage.md#notes-the-ai-allowance)): past it nothing
+  is sent, and those notes say "These notes aren’t being updated: guests in this call have used as much of the organizer’s plan
+  as it allows them." until there's room, while everyone's go on. Catching up and asking are paid for by whoever asks.
 
 ### Follow-ups keep their IDs
 
@@ -1408,7 +1414,8 @@ asking. Lines already translated into that language come from their sealed `tran
 the rest go to the notes model in one request, sealed to its verified key like every request, and are kept
 the same way, until the recording stops. Line IDs
 that aren't in this call's live transcript, or that the person asking may not read, are left out. 90 requests a minute per account; the call's organizer pays for it,
-and no operation receipt is kept. Refused while notes are paused, when nothing goes to the AI.
+a guest's out of the share every guest in the call spends from (lines already translated cost nothing), and no operation receipt
+is kept. Refused while notes are paused, when nothing goes to the AI.
 
 ## Series
 

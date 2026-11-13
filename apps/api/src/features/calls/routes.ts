@@ -70,7 +70,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   app.post('/v1/calls/:code/join', async (c) => {
     callLimiter(clientAddress(c), 'call join');
     const b = await body(c, CallJoinBodySchema);
-    return c.json(await callsJoining.join(d, c.req.param('code'), { owner: await optionalOwner(c), name: b.name, mic: b.mic, cam: b.cam, identity: b.identity, keyPackage: b.keyPackage, previous: b.previous }));
+    return c.json(await callsJoining.join(d, c.req.param('code'), { owner: await optionalOwner(c), name: b.name, mic: b.mic, cam: b.cam, identity: b.identity, keyPackage: b.keyPackage, previous: b.previous, address: clientAddress(c) }));
   });
 
   /*

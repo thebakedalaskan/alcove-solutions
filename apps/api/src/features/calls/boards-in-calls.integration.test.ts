@@ -2866,6 +2866,50 @@ describe('a board in a workspace someone else pays for', () => {
     await host.leave();
   });
 
+  it('gives what the call makes there by address only to its own people: not to someone invited from outside it, nor anyone let in from the link, in the call or after, rooms’ boards included', async () => {
+    const lena = await account();
+    const art = await account();
+    const priya = await account();
+    const olu = await account();
+    const sam = await account();
+    // Lena made it and pays for it; Art and Priya can edit there. Olu, invited, and Sam, let in from the link, aren't in it.
+    const id = await workspace(lena, 'Lena’s', [[art, 'edit'], [priya, 'edit']]);
+    const { host, code: c } = await callBy(art, { guests: [priya.email, olu.email], title: 'Weekly', home: id });
+    const p = await invited(host, c, priya);
+    const o = await invited(host, c, olu);
+    const s = await sam.api.calls.join(c, { mic: false, cam: false });
+    await letIn(host, s);
+    // A new board, made in the home: Priya has it by address, as one of its own people; Olu has nothing, and nobody's seated.
+    await host.openBoard({ template: 'blank' });
+    const board = (await opened(host))?.documentId ?? '';
+    expect(await opened(o)).toMatchObject({ documentId: null, role: null });
+    expect([await entries(board), await seats(board)]).toEqual([1, 0]);
+    // Rooms, each with a board of its own, made in the home too.
+    expect((await action(art, host, { type: 'rooms-open', rooms: [{ name: 'One', emails: [priya.email] }, { name: 'Two', emails: [olu.email] }], minutes: 10, board: { mode: 'each', template: 'blank' } })).status).toBe(200);
+    await settle(host, (x) => x.breakouts.open !== null);
+    await until(async () => (await keptOf({ art, host })).board.rooms.length === 2, 'both rooms’ boards');
+    const rooms = (await keptOf({ art, host })).board.rooms.map((r) => r.documentId);
+    await until(() => p.crypto.getSnapshot().place !== 'main', 'Priya to be in her room');
+    // Rooms close: each room's board goes by address to the organizer and Priya, its own people on the invite, and no one else.
+    await closeAll({ art, host });
+    for (const room of rooms) expect(await entries(room)).toBe(2);
+    // The call ends: nobody added during it gets anything either.
+    await host.leave();
+    expect([await entries(board), await seats(board)]).toEqual([1, 0]);
+    expect(await opens(priya, id, board)).toBe('allowed');
+    for (const outside of [olu, sam]) {
+      expect(await opens(outside, id, board)).toBe('not-found');
+      for (const room of rooms) expect(await opens(outside, id, room)).toBe('not-found');
+    }
+    // So nothing Olu tries adds to Lena's storage or spends her plan.
+    const used = (await lena.api.plans.plan()).storage.usedBytes;
+    const asked = h.near.prompts.length;
+    expect(await code(olu.api.workspaces.media.upload(id, board, fileOf(4096)))).toBe('not-found');
+    expect(await code(olu.api.workspaces.sortStickies(id, board, { stickies }))).toBe('not-found');
+    expect((await lena.api.plans.plan()).storage.usedBytes).toBe(used);
+    expect(h.near.prompts.length).toBe(asked);
+  });
+
   it('lets nobody in on a saved board there: it says who can’t open it, with no way to let them in', async () => {
     const lena = await account();
     const art = await account();

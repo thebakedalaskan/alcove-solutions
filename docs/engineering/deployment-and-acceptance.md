@@ -227,9 +227,10 @@ everywhere within a minute.
 | `ai.fallback_input_micro_usd` | $1 | $0 | $100 | A million input tokens of a model NEAR AI lists no price for. |
 | `ai.fallback_output_micro_usd` | $4 | $0 | $100 | A million output tokens of a model NEAR AI lists no price for. |
 | `ai.image_tokens` | 1,500 | 0 | 100,000 | The input tokens one image is taken to be at most, before NEAR AI says. |
-| `ai.guests_call_percent` | 10 | 0 | 100 | The most guests in one call spend between them of its organizer's allowance for the period, in percent: their questions, catch-ups, and AI on the call's documents and boards. |
+| `ai.guests_call_percent` | 10 | 0 | 100 | The most guests in one call spend between them of its organizer's allowance for the period, in percent: their questions, catch-ups, AI on the call's documents and boards, captions in another language and live notes of their own. |
 | `call.max_seconds` | 10 h | 10 m | 48 h | The longest a call runs: it ends then, everyone told 5 minutes before. |
-| `call.max_people` | 100 | 2 | 1,000 | The most people in a call at once, those waiting to be let in included. |
+| `call.max_people` | 100 | 2 | 1,000 | The most people in a call at once. Asking to be let in takes no place: someone who asked is let in only while there's room. |
+| `call.asks_per_address` | 10 | 1 | 1,000 | The most asks to join one call waiting at once from one network (an address, or an IPv6 /64), so nobody can fill its host's list of them. |
 | `team.max_licenses` | 500 | 1 | 100,000 | The most team licenses one purchase buys. |
 | `team.low_licenses` | 5 | 0 | 100,000 | Unconsumed licenses below which a team's admin is told they're running low. |
 | `team.invite_seconds` | 1 d | 1 m | 30 d | How long a link to join a team works, once. |

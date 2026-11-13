@@ -14,12 +14,12 @@
 import type { MyTeam, Person, Purchase, TeamInvite, TeamInvitePeek, TeamLicense, TeamMember } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../../context';
-import { b64u, blindIndex, id128, openJson, random, sealJson, serviceKey, sha, stateKey, toJson, unb64u, utf8 } from '../../crypto';
+import { b64u, id128, openJson, random, sealJson, serviceKey, sha, stateKey, toJson, unb64u, utf8 } from '../../crypto';
 import { bigintText, bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { ConflictError, ForbiddenError, NotFoundError, conflict } from '../../errors';
 import { limitsNow, type Limits } from '../../limits';
 import { log } from '../../log';
-import { createOwner, lockOwner, masterKey, openRoot } from '../../owners';
+import { createOwner, lockOwner, openRoot } from '../../owners';
 import { publish } from '../../live/hub';
 import { personOf } from '../account/portraits';
 import { TREE_NOTICE } from '../workspaces/access';
@@ -238,13 +238,35 @@ export async function visit(d: Service, ownerId: string): Promise<void> {
 
 /* ---------- making, joining and leaving ---------- */
 
-/** Someone on a team, sealed under its key: their name and address. */
-async function addMember(d: Service, c: Db, team: TeamKey, teamId: string, accountId: string, who: { name: string; email: string }, role: 'admin' | 'member'): Promise<string> {
+/** Someone on a team as its key seals them: their name and address, as their account has them. */
+const sealedWho = (team: TeamKey, teamId: string, memberId: string, who: { name: string; email: string }) =>
+  sealJson(team.key, memberHeader(team, teamId, memberId), toJson({ name: who.name, email: who.email }));
+
+/** Someone on a team, sealed under its key: their name and address, and nothing in the clear but IDs and their role. */
+async function addMember(c: Db, team: TeamKey, teamId: string, accountId: string, who: { name: string; email: string }, role: 'admin' | 'member'): Promise<string> {
   const memberId = id128();
-  await exec(c, 'INSERT INTO team_members (member_id, team_id, account_owner_id, email_index, role, person_ciphertext) VALUES ($1,$2,$3,$4,$5,$6)', [
-    memberId, teamId, accountId, blindIndex(masterKey(d), 'email', who.email), role, sealJson(team.key, memberHeader(team, teamId, memberId), toJson({ name: who.name, email: who.email }))
+  await exec(c, 'INSERT INTO team_members (member_id, team_id, account_owner_id, role, person_ciphertext) VALUES ($1,$2,$3,$4,$5)', [
+    memberId, teamId, accountId, role, sealedWho(team, teamId, memberId, who)
   ]);
   return memberId;
+}
+
+/**
+ * Someone signed in with a name or address their provider changed: what their team shows of them follows it, in the sign-in's
+ * transaction, so nobody on the team, nor anyone shown its admin on an invite, sees an address they've left. Nothing for
+ * someone on no team, or whose team has them as they are.
+ */
+export async function memberChanged(d: Service, c: Db, ownerId: string, who: { name: string; email: string }): Promise<void> {
+  const m = await membership(c, ownerId);
+  const t = m && await teamRow(c, m.team_id);
+  if (!m || !t) return;
+  const team = await teamKeyOf(d, t);
+  try {
+    const was = whoIn(team, m);
+    if (was.name === who.name && was.email === who.email) return;
+    await exec(c, 'UPDATE team_members SET person_ciphertext = $2 WHERE member_id = $1', [m.member_id, sealedWho(team, m.team_id, m.member_id, who)]);
+  } finally { close(team); }
+  tlog.info('team member’s name or address changed', { teamId: m.team_id, memberId: m.member_id });
 }
 
 /** Makes a team with its maker as the admin. Refused while they're on one. */
@@ -261,7 +283,7 @@ export async function create(o: Owner, me: Pick<Person, 'name' | 'email'>, name:
       await exec(c, 'INSERT INTO teams (team_id, owner_id, admin_owner_id, name_ciphertext, billing_ciphertext) VALUES ($1,$2,$3,$4,$5)', [
         teamId, ownerId, o.ownerId, sealJson(team.key, nameHeader(team, teamId), toJson({ name })), sealBilling(o, { owner_id: ownerId, team_id: teamId }, fresh())
       ]);
-      await addMember(o, c, team, teamId, o.ownerId, me, 'admin');
+      await addMember(c, team, teamId, o.ownerId, me, 'admin');
     } finally { close(team); }
   });
   tlog.info('team created', { ownerId: o.ownerId, teamId });
@@ -308,7 +330,7 @@ export async function join(o: Owner, me: Pick<Person, 'name' | 'email'>, secret:
     const t = await teamRow(c, i.team_id);
     if (!t) throw gone({ ownerId: o.ownerId, why: 'team-gone' });
     const team = await teamKeyOf(o, t);
-    try { await addMember(o, c, team, t.team_id, o.ownerId, me, 'member'); } finally { close(team); }
+    try { await addMember(c, team, t.team_id, o.ownerId, me, 'member'); } finally { close(team); }
     return t.team_id;
   });
   tlog.info('team joined', { ownerId: o.ownerId, teamId });
@@ -319,7 +341,7 @@ export async function join(o: Owner, me: Pick<Person, 'name' | 'email'>, secret:
 /**
  * Takes someone off their team, in the caller's transaction with the team's row locked. A live license isn't refunded:
  * they're on Free from now, with `plan.grace_seconds` held to a team's storage for a person. Notes they made visible to
- * the team stay so. The pool is reckoned without them.
+ * the team stay so; the team's workspaces they pay for stop being the team's (`leftWith`). The pool is reckoned without them.
  */
 async function drop(d: Service, c: Db, t: TeamRow, m: MemberRow, why: 'removed' | 'left'): Promise<void> {
   const now = Date.now();
@@ -328,8 +350,8 @@ async function drop(d: Service, c: Db, t: TeamRow, m: MemberRow, why: 'removed' 
   const licensed = isLive(m, now);
   if (licensed) await changePlan(d, c, m.account_owner_id, (a) => leftTeam(a, l, now));
   await settle(d, c, t, openBilling(d, t), l, now);
-  await teamWorkspacesMoved(c, t.team_id);
-  tlog.info(why === 'removed' ? 'team member removed' : 'team member left', { teamId: t.team_id, memberId: m.member_id, licensed });
+  const workspaces = await leftWith(c, t.team_id, m.account_owner_id);
+  tlog.info(why === 'removed' ? 'team member removed' : 'team member left', { teamId: t.team_id, memberId: m.member_id, licensed, workspaces });
 }
 
 /** Admin only: takes someone off the team. The admin can't take themselves off. */
@@ -354,6 +376,20 @@ export async function leave(o: Owner): Promise<void> {
     if (!t || !m || m.team_id !== t.team_id) throw new NotFoundError('You’re not on a team.', { context: { ownerId: o.ownerId } });
     await drop(o, c, t, m, 'left');
   });
+}
+
+/**
+ * Someone's place on a team ended (they left, were taken off, or their account went), in the caller's transaction. A team's
+ * workspace counts against the team's pool through whoever pays for it (docs: Plans and usage › Team), so the team's
+ * workspaces they pay for stop being the team's: each stays theirs, with its own people, counted against them alone, and
+ * nobody is in one through the team any more, nor can open it to the team again. Then the team's workspaces for the whole team
+ * move on (`teamWorkspacesMoved`). Says how many stopped being the team's.
+ */
+async function leftWith(c: Db, teamId: string, ownerId: string): Promise<number> {
+  const theirs = await rows(c, z.object({ workspace_id: z.string() }), 'UPDATE workspaces SET team_id = NULL, team_access = NULL, version = version + 1 WHERE team_id = $1 AND payer_owner_id = $2 RETURNING workspace_id', [teamId, ownerId]);
+  for (const w of theirs) await publish(c, w.workspace_id, TREE_NOTICE);
+  await teamWorkspacesMoved(c, teamId);
+  return theirs.length;
 }
 
 /**
@@ -517,6 +553,21 @@ export async function licensedOn(db: Db, ownerId: string, now = Date.now()): Pro
 }
 
 /**
+ * Who on a team reads a note made visible to it, for someone adding to the note to see before they do (docs: Notes and
+ * inference › Your own notes): its name, and how many people live-licensed on it at `now` don't sign in with any of `listed`
+ * (keyed hashes of addresses, as `identities` keeps them: the people the note names already). Null for a team that's gone.
+ */
+export async function teamReaders(d: Service, db: Db, teamId: string, listed: Uint8Array[], now = Date.now()): Promise<{ name: string; people: number } | null> {
+  const t = await teamRow(db, teamId);
+  if (!t) return null;
+  const n = await maybeOne(db, z.object({ n: z.number() }), `SELECT count(*)::int AS n FROM team_members m
+    WHERE m.team_id = $1 AND m.licensed_from <= $2 AND m.licensed_until > $2
+      AND NOT EXISTS (SELECT 1 FROM identities i WHERE i.owner_id = m.account_owner_id AND i.email_index = ANY($3::bytea[]))`, [teamId, new Date(now), listed]);
+  const team = await teamKeyOf(d, t);
+  try { return { name: nameIn(team, t), people: n?.n ?? 0 }; } finally { close(team); }
+}
+
+/**
  * The same, for whoever signs in with these addresses (keyed hashes, as workspace access knows people): each address that
  * signs in to an account live-licensed on a team at `now`, which team, and when that license ends.
  */
@@ -542,10 +593,10 @@ export async function refuseDeletingAdmin(db: Db, ownerId: string): Promise<void
 
 /**
  * An account being deleted, in its deletion's transaction: the admin's empty team goes with it (refused while anyone else
- * is on it); a member's place goes, and their team's pool is reckoned without them by upkeep. The team's row is locked
- * before the member's, as a visit and every other change to a team lock them, so a visit at the same moment waits for this
- * or this for it, and the two never deadlock. Nobody joins a team meanwhile: the deletion holds the account's own row,
- * which joining needs. Says what went.
+ * is on it); a member's place goes, the team's workspaces they paid for stop being the team's (`leftWith`), and their team's
+ * pool is reckoned without them by upkeep. The team's row is locked before the member's, as a visit and every other change
+ * to a team lock them, so a visit at the same moment waits for this or this for it, and the two never deadlock. Nobody joins a
+ * team meanwhile: the deletion holds the account's own row, which joining needs. Says what went.
  */
 export async function forgetMembership(c: Db, ownerId: string): Promise<{ left: boolean; teamDeleted: boolean }> {
   const seen = await membership(c, ownerId);
@@ -561,7 +612,7 @@ export async function forgetMembership(c: Db, ownerId: string): Promise<{ left: 
   }
   await exec(c, 'DELETE FROM team_members WHERE member_id = $1', [m.member_id]);
   await exec(c, 'UPDATE teams SET due_at = $2 WHERE team_id = $1', [m.team_id, new Date()]);
-  await teamWorkspacesMoved(c, m.team_id);
+  await leftWith(c, m.team_id, ownerId);
   return { left: true, teamDeleted: false };
 }
 

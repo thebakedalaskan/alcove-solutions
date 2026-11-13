@@ -21,7 +21,7 @@ import { LiveStream, type Line, type Step } from '../../live/stream';
 import { log } from '../../log';
 import { createOwner, findOwner, lockOwner, masterKey, ownerFrom } from '../../owners';
 import {
-  TREE_NOTICE, canOpen, change, emailIndex, entriesOn, grant, grantsFor, limitKey, openSharedPerson, openState, personIn, personKey, placeableIn, requireEditable, requireItem, requireRole, requireSharing, roleOf, saveState, sealSharedPerson, sealState, seatEnded, seatIndex,
+  TREE_NOTICE, canOpen, change, emailIndex, entriesOn, givenByCall, grant, grantsFor, limitKey, openSharedPerson, openState, personIn, personKey, placeableIn, requireEditable, requireItem, requireRole, requireSharing, roleOf, saveState, sealSharedPerson, sealState, seatEnded, seatIndex,
   serverWorkspace, standingIn, trashOf, workspaceFor, workspaceKey, type Credentials, type Grant, type MadeFor, type Maker, type Reader, type Standing, type StoredCall, type StoredItem, type Who, type Workspace, type WorkspaceState
 } from './access';
 import { profile } from '../account/account';
@@ -917,9 +917,10 @@ async function liveCalls(db: Db, calls: TreeCall[]): Promise<Set<string>> {
 }
 /**
  * A breakout room's board whose call is over without having kept it, as a release before this one ended its calls: kept now
- * for everyone the call invited, by address at `edit`, as its end would have, unless they have an entry on it already, and from
- * then on a restricted board like any other. One whose call, or its organizer, is gone is one already. In the caller's
- * transaction, which holds the workspace's row and saves its state.
+ * for everyone the call invited, by address at `edit`, as its end would have, unless they have an entry on it already, and in
+ * a workspace the call's organizer doesn't pay for only those who are its own people (`givenByCall`); from then on a restricted
+ * board like any other. One whose call, or its organizer, is gone is one already. In the caller's transaction, which holds the
+ * workspace's row and saves its state.
  */
 async function keepRoomsOfEndedCalls(w: HeldWorkspace, db: Db): Promise<void> {
   const marked = Object.entries(w.state.items).flatMap(([id, item]) => (item.room ? [{ id, item, room: item.room }] : []));
@@ -932,7 +933,7 @@ async function keepRoomsOfEndedCalls(w: HeldWorkspace, db: Db): Promise<void> {
   let kept = 0;
   for (const m of over) {
     const call = said.get(callKey(m.room));
-    const invited = call && !call.live ? call.invited : [];
+    const invited = call && !call.live ? await givenByCall(w.owner, db, w.owner.ownerId, m.room.ownerId, call.invited) : [];
     try {
       const has = await entriesOn(w, db, m.id, invited.map((e) => emailIndex(w.owner, e)));
       const giving = invited.filter((e) => has(emailIndex(w.owner, e)) === undefined);
