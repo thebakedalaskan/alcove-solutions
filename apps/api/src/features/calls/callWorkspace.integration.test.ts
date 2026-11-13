@@ -582,7 +582,7 @@ describe('everyone in the call', () => {
     // They're seen where they are, as anyone working there is.
     const here = jamie.api.workspaces.live(id, pass);
     await until(() => here.getSnapshot().status === 'live', 'Jamie’s stream');
-    here.present({ document: plan, block: null, typing: false, page: null });
+    here.present({ document: plan, block: null, typing: false, page: null, following: null });
     const watching = art.api.workspaces.live(id);
     await until(() => watching.getSnapshot().here.some((x) => x.document === plan && x.person.name === 'Jamie Guest'), 'Art to see Jamie there');
 
@@ -870,7 +870,7 @@ describe('everyone in the call', () => {
       { name: 'Jamie Guest', s: watch(jamie, jamie.call) }, { name: 'Sam Guest', s: watch(sam, sam.call) }
     ];
     for (const { s } of seen) await until(() => s.getSnapshot().status === 'live', 'a stream');
-    for (const { s } of seen) s.present({ document: plan, block: null, typing: false, page: null });
+    for (const { s } of seen) s.present({ document: plan, block: null, typing: false, page: null, following: null });
     // Each of them sees each of the others there, a guest the other guest too.
     for (const { name, s } of seen) {
       await until(() => seen.every((x) => s.getSnapshot().here.some((e) => e.person.name === x.name && e.document === plan)), `${name} to see everyone there`);
@@ -955,7 +955,7 @@ describe('everyone in the call', () => {
       const page = await open(who, product, plan, { pass: call.ticket.pass });
       const tree = who.api.workspaces.live(product, { pass: call.ticket.pass });
       await until(() => tree.getSnapshot().status === 'live', `${name}’s stream`);
-      tree.present({ document: plan, block: null, typing: false, page: null });
+      tree.present({ document: plan, block: null, typing: false, page: null, following: null });
       await until(() => there(name), `Art to see ${name} there`);
       return { page, tree };
     };

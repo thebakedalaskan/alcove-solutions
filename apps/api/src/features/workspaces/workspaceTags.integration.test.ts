@@ -525,17 +525,17 @@ describe('where people are', () => {
     const stop = a.subscribe(() => frames.push(JSON.stringify(a.getSnapshot())));
 
     // Going where they go: the same document, the same line.
-    p.present({ document: plan, block: 'p11', typing: true, page: null });
+    p.present({ document: plan, block: 'p11', typing: true, page: null, following: null });
     await until(() => of(a, priya)?.block === 'p11', 'Art to see Priya’s line');
     expect(of(a, priya)).toMatchObject({ document: plan, typing: true, elsewhere: false });
 
     // Somewhere Art can't open: no document, no line, no typing, and only that it's elsewhere.
-    p.present({ document: secret, block: 'canaryblock', typing: true, page: null });
+    p.present({ document: secret, block: 'canaryblock', typing: true, page: null, following: null });
     await until(() => of(a, priya)?.elsewhere === true, 'Art to see Priya elsewhere');
     expect(of(a, priya)).toMatchObject({ document: null, block: null, typing: false, elsewhere: true });
 
     // And back: as if nothing happened.
-    p.present({ document: plan, block: 'p12', typing: false, page: null });
+    p.present({ document: plan, block: 'p12', typing: false, page: null, following: null });
     await until(() => of(a, priya)?.document === plan, 'Priya to come back');
     expect(of(a, priya)).toMatchObject({ block: 'p12', elsewhere: false });
 
@@ -560,7 +560,7 @@ describe('where people are', () => {
     const doc = await make(priya, id, 'Launch plan');
     const p = priya.api.workspaces.live(id);
     const a = art.api.workspaces.live(id);
-    p.present({ document: doc, block: 'b1', typing: false, page: null });
+    p.present({ document: doc, block: 'b1', typing: false, page: null, following: null });
     await until(() => of(a, priya)?.document === doc, 'Art to see Priya');
 
     await priya.api.workspaces.share.restrict(id, doc, true);
@@ -585,12 +585,12 @@ describe('where people are', () => {
     await opened(one, 'one window');
     await opened(two, 'another window');
     const theirs = () => here(a).filter((x) => x.person.name === theo.name);
-    one.present({ document: left, block: 'b1', typing: false, page: null });
-    two.present({ document: using, block: 'b2', typing: false, page: null });
+    one.present({ document: left, block: 'b1', typing: false, page: null, following: null });
+    two.present({ document: using, block: 'b2', typing: false, page: null, following: null });
     await until(() => theirs().length === 2 && theirs().every((x) => x.document !== null), 'both windows');
-    one.present({ document: left, block: 'b3', typing: false, page: null });
+    one.present({ document: left, block: 'b3', typing: false, page: null, following: null });
     await until(() => theirs().at(-1)?.block === 'b3', 'the window that moved to come last');
-    two.present({ document: using, block: 'b4', typing: false, page: null });
+    two.present({ document: using, block: 'b4', typing: false, page: null, following: null });
     await until(() => theirs().at(-1)?.block === 'b4', 'the other to come last');
     // Saying the same thing again isn't moving: every window does that every few seconds.
     await rest(250);
@@ -608,8 +608,8 @@ describe('where people are', () => {
     const a = ann.api.workspaces.live(id);
     const t = theo.api.workspaces.live(id);
     const o = out.api.workspaces.live(id);
-    t.present({ document: doc, block: 'b1', typing: true, page: null });
-    o.present({ document: doc, block: 'b2', typing: false, page: null });
+    t.present({ document: doc, block: 'b1', typing: true, page: null, following: null });
+    o.present({ document: doc, block: 'b2', typing: false, page: null, following: null });
     await until(() => of(a, theo)?.document === doc && of(a, out)?.document === doc, 'both to be in the document');
 
     // A shared document taken back: they've nothing left here, so they're not here.

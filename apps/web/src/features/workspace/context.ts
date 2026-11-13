@@ -21,6 +21,9 @@ export type WorkspaceArea = 'pins' | 'tree';
  */
 export type WorkspacePlace = { kind: 'home' } | { kind: 'document'; id: string; block?: string | undefined; area?: WorkspaceArea | undefined } | { kind: 'trash' } | { kind: 'live'; page: LivePageId; line?: string | undefined };
 
+/** Where you are, as a page and the editor say it: whom you follow goes with it (Workspace.tsx). */
+export type SaidPlace = Omit<WorkspaceWhere, 'following'>;
+
 /** Someone in the call: `id` is their connection, the same as `callIdentity` among who's here, and `seat` is what's shared with. */
 export interface CallPerson { id: string; seat: string; person: Person; isMe: boolean }
 /** What the tiles show of people working together, by connection. `followable`: they're in the workspace, so Follow is on offer. */
@@ -30,6 +33,8 @@ export interface CallTogether {
   where: Readonly<Record<string, string>>;
   /** Who's in a document you can open, so Go there is on offer. */
   reachable: readonly string[];
+  /** Who's following you, as each of them says: whoever presents counts them. */
+  followers: readonly string[];
 }
 /**
  * What the call can ask of the workspace: follow someone or stop, go to where they are, and tag them in the document
@@ -75,6 +80,11 @@ export interface WorkspaceCall {
   invited: readonly Person[];
   /** Tells the tiles what to show. */
   onTogether: (together: CallTogether) => void;
+  /**
+   * You went your own way in it: you went somewhere, or pressed, scrolled or typed in a page. While you follow whoever presents
+   * it, that's you working on your own, whether or not they'd been anywhere to follow yet.
+   */
+  onOwn: () => void;
   /** Someone in the call was just tagged: their tile lights up. */
   onTagged: (connection: string) => void;
   /** Where the call reaches the workspace, for Follow on a tile. */
@@ -163,7 +173,7 @@ export interface Ws {
   /** Everyone else here, each once. */
   others: readonly Someone[];
   /** Says where this browser is. */
-  present: (where: WorkspaceWhere) => void;
+  present: (where: SaidPlace) => void;
   /** Who you're following, if anyone. */
   following: Following | null;
   follow: (person: string) => void;

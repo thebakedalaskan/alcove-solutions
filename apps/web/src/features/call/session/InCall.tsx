@@ -873,7 +873,7 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
   // presented workspace's tile says where its presenter is (presenting.ts).
   const wsShown = stage.on.includes('ws');
   const together: StageTogether = {
-    ...work.together, where: wsShown ? work.together.where : NOWHERE, lit: work.lit, onFollow: work.act.follow, onStop: work.act.stopFollowing, onGo: work.act.goTo, onTag: work.act.tagIn, canTag: work.act.canTag
+    ...work.together, where: wsShown ? work.together.where : NOWHERE, lit: work.lit, onFollow: work.act.follow, onStop: () => work.act.stopFollowing(), onGo: work.act.goTo, onTag: work.act.tagIn, canTag: work.act.canTag
   };
   /* Focus fills your window with what's on your stage: not on a phone, where it fills the screen already, nor with nothing open. */
   const focusOffered = !phone && !stageRooms && stage.on.length > 0;
@@ -1760,8 +1760,9 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
   }
 
   /* ---------- what's on your stage, each in its frame (frame.tsx) ---------- */
-  /** Everyone else in your part of the call follows what you present. */
-  const followers = Math.max(0, onStage.length - 1);
+  /** Who's following what you present, as each of them says: on the board, or in the workspace. */
+  const boardFollowers = board.followers.length;
+  const wsFollowers = work.together.followers.length;
   // Focus is on offer only where it can fill your window: not on a phone, nor while the rooms hold the stage beside it.
   const focusFor = focusOffered ? { on: focusOn, onToggle: toggleFocus } : null;
   /** Only one thing is on your stage: closing it gives the stage back to the people, and Close says so. */
@@ -1827,7 +1828,7 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
           const pop = !s.mine && popOut ? (isPopped ? () => looks.looks.popIn(true) : () => popOut(s)) : null;
           const bar: FrameBar = {
             icon: 'screen', name: s.mine ? 'Your screen' : s.name, by: { person: s.presenter, first: s.mine ? 'You' : callName(s.presenter), mine: s.mine },
-            followers, follow: null, present: null, focus: focusFor, phone, onClose: () => closeThing(id), clears, ask: null, access: null,
+            followers: 0, follow: null, present: null, focus: focusFor, phone, onClose: () => closeThing(id), clears, ask: null, access: null,
             rows: (close) => (s.mine
               ? <MyShareMenuRows read={myShareRead} othersPoint={state.pointing ? othersPoint : null} marksOn={marksOnMine} onOthersPoint={flipOthersPoint}
                 onClear={() => { if (myShare) marks?.clear(myShare); }} onChange={() => pickShare()} onDone={close} />
@@ -1850,7 +1851,7 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
           /* Who can edit it, on the call's board everyone here can: what the Share sheet says, for whoever has it to open. */
           const access = id === 'board' && boardEditors ? { label: boardEditors, opens: boardShare !== null } : null;
           const bar: FrameBar = {
-            icon: 'presentation', name: boardOpen?.name ?? 'Board', by: byOf(p), followers, phone, focus: focusFor, clears, access,
+            icon: 'presentation', name: boardOpen?.name ?? 'Board', by: byOf(p), followers: boardFollowers, phone, focus: focusFor, clears, access,
             follow: p && !p.mine ? { on: stage.following('board'), where: pager?.part || 'the board', onToggle: () => stage.setFollow('board', !stage.following('board')) } : null,
             present: canPresent ? { onPress: presentBoardNow, busy: presentBusy, ask: presentAsk ?? undefined } : null,
             onClose: () => closeThing(id), ask: p?.mine ? askFor(id) : id === 'board' && !p && boardClosable ? boardAsk : null,
@@ -1887,7 +1888,7 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
         const p = stage.presentedOf('ws');
         const shown = wsAt !== null;
         const bar: FrameBar = {
-          icon: 'folderOpen', name: wsName, by: byOf(p), followers, phone, focus: focusFor, clears,
+          icon: 'folderOpen', name: wsName, by: byOf(p), followers: wsFollowers, phone, focus: focusFor, clears,
           access: space.everyone && space.id !== null ? { label: space.role !== null ? 'Everyone in the call can edit' : 'You can edit while you’re in the call', opens: true } : null,
           follow: p && !p.mine ? { on: stage.following('ws'), where: wsPresenting.where ?? 'the workspace', onToggle: () => stage.setFollow('ws', !stage.following('ws')) } : null,
           present: p === null && canPresentWs && !someoneElse ? { onPress: () => { void wsPresenting.start().then(() => land({ to: 'frame', id: 'ws' }, holding()), () => undefined); }, busy: false } : null,
@@ -1903,7 +1904,7 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
             <Frame bar={bar}>
               <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} showing={wsInSight} finding={work.finding} people={spacePeople} invited={spaceInvited} reach={work.reach}
                 listOff={!listShown} listPeek={work.peek} listWanted={work.listWanted} live={liveCall} act={work.act} presenter={p && !p.mine ? wsPresenting.connection : null} playing={playing}
-                foot={wsInSight ? aloneCard : null} onToggleList={toggleList} onShowList={onShowList} />
+                foot={wsInSight ? aloneCard : null} onToggleList={toggleList} onShowList={onShowList} onOwn={wsPresenting.ownWay} />
             </Frame>
           </FrameBox>
         );

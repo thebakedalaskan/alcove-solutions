@@ -244,15 +244,25 @@ export const WorkspaceHereSchema = z.object({
   person: PersonSchema, connection: z.string(), callIdentity: z.string().nullable(), document: IDSchema.nullable(), block: z.string().nullable(), typing: z.boolean(), elsewhere: z.boolean(),
   /** The call's own page they're on, Notes, Follow-ups or the Transcript, for someone in that call with them: anyone else is told only `elsewhere`. */
   page: CallPageSchema.nullable(),
+  /**
+   * They're following you, said only to whoever they follow and only in a call you're both in: so whoever presents knows who's
+   * still with them. Nobody else is told who follows whom.
+   */
+  followsYou: z.boolean(),
   /** It's you, here or in another tab or on another device. */
   isMe: z.boolean()
 });
 
 export type WorkspaceHere = z.infer<typeof WorkspaceHereSchema>;
 
+/** What a workspace knows someone by, the same on every connection: `WorkspaceHere.person.id`. */
+export const WorkspacePersonKeySchema = z.string().regex(/^[A-Za-z0-9_-]{22}$/);
 
-/** Where a browser says it is: the document open in it and the block its caret is in, the call's own page it's on, or nothing open. */
-export const WorkspaceWhereSchema = z.object({ document: ItemIdSchema.nullable(), block: BlockIdSchema.nullable(), typing: z.boolean(), page: CallPageSchema.nullable() });
+/**
+ * Where a browser says it is: the document open in it and the block its caret is in, the call's own page it's on, or nothing
+ * open; and who it's following there, by what the workspace knows them by, while it goes where they go.
+ */
+export const WorkspaceWhereSchema = z.object({ document: ItemIdSchema.nullable(), block: BlockIdSchema.nullable(), typing: z.boolean(), page: CallPageSchema.nullable(), following: WorkspacePersonKeySchema.nullable() });
 
 export type WorkspaceWhere = z.infer<typeof WorkspaceWhereSchema>;
 

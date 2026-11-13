@@ -46,7 +46,7 @@ export interface FrameBar {
   name: string;
   /** Whoever presents it; null while it's only on your screen. */
   by: FrameBy | null;
-  /** How many follow you, while you present a board or the workspace. */
+  /** How many follow you, as each of them says, while you present a board or the workspace: whoever works on their own isn't counted. */
   followers: number;
   /** On someone else's board or workspace: whether you follow them, where they are, and the switch. */
   follow: { on: boolean; where: string; onToggle: () => void } | null;
@@ -89,7 +89,8 @@ export function Frame({ bar, meta, onStop, foot, children }: {
   const [menu, setMenu] = useState<'name' | 'access' | null>(null);
   const { by } = bar;
   const theirs = by !== null && !by.mine;
-  const line = meta ?? (by === null ? 'Only on your screen' : by.mine ? `You’re presenting · ${bar.followers} following` : `${by.first} is presenting`);
+  const following = bar.followers === 0 ? 'nobody following' : `${bar.followers} following`;
+  const line = meta ?? (by === null ? 'Only on your screen' : by.mine ? `You’re presenting · ${following}` : `${by.first} is presenting`);
   const rows = bar.rows(() => setMenu(null), menu === 'access' ? 'access' : null);
   const back = bar.clears ? ', and the people fill your stage again' : '';
   const tip = onStop ? `Put it away for you${back}. It’s still shared, as a tile with the people`

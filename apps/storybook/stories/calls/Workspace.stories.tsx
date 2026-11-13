@@ -244,6 +244,19 @@ export const Following = inCall(reviewing({ cues: at(10, goesTo(PRIYA, CHECKLIST
   }
 });
 export const FollowingPhone = phone(Following);
+/** Following Priya, then Stop following on her tile: its × says what pressing it does. */
+export const StopFollowingFromHerTile = inCall(reviewing({ cues: at(10, goesTo(PRIYA, CHECKLIST_DOC)) }), {
+  name: 'Stop following from her tile',
+  play: async (c) => {
+    await Following.play?.(c);
+    await c.step('Press Following on her tile: you stop following her, and stay where you are', async () => {
+      const [stop] = await c.canvas.findAllByRole('button', { name: 'Stop following Priya' }, { timeout: 8000 });
+      if (stop) await c.userEvent.click(stop);
+      await screen.findByText('Stopped following Priya', {}, { timeout: 5000 });
+    });
+  }
+});
+
 
 /**
  * Hear it, during the call: what was said a moment ago, quoted into the plan as Quote what was said does, plays from the

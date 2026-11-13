@@ -13,7 +13,7 @@ import {
   BOARD_SHOT_TOPIC, BoardShotMessageSchema, DocCallerStateSchema, errorCode, type CallBoardIdea, type CallBoardOpen, type CallSession, type CallState, type DocSession, type DocStatus,
   type Person
 } from '@alcove/api';
-import type { BoardStep } from '@alcove/board';
+import { BoardPresenceSchema, type BoardStep } from '@alcove/board';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 import { useReducedMotion } from 'motion/react';
@@ -68,6 +68,16 @@ function clientsOf(doc: DocSession, me: string): Map<string, number[]> {
   add(me, doc.awareness.clientID);
   return by;
 }
+/** Who on the board says they're following whoever presents it, by their connection to the call: what the presenter's bar counts. */
+function followersOf(doc: DocSession, me: string): string {
+  const with_ = new Set<string>();
+  for (const [client, state] of doc.awareness.getStates()) {
+    if (client === doc.awareness.clientID) continue;
+    const id = DocCallerStateSchema.safeParse(state).data?.user?.callIdentity;
+    if (id && id !== me && BoardPresenceSchema.safeParse(state).data?.withPresenter === true) with_.add(id);
+  }
+  return [...with_].sort().join(' ');
+}
 const sameClients = (a: ReadonlyMap<string, readonly number[]>, b: ReadonlyMap<string, readonly number[]>) =>
   a.size === b.size && [...a].every(([id, c]) => { const d = b.get(id); return d !== undefined && d.length === c.length && c.every((x, i) => d[i] === x); });
 
@@ -120,19 +130,20 @@ function useBoardSession(open: CallBoardOpen | null, owner: string | null, pass:
 /** Everyone in the call as the board knows them: their name and face, their colour, and their browsers on it. */
 function useBoardPeople(doc: DocSession | null, participants: CallState['participants'], me: string) {
   const [clients, setClients] = useState<ReadonlyMap<string, readonly number[]>>(new Map());
+  const [followers, setFollowers] = useState('');
   useEffect(() => {
-    if (!doc) { setClients(new Map()); return undefined; }
-    const read = () => { const now = clientsOf(doc, me); setClients((was) => (sameClients(was, now) ? was : now)); };
+    if (!doc) { setClients(new Map()); setFollowers(''); return undefined; }
+    const read = () => { const now = clientsOf(doc, me); setClients((was) => (sameClients(was, now) ? was : now)); setFollowers(followersOf(doc, me)); };
     read();
     doc.awareness.on('change', read);
     return () => doc.awareness.off('change', read);
   }, [doc, me]);
   // Rebuilt only when someone comes or goes, from the call or the board: a new list costs the board a render.
-  const key = JSON.stringify([participants.map((p) => [p.id, p.seat, p.person.name, p.person.email, p.person.photoUrl ?? '', p.person.portrait ?? null]), [...clients]]);
+  const key = JSON.stringify([participants.map((p) => [p.id, p.seat, p.person.name, p.person.email, p.person.photoUrl ?? '', p.person.portrait ?? null]), [...clients], followers]);
   return useMemo(() => {
     const people = participants.map((p): BoardPerson => ({ id: p.id, person: p.person, name: p.isMe ? 'You' : callName(p.person), colour: colourOf(p.seat), clients: clients.get(p.id) ?? [] }));
     const onBoard = new Set(people.filter((p) => p.clients.length > 0 && p.id !== me).map((p) => p.id));
-    return { people, onBoard };
+    return { people, onBoard, followers: followers ? followers.split(' ') : [] };
   }, [key]);
 }
 
@@ -243,7 +254,7 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
   } : null), [saved?.workspaceId, saved?.documentId, savedName, me]);
   const mineDrawn = stage === 'saved' && savedOpen !== null;
   const { doc, status, reopen } = useBoardSession(mineDrawn ? savedOpen : open ?? sinking, owner, mineDrawn ? undefined : pass);
-  const { people, onBoard } = useBoardPeople(doc, state.participants, me);
+  const { people, onBoard, followers: boardFollowers } = useBoardPeople(doc, state.participants, me);
   /*
    * Its session is kept while it's off your stage: putting it back tries its connection at once if it's down and waiting to
    * try again (`DocSession.wake`), and leaves a try that's under way to carry on.
@@ -432,7 +443,7 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
   }, [editing, notes, workspaceId, documentId, sortIn]);
 
   return {
-    open, doc, people, onBoard, talking: talkingSet, handle, following, follow, goTo, onFollow, fresh, rise, pictures, ideas, sort, upload, itemFor, toLink, comments, showFrame,
+    open, doc, people, onBoard, followers: boardFollowers, talking: talkingSet, handle, following, follow, goTo, onFollow, fresh, rise, pictures, ideas, sort, upload, itemFor, toLink, comments, showFrame,
     /** A saved board just for you is what's drawn: the call's board isn't. */
     savedDrawn: mineDrawn,
     /** Goes up each time a board comes to you with the rest of your part of the call, to open on your stage. */

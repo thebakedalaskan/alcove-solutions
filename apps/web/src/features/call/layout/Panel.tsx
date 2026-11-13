@@ -476,7 +476,7 @@ export function PeopleView({ here, invited, asking, invites = false, ringing, ca
               <div className="min-w-0"><b>{p.person.name}{p.isMe ? ' (you)' : ''}</b><small>{p.handId && <Icon name="hand" size={12} className="hd" />}{line}</small></div>
               <div className="st">
                 {together?.following === p.id
-                  ? <Button size="xs" variant="quiet" onClick={together.onStop}>Following</Button>
+                  ? <Button size="xs" variant="quiet" aria-label={`Stop following ${p.person.name}`} title={`Stop following ${p.person.name}`} onClick={() => together.onStop()}>Following<Icon name="x" size={12} /></Button>
                   : together?.followable.includes(p.id) && <Button size="xs" onClick={() => together.onFollow(p.id)}>Follow</Button>}
                 {p.speaking && p.mic && <span className="ac-level" aria-label="Speaking"><i /><i /><i /></span>}
                 {!p.mic && <Icon name="micOff" size={16} aria-label="Microphone off" />}

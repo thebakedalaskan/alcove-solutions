@@ -5,7 +5,7 @@
  */
 import { firstName, type CallState, type CatchUpItem } from '@alcove/api';
 import { Button, Notice, WsDoc, WsDocHead, WsFollowBar, WsNotesOff, WsNotesPage, WsScroll, WsTranscript, type WsDecision, type WsSaid } from '@alcove/ui';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useFollow } from '~/features/call/notes/LiveLines';
 import { organizerName } from '~/features/call/notes/Capture';
 import { captureHere } from '~/lib/capture';
@@ -108,8 +108,11 @@ function TranscriptPage({ host, state, line }: { host: LiveHost; state: CallStat
 function Body({ host, state, page, line }: { host: LiveHost; state: CallState; page: LivePageId; line: string | undefined }) {
   const lines = state.transcript;
   const follow = useFollow(page === 'transcript' ? `${lines.length}:${lines.at(-1)?.id}` : '', false, page !== 'transcript' || line !== undefined);
+  /* Scrolling, pressing or typing on the page stops following whoever you follow, as in a document: you stay where you are. */
+  const stayHere = () => host.stopFollowing();
+  const typed = (e: KeyboardEvent) => { if (e.key !== 'Escape' && !['Shift', 'Meta', 'Control', 'Alt'].includes(e.key)) stayHere(); };
   return (
-    <WsScroll ref={follow.ref} onScroll={follow.onScroll}>
+    <WsScroll ref={follow.ref} onScroll={follow.onScroll} onWheel={stayHere} onTouchMove={stayHere} onPointerDown={stayHere} onKeyDown={typed}>
       {page === 'notes' ? <NotesPage host={host} state={state} />
         : page === 'follow-ups' ? <FollowUpsPage host={host} state={state} />
           : <TranscriptPage host={host} state={state} line={line} />}

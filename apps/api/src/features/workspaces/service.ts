@@ -1375,5 +1375,5 @@ export function endStream(d: Deps, reader: Reader, name: string): void {
 /** Says where a browser is, for everyone who may know. Nobody can be placed in something they can't open. */
 export async function present(d: Deps, reader: Reader, workspaceId: string, body: PresenceBody): Promise<void> {
   const w = await placeableIn(d, reader, workspaceId, 'gone' in body ? null : body.document);
-  await announce(w, reader, personIn(w.owner, reader), body.connection, 'gone' in body ? 'gone' : { document: body.document, block: body.block, typing: body.typing, page: body.page });
+  await announce(w, reader, personIn(w.owner, reader), body.connection, 'gone' in body ? 'gone' : { document: body.document, block: body.block, typing: body.typing, page: body.page, following: body.following });
 }
