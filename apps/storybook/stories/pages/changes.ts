@@ -1,7 +1,7 @@
 /*
  * What page stories change about their scenario's world as they open (`changing()` in src/page.tsx): a part of Alcove
  * that fails or keeps the page waiting, recordings kept on this device, the calendar, the shared demo account, a call on
- * its way here, the calls other people asked Art to, nothing waiting on him, notes in every state, and a team's
+ * its way here, the calls other people asked Art to, nothing waiting on Art, notes in every state, and a team's
  * licenses. All made up, in the demo world.
  */
 import { NOTE_LINK_DAYS, type PersonalEntry } from '@alcove/api';
@@ -240,11 +240,11 @@ export const adminWithoutLicense = (w: World): void => {
   if (!t) return;
   t.unconsumed = [];
   t.members = t.members.map((m) => (m.person === ART ? { ...m, license: { from: iso(-32, 9, 0), until: iso(-2, 9, 0) }, wanted: iso(0, 9, 5) } : m));
-  // On Free, what he stores is his own again, not the team's.
+  // On Free, what Art stores counts against Art's own storage again, not the team's.
   const free = planWithTeam(w.plan, t, ART.email);
   w.plan = { ...free, storage: { ...free.storage, usedBytes: Math.round(2.1 * 2 ** 30) }, notices: [{ id: 'sb-notice-none', kind: 'licenses-none', at: iso(0, 9, 5), until: null, count: null }] };
 };
-/** Art's team license replaced Pro this morning: the two months that hadn't started went back to his balance. */
+/** Art's team license replaced Pro this morning: the two months that hadn't started went back to Art's balance. */
 export const replacedPro = (w: World): void => {
   const at = iso(0, 9, 5);
   w.plan = {

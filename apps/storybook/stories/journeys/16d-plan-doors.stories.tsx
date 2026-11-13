@@ -31,7 +31,7 @@ export const NotesRunOutInACall: PageStory = {
       ...LATE,
       cues: [
         ...at(4, run(() => { current().plan = notesStopped(); }), notesStop('notes')),
-        // Art pays for a month of Pro from his phone while the call goes on: the payment is added and buys it in the same go,
+        // Art pays for a month of Pro from a phone while the call goes on: the payment is added and buys it in the same go,
         // as the server does, so the plan has Pro and the purchase since notes stopped.
         ...at(14, run(() => {
           const w = current();

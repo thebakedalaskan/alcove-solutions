@@ -129,7 +129,7 @@ export const PausedByTheOrganizer = inCall({
  * the sign at the top Notes stopped; the banner waits while Notes is open. Only the organizer has the ways to more (Get Pro,
  * Add 10 hours · $15, Make room), which open checkout over the call. Once their plan has more, notes come on again by
  * themselves, and the notes mark where they stopped and came on again. The world's plan stops with the call, as the server's
- * does: the organizer is Art, so it's his.
+ * does: the organizer is Art, so it's Art's.
  */
 /** Art's notes for the period run out: the world's plan says so too. */
 const planOut = run(() => { current().plan = notesStopped(); });
@@ -170,7 +170,7 @@ export const NotesStoppedForTheOrganizer = inCall({
 export const NotesStoppedForTheOrganizerPhone = phone(NotesStoppedForTheOrganizer);
 export const NotesStoppedForTheOrganizerLight = light(NotesStoppedForTheOrganizer);
 /**
- * Notes stop three seconds in, and two seconds later Art's payment for Pro lands. Within ten seconds his browser hears it, notes
+ * Notes stop three seconds in, and two seconds later Art's payment for Pro lands. Within ten seconds Art's browser hears it, notes
  * come on again by themselves, a toast says "You're on Pro. Notes are on again." and the notes mark "Notes stopped" and "Notes
  * on again", in rec.
  */

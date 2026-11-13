@@ -163,7 +163,7 @@ const press = (name: string): NonNullable<CheckoutStory['play']> => async ({ use
 
 /**
  * Start a team, from Team's card on Plans, on nothing in the balance: its name is the company's, six licenses for the six
- * people at Vandelay on Alcove, the networks, none chosen. The team is made only as Art pays, with him its admin.
+ * people at Vandelay on Alcove, the networks, none chosen. The team is made only as Art pays, with Art its admin.
  */
 export const StartATeam = checkout('/plans', 'payments', { plan: 'team', from: 'plans' });
 export const StartATeamNight: CheckoutStory = { ...StartATeam, globals: DARK };
@@ -250,7 +250,7 @@ export const TeamExpired = team('expired');
 /* ---------- Team: its admin buying more ---------- */
 
 /**
- * Buy licenses, as Vandelay's admin: all five taken and Maya waiting for one, each card saying what's spare after hers. Six
+ * Buy licenses, as Vandelay's admin: all five taken and Maya waiting for one, each card saying what's spare after Maya's. Six
  * are more than the $180 in the balance: the networks.
  */
 export const BuyLicenses = checkout('/plans', 'team-admin-none', { plan: 'team', from: 'plans', licenses: 6 });
@@ -267,7 +267,7 @@ export const BoughtLicensesPhone: CheckoutStory = { ...BoughtLicenses, globals: 
 export const BuyLicensesNobodyWaiting = checkout('/settings#plan', 'team-admin-low', { plan: 'team', from: 'settings' });
 /** Six more with a payment for what the balance is short of (60 USDC): seen, then bought. */
 export const BoughtLicensesWithAPayment = lands('team-admin-none', { path: '/plans', from: 'plans', licenses: 6 }, 'pays', TEAM_SIX, 60);
-/** On Priya's team: she buys its licenses, so there's nothing to buy here. */
+/** On Priya's team: Priya buys its licenses, so there's nothing to buy here. */
 export const OnSomeoneElsesTeam = checkout('/plans', 'team-member', { plan: 'team', from: 'plans' });
 /** Art stopped being the admin after checkout opened: buying is refused, and the window says who buys them now. */
 export const NotTheAdminAnyMore = checkout('/plans', 'team-admin', { plan: 'team', from: 'plans', licenses: 3 }, {

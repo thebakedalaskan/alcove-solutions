@@ -30,7 +30,7 @@ const joining: PageStory['play'] = async ({ userEvent, step }) => {
 const noneLeft = (w: World): void => { const invite = w.teamInvites?.[0]; if (invite) invite.team.unconsumed = []; };
 /** The invite is for another team than the one Art is on. */
 const anotherTeam = (w: World): void => { const invite = w.teamInvites?.[0]; if (invite) invite.team.name = 'Harbourline'; };
-/** Art made the invite himself, for his own team, and opened it. */
+/** Art made this invite for their own team, and opened it. */
 const hisOwn = (w: World): void => {
   const team = w.myTeam;
   if (team) w.teamInvites = [{ secret: TEAM_INVITE_SECRET, expiresAt: new Date(Date.now() + 20 * 3_600_000).toISOString(), team, admin: ART }];
@@ -59,7 +59,7 @@ export const OnAnotherTeam = page('/team/join', 'team-member', { beforeEach: cha
 export const OnAnotherTeamNight = night(OnAnotherTeam);
 /** On the team the invite is for already. */
 export const OnThisTeam = page('/team/join', 'team-member', { beforeEach: anInvite });
-/** Art opened an invite he made for his own team: it's his to send, and opening it doesn't use it. */
+/** Art opened an invite they made for their own team: it's theirs to send, and opening it doesn't use it. */
 export const YourOwnInvite = page('/team/join', 'team-admin', { beforeEach: changing(withTeamInvite(), hisOwn) });
 /** Opened without the part after #, which is what lets you join. */
 export const NoInvite = page('/team/join', 'team-join');
