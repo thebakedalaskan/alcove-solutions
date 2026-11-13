@@ -635,6 +635,9 @@ describe('host hand-off', () => {
     // ...and ends once they've been gone as long as it always waited.
     await upkeepAfter(HOST_GRACE_MS);
     expect((await callRow(host.ticket.callId)).state).toBe('ended');
+    // A refresh joins a read already on its way, which may have been answered before the call ended; the one after it
+    // is a read of its own, made once the call has ended.
+    await sam.refresh().catch(() => undefined);
     expect(code(await sam.refresh().catch((e: unknown) => e))).toBe('conflict');
   });
 
