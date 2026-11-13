@@ -200,6 +200,8 @@ export async function start(d: Deps, ownerId: string, routeId: string, microUsd:
 }
 
 const Row = z.object({ deposit_id: z.string(), state: TopUpStateSchema, record_ciphertext: bytea, created_at: timestamp });
+/** A deposit's row as a change locks it, and whether anything still watches it (`check_after` isn't infinity). */
+const Locked = Row.extend({ closed: z.boolean() });
 const record = (d: Deps, ownerId: string, r: z.infer<typeof Row>) => openJson(key(d), header(ownerId, r.deposit_id), r.record_ciphertext, DepositRecord);
 const open = (d: Deps, ownerId: string, r: z.infer<typeof Row>) => toTopUp(r.deposit_id, record(d, ownerId, r), r.state);
 /** Where the deposit is paid, to ask its provider about it. */
@@ -302,13 +304,20 @@ function tooLate(depositId: string, provider: DepositProviderName, p: DepositPur
  * deposit is `arriving` (a failed or expired one `failed`), logged at error once per reason, and reaches support at its
  * deadline. Otherwise `arriving` never goes back to `waiting`, a cancelled one moves on only when a payment reaches it
  * (and is then due for the watcher at once), and a failed or expired one stays as it is. A status the provider doesn't
- * explain leaves the deposit as it is.
+ * explain leaves the deposit as it is. One nobody watches any more (`check_after` infinity: support added it by hand,
+ * `closedBySupport`, or its 30 days are over) stays as it is, whatever the answer: the answer to a check already on its
+ * way to the provider when support added it adds nothing, so a top-up is never added twice.
  */
 export async function apply(d: Deps, ownerId: string, depositId: string, check: DepositCheck): Promise<TopUpState> {
   return tx(d.pool, async (c) => {
-    const r = await maybeOne(c, Row, 'SELECT deposit_id, state, record_ciphertext, created_at FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE', [ownerId, depositId]);
+    const r = await maybeOne(c, Locked, `SELECT deposit_id, state, record_ciphertext, created_at, check_after = 'infinity' AS closed
+      FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE`, [ownerId, depositId]);
     if (!r) throw notFound('That top-up');
     if (FINAL.includes(r.state)) return r.state;
+    if (r.closed) {
+      dlog.info('top-up answered once it wasn’t watched any more; nothing changed', { depositId, state: r.state, answer: check.state });
+      return r.state;
+    }
     const rec = record(d, ownerId, r);
     const provider = rec.route.provider;
     const late = r.state === 'failed' || r.state === 'expired';
@@ -419,12 +428,14 @@ async function atMost<T, R>(n: number, items: readonly T[], fn: (item: T) => Pro
  * short, failed, a status nobody knows, an answer that can't be trusted) means money may have come and something is
  * wrong, so it is `failed`, logged at error, and reaches support. A record that doesn't open can't be asked about
  * again, so that one isn't watched any more; every other given-up deposit still is, on the thinning `TAIL` (see `watch`).
+ * One nobody watches any more, since this pass took it on (support added it by hand), stays as it is.
  */
 function giveUp(d: Deps, ownerId: string, depositId: string, provider: DepositProviderName, seen: Exclude<DepositCheck['state'], 'settled'> | 'unreadable'): Promise<TopUpState | undefined> {
   return tx(d.pool, async (c) => {
-    const r = await maybeOne(c, z.object({ state: TopUpStateSchema, first: z.boolean() }),
-      'SELECT state, (checked_at IS NULL OR checked_at < give_up_at) AS first FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE', [ownerId, depositId]);
-    if (!r || FINAL.includes(r.state)) return r?.state;
+    const r = await maybeOne(c, z.object({ state: TopUpStateSchema, first: z.boolean(), closed: z.boolean() }),
+      `SELECT state, (checked_at IS NULL OR checked_at < give_up_at) AS first, check_after = 'infinity' AS closed
+      FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE`, [ownerId, depositId]);
+    if (!r || FINAL.includes(r.state) || r.closed) return r?.state;
     if (seen === 'unreadable') {
       await exec(c, "UPDATE deposits SET state = 'failed', checked_at = now(), check_after = 'infinity' WHERE owner_id = $1 AND deposit_id = $2", [ownerId, depositId]);
       dlog.error('top-up failed, its record doesn’t open', { depositId, was: r.state });
@@ -447,12 +458,13 @@ function giveUp(d: Deps, ownerId: string, depositId: string, provider: DepositPr
 /**
  * The provider couldn't answer past `give_up_at`. Without its answer nobody knows whether money came, so the deposit
  * stays as it is (never `expired`) and is asked about on the thinning `TAIL` until the provider answers; logged at
- * error once.
+ * error once. One nobody watches any more, since this pass took it on, isn't watched again.
  */
 function unanswered(d: Deps, ownerId: string, depositId: string, provider: DepositProviderName): Promise<void> {
   return tx(d.pool, async (c) => {
-    const r = await maybeOne(c, Row, 'SELECT deposit_id, state, record_ciphertext, created_at FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE', [ownerId, depositId]);
-    if (!r || !isPending(r.state)) return;
+    const r = await maybeOne(c, Locked, `SELECT deposit_id, state, record_ciphertext, created_at, check_after = 'infinity' AS closed
+      FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE`, [ownerId, depositId]);
+    if (!r || !isPending(r.state) || r.closed) return;
     const rec = record(d, ownerId, r);
     if (!rec.unanswered) {
       await exec(c, 'UPDATE deposits SET record_ciphertext = $3 WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId, sealJson(key(d), header(ownerId, depositId), toJson({ ...rec, unanswered: true }))]);
@@ -512,8 +524,9 @@ export async function watch(d: Deps): Promise<{ checked: number; credited: numbe
           await unanswered(d, ownerId, depositId, provider);
           return r.state;
         }
+        // Support may have added it by hand since this pass took it on: then it stays unwatched.
         await exec(d.pool, `UPDATE deposits SET check_after = CASE WHEN state IN ('failed', 'expired') OR give_up_at <= now() THEN ${TAIL} ELSE now() + interval '60 seconds' END
-          WHERE owner_id = $1 AND deposit_id = $2`, [ownerId, depositId]);
+          WHERE owner_id = $1 AND deposit_id = $2 AND check_after < 'infinity'`, [ownerId, depositId]);
         return r.state;
       }
       // A finished swap is applied first, even past `give_up_at`: it credits, or (when it can't be trusted) is recorded
@@ -594,22 +607,29 @@ export async function cancel(d: Deps, ownerId: string, depositId: string): Promi
 }
 
 /**
- * Support adds a top-up's money by hand (support.ts, docs: Plans and usage › Treasury runbook), in the caller's transaction,
- * with the deposit's row locked first, as `apply` locks it. One Alcove still watches for a payment (open, or cancelled while its
- * address takes one, before `give_up_at`) is refused: what reaches it is added by itself. Any other that isn't added or held
- * (failed, expired, or given up on with no answer) is never asked about again, so a payment 1Click settles for it later can't
- * add it a second time. One added or held is as it was: what support adds is a stray payment to its address. Says its state.
+ * Support adds a top-up's money by hand in its place (support.ts, docs: Plans and usage › Support), in the caller's
+ * transaction, with the deposit's row locked first, as `apply` locks it, so whichever comes first, the top-up is added once.
+ * Refused, with nothing changed: one Alcove still watches for a payment (open, or cancelled while its address takes one,
+ * before `give_up_at`), since what reaches it is added by itself; one it added (`credited`) or settled with nothing to add
+ * (`held`); and one nobody watches any more, which support has added already or whose 30 days are over. Anything else is
+ * never asked about again: failed, expired, or given up on with no answer, which is failed from then on (it reached
+ * support), and the answer to a check of it already on its way to 1Click adds nothing (`apply`). What else support adds
+ * to the account, such as a second payment to a used address, goes by its ID. Says the top-up's state now.
  */
 export async function closedBySupport(c: Db, ownerId: string, depositId: string): Promise<TopUpState> {
-  const r = await maybeOne(c, z.object({ state: TopUpStateSchema, given_up: z.boolean() }),
-    'SELECT state, give_up_at <= now() AS given_up FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE', [ownerId, depositId]);
+  const r = await maybeOne(c, z.object({ state: TopUpStateSchema, given_up: z.boolean(), closed: z.boolean() }),
+    `SELECT state, give_up_at <= now() AS given_up, check_after = 'infinity' AS closed
+    FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE`, [ownerId, depositId]);
   if (!r) throw notFound('That top-up');
-  if (isPending(r.state) && !r.given_up) {
-    throw conflict('Alcove is still watching this top-up, and adds what reaches it by itself. Add it by hand once it has failed or expired.', { depositId, state: r.state });
-  }
-  if (!FINAL.includes(r.state)) await exec(c, "UPDATE deposits SET check_after = 'infinity', checked_at = now() WHERE owner_id = $1 AND deposit_id = $2", [ownerId, depositId]);
-  dlog.info('top-up added by support', { depositId, state: r.state });
-  return r.state;
+  const refused = (why: string, words: string) => conflict(words, { depositId, state: r.state, why });
+  if (r.state === 'credited') throw refused('added', 'This top-up was added when its payment arrived. Add a payment of its own to its address by the account’s ID.');
+  if (r.state === 'held') throw refused('held', 'This top-up settled with nothing to add, so its reference adds nothing. Add what reached the treasury by the account’s ID.');
+  if (r.closed) throw refused('not watched', 'This top-up isn’t watched any more, so its reference adds nothing: support has added it already, or its 30 days are over. Add anything more by the account’s ID.');
+  if (isPending(r.state) && !r.given_up) throw refused('watched', 'Alcove is still watching this top-up, and adds what reaches it by itself. Add it by hand once it has failed or expired.');
+  const state: TopUpState = isPending(r.state) ? 'failed' : r.state;
+  await exec(c, "UPDATE deposits SET state = $3, check_after = 'infinity', checked_at = now() WHERE owner_id = $1 AND deposit_id = $2", [ownerId, depositId, state]);
+  dlog.info('top-up added by support', { depositId, was: r.state, state });
+  return state;
 }
 
 /** Top-ups still open, and the last 10 finished, newest first. */

@@ -27,7 +27,9 @@ configureLogging({ level: env.LOG_LEVEL, format: env.LOG_FORMAT, service: 'alcov
 const USAGE = `billing show <who>           the account's plan, whether Pro renews, counts, and whether its balance covers a month of Pro
 billing credit <who> <usd>   adds <usd> dollars (20, 4.50) to its balance, as "Added by support"
 
-<who> is a top-up's reference or an account's ID. Credited by a top-up's reference, that top-up can't add itself again.
+<who> is a top-up's reference or an account's ID. Credited by a top-up's reference, it's that top-up's money, in its place:
+it can't add itself again, and one added already is refused. Anything else, such as a second payment to its address, goes
+by the account's ID.
 Where KMASTER is set, as it is locally, an address the account signs in with names it too.
 `;
 const say = (text: string) => { process.stdout.write(`${text}\n`); };
@@ -55,17 +57,15 @@ try {
     } else {
       const { ownerId, depositId, state } = await creditBySupport(d, who, microUsd);
       say(`Added to the balance of account ${ownerId}, as “Added by support”.`);
-      if (depositId !== null && state !== null) say(state === 'credited' || state === 'held'
-        ? `Top-up ${depositId} was ${state} already: what was added is a payment of its own.`
-        : `Top-up ${depositId} (${state}) is no longer watched, so it can’t add itself again.`);
+      if (depositId !== null && state !== null) say(`Top-up ${depositId} (${state}) is no longer watched, so it can’t add itself again.`);
     }
   } else {
     say(USAGE);
     process.exitCode = 1;
   }
 } catch (e) {
-  // A refusal (nothing found, more than one account, a top-up still watched) says why, never what was typed: it may be an
-  // address. Anything else failed.
+  // A refusal (nothing found, more than one account, a top-up still watched or added already) says why, never what was
+  // typed: it may be an address. Anything else failed.
   if (e instanceof AppError) { log.warn('billing refused', { code: e.code }); say(e.message); } else log.error('billing failed', { err: e });
   process.exitCode = 1;
 } finally {

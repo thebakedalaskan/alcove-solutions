@@ -502,14 +502,18 @@ index). An address signed in to more than one account (through different provide
   kept, how many notices wait and how many top-ups it has in each state. What the job prints is kept in Cloud Logging, so
   that's all it says: what a log may hold, never an amount, a history, a date or an address.
 - `billing credit <who> <usd>`: adds dollars (`20`, `4.50`, at most $10,000) to the balance, as "Added by support", logged
-  `balance added by support` with the owner and the top-up, never the amount. Named by a top-up's reference, that top-up
-  is never asked about again, so a payment 1Click settles for it later can't add it a second time, and one Alcove still
-  watches (open, or cancelled while its address takes a payment) is refused, since what reaches it is added by itself. One
-  that was added already is left as it was: what support adds then is a stray payment of its own. Locally, with an
-  address, it's the fake money for buying Pro without 1Click.
+  `balance added by support` with the owner and the top-up, never the amount. Named by a top-up's reference, it's that
+  top-up's money, added in its place, once: the top-up is never asked about again, and the answer to a check of it already
+  on its way to 1Click adds nothing, so a payment 1Click settles for it later can't add it a second time, whichever comes
+  first. One given up on with no answer from 1Click reads as failed from then on. Refused by its reference, with nothing
+  added: one Alcove still watches (open, or cancelled while its address takes a payment), since what reaches it is added by
+  itself; one added already, by itself or by support; one settled with nothing to add; and one past the 30 days it's
+  watched for. Anything else, such as a second payment to a used address, is added by the account's ID, which
+  `billing show <reference>` says. Locally, with an address, it's the fake money for buying Pro without 1Click.
 
-Every refusal (an amount that isn't one, nobody found, more than one account, a top-up still watched) exits 1 and logs
-`billing refused` at warn, with its code or why, never what was typed: it may be an address put in the wrong place.
+Every refusal (an amount that isn't one, nobody found, more than one account, a top-up still watched or added already)
+exits 1 and logs `billing refused` at warn, with its code or why, never what was typed: it may be an address put in the
+wrong place.
 
 ## Adding money
 
@@ -639,12 +643,14 @@ The server never holds a key that can move treasury money. By hand, in near.com,
 - **A stray payment** (a second payment to a used address, or one after it expired) reaches the treasury as a 1Click
   refund and isn't added. The person gives support the top-up's reference (its deposit ID). Support opens that deposit's
   sealed record (`deposits`, under `Kservice`'s accounting key) to find its address, confirms the payment in 1Click's
-  status for it, and adds what reached the treasury to their balance with `billing credit <reference> <usd>` ([Support](#support)).
+  status for it, and adds what reached the treasury to their balance by their account's ID, which `billing show <reference>`
+  says: `billing credit <account> <usd>` ([Support](#support)). The top-up's reference adds only its own payment, once.
 - **A failed top-up** (logged at error with its deposit ID and a reason) is one 1Click reported money for that wasn't
   added. Support opens its record and 1Click's status as above, and adds only what 1Click shows reached the treasury
-  (`billing credit <reference> <usd>`). Until then, if 1Click settles it cleanly within 30 days, it's added by itself; once
-  support has added it, it never is, so its money is never added twice. It still reads as failed in the person's list of
-  top-ups, and their balance's history says "Added by support".
+  (`billing credit <reference> <usd>`). Until then, if 1Click settles it cleanly within 30 days, it's added by itself, and
+  then its reference is refused; once support has added it, it never is, even by a check that was on its way to 1Click as
+  support added it, so its money is never added twice. It still reads as failed in the person's list of top-ups, and
+  their balance's history says "Added by support".
 - **A depeg (accepted risk).** Every amount sent is valued at face (1 token = 1 USD). When a stablecoin depegs, turn
   top-ups off (take `TREASURY_INTENTS_ACCOUNT` out of the API's settings in `deploy.yml` and redeploy) until it recovers.
 
