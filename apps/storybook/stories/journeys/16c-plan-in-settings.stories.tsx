@@ -66,13 +66,15 @@ export const RenewRefundAndYourPayments: PageStory = {
       await userEvent.click(within(await row('Renew from balance')).getByRole('switch', { name: 'Renew from balance' }));
       await within(await row('Renew from balance')).findByText('Saved', {}, SOON);
     });
-    await step('Press Refund ($40.00). It asks in place: what goes back to the balance, and when Pro ends then', async () => {
+    await step('Press Refund ($40.00). It asks in place: what goes back to the balance, that renewing from it turns off, and when Pro ends then', async () => {
       await userEvent.click(within(await plan()).getByRole('button', { name: 'Refund ($40.00)' }));
       await screen.findByText('Refund 2 months of Pro?', {}, SOON);
+      await within(await plan()).findByText(/renewing from your balance turns off\. Pro ends on/, {}, SOON);
     });
-    await step('Refund $40.00. The two months go back to the balance, and the refund is first in the payments', async () => {
+    await step('Refund $40.00. The two months go back to the balance, the refund is first in the payments, and Renew from balance is off, so they aren’t bought again', async () => {
       await userEvent.click(within(await plan()).getByRole('button', { name: 'Refund $40.00' }));
       await within(await plan()).findByText('Pro refunded, 2 months', {}, SOON);
+      await within(await row('Renew from balance')).findByRole('switch', { name: 'Renew from balance', checked: false }, SOON);
     });
     await step('Press its Receipt. The receipt opens over the page, as paper, to print', async () => {
       await userEvent.click(within(await plan()).getByRole('button', { name: /^Receipt for Pro refunded, 2 months/ }));

@@ -972,7 +972,8 @@ export const standIn: AlcoveApi = {
       const back = later.reduce((sum, m) => sum + m.microUsd, 0);
       const { balance } = w.plan;
       const entry = { id: freshEntryId(w), at: new Date(now).toISOString(), label: `Pro refunded, ${later.length} ${later.length === 1 ? 'month' : 'months'}`, microUsd: back };
-      const refunded = { ...w.plan, balance: { microUsd: balance.microUsd + back, history: [entry, ...balance.history] } };
+      // As the server does, a refund turns renewing from the balance off, so the months given back aren't bought again.
+      const refunded = { ...w.plan, balance: { microUsd: balance.microUsd + back, history: [entry, ...balance.history] }, pro: { ...w.plan.pro, renew: false } };
       w.plan = withProMonths(refunded, w.plan.pro.months.filter((m) => Date.parse(m.from) <= now), now);
       return w.plan;
     }),
