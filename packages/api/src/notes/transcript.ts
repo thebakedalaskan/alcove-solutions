@@ -27,9 +27,10 @@ export type Changer = z.infer<typeof ChangerSchema>;
  * Someone changing a note: its decisions, open questions or follow-ups, or a line of its transcript. Who, when, what,
  * and what it was before. On a transcript line, `reworded` corrects its words, `reassigned` says someone else said it
  * (`before` and `after` are the speakers' names) and `confirmed` says it's right as it was heard. `proposed` is someone
- * adding a decision or follow-up the notes didn't hear, always its first change. `disputed` says a decision wasn't
- * decided, from someone who can't reject it, and `undisputed` takes that back. `declined` is the person a follow-up was
- * for saying it isn't theirs. `reopened` on a follow-up asks its owner to take it on again, after it was changed.
+ * adding a decision, open question or follow-up the notes didn't hear, always its first change. `disputed` says a
+ * decision wasn't decided, from someone who can't reject it, and `undisputed` takes that back. `declined` is the person a
+ * follow-up was for saying it isn't theirs. `reopened` on a follow-up asks its owner to take it on again, after it was
+ * changed.
  */
 export const ChangeSchema = z.object({
   by: ChangerSchema,

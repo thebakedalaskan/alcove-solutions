@@ -23,8 +23,15 @@ const LOOKUPS_AT_ONCE = 4;
 
 /** What one tool call did: the tool, the note and call it was about, and how many it found. IDs and a number only. */
 export interface Did { tool: AgentTool; noteId?: string | undefined; meetingId?: string | undefined; count?: number | undefined }
+/**
+ * Tools renamed since an earlier release sealed rows under their old names, and what they're called now. A row is never
+ * sealed again, so it keeps its header and the old name, and it's read under the new one until upkeep deletes it.
+ */
+const RENAMED: ReadonlyMap<string, AgentTool> = new Map<string, AgentTool>([['propose_action', 'add_follow_up'], ['update_action', 'update_follow_up'], ['answer_call', 'respond_to_invite']]);
 /** As it's sealed. A tool a later release stops offering still opens; it just isn't listed. */
-const Body = z.object({ tool: z.string(), noteId: z.string().max(64).optional(), meetingId: z.string().max(64).optional(), count: z.number().int().min(0).optional() });
+const Body = z.object({
+  tool: z.string().transform((tool) => RENAMED.get(tool) ?? tool), noteId: z.string().max(64).optional(), meetingId: z.string().max(64).optional(), count: z.number().int().min(0).optional()
+});
 const Row = z.object({ id: z.string(), grant_id: z.string(), created_at: timestamp, at_us: bigintText, body_ciphertext: bytea });
 /** Where a page ended: the last row's time, to the microsecond Postgres keeps, and its ID. */
 const Cursor = z.object({ t: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), id: AgentActivityIdSchema });

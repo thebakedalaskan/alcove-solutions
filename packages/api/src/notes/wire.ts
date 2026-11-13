@@ -92,7 +92,7 @@ export const ActionPatchSchema = z.object({
 export type ActionPatch = z.infer<typeof ActionPatchSchema>;
 
 
-/** The most lines someone can pick as what a decision or follow-up they propose rests on. */
+/** The most lines someone can pick as what a decision, open question or follow-up they add rests on. */
 export const MAX_PROPOSAL_LINES = 3;
 
 /**

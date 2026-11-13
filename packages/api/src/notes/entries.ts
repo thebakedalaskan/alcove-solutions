@@ -43,8 +43,8 @@ export type Decision = z.infer<typeof DecisionSchema>;
 
 
 /**
- * Something the call asked and didn't settle, as the notes heard it. It stays open until someone
- * who has the notes says it was answered.
+ * Something the call asked and didn't settle, as the notes heard it, or as someone who has the notes added it. It stays
+ * open until someone who has the notes says it was answered.
  */
 export const QuestionSchema = z.object({
   id: IDSchema,
@@ -55,7 +55,7 @@ export const QuestionSchema = z.object({
   /** What was on a shared screen when it was asked, if it was about something shown. */
   screen: ScreenRefSchema.optional(),
   ...Grounds,
-  /** Who said it was answered, reopened or reworded it, oldest first. */
+  /** Who added, said it was answered, reopened or reworded it, oldest first. */
   changes: z.array(ChangeSchema)
 });
 
