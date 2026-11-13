@@ -31,13 +31,20 @@ the setup, deploys, rollbacks, staging, certificates and release verification.
    - **Build:** web, API bundle and API container.
    - **Integration tests:** the real API against Postgres and an S3-compatible store, signing in the way
      the web app does, with local stand-ins for Google (an OpenID provider and the Calendar API) and for
-     NEAR AI Cloud. They're split across ten runners, each with its own Postgres, object store and LiveKit,
-     by how long each file took (`scripts/ci-tests.mjs`, timings in `scripts/ci-test-times.json`); a file
-     longer than a runner's share is split at its top-level `describe` blocks. The check fails unless every
-     test vitest lists ran once and passed. A pull request that only changes `apps/web`, `apps/storybook`,
-     `packages/ui`, `docs` or top-level Markdown skips them, since they test the API; pushes to `main`
-     always run them. When the runners drift apart, refresh the timings from a run's artifacts with
-     `node scripts/ci-tests.mjs times <dir>`.
+     NEAR AI Cloud. They're split across ten runners, each with its own Postgres, object store and LiveKit
+     (`.github/actions/integration-setup`), by how long each file took (`scripts/ci-tests.mjs`, timings in
+     `scripts/ci-test-times.json`). Each runner runs three files at once, each against a database and bucket
+     of its own; a file longer than 90 seconds is split into parts at its top-level `describe` blocks, and a
+     block that long at its tests. The check fails unless every test vitest lists ran once and passed, and a runner
+     with a failing test lists it in its summary, with its file and the first line of its error. A pull
+     request that only changes `apps/web`, `apps/storybook`, `packages/ui`, `docs` or top-level Markdown skips
+     them, since they test the API; pushes to `main` always run them. When the runners drift apart, refresh
+     the timings from one run's artifacts with `node scripts/ci-tests.mjs times <dir>`.
+
+   **Flake finder** (`.github/workflows/flakes.yml`) runs the integration tests as CI does, three times over,
+   nightly on `main` and on demand on any branch. Its summary lists every test that failed in one run and passed
+   in another, and any that failed in all three; the run fails when there's one. It needs no secrets and files
+   nothing.
 2. **Merge gate.** Import `.github/rulesets/main.json` to require pull requests and all four checks
    on an up-to-date branch. The checked-in ruleset is a configuration artifact; verify its live status.
 3. **Deploy** (`.github/workflows/deploy.yml`) requires repository variable `DEPLOY_ENABLED=true`.
