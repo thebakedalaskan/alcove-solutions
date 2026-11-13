@@ -493,6 +493,13 @@ call's sealed state (`apps/api/src/features/calls/capture.ts`) and the same for 
 - **Who sees it.** Everyone in the call, and anyone reconnecting, gets it with the call. People asking to join
   and anyone reading the card get it without names: `by` says only "the organizer", and there are no gaps or
   asks. Every change sends the room a change push, so browsers fetch the call again.
+- **Running out** (`capture.runningOut`, `capture.stopped`). Notes are paid for from the organizer's AI allowance and
+  storage, so when what's left would last about 5 minutes at this call's pace the organizer alone is told, once
+  (`runningOut`), and when either is spent notes go off for everyone as if the organizer had turned them off, and
+  everyone sees **Notes have stopped** until they close it (`stopped`, with its reason, `notes` or `storage`). The call
+  goes on, and what was captured until then still goes into the notes. A call also ends at `CallState.endsAt`, 10 hours
+  after it started, with everyone told 5 minutes before, and takes at most 100 people
+  ([Plans and usage](plans-and-usage.md#running-out-in-a-call)).
 - **Pause** (`{type: "pause"}`, only while notes are on) stops every kind of capture at once. The one gate every
   capturing path goes through, `mayCapture` in `apps/api/src/features/calls/capture.ts`, refuses audio pieces, speech
   clips, caption translations, catch-up and questions with `409 conflict` ("Notes are paused…"), whoever sends
@@ -1093,45 +1100,53 @@ Rings are rows in `call_rings`, in the organizer's vault, found by a keyed hash 
 
 ## The call's workspace
 
-A call has a home: the workspace its notes and transcript go to, in a folder of its own
-([Data and storage › Workspaces](data-and-storage.md#workspaces)). Everyone in the call views and edits one workspace
-together, the home unless the organizer switched to another. What's done is `apps/api/src/features/calls/workspace.ts`, what
-the call keeps of it is `callSpace.ts`, and who can open what is `workspaceAccess.ts`, on every read: access is never copied
-into the call. Being in a call, or organizing it, opens nothing.
+A call has one workspace, or none: where its notes and transcript go, in a folder of its own
+([Data and storage › Workspaces](data-and-storage.md#workspaces)). Everyone in the call views and edits it together.
+Nothing makes one by itself: a workspace exists only because someone pressed New workspace, in the Drive, in the call
+(the organizer), or when scheduling (`meetings.create({ newWorkspace: true })`). What's done is
+`apps/api/src/features/calls/workspace.ts`, what the call keeps of it is `space-state.ts`, and who can open what is
+`workspaces/access.ts`, on every read: access is never copied into the call. Being in a call, or organizing it, opens nothing.
 
-- **Its home.** The meeting's `workspaceId`, sealed in its manifest, default null: a workspace the organizer chose when
-  scheduling, which they can edit in, or the one its series has. With none, a new workspace is made for the call, named
-  after it and the day it started (`Launch check-in · 5 Nov`, where the browser opening Workspace is, else the series'
-  zone, else UTC), with the organizer as its admin and everyone invited in it to edit, the same people who get the notes.
-  It's settled the first time anyone opens Workspace (`workspace-open`, anyone let in), or server code asks
-  (`workspaceForCall`), or, for a call that had notes and never did either, as it ends, so its notes land somewhere. A call
-  with notes off that nobody opened Workspace in makes none. It's the organizer's whoever settles it: a guest's click can
-  make it, and tells the guest nothing. A new home is made under the call's row, since nobody else can reach it yet, so
-  people opening it at once get one. A chosen home the organizer can no longer make things in, one deleted since, or one with
-  no room for the call's folder (a full tree), isn't theirs to use: the call gets a new one, and the meeting names it. A home
-  counts as having the call's folder only once the folder's there. A home made for a call doesn't count towards the
-  workspaces someone can make by hand (`MAX_MADE`). The home doesn't change during the call, whichever workspace is viewed.
+- **Its workspace.** The meeting's `workspaceId`, sealed in its manifest, default null. It's one the organizer chose when
+  scheduling (one they can edit in), one made for the call when scheduling, or the one its series has. With none, the call has
+  none: opening Workspace shows that, and the organizer picks or makes one (below). A workspace made for a call is named after
+  it unless it's given a name, with the organizer as its admin and this run's folder at the top. A call's workspace is the
+  organizer's to use only while they can still make things in it: one deleted since reads as none, and one they've lost, or
+  with no room for the call's folder (a full tree), can't take the folder or a new board (`shut`, `full`).
+- **Picking or making it.** Only the organizer, and someone standing in as host only hosts: anyone else is `403`, "Only the
+  organizer chooses this call's workspace." `workspace-set` picks one where they have at least `edit` (a role of `read` is
+  `403`; one they can't reach is the same `404` as one that doesn't exist); `workspace-new` makes one for the call
+  (`madeFor`, with its series), named after it unless given a name. Either changes the meeting's `workspaceId` under the call's
+  row, so it's the call's for this call and every later call of its series that had none, or had the one it replaced
+  (`carryForward`, once the row is let go), and it ends what was presented and what was playing in the one before. `call
+  workspace set` is logged, and `call workspace made` for a new one. Switching interrupts nothing else: nobody's keys move and
+  nothing open closes. `GET /v1/live/calls/:id/workspace/:id` says what a switch would mean, for the sheet that asks: the
+  workspace's name, and the first names of people in the call who aren't in it. It goes by membership alone, which the
+  organizer can see from the workspace's people: someone with one document there is still named, because saying otherwise
+  would tell the organizer about something they can't see. A stand-in hosts the call and doesn't choose its workspace.
+- **Who's let in.** Only a workspace made for the call, or for its series, lets people in: everyone invited is let in to edit
+  once the call's row is let go, and who's in it follows the invite (`followInvite`, below). A picked existing workspace lets
+  nobody in: its people are its own, and anyone invited who can't open it finds it private and can ask (below).
 - **In a series.** The next call scheduled takes `workspaceId` with it, and every call of a series scheduled to repeat
-  starts with it. A call that settles a new home takes the later calls that had none, or had the one it replaced, along,
-  once the call's row is let go, so a series shares one home with a folder for each call. A later call someone gave a
-  workspace of its own keeps it. A home made for a series lets in each of its calls' invitees as that call settles there, as below. A home made for a call
-  isn't capped by count: only a call opening Workspace, or ending with notes, makes one.
-- **Switching what's viewed.** Only the organizer (`workspace-set`), and only to a workspace where they have at least `edit`:
-  a role of `read` is `403`, and one they can't reach is the same `404` as one that doesn't exist. It's the call's sealed
-  `workspace.viewing` (null: the home), and it ends with the call: the meeting, its home and the series' later calls don't
-  change, and the notes and transcript still go to the home. `GET /v1/live/calls/:id/workspace/:id` says what it would
-  mean, for the sheet that asks: the workspace's name, and the first names of people in the call who aren't in it. It goes
-  by membership alone, which the organizer can see from the workspace's people: someone with one document there is still
-  named, because saying otherwise would tell the organizer about something they can't see. Switching interrupts nothing:
-  nobody's keys move, nothing open closes, and what was presented or playing there stops. A workspace viewed that's deleted
-  takes everyone back to the home. `workspace-new` makes one for the call (`madeFor`, with no series), named after it unless
-  it's given a name, and everyone views it: everyone invited is let in to edit once the call's row is let go, as a home's
-  invitees are, and who's in it follows the invite for as long as the call's on, whichever workspace is viewed (the call
-  keeps what it made in `CallSpace.made`, which `followHome` follows by the call's own invite). It counts as one its
-  organizer made. A stand-in hosts the call and doesn't choose its workspace.
-- **`CallState.workspace`** is per viewer, worked out on every read: `id` (what's viewed), `home`, `name`, `chosenBy`,
-  `canOpen`, `role`, `documents`, `agenda`, `present`, `ended`, `play`, `asks`, `asked`. `home` is the home's ID for someone who
-  can open something in it, else null. Someone who can open nothing gets `id` and `name` null: private, and
+  starts with it. A call whose organizer picks or makes another moves the later calls that had none, or had the one it
+  replaced, along; a later call someone gave a workspace of its own keeps it.
+- **At the end.** A call with notes puts them in its workspace's folder for it (below). A call with notes and no workspace
+  stays unfiled: nothing makes a workspace for it, its notes are in Notes, `call ended unfiled` is logged, and
+  `CallEndResult.filed` is false (it's true when the call had no notes, or its notes are in a workspace), so the page after
+  the call asks its organizer where they go. `meetings.file(id, { workspaceId } | { newWorkspace: true })`
+  (`POST /v1/meetings/:id/file`, `fileNotes`) files them: one of the organizer's workspaces they can edit in, or a new one
+  made for the call, with everyone invited in it. This run's folder goes at the top with its note, and it's the call's
+  workspace from now on, and its series' later calls'. It's the organizer's, on their own calls: `409` for a call that isn't
+  over ("This call isn't over yet."), has no notes ("This call has no notes to file."), or has a workspace already ("These
+  notes are in a workspace already."); `409` for a workspace with no room ("That workspace has as many things in it as it
+  can hold. Pick another, or make a new one."); `404` for a workspace they can't reach. `call notes filed` is logged.
+- **Deleting it.** Admins delete a workspace from the Drive row's menu, the workspace's own menu and the call's Workspace
+  frame menu (`api.workspaces.remove`). A call whose workspace was deleted has none until its organizer picks or makes
+  another, and notes it had are in Notes, to file as above. There are no read-only or frozen workspaces: a plan limits
+  storage only ([Plans and usage](plans-and-usage.md)).
+- **`CallState.workspace`** is per viewer, worked out on every read: `id` (the call's workspace), `chosen`, `name`,
+  `chosenBy`, `canOpen`, `role`, `documents`, `agenda`, `present`, `ended`, `play`, `asks`, `asked`. `chosen` says the call has a
+  workspace, whether or not this person can open anything in it. Someone who can open nothing gets `id` and `name` null: private, and
   nothing that names anything, `present` and `ended` aside (below). Someone with one document has the `id` to open it with and no name.
   It's computed only for a call that has something to show, and a workspace that can't be read reads as private: nothing
   in one can stop anyone reading the call. Someone waiting to be let in gets nothing at all.
@@ -1298,21 +1313,33 @@ call again. Following a change to who can open what, the state is right on the n
 tells the call straight away, because that's the only case that knows which call to tell.
 
 `workspaceForCall(d, call)` and `grantDocumentToCall(d, workspace, documentId, call, { role, place? })`, in
-`workspaceAccess.ts`, are the same things for server code: the call's home, settled if it has none, with this run of the
-call's folder in it (`folderId`), where what the server makes for the call goes, such as its board; and one document given
+`workspaces/access.ts`, are the same things for server code: the call's workspace, with this run of the call's folder in it
+(`folderId`, settled if it isn't yet), where what the server makes for the call goes, such as its board (a call with no
+workspace, or one that can't take it, is a `409` instead, below); and one document given
 to everyone in a call now, or in one part of it, as a seat each.
 
-## The call's home
+## The call's folder
 
-Each run of a call has its own folder at the top of its home, named as a new home is (`Launch check-in · 5 Nov`), holding
-the call's pages: Notes (the summary and what was decided), Follow-ups and Transcript, live during the call and the written
-note after it. A workspace that's home to several calls has a folder for each, the newest at the top. Nothing of the call
-or the note goes into the workspace: the folder's sealed item keeps whose call it is (the organizer's owner, address and
-call ID), when it started, whether it's over, and its note's ID once it is (`StoredCall`), and nothing else.
+Each run of a call has its own folder at the top of the call's workspace, named as a workspace made for a call is
+(`Launch check-in · 5 Nov`), holding the call's pages: Notes (the summary and what was decided), Follow-ups and Transcript,
+live during the call and the written note after it. A workspace that holds several calls has a folder for each, the newest at
+the top. Nothing of the call or the note goes into the workspace: the folder's sealed item keeps whose call it is (the
+organizer's owner, address and call ID), when it started, whether it's over, and its note's ID once it is (`StoredCall`), and
+nothing else. A call with no workspace has no folder: nothing makes a workspace for it.
 
-- **Made once.** The call takes the folder's ID under its row (`workspace.home` in its sealed state), and the folder is made
-  in the home's own transaction with that ID, with nothing of the call held, so however many people open Workspace at once
-  there's one. A new home is made with its folder already in it. Someone deleting the folder doesn't bring it back.
+- **Made once.** The call takes the folder's ID under its row (`CallSpace.home`: workspace, folder and whether it's made, in
+  its sealed state), and the folder is made in the workspace's own transaction with that ID, with nothing of the call held
+  (`settledFolder`), so however many people open Workspace at once there's one. A workspace made for the call is made with
+  its folder already in it. Someone deleting the folder doesn't bring it back. `call folder settled` is logged. A workspace
+  that already holds this call's own folder (the call was in it before, or its notes were filed there) takes that one up
+  again instead of making a second (`call folder taken up again`).
+- **Settled by Workspace.** `workspace-open` settles the folder only if the call has a workspace; with none it settles nothing
+  (`call folder not settled`, with why: `none`, `shut` or `full`) and the rest still opens. The same goes for what the server
+  makes for the call (`workspaceForCall`).
+- **Switching lets the old one go** (`letGo`), once the call's row is let go: the folder the call left in the last workspace is
+  removed if nothing was put in it, else kept as a plain folder that's over with no note, since the notes go to the folder in
+  the call's workspace. `call folder let go` is logged, with whether it was kept. The new workspace gets this run's folder,
+  as above.
 - **Its pages, per reader.** A tree read works out, for each call's folder, what its reader may read of it
   (`WorkspaceItem.call`): `here`, while the call's on and their pass is for it, which is the call's live pages, read through
   the call as everywhere in it; and `noteId` once it's over, for its organizer and whoever has the note now by its own rows
@@ -1320,16 +1347,19 @@ call ID), when it started, whether it's over, and its note's ID once it is (`Sto
   later, finds that on their next read; a deleted note is nobody's. Everyone else sees the folder, its name and what people
   put in it. Opening a page reads the call or the note through their own access, so a stale tree can never read either.
 - **When the call ends** (`afterCall`), the folder is told it's over and given its note, if it had notes, which publishes the
-  tree. A folder taken and never made is made then. It never throws: the call has ended all the same.
-- **Who's in a home made for a call** follows its invite (`followInvite`), one change at a time. A new home is made with its
-  organizer alone, under the call's row; everyone invited is let in to edit once the row's let go, and again as each call of
-  a series settles there. Whoever a change puts on the invite is let in: rung, let in from the link, or added to a scheduled
-  call or a series' later calls. Whoever a change takes off it is taken out: removed in the call, or taken off a scheduled
-  call or a series' later calls, unless the series still invites them to a call that hasn't ended. Each member's sealed record
-  says whether the invite put them there; only those are ever taken out, and adding someone or changing their role by hand
-  makes their place theirs. Someone taken out by hand, or who left, is kept on the home's `out` list, and no invite puts
-  them back; an admin adding them by hand takes them off it. A guest without an account gets nothing unless something's
-  shared. A chosen home's people are its own. A failure is logged, and tried again by the next change or the next call.
+  tree. A folder taken and never made is made then. A call that had notes and no folder yet gets one in its workspace, if it
+  has one its organizer can still make things in (`call folder made after the call`); with none it stays unfiled, as above.
+  It never throws: the call has ended all the same.
+- **Who's in a workspace made for a call** follows its invite (`followInvite`), one change at a time. One made in a call is
+  made with its organizer alone, under the call's row; everyone invited is let in to edit once the row's let go, and again as
+  each call of a series settles there. One made when scheduling, or for filing notes, is made the same way. Whoever a change
+  puts on the invite is let in: rung, let in from the link, or added to a scheduled call or a series' later calls. Whoever a
+  change takes off it is taken out: removed in the call, or taken off a scheduled call or a series' later calls, unless the
+  series still invites them to a call that hasn't ended. Each member's sealed record says whether the invite put them there;
+  only those are ever taken out, and adding someone or changing their role by hand makes their place theirs. Someone taken out
+  by hand, or who left, is kept on the workspace's `out` list, and no invite puts them back; an admin adding them by hand takes
+  them off it. A guest without an account gets nothing unless something's shared. A workspace the organizer picked isn't made
+  for the call, so its people are its own. A failure is logged, and tried again by the next change or the next call.
 - **Like any folder** otherwise: it can be renamed, moved and sent to Trash. A copy of it is a plain folder.
 
 ## The call's timer
@@ -1343,7 +1373,7 @@ sequences read are in [The call's timer](call-timer.md).
 A board is a workspace item of kind `board`: what's on it, who can open it and how it's deleted are the workspace's. What's the
 call's is which board is open, kept by part of the call in its sealed state (`board`: `main`, or a room's ID) with who opened
 it, by their name, address and seat, and which boards it lets everyone into. What's done is `apps/api/src/features/calls/boards.ts`, what's kept is
-`callSpace.ts`, and who can open what is `workspaceAccess.ts`, on every read.
+`space-state.ts`, and who can open what is `workspaces/access.ts`, on every read.
 
 - **`CallState.board.open`** is per viewer, for the part of the call they're in: `workspaceId`, `documentId`, `name` (what it's
   called now), `openedBy` (the connection whoever opened it is on now, or null when they aren't in the call), `canClose`,
@@ -1382,11 +1412,13 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   and it names nobody: the call already tells everyone who's presenting. Bringing in the board that's presented, to let people
   in, takes it off nobody's stage, and whoever's presenting may open another, which ends their presentation with the board it
   was of. The workspace presented is in no board's way.
-- **A new board** (`board-open` with `template`) goes in the call's home, settled first if it has none, in this run of the
-  call's folder there while that's in the tree (`workspaceForCall`'s `folderId`), whichever workspace everyone's viewing,
-  and named after the call. It's made by the server through what `items.create` does, because whoever opens it needn't be in the
+- **A new board** (`board-open` with `template`) goes in the call's workspace, in this run of the call's folder
+  there while that's in the tree (`workspaceForCall`'s `folderId`), and named after the call. A call with no workspace has
+  nowhere to put one, and nothing makes one: it's `409` "This call has no workspace yet, so there's nowhere to keep a new
+  board. The organizer chooses one.", asked before anything is made, and the organizer picks or makes one first. It's made by the server through what `items.create` does, because whoever opens it needn't be in the
   workspace, and it's by them. A call adds to a workspace only while its organizer can edit there, as it only ever took one
-  they could: past that it's `409`, and since the home doesn't change during the call, a saved board can still be opened. Those invited get `edit` by email, so it stays theirs
+  they could: past that it's `409` ("This call's workspace can't take a new board any more. You can still open one that's saved.", or, for
+  a full workspace, "...has as many things in it as it can hold..."), and a saved board can still be opened. Those invited get `edit` by email, so it stays theirs
   through the note, and anyone else here who can't edit it a seat: everyone in the call works on it, so someone the workspace
   lets read it gets one too. An address it went to never gets a seat as well, and neither does anyone with an entry on it: what
   someone does to an entry stands, so an address taken back stays taken back, from a new tab too, and one set to `read` stays `read`.
@@ -1407,7 +1439,7 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   template`), and the board opens as it is: a board left as it started is still a board. The call's row is held only for the
   second step, so nothing of the call waits on the fill.
 - **A saved board** (`board-open` with `workspaceId`, `documentId` and `letIn`) comes from the workspace the request names,
-  whichever that is: a call's home is new, so what a team already has is across the Drive, and the board picker offers boards
+  whichever that is: a call's workspace may be new, so what a team already has is across the Drive, and the board picker offers boards
   from there, with any brought to the call first. The browser reads them as the picker opens, from the newest 12 workspaces in
   your Drive's list (`q.boardsToBring`); reaching for Board reads only that list, ahead. Bringing one needs `edit`
   on it, and it opens from where it is, whichever workspace the call views; nothing moves. Someone who can only read it gets
@@ -1466,7 +1498,7 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   the call, and only when something new was said: what was said there lately (`catchup.readOf`), with the board's frames by
   their titles, goes to the notes model (`drafting.ideasFrom`), which offers up to three things worth a sticky, each from one
   line, which says who said it and when, with the words it comes from, copied from that line (the line's own words when they
-  aren't in it), and the frame it fits. Only someone who may read every line of that part looks, nobody's credits pay for it,
+  aren't in it), and the frame it fits. Only someone who may read every line of that part looks, the call's organizer pays for it,
   and nothing is held while the model reads: a run claims the look for two and a half minutes at most, and any other look
   meanwhile answers at once. A pause stops it as it stops any capture (`capture.mayCapture`, `'ideas'`). Adding one writes a
   sticky in the browser (`addStickies` in `@alcove/board`), as a change of that person's own whatever they have under way, on a
@@ -1679,7 +1711,9 @@ says whether it's on a board of its own (`rooms[].board`), which is all anyone o
 `callBoards.ts` (`prepareRooms`, `roomsClosed`, `roomInStep`, `land`); `calls.ts` holds the row and says when.
 
 - **In each room.** One board per room, made as rooms open, before the call's row is held: restricted, with nobody as its
-  creator, named "<room> board", in the call's folder, filled from `template` before anyone arrives. Its readers are the seats of
+  creator, named "<room> board", in the call's folder, filled from `template` before anyone arrives. With no workspace
+  to put it in, or one that can't take it, opening rooms with boards is refused with the same `409` as a new board, before
+  any room opens. Its readers are the seats of
   whoever is in the room now, and nobody else: not the workspace's members, not its admins, and not the organizer, whom being
   organizer gives nothing, except while visiting. A restricted board opens for its creator and whoever restricted it, so a room's
   has neither, and whoever started one in a room doesn't keep it once moved out.
@@ -1692,7 +1726,7 @@ says whether it's on a board of its own (`rooms[].board`), which is all anyone o
   opened in a room, someone let in (`mlsCommit`), someone leaving, and upkeep. Every change publishes to the workspace's
   streams, so someone moved out of a room loses the board at once, and an open page on it closes (`closed: 'access'`). It goes
   by every board of the call's rooms it can find (`roomBoardsFound`): what the call keeps (`board.rooms`), any board open in a
-  room, which only a room's own ever is, and any its home's tree says is one of this call's rooms', so a save of the call by a
+  room, which only a room's own ever is, and any its workspace's tree says is one of this call's rooms', so a save of the call by a
   release that didn't know rooms' boards leaves none behind, and what it finds the call keeps again. One whose room nothing names
   any more opens for nobody until rooms have closed, and then for everyone invited.
 - **A room's board isn't stranded.** It has no creator and, for a moment, maybe nobody in its room: the item keeps its call
@@ -1743,10 +1777,10 @@ says whether it's on a board of its own (`rooms[].board`), which is all anyone o
 - **Where they land.** On the board open in the main room only while it's still open there and whoever opened it can still
   edit it, asked first and again as it's written, with its workspace held, as rooms' frames are: a call writes on a board it didn't
   make only on someone's word who may. One that can't take them, restricted away from its opener, say, gives way to a new board
-  in the call's home, made as when nothing's open, which opens in its place, and the call says "The rooms' boards came back on a
-  new board. The one that was open can't take them." When the home can't take a new board, as its organizer can't edit there any
-  more, they come back nowhere: the landing goes, each room's board stays where it is, everyone invited's, and the call says
-  "The rooms' boards didn't come back: this call's home can't take a new board any more. Each one is still saved there." A try
+  in the call's workspace, made as when nothing's open, which opens in its place, and the call says "The rooms' boards came back on a
+  new board. The one that was open can't take them." When the workspace can't take a new board, as its organizer can't edit there any
+  more, or there's none, they come back nowhere: the landing goes, each room's board stays where it is, everyone invited's, and the call says
+  "The rooms' boards didn't come back: this call's workspace can't take a new board. Each one is still saved where it was." A try
   that fails otherwise is tried again only after 30 seconds, then a minute, counted on the landing (`tries`), and after three
   it's given up, said once at warn, so a landing that can't be done never costs every call action a try. A call ending with rooms
   open lands on the main board if there is one and it can take them, and makes none.
@@ -1770,7 +1804,7 @@ person's own access where the call uses its pass, and its links open on the page
   call's pass, `q.workspaceTree`): documents and boards they can open, not in Trash, the board aside. It offers nothing from
   any other workspace, not even the library's, so links stay within what the board's readers can reach. A `link` keeps the item's ID
   and nothing else, and each browser names it from its own tree, so someone who can't open it sees "A document you can't
-  open". Opening one opens it in the workspace on your stage when that's the workspace everyone's viewing, and in a tab of its
+  open". Opening one opens it in the workspace on your stage when that's the call's workspace, and in a tab of its
   own for an account otherwise.
 - **A comment** from **Comment** (or **K**) is the board's own comment thread, as on its page. In a call, each one names its
   writer as the board's workspace knows them: the ID it keys their address under (`api.workspaces.ids` with the call's pass),
@@ -2067,23 +2101,32 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   The list gives way when the frame has no room for it (under 760 px across, or on a phone), and the call tells it
   (`WorkspaceCall.list`): one that gave way comes over the page (`peek`). Whatever needs it showing, such as ⇧N naming a
   folder, asks with `list.onShow`, which never hides it, so the list over the page behaves as it does docked.
-- **Switching it and asking for it.** For the organizer, the name at the top of the list is the call's picker
-  (`SpacePicker.tsx`, as `WorkspaceCall.picker`), and so is Switch workspace in the frame's name menu: their workspaces they
-  can write in, the workspace's people, and New workspace, which makes one with `newWorkspace` and opens a blank document in
-  it. Picking another asks first, in place of the menu, with `previewWorkspace` saying who can't open it; Switch is
-  `setWorkspace`, and Back on the toast switches back. The frame shows only the workspace everyone views now, so what was
-  brought from another stays with that one, and anyone who can't open this one is told it's private (`WsNoAccess`, whose Ask
-  is `askForWorkspace`). When which it shows changes, what was there stays over what's coming, as it was and out of reach,
-  until that has drawn its list and page (or says it's private), then fades, 240 ms. The organizer answers asks at the top
-  of the call, or above the dock on a phone (`WsKnock`, `WorkspaceAsks.tsx`), with the document in front of them, else the
-  agenda or the first thing brought; with none, Open the workspace opens the document they were last in there, or the list
-  (`WorkspaceCall.list.wanted`): `grantWorkspaceAsk` to read or edit, `declineWorkspaceAsk` for not now, and only a document
-  they can share is offered. Whoever asked sees the workspace open by itself on the document (on a phone too, which
-  otherwise shows the list first), or hears not now and can ask again.
+- **Choosing it and asking for it.** A call with no workspace shows `WsNoSpace` where the workspace would be, with the call's
+  own pages around it. For the organizer it says "This call has no workspace yet" with New workspace and a way to pick one of
+  theirs; for everyone else it says the organizer chooses it, and opens by itself once they do. New workspace is
+  `newWorkspace`, which makes one for the call and opens a blank document in it. Once there is one, the organizer's picker is
+  the name at the top of the list (`SpacePicker.tsx`, as `WorkspaceCall.picker`), and so is Switch workspace in the frame's
+  name menu: their workspaces they can write in, the workspace's people, and New workspace. Picking another asks first, in
+  place of the menu, with `previewWorkspace` saying who can't open it; Switch is `setWorkspace`, and Back on the toast
+  switches back. Nobody but the organizer is offered any of it. An organizer who can't open the workspace the call has any
+  more (taken out of it, or it's gone) is shown `WsLostSpace` with the same two ways to give it another. The frame menu's
+  Delete workspace is for the workspace's admins, and asks first (`WsDeleteAsk`). The frame shows only the call's workspace,
+  so what was brought from another stays with that one, and anyone who can't open this one is told it's private
+  (`WsNoAccess`, whose Ask is `askForWorkspace`). When which it shows changes, what was there stays over what's coming, as it
+  was and out of reach, until that has drawn its list and page (or says it's private), then fades, 240 ms. The organizer
+  answers asks at the top of the call, or above the dock on a phone (`WsKnock`, `WorkspaceAsks.tsx`), with the document in
+  front of them, else the agenda or the first thing brought; with none, Open the workspace opens the document they were last
+  in there, or the list (`WorkspaceCall.list.wanted`): `grantWorkspaceAsk` to read or edit, `declineWorkspaceAsk` for not
+  now, and only a document they can share is offered. Whoever asked sees the workspace open by itself on the document (on a
+  phone too, which otherwise shows the list first), or hears not now and can ask again. With no workspace, the board
+  picker's New waits (`newWhy`) while saved boards still open, and the rooms panel offers a board in each room, or a shared one
+  with none open, only once there is one, and says to pick or make one in Workspace first. The page after the call asks its
+  organizer where its notes go when `CallEndResult.filed` is false (`FileNotes`, which calls `meetings.file`), and so does the
+  note.
 - **The call's own pages** (`features/workspace/live`). The call gives the workspace one object for the whole call
   (`LiveCall`, from `useLiveCall`): the session, who's talking (a store of its own, so the screen draws nothing for it), and
   what to do when something asks for your side or a toast goes there. `LiveRows` are Notes, Follow-ups and Transcript, quiet
-  with notes off: in the call's folder in its home (`CallPages`, for the folder whose `call.here` says it's the call you're
+  with notes off: in the call's folder in its workspace (`CallPages`, for the folder whose `call.here` says it's the call you're
   in, opened the first time it's there), and pinned at the top of the list while everyone views another workspace.
   `LivePage` draws each from `CallState` as it stands, so nothing is kept in step. Another call's folder opens its note in a
   tab of its own, from a call, and in place from the Drive. Where you are can be one of them (`WorkspacePlace` `live`), like

@@ -47,6 +47,8 @@ export function changedLine(c: CaptureState, organizer: string): string | null {
   if (!p.since || !p.by) return null;
   const at = hm(p.since);
   if (p.by.kind === 'schedule') return `On since ${at}, as scheduled`;
+  // Off because the organizer's plan ran out, not because anyone turned them off (docs: Plans and usage).
+  if (c.mode === 'off' && c.stopped) return `Stopped · ${at}`;
   const who = p.by.name ? firstName(p.by.name) : organizer;
   // Back on where a pause ended: it was resumed.
   const resumed = c.gaps.some((g) => g.kind === 'paused' && g.to === p.since);

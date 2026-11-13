@@ -44,7 +44,7 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    tour** in Settings (flow 11) plays it again.
 
 The first sign-in creates the account: its keys, a profile with the name, email and photo from the sign-in,
-the notes default (on) and 10,000 credits. Later sign-ins bring the name, email and photo up to date. In local
+the notes default (on) and the Free plan, with all of its notes for the period. Later sign-ins bring the name, email and photo up to date. In local
 development and Storybook, Microsoft signs in Art Vandelay (art@vandelay.industries), and SSO signs in
 whoever's email was typed, with a name made from the address, as long as it's an address no real person can
 have (at example.com or another domain reserved for examples, or at vandelay.industries). These demo accounts get a sample day of
@@ -74,8 +74,9 @@ Beside every page, dark in both themes:
 - **Groups**: each of your groups and how many people are in it. Each opens on the Team page, and **+**
   starts a new one there.
 - At the bottom: the confidential-compute check (**Confidential compute · verified** when the server's
-  hardware answer is bound to this browser's request), and the time of notes left, which opens Settings at your
-  minutes.
+  hardware answer is bound to this browser's request), then, on Free, **Upgrade to Pro**, and under it about how much
+  of the period's notes is left, "About 3 h 20 min of notes left" over a meter, or "No notes left until Thu 12 Nov" once
+  they've stopped. Both open Settings at your plan.
 - Offline, a notice at the top says recording still works and everything else catches up when you're back
   (with **Record without a connection** off, that recording waits for the connection too). Up next and the
   check wait until the connection returns. Alcove also opens offline for someone signed in on this browser:
@@ -731,6 +732,19 @@ time, slides in on the right.
   another app), everyone sees the recording as unavailable, and the transcript carries on for everyone else.
   When the browser can neither record nor listen, the sign says **Notes unavailable**, for everyone and on the
   join page, until it can again.
+- **When the organizer's notes or storage run out.** The organizer alone is told, once, when what's left would last
+  about 5 minutes at this call's pace: "About 5 minutes of notes left". Notes then go off for everyone, as if the
+  organizer had turned them off, and everyone, guests included, sees **Notes have stopped** ("Priya's notes for this
+  period have run out", or "…storage is full"; the organizer's own say "Your notes…", with **Upgrade** on Free) until
+  they close it. Notes in the call and what's captured say the same while notes are off, and the organizer can still
+  turn them on: it works once their plan has notes again. The call goes on, and what was said until then is in the
+  notes, which are written when the call ends, even when writing them goes past what was left. While they're stopped,
+  turning notes on or starting a room recording says "Your notes for this period have run out. They start again when
+  your plan renews."
+- **How long a call runs.** A call ends at 10 hours, and everyone is told 5 minutes before ("This call ends at
+  14:30"); its notes are written as when anyone ends it. At most 100 people are in a call or waiting to be let in: one
+  more is told "This call is full: 100 people are in it, the most a call can have", and whoever hosts is told someone
+  tried.
 - **Asking for notes.** While notes are off or paused, anyone can ask for them: **Ask for notes** in what's captured,
   or in Notes, whose bar says **Ask to resume** while they're paused. Everyone sees who asked. The organizer gets a toast
   and sees the ask in People, and while notes are off, Notes says how many asked in its pill, in rose, with **Not now**
@@ -858,11 +872,15 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
 
 1. **Workspace**, at the top right, or **W**, opens the workspace on your stage, just for you: nobody else's screen changes,
    and the people sit beside it. **Open**, at the top of Notes, opens it on the call's notes. The count on the
-   button is what's been brought to this call. Every call has a home, where its notes and transcript go: the workspace it
-   was scheduled with, as a continuation, or the one its series has; else, the first time anyone opens it, a new one made
-   for the call, named after it and the day (**Launch check-in · 5 Nov**), with the organizer and everyone invited in it. At
-   the top of the home is the call's own folder, named the same, open, with **Notes**, **Follow-ups** and **Transcript** in
-   it; a home for several calls has a folder for each, the newest first. Everyone sees the same workspace, late or back from
+   button is what's been brought to this call. A call has one workspace, where its notes and transcript go, and only someone
+   pressing **New workspace** makes one: the organizer picks or makes it as they schedule the call, or in the call, and later
+   calls in its series keep it. A call with none says so: the organizer sees **This call has no workspace yet**, with **New
+   workspace** (made for the call, named after it, with everyone invited in it) and **Pick one of yours**; everyone else sees
+   who chooses it, and it opens for them once that's done. Until then nothing new can be made for the call: Board's picker
+   says so over **New** (saved boards still open), Share's **The workspace** says who picks it, and breakout rooms can't have
+   a board of their own. The first time the call's workspace opens, the call's own folder goes at its top, named after it and
+   the day (**Launch check-in · 5 Nov**), open, with **Notes**, **Follow-ups** and **Transcript** in it; a workspace used by
+   several calls has a folder for each, the newest first. Everyone sees the same workspace, late or back from
    a reload. It opens on this call's agenda, or the first thing brought to it, or with neither on what you had open there
    last, and **This call** at the top of the list holds what's been brought. Anyone who can open a document can bring it
    from its row's menu (**Bring to this call**, **Take out of this call**), or by dropping its row on This call. Pressing
@@ -896,21 +914,22 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      notes' **Open** all open it there, and so does **Open the workspace** for someone in the main room asking to see it. On
      a phone, or a window too narrow for both, the workspace goes over the rooms until it's closed. Focus isn't on offer
      there until the rooms close; in a room, it is, as for anyone.
-   - **An organizer taken out of the workspace** everyone's viewing is told so, and **New workspace** has everyone view one
-     of their own. Everyone else carries on.
-2. **Only the organizer switches what everyone views**, from the name at the top of the list, or **Switch workspace** in the
-   workspace's name on its bar: their workspaces they can edit in, with who's in each, the call's home marked **This call's
-   home**, and **New workspace**. Picking one asks once, in place, says who in the call can't open it, and that the notes
-   and transcript still go to the home; **Switch to …** changes the list for everyone at once, a toast says where the notes
-   still go (in two lines at most), and **Back** on it changes it back; it goes when the call ends, or when Leave asks its
-   question. The question takes focus as it opens, and **Tab** reaches its answers. Someone following someone stops, and is
-   told the call's workspace changed. The call's Notes, Follow-ups and Transcript stay at the top of the list while another
-   workspace is viewed. Nobody is interrupted and nothing is moved or copied: sound and video carry on, and whoever can't
-   open it stays in the call and sees that it's private, not what's in it. What was brought to the call from the workspace
-   before stays with that one. **New workspace** makes one for the call, with everyone invited in it to edit, as its home
-   has (a guest without an account isn't), named after the call, and opens a blank document in it; it's still there after
-   the call. The home doesn't change: the next call in the series still has it. Everyone else sees the name, and that the
-   organizer chooses.
+   - **An organizer who can't open the call's workspace any more** (taken out of it) is told so, with **New workspace** and
+     **Pick one of yours** to give the call another. Everyone else carries on.
+2. **Only the organizer chooses the call's workspace**, from the name at the top of the list, or **Switch workspace** (with
+   none yet, **Choose a workspace**) in the workspace's name on its bar: their workspaces they can edit in, with who's in
+   each, the call's ticked, and **New workspace**. Picking one asks once, in place (**Use … for this call?**, or **Switch this
+   call to …?**), says who in the call can't open it, and that the call's notes and transcript go there from now on, as do
+   later calls in its series; **Switch to …** changes it for everyone at once, a toast says the notes go there (in two lines
+   at most), and **Back** on it changes it back; it goes when the call ends, or when Leave asks its question. The question
+   takes focus as it opens, and **Tab** reaches its answers. Someone following someone stops, and is told the call's
+   workspace changed. The call's Notes, Follow-ups and Transcript stay at the top of the list. Nobody is interrupted and
+   nothing is moved or copied: sound and video carry on, and whoever can't open it stays in the call and sees that it's
+   private, not what's in it. What was brought to the call from the workspace before stays with that one. **New workspace**
+   makes one for the call, with everyone invited in it to edit (a guest without an account isn't), named after the call, and
+   opens a blank document in it; it's still there after the call. Everyone else sees the name, and that the organizer
+   chooses. Its admins can **Delete workspace** from its name's menu, here or on the bar, which asks first: it goes for
+   everyone, and the call has no workspace until the organizer gives it another.
 3. **Someone who can't open it**, a guest or anyone outside the workspace, is told it's private, and nothing else: no
    names, no folders, nobody's whereabouts. **Ask** (the organizer by name) changes the words in place, and they carry on
    with the call. The organizer sees who's asking at the top of the call (above the dock on a phone, clear of the list's button), and
@@ -919,7 +938,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    opens for whoever asked, by itself, under Shared with you, and read only says to ask the organizer to edit. **Not now**
    is said to them, and they can ask again. Share lists them as a guest in this call and **Remove** takes it back, and it
    ends with the call.
-4. **Notes, Follow-ups and Transcript** are in the call's folder in its home, and at the top of the list wherever else, for everyone
+4. **Notes, Follow-ups and Transcript** are in the call's folder in its workspace, and at the top of the list, for everyone
    in the call, whether or not they can open the workspace, and the count is what's still to do. They fill in as people talk. With notes off they go quiet and say why they're
    empty, and the organizer can turn notes on from there while anyone else asks; if something's written already it stays, and a line
    says what's holding the notes back. **Notes** is the summary and what's been decided so far, and a time opens the transcript at
@@ -1041,7 +1060,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
 7. **The board's name**, on the frame's bar, is a menu. It has **Rename**, for anyone who can change it, and everyone sees
    the new name at once, wherever it's named: a saved board renamed while it's open just for you is under its new name in
    **Board**'s list once it's closed, and opens again with it (journey 6.37); **Open where it’s saved**, which brings up
-   that workspace if it's the one the call is viewing and opens any other in a tab of its own;
+   that workspace if it's the call's workspace and opens any other in a tab of its own;
    **Who can add to it**, for someone in that workspace who can edit the board, which opens the workspace's own **Share** for
    it under the name (add people by name or address, change what each can do, or keep it to the people added; someone it
    becomes read-only to sees it as **View only** at once, and once it's kept to the people added, nobody's told everyone here
@@ -1144,7 +1163,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    and nobody else. **From your workspace** lists what you can open in the board's own workspace, the board aside, and puts one
    on the board as a card. It offers nothing from anywhere else, so a link only ever points where the board's readers can
    reach: each person sees it by their own name for it, opens it from the card (in the call when everyone's
-   viewing that workspace, in a tab of its own otherwise), or sees "A document you can't open" and nothing of its name.
+   in the call's workspace, in a tab of its own otherwise), or sees "A document you can't open" and nothing of its name.
    **Table** puts three by three where you're looking with its first cell open; Tab goes along a row and on to the next, and
    a row and a column are a press away while it's picked. Two people typing in one cell at once, an empty one too, both keep
    what they type. **Mind map** starts an idea: Tab branches from it, and Enter adds another branch beside it; two people
@@ -1204,7 +1223,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    of something. With no board open in the main room, one is made for them, and so it is when the one open can't take them any
    more (whoever brought it can't edit it now): it opens in its place, and the call says "The rooms' boards came back on a new
    board. The one that was open can't take them." When the call's workspace can't take a new board, they stay where they are:
-   "The rooms' boards didn't come back: this call's home can't take a new board any more. Each one is still saved there."
+   "The rooms' boards didn't come back: this call's workspace can't take a new board. Each one is still saved where it was."
    Afterwards a room's board is a saved board like any other, everyone invited's, and nothing to a teammate who wasn't invited.
    **Present** then makes each room's frame a stop on the pager, in the order they sit: the room reports back, and the
    organizer moves on.
@@ -1244,6 +1263,11 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
    ready", then **Read the notes** or **Go to Home**. The note shows the steps so far (call ended, audio
    saved, the transcript's length, the notes being written), playback of the decrypted recording, and who
    has it. Without notes, the sheet says there's nothing to send.
+   A call with notes and no workspace asks its organizer where they go: **These notes aren't in a workspace yet**, with a
+   choice of **New workspace** (made for the call, with everyone invited in it) or one of their workspaces they can edit in,
+   and **File them**. The call's folder goes at the top of it, and it's the call's from now on, and its series'. The sheet
+   then says where they went. Doing nothing leaves them in Notes, and the note asks the organizer the same, in a small
+   notice near what was worked on, until they're filed.
    Notes are written in the language set in settings by the organizer (or, for a room recording, by whoever recorded):
    "Same as the call" by default. Every note gets a short summary of two or three sentences, and a longer full summary
    under it.
@@ -1259,7 +1283,8 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
 
 **Journeys:** 7.1 ends the call and reads its notes; 7.2 hands hosting over; 7.3 leaves as an invited participant
 (including phone and light theme); 7.4 leaves as a guest; 7.5 retries a participant departure that failed;
-7.6 accepts another call while participating and continues there without a confirmation.
+7.6 accepts another call while participating and continues there without a confirmation; 7.7 ends a call with no workspace
+and files its notes in a new one.
 
 ## 8. Notes
 
@@ -1673,16 +1698,21 @@ notes on new calls while the oldest request fails.
   other meetings on Home** (both on by default). Then **Google Drive**, one line that says where notes go until
   **Manage** opens it in place, where **Connect** and **Reconnect** first say what Google shares and what Alcove uploads
   (flow 15), and **Agents**: named, revocable connections, then **Connect an agent**, which opens in place (flow 14).
-- **Plan and credits**: the time of notes left, with a sun on the line under it: at the end of the line on a new
-  account, back along it as notes are written, and set once there's none left. Calls without notes are free. Then the
-  minutes of notes used this month (since 00:00 UTC on the 1st), and **Add credits** (11.24).
+- **Plan**: **Plan** (Free) and when its notes renew; **Notes left**, about how much of the period's notes is left,
+  "About 3 h 20 min" (an estimate: busier calls use more), or "None" once they've stopped, with a sun on the line under
+  it: at the end of the line on a new period, back along it as notes are written, and set once there's none left;
+  **Storage**, what uploads and call recordings take, "2.4 GB of 10 GB", with files up to 512 MB and a sun on its line
+  the same way. Over the plan's storage, a note says until when
+  everything works as before, then that uploads and notes have stopped, until you make room. In a second panel, **Balance**, in dollars, with **Add money** (11.24), then each top-up
+  still on its way, with **Open** and, until a payment reaches it, a cancel. Without a server that takes payments the
+  balance has no **Add money**. Pro and Team aren't on sale yet, so nothing spends the balance.
 - **Privacy**: what account and call information Alcove processes, then confidential compute: the time the hardware
   was verified when this browser could check it, or where your audio is opened and your notes are written. The **Privacy policy** explains how Alcove uses account and service
   data and how to disconnect Google services. Then, in its own panel at the end, **Delete account**.
 
 **Delete account** opens one step where it is (never a window over the page): the row becomes the question, **Delete
 your account for good?**, and what goes sits beside what stays. What goes: the notes you made, with their audio, for
-everyone who has them; the calls you scheduled, for everyone invited; the minutes of notes left; your own notes on every
+everyone who has them; the calls you scheduled, for everyone invited; your plan, and your balance when there is one; your own notes on every
 call, and anything you added from them to other people's notes; your groups and pins; workspaces only you are in, and
 documents only you can open; your Google Calendar connection, where Alcove also asks Google to cancel your calls and end
 its access; and your sign-in on every browser. What stays: the notes other people gave you stay with them, without you,
@@ -1702,7 +1732,7 @@ The shared demo account can't be deleted: as soon as **Delete account** is press
 row says to reload the page. Any other failure, having no connection included, is said in the step, **Delete my account**
 tries again, and nothing happens later by itself. Once it's deleted you land on the welcome page, signed out, even
 if you left Settings meanwhile, and this browser forgets the tour and call view it kept for the account.
-Signing in again starts a new, empty account with 10,000 credits.
+Signing in again starts a new, empty account on Free.
 
 ### 11.25 Choose what reaches you
 
@@ -1725,27 +1755,32 @@ Journey **12.1** renames a workspace immediately: the list and breadcrumbs show 
 cannot be confirmed, **Edit name** restores the entered text; press Enter to retry without retyping or reloading. Later
 choices remain in place while older requests settle. Physical **Delete for good** completes only after Alcove confirms it.
 
-Documents and folders people write in together, between calls as well as in them. Every call has a workspace of its own,
-its home, where its notes, follow-ups and transcript go, and **Drive** in the side panel lists every workspace you're in,
-newest first: a call's home with the call it was made for and when (**From Launch check-in, Today at 09:30**), and one
-made by hand with when it was made, each with who's in it. Homes with the same name, the same call twice in a day, say
-when each call started too (**Launch check-in · 5 Nov, 14:30**, to the second if they started in the same minute), here, in
-the workspace picker and when choosing a home while scheduling. Picking one opens it on its own page, which fills the page, in
+Documents and boards people make together, between calls as well as in them. A workspace is made only when someone presses
+**New workspace**: here, in a call (its organizer), when scheduling one, or filing an ended call's notes. A call uses one
+workspace, where its notes, follow-ups and transcript go, in a folder of their own. **Drive** in the side panel lists every
+workspace you're in, newest first: one made for a call with the call and when (**From Launch check-in, Today at 09:30**), and
+one made by hand with when it was made, each with who's in it. Ones made for a call with the same name, the same call twice
+in a day, say when each call started too (**Launch check-in, 14:30**, to the second if they started in the same minute),
+here, in the workspace picker and when choosing one while scheduling. Its admins have a menu at the end of its row
+(**More**), with **Delete workspace**, which asks once, in place, and waits for Alcove to say it's done: it goes for everyone
+in it, with every document and board, and notes from calls stay in Notes. Its own menu, at the top of its list, has
+**Delete workspace** too, which goes back to the Drive. Picking one opens it on its own page, which fills the page, in
 your theme, with search and you in the top of it: the list and a document side by side, at the document you had open in
 it last. Everything happens in the list: nothing opens a window, and nothing asks you to fill anything in. Whatever
 someone does here reaches everyone else in the workspace as it happens, and a row that arrives or moves glows for a moment
 for all of them.
 
-**A call's folder.** At the top of a call's home is the call's folder, named after it and the day, with its **Notes**,
+**A call's folder.** At the top of a call's workspace is the call's folder, named after it and the day, with its **Notes**,
 **Follow-ups** and **Transcript**: once the call's over they open its note, at that part of it, for whoever has the note,
 and in a call, in a tab of their own. Someone in the workspace without the note sees the folder and whatever's been put in
 it. It's a folder like any other: rename it, move it, put documents in it.
 
-**When scheduling** a call, the details hold **New workspace for this call**: open it to pick one of your workspaces as its
-home instead, so its notes go there, beside the calls before it.
+**When scheduling** a call, the details hold **No workspace** (you can pick one in the call): open it for **New workspace**
+(made when you schedule, with everyone invited in it) or one of your workspaces you can edit in, so its notes go there,
+beside the calls before it.
 
-**First day.** The Drive says **Nothing here yet**, and that your next call makes the first. **New workspace** in its sky
-names one in place and opens it. An empty workspace says **Nothing here yet** with **New document** and **New folder**.
+**First day.** The Drive says **Nothing here yet**: make one here, or when you schedule a call. **New workspace** in its sky
+names one in place and opens it. Free can make as many as it likes: storage is the only limit. An empty workspace says **Nothing here yet** with **New document** and **New folder**.
 **New document** opens an empty page with the caret in the title and a few ways to start under it: **Agenda**, **Decision
 log**, **Retro** and **Project brief**. They're only blocks: picking one fills the page, names an untitled document after
 it, and anything in it can change or go. Two people can have the same new document open: they get one title and one first
@@ -1772,8 +1807,8 @@ saves the original, each photo as a file of its own, and the page stays as it is
 pictures sharpen when it's done; a caption starts as the file's name and is one click to change. A photo the browser can't read
 says which file, with **Add as a file** and **Delete**; chosen with **File**, a picture Alcove can't show (a phone's HEIC photo,
 say) goes in as a file straight away. One Alcove refuses says which file and why ("This file is bigger than
-512 MiB, the most a file can be.", "This workspace is full, so it can't take more files.", "That's all you can upload today. You
-can upload more tomorrow."), with **Try again** and **Delete**, and nothing else in the document changes. A block that's
+512 MiB, the most a file can be here.", "Your storage is full. Delete something, or move to a plan with more room.", "That's all you
+can upload today. You can upload more tomorrow."), with **Try again** and **Delete**, and nothing else in the document changes. A block that's
 uploading can be cut and pasted in its document, or undone and done again, and the upload goes on into it. Leaving the page doesn't stop
 an upload, and closing the tab asks first, until everything about it has reached Alcove; a browser that goes mid-upload leaves
 its block saying it couldn't, for everyone. A block's **Delete** takes it out and keeps
@@ -1889,6 +1924,9 @@ into a field: type, then **Enter**. A workspace always keeps an admin.
   in this browser and save when you sign in again (a document that finds out first says so in its bar). Signing out on
   purpose asks first (flow 11), and every other tab goes to the welcome page at once.
 - Someone who can only read gets no buttons that change anything: a bar says who to ask, and the list has no **+**.
+- A workspace whose payer is over their storage (and the 15 days after that went by) takes no more uploads: they're refused
+  with "Your storage is full. Delete something, or move to a plan with more room." Everything else works, and nothing is
+  deleted for being over.
 
 **Nothing written is trapped.** What you write stays in this browser until Alcove has it or you let it go, however the
 document ends up. Wherever it may not get there by itself (the document refuses it, you can only read it now, or it's
@@ -2099,12 +2137,13 @@ happened, leaving the existing settings in place after cancellation or failure.
 Storybook’s journeys use **15.1–15.8** above. The account, folders and file links in the preview are made-up; real Google
 consent and the provider’s own folder-selection page require manual verification with a supported Google account.
 
-### 11.24 Add credits
+### 11.24 Add money
 
-Open **Settings → Plan and credits → Add credits**, choose an amount of credits, then a token and network.
-**Get an address** opens the amount to send, its QR code and one payment address. Send only the stated token on that
-network. A short payment shows what arrived and how much remains; send the remainder before the address expires.
-After expiry it asks for no more money and waits for the payment or refund to settle. Credits appear in the balance
-once settlement is confirmed. Open and recent top-ups stay in Settings with **Open**, including cancelled, failed and
-held payments and their support reference. A waiting payment can be cancelled; a payment already sent still counts
-when it settles. Deleting an account warns when one of its payment addresses could still receive money.
+Open **Settings → Plan → Add money** beside **Balance**, choose **$20**, **$60**, **$120** or your own amount in dollars,
+then a token (USDC or USDT) and network. A token is a dollar, so $20 is 20 USDC. **Get an address** opens the amount to
+send, its QR code and one payment address. Send only the stated token on that network. A short payment shows what
+arrived and how much remains; send the remainder before the address expires. After expiry it asks for no more money
+and waits for the payment or refund to settle. The money appears in the balance once settlement is confirmed, and the
+sheet follows the payment until it does. Open and recent top-ups stay under the balance with **Open**, including
+cancelled, failed and held payments and their support reference. A waiting payment can be cancelled; a payment already
+sent still counts when it settles. Deleting an account warns when one of its payment addresses could still receive money.

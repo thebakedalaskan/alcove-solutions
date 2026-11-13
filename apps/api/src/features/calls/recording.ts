@@ -2,7 +2,11 @@ import { MAIN_PLACE, type CallAction, type CallState, type ShareStarted } from '
 import type { Owner } from '../../context';
 import { id128 } from '../../crypto';
 import { tx, type Db } from '../../db';
-import { ConflictError, ForbiddenError, UnavailableError, ValidationError, notFound } from '../../errors';
+import { ConflictError, ForbiddenError, PlanLimitError, UnavailableError, ValidationError, notFound } from '../../errors';
+import type { Most } from '../../inference';
+import { meterFor, notesBlocked } from '../billing/meter';
+import { mayStore } from '../billing/plans';
+import { writingAtMost } from '../notes/drafting';
 import { me } from '../account/account';
 import { appendPiece, createRecording, setRecordingState, type Piece } from '../recordings/audio';
 import * as capture from './capture';
@@ -57,6 +61,46 @@ async function stopNotes(o: Owner, db: Db, s: Stored, at: number, status: 'pause
   return { ...unkept, notes: { ...unkept.notes, status, history: [...s.notes.history, { at, status, by: 'organizer', segment: s.notes.segment }], unavailable: [] } };
 }
 
+/* ---------- the organizer's plan: notes stop when their notes or storage run out (features/billing) ---------- */
+
+/**
+ * What writing the call's notes will cost at most so far, for the organizer's allowance to hold while it's live: its
+ * seconds recorded, its breakout rooms and its shares kept for the notes, in the call's model.
+ */
+function writingSoFar(o: Owner, row: Row, s: Stored, nowMs: number): { model: string; most: Most } {
+  const at = (nowMs - row.started_at.getTime()) / 1000;
+  const seconds = capture.recorded(s.notes.history, s.notes.offline, at, at);
+  const rooms = (s.breakouts.open?.rooms.length ?? 0) + s.breakouts.held.reduce((n, h) => n + h.rooms.length, 0);
+  const shareSeconds = s.shares.filter((x) => x.keep && x.recorded).reduce((n, x) => n + Math.max(0, (x.until ?? at) - x.from), 0);
+  return { model: s.notes.model ?? o.cfg.NEAR_AI_NOTES_MODEL, most: writingAtMost({ seconds, rooms, shareSeconds }) };
+}
+
+/**
+ * The organizer's plan reached a limit in a live call: their notes are about to run out at the call's pace (`warn`, said
+ * to them alone, once), or their notes or storage have run out (`stop`): notes go off, as if the organizer had turned
+ * them off, nothing more is captured, and everyone in the call is told why until they close it. What was captured until
+ * then still goes into the notes once the call ends. Once each, however many requests reach it at once.
+ */
+export async function limitReached(o: Owner, callId: string, what: 'warn' | 'stop', reason: 'notes' | 'storage'): Promise<void> {
+  const told = await tx(o.pool, async (c) => {
+    const { row, state } = await load(o, c, callId, true);
+    if (row.state !== 'live') return null;
+    const limit = state.notes.limit;
+    if (what === 'warn') {
+      if (limit.warnedAt !== null || limit.stoppedAt !== null) return null;
+      await save(o, c, callId, { ...state, notes: { ...state.notes, limit: { ...limit, warnedAt: Date.now() } } });
+      return row.room_name;
+    }
+    if (limit.stoppedAt !== null) return null;
+    const off = state.notes.status === 'off' ? state : await stopNotes(o, c, state, tenthsIn(row.started_at), 'off');
+    await save(o, c, callId, { ...off, notes: { ...off.notes, limit: { ...limit, stoppedAt: Date.now(), reason } } });
+    return row.room_name;
+  });
+  if (told === null) return;
+  clog.info(what === 'warn' ? 'organizer told their notes are running out' : 'notes stopped: the organizer’s plan ran out', { callId, reason });
+  await tellRoom(o, told, callId, { call: true, log: false });
+}
+
 type CaptureAction = Extract<CallAction, { type: 'notes' | 'pause' | 'resume' | 'request-notes' | 'decline-notes' | 'unavailable' | 'model' }>;
 
 /**
@@ -69,9 +113,16 @@ export async function changeCapture(v: Viewer, c: Db, row: Row, s: Stored, a: Ca
   const o = v.organizer;
   const ctx = { callId: row.call_id, action: a.type, notes: s.notes.status };
   const meeting = () => getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+  // Notes come on again only while the organizer's plan has notes and room for them; once they do, the stop is over.
+  const mayStart = async (): Promise<Stored> => {
+    const blocked = await notesBlocked(o, c, o.ownerId);
+    if (blocked === 'notes') throw new PlanLimitError('Your notes for this period have run out. They start again when your plan renews.', 'notes', { context: ctx });
+    if (blocked === 'storage') throw new PlanLimitError('Your storage is full, so notes can’t be kept. Delete something, or move to a plan with more room.', 'storage', { context: ctx });
+    return { ...s, notes: { ...s.notes, limit: capture.NO_LIMIT } };
+  };
   if (a.type === 'notes') {
     if (a.on && s.notes.status !== 'on') {
-      const on = await startNotes(o, c, s, await meeting(), at, 'organizer');
+      const on = await startNotes(o, c, await mayStart(), await meeting(), at, 'organizer');
       return notice(on, 'The organizer turned on notes. Everyone here can see that.');
     }
     if (!a.on && s.notes.status !== 'off') {
@@ -88,7 +139,7 @@ export async function changeCapture(v: Viewer, c: Db, row: Row, s: Stored, a: Ca
   if (a.type === 'resume') {
     if (s.notes.status === 'on') return s;
     if (s.notes.status !== 'paused') throw new ConflictError('Notes are off. Turn them on instead.', { context: ctx });
-    return notice(await startNotes(o, c, s, await meeting(), at, 'organizer'), 'The organizer resumed notes. Everyone here can see that.');
+    return notice(await startNotes(o, c, await mayStart(), await meeting(), at, 'organizer'), 'The organizer resumed notes. Everyone here can see that.');
   }
   if (a.type === 'unavailable') {
     // What the host's browser can't capture now (no microphone, or a browser that can't record or listen). It
@@ -118,8 +169,16 @@ export async function audio(v: Viewer, callId: string, piece: Piece): Promise<Ca
   stillHosting(v, state, ctx, mainScribeOf(state));
   const into = capture.mayCapture(capturing(row, state), 'audio', ctx);
   if (piece.segment !== state.notes.segment) throw new ConflictError('That audio belongs to an earlier part of the recording.', { context: ctx });
+  await roomFor(o, callId, piece.bytes.length, ctx);
   await appendPiece(o, into.recordingId, piece);
   return view(v, o.pool, callId);
+}
+
+/** Refuses what the organizer's storage has no room for: then notes stop for everyone in the call, who are told why. */
+async function roomFor(o: Owner, callId: string, bytes: number, ctx: Record<string, string | number>): Promise<void> {
+  if (await mayStore(o, o.pool, o.ownerId, bytes)) return;
+  await limitReached(o, callId, 'stop', 'storage');
+  throw new PlanLimitError('The organizer’s storage is full, so notes have stopped.', 'storage', { context: ctx });
 }
 
 /**
@@ -168,7 +227,16 @@ export async function transcribe(v: Viewer, callId: string, clip: transcripts.Cl
     atMs = Math.max(0, Math.round((said - s.notes.segmentFrom) * 1000));
   }
   const readers = roomsOpenAt(s, row, t0) ? readersAt(s, place, t0) : undefined;
-  await transcripts.hear(o, into, clip, { speaker, ...(place !== MAIN_PLACE ? { room: place } : {}), ...(readers ? { readers } : {}), began: t0, ...(atMs === undefined ? {} : { atMs }) });
+  // The organizer pays, and holds what writing the notes will cost so far: notes stop before their allowance is spent.
+  const meter = meterFor(o, { payer: o.ownerId, spend: 'transcript', source: { kind: 'call', id: into.recordingId }, reserve: writingSoFar(o, row, s, nowMs) });
+  try {
+    await transcripts.hear(o, meter, into, clip, { speaker, ...(place !== MAIN_PLACE ? { room: place } : {}), ...(readers ? { readers } : {}), began: t0, ...(atMs === undefined ? {} : { atMs }) });
+  } catch (e) {
+    if (e instanceof PlanLimitError) await limitReached(o, callId, 'stop', 'notes');
+    throw e;
+  }
+  const outcome = meter.outcome();
+  if (outcome !== 'ok') await limitReached(o, callId, outcome, 'notes');
   await tellRoom(o, row.room_name, callId, { call: true, log: false });
   return view(v, o.pool, callId);
 }
@@ -288,6 +356,7 @@ export async function appendScreen(v: Viewer, callId: string, shareId: string, p
       await save(o, c, callId, { ...latest.state, shares: latest.state.shares.map((x) => (x.id === shareId ? { ...x, published: true } : x)) });
     });
   }
+  await roomFor(o, callId, piece.bytes.length, ctx);
   await screens.appendPiece(o, into.recordingId, shareId, piece, budget());
   return answer();
 }

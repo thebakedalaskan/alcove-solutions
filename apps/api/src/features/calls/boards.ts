@@ -347,10 +347,10 @@ const opening = <S extends Boarded>(s: S, open: Omit<OpenBoard, 'vote'>, letIn: 
   return { ...s, board: { ...s.board, open: { ...s.board.open, [MAIN_PLACE]: { ...open, ...kept } }, letIn, ideas: same ? s.board.ideas : others } };
 };
 
-/** The call's home can't take a new board: its organizer can't edit there any more. */
+/** The call's workspace can't take a new board: its organizer can't edit there any more. */
 const homeShut = (asOrganizer: boolean, callId: string, workspaceId: string) => new ConflictError(asOrganizer
-  ? 'You can’t add to this call’s home any more. You can still open a board that’s saved.'
-  : 'This call’s home can’t take a new board any more. You can still open one that’s saved.', { context: { callId, workspaceId } });
+  ? 'You can’t add to this call’s workspace any more. You can still open a board that’s saved.'
+  : 'This call’s workspace can’t take a new board any more. You can still open one that’s saved.', { context: { callId, workspaceId } });
 
 /** Everyone invited, as the call stands, but whoever came in from the link, and whoever was taken out and hasn't come back. */
 function invitedNow(s: Boarded, meeting: Pick<MeetingManifest, 'guests' | 'addedFromLink'>, here: Here[]): string[] {
@@ -379,7 +379,7 @@ export interface MainBoardFor {
 /** A main board made: where, the decision it lets everyone in by, and the seats that gave. */
 export interface MadeMain { w: HeldWorkspace; workspaceId: string; documentId: string; entry: BoardLetIn; seats: string[]; invited: number }
 /**
- * The call's main board, made in the call's home, in the call's folder there, in the workspace's own transaction with nothing of
+ * The call's main board, made in the call's workspace, in the call's folder there, in the workspace's own transaction with nothing of
  * the call held, or `shut` when the home can't take it: its organizer can't edit there any more, and a call adds to a workspace
  * only while they can. Everyone invited has it by email, and anyone else here a seat.
  */
@@ -432,7 +432,7 @@ const stillEditing = (o: Owner, callId: string, at: { workspaceId: string; docum
 };
 
 /**
- * A new board in the call's home, in the call's folder there, whichever workspace everyone's viewing. The people invited get it by email, so it stays theirs through the note, and
+ * A new board in the call's workspace, in the call's folder there. The people invited get it by email, so it stays theirs through the note, and
  * anyone else here a seat. Someone on the invite because they were let in from the link has a seat too, for now: taking them out
  * of the call takes them off the invite, and a seat goes with them where an address wouldn't. `keepForInvited` sees to whoever's
  * still on it when the call ends. Nobody taken out of the call and still out is given what's opened after they went, though they
@@ -469,7 +469,7 @@ const roomBoardName = (room: string): string => nameOf(`${room} board`);
 const roomsFull = (callId: string) => new ConflictError('This call has made as many boards for its rooms as it can.', { context: { callId, boards: MAX_ROOM_BOARDS } });
 
 /**
- * Boards for rooms, made in the call's home with nothing of the call held: one each, named for it, restricted with nobody as its
+ * Boards for rooms, made in the call's workspace with nothing of the call held: one each, named for it, restricted with nobody as its
  * creator. Nobody has one yet: who's in each room gets it from `syncRoomBoards`, once the call says the board is the room's.
  */
 async function makeRoomBoards(o: Owner, callId: string, asOrganizer: boolean, rooms: { name: string }[]): Promise<{ w: HeldWorkspace; workspaceId: string; documentIds: string[] }> {
@@ -674,9 +674,9 @@ export async function offRoomBoards(o: Owner, board: CallBoards, emails: string[
 export type Landed =
   /** On the board it was for, made first if it had to be, or nothing of the rooms' was left to land. */
   | { kind: 'landed'; made: MadeMain | null }
-  /** The board it was for isn't the call's to write on any more: they land on a new one in the call's home instead. */
+  /** The board it was for isn't the call's to write on any more: they land on a new one in the call's workspace instead. */
   | { kind: 'elsewhere' }
-  /** No board can be made for them: the call's home can't take a new one any more. */
+  /** No board can be made for them: the call's workspace can't take a new one any more. */
   | { kind: 'shut' };
 /**
  * Lands rooms' boards on the main board, with nothing of the call held: makes the main board first when there's none and

@@ -204,6 +204,19 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-frame.is-rooms, .ic-frame .ic-cap, .ic-frame .rg-alone { pointer-events: auto; }
 /* Someone asking to join is answered whatever's open. */
 .ic-frame .rg-knocks { z-index: 23; }
+/*
+ * What's said about the whole call until it's closed (CallBanner): notes stopped, notes running out, the call nearly at its
+ * longest. Dropped from the top, centred, over whatever's open, one under another.
+ */
+.ic-limits { position: absolute; z-index: 24; top: 12px; left: 50%; transform: translateX(-50%); width: min(520px, calc(100% - 24px)); display: grid; gap: 8px; pointer-events: none; }
+.ic-limit { pointer-events: auto; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 10px 8px 10px 14px; border-radius: var(--radius-lg); background: var(--stage-raised); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1), 0 24px 50px -16px rgb(0 0 0 / 0.8); color: var(--stage-ink); }
+.ic-limit-i { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-pill); background: var(--horizon-soft); color: var(--horizon); }
+.ic-limit.is-caution .ic-limit-i { background: var(--caution-soft); color: var(--caution); }
+.ic-limit-t b { display: block; font: 600 14.5px/1.3 var(--font-sans); }
+.ic-limit-t small { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.35; color: var(--stage-ink-2); }
+.ic-limit .ac-btn { height: 34px; }
+.ic-limit-x { color: var(--stage-ink-2); }
+@media (max-width: 860px) { .ic-limits { top: 8px; width: calc(100% - 16px); } }
 .ic-slot { position: absolute; container-type: size; border-radius: var(--radius-md); touch-action: none; user-select: none; -webkit-user-select: none; }
 /* A small tile keeps its pin and spotlight as icons, so they never run into its menu. */
 @container (max-width: 260px) { .ic-tch { height: 26px; padding: 0 2px 0 7px; gap: 4px; } .ic-tch .tl { display: none; } }
@@ -740,6 +753,8 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-menu .mi .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ic-menu .mi:hover .ac-scope { background: var(--surface); }
 .ic-menu .mi[disabled] { opacity: .45; pointer-events: none; }
+/* What can't be undone, such as Delete workspace. */
+.ic-menu .mi.is-caution, .ic-menu .mi.is-caution .ac-i { color: var(--caution); }
 .ic-menu .mi .ac-kbd { flex: none; }
 .ic-menu .mi .tick { flex: none; margin-left: auto; color: var(--sun-text); opacity: 0; }
 .ic-menu .mi[aria-checked="true"] .tick { opacity: 1; }
@@ -859,6 +874,10 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-leave .state { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 13.5px; color: var(--ink-3); }
 .ic-leave .state .ac-i { color: var(--sun-text); }
 .ic-leave .state .ok { display: inline-flex; align-items: center; gap: 10px; }
+/* Notes from a call with no workspace: where its organizer files them (note.css's nd-file), in a panel as who gets them is. */
+.ic-leave .filing { margin-top: 16px; padding: 14px; border-radius: var(--radius-md); box-shadow: inset 0 0 0 1px var(--line); }
+.ic-leave .filing p { margin: 0; }
+.ic-leave .filing .nd-file-err { color: var(--caution); }
 /* Whoever hosts, leaving: who takes over (the best person, chosen already), and Change for who else could. */
 .ic-leave .next-host { margin-top: 16px; }
 .ic-leave .next-host .who { margin-top: 0; }

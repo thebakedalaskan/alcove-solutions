@@ -281,6 +281,8 @@
 .ac-seg[aria-disabled="true"] { opacity: .5; }
 .ac-seg button:disabled { cursor: default; }
 .ac-seg button:disabled:hover { color: var(--ink-2); }
+/* One choice that can't be made now, in a choice that can. */
+.ac-seg:not([aria-disabled="true"]) button:disabled { opacity: .45; }
 .ac-seg button[aria-pressed="true"]:disabled:hover { color: var(--ink); }
 
 /* ---- Toast, Notice ---- */

@@ -19,7 +19,7 @@ import { forgetAnswers } from '../meetings/access';
 import { takeAllBack } from '../notes/additions';
 import { forgetAllMade } from '../notes/links';
 import { queueDelete } from '../recordings/audio';
-import { openAccount } from '../billing/service';
+import { open as openPlan } from '../billing/plans';
 import { forgetAccess, grantToRevoke, revokeGrant, unreachable, withdraw } from '../meetings/calendar';
 import { create as createMeeting, findUpcoming } from '../meetings/service';
 import { deleteOwnNote, heldNoteIds } from '../notes/service';
@@ -110,7 +110,7 @@ type SignIn = { provider: 'google'; who: GoogleIdentity } | { provider: DemoProv
 
 /**
  * Signs a verified identity in and opens a session. The first sign-in creates the account: its keys,
- * its profile from the provider, and its credits; a demo identity also gets the sample calendar.
+ * its profile from the provider, and its plan (Free); a demo identity also gets the sample calendar.
  */
 export async function signIn(d: Deps, { provider, who }: SignIn): Promise<{ owner: Owner; sessionId: string; isNew: boolean }> {
   const subject = blindIndex(masterKey(d), 'subject', who.subject);
@@ -143,7 +143,7 @@ export async function signIn(d: Deps, { provider, who }: SignIn): Promise<{ owne
     const o = ownerFrom(d, ownerId, root, undefined);
     const p: Profile = { name: who.name, email: who.email, ...(who.photoUrl ? { photoUrl: who.photoUrl } : {}), sample: who.sample, preferences: DEFAULT_PREFERENCES, invited: [] };
     await createItem(o, c, 'profile', p);
-    await openAccount(d, c, ownerId);
+    await openPlan(d, c, ownerId);
     return { ownerId, isNew: true };
   });
 
@@ -192,7 +192,7 @@ const REVOKE_MS = 3_000;
  * opened); its access to the notes other people gave its address and what it answered on their calls (unless another
  * account signs in with that address too); its place in every workspace and on every document given to that
  * address, and in feature flags' groups and grants, on the same condition, and what its calls gave people's seats in workspaces; and the account's row, which takes its own notes on anyone's notes, sign-in identity, sessions, profile (pins and groups with it),
- * Google connection, receipts, notes jobs and credits with it. Then the LiveKit rooms of its calls still
+ * Google connection, receipts, notes jobs, plan and AI allowance with it. Then the LiveKit rooms of its calls still
  * going are closed, which takes everyone in them out, as ending a call does; the audio and shared-screen
  * objects, and those of any file that went from a workspace, are deleted, and any the store refuses wait in object_gc
  * for maintenance. Notes it shared on

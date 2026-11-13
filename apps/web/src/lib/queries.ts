@@ -1,5 +1,5 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import type { AgentDecisionInput, AgentTokenInput, DriveExportInput, FollowUpReview } from '@alcove/api';
+import type { AgentDecisionInput, AgentTokenInput, DriveExportInput, FileNotes, FollowUpReview, MeetingCreate } from '@alcove/api';
 import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Series, type SharedWrite, type ShareTarget, type DocumentLibrary, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree } from '@alcove/api';
 import { queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
@@ -52,7 +52,7 @@ export const qk = {
   allSeries: ['series'] as const,
   series: (id: string) => ['series', id] as const,
   callSeries: (code: string) => ['series', 'call', code] as const,
-  balance: ['credits'] as const,
+  plan: ['plan'] as const,
   topUpRoutes: ['top-ups', 'routes'] as const,
   topUps: ['top-ups', 'list'] as const,
   topUp: (id: string) => ['top-ups', 'one', id] as const,
@@ -75,7 +75,7 @@ export const qk = {
 
 /** A saved board someone could bring to a call: where it is, what it's called, whose it is, and when it was last changed. */
 export interface BoardToBring { workspaceId: string; workspace: string | null; id: string; name: string; by: string | null; editedAt: ISODate }
-/** How many of the newest workspaces the board picker looks in: a call's home is new, so what a team has is across the Drive. */
+/** How many of the newest workspaces the board picker looks in: what a team has is across the Drive, whichever the call's is. */
 const BOARD_SPACES = 12;
 /**
  * Every board you could bring from the newest of `spaces` (your Drive, as `q.workspaces` lists it), the most recently changed
@@ -114,7 +114,7 @@ export const trustLine = (t: Trust | undefined): string => (verifiedAt(t) === nu
 export const topUpOpen = (t: TopUp): boolean => t.state === 'waiting' || t.state === 'arriving' || t.state === 'short';
 
 /** The top-ups list's key, carrying its type, for reading what it held before. */
-const topUpsKey = queryOptions({ queryKey: qk.topUps, queryFn: (): Promise<TopUp[]> => api.credits.topUps() }).queryKey;
+const topUpsKey = queryOptions({ queryKey: qk.topUps, queryFn: (): Promise<TopUp[]> => api.plans.topUps() }).queryKey;
 
 export const q = {
   drive: () => queryOptions({ queryKey: qk.drive, queryFn: () => api.drive.get(), retry: false }),
@@ -182,24 +182,25 @@ export const q = {
     queryFn: () => api.calls.series(code).catch((e: unknown) => { if (errorCode(e) === 'unauthenticated') return null; throw e; }),
     retry: false, staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true
   }),
-  balance: () => queryOptions({ queryKey: qk.balance, queryFn: () => api.credits.balance() }),
+  /** The plan: notes left, storage and the balance. Read again every minute, so notes left follows calls. */
+  plan: () => queryOptions({ queryKey: qk.plan, queryFn: () => api.plans.plan(), refetchInterval: 60_000 }),
   /**
-   * The ways to pay for credits. A server that can't take payments answers unavailable: nothing says so, the way to
-   * add credits just isn't there, and it isn't asked again for a while.
+   * The ways to add money. A server that can't take payments answers unavailable: nothing says so, the way to
+   * add money just isn't there, and it isn't asked again for a while.
    */
-  topUpRoutes: () => queryOptions({ queryKey: qk.topUpRoutes, queryFn: () => api.credits.routes(), staleTime: 10 * 60_000, retry: false }),
+  topUpRoutes: () => queryOptions({ queryKey: qk.topUpRoutes, queryFn: () => api.plans.routes(), staleTime: 10 * 60_000, retry: false }),
   /**
    * Top-ups still open, and the last few finished; read again every 30 seconds while one is open, so a payment that
-   * settles with the sheet closed shows on Plan and credits. A server that can't take payments answers unavailable:
+   * settles with the sheet closed shows on Plan. A server that can't take payments answers unavailable:
    * there's nothing to show.
    */
   topUps: () => queryOptions({
     queryKey: qk.topUps,
     queryFn: async ({ client }) => {
       const was = client.getQueryData(topUpsKey)?.filter(topUpOpen) ?? [];
-      const list = await api.credits.topUps();
-      // One that was on its way has been credited since: the balance catches up.
-      if (list.some((t) => t.state === 'credited' && was.some((w) => w.id === t.id))) void client.invalidateQueries({ queryKey: qk.balance });
+      const list = await api.plans.topUps();
+      // One that was on its way has been added since: the balance catches up.
+      if (list.some((t) => t.state === 'credited' && was.some((w) => w.id === t.id))) void client.invalidateQueries({ queryKey: qk.plan });
       return list;
     },
     refetchInterval: (query) => (query.state.data?.some(topUpOpen) ? 30_000 : false),
@@ -207,14 +208,14 @@ export const q = {
   }),
   /**
    * One top-up, read again every 5 seconds while money can still arrive. Once it has finished, the list catches up,
-   * and the balance too when credits were added.
+   * and the balance too when money was added.
    */
   topUp: (id: string) => queryOptions({
     queryKey: qk.topUp(id),
     queryFn: async ({ client }) => {
-      const t = await api.credits.topUp(id);
+      const t = await api.plans.topUp(id);
       if (!topUpOpen(t)) void client.invalidateQueries({ queryKey: qk.topUps });
-      if (t.state === 'credited') void client.invalidateQueries({ queryKey: qk.balance });
+      if (t.state === 'credited') void client.invalidateQueries({ queryKey: qk.plan });
       return t;
     },
     refetchInterval: (query) => (query.state.data && topUpOpen(query.state.data) ? 5000 : false)
@@ -471,28 +472,28 @@ export function useInviteTeam() {
   return useMutation({ mutationFn: (emails: string[]) => api.people.inviteToTeam(emails), onSuccess: (t) => qc.setQueryData(qk.team, t) });
 }
 
-/* ---------- credits ---------- */
+/* ---------- adding money ---------- */
 
-/** Opens a top-up on a route: the address to pay to. It joins the open ones on Plan and credits. */
+/** Opens a top-up on a route: the address to pay to. It joins the open ones on Plan. */
 export function useStartTopUp() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ routeId, credits }: { routeId: string; credits: number }) => api.credits.startTopUp(routeId, credits),
+    mutationFn: ({ routeId, microUsd }: { routeId: string; microUsd: number }) => api.plans.startTopUp(routeId, microUsd),
     onSuccess: (t) => { qc.setQueryData(q.topUp(t.id).queryKey, t); void qc.invalidateQueries({ queryKey: qk.topUps }); }
   });
 }
 
-/** Cancels a top-up nothing has reached: it leaves the open ones on Plan and credits. */
+/** Cancels a top-up nothing has reached: it leaves the open ones on Plan. */
 export function useCancelTopUp() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.credits.cancelTopUp(id),
+    mutationFn: (id: string) => api.plans.cancelTopUp(id),
     onSuccess: (t) => {
       qc.setQueryData(q.topUp(t.id).queryKey, t);
       // It leaves the open ones at once, before the list is read again.
       qc.setQueryData(topUpsKey, (list) => list?.map((x) => (x.id === t.id ? t : x)));
       void qc.invalidateQueries({ queryKey: qk.topUps });
-      void qc.invalidateQueries({ queryKey: qk.balance });
+      void qc.invalidateQueries({ queryKey: qk.plan });
     },
     // Refused because a payment just reached it, say: read it again, so the address goes now.
     onError: (_e, id) => { void qc.invalidateQueries({ queryKey: qk.topUp(id) }); void qc.invalidateQueries({ queryKey: qk.topUps }); }
@@ -503,7 +504,25 @@ export function useCancelTopUp() {
 
 export function useScheduleCall() {
   const qc = useQueryClient();
-  return useMutation({ networkMode: 'always', mutationFn: (input: MeetingInput) => api.meetings.create(input), onSuccess: () => qc.invalidateQueries({ queryKey: qk.meetings }) });
+  return useMutation({
+    networkMode: 'always', mutationFn: (input: MeetingCreate) => api.meetings.create(input),
+    // A new workspace made for the call is in the Drive now.
+    onSuccess: (_m, input) => { void qc.invalidateQueries({ queryKey: qk.meetings }); if (input.newWorkspace) void qc.invalidateQueries({ queryKey: qk.workspaces, exact: true }); }
+  });
+}
+/**
+ * Files an ended call's notes in a workspace, when it had none: one of yours you can edit in, or a new one. The call's folder
+ * goes there and the workspace is the call's from now on, so the call, the Drive and the note all read again.
+ */
+export function useFileNotes() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { meetingId: string; noteId: string; to: FileNotes }) => api.meetings.file(v.meetingId, v.to),
+    onSuccess: (_m, v) => {
+      for (const queryKey of [qk.meetings, qk.note(v.noteId), qk.allSeries]) void qc.invalidateQueries({ queryKey });
+      void qc.invalidateQueries({ queryKey: qk.workspaces, exact: true });
+    }
+  });
 }
 /** A call changed or went: Home's calls, and any series it's the next call of, catch up. */
 const callsChanged = (qc: QueryClient) => { void qc.invalidateQueries({ queryKey: qk.meetings }); void qc.invalidateQueries({ queryKey: qk.allSeries }); };
@@ -812,6 +831,21 @@ export function useCreateWorkspace() {
 export function useRenameWorkspace() {
   const qc = useQueryClient();
   return useMutation(renameWorkspaceOptions(api, qc, qk));
+}
+/**
+ * Deletes a workspace for good, for everyone, with everything in it: admins only. What was read of it goes, and whatever named
+ * it reads again: the Drive, calls that used it, what can be brought to a call, and storage.
+ */
+export function useDeleteWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.workspaces.remove(id),
+    onSuccess: (_r, id) => {
+      qc.removeQueries({ queryKey: ['workspaces', id] });
+      void qc.invalidateQueries({ queryKey: qk.workspaces, exact: true });
+      for (const queryKey of [qk.boardsToBring, qk.meetings, qk.documents, qk.plan]) void qc.invalidateQueries({ queryKey });
+    }
+  });
 }
 /** Only the requested name overlays the live tree. Once that stream acknowledges it, later people’s renames own it. */
 export function useWorkspaceName(id: string, liveName: string, signedIn: boolean) {

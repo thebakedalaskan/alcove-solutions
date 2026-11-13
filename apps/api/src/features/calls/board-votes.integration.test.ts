@@ -11,6 +11,7 @@ import type * as Y from 'yjs';
 import { z } from 'zod';
 import { openJson, sealJson, stateKey, toJson } from '../../crypto';
 import { openOwner } from '../../owners';
+import { withWorkspace } from '../../testing/call-workspace';
 import { startHarness, type Browser, type Harness } from '../../testing/harness';
 import { connect, disposeLiveKit, type TestParticipant } from '../../testing/livekit';
 
@@ -69,11 +70,12 @@ async function invited(host: CallSession, callCode: string, who: Browser, previo
   await settle(host, (s) => s.participants.some((p) => p.id === call.ticket.identity));
   return call;
 }
-/** A call `org` hosts, with `guests` invited. */
+/** A call `org` hosts, with `guests` invited, and a workspace the organizer made in it with New workspace for its boards. */
 async function callBy(org: Account, guests: string[] = []) {
   const { code: c } = await org.api.calls.startNow({ notes: 'off', guests });
   const host = await org.api.calls.join(c, { mic: false, cam: false });
   await inGroup(host);
+  await withWorkspace(host);
   return { host, code: c };
 }
 async function workspace(who: Account, name: string, people: [Account, WorkspaceRole][] = []) {

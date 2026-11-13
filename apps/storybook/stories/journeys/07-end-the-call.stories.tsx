@@ -40,6 +40,28 @@ export const EndTheCall: PageStory = {
   }
 };
 
+/** The same review, scheduled with no workspace and given none in the call: Call ended asks where its notes go. */
+export const FileTheNotes: PageStory = {
+  name: '7.7 End a call with no workspace and file its notes',
+  ...inCall({ scenario: 'no-workspace', call: REVIEW, script: LATE }, {}),
+  play: async ({ userEvent, step }) => {
+    await step('Leave, then End call for everyone', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Leave' }, LATER));
+      await userEvent.click(await screen.findByRole('button', { name: 'End call for everyone' }, SOON));
+    });
+    await step('Call ended says the notes aren’t in a workspace yet. New workspace is chosen already: File them makes one for the call', async () => {
+      await screen.findByText('These notes aren’t in a workspace yet.', {}, LATER);
+      await userEvent.click(await screen.findByRole('button', { name: 'File them' }, SOON));
+    });
+    await step('It says where they went: the new workspace, named after the call, with the call’s folder in it. Then Read the notes', async () => {
+      await screen.findByText(/^Filed in/, {}, LATER);
+      await userEvent.click(await screen.findByRole('button', { name: /Read the notes|Open the notes/ }, LATER));
+      await screen.findByRole('heading', { name: 'Design review', level: 1 }, LATER);
+    });
+  }
+};
+export const FileTheNotesPhone = phone(FileTheNotes, '7.7 End a call with no workspace and file its notes, on a phone');
+
 export const LeaveAndKeepItGoing: PageStory = {
   name: '7.2 Leave and keep it going',
   ...inCall({ scenario: 'call-soon', call: REVIEW, script: LATE }, {}),

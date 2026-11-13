@@ -5,7 +5,7 @@ import { DEFAULT_NOTIFICATION_PREFERENCES, DEFAULT_SOUND_PREFERENCES } from '@al
  * every page reads it from here again.
  */
 import type {
-  Calendar, CreditBalance, DocRefusal, DocumentLibrary, FeatureFlagName, IncomingRing, Meeting, MentionNotice, MoveIn, MoveMedia, Note, NoteLink, Person, PersonalEntry, Preferences, Session, ShareEntry, Team,
+  Calendar, DocRefusal, DocumentLibrary, FeatureFlagName, IncomingRing, Meeting, MentionNotice, MoveIn, MoveMedia, Note, NoteLink, Person, PersonalEntry, Plan, Preferences, Session, ShareEntry, Team,
   WorkspaceMedia, WorkspaceSummary, WorkspaceTree
 } from '@alcove/api';
 import type { PaymentsWorld } from './payments';
@@ -94,7 +94,8 @@ export interface World {
   /** Every Alcove call: the ones to come, and the ones that happened. */
   meetings: Meeting[];
   calendar: Calendar;
-  credits: CreditBalance;
+  /** The plan Art is on, and what's left of it (src/world/plans.ts). */
+  plan: Plan;
   documents: DocumentLibrary;
   /** The workspaces you're in, each with everything in it you can open, and what your Drive says of it. */
   workspaces: Space[];
@@ -156,8 +157,3 @@ export const PREFS: Preferences = {
   notifications: { ...DEFAULT_NOTIFICATION_PREFERENCES, enabled: true, beforeCall: 1, followUpDue: true },
   pinned: [], groups: [], model: null
 };
-
-/** Ten hours of notes this month: 3 h 34 min used, 6 h 26 min left, as the side panel and Settings say on the canvas. */
-export const CREDITS: CreditBalance = { balance: 9650, granted: 15000, usedThisMonth: 5350, perMinute: 25 };
-/** A new account's 10,000 credits, none used. */
-export const WELCOME_CREDITS: CreditBalance = { balance: 10000, granted: 10000, usedThisMonth: 0, perMinute: 25 };

@@ -20,13 +20,15 @@ import type { Deps, Owner } from '../../context';
 import { b64u, blindIndex, concat, equalBytes, id128, openBinary, openJson, sealBinary, sealJson, sha, stateKey, toJson, type RecordHeader } from '../../crypto';
 import { bigintText, bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { ConflictError, ForbiddenError, IntegrityError, InternalError, NotFoundError, UnavailableError, invalid, notFound, toAppError } from '../../errors';
-import { limitsNow, shown, type Limits } from '../../limits';
+import { limitsNow, shown } from '../../limits';
 import { currentLogContext, log, withLogContext } from '../../log';
 import { masterKey } from '../../owners';
 import { issueMediaToken, readMediaToken, type MediaToken } from '../../mediaToken';
 import { deleteQueued, queueDelete } from '../recordings/audio';
 import { jpegSize } from '../recordings/screens';
 import { ID128, limitKey, requireDocument, roleOf, whoNamed, workspaceFor, type Reader, type Who, type Workspace } from './access';
+import { fileBytesFor, requireRoom, storageLimitOf } from '../billing/plans';
+import { payerOf, usedBytes } from '../billing/storage';
 
 const mlog = log.child({ component: 'media' });
 
@@ -239,9 +241,19 @@ const wire = (id: string, info: Info, createdAt: Date, documents: string[]): Wor
 type Uploader = { account: string } | { guest: Uint8Array; callId: string | undefined };
 const uploaderOf = (d: Deps, r: Reader): Uploader =>
   (r.account ? { account: r.account.owner.ownerId } : { guest: blindIndex(masterKey(d), 'upload-guest', limitKey(r)), callId: r.seat?.callId });
-/** What each limit allows, the same for everyone. */
-interface Allowed { file: number; workspace: number; day: number }
-const allowedBy = (limits: Limits): Allowed => ({ file: limits.get('media.file_bytes'), workspace: limits.get('media.workspace_bytes'), day: limits.get('media.account_day_bytes') });
+/**
+ * What a workspace takes (docs: Plans and usage › Storage): files as big as the plan of whoever it counts against has,
+ * while their storage has room, and what one person uploads in a day, the same for everyone. A workspace nobody pays for
+ * (none of its admins has an account, or its payer just deleted theirs) takes no files: they'd count against no storage at
+ * all. Upkeep settles who pays within minutes of an admin signing in (billing/storage.ts `settlePayers`).
+ */
+interface Allowed { file: number; day: number; payer: string; storage: number | null }
+async function allowedIn(d: Deps, db: Db, w: Place): Promise<Allowed> {
+  const limits = await limitsNow(d, db);
+  const payer = await payerOf(db, w.owner.ownerId);
+  if (!payer) throw new ConflictError('Files can’t be added until one of this workspace’s admins signs in to Alcove.', { context: { workspaceId: w.workspaceId, why: 'no payer' } });
+  return { file: await fileBytesFor(d, db, payer), day: limits.get('media.account_day_bytes'), payer, storage: await storageLimitOf(d, db, payer) };
+}
 
 /** Today, as uploads are counted: in UTC. */
 const today = (): string => new Date().toISOString().slice(0, 10);
@@ -260,33 +272,34 @@ async function countDay(c: Db, u: Uploader, bytes: number): Promise<number> {
         ON CONFLICT (owner_id, day) DO UPDATE SET bytes = media_upload_days.bytes + excluded.bytes RETURNING bytes`, [u.account, today(), bytes]);
   return day?.bytes ?? bytes;
 }
-const storedBy = async (db: Db, w: Place): Promise<number> => (await maybeOne(db, z.object({ stored_bytes: bigintText }), 'SELECT stored_bytes FROM owners WHERE owner_id = $1', [w.owner.ownerId]))?.stored_bytes ?? 0;
-
 /** What any limit set to zero refuses with: nothing can be uploaded, whatever anyone has done. */
 const NO_UPLOADS = 'Files can’t be uploaded right now.';
 /**
- * Refuses what would take a file, a workspace or someone's day past what's allowed, before anything of it is read: at the
- * start, with the whole file, and with each piece, so uploads going at once pass a limit by the pieces on their way and
- * no more. Each says which, and a file says how big one can be, because only the server knows.
+ * Refuses what would take a file past its plan's size, its payer's storage past their plan's, or someone's day past what's
+ * allowed, and anything at all in a workspace that's read-only, before anything of it is read: at the start, with the whole
+ * file, and with each piece, so uploads going at once pass a limit by the pieces on their way and no more. Each says which,
+ * and a file says how big one can be, because only the server knows.
  */
-async function withinLimits(db: Db, w: Place, u: Uploader, allowed: Allowed, size: number, adding: number): Promise<void> {
+async function withinLimits(d: Deps, db: Db, w: Place, u: Uploader, allowed: Allowed, size: number, adding: number): Promise<void> {
   const context = { workspaceId: w.workspaceId, sizeBytes: size, addingBytes: adding };
   if (size > allowed.file) {
-    throw invalid(allowed.file ? `This file is bigger than ${shown('media.file_bytes', allowed.file)}, the most a file can be.` : NO_UPLOADS, { ...context, limit: 'media.file_bytes', limitBytes: allowed.file });
+    throw invalid(allowed.file ? `This file is bigger than ${shown('plan.free.file_bytes', allowed.file)}, the most a file can be here.` : NO_UPLOADS, { ...context, limit: 'file', limitBytes: allowed.file });
   }
-  const stored = await storedBy(db, w);
-  if (stored + adding > allowed.workspace) {
-    throw new ConflictError(allowed.workspace ? 'This workspace is full, so it can’t take more files.' : NO_UPLOADS, { context: { ...context, limit: 'media.workspace_bytes', storedBytes: stored, limitBytes: allowed.workspace } });
-  }
+  await requireRoom(d, db, allowed.payer, adding, context);
   const day = await uploadedToday(db, u);
   if (day + adding > allowed.day) {
     throw new ConflictError(allowed.day ? 'That’s all you can upload today. You can upload more tomorrow.' : NO_UPLOADS, { context: { ...context, limit: 'media.account_day_bytes', uploadedBytes: day, limitBytes: allowed.day } });
   }
 }
-/** Says so, once, when a piece takes a workspace or someone's day past 80% of what it's allowed: IDs and sizes, nothing else. */
+/**
+ * Says so, once, when a piece takes the storage of whoever the workspace counts against, or someone's day, past 80% of
+ * what it's allowed: IDs and sizes, nothing else.
+ */
 const passes80 = (before: number, after: number, limit: number): boolean => before < 0.8 * limit && after >= 0.8 * limit;
 function nearTheLimits(w: Place, u: Uploader, allowed: Allowed, stored: { before: number; after: number }, day: { before: number; after: number }): void {
-  if (passes80(stored.before, stored.after, allowed.workspace)) mlog.warn('a workspace is past 80% of its storage', { workspaceId: w.workspaceId, storedBytes: stored.after, limitBytes: allowed.workspace });
+  if (allowed.storage !== null && passes80(stored.before, stored.after, allowed.storage)) {
+    mlog.warn('an account is past 80% of its storage', { workspaceId: w.workspaceId, ownerId: allowed.payer, storedBytes: stored.after, limitBytes: allowed.storage });
+  }
   if (passes80(day.before, day.after, allowed.day)) {
     mlog.warn('someone is past 80% of what they can upload today', { ...('guest' in u ? { callId: u.callId ?? null } : { ownerId: u.account }), uploadedBytes: day.after, limitBytes: allowed.day });
   }
@@ -309,11 +322,10 @@ export async function begin(d: Deps, who: Reader, workspaceId: string, documentI
   const id = id128();
   const pieces = Math.ceil(input.size / MEDIA_PIECE_BYTES);
   const u = uploaderOf(d, who);
-  const allowed = allowedBy(await limitsNow(d));
   await tx(d.pool, async (c) => {
     const w = await workspaceFor(d, who, workspaceId, c, 'hold');
     requireDocument(who, w, documentId, 'edit');
-    await withinLimits(c, w, u, allowed, input.size, input.size);
+    await withinLimits(d, c, w, u, await allowedIn(d, c, w), input.size, input.size);
     const info: Info = { name: input.name, type: input.type, size: input.size, width: input.width, height: input.height };
     await exec(c, "INSERT INTO workspace_media (owner_id, media_id, state, pieces, info_ciphertext) VALUES ($1,$2,'uploading',$3,$4)", [w.owner.ownerId, id, pieces, sealJson(mediaKey(w.owner, id), infoHeader(w, id), toJson(info))]);
     await exec(c, 'INSERT INTO workspace_media_uses (owner_id, media_id, document_id) VALUES ($1,$2,$3)', [w.owner.ownerId, id, documentId]);
@@ -346,8 +358,8 @@ export async function storePiece(d: Deps, who: Reader, workspaceId: string, docu
   const length = pieceLength(info, seq);
   if (body.declared > length) throw invalid('That piece is the wrong size.', { ...where, bytes: body.declared, length });
   const u = uploaderOf(d, who);
-  const allowed = allowedBy(await limitsNow(d));
-  await withinLimits(d.pool, w, u, allowed, info.size, length);
+  const allowed = await allowedIn(d, d.pool, w);
+  await withinLimits(d, d.pool, w, u, allowed, info.size, length);
 
   // Counted from here: a body is 4 MiB the moment it's read, whether or not anything has got to it yet.
   const arrival = await arriving.enter(askerOf(who));
@@ -378,7 +390,8 @@ export async function storePiece(d: Deps, who: Reader, workspaceId: string, docu
     }
     if (kept) {
       mlog.debug('piece stored', { ...where, bytes: sealed });
-      nearTheLimits(w, u, allowed, { before: kept.stored - sealed, after: kept.stored }, { before: kept.day - bytes.length, after: kept.day });
+      const stored = await usedBytes(d.pool, allowed.payer);
+      nearTheLimits(w, u, allowed, { before: stored - sealed, after: stored }, { before: kept.day - bytes.length, after: kept.day });
       return;
     }
     mlog.info('piece raced a retry; dropping the duplicate', where);

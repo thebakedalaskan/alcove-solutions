@@ -51,6 +51,29 @@ export const CallEndedReady = inCall({ scenario: 'call-soon', call: REVIEW, scri
 });
 export const CallEndedReadyPhone = phone(CallEndedReady);
 
+/**
+ * The design review had no workspace: Call ended asks Art, its organizer, where its notes go, one of his workspaces or a new
+ * one, under who gets them. Leaving them in Notes is doing nothing: Read the notes is still the one thing to press.
+ */
+export const CallEndedUnfiled = inCall({ scenario: 'no-workspace', call: REVIEW, script: REVIEW_LATE }, { play: press('Leave', { then: ['End call for everyone'] }) });
+export const CallEndedUnfiledPhone = phone(CallEndedUnfiled);
+export const CallEndedUnfiledLight = light(CallEndedUnfiled);
+/** File them in Product: the call's folder goes there, and the sheet says where they went. */
+export const CallEndedFiled = inCall({ scenario: 'no-workspace', call: REVIEW, script: REVIEW_LATE }, {
+  play: async (c) => {
+    await press('Leave', { then: ['End call for everyone'] })(c);
+    await c.step('Choose Product in Where these notes go', async () => {
+      await c.userEvent.click(await screen.findByRole('button', { name: /Where these notes go/ }, { timeout: 10000 }));
+      await c.userEvent.click(await screen.findByRole('option', { name: /^Product/ }, { timeout: 8000 }));
+    });
+    await c.step('File them. The sheet says where they went', async () => {
+      await c.userEvent.click(await screen.findByRole('button', { name: 'File them' }));
+      await screen.findByText(/^Filed in/, {}, { timeout: 8000 });
+    });
+  }
+});
+export const CallEndedFiledPhone = phone(CallEndedFiled);
+
 /** Leave and keep it going: Priya hosts, and the lobby says so, with Join and host to take it back. */
 export const LeaveItToPriya = inCall({ scenario: 'call-soon', call: REVIEW, script: REVIEW_LATE }, { play: press('Leave', { then: ['Leave and keep it going'] }) });
 

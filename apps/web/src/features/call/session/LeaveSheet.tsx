@@ -2,12 +2,14 @@
  * The host's departure: one calm sheet whose content changes in place. Other participants leave without this sheet.
  * Whoever hosts (the organizer, or someone standing in for them) ends the call for everyone, or leaves and keeps it
  * going with someone else hosting: the best person is chosen already, and Change shows who else could. Once the call
- * has ended, who gets the notes and how they're coming along, until they can be read.
+ * has ended, who gets the notes and how they're coming along, until they can be read; and, for its organizer when the call
+ * had no workspace, where to file them.
  */
 import { errorMessage, firstName, minutesLabel, type NoteProgress, type Person } from '@alcove/api';
 import { Avatar, Button, Dots, Faces, Icon, Modal, Unencrypted } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { FileNotes } from '~/features/notes/FileNotes';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
 import { callName, listNames } from '~/lib/people';
@@ -15,7 +17,8 @@ import { callName, listNames } from '~/lib/people';
 const llog = log.child({ component: 'leave' });
 const UI = { duration: 0.28, ease: [0.22, 0.8, 0.24, 1] } as const;
 
-export type Ended = { noteId: string | null; duration: number };
+/** The call has ended. `filed` false: it had notes and no workspace, so its organizer is asked where they go (FileNotes). */
+export type Ended = { meetingId: string; noteId: string | null; duration: number; filed: boolean };
 /** Someone who could host after you, by participant ID. */
 export interface NextHost { id: string; person: Person }
 
@@ -128,6 +131,8 @@ export function LeaveSheet({ open, onOpenChange, title, elapsed, organizer, stan
                       : progress?.ready ? <motion.span className="ok" initial={reduce ? false : { opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={UI}><Icon name={modelPrivate ? 'sealed' : 'shieldOff'} size={16} />{modelPrivate ? 'Notes are ready. Written in confidential compute.' : <>Notes are ready. Written by an unencrypted AI model. <Unencrypted compact /></>}</motion.span>
                         : <><Dots />{progress?.steps.find((s) => !s.done)?.label ?? (modelPrivate ? 'Writing in confidential compute' : 'Writing with an unencrypted AI model')}</>}
                   </div>
+                  {/* The call had no workspace: its organizer can file the notes in one, or leave them in Notes. */}
+                  {organizer && !ended.filed && <div className="filing"><FileNotes meetingId={ended.meetingId} noteId={ended.noteId} /></div>}
                 </>
               ) : <p>No notes were taken, so there’s nothing to send.</p>}
               <div className="acts">

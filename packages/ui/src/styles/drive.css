@@ -1,7 +1,7 @@
 /*
  * The Drive. The sun's just gone: a band of sky with New workspace in the middle of it, and every workspace you're in on the
- * water below, newest first, a call's home saying which call it was made for and when. The list scrolls under the horizon,
- * so New workspace stays in view. On a phone the page scrolls as one. Classes start with dv-.
+ * water below, newest first, one made for a call saying which call and when, with its admins' menu at the end of its row. The
+ * list scrolls under the horizon, so New workspace stays in view. On a phone the page scrolls as one. Classes start with dv-.
  */
 .dv { --hz: calc(8px + clamp(220px, 26vh, 300px)); height: 100vh; height: 100dvh; }
 .dv .dusk-in { display: flex; flex-direction: column; height: 100%; padding-bottom: 8px; }
@@ -27,9 +27,30 @@
 .dv-row.is-call .dv-ic { color: var(--sun-text); }
 .dv-t { min-width: 0; }
 .dv-t b { font: 600 15px/1.35 var(--font-sans); }
-.dv-t small { display: block; margin-top: 2px; font: 400 13px/1.4 var(--font-sans); color: var(--ink-2); }
+/* One line each, clamped (`ac-clamp-1` draws it as a box of one line), so a long call name never wraps a row. */
+.dv-t small { margin-top: 2px; font: 400 13px/1.4 var(--font-sans); color: var(--ink-2); }
+.dv-t small:not(.ac-clamp-1) { display: block; }
 .dv-end { display: flex; align-items: center; gap: 6px; font: 500 13px/1 var(--font-sans); color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ac-empty.dv-none { padding-top: 12px; }
+
+/* A row and, beside it and outside its link, its admins' menu: every row keeps the menu's column, so the chevrons line up. */
+.dv-item { display: grid; grid-template-columns: minmax(0, 1fr) 36px; align-items: center; column-gap: 4px; }
+.dv-item > .dv-row { margin-right: 0; }
+.dv-more { justify-self: center; color: var(--ink-3); }
+.dv-more:hover, .dv-more[data-state="open"] { color: var(--ink); }
+/* Its menu: Delete workspace, then the question in its place. */
+.ac-pop.dv-pop { width: min(300px, calc(100vw - 24px)); text-align: left; }
+.dv-pop-row { display: grid; grid-template-columns: 30px minmax(0, 1fr); column-gap: 11px; align-items: center; width: 100%; min-height: 46px; padding: 6px 10px; border-radius: 12px; text-align: left; transition: background-color var(--duration-1); }
+.dv-pop-row:hover { background: color-mix(in oklch, var(--ink) 7%, transparent); }
+.dv-pop-row .dv-pop-ic { display: grid; place-items: center; width: 30px; height: 32px; color: var(--caution); }
+.dv-pop-b { display: block; min-width: 0; }
+.dv-pop-b b { display: block; font: 500 14px/19px var(--font-sans); color: var(--caution); }
+.dv-pop-b small { display: block; font: 400 12.5px/17px var(--font-sans); color: var(--ink-3); }
+.dv-sure { padding: 8px 10px 6px; outline: 0; }
+.dv-sure b { font: 600 14.5px/20px var(--font-sans); color: var(--ink); overflow-wrap: anywhere; }
+.dv-sure p { margin-top: 4px; font: 400 13px/19px var(--font-sans); color: var(--ink-2); }
+.dv-sure-a { display: flex; justify-content: flex-end; gap: 4px; margin-top: 12px; }
+.dv-sure-a .ac-btn { height: 32px; font-size: 13px; }
 
 @media (max-width: 860px) {
   /* The sky goes up behind the phone's top bar. */

@@ -395,7 +395,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   if (!view.tree) return <WsPane page={isPage}>{view.status === 'reconnecting' && <WsDoc><WsOfflineEmpty online={online} onTry={store.retry} /></WsDoc>}</WsPane>;
 
   const ws: Ws = {
-    mode, workspaceId, pass, call, sent: view.tree, here: view.here, others, present, following, follow, stopFollowing, items, tree, at, go, switchTo: onSwitch, owner, me,
+    mode, workspaceId, pass, call, sent: view.tree, here: view.here, others, present, following, follow, stopFollowing, items, tree, at, go, switchTo: onSwitch, leave: onLeave, owner, me,
     self: view.here.find((h) => h.isMe)?.person ?? me, actions, say, canChange, spaceName, spaceSave, listDown: view.status === 'reconnecting' ? { onTry: online ? store.retry : undefined } : null,
     open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc, page, put, lastDocument, openFind: () => find.setFinding(true), pictures, ids
   };

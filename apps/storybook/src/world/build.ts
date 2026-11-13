@@ -9,6 +9,19 @@ import {
   type NotesSetting, type Person, type Received, type Recipient, type RecipientRole, type Repeat, type RsvpCounts, type ScreenMoment, type ScreenShare, type TranscriptLine
 } from '@alcove/api';
 import { ART } from './people';
+import type { Space } from './index';
+
+/**
+ * The workspace a call's organizer made for it as they scheduled it (New workspace): named after the call, with its organizer
+ * its admin and everyone invited in it to edit, made the day before it. Empty until the call's folder goes in, the first time
+ * Workspace opens. The call's `workspaceId` names it.
+ */
+export function spaceMadeFor(m: Meeting, id = `ws-${m.id}`): Space {
+  return {
+    id, name: m.title, role: m.isOrganizer ? 'admin' : 'edit', people: m.guests.length + 1, items: [],
+    createdAt: new Date(Date.parse(m.startsAt) - 86_400_000).toISOString(), call: { title: m.title, at: m.startsAt }
+  };
+}
 
 /** A moment in a recording as the canvas writes it, '06:12' or '1:04:30', in seconds. */
 export function mmss(t: string): number {

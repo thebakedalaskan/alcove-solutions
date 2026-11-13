@@ -3,10 +3,11 @@ import { paymentsOff } from '../world/payments';
 import { disconnectedDrive } from '../world/drive-exports';
 import { notConnected } from '../world/build';
 import { on } from '../world/clock';
-import { PREFS, WELCOME_CREDITS, type Opening, type World } from '../world';
+import { newPlan } from '../world/plans';
+import { PREFS, type Opening, type World } from '../world';
 
 export const EMPTY_WORLD = (): World => ({
-  drive: disconnectedDrive(), payments: paymentsOff(), session: null, prefs: PREFS, team: null, notes: [], personal: {}, meetings: [], calendar: notConnected, credits: WELCOME_CREDITS,
+  drive: disconnectedDrive(), payments: paymentsOff(), session: null, prefs: PREFS, team: null, notes: [], personal: {}, meetings: [], calendar: notConnected, plan: newPlan(),
   documents: { workspaces: [] }, workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null
 });
 

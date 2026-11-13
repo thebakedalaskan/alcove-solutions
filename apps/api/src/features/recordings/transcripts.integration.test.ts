@@ -11,6 +11,7 @@ import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { speechWav } from '../../testing/fake-near';
 import { startHarness, type Harness } from '../../testing/harness';
+import { standing } from '../billing/meter';
 
 // Letting people into a call goes through its MLS group, which a busy CI runner can be slow at; every wait says what it waited for.
 vi.setConfig({ testTimeout: 60_000 });
@@ -273,7 +274,7 @@ describe('a transcript that says what it isn’t sure of', () => {
     expect(logs).toContain('transcript line corrected');
   });
 
-  it('writes the notes again from the corrected transcript when the organizer asks, keeping what people settled, charged once', async () => {
+  it('writes the notes again from the corrected transcript when the organizer asks, keeping what people settled', async () => {
     const org = await account(unique('organizer'));
     const kofiEmail = invitee('kofi');
     const call = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on', guests: [kofiEmail] })).code, { mic: true, cam: false });
@@ -284,7 +285,6 @@ describe('a transcript that says what it isn’t sure of', () => {
     let note = await org.api.notes.get(noteId);
     const first = note.writtenAt ?? '';
     expect(first).not.toBe('');
-    const balance = (await org.api.credits.balance()).balance;
     const jobs = async () => (await h.pool.query<{ n: number }>('SELECT count(*)::int AS n FROM content_jobs WHERE owner_id = $1', [org.session.ownerId])).rows[0]?.n ?? 0;
 
     // Kofi rewords the first decision and the organizer confirms it, so it stays whatever the notes say next time (typed on
@@ -338,8 +338,7 @@ describe('a transcript that says what it isn’t sure of', () => {
     expect(note.suggestions).toEqual([expect.objectContaining({ text: 'Send the screens by Friday', due: 'Friday', takenOn: false, done: false, changes: [] })]);
     expect(note.questions.map((x) => [x.text, x.state])).toEqual([['Can we test it on staging first?', 'open']]);
     expect(note.summary).toBe('Heard 4 lines. It ended on: Can we test it on staging first?');
-    // Written again, not charged again, and the notes model's verification isn't listed twice.
-    expect((await org.api.credits.balance()).balance).toBe(balance);
+    // Written again, the notes model’s verification isn’t listed twice.
     expect(note.inference.map((e) => e.task)).toEqual(['transcript', 'notes']);
     expect(await jobs()).toBe(0);
 
@@ -351,7 +350,7 @@ describe('a transcript that says what it isn’t sure of', () => {
     expect(code(await org.api.notes.rewrite(silent).catch((e: unknown) => e))).toBe('conflict');
   });
 
-  it('writes notes that couldn’t be written when the organizer asks, and charges for them then', async () => {
+  it('writes notes that couldn’t be written when the organizer asks, paying for every answer the model gave', async () => {
     const { maintain } = await import('../../maintenance');
     const org = await account(unique('organizer'));
     const job = async () => (await h.pool.query<{ state: string; attempt: number }>('SELECT state, attempt FROM content_jobs WHERE owner_id = $1', [org.session.ownerId])).rows[0];
@@ -359,8 +358,9 @@ describe('a transcript that says what it isn’t sure of', () => {
       await h.pool.query(`UPDATE content_jobs SET lease_until = now() - interval '1 second' WHERE owner_id = $1`, [org.session.ownerId]);
       await maintain(h.deps);
     };
-    const before = (await org.api.credits.balance()).balance;
-    // The notes model never gives a usable answer: after three attempts the note is finished without notes, free.
+    const spent = async () => (await standing(h.deps, h.pool, org.session.ownerId)).spentNano;
+    // The notes model never gives a usable answer: after three attempts the note is finished without notes. Each answer was
+    // still work the model did, and the organizer paid for it.
     h.near.failNext(3, 'prose');
     const rec = await org.api.recordings.start({ title: 'Unwritten' });
     await rec.appendAudio(piece('unwritten', 0, 0));
@@ -373,16 +373,15 @@ describe('a transcript that says what it isn’t sure of', () => {
     expect(await job()).toBeUndefined();
     let note = await org.api.notes.get(noteId);
     expect(note).toMatchObject({ status: 'ready', summary: '', writtenAt: null });
-    expect((await org.api.credits.balance()).balance).toBe(before);
+    const unusable = await spent();
+    expect(unusable).toBeGreaterThan(0);
 
-    // Asked to, it writes them, and they're charged now that they're written.
+    // Asked to, it writes them, from the organizer’s notes again.
     expect(await org.api.notes.rewrite(noteId)).toMatchObject({ status: 'ready', writingAgain: true });
     await written(org.api, noteId);
     note = await org.api.notes.get(noteId);
     expect(note.decisions.map((d) => d.text)).toEqual(['We agreed to ship on Monday.']);
     expect(note.writtenAt).not.toBeNull();
-    const minutes = Math.max(1, Math.ceil(note.audio.reduce((n, a) => n + a.seconds, 0) / 60));
-    const credits = await org.api.credits.balance();
-    expect(credits.balance).toBe(before - minutes * credits.perMinute);
+    expect(await spent()).toBeGreaterThan(unusable);
   });
 });

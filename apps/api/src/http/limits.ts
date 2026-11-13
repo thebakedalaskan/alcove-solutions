@@ -32,6 +32,9 @@ export function createHttpLimits() {
 
   const askLimiter = rateLimit(20, 60_000);
 
+  /** A guest's questions and catch-ups in a call, which the organizer's plan pays for: a few a minute each. */
+  const guestAskLimiter = rateLimit(6, 60_000);
+
   /** Changing what a note says: each change writes a whole new revision of it, so nobody can churn one, or its history. */
   const noteChangeLimiter = rateLimit(120, 60_000);
 
@@ -198,5 +201,5 @@ export function createHttpLimits() {
 
   /** Following a top-up, per account: the app asks every 5 s while one is open, and each ask may ask 1Click. */
   const topUpCheckLimiter = rateLimit(60, 60_000);
-  return { limiter, telemetryLimiter, attestLimiter, speechLimiter, voiceLimiter, askLimiter, noteChangeLimiter, callLimiter, pickLimiter, cardLimiter, chatLimiter, rejoinLimiter, askNotesLimiter, othersPointLimiter, nudgeLimiter, statusLimiter, followUpLimiter, notesWatchLimiter, ideasWatchLimiter, sortLimiter, followUpsLimiter, askSpaceLimiter, spaceLimiter, moveLimiter, moveOpenLimiter, moveCheckLimiter, moveSecretCheckLimiter, moveSecretChangeLimiter, captionLimiter, videoLimiter, shareLimiter, momentLimiter, makeLimiter, busyLimiter, ringLimiter, ringAnswerLimiter, ringStreamLimiter, personalLimiter, carryLimiter, treeLimiter, liveLimiter, workspaceLimiter, workspaceListLimiter, documentLiveLimiter, updateLimiter, updateBytesLimiter, versionLimiter, awarenessLimiter, presenceLimiter, searchLimiter, mentionLimiter, idsLimiter, presenterLimiter, pieceLimiter, mediaLimiter, topUpLimiter, topUpCheckLimiter };
+  return { limiter, telemetryLimiter, attestLimiter, speechLimiter, voiceLimiter, askLimiter, guestAskLimiter, noteChangeLimiter, callLimiter, pickLimiter, cardLimiter, chatLimiter, rejoinLimiter, askNotesLimiter, othersPointLimiter, nudgeLimiter, statusLimiter, followUpLimiter, notesWatchLimiter, ideasWatchLimiter, sortLimiter, followUpsLimiter, askSpaceLimiter, spaceLimiter, moveLimiter, moveOpenLimiter, moveCheckLimiter, moveSecretCheckLimiter, moveSecretChangeLimiter, captionLimiter, videoLimiter, shareLimiter, momentLimiter, makeLimiter, busyLimiter, ringLimiter, ringAnswerLimiter, ringStreamLimiter, personalLimiter, carryLimiter, treeLimiter, liveLimiter, workspaceLimiter, workspaceListLimiter, documentLiveLimiter, updateLimiter, updateBytesLimiter, versionLimiter, awarenessLimiter, presenceLimiter, searchLimiter, mentionLimiter, idsLimiter, presenterLimiter, pieceLimiter, mediaLimiter, topUpLimiter, topUpCheckLimiter };
 }

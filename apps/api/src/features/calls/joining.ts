@@ -6,8 +6,10 @@ import { id128, openJson, sealJson, toJson } from '../../crypto';
 import { exec, tx } from '../../db';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../errors';
 import { openOwner } from '../../owners';
+import { limitsNow } from '../../limits';
 import { me, profile } from '../account/account';
 import { NO_BOARDS, NO_SPACE } from './space-state';
+import { NO_LIMIT } from './capture';
 import { notesCanGo, syncAccess } from '../meetings/access';
 import { lookupCode } from '../meetings/codes';
 import { MeetingManifest, minutesOf, pickTime, updateManifest } from '../meetings/service';
@@ -27,6 +29,7 @@ import { syncBoardSeats } from './room-boards';
 import { tellRoom } from './notifications';
 import { knownUntil, type Viewer } from './participants';
 import { startNotes } from './recording';
+import { notesBlocked } from '../billing/meter';
 import { appendMls } from './mls-log';
 
 const clog = log.child({ component: 'calls' });
@@ -132,7 +135,10 @@ type Earlier = Pick<CallPass, 'callId' | 'identity' | 'person'>;
  */
 async function enter(d: Deps, o: Owner, meeting: Loaded<MeetingManifest>, joined: Joined, who: { mic: boolean; cam: boolean; keyPackage: string; earlier?: Earlier | undefined; moving?: boolean | undefined; host?: string | undefined; owner?: Owner | undefined }): Promise<{ ticket: CallTicket; state: CallState }> {
   const { identity, role, name } = joined;
-  const j = role === 'host' ? await hostJoin(o, meeting, joined, who) : await guestJoin(o, meeting, joined, who.keyPackage, who.earlier, who.moving === true);
+  const j = role === 'host' ? await hostJoin(o, meeting, joined, who) : await guestJoin(o, meeting, joined, who.keyPackage, who.earlier, who.moving === true).catch(async (e: unknown) => {
+    if (e instanceof ConflictError && e.context['reason'] === 'full' && typeof e.context['callId'] === 'string') await toldFull(o, e.context['callId']);
+    throw e;
+  });
   // If the new host's browser never reaches the room, someone else hosts, or the call ends when nobody can.
   if (j.hosts) setTimeout(() => { reconcile(d).catch((err: unknown) => clog.warn('reconcile after a host joined failed', { err })); }, HOST_GRACE_MS + 1_000).unref();
   if (j.replaced) await o.livekit.removeParticipant(j.roomName, j.replaced).catch((e: unknown) => clog.info('previous host connection already gone', { callId: j.callId, err: e }));
@@ -239,15 +245,20 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
         host: joined.identity, moving: null, people: [{ ...joined, hosting: [{ from: joined.since, to: null }] }], spotlight: null, breakouts: { open: null, held: [] }, removed: [], pointing: true, othersPointOff: [], chatAt: {}, chatRead: {}, timer: null, notices: [], workspace: NO_SPACE, board: NO_BOARDS,
         notes: {
           status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0, segmentFrom: 0, history: [], asks: [], unavailable: [], offline: [], screenHistory: [],
-          frameCapture: null, model: (await profile(o, c)).preferences.model
+          frameCapture: null, model: (await profile(o, c)).preferences.model, limit: NO_LIMIT
         },
         shares: []
       };
       await exec(c, `INSERT INTO calls (owner_id, call_id, meeting_item_id, state, started_at, version, state_ciphertext, room_name, host_identity, host_joined_at) VALUES ($1,$2,$3,'live',now(),0,$4,$5,$6,now())`,
         [o.ownerId, callId, meeting.itemId, sealJson(key(o, callId), header(o, callId), toJson(s)), roomName, joined.identity]);
       if (meeting.manifest.notes === 'on') {
-        s = await startNotes(o, c, s, meeting, 0, 'schedule');
-        s = notice(s, 'Notes are on. Everyone here can see that.');
+        // The organizer's notes or storage have run out: the call goes on, and everyone sees why there are no notes.
+        const blocked = await notesBlocked(o, c, o.ownerId);
+        if (blocked) s = { ...s, notes: { ...s.notes, limit: { ...NO_LIMIT, stoppedAt: Date.now(), reason: blocked } } };
+        else {
+          s = await startNotes(o, c, s, meeting, 0, 'schedule');
+          s = notice(s, 'Notes are on. Everyone here can see that.');
+        }
       }
       await save(o, c, callId, s);
       const started = await updateManifest(o, c, meeting.itemId, (m) => ({ ...m, status: 'live' }));
@@ -278,6 +289,27 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
     clog.info(standIn ? 'organizer back, hosting again' : 'organizer rejoined call', { callId: live.call_id, meetingId: meeting.itemId, replaced: Boolean(earlier), segment: s.notes.segment, generation });
     return { callId: live.call_id, roomName, replaced: earlier?.identity ?? null, row: { host_identity: joined.identity, locked: live.locked }, state: s, admit: 'auto', generation, person: host.person, hosts: true };
   });
+}
+
+/** When each full call's host was last told someone was turned away, so they're told at most once a minute (this instance). */
+const fullTold = new Map<string, number>();
+const FULL_TOLD_MS = 60_000;
+/** Tells whoever hosts a full call that someone was turned away: a notice to their connection alone. */
+async function toldFull(o: Owner, callId: string): Promise<void> {
+  const last = fullTold.get(callId) ?? 0;
+  if (Date.now() - last < FULL_TOLD_MS) return;
+  fullTold.set(callId, Date.now());
+  for (const [id, at] of fullTold) if (Date.now() - at > FULL_TOLD_MS) fullTold.delete(id);
+  const room = await tx(o.pool, async (c) => {
+    const { row, state } = await load(o, c, callId, true);
+    if (row.state !== 'live' || !state.host) return null;
+    const most = (await limitsNow(o, c)).get('call.max_people');
+    const told = { ...state, notices: [...state.notices.slice(-2), { id: id128(), text: `Someone tried to join, but this call is full: ${most} people is the most a call can have.`, kind: 'people' as const, to: state.host }] };
+    await save(o, c, callId, told);
+    return row.room_name;
+  });
+  clog.info('someone turned away from a full call', { callId });
+  if (room) await tellRoom(o, room, callId, { call: true, log: false });
 }
 
 async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joined, keyPackage: string, earlier: Earlier | undefined, moving = false): Promise<Joining> {
@@ -312,6 +344,13 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
       return { callId: live.call_id, roomName: live.room_name, replaced: before.identity, row: live, state: s, admit: 'auto', generation, person: me.person, hosts: true };
     }
     if (!hostHere(live)) throw new ConflictError('Waiting for the host to start the call.', { context: { meetingId: meeting.itemId, role: joined.role } });
+    // At most `call.max_people` at once, those waiting to be let in included (docs: Plans and usage): someone coming back
+    // keeps their place, anyone more is turned away, and whoever hosts is told.
+    if (!before) {
+      const most = (await limitsNow(o, c)).get('call.max_people');
+      const here = new Set(state.people.filter((j) => j.status === 'in' || j.status === 'waiting').map((j) => j.person)).size;
+      if (here >= most) throw new ConflictError(`This call is full: ${most} people are in it, the most a call can have.`, { context: { callId: live.call_id, reason: 'full', people: here } });
+    }
     let s: Stored = { ...state, people: [...state.people, me], spotlight: before && state.spotlight === before.identity ? me.identity : state.spotlight };
     // An old connection still in never said it went (its page crashed, or its goodbye hasn't come): its stay ends when it
     // was last heard from, not now, so the time between isn't counted as theirs for a guest coming back to read.

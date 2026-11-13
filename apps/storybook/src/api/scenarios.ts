@@ -5,7 +5,7 @@
  * of these reach.
  */
 import {
-  TopUpSchema, TopUpRoutesSchema, ISODateSchema, DriveExportChoiceSchema, DriveExportJobSchema, DriveFolderSchema, DriveSettingsSchema, FILE_TYPE, CalendarSchema, CreditBalanceSchema, DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PreferencesSchema,
+  TopUpSchema, TopUpRoutesSchema, ISODateSchema, DriveExportChoiceSchema, DriveExportJobSchema, DriveFolderSchema, DriveSettingsSchema, FILE_TYPE, CalendarSchema, DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PlanSchema, PreferencesSchema,
   MentionNoticeSchema, SessionSchema, ShareEntrySchema, TeamSchema, WorkspaceMediaSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, type DocumentLibrary, type DocumentRole,
   type Group, type ItemCall, type MentionNotice, type NoteRoom, type NoteWorkedOn, type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole
 } from '@alcove/api';
@@ -13,10 +13,10 @@ import { tileHintKey } from '~/features/call/layout/view';
 import { sessions } from '~/lib/live';
 import { openBrowser } from '../browser';
 import { busyCalls, busyEvents, soonCalls } from '../world/calls';
-import { connected, notConnected, writeNote, type NoteSpec } from '../world/build';
+import { connected, notConnected, spaceMadeFor, writeNote, type NoteSpec } from '../world/build';
 import { iso, on, setClock } from '../world/clock';
 import { clipOf, stillOf } from '../media/screens';
-import { CREDITS, PREFS, WELCOME_CREDITS, session, type BoardSpec, type Kept, type Opening, type Page, type Refused, type Space, type World } from '../world';
+import { PREFS, session, type BoardSpec, type Kept, type Opening, type Page, type Refused, type Space, type World } from '../world';
 import { FLOW, RETRO, roomBoard } from '../world/boards';
 import {
   COMPETITORS, EMPTY_STATES, EXPENSES, FIRST_DRAFT, HOLIDAYS, INTERVIEWS, LAUNCH_CHECKLIST, LAUNCH_PLAN, MEDIA, OLD_ROADMAP, ONBOARDING_FIXES, PRICING_COPY,
@@ -28,13 +28,15 @@ import { QUIET } from './empty';
 import { forgetKeptHere } from './kept';
 import { drawnPicture, forgetAudio } from './media';
 import { stopLive } from './standin';
-import { paymentsOff, withPayments } from '../world/payments';
+import { paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, topUpOf, withPayments } from '../world/payments';
+import { freePlan, inGrace, newPlan, notesStopped, overLimits, withBalance, withNotesLeft } from '../world/plans';
 import { disconnectedDrive, withDriveExports } from '../world/drive-exports';
 import { withAgentConnections } from './agents';
 import { serve } from './state';
 import { forgetDocuments } from './workspaces';
 
-export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'drive-connected' | 'payments';
+export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'no-workspace' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'drive-connected' | 'payments'
+  | 'plan-low' | 'plan-stopped' | 'plan-grace' | 'plan-over' | 'plan-balance';
 
 interface Scenario { title: string; about: string; make: () => { world: World; opening: Partial<Opening> } }
 
@@ -61,10 +63,10 @@ const STANDUP_AT = iso(0, 9, 0);
 const PRICING_AT = iso(-1, 15, 0);
 const REVIEW_AT = iso(-1, 11, 0);
 /**
- * A call's home, as the API makes one when the call's workspace first opens: named after the call and the day, with the
+ * A workspace made for a call before calls had to pick one, as stored data still has them: named after the call and the day, with the
  * call's folder at its top, whose pages open the call's note once it's over.
  */
-/** What a call's home is called: the call, and the day. */
+/** What such a workspace is called: the call, and the day. */
 const homeName = (title: string, at: string): string => `${title} · ${new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(at))}`;
 function home(id: string, title: string, at: string, organizer: Person, role: WorkspaceRole, people: number, noteId: string, items: WorkspaceItem[]): Space {
   const name = homeName(title, at);
@@ -243,7 +245,7 @@ function files(): Kept[] {
 const TAGGED: MentionNotice[] = [
   { id: 'tag-kofi-fixes', workspaceId: 'ws-standup', document: itemId('Onboarding fixes'), name: 'Onboarding fixes', block: null, by: { id: KOFI.id, name: KOFI.name, email: '', ...(KOFI.portrait ? { portrait: KOFI.portrait } : {}) }, at: iso(0, 15, 40) }
 ];
-/** Who changed what during a call, as its note lists it for Art, in the call's home. */
+/** Who changed what during a call, as its note lists it for Art, in the call's workspace. */
 function workedOn(workspaceId: string, workspace: string, name: string, people: readonly Person[]): NoteWorkedOn {
   return {
     workspaceId, id: itemId(name), kind: 'document', name, by: people.flatMap((p) => (p.portrait ? [{ name: p.name, portrait: p.portrait, isMe: p.id === ART.id }] : [])), workspace, room: null, everyone: true
@@ -285,7 +287,7 @@ function busy(): World {
   }
   return {
     drive: disconnectedDrive(), payments: paymentsOff(), session: session(), prefs: { ...PREFS, pinned: ['n4', 'n6'], groups: GROUPS }, team: teamOf(DIRECTORY), notes, personal: { n2: standupOwn() },
-    meetings: busyCalls(), calendar: connected(busyEvents()), credits: CREDITS, documents: library(), workspaces: workspaces(), pages: pages(), shares: shares(), boards: boards(),
+    meetings: busyCalls(), calendar: connected(busyEvents()), plan: freePlan(), documents: library(), workspaces: workspaces(), pages: pages(), shares: shares(), boards: boards(),
     mentions: structuredClone(TAGGED), media: files(), rings: [], writing: null,
     // The bandwidth flag is on here and off in every other scenario, so both answers are served.
     featureFlags: ['call.bandwidth_reduction']
@@ -353,16 +355,59 @@ function onTheirOwn(): World {
   ];
   return {
     drive: disconnectedDrive(), payments: paymentsOff(), session: session({ user: solo, ownerId: solo.id }), prefs: PREFS, team: null, notes: specs.map((s) => writeNote(s, solo)), personal: {},
-    meetings: [], calendar: connected([]), credits: CREDITS, documents: { workspaces: [{ id: 'own', name: 'Your documents', documents: [] }] },
+    meetings: [], calendar: connected([]), plan: freePlan(), documents: { workspaces: [{ id: 'own', name: 'Your documents', documents: [] }] },
     workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null
   };
+}
+
+/**
+ * Wednesday morning at 10:26, the design review four minutes away. `withSpace`: Art made it a workspace as he scheduled it
+ * (New workspace), so it's the call's; without, it has none, and he picks or makes one in the call.
+ */
+function callSoon(withSpace: boolean): World {
+  const w = busy();
+  w.notes = w.notes.filter((n) => Date.parse(n.startedAt) < Date.parse(iso(0, 10, 26)) && n.id !== 'n1');
+  w.meetings = soonCalls();
+  const review = w.meetings.find((m) => m.id === 'm-review');
+  if (withSpace && review) {
+    const space = spaceMadeFor(review);
+    w.workspaces.push(space);
+    w.meetings = w.meetings.map((m) => (m.id === review.id ? { ...m, workspaceId: space.id } : m));
+  }
+  return w;
 }
 
 /* ---------- the scenarios ---------- */
 
 export const SCENARIOS: Record<ScenarioName, Scenario> = {
+  'plan-low': {
+    title: 'Notes nearly out', about: 'Art is on Free with about 20 minutes of the period’s notes left, and the sun near the start of the line.',
+    make: () => { const world = busy(); world.plan = withNotesLeft(20); return { world, opening: {} }; }
+  },
+  'plan-stopped': {
+    title: 'Notes stopped', about: 'Art is on Free and the period’s notes have run out: they stop until it renews, and calls go on without them.',
+    make: () => { const world = busy(); world.plan = notesStopped(); return { world, opening: {} }; }
+  },
+  'plan-grace': {
+    title: 'Over Free’s storage, in grace', about: 'Art stores 14.2 GB of Free’s 10: everything works as before for nine more days.',
+    make: () => { const world = busy(); world.plan = inGrace(); return { world, opening: {} }; }
+  },
+  'plan-over': {
+    title: 'Over Free’s storage, past the grace', about: 'The grace is over: uploads have stopped.',
+    make: () => { const world = busy(); world.plan = overLimits(); return { world, opening: {} }; }
+  },
+  'plan-balance': {
+    title: 'A balance', about: 'Art has $60 in their balance, with a $20 top-up waiting for its payment and a $40 one already added.',
+    make: () => {
+      const world = busy();
+      withPayments(world);
+      world.plan = withBalance();
+      world.payments.topUps = [topUpOf(PREVIEW_TOP_UP, 'waiting', 20), topUpOf(PREVIEW_PAID_TOP_UP, 'credited', 40, true)];
+      return { world, opening: {} };
+    }
+  },
   payments: {
-    title: 'Credit top-ups', about: 'Art can add credits with a stablecoin; every payment address is an invalid Storybook preview.',
+    title: 'Adding money', about: 'Art can add money to their balance with a stablecoin; every payment address is an invalid Storybook preview.',
     make: () => { const world = busy(); withPayments(world); return { world, opening: {} }; }
   },
   'drive-connected': {
@@ -379,7 +424,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     make: () => ({
       world: {
         drive: disconnectedDrive(), payments: paymentsOff(), session: session({ createdAt: iso(0, 16, 5) }), prefs: PREFS, team: teamOf(DIRECTORY.filter((c) => c.person !== INES && c.person !== AIKO).map((c): Colleague => ({ ...c, onAlcove: false, invited: false }))),
-        notes: [], personal: {}, meetings: [], calendar: notConnected, credits: WELCOME_CREDITS, documents: library(), workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null
+        notes: [], personal: {}, meetings: [], calendar: notConnected, plan: newPlan(), documents: library(), workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null
       },
       opening: { tourSeen: false }
     })
@@ -399,13 +444,14 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     }
   },
   'call-soon': {
-    title: 'A call about to start', about: 'Wednesday at 10:26: the design review with Priya, Kofi and Aiko starts in four minutes, and the day is still ahead.',
-    make: () => {
-      const w = busy();
-      w.notes = w.notes.filter((n) => Date.parse(n.startedAt) < Date.parse(iso(0, 10, 26)) && n.id !== 'n1');
-      w.meetings = soonCalls();
-      return { world: w, opening: { now: on(0, 10, 26) } };
-    }
+    title: 'A call about to start',
+    about: 'Wednesday at 10:26: the design review with Priya, Kofi and Aiko starts in four minutes, in the Design review workspace Art made for it as he scheduled it, and the day is still ahead.',
+    make: () => ({ world: callSoon(true), opening: { now: on(0, 10, 26) } })
+  },
+  'no-workspace': {
+    title: 'A call with no workspace yet',
+    about: 'The same morning, but the design review was scheduled with no workspace: Art picks or makes one in the call, and is asked where its notes go when it ends.',
+    make: () => ({ world: callSoon(false), opening: { now: on(0, 10, 26) } })
   },
   lots: { title: 'Lots of everything', about: 'Thirty people on Alcove, three months of notes, eight pins, a dozen groups, long names.', make: () => ({ world: lots(), opening: {} }) },
   'signed-out': {
@@ -444,7 +490,7 @@ export function checked(w: World): World {
     ['session', SessionSchema.nullable().safeParse(w.session)], ['prefs', PreferencesSchema.safeParse(w.prefs)], ['team', TeamSchema.nullable().safeParse(w.team)],
     ['notes', NoteSchema.array().safeParse(w.notes)], ['meetings', MeetingSchema.array().safeParse(w.meetings)], ['calendar', CalendarSchema.safeParse(w.calendar)],
     ['payment routes', TopUpRoutesSchema.nullable().safeParse(w.payments.routes)], ['top-ups', TopUpSchema.array().safeParse(w.payments.topUps)],
-    ['credits', CreditBalanceSchema.safeParse(w.credits)], ['documents', DocumentLibrarySchema.safeParse(w.documents)], ['workspaces', WorkspaceTreeSchema.array().safeParse(w.workspaces)],
+    ['plan', PlanSchema.safeParse(w.plan)], ['documents', DocumentLibrarySchema.safeParse(w.documents)], ['workspaces', WorkspaceTreeSchema.array().safeParse(w.workspaces)],
     ['rings', IncomingRingSchema.array().safeParse(w.rings)], ['personal', PersonalEntrySchema.array().safeParse(Object.values(w.personal).flat())],
     ['shares', ShareEntrySchema.array().safeParse(Object.values(w.shares).flat())],
     ['drive', WorkspaceSummarySchema.array().safeParse(w.workspaces)], ['mentions', MentionNoticeSchema.array().safeParse(w.mentions)],

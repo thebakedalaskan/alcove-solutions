@@ -22,23 +22,27 @@ import { ringYou, standIn } from './api/standin';
 import { current, me } from './api/state';
 import { page, type PageStory } from './page';
 import type { World } from './world';
-import { call, type CallSpec } from './world/build';
+import { call, spaceMadeFor, type CallSpec } from './world/build';
 
 /**
- * A call the story puts in the world first: a call as `call()` writes it, started just now, set up to join muted, with a
- * workspace chosen as its home when it was scheduled, or keeping other than everything in its notes.
+ * A call the story puts in the world first: a call as `call()` writes it, started just now, set up to join muted, or keeping
+ * other than everything in its notes. `workspaceId`: the workspace picked for it when it was scheduled; left out, one its
+ * organizer made for it then (`spaceMadeFor`); null, none yet, for its organizer to pick or make in the call.
  */
-export interface StoryCall extends CallSpec { instant?: boolean | undefined; joinMuted?: boolean | undefined; workspaceId?: string | undefined; choices?: NotesChoices | undefined }
+export interface StoryCall extends CallSpec { instant?: boolean | undefined; joinMuted?: boolean | undefined; workspaceId?: string | null | undefined; choices?: NotesChoices | undefined }
 /** The story's call: one of the scenario's own, by its link's code, or one of its own. */
 type Which = string | StoryCall;
 const codeOf = (c: Which): string => (typeof c === 'string' ? c : c.code);
 
-/** The story's own calls go into the world, as you see them, unless the world has them already. */
+/** The story's own calls go into the world, as you see them, with the workspace made for each, unless the world has them already. */
 function settle(...calls: Which[]): void {
   const w = current();
   for (const c of calls) {
     if (typeof c === 'string' || w.meetings.some((m) => m.code === c.code)) continue;
-    const m: Meeting = { ...call(c, me()), instant: c.instant ?? false, joinMuted: c.joinMuted ?? false, workspaceId: c.workspaceId ?? null, ...(c.choices ? { choices: c.choices } : {}) };
+    const made = call(c, me());
+    const space = c.workspaceId === undefined ? spaceMadeFor(made) : null;
+    if (space && !w.workspaces.some((x) => x.id === space.id)) w.workspaces.push(space);
+    const m: Meeting = { ...made, instant: c.instant ?? false, joinMuted: c.joinMuted ?? false, workspaceId: space ? space.id : c.workspaceId ?? null, ...(c.choices ? { choices: c.choices } : {}) };
     w.meetings.push(m);
   }
 }

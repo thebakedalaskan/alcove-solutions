@@ -64,8 +64,9 @@ const AgendaDraft = z.object({ workspaceId: z.string(), documentId: z.string(), 
 export type AgendaDraft = z.infer<typeof AgendaDraft>;
 
 /**
- * This run of the call's folder in its home: the ID it's made as, taken under the call's row so that everyone opening Workspace
- * at once makes one between them, and whether it's made. Made once: someone deleting it doesn't bring it back.
+ * This run of the call's folder in the call's workspace (the meeting's `workspaceId`): the ID it's made as, taken under the
+ * call's row so that everyone opening Workspace at once makes one between them, and whether it's made. Made once: someone
+ * deleting it doesn't bring it back. Null while the call has no workspace, and again once the organizer picks another.
  */
 const CallHome = z.object({ workspaceId: z.string(), folderId: z.string(), made: z.boolean() });
 export type CallHome = z.infer<typeof CallHome>;
@@ -81,14 +82,11 @@ export const CallSpace = z.object({
   /** This run of the call has its agenda, or has found there's none to make, so nobody opening Workspace looks again. */
   agendaLooked: z.boolean().default(false),
   agendaDraft: AgendaDraft.nullable().default(null),
-  /** The workspace everyone views, when the organizer switched from the home: the home's on the meeting. */
-  viewing: z.string().nullable().default(null),
-  home: CallHome.nullable().default(null),
-  /** The workspaces made in this run of the call (New workspace), the latest last: who's in them follows its invite while it's on. */
-  made: z.array(z.string()).default([])
+  // The call's workspace is the meeting's: a previous release's `viewing` and `made` here go unread.
+  home: CallHome.nullable().default(null)
 });
 export type CallSpace = z.infer<typeof CallSpace>;
-export const NO_SPACE: CallSpace = { asks: [], present: [], space: [], ended: [], play: [], worked: [], agendaLooked: false, agendaDraft: null, viewing: null, home: null, made: [] };
+export const NO_SPACE: CallSpace = { asks: [], present: [], space: [], ended: [], play: [], worked: [], agendaLooked: false, agendaDraft: null, home: null };
 
 /**
  * A vote on a board, on one of its frames or with none on every sticky. Each person's votes are kept by who they are to it:

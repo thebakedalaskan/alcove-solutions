@@ -266,10 +266,10 @@ export interface WsSpaceChoice { id: string; name: string; sub: string; icon?: '
  * The name at the top of the list. Who can choose (`canChoose`, the organizer) sees their workspaces and New workspace;
  * everyone else sees which one it is and who chooses (`organizer`). `heading` for outside a call. `about` holds rows for
  * the workspace you're in, such as its people, under the list. The one you're in comes first, so it stays where it is as
- * the rest come in.
+ * the rest come in. `current` null: a call with no workspace yet, so none is ticked.
  */
 export function WsSpacePicker({ spaces, current, canChoose, organizer, heading = 'This call’s workspace', about = [], onPick, onNew }: {
-  spaces: WsSpaceChoice[]; current: string; canChoose: boolean; organizer?: string | undefined; heading?: string | undefined; about?: WsMenuRow[] | undefined;
+  spaces: WsSpaceChoice[]; current: string | null; canChoose: boolean; organizer?: string | undefined; heading?: string | undefined; about?: WsMenuRow[] | undefined;
   onPick: (id: string) => void; onNew: () => void;
 }) {
   const here = spaces.filter((s) => s.id === current);

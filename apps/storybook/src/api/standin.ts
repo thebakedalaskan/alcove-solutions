@@ -15,9 +15,9 @@ import type { BoardSortBody, DocAskBody, DocAskPart } from '@alcove/api';
 import {
   ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpReview, type FollowUpTarget, type NoteAction, AgentAuthorizationIdSchema, AgentConnectionIdSchema, AgentDecisionInputSchema, AgentTokenInputSchema, DEFAULT_NOTES_CHOICES, searchOf, termsIn, type ActionPatch, type ActionProposal, type AlcoveApi, type AgentConnection, type AnswerPart, type Busy, type CallCard,
   type CallDocument, type CallSession, type Change, type ChangeScope, type DecisionPatch, type DecisionProposal, type ID, type Inbox, type IncomingRing,
-  type InstantCallInput, type Interval, type LinePatch, type Meeting, type MeetingInput, type Note, type NoteFound, type NoteKind, type NoteProgress,
+  type FileNotes, type InstantCallInput, type Interval, type LinePatch, type Meeting, type MeetingCreate, type MeetingInput, type Note, type NoteFound, type NoteKind, type NoteProgress,
   type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series, type SharedAudience, type SharedWrite,
-  type SeriesAnswerPart, type SeriesNote, type SignInResult, type DemoProvider, type RoomRecordingInput, type RoomRecording, type CallMoveIn
+  type SeriesAnswerPart, type SeriesNote, type SignInResult, type DemoProvider, type RoomRecordingInput, type RoomRecording, type CallMoveIn, type WorkspaceItem
 } from '@alcove/api';
 import { isOnline } from '../browser';
 import { canvasTheme } from '../world/boards';
@@ -280,15 +280,36 @@ function documentsFor(w: World, ids: string[] | undefined): CallDocument[] {
   const all = w.documents.workspaces.flatMap((s) => s.documents);
   return (ids ?? []).flatMap((id) => { const d = all.find((x) => x.id === id); return d ? [{ id, kind: d.kind, by: d.by, name: d.name }] : []; });
 }
-function meetingFrom(w: World, input: MeetingInput): Meeting {
+/**
+ * A workspace made for a call, as it's scheduled or its notes are filed: named after it, with you its admin and everyone invited
+ * in it to edit. `folder`: the call's folder at its top, holding its note.
+ */
+function spaceFor(w: World, call: { title: string; at: string; people: number }, folder?: { name: string; noteId: string } | undefined): string {
+  const id = nextId('ws');
+  const now = new Date().toISOString();
+  const items: WorkspaceItem[] = folder ? [{
+    id: nextId('folder').padEnd(22, '0'), kind: 'folder', name: folder.name, parent: null, by: null, createdAt: now, editedAt: now, trashedAt: null, trashedBy: null,
+    restricted: false, role: 'edit', call: { startedAt: call.at, on: false, here: false, noteId: folder.noteId }
+  }] : [];
+  w.workspaces.push({ id, name: call.title.replace(/\s+/g, ' ').trim().slice(0, 120) || 'Untitled', role: 'admin', people: call.people, items, createdAt: now, call: { title: call.title, at: call.at } });
+  return id;
+}
+/** What a call's folder is called: the call, and the day it started, 'Design review · 4 Nov'. */
+const folderName = (title: string, at: string) => `${title} · ${new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(at))}`;
+
+function meetingFrom(w: World, input: MeetingCreate): Meeting {
   const id = nextId('m');
   const guests = input.guests.map(personAt);
   const startsAt = input.offer?.[0] ?? input.startsAt;
   const repeat = input.repeat ? { rule: input.repeat.rule, until: input.repeat.until, timeZone: input.repeat.timeZone } : undefined;
+  // One of yours you can edit in, or a new one made now, or none until someone picks one in the call.
+  const picked = input.workspaceId ? w.workspaces.find((x) => x.id === input.workspaceId && (x.role === 'admin' || x.role === 'edit')) : undefined;
+  if (input.workspaceId && !picked) throw refused('not-found', 'That workspace isn’t there, or you can’t make things in it.');
+  const workspaceId = picked ? picked.id : input.newWorkspace ? spaceFor(w, { title: input.title, at: startsAt, people: guests.length + 1 }) : null;
   return {
     id, title: input.title, startsAt, endsAt: addMinutes(startsAt, input.durationMinutes), organizer: me(), isOrganizer: true, guests, guestCount: guests.length,
     notes: input.notes, choices: input.choices ?? DEFAULT_NOTES_CHOICES, code: newCode(), status: 'scheduled', instant: false, joinMuted: input.joinMuted ?? false,
-    documents: documentsFor(w, input.documents), workspaceId: null, rsvps: { yes: 0, maybe: 0, no: 0, waiting: guests.length }, rsvp: null,
+    documents: documentsFor(w, input.documents), workspaceId, rsvps: { yes: 0, maybe: 0, no: 0, waiting: guests.length }, rsvp: null,
     ...(input.offer ? { offer: { times: input.offer } } : { calendarUrl: `https://calendar.example.com/events/${id}` }),
     ...(repeat ? { repeat, seriesId: nextId('series'), seriesCode: newCode() } : {})
   };
@@ -460,7 +481,34 @@ export const standIn: AlcoveApi = {
     past: () => answer((w) => w.meetings.filter((m) => m.status === 'ended').sort((a, b) => b.startsAt.localeCompare(a.startsAt))),
     get: (id: ID) => answer((w) => meetingIn(w, id)),
     byCode: (code: string) => answer((w) => byCode(w, code) ?? null),
-    create: (input: MeetingInput) => answer((w) => { const m = meetingFrom(w, input); w.meetings.push(m); return m; }),
+    create: (input: MeetingCreate) => answer((w) => { const m = meetingFrom(w, input); w.meetings.push(m); return m; }),
+    /**
+     * An ended call's notes, filed by its organizer when it had no workspace: in one of theirs they can edit in, or a new one.
+     * The call's folder goes at the top, holding its note, and the workspace is the call's, and its series' later calls'.
+     */
+    file: (id: ID, to: FileNotes) => answer((w) => {
+      const m = meetingIn(w, id);
+      if (!m.isOrganizer) throw refused('not-found', 'That meeting isn’t there.');
+      if (m.status !== 'ended') throw refused('conflict', 'This call isn’t over yet.');
+      const noteId = m.noteId ?? w.notes.find((n) => n.meetingId === id)?.id;
+      if (!noteId) throw refused('conflict', 'This call has no notes to file.');
+      if (m.workspaceId && w.workspaces.some((x) => x.id === m.workspaceId)) throw refused('conflict', 'These notes are in a workspace already.');
+      const folder = { name: folderName(m.title, m.startsAt), noteId };
+      let workspaceId: string;
+      if ('workspaceId' in to) {
+        const there = w.workspaces.find((x) => x.id === to.workspaceId && (x.role === 'admin' || x.role === 'edit'));
+        if (!there) throw refused('not-found', 'That workspace isn’t there, or you can’t make things in it.');
+        const now = new Date().toISOString();
+        there.items = [{
+          id: nextId('folder').padEnd(22, '0'), kind: 'folder', name: folder.name, parent: null, by: null, createdAt: now, editedAt: now, trashedAt: null, trashedBy: null,
+          restricted: false, role: 'edit', call: { startedAt: m.startsAt, on: false, here: false, noteId }
+        }, ...there.items];
+        workspaceId = there.id;
+      } else workspaceId = spaceFor(w, { title: m.title, at: m.startsAt, people: m.guests.length + 1 }, folder);
+      const next: Meeting = { ...m, workspaceId };
+      w.meetings = w.meetings.map((x) => (x.id === id || (m.seriesId && x.seriesId === m.seriesId && x.startsAt > m.startsAt) ? { ...x, workspaceId } : x));
+      return next;
+    }),
     update: (id: ID, input: Patch<MeetingInput>, _opts?: { scope?: ChangeScope | undefined }) => answer((w) => {
       const m = meetingIn(w, id);
       const startsAt = input.startsAt ?? m.startsAt;
@@ -837,21 +885,21 @@ export const standIn: AlcoveApi = {
     restoreVersion: (id: ID) => answer(() => { spaces.treeOf(id); }),
     searchText: (id: ID) => spaces.searchText(id)
   },
-  credits: {
-    balance: () => answer((w) => w.credits),
+  plans: {
+    plan: () => answer((w) => w.plan),
     routes: () => answer(paymentRoutes),
-    startTopUp: (routeId, credits) => answer((w) => {
+    startTopUp: (routeId, microUsd) => answer((w) => {
       const choices = paymentRoutes(w);
-      StartTopUpBodySchema.parse({ routeId, credits });
+      StartTopUpBodySchema.parse({ routeId, microUsd });
       const route = choices.routes.find((r) => r.id === routeId);
       if (!route) throw refused('invalid', 'That way to pay isn’t offered.');
-      if (credits < route.minimumCredits) throw refused('invalid', `Choose at least ${route.minimumCredits.toLocaleString('en-GB')} credits on ${route.chainName}.`);
-      const rate = choices.tiers.reduce((best, t) => credits >= t.fromCredits ? t.creditsPerUsd : best, 1000);
-      const amount = String(Math.ceil(credits * 1_000_000 / rate - 1e-6) / 1_000_000);
+      if (microUsd < Number(route.minimum) * 1_000_000) throw refused('invalid', `The least you can add with ${route.token} on ${route.chainName} is $${route.minimum}.`);
+      // A token is added as a dollar.
+      const amount = String(microUsd / 1_000_000);
       const t: TopUp = {
         id: nextId('sb-top-up'), route, address: PREVIEW_DEPOSIT_ADDRESS, memo: null,
         expiresAt: new Date(Date.now() + 3_600_000).toISOString(), state: 'waiting',
-        asked: { amount, credits }, received: null
+        asked: { amount }, received: null
       };
       w.payments.topUps.unshift(t);
       return t;

@@ -1,9 +1,10 @@
 /*
- * The workspace in a call (user-flows 6): the call's home, with its folder of live Notes, Follow-ups and Transcript, open on your
- * stage just for you; the organizer's Switch workspace, in its name's menu, and switching; following someone, a tag and a
- * comment; Find and History; presenting it, with everyone following, and Play for everyone; someone who can open nothing in it,
- * and asking to see it; a follow-up added by hand; and the toasts. Everyone else's browser is the script's: where they are in
- * the workspace, what they present and play, and who asks.
+ * The workspace in a call (user-flows 6): the call's workspace, with its folder of live Notes, Follow-ups and Transcript, open on
+ * your stage just for you; a call with none yet, which its organizer makes or picks and everyone else waits for; the organizer's
+ * Switch workspace, in its name's menu, and switching; deleting it, for its admins; following someone, a tag and a comment;
+ * Find and History; presenting it, with everyone following, and Play for everyone; someone who can open nothing in it, and
+ * asking to see it; a follow-up added by hand; and the toasts. Everyone else's browser is the script's: where they are in the
+ * workspace, what they present and play, and who asks.
  */
 import { DEFAULT_NOTES_CHOICES, type CallSession } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
@@ -14,7 +15,7 @@ import { inCall, light, phone, reach, type InCall, type StoryCall } from '../../
 import { iso } from '../../src/world/clock';
 import { ART } from '../../src/world/people';
 import { caretAtEnd, pages, type PageArgs, type PageStory } from '../../src/page';
-import { frameMenu, frameOf } from './plays';
+import { frameMenu, frameOf, shareMenu } from './plays';
 import {
   addWalkthrough, AIKO, CHECK_IN, CHECK_IN_SUMMARY, CHECK_IN_TALK, CHECKLIST_DOC, FILM, KOFI, LAUNCH_REVIEW, MAYA, PLAN, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM, THEO,
   WALKTHROUGH
@@ -33,13 +34,13 @@ const REVIEWERS: Present[] = [{ who: PRIYA }, { who: KOFI }, { who: AIKO }];
  */
 const TALK = { since: 100, earlier: REVIEW_TALK.slice(0, 7), talk: { lines: REVIEW_TALK.slice(7), from: 3, every: 5 }, summary: REVIEW_SUMMARY };
 
-/** Opens the workspace: Workspace at the top right, or in More on a phone. The first time, the call settles its home. */
+/** Opens the workspace: Workspace at the top right, or in More on a phone. The first time, the call's folder goes into it. */
 async function openWorkspace(c: Step): Promise<void> {
   await reach('Workspace')(c);
 }
 /**
  * A row of the workspace's list, on your stage: looked for afresh each time, as the workspace draws itself again once the call
- * has settled its home.
+ * has put its folder in it.
  */
 const rowIn = (name: RegExp) => waitFor(() => {
   const [row] = within(screen.getByRole('region', { name: 'Workspace' })).getAllByRole('button', { name });
@@ -54,34 +55,99 @@ const openPage = (name: string): Play => async (c) => {
     await c.userEvent.click(await rowIn(new RegExp(`^${name}\\s?(\\d+)?$`)));
   });
 };
-/** Opens Switch workspace, from the workspace's name on its frame: the organizer's workspaces, with this call's home marked. */
-const openPicker = (home: string): Play => async (c) => {
+/** Opens Switch workspace, from the workspace's name on its frame: the organizer's workspaces, with the call's ticked. */
+const openPicker = (space: string): Play => async (c) => {
   await openWorkspace(c);
   await c.step('Press the workspace’s name on its frame, then Switch workspace', async () => {
-    await frameMenu(c, home);
+    await frameMenu(c, space);
     await c.userEvent.click(await screen.findByRole('menuitem', { name: 'Switch workspace' }, { timeout: 5000 }));
   });
 };
+/** The design review's workspace, made for it as it was scheduled. */
+const REVIEW_SPACE = 'Design review';
 /**
  * The organizer's workspaces come in a moment after the picker opens, and a menu takes no press until its rows have been
  * still for a moment (WsMenu), so what's under the pointer is what someone aimed at: a person's press comes later anyway.
  */
 const settle = () => new Promise<void>((done) => { setTimeout(done, 500); });
 /** Picks Design in the picker: it asks first. */
-const pickDesign = (home: string): Play => async (c) => {
-  await openPicker(home)(c);
-  await c.step('Pick Design. The question says who can’t open it, and that the notes still go to the home', async () => {
+const pickDesign = (space: string): Play => async (c) => {
+  await openPicker(space)(c);
+  await c.step('Pick Design. The question says who can’t open it, and that the call’s notes go there from now on', async () => {
     const design = await screen.findByRole('menuitemradio', { name: /^Design(?! review)/ }, { timeout: 5000 });
     await settle();
     await c.userEvent.click(design);
   });
 };
 
-/* ---------- the call's home ---------- */
+/* ---------- the call's workspace ---------- */
 
-/** The design review's first Workspace: a new home named after the call and the day, with the call's folder in it. */
-export const OnItsHome = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, ...TALK } }, { play: openWorkspace });
-export const OnItsHomePhone = phone(OnItsHome);
+/** The design review's first Workspace: the one Art made for it as he scheduled it, with the call's folder put in it. */
+export const InItsWorkspace = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, ...TALK } }, { play: openWorkspace });
+export const InItsWorkspacePhone = phone(InItsWorkspace);
+
+/* ---------- a call with no workspace yet ---------- */
+
+/** Scheduled with no workspace: Workspace says so, and Art makes one, or picks one of his. The call's own pages are in the list. */
+export const NoWorkspaceYet = inCall({ scenario: 'no-workspace', call: REVIEW, script: { here: REVIEWERS, ...TALK } }, { play: openWorkspace });
+export const NoWorkspaceYetPhone = phone(NoWorkspaceYet);
+export const NoWorkspaceYetLight = light(NoWorkspaceYet);
+/** Pick one of yours: Art's workspaces he can make things in. Picking one asks first, and says who can't open it. */
+export const NoWorkspacePickOne = inCall({ scenario: 'no-workspace', call: REVIEW, script: { here: REVIEWERS, ...TALK } }, {
+  play: async (c) => {
+    await openWorkspace(c);
+    await c.step('Press Pick one of yours. Art’s workspaces open under it', async () => {
+      await c.userEvent.click(await c.canvas.findByRole('button', { name: 'Pick one of yours' }, { timeout: 8000 }));
+    });
+    await c.step('Pick Product. Use Product for this call? The call’s notes and transcript go there from now on', async () => {
+      const product = await screen.findByRole('menuitemradio', { name: /^Product/ }, { timeout: 8000 });
+      await settle();
+      await c.userEvent.click(product);
+    });
+  }
+});
+export const NoWorkspacePickOnePhone = phone(NoWorkspacePickOne);
+/** New workspace, from the empty Workspace: one for the call, with everyone invited in it, open on a blank document. */
+export const NoWorkspaceMakeOne = inCall({ scenario: 'no-workspace', call: REVIEW, script: { here: REVIEWERS, ...TALK } }, {
+  play: async (c) => {
+    await openWorkspace(c);
+    await c.step('Press New workspace. It’s the call’s, named after it, and the toast says the notes go there', async () => {
+      await c.userEvent.click(await c.canvas.findByRole('button', { name: 'New workspace' }, { timeout: 8000 }));
+      await screen.findByText(/^New workspace, Design review\. Everyone invited is in it/, {}, { timeout: 15000 });
+    });
+  }
+});
+/** A board needs somewhere to be kept: Board's picker says so over New, and the team's boards still open. */
+export const NoWorkspaceBoard = inCall({ scenario: 'no-workspace', call: REVIEW, script: { here: REVIEWERS } }, { play: reach('Board') });
+/** Priya's check-in, scheduled with no workspace, for Art, invited: Priya chooses it, and it opens for him once she has. */
+export const NoWorkspaceInvited = inCall({ scenario: 'busy', call: { ...CHECK_IN, workspaceId: null }, script: { here: [{ who: KOFI }, { who: AIKO }] } }, { play: openWorkspace });
+export const NoWorkspaceInvitedPhone = phone(NoWorkspaceInvited);
+/** Share, with no workspace yet: The workspace says Priya chooses it, for Art, invited. */
+export const NoWorkspaceShare = inCall({ scenario: 'busy', call: { ...CHECK_IN, workspaceId: null }, script: { here: [{ who: KOFI }, { who: AIKO }] } }, { play: async (c) => { await shareMenu(c); } });
+
+/* ---------- deleting it ---------- */
+
+/** Delete workspace, for its admin, in the frame's menu: it asks first, in the menu's place. */
+export const DeleteAsk = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, ...TALK } }, {
+  play: async (c) => {
+    await openWorkspace(c);
+    await c.step('Press the workspace’s name on its frame, then Delete workspace. It asks first', async () => {
+      await frameMenu(c, REVIEW_SPACE);
+      await c.userEvent.click(await screen.findByRole('menuitem', { name: 'Delete workspace' }, { timeout: 5000 }));
+    });
+  }
+});
+export const DeleteAskPhone = phone(DeleteAsk);
+/** Deleted: it goes for everyone, its stream ends, and the call has no workspace, so Art can make or pick another. */
+export const Deleted = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, ...TALK } }, {
+  play: async (c) => {
+    await DeleteAsk.play?.(c);
+    await c.step('Delete forever. The call has no workspace now', async () => {
+      await c.userEvent.click(await screen.findByRole('button', { name: 'Delete forever' }, { timeout: 5000 }));
+      await c.canvas.findByText('This call has no workspace yet', {}, { timeout: 8000 });
+    });
+  }
+});
 /** On your own with the workspace open: the link for anyone to ask to join stays on the stage, as it does without the workspace, clear of the list. */
 export const JustYou = inCall({
   scenario: 'on-their-own',
@@ -89,21 +155,21 @@ export const JustYou = inCall({
 }, { play: openWorkspace });
 export const JustYouPhone = phone(JustYou);
 
-/** Switch workspace, the organizer's: their workspaces, the call's home marked "This call's home", and New workspace. */
-export const ThePicker = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, { play: openPicker('Design review · 4 Nov') });
+/** Switch workspace, the organizer's: their workspaces they can make things in, the call's ticked, and New workspace. */
+export const ThePicker = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, { play: openPicker(REVIEW_SPACE) });
 export const ThePickerPhone = phone(ThePicker);
 
-/** Switching asks once: Sam came in with the link and can't open Design, and the notes still go to the home. */
+/** Switching asks once: Sam came in with the link and can't open Design, and the call's notes go there from now on. */
 export const SwitchQuestion = inCall(
   { scenario: 'call-soon', call: REVIEW, script: { here: [...REVIEWERS, { who: SAM, guest: true }] } },
-  { play: pickDesign('Design review · 4 Nov') }
+  { play: pickDesign(REVIEW_SPACE) }
 );
 export const SwitchQuestionPhone = phone(SwitchQuestion);
 
-/** Switched: everyone views Design, and the toast says the notes still go to the home, with Back. */
+/** Switched: Design is the call's for everyone, and the toast says its notes go there, with Back. */
 export const Switched = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: [...REVIEWERS, { who: SAM, guest: true }] } }, {
   play: async (c) => {
-    await pickDesign('Design review · 4 Nov')(c);
+    await pickDesign(REVIEW_SPACE)(c);
     await c.step('Switch to Design. Everyone views it at once', async () => {
       await c.userEvent.click(await screen.findByRole('button', { name: 'Switch to Design' }, { timeout: 5000 }));
     });
@@ -140,7 +206,7 @@ export const AddFollowUpPhone = phone(AddFollowUp);
 /* ---------- working together ---------- */
 
 /**
- * The launch review, its home Product, chosen when it was scheduled: the launch plan brought to the call, and Priya and
+ * The launch review, its workspace Product, picked when it was scheduled: the launch plan brought to the call, and Priya and
  * Kofi in it, Kofi typing. What a story's own script says goes over this.
  */
 const reviewing = (script: CallScript = {}, then?: () => void): InCall => ({
@@ -207,7 +273,7 @@ export const HearItNotYet = inCall({ ...reviewing({ hear: 'not-yet' }), then: qu
   }
 });
 export const HearItNotYetPhone = phone(HearItNotYet);
-/** Priya's launch review, going on now, with Product its home and Art on its invite. */
+/** Priya's launch review, going on now, with Product its workspace and Art on its invite. */
 const PRIYAS_REVIEW: StoryCall = { id: 'm-priyas-review', title: 'Launch review', startsAt: iso(0, 16, 10), minutes: 45, code: 'lch-revw-pri', organizer: PRIYA, guests: [ART, KOFI, AIKO], workspaceId: 'ws-product', status: 'live' };
 /** The same call with Art not on its invite: on a browser he isn't signed in on, he comes in with the link, as a guest. */
 const PRIYAS_REVIEW_BY_LINK: StoryCall = { ...PRIYAS_REVIEW, id: 'm-priyas-review-link', code: 'lch-revw-lnk', guests: [KOFI, AIKO] };
@@ -461,11 +527,11 @@ export const NotesTurnedOffPhone = phone(NotesTurnedOff);
 
 /* ---------- a workspace made in the call, and a name twice ---------- */
 
-/** New workspace, from the picker: one for the call, with everyone invited in it to edit, and the notes still go to the home. */
+/** New workspace, from the picker: one for the call, with everyone invited in it to edit, and it's the call's, its notes with it. */
 export const NewWorkspace = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, {
   play: async (c) => {
-    await openPicker('Design review · 4 Nov')(c);
-    await c.step('Press New workspace. Everyone invited is in it, and the toast says the notes still go to the home', async () => {
+    await openPicker(REVIEW_SPACE)(c);
+    await c.step('Press New workspace. Everyone invited is in it, and the toast says the call’s notes go there', async () => {
       await screen.findByRole('menuitemradio', { name: /^Product/ }, { timeout: 8000 });
       await settle();
       await c.userEvent.click(await screen.findByRole('menuitem', { name: /^New workspace/ }, { timeout: 5000 }));
@@ -475,12 +541,11 @@ export const NewWorkspace = inCall({ scenario: 'call-soon', call: REVIEW, script
 });
 export const NewWorkspacePhone = phone(NewWorkspace);
 
-/** An earlier design review today, at 9:00, with a home of its own: named as this call's is. */
+/** An earlier design review today, at 9:00, with a workspace made for it: named as this call's is. */
 function earlierReview(): void {
   const at = iso(0, 9, 0);
-  const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(at));
-  current().workspaces.push({ id: 'ws-review-early', name: `Design review · ${day}`, role: 'admin', people: 4, items: [], createdAt: at, call: { title: 'Design review', at } });
+  current().workspaces.push({ id: 'ws-review-early', name: 'Design review', role: 'admin', people: 4, items: [], createdAt: at, call: { title: 'Design review', at } });
 }
-/** The picker when this call's home and an earlier one share a name: each says when its call started. */
-export const ThePickerSameNameTwice = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS }, then: earlierReview }, { play: openPicker('Design review · 4 Nov') });
+/** The picker when this call's workspace and an earlier one share a name: each says when its call started. */
+export const ThePickerSameNameTwice = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS }, then: earlierReview }, { play: openPicker(REVIEW_SPACE) });
 export const ThePickerSameNameTwicePhone = phone(ThePickerSameNameTwice);

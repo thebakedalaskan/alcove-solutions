@@ -111,6 +111,8 @@ export interface FakeNear {
    * request, whatever it holds, so what reads a screen goes on working.
    */
   failNext(n: number, how: Failure, only?: string | undefined): void;
+  /** The next `n` chat replies don't say what they used, as a provider sometimes doesn't. */
+  withoutUsageNext(n: number): void;
   /** The next request for a call's full summary comes back in the wrong shape (the notes are written as usual). */
   failDetailsNext(): void;
   /** The next chat reply takes this long, as a busy model does. */
@@ -582,6 +584,8 @@ export async function startFakeNear(): Promise<FakeNear> {
   const chats: FakeNear['chats'] = [];
   const transcriptions: FakeNear['transcriptions'] = [];
   let failing = 0;
+  /** How many of the next chat replies leave out what they used. */
+  let unsaid = 0;
   let failure: Failure = 'down';
   let failingOnly: string | undefined;
   let detailsFailing = false;
@@ -701,11 +705,13 @@ export async function startFakeNear(): Promise<FakeNear> {
       if (detailsFailing && system.startsWith('You write the full summary')) { detailsFailing = false; content = JSON.stringify({ details: '' }); }
       else content = JSON.stringify(notesReply(model, system, user, sent, memory));
     }
+    // What it used, as NEAR AI says, unless it was told to leave that out.
+    const said = unsaid > 0 ? (unsaid--, {}) : { usage: { prompt_tokens: Math.round(user.length / 4), completion_tokens: 200 } };
     return {
       status: 200,
       body: {
         id: `chatcmpl-${randomUUID().replace(/-/g, '')}`, object: 'chat.completion', model, created: Math.floor(Date.now() / 1000),
-        choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: finish }], usage: { prompt_tokens: Math.round(user.length / 4), completion_tokens: 200 }
+        choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: finish }], ...said
       }
     };
   }
@@ -748,13 +754,13 @@ export async function startFakeNear(): Promise<FakeNear> {
       // endpoint can read shared screens; one entry is broken, as a list from elsewhere can be.
       if (req.method === 'GET' && url.pathname === '/v1/models') {
         const entry = (id: string, name: string, input: string[], extra: Record<string, unknown> = {}) =>
-          ({ id, object: 'model', name, owned_by: id.split('/')[0], input_modalities: input, output_modalities: ['text'], architecture: { inputModalities: input, outputModalities: ['text'] }, pricing: { input: 1 }, supported_sampling_parameters: ['temperature', 'max_tokens'], supported_features: ['json_mode'], ...extra });
+          ({ id, object: 'model', name, owned_by: id.split('/')[0], input_modalities: input, output_modalities: ['text'], architecture: { inputModalities: input, outputModalities: ['text'] }, supported_sampling_parameters: ['temperature', 'max_tokens'], supported_features: ['json_mode'], pricing: { input: 1, output: 4 }, ...extra });
         return send(res, 200, { object: 'list', data: [
-          entry(NOTES_MODEL, 'DeepSeek V4.1 Flash 1017', ['text', 'image'], { is_ready: true, pricing: { input: 0.3 } }),
-          entry(PRICEY_MODEL, 'Vision Pricey', ['text', 'image'], { pricing: { input: 3 } }), entry('acme/vision-unpriced', 'Vision Unpriced', ['text', 'image'], { pricing: null }),
-          entry('acme/images-only', 'Images Only', ['image'], { pricing: { input: 0.1 } }), entry(VISION_MODEL, 'Qwen3 VL Test', ['text', 'image'], { is_ready: true }), entry(UNVERIFIED_VISION_MODEL, 'Vision Unverified', ['text', 'image'], { is_ready: true }),
-          entry('acme/text-only', 'Text Only', ['text']), entry(UNENCRYPTED_MODEL, 'Vision Elsewhere', ['text', 'image'], { pricing: { input: 0.5 }, supported_sampling_parameters: ['max_tokens'] }), entry('acme/bad-host', 'Bad Host', ['text', 'image']),
-          entry('acme/not-ready', 'Not Ready', ['text', 'image'], { is_ready: false }), entry(STT_MODEL, 'Whisper Large v3', ['audio']), { id: 7, name: null }
+          entry(NOTES_MODEL, 'DeepSeek V4.1 Flash 1017', ['text', 'image'], { is_ready: true, pricing: { input: 0.3, output: 1.2, input_cache_read: '0.000000006' } }),
+          entry(PRICEY_MODEL, 'Vision Pricey', ['text', 'image'], { pricing: { input: 3, output: 12 } }), entry('acme/vision-unpriced', 'Vision Unpriced', ['text', 'image'], { pricing: null }),
+          entry('acme/images-only', 'Images Only', ['image'], { pricing: { input: 0.1, output: 0.4 } }), entry(VISION_MODEL, 'Qwen3 VL Test', ['text', 'image'], { is_ready: true }), entry(UNVERIFIED_VISION_MODEL, 'Vision Unverified', ['text', 'image'], { is_ready: true }),
+          entry('acme/text-only', 'Text Only', ['text']), entry(UNENCRYPTED_MODEL, 'Vision Elsewhere', ['text', 'image'], { pricing: { input: 0.5, output: 2 }, supported_sampling_parameters: ['max_tokens'] }), entry('acme/bad-host', 'Bad Host', ['text', 'image']),
+          entry('acme/not-ready', 'Not Ready', ['text', 'image'], { is_ready: false }), entry(STT_MODEL, 'Whisper Large v3', ['audio'], { pricing: { input: 0.01, output: 0.01 } }), { id: 7, name: null }
         ] });
       }
       if (req.method === 'GET' && url.pathname === '/v1/attestation/report') {
@@ -835,6 +841,7 @@ export async function startFakeNear(): Promise<FakeNear> {
     },
     verdictLifetime(seconds) { n.lifetime = seconds; },
     failNext(count, how, only) { failing = count; failure = how; failingOnly = only; },
+    withoutUsageNext(n) { unsaid = n; },
     failDetailsNext() { detailsFailing = true; },
     slowNext(ms, only) { slow = ms; slowOnly = only; },
     holdNext(then) { holding = then; },

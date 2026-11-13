@@ -136,7 +136,7 @@ function Hero({ auth }: { auth: Auth }) {
       <motion.p className="lp-lede" {...rise(0)}>
         Video calls with the note taker built in. Get a transcript, a summary and follow-ups, with recordings and notes encrypted in storage.
       </motion.p>
-      <motion.div {...rise(1)}><WaysIn auth={auth} layout="hero" note="Free to start, with 400 minutes of notes." /></motion.div>
+      <motion.div {...rise(1)}><WaysIn auth={auth} layout="hero" note="Free to start, with about 5 hours of notes a month." /></motion.div>
     </div>
   );
 }

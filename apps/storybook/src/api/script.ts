@@ -99,6 +99,12 @@ export type Beat =
   /** The browser taking the notes stops hearing the call: with `records`, it still records, so only the transcript can't go on; without, it can do neither, and notes are unavailable. */
   | { do: 'host-cant-hear'; records: boolean }
   | { do: 'not-now' }
+  /**
+   * The organizer's plan (docs: Plans and usage): their notes are about to run out at this call's pace, which only they are told
+   * (nothing, when it isn't you), or what the plan brings has run out, so notes go off for everyone, who are told why.
+   */
+  | { do: 'notes-running-out' }
+  | { do: 'notes-stop'; reason: 'notes' | 'storage' }
   /** The organizer, when it isn't you: rooms open (with a board each, or one they share), with a message to every room, and everyone back. */
   | { do: 'rooms'; rooms: readonly RoomPlan[]; minutes: number; board?: BreakoutBoard | undefined }
   | { do: 'message-rooms'; text: string }
@@ -149,7 +155,7 @@ export type Beat =
   | { do: 'tag-you'; who: Person; document: string; block?: string | undefined }
   /**
    * A board in the call (user-flows 6, A board in the call). Someone makes a new one, the board in the main room, from a
-   * template, made in the call's home and filled as the server fills it, with what `draw` puts on it, or one you can't open
+   * template, made in the call's workspace and filled as the server fills it, with what `draw` puts on it, or one you can't open
    * (`closedToYou`), which opens on their stage alone until they present it; adds a sticky to one of the frames of the board where you are, by the frame's title, which puts their
    * pointer by it; and whoever opened it closes it, unless someone else presents it. `standing` opens it here with no
    * connection to it (`offline`), or with Alcove refusing what's added here (`failed`), while the call carries on.
@@ -238,8 +244,8 @@ export interface ScriptWorkspace {
   brought?: readonly string[] | undefined;
   where?: readonly { who: Person; document: string | null; typing?: boolean | undefined; page?: CallPage | undefined }[] | undefined;
   /**
-   * For you, with the link: the documents of the call's home the organizer has let you see, as their card's Let them see does,
-   * which open to you once you're let in. The rest of the home is as the story's world has it, which is as you see it.
+   * For you, with the link: the documents of the call's workspace the organizer has let you see, as their card's Let them see does,
+   * which open to you once you're let in. The rest of it is as the story's world has it, which is as you see it.
    */
   yours?: readonly string[] | undefined;
 }
@@ -276,6 +282,10 @@ export const reacts = (who: Person, text: string, reaction: CallReaction): Beat 
 export const reactsPrivately = (who: Person, text: string, reaction: CallReaction): Beat => ({ do: 'react-privately', who, text, reaction });
 export const knocks = (who: Person, o: { byName?: boolean } = {}): Beat => ({ do: 'knock', who, ...o });
 export const asksForNotes = (who: Person): Beat => ({ do: 'ask-for-notes', who });
+/** The organizer's notes are about to run out at this call's pace: the organizer is told, and nobody else. */
+export const notesRunningOut = (): Beat => ({ do: 'notes-running-out' });
+/** The organizer's notes, or their storage (`reason`), have run out: notes go off for everyone, and everyone is told why. */
+export const notesStop = (reason: 'notes' | 'storage'): Beat => ({ do: 'notes-stop', reason });
 export const sendsData = (who: Person, topic: string, payload: Uint8Array): Beat => ({ do: 'data', who, topic, payload });
 /** Someone presses an emoji in the dock's React, so it floats up over the call. */
 export const floats = (who: Person, reaction: CallReaction): Beat => sendsData(who, CALL_REACT_TOPIC, new TextEncoder().encode(JSON.stringify({ r: reaction } satisfies CallReactMessage)));
@@ -371,7 +381,7 @@ export const part = (mode: CaptureMode, since: string | null, by: CapturePart['b
 export function captureOf(mode: 'on' | 'off' | 'paused', since: string | null, organizer: string, model: string | null = null): CaptureState {
   const by = since ? { kind: 'schedule' as const, name: organizer } : null;
   const p = part(mode, mode === 'off' ? null : since, mode === 'off' ? null : by);
-  return { mode, recording: p, transcript: p, ai: p, screen: part('off', null, null), gaps: [], requests: [], asked: null, room: null, away: false, model, modelPrivate: modelIsPrivate(model), allowScreens: true };
+  return { mode, recording: p, transcript: p, ai: p, screen: part('off', null, null), gaps: [], requests: [], asked: null, room: null, away: false, model, modelPrivate: modelIsPrivate(model), allowScreens: true, stopped: null, runningOut: null };
 }
 
 /** Without names: someone asking to join isn't told who changed what. */

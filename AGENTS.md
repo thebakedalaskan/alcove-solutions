@@ -221,7 +221,8 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `WsList` (`WsListHead`, `WsSection`, `WsRow`, `WsRenameRow`, `WsDropLine`, `WsTrashRow`) and `WsDoc` (`WsDocHead` with
   `WsSaveState`, `WsFollowBar`, `WsOfflineBar`, `WsUnsavedBar` (with `WsRescue` for what didn't reach Alcove), `WsGoneBar`,
   `WsReadOnlyBar`, `WsVersionBar`, `WsVersionFailed`, `WsScroll`, `WsPage`, `WsDocBy`, `WsTemplates`, `WsTail`, `WsTrash`,
-  `WsEmpty`, `WsPickDocument`, `WsCantOpen`, `WsUnavailable`, `WsOfflineEmpty`, `WsNoAccess`, `WsLostSpace`), with
+  `WsEmpty`, `WsPickDocument`, `WsCantOpen`, `WsUnavailable`, `WsOfflineEmpty`, `WsNoAccess`, `WsNoSpace` (a call with no
+  workspace yet: its organizer makes or picks one, everyone else is told who chooses), `WsLostSpace`), with
   `WsHistory` beside it.
   Anything that opens sits on `WsPopover` (a sheet on a phone by itself, and it hands focus back): `WsMenu` and its
   `WsNewMenu`, `WsRowMenu`, `WsDocMenu`, `WsMovePicker`, `WsSpacePicker`, `WsAskMenu`, `WsAskAnswer`; `WsPersonCard`, `WsMentionPrompt`,

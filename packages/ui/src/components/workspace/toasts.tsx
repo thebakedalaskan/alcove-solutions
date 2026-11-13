@@ -46,11 +46,14 @@ export const wsToast = {
     ? { icon: 'lock', text: `${first} is presenting something you can’t open`, action: { label: `Ask ${ask.who} for access`, onClick: ask.onAsk }, ms: 12000 }
     : say('lock', `${first} is presenting something you can’t open`)),
   presenterLeft: (first: string) => say('presentation', `${first} left the call, so the presentation ended`),
-  /** Everyone views another workspace, or the call's home again (`home` null): the notes still go home. */
-  switched: (name: string, home: string | null, onBack: () => void): WsToastData =>
-    ({ ...say('swap', '', { label: 'Back', onClick: onBack }), text: clamped(home ? `Everyone’s in ${name} now. Notes still go to ${home}.` : `Everyone’s back in ${name}, where the notes go.`) }),
-  newSpace: (name: string, home: string | null): WsToastData =>
-    ({ ...say('folders', ''), text: clamped(home ? `New workspace, ${name}. Everyone invited is in it, and notes still go to ${home}.` : `New workspace, ${name}. Everyone invited is in it now.`) }),
+  /** The call's workspace is another now, for everyone, and its notes go there. `onBack`: to the one it had, if it had one. */
+  switched: (name: string, onBack?: (() => void) | undefined): WsToastData =>
+    ({ ...say('swap', '', onBack ? { label: 'Back', onClick: onBack } : undefined), text: clamped(`Everyone’s in ${name} now, and the call’s notes go there.`) }),
+  /** A workspace made in the call, which is the call's now. */
+  newSpace: (name: string): WsToastData =>
+    ({ ...say('folders', ''), text: clamped(`New workspace, ${name}. Everyone invited is in it, and the call’s notes go there.`) }),
+  /** A workspace deleted for good, from its own menu. */
+  spaceDeleted: (name: string): WsToastData => ({ ...say('trash', ''), text: clamped(`${name} is deleted for everyone`) }),
   /** For whoever asked to see the workspace, when the organizer says not now; and for the organizer who said it. */
   saidNotNow: (organizer: string) => say('lock', `${organizer} said not now`),
   toldNotNow: (first: string) => say('check', `${first} was told not now`),

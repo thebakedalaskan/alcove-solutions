@@ -23,9 +23,9 @@ import { z } from 'zod';
 import type { Deps, Owner } from '../../context';
 import { b64u, equalBytes, id128, mac, openJson, openRecord, random, sealJson, sealRecord, sha, stateKey, toJson, utf8, type RecordHeader } from '../../crypto';
 import { bytea, exec, maybeOne, rows, tx, type Db } from '../../db';
-import { IntegrityError, InternalError, MediaError, UnansweredError, UnverifiedError, ValidationError, conflict, notFound } from '../../errors';
+import { IntegrityError, InternalError, MediaError, PlanLimitError, UnansweredError, UnverifiedError, ValidationError, conflict, notFound } from '../../errors';
 import { frames as takeFrames, remux, videoType, type TakenFrame, type Video, type VideoSink, type VideoType } from './ffmpeg';
-import type { ChatModel } from '../../inference';
+import type { ChatModel, Meter } from '../../inference';
 import { log } from '../../log';
 import { openOwner } from '../../owners';
 import { krecOf, queueDelete, segments } from './audio';
@@ -159,13 +159,13 @@ export async function frameObjects(o: Owner, db: Db, noteId: string): Promise<{ 
  * When the model's evidence doesn't check out, or it doesn't answer, that's thrown: the notes wait. Returns every frame
  * with what was read on it.
  */
-export async function readAll(o: Owner, noteId: string, recordingId: string): Promise<Frame[]> {
+export async function readAll(o: Owner, meter: Meter, noteId: string, recordingId: string): Promise<Frame[]> {
   const frames = await framesOf(o, o.pool, noteId);
   const todo = frames.filter((f) => !f.reading);
   const t0 = performance.now();
   for (let i = 0; i < todo.length; i += READ_AT_ONCE) {
     await Promise.all(todo.slice(i, i + READ_AT_ONCE).map(async (f) => {
-      const r = await readOne(o, noteId, recordingId, f, undefined, undefined);
+      const r = await readOne(o, meter, noteId, recordingId, f, undefined, undefined);
       f.reading = r.reading;
       await sealInfo(o, noteId, f);
     }));
@@ -180,7 +180,7 @@ export async function readAll(o: Owner, noteId: string, recordingId: string): Pr
  * One frame read, with how much it matters and the verification it went to (none when it couldn't be read). A frame that
  * couldn't be read is kept as unread and supporting: only a frame the model judged unrelated is left out.
  */
-async function readOne(o: Owner, noteId: string, recordingId: string, f: Frame, context: ScreenContext | undefined, via: ChatModel | undefined, beforeId?: string | undefined): Promise<{ reading: Reading; relevance: ScreenRelevance; evidence: InferenceEvidence | null }> {
+async function readOne(o: Owner, meter: Meter, noteId: string, recordingId: string, f: Frame, context: ScreenContext | undefined, via: ChatModel | undefined, beforeId?: string | undefined): Promise<{ reading: Reading; relevance: ScreenRelevance; evidence: InferenceEvidence | null }> {
   const unread = { reading: UNREAD, relevance: 'supporting' as const, evidence: null };
   // One image never costs the notes: a frame that won't open, or that still can't be fetched on a second try (the
   // object store failing, or its object gone), is kept as unread and the notes carry on without it.
@@ -205,9 +205,9 @@ async function readOne(o: Owner, noteId: string, recordingId: string, f: Frame, 
   }
   for (let tries = 1; ; tries++) {
     try {
-      return await readScreen(o.cfg, jpeg, { context, via, before });
+      return await readScreen(o.cfg, meter, jpeg, { context, via, before });
     } catch (e) {
-      if (e instanceof UnverifiedError || e instanceof UnansweredError) throw e;
+      if (e instanceof UnverifiedError || e instanceof UnansweredError || e instanceof PlanLimitError) throw e;
       if (tries >= 2) { slog.warn('a frame couldn’t be read; kept as unread', { noteId, frameId: f.id, model: via?.model ?? o.cfg.NEAR_AI_NOTES_MODEL, err: e }); return unread; }
     }
   }
@@ -959,14 +959,14 @@ export function momentsOf(frames: Frame[], shares: ScreenShare[]): ScreenMoment[
  * doesn't check out, or it doesn't answer, that's thrown: the notes wait.
  */
 export async function analyze(o: Owner, noteId: string, recordingId: string, a: {
-  lines: TranscriptLine[]; shares: ScreenShare[]; via: ChatModel; progress: ScreenProgress; save: (p: ScreenProgress) => Promise<void>; renew: () => Promise<void>;
+  lines: TranscriptLine[]; shares: ScreenShare[]; via: ChatModel; meter: Meter; progress: ScreenProgress; save: (p: ScreenProgress) => Promise<void>; renew: () => Promise<void>;
 }): Promise<{ shown: ScreenMoment[]; grids: Map<string, Uint8Array>; why: Map<string, PickWhy>; left: string[]; evidence: InferenceEvidence[]; model: string }> {
   const t0 = performance.now();
   const evidence: InferenceEvidence[] = [...a.progress.evidence];
   let picks = a.progress.picks;
   const skip = new Set(a.progress.skip);
   if (!picks) {
-    const picked = await pickMoments(o.cfg, a.lines, a.shares, a.via);
+    const picked = await pickMoments(o.cfg, a.meter, a.lines, a.shares, a.via);
     evidence.push(...picked.evidence);
     picks = selectFrames(picked.moments, a.shares);
     await a.save({ picks, skip: [], evidence: [...evidence] });
@@ -1041,7 +1041,7 @@ export async function analyze(o: Owner, noteId: string, recordingId: string, a: 
   for (let i = 0; i < unread.length; i += READ_AT_ONCE) {
     await a.renew();
     await Promise.all(unread.slice(i, i + READ_AT_ONCE).map(async (f) => {
-      const r = await readOne(o, noteId, recordingId, f, { at: f.at, cue: f.cue, why: f.pick ?? 'start', lines: a.lines }, via, beforeOf.get(pickKey(f.share, f.at)));
+      const r = await readOne(o, a.meter, noteId, recordingId, f, { at: f.at, cue: f.cue, why: f.pick ?? 'start', lines: a.lines }, via, beforeOf.get(pickKey(f.share, f.at)));
       f.reading = r.reading;
       f.relevance = r.relevance;
       f.model = via.model;

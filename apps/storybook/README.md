@@ -92,12 +92,18 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `on-their-own` | Art at a personal address: no team, no groups, recordings and calls with people he meets |
 | `offline` | The busy afternoon opened with no connection, signed in on this browser: Record works, the rest says offline |
 | `writing` | Just after the pricing follow-up: its notes are written over a few seconds; a walkthrough records elsewhere |
-| `call-soon` | Wednesday at 10:26: the design review starts in four minutes |
+| `call-soon` | Wednesday at 10:26: the design review starts in four minutes, in the Design review workspace Art made for it as he scheduled it |
+| `no-workspace` | The same morning, but the design review was scheduled with no workspace: Art picks or makes one in the call, and is asked where its notes go when it ends |
 | `lots` | Thirty people on Alcove, three months of notes, eight pins, a dozen groups, long names |
 | `signed-out` | Nobody signed in on this browser: the welcome page; Microsoft or single sign-on signs Art in to the busy afternoon |
 | `unsaved` | The busy afternoon after Alcove wouldn't take some of Art's edits: the pricing copy's last edits, more interview notes than a document holds, and a line in the handbook he can only read now |
 | `drive-connected` | Art has a separate Google Drive connection, authorized personal and shared-drive folders, and exports in pending, uploading, uploaded and failed states |
-| `payments` | Credit top-ups are available, with token/network choices; every deposit address is a made-up invalid preview |
+| `payments` | Adding money is available, with amount and token/network choices; every deposit address is a made-up invalid preview |
+| `plan-low` | Art is on Free with about 20 minutes of the period's notes left |
+| `plan-stopped` | The period's notes have run out: Settings says None, the side panel says no notes left until the period renews |
+| `plan-grace` | Over Free's storage in grace: 14.2 GB of 10, everything works as before for nine more days |
+| `plan-over` | The grace is over: uploads have stopped |
+| `plan-balance` | $60 in the balance, with a $20 top-up waiting for its payment and a $40 one already added |
 | `agents-connected` | Art has a read-only Workspace assistant connected through OAuth and an unused Scheduling assistant personal token; Settings shows their scopes, expiry and last use |
 | `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, his first day, and Home's tour |
 
@@ -279,7 +285,9 @@ and `plays()` runs plays one after another.
 A call is one of the scenario's (its link's code) or a `StoryCall` the story puts in the world (`stories/calls/talk.ts`
 has the calls, conversations and shares the call stories share). Times are seconds from joining; the door's, from the
 story opening. A beat (`joins`, `says`, `shares`, `knocks`, `raisesHand`, `nudges` (you, as only you see it), `setsStatus`, `{ do: 'host-drops' }`, `{ do: 'reconnect' }`,
-`{ do: 'end' }`...) is anything someone else, the server or LiveKit could do; `run()` is anything else, such as `ringYou()`
+`{ do: 'end' }`...) is anything someone else, the server or LiveKit could do (the plan's side of a call too: `notesRunningOut()` is
+the organizer's notes about to run out, which only they are told, and `notesStop('notes')` is their notes (or `'storage'`) running out, which
+turns notes off for everyone, who are told why; a call within 5 minutes of its longest, 10 hours, is one with a `since` of 9 h 55 min or more); `run()` is anything else, such as `ringYou()`
 from another call. Rooms the organizer opens (`{ do: 'rooms' }`) can have a board each, or one they share (`board`), and each
 room's people can put stickies on theirs (`work`): the scripted call makes, fills and lands the boards as the server does, in
 the world's first workspace. Someone else can make the board in the call (`{ do: 'open-board' }`, with what `draw` puts on
@@ -444,10 +452,11 @@ Browser notifications (#88): Calls/Browser notifications shows explicit opt-in, 
 Native two tabs is the explicit browser-receipt scene: open it twice, enable once and background both before20seconds. It preserves opaque browser state and shares one demo-clock anchor, like real tabs share a wall clock. Stable event IDs demonstrate cross-tab/reload deduplication; reopening the same scene does not replay those IDs. Native browser uses a new call ID for a fresh delivery demonstration. The report can start/stop the exact application service worker on this development origin; Stop unregisters it and closes its test alerts. Open delivered alert invokes the native notification's actual click callback for routing checks; this is distinct from an OS notification-centre click.
 
 
-Credit top-ups live under **Pages / Settings / Payments**, **Add credits picker** and **Payment…**: waiting, arriving,
-short, short after the address expired, credited, held, failed, cancelled and expired, plus the deletion warnings.
+The plan lives under **Pages / Settings / Plan**, **Notes nearly out**, **No notes left**, **Over Free's limits (in
+grace)** and **A balance**. Top-ups live under **Payments**, **Add money picker** and **Payment…**: waiting, arriving,
+short, short after the address expired, added, held, failed, cancelled and expired, plus the deletion warnings.
 Phone and night variants show the picker and waiting address, and the expired-short phone at night. The default scenarios
-keep payments unavailable. **Journeys / 11 Settings / 11.24 Add credits** chooses a token and network, opens a top-up,
+keep payments unavailable. **Journeys / 11 Settings / 11.24 Add money** chooses an amount, a token and network, opens a top-up,
 receives a scripted short payment, completes it and reopens the completed payment. The stand-in supports starting,
 reading and cancelling top-ups; receipt changes come from the story's made-up provider side. These scenes send no money.
 **Components / Icons and marks / CryptoMark**, **Forms / CopyField**, and **Forms / Select / Network marks** and

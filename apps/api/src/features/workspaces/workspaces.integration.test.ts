@@ -19,7 +19,7 @@ vi.setConfig({ testTimeout: 90_000 });
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
 afterAll(async () => { await h?.close(); });
-afterEach(() => h.closeCalls());
+afterEach(async () => { h.closeCalls(); await h.resetLimits(); });
 
 let seq = 0;
 const unique = (who = 'person') => `${who}.${Date.now().toString(36)}${(seq++).toString(36)}@tests.example`;
@@ -141,6 +141,28 @@ describe('a workspace', () => {
     expect((await ann.api.workspaces.list()).map((w) => w.id)).toEqual([second.id]);
     for (const t of ['owners', 'workspaces', 'workspace_members', 'workspace_mentions', 'documents', 'document_access']) expect(await count(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [owner]), t).toBe(0);
     expect(await code(ann.api.workspaces.remove(id))).toBe('not-found');
+  });
+
+  it('is deleted by an admin alone: someone who edits or reads in it is refused, and nothing of it goes', async () => {
+    const ann = await account();
+    const theo = await account();
+    const rita = await account();
+    const id = await workspace(ann, 'Ours', [[theo, 'edit'], [rita, 'read']]);
+    const doc = await make(ann, id, 'document', 'Plan');
+    const owner = await ownerOf(id);
+    const before = await itemsOf(ann.api, id);
+    for (const who of [theo, rita]) expect(await refusal(who.api.workspaces.remove(id))).toMatchObject({ code: 'forbidden', status: 403 });
+    // It's all there still, for everyone in it.
+    expect(await itemsOf(ann.api, id)).toEqual(before);
+    expect(item(await itemsOf(theo.api, id), doc)?.role).toBe('edit');
+    expect(item(await itemsOf(rita.api, id), doc)?.role).toBe('read');
+    expect((await ann.api.workspaces.people(id)).map((p) => p.role)).toEqual(['admin', 'edit', 'read']);
+    for (const t of ['owners', 'workspaces', 'documents']) expect(await count(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [owner]), t).toBe(1);
+    // Made an admin, Theo can.
+    await ann.api.workspaces.setRole(id, (await ann.api.workspaces.people(id)).find((p) => p.person.email === theo.email)?.id ?? '', 'admin');
+    await theo.api.workspaces.remove(id);
+    expect(await code(ann.api.workspaces.get(id))).toBe('not-found');
+    expect(await count('SELECT count(*)::int AS n FROM owners WHERE owner_id = $1', [owner])).toBe(0);
   });
 
   it('is an owner with its own keys and no way to sign in, and nothing that lists accounts mistakes it for one', async () => {
@@ -1107,7 +1129,7 @@ describe('deleting an account', () => {
 });
 
 describe('limits', () => {
-  /** As if an account had made this many workspaces: making a hundred the real way is more than a minute's allowance. */
+  /** As if an account had made this many workspaces: making a thousand the real way is more than a minute's allowance. */
   async function madeAlready(who: Account, n: number) {
     const index = (await h.pool.query<{ email_index: Buffer }>('SELECT email_index FROM identities WHERE owner_id = $1', [who.ownerId])).rows[0]?.email_index;
     const owners = Array.from({ length: n }, () => randomBytes(32).toString('base64url'));
@@ -1119,7 +1141,8 @@ describe('limits', () => {
     return () => h.pool.query('DELETE FROM owners WHERE owner_id = ANY($1)', [owners]);
   }
 
-  it('lets an account make a hundred workspaces, and tells it plainly when that’s all', async () => {
+  it('lets an account make as many workspaces as workspaces.max_made says, and tells it plainly when that’s all', async () => {
+    await h.pool.query("INSERT INTO service_limits (name, value) VALUES ('workspaces.max_made', 100)");
     const ann = await account();
     const clear = await madeAlready(ann, 99);
     const last = await ann.api.workspaces.create('The hundredth');

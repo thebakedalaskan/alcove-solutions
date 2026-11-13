@@ -312,6 +312,8 @@ export const CallStateSchema = z.object({
   startedAt: ISODateSchema,
   /** Seconds since the call started. */
   elapsed: z.number(),
+  /** When the call ends by itself, at the longest a call runs (docs: Plans and usage): everyone is told 5 minutes before. */
+  endsAt: ISODateSchema,
   phase: z.enum(['in-call', 'ended']),
   participants: z.array(CallParticipantSchema),
   locked: z.boolean(),
@@ -397,7 +399,12 @@ export const CallEndResultSchema = z.object({
   meetingId: IDSchema,
   /** Present when notes were on at some point. */
   pendingNoteId: IDSchema.nullable(),
-  duration: z.number()
+  duration: z.number(),
+  /**
+   * Its notes are in a workspace: false when it had notes and no workspace, for its organizer to file them in one
+   * (`meetings.file`) or leave them in Notes. True when it had no notes.
+   */
+  filed: z.boolean()
 });
 
 export type CallEndResult = z.infer<typeof CallEndResultSchema>;

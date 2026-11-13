@@ -1,8 +1,8 @@
 import { type HttpTransport } from '../transport/http';
-import { type AlcoveApi, AttestationSchema, CreditBalanceSchema, FeatureFlagsSchema, PersonSuggestionSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema } from '@alcove/api';
+import { type AlcoveApi, AttestationSchema, FeatureFlagsSchema, PersonSuggestionSchema, PlanSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema } from '@alcove/api';
 import { z } from 'zod';
 
-export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'credits' | 'trust' | 'featureFlags'> {
+export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'plans' | 'trust' | 'featureFlags'> {
   const { base, req } = t;
   return {
     auth: {
@@ -27,13 +27,13 @@ export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'ac
       team: () => req(TeamSchema.nullable(), 'GET', '/team'),
       inviteToTeam: (emails) => req(TeamSchema, 'POST', '/team/invites', { emails })
     },
-    credits: {
-      balance: () => req(CreditBalanceSchema, 'GET', '/credits'),
-      routes: () => req(TopUpRoutesSchema, 'GET', '/credits/routes'),
-      startTopUp: (routeId, credits) => req(TopUpSchema, 'POST', '/credits/top-ups', { routeId, credits }),
-      topUp: (id) => req(TopUpSchema, 'GET', `/credits/top-ups/${encodeURIComponent(id)}`),
-      cancelTopUp: (id) => req(TopUpSchema, 'POST', `/credits/top-ups/${encodeURIComponent(id)}/cancel`),
-      topUps: () => req(z.array(TopUpSchema), 'GET', '/credits/top-ups')
+    plans: {
+      plan: () => req(PlanSchema, 'GET', '/plan'),
+      routes: () => req(TopUpRoutesSchema, 'GET', '/plan/routes'),
+      startTopUp: (routeId, microUsd) => req(TopUpSchema, 'POST', '/plan/top-ups', { routeId, microUsd }),
+      topUp: (id) => req(TopUpSchema, 'GET', `/plan/top-ups/${encodeURIComponent(id)}`),
+      cancelTopUp: (id) => req(TopUpSchema, 'POST', `/plan/top-ups/${encodeURIComponent(id)}/cancel`),
+      topUps: () => req(z.array(TopUpSchema), 'GET', '/plan/top-ups')
     },
     trust: {
       attestation: (nonce) => req(AttestationSchema, 'GET', `/attestation?nonce=${encodeURIComponent(nonce)}`)

@@ -112,17 +112,22 @@ const CallStepSchema = z.discriminatedUnion('type', [
   /** The organizer pausing notes in one open room while the call's are on, or carrying on there: the call's notes are unchanged. */
   z.object({ type: z.literal('rooms-pause'), roomId: z.string().max(64), paused: z.boolean() }),
   /**
-   * Anyone in the call, opening Workspace: the first time, the call's home is settled, with the call's folder in it, and the
-   * next call in a series gets its agenda. `timeZone`, where the browser is: the day a new home and folder are named after.
+   * Anyone in the call, opening Workspace: when the call has a workspace, the call's folder is put in it the first time, and
+   * the next call in a series gets its agenda. A call with none makes none. `timeZone`, where the browser is: the day the
+   * folder is named after.
    */
   z.object({ type: z.literal('workspace-open'), timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.').optional() }),
   /**
-   * The organizer has everyone view and edit a workspace they can edit in, or the call's home again. Its notes and transcript
-   * still go to its home. Being organizer opens nothing, so anyone not in it sees that it's private.
+   * The organizer picks the call's workspace, one they can edit in: everyone views and edits it, the call's notes and
+   * transcript go there in a folder of their own, and later calls in its series keep it. Only the organizer. Being organizer
+   * opens nothing, so anyone not in it sees that it's private, and nobody is let in by this.
    */
-  z.object({ type: z.literal('workspace-set'), workspaceId: ItemIdSchema }),
-  /** The organizer makes a workspace, with just them in it, and everyone views it. It's named after the call unless it's given a name. */
-  z.object({ type: z.literal('workspace-new'), name: z.string().transform((s) => s.replace(/\s+/g, ' ').trim()).pipe(z.string().min(1).max(120)).optional() }),
+  z.object({ type: z.literal('workspace-set'), workspaceId: ItemIdSchema, timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.').optional() }),
+  /**
+   * The organizer makes a workspace, and it's the call's (as `workspace-set` makes one), named after the call unless it's given
+   * a name. Everyone invited is let in to edit, and who's in it follows the invite. Only the organizer.
+   */
+  z.object({ type: z.literal('workspace-new'), name: z.string().transform((s) => s.replace(/\s+/g, ' ').trim()).pipe(z.string().min(1).max(120)).optional(), timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.').optional() }),
   /** Anyone who can open it brings a document in the call's workspace to the call, or takes it off. */
   z.object({ type: z.literal('workspace-bring'), documentId: ItemIdSchema, brought: z.boolean() }),
   /** Anyone in the call but the organizer asks to see the workspace, or takes the ask back. It names nothing. */

@@ -17,7 +17,7 @@ const env = z.object({
 configureLogging({ level: env.LOG_LEVEL, format: env.LOG_FORMAT, service: 'alcove-limits' });
 
 const USAGE = `limits list
-limits set <name> <value>   a whole number; bytes can have a unit, 512MiB or "100 GiB"
+limits set <name> <value>   a whole number; bytes can have a unit (512MiB), time too (30d), money is in dollars ($0.50)
 
 ${LIMIT_NAMES.map((name) => `  ${name}`).join('\n')}
 `;

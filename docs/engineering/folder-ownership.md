@@ -50,7 +50,7 @@ apps/api/src/
     notes/           saved notes, additions, personal notes, series and writing
     recordings/      audio, screen frames, transcripts and room recordings
     workspaces/      tree, access, documents, media and mentions
-    billing/         service accounting
+    billing/         plans, the AI allowance, storage and top-ups
   http/              shared request infrastructure
   integration/       cross-feature and infrastructure suites
   live/              shared realtime/worker infrastructure
@@ -59,7 +59,7 @@ packages/api/src/
   client.ts          aggregate interface
   errors.ts          shared client errors
   identity/ agents/ meetings/ calls/ notes/ recordings/ workspaces/
-  trust/ credits/ telemetry/ feature-flags/ shared/
+  trust/ plans/ telemetry/ feature-flags/ shared/
 packages/api-http/src/
   index.ts           public exports and client composition
   transport/         request, parse, stream and client options

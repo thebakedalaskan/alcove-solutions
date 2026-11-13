@@ -3,10 +3,10 @@
  * opens a window: a new folder is named in its row, a new workspace in the head, and menus sit against what opened them.
  */
 import { errorMessage, type WorkspaceItem, type WorkspaceSummary } from '@alcove/api';
-import { WsDropLine, WsList, WsListHead, WsMovePicker, WsNewMenu, WsRenameRow, WsRow, WsRowMenu, WsSection, WsSpacePicker, WsTrashRow, wsToast, type WsMenuRow, type WsNaming, type WsPoint, type WsPop, type WsSpaceChoice } from '@alcove/ui';
+import { WsDeleteAsk, WsDropLine, WsList, WsListHead, WsMovePicker, WsNewMenu, WsRenameRow, WsRow, WsRowMenu, WsSection, WsSpacePicker, WsTrashRow, useToast, wsToast, type WsMenuRow, type WsNaming, type WsPoint, type WsPop, type WsSpaceChoice } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
-import { q, useCreateWorkspace, useRenameWorkspace } from '~/lib/queries';
+import { q, useCreateWorkspace, useDeleteWorkspace, useRenameWorkspace } from '~/lib/queries';
 import { hm, hms } from '~/lib/time';
 import { focusRow } from './actions';
 import { CallPages } from './CallPages';
@@ -43,8 +43,6 @@ export function namesIn(spaces: readonly WorkspaceSummary[]): (w: WorkspaceSumma
 /** A workspace as a row of the menu under the name at the top of the list, as `named` calls it. */
 export const spaceChoice = (w: WorkspaceSummary, named: (w: WorkspaceSummary) => string = (x) => x.name ?? 'Shared with you'): WsSpaceChoice =>
   ({ id: w.id, name: named(w), sub: peopleWords(w.people), icon: w.people === 1 ? 'lock' : 'folders' });
-/** The same, saying which is the call's home: where its notes and transcript go, whichever everyone views. */
-export const homeChoice = (c: WsSpaceChoice, home: string | null): WsSpaceChoice => (c.id === home ? { ...c, sub: `This call’s home · ${c.sub}` } : c);
 
 /** A row's menu: which row, in which part of the list, where it opened if someone right-clicked, and whether Move to… has taken its place. */
 interface RowMenu { id: string; area: WorkspaceArea; at?: WsPoint | undefined; moving: boolean }
@@ -68,26 +66,45 @@ function useJustBrought(ids: readonly string[]): ReadonlySet<string> {
   return lit;
 }
 
-/** The name at the top of the list: your workspaces, who's in this one, and making a new one. */
+/**
+ * The name at the top of the list: your workspaces, who's in this one, and making a new one. Its admins can delete it, which
+ * asks first, in the menu's place: on its own page that's back to the Drive, and in a call the call reads its workspace again,
+ * which is none now.
+ */
 function useHead(onNaming: (n: 'new' | 'rename') => void) {
   const ws = useWs();
   const [open, setOpen] = useState(false);
-  const [people, setPeople] = useState(false);
+  const [inside, setInside] = useState<'people' | 'delete' | null>(null);
   /* A guest in a call has no account, so no workspaces to ask for. */
   const spaces = useQuery({ ...q.workspaces(), enabled: ws.owner !== null });
-  const close = () => { setOpen(false); setPeople(false); };
+  const remove = useDeleteWorkspace();
+  const push = useToast();
+  const close = () => { setOpen(false); setInside(null); };
   const about: WsMenuRow[] = [];
-  if (ws.sent.role !== null) about.push({ id: 'people', icon: 'people', label: 'People', sub: peopleWords(ws.sent.people), onSelect: () => setPeople(true) });
-  if (ws.sent.role === 'admin') about.push({ id: 'rename', icon: 'pen', label: 'Rename', onSelect: () => { close(); onNaming('rename'); } });
+  if (ws.sent.role !== null) about.push({ id: 'people', icon: 'people', label: 'People', sub: peopleWords(ws.sent.people), onSelect: () => setInside('people') });
+  if (ws.sent.role === 'admin') {
+    about.push({ id: 'rename', icon: 'pen', label: 'Rename', onSelect: () => { close(); onNaming('rename'); } });
+    about.push({ id: 'delete', icon: 'trash', label: 'Delete workspace', tone: 'caution', onSelect: () => setInside('delete') });
+  }
   const named = namesIn(spaces.data ?? []);
   const list = (spaces.data ?? []).map((w) => spaceChoice(w, named));
   const choices = list.some((s) => s.id === ws.workspaceId) ? list : [{ id: ws.workspaceId, name: ws.spaceName, sub: peopleWords(ws.sent.people) }, ...list];
   /* In a call whoever chooses the workspace has the call's own picker, and everyone else is told who chooses. */
   const call = ws.call;
+  const name = ws.spaceName;
+  const drop = () => {
+    remove.mutateAsync(ws.workspaceId).then(() => {
+      close();
+      if (call) { call.say(wsToast.spaceDeleted(name)); call.onDeleted(); return; }
+      push(`${name} is deleted for everyone`, { icon: 'trash' });
+      ws.leave();
+    }, (e: unknown) => { close(); ws.say(wsToast.failed(errorMessage(e))); });
+  };
   return {
-    open, onOpenChange: (to: boolean) => { if (to) { setOpen(true); void spaces.refetch(); } else close(); },
-    content: people ? <PeopleSheet /> : call?.picker ? call.picker({ workspaceId: ws.workspaceId, name: ws.spaceName, people: ws.sent.people, about, close }) : call ? (
-      <WsSpacePicker spaces={[homeChoice({ id: ws.workspaceId, name: ws.spaceName, sub: peopleWords(ws.sent.people) }, call.home)]} current={ws.workspaceId} canChoose={false} organizer={call.chooser} about={about} onPick={close} onNew={close} />
+    open, onOpenChange: (to: boolean) => { if (to) { setOpen(true); void spaces.refetch(); } else if (!remove.isPending) close(); },
+    content: inside === 'delete' ? <WsDeleteAsk name={name} busy={remove.isPending} onDelete={drop} onKeep={close} />
+      : inside === 'people' ? <PeopleSheet /> : call?.picker ? call.picker({ workspaceId: ws.workspaceId, name, people: ws.sent.people, about, close }) : call ? (
+      <WsSpacePicker spaces={[{ id: ws.workspaceId, name, sub: peopleWords(ws.sent.people) }]} current={ws.workspaceId} canChoose={false} organizer={call.chooser} about={about} onPick={close} onNew={close} />
     ) : (
       <WsSpacePicker spaces={choices} current={ws.workspaceId} canChoose heading="Workspaces" about={about}
         onPick={(id) => { close(); if (id !== ws.workspaceId) ws.switchTo(id); }} onNew={() => { close(); onNaming('new'); }} />

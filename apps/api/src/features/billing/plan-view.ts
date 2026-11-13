@@ -1,0 +1,37 @@
+/*
+ * An account's plan as its owner sees it (docs: Plans and usage): notes as time, about what's left of the period's AI
+ * allowance once what's been spent is taken off, at what an hour of notes is reckoned at; storage against the plan's limit, with any
+ * grace; and the balance. The allowance itself, in dollars, never leaves the server.
+ */
+import type { Plan } from '@alcove/api';
+import type { Deps } from '../../context';
+import { limitsNow } from '../../limits';
+import { minutesOf, standing } from './meter';
+import { accountOf, heldTo, historyOf, inForce } from './plans';
+import { usedBytes } from './storage';
+
+/** How many of the balance's latest changes are shown. */
+const SHOWN = 20;
+
+export async function planOf(d: Pick<Deps, 'cfg' | 'pool'>, ownerId: string): Promise<Plan> {
+  const l = await limitsNow(d);
+  const now = Date.now();
+  const a = await accountOf(d, d.pool, ownerId);
+  const p = inForce(a, l, now);
+  const s = await standing(d, d.pool, ownerId);
+  const used = await usedBytes(d.pool, ownerId);
+  const overStorage = used > p.storageBytes;
+  const inGrace = a.grace !== null && Date.parse(a.grace.until) > now && overStorage;
+  const held = heldTo(a, p, now);
+  return {
+    kind: p.kind,
+    period: { from: new Date(p.from).toISOString(), to: new Date(p.to).toISOString() },
+    // From what's been spent, not what's held for requests in flight or a call's notes: it only goes down.
+    notes: { minutesLeft: s.ranOut ? 0 : minutesOf(s.unspentNano, l), minutesPerPeriod: p.notesMinutes, stopped: s.ranOut },
+    storage: { usedBytes: used, limitBytes: held.storageBytes ?? p.storageBytes, fileBytes: p.fileBytes },
+    grace: inGrace && a.grace ? { until: a.grace.until, storage: overStorage } : null,
+    over: inGrace ? { storage: false } : { storage: overStorage },
+    balance: { microUsd: a.balanceMicroUsd, history: historyOf(a).slice(0, SHOWN) },
+    choose: a.choose
+  };
+}

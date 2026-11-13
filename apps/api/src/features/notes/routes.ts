@@ -156,7 +156,7 @@ export function registerNoteRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
 
   app.post('/v1/notes/:id/rewrite', async (c) => {
     const o = c.get('owner');
-    // Writing the notes again costs inference and isn't charged, so it shares the questions' allowance.
+    // Writing the notes again is paid from the organizer's notes like any request, and shares the questions' rate limit.
     askLimiter(o.ownerId, 'rewrite');
     const { model } = await body(c, RewriteBodySchema);
     const note = await notes.rewrite(o, c.req.param('id'), model === undefined ? {} : { model });

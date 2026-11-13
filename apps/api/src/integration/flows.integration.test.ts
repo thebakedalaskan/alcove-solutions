@@ -9,10 +9,13 @@ import { z } from 'zod';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { addObject, boardText, newId, readBoard, tableCell } from '@alcove/board';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { standing } from '../features/billing/meter';
+import { setLimit } from '../limits';
 import { loadConfig, loadEnv } from '../config';
 import { b64u, openJson, sealJson, signInAttemptKey, unb64u } from '../crypto';
 import { masterKey } from '../owners';
 import { cookieName } from '../sessions';
+import { withWorkspace } from '../testing/call-workspace';
 import { startFakeDstack } from '../testing/fake-dstack';
 import { acceptNoteSuggestions } from '../testing/follow-ups';
 import { PNG, type GoogleUser, type Spoil } from '../testing/fake-google';
@@ -171,7 +174,8 @@ describe('signing in', () => {
     expect(inMinutes).toBeLessThanOrEqual(17);
     expect(day[0]).toMatchObject({ isOrganizer: true, organizer: { name: 'Art Vandelay', id: r.session.ownerId }, status: 'scheduled' });
     expect(day[2]?.guests.map((g) => g.name)).toEqual(['Priya Raman', 'Inès Moreau', 'Kofi Asante', 'Sam Ortiz']);
-    expect(await first.api.credits.balance()).toEqual({ balance: 10_000, granted: 10_000, usedThisMonth: 0, perMinute: 25 });
+    // A new account is on Free, with all of a period's notes, nothing in its balance, and the plans to pick from first.
+    expect(await first.api.plans.plan()).toMatchObject({ kind: 'free', notes: { minutesLeft: 300, minutesPerPeriod: 300, stopped: false }, balance: { microUsd: 0 }, choose: true });
 
     // Another browser is the same person: both sessions stay open, and the calendar isn't placed twice.
     const second = h.browser();
@@ -1462,11 +1466,10 @@ describe('live transcript and written notes', () => {
     expect(prompt).not.toContain(guestEmail);
     expect(prompt).not.toContain(org.session.user.email);
 
-    // The live transcript moved into the note, the job is done, and the minutes recorded (not the call's length) were charged.
+    // The live transcript moved into the note, the job is done, and the organizer paid for what the transcript and the notes took.
     expect((await h.pool.query('SELECT count(*)::int AS n FROM transcript_clips WHERE note_item_id = $1', [noteId])).rows[0]?.n).toBe(0);
     expect((await h.pool.query('SELECT count(*)::int AS n FROM content_jobs WHERE owner_id = $1', [org.session.ownerId])).rows[0]?.n).toBe(0);
-    const credits = await org.api.credits.balance();
-    expect(credits.balance).toBe(credits.granted - Math.max(1, Math.ceil(note.audio.reduce((n, a) => n + a.seconds, 0) / 60)) * credits.perMinute);
+    expect((await standing(h.deps, h.pool, org.session.ownerId)).byKind).toMatchObject({ transcript: expect.any(Number), notes: expect.any(Number) });
 
     // Anyone with the notes can ask about the call, and hear where the answer comes from.
     expect(await asked(org.api, noteId, 'When is the launch now?')).toEqual([{ type: 'text', text: 'From the call: We agreed to move the launch to the 18th.' }, { type: 'cite', noteId, at: 0 }]);
@@ -1828,9 +1831,8 @@ describe('live transcript and written notes', () => {
     await retryNow();
     expect((await api.notes.get(pendingNoteId)).decisions.map((d) => d.text)).toEqual(['We agreed to ship on Monday.']);
 
-    // Never a usable answer: after three attempts the note is finished without a summary, keeps its transcript, and
-    // costs nothing. (A model that doesn't answer at all makes the note wait instead: see below.)
-    const before = (await api.credits.balance()).balance;
+    // Never a usable answer: after three attempts the note is finished without a summary, and keeps its transcript.
+    // (A model that doesn’t answer at all makes the note wait instead: see below.)
     h.near.failNext(3, 'prose');
     rec = await api.recordings.start({ title: 'Never' });
     await rec.transcribe(speech('Nobody will read this summary.', 0, 0));
@@ -1843,7 +1845,68 @@ describe('live transcript and written notes', () => {
     const note = await api.notes.get(pendingNoteId);
     expect(note).toMatchObject({ status: 'ready', summary: '', decisions: [], actions: [], chapters: [] });
     expect(note.transcript?.map((l) => l.text)).toEqual(['Nobody will read this summary.']);
-    expect((await api.credits.balance()).balance).toBe(before);
+  });
+});
+
+describe('a call nobody made a workspace for', () => {
+  it('makes none, whatever anyone does in it, and its organizer is asked where its notes go', async () => {
+    const org = await account();
+    const kofi = await account();
+    const { code: callCode } = await org.api.calls.startNow({ notes: 'on', guests: [kofi.session.user.email] });
+    const host = await org.api.calls.join(callCode, { mic: true, cam: false });
+    await host.appendAudio(piece(audioBytes('no-workspace'), 0, 0));
+    const k = await kofi.api.calls.join(callCode, { mic: false, cam: false });
+    await settle(host, (s) => s.participants.some((p) => p.id === k.ticket.identity));
+    const jamie = await h.browser().api.calls.join(callCode, { mic: false, cam: false, name: 'Jamie Guest' });
+    await settle(host, (s) => s.waiting.some((w) => w.id === jamie.ticket.identity));
+    await host.admit(jamie.ticket.identity);
+    await settle(host, (s) => s.participants.some((p) => p.id === jamie.ticket.identity));
+
+    // Everyone opens Workspace: there's none, and nothing makes one.
+    await Promise.all([host.openWorkspace(), k.openWorkspace(), jamie.openWorkspace()]);
+    for (const call of [host, k, jamie]) {
+      await call.refresh({ call: true, log: false });
+      expect(call.getSnapshot().workspace).toMatchObject({ id: null, chosen: false, canOpen: false });
+    }
+    // A new board, from the organizer or anyone invited, has nowhere to go.
+    const nowhere = { code: 'conflict', message: 'This call has no workspace yet, so there’s nowhere to keep a new board. The organizer chooses one.' };
+    const refused = (p: Promise<unknown>) => p.then(() => null, (e: unknown) => (e instanceof AlcoveApiError ? { code: e.code, message: e.message } : { code: 'not-an-api-error', message: String(e) }));
+    expect(await refused(host.openBoard({ template: 'retro' }))).toEqual(nowhere);
+    expect(await refused(k.openBoard({ template: 'blank' }))).toEqual(nowhere);
+    // Nor rooms with a board each, or one they share: refused before any room opens. Rooms with nothing to work on open as ever.
+    const rooms = (mode: 'each' | 'shared' | 'none') => org.fetch(`${h.baseUrl}/v1/live/calls/${host.ticket.callId}/actions`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-alcove-call': host.ticket.pass },
+      body: JSON.stringify({ type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi.session.user.email] }, { name: 'Support', emails: [] }], minutes: 5, board: { mode, template: 'retro' } })
+    });
+    for (const mode of ['each', 'shared'] as const) {
+      const res = await rooms(mode);
+      expect(res.status).toBe(409);
+      expect(await res.text()).toContain('no workspace yet');
+    }
+    await host.refresh({ call: true, log: false });
+    expect(host.getSnapshot().breakouts.open).toBeNull();
+    expect((await rooms('none')).status).toBe(200);
+    expect((await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms).toHaveLength(2);
+    host.closeRooms();
+    await settle(host, (s) => s.breakouts.open === null);
+
+    // It ends with notes and nowhere to file them: the organizer is asked, and nothing is made.
+    await host.transcribe(speech('Kofi will send the deck to legal by Friday.', 0, 0), host.ticket.identity);
+    const end = await ended(host);
+    expect(end).toMatchObject({ filed: false });
+    const noteId = end.pendingNoteId ?? '';
+    expect((await written(org.api, noteId)).at(-1)?.ready).toBe(true);
+    await new Promise((r) => setTimeout(r, 400));
+    expect(await org.api.workspaces.list()).toEqual([]);
+    expect(await kofi.api.workspaces.list()).toEqual([]);
+    expect((await org.api.meetings.get(end.meetingId)).workspaceId).toBeNull();
+    // The note is in Notes as ever, for everyone invited.
+    expect((await kofi.api.notes.get(noteId)).id).toBe(noteId);
+    // Filed where the organizer says: here, a new workspace made for the call, with everyone invited in it.
+    const filed = await org.api.meetings.file(end.meetingId, { newWorkspace: true });
+    const id = filed.workspaceId ?? '';
+    expect((await kofi.api.workspaces.list()).map((w) => w.id)).toEqual([id]);
+    expect((await kofi.api.workspaces.get(id)).items).toEqual([expect.objectContaining({ kind: 'folder', call: expect.objectContaining({ on: false, noteId }) })]);
   });
 });
 
@@ -3122,33 +3185,28 @@ describe('room recordings', () => {
   });
 });
 
-describe('credits', () => {
-  it('the balance says how much was used this month', async () => {
+describe('plans', () => {
+  it('a room recording is paid for from its recorder’s notes, and what’s left is said as time', async () => {
     const { api, session } = await account();
-    expect(await api.credits.balance()).toEqual({ balance: 10_000, granted: 10_000, usedThisMonth: 0, perMinute: 25 });
+    expect((await api.plans.plan()).notes).toEqual({ minutesLeft: 300, minutesPerPeriod: 300, stopped: false });
 
-    // Notes written now are charged now: 25 credits a minute recorded, rounded up.
+    // Its speech and its notes are paid for as NEAR AI answers them, from the recorder's allowance.
     const rec = await api.recordings.start({ title: 'Usage' });
     await rec.appendAudio(piece(audioBytes('usage'), 0, 0));
     await rec.transcribe(speech('We agreed to ship on Monday.', 0, 0));
     await written(api, (await rec.stop()).pendingNoteId);
-    expect(await api.credits.balance()).toEqual({ balance: 9_975, granted: 10_000, usedThisMonth: 25, perMinute: 25 });
+    expect((await standing(h.deps, h.pool, session.ownerId)).byKind).toMatchObject({ transcript: expect.any(Number), notes: expect.any(Number) });
 
-    // The month starts at 00:00 UTC on the 1st. A charge made the moment before counts against the balance
-    // but not against this month; one made at that moment counts against both. The history is sealed under
-    // the service key, so these are charged the way the notes worker charges, with the clock set to then.
-    const { charge } = await import('../features/billing/service');
-    const now = new Date();
-    const month = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+    // Said as time at what an hour of notes is reckoned at: at a thousandth of a dollar a minute, what it took shows.
+    await setLimit(h.pool, 'ai.hour_micro_usd', 60_000);
     try {
-      vi.useFakeTimers({ toFake: ['Date'], now: month - 1 });
-      await charge(h.deps, h.pool, session.ownerId, { amount: 100, label: 'Notes, 4 min' });
-      vi.setSystemTime(month);
-      await charge(h.deps, h.pool, session.ownerId, { amount: 50, label: 'Notes, 2 min' });
+      const { notes } = await api.plans.plan();
+      expect(notes.minutesPerPeriod).toBe(300);
+      expect(notes.minutesLeft).toBeLessThan(300);
+      expect(notes.minutesLeft).toBeGreaterThan(0);
     } finally {
-      vi.useRealTimers();
+      await h.pool.query("DELETE FROM service_limits WHERE name = 'ai.hour_micro_usd'");
     }
-    expect(await api.credits.balance()).toEqual({ balance: 9_825, granted: 10_000, usedThisMonth: 75, perMinute: 25 });
   });
 });
 
@@ -3221,10 +3279,10 @@ describe('deleting an account', () => {
     const sharedWith = await noteFrom(ann);
     await ann.api.notes.share(sharedWith, { emails: [lena.email] });
     await b.api.notes.share(sharedWith, { emails: [kofi.session.user.email] });
-    // She opened a top-up to add credits.
-    const [route] = (await b.api.credits.routes()).routes;
+    // She opened a top-up to add money.
+    const [route] = (await b.api.plans.routes()).routes;
     if (!route) throw new Error('1Click offers no way to pay');
-    await b.api.credits.startTopUp(route.id, route.minimumCredits);
+    await b.api.plans.startTopUp(route.id, Math.round(Number(route.minimum) * 1_000_000));
 
     // Her own notes, on Ann's note and on hers, and something she added from them to her note's shared notes.
     await b.api.notes.personal(invitedTo).add({ kind: 'note', text: 'On Ann’s note.' });
@@ -3262,13 +3320,15 @@ describe('deleting an account', () => {
     await b.api.notes.createLink(callNote);
     // A timer preset as the previous release can still write one while a deploy is under way: nothing in this release does.
     await h.pool.query('INSERT INTO timer_presets (owner_id, preset_id, ciphertext) VALUES ($1, $2, $3)', [ownerId, randomBytes(16).toString('base64url'), randomBytes(64)]);
+    // So can its credits row, which nothing in this release reads or writes.
+    await h.pool.query('INSERT INTO billing_accounts (owner_id, state_ciphertext, version) VALUES ($1, $2, 0)', [ownerId, randomBytes(64)]);
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes',
+      'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'ai_meters', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes',
       'call_private_messages', 'call_rings', 'calls', 'content_jobs', 'deposits', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts',
       'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'items', 'media_upload_days', 'meeting_access',
-      'note_access', 'note_additions', 'note_links', 'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings',
+      'note_access', 'note_additions', 'note_links', 'object_gc', 'operations', 'owners', 'personal_notes', 'plan_accounts', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings',
       'revisions', 'screen_frames', 'screen_pieces', 'screen_shares', 'screen_videos', 'sessions', 'timer_presets', 'transcript_clips', 'transcript_translations',
       'workspace_authors', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions',
       'workspaces'
@@ -3345,11 +3405,11 @@ describe('deleting an account', () => {
     expect((await ann.api.notes.get(sharedWith)).recipients.map((r) => [r.person.email, r.role])).toEqual([[ann.session.user.email, 'organizer'], [kofi.session.user.email, 'shared']]);
     expect((await kofi.api.notes.get(sharedWith)).received).toMatchObject({ role: 'shared', by: { name: 'Lena Leaving' } });
 
-    // Signing in again with the same Google account starts a new, empty account with the welcome credits.
+    // Signing in again with the same Google account starts a new, empty account, on Free.
     const fresh = h.browser();
     expect(landed(await viaGoogle(fresh, lena))).toBe('/ready');
     expect((await fresh.api.auth.getSession())?.ownerId).not.toBe(ownerId);
-    expect(await fresh.api.credits.balance()).toEqual({ balance: 10_000, granted: 10_000, usedThisMonth: 0, perMinute: 25 });
+    expect(await fresh.api.plans.plan()).toMatchObject({ kind: 'free', balance: { microUsd: 0, history: [] }, choose: true });
     expect(await fresh.api.notes.list()).toEqual([]);
     expect(await fresh.api.meetings.upcoming()).toEqual([]);
     expect(await fresh.api.account.preferences()).toMatchObject({ pinned: [], groups: [] });
@@ -3483,9 +3543,9 @@ describe('deleting an account', () => {
     const blocks = async (pid: number) => ((await h.pool.query<{ n: number }>('SELECT count(*)::int AS n FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))', [pid])).rows[0]?.n ?? 0) > 0;
     const outcome = (p: Promise<void>) => p.then(() => 'deleted', (e: unknown) => code(e));
     try {
-      // The first deletion is held just before it commits, on the account's billing row, which goes with the account.
+      // The first deletion is held just before it commits, on the account's plan row, which goes with the account.
       await hold.query('BEGIN');
-      await hold.query('SELECT 1 FROM billing_accounts WHERE owner_id = $1 FOR UPDATE', [ownerId]);
+      await hold.query('SELECT 1 FROM plan_accounts WHERE owner_id = $1 FOR UPDATE', [ownerId]);
       const first = outcome(racer.api.account.delete());
       await until(async () => blocks(await pidOf(hold)), 'the first deletion to wait');
       // The second arrives signed in, as the account is still there, and reaches the account's profile only once
@@ -3781,6 +3841,7 @@ describe('privacy at rest', () => {
     // and the ideas come back to the call sealed in its state. Nothing of either is in a row, an object or a log.
     const ideasCall = await c.api.calls.join((await c.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
     for (const at of [0, 1]) await ideasCall.appendAudio(piece(audioBytes('ideas'), 0, at));
+    await withWorkspace(ideasCall);
     await ideasCall.openBoard({ template: 'retro' });
     await ideasCall.transcribe(speech('CANARY-IDEA we should repaint the lobby.', 0, 0), ideasCall.ticket.identity);
     const lookingForIdeas = ideasCall.watchIdeas();
@@ -3815,6 +3876,7 @@ describe('privacy at rest', () => {
     await roomie.api.auth.signIn('sso', { email: 'canary-roomie@canary.example' });
     const roomieCall = await roomie.api.calls.join(roomsCall.code, { mic: false, cam: false });
     await settle(roomsHost, (s) => s.participants.some((p) => p.id === roomieCall.ticket.identity));
+    await withWorkspace(roomsHost);
     roomsHost.openRooms({ rooms: [{ name: 'CANARY-ROOMNAME one', emails: ['canary-roomie@canary.example'] }, { name: 'CANARY-ROOMNAME two', emails: [] }], minutes: 5, board: { mode: 'each', template: 'retro' } });
     const roomBoard = (await settle(roomieCall, (s) => s.board.open?.role === 'edit')).board.open;
     expect(roomBoard?.name).toBe('CANARY-ROOMNAME one board');
@@ -3855,10 +3917,10 @@ describe('privacy at rest', () => {
     for (const [id, refusal] of refusals) expect(code(await g.api.calendar.adopt(id).catch((e: unknown) => e))).toBe(refusal);
 
     // A top-up paid and credited: its deposit address, the settlement's hash and the history label stay sealed.
-    const topUp = await c.api.credits.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 25_000);
+    const topUp = await c.api.plans.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 25_000_000);
     expect(topUp.address).toContain('canary-deposit-address');
     h.oneclick.set(topUp.address ?? '', 'SUCCESS', { depositedAmount: '25000000', amountOut: '25000000', intentHashes: ['canary-intent-hash'] });
-    expect((await c.api.credits.topUp(topUp.id)).state).toBe('credited');
+    expect((await c.api.plans.topUp(topUp.id)).state).toBe('credited');
 
     // A live question stays present for the sweep: ending a call physically deletes its attention record.
     const attentionCall = await c.api.calls.join((await c.api.calls.startNow({ notes: 'off' })).code, { mic: false, cam: false });
@@ -3877,7 +3939,7 @@ describe('privacy at rest', () => {
     const canaries = [
       'CANARY-PRIVATE-MESSAGE', 'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
       'CANARY-BREAKOUT', 'CANARY-BROADCAST', 'CANARY-GROUP', 'canary-member', 'CANARY-ASKED', 'canary-rung', 'CANARY-ROOMTALK', 'merger moves', 'canary-scribe', 'CANARY-LIVENOTE',
-      'Welcome credits', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
+      'Added, 25 USDC', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo', 'CANARY-GCAL', 'canary-gcal',
       'CANARY-QUESTION', 'CANARY-SERIES-ASK', 'CANARY-ASKED', 'canary-recurring-id', 'canary-theirs-event', 'canary-allday-event', 'canary-missing-event',
       'CANARY-SERIES-TITLE', 'CANARY-SERIES-RENAMED', 'canary-series-guest', 'Pacific/Apia', series.seriesCode ?? 'no series link',

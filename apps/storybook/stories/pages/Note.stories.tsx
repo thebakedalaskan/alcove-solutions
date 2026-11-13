@@ -4,7 +4,10 @@ import { screen, within } from 'storybook/test';
 import { RETRO_NOTE, afterTheRetro } from '../../src/api/scenarios';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import type { World } from '../../src/world';
+import { call } from '../../src/world/build';
 import { iso } from '../../src/world/clock';
+import { INES } from '../../src/world/people';
 import { withDriveExports, withSharedCallExports } from '../../src/world/drive-exports';
 import { FOLLOW_UP_NOTE, withFollowUpProposals } from '../../src/world/follow-ups';
 import { STATES, inEveryState } from '../../src/world/states';
@@ -349,3 +352,38 @@ export const GoogleDriveAudioNotRetained = page(`/notes/${STATES.unkept}`, 'busy
   withDriveExports(w);
   w.drive.overrides[STATES.unkept] = { enabled: true, destination: w.drive.settings.destination, formats: ['notes-markdown'] };
 }) });
+
+/* ---------- notes from a call with no workspace ---------- */
+
+/** Art's call this morning, started there and then with no workspace: it's over, and its notes aren't filed anywhere yet. */
+function unfiled(w: World): void {
+  const meeting = { ...call({ id: 'm-arts-call', title: 'Art’s call', startsAt: iso(0, 11, 58), minutes: 14, code: 'art-call-mrn', guests: [INES], status: 'ended', noteId: 'n1' }), instant: true };
+  w.meetings = [...w.meetings, meeting];
+  w.notes = w.notes.map((n) => (n.id === 'n1' ? { ...n, meetingId: meeting.id } : n));
+}
+/** Down to where the note says its notes aren't in a workspace yet. */
+const toTheNotice: PageStory['play'] = async ({ canvas, step }) => {
+  await step('Scroll to where it says these notes aren’t in a workspace yet', async () => {
+    (await canvas.findByText('These notes aren’t in a workspace yet.', {}, { timeout: 30000 })).scrollIntoView({ block: 'center' });
+  });
+};
+/** Its organizer's note says so, near what was worked on: file them in one of your workspaces, or a new one, or leave them in Notes. */
+export const Unfiled = page('/notes/n1', 'busy', { beforeEach: changing(unfiled), play: toTheNotice });
+export const UnfiledNight = page('/notes/n1', 'busy', { beforeEach: changing(unfiled), play: toTheNotice, globals: { theme: 'dark' } });
+export const UnfiledPhone = phone(Unfiled);
+/** File them in Product: the call's folder goes there, and the note says where they went. */
+export const UnfiledFiled = page('/notes/n1', 'busy', {
+  beforeEach: changing(unfiled),
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Choose Product in Where these notes go', async () => {
+      const choice = await canvas.findByRole('button', { name: /Where these notes go/ }, { timeout: 30000 });
+      choice.scrollIntoView({ block: 'center' });
+      await userEvent.click(choice);
+      await userEvent.click(await screen.findByRole('option', { name: /^Product/ }, { timeout: 8000 }));
+    });
+    await step('File them. It says where they went', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'File them' }));
+      await canvas.findByText(/^Filed in/, {}, { timeout: 8000 });
+    });
+  }
+});

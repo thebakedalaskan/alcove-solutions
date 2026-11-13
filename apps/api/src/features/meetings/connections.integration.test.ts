@@ -127,7 +127,7 @@ describe('a server with one connection to the database', () => {
     await settle(call, (s) => s.isHost, 'Kofi hosting');
   });
 
-  it('bills a note stopped by the previous release, which only its audio can say the length of', async () => {
+  it('writes a note stopped by the previous release, sealed before it said its length', async () => {
     let server = single.baseUrl;
     const org = await account(unique(), () => server);
     const meeting = await org.api.meetings.create(call());
@@ -148,10 +148,8 @@ describe('a server with one connection to the database', () => {
       const { recorded: _recorded, ...older } = cur.manifest;
       await saveRevision(o, c, noteId, cur.revisionId, older);
     });
-    const before = (await org.api.credits.balance()).balance;
     await maintain({ ...h.deps, pool: one });
     expect(await org.api.notes.get(noteId)).toMatchObject({ status: 'ready', decisions: [{ text: 'We agreed to ship on Monday.' }] });
-    expect((await org.api.credits.balance()).balance).toBe(before - 50);
   });
 });
 

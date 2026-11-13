@@ -1,5 +1,5 @@
 /*
- * A call's own pages, in its folder at the top of its home (docs: Calls and recordings › The call's home): while you're in
+ * A call's own pages, in its folder at the top of its workspace (docs: Calls and recordings › The call's folder): while you're in
  * the call, its live notes, follow-ups and transcript, the same rows as everywhere in the call; once it's over, its note,
  * for someone who has it. The server says which (`ItemCall`), from the call's and the note's own access, so someone without
  * the notes sees the folder and whatever else is in it. Nothing here opens the note in a call's place: from a call, it opens

@@ -95,8 +95,9 @@ export const MeetingSchema = z.object({
   /** What was brought to the call. */
   documents: z.array(CallDocumentSchema),
   /**
-   * The call's home, for its organizer: the workspace its notes and transcript go to, in a folder of its own. Null until
-   * there is one, and for everyone else, who find out in the call what they can open.
+   * The call's workspace, for its organizer: everyone in the call views it, and its notes and transcript go there, in a
+   * folder of their own. Null while it has none (the organizer picks or makes one when scheduling, in the call, or for its
+   * notes once it's over), and for everyone else, who find out in the call what they can open.
    */
   workspaceId: IDSchema.nullable(),
   /** How everyone invited has answered. */
@@ -144,8 +145,8 @@ export const MeetingInputSchema = z.object({
   /** Documents brought to the call, by the IDs the library gives them. */
   documents: z.array(IDSchema).max(MAX_CALL_DOCUMENTS).optional(),
   /**
-   * The call's home: one of the organizer's workspaces they can edit in, where its notes and transcript go. Null: a new
-   * workspace made for the call, named after it and its date, when someone first opens it or the call ends with notes.
+   * The call's workspace: one of the organizer's workspaces they can edit in, where its notes and transcript go. Null: none,
+   * until the organizer picks or makes one. Nothing makes one by itself.
    */
   workspaceId: IDSchema.nullable().optional(),
   /** Schedules a call for each occurrence, as one series with one link. */
@@ -158,3 +159,23 @@ export const MeetingInputSchema = z.object({
 });
 
 export type MeetingInput = z.infer<typeof MeetingInputSchema>;
+
+/**
+ * A call to schedule. `newWorkspace`: a new workspace is made for it as it's scheduled, named after it, with everyone invited
+ * in it to edit, and it's the call's workspace (and its series'). Not with `workspaceId`, which picks one already there.
+ */
+export const MeetingCreateSchema = MeetingInputSchema.extend({ newWorkspace: z.boolean().optional() })
+  .refine((m) => !(m.newWorkspace && m.workspaceId), 'Pick a workspace or make a new one, not both.');
+
+export type MeetingCreate = z.infer<typeof MeetingCreateSchema>;
+
+/**
+ * Where an ended call's notes go, when it had no workspace: one of the organizer's workspaces they can edit in, or a new one
+ * made for it. `timeZone`, where the browser is: the day the call's folder (and a new workspace) is named after.
+ */
+export const FileNotesSchema = z.union([
+  z.object({ workspaceId: IDSchema, timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.').optional() }),
+  z.object({ newWorkspace: z.literal(true), timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.').optional() })
+]);
+
+export type FileNotes = z.infer<typeof FileNotesSchema>;

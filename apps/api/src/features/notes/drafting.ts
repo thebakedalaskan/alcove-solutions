@@ -14,7 +14,7 @@ import { z } from 'zod';
 import type { Config } from '../../config';
 import { b64u, id128, sha, utf8 } from '../../crypto';
 import { UnavailableError } from '../../errors';
-import { complete, completeJson, jpegPart, type ChatModel, type ContentPart } from '../../inference';
+import { complete, completeJson, jpegPart, type ChatModel, type ContentPart, type Meter, type Most } from '../../inference';
 import type { NoteManifest } from './service';
 import { changeOf } from '../recordings/screenGrid';
 import type { Reading } from '../recordings/screens';
@@ -547,7 +547,7 @@ const MAX_LINES_AGAINST = 2;
 const NOBODY = new Set(['', 'unknown', 'unassigned', 'none', 'n/a', 'someone', 'somebody', 'everyone', 'team', 'the team', 'all', 'null']);
 
 /** Writes a note's summary, decisions, open questions, follow-ups, chapters and suggested questions from its transcript, in the style asked for. */
-export async function draft(cfg: Config, b: Brief, style: NotesStyle): Promise<Written> {
+export async function draft(cfg: Config, meter: Meter, b: Brief, style: NotesStyle): Promise<Written> {
   // Only screens what was said plainly refers to or relies on (key), in order: the rest never reach the notes. Each
   // line is numbered, so the model can say which lines things come from.
   const shown = (b.screens ?? []).filter((m) => m.relevance === 'key').sort((x, y) => x.at - y.at || x.id.localeCompare(y.id));
@@ -557,7 +557,7 @@ export async function draft(cfg: Config, b: Brief, style: NotesStyle): Promise<W
   const known = (b.followUps ?? []).filter((a) => a.review !== 'accepted' || a.changeOf === null);
   const boards = b.boards ?? [];
   const onBoards = boards.flatMap((x) => x.followUps).slice(0, MAX_BOARD_FOLLOW_UPS).map((x) => ({ ...x, text: unboarded(x.text) }));
-  const { json, evidence } = await complete(cfg, [
+  const { json, evidence } = await complete(cfg, meter, [
     { role: 'system', content: `${notesPrompt(style, told.length > 0, boards.length > 0)}${known.length ? EXISTING_FOLLOW_UPS_RULE : ''}` },
     {
       role: 'user', content: `${about(b)}\n\n${known.length ? `Existing follow-ups:\n${listed('F', known.map((a) => ({ id: a.id, text: a.text, ...(a.owner ? { owner: a.owner.name } : {}) })))}\n\n` : ''}${b.settled?.length ? `Already settled (don't list these again):\n${b.settled.map((x) => `- ${x}`).join('\n')}\n\n` : ''}${told.length ? `Ticked during the call:\n${listed('T', told)}\n\n` : ''}${onBoards.length ? `In the boards' Actions frames:\n${listed('B', onBoards)}\n\n` : ''}Transcript:\n${fenced(sent.text)}${boards.length ? `\n\nBoards:\n${boardsText(boards)}` : ''}`
@@ -683,7 +683,7 @@ const DetailsReply = z.object({ details: z.string().regex(/[\p{L}\p{N}]/u) });
  * (b.screens, read) and each breakout room's summary: longer for a longer meeting, with the verification the request
  * went to. Throws when it can't be written; the notes stand without it (writer.ts).
  */
-export async function writeDetails(cfg: Config, b: Brief, written: Written, style: NotesStyle): Promise<{ details: string; evidence: InferenceEvidence | null }> {
+export async function writeDetails(cfg: Config, meter: Meter, b: Brief, written: Written, style: NotesStyle): Promise<{ details: string; evidence: InferenceEvidence | null }> {
   const shown = (b.screens ?? []).filter((m) => m.relevance === 'key').sort((x, y) => x.at - y.at || x.id.localeCompare(y.id));
   const sent = fit(entries(b.lines, b.gaps, spoken, placed(shown)));
   const notes = [
@@ -691,7 +691,7 @@ export async function writeDetails(cfg: Config, b: Brief, written: Written, styl
     writtenText({ decisions: written.decisions, questions: written.questions, actions: written.actions, chapters: written.chapters }),
     ...roomSummaries(b)
   ].join('\n');
-  const { json, evidence } = await complete(cfg, [
+  const { json, evidence } = await complete(cfg, meter, [
     { role: 'system', content: DETAILS_PROMPT(style, detailsParagraphs(b.seconds)) },
     { role: 'user', content: `${about(b)}\n\nNotes already written:\n${notes}\n\nTranscript:\n${fenced(sent.text)}` }
   ], { what: 'details', maxTokens: 2500, timeoutMs: 180_000, via: b.via });
@@ -714,7 +714,7 @@ const Answer = z.object({ answer: z.string().min(1), lines: Refs, screens: z.arr
  * moment is the time of the line, never a time the model gave. Where a call wasn't set to keep its transcript, what the notes say is all there is to go on, in the main room
  * and each breakout room.
  */
-export async function answer(cfg: Config, noteId: string, b: Brief, asker: Person, question: string): Promise<AnswerPart[]> {
+export async function answer(cfg: Config, meter: Meter, noteId: string, b: Brief, asker: Person, question: string): Promise<AnswerPart[]> {
   const shown = b.screens ?? [];
   const notes = b.deleted && b.written ? `Notes:\n${writtenText(b.written)}\n\nThe transcript was deleted once the notes were written.\n\n` : '';
   // The call's transcript and each breakout room's share one budget, so a call with many rooms still fits. A room with
@@ -722,7 +722,7 @@ export async function answer(cfg: Config, noteId: string, b: Brief, asker: Perso
   const rooms = (b.rooms ?? []).filter((r) => r.transcript.length || r.summary);
   const read = fitTogether([{ lines: b.lines, gaps: b.gaps, screens: shown }, ...rooms.map((r) => ({ lines: r.transcript, gaps: r.gaps, screens: [] }))], (part) => (part === 0 ? 'L' : `R${part}-L`));
   const [said, ...roomsRead] = read;
-  const reply = Answer.safeParse(await completeJson(cfg, [
+  const reply = Answer.safeParse(await completeJson(cfg, meter, [
     { role: 'system', content: ASK_PROMPT },
     { role: 'user', content: `${about(b)}\n\nSummary: ${b.summary || '(none)'}\n\n${b.details ? `Full summary:\n${b.details}\n\n` : ''}${notes}Transcript:\n${fenced(said?.text ?? '')}${roomsText(rooms, roomsRead.map((r) => r.text))}\n\nAsked by: ${called(asker)}\nQuestion: ${question}` }
   ], { what: 'ask', maxTokens: 1200, timeoutMs: 60_000, via: b.via }));
@@ -860,7 +860,7 @@ const NoteCite = z.object({ note: z.coerce.number().int(), line: Ref.nullish().c
  * that were sent, and of lines that were, are kept. Says which notes were sent, and how many
  * transcript lines.
  */
-export async function answerFromNotes(cfg: Config, notes: NoteBrief[], asker: Person, question: string, via?: ChatModel | undefined, beforeSend?: ((ids: string[]) => Promise<void>) | undefined): Promise<{ parts: AnswerPart[]; sent: string[]; lines: number }> {
+export async function answerFromNotes(cfg: Config, meter: Meter, notes: NoteBrief[], asker: Person, question: string, via?: ChatModel | undefined, beforeSend?: ((ids: string[]) => Promise<void>) | undefined): Promise<{ parts: AnswerPart[]; sent: string[]; lines: number }> {
   const terms = new Set(wordsOf(question));
   const shared = (text: string) => new Set(wordsOf(text).filter((w) => terms.has(w)));
   const found = notes.map((n) => ({
@@ -910,7 +910,7 @@ export async function answerFromNotes(cfg: Config, notes: NoteBrief[], asker: Pe
     `Asked by: ${called(asker)}`, `Question: ${question}`
   ].join('\n');
   await beforeSend?.(shown.map((c) => c.n.id));
-  const reply = AcrossReply.safeParse(await completeJson(cfg, [
+  const reply = AcrossReply.safeParse(await completeJson(cfg, meter, [
     { role: 'system', content: ASK_NOTES_PROMPT },
     { role: 'user', content: user }
   ], { what: 'ask-notes', maxTokens: 1200, timeoutMs: 60_000, via }));
@@ -970,10 +970,10 @@ const MOMENTS = 3;
  * `known`, the follow-ups so far, for the model to say which each one it lists is. A reply that isn't what was asked for
  * fails, and nothing is made of it.
  */
-export async function catchUp(cfg: Config, b: Brief, reading: string, o: { followUps?: number; known?: Known[] } = {}): Promise<Sorted> {
+export async function catchUp(cfg: Config, meter: Meter, b: Brief, reading: string, o: { followUps?: number; known?: Known[] } = {}): Promise<Sorted> {
   const { followUps = POINTS, known = [] } = o;
   const sent = numberedText(b.lines, b.gaps);
-  const reply = CatchUpReply.safeParse(await completeJson(cfg, [
+  const reply = CatchUpReply.safeParse(await completeJson(cfg, meter, [
     { role: 'system', content: `${CATCH_UP_PROMPT}${known.length ? KNOWN_RULE : ''}` },
     { role: 'user', content: `${about({ ...b, live: true })}\nReading: ${reading}\n\n${known.length ? `Follow-ups so far:\n${listed('F', known)}\n\n` : ''}Transcript:\n${fenced(sent.text)}` }
   ], { what: 'catch-up', maxTokens: followUps > POINTS ? 2500 : 1500, timeoutMs: 60_000, via: b.via }));
@@ -1017,9 +1017,9 @@ const AnswerSoFar = z.object({ answer: z.string().min(1), lines: Refs });
  * Answers a question from a stretch of a call in progress, with the lines the answer comes from (indices from 0 into
  * the lines sent) and what didn't fit and wasn't read.
  */
-export async function answerSoFar(cfg: Config, b: Brief, asker: Person, question: string, reading: string): Promise<{ text: string; refs: number[]; cut: Cut | null }> {
+export async function answerSoFar(cfg: Config, meter: Meter, b: Brief, asker: Person, question: string, reading: string): Promise<{ text: string; refs: number[]; cut: Cut | null }> {
   const sent = numberedText(b.lines, b.gaps);
-  const reply = AnswerSoFar.safeParse(await completeJson(cfg, [
+  const reply = AnswerSoFar.safeParse(await completeJson(cfg, meter, [
     { role: 'system', content: ASK_SO_FAR_PROMPT },
     { role: 'user', content: `${about({ ...b, live: true })}\nReading: ${reading}\n\nTranscript:\n${fenced(sent.text)}\n\nAsked by: ${called(asker)}\nQuestion: ${question}` }
   ], { what: 'ask-live', maxTokens: 1200, timeoutMs: 60_000, via: b.via }));
@@ -1048,9 +1048,9 @@ function markFor(text: string): string {
 }
 
 /** What the notes model makes of a selection, in parts to put in the document. A reply that isn't what was asked for fails, and nothing is made of it. */
-export async function editSelection(cfg: Config, action: DocAskAction, text: string, via?: ChatModel | undefined): Promise<DocAskPart[]> {
+export async function editSelection(cfg: Config, meter: Meter, action: DocAskAction, text: string, via?: ChatModel | undefined): Promise<DocAskPart[]> {
   const mark = markFor(text);
-  const asked = await completeJson(cfg, [
+  const asked = await completeJson(cfg, meter, [
     { role: 'system', content: SELECTION_PROMPT },
     { role: 'user', content: `${SELECTION_ASKS[action]}\n\n<selection-${mark}>\n${text}\n</selection-${mark}>` }
   ], { what: 'ask-selection', maxTokens: 1500, timeoutMs: 60_000, via });
@@ -1100,10 +1100,10 @@ const plainly = (text: string): string => text.toLowerCase().replace(/[^\p{L}\p{
  * An idea that points at no line it was sent is the model's word alone, and is left out; words it says came from a line
  * that aren't in it give way to the line's own.
  */
-export async function ideasFrom(cfg: Config, b: Brief, frames: readonly { id: string; title: string }[], offered: readonly string[]): Promise<IdeaFound[]> {
+export async function ideasFrom(cfg: Config, meter: Meter, b: Brief, frames: readonly { id: string; title: string }[], offered: readonly string[]): Promise<IdeaFound[]> {
   const sent = numberedText(b.lines, b.gaps);
   const frameList = frames.map((f, i) => `F${i + 1} ${oneLine(f.title) || 'A frame with no title'}`).join('\n');
-  const reply = IdeasReply.safeParse(await completeJson(cfg, [
+  const reply = IdeasReply.safeParse(await completeJson(cfg, meter, [
     { role: 'system', content: IDEAS_PROMPT },
     {
       role: 'user',
@@ -1140,10 +1140,10 @@ const ThemesReply = z.object({ themes: z.array(z.object({ name: z.string(), stic
  * Stickies sorted into themes by the notes model: each theme's name, and its stickies by their IDs, each in one theme. A label
  * it wasn't given is nothing, one it used twice stays where it was first, and a theme left with no stickies goes.
  */
-export async function themesOf(cfg: Config, stickies: readonly { id: string; text: string }[]): Promise<{ name: string; ids: string[] }[]> {
+export async function themesOf(cfg: Config, meter: Meter, stickies: readonly { id: string; text: string }[]): Promise<{ name: string; ids: string[] }[]> {
   const listedText = stickies.map((x, i) => `S${i + 1} ${oneLine(x.text)}`).join('\n');
   const mark = markFor(listedText);
-  const reply = ThemesReply.safeParse(await completeJson(cfg, [
+  const reply = ThemesReply.safeParse(await completeJson(cfg, meter, [
     { role: 'system', content: THEMES_PROMPT },
     { role: 'user', content: `<stickies-${mark}>\n${listedText}\n</stickies-${mark}>` }
   ], { what: 'board-themes', maxTokens: 1200, timeoutMs: 60_000 }));
@@ -1196,14 +1196,14 @@ const labelled = <T,>(label: string, letter: string, xs: T[]): T | undefined => 
  * dropped, and the moment an answer came at is the time of the line the model named in the transcript (the main one's, or
  * the room's), a line it wasn't sent being no moment.
  */
-export async function revisited(cfg: Config, b: Brief, decisions: Decision[], earlier: Standing[]): Promise<{ found: Revisited[]; evidence: InferenceEvidence | null }> {
+export async function revisited(cfg: Config, meter: Meter, b: Brief, decisions: Decision[], earlier: Standing[]): Promise<{ found: Revisited[]; evidence: InferenceEvidence | null }> {
   const was = earlier.filter((x) => x.kind === 'decision');
   const open = earlier.filter((x) => x.kind === 'question');
   const rooms = (b.rooms ?? []).filter((r) => r.transcript.length);
   const read = fitTogether([{ lines: b.lines, gaps: b.gaps, screens: [] }, ...rooms.map((r) => ({ lines: r.transcript, gaps: r.gaps, screens: [] }))], () => 'L');
   const [said, ...roomsRead] = read;
   const list = <T,>(title: string, letter: string, xs: T[], text: (x: T) => string) => (xs.length ? [`${title}:`, ...xs.map((x, i) => `${letter}${i + 1}: ${oneLine(text(x))}`), ''] : []);
-  const { json, evidence } = await complete(cfg, [
+  const { json, evidence } = await complete(cfg, meter, [
     { role: 'system', content: REVISIT_PROMPT },
     {
       role: 'user', content: [
@@ -1241,8 +1241,8 @@ Translate every line, keeping its id. Keep names, numbers and dates exactly. A l
 const Translation = z.object({ lines: z.array(z.object({ id: z.string(), text: z.string() })).catch([]) });
 
 /** Live transcript lines in another language, by line ID. Lines the model left out or emptied aren't returned. */
-export async function translate(cfg: Config, lines: { id: string; text: string }[], language: string, via?: ChatModel | undefined): Promise<Map<string, string>> {
-  const reply = Translation.safeParse(await completeJson(cfg, [
+export async function translate(cfg: Config, meter: Meter, lines: { id: string; text: string }[], language: string, via?: ChatModel | undefined): Promise<Map<string, string>> {
+  const reply = Translation.safeParse(await completeJson(cfg, meter, [
     { role: 'system', content: TRANSLATE_PROMPT },
     { role: 'user', content: JSON.stringify({ language, lines }) }
   ], { what: 'translate', maxTokens: 2000, timeoutMs: 30_000, via }));
@@ -1302,7 +1302,7 @@ const MomentItem = z.object({ line: Ref.nullish().catch(null), share: z.coerce.n
  * didn't send, is dropped, and a reply that isn't moments at all counts as
  * none (`unusable` says how many were), so a bad answer costs only the cues, never the notes.
  */
-export async function pickMoments(cfg: Config, lines: TranscriptLine[], shares: ScreenShare[], via?: ChatModel | undefined): Promise<{ moments: Moment[]; evidence: InferenceEvidence[]; requests: number; unusable: number }> {
+export async function pickMoments(cfg: Config, meter: Meter, lines: TranscriptLine[], shares: ScreenShare[], via?: ChatModel | undefined): Promise<{ moments: Moment[]; evidence: InferenceEvidence[]; requests: number; unusable: number }> {
   const said = lines.flatMap((l, i) => (shares.some((sh) => l.at >= sh.at - NEAR_SHARE_S && l.at <= sh.until + NEAR_SHARE_S) ? [{ i, at: l.at, text: `L${i + 1} ${spoken(l)}` }] : []));
   const chunks: { i: number; at: number; text: string }[][] = [];
   let size = 0;
@@ -1317,7 +1317,7 @@ export async function pickMoments(cfg: Config, lines: TranscriptLine[], shares: 
     const from = chunk[0]?.at ?? 0;
     const to = chunk.at(-1)?.at ?? 0;
     const listed = shares.flatMap((sh, i) => (sh.at <= to + NEAR_SHARE_S && sh.until >= from - NEAR_SHARE_S ? [`Share ${i + 1}: ${oneLine(sh.label)}, from [${mmss(sh.at)}] to [${mmss(sh.until)}]`] : []));
-    const { json, evidence: e } = await complete(cfg, [
+    const { json, evidence: e } = await complete(cfg, meter, [
       { role: 'system', content: PICK_PROMPT },
       { role: 'user', content: `Shares:\n${listed.join('\n')}\n\nTranscript:\n${fenced(chunk.map((x) => x.text).join('\n'))}` }
     ], { what: 'pick-moments', maxTokens: 6000, timeoutMs: 180_000, via });
@@ -1485,14 +1485,14 @@ const TAKEN: Record<PickWhy, string> = {
  * is kept, with how legible it was and what it shows; the parts it points at are boxes inside the frame, as fractions
  * of it, and at least a sliver big.
  */
-export async function readScreen(cfg: Config, jpeg: Uint8Array, o: { context?: ScreenContext | undefined; via?: ChatModel | undefined; before?: Uint8Array | undefined } = {}): Promise<{ reading: Reading; relevance: ScreenRelevance; evidence: InferenceEvidence | null }> {
+export async function readScreen(cfg: Config, meter: Meter, jpeg: Uint8Array, o: { context?: ScreenContext | undefined; via?: ChatModel | undefined; before?: Uint8Array | undefined } = {}): Promise<{ reading: Reading; relevance: ScreenRelevance; evidence: InferenceEvidence | null }> {
   const c = o.context;
   const around = c ? clip(c.lines.filter((l) => Math.abs(l.at - c.at) <= AROUND_S).map(spoken).join('\n'), AROUND_CHARS) : '';
   const said = c ? `The frame was taken at [${mmss(c.at)}], ${TAKEN[c.why]}${c.cue ? ' (the cue below)' : ''}. What was said within ${AROUND_S} seconds of it:\n${fenced([...(c.cue ? [`Cue: ${oneLine(c.cue)}`] : []), around || '(nothing was said)'].join('\n'))}\n\n` : '';
   const frames: ContentPart[] = o.before
     ? [{ type: 'text', text: `${said}Two frames: the screen ${BEFORE_S} seconds before, then the frame itself.\nBefore:` }, jpegPart(o.before), { type: 'text', text: 'The frame:' }, jpegPart(jpeg)]
     : [{ type: 'text', text: `${said}The frame:` }, jpegPart(jpeg)];
-  const { json, evidence } = await complete(cfg, [
+  const { json, evidence } = await complete(cfg, meter, [
     { role: 'system', content: READ_SCREEN_PROMPT },
     { role: 'user', content: frames }
   ], { what: 'read-screen', maxTokens: 1200, timeoutMs: 60_000, via: o.via });
@@ -1510,5 +1510,30 @@ export async function readScreen(cfg: Config, jpeg: Uint8Array, o: { context?: S
       changed: o.before ? clip(oneLine(r.changed), CHANGED_CHARS) : '', regions
     },
     relevance: r.relevance ?? unsaid(c, r.legible), evidence
+  };
+}
+
+/** What a prompt adds to what it's sent at most, besides the transcript: its instructions, the people and the call. */
+const PROMPT_TOKENS = 6_000;
+/** What reading one frame sends at most besides its images: the instructions and what was said around it. */
+const READ_TOKENS = 3_000;
+/** Characters of transcript a second of a call comes to at most: fast speech, 180 words a minute. */
+const SPOKEN_CHARS = 18;
+/**
+ * What writing a call’s notes will take at most, reckoned while it’s live from its seconds recorded so far, so the organizer’s
+ * allowance holds it until the notes are written (features/billing/meter.ts): the notes and their details from the
+ * transcript (up to MAX_TRANSCRIPT_CHARS), a section for each breakout room, the moments picked from what was shared and a
+ * frame read, with the one before it, for every SECONDS_PER_SCREEN_FRAME of sharing (MAX_SCREEN_FRAMES at most), and
+ * comparing its decisions with the series'. Every request at the most it can ask for back.
+ */
+export function writingAtMost(o: { seconds: number; rooms: number; shareSeconds: number }): Most {
+  const chars = Math.min(Math.ceil(o.seconds * SPOKEN_CHARS), MAX_TRANSCRIPT_CHARS);
+  const transcript = Math.ceil(chars / 4) + PROMPT_TOKENS;
+  const frames = o.shareSeconds > 0 ? Math.min(MAX_SCREEN_FRAMES, Math.ceil(o.shareSeconds / SECONDS_PER_SCREEN_FRAME)) : 0;
+  const picks = frames ? Math.max(1, Math.ceil(chars / PICK_CHARS)) : 0;
+  return {
+    input: transcript * (3 + o.rooms + picks) + frames * READ_TOKENS,
+    images: frames * 2,
+    output: 4000 * (1 + o.rooms) + 2500 + 500 + picks * 6000 + frames * 1200
   };
 }

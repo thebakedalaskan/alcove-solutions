@@ -12,7 +12,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 
 | Table | Clear columns | Ciphertext or keyed hash |
 | --- | --- | --- |
-| `owners` | `owner_id`, `stored_bytes`, `version`, `created_at`, `series_turn_until` (set only while a change to one of the account's series goes through, so changes take turns; [below](#writes-reads-and-deletes)) | `root_envelope` (`Kowner` under `KMASTER`), `root_check` (HMAC). An account or a [workspace](#workspaces) |
+| `owners` | `owner_id`, `stored_bytes` (what's stored sealed for it: an account's call audio, shared screens and room recordings, or a workspace's files; an account's storage is its own and those of the workspaces it pays for, [Plans and usage](plans-and-usage.md#storage)), `version`, `created_at`, `series_turn_until` (set only while a change to one of the account's series goes through, so changes take turns; [below](#writes-reads-and-deletes)) | `root_envelope` (`Kowner` under `KMASTER`), `root_check` (HMAC). An account or a [workspace](#workspaces) |
 | `identities` | owner, created and last used | `subject_index` (primary key), `email_index` (the provider's current email, updated at each sign-in) |
 | `sessions` | owner, provider (`google`, `microsoft`, `sso`), created, last seen, expiry | `session_hash` (SHA-256 of the cookie's ID) |
 | `items` | owner, item ID, `kind` (`profile`, `meeting`, `note`, `connection`, `series`), current revision, `deleted_at`, `version` | — |
@@ -38,9 +38,12 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `personal_notes` | owner (the author), the note's organizer and item: one row for each person and note | `body_ciphertext` (everything they keep on it: what they wrote, bookmarks and what they point at, kept questions and answers, and which of it was added to the shared notes), sealed under the author's own keys. Replaced with each change, with no earlier versions |
 | `note_additions` | owner (the note's organizer), note item, addition ID, when it was added | `author_index` (keyed hash of who added it, so deleting their account finds their additions on anyone's notes), `body_ciphertext` (the words, who added it, and the lines or shared screens it points at), sealed under the organizer's keys |
 | `note_links` | owner (the note's organizer), note item, link ID, when it runs out | `secret_hash` (SHA-256 of the link's secret, which is only ever in the link's fragment and a POST body), `maker_index` (keyed hash of who made it, so removing the note from theirs or deleting their account finds their links), `body_ciphertext` (who made it, as they were, and when), sealed under the organizer's keys. Deleted when it's revoked, once it's run out (upkeep), with the note, and with its maker's access or account (migration `0025_note_links.sql`) |
-| `billing_accounts` | owner, `version` | `state_ciphertext` (balance and history, under `Kservice`) |
+| `billing_accounts` | owner, `version` | `state_ciphertext` (the credits balance and history of before plans, under `Kservice`). No longer read: it goes in a later release |
+| `plan_accounts` | owner, `version`, when upkeep next looks at it (`due_at`: a period ending, paid time running out, a grace ending) | `state_ciphertext` (a `plan-account` record under `Kservice`'s accounting key: the balance in micro-USD and its history, where Free's periods count from, whether the account hasn't been shown the plans yet, and the grace it's in, if any). Migration `0026_plans.sql` ([Plans and usage](plans-and-usage.md)) |
+| `ai_meters` | owner, `version` | `state_ciphertext` (an `ai-meter` record under the same key: the period's AI allowance in dollars, what's been spent and on which kinds of request, the requests in flight and live calls' notes that hold some of it, and when it ran out). Kept apart from `plan_accounts` so the many small charges of a live call never wait behind a purchase |
+| `billing_cutover` | `at`: when migration `0026` ran, one row | — |
 | `deposits` | owner, deposit, provider (`oneclick`), state (`waiting`/`arriving`/`short`/`credited`/`held`/`failed`/`expired`/`cancelled`), created, when to check next (`check_after`), last checked, when to give up | `record_ciphertext` (a `deposit` record under `Kservice`'s accounting key, below) |
-| `workspaces` | owner, `workspace_id` (the public handle, Id128), `version`, when the oldest thing in its Trash went there (`trash_since`), created | `state_ciphertext` (its name and tree: [Workspaces](#workspaces)) |
+| `workspaces` | owner, `workspace_id` (the public handle, Id128), `version`, when the oldest thing in its Trash went there (`trash_since`), created, `payer_owner_id` (the account its files count against, and whose plan pays for its AI: whoever pressed New workspace, which for one made in a call or when scheduling is its organizer; null while nobody does, after its payer deleted their account). The last is migration `0027_workspace_payers.sql` | `state_ciphertext` (its name and tree: [Workspaces](#workspaces)) |
 | `workspace_members` | owner (the workspace), `member_id` (what the API calls them), role (`admin`/`edit`/`read`), created | `email_index`, `person_ciphertext` (their address, their name if the workspace was made by them, and whether a call's invite put them there and nobody has changed their place by hand since: older records read as not) |
 | `documents` | owner (the workspace), `document_id`, `next_seq`, what it comes to in bytes, items and depth of nesting at its snapshot and since (`snapshot_bytes`, `bytes_since_snapshot`, `snapshot_items`, `items_since_snapshot`, `snapshot_nesting`, `nesting_since_snapshot`), how many of its items aren't on its page (`snapshot_retired_items`), `updates_since_snapshot`, how far the newest version reaches and when it was kept (`version_seq`, `version_at`), until when something's restoring it (`held_until`) or it stays closed because it wouldn't open (`closed_until`), created. One row for each document or board in the tree; a folder has none | — |
 | `document_updates` | owner (the workspace), document, `seq`, how much it adds in `bytes`, `items` and `nesting`, `deletes_tag` (a keyed hash of what it deletes, so the same deletes again cost no row), created | `update_ciphertext` (one Yjs update and who sent it: [Documents](#documents)) |
@@ -103,7 +106,7 @@ transcript: writing its notes deletes every earlier revision, which hold it (`pr
 ## Workspaces
 
 A workspace is an **owner**: a row in `owners` with its own root key and a `workspaces` row, so sealing, `owner_id`
-scoping and deleting work as they do for an account. It has no `identities` row, session, profile, credits or receipts:
+scoping and deleting work as they do for an account. It has no `identities` row, session, profile, plan, balance or receipts:
 nobody signs in as one, and nothing that reads an account's tables finds it. Nothing lists `owners`. Its `owner_id` stays
 on the server; everything outside knows it by `workspace_id`.
 
@@ -112,12 +115,12 @@ Its name and tree are one record, `workspace-state`, under the workspace's key: 
 or null when nobody in particular did), `createdAt`, `editedAt`, `trashedAt`, `trashedBy`, `restricted`, `restrictedBy` (the
 address of whoever restricted it, when that wasn't its creator) and `call` (on a call's folder only: whose call it is, by
 the organizer's owner and address and the call's ID, when it started, whether it's over, and its note's ID once it is); and
-`madeFor`, on a workspace made as a call's home: the call's title, when it started, its meeting and series, and `out`, the
+`madeFor`, on a workspace made for a call (in the call, when scheduling it, or for its notes once it's over): the call's title, when it started, its meeting and series, and `out`, the
 addresses taken out of it by hand or that left it, which its invite never puts back (older records take `[]`). Older records
 take `null` for `call` and `madeFor`. To the tree `kind` is only data: a document and a board
 are alike, each a row in `documents` that what it holds hangs off, and nothing here looks inside. A call's folder holds no
 content of its own: its pages read the call and its note through their own access
-([Calls and recordings › The call's home](calls-and-recordings.md#the-calls-home)), and nothing of either is copied here. A tree is small (at most 5,000 items, and folders at most 32 deep, though nothing that walks one
+([Calls and recordings › The call's folder](calls-and-recordings.md#the-calls-folder)), and nothing of either is copied here. A tree is small (at most 5,000 items, and folders at most 32 deep, though nothing that walks one
 relies on that: stored data of any depth reads and clears), so one record is enough, and every change is made
 under the `workspaces` row's lock, which also serialises changes to its people and who has what: an access check made
 under that lock holds until the change commits. The server filters the state for each reader, so nobody is sent a name
@@ -145,7 +148,7 @@ same row, so taking someone out takes their address with them. `workspace_author
 name is on something here, which is how deleting an account finds a workspace it left long ago. When a sign-in brings an
 account a new address, everything under the old hash moves to the new one in that sign-in's transaction, and its name on
 what it made follows. A workspace holds at most 1,000 people, a document is shared with at most 500, and an address can
-have made at most 100 workspaces by hand: a home made for a call doesn't count. Who can do what is in
+have made at most `workspaces.max_made` (1,000) and not deleted, however each was made: a workspace exists only because someone pressed New workspace. Who can do what is in
 [Privacy › Who can open a workspace](privacy-keys-and-sessions.md#who-can-open-a-workspace).
 
 ### Tags
@@ -493,7 +496,8 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
 - **What's kept.** A `workspace-media` record: its name, type, size, and its width and height where the browser knew them.
   And its bytes, in pieces of exactly 4 MiB but the last, each a `media-piece` binary record in an object under a random name,
   a couple of hundred bytes over its own size ([Privacy › Records](privacy-keys-and-sessions.md#records-and-envelopes)). All of
-  it is sealed under the file's own state key, `media:<id>`. At most 512 MiB a file, unless that's changed (below).
+  it is sealed under the file's own state key, `media:<id>`. At most what the plan of whoever the workspace counts against
+  allows, 512 MiB on Free, unless that's changed (below).
 - **Its type.** What a browser calls a file is kept only if it can be shown in place: JPEG, PNG, WebP, GIF and AVIF
   pictures, MP4 and WebM video, and MP3, M4A, WebM and Ogg audio, by any of the names browsers use for them. Anything else is
   kept as `application/octet-stream`, and only ever downloads, under the name it came with. SVG and HTML are in that group:
@@ -504,7 +508,7 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   lock with access asked again, so someone who lost the document while a piece was on its way keeps nothing and its object
   goes. A piece is kept by its place in the file, so sending it again changes nothing. `…/finish` makes the file readable
   once every piece is there; until then nobody can read, list or reuse it. Every piece counts towards the workspace's
-  `stored_bytes`, once, however many documents have the file.
+  `stored_bytes`, once, however many documents have the file, and so towards its payer's storage (below).
 - **A picture's preview.** The browser uploading a photo makes a small JPEG of it, at most 320 pixels on its longer side and
   128 KiB (`MEDIA_PREVIEW_PIXELS`, `MAX_MEDIA_PREVIEW_BYTES`), and sends it once the photo is finished, to `POST …/media/:media/preview`
   as `image/jpeg`. It's a `media-preview` binary record, sealed under the file's own key, in one object under a random name, a
@@ -518,18 +522,25 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   pass by themselves, picking up as soon as the browser says it's back online, so a Wi-Fi handover doesn't start 500 MiB
   over; and 3 times more after a failure on the server. Past that, or if the browser gives up, it takes back what got there
   (`DELETE …/media/:media`). An upload whose browser went stays `uploading` until maintenance takes it, a day on.
-- **What can be kept.** Three limits, which change without a deploy and are in force everywhere within
-  30 seconds ([Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)): a file, 512 MiB; what a workspace
-  stores, its `stored_bytes`, 100 GiB; and what one person uploads in a day (UTC), in every workspace together, 20 GiB. They're the
-  same for everyone, guests in a call included. Each is checked when an upload starts, with the whole file, and again on every
-  piece, so uploads going at once pass one by the pieces on their way and no more. A file over the limit is refused as `400
-  invalid`, with how big one can be, "This file is bigger than 512 MiB, the most a file can be.", because only the server
-  knows; a full workspace with `409 conflict`, "This workspace is full, so it can’t take more files."; and a day used up with
-  `409 conflict`, "That’s all you can upload today. You can upload more tomorrow." A limit of zero refuses everything with
-  "Files can’t be uploaded right now." Lowering a limit refuses what comes next and deletes nothing. An account's day is counted in `media_upload_days` as its pieces are kept, and
+- **What can be kept.** What a file and what's stored can be is the plan's of whoever the workspace counts against
+  (`workspaces.payer_owner_id`), and what one person uploads in a day is the same for everyone. All are limits, which change
+  without a deploy and are in force everywhere within 30 seconds
+  ([Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)): a file, 512 MiB on Free; storage, 10 GiB
+  on Free, counted for each account, not each workspace: the account's own `stored_bytes` (its calls' audio and shared
+  screens, its room recordings) and every workspace it pays for, one made for a call included, whoever added the files, guests
+  too ([Plans and usage › Storage](plans-and-usage.md#storage)); and what one person uploads in a day
+  (UTC), in every workspace together, 20 GiB. They're the same for everyone, guests in a call included. Each is checked when
+  an upload starts, with the whole file, and again on every piece, so uploads going at once pass one by the pieces on their
+  way and no more. A file over the limit is refused as `400 invalid`, with how big one can be, "This file is bigger than 512
+  MiB, the most a file can be here.", because only the server knows; a payer with no room left with `402 plan-limit`, "Your
+  storage is full. Delete something, or move to a plan with more room."; and a day used up with
+  `409 conflict`, "That’s all you can upload today. You can upload more tomorrow." A file size or a day at zero refuses
+  everything with "Files can’t be uploaded right now." A workspace that counts against nobody (none of its admins has an
+  account) takes no files: `409 conflict`, "Files can’t be added until one of this workspace’s admins signs in to Alcove."
+  Lowering a limit refuses what comes next and deletes nothing. An account's day is counted in `media_upload_days` as its pieces are kept, and
   a guest's, who has no account, in `media_guest_upload_days`, by a blind index of the person their pass names: either way every
   instance counts the same day, and a restart forgets nothing. A piece
-  that takes a workspace or someone's day past 80% of its limit logs it at warn, once each time it's crossed.
+  that takes an account's storage or someone's day past 80% of its limit logs it at warn, once each time it's crossed.
 - **Reuse.** `attach` puts a file in another document of the workspace, for someone who can edit that document and can
   already reach the file, and a copy of a document has what the original has, in the transaction that makes it. It's still one
   file: nothing more is stored.
@@ -723,15 +734,16 @@ and this way it runs through the same auth, origin check and tests as everything
   a job), and giving it up wastes that job and puts it at the back again, so someone switching tabs while a big page opens
   could keep it from ever opening. Either way, edits waiting for their own next try go at once.
 
-A credit top-up is a sealed `deposit` record, header `{ v: 1, kind: 'deposit', ownerId, depositId, keyVersion: '1' }`,
+A top-up is a sealed `deposit` record, header `{ v: 1, kind: 'deposit', ownerId, depositId, keyVersion: '1' }`,
 under `Kservice`'s accounting key like the billing state, so the watcher opens it without anyone signed in: the
 route (chain, token, decimals, minimum), the deposit address and memo, the expiry, the amount asked and the quote's
-`minAmountIn` (token units), the credits promised and the rate they were priced at, the provider's whole signed quote,
-what the provider last said arrived while it was open (micro-USD), and once settled what was sent, what reached the treasury and what was refunded (micro-USD), the credits it added
+`minAmountIn` (token units), the provider's whole signed quote,
+what the provider last said arrived while it was open (micro-USD), and once settled what was sent, what reached the treasury and what was refunded (micro-USD), what it added to the balance in dollars (`addedMicroUsd`, micro-USD)
 and the provider's reference, whether it was logged that the provider couldn't answer past its deadline
-(`unanswered`, default false), and why the provider's last finished answer wasn't credited (`doubt`, default null)
-([Payments and usage › How a top-up works](payments-and-usage.md#how-a-top-up-works)). No column holds anything
-readable.
+(`unanswered`, default false), and why the provider's last finished answer wasn't added (`doubt`, default null)
+([Plans and usage › How a top-up works](plans-and-usage.md#how-a-top-up-works)). A record from before plans also holds the credits it
+promised and their rate, which are ignored, and one the previous release settled has no `addedMicroUsd`: upkeep adds it again as
+dollars, once, if it settled after `billing_cutover`. No column holds anything readable.
 
 ## Writes, reads and deletes
 
@@ -797,9 +809,9 @@ readable.
   worked out for them and that call, which nothing stores. A call stored with the old demo catalog's IDs (`vandelay.…`, `own.…`)
   still opens, with those not listed: they look like nothing else, so they find nothing, and they stay in the manifest
   until the organizer next changes what's brought.
-- **The workspace a call uses** is in its meeting manifest (`workspaceId`), with its `agenda`, as IDs. What goes on in it
+- **The workspace a call uses** is in its meeting manifest (`workspaceId`, default null: nothing makes one by itself, so a call has one only when its organizer picked or made it), with its `agenda`, as IDs. What goes on in it
   during the call is in the call's sealed state (`workspace`: who's asking, what's presented and playing, what's been
-  worked on and by whom, and the next agenda while it's being made), and goes when the call ends: what was worked on into the note, if there is one, and nowhere else
+  worked on and by whom, this run's folder in the workspace (`home`: workspace, folder and whether it's made), and the next agenda while it's being made; a previous release's `viewing` and `made` here go unread), and goes when the call ends: what was worked on into the note, if there is one, and nowhere else
   ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)).
 - **The call's timer** lives in the call's sealed state (`timer`), separate from its boards and workspace: one countdown's
   ID, revision, length with time added, whether it's paused, and its clock on the server, numbers only. Call state from the
@@ -858,14 +870,15 @@ readable.
 - **Deleting** is physical, whether it's a note, a meeting or a whole account: rows, receipts and objects
   (see [Privacy › Deletion](privacy-keys-and-sessions.md#deletion)). A deleted account leaves no row keyed by
   its ID, except an `object_gc` entry until maintenance deletes an object the store refused.
-- **Top-ups** are inserted `waiting` when opened and change state only under a row lock, crediting the balance in
-  the same transaction; `credited` and `held` never change again. Received amounts for open deposits never decrease,
+- **Top-ups** are inserted `waiting` when opened and change state only under a row lock, adding to the balance
+  (`plan_accounts`) in the same transaction; `credited` and `held` never change again. Received amounts for open deposits never decrease,
   even when overlapping provider checks finish out of order. Cancelled, failed and expired deposits remain watched
-  for 30 days after their address expires, so late settlements still credit. The watcher claims due ones with a lease
+  for 30 days after their address expires, so late settlements are still added. The watcher claims due ones with a lease
   longer than a worst-case pass (about 17 minutes, `check_after`) and schedules their next check by age; the long tail
   thins from hourly to every six hours, then daily. Only after the tail ends is `check_after` set to `infinity`.
-- **Credits used this month** are summed from the sealed billing history when the balance is read
-  (`GET /v1/credits`): nothing about usage is stored in the clear ([Payments and usage](payments-and-usage.md)).
+- **What a plan has used** is read from sealed state when `GET /v1/plan` is asked, and nothing about usage is stored in
+  the clear: the AI allowance left and what it has spent are in `ai_meters`, and storage is the sizes the account already
+  keeps, its own `stored_bytes` and those of the workspaces it pays for ([Plans and usage](plans-and-usage.md)).
 
 ## What's kept, and for how long
 
@@ -909,7 +922,10 @@ and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
   included, and an upload nobody finished for a day. A limit going down never deletes one.
 - **`media_upload_days`** and **`media_guest_upload_days`** keep today and yesterday: upkeep deletes anything older. An account's
   rows also go with the account.
-- **`service_limits`** keeps a value until someone changes or deletes it.
+- **`service_limits`** keeps a value until someone changes or deletes it. A value for `media.file_bytes` or `media.workspace_bytes`,
+  which are gone, is ignored with a warning.
+- **`plan_accounts` and `ai_meters`** go with the account. A period's AI allowance doesn't carry over: the next period's replaces
+  it, with what the last one spent, by kind, logged as it closes.
 - **Feature flags** keep a flag on, a group, a member or a grant until someone switches or deletes it with `feature-flags`. Deleting a
   group deletes its members and grants; deleting an account deletes its address from every group and grant, unless another
   account signs in with that address too.

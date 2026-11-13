@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { openJson, sealJson, stateKey, toJson } from '../../crypto';
 import { maintain } from '../../maintenance';
 import { NoteManifest } from '../notes/service';
+import { standing } from '../billing/meter';
 import { openOwner } from '../../owners';
 import { speechWav } from '../../testing/fake-near';
 import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
@@ -279,9 +280,9 @@ describe('one set of live notes for the call', () => {
     }
   });
 
-  it('is free: it charges nobody, and the notes at the end are charged as ever', async () => {
+  it('is the organizer’s to pay for, whoever is watching, as the notes at the end are', async () => {
     const { org, host, kofi, invited } = await twoInCall();
-    const [organizer, guest] = [await org.api.credits.balance(), await invited.api.credits.balance()];
+    const spent = async (ownerId: string) => standing(h.deps, h.pool, ownerId);
     await say(host, A);
     const stop = kofi.watchNotes();
     await notesOf(kofi);
@@ -289,13 +290,17 @@ describe('one set of live notes for the call', () => {
     await later(kofi);
     await notesOf(kofi, (n) => n.read.lines === 2);
     stop();
-    expect(await org.api.credits.balance()).toEqual(organizer);
-    expect(await invited.api.credits.balance()).toEqual(guest);
+    // Kofi watched; the organizer paid, for the transcript and the live notes alike. The invited account never did.
+    const during = await spent(org.session.ownerId);
+    expect(during.byKind['live-notes']).toBeGreaterThan(0);
+    expect(during.byKind['transcript']).toBeGreaterThan(0);
+    expect((await spent(invited.session.ownerId)).spentNano).toBe(0);
     const ended = await host.leave();
     await written(org.api, ended?.pendingNoteId);
-    // One minute of notes, once, to the organizer alone: whoever was watching.
-    expect((await org.api.credits.balance()).balance).toBe(organizer.balance - 25);
-    expect(await invited.api.credits.balance()).toEqual(guest);
+    const after = await spent(org.session.ownerId);
+    expect(after.byKind['notes']).toBeGreaterThan(0);
+    expect(after.spentNano).toBeGreaterThan(during.spentNano);
+    expect((await spent(invited.session.ownerId)).spentNano).toBe(0);
   });
 
   it('leaves Catch up and Ask as they were: for the person asking, from what they may read, whatever the notes hold', async () => {

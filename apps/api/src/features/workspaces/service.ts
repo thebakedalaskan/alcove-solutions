@@ -14,6 +14,7 @@ import type { Deps, Owner } from '../../context';
 import { b64u, blindIndex, id128, openJson, sealJson, sha, toJson, utf8, type RecordHeader } from '../../crypto';
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { AppError, ConflictError, invalid, notFound } from '../../errors';
+import { limitsNow } from '../../limits';
 import { publish, type StreamPlace } from '../../live/hub';
 import { announce, roomFor, type Room, type Snapshot } from '../../live/room';
 import { LiveStream, type Line, type Step } from '../../live/stream';
@@ -29,6 +30,7 @@ import { tellCall } from '../calls/notifications';
 import { roomsOfCalls } from '../calls/room-boards';
 import { collect, copyUses, releaseDocuments, releaseWorkspace } from './media';
 import { personOf, portraitFor } from '../account/portraits';
+import { settlePayers } from '../billing/storage';
 import { copyContent, kindOf, moveClientTags, startContent } from './documents';
 import { waitingFor } from './mentions';
 
@@ -39,8 +41,6 @@ const MAX_ITEMS = 5000;
 const MAX_NAME = 200;
 /** How many folders deep a tree can go. A stored tree can be deeper than this, so nothing that walks one recurses. */
 const MAX_DEPTH = 32;
-/** How many workspaces one address can have made and not deleted, in or out of them. */
-const MAX_MADE = 100;
 const MAX_PEOPLE = 1000;
 /** How long something stays in Trash. */
 export const TRASH_MS = 30 * 24 * 60 * 60_000;
@@ -155,7 +155,7 @@ const makerOf = (r: Reader): Maker => ({ name: r.account?.name ?? '', email: (r.
 /* ---------- reading ---------- */
 
 /**
- * Each call's folder in a tree as one reader may read its pages (docs: Calls and recordings › The call's home): the live ones
+ * Each call's folder in a tree as one reader may read its pages (docs: Calls and recordings › The call's folder): the live ones
  * while the call's on, for whoever's in it (`seatCall`, the call their pass is for); then the call's note, for its organizer
  * and whoever has it now, which the note's own rows say. One small query for a tree, whatever's in it. Nothing of the call or
  * the note is opened here, and someone without them is told only that the call was there, which the folder says anyway.
@@ -221,7 +221,7 @@ export async function item(d: Deps, reader: Reader, workspaceId: string, itemId:
 
 const ListedRow = z.object({ owner_id: z.string(), workspace_id: z.string(), state_ciphertext: bytea, role: z.enum(['admin', 'edit', 'read']).nullable(), people: z.number(), created_at: timestamp });
 /**
- * The Drive: every workspace someone's in, newest first, a call's home with the call it was made for; then each one they only
+ * The Drive: every workspace someone's in, newest first, one made for a call with the call it was made for; then each one they only
  * have documents in, which says nothing about itself, not even when it was made.
  */
 export async function list(reader: Reader): Promise<WorkspaceSummary[]> {
@@ -272,74 +272,71 @@ function landing(reader: Reader, w: Workspace, parent: string | null): string | 
 }
 
 /**
- * A workspace someone makes, with them as its admin, in the caller's transaction. `madeFor`: the call it's made in, as a home
- * is (`MadeFor`), so who's in it follows that call's invite (`followInvite`).
+ * A workspace someone makes, with them as its admin, in the caller's transaction: only ever because they pressed New workspace
+ * (in the Drive, in a call, scheduling one, or filing its notes). `madeFor`: the call it's made for (`MadeFor`), so who's in it
+ * follows that call's invite (`followInvite`), with everyone invited let in once the caller lets the call go; `folder`: that
+ * call's folder, at the top.
  */
-export async function createIn(o: Owner, c: Db, name: string, madeFor: Omit<MadeFor, 'out'> | null = null): Promise<{ id: string }> {
+export async function createIn(o: Owner, c: Db, name: string, madeFor: Omit<MadeFor, 'out'> | null = null, folder?: CallFolder | undefined): Promise<{ id: string }> {
   const me = await profile(o, c);
   const id = id128();
-  // One at a time for an account, so two at once can't both be the hundredth.
+  // One at a time for an account, so two at once can't both be the last one.
   await lockOwner(o, c);
   const made = await maybeOne(c, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM workspace_authors WHERE email_index = $1 AND made_workspace', [blindIndex(masterKey(o), 'email', me.email)]);
-  if ((made?.n ?? 0) >= MAX_MADE) throw new ConflictError('You’ve made as many workspaces as you can. Delete one first.', { context: { ownerId: o.ownerId, made: made?.n } });
+  // How many one address can have made and not deleted, in or out of them (`workspaces.max_made`).
+  const max = (await limitsNow(o, c)).get('workspaces.max_made');
+  if ((made?.n ?? 0) >= max) throw new ConflictError('You’ve made as many workspaces as you can. Delete one first.', { context: { ownerId: o.ownerId, made: made?.n, limit: max } });
   const { ownerId, root } = await createOwner(o, c);
   const owner = ownerFrom(o, ownerId, root, undefined);
-  await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext) VALUES ($1,$2,$3)', [ownerId, id, sealState(owner, id, { name, items: {}, madeFor: madeFor && { ...madeFor, out: [] } })]);
+  const items = folder ? { [folder.id]: folderOf(folder, FIRST, new Date().toISOString()) } : {};
+  await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext, payer_owner_id) VALUES ($1,$2,$3,$4)', [ownerId, id, sealState(owner, id, { name, items, madeFor: madeFor && { ...madeFor, out: [] } }), o.ownerId]);
   await addMember(owner, c, id, me.email, 'admin', me.name);
   await noteAuthor({ owner }, c, me.email, true);
-  wlog.info('workspace created', { workspaceId: id });
+  wlog.info('workspace created', { workspaceId: id, forCall: madeFor !== null });
   return { id };
 }
 export const create = (o: Owner, name: string): Promise<{ id: string }> => tx(o.pool, (c) => createIn(o, c, name));
 
-/* ---------- a call's home ---------- */
+/* ---------- a call's folder ---------- */
 
-/** A call's folder, as its home keeps it. */
+/** A call's folder, as the call's workspace keeps it. */
 export interface CallFolder { id: string; name: string; call: StoredCall }
 const folderOf = (f: CallFolder, pos: string, at: string): StoredItem => ({
   kind: 'folder', name: f.name, parent: null, pos, by: null, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: f.call, room: null
 });
-/** The people invited to a call, as a home keeps them: lower-cased, once each, without its organizer. */
+/** The people invited to a call, as a workspace made for it keeps them: lower-cased, once each, without its organizer. */
 const inviteesOf = (invited: string[], organizer: string): string[] => [...new Set(invited.map((e) => e.trim().toLowerCase()))].filter((e) => e && e !== organizer.trim().toLowerCase());
 
 /**
- * A call's new home, in the caller's transaction, which holds the call's row: nobody else can reach it yet, so nothing waits
- * on it. The organizer is its admin and the call's folder is at the top. Everyone invited, the same people who get the notes,
- * is let in to edit once the call's row is let go (`followInvite`), so a big invite never holds the call up. It's the call's,
- * so it doesn't count towards the workspaces someone can make (`MAX_MADE`).
+ * Puts a call's folder at the top of its workspace, in the caller's transaction, which holds the workspace's row
+ * (`serverWorkspace` with `change`), unless it's there already: whoever gets there first makes it, with the ID the call took
+ * for it. This call's own folder there, if it has one (it was the call's workspace before, or its notes were filed there), is
+ * the one: it's told what `folder` says now (whether the call's over, and its note) rather than a second made. Its ID, once
+ * it's there; false for a workspace with no room for it.
  */
-export async function makeHome(o: Owner, c: Db, home: { name: string; madeFor: Omit<MadeFor, 'out'>; folder: CallFolder }): Promise<{ id: string }> {
-  const me = await profile(o, c);
-  const id = id128();
-  const { ownerId, root } = await createOwner(o, c);
-  const owner = ownerFrom(o, ownerId, root, undefined);
-  const state: WorkspaceState = { name: home.name, items: { [home.folder.id]: folderOf(home.folder, FIRST, new Date().toISOString()) }, madeFor: { ...home.madeFor, out: [] } };
-  await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext) VALUES ($1,$2,$3)', [ownerId, id, sealState(owner, id, state)]);
-  await addMember(owner, c, id, me.email, 'admin', me.name);
-  await noteAuthor({ owner }, c, me.email);
-  wlog.info('call home made', { workspaceId: id });
-  return { id };
-}
-
-/**
- * Puts a call's folder at the top of its home, in the caller's transaction, which holds the home's row (`serverWorkspace` with
- * `change`), unless it's there already: whoever gets there first makes it, with the ID the call took for it. True when it's
- * there now; false for a workspace with no room for it, and the call settles on another home.
- */
-export async function addCallFolder(w: HeldWorkspace, db: Db, folder: CallFolder): Promise<boolean> {
-  if (w.state.items[folder.id]) return true;
+export async function addCallFolder(w: HeldWorkspace, db: Db, folder: CallFolder): Promise<string | false> {
+  if (w.state.items[folder.id]) return folder.id;
+  const theirs = Object.entries(w.state.items).find(([, i]) => i.call?.callId === folder.call.callId && i.call.ownerId === folder.call.ownerId && i.trashedAt === null);
+  if (theirs) {
+    const [id, item] = theirs;
+    w.state = withItem(w.state, id, { ...item, call: { ...folder.call, startedAt: item.call?.startedAt ?? folder.call.startedAt } });
+    await saveState(w, db);
+    await publish(db, w.workspaceId, TREE_NOTICE);
+    wlog.info('call folder taken up again', { workspaceId: w.workspaceId, folderId: id });
+    return id;
+  }
   if (Object.keys(w.state.items).length >= MAX_ITEMS) { wlog.warn('no room for a call’s folder', { workspaceId: w.workspaceId }); return false; }
   w.state = withItem(w.state, folder.id, folderOf(folder, positionIn(w.state, null, null), new Date().toISOString()));
   await saveState(w, db);
   await publish(db, w.workspaceId, TREE_NOTICE);
   wlog.info('call folder made', { workspaceId: w.workspaceId, folderId: folder.id });
-  return true;
+  return folder.id;
 }
 
 /** What a change to a call's invite asks of its home: who it just put on the invite, and who it just took off. */
 export interface InviteChange { add?: string[] | undefined; gone?: string[] | undefined }
 /**
- * Who's in a call's home follows its invite, when it was made for that call or its series (`MadeFor`), one change at a time:
+ * Who's in a workspace made for a call follows its invite, when it was made for that call or its series (`MadeFor`), one change at a time:
  * whoever the change put on the invite is let in to edit, once, unless they're in already or out by hand (`MadeFor.out`:
  * taken out, or they left); and whoever it took off is taken out, if the invite let them in and nobody has changed their place
  * by hand since. Anyone added or changed by hand stays as they are. In the caller's transaction, which holds the home's row.
@@ -494,11 +491,13 @@ export async function removePerson(d: Deps, reader: Reader, workspaceId: string,
  * by restricting something goes with them, so coming back gives them only what they're given. What only they could reach:
  * taken out (`taken`, by an admin or by a call's invite), it goes to the workspace's admins (`handStranded`), so nobody's
  * words are lost to a change nobody made of that document; leaving (`left`), it's still theirs, in Trash, for 30 days, should
- * they come back (`trashStranded`), and nobody else's to read. How much did.
+ * they come back (`trashStranded`), and nobody else's to read. Whoever the workspace counted against, if that was them,
+ * stops paying for it: it counts against whoever's in charge of it now (`settlePayers`). How much did.
  */
 async function dropMember(w: HeldWorkspace, c: Db, m: z.infer<typeof Member>, why: 'taken' | 'left'): Promise<number> {
   await exec(c, 'DELETE FROM workspace_members WHERE owner_id = $1 AND member_id = $2', [w.owner.ownerId, m.member_id]);
   await exec(c, 'DELETE FROM workspace_mentions WHERE owner_id = $1 AND principal_index = $2', [w.owner.ownerId, m.email_index]);
+  await settlePayers(c, w.owner.ownerId);
   const { email } = personOfMember(w, m);
   w.state = { ...w.state, items: Object.fromEntries(Object.entries(w.state.items).map(([id, x]) => [id, x.restrictedBy === email ? { ...x, restrictedBy: null } : x])) };
   return why === 'taken' ? handStranded(w, c) : trashStranded(w, c);
