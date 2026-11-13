@@ -127,6 +127,7 @@ page. Blue Hour takes the page and the pressable colour from the logo's own sky 
 | The one thing you press | `sun`, `on-sun` |
 | Warmth and highlights | `sun-text`, `sun-soft`, `sun-glow` |
 | Meaning | `rose`, `horizon`, `rec`, `caution`, each with a `-soft`; `caution-text` for small caution text out on the scene |
+| Someone with no portrait: their arch and its initial, pale in both themes as portraits are, never a gap at night | `arch-fill`, `arch-ink` |
 | The call stage, always night | `stage`, `stage-tile`, `stage-raised`, `stage-ink`, `stage-ink-2`, `speak`, `stage-point` (pointers on a shared screen) |
 | Drawing on the evening | `dusk-sun`, `dusk-haze` |
 | Illustration, tour art and covers only | `dawn-1` to `dawn-4`, `gold`, the `cover-*` gradients |

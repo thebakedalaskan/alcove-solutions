@@ -105,6 +105,10 @@
   --caution-soft: #FFF0D6;
   /* Caution as small text out on the scene (the sky and the sea), where caution falls short of 4.5:1 by day. */
   --caution-text: #6E410D;
+  /* Someone with no portrait: their arch, and the initial in it. Pale in both themes, as portraits are, so at night they
+     read as a person among the others, never as a gap in a row of faces. */
+  --arch-fill: var(--sunk);
+  --arch-ink: var(--ink-2);
   --gold: #FFB547;
   /* What's highlighted or commented on in a document */
   --hl: rgb(255 181 71 / .28);
@@ -235,6 +239,8 @@
   --caution: #F3B85A;
   --caution-soft: #3A2A0E;
   --caution-text: #F3B85A;
+  --arch-fill: #C2CDDB;
+  --arch-ink: #22324C;
   --gold: #FFC774;
   --hl: rgb(255 199 116 / .2);
   --code-keyword: #C4AEFF;
