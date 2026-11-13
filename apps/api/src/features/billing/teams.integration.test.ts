@@ -138,7 +138,7 @@ describe('making a team and its licenses', () => {
 
   it('G1: offers Team from the limits, and buys 1 to 500 licenses at the price shown, refusing a short balance or a changed price', async () => {
     expect((await (await account()).api.plans.offers()).team).toEqual({
-      notesMinutes: 3000, storageBytes: 100 * GiB, fileBytes: 512 * MiB, microUsdPerLicense: LICENSE, maxLicenses: 500, yearly: null
+      notesMinutes: 3000, storageBytes: 100 * GiB, fileBytes: 512 * MiB, microUsdPerLicense: LICENSE, maxLicenses: 500, yearly: { periods: 12, microUsdPerLicense: YEARLY_LICENSE }
     });
     const ann = await account();
     await team(ann);
@@ -410,7 +410,7 @@ describe('licenses', () => {
 });
 
 describe('licenses for a year', () => {
-  // Licenses for a year ship off (plan.team.yearly_price_micro_usd 0) and are turned on once the release serves alone.
+  // Licenses for a year are on by default; each test here says so itself.
   beforeEach(async () => { await setLimit('plan.team.yearly_price_micro_usd', YEARLY_LICENSE); });
   it('G19: sells licenses for a year at the yearly price a period, refusing any other length or price; one taken is live for 12 periods, each with all of Team’s notes, and one nobody took is refunded whole', async () => {
     await setLimit('plan.period_seconds', 3600);
