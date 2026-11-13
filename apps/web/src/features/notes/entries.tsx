@@ -28,11 +28,11 @@ const when = (iso: string) => { const d = new Date(iso); return `${shortDay(d)},
 /** Someone saying a follow-up isn't theirs, as the reader reads it. */
 export const notTheirs = (c: Change, me: string | undefined): string => (byName(c.by, me) === 'you' ? 'You said it isn’t yours' : `${capital(byName(c.by, me))} said it isn’t theirs`);
 
-/** One change, as a sentence. */
-export function changeLine(c: Change, me: string | undefined): string {
+/** One change, as a sentence. Adding an open question (`question`) to the notes is asking it. */
+export function changeLine(c: Change, me: string | undefined, question = false): string {
   const who = capital(byName(c.by, me));
   switch (c.what) {
-    case 'proposed': return `${who} proposed it`;
+    case 'proposed': return question ? `${who} asked it` : `${who} proposed it`;
     case 'accepted': return `${who} accepted the suggestion`;
     case 'dismissed': return `${who} dismissed the suggestion`;
     case 'confirmed': return `${who} confirmed it`;
@@ -53,12 +53,12 @@ export function changeLine(c: Change, me: string | undefined): string {
 }
 
 /** Every change to something, newest first: who, when, what it was and what it became, and whether they got the notes afterwards. */
-export function ChangeList({ changes, me }: { changes: Change[]; me: string | undefined }) {
+export function ChangeList({ changes, me, question = false }: { changes: Change[]; me: string | undefined; question?: boolean | undefined }) {
   return (
     <ol className="ent-hist">
       {[...changes].reverse().map((c, i) => (
         <li key={`${c.at}-${i}`}>
-          <span>{changeLine(c, me)}</span>
+          <span>{changeLine(c, me, question)}</span>
           <span className="ac-mono">{when(c.at)}</span>
           {(c.what === 'reworded' || c.what === 'due') && c.before && c.after && <p className="was"><s>{c.before}</s></p>}
           {c.by.as === 'shared' && <small>{capital(byName(c.by, me))} got these notes afterwards</small>}

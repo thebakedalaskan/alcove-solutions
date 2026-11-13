@@ -50,8 +50,8 @@ export const ConnectClaude: PageStory = {
     await step('One line says what to do, and one button does it. Click Copy and open Claude', async () => {
       await userEvent.click(await within(await popover('Connect Claude')).findByRole('link', { name: 'Copy and open Claude' }, SOON));
     });
-    await step('Claude opens in a new tab, with Alcove’s address copied to paste into its connectors. The popover waits for it', async () => {
-      await within(await popover('Connect Claude')).findByText('Waiting for Claude', {}, SOON);
+    await step('Claude’s connectors open in a new tab, with Alcove’s address copied to paste there. The popover stays as it was, to press again: nothing waits here', async () => {
+      await within(await popover('Connect Claude')).findByRole('link', { name: 'Copy and open Claude' }, SOON);
     });
     await step('Claude opens Alcove to ask what it can do (14.2). Once it’s allowed, this tab knows too: Claude stands on the horizon, and its popover offers a first question', async () => {
       connects('Claude');
@@ -101,8 +101,8 @@ export const OneButton: PageStory = {
       await userEvent.click(await place('Connect Cursor'));
       await userEvent.click(await within(await popover('Connect Cursor')).findByRole('link', { name: 'Add to Cursor' }, SOON));
     });
-    await step('Cursor opens and asks to add Alcove. The popover waits for it', async () => {
-      await within(await popover('Connect Cursor')).findByText('Waiting for Cursor', {}, SOON);
+    await step('Cursor opens and asks to add Alcove. The popover stays as it was', async () => {
+      await within(await popover('Connect Cursor')).findByRole('link', { name: 'Add to Cursor' }, SOON);
     });
     await step('Cursor opens Alcove to ask, as Claude did. Once it’s allowed, it’s connected', async () => {
       connects('Cursor');
@@ -119,8 +119,8 @@ export const OneLine: PageStory = {
       await userEvent.click(await place('Connect Claude Code'));
       await userEvent.click(await within(await popover('Connect Claude Code')).findByRole('button', { name: 'Copy command' }, SOON));
     });
-    await step('Run it, then /mcp in Claude Code opens Alcove to sign in. The popover waits', async () => {
-      await within(await popover('Connect Claude Code')).findByText('Waiting for Claude Code', {}, SOON);
+    await step('Run it, then /mcp in Claude Code opens Alcove to sign in. The popover stays as it was', async () => {
+      await within(await popover('Connect Claude Code')).findByRole('button', { name: 'Copy command' }, SOON);
     });
     await step('Agents asks, as it did for Claude. Once it’s allowed, it’s connected', async () => {
       connects('Claude Code');

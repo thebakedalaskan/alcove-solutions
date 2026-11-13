@@ -37,7 +37,7 @@ const TOOLS = [
   ['get_inbox', 'What’s yours to do, and when'],
   ['get_availability', 'When people are busy, so your agent can find a time'],
   ['schedule_call', 'Book it, with notes on or off'],
-  ['update_action', 'Update your follow-ups and mark them done']
+  ['update_follow_up', 'Update your follow-ups and mark them done']
 ] as const;
 const FACTS: readonly (readonly [IconName, string])[] = [
   ['badgeCheck', 'Alcove runs in a confidential VM, and checks AI models’ hardware before sending them call content.'],

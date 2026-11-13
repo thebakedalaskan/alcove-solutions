@@ -75,12 +75,15 @@ export const AgentUpdateInputSchema = z.object({
 }).refine((input) => input.scopes !== undefined || input.renew !== undefined, 'Change what it can do, or keep it longer.');
 export type AgentUpdateInput = z.infer<typeof AgentUpdateInputSchema>;
 
-/** Every tool an agent can call over MCP, by name: what the activity log records. */
+/**
+ * Every tool an agent can call over MCP, by name: what the activity log records. A note's entries are named as Alcove shows
+ * them: decisions (Decided), follow-ups (Follow-ups) and open questions (Still open).
+ */
 export const AGENT_TOOLS = [
-  'list_notes', 'get_note', 'ask_note', 'ask_notes', 'get_inbox', 'get_personal_notes', 'propose_decision', 'update_decision', 'propose_action',
-  'update_action', 'update_question', 'correct_transcript', 'rewrite_note', 'add_personal_note', 'edit_personal_note', 'remove_personal_note',
-  'share_note', 'delete_note', 'list_meetings', 'get_meeting', 'find_people', 'schedule_call', 'update_call', 'cancel_call', 'answer_call',
-  'schedule_next_call', 'start_call', 'get_calendar', 'get_availability'
+  'list_notes', 'get_note', 'ask_note', 'ask_notes', 'get_inbox', 'get_personal_notes', 'propose_decision', 'update_decision', 'add_follow_up',
+  'update_follow_up', 'add_question', 'update_question', 'correct_transcript', 'rewrite_note', 'add_personal_note', 'edit_personal_note',
+  'remove_personal_note', 'share_note', 'delete_note', 'list_meetings', 'get_meeting', 'find_people', 'schedule_call', 'update_call', 'cancel_call',
+  'respond_to_invite', 'schedule_next_call', 'start_call', 'get_calendar', 'get_availability'
 ] as const;
 export const AgentToolSchema = z.enum(AGENT_TOOLS);
 export type AgentTool = z.infer<typeof AgentToolSchema>;

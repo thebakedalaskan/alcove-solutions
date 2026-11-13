@@ -206,8 +206,8 @@ export function AgentLink({ href, newTab = false, variant = 'primary', autoFocus
 }
 
 /**
- * The action, once it's done, while the popover waits for the agent: three dots, which fade instead with reduced motion.
- * It takes the place of what was pressed, so focus that went with it comes here and the keys keep their place.
+ * In the action's place while what it needs is on its way (Alcove's address): three dots, which fade instead with reduced
+ * motion. Focus with nowhere else to be comes here, so the keys keep their place in the popover.
  */
 export function AgentWaiting({ children }: { children: ReactNode }) {
   const here = useRef<HTMLParagraphElement>(null);

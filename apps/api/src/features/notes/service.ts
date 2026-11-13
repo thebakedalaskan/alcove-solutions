@@ -8,17 +8,17 @@
  * nothing (`locateToRead` finds it; `locate`, which everything that changes a note uses, refuses it).
  */
 import {
-  MAX_FOLLOW_UP_PROPOSALS, ACCEPTED_FOLLOW_UP, isAcceptedFollowUp, type FollowUpReview, ActionItemSchema, CaptureGapSchema, ChangerSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, ModelIdSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, RoomNoteSchema, ScreenMomentSchema, TranscriptLineSchema, UnencryptedUseSchema,
+  ACCEPTED_FOLLOW_UP, isAcceptedFollowUp, type FollowUpReview, ActionItemSchema, CaptureGapSchema, ChangerSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, ModelIdSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, RoomNoteSchema, ScreenMomentSchema, TranscriptLineSchema, UnencryptedUseSchema,
   isAssignee, isBy, isProposer, mayAssign, mayChangeAction, mayDecide, mayDispute, mayRewordDecision, maySayNotReplaced, minutesLabel, nameWords, searchOf, startsName, termsSaidIn,
   type ActionItem, type ActionPatch, type ActionProposal, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type DecisionProposal, type GroupShare, type Inbox, type LinePatch,
-  type Note, type NoteFound, type NoteKind, type NoteProgress, type NoteReader, type NoteSaid, type NoteSearch, type NoteSummary, type OpenAction, type PendingDecision, type Person, type Question, type QuestionPatch, type Received, type Recipient, type RecipientRole,
+  type Note, type NoteFound, type NoteKind, type NoteProgress, type NoteReader, type NoteSaid, type NoteSearch, type NoteSummary, type OpenAction, type PendingDecision, type Person, type Question, type QuestionPatch, type QuestionProposal, type Received, type Recipient, type RecipientRole,
   type RevisitPatch, type RoomNote, type RoomRef, type Speaker, type TranscriptLine
 } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../../context';
 import { b64u, blindIndex, id128, openJson, sealJson, stateKey, toJson, type RecordHeader } from '../../crypto';
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError, notFound } from '../../errors';
+import { ConflictError, ForbiddenError, InternalError, NotFoundError, ValidationError, notFound } from '../../errors';
 import { inference, type ChatModel } from '../../inference';
 import { log } from '../../log';
 import { findOwner, indexKey } from '../../owners';
@@ -644,6 +644,34 @@ export async function list(o: Owner, q: { kind?: NoteKind | undefined; text?: st
   };
   return Promise.all(found.map(async ({ l, hit }) => ({ ...await summary(l, await seriesFor(l)), ...hit })));
 }
+/**
+ * A call someone was invited to that kept notes, as its note says: its title, when it started, how long it ran in seconds,
+ * its organizer, and everyone invited who still has the notes (the person asking among them).
+ */
+export interface InvitedCall { noteId: string; title: string; startedAt: string; duration: number; organizer: Person; guests: Person[] }
+/**
+ * The calls this person was invited to that kept notes, which is all they keep of someone else's call once it's over: the
+ * invitation goes when it ends. Only the notes given to them are read, and of those only a call's they got as someone
+ * invited, not one shared with them afterwards (`receivedBy` tells them apart the same way). Nothing else about a note is
+ * worked out, and each organizer is read once, however many of their calls there are.
+ */
+export async function invitedCalls(o: Owner): Promise<InvitedCall[]> {
+  const as = await myEmail(o);
+  const invited = (await sharedWithMe(o, as)).filter((l) => l.note.manifest.kind === 'call' && !l.note.manifest.shared.some((s) => same(s.email, as)));
+  const organizers = new Map<string, Promise<Person>>();
+  const organizerOf = (owner: Owner): Promise<Person> => {
+    const known = organizers.get(owner.ownerId) ?? me(owner);
+    organizers.set(owner.ownerId, known);
+    return known;
+  };
+  return Promise.all(invited.map(async (l): Promise<InvitedCall> => {
+    const organizer = await organizerOf(l.owner);
+    const guests = (await recipients(l, organizer)).flatMap((r) => (r.role === 'invited' ? [r.person] : []));
+    const m = l.note.manifest;
+    return { noteId: l.note.itemId, title: m.title, startedAt: m.startedAt, duration: m.duration, organizer, guests };
+  }));
+}
+
 /** The series a note's call is in, read from the call in its organizer's vault. Room recordings have no call, so no series. */
 export async function seriesOf(l: Seen): Promise<string | undefined> {
   const meetingId = l.note.manifest.meetingId;
@@ -857,7 +885,7 @@ async function writtenNote(o: Owner, noteId: string) {
 
 /** The most changes a decision, open question or follow-up keeps in the note (`kept`). Nothing reads the note's earlier revisions, so past this they're out of the history. */
 const ENTRY_HISTORY = 40;
-/** The most decisions or follow-ups one part of a note can hold: the notes write 12 and 20, and every change copies the note. */
+/** The most decisions, open questions or follow-ups one part of a note can hold: the notes write 12, 12 and 20, and every change copies the note. */
 const MAX_ENTRIES = 60;
 
 /** Entries in the order of their moments, as the notes write them; ones without a moment last. */
@@ -1093,10 +1121,12 @@ export async function reviewAction(o: Owner, noteId: string, decision: FollowUpR
 
 /** The part of a note a proposal goes in: the call's, or a breakout room's section. A room that isn't in the note is refused. */
 function partOf(n: NoteManifest, noteId: string, room: string | undefined) {
-  if (room === undefined) return { lines: n.transcript ?? [], decisions: n.decisions, actions: n.actions, put: (x: Partial<Pick<NoteManifest, 'decisions' | 'actions'>>): NoteManifest => ({ ...n, ...x }) };
+  if (room === undefined) {
+    return { lines: n.transcript ?? [], decisions: n.decisions, questions: n.questions, actions: n.actions, put: (x: Partial<Pick<NoteManifest, 'decisions' | 'questions' | 'actions'>>): NoteManifest => ({ ...n, ...x }) };
+  }
   const r = n.rooms.find((x) => x.id === room);
   if (!r) throw new NotFoundError('That breakout room isn’t in these notes.', { context: { noteId, room } });
-  return { lines: r.transcript, decisions: r.decisions, actions: r.actions, put: (x: Partial<Pick<RoomNote, 'decisions' | 'actions'>>): NoteManifest => ({ ...n, rooms: n.rooms.map((y) => (y.id === room ? { ...y, ...x } : y)) }) };
+  return { lines: r.transcript, decisions: r.decisions, questions: r.questions, actions: r.actions, put: (x: Partial<Pick<RoomNote, 'decisions' | 'questions' | 'actions'>>): NoteManifest => ({ ...n, rooms: n.rooms.map((y) => (y.id === room ? { ...y, ...x } : y)) }) };
 }
 
 /** The lines someone says a proposal rests on, and the moment of the first, from that part of the note alone. */
@@ -1109,36 +1139,76 @@ function linesOf(part: TranscriptLine[], ids: string[] | undefined, noteId: stri
 }
 
 /**
+ * What adding to a note did, from the write itself: the entry with those words in that part (`id`: the one made, or the
+ * one already there, since the same words again add nothing), whether this added it, and whether it's theirs (they
+ * proposed it, now or before; one just made always is). An agent is handed an entry's ID back only when it's theirs.
+ */
+export interface Added { id: string; added: boolean; theirs: boolean }
+/** An entry already in that part with the same words, as adding it again finds it. */
+const already = (x: Decision | Question | ActionItem, reader: NoteReader): Added => ({ id: x.id, added: false, theirs: isProposer(x, reader) });
+/** Thrown should a write not say what it did, though every way through it does. */
+const unsaid = (noteId: string) => new InternalError('Adding to the notes didn’t say what it added.', { context: { noteId } });
+
+/**
  * Adds a decision the notes didn't hear, in the words of someone who has them, the call's or a breakout room's. It
  * starts proposed, with who proposed it as its first change, and takes someone else confirming it. This is someone
  * saying the call decided something: what they add from their own notes is `additions.ts`, which says only who added it.
- * The same words again add nothing, so a retry can't add it twice.
+ * The same words again add nothing, so a retry can't add it twice. The lines it rests on are checked first, so lines from
+ * nowhere are refused whether or not the words are there already.
  */
-export async function proposeDecision(o: Owner, noteId: string, p: DecisionProposal): Promise<Note> {
-  const { owner, by, at } = await writtenNote(o, noteId);
-  let added = false;
+export async function proposeDecision(o: Owner, noteId: string, p: DecisionProposal): Promise<Added> {
+  const { owner, by, at, reader } = await writtenNote(o, noteId);
+  let made: Added | undefined;
   await tx(owner.pool, (c) => updateNote(owner, c, noteId, (n) => {
     const part = partOf(n, noteId, p.room);
-    if (part.decisions.some((x) => x.text === p.text)) return n;
+    const grounds = linesOf(part.lines, p.lines, noteId);
+    const there = part.decisions.find((x) => x.text === p.text);
+    if (there) { made = already(there, reader); return n; }
     if (part.decisions.length >= MAX_ENTRIES) throw new ConflictError('There are too many decisions here to add another.', { context: { noteId } });
-    const d: Decision = { id: id128(), text: p.text, ...linesOf(part.lines, p.lines, noteId), state: 'proposed', against: [], disputes: [], changes: [{ by, at, what: 'proposed' }] };
-    added = true;
+    const d: Decision = { id: id128(), text: p.text, ...grounds, state: 'proposed', against: [], disputes: [], changes: [{ by, at, what: 'proposed' }] };
+    made = { id: d.id, added: true, theirs: true };
     return part.put({ decisions: inOrder([...part.decisions, d]) });
   }));
-  nlog.info('decision proposed', { noteId, added, lines: p.lines?.length ?? 0, inRoom: p.room !== undefined, mine: owner.ownerId === o.ownerId });
-  return get(o, noteId);
+  if (!made) throw unsaid(noteId);
+  nlog.info('decision proposed', { noteId, added: made.added, lines: p.lines?.length ?? 0, inRoom: p.room !== undefined, mine: owner.ownerId === o.ownerId });
+  return made;
 }
 
 /**
- * Adds a follow-up the notes didn't hear, as `proposeDecision` does. Who it's for and when it's due are only suggestions
- * until that person takes it on, unless it's for whoever proposed it.
+ * Adds an open question the notes didn't hear to their Still open, the call's or a breakout room's, as `proposeDecision`
+ * adds a decision: it starts open, with who added it as its first change (`proposed`), which also keeps it when the notes
+ * are written again, and anyone who has the notes can say it was answered (`updateQuestion`). It's what an agent's
+ * `add_question` does: the app has no way to add one. The same words again add nothing, so a retry can't add it twice, and
+ * the lines are checked first, as for a decision. It says what it did, as `Added`, and reads nothing back.
  */
-export const proposeAction = (o: Owner, noteId: string, p: ActionProposal): Promise<Note> => addAction(o, noteId, p, 'accepted');
-export const suggestAction = (o: Owner, noteId: string, p: ActionProposal): Promise<Note> => addAction(o, noteId, p, 'suggested');
-async function addAction(o: Owner, noteId: string, p: ActionProposal, review: ActionItem['review']): Promise<Note> {
-  const { owner, by, at } = await writtenNote(o, noteId);
+export async function addQuestion(o: Owner, noteId: string, p: QuestionProposal): Promise<Added> {
+  const { owner, by, at, reader } = await writtenNote(o, noteId);
+  let made: Added | undefined;
+  await tx(owner.pool, (c) => updateNote(owner, c, noteId, (n) => {
+    const part = partOf(n, noteId, p.room);
+    const grounds = linesOf(part.lines, p.lines, noteId);
+    const there = part.questions.find((x) => x.text === p.text);
+    if (there) { made = already(there, reader); return n; }
+    if (part.questions.length >= MAX_ENTRIES) throw new ConflictError('There are too many open questions here to add another.', { context: { noteId } });
+    const q: Question = { id: id128(), text: p.text, ...grounds, state: 'open', against: [], changes: [{ by, at, what: 'proposed' }] };
+    made = { id: q.id, added: true, theirs: true };
+    return part.put({ questions: inOrder([...part.questions, q]) });
+  }));
+  if (!made) throw unsaid(noteId);
+  nlog.info('question added', { noteId, added: made.added, lines: p.lines?.length ?? 0, inRoom: p.room !== undefined, mine: owner.ownerId === o.ownerId });
+  return made;
+}
+
+/**
+ * Adds a follow-up the notes didn't hear, as `proposeDecision` does: straight onto the checklist, from Add a follow-up in
+ * Alcove and from an agent's `add_follow_up` alike. Who it's for and when it's due are only suggestions until that person
+ * takes it on, even when it's for whoever added it. Only the checklist counts as the same words: a suggestion waiting for
+ * review, or one dismissed, with these words stays as it is beside the one added.
+ */
+export async function proposeAction(o: Owner, noteId: string, p: ActionProposal): Promise<Added> {
+  const { owner, by, at, reader } = await writtenNote(o, noteId);
   const organizer = await me(owner);
-  let added = false;
+  let made: Added | undefined;
   await tx(owner.pool, async (c) => {
     await lockItem(owner, c, noteId);
     const holding = await holders(owner, c, noteId);
@@ -1146,22 +1216,21 @@ async function addAction(o: Owner, noteId: string, p: ActionProposal, review: Ac
       const part = partOf(n, noteId, p.room);
       const to = p.owner === undefined ? undefined : assignable(p.owner, organizer, holding, owner, { noteId });
       const grounds = linesOf(part.lines, p.lines, noteId);
-      const evidence = grounds.lines.slice().sort().join(' ');
-      const repeated = part.actions.some((x) => x.text === p.text && (review === 'accepted'
-        ? isAcceptedFollowUp(x)
-        : (x.owner?.person?.email ?? null) === (to?.person?.email ?? null) && (x.due ?? null) === (p.due ?? null) && x.lines.slice().sort().join(' ') === evidence));
-      if (repeated) return n;
-      if ((review === 'accepted' ? part.actions.filter(isAcceptedFollowUp).length >= MAX_ENTRIES : part.actions.filter((a) => !isAcceptedFollowUp(a)).length >= MAX_FOLLOW_UP_PROPOSALS)) throw new ConflictError('There are too many follow-ups here to add another.', { context: { noteId } });
+      const checklist = part.actions.filter(isAcceptedFollowUp);
+      const there = checklist.find((x) => x.text === p.text);
+      if (there) { made = already(there, reader); return n; }
+      if (checklist.length >= MAX_ENTRIES) throw new ConflictError('There are too many follow-ups here to add another.', { context: { noteId } });
       const a: ActionItem = {
-        ...ACCEPTED_FOLLOW_UP, review, revision: id128(), id: id128(), text: p.text, ...(to ? { owner: to } : {}), takenOn: false, ...(p.due ? { due: p.due } : {}), done: false,
+        ...ACCEPTED_FOLLOW_UP, revision: id128(), id: id128(), text: p.text, ...(to ? { owner: to } : {}), takenOn: false, ...(p.due ? { due: p.due } : {}), done: false,
         ...grounds, against: [], changes: [{ by, at, what: 'proposed' }], from: null
       };
-      added = true;
+      made = { id: a.id, added: true, theirs: true };
       return part.put({ actions: inOrder([...part.actions, a]) });
     });
   });
-  nlog.info('follow-up proposed', { noteId, added, lines: p.lines?.length ?? 0, inRoom: p.room !== undefined, assigned: p.owner !== undefined, mine: owner.ownerId === o.ownerId });
-  return get(o, noteId);
+  if (!made) throw unsaid(noteId);
+  nlog.info('follow-up proposed', { noteId, added: made.added, lines: p.lines?.length ?? 0, inRoom: p.room !== undefined, assigned: p.owner !== undefined, mine: owner.ownerId === o.ownerId });
+  return made;
 }
 
 /**
