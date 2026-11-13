@@ -51,7 +51,10 @@ Not fixed. The first two are the most worth doing before release.
      `Holders.shares.opens`); otherwise it opens only for the workspace's own people. In a workspace the organizer doesn't
      pay for, the call seats nobody on the boards it makes there, nobody new is seated, and nobody can let everyone in on
      a saved board there: Present says who can't open it, with no way to let them in (`calls/boards.ts › organizerPays`).
-     So a guest in such a call gets no seat on its boards, adds no files and gets no AI there. The scheduler says so when
+     The boards the call makes there go by address only to the workspace's own people (`access.ts › givenByCall`): not to
+     those invited from outside it, nor to anyone let in from the link as the call ends, nor, as rooms close, to anyone outside
+     it, so nobody the payer didn't let in keeps a lasting way to add files there or ask its AI. So a guest in such a call gets
+     no seat on its boards, adds no files and gets no AI there, and neither does anyone else from outside it. The scheduler says so when
      such a workspace is chosen for a call's notes: "Its files don’t count against your storage, so its boards and files
      open only for its own people."
    - The reverse also works: someone whose own notes have run out can still use document AI in a workspace someone

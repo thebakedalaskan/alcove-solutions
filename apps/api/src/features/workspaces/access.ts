@@ -730,6 +730,21 @@ export async function organizerEdits(d: Deps, w: HeldWorkspace, db: Db, email: s
   return role === 'admin' || role === 'edit';
 }
 
+/**
+ * Whom a call, by its organizer's account (`organizerId`), may give something in a workspace to by address, of the people it
+ * means to: all of them, in a workspace its organizer pays for (`payer_owner_id`). In one someone else pays for, only its own
+ * people now, its members and, on a team's workspace for the whole team, whoever is live-licensed on that team, as a seat the
+ * call gives there opens only for them (`Holders.shares.opens`): what anyone adds there, or asks AI to do, is its payer's, so
+ * a call gives nobody else a lasting way in on its organizer's word. In the caller's transaction.
+ */
+export async function givenByCall(d: Deps, db: Db, ownerId: string, organizerId: string, emails: string[]): Promise<string[]> {
+  if (!emails.length) return emails;
+  if (await maybeOne(db, z.object({ n: z.number() }), 'SELECT 1 AS n FROM workspaces WHERE owner_id = $1 AND payer_owner_id = $2', [ownerId, organizerId])) return emails;
+  const indexed = emails.map((email) => ({ email, index: emailIndex(d, email) }));
+  const h = await holdersOf(db, ownerId, { principals: indexed.map((x) => x.index), calls: [] });
+  return indexed.filter((x) => standingIn(h, { email: x.email, principals: [x.index], calls: [] }).role !== null).map((x) => x.email);
+}
+
 /** What `ShareTarget`s from a browser mean: an address as it is, and a seat in the sharer's own call, with who's in it. */
 export async function grantsFor(reader: Reader, to: ShareTarget[], role: DocumentRole): Promise<Grant[]> {
   const asked = to.some((t) => 'seat' in t);

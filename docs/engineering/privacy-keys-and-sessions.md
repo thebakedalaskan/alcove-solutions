@@ -717,7 +717,9 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   for its workspace (`payer_owner_id`), as a call opens a workspace only then, asked on every read (`holdersOf`): what anyone
   adds to a board, or asks AI to do on it, is its workspace's payer's. In a workspace someone else pays for, the call seats
   nobody on the boards it makes there and nobody can let everyone in on a saved one, and a seat given there opens only for
-  the workspace's own people, its members and a team's licensed people.
+  the workspace's own people, its members and a team's licensed people. What the call gives by address there goes only to its
+  own people too (`givenByCall`): a board it makes, to those invited who are; one kept as the call ends for someone let in from
+  the link, only if they are; a room's board as rooms close, to the organizer and those invited who are.
   A breakout room's board is restricted with nobody as its creator: only the seats of whoever is in that room open it, the
   organizer's only while visiting, and someone moved out loses it at once. When rooms close its seats go and everyone invited
   has it by address; a workspace member who wasn't invited never does, nor do the workspace's admins: nothing strands a room's

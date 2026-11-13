@@ -168,7 +168,9 @@ payer or role takes effect at once). A workspace someone else pays for, made the
 opens only for its own people; the Switch workspace question says so ("Its files don’t count against your storage, so it
 opens only for its own people."). Its boards go by the same payer: a seat the call gives on a board opens it for anyone only
 while the organizer pays for its workspace, asked on every read too, so in one someone else pays for the call seats nobody
-on the boards it makes, and nobody can let everyone in on a saved one (`calls/boards.ts › organizerPays`). The scheduler says
+on the boards it makes, and nobody can let everyone in on a saved one (`calls/boards.ts › organizerPays`); and the boards it
+makes there go by address only to its own people (`access.ts › givenByCall`), never to someone invited from outside it, to
+someone let in from the link, or, as rooms close, to anyone outside it. The scheduler says
 so when such a workspace is chosen for where a call's notes go ("Its files don’t count against your storage, so its boards
 and files open only for its own people.", `WorkspaceSummary.youPay`). A team's pool isn't counted as the organizer's here, though a teammate's
 workspace counts against the same pool: AI a guest asks for in a team's workspace is paid by the workspace's payer, so a call

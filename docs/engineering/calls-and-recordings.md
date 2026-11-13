@@ -1421,8 +1421,11 @@ anyone only while that holds, asked on every read (`holdersOf`, `Holders.shares.
 for, such as one chosen as the call's home when it was scheduled, the call seats nobody on the boards it makes there, rooms'
 boards included, nobody new is seated, and nobody can let everyone in on a saved board there (`boardCheck` says
 `mayLetIn` false, and `board-open` with `letIn` is `409`: "Its files don’t count against the organizer’s storage, so it
-opens only for its own people."); a seat given there opens only for the workspace's own people. The scheduler says so when
-such a workspace is chosen for a call's notes.
+opens only for its own people."); a seat given there opens only for the workspace's own people. And what the call gives
+by address there goes only to its own people (`access.ts › givenByCall`: its members, and on a team's workspace for the whole
+team, whoever is live-licensed on it): a board it makes goes to those invited who are, and nobody else invited; someone let in
+from the link keeps nothing of it as the call ends unless they are; and a room's board, as rooms close, goes to the organizer
+and those invited who are. The scheduler says so when such a workspace is chosen for a call's notes.
 
 - **`CallState.board.open`** is per viewer, for the part of the call they're in: `workspaceId`, `documentId`, `name` (what it's
   called now), `openedBy` (the connection whoever opened it is on now, or null when they aren't in the call), `canClose`,
@@ -1843,7 +1846,8 @@ says whether it's on a board of its own (`rooms[].board`), which is all anyone o
   of something on it.
 - **After rooms close** room seats go, and each room's board is everyone invited's by email at `edit`, the organizer and everyone
   on the invite who wasn't taken out, as the people its room's notes go to: then it's kept, a restricted board like any other,
-  and workspace members who weren't invited never see it. Someone taken off the invite loses it with the room's notes.
+  and workspace members who weren't invited never see it. In a workspace the organizer doesn't pay for, only those of them who
+  are its own people get it (`givenByCall`). Someone taken off the invite loses it with the room's notes.
 - **Limits.** A call makes 64 boards for its rooms in all.
 ### More, and a board on a phone
 

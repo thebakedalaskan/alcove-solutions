@@ -1370,7 +1370,8 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    more (whoever brought it can't edit it now): it opens in its place, and the call says "The rooms' boards came back on a new
    board. The one that was open can't take them." When the call's workspace can't take a new board, they stay where they are:
    "The rooms' boards didn't come back: this call's home can't take a new board any more. Each one is still saved there."
-   Afterwards a room's board is a saved board like any other, everyone invited's, and nothing to a teammate who wasn't invited.
+   Afterwards a room's board is a saved board like any other, everyone invited's, and nothing to a teammate who wasn't invited;
+   in a workspace someone else pays for, it's only for those invited who are in that workspace, as the call's own board is.
    **Present** then makes each room's frame a stop on the pager, in the order they sit: the room reports back, and the
    organizer moves on.
 6. **One board for every room.** With Shared, the board comes onto the organizer's stage as the rooms open, and they watch
