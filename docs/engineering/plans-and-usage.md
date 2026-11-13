@@ -23,7 +23,9 @@ Every number is a limit (`apps/api/src/limits.ts`, [Deployment › Changing a li
 changeable without a deploy: each plan's notes, storage, files and price; Pro's lower price for a year or more; the most
 months of Pro one purchase buys and how long before Pro ends its owner is told; more notes for a period, their price and
 the most bought at once; the most workspaces one account makes; what an hour of notes is reckoned at; when AI stops and
-when an organizer is told it's close; how long a period and a grace last; a call's longest and its most people.
+when an organizer is told it's close; how long a period and a grace last; a call's longest and its most people. A
+period's length changes from each account's next period: each account's AI meter keeps the period it's in
+([Pro › The plan in force](#pro)).
 
 ## Status
 
@@ -184,8 +186,8 @@ hosts is told, at most once a minute. Someone coming back keeps their place.
 
 Pro is bought from the balance, a month at a time (`features/billing/plans.ts`, routes in `routes.ts`). A month is
 `plan.period_seconds` (30 days), and each is a period of its own: Pro's notes (`plan.pro.notes_minutes`, 3,000 minutes),
-storage (`plan.pro.storage_bytes`, 100 GiB) and largest file (`plan.pro.file_bytes`, 2 GiB, held at 512 MiB, the most a
-file can be downloaded whole, until downloads resume: `WHOLE_DOWNLOAD_BYTES` in `limits.ts`). Free → Pro, and each new
+storage (`plan.pro.storage_bytes`, 100 GiB) and largest file (`plan.pro.file_bytes`, 512 MiB: every plan's file limit
+stops there, at its ceiling, the most a file can be downloaded whole, until downloads resume). Free → Pro, and each new
 month, starts a fresh period with the whole allowance: nothing carries over, and going past an allowance isn't a debt.
 
 **The plan in force** (`inForce`, read with `planNow`) is Team while a team license is live ([Team](#team)), Pro while a
@@ -196,8 +198,8 @@ with or without upkeep. Each runs on from the one before as the AI meter keeps i
 restarts a period that's running, nor gives back an allowance spent in it; an account the meter hasn't seen on Free since
 it started counts from the start. Pro's months and a team license's period are kept as they were bought or taken.
 
-**What's offered** (`GET /v1/plan/offers`): the period in days, Free's and Pro's allowances (Pro's file size as enforced),
-the price of a month (`plan.pro.price_micro_usd`, $20) and the most months one purchase buys (`plan.pro_max_months`, 12).
+**What's offered** (`GET /v1/plan/offers`): the period in days, what Free and Pro bring,
+the price of a month (`plan.pro.price_micro_usd`, $20) and the most months one purchase buys (`plan.pro.max_months`, 12).
 
 **A year or more for less** (`offers.pro.yearly`): a month costs `plan.pro.yearly_price_micro_usd` ($16, 20% off) when one
 purchase buys at least `plan.pro.yearly_from_months` (12): `{ fromMonths, microUsdPerMonth }`. It's `null`, and every
@@ -207,7 +209,7 @@ app works out its "20% off" from the two prices.
 **Buying** (`POST /v1/plan/pro { months, microUsdPerMonth }`) runs in one transaction with the account's `plan_accounts`
 row locked, so buys at once on any instance never spend the same money twice:
 
-1. More than `plan.pro_max_months` is refused (`invalid`, "Buy 1 to 12 months at a time.").
+1. More than `plan.pro.max_months` is refused (`invalid`, "Buy 1 to 12 months at a time.").
 2. A price other than the one in force for that many months (the yearly price from `yearly.fromMonths`, a month's below
    it) is refused (`conflict`, "The price of Pro has changed. Look at it again before buying."): the app sends the price
    it showed, so a change in between charges nothing.
@@ -228,18 +230,30 @@ first keeps its price. A month that has started isn't refunded; with none to ref
 to refund that hasn’t started…"), and when nothing would come back (two months left of a year, say) it's `conflict` too
 ("Refunding now would give nothing back…"), with nothing changed. `Plan.pro.refundableMicroUsd` says what a refund would
 add, by the same rule. Each month keeps the purchase it was one of, so the record keeps every month of a purchase that has a
-month still to come; the rest of the months that have ended go, as before.
+month still to come; the rest of the months that have ended go, as before. A refund turns renewing off (`Plan.pro.renew`
+false, logged `pro renewing set` with `why: refund`): otherwise upkeep would buy back what was just given back, at the
+reminder or at the end, paid for by the refund itself. Pro then ends when the month running now does, with `pro-ended`
+(and `pro-ending` first, if its reminder hasn't come yet), unless its owner turns renewing on again or buys more months. A
+`pro-renewed` notice about a month refunded is dismissed: Pro no longer runs to its `until`.
 
 **Renewing** (`PUT /v1/plan/renew { renew }`) is off by default. Upkeep (`upkeep` in `plans.ts`, every 5 minutes, by
-`plan_accounts.due_at`) looks at an account at the earliest of: its release grace ending; `plan.pro_remind_seconds` (3
+`plan_accounts.due_at`) looks at an account at the earliest of: its release grace ending; `plan.pro.remind_seconds` (3
 days) before Pro ends, never before the last month starts; and Pro's end (the last month's `to`). The record keeps which
 end it has reminded about (`reminded`) and handled (`ended`), so each happens once for each end:
 
-- **At the reminder:** with renewing on and a month's price in the balance, a month is bought after the last ("Pro,
-  renewed for a month") and the owner told `pro-renewed`. Otherwise they're told `pro-ending`. Logged `pro renewed` or
-  `pro ending`.
-- **At the end:** with renewing on and the money now (turned on, or money added, since the reminder), a month is bought
-  from the end, `pro-renewed`. Otherwise the account is on Free and told `pro-ended`. Logged `pro ended`.
+- **At the reminder:** when renewing will buy (below), a month is bought after the last at the price in force ("Pro,
+  renewed for a month") and the owner told `pro-renewed`. Otherwise they're told `pro-ending`. Logged `pro renewed`, or
+  `pro ending` with why not (`off`, `price` or `short`).
+- **At the end:** when renewing will buy now (turned on, or money added, since the reminder), a month is bought from
+  when upkeep comes, `pro-renewed`: that's the end, or later when upkeep is late, so a month already over is never
+  bought, and a late pass buys one month, not one for each it missed. Otherwise the account is on Free and told
+  `pro-ended`. Logged `pro ended`, with why not.
+
+Renewing buys only while it's on, the balance has the price in force, and that price is no higher than what a month cost
+when the last month was bought (its `monthlyMicroUsd`: a month's price then, so a year bought at $16 a month renews at a
+month's $20 as it was, not at $16). A higher price is never taken from the balance without the owner seeing it: Pro isn't
+renewed, they're told `pro-ending` at the reminder and `pro-ended` at the end, and the money stays in the balance. Once
+they buy at the new price themselves, it's what renewing goes by. A lower price renews, and becomes what it goes by.
 
 **Notices** (`Plan.notices`, newest first, those not dismissed) are shown in the app and, with `NotificationPrefs.plan`
 on (the default), from the browser. `POST /v1/plan/notices/:id/dismiss` hides one; another account's ID, or an unknown
@@ -250,7 +264,10 @@ nothing runs for it, so it ends on time without upkeep. `Plan.grace` shows it wh
 After it, uploads and notes stop while over Free's storage, as above. Buying Pro again lifts that at once.
 
 `Plan.pro` gives the months running and bought (oldest first), when the last ends, whether renewing is on and what a
-refund would add. The record keeps the months that haven't ended and the latest that has (the grace and Free's periods
+refund would add. `Plan.pro.renewal` says whether renewing will buy the next month as Pro ends, as upkeep would decide it
+now, and why not when it won't: `buys`, or `off`, `price` (a month costs more than the last did) or `short`; null with no
+month of Pro left. The app says Pro is ending by it, so after a price rise Settings and the side panel say so once the
+owner is told. The record keeps the months that haven't ended and the latest that has (the grace and Free's periods
 count from it).
 
 ## More notes
@@ -330,7 +347,7 @@ are in `Plan.notices` with Pro's (`until` null, `count` where it says), shown an
 
 **On Team** the plan's kind is `team`, its period the license's, its notes `plan.team.notes_minutes` (3,000) for each
 member, metered as their own (a new license is a fresh period, with all of it), and its largest file
-`plan.team.file_bytes`, held at 512 MiB as Pro's is. Storage is the team's **pool**: `plan.team.storage_bytes` (100 GiB) for
+`plan.team.file_bytes` (512 MiB, as Pro's). Storage is the team's **pool**: `plan.team.storage_bytes` (100 GiB) for
 each live license, against what everyone licensed stores (their own and the workspaces they pay for). `Plan.storage` and
 `MyTeam.storage` show the pool. When the pool shrinks below what's stored (a license ends, someone leaves or is taken off),
 it gets `plan.grace_seconds`, held to the pool as it was; upkeep reckons it at each license's end (`teams.due_at`). After

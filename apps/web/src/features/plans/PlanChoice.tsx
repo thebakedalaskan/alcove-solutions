@@ -6,7 +6,7 @@
  * on, to Home. Get Pro and Start a team open checkout over it, as Plans does, and once what was bought is yours and checkout
  * has closed, Home follows with no other question. Every number is the server's.
  */
-import type { Plan, PlanAllowance, PlanOffers } from '@alcove/api';
+import type { Plan, PlanBrings, PlanOffers } from '@alcove/api';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { q } from '~/lib/queries';
@@ -30,8 +30,8 @@ const whole = (s: string): string => s.replaceAll(' ', ' ');
  */
 function onNow(plan: Plan, offers: PlanOffers | undefined): string {
   const per = perPeriod(offers?.periodDays ?? Math.round((Date.parse(plan.period.to) - Date.parse(plan.period.from)) / DAY));
-  const hours = (a: PlanAllowance | undefined): string => whole(periodHours(a?.notesMinutes ?? plan.notes.minutesPerPeriod));
-  const brings = (a: PlanAllowance | undefined): string =>
+  const hours = (a: PlanBrings | undefined): string => whole(periodHours(a?.notesMinutes ?? plan.notes.minutesPerPeriod));
+  const brings = (a: PlanBrings | undefined): string =>
     `about ${hours(a)} of notes ${per} and ${whole(roomLabel(a?.storageBytes ?? plan.storage.limitBytes))} of storage`;
   if (plan.kind === 'team') {
     const on = plan.team ? `Team with ${plan.team.name}` : 'Team';

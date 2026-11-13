@@ -18,7 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { useCheckout } from '~/features/plans/checkout';
-import { PLAN_NAMES, endsIn, nextPeriodMinutes, noticesLike, noticesNow, notesLeft, notesLow, notesOut, notesShare, proEnding, teamLicenses } from '~/features/plans/plan-state';
+import { PLAN_NAMES, endsIn, nextPeriodMinutes, noticesLike, noticesNow, notesLeft, notesLow, notesOut, notesShare, proEnding, renews, teamLicenses } from '~/features/plans/plan-state';
 import { checkoutFor, purchaseName, restToSend, tokensExact } from '~/features/plans/purchase';
 import { hoursOfNotes } from '~/features/plans/words';
 import { useNow } from '~/lib/live';
@@ -94,7 +94,7 @@ function Notices({ plan, team }: { plan: Plan; team: MyTeam | null | undefined }
 function PlanRow({ plan, offers, quiet }: { plan: Plan; offers: PlanOffers | undefined; quiet: boolean }) {
   const checkout = useCheckout();
   const now = useNow();
-  const ending = proEnding(plan, offers, now);
+  const ending = proEnding(plan, now);
   const until = plan.pro.until;
   let help: string | undefined;
   if (plan.kind === 'free') {
@@ -102,7 +102,7 @@ function PlanRow({ plan, offers, quiet }: { plan: Plan; offers: PlanOffers | und
   } else if (ending) {
     help = `${endsIn(ending.days)}, on ${longDay(new Date(ending.until))}. Then you’re back on Free, and nothing is deleted.`;
   } else if (until !== null) {
-    help = `Until ${fullDate(new Date(until))}. ${plan.pro.renew ? 'It renews from your balance before it ends.' : 'Nothing renews by itself: Alcove reminds you before it ends.'}`;
+    help = `Until ${fullDate(new Date(until))}. ${renews(plan) ? 'It renews from your balance before it ends.' : 'Nothing renews by itself: Alcove reminds you before it ends.'}`;
   }
   // Pressing is filled only when something needs doing: notes have run out, or Pro is about to end.
   const again = noticesNow(plan).some((n) => n.kind === 'pro-ended');
@@ -218,10 +218,13 @@ function Renew({ plan, offers, canAdd }: { plan: Plan; offers: PlanOffers | unde
     void saving(RENEW, () => renew.mutateAsync(on)).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' }));
   };
   const price = offers?.pro.microUsdPerMonth;
-  const short = plan.pro.renew && price !== undefined && plan.balance.microUsd < price;
+  // Why it won't renew, as the server says (`pro.renewal`): the balance is short, or a month costs more than the last did.
+  const why = plan.pro.renewal === 'short' ? `Your balance is short of a month${price === undefined ? '' : ` (${usdCents(price)})`}, so Pro won’t renew.${canAdd ? ' Add money to keep it.' : ''}`
+    : plan.pro.renewal === 'price' ? `A month of Pro costs ${price === undefined ? 'more now' : `${usdCents(price)} now, more`} than your last did, so it won’t renew by itself. Extend to keep it at that price.`
+    : null;
   return (
-    <SettingRow label={RENEW} saveState={state(RENEW)} problem={short} onLabel={() => set(!plan.pro.renew)}
-      help={short ? `Your balance is short of a month (${usdCents(price)}), so Pro won’t renew.${canAdd ? ' Add money to keep it.' : ''}` : 'Buys a month from your balance 3 days before Pro ends.'}
+    <SettingRow label={RENEW} saveState={state(RENEW)} problem={why !== null} onLabel={() => set(!plan.pro.renew)}
+      help={why ?? 'Buys a month from your balance 3 days before Pro ends.'}
       control={<Switch label={RENEW} checked={plan.pro.renew} onChange={set} />} />
   );
 }

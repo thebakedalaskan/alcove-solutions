@@ -2583,7 +2583,8 @@ place you're on.
 
 On Pro, Settings › Plan says until when, with **Extend**. Turn on **Renew from balance**: it's kept and **Saved** shows. **Refund
 ($40.00)** asks in place; **Refund $40.00** returns the months that haven't started to the balance, and "Pro refunded, 2
-months" is first in the payments. **Receipt** opens a payment's receipt over the page as paper, with **Print**.
+months" is first in the payments. A refund turns **Renew from balance** off, so the months given back aren't bought again:
+Pro ends when the month running now does. **Receipt** opens a payment's receipt over the page as paper, with **Print**.
 
 ### 16.9 Notes run out in a call
 

@@ -72,16 +72,22 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | **F: Pro** |  |  |  |  |
 | F1 | 1 month and 12 months are bought; 13 is refused | billing/plans › Pro › buys 1 to 12 months at a time, and refuses 13 | 2 | Passes |
 | F2 | Months run back to back; a refund returns the unstarted ones; with only the running month it's refused | billing/plans › Pro › runs months back to back, refunds… | 2 | Passes |
-| F3 | Renew on with the balance: upkeep at the reminder buys the next month (`pro-renewed`); without it `pro-ending`, then Free and `pro-ended`; money added after the reminder renews at the end | billing/plans › Pro › renews from the balance before Pro ends… | 2 | Passes |
-| F4 | The reminder before the end and the notice at it, once each; dismissing hides one; another account can't | billing/plans › Pro › tells its owner before Pro ends… | 2 | Passes |
+| F3 | Renew on with the balance: upkeep at the reminder buys the next month (`pro-renewed`); without it `pro-ending`, then Free and `pro-ended`; money added after the reminder renews at the end, from when upkeep comes: upkeep two and a half months late buys one month from then, charged once, never months already over | billing/plans › Pro › renews from the balance before Pro ends…; … renews at the end from when upkeep comes… | 2 | Passes |
+| F4 | The reminder before the end and the notice at it, once each; dismissing hides one; another account can't; within Free's storage once Pro has ended, no grace is shown and nothing is over | billing/plans › Pro › tells its owner before Pro ends… | 2 | Passes |
 | F5 | Pro ends over Free's storage: the grace (uploads go in), then uploads refused, files readable and deletable; buying Pro lifts it at once; buying in the release grace ends it | billing/plans › Pro › holds storage to Pro’s through the grace… | 2 | Passes |
-| F6 | Pro's storage and file size are what's enforced; Pro's files are offered and held at 512 MiB until downloads resume | billing/plans › Pro › holds an account on Pro to Pro’s storage and file size… | 2 | Passes |
+| F6 | Pro's storage and file size, from the limits table, are what's enforced; every plan's file limit is 512 MiB and set higher is held there, at its ceiling, until downloads resume | billing/plans › Pro › holds an account on Pro to Pro’s storage and file size… | 2 | Passes |
 | F7 | Support finds an account by its address and adds dollars (`pnpm billing credit`) | billing/plans › support | 2 | Passes |
 | F8 | A year or more for less: 12 months at the yearly price ($16), fewer at a month's; each refused at the other's price, nothing charged | billing/plans › Pro › sells a year or more for less…; … buys 1 to 12 months at a time… | frontend | Passes |
 | F8′ | A refund that leaves a yearly purchase short of 12 months takes back the difference on the months kept: $172 for a year refunded at once; a second year refunded whole, the first keeping its price; nothing refunded when nothing would come back; months at a month's price refunded as paid | billing/plans › Pro › refunds a year bought at its lower price less the difference… | frontend | Passes |
 | F9 | No yearly offer while its price is 0, isn't below a month's, or needs more months than one purchase buys; a year is a month's price then, and never free | billing/plans › Pro › offers no yearly price while it’s 0… | frontend | Passes |
 | F10 | No months, fewer than none, part of one, or a price below nothing: invalid, nothing charged | billing/plans › Pro › refuses no months, fewer than none… | frontend | Passes |
 | F11 | Pro bought after the spent allowance stopped a call's notes: the stop lifts, nothing turns notes on by itself, and the organizer turns them on | billing/plans › Pro › lets the organizer turn a call’s notes on again once Pro is bought… | frontend | Passes |
+| F12 | A refund turns renewing off: a month renewed at the reminder and refunded isn't bought again at the end (Free, `pro-ended`), nor is one bought by hand in the reminder's window at the next pass (`pro-ending`); the `pro-renewed` notice about the refunded month is taken back | billing/plans › Pro › turns renewing off with a refund… | 2 | Passes |
+| F13 | Renewing at a changed price: a year bought at $16 a month renews at a month's $20 as it was then; a lower price ($15) renews, and then renews again at $15; a higher one ($25) isn't paid though the balance has it: `pro-ending` at the reminder and `pro-ended` at the end, each logged `why: price`, the money left in the balance; once its owner buys at $25, renewing goes by it | billing/plans › Pro › renews at a price no higher than a month cost when the last was bought… | 2 | Passes |
+| F14 | Upkeep's schedule (`plan_accounts.due_at`): none on Free; bought, the reminder; renewed there, the next month's reminder; reminded with the balance short, Pro's end; ended, none | billing/plans › Pro › is due in upkeep at the reminder… | 2 | Passes |
+| F15 | Renewed at two reminders in a row, then `pro-ending` and `pro-ended` at the third end once the balance is short; bought again after, its own end is told too | billing/plans › Pro › renews month after month while the balance lasts… | 2 | Passes |
+| F16 | A reminder longer than a month comes as each month starts, so one upkeep pass renews once, whatever money there is for more | billing/plans › Pro › renews only once in an upkeep pass… | 2 | Passes |
+| F17 | The plan says whether renewing will buy the next month, and why not: null on Free; `off`; `buys`; `price` once a month costs more than the last did; `short` once the balance can't pay a month; `off` after a refund. The app says Pro is ending by it (Storybook › Settings and the side panel › Pro ending, at a higher price) | billing/plans › Pro › says with the plan whether renewing will buy the next month… | 2 | Passes |
 | **G: Team** | Licenses, invites, visits, alerts, team notes and workspaces, pooled storage |  |  |  |
 | G1 | Create a team, buy licenses (1 to 500, at the price shown; a short balance, in words that say what they cost and never the balance, or a changed price refused), the admin takes one on a visit; Team offered from the limits | billing/teams › A3…; G1: offers Team from the limits, and buys 1 to 500 licenses… | 3 | Passes |
 | G2 | An invite works once; a second use, an expired one, a made-up one, or someone already on a team is refused; only its hash is kept; upkeep deletes expired ones; only the admin makes one | billing/teams › G2: an invite works once… | 3 | Passes |
@@ -165,14 +171,17 @@ drive it end to end.
 | The side panel | App and Storybook › Pages › The side panel | One plan row where the minutes left were: on Free, "About 5 h of notes left" over its meter; on Pro, Pro's row with its sun and until when (built on the plans branch's panel; since the merge with main it's on the calmer panel, and that row hasn't been checked by hand again) |
 | Notes stopped | Storybook › Calls › Notes, wide and phone | The organizer's bar over Notes' tabs with Get Pro and Add 10 hours; everyone else's with nothing to buy; Turn notes on when the plan has notes again without a purchase |
 | About 5 minutes left, and the call's end | Storybook › Calls | The organizer's banner; everyone's "This call ends at…" |
-| The yearly price's and more notes' limits | `pnpm --filter @alcove/server limits list` and `limits set`, on a local database | Listed with their defaults and bounds; `'$16'`, `12`, `600`, `'$15'` and `5` set; 101 packs and 0 minutes a pack refused, out of bounds |
+| The yearly price's and more notes' limits | `pnpm --filter @alcove/server limits list` and `limits set`, on a local database | Listed with their defaults and bounds; `'$16'`, `12`, `600`, `'$15'` and `5` set; 101 packs and 0 minutes a pack refused, out of bounds. Dollars and time, as `list` shows them and `set` takes them back, and a unit of the wrong kind or money past six places refused, are run by workspaces/media › storage limits › is set from the command line… |
 
 ## Found along the way
 
 - The welcome page still said "400 minutes of notes" (the old credits' welcome). It says about 5 hours a month now.
 - `limitsNow` read the limits through the pool inside transactions. Uploads started at once ran the pool dry: each
   transaction held a connection and waited for another to read the limits. It now reads on the caller's connection,
-  under a savepoint, so a failed read leaves the transaction going on what was in force.
+  under a savepoint, so a failed read leaves the transaction going on what was in force. A transaction also joined a
+  read another request had started through the pool, which may itself be waiting for the connection the transaction
+  holds: it reads on its own connection every time now, and only callers through the pool share a read
+  (meetings/connections › reads the limits inside a transaction on its own connection…).
 - The call's card, for anyone with the link, said why notes stopped. It says only that they're off now (calls/capture,
   billing/meter).
 - Notes in the call offered Turn on with no word of why notes were off. Notes and what's captured now say why, in the
