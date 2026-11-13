@@ -20,7 +20,7 @@ import { arriveFromCall, useNow } from '~/lib/live';
 import { log } from '~/lib/log';
 import { callName, listNames, sameEmail } from '~/lib/people';
 import { q, trustLine } from '~/lib/queries';
-import { StopWays, useStoppedAfter } from '~/features/call/notes/PlanStop';
+import { StopWays, planStopOf, useStoppedAfter } from '~/features/call/notes/PlanStop';
 import { useFollowNotes } from './followNotes';
 import { useRejoin, useRejoinKey, type RejoinAs, type RejoinMedia } from './rejoin';
 
@@ -90,7 +90,7 @@ export function leftOf(o: { last: CallState; how: LeftHow; media: RejoinMedia; i
   return {
     code: last.code, title: last.title, how, you, others, elapsed: ran.elapsed, at: Date.now(), noteId: ran.noteId,
     notesAsLeft: notesAreOn(mode) ? 'on' : mode === 'paused' ? 'paused' : 'off', modelPrivate: last.capture.modelPrivate,
-    stopped: !notesAreOn(mode) && last.capture.stopped ? last.capture.stopped.reason : null,
+    stopped: planStopOf(last.capture)?.reason ?? null,
     organizer: last.isOrganizer, organizerFirst: first, guest, getsNotes: !guest && ran.noteId !== null,
     getting: named
       ? { who: named.length ? `${named.map(callName).join(', ')} and you get them.` : 'You get them.', faces: [...named, you] }
