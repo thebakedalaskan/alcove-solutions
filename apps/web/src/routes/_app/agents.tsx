@@ -93,7 +93,7 @@ function AgentsPage() {
         </header>
         {phase ? (
           <TheQuestion ask={ask} me={me} ids={connections ? new Set(connections.map((c) => c.id)) : undefined}
-            onBack={(before) => { toLine(); if (before) line.wait(before); }}
+            onBack={(before) => { toLine(); if (before) line.lookOut(before); }}
             onDeclined={(name, redirectUrl) => { toLine(); toast(`Nothing was shared with ${name}.`, { icon: 'check' }); location.assign(redirectUrl); }}
             onShowHow={showHow} />
         ) : hero}

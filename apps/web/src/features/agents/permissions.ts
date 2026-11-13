@@ -7,7 +7,7 @@ import type { AgentPermission } from '@alcove/ui';
  */
 export const PERMISSIONS = [
   { id: 'notes:read', label: 'Read notes', short: 'Read notes', detail: 'Find notes, read transcripts, and ask questions about them.' },
-  { id: 'notes:write', label: 'Edit notes and follow-ups', short: 'Edit notes', detail: 'Propose decisions, add follow-ups, and fix a transcript.' },
+  { id: 'notes:write', label: 'Edit notes and follow-ups', short: 'Edit notes', detail: 'Propose decisions, add follow-ups and questions, and fix a transcript.' },
   { id: 'notes:share', label: 'Share notes', short: 'Share notes', detail: 'Give people notes you’re allowed to share.' },
   { id: 'notes:delete', label: 'Delete notes', short: 'Delete notes', detail: 'Delete notes, or take shared ones out of yours.' },
   { id: 'meetings:read', label: 'Read calls and find people', short: 'Read calls', detail: 'See past and coming calls, and find people to invite.' },

@@ -2,8 +2,8 @@
  * AgentPlace: a place on the line. The agent's window is the button, with its name and a quiet line under it on the
  * water; it opens a popover under the window, with a caret, that slides to stay in the window and is a sheet on a phone.
  * What the popover holds is built from the kit's parts: AgentPopHead (its mark, what it's about, Close, and a way back
- * when there is one), AgentPopLine, AgentWell, one full-width action (AgentAction, or AgentLink to another app or page)
- * that waits in its place once pressed (AgentWaiting), AgentPopMore at the foot, AgentPermissions with AgentSaved,
+ * when there is one), AgentPopLine, AgentWell, one full-width action (AgentAction, or AgentLink to another app or page),
+ * with three dots in its place while what it needs is on its way (AgentWaiting), AgentPopMore at the foot, AgentPermissions with AgentSaved,
  * AgentPopFoot, and AgentAsked for a question asked in place.
  */
 import { AgentAction, AgentAsked, AgentLink, AgentPermissions, AgentPlace, AgentPopFoot, AgentPopHead, AgentPopLine, AgentPopMore, AgentSaved, AgentWaiting, AgentWell, AgentLine, Button } from '@alcove/ui';
@@ -88,23 +88,21 @@ export const Connect: Story = {
     children: (
       <>
         <AgentPopHead icon="sparkle" title="Connect Claude" />
-        <AgentPopLine>Paste this address into Claude’s connectors.</AgentPopLine>
+        <AgentPopLine>In Claude, press Add, then Add custom connector, and paste this address.</AgentPopLine>
         <AgentWell value={PREVIEW_MCP_ENDPOINT} />
         <AgentLink href="#claude-connectors" onClick={did('onCopyAndOpen')}>Copy and open Claude</AgentLink>
       </>
     )
   }
 };
-/** Pressed, it waits for Claude in the button's place. */
-export const Waiting: Story = {
+/** While Alcove's address is on its way, three dots in the button's place. */
+export const LookingForTheAddress: Story = {
   args: {
     look: 'dashed', line: undefined, label: 'Connect Claude', popLabel: 'Connect Claude',
     children: (
       <>
         <AgentPopHead icon="sparkle" title="Connect Claude" />
-        <AgentPopLine>Paste this address into Claude’s connectors.</AgentPopLine>
-        <AgentWell value={PREVIEW_MCP_ENDPOINT} />
-        <AgentWaiting>Waiting for Claude</AgentWaiting>
+        <AgentWaiting>Looking for Alcove’s address</AgentWaiting>
       </>
     )
   }
