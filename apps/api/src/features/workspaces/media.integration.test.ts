@@ -761,8 +761,10 @@ describe('a failure on the way', () => {
     const [first, last] = await objectsOf(owner);
     const original = await h.objects.get(first ?? '');
 
-    // Changed in the store.
-    await h.objects.put(first ?? '', new Uint8Array([...original.slice(0, -1), 0]));
+    // Changed in the store: a bit of its last byte flipped, which a byte set to 0 isn't when it was 0 already.
+    const flipped = new Uint8Array(original);
+    flipped[flipped.length - 1] = (flipped[flipped.length - 1] ?? 0) ^ 1;
+    await h.objects.put(first ?? '', flipped);
     expect((await refused(ann, url, 'bytes=0-1')).code).toBe('key-unavailable');
     await h.objects.put(first ?? '', original);
     expect((await read(ann, url, 'bytes=0-1')).status).toBe(206);
