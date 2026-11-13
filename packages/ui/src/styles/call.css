@@ -541,7 +541,7 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-foot button.ac-chip:disabled { opacity: .5; cursor: default; }
 .ic-tr { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding-top: 14px; }
 .ic-tr > .ac-notice { margin: 0 16px; }
-.ic-tr .tx { padding: 2px 20px 18px; }
+.ic-tr .tx-log { padding: 2px 20px 18px; }
 .tx-l.is-hit { border-radius: var(--radius-sm); background: var(--sun-soft); box-shadow: 0 0 0 6px var(--sun-soft); transition: background-color var(--duration-3); }
 .ic-qa { display: grid; gap: 16px; margin-top: 18px; }
 .ic-qa-item { display: grid; gap: 10px; }
@@ -895,9 +895,12 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
   .ac-pop.is-sheet .mi { height: 44px; }
 }
 @keyframes ic-sheet-up { from { transform: translateY(24px); opacity: 0; } }
-/* The transcript in the panel: newest at the bottom, following along unless you scroll up. */
+/*
+ * The transcript in the panel: newest at the bottom, following along unless you scroll up. Its lines scroll in `tx-log`,
+ * a name nothing else uses: a scroll area that keeps the wheel for itself, put on a row's words, stops the page scrolling.
+ */
 .tx-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.tx { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 20px 18px; }
+.tx-log { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 20px 18px; }
 .tx-l { display: grid; grid-template-columns: 26px minmax(0, 1fr); column-gap: 10px; }
 .tx-start { margin-top: 16px; }
 .tx-h { display: flex; align-items: baseline; gap: 8px; min-height: 26px; padding-top: 4px; }
@@ -906,7 +909,7 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .tx-l p { margin-top: 6px; font-size: 14px; line-height: 1.5; color: var(--ink); text-wrap: pretty; }
 .tx-start p { margin-top: 0; }
 .tx-in { animation: ac-rise var(--duration-3) var(--ease-out) both; }
-.tx .tx-key { margin: 6px 0 2px; }
+.tx-log .tx-key { margin: 6px 0 2px; }
 .tx-latest { position: absolute; left: 50%; bottom: 12px; translate: -50% 0; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 13px 0 10px; border-radius: var(--radius-pill); background: var(--ink); color: var(--ground); font: 600 12.5px/1 var(--font-sans); box-shadow: var(--shadow-2); animation: ac-rise var(--duration-2) var(--ease-out) both; }
 
 /* ---- smaller screens ---- */
