@@ -178,6 +178,7 @@ Truncate with `ac-clamp-1` or `ac-clamp-2` rather than `nowrap`, so long text ca
 - Icons are Lucide, through `Icon` in `@alcove/ui`, one stroke family at 1.8. Add a name to its map rather than drawing an SVG.
 - Tile and toolbar actions are icon buttons with a tooltip, not text labels.
 - People appear in an arch, never a circle: `Avatar` and `Faces`. Someone who isn't on Alcove yet is a dashed `GhostArch`.
+  A photo someone cut to a circle before giving it to their sign-in provider is drawn larger, so it fills the arch too.
 - The scene is drawn flat, each shape one colour: a sun disc, stripes of glitter, strokes of chop, silhouettes. Draw the
   sunset; don't wash a gradient over the page. Gradients are only the sky, the sea and the glow around the sun.
 - Anything empty gets a designed empty state, never blank space: `EmptyState`, which draws `EmptyArch`, with a title and
