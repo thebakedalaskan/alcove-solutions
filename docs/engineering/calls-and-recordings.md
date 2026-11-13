@@ -226,7 +226,7 @@ The call itself stays in the API: who's let in, notes and the transcript.
 
 ## End-to-end encryption
 
-Every browser in a call is an MLS client (RFC 9420): `packages/api-http/src/calls/mls.ts`, on ts-mls, suite
+Every browser in a call is an MLS client (RFC 9420): `packages/api-http/src/mls.ts`, on ts-mls, suite
 `MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519`. Its keys are made in the browser and never leave it. The
 API orders and relays MLS messages and can't read them. Each group's operations run one at a time, in
 order, and nothing a message carries can stop it: anything unreadable is skipped and the next one is read.

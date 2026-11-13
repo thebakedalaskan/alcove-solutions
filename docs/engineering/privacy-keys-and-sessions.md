@@ -952,10 +952,10 @@ decides.
   A call's code is in its pages' paths (`/join/<code>`, `/call/<code>`) and in the API paths that read or join
   it (`/v1/calls/<code>/card`, `…/join`, `…/pick`, `…/meeting`), never in a query string or a sign-in URL: signing in with
   Google from a join page keeps the call to come back to in the tab's sessionStorage. Alcove's own logs write
-  those paths as `/v1/calls/:code`, and Cloud Run's request logs, which kept raw URLs, were excluded from the
-  project's log sink for that reason while the API ran there ([Deployment and acceptance](deployment-and-acceptance.md)). Call passes go
+  those paths as `/v1/calls/:code`, and Cloud Run's request logs, which keep raw URLs, are excluded from the
+  project's log sink for that reason ([Deployment and acceptance](deployment-and-acceptance.md)). Call passes go
   in a header. A file's token is in the path it's read from (`/v1/media/<token>`), which Alcove's logs write as
-  `/v1/media/:token` (Cloud Run's were kept out the same way); it holds opaque IDs and a signature, and [reads nothing by
+  `/v1/media/:token` and Cloud Run's stay out of the same way; it holds opaque IDs and a signature, and [reads nothing by
   itself](#files).
   A move's code travels in a link's fragment, which browsers never send, and then in POST bodies, like the claim
   that replaces it; only their SHA-256 is stored. So does a link to a call's notes: its secret is in the fragment and
@@ -1253,12 +1253,10 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 On Cloud Run, `KMASTER` and `KSERVICE` came from Secret Manager, so whoever operated the service, Google
 Cloud included, could open any account. On 2026-11-13 the API moved into a confidential VM (Google Cloud
 Confidential Space, on Intel TDX) and carried the accounts it held into it, with no reset: 28 accounts, none
-failed. The old master was retired and its secrets deleted the same day; the blind-index, photo token and billing keys
-made before the move were carried over (step 3 below). Postgres and
+failed. The old keys were retired and deleted the same day. Postgres and
 the object store stay outside: they hold only sealed records, opaque IDs and timing
 ([What is still visible](#what-is-still-visible)). The keys, and every plaintext, exist only in the VM.
-Calls' media is end-to-end encrypted between the browsers in the call; it reaches the VM only while notes are on, as the
-host's browser sends what it hears ([Production requirements](#production-requirements), 4).
+Calls' media never reaches the VM at all: it's end-to-end encrypted between the browsers in the call.
 
 What's in the code (`apps/api/src/serverKeys.ts`, `config.ts`, `gcp.ts`, `tee.ts`, `start.ts` and `edge/`):
 
@@ -1467,14 +1465,14 @@ Moving, in order:
 
 | Original spec | Now | Decision |
 | --- | --- | --- |
-| A native Ed25519 owner key on one desktop proves who the owner is | Sign-in with Google (OpenID Connect); Microsoft and SSO are demo stand-ins; a random `ownerId` | Spec updated (this page). Production offers Google alone; real Microsoft and SSO sign-in come before either is offered there. |
+| A native Ed25519 owner key on one desktop proves who the owner is | Sign-in with Google (OpenID Connect); Microsoft and SSO are demo stand-ins; a random `ownerId` | Spec updated (this page). Real Microsoft and SSO sign-in are required before production. |
 | `Kowner` kept natively, never stored server-side | Made by the server, stored wrapped under `KMASTER`, opened for each request | Accepted only with `KMASTER` released solely to the attested VM |
-| Attestation + HPKE channel with sequenced frames | Plain REST over TLS with a cookie session, TLS ending inside the TEE with a key only its master makes. Inside a TEE, `/v1/attestation` returns Google's attestation token, whose nonces name that key and the build. The app checks the token and the release in Sigstore's public log, and shows the result rather than holding anything back; a browser can't compare the key with its own connection, so CI and Certificate Transparency check it | **Not built yet**, and production runs without it: the HPKE channel ([steps](#moving-to-confidential-computing)) |
+| Attestation + HPKE channel with sequenced frames | Plain REST over TLS with a cookie session, TLS ending inside the TEE with a key only its master makes. Inside a TEE, `/v1/attestation` returns Google's attestation token, whose nonces name that key and the build. The app checks the token and the release in Sigstore's public log, and shows the result rather than holding anything back; a browser can't compare the key with its own connection, so CI and Certificate Transparency check it | **Required before production**: the HPKE channel ([steps](#moving-to-confidential-computing)) |
 | Strict JSON (reject duplicate keys and unknown fields), U64 decimal strings | zod parsing (drops unknown fields), JS numbers for money (micro-USD) and sizes | To do |
 | Service-side wrap of `Krec` with 24-hour / 7-day disposal | Any work, including someone else's read and the notes worker, opens the owner's keys through `KMASTER`; no separate wrap or disposal window | Accepted with `KMASTER` custody |
 | Protected inference: end-to-end encrypted requests to `I01`, with its attestation checked | Each model's evidence is checked first (Intel TDX quote and collateral, a published dstack OS image by MRTD and RTMR0–2, report data with a fresh nonce, RTMR3 and the measured compose, NVIDIA GPU verdict, the OHTTP key's signature). Every request, speech and chat, goes by Oblivious HTTP sealed to the model's attested key at its own endpoint: NEAR AI's E2EE chat doesn't bind its fields to the client's key, so whoever terminates TLS could replay them, and doesn't cover speech. The one plaintext way is a model chosen on purpose that NEAR AI doesn't run in an enclave: it's reached through the gateway over TLS, shown as "Unencrypted" wherever it's picked, and recorded on the note. Speech has none | Done for what the evidence shows. The model code NEAR AI's compose manager starts isn't pinned, the GPU evidence and model name aren't bound to the VM, and the endpoints are ones NEAR AI calls experimental ([What's left](notes-and-inference.md#whats-left)) |
 | Encrypted manifest binding all chunks; rollback detection | Not implemented: a database writer could roll a head back or drop trailing pieces | To do (version-bound associated data and an encrypted piece list) |
-| Plan accounts, AI meters and top-ups keyed by a random account ID plus `owner_tag` | Keyed by `owner_id` | To do; payments are live keyed by `owner_id` |
+| Plan accounts, AI meters and top-ups keyed by a random account ID plus `owner_tag` | Keyed by `owner_id` | To do before payments |
 | Guests (#17): joining a call grants no notes, and a shareable link alone is not authorization to read owner content | Notes can be shared by a link (#259), which reads nothing by itself: opened by a signed-in account the notes may go to, it gives that account the notes as shared by its maker, listed in who has them, for seven days or until revoked. No URL reads a note | The product owner chose this over a public link anyone could read (which would need an unauthenticated way to open the organizer's keys) and over notes for guests only through the call's own sign-in |
 | Provider secrets never in environment variables | Outside a TEE, `KMASTER`, `KSERVICE`, the NEAR AI key and the Google client secret are environment variables (`.env` locally). With `TEE=confidential-space` the master is made in the TEE and kept wrapped by Cloud KMS for attested builds only, the index key and `KSERVICE` come from the server keys sealed under it, and both keys are refused from the environment; the provider secrets (`SECRETS`) and, while a database's accounts are carried over, the old keys (`LEGACY_SECRETS`) are read at start from Secret Manager as the attested identity, never through the environment | Accepted locally. In production the master exists unwrapped only in the attested VM, and provider secrets aren't environment variables there, since Confidential Space puts the environment in its attestation. |
 
@@ -1489,7 +1487,7 @@ Moving, in order:
    wrapped by Cloud KMS for the attested identity alone, secrets read the same way, the accounts carried over to it, TLS
    ending inside the TEE with a key the attestation names, and a build that names its commit. The client checks the
    token and the release in Sigstore's public log, but shows the result rather than holding anything back, and can't see
-   its own connection's key. It's deployed (production since 2026-11-13); left: the HPKE channel and a pinned client.
+   its own connection's key. Left: deploying it, and the HPKE channel.
 2. **Real sign-in for every provider.** Google is done. Microsoft OAuth and OIDC SSO must return a verified
    subject and email, and `demo.ts` must go, because access to notes follows the email.
 3. **Verified private inference.** Speech and transcripts go to NEAR AI only sealed (Oblivious HTTP) to the
