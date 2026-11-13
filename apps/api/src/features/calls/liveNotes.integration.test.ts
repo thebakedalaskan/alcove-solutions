@@ -1612,7 +1612,10 @@ describe('accepted follow-ups into the note', () => {
     const note = await written(org.api, ended?.pendingNoteId);
     h.near.reword(DECK, null);
     h.near.reword(ROOM, null);
-    expect(h.near.instructions.at(-1)).toContain('Write in French.');
+    // This call's own note: another call's notes written in the background can be the stand-in's last request.
+    const ours = h.near.instructions.filter((system, i) => system.startsWith('You write the notes') && (h.near.prompts[i] ?? '').includes(`Organizer: ${org.session.user.name}`));
+    expect(ours.length).toBeGreaterThan(0);
+    for (const system of ours) expect(system).toContain('Write in French.');
     expect(note.actions).toEqual([expect.objectContaining({ id: deck.id, text: DECK, done: true })]);
     expect(note.suggestions.some((a) => a.text === ROOM)).toBe(true);
   });
