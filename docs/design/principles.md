@@ -133,6 +133,9 @@ page. Blue Hour takes the page and the pressable colour from the logo's own sky 
 | A highlight or comment in a document | `hl` |
 | Code in a document, by what each word is: its own palette, no green | `code-keyword`, `code-string`, `code-number`, `code-name`, `code-comment` |
 
+- One named exception, from the approved plans canvas ([canvas/plans](canvas/plans/README.md)): the side panel's
+  notes-left meter runs from `rose` through `sun-text` to `gold`, the walk of the logo's own sky. It says how much of the
+  period's notes is left and nothing more: not a decision waiting, and not illustration. It turns `sun-text` under an hour.
 - Every screen works in light and dark. Design both, and don't simply invert: check contrast (4.5:1 for text) in each.
 - The side panel is dark in both themes. The call is night in both, but for your side in it and a board on its stage,
   which take your theme. Record and the page a call leaves you on are night in both.
@@ -155,6 +158,12 @@ meta 13px.
 When a page's hero is a number that stays put, such as the minutes of notes left, it's the hero and takes Newsreader. A
 number that changes while you look, such as a timer or a count, takes Hanken Grotesk with `tabular-nums`, so its digits
 don't jump.
+
+Four places take Newsreader without being a page's title or hero. They're named exceptions, because they're the approved
+plans canvas's look ([canvas/plans](canvas/plans/README.md)): the plan's name in the side panel's foot (Pro, Team),
+checkout's headlines (`CheckoutBig`: "You're on Pro", "Nothing arrived in 24 hours"), a receipt's title (`PaymentReceipt`),
+and the plans' prices, on Plans and on the welcome page. Nothing else does: a new place for Newsreader is a design
+decision, not a style.
 
 In the light theme, `ink-3` doesn't reach 4.5:1 out on the sky or the sea. Meta text on the scene uses `ink-2`; `ink-3` is
 for text on `surface` and `ground`. Warm `sun-text` on the light sky is kept large or put on an icon.

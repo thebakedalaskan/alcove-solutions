@@ -309,10 +309,14 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   button in view and the place you're on is the one shaded row. The warmth lives in `sun-text` and `sun-soft`.
   `rec` only ever means notes or recording (`NotesSign`, `RecDot`). Problems use `caution`,
   information and focus use `horizon`, and a decision waiting on someone uses `rose`. The mark (`Mark`, `Logo`) is branding, never state. No green.
+  One named exception, the approved plans canvas's look (`docs/design/canvas/plans/`): the side panel's notes-left meter
+  (`.sb-meter`) runs from `rose` through `sun-text` to `gold`, the logo's own sky, and means only how much is left.
 - Type: Newsreader (`font-display`) for page-level headings, a board's name and its frame titles, and nothing
   else; Hanken Grotesk for everything you read and operate, times and data included (`tabular-nums`, or `ac-mono`,
   keeps digits in step), and IBM Plex Mono only for code and hashes. Labels and eyebrows are sentence case, never
-  uppercase. Fonts are served from `packages/ui/src/fonts`.
+  uppercase. Fonts are served from `packages/ui/src/fonts`. Named exceptions, the approved plans canvas's look: Newsreader
+  for the side panel's plan name (`.sb-pro b`), checkout's headlines (`CheckoutBig`, `.ck-big`), a receipt's title
+  (`PaymentReceipt`) and the plans' prices (`.pl-price` on Plans, `.lp-plan-price` on the welcome page). Nothing else.
 - The call is always night, but for your side in it, which takes your theme: the stage uses `stage`, `stage-tile`,
   `stage-raised`, `stage-ink`, `stage-ink-2`, `stage-sun` for what's chosen on night controls whatever theme is round them,
   and whoever speaks gets the `speak` ring. People appear in the arch, never a circle.
