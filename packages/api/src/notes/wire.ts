@@ -120,11 +120,7 @@ export type ActionProposal = z.infer<typeof ActionProposalSchema>;
  * Someone with the notes adding an open question the notes didn't hear: its words, the lines it rests on, and the breakout
  * room's section it goes in (the call's, without one). It starts open, and anyone who has the notes can say it was answered.
  */
-export const QuestionProposalSchema = z.object({
-  text: oneLine(300),
-  lines: z.array(z.string().min(1).max(64)).max(MAX_PROPOSAL_LINES).optional(),
-  room: z.string().min(1).max(64).optional()
-});
+export const QuestionProposalSchema = DecisionProposalSchema;
 
 export type QuestionProposal = z.infer<typeof QuestionProposalSchema>;
 

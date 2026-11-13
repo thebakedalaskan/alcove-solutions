@@ -8,12 +8,15 @@ import { PersonalEditSchema, PersonalInputSchema } from '../notes/personal';
 import { ActionPatchSchema, ActionProposalSchema, AskBodySchema, DecisionPatchSchema, DecisionProposalSchema, LinePatchSchema, MAX_SEARCH_TEXT, QuestionPatchSchema, QuestionProposalSchema, ShareInputSchema } from '../notes/wire';
 import { BusyBodySchema, RsvpBodySchema } from '../meetings/wire';
 import { PeopleSearchBodySchema } from '../identity/wire';
+import { PersonSchema } from '../identity/people';
 
 export const AgentResourceIdSchema = z.string().regex(/^[A-Za-z0-9_-]{22}$/);
 export const AgentOperationIdSchema = AgentResourceIdSchema.describe('A fresh random 22-character base64url ID. Reuse it only to retry exactly the same operation.');
 export const AgentPageSchema = z.object({ limit: z.number().int().min(1).max(100).default(25), offset: z.number().int().min(0).max(10000).default(0) });
 export const AgentNoteIdSchema = z.object({ noteId: AgentResourceIdSchema });
 export const AgentMeetingIdSchema = z.object({ meetingId: AgentResourceIdSchema });
+/** A note's decision, open question or follow-up, by the ID the note gives it (not a personal note's `entryId`). */
+const NoteEntryIdSchema = z.string().min(1).max(64);
 export const AgentListNotesSchema = AgentPageSchema.extend({ kind: NoteKindSchema.optional(), text: z.string().max(MAX_SEARCH_TEXT).optional() });
 export const AgentListMeetingsSchema = AgentPageSchema.extend({
   view: z.enum(['upcoming', 'past']).default('upcoming').describe('upcoming: calls you organize and calls you are invited to that have not ended, soonest first. past: calls that happened, newest first: the ones you organized, and the ones you were invited to that kept notes.')
@@ -22,13 +25,13 @@ export const AgentAskNoteSchema = AgentNoteIdSchema.extend({ question: AskBodySc
 export const AgentAskNotesSchema = AskBodySchema;
 export const AgentDecisionProposalSchema = AgentNoteIdSchema.extend({ proposal: DecisionProposalSchema });
 export const AgentFollowUpAddSchema = AgentNoteIdSchema.extend({ followUp: ActionProposalSchema });
-export const AgentDecisionPatchSchema = AgentNoteIdSchema.extend({ decisionId: z.string().min(1).max(64), patch: DecisionPatchSchema });
+export const AgentDecisionPatchSchema = AgentNoteIdSchema.extend({ decisionId: NoteEntryIdSchema, patch: DecisionPatchSchema });
 export const AgentFollowUpPatchSchema = AgentNoteIdSchema.extend({
-  followUpId: z.string().min(1).max(64).describe('The id of one of the note’s followUps, as get_note returns them.'),
+  followUpId: NoteEntryIdSchema.describe('The id of one of the note’s followUps, as get_note or add_follow_up returns it.'),
   patch: ActionPatchSchema.describe('What to change. done ticks it. owner gives it to someone who has the notes, by email, or null to nobody. takeOn: true says you will do it, for one that is yours. Taking it on, or giving it to yourself, also needs seen: the text and due you read.')
 });
 export const AgentQuestionAddSchema = AgentNoteIdSchema.extend({ question: QuestionProposalSchema });
-export const AgentQuestionPatchSchema = AgentNoteIdSchema.extend({ questionId: z.string().min(1).max(64), patch: QuestionPatchSchema });
+export const AgentQuestionPatchSchema = AgentNoteIdSchema.extend({ questionId: NoteEntryIdSchema, patch: QuestionPatchSchema });
 export const AgentTranscriptPatchSchema = AgentNoteIdSchema.extend({ lineId: z.string().min(1).max(64), patch: LinePatchSchema });
 export const AgentShareNoteSchema = AgentNoteIdSchema.extend({ share: ShareInputSchema });
 export const AgentPersonalAddSchema = AgentNoteIdSchema.extend({ operationId: AgentOperationIdSchema, input: PersonalInputSchema });
@@ -44,10 +47,24 @@ export const AgentNextCallSchema = AgentMeetingIdSchema.extend({ operationId: Ag
 export const AgentStartCallSchema = z.object({ operationId: AgentOperationIdSchema, input: InstantCallInputSchema.extend({ title: z.string().trim().min(1).max(160).optional(), guests: z.array(z.string().trim().max(254)).max(300).optional() }).default({}) });
 export const AgentPeopleSchema = AgentPageSchema.extend({ query: PeopleSearchBodySchema.shape.query });
 export const AgentAvailabilitySchema = BusyBodySchema;
-/** A note's entry, by the ID the note gives it. */
-const EntryIdSchema = z.string().min(1).max(64);
-/** What a write hands back: an acknowledgment, and the IDs of what it made or changed, so it can be changed next without reading. */
+/**
+ * What a write hands back: an acknowledgment, and the IDs of what it made or changed, so it can be changed next without
+ * reading. Adding to a note says whether it added anything (`added`: false when the same words were already there), and
+ * hands back the entry's ID only when whoever asked proposed it: a connection that can't read a note gets no handle on what
+ * other people or the notes wrote.
+ */
 export const AgentWriteResultSchema = z.object({
   ok: z.literal(true), noteId: AgentResourceIdSchema.optional(), meetingId: AgentResourceIdSchema.optional(), entryId: AgentResourceIdSchema.optional(),
-  decisionId: EntryIdSchema.optional(), followUpId: EntryIdSchema.optional(), questionId: EntryIdSchema.optional(), url: z.url().optional()
+  added: z.boolean().optional(), decisionId: NoteEntryIdSchema.optional(), followUpId: NoteEntryIdSchema.optional(), questionId: NoteEntryIdSchema.optional(), url: z.url().optional()
 });
+/**
+ * A call that happened, as list_meetings' past view lists it: one of your own that ended, or one you were invited to that kept
+ * notes, which is all you keep of someone else's call once it's over. `meetingId` is only your own call's (get_meeting can't
+ * open someone else's once it's over), `noteId` its notes when it kept them, `minutes` how long it ran when that's known, and
+ * `guests` everyone invited besides the organizer.
+ */
+export const AgentPastCallSchema = z.object({
+  meetingId: AgentResourceIdSchema.nullable(), noteId: AgentResourceIdSchema.nullable(), title: z.string(), startsAt: ISODateSchema,
+  minutes: z.number().int().min(1).nullable(), organizer: PersonSchema, role: z.enum(['organizer', 'invited']), guests: z.array(PersonSchema)
+});
+export type AgentPastCall = z.infer<typeof AgentPastCallSchema>;
