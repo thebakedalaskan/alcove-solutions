@@ -16,7 +16,7 @@ import {
   type DepositProvider, type DepositRoute, type DoubtReason, type OpenDepositState
 } from './provider';
 import { LIMITS, limitsNow } from '../../limits';
-import { buyerOf, credit, purchase, refusalOf, refusedError } from './plans';
+import { buyerOf, credit, dollars, purchase, refusalOf, refusedError } from './plans';
 import { adminsTeam, licensesBought, type TeamRow } from './teams';
 
 const dlog = log.child({ component: 'deposits' });
@@ -132,7 +132,6 @@ export async function routes(d: Deps): Promise<TopUpRoutes> {
   return { routes: all.map(toRoute), presets: pro > 0 ? PRESET_PERIODS.map((n) => n * pro) : [] };
 }
 
-const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 });
 /**
  * Refuses another top-up while the owner has 15 waiting for a payment to an address that hasn't expired, or opened 30
  * in the last 24 hours (cancelled ones count: each was a quote, and is watched until its address expires). Counted in
@@ -171,7 +170,7 @@ export async function start(d: Deps, ownerId: string, routeId: string, microUsd:
   if (!found?.route) throw invalid('That way to pay isn’t offered.');
   const least = minimumOf(found.route);
   if (BigInt(microUsd) < least) {
-    throw invalid(`The least you can add with ${found.route.token} on ${found.route.chainName} is ${dollars.format(Number(least) / 1_000_000)}.`, { reason: 'below-minimum', least: Number(least) });
+    throw invalid(`The least you can add with ${found.route.token} on ${found.route.chainName} is ${dollars(Number(least))}.`, { reason: 'below-minimum', least: Number(least) });
   }
   const opened = await found.p.open(found.route, fromMicroUsd(BigInt(microUsd), found.route.decimals));
   const depositId = id128();
