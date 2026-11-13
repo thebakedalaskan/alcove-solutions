@@ -130,15 +130,9 @@
 
   /* Agents connected to the account. */
   var AGENTS = [
-    { id: 'desk', name: 'Claude Desktop', how: 'Signed in with Alcove', can: 'Read notes · Read calls · Read calendar', last: 'Used today' },
-    { id: 'script', name: 'Weekly digest script', how: 'Token', can: 'Read notes', last: 'Expires 2 Dec' }
-  ];
-  var PERMS = [
-    { id: 'notes-read', t: 'Read notes', on: true },
-    { id: 'notes-write', t: 'Edit notes and follow-ups', on: false },
-    { id: 'meet-read', t: 'Read calls and find people', on: true },
-    { id: 'meet-write', t: 'Schedule and manage calls', on: false },
-    { id: 'cal-read', t: 'Read calendar', on: true }
+    { id: 'c1', name: 'Claude', how: 'Signed in with Alcove', can: 'Read notes · Edit notes · Read calls · Book calls · Read calendar', last: 'Used 4 min ago' },
+    { id: 'c2', name: 'Cursor', how: 'Signed in with Alcove', can: 'Read notes · Read calls', last: 'Used yesterday' },
+    { id: 'c3', name: 'Weekly digest', how: 'Token', can: 'Read notes', last: 'Used Mon' }
   ];
 
   var LEDGER = [
@@ -180,7 +174,7 @@
       p: AH.assign({}, PREFS), ev: events(), perm: first ? 'default' : 'granted', alertsOn: true,
       cal: demo ? 'sample' : first ? 'none' : 'google', calBusy: '',
       drive: first || demo ? 'none' : 'set', driveOpen: false, folder: 1, formats: { notes: true, transcript: true, recording: false }, auto: true, driveBusy: '',
-      agents: first ? [] : AGENTS.slice(), agent: '', perms: PERMS.map(function (x) { return x.on; }), tokenName: 'Weekly digest script',
+      agents: first ? [] : AGENTS.slice(),
       micPerm: first ? 'prompt' : 'granted', camPerm: first ? 'prompt' : 'granted', canPick: true,
       waiting: first || demo ? 0 : 2, stuck: 0, size: '184 MB', trust: 'verified',
       checking: false, lvl: 0, left: 8, playing: false, saved: '', bad: '', open: '', prompt: '', notice: '',
@@ -226,14 +220,9 @@
     driveOn: { to: 'drive', drive: 'set', driveOpen: true, saved: 'drive-auto', hot: 'drive-done' },
     driveShut: { to: 'apps', drive: 'set' },
     driveManage: { to: 'drive', drive: 'set', driveOpen: true },
-    /* Agents. */
-    agentHot: { to: 'apps-agents', hot: 'agent-connect' },
-    agentOpen: { to: 'apps-agents', agent: 'connect', hot: 'agent-copy' },
-    agentCopied: { to: 'apps-agents', agent: 'connect', toast: 'Copied. Paste it into your agent’s connections.' },
-    agentTokenHot: { to: 'apps-agents', agent: 'connect', hot: 'agent-token' },
-    agentToken: { to: 'apps-agents', agent: 'token', hot: 'agent-create' },
-    agentIssued: { to: 'apps-agents', agent: 'issued' },
-    agentNone: { scene: 'first', to: 'apps-agents' },
+    /* Agents: one row, which opens the page they're connected on (data-agents.js has its journeys). */
+    agentsRow: { to: 'apps-agents', hot: 'agents-open' },
+    agentsNone: { scene: 'first', to: 'apps-agents', hot: 'agents-open' },
     /* Google Calendar. */
     calHot: { to: 'apps', hot: 'disconnect' },
     calOff: { to: 'apps', cal: 'none', toast: 'Google Calendar is disconnected.' },
@@ -270,7 +259,7 @@
 
   AH.ST3 = {
     I: I, GROUPS: GROUPS, EVENTS: EVENTS, EVENT_GROUPS: EVENT_GROUPS, LANGS: LANGS, MODELS: MODELS, MICS: MICS, SPEAKERS: SPEAKERS, CAMERAS: CAMERAS,
-    FOLDERS: FOLDERS, FORMATS: FORMATS, JOBS: JOBS, AGENTS: AGENTS, PERMS: PERMS, LEDGER: LEDGER, PEOPLE: PEOPLE, start: start, STEPS: STEPS
+    FOLDERS: FOLDERS, FORMATS: FORMATS, JOBS: JOBS, AGENTS: AGENTS, LEDGER: LEDGER, PEOPLE: PEOPLE, start: start, STEPS: STEPS
   };
 
   /* What staying signed in does for what's waiting. */
@@ -303,11 +292,9 @@
       { step: 'driveFiled', t: 'Notes and Transcript are ticked already. Turn on Export after each call.' },
       { step: 'driveShut', t: 'Click Done. Drive folds back into one line that says where notes go.' }
     ] },
-    { name: 'Connect an agent', frames: [
-      { step: 'agentHot', t: 'Click Connect an agent.' },
-      { step: 'agentOpen', t: 'It opens in place, with Alcove’s address to paste into your agent. It asks you to sign in there.' },
-      { step: 'agentToken', t: 'For a script, click Create a token instead: name it and choose what it can do.' },
-      { step: 'agentIssued', t: 'The token shows once, with Copy. The agent joins the list above.' }
+    { name: 'Open Agents', frames: [
+      { step: 'agentsRow', t: 'Agents is one row: who’s connected, and Open Agents, the page where they’re connected and changed.' },
+      { step: 'agentsNone', t: 'With none yet, it says what agents are for, and Connect an agent opens the same page.' }
     ] },
     { name: 'Change a setting', frames: [
       { step: 'modelHot', t: 'Click the AI model.' },
@@ -331,7 +318,7 @@
     { step: 'jumped', t: 'Notifications: the strip keeps the group in view.' },
     { step: 'whatHot', t: 'The two columns fit beside each event.' },
     { step: 'driveManage', t: 'Google Drive opens in place.' },
-    { step: 'agentOpen', t: 'Connect an agent, with Copy.' },
+    { step: 'agentsRow', t: 'Agents: who’s connected, and Open Agents. On a phone it’s the way there.' },
     { step: 'delOpen', t: 'Delete account, in place.' }
   ];
 })();

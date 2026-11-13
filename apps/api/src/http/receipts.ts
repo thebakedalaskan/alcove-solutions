@@ -17,24 +17,26 @@ import type { HttpRuntime } from './runtime';
  * so a retry changes nothing; and their answer is the whole note, which a receipt kept under someone
  * it was given to would still hold after the organizer deleted it. A link to the notes keeps none
  * either: its answer holds the link's secret, and opening one again changes nothing. Saying whether you're coming to a
- * call is the same: it sets one value, and what comes back is the organizer's call. Someone's own
+ * call is the same, and so is asking to move it: each sets one value, and what comes back is the organizer's call. Someone's own
  * notes, and what they add to the shared notes (from them, or written straight in), keep none either:
  * deleting them must leave no copy of what they said for a day. Deleting the account deletes its receipts, so there is no account left to
  * keep one under. Answering a ring sets an explicit state too, and a receipt's clear method and time
  * would say an account was rung for a day after the ring had gone. Saying a browser closed one of its live streams ends it,
- * which a retry can't do twice, and a receipt would be a row for every page someone closed. A team's invite, and looking at or
- * using one, keep none: their answer or body holds the link's secret, which is kept nowhere but as a hash, and using it
+ * which a retry can't do twice, and a receipt would be a row for every page someone closed. Making an agent's token keeps
+ * none, as its answer is the token. Changing what an agent can do sets it outright, and its answer names the agent, which a
+ * receipt would keep for a day after it was disconnected; disconnecting it keeps none either. A team's invite, and looking at
+ * or using one, keep none: their answer or body holds the link's secret, which is kept nowhere but as a hash, and using it
  * twice is refused anyway. Saying the app is in use (a visit) keeps none either: it takes a license at most once, and a
  * receipt would be a row for every time someone opened Alcove. What a guest can reach of a
  * workspace comes before receipts altogether, so it isn't listed here: see the routes.
  */
 const NO_RECEIPT = [
   /^\/v1\/drive(?:\/.*)?$/,
-  /^\/v1\/agents\/tokens$/, /^\/v1\/agents\/authorization\/[^/]+$/,
+  /^\/v1\/agents\/[^/]+$/, /^\/v1\/agents\/authorization\/[^/]+$/,
   /^\/v1\/calendar\/busy$/,
   /^\/v1\/notes\/search$/, /^\/v1\/notes\/(?:[^/]+\/)?ask$/, /^\/v1\/series\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|series\/ask|translate|notes\/watch)$/,
   /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/, /^\/v1\/live\/calls\/[^/]+\/shares\/[^/]+\/video$/,
-  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines|links)(?:\/[^/]+)?|revisits\/[^/]+|share|rewrite)$/, /^\/v1\/note-links\/claim$/, /^\/v1\/meetings\/[^/]+\/answer$/, /^\/v1\/account$/, /^\/v1\/rings\/[^/]+\/answer$/,
+  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines|links)(?:\/[^/]+)?|revisits\/[^/]+|share|rewrite)$/, /^\/v1\/note-links\/claim$/, /^\/v1\/meetings\/[^/]+\/(?:answer|propose)$/, /^\/v1\/account$/, /^\/v1\/rings\/[^/]+\/answer$/,
   /^\/v1\/notes\/[^/]+\/(?:personal(?:\/[^/]+(?:\/(?:preview|add))?)?|additions(?:\/[^/]+)?)$/,
   /^\/v1\/workspaces\/[^/]+\/(?:documents\/[^/]+\/)?live\/end$/,
   /^\/v1\/team\/(?:invite|peek|join)$/, /^\/v1\/session\/visit$/

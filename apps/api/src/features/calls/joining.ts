@@ -27,7 +27,7 @@ import * as models from '../notes/models';
 import { HOST_GRACE_MS, departed, newGeneration, reconcile } from './lifecycle';
 import { syncBoardSeats } from './room-boards';
 import { tellRoom } from './notifications';
-import { knownUntil, type Viewer } from './participants';
+import { knownUntil, workspaceIn, type Viewer } from './participants';
 import { startNotes } from './recording';
 import { notesBlocked } from '../billing/meter';
 import { appendMls } from './mls-log';
@@ -158,7 +158,8 @@ async function ticketFor(d: Deps, o: Owner, callId: string, who: Pick<Joined, 'i
   const pass = issuePass(d.cfg, { callId, ownerId: o.ownerId, identity, role, name, person });
   const ticket: CallTicket = { callId, serverUrl: d.cfg.LIVEKIT_URL, roomName, identity, role, pass };
   // The role the call has for them (an invited person's, a guest's), as #62's join gave it: what they may see follows it.
-  const viewer: Viewer = { pass: { v: 1, callId, ownerId: o.ownerId, identity, role, name, person, exp: 0 }, organizer: o, session: () => Promise.resolve(who.owner), isOrganizer: role === 'host', isHost: who.hosts, stale: false, inCall: who.hosts || who.inCall === true, role };
+  const { state } = await load(o, d.pool, callId);
+  const viewer: Viewer = { pass: { v: 1, callId, ownerId: o.ownerId, identity, role, name, person, exp: 0 }, organizer: o, session: () => Promise.resolve(who.owner), isOrganizer: role === 'host', isHost: who.hosts, stale: false, inCall: who.hosts || who.inCall === true, role, workspace: workspaceIn(state) };
   return { ticket, state: await view(viewer, d.pool, callId) };
 }
 

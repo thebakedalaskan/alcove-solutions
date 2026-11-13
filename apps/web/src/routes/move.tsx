@@ -3,13 +3,13 @@ import { Avatar, Button, Chip, Dots, Icon, Logo, Notice, useRaisedToasts, useToa
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { LocalMedia } from '~/features/call/media/media';
+import { handOver, mediaAsItWas } from '~/features/call/session/entering';
 import { carried } from '~/features/move/MoveSheet';
 import { thisDevice } from '~/features/move/device';
 import { keepClaim, takeClaim, takeCode } from '~/features/move/stash';
 import { WaysIn, type Auth, type Busy } from '~/features/welcome/WaysIn';
 import { api } from '~/lib/api';
-import { sessions, useLive } from '~/lib/live';
+import { useLive } from '~/lib/live';
 import { log } from '~/lib/log';
 import { useGoogleSignIn, useSignIn } from '~/lib/queries';
 
@@ -109,12 +109,8 @@ function Moving({ move }: { move: CallMoveIn }) {
   useEffect(() => {
     if (!session) return;
     // Nothing opens here: what was off on the other device is off, and the call starts the rest, as it was there.
-    const media = new LocalMedia();
-    if (!m.media.mic) void media.setMic(false);
-    if (!m.media.cam) void media.setCam(false);
-    sessions.media = media;
     const where = session.getSnapshot().code;
-    sessions.call = { code: where, session };
+    handOver(where, session, mediaAsItWas({ mic: m.media.mic, cam: m.media.cam }));
     void navigate({ to: '/call/$code', params: { code: where }, replace: true });
   }, [session, m.media.mic, m.media.cam, navigate]);
 

@@ -71,9 +71,9 @@ export const OnATeamWithoutALicense: PageStory = {
   name: '16.19 On a team without a license',
   ...page('/home', 'team-member-unlicensed'),
   play: async ({ userEvent, step }) => {
-    await step('None was left when you opened Alcove. The side panel says so in caution, and that Priya has been told, over your own plan: Free, with the way to Team', async () => {
+    await step('None was left when you opened Alcove. The side panel says so in caution, under your notes left where the meter was, and the row opens Team, which says Priya has been told', async () => {
       await within(await side()).findByText('No team license yet', {}, LATER);
-      await within(await side()).findByRole('link', { name: /^Free plan\s*Team/ }, SOON);
+      await within(await side()).findByRole('link', { name: /No team license yet/ }, SOON);
     });
     await step('Open Settings at your plan. It says it once, at the top, over Free', async () => {
       await toPlan((el) => userEvent.click(el));

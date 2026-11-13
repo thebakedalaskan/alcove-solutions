@@ -1,12 +1,14 @@
-import { DocAwarenessBodySchema, ItemRenameSchema, LIVE_STREAM_HEADER, LiveStreamNameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PersonIdsBodySchema, PresenceBodySchema, MAX_MEDIA_PREVIEW_BYTES, DocAskBodySchema, BoardSortBodySchema, PresenterFrameNoteBodySchema } from '@alcove/api';
+import { DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MAX_PREVIEWS, PreviewItemsSchema, LIVE_STREAM_HEADER, LiveStreamNameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PersonIdsBodySchema, PresenceBodySchema, MAX_MEDIA_PREVIEW_BYTES, DocAskBodySchema, BoardSortBodySchema, PresenterFrameNoteBodySchema } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { bodyLimit } from 'hono/body-limit';
 import { stream } from 'hono/streaming';
 import { z } from 'zod';
+import { CALL_PASS_HEADER } from '../../callPass';
 import { unb64u } from '../../crypto';
 import { TooLargeError, ValidationError } from '../../errors';
 import * as access from './access';
+import * as drive from './drive';
 import * as media from './media';
 import * as presenterNotes from './presenter-notes';
 import * as workspaceDocuments from './documents';
@@ -20,8 +22,8 @@ import type { HttpRuntime } from '../../http/runtime';
 
 export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   const { d } = runtime;
-  const { liveLimiter, presenceLimiter, mentionLimiter, idsLimiter, documentLiveLimiter, updateLimiter, updateBytesLimiter, awarenessLimiter, versionLimiter, treeLimiter, presenterLimiter, askLimiter, sortLimiter, searchLimiter, pieceLimiter, mediaLimiter } = runtime.limits;
-  const { readerOf, credentials, COOKIE } = runtime.context;
+  const { liveLimiter, presenceLimiter, mentionLimiter, idsLimiter, documentLiveLimiter, updateLimiter, updateBytesLimiter, awarenessLimiter, versionLimiter, treeLimiter, presenterLimiter, askLimiter, sortLimiter, searchLimiter, previewLimiter, pieceLimiter, mediaLimiter } = runtime.limits;
+  const { readerOf, credentials, optionalOwner, COOKIE } = runtime.context;
   /** What the browser calls the stream it's opening, for it to say when it closes it: none from a browser that doesn't. */
   const streamName = (c: Context<Env>): string | null => LiveStreamNameSchema.safeParse(c.req.header(LIVE_STREAM_HEADER)).data ?? null;
 
@@ -184,6 +186,20 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
     return stream(c, run);
   });
 
+  /*
+   * What documents say at the top, for their cards in the Drive: read as they are, for whoever can open each, and kept
+   * nowhere, so nothing caches the answer either. The IDs are in the query, which no log line holds.
+   */
+  app.get('/v1/workspaces/:id/previews', async (c) => {
+    const r = await readerOf(c);
+    const asked = PreviewItemsSchema.safeParse(c.req.query('items') ?? '');
+    if (!asked.success) throw new ValidationError(`Ask for between 1 and ${MAX_PREVIEWS} documents, by their IDs.`, { context: { workspaceId: c.req.param('id') } });
+    previewLimiter(access.limitKey(r), 'previews', asked.data.length);
+    const found = await drive.previews(d, r, c.req.param('id'), asked.data);
+    c.header('cache-control', 'no-store');
+    return c.json(found);
+  });
+
   app.get('/v1/workspaces/:id/items/:item', async (c) => c.json(await workspaces.item(d, await readerOf(c), c.req.param('id'), c.req.param('item'))));
 
   app.patch('/v1/workspaces/:id/items/:item', async (c) => {
@@ -198,6 +214,44 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
     treeLimiter(access.limitKey(r), 'workspace change');
     await workspaces.restoreItem(d, r, c.req.param('id'), c.req.param('item'));
     return c.json({ restored: true });
+  });
+
+  /*
+   * Changing the tree for a guest in a call, who has only the call's pass: the workspace the call uses opens to them to edit.
+   * Anyone signed in goes on to the same routes in routes.ts, which take the pass too and keep a receipt; a guest has no account
+   * to keep one under, and the browser never sends one operation twice.
+   */
+  const guestInCall = async (c: Context<Env>): Promise<boolean> => c.req.header(CALL_PASS_HEADER) !== undefined && (await optionalOwner(c)) === undefined;
+  app.use('/v1/workspaces/:id/items', capped(32 * 1024));
+
+  app.post('/v1/workspaces/:id/items', async (c, next) => {
+    if (!(await guestInCall(c))) { await next(); return; }
+    const r = await readerOf(c);
+    treeLimiter(access.limitKey(r), 'workspace change');
+    return c.json(await workspaces.createItem(d, r, c.req.param('id'), await body(c, ItemInputSchema)));
+  });
+
+  app.post('/v1/workspaces/:id/items/:item/move', async (c, next) => {
+    if (!(await guestInCall(c))) { await next(); return; }
+    const r = await readerOf(c);
+    treeLimiter(access.limitKey(r), 'workspace change');
+    await workspaces.moveItem(d, r, c.req.param('id'), c.req.param('item'), await body(c, ItemPlaceSchema));
+    return c.json({ moved: true });
+  });
+
+  app.post('/v1/workspaces/:id/items/:item/duplicate', async (c, next) => {
+    if (!(await guestInCall(c))) { await next(); return; }
+    const r = await readerOf(c);
+    treeLimiter(access.limitKey(r), 'workspace change');
+    return c.json(await workspaces.duplicateItem(d, r, c.req.param('id'), c.req.param('item')));
+  });
+
+  app.post('/v1/workspaces/:id/items/:item/trash', async (c, next) => {
+    if (!(await guestInCall(c))) { await next(); return; }
+    const r = await readerOf(c);
+    treeLimiter(access.limitKey(r), 'workspace change');
+    await workspaces.trashItem(d, r, c.req.param('id'), c.req.param('item'));
+    return c.json({ trashed: true });
   });
 
   /*

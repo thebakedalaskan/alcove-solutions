@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>After the call</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="call-tokens.css">
+<link rel="stylesheet" href="call.css">
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="after.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="icons.js"></script>
+<script src="after.js"></script>
+<script src="cove.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="cv id light">
+<header class="id-head">
+<h1>After the call</h1>
+<p class="id-lede">When a call is over for you, you get a page of its own on the call’s night: what happened, who was in it, and one clear next step. No window over a frozen call.</p>
+<p class="id-today"><b>Today</b> Ending opens Call ended over the frozen call, with someone’s picture blurred behind it. Anyone who leaves lands on the join page, with their camera on again.</p>
+</header>
+
+<div class="id-grid">
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+<article class="id-row">
+<div class="id-th"><div class="fl-in"><dc-import name="Over" state="{{r.state}}" hint-size="1440px,900px"></dc-import></div></div>
+<div class="id-t">
+<span class="id-n">{{r.n}}</span>
+<h2>{{r.title}}</h2>
+<p class="id-p">{{r.says}}</p>
+<div class="id-acts"><sc-for list="{{r.acts}}" as="a" hint-placeholder-count="2"><span class="{{a.cls}}">{{a.t}}</span></sc-for></div>
+</div>
+</article>
+</sc-for>
+</div>
+
+<section class="id-also">
+<h2>How it behaves</h2>
+<ul>
+<sc-for list="{{also}}" as="a" hint-placeholder-count="6"><li><b>{{a.t}}</b> {{a.p}}</li></sc-for>
+</ul>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1680,"height":1500}}'>
+/* The idea on one board: every way a call is over for you, what its page says, and the buttons, the first one filled. */
+class Component extends DCLogic {
+  renderVals() {
+    var CE = window.CE;
+    var acts = function (ks) { return ks.map(function (k, i) { return { t: CE.ACTS[k].t, cls: 'id-b' + (i === 0 ? ' is-press' : '') }; }); };
+    return {
+      rows: [
+        { n: '1', state: 'endWriting', title: 'You end it for everyone', says: 'It has ended, 20 min with Priya, Kofi and Maya, and the notes are being written. When they’re written, the panel shows their first lines.', acts: acts(['notes', 'home']) },
+        { n: '2', state: 'endedBy', title: 'Whoever hosts ends it', says: 'The same page, saying Priya ended it for everyone. Everyone invited gets the notes, you included.', acts: acts(['notes', 'home']) },
+        { n: '3', state: 'left', title: 'You leave, and it goes on', says: 'You left, who’s still in it (whoever’s talking has the ring), and how long it’s been going. Notes come when it ends.', acts: acts(['rejoin', 'home']) },
+        { n: '4', state: 'leftHost', title: 'You host, and leave it with someone', says: 'Kofi is hosting until you’re back. Rejoin, and you host again.', acts: acts(['rejoin', 'home']) },
+        { n: '5', state: 'noNotes', title: 'A call without notes', says: 'It has ended, and no notes were taken.', acts: acts(['home']) },
+        { n: '6', state: 'guestLeft', title: 'A guest', says: 'You left, and who’s still in it, with Rejoin. Once it has ended, that Priya can share the notes, and nothing to press.', acts: acts(['rejoin']) }
+      ],
+      also: [
+        { t: 'It keeps up.', p: 'Notes being written turn into their first lines when they’re ready, and Open the notes becomes Read the notes. A call you left that ends while you’re here turns into the ended page.' },
+        { t: 'It waits for you.', p: 'Nothing moves on by itself: the page stays until you choose. Home’s line for a call that’s still going has Rejoin too.' },
+        { t: 'Rejoin goes straight back in,', p: 'with your microphone and camera as they were. The join screen, and its camera, is for joining the first time.' },
+        { t: 'Only whoever hosts is asked.', p: 'Leave’s question opens over Leave, as Close’s does: End for everyone, or Leave, Kofi hosts. Anyone else is out at once.' },
+        { t: 'Alone in the call,', p: 'Leave ends it at once, with nobody to hand it to, and the page says it has ended. This is my call; today it asks first.' },
+        { t: 'On its own night.', p: 'The welcome page’s cove after dark, in both themes, like the join page: headlands either side, stars and a moon, the logo once, and what the call runs on at the top right.' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

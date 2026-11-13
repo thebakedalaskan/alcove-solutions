@@ -1,10 +1,11 @@
-import { AgentAuthorizeInputSchema, AgentClientInputSchema, AgentDecisionInputSchema, AgentRevokeBodySchema, AgentTokenBodySchema, AgentTokenInputSchema } from '@alcove/api';
+import { AgentActivityQuerySchema, AgentAuthorizeInputSchema, AgentClientInputSchema, AgentDecisionInputSchema, AgentRevokeBodySchema, AgentTokenBodySchema, AgentTokenInputSchema, AgentUpdateInputSchema } from '@alcove/api';
 import { Hono, type Context } from 'hono';
-import { ZodError } from 'zod';
+import { ZodError, z } from 'zod';
 import { log } from '../../log';
 import { body, capped } from '../../http/body';
 import { clientAddress, type Env } from '../../http/context';
 import type { HttpRuntime } from '../../http/runtime';
+import * as activity from './activity';
 import * as agents from './service';
 import * as agentOAuth from './oauth';
 import { handleMcp } from './mcp/server';
@@ -82,7 +83,7 @@ export function registerAgentPublicRoutes(app: Hono<Env>, runtime: HttpRuntime):
 
 /** Managing a delegation requires the browser account session. Credential answers never become receipts. */
 export function registerAgentRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
-  const { limiter } = runtime.limits;
+  const { limiter, agentActivityLimiter } = runtime.limits;
 
   app.get('/v1/agents', async (c) => { c.header('cache-control', 'no-store'); return c.json(await agents.list(c.get('owner'))); });
 
@@ -92,6 +93,18 @@ export function registerAgentRoutes(app: Hono<Env>, runtime: HttpRuntime): void 
     limiter(c.get('owner').ownerId, 'agent connection');
     c.header('cache-control', 'no-store'); c.header('pragma', 'no-cache');
     return c.json(await agents.createToken(c.get('owner'), await body(c, AgentTokenInputSchema)));
+  });
+
+  app.get('/v1/agents/activity', async (c) => {
+    agentActivityLimiter(c.get('owner').ownerId, 'agent activity');
+    c.header('cache-control', 'no-store');
+    const limit = c.req.query('limit');
+    return c.json(await activity.list(c.get('owner'), AgentActivityQuerySchema.parse({ before: c.req.query('before'), limit: limit === undefined ? undefined : z.coerce.number().parse(limit) })));
+  });
+
+  app.patch('/v1/agents/:id', async (c) => {
+    limiter(c.get('owner').ownerId, 'agent change');
+    return c.json(await agents.update(c.get('owner'), c.req.param('id'), await body(c, AgentUpdateInputSchema)));
   });
 
   app.delete('/v1/agents/:id', async (c) => { await agents.revoke(c.get('owner'), c.req.param('id')); return c.json({ revoked: true }); });

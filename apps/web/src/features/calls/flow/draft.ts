@@ -1,6 +1,6 @@
 /*
- * A call being scheduled, as it's put together step by step. It lives while the modal is open: Back and forth keep it,
- * closing drops it, and reopening starts clean.
+ * A call being scheduled, as it's put together in the scheduler on the Calls page. It lives while the scheduler is open:
+ * closing drops it, and opening it again starts clean.
  */
 import { DEFAULT_NOTES_CHOICES, type Document, type NotesChoices, type NotesSetting, type Person, type Preferences, type RepeatInput, type RepeatRule } from '@alcove/api';
 import { byEmail, callName, someNames } from '~/lib/people';
@@ -26,8 +26,8 @@ export interface Repeating {
   kind: RepeatKind;
   /** The other days picked for `days`, 0 is Sunday. The first call's own day always counts, whichever it turns out to be. */
   days: number[];
-  /** The last day a call can fall on (`YYYY-MM-DD`), once someone has said. Until then the repeat runs for a few calls. */
-  until: string | null;
+  /** How many calls it runs for, once someone has said. Until then it runs for a few. */
+  calls: number | null;
 }
 
 export interface Draft extends Guests {
@@ -45,17 +45,11 @@ export interface Draft extends Guests {
   /** Set for a big call; null means it was never touched, and the size of the call decides. */
   joinMuted: boolean | null;
   documents: Document[];
-  /**
-   * The call's workspace, where its notes and transcript go: none until someone picks one in the call (the default), a new one
-   * made as it's scheduled, or one of yours.
-   */
-  space: SpaceChoice;
+  /** The call's home, where its notes and transcript go: one of your workspaces, or null for a new one made for the call. */
+  home: { id: string; name: string } | null;
 }
 
-/** Where a call's notes go, as it's scheduled. */
-export type SpaceChoice = { kind: 'none' } | { kind: 'new' } | { kind: 'pick'; id: string; name: string };
-
-export const NOT_REPEATING: Repeating = { kind: 'none', days: [], until: null };
+export const NOT_REPEATING: Repeating = { kind: 'none', days: [], calls: null };
 /** How long a call runs until someone says otherwise. */
 const DEFAULT_MINUTES = 45;
 /** How many calls a repeat runs for until someone sets an end date. */
@@ -66,7 +60,7 @@ export const BIG_CALL = 25;
 export function newDraft(prefs: Preferences | undefined, preset: { people: readonly Person[]; name?: string | undefined; documents?: readonly Document[] | undefined }): Draft {
   return {
     tokens: tokensFor(preset.people, preset.name), unread: [], at: null, minutes: DEFAULT_MINUTES, repeat: NOT_REPEATING, offer: null, title: '', titled: false,
-    notes: prefs?.notesDefault ?? 'on', choices: DEFAULT_NOTES_CHOICES, joinMuted: null, documents: [...(preset.documents ?? [])], space: { kind: 'none' }
+    notes: prefs?.notesDefault ?? 'on', choices: DEFAULT_NOTES_CHOICES, joinMuted: null, documents: [...(preset.documents ?? [])], home: null
   };
 }
 
@@ -139,13 +133,12 @@ export function ruleOf(r: Repeating, at: Date, zone = timeZone()): RepeatRule | 
   }
 }
 
-/** Every call of a repeat, and the day it ends: as far as it was set to run, or the last of the calls it can have. */
+/** Every call of a repeat, and the day it ends: as many calls as it was set to run for, at most the most it can have. */
 export function repeatInput(r: Repeating, at: Date, zone = timeZone()): RepeatInput | null {
   const rule = ruleOf(r, at, zone);
   if (!rule) return null;
-  const set = r.until && r.until >= localDay(at, zone) ? r.until : null;
-  const until = set ?? untilForCalls(rule, at, zone, rule.every === 'week' ? CALLS_TO_START_WITH * rule.days.length : CALLS_TO_START_WITH);
-  const occurrences = expandRepeat(rule, at, until, zone);
+  const calls = r.calls ?? (rule.every === 'week' ? CALLS_TO_START_WITH * rule.days.length : CALLS_TO_START_WITH);
+  const occurrences = expandRepeat(rule, at, untilForCalls(rule, at, zone, calls), zone).slice(0, calls);
   return { rule, until: localDay(new Date(occurrences.at(-1) ?? at), zone), timeZone: zone, occurrences };
 }
 

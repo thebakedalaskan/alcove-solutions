@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Your menu, top right</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="water.css">
+<link rel="stylesheet" href="page-settings.css">
+<link rel="stylesheet" href="account.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="water.js"></script>
+<script src="account.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="{{rootCls}}" data-mode="{{mode}}" data-glass="false" data-take="page" data-art="sea" data-soon="{{soonFlag}}" style="{{shellStyle}}" onKeyDown="{{a.onKey}}" ref="{{rootRef}}">
+<div class="sh-frame" ref="{{scrollRef}}">
+<dc-import name="Side" s="{{side}}" hint-size="256px,100%"></dc-import>
+<main class="sh-panel">
+<div class="ah-scroll" ref="{{scrollRef}}">
+
+<!-- Home, as it is today, with your menu at its top right. -->
+<sc-if value="{{a.onHome}}" hint-placeholder-val="{{true}}">
+<div class="hm-stage">
+<dc-import name="SkyArt" a="{{pageData}}" hint-size="100%,100%"></dc-import>
+<dc-import name="Visitors" moment="home" mode="{{mode}}" hint-size="100%,100%"></dc-import>
+<div class="sh-bar">
+<span class="brand"><svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="hma"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><linearGradient id="hms" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient></defs><g clip-path="url(#hma)"><rect width="22" height="26" fill="url(#hms)"></rect><circle cx="11" cy="19.2" r="4.4" fill="#FFD58A"></circle><rect y="19.2" width="22" height="7" fill="#231C5E"></rect></g></svg>alcove</span>
+<div class="top-end"><button type="button" class="find" aria-label="Search or ask" onClick="{{openAsk}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg></button><button type="button" class="find" aria-label="Start a call" onClick="{{go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg></button><span class="am-anchor"><button type="button" class="am-me{{a.me.cls}}" aria-label="{{a.me.label}}" title="{{a.me.title}}" aria-haspopup="menu" aria-expanded="{{a.me.expanded}}" onClick="{{a.me.toggle}}"><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import><sc-if value="{{a.me.paused}}" hint-placeholder-val="{{false}}"><span class="am-zz" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.bellOff}}"></path></svg></span></sc-if></button></span></div>
+</div>
+<div class="sh-in">
+<header class="pn-top">
+<h1 class="pn-date">{{date}}</h1>
+<div class="top-end">
+<button type="button" class="find" onClick="{{openAsk}}" aria-label="Search or ask"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg><span class="w">Search or ask</span><span class="k">⌘K</span></button>
+<span class="am-anchor">
+<sc-if value="{{a.open}}" hint-placeholder-val="{{false}}"><button type="button" class="am-catch" aria-label="Close your menu" tabindex="-1" onClick="{{a.close}}"></button></sc-if>
+<button type="button" class="am-me{{a.me.cls}}" aria-label="{{a.me.label}}" title="{{a.me.title}}" aria-haspopup="menu" aria-expanded="{{a.me.expanded}}" onClick="{{a.me.toggle}}"><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import><sc-if value="{{a.me.paused}}" hint-placeholder-val="{{false}}"><span class="am-zz" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.bellOff}}"></path></svg></span></sc-if></button>
+<sc-if value="{{a.open}}" hint-placeholder-val="{{false}}">
+<div class="am-pop"><i class="am-caret" aria-hidden="true"></i><dc-import name="Menu" m="{{a.menu}}" hint-size="312px,380px"></dc-import></div>
+</sc-if>
+</span>
+</div>
+</header>
+
+<div class="hm-grid">
+<section class="st" aria-labelledby="st-h">
+<sc-if value="{{soon}}" hint-placeholder-val="{{false}}">
+<div class="jn"><dc-import name="Faces" who="priya,kofi" size="26" max="3" ring="var(--surface)" hint-size="44px,28px"></dc-import><span class="jn-t"><b class="clamp1">Design sync</b><small>In 4 minutes</small></span><button type="button" class="b b-press{{hotJoin}}" onClick="{{join}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.video}}"></path></svg>Join<span class="k">J</span></button></div>
+</sc-if>
+<h2 class="st-t" id="st-h">{{startTitle}}</h2>
+<div class="st-a">
+<button type="button" class="b {{goCls}} b-lg st-go" onClick="{{go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.video}}"></path></svg>Start now</button>
+<button type="button" class="b b-sky b-lg" onClick="{{later}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.cal}}"></path></svg>Schedule</button>
+</div>
+</section>
+
+<section class="hw" aria-label="What’s yours">
+
+<!-- For you: To answer, and your Follow-ups. -->
+<sc-if value="{{forYou.shown}}" hint-placeholder-val="{{true}}">
+<section class="wg wg-for" aria-labelledby="wg-for">
+<header class="wg-h"><span class="wg-ic" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.inbox}}"></path></svg></span><h2 id="wg-for">For you</h2>
+<div class="wg-tabs" role="tablist" aria-label="For you">
+<button type="button" class="wg-tab is-ask{{forYou.askTab.cls}}{{forYou.askTab.hot}}" role="tab" aria-selected="{{forYou.askTab.sel}}" onClick="{{forYou.askTab.go}}">{{forYou.askTab.label}}<sc-if value="{{forYou.askTab.hasN}}" hint-placeholder-val="{{true}}"><span class="n">{{forYou.askTab.n}}</span></sc-if></button>
+<button type="button" class="wg-tab is-todo{{forYou.todoTab.cls}}{{forYou.todoTab.hot}}" role="tab" aria-selected="{{forYou.todoTab.sel}}" onClick="{{forYou.todoTab.go}}">{{forYou.todoTab.label}}<sc-if value="{{forYou.todoTab.hasN}}" hint-placeholder-val="{{true}}"><span class="n">{{forYou.todoTab.n}}</span></sc-if></button>
+</div>
+</header>
+<div class="wg-body">
+<sc-for list="{{forYou.asks}}" as="r" hint-placeholder-count="3">
+<div class="wg-r{{r.cls}}">
+<span class="wg-k" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{r.icon}}"></path></svg></span>
+<p class="wg-t clamp2" title="From {{r.from}}">{{r.text}}</p>
+<span class="wg-f" title="From {{r.from}}"><sc-if value="{{r.hasFaces}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{r.faces}}" size="20" max="3" ring="var(--surface)" hint-size="44px,22px"></dc-import></sc-if><sc-if value="{{r.room}}" hint-placeholder-val="{{false}}"><span class="wg-room" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.mic}}"></path></svg></span></sc-if></span>
+<span class="wg-a">
+<sc-if value="{{r.open}}" hint-placeholder-val="{{true}}"><button type="button" class="wg-yes{{r.hotYes}}" onClick="{{r.goYes}}">{{r.yes}}</button><sc-if value="{{r.canNo}}" hint-placeholder-val="{{true}}"><button type="button" class="wg-no{{r.hotNo}}" aria-label="{{r.no}}" title="{{r.no}}" onClick="{{r.goNo}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button></sc-if><sc-if value="{{r.shared}}" hint-placeholder-val="{{false}}"><span class="wg-no" aria-hidden="true"></span></sc-if></sc-if>
+<sc-if value="{{r.answered}}" hint-placeholder-val="{{false}}"><span class="wg-did" role="status"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg>{{r.done}}</span><button type="button" class="wg-undo" onClick="{{r.undo}}">Undo</button></sc-if>
+</span>
+</div>
+</sc-for>
+<sc-for list="{{forYou.todos}}" as="t" hint-placeholder-count="3">
+<div class="wg-r is-todo{{t.cls}}">
+<button type="button" class="wg-ck{{t.hotTick}}" role="checkbox" aria-checked="{{t.onAria}}" aria-label="Done: {{t.text}}" onClick="{{t.tick}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></button>
+<p class="wg-t clamp1">{{t.text}}</p>
+<span class="wg-src clamp1">{{t.from}}</span>
+<span class="wg-due{{t.dueCls}}">{{t.due}}</span>
+</div>
+</sc-for>
+</div>
+<sc-if value="{{forYou.hasMore}}" hint-placeholder-val="{{false}}"><footer class="wg-foot"><button type="button" class="wg-link" onClick="{{forYou.showMore}}">{{forYou.more}}</button></footer></sc-if>
+</section>
+</sc-if>
+
+<!-- Upcoming: a calendar widget. -->
+<section class="wg wg-up" aria-labelledby="wg-up">
+<header class="wg-h"><span class="wg-ic" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.cal}}"></path></svg></span><h2 id="wg-up">Upcoming</h2><span class="aside"><button type="button" class="wg-dots" aria-label="Calendar settings" title="Calendar settings"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.more}}"></path></svg></button></span></header>
+<div class="wg-body">
+<sc-for list="{{upcoming.days}}" as="d" hint-placeholder-count="2">
+<div class="up-day{{d.cls}}">
+<div class="up-d"><small>{{d.word}}</small><sc-if value="{{d.hasNum}}" hint-placeholder-val="{{true}}"><b>{{d.num}}</b></sc-if></div>
+<div class="up-list">
+<sc-for list="{{d.rows}}" as="e" hint-placeholder-count="1">
+<div class="up-e{{e.cls}}" style="{{e.delay}}">
+<button type="button" class="up-b" onClick="{{e.go}}"><span class="up-tm">{{e.timeText}}</span><span class="up-t"><b class="clamp1">{{e.title}}</b><span class="up-w"><sc-if value="{{e.isCal}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-label="On Google Calendar"><path d="{{I.cal}}"></path></svg></sc-if><sc-if value="{{e.picking}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.clock}}"></path></svg>Lena is picking a time</sc-if><sc-if value="{{e.hasFaces}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{e.faces}}" size="16" max="3" ring="var(--surface)" hint-size="34px,18px"></dc-import></sc-if></span></span></button>
+<span class="up-x">
+<sc-if value="{{e.soonRow}}" hint-placeholder-val="{{false}}"><span class="up-soon">In 4 min</span></sc-if>
+<sc-if value="{{e.answer}}" hint-placeholder-val="{{false}}"><span class="up-answer">Answer</span></sc-if>
+<sc-if value="{{e.canMove}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-line b-xs{{e.hotMove}}" title="The meeting gets an Alcove link, and Google tells everyone on it" onClick="{{e.move}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.video}}"></path></svg>Use Alcove</button></sc-if>
+<sc-if value="{{e.movedNow}}" hint-placeholder-val="{{false}}"><span class="up-moved"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg>On Alcove</span></sc-if>
+</span>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-for>
+</div>
+<sc-if value="{{upcoming.hasMore}}" hint-placeholder-val="{{false}}"><footer class="wg-foot"><button type="button" class="wg-link" onClick="{{upcoming.showMore}}">{{upcoming.more}}</button></footer></sc-if>
+</section>
+
+<!-- Recent notes: a row of cards with covers. -->
+<section class="nc" aria-labelledby="nc-h">
+<header class="nc-h"><h2 id="nc-h"><span class="wg-ic" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.notes}}"></path></svg></span>Recent notes</h2><button type="button" class="wg-link" onClick="{{goNotes}}">View all<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></button></header>
+<div class="nc-row">
+<sc-for list="{{notes.cards}}" as="n" hint-placeholder-count="4">
+<button type="button" class="nc-c{{n.cls}}{{n.hotCls}}" onClick="{{n.go}}">
+<span class="nc-cv" style="{{n.cover}}" aria-hidden="true"><i class="s"></i><i class="w"></i><i class="g"></i><i class="g b"></i></span>
+<span class="nc-fc"><sc-if value="{{n.hasFaces}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{n.face}}" size="28" max="2" ring="var(--surface)" hint-size="50px,31px"></dc-import></sc-if><sc-if value="{{n.room}}" hint-placeholder-val="{{false}}"><span class="nc-room"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.mic}}"></path></svg></span></sc-if></span>
+<span class="nc-b"><b class="clamp2">{{n.title}}</b><small>{{n.when}}</small></span>
+</button>
+</sc-for>
+</div>
+</section>
+</section>
+</div>
+</div>
+</div>
+</sc-if>
+
+<!-- Settings, where the menu's Settings leads: the app's page as it is, in brief. -->
+<sc-if value="{{a.onSettings}}" hint-placeholder-val="{{false}}">
+<div class="pg-stage">
+<dc-import name="Scene" a="{{setScene}}" hint-size="100%,100%"></dc-import>
+<div class="st2-page"></div>
+<div class="sh-bar">
+<span class="brand"><svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="amsa"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><linearGradient id="amss" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient></defs><g clip-path="url(#amsa)"><rect width="22" height="26" fill="url(#amss)"></rect><circle cx="11" cy="19.2" r="4.4" fill="#FFD58A"></circle><rect y="19.2" width="22" height="7" fill="#231C5E"></rect></g></svg>alcove</span>
+<div class="top-end"><button type="button" class="find" aria-label="Search or ask" onClick="{{openAsk}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg></button><button type="button" class="find" aria-label="Start a call" onClick="{{go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg></button></div>
+</div>
+<div class="pg-in">
+<header class="st2-band">
+<div class="st2-me">
+<dc-import name="Faces" who="art" size="64" hint-size="64px,69px"></dc-import>
+<div class="st2-who"><h1 class="st2-name clamp1">{{a.who.name}}</h1><p class="st2-mail clamp1">{{a.who.email}}</p></div>
+<span class="st2-glow" aria-hidden="true"><i></i><i></i><i></i></span>
+</div>
+<div class="st2-end">
+<div class="top-end">
+<button type="button" class="find" onClick="{{openAsk}}" aria-label="Search or ask"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg><span class="w">Search or ask</span><span class="k">⌘K</span></button>
+</div>
+<div class="st2-acts">
+<button type="button" class="b b-quiet b-sm" onClick="{{a.menu.tour.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.compass}}"></path></svg>Take the tour</button>
+<button type="button" class="b b-quiet b-sm" onClick="{{a.menu.out.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.out}}"></path></svg>Sign out</button>
+</div>
+</div>
+</header>
+<div class="st2-body">
+<nav class="st2-idx" aria-label="Settings">
+<ol>
+<sc-for list="{{setIdx}}" as="x" hint-placeholder-count="7"><li><button type="button" class="st2-ix{{x.cls}}" aria-current="{{x.current}}">{{x.t}}</button></li></sc-for>
+<i class="st2-mark" style="--i: 0" aria-hidden="true"></i>
+</ol>
+</nav>
+<div class="st2-parts">
+<nav class="st2-strip" aria-label="Settings"><sc-for list="{{setIdx}}" as="x" hint-placeholder-count="7"><button type="button" class="st2-sx{{x.cls}}" aria-current="{{x.current}}">{{x.t}}</button></sc-for></nav>
+<section class="st2-grp" aria-label="You">
+<div class="st2-gh"><h2>You</h2></div>
+<div class="st2-blk">
+<div class="st2-pn">
+<div class="st2-r is-still"><div class="st2-l"><p class="st2-t">Name and photo</p><p class="st2-h">From your Google sign-in.</p></div><div class="st2-c"><div class="st2-ctl"><button type="button" class="st2-go is-ext">Google account<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.external}}"></path></svg></button></div></div></div>
+<div class="st2-r"><div class="st2-l"><p class="st2-t">Company</p></div><div class="st2-c"><div class="st2-ctl"><button type="button" class="st2-go">Vandelay Industries<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></button></div></div></div>
+<div class="st2-r is-still"><div class="st2-l"><p class="st2-t">Time zone</p><p class="st2-h">From this computer.</p></div><div class="st2-c"><div class="st2-ctl"><span class="st2-f"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.globe}}"></path></svg>London</span></div></div></div>
+</div>
+</div>
+<div class="st2-blk">
+<p class="st2-bh"><span>Appearance</span><span class="st2-tag"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.laptop}}"></path></svg>This browser</span></p>
+<div class="st2-pn">
+<div class="st2-r is-wide is-still"><div class="st2-l"><p class="st2-t">Theme</p></div><div class="st2-c"><div class="st2-ctl is-fill">
+<div class="st2-eves" role="group" aria-label="Appearance">
+<sc-for list="{{a.menu.theme.list}}" as="t" hint-placeholder-count="3">
+<button type="button" class="st2-eve{{t.cls}}" aria-pressed="{{t.onA}}" onClick="{{t.go}}">
+<span class="st2-win" aria-hidden="true">
+<span class="st2-art" style="{{t.a}}"><i class="sky"></i><i class="sea"></i><i class="glow"></i><span class="st2-up"><i class="sun"></i></span><i class="rim"></i><i class="g g1"></i><i class="g g2"></i><i class="g g3"></i><sc-if value="{{t.stars}}" hint-placeholder-val="{{false}}"><i class="star s1"></i><i class="star s2"></i><i class="star s3"></i></sc-if><sc-if value="{{t.clouds}}" hint-placeholder-val="{{false}}"><i class="cloud c1"></i><i class="cloud c2"></i></sc-if></span>
+<sc-if value="{{t.hasB}}" hint-placeholder-val="{{false}}"><span class="st2-art is-b" style="{{t.b}}"><i class="sky"></i><i class="sea"></i><i class="glow"></i><span class="st2-up"><i class="sun"></i></span><i class="rim"></i><i class="g g1"></i><i class="g g2"></i><i class="g g3"></i><i class="star s2"></i><i class="star s3"></i></span></sc-if>
+</span>
+{{t.t}}
+</button>
+</sc-for>
+</div>
+</div></div></div>
+</div>
+</div>
+</section>
+<section class="st2-grp" aria-label="Calls and notes">
+<div class="st2-gh"><h2>Calls and notes</h2></div>
+<div class="st2-blk">
+<div class="st2-pn">
+<div class="st2-r"><div class="st2-l"><p class="st2-t">Notes for new calls</p><p class="st2-h">Everyone invited gets them. You can change it for each call.</p></div><div class="st2-c"><div class="st2-ctl"><span class="sw is-on" aria-hidden="true"></span></div></div></div>
+</div>
+</div>
+</section>
+</div>
+</div>
+</div>
+</div>
+</sc-if>
+
+</div>
+</main>
+</div>
+<nav class="phone-tabs" aria-label="Main">
+<sc-for list="{{tabs}}" as="n" hint-placeholder-count="5"><button type="button" class="phone-tab{{n.cls}}" aria-current="{{n.current}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.icon}}"></path></svg>{{n.label}}</button></sc-for>
+</nav>
+
+<!-- On a phone, your menu is a sheet. -->
+<sc-if value="{{a.open}}" hint-placeholder-val="{{false}}">
+<div class="am-sheet">
+<button type="button" class="am-scrim" aria-label="Close your menu" tabindex="-1" onClick="{{a.close}}"></button>
+<div class="am-sheet-in"><i class="am-grab" aria-hidden="true"></i><dc-import name="Menu" m="{{a.menu}}" hint-size="100%,420px"></dc-import></div>
+</div>
+</sc-if>
+
+<!-- Signed out: the welcome page, night in both themes. -->
+<sc-if value="{{a.onWelcome}}" hint-placeholder-val="{{false}}">
+<div class="st2-gone">
+<div class="st2-gone-in">
+<span class="brand"><svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="amga"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><linearGradient id="amgs" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient></defs><g clip-path="url(#amga)"><rect width="22" height="26" fill="url(#amgs)"></rect><circle cx="11" cy="19.2" r="4.4" fill="#FFD58A"></circle><rect y="19.2" width="22" height="7" fill="#231C5E"></rect></g></svg>alcove</span>
+<p>You’re signed out.</p>
+<button type="button" class="b b-press" onClick="{{a.signIn}}">Sign in again</button>
+</div>
+</div>
+</sc-if>
+
+<dc-import name="Overlays" ov="{{ov}}" hint-size="0px,0px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"go":{"editor":null,"default":null},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"scroll":{"editor":null,"default":0},"step":{"editor":"enum","options":["amRest","amOpen","amPausing","amPaused","amPausedShut","amLight","amAsk","amAskWords","amAskBusy","amKeyOpen","amLong","amSettings","amWelcome"],"default":"amRest"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  componentWillUnmount() { clearTimeout(this.__toast); clearTimeout(this.__hwToast); clearTimeout(this.__amOut); }
+  componentDidUpdate(prevProps, prevState) {
+    /* The menu opens on its first row, so the keyboard carries on from there. */
+    var was = !!(prevState && prevState.amOpen), now = !!(this.state && this.state.amOpen);
+    if (now && !was && this.__root && this.__root.matches(':focus-within')) {
+      var rows = Array.prototype.slice.call(this.__root.querySelectorAll('.am-menu [data-am-row]')).filter(function (el) { return el.offsetParent !== null; });
+      if (rows[0]) rows[0].focus();
+    }
+  }
+  renderVals() {
+    var AH = window.AH, self = this, p = this.props || {}, hs = AH.hash();
+    var w = AH.HW.view(this);
+    var a = AH.AM.view(this, { toast: w.toastFn });
+    var mode = a.mode;
+    var v = AH.vm({ props: AH.assign({}, p, { mode: mode }), state: this.state, setState: this.setState.bind(this) }, 'home', { pal: 'blue-hour', mode: mode });
+    var I = AH.I;
+    var hour = Number(hs.hour || p.hour) || v.S.hour;
+    var shellStyle = AH.rootStyle('blue-hour', mode, hour) + '; --frame: ' + AH.ok(AH.PALS['blue-hour'].dark.well) + '; --sky-low: ' + AH.skyLow('blue-hour', hour, 104, 620);
+
+    /* The sky, as the app draws it: the date and Start a call. */
+    var art = AH.pageArt('sea', 'blue-hour', mode);
+
+    /* What opens over the page: the kit's lobby, scheduling and search, and an Alcove call's card from Upcoming. */
+    var card = w.card;
+    var ov = AH.assign({}, v.ov, {
+      toast: w.toast || v.ov.toast, hasToast: w.hasToast || v.ov.hasToast,
+      cardOpen: !!card, card: card ? { title: card.title, when: card.time || 'A time is being picked', who: '', faces: card.faces } : {},
+      cardFaces: !!(card && card.faces), cardCalendar: false, cardAlcove: !!card,
+      closeCard: w.closeCard,
+      joinCard: function () { self.setState({ card: '', page: 'lobby', lobbyTitle: card ? card.title : '', lobbySub: '', hot: '' }); }
+    });
+
+    var tabs = [['Home', I.home, a.onHome], ['Notes', I.notes], ['Record', I.recordDot], ['Drive', I.folder], ['Team', I.people]].map(function (t) {
+      return { label: t[0], icon: t[1], cls: (t[2] ? ' is-on' : '') + (t[0] === 'Record' ? ' is-rec' : ''), current: t[2] ? 'page' : 'false' };
+    });
+
+    /* The side panel as the app draws it now, Agents after Team. On Settings no place is lit: it's behind your face. */
+    var side = AH.assign({}, w.side, {
+      start: function () { self.setState({ modal: 'choose', guests: [], slot: 't17', fromCard: false, hot: '' }); },
+      places: w.side.places.concat([{ label: 'Agents', icon: I.bot, count: '3', hasCount: true, cls: '', current: 'false', go: function () { w.toastFn('Agents opens here. It isn’t part of this canvas.'); } }]).map(function (x) {
+        if (x.label === 'Home') return AH.assign({}, x, { cls: a.onHome ? ' is-on' : '', current: a.onHome ? 'page' : 'false', go: a.goHome });
+        return x;
+      })
+    });
+
+    /* Settings, in brief: the index and the first two groups. */
+    var setIdx = ['You', 'Calls and notes', 'Audio and video', 'Notifications', 'Connections', 'Plan and credits', 'Privacy'].map(function (t, i) {
+      return { t: t, cls: i === 0 ? ' is-on' : '', current: i === 0 ? 'true' : 'false' };
+    });
+
+    return {
+      mode: mode, shellStyle: shellStyle, I: I, ov: ov, tabs: tabs, a: a,
+      rootCls: 'ah sh ' + (a.onSettings ? 'st2' : 'hm hw-home'),
+      rootRef: function (el) { self.__root = el; },
+      side: side,
+      pageData: AH.assign({}, art, { page: true }),
+      setScene: AH.assign({}, AH.scene('settings', 'blue-hour', mode), { page: false }),
+      setIdx: setIdx,
+      date: 'Wednesday 4 November',
+      soon: w.soon, soonFlag: w.soonFlag, hotJoin: w.hotJoin,
+      join: function () { self.setState({ page: 'lobby', lobbyTitle: 'Design sync', lobbySub: 'Priya and Kofi are here.', hot: '' }); },
+      startTitle: w.startTitle, goCls: w.goCls,
+      go: function () { self.setState({ page: 'lobby', lobbyTitle: 'Art’s call', lobbySub: '', hot: '' }); },
+      later: function () { self.setState({ modal: 'who', guests: [], slot: 't17', fromCard: true, hot: '' }); },
+      openAsk: v.openAsk,
+      forYou: w.forYou, upcoming: w.upcoming, notes: w.notes,
+      goNotes: function () { w.toastFn('Notes opens here. It isn’t part of this canvas.'); },
+      scrollRef: w.scrollRef
+    };
+  }
+}
+</script>
+</body>
+</html>

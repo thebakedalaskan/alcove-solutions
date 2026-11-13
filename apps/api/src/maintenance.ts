@@ -8,13 +8,15 @@
  *  - writes notes still waiting (after a restart, or once a retry is due);
  *  - deletes moves to other devices, and links to call notes, that ran out;
  *  - deletes rings a day after they ran out, in calls that went on that long;
- *  - deletes for good what's been in a workspace's Trash for 30 days, ends seats whose call is over, and lets go of tags
- *    nobody came back for in 30 days;
+ *  - deletes for good what's been in a workspace's Trash for 30 days, ends seats whose call is over and closes what such a
+ *    call opened to everyone in it, and lets go of tags nobody came back for in 30 days;
  *  - deletes live notes a call left behind when a release from before them ended it;
  *  - settles who pays for workspaces nobody does, gives accounts from before plans their plan, ends graces that are
  *    over, and adds as dollars top-ups the previous release settled;
  *  - deletes team invites that expired, and reckons the storage pool of each team whose license ended or whose grace did;
- *  - takes away what an upload left when its browser went, a day on, and forgets uploads counted before yesterday.
+ *  - takes away what an upload left when its browser went, a day on, and forgets uploads counted before yesterday;
+ *  - deletes agent connections and credentials that ran out, and what agents did after 30 days or past each connection's
+ *    newest 1,000.
  *
  * Each step stands alone: one that fails is logged and the rest still run, so a sweep that keeps failing can't stop
  * notes being written or Drive exports going.
@@ -24,6 +26,7 @@ import type { Deps } from './context';
 import { exec, rows } from './db';
 import { log } from './log';
 import { deleteQueued } from './features/recordings/audio';
+import { sweep as sweepAgentActivity } from './features/agents/activity';
 import { sweep as sweepAgents } from './features/agents/service';
 import { reconcile } from './features/calls/lifecycle';
 import { sweep as sweepLiveNotes } from './features/calls/live-notes';
@@ -56,6 +59,8 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const started = Date.now();
   const sessions = await step('sessions', () => sweepSessions(d), 0);
   const agents = await step('agents', () => sweepAgents(d), 0);
+  // After the connections: what one that ran out did has gone with it.
+  const agentActivity = await step('agent activity', () => sweepAgentActivity(d), 0);
   const receipts = await step('receipts', () => exec(d.pool, `DELETE FROM operations WHERE completed_at < now() - interval '24 hours'`), 0);
 
   const retried = await step('object deletes', () => deleteQueued(d), 0);
@@ -71,7 +76,7 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const rings = await step('rings', () => sweepRings(d), 0);
   const liveNotes = await step('live notes', () => sweepLiveNotes(d), 0);
   const attention = await step('attention', () => sweepAttention(d), 0);
-  // Plans: who pays for each workspace, every account's plan, graces that ended, and top-ups the previous release settled while this one deployed.
+  // Plans: who pays for each workspace, every account's plan, graces that ended, and top-ups paid for before plans.
   const plans = await step('plans', () => plansUpkeep(d).then((r) => r.settled + r.carried + r.due), 0);
   const carried = await step('carried top-ups', () => creditCarried(d), 0);
   // Teams: invites that expired, and pools that shrank as a license ended, or whose grace ended.
@@ -79,11 +84,12 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   // Neither stops the other, or what comes next time: each logs what went wrong and says it did nothing.
   const quietly = (what: string, sweep: () => Promise<number>) => sweep().catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what, err: e }); return 0; });
   const trash = await quietly('trash', () => sweepTrash(d, opts.trashAgeMs, started));
-  const seats = await quietly('seats', () => sweepSeats(d));
+  // Seats, and the workspaces calls were open to, counted apart: each is a row of its own kind.
+  const ended = await sweepSeats(d).catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what: 'seats', err: e }); return { seats: 0, workspaces: 0 }; });
   const uploads = await quietly('uploads', () => sweepUploads(d, opts.uploadAgeMs, started));
   const uploadDays = await quietly('upload days', () => pruneUploadDays(d));
   const mentions = await quietly('mentions', () => sweepMentions(d));
-  return { driveExports, sessions, agents, receipts, retried, orphans, videos, notes, calls, moves, noteLinks, rings, liveNotes, attention, plans, carried, teams, trash, seats, uploads, uploadDays, mentions };
+  return { driveExports, sessions, agents, agentActivity, receipts, retried, orphans, videos, notes, calls, moves, noteLinks, rings, liveNotes, attention, plans, carried, teams, trash, seats: ended.seats, callWorkspaces: ended.workspaces, uploads, uploadDays, mentions };
 }
 
 /** Deletes objects older than `cutoff` (ms) that no row points at: writes whose SQL commit failed. */

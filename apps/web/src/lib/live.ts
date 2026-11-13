@@ -36,8 +36,8 @@ export function useSettled<T>(value: T, ms: number): T {
 
 /**
  * The time now, refreshed every `every` milliseconds, for "in 12 min" and the like. Refreshes fall on the clock's own marks
- * (every whole 30 seconds, by default), so wherever the time decides something, Home's line and the side panel's Up next
- * among them, it turns over everywhere at once.
+ * (every whole 30 seconds, by default), so wherever the time decides something, Home's line and the call at the foot of the side
+ * panel among them, it turns over everywhere at once.
  */
 export function useNow(every = 30_000): number {
   const [now, setNow] = useState(() => Date.now());
@@ -51,14 +51,32 @@ export function useNow(every = 30_000): number {
 
 /*
  * Live sessions and local media outlive a single route (pre-join hands both to the call screen). Record hands the
- * stage recorder the name for its next recording the same way, in memory: nothing readable goes in the address.
+ * stage recorder the name for its next recording the same way, in memory: nothing readable goes in the address. A call's
+ * page leaving for Home or the notes says so the same way (`arrive`, and when, through `arriveFromCall`), once: the frame
+ * takes it as it opens (`takeArrival`), and settles in.
  */
-export const sessions: { call: { code: string; session: CallSession } | null; recording: StageRecording | null; media: LocalMedia | null; roomTitle: string | null } = {
+export const sessions: { call: { code: string; session: CallSession } | null; recording: StageRecording | null; media: LocalMedia | null; roomTitle: string | null; arrive: { from: 'call'; at: number } | null } = {
   call: null,
   recording: null,
   media: null,
-  roomTitle: null
+  roomTitle: null,
+  arrive: null
 };
+/** How soon after a call's page leaves the frame must open to arrive from it. */
+const ARRIVING_WITHIN_MS = 4000;
+/** A call's page is leaving for the frame (Home, or the notes): the frame arrives from it there. */
+export function arriveFromCall(): void {
+  sessions.arrive = { from: 'call', at: Date.now() };
+}
+/**
+ * Whether the frame opening now arrives from a call's page, once: taking it uses it up. Only on the way there: one that never
+ * arrived (Home sent elsewhere to sign in, say) is forgotten.
+ */
+export function takeArrival(): boolean {
+  const said = sessions.arrive;
+  sessions.arrive = null;
+  return said !== null && Date.now() - said.at < ARRIVING_WITHIN_MS;
+}
 /**
  * Tells `session`'s call when this page goes away (closed, reloaded, or left for another), at once: someone asking
  * takes the ask back, and anyone else in the call drops out then rather than when LiveKit notices. A page only put

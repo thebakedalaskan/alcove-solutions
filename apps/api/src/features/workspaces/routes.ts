@@ -1,4 +1,4 @@
-import { ItemInputSchema, ItemPlaceSchema, LiveStreamEndBodySchema, MAX_DOC_BYTES, RestrictBodySchema, ShareBodySchema, TeamAccessBodySchema, TeamAccessSchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema } from '@alcove/api';
+import { ItemInputSchema, ItemPlaceSchema, LiveStreamEndBodySchema, MAX_DOC_BYTES, RestrictBodySchema, ShareBodySchema, TeamAccessBodySchema, TeamAccessSchema, WorkspaceAboutInputSchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { CALL_PASS_HEADER } from '../../callPass';
 import * as access from './access';
@@ -52,6 +52,15 @@ export function registerWorkspaceRoutes(app: Hono<Env>, runtime: HttpRuntime): v
 
   app.delete('/v1/workspaces/:id', async (c) => { await workspaces.remove(d, await member(c), ws(c)); return c.json({ deleted: true }); });
 
+  /* What a workspace is for, in one line: it's said back in the answer, so nothing keeps it (`no-store`), as with a tree. */
+  app.get('/v1/workspaces/:id/about', async (c) => {
+    const line = await workspaces.about(d, await access.accountReader(c.get('owner')), ws(c));
+    c.header('cache-control', 'no-store');
+    return c.json({ about: line });
+  });
+
+  app.put('/v1/workspaces/:id/about', async (c) => { await workspaces.setAbout(d, await member(c), ws(c), (await body(c, WorkspaceAboutInputSchema)).about); return c.json({ changed: true }); });
+
   app.get('/v1/workspaces/:id/people', async (c) => c.json(await workspaces.people(d, await access.accountReader(c.get('owner')), ws(c))));
 
   app.post('/v1/workspaces/:id/people', async (c) => {
@@ -63,7 +72,11 @@ export function registerWorkspaceRoutes(app: Hono<Env>, runtime: HttpRuntime): v
 
   app.delete('/v1/workspaces/:id/people/:person', async (c) => { await workspaces.removePerson(d, await member(c), ws(c), c.req.param('person')); return c.json({ removed: true }); });
 
-  app.post('/v1/workspaces/:id/items', async (c) => c.json(await workspaces.createItem(d, await member(c), ws(c), await body(c, ItemInputSchema))));
+  /*
+   * Changing the tree, with the call's pass when it comes from a call: someone in a call that uses the workspace can, whether or
+   * not they're in it. A guest, with no account, has the same in reader-routes.ts. Deleting for good is for its people alone.
+   */
+  app.post('/v1/workspaces/:id/items', async (c) => c.json(await workspaces.createItem(d, await member(c, c.req.header(CALL_PASS_HEADER)), ws(c), await body(c, ItemInputSchema))));
 
   /*
    * Words that couldn't reach the document they were written in, as a new one's first state: the other half of making that new
@@ -76,11 +89,11 @@ export function registerWorkspaceRoutes(app: Hono<Env>, runtime: HttpRuntime): v
     return c.json(await workspaceDocuments.adoptState(d, r, c.req.param('id'), c.req.param('doc'), length, () => c.req.arrayBuffer()));
   });
 
-  app.post('/v1/workspaces/:id/items/:item/move', async (c) => { await workspaces.moveItem(d, await member(c), ws(c), itemOf(c), await body(c, ItemPlaceSchema)); return c.json({ moved: true }); });
+  app.post('/v1/workspaces/:id/items/:item/move', async (c) => { await workspaces.moveItem(d, await member(c, c.req.header(CALL_PASS_HEADER)), ws(c), itemOf(c), await body(c, ItemPlaceSchema)); return c.json({ moved: true }); });
 
-  app.post('/v1/workspaces/:id/items/:item/duplicate', async (c) => c.json(await workspaces.duplicateItem(d, await member(c), ws(c), itemOf(c))));
+  app.post('/v1/workspaces/:id/items/:item/duplicate', async (c) => c.json(await workspaces.duplicateItem(d, await member(c, c.req.header(CALL_PASS_HEADER)), ws(c), itemOf(c))));
 
-  app.post('/v1/workspaces/:id/items/:item/trash', async (c) => { await workspaces.trashItem(d, await member(c), ws(c), itemOf(c)); return c.json({ trashed: true }); });
+  app.post('/v1/workspaces/:id/items/:item/trash', async (c) => { await workspaces.trashItem(d, await member(c, c.req.header(CALL_PASS_HEADER)), ws(c), itemOf(c)); return c.json({ trashed: true }); });
 
   app.delete('/v1/workspaces/:id/items/:item', async (c) => { await workspaces.deleteItem(d, await member(c), ws(c), itemOf(c)); return c.json({ deleted: true }); });
 

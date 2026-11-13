@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The call is over</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="call-tokens.css">
+<link rel="stylesheet" href="call.css">
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="after.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="icons.js"></script>
+<script src="after.js"></script>
+<script src="cove.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="{{rootCls}}" style="{{rootStyle}}">
+<div class="ov-scene" aria-hidden="true">
+<svg width="{{W}}" height="{{H}}" viewBox="{{box}}">
+<defs>
+<linearGradient id="{{ids.sky}}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0B1426"></stop><stop offset=".62" stop-color="#14203A"></stop><stop offset="1" stop-color="#2A2448"></stop></linearGradient>
+<linearGradient id="{{ids.sea}}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1E2442"></stop><stop offset=".45" stop-color="#131C33"></stop><stop offset="1" stop-color="#0B1323"></stop></linearGradient>
+<radialGradient id="{{ids.glow}}" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#B0577E" stop-opacity=".34"></stop><stop offset="1" stop-color="#B0577E" stop-opacity="0"></stop></radialGradient>
+<pattern id="{{ids.pat}}" width="14" height="5" patternUnits="userSpaceOnUse"><rect width="14" height="2.6" fill="white"></rect></pattern>
+<mask id="{{ids.mask}}"><rect width="{{W}}" height="{{H}}" fill="{{ids.patUrl}}"></rect></mask>
+</defs>
+<rect width="{{W}}" height="{{line}}" fill="{{ids.skyUrl}}"></rect>
+<rect y="{{line}}" width="{{W}}" height="{{seaH}}" fill="{{ids.seaUrl}}"></rect>
+<ellipse class="ov-glow" cx="{{cx}}" cy="{{line}}" rx="{{glowRx}}" ry="{{glowRy}}" fill="{{ids.glowUrl}}"></ellipse>
+<g class="ov-stars"><path class="s1" d="{{stars.s1}}"></path><path class="s2" d="{{stars.s2}}"></path><path class="s3" d="{{stars.s3}}"></path></g>
+<path class="ov-moon" d="{{moon}}"></path>
+<g class="ov-light"><path class="l1" d="{{light.l1}}"></path><path class="l2" d="{{light.l2}}"></path></g>
+<path class="ov-rips" d="{{cove.ripples}}"></path>
+<g class="ov-far"><path class="ov-refl" d="{{cove.c0.refl}}" mask="{{ids.maskUrl}}"></path><path class="ov-rock" d="{{cove.c0.rock}}"></path><path class="ov-face" d="{{cove.c0.face}}"></path><path class="ov-foam" d="{{cove.c0.foam}}"></path></g>
+<g class="ov-far"><path class="ov-refl" d="{{cove.c1.refl}}" mask="{{ids.maskUrl}}"></path><path class="ov-rock" d="{{cove.c1.rock}}"></path><path class="ov-face" d="{{cove.c1.face}}"></path><path class="ov-foam" d="{{cove.c1.foam}}"></path></g>
+<g class="ov-stacks"><path class="ov-refl" d="{{cove.c2.refl}}" mask="{{ids.maskUrl}}"></path><path class="ov-rock" d="{{cove.c2.rock}}"></path></g>
+<g class="ov-mid"><path class="ov-refl" d="{{cove.c3.refl}}" mask="{{ids.maskUrl}}"></path><path class="ov-rock" d="{{cove.c3.rock}}"></path><path class="ov-face" d="{{cove.c3.face}}"></path><path class="ov-foam" d="{{cove.c3.foam}}"></path></g>
+<g class="ov-mid"><path class="ov-refl" d="{{cove.c4.refl}}" mask="{{ids.maskUrl}}"></path><path class="ov-rock" d="{{cove.c4.rock}}"></path><path class="ov-face" d="{{cove.c4.face}}"></path><path class="ov-foam" d="{{cove.c4.foam}}"></path></g>
+<g class="ov-near"><path class="ov-refl" d="{{cove.c5.refl}}" mask="{{ids.maskUrl}}"></path><path class="ov-rock" d="{{cove.c5.rock}}"></path><path class="ov-face" d="{{cove.c5.face}}"></path><path class="ov-foam" d="{{cove.c5.foam}}"></path></g>
+<g class="ov-near"><path class="ov-refl" d="{{cove.c6.refl}}" mask="{{ids.maskUrl}}"></path><path class="ov-rock" d="{{cove.c6.rock}}"></path><path class="ov-face" d="{{cove.c6.face}}"></path><path class="ov-foam" d="{{cove.c6.foam}}"></path></g>
+</svg>
+</div>
+<header class="ov-top">
+<span></span>
+<span class="ov-logo"><svg width="24" height="28" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="ova"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><clipPath id="ovu"><rect x="0" y="0" width="22" height="19.2"></rect></clipPath><linearGradient id="ovs" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient><radialGradient id="ovn" cx=".42" cy=".38" r=".72"><stop offset="0" stop-color="#FFF6E0"></stop><stop offset=".5" stop-color="#FFD58A"></stop><stop offset="1" stop-color="#FFB547"></stop></radialGradient></defs><g clip-path="url(#ova)"><rect width="22" height="26" fill="url(#ovs)"></rect><g clip-path="url(#ovu)"><circle cx="11" cy="19.2" r="4.4" fill="url(#ovn)"></circle></g><rect y="19.2" width="22" height="7" fill="#231C5E"></rect><rect x="7.2" y="20.5" width="7.6" height=".9" rx=".45" fill="#FFB36E" opacity=".8"></rect><rect x="8.8" y="22.1" width="4.4" height=".8" rx=".4" fill="#FFB36E" opacity=".45"></rect></g><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z" fill="none" stroke="rgb(255 255 255 / .2)" stroke-width="1"></path></svg>alcove</span>
+<span class="ov-trust" title="Confidential compute · verified"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg><span class="ov-trust-t">Confidential compute · verified</span></span>
+</header>
+
+<main class="ov-in">
+<sc-if value="{{goesOn}}" hint-placeholder-val="{{false}}">
+<div class="ov-head">
+<div class="ov-people" aria-hidden="true">
+<sc-for list="{{people}}" as="p" hint-placeholder-count="4"><span class="{{p.cls}}"><dc-import name="Faces" who="{{p.who}}" size="{{p.size}}" ring="{{p.ring}}" hint-size="{{p.hint}}"></dc-import></span></sc-for>
+</div>
+<h1 class="ov-t">{{title}}</h1>
+<p class="ov-m"><span>{{meta}}</span><sc-if value="{{hasClock}}" hint-placeholder-val="{{false}}"><span class="ov-clock"><i></i>{{clock}}</span></sc-if></p>
+</div>
+</sc-if>
+<sc-if value="{{isOver}}" hint-placeholder-val="{{true}}">
+<div class="ov-head">
+<div class="ov-people" aria-hidden="true">
+<sc-for list="{{people}}" as="p" hint-placeholder-count="4"><span class="{{p.cls}}"><dc-import name="Faces" who="{{p.who}}" size="{{p.size}}" ring="{{p.ring}}" hint-size="{{p.hint}}"></dc-import></span></sc-for>
+</div>
+<h1 class="ov-t">{{title}}</h1>
+<p class="ov-m"><span>{{meta}}</span><sc-if value="{{hasClock}}" hint-placeholder-val="{{false}}"><span class="ov-clock"><i></i>{{clock}}</span></sc-if></p>
+</div>
+</sc-if>
+
+<sc-if value="{{writing}}" hint-placeholder-val="{{true}}">
+<section class="ov-notes" aria-label="The notes">
+<div class="ov-nh"><span class="ov-ni"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg></span><span class="ov-nt"><b>Notes are being written</b><small>In confidential compute</small></span></div>
+<p class="ov-step"><span class="ov-dots" aria-hidden="true"><i></i><i></i><i></i></span>Writing the summary, decisions and follow-ups</p>
+<div class="ov-who"><dc-import name="Faces" who="{{whoFaces}}" size="22" max="4" ring="#141E31" hint-size="70px,24px"></dc-import><span>{{who}}</span></div>
+</section>
+</sc-if>
+<sc-if value="{{ready}}" hint-placeholder-val="{{false}}">
+<section class="ov-notes is-ready" aria-label="The notes">
+<div class="ov-nh"><span class="ov-ni"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg></span><span class="ov-nt"><b>The notes are ready</b><small>Written in confidential compute</small></span></div>
+<p class="ov-sum">{{summary}}</p>
+<div class="ov-chips"><span class="ov-chip is-rose"><svg class="i" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.circleCheck}}"></path></svg>{{decided}}</span><span class="ov-chip is-horizon"><svg class="i" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.listChecks}}"></path></svg>{{follow}}</span></div>
+</section>
+</sc-if>
+<sc-if value="{{slow}}" hint-placeholder-val="{{false}}">
+<section class="ov-notes" aria-label="The notes">
+<div class="ov-nh"><span class="ov-ni"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.clock}}"></path></svg></span><span class="ov-nt"><b>Still being written</b><small>They’ll be in Notes when they’re ready. You don’t need to wait here.</small></span></div>
+</section>
+</sc-if>
+<sc-if value="{{notesOn}}" hint-placeholder-val="{{false}}"><p class="ov-line"><span class="ov-rec"></span>Notes are on. You get them when it ends.</p></sc-if>
+<sc-if value="{{noNotes}}" hint-placeholder-val="{{false}}"><p class="ov-line">No notes were taken.</p></sc-if>
+
+<sc-if value="{{hasActs}}" hint-placeholder-val="{{true}}">
+<div class="ov-acts">
+<sc-for list="{{acts}}" as="a" hint-placeholder-count="2"><button type="button" class="{{a.cls}}" onClick="{{a.click}}"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{a.d}}"></path></svg>{{a.t}}<sc-if value="{{a.hasKey}}" hint-placeholder-val="{{false}}"><span class="ov-k">{{a.key}}</span></sc-if></button></sc-for>
+</div>
+</sc-if>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"state":{"editor":"enum","options":["endWriting","endReady","endSlow","endedBy","left","leftHost","leftEnded","noNotes","guestLeft","guestEnded"],"default":"endWriting"},"phone":{"editor":"boolean","default":false},"hot":{"editor":null,"default":""},"live":{"editor":null,"default":false},"onPress":{"editor":null,"default":null},"$preview":{"width":1440,"height":900}}'>
+/*
+ * The call is over, on its own night: what happened, who was in it, the notes, and the next step. The first button is
+ * the filled one: Rejoin while the call goes on, the notes once it has ended, Home when there's nothing else.
+ */
+class Component extends DCLogic {
+  renderVals() {
+    var CE = window.CE, I = Object.assign({}, CE.I), hs = window.AH.hash(), self = this;
+    var id = hs.over || this.props.state || 'endWriting', o = CE.OVER[id] || CE.OVER.endWriting;
+    var phone = !!this.props.phone || hs.phone === '1';
+    var hot = this.props.hot || '';
+    var size = phone ? 44 : 54;
+    var people = o.people.map(function (who) {
+      var talking = o.talking === who;
+      return { who: who, size: String(size), hint: size + 'px,' + Math.round(size * 1.08) + 'px', ring: talking ? '#9FC7FB' : 'transparent', cls: 'ov-p' + (talking ? ' is-talking' : '') };
+    });
+    var acts = o.acts.map(function (k, i) {
+      var a = CE.ACTS[k];
+      return { t: a.t, d: I[a.icon], key: a.key || '', hasKey: !!a.key && !phone, cls: 'ov-b ' + (i === 0 ? 'is-press' : 'is-line') + (hot === k ? ' is-hot' : ''), click: function () { if (self.props.onPress) self.props.onPress(k); } };
+    });
+    /*
+     * The night cove behind the page: the welcome page's cove, another seed, its land kept clear of the page's words
+     * (one box for every state, so the land doesn't move as the page changes), with stars, a moon and the light on the bay.
+     */
+    var W = phone ? 390 : 1440, H = phone ? 844 : 900, line = phone ? 688 : 760;
+    var words = phone ? [{ l: 12, r: 378, t: 96, b: 586 }] : [{ l: 432, r: 1008, t: 196, b: 690 }];
+    var key = W + 'x' + H, C = (Component.__coves = Component.__coves || {});
+    if (!C[key]) {
+      var d = window.COVE.draw({ width: W, line: line, sky: line, foot: H, words: words, seed: 17 });
+      var sk = window.COVE.sky(17, W, line, words);
+      var cove = { ripples: d.ripples };
+      d.parts.forEach(function (p, i) { cove['c' + i] = p; });
+      var mx = phone ? 346 : 1186, my = phone ? 76 : 150, mr = phone ? 8 : 13;
+      C[key] = { cove: cove, stars: { s1: sk.stars[0] || 'M0 0', s2: sk.stars[1] || 'M0 0', s3: sk.stars[2] || 'M0 0' }, light: { l1: sk.light[0], l2: sk.light[1] },
+        moon: 'M' + mx + ' ' + (my - mr) + 'a' + mr + ' ' + mr + ' 0 1 0 ' + (mr * 0.9).toFixed(1) + ' ' + (mr * 1.55).toFixed(1) + 'a' + (mr * 0.78).toFixed(1) + ' ' + (mr * 0.78).toFixed(1) + ' 0 1 1 -' + (mr * 0.9).toFixed(1) + ' -' + (mr * 1.55).toFixed(1) + 'Z' };
+    }
+    var sc = C[key], tag = phone ? 'p' : 'w';
+    var ids = { sky: 'ovsky' + tag, sea: 'ovsea' + tag, glow: 'ovglow' + tag, pat: 'ovpat' + tag, mask: 'ovmask' + tag };
+    ids.skyUrl = 'url(#' + ids.sky + ')'; ids.seaUrl = 'url(#' + ids.sea + ')'; ids.glowUrl = 'url(#' + ids.glow + ')'; ids.patUrl = 'url(#' + ids.pat + ')'; ids.maskUrl = 'url(#' + ids.mask + ')';
+    return {
+      W: String(W), H: String(H), box: '0 0 ' + W + ' ' + H, line: String(line), seaH: String(H - line), cx: String(W / 2),
+      glowRx: String(phone ? 260 : 620), glowRy: String(phone ? 70 : 110),
+      ids: ids, cove: sc.cove, stars: sc.stars, light: sc.light, moon: sc.moon,
+      I: I, rootCls: 'ov stage ' + (phone ? 'is-phone' : 'is-wide') + (o.guest ? ' is-guest' : '') + (this.props.live ? ' is-live' : ''),
+      rootStyle: phone ? 'width: 390px; height: 844px' : 'width: 1440px; height: 900px',
+      people: people, title: o.title, meta: o.meta, hasClock: !!o.clock, clock: o.clock || '', goesOn: !!o.clock, isOver: !o.clock,
+      writing: o.notes === 'writing', ready: o.notes === 'ready', slow: o.notes === 'slow', notesOn: o.notes === 'on', noNotes: o.notes === 'none',
+      who: o.who || '', whoFaces: 'priya,kofi,maya,art',
+      summary: CE.READY.summary, decided: CE.READY.decided, follow: CE.READY.follow,
+      acts: acts, hasActs: acts.length > 0
+    };
+  }
+}
+</script>
+</body>
+</html>

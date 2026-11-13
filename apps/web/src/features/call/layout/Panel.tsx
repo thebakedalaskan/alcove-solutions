@@ -99,7 +99,7 @@ export function NotesHead({ pill, modelPrivate, onOpen, onClose }: { pill: React
       {pill}
       {!modelPrivate && <Unencrypted compact />}
       <span className="sp" />
-      <IconButton icon="external" label="Open in the workspace, just for you" onClick={onOpen} />
+      <IconButton icon="external" label="Open in the workspace, on your screen" onClick={onOpen} />
       <IconButton icon="x" label="Close Notes" onClick={onClose} />
     </div>
   );

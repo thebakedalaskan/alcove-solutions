@@ -61,8 +61,9 @@ export function useRingAlerts(cards: readonly IncomingRing[], keyOf: (r: Incomin
         return lifetime.current.token === token && current.preferences.ready && current.preferences.ownerId === ownerId && current.permission === 'granted'
           && ringsReach(chosen) && (kind === undefined || kind === 'ringing');
       },
+      notificationsPauseEnd: () => latest.current.preferences.notificationsPauseEnd,
       open: routeBrowserNotification,
       failed: () => toast('Browser notifications couldn’t be shown. Calls still ring in Alcove.', { icon: 'bellOff' })
     });
-  }, [rung, ownerId, scope, context, preferences.prefs, preferences.ready, permission, toast]);
+  }, [rung, ownerId, scope, context, preferences.prefs, preferences.notificationsPauseEnd, preferences.ready, permission, toast]);
 }

@@ -34,7 +34,7 @@ const keyOf = (x: { workspaceId: string; documentId: string }): string => `${x.w
  * about them, not the reader. One gone, in Trash, or closed to any of them isn't, and neither is anything that isn't a board.
  */
 async function openToAll(d: Deps, worked: readonly WorkedDocument[], emails: readonly string[]): Promise<Map<string, { w: HeldWorkspace; name: string }>> {
-  const people = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))].map((email) => ({ who: { email, principals: [emailIndex(d, email)] } }));
+  const people = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))].map((email) => ({ who: { email, principals: [emailIndex(d, email)], calls: [] } }));
   const held = new Map<string, HeldWorkspace | undefined>();
   const out = new Map<string, { w: HeldWorkspace; name: string }>();
   for (const x of worked) {

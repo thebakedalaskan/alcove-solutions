@@ -1,28 +1,29 @@
 /*
- * The side panel, beside every page and dark in both themes: Start a call, the app's places, the next call with
- * Join, pinned notes, groups, the confidential-compute check and your plan. Someone on their own has no Team page and
- * no groups. It can be hidden. At 860px and narrower the phone's top bar and tab bar (TabBar.tsx) take its place, and
- * the plan is said in Settings.
+ * The side panel, beside every page and dark in both themes, in two groups. At the top, your work: Start a call, then
+ * Home, Calls, Drive and Record, and what you've pinned under them. At the foot, who works with you (Team and Agents),
+ * then a call that's about to start, with Join, the confidential-compute check and your plan: one row, with a short line
+ * above it only while there's something to say. A count means something waits on you. Someone on their own, with no
+ * company and no team, has no Team page. It can be hidden. At 860px and narrower the phone's top bar and tab bar (TabBar.tsx) take its place, and the plan
+ * is said in Settings.
  */
-import { NEW_GROUP, type CalendarEvent, type Meeting, type MyTeam, type Person, type Plan, type PlanNotice } from '@alcove/api';
-import { ArchThumb, Dots, Faces, Icon, IconButton, Kbd, Logo, Meter, NavItemContent, SidebarNav, SunMark, buttonClass, cn, coverFor } from '@alcove/ui';
+import type { MyTeam, Plan, PlanNotice } from '@alcove/api';
+import { ArchThumb, Dots, Icon, IconButton, Kbd, Logo, Meter, NavItemContent, SidebarNav, SunMark, buttonClass, cn, coverFor } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { aheadOf, joinable } from '~/features/home/day';
+import { aheadShown, joinable, whenLine } from '~/features/home/day';
 import { useCheckout } from '~/features/plans/checkout';
 import {
-  PLAN_NAMES, endsIn, licensesLeft, licensesShort, noticesNow, notesLeft, notesLow, notesOut, notesShare, proEnding, teamAdmin, waitingForLicense
+  PLAN_NAMES, endsIn, licensesLeft, licensesShort, noticesNow, notesLeft, notesLow, notesOut, notesShare, proEnding, waitingForLicense
 } from '~/features/plans/plan-state';
 import { checkoutFor, payable, purchaseName, restToSend, settlingPurchase, tokensShort, waitingPurchase } from '~/features/plans/purchase';
 import { recordOfflineHere } from '~/lib/device';
 import { log } from '~/lib/log';
 import { useNow, useOnline } from '~/lib/live';
-import { callName, sameEmail } from '~/lib/people';
 import { q, trustLine, verifiedAt } from '~/lib/queries';
-import { dayMonth, daysFromToday, hm, minutesUntil, shortDate, untilLabel } from '~/lib/time';
+import { dayMonth, hm, shortDate } from '~/lib/time';
 import { plural } from '~/lib/words';
-import { NAV, inWorkspace, places, useCounts } from './places';
+import { NAV, NAV_FOOT, inWorkspace, places, useCounts, type NavPlace } from './places';
 
 const KEY = 'alcove-side-panel';
 const slog = log.child({ component: 'shell' });
@@ -81,7 +82,9 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
   const online = useOnline();
   const counts = useCounts();
   const team = useQuery(q.team()).data;
+  const mine = useQuery(q.myTeam()).data;
   const path = useRouterState({ select: (s) => s.location.pathname });
+  const link = (p: NavPlace) => <Link key={p.to} to={p.to} className="ac-nav-item" data-tour={p.tour}><NavItemContent icon={p.icon} label={p.label} count={p.count && counts[p.count]} /></Link>;
   return (
     <aside className="sb dark" aria-label="Side panel" inert={hidden}>
       <div className="sb-in">
@@ -91,117 +94,67 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
         </div>
         <Offline className="sb-offline" />
         {/* In the workspace, N makes a document. */}
-        <button type="button" className={cn(buttonClass(), 'sb-new')} onClick={onNew} aria-label="Start a call" aria-haspopup="dialog" aria-keyshortcuts={inWorkspace(path) ? undefined : 'N'} data-tour="new-call">
+        <button type="button" className={cn(buttonClass(), 'sb-new')} onClick={onNew} aria-label="Start a call" aria-haspopup="dialog" aria-keyshortcuts={inWorkspace(path) ? undefined : 'N'}>
           <span className="sb-new-ic"><Icon name="video" size={16} /></span><span>Start a call</span>{!inWorkspace(path) && <Kbd>N</Kbd>}
         </button>
-        <SidebarNav>
-          {places(NAV, team).map((p) => <Link key={p.to} to={p.to} className="ac-nav-item" data-tour={p.tour}><NavItemContent icon={p.icon} label={p.label} count={p.count && counts[p.count]} /></Link>)}
-        </SidebarNav>
+        <SidebarNav>{NAV.map(link)}</SidebarNav>
         <div className="sb-mid">
-          {online && <UpNext home={path === '/home'} />}
           <Pinned onPin={onPin} />
-          {team !== null && <Groups />}
         </div>
+        <SidebarNav label="Team and agents" className="sb-low">{places(NAV_FOOT, team, mine).map(link)}</SidebarNav>
+        {online && <AboutToStart home={path === '/home'} />}
         <Foot online={online} />
       </div>
     </aside>
   );
 }
 
-/** The next call you can join today: an Alcove call, or a calendar meeting with a video link. */
-interface Next { id: string; title: string; startsAt: string; endsAt: string; people: Person[]; join: { kind: 'call'; code: string } | { kind: 'link'; url: string; label: string } }
-
-function nextToday(calls: Meeting[], events: CalendarEvent[], me: string | undefined, now: number): Next | undefined {
-  const others = (people: Person[]) => people.filter((p) => !me || !sameEmail(p, { email: me }));
-  const all: Next[] = [
-    ...calls.filter((m) => m.status !== 'ended' && !m.offer).map((m): Next => ({
-      id: m.id, title: m.title, startsAt: m.startsAt, endsAt: m.endsAt, people: others(m.isOrganizer ? m.guests : [m.organizer, ...m.guests]), join: { kind: 'call', code: m.code }
-    })),
-    ...events.flatMap((e): Next[] => (e.join ? [{
-      id: e.id, title: e.title, startsAt: e.startsAt, endsAt: e.endsAt, people: others(e.isOrganizer ? e.guests : [e.organizer, ...e.guests]), join: { kind: 'link', ...e.join }
-    }] : []))
-  ];
-  return all
-    .filter((i) => new Date(i.endsAt).getTime() > now && (daysFromToday(new Date(i.startsAt)) === 0 || new Date(i.startsAt).getTime() <= now))
-    .sort((a, b) => a.startsAt.localeCompare(b.startsAt))[0];
-}
+/** From this long before a call, the side panel offers it with Join. */
+const NEAR_MS = 10 * 60_000;
 
 /**
- * Up next, with Join, on every page. On Home (`home`) it makes way while Home's own line offers a call, from a call's last
- * few minutes and while one is going, by Home's own rule (`joinable`), so there's one Join at a time. Offline there's
- * nothing to join. With nothing left today it says where the next call will show, except on the first day, before any
- * notes, when it keeps quiet.
+ * A call that's about to start, at the foot of the panel with Join, on every page: one that's going, or one with someone
+ * else on it from ten minutes before until it ends, by Home's own rule (`joinable`) looking further ahead. The rest of the
+ * day is Home's Upcoming. On Home it makes way while Home's own line offers the call, from its last few minutes and while
+ * it's going, so there's one Join at a time. Offline there's nothing to join.
  */
-function UpNext({ home }: { home: boolean }) {
+function AboutToStart({ home }: { home: boolean }) {
   const now = useNow();
   const me = useQuery(q.session()).data?.user.email;
   const calls = useQuery(q.upcoming()).data;
   const calendar = useQuery(q.calendar()).data;
   const prefs = useQuery(q.prefs()).data;
-  const notes = useQuery(q.notes()).data;
-  const events = prefs?.showOtherMeetings === false ? [] : calendar?.events ?? [];
-  const next = nextToday(calls ?? [], events, me, now);
-  if (home && joinable(aheadOf(calls ?? [], events, now), me, now)) return null;
-  if (!next && (!calls || !notes?.length)) return null;
+  const ahead = aheadShown(calls, calendar?.events, prefs?.showOtherMeetings, now);
+  const next = joinable(ahead, me, now, NEAR_MS);
+  if (!next || (home && joinable(ahead, me, now))) return null;
+  const when = whenLine(next, now);
   return (
-    <div className="sb-sec">
-      <div className="sb-sec-h"><h2 className="ac-eyebrow">Up next</h2></div>
-      {next ? (
-        <div className="sb-next">
-          <div className="sb-next-top">
-            <ArchThumb cover={coverFor(next.id)} width={28} />
-            <div className="min-w-0"><b>{next.title}</b><small>{hm(next.startsAt)} · {untilLabel(minutesUntil(next.startsAt, now))}</small></div>
-          </div>
-          <div className="sb-next-foot">
-            {next.people.length > 0 && <Faces people={next.people} size={22} max={4} />}
-            {next.join.kind === 'call'
-              ? <Link to="/join/$code" params={{ code: next.join.code }} className={buttonClass({ size: 'sm' })} aria-label={`Join ${next.title}`}><Icon name="video" size={16} />Join</Link>
-              : <a href={next.join.url} target="_blank" rel="noreferrer" className={buttonClass({ size: 'sm' })} aria-label={`Join ${next.title} on ${next.join.label}`}><Icon name="video" size={16} />Join</a>}
-          </div>
-        </div>
-      ) : <p className="sb-hint">Nothing else today. Your next call shows here, with Join.</p>}
+    <div className="sb-now" role="group" aria-label={`${next.title}, ${when.toLowerCase()}`}>
+      <ArchThumb cover={coverFor(next.id)} width={24} />
+      <div className="min-w-0"><b>{next.title}</b><small>{when}</small></div>
+      {next.kind === 'call'
+        ? <Link to="/join/$code" params={{ code: next.call.code }} className={buttonClass({ size: 'sm' })} aria-label={`Join ${next.title}`}><Icon name="video" size={15} />Join</Link>
+        : next.event.join && <a href={next.event.join.url} target="_blank" rel="noreferrer" className={buttonClass({ size: 'sm' })} aria-label={`Join ${next.title} on ${next.event.join.label}`}><Icon name="video" size={15} />Join</a>}
     </div>
   );
 }
 
-/** Notes you keep coming back to, in the order you pinned them. A pin whose note is gone isn't shown. */
+/**
+ * Notes you keep coming back to, in the order you pinned them. Until you pin one there's no Pinned at all: a call's page has
+ * a pin, and once Pinned shows, the pin at the end of its heading opens Pin a note. A pin whose note is gone isn't shown.
+ */
 function Pinned({ onPin }: { onPin: () => void }) {
   const ids = useQuery(q.prefs()).data?.pinned;
   const notes = useQuery(q.notes()).data;
   const pinned = (ids ?? []).flatMap((id) => notes?.filter((n) => n.id === id) ?? []);
+  if (!pinned.length) return null;
   return (
-    <div className="sb-sec">
+    <div className="sb-sec sb-pins">
       <div className="sb-sec-h"><h2 className="ac-eyebrow">Pinned</h2><IconButton icon="pin" size={15} label="Pin a note" aria-haspopup="dialog" onClick={onPin} /></div>
-      {pinned.length ? (
-        <ul className="sb-list">
-          {pinned.map((n) => (
-            <li key={n.id}>
-              <Link to="/notes/$noteId" params={{ noteId: n.id }} className="sb-link"><ArchThumb cover={coverFor(n.id)} room={n.kind === 'room'} width={15} /><span>{n.title}</span></Link>
-            </li>
-          ))}
-        </ul>
-      ) : ids && notes ? <p className="sb-hint">Pin notes you keep coming back to, like a weekly call, and they stay here.</p> : null}
-    </div>
-  );
-}
-
-/** Your groups: a name and how many people are in it. Each opens on the Team page, where + makes a new one. */
-function Groups() {
-  const groups = useQuery(q.prefs()).data?.groups ?? [];
-  if (!groups.length) return null;
-  return (
-    <div className="sb-sec">
-      <div className="sb-sec-h">
-        <h2 className="ac-eyebrow">Groups</h2>
-        <Link to="/team" search={{ group: NEW_GROUP }} className="ac-icon-btn" aria-label="New group" title="New group"><Icon name="plus" size={15} /></Link>
-      </div>
       <ul className="sb-list">
-        {groups.map((g) => (
-          <li key={g.id}>
-            <Link to="/team" search={{ group: g.id }} className="sb-link">
-              <Icon name="hash" size={15} /><span>{g.name}</span>
-              <b className="n">{g.emails.length}<span className="sr-only"> {g.emails.length === 1 ? 'person' : 'people'}</span></b>
-            </Link>
+        {pinned.map((n) => (
+          <li key={n.id}>
+            <Link to="/calls/$noteId" params={{ noteId: n.id }} className="sb-link"><ArchThumb cover={coverFor(n.id)} room={n.kind === 'room'} width={15} /><span>{n.title}</span></Link>
           </li>
         ))}
       </ul>
@@ -209,29 +162,29 @@ function Groups() {
   );
 }
 
-/**
- * The check, then your plan (Settings' Plan). On Free, about how much of the period's notes is left over a meter, then Free
- * plan with the way to Plans; on Pro, one row like the places with its own small sun and until when. A plan about to end
- * sets its sun half and opens checkout to extend; a payment for a plan on its way says what it's waiting for, and its row
- * opens it again. Pro renewed or ended is one short line above, until it's dismissed in Settings. On Plans the row is
- * the place you're on.
- */
+/** The check, then your plan (Settings' Plan). */
 function Foot({ online }: { online: boolean }) {
   const plan = useQuery(q.plan()).data;
   const trust = useQuery(q.trust()).data;
   const verified = verifiedAt(trust);
   return (
     <div className="sb-foot">
-      {online && <p className="sb-seal" data-tour="sealed" title={verified === null ? undefined : `Hardware checked at ${hm(new Date(verified))}`}><Icon name="sealed" size={15} />{trustLine(trust)}</p>}
+      {online && <p className="sb-seal" title={verified === null ? undefined : `Hardware checked at ${hm(new Date(verified))}`}><Icon name="sealed" size={15} />{trustLine(trust)}</p>}
       {plan && <PlanFoot plan={plan} />}
     </div>
   );
 }
 
 /**
- * Your plan at the foot. On a team with a license, Team's own calm row (TeamRow); for its admin while licenses run short,
- * how many are left and Buy. On a team without one, a line in caution over your own plan (NoLicense), whose row goes to
- * Team. A team's notices otherwise are one short line above, as Pro's are (Said).
+ * Your plan, as one row where the minutes of notes left were. On Free, about how much of the period's notes is left over a
+ * meter, warm under an hour, and until when once they've stopped. On Pro or Team, the plan with its own small sun in the
+ * icon column, and under its name what matters most: that it's ending (its sun half set, opening checkout to extend), that
+ * notes have stopped, that a team's licenses run short (for its admin: how many are left and Buy, opening checkout on Team),
+ * that notes are low, or until when Pro runs, or the team's name. On a team without a license, the row's second line says
+ * so in caution, and the row goes to Team, which says who has been told. A payment for a plan on its way takes the row's
+ * place, saying what it's waiting for, and opens it again. Anything else said (Pro renewed or ended, Team replacing Pro, a
+ * team's licenses) is one short line above it, until it's dismissed in Settings. On Plans, a paid plan's row, or a
+ * payment's, is the place you're on, shaded; Free's is the minutes left, and isn't.
  */
 function PlanFoot({ plan }: { plan: Plan }) {
   const offers = useQuery(q.offers()).data;
@@ -266,24 +219,33 @@ function PlanFoot({ plan }: { plan: Plan }) {
       </>
     );
   }
-  const notices = noticesNow(plan, team);
-  // A team's licenses running short are said by Team's own row; any other notice, the newest, in one short line above.
-  const short = plan.kind === 'team' ? notices.find(licensesShort) : undefined;
-  const said = notices.find((n) => n !== short);
+  const out = notesOut(plan);
+  const low = notesLow(plan);
   const waiting = waitingForLicense(plan);
+  const notices = noticesNow(plan, team);
+  // A team's licenses running short are said by its row, unless notes have stopped, which come first there: then above it.
+  const short = plan.kind === 'team' && !out ? notices.find(licensesShort) : undefined;
+  const said = notices.find((n) => n !== short);
+  const notice = said && <Link to="/settings" hash="plan" className="sb-said"><Said notice={said} plan={plan} team={team} /></Link>;
+  if (plan.kind === 'free') return <>{notice}<NotesLeft plan={plan} waiting={waiting} /></>;
   const ending = proEnding(plan, offers, now);
   const until = plan.pro.until;
   return (
     <>
-      {said && <Link to="/settings" hash="plan" className="sb-said"><Said notice={said} plan={plan} team={team} /></Link>}
-      {waiting && <NoLicense plan={plan} team={team} />}
-      {(plan.kind === 'free' || notesLow(plan) || notesOut(plan)) && <NotesLeft plan={plan} />}
-      {plan.kind === 'team' ? <TeamRow plan={plan} team={team} short={short} on={on} />
-      : plan.kind === 'free' ? (
-        // Waiting for a team license, the way on is Team, which says why and who has been told.
-        <Link to={waiting ? '/team' : '/plans'} className={cn('sb-plan', on && 'is-on')}>
-          <span>Free plan</span><span className="go">{waiting ? 'Team' : 'See plans'}<Icon name="chevron" size={15} /></span>
+      {notice}
+      {waiting ? (
+        // On a team without a license, over Pro: Team says why, and who has been told.
+        <Link to="/team" className={cn('sb-pro', on && 'is-on')}>
+          <SunMark />
+          <span className="min-w-0"><b>{PLAN_NAMES[plan.kind]}</b><small className="is-out">No team license yet</small></span>
+          <Icon name="chevron" size={15} />
         </Link>
+      ) : short ? (
+        <button type="button" className={cn('sb-pro', on && 'is-on')} onClick={() => checkout.open({ plan: 'team' }, 'side')}>
+          <SunMark />
+          <span className="min-w-0"><b>{PLAN_NAMES.team}</b><small className="is-warm">{licensesLeftWords(licensesLeft(short, team))} · Buy</small></span>
+          <Icon name="chevron" size={15} />
+        </button>
       ) : ending ? (
         <button type="button" className={cn('sb-pro', on && 'is-on')} onClick={() => checkout.open({ plan: 'pro' }, 'side')}>
           <SunMark state="setting" />
@@ -293,7 +255,13 @@ function PlanFoot({ plan }: { plan: Plan }) {
       ) : (
         <Link to="/settings" hash="plan" className={cn('sb-pro', on && 'is-on')}>
           <SunMark />
-          <span className="min-w-0"><b>{PLAN_NAMES[plan.kind]}</b>{until !== null && <small>Until {shortDate(new Date(until))}</small>}</span>
+          <span className="min-w-0">
+            <b>{PLAN_NAMES[plan.kind]}</b>
+            {out ? <small className="is-out">No notes left until {dayMonth(new Date(plan.period.to))}</small>
+              : low ? <small className="is-warm">About {notesLeft(plan)} of notes left</small>
+                : plan.kind === 'team' ? plan.team && <small>{plan.team.name}</small>
+                  : until !== null && <small>Until {shortDate(new Date(until))}</small>}
+          </span>
           <Icon name="chevron" size={15} />
         </Link>
       )}
@@ -301,67 +269,35 @@ function PlanFoot({ plan }: { plan: Plan }) {
   );
 }
 
+/** How many licenses a team has left to take, as its row and its notice say it. */
+const licensesLeftWords = (left: number): string => (left === 0 ? 'No licenses left' : `${plural(left, 'license')} left`);
+
 /** A notice in one short line, its news in bold: Pro renewed or ended, a team license replacing Pro, a team's licenses. */
 function Said({ notice, plan, team }: { notice: PlanNotice; plan: Plan; team: MyTeam | null | undefined }) {
   const on = plan.team ? ` on ${plan.team.name}` : '';
   switch (notice.kind) {
     case 'pro-renewed': return <><b>Pro renewed</b> from your balance</>;
     case 'license-replaced-pro': return notice.count ? <><b>Team replaced Pro.</b> {plural(notice.count, 'month')} refunded</> : <><b>Team replaced Pro</b></>;
-    case 'licenses-low': case 'licenses-none': {
-      const left = licensesLeft(notice, team);
-      return <><b>{left === 0 ? 'No licenses' : plural(left, 'license')} left</b>{on}</>;
-    }
+    case 'licenses-low': case 'licenses-none': return <><b>{licensesLeftWords(licensesLeft(notice, team))}</b>{on}</>;
     case 'pro-ended': return <><b>Pro ended.</b> Nothing was deleted.</>;
-    // Said elsewhere: Pro ending by its own row, and waiting for a license by the line about it.
+    // Said elsewhere: Pro ending by its own row, and waiting for a license by the row's second line.
     case 'pro-ending': case 'license-needed': return null;
   }
 }
 
 /**
- * On a team without a license, in caution over your own plan: who has been told, or for its admin, that buying licenses
- * gives them one.
+ * About how much of the period's notes is left, over a meter: warm under an hour, and once they've stopped, until when. On a
+ * team without a license (`waiting`), that's said in caution where the meter was, and the row goes to Team, which says who
+ * has been told.
  */
-function NoLicense({ plan, team }: { plan: Plan; team: MyTeam | null | undefined }) {
-  const admin = teamAdmin(team);
-  return (
-    <p className="sb-nolic">
-      No team license yet
-      <small>{plan.team?.role === 'admin' ? 'Buy licenses, and one is yours' : `${admin ? callName(admin) : 'Its admin'} has been told`}</small>
-    </p>
-  );
-}
-
-/**
- * Team: one calm row, as Pro's, with its small sun and the team's name under it, which opens Settings at Plan. For its admin
- * while its licenses run short (`short`, a notice not yet dismissed), how many are left and Buy, which opens checkout on Team.
- */
-function TeamRow({ plan, team, short, on }: { plan: Plan; team: MyTeam | null | undefined; short: PlanNotice | undefined; on: boolean }) {
-  const checkout = useCheckout();
-  if (short) {
-    const left = licensesLeft(short, team);
-    return (
-      <button type="button" className={cn('sb-pro', on && 'is-on')} onClick={() => checkout.open({ plan: 'team' }, 'side')}>
-        <SunMark />
-        <span className="min-w-0"><b>{PLAN_NAMES.team}</b><small className="is-warm">{left === 0 ? 'No licenses' : plural(left, 'license')} left · Buy</small></span>
-        <Icon name="chevron" size={15} />
-      </button>
-    );
-  }
-  return (
-    <Link to="/settings" hash="plan" className={cn('sb-pro', on && 'is-on')}>
-      <SunMark />
-      <span className="min-w-0"><b>{PLAN_NAMES.team}</b>{plan.team && <small>{plan.team.name}</small>}</span>
-      <Icon name="chevron" size={15} />
-    </Link>
-  );
-}
-
-/** About how much of the period's notes is left, over a meter: warm under an hour, and once they've stopped, until when. */
-function NotesLeft({ plan }: { plan: Plan }) {
+function NotesLeft({ plan, waiting }: { plan: Plan; waiting: boolean }) {
   const out = notesOut(plan);
+  const className = cn('sb-left', out ? 'is-out' : notesLow(plan) && 'is-warm');
+  const left = out ? <span>No notes left until {dayMonth(new Date(plan.period.to))}</span> : <span><b>About {notesLeft(plan)}</b> of notes left</span>;
+  if (waiting) return <Link to="/team" className={className}>{left}<small className="sb-nolic">No team license yet</small></Link>;
   return (
-    <Link to="/settings" hash="plan" activeOptions={{ includeHash: true }} className={cn('sb-left', out ? 'is-out' : notesLow(plan) && 'is-warm')}>
-      {out ? <span>No notes left until {dayMonth(new Date(plan.period.to))}</span> : <span><b>About {notesLeft(plan)}</b> of notes left</span>}
+    <Link to="/settings" hash="plan" activeOptions={{ includeHash: true }} className={className}>
+      {left}
       <Meter value={out ? 0 : notesShare(plan)} className="sb-meter" />
     </Link>
   );

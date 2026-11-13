@@ -1,0 +1,139 @@
+/*
+ * Your menu, at the top right of every page (`am-`). Your face opens it; it holds you, standing in the last of the light,
+ * then what you reach for from anywhere. On a phone it's a sheet.
+ *
+ * The rules it keeps:
+ *   one row, one thing; every row's icon, words and end sit in the same three columns;
+ *   what opens from a row opens in place under it, never a second menu;
+ *   nothing is filled at rest. When it asks, the answer that loses nothing is the filled one;
+ *   the menu says each fact once: the minutes left and the check stay in the side panel.
+ */
+
+/* ------------------------------------------------------------------ your face */
+.am-anchor { position: relative; z-index: 30; display: inline-flex; }
+.am-me { position: relative; z-index: 2; display: inline-flex; border-radius: 999px 999px 9px 9px; }
+.am-me::after { content: ""; position: absolute; inset: -4px; border-radius: 999px 999px 12px 12px; box-shadow: 0 0 0 0 transparent; transition: box-shadow .14s; pointer-events: none; }
+.am-me:hover::after { box-shadow: 0 0 0 1.5px color-mix(in oklch, var(--ink) 26%, transparent); }
+.am-me.is-open::after { box-shadow: 0 0 0 1.5px var(--line-strong); }
+.am-me:focus-visible { outline: none; }
+.am-me:focus-visible::after, .am-me.is-key::after { box-shadow: 0 0 0 2px var(--focus); }
+.am-me.is-hot { outline-offset: 5px; border-radius: 999px 999px 12px 12px; }
+/* Paused: a small bell on your face, all the time it is. */
+.am-zz { position: absolute; right: -6px; bottom: -4px; z-index: 1; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--raised); color: var(--ink); box-shadow: 0 0 0 1px var(--line), 0 2px 6px -2px rgb(0 0 0 / .35); }
+.am-zz .i { width: 11px; height: 11px; stroke-width: 2.1; }
+
+/* ------------------------------------------------------------------ the popover */
+/* Anything else that's pressed closes it. */
+.am-catch { position: fixed; inset: 0; z-index: 0; cursor: default; }
+.am-pop { position: absolute; top: calc(100% + 13px); right: -10px; z-index: 3; width: 312px; transform-origin: calc(100% - 25px) -8px; animation: am-in .18s var(--ease) both; }
+@keyframes am-in { from { opacity: 0; transform: translateY(-4px) scale(.96); } }
+/* Only its top half shows, so it never lies over the evening below it. */
+.am-caret { position: absolute; top: -6px; right: 20px; z-index: 1; width: 13px; height: 13px; border-radius: 3px 0 0 0; background: var(--raised); box-shadow: inset 1px 1px 0 0 var(--line); transform: rotate(45deg); clip-path: polygon(0 0, 100% 0, 0 100%); }
+
+.am-menu { position: relative; padding: 6px; border-radius: 22px; background: var(--raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), 0 28px 64px -24px rgb(0 0 0 / .62), 0 2px 8px -3px rgb(0 0 0 / .28); font: 400 14px/1.4 var(--sans); }
+[data-mode="light"] .am-menu { box-shadow: inset 0 0 0 1px var(--line), 0 26px 60px -26px oklch(.3 .07 262 / .42), 0 2px 8px -3px oklch(.3 .07 262 / .14); }
+
+/* You, standing on the horizon in the last of the light: Settings' own moment, in small. */
+.am-head { position: relative; isolation: isolate; display: flex; align-items: flex-end; gap: 13px; height: 98px; padding: 0 16px 22px; border-radius: 16px; overflow: hidden; }
+.am-head > i { position: absolute; z-index: -1; display: block; pointer-events: none; }
+.am-head .sky { inset: 0 0 22px; background: var(--sc-sky); }
+.am-head .sea { inset: auto 0 0; height: 22px; background: var(--sc-sea); }
+.am-head .glow { left: 36px; bottom: 22px; width: 250px; height: 84px; transform: translate(-50%, 50%); background: radial-gradient(closest-side, var(--sc-glow), transparent); }
+.am-head .rim { left: 0; right: 0; bottom: 22px; height: 1px; background: linear-gradient(to right, transparent, var(--sc-rim) 18%, transparent 82%); }
+.am-you { position: relative; flex: none; display: block; line-height: 0; }
+.am-you .ac-avatar { box-shadow: 0 -8px 30px -12px color-mix(in oklch, var(--sun-edge) 55%, transparent); }
+/* The light under you on the water. */
+.am-gl { position: absolute; top: calc(100% + 5px); left: 50%; display: grid; justify-items: center; gap: 3px; transform: translateX(-50%); }
+.am-gl i { display: block; height: 1.5px; border-radius: 2px; background: var(--sun-edge); }
+.am-gl i:nth-child(1) { width: 26px; opacity: .55; }
+.am-gl i:nth-child(2) { width: 16px; opacity: .32; }
+.am-gl i:nth-child(3) { width: 8px; opacity: .18; }
+.am-who { flex: 1; min-width: 0; padding-bottom: 3px; }
+.am-name { font: 600 15px/20px var(--sans); color: var(--ink); }
+.am-mail { margin-top: 1px; font: 400 13px/18px var(--sans); color: var(--ink-2); }
+
+/* Rows: an icon, the words, and their end, in three columns. */
+.am-sec { display: grid; gap: 1px; }
+.am-head + .am-sec { margin-top: 6px; }
+.am-sep { height: 1px; margin: 6px 12px; background: var(--line); }
+.am-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; column-gap: 13px; align-items: center; width: 100%; min-height: 40px; padding: 0 10px 0 13px; border-radius: 12px; font: 500 14.5px/20px var(--sans); color: var(--ink); text-align: left; transition: background-color .12s; }
+.am-row > .i { width: 18px; height: 18px; color: var(--ink-2); }
+button.am-row:hover, .am-row.is-open { background: color-mix(in oklch, var(--ink) 7%, transparent); }
+.am-row:focus-visible, .am-row.is-key, .am-opt:focus-visible, .am-opt.is-key, .am-eve:focus-visible, .am-eve.is-key, .am-resume:focus-visible, .am-resume.is-key { outline: 2px solid var(--focus); outline-offset: -2px; }
+.am-eve:focus-visible, .am-eve.is-key { outline-offset: 2px; }
+.am-k { font: 500 12.5px/1 var(--sans); color: var(--ink-3); letter-spacing: .02em; }
+.am-row > .am-chev { width: 16px; height: 16px; color: var(--ink-3); transition: transform .22s var(--ease); }
+.am-row.is-open > .am-chev { transform: rotate(180deg); }
+
+/* How long to pause: in place, under the row, the time it ends in a column of its own. */
+.am-opts { display: grid; gap: 1px; padding: 2px 0 4px 32px; animation: am-drop .2s var(--ease) both; }
+@keyframes am-drop { from { opacity: 0; transform: translateY(-4px); } }
+.am-opt { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px; width: 100%; min-height: 34px; padding: 0 10px 0 14px; border-radius: 10px; font: 400 14px/20px var(--sans); color: var(--ink); text-align: left; }
+.am-opt:hover { background: color-mix(in oklch, var(--ink) 7%, transparent); }
+.am-opt small { font: 400 13px/18px var(--sans); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+/* Paused: the row says until when, with Resume at its end. */
+.am-row.is-paused > .i { color: var(--now); }
+.am-row.is-paused b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.am-resume { height: 30px; padding: 0 12px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line-strong); font: 600 13px/1 var(--sans); color: var(--ink); }
+.am-resume:hover { background: color-mix(in oklch, var(--ink) 7%, transparent); }
+
+/* Theme: three small evenings, as Settings › You draws them. */
+.am-eves { display: flex; gap: 7px; }
+.am-eve { position: relative; display: block; width: 40px; height: 26px; border-radius: 8px; }
+.am-win { position: absolute; inset: 0; display: block; overflow: hidden; border-radius: 8px; box-shadow: 0 0 0 1px var(--line); transition: box-shadow .16s; }
+.am-eve:hover .am-win { box-shadow: 0 0 0 1px var(--line-strong); }
+.am-eve.is-on .am-win { box-shadow: 0 0 0 2px var(--raised), 0 0 0 3.5px var(--press); }
+.am-art { position: absolute; inset: 0; display: block; }
+.am-art i { position: absolute; display: block; }
+.am-art.is-b { clip-path: polygon(62% 0, 100% 0, 100% 100%, 38% 100%); }
+.am-art .sky { inset: 0 0 36%; background: var(--sc-sky); }
+.am-art .sea { inset: 64% 0 0; background: var(--sc-sea); }
+.am-art .glow { left: 50%; top: 64%; width: 130%; height: 80%; transform: translate(-50%, -50%); background: radial-gradient(closest-side, var(--sc-glow), transparent); }
+.am-art .up { position: absolute; inset: 0 0 36%; display: block; overflow: hidden; }
+.am-art .sun { left: 50%; bottom: 0; width: 30%; aspect-ratio: 1; border-radius: 50%; background: var(--sc-sun); transform: translate(-50%, 50%); }
+.am-art .rim { left: 0; right: 0; top: 64%; height: 1px; background: linear-gradient(to right, transparent, var(--sc-rim), transparent); }
+.am-art .g { height: 1.2px; border-radius: 1px; background: var(--sc-near); }
+.am-art .g1 { left: 38%; top: 72%; width: 24%; opacity: .75; }
+.am-art .g2 { left: 42%; top: 82%; width: 16%; opacity: .45; }
+.am-art .star { width: 1.5px; height: 1.5px; border-radius: 50%; background: var(--sc-star); opacity: .8; }
+.am-art .s1 { left: 18%; top: 18%; }
+.am-art .s2 { left: 76%; top: 12%; }
+
+/* Sign out, asking in place, in Settings' words. */
+.am-ask { padding: 14px 12px 6px; animation: am-drop .2s var(--ease) both; }
+.am-ask b { display: block; font: 600 14.5px/21px var(--sans); color: var(--ink); text-wrap: pretty; }
+.am-ask p { margin-top: 6px; font: 400 13.5px/19px var(--sans); color: var(--ink-2); text-wrap: pretty; }
+.am-ask-a { display: grid; gap: 8px; margin-top: 14px; }
+.am-ask-a .b { width: 100%; }
+.am-ask-a .b .i { width: 15px; height: 15px; }
+.am-del { box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--caution); }
+.am-del:hover { background: color-mix(in oklch, var(--ink) 6%, transparent); }
+.am-ask-a [aria-disabled="true"] { opacity: .55; pointer-events: none; }
+.am-spin { flex: none; width: 13px; height: 13px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: am-turn .8s linear infinite; }
+@keyframes am-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .am-spin { animation: am-breathe 1.6s ease-in-out infinite; } }
+@keyframes am-breathe { 50% { opacity: .35; } }
+
+/* ------------------------------------------------------------------ on a phone: a sheet */
+.am-sheet { position: absolute; inset: 0; z-index: 46; display: none; }
+.am-scrim { position: absolute; inset: 0; display: block; width: 100%; background: color-mix(in oklch, var(--well) 72%, transparent); animation: fade .18s var(--ease) both; }
+.am-sheet-in { position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 8px 22px; border-radius: 24px 24px 0 0; background: var(--raised); box-shadow: inset 0 1px 0 var(--line), 0 -24px 60px -20px rgb(0 0 0 / .5); animation: am-up .28s var(--ease) both; }
+@keyframes am-up { from { transform: translateY(100%); } }
+.am-grab { display: block; width: 38px; height: 4px; margin: 0 auto 10px; border-radius: 2px; background: var(--line-strong); }
+.am-sheet .am-menu { padding: 0; border-radius: 0; background: none; box-shadow: none; }
+.am-sheet .am-row { min-height: 50px; font-size: 15.5px; }
+.am-sheet .am-opt { min-height: 44px; font-size: 15px; }
+.am-sheet .am-eve { width: 46px; height: 30px; }
+.am-sheet .am-head { height: 104px; }
+.fl-in .am-sheet-in, .fl-in .am-scrim { animation: none; }
+
+@container page (max-width: 860px) {
+  .am-anchor .am-pop, .am-anchor .am-catch { display: none; }
+  .am-sheet { display: block; }
+}
+
+/* ------------------------------------------------------------------ in a frame, nothing is mid-move */
+.fl-in .am-pop, .fl-in .am-opts, .fl-in .am-ask { animation: none; }
+
+/* ------------------------------------------------------------------ Settings, where the menu leads */
+.st2 .st2-band .am-anchor { display: none; }

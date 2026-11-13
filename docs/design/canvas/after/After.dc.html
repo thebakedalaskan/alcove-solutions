@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>After the call, one moment</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="call-tokens.css">
+<link rel="stylesheet" href="call.css">
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-note.css">
+<link rel="stylesheet" href="after.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="data-note.js"></script>
+<script src="icons.js"></script>
+<script src="after.js"></script>
+<script src="cove.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="{{rootCls}}" style="{{rootStyle}}">
+
+<sc-if value="{{onOver}}" hint-placeholder-val="{{false}}"><div class="{{overCls}}"><dc-import name="Over" state="{{over}}" phone="{{phone}}" hot="{{overHot}}" live="{{live}}" on-press="{{press}}" hint-size="{{size}}"></dc-import></div></sc-if>
+<sc-if value="{{onNote}}" hint-placeholder-val="{{false}}"><div class="{{noteCls}}"><dc-import name="Note" mode="{{mode}}" step="{{noteStep}}" hint-size="{{size}}"></dc-import></div></sc-if>
+<sc-if value="{{onHome}}" hint-placeholder-val="{{false}}"><div class="{{homeCls}}"><dc-import name="Home" mode="{{mode}}" scene="{{homeScene}}" step="home" hint-size="{{size}}"></dc-import></div></sc-if>
+
+<sc-if value="{{onCall}}" hint-placeholder-val="{{true}}">
+<div class="{{callCls}}">
+
+<sc-if value="{{wide}}" hint-placeholder-val="{{true}}">
+<header class="nc-top">
+<span class="nc-ttl">Team standup</span>
+<span class="nc-clock">19:42</span>
+<span class="nc-vr"></span>
+<sc-if value="{{notesOn}}" hint-placeholder-val="{{true}}"><span class="nc-sign"><i></i>Notes on</span></sc-if>
+<span class="nc-shield" aria-label="Confidential compute, verified"><svg class="i" width="19" height="19" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg></span>
+<span class="nc-yb ce-timer"><svg class="i" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.timer}}"></path></svg>Timer</span>
+<div class="nc-end">
+<div class="nc-yours" role="group" aria-label="Just for you">
+<span class="nc-yb has-l"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.presentation}}"></path></svg><span class="yl">Board</span></span>
+<span class="nc-yb has-l"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.folderOpen}}"></path></svg><span class="yl">Workspace</span></span>
+<span class="nc-ysep"></span>
+<span class="nc-yb has-l"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.notebook}}"></path></svg><span class="yl">Notes</span></span>
+<span class="nc-yb has-l"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chat}}"></path></svg><span class="yl">Chat</span></span>
+<span class="nc-ysep"></span>
+<span class="nc-yb is-faces"><dc-import name="Faces" who="art,priya,kofi,maya" size="24" max="4" ring="#10192B" hint-size="78px,26px"></dc-import><span>4</span></span>
+</div>
+</div>
+</header>
+</sc-if>
+<sc-if value="{{phone}}" hint-placeholder-val="{{false}}">
+<header class="nc-top">
+<span class="nc-ttl">Team standup</span>
+<sc-if value="{{notesOn}}" hint-placeholder-val="{{true}}"><span class="nc-sign" aria-label="Notes on"><i></i></span></sc-if>
+<div class="nc-end" style="gap: 6px">
+<span class="nc-yb"><svg class="i" width="19" height="19" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chat}}"></path></svg></span>
+<span class="nc-yb is-faces"><dc-import name="Faces" who="priya,kofi,maya" size="24" max="2" ring="#060D1A" hint-size="64px,26px"></dc-import></span>
+</div>
+</header>
+</sc-if>
+
+<sc-for list="{{tiles}}" as="t" hint-placeholder-count="4">
+<div class="{{t.cls}}" style="{{t.style}}"><div class="fig"><dc-import name="Faces" who="{{t.who}}" figure="{{true}}" hint-size="100%,100%"></dc-import></div><span class="ac-tile-name"><sc-if value="{{t.talk}}" hint-placeholder-val="{{false}}"><span class="ac-level" aria-hidden="true"><i></i><i></i><i></i></span></sc-if>{{t.name}}</span></div>
+</sc-for>
+
+<footer class="nc-dockbar">
+<sc-if value="{{wide}}" hint-placeholder-val="{{true}}">
+<div class="nc-dock">
+<span class="nc-split"><span class="nc-db"><svg class="i" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.mic}}"></path></svg></span><span class="nc-chev"><svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.up}}"></path></svg></span></span>
+<span class="nc-split"><span class="nc-db"><svg class="i" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.video}}"></path></svg></span><span class="nc-chev"><svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.up}}"></path></svg></span></span>
+<span class="nc-dsep"></span>
+<span class="nc-dword"><svg class="i" width="19" height="19" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.screen}}"></path></svg>Share</span>
+<span class="nc-db"><svg class="i" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.hand}}"></path></svg></span>
+<span class="nc-db"><svg class="i" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.more}}"></path></svg></span>
+<span class="nc-dsep"></span>
+<button type="button" class="{{leaveCls}}" onClick="{{pressLeave}}"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.leave}}"></path></svg>Leave</button>
+</div>
+</sc-if>
+<sc-if value="{{phone}}" hint-placeholder-val="{{false}}">
+<div class="nc-dock">
+<span class="nc-db"><svg class="i" width="21" height="21" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.mic}}"></path></svg></span>
+<span class="nc-db"><svg class="i" width="21" height="21" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.video}}"></path></svg></span>
+<span class="nc-db"><svg class="i" width="21" height="21" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.screen}}"></path></svg></span>
+<span class="nc-db"><svg class="i" width="21" height="21" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.more}}"></path></svg></span>
+<button type="button" class="{{leaveCls}}" onClick="{{pressLeave}}" aria-label="Leave"><svg class="i" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.leave}}"></path></svg></button>
+</div>
+</sc-if>
+</footer>
+
+<sc-if value="{{hasAsk}}" hint-placeholder-val="{{false}}">
+<div class="nc-pop nc-closem ce-ask" role="menu" aria-label="Leave Team standup">
+<p class="ce-askh">Leave Team standup</p>
+<button type="button" class="{{askEnd.cls}}" onClick="{{askEnd.click}}"><span class="sq"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.people}}"></path></svg></span><span><b>End for everyone</b><small>{{askEnd.sub}}</small></span></button>
+<button type="button" class="{{askKeep.cls}}" onClick="{{askKeep.click}}"><span class="sq"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.leave}}"></path></svg></span><span><b>Leave, Kofi hosts</b><small>It goes on. Rejoin when you like, and you host again.</small></span><span class="ce-change">Change</span></button>
+</div>
+</sc-if>
+
+<sc-if value="{{hasToast}}" hint-placeholder-val="{{false}}"><div class="nc-toast ce-toast"><span>{{toast}}</span></div></sc-if>
+</div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"step":{"editor":"enum","options":["hLeave","hAsk","hOver","hReady","hNote","mCall","mOver","mNote","lLeave","lOver","lEnded","lHome","kAsk","kOver","kBack","zAsk","zOver","zHome","gLeave","gOver","gEnded","pLeave","pAsk","pOver","pNote"],"default":"hOver"},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"live":{"editor":null,"default":false},"run":{"editor":null,"default":0},"onPress":{"editor":null,"default":null},"$preview":{"width":1440,"height":900}}'>
+/*
+ * One moment of a journey, at 1440x900 (or a phone's 390x844): the call (with Leave's question when it asks), the
+ * page the call leaves you on, or where its buttons go (the note, Home). Live, each view fades in as the app's do.
+ */
+class Component extends DCLogic {
+  componentWillUnmount() { clearTimeout(this.__lt); }
+  renderVals() {
+    var CE = window.CE, I = CE.I, self = this, hs = window.AH.hash();
+    var stepId = hs.ce || this.props.step || 'hOver', cur = CE.step(stepId);
+    var mode = hs.mode || this.props.mode || 'dark';
+    var live = !!this.props.live || hs.live === '1';
+    var run = Number(this.props.run) || 0;
+    var phone = !!cur.phone, G = phone ? CE.PH : CE.W;
+    var press = function (id) { if (self.props.onPress) self.props.onPress(id); };
+
+    /*
+     * Moving from one view to another (the call, its page, the note, Home), the one you leave stays a moment while the
+     * next comes in, so nothing cuts. Within a view (the page's notes being written, then written) nothing is kept.
+     */
+    if (this.__step !== stepId) {
+      var was = this.__step ? CE.step(this.__step) : null;
+      if (live && was && was.on !== cur.on && this.__run === run) {
+        this.__leaving = this.__step;
+        clearTimeout(this.__lt);
+        this.__lt = setTimeout(function () { self.__leaving = null; self.forceUpdate(); }, 1150);
+      } else this.__leaving = null;
+      this.__step = stepId; this.__run = run;
+    }
+    var L = this.__leaving ? CE.step(this.__leaving) : null;
+    var pick = function (k) { return cur.on === k ? cur : L && L.on === k ? L : null; };
+    var vcls = function (k) { return 'ce-view' + (cur.on === k ? (L ? ' is-in' : '') : ' is-out'); };
+    var cs = pick('call') || cur, os = pick('over') || cur, ns = pick('note') || cur, hm = pick('home') || cur;
+    var hot = function (k) { return cs.hot === k ? ' is-hot' : ''; };
+
+    var names = { art: cs.you === 'guest' ? 'Art' : 'Art (you)', priya: 'Priya', kofi: 'Kofi', maya: 'Maya' };
+    var tiles = CE.ORDER.map(function (id, i) {
+      var t0 = G.tiles[i];
+      return { who: id, name: names[id], talk: id === 'priya', cls: 'nc-tile' + (id === 'priya' ? ' is-speaking' : ''), style: 'left: ' + t0[0] + 'px; top: ' + t0[1] + 'px; width: ' + G.tw + 'px; height: ' + G.th + 'px' };
+    });
+    return {
+      I: I, mode: mode, live: live, wide: !phone, phone: phone, size: phone ? '390px,844px' : '1440px,900px',
+      rootCls: 'ce ' + (phone ? 'is-phone' : 'is-wide') + (live ? ' is-live' : ' is-still') + (L ? ' from-' + L.on + ' to-' + cur.on : ''),
+      rootStyle: 'width: ' + G.w + 'px; height: ' + G.h + 'px',
+      onCall: !!pick('call'), onOver: !!pick('over'), onNote: !!pick('note'), onHome: !!pick('home'),
+      overCls: vcls('over'), noteCls: vcls('note'), homeCls: vcls('home'),
+      over: os.over || 'endWriting', overHot: os.hot, press: press,
+      noteStep: ns.note || 'ce-w1', homeScene: hm.home || 'after',
+      callCls: vcls('call') + ' ce-call nc stage' + (phone ? ' is-phone' : ' is-wide'),
+      notesOn: cs.notes, tiles: tiles,
+      leaveCls: 'nc-leave' + hot('leave') + (cs.ask ? ' is-open' : ''), pressLeave: function () { press('leave'); },
+      hasAsk: !!cs.ask,
+      askEnd: { cls: 'nc-cm' + hot('end'), click: function () { press('end'); }, sub: cs.notes ? 'Everyone invited gets the notes.' : 'It ends for everyone in the call.' },
+      askKeep: { cls: 'nc-cm' + hot('keep'), click: function () { press('keep'); } },
+      hasToast: !!cs.toast, toast: cs.toast
+    };
+  }
+}
+</script>
+</body>
+</html>

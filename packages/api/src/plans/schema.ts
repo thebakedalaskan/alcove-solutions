@@ -155,7 +155,9 @@ export type CheckoutParam = z.infer<typeof CheckoutParamSchema>;
 
 /** A way to add money: a stablecoin on one chain. */
 export const TopUpRouteSchema = z.object({
-  id: z.string(), chain: z.string(), chainName: z.string(), token: z.enum(['USDC', 'USDT']),
+  id: z.string(), chain: z.string(), chainName: z.string(),
+  /** Routes offered are all USDC; USDT is only on a top-up opened before USDC was the one way to pay. */
+  token: z.enum(['USDC', 'USDT']),
   /** The least that can be sent, in tokens, as a decimal string ("5"). */
   minimum: z.string()
 });

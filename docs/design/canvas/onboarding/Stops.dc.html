@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Every stop, before and now</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="tour.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="tour.js"></script>
+<script src="tour-art.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>
+body{margin:0}
+.sb { --k: 1; --tr-sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif; --tr-serif: "Newsreader", Georgia, serif; --sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif; --serif: "Newsreader", Georgia, serif; box-sizing: border-box; display: grid; grid-template-columns: 300px minmax(0, 1fr); column-gap: 72px; width: 2240px; padding: 56px 64px 72px; background: oklch(.955 .007 80); color: oklch(.25 .05 268); font: 400 15px/1.45 var(--sans); -webkit-font-smoothing: antialiased; }
+.sb *, .sb *::before, .sb *::after { box-sizing: border-box; }
+.sb h2 { margin: 0 0 6px; font: 400 34px/1.1 var(--serif); letter-spacing: -.012em; }
+.sb-lede { margin: 0 0 28px; color: oklch(.42 .04 268); font-size: 15px; }
+.sb-old { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.sb-old li { display: grid; grid-template-columns: 26px minmax(0, 1fr); column-gap: 8px; padding: 16px 0; border-top: 1px solid oklch(.25 .05 268 / .12); }
+.sb-old li:last-child { border-bottom: 1px solid oklch(.25 .05 268 / .12); }
+.sb-old .n, .sb-cap .n { font-weight: 600; color: oklch(.5 .04 268); font-variant-numeric: tabular-nums; }
+.sb-old b { display: block; font-weight: 600; }
+.sb-old small { display: block; margin-top: 2px; font-size: 13.5px; color: oklch(.42 .04 268); }
+.sb-old em { display: block; margin-top: 6px; font-style: normal; font-size: 13.5px; color: oklch(.36 .05 268); }
+.sb-grid { display: grid; grid-template-columns: repeat(4, 400px); column-gap: 40px; row-gap: 56px; align-items: start; }
+.sb-f { margin: 0; display: grid; gap: 14px; }
+.sb-cap { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; column-gap: 8px; align-items: baseline; min-height: 74px; }
+.sb-cap b { font-weight: 600; }
+.sb-cap small { display: block; margin-top: 3px; font-size: 13.5px; line-height: 1.4; color: oklch(.42 .04 268); }
+.sb-tag { align-self: start; height: 24px; padding: 0 10px; border-radius: 999px; font: 600 12px/24px var(--sans); white-space: nowrap; }
+.sb-tag.is-new { background: #DBE9FC; color: #215DB3; }
+.sb-tag.is-updated { background: #FDEBDA; color: #A63D02; }
+.sb-tag.is-kept { background: #E7EEF5; color: #394967; }
+.sb .tr-card.sb-card { position: relative; transform: none; transition: none; max-width: none; }
+.sb .tr-b { pointer-events: none; }
+</style>
+</helmet>
+<div class="sb" data-mode="{{mode}}">
+<section aria-labelledby="sb-old">
+<h2 id="sb-old">The tour before</h2>
+<p class="sb-lede">Six stops, written before Calls, the Drive, Search or ask and Agents.</p>
+<ol class="sb-old">
+<sc-for list="{{old}}" as="o" hint-placeholder-count="6"><li><span class="n">{{o.n}}</span><span><b>{{o.title}}</b><small>Pointed at {{o.at}}</small><em>{{o.note}}</em></span></li></sc-for>
+</ol>
+</section>
+<section aria-labelledby="sb-now">
+<h2 id="sb-now">The tour now</h2>
+<p class="sb-lede">Seven stops on a new account’s first day, and Join a call when one is about to start. The same card, cut-out, arrow and art loops.</p>
+<div class="sb-grid">
+<sc-for list="{{cards}}" as="c" hint-placeholder-count="8">
+<figure class="sb-f">
+<figcaption class="sb-cap"><span class="n">{{c.n}}</span><span><b>{{c.where}}</b><small>{{c.was}}</small></span><span class="{{c.tagCls}}">{{c.tag}}</span></figcaption>
+<div class="tr-card tr-tok sb-card" role="group" aria-label="{{c.title}}">
+<div class="tr-art"><dc-import name="Art" k="{{c.art}}" still="{{still}}" hint-size="400px,180px"></dc-import></div>
+<div class="tr-body"><h3 class="tr-h">{{c.title}}</h3><p class="tr-p">{{c.text}}</p></div>
+<div class="tr-foot">
+<span class="tr-steps" aria-hidden="true"><sc-for list="{{c.dots}}" as="d" hint-placeholder-count="7"><i class="{{d.cls}}"></i></sc-for></span>
+<sc-if value="{{c.notLast}}" hint-placeholder-val="{{true}}"><button type="button" class="tr-b is-quiet" tabIndex="-1">Skip tour</button></sc-if>
+<button type="button" class="tr-b is-primary" tabIndex="-1">{{c.next}}<sc-if value="{{c.notLast}}" hint-placeholder-val="{{true}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></sc-if></button>
+</div>
+</div>
+</figure>
+</sc-for>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"still":{"editor":"boolean","default":false},"$preview":{"width":2240,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var AH = window.AH, TR = AH.TR;
+    var first = TR.stops({ day: 'first', keys: true });
+    var soon = TR.stops({ day: 'soon', keys: true });
+    var card = function (list, i) {
+      var s = list[i], after = list[i + 1];
+      return {
+        art: s.art, title: s.title, text: s.text, where: s.where, was: s.was, tag: s.tag,
+        tagCls: 'sb-tag ' + (s.tag === 'New' ? 'is-new' : s.tag === 'Kept' ? 'is-kept' : 'is-updated'),
+        dots: list.map(function (x, j) { return { cls: j === i ? 'is-on' : '' }; }),
+        notLast: !!after, next: after ? (after.lead || 'Show me ' + after.called) : 'Start using Alcove'
+      };
+    };
+    var cards = [card(first, 0), card(soon, 1)].concat(first.slice(1).map(function (x, j) { return card(first, j + 1); }));
+    cards.forEach(function (c, i) { c.n = String(i + 1); });
+    return {
+      mode: this.props.mode || AH.hash().mode || 'dark',
+      still: !!this.props.still,
+      I: AH.ART.I,
+      old: TR.OLD.map(function (o, i) { return { n: String(i + 1), title: o.title, at: o.at, note: o.note }; }),
+      cards: cards
+    };
+  }
+}
+</script>
+</body>
+</html>

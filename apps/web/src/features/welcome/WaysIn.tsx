@@ -20,7 +20,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /**
  * One sign-in for the whole page, so every set of buttons shows the same busy state. `call`: signing in from that
  * call's join page, which carries on there (Google comes back to it) instead of going to Home, and doesn't sail out of
- * the welcome page's cove.
+ * the welcome page's cove. `agent`: signing in to let an agent in, which carries on at Agents, where it asks.
  */
 export function useAuth(o: { call?: string | undefined; agent?: string | undefined } = {}): Auth {
   const signIn = useSignIn();
@@ -34,7 +34,7 @@ export function useAuth(o: { call?: string | undefined; agent?: string | undefin
 
   const enter = async (next: '/ready' | '/home' | '/move') => {
     if (o.call) { clearReturn(); setBusy(null); return; }
-    if (o.agent) { clearReturn(); setBusy(null); await navigate({ to: '/connect', search: { request: o.agent }, replace: true }); return; }
+    if (o.agent) { clearReturn(); setBusy(null); await navigate({ to: '/agents', search: { request: o.agent }, replace: true }); return; }
     setLeaving(true);
     // Home loads while the words fade, so it opens as the welcome page goes, with nothing blank between. (Not /ready: its
     // loading starts a new account's arrival.)

@@ -46,7 +46,7 @@ export interface CatchingUp {
  * `place` is where your side is, to the tab, and `setPlace` takes it somewhere (or puts it away); `room` is the breakout room
  * you're in, if any, whose lines alone catching up reads there.
  */
-export function useCatchingUp(session: CallSession, o: { place: SidePlace | null; setPlace: (p: SidePlace | null) => void; narrow: boolean; everOn: boolean; room: string | null }): CatchingUp {
+export function useCatchingUp(session: CallSession, o: { place: SidePlace | null; setPlace: (p: SidePlace | null) => void; narrow: boolean; everOn: boolean; room: string | null; over: boolean }): CatchingUp {
   const toast = useToast();
   const [asks, setAsks] = useState<Asked[]>([]);
   const [range, setRange] = useState<CatchUpRange>(WHOLE_CALL);
@@ -123,19 +123,23 @@ export function useCatchingUp(session: CallSession, o: { place: SidePlace | null
 
   /*
    * Coming back after time away, or joining late: offered once, as a toast, decided by the first window read when the
-   * screen opens, and not at all when notes have never been on. Guests can't read what was said then.
+   * screen opens, and not at all when notes have never been on. Guests can't read what was said then. The offer goes with
+   * the call screen: there's nothing to catch up on once you've left.
    */
   const latest = useRef(catchUp);
   latest.current = catchUp;
   const offered = useRef(false);
+  const offer = useRef<(() => void) | null>(null);
+  useEffect(() => { if (o.over) offer.current?.(); }, [o.over]);
+  useEffect(() => () => { offer.current?.(); }, []);
   useEffect(() => {
     if (offered.current || !win) return;
     offered.current = true;
     if (!o.everOn || win.here !== null) return;
     if (win.away && win.now - win.away.to < 60 && win.away.to - win.away.from >= 20) {
-      toast(`You were away for ${howLong(win.away.to - win.away.from)}`, { icon: 'history', ms: 12_000, action: { label: 'Catch up', onClick: () => latest.current({ kind: 'away' }) } });
+      offer.current = toast(`You were away for ${howLong(win.away.to - win.away.from)}`, { icon: 'history', ms: 12_000, action: { label: 'Catch up', onClick: () => latest.current({ kind: 'away' }) } });
     } else if (win.joined >= 120 && win.now - win.joined < 60) {
-      toast(`The call started ${howLong(win.joined)} before you joined`, { icon: 'history', ms: 12_000, action: { label: 'Catch up', onClick: () => latest.current({ kind: 'before-joined' }) } });
+      offer.current = toast(`The call started ${howLong(win.joined)} before you joined`, { icon: 'history', ms: 12_000, action: { label: 'Catch up', onClick: () => latest.current({ kind: 'before-joined' }) } });
     }
   }, [win, o.everOn, toast]);
 

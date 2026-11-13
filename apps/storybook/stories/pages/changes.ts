@@ -1,8 +1,8 @@
 /*
  * What page stories change about their scenario's world as they open (`changing()` in src/page.tsx): a part of Alcove
  * that fails or keeps the page waiting, recordings kept on this device, the calendar, the shared demo account, a call on
- * its way here, the calls other people asked Art to, notes in every state, and a team's licenses. All made up, in the demo
- * world.
+ * its way here, the calls other people asked Art to, nothing waiting on him, notes in every state, and a team's
+ * licenses. All made up, in the demo world.
  */
 import { NOTE_LINK_DAYS, type PersonalEntry } from '@alcove/api';
 import { UNENCRYPTED_MODEL } from '../../src/api/script';
@@ -10,7 +10,9 @@ import { standIn } from '../../src/api/standin';
 import type { Troubles } from '../../src/api/trouble';
 import { keepHere, type KeptSpec } from '../../src/api/kept';
 import type { World } from '../../src/world';
-import { connected, notConnected } from '../../src/world/build';
+import { calendarEvent, changer, connected, notConnected, writeNote } from '../../src/world/build';
+import { firstDayEvents } from '../../src/world/calls';
+import { pricingFollowUp, pricingFollowUpWritten } from '../../src/world/notes';
 import { iso } from '../../src/world/clock';
 import { INVITATIONS, MOVING } from '../../src/world/invitations';
 import { withDriveExports } from '../../src/world/drive-exports';
@@ -49,6 +51,51 @@ export const notAttested = (): (() => void) => swap(standIn.trust, 'attestation'
 /** Signed in with Google without sharing the calendar. */
 export const noCalendar = (w: World): void => { w.calendar = notConnected; };
 
+/** Show my other meetings on Home is off (Settings, Google Calendar): Upcoming lists Alcove calls only. */
+export const otherMeetingsOff = (w: World): void => { w.prefs = { ...w.prefs, showOtherMeetings: false }; };
+
+/** Back from Google on the first day, the calendar just connected: the week's meetings with other people on them. */
+export const calendarJustConnected = (w: World): void => { w.calendar = connected(firstDayEvents()); };
+
+/** A meeting Art set up on Google Calendar himself, on Google Meet, with Maya and Lena on Friday: one he can move to Alcove. */
+export const yourMeeting = (w: World): void => {
+  w.calendar = { ...w.calendar, events: [...w.calendar.events, calendarEvent({ id: 'e-pricing-review', title: 'Pricing review', startsAt: iso(2, 14, 0), minutes: 30, guests: [MAYA, LENA], meet: true })] };
+};
+
+/** Maya gave Art the pricing draft to send, after the pricing sync: it waits for his answer, from her. */
+export const givenByMaya = (w: World): void => {
+  const given = { by: changer(MAYA, 'organizer'), at: iso(-1, 16, 10), what: 'reassigned' as const, after: ART.email };
+  w.notes = w.notes.map((n) => (n.id === 'n3' ? { ...n, actions: n.actions.map((a) => (a.id === 'n3-a1' ? { ...a, changes: [...a.changes, given] } : a)) } : n));
+};
+
+/** Art's first call has just ended: its notes are being written, and they're written a few seconds later. */
+export const firstNotesWriting = (w: World): void => {
+  w.notes = [writeNote(pricingFollowUp)];
+  w.writing = { id: pricingFollowUp.id, seconds: 12, written: pricingFollowUpWritten };
+};
+
+/** Every decision settled, and nothing shared with Art this past week. */
+const allSettled = (w: World): void => {
+  const weeksAgo = iso(-10, 9, 0);
+  w.notes = w.notes.map((n) => ({
+    ...n,
+    decisions: n.decisions.map((d) => (d.state === 'proposed' || d.disputes.length ? { ...d, state: 'confirmed' as const, disputes: [] } : d)),
+    ...(n.received ? { received: { ...n.received, at: weeksAgo } } : {})
+  }));
+};
+
+/** Nothing waiting on Art: every decision settled, every follow-up of his done, and nothing shared with him this past week. */
+export const caughtUp = (w: World): void => {
+  allSettled(w);
+  w.notes = w.notes.map((n) => ({ ...n, actions: n.actions.map((a) => ({ ...a, done: true })) }));
+};
+
+/** Nothing for Art to answer, with his follow-ups still open: every decision settled, nothing shared, all of his taken on. */
+export const nothingToAnswer = (w: World): void => {
+  allSettled(w);
+  takenOn(w);
+};
+
 /** The calls other people asked Art to, and the ones offering times to pick from. */
 export const invited = (w: World): void => { w.meetings = [...w.meetings, ...INVITATIONS]; };
 
@@ -77,6 +124,13 @@ export const longSuggestions = (w: World): void => {
 
 /** Nothing recorded in the room yet: only calls have notes. */
 export const noRoomNotes = (w: World): void => { w.notes = w.notes.filter((n) => n.kind !== 'room'); };
+
+/** Theo sat in on yesterday's design review and said nothing: Search or ask offers him, with no line of his to find. */
+export const quietGuest = (w: World): void => {
+  w.notes = w.notes.map((n) => (n.id === 'n4'
+    ? { ...n, people: [...n.people, THEO], recipients: [...n.recipients, { person: THEO, role: 'invited' as const, at: iso(-1, 11, 45) }] }
+    : n));
+};
 
 /** Record without a connection is off: this browser remembers that too, so it holds without a connection. */
 export const recordsOnlyOnline = (w: World): void => {

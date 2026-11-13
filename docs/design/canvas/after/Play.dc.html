@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Play it</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="call-tokens.css">
+<link rel="stylesheet" href="call.css">
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-note.css">
+<link rel="stylesheet" href="after.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="data-note.js"></script>
+<script src="icons.js"></script>
+<script src="after.js"></script>
+<script src="cove.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="cv pl light">
+<div class="pl-top">
+<div class="pl-t"><h1>Play it</h1><p>Pick a journey and watch it, or press what’s ringed. The arrows step through it.</p></div>
+<div class="pl-ctl">
+<div class="pl-seg" role="group" aria-label="Theme"><sc-for list="{{modes}}" as="m" hint-placeholder-count="2"><button type="button" class="pl-sb" aria-pressed="{{m.on}}" onClick="{{m.pick}}">{{m.label}}</button></sc-for></div>
+<button type="button" class="pl-b" onClick="{{toggle}}"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{playIcon}}"></path></svg>{{playLabel}}</button>
+<button type="button" class="pl-ib" aria-label="Step back" onClick="{{back}}"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.left}}"></path></svg></button>
+<button type="button" class="pl-ib" aria-label="Next step" onClick="{{next}}"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></button>
+</div>
+</div>
+<div class="pl-js" role="group" aria-label="Journeys">
+<sc-for list="{{journeys}}" as="x" hint-placeholder-count="7"><button type="button" class="pl-j" aria-pressed="{{x.on}}" onClick="{{x.pick}}"><i>{{x.n}}</i>{{x.title}}</button></sc-for>
+</div>
+<div class="{{frameCls}}">
+<sc-if value="{{wide}}" hint-placeholder-val="{{true}}"><dc-import name="After" step="{{step}}" mode="{{mode}}" live="{{true}}" run="{{run}}" on-press="{{press}}" hint-size="1440px,900px"></dc-import></sc-if>
+<sc-if value="{{phone}}" hint-placeholder-val="{{false}}"><div class="pl-phone"><dc-import name="After" step="{{step}}" mode="{{mode}}" live="{{true}}" run="{{run}}" on-press="{{press}}" hint-size="390px,844px"></dc-import></div></sc-if>
+</div>
+<div class="pl-cap">
+<div class="pl-n">{{n}}<small>of {{total}}</small></div>
+<div class="pl-c"><span>How you get here</span><p>{{did}}</p></div>
+<div class="pl-c"><span>What happens</span><p>{{see}}</p></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1520,"height":1210}}'>
+/* After the call, playable: each journey a moment at a time. Watch it plays one through; what's ringed can be pressed. */
+class Component extends DCLogic {
+  js() { return window.CE.JOURNEYS; }
+  cur() { var s = this.state || {}, j = this.js()[s.j || 0]; return { j: j, i: s.i || 0, f: j.frames[s.i || 0] }; }
+  go(i) {
+    var c = this.cur();
+    if (i < 0 || i >= c.j.frames.length) { this.setState({ playing: false }); return; }
+    this.setState({ i: i });
+  }
+  start(j) { this.setState({ j: j, i: 0, playing: true, run: ((this.state || {}).run || 0) + 1 }); }
+  componentDidMount() {
+    var m = /j=(\d+)/.exec(location.hash);
+    this.setState({ j: m ? +m[1] - 1 : 0, i: 0, playing: true, mode: (/mode=(light|dark)/.exec(location.hash) || [])[1] || 'dark' });
+  }
+  componentDidUpdate(_, prev) {
+    var s = this.state || {}, was = prev || {}, self = this;
+    if (s.playing !== was.playing || s.i !== was.i || s.j !== was.j) {
+      clearTimeout(this.t);
+      if (s.playing) {
+        var f = this.cur().f;
+        this.t = setTimeout(function () {
+          var k = self.cur().i + 1;
+          if (k >= self.cur().j.frames.length) { self.setState({ playing: false }); return; }
+          self.setState({ i: k });
+        }, f.hold || 2400);
+      }
+    }
+  }
+  componentWillUnmount() { clearTimeout(this.t); }
+  renderVals() {
+    var self = this, CE = window.CE, s = this.state || {}, c = this.cur(), mode = s.mode || 'dark';
+    var phone = !!c.j.phone;
+    var atEnd = c.i >= c.j.frames.length - 1 && !s.playing;
+    return {
+      I: CE.I, step: c.f.step, mode: mode, run: s.run || 0, wide: !phone, phone: phone,
+      frameCls: 'pl-frame' + (phone ? ' is-ph' : ''),
+      journeys: this.js().map(function (x, k) {
+        return { n: String(x.n), title: x.title, on: k === (s.j || 0) ? 'true' : 'false', pick: function () { self.start(k); } };
+      }),
+      modes: ['dark', 'light'].map(function (m) { return { label: m === 'dark' ? 'Dark' : 'Light', on: m === mode ? 'true' : 'false', pick: function () { self.setState({ mode: m }); self.start(s.j || 0); } }; }),
+      n: String(c.i + 1), total: String(c.j.frames.length), did: c.f.did, see: c.f.see,
+      playIcon: CE.I[s.playing ? 'pause' : atEnd ? 'reset' : 'circlePlay'], playLabel: s.playing ? 'Pause' : atEnd ? 'Watch again' : 'Watch it',
+      toggle: function () { if (s.playing) self.setState({ playing: false }); else if (atEnd) self.start(s.j || 0); else self.setState({ playing: true }); },
+      back: function () { self.setState({ playing: false }); self.go(c.i - 1); },
+      next: function () { self.setState({ playing: false }); self.go(c.i + 1); },
+      press: function (id) {
+        var cc = self.cur();
+        if (window.CE.step(cc.f.step).hot === id) { self.setState({ playing: true }); self.go(cc.i + 1); }
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

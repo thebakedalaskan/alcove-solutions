@@ -100,10 +100,8 @@ export const ProEndingRenewedEnded: PageStory = {
       await userEvent.click(within(await row('Renew from balance')).getByRole('switch', { name: 'Renew from balance' }));
       await within(await row('Renew from balance')).findByText(/^Your balance is short of a month/, {}, SOON);
     });
-    await step('Add money: $20 in USDC on Base. Get an address, and send it', async () => {
+    await step('Add money: $20 in USDC on Base, the network picked under Pay with USDC. Get an address, and send it', async () => {
       await userEvent.click(within(await row('Balance')).getByRole('button', { name: 'Add money' }));
-      await userEvent.click(within(await sheet()).getByRole('button', { name: /^Token:/ }));
-      await userEvent.click(within(await screen.findByRole('listbox', { name: 'Token' }, SOON)).getByRole('option', { name: 'USDC' }));
       await userEvent.click(within(await sheet()).getByRole('button', { name: /^Network:/ }));
       await userEvent.click(within(await screen.findByRole('listbox', { name: 'Network' }, SOON)).getByRole('option', { name: 'Base' }));
       await userEvent.click(within(await sheet()).getByRole('button', { name: 'Get an address' }));

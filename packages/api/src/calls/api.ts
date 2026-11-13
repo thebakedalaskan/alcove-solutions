@@ -1,6 +1,7 @@
 import { type Series } from '../notes/series';
 import { type ID, type ISODate } from '../shared/ids';
 import { type LiveStore } from '../shared/live';
+import { type CallAheadHome, type CallAheadMake } from './ahead';
 import { type InstantCallInput } from './entry';
 import { type CallMoveIn } from './moves';
 import { type IncomingRing, type RingReply } from './rings';
@@ -36,6 +37,13 @@ export interface CallsApi {
   openMove(code: string): Promise<CallMoveIn>;
   /** Picks up a move this tab opened before it went to sign in, by the claim it kept (in this tab's sessionStorage). */
   resumeMove(claim: string): Promise<CallMoveIn>;
+  /**
+   * Gets a call ready before it starts, for its organizer or someone invited: its home is settled (the workspace its organizer
+   * chose, while they can still make things there, else a new one made for it, with everyone invited in), and an agenda, a
+   * board or a document for files (called `name`) is made there and brought to the call. Refused once the call has started,
+   * and for anyone it isn't open to.
+   */
+  ready(meetingId: ID, make: CallAheadMake, name?: string | undefined): Promise<CallAheadHome>;
 }
 
 export interface RingsApi {

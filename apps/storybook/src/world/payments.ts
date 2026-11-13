@@ -43,12 +43,11 @@ const route = (id: string, chain: string, chainName: string, token: TopUpRoute['
 const BASE = route('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 'base', 'Base', 'USDC');
 /** Pro is $20 a period; the amounts offered first are one, three and six periods of it, in micro-USD. */
 const ROUTES: TopUpRoutes = {
+  // USDC only, in the order the server offers them (its allowlist's, apps/api/src/features/billing/oneclick.ts).
   routes: [
-    BASE, route('preview-sol-USDC', 'sol', 'Solana', 'USDC'), route('preview-eth-USDC', 'eth', 'Ethereum', 'USDC', 20),
-    route('preview-arb-USDC', 'arb', 'Arbitrum', 'USDC'), route('preview-pol-USDC', 'pol', 'Polygon', 'USDC'),
-    route('preview-near-USDC', 'near', 'NEAR', 'USDC'), route('preview-op-USDC', 'op', 'Optimism', 'USDC'),
-    route('preview-avax-USDC', 'avax', 'Avalanche', 'USDC'), route('preview-bsc-USDC', 'bsc', 'BNB Chain', 'USDC'),
-    route('preview-near-USDT', 'near', 'NEAR', 'USDT'), route('preview-bsc-USDT', 'bsc', 'BNB Chain', 'USDT')
+    route('preview-near-USDC', 'near', 'NEAR', 'USDC'), route('preview-eth-USDC', 'eth', 'Ethereum', 'USDC', 20), route('preview-sol-USDC', 'sol', 'Solana', 'USDC'),
+    BASE, route('preview-arb-USDC', 'arb', 'Arbitrum', 'USDC'), route('preview-pol-USDC', 'pol', 'Polygon', 'USDC'),
+    route('preview-bsc-USDC', 'bsc', 'BNB Chain', 'USDC'), route('preview-op-USDC', 'op', 'Optimism', 'USDC'), route('preview-avax-USDC', 'avax', 'Avalanche', 'USDC')
   ],
   presets: [20_000_000, 60_000_000, 120_000_000]
 };

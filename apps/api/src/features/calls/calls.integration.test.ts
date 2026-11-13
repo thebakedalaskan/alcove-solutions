@@ -4,7 +4,7 @@
  * (docker-compose.yml) and main's fake Google and NEAR AI. Participants are @livekit/rtc-node rooms joined with
  * the tokens the API hands out, encrypting media with keys from the call's MLS group, so media travels for real.
  */
-import { AlcoveApiError, CallMlsSchema, firstName, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type TranscriptClip, type TranscriptLine } from '@alcove/api';
+import { AlcoveApiError, CallMlsSchema, firstName, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type NoteProgress, type TranscriptClip, type TranscriptLine } from '@alcove/api';
 import { createHttpApi, type ClientEvent } from '@alcove/api-http';
 import { DisconnectReason, EncryptionType, TrackKind, TrackSource } from '@livekit/rtc-node';
 import { randomBytes } from 'node:crypto';
@@ -1635,6 +1635,36 @@ describe('keeping in step', () => {
     await host.leave();
   });
 
+  it('lets a guest who left on purpose straight back in with their pass, a locked call too, and only once', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const browser = guestBrowser();
+    const sam = await browser.calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    await sam.setHand(true);
+    const raised = await settle(host, (s) => s.participants.some((p) => p.id === sam.ticket.identity && p.hand));
+    const seat = raised.participants.find((p) => p.id === sam.ticket.identity)?.seat ?? '';
+    expect(seat).not.toBe('');
+    // Sam leaves on purpose. The call goes on, and is locked since.
+    await sam.leave();
+    await settle(host, (s) => !s.participants.some((p) => p.id === sam.ticket.identity));
+    await host.lock(true);
+    // Rejoin, from the call's page: the same tab, the same name and the pass it kept. Sam is straight back in, past the lock,
+    // without anyone being asked: in the same seat, with the hand that went down on leaving still down.
+    const back = await browser.calls.join(c, { mic: true, cam: false, name: 'Sam', previous: sam.ticket.pass });
+    await host.refresh();
+    expect(host.getSnapshot().waiting).toEqual([]);
+    await inGroup(back);
+    const s = await settle(host, (x) => x.participants.some((p) => p.id === back.ticket.identity));
+    expect(s.participants.find((p) => p.id === back.ticket.identity)).toMatchObject({ seat, hand: false });
+    // The pass brings Sam back once: the same pass again is someone new at a locked call.
+    const again = await browser.calls.join(c, { mic: true, cam: false, name: 'Sam', previous: sam.ticket.pass }).catch((e: unknown) => e);
+    expect([code(again), message(again)]).toEqual(['forbidden', 'The host has locked this call.']);
+    await host.leave();
+  });
+
   it('takes out anyone let in who never reaches the room, once they’ve had time to get there', async () => {
     const org = await account();
     const { code: c } = await org.api.calls.startNow({});
@@ -1931,6 +1961,20 @@ describe('host controls', () => {
 
 /** Every progress step of a note until it's written. */
 async function written(api: AlcoveApi, noteId: string) { const steps = []; for await (const p of api.notes.progress(noteId)) steps.push(p); return steps; }
+/**
+ * Follows a note being written as a call's page does, on one stream: its first step as soon as it's asked for (`first`),
+ * then every step after it until the note is written (`rest`).
+ */
+async function follow(api: AlcoveApi, noteId: string) {
+  const steps = api.notes.progress(noteId)[Symbol.asyncIterator]();
+  const first = await steps.next();
+  const rest = async () => {
+    const after: NoteProgress[] = [];
+    for (let p = await steps.next(); !p.done; p = await steps.next()) after.push(p.value);
+    return after;
+  };
+  return { first: first.done ? undefined : first.value, rest };
+}
 const callState = async (callId: string) => String((await h.pool.query('SELECT state FROM calls WHERE call_id = $1', [callId])).rows[0]?.state);
 /** A webhook signed the way LiveKit signs them, posted to the API. */
 async function hook(event: string, roomName: string, identity?: string) {
@@ -2038,6 +2082,52 @@ describe('ending', () => {
     const noteId = end?.pendingNoteId ?? '';
     expect((await written(org.api, noteId)).at(-1)?.ready).toBe(true);
     expect((await invited.api.notes.get(noteId)).id).toBe(noteId);
+  });
+
+  it('lets everyone invited follow the notes being written from the moment the call ends', async () => {
+    const org = await account();
+    const [kimEmail, leeEmail] = [unique('kim'), unique('lee')];
+    const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [kimEmail, leeEmail] });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await joinRoom(host);
+    const kim = await account(kimEmail);
+    const kimCall = await kim.api.calls.join(c, { mic: true, cam: false });
+    const kimRoom = await joinRoom(kimCall);
+    const lee = await account(leeEmail);
+    const leeCall = await lee.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(leeCall);
+    const said = 'Kim and Lee will read the notes as they are written.';
+    await host.appendAudio(piece(audioBytes('following'), 0, 0));
+    await host.transcribe(speech(said, 0, 0), host.ticket.identity);
+    // In the call, each of them, as someone invited, is told which note it writes: the call's page keeps that from the last it heard there.
+    const told = (call: CallSession) => settle(call, (s) => s.participants.some((p) => p.isMe) && s.notes.noteId !== null);
+    const [kims, lees] = [await told(kimCall), await told(leeCall)];
+    expect([kims.role, lees.role]).toEqual(['invited', 'invited']);
+    const noteId = kims.notes.noteId ?? '';
+    expect(noteId).not.toBe('');
+    expect(lees.notes.noteId).toBe(noteId);
+    // Lee leaves while it goes on, and the card Lee's page reads says it hasn't ended.
+    await leeCall.leave();
+    expect((await lee.api.calls.card(c)).ended).toBe(false);
+
+    // The organizer ends it, and the notes model takes its time over these notes.
+    h.near.slowNext(5_000, said);
+    const ending = host.leave();
+    // Kim's room goes with the call, and her page follows the notes at once, before the organizer has read anything of them.
+    expect(await kimRoom.disconnectReason()).toBe(DisconnectReason.ROOM_DELETED);
+    const kimFollows = await follow(kim.api, noteId);
+    // Lee's page turns once the card says the call has ended, and follows them too.
+    expect((await lee.api.calls.card(c)).ended).toBe(true);
+    const leeFollows = await follow(lee.api, noteId);
+    for (const f of [kimFollows, leeFollows]) {
+      expect(f.first?.steps[0]).toEqual({ label: 'Call ended', done: true });
+      expect(f.first?.ready).toBe(false);
+    }
+    expect((await ending)?.pendingNoteId).toBe(noteId);
+    // The same streams go on until the notes are written, and then the notes open for each of them.
+    const [kimRest, leeRest] = await Promise.all([kimFollows.rest(), leeFollows.rest()]);
+    expect([kimRest.at(-1)?.ready, leeRest.at(-1)?.ready]).toEqual([true, true]);
+    for (const api of [kim.api, lee.api]) expect((await api.notes.get(noteId)).id).toBe(noteId);
   });
 
   it('keeps the call going when another participant’s browser closes, and takes them out of the group', async () => {

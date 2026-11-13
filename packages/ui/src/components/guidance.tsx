@@ -141,6 +141,8 @@ export function TourDialog({ slides, onClose }: { slides: TourSlide[]; onClose: 
   const cur = useRef(-1);
   const pending = useRef<How | null>(null);
   const moving = useRef<AnimationPlaybackControls[]>([]);
+  /** The tour and its card fading in, on the first slide. Moving on finishes them (stopped part way, a fade holds its value); closing freezes them and fades out from there. */
+  const fades = useRef<AnimationPlaybackControls[]>([]);
   const busy = useRef(false);
   const closing = useRef(false);
   const lastFocus = useRef<Element | null>(null);
@@ -160,6 +162,8 @@ export function TourDialog({ slides, onClose }: { slides: TourSlide[]; onClose: 
   }, []);
 
   const stop = () => { for (const m of moving.current) m.stop(); moving.current = []; gliding.current = false; };
+  /** Ends the first slide's fade-in: `complete` puts the tour and its card fully in, `freeze` leaves them where they are. */
+  const endFades = (how: 'complete' | 'freeze') => { for (const f of fades.current) { if (how === 'complete') f.complete(); else f.stop(); } fades.current = []; };
 
   /** Puts the spot, the card and the arrow where slide `i` wants them. False when its target isn't on the page. */
   const layout = useCallback((i: number, how: How): boolean => {
@@ -197,12 +201,9 @@ export function TourDialog({ slides, onClose }: { slides: TourSlide[]; onClose: 
     }
     const a = arrowFor(p.side, { x: p.x, y: p.y, w: cw, h: ch }, t);
     const showArrow = (animated: boolean) => { gliding.current = false; setArrow(a ? { ...a, n: ++arrows.current, draw: animated } : null); };
+    // Moving on, or the window changing, during the first slide's fade-in: the tour and its card are in by now.
+    if (how !== 'first') endFades('complete');
     stop();
-    // Moving on can cut the first slide's fade-in short (→ pressed quickly): the tour and its card are in by now, whatever it stopped.
-    if (how !== 'first') {
-      c.style.opacity = '1';
-      if (root.current) root.current.style.opacity = '1';
-    }
     if (how === 'instant' || how === 'track' || reduce) {
       if (dy) scrollTo(0, scrollY + dy);
       spot.current = t;
@@ -224,14 +225,14 @@ export function TourDialog({ slides, onClose }: { slides: TourSlide[]; onClose: 
       const from = { ...spot.current };
       const fromY = pos.current.y;
       if (dy) moving.current.push(animate(0, 1, { duration: 0.52, ease: EASE.inOut, onUpdate: (v) => scrollTo(0, y0 + dy * v) }));
-      if (root.current) moving.current.push(animate(root.current, { opacity: [0, 1] }, { duration: 0.32, ease: EASE.out }));
+      if (root.current) fades.current.push(animate(root.current, { opacity: [0, 1] }, { duration: 0.32, ease: EASE.out }));
       moving.current.push(animate(0, 1, {
         duration: 0.62, delay: 0.05, ease: EASE.expo,
         onUpdate: (v) => { spot.current = { x: lerp(from.x, t.x, v), y: lerp(from.y, t.y, v), w: lerp(from.w, t.w, v), h: lerp(from.h, t.h, v), r: lerp(from.r, t.r, v) }; draw(); },
         onComplete: () => showArrow(true)
       }));
       moving.current.push(animate(0, 1, { duration: 0.55, delay: 0.12, ease: EASE.expo, onUpdate: (v) => { pos.current = { x: p.x, y: lerp(fromY, p.y, v) }; draw(); } }));
-      if (c) moving.current.push(animate(c, { opacity: [0, 1] }, { duration: 0.55, delay: 0.12, ease: EASE.expo }));
+      if (c) fades.current.push(animate(c, { opacity: [0, 1] }, { duration: 0.55, delay: 0.12, ease: EASE.expo }));
       return true;
     }
     moving.current.push(animate(0, 1, {
@@ -250,6 +251,7 @@ export function TourDialog({ slides, onClose }: { slides: TourSlide[]; onClose: 
   const close = useCallback((finished: boolean) => {
     if (closing.current) return;
     closing.current = true;
+    endFades('freeze');
     stop();
     const done = () => {
       onClose(finished);
@@ -279,7 +281,9 @@ export function TourDialog({ slides, onClose }: { slides: TourSlide[]; onClose: 
     pending.current = null;
     busy.current = false;
     if (!layout(shown, how)) {
-      // Its target went away (the day changed under the tour): on to the next one.
+      // Its target went away (the day changed under the tour): on to the next one. Nothing has come in yet when it was
+      // the first, so the next one comes in as the first does.
+      if (how === 'first') cur.current = -1;
       void go(shown + 1);
       return;
     }
@@ -293,7 +297,7 @@ export function TourDialog({ slides, onClose }: { slides: TourSlide[]; onClose: 
   useEffect(() => {
     lastFocus.current = document.activeElement;
     void go(0);
-    return stop;
+    return () => { endFades('freeze'); stop(); };
     // Opens once, on mount; the slides don't change while it's open.
   }, []);
 

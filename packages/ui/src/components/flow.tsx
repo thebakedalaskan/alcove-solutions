@@ -3,7 +3,7 @@
  * call opens. What each says and does is the app's; how each looks and moves is here (styles/flow.css).
  */
 import type { ChangeScope, NotesChoices, NotesSetting } from '@alcove/api';
-import { forwardRef, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode } from 'react';
+import { forwardRef, useId, useLayoutEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useReducedMotion } from 'motion/react';
 import { cn } from '../cn';
@@ -21,21 +21,6 @@ export function FlowView({ children, className }: { children: ReactNode; classNa
 /** A view with one heading, and the way out. */
 export function FlowHead({ title, onClose }: { title: ReactNode; onClose: () => void }) {
   return <div className="cf-head"><h2 className="ac-clamp-2">{title}</h2><IconButton icon="x" label="Close" onClick={onClose} /></div>;
-}
-
-/** Where someone is in a few steps, with Back and the way out. `busy` holds Back while what's on this step is saving. */
-export function FlowSteps({ steps, at, busy = false, onBack, onClose }: { steps: readonly string[]; at: number; busy?: boolean | undefined; onBack: () => void; onClose: () => void }) {
-  return (
-    <div className="cf-steps">
-      <IconButton icon="left" size={17} label="Back" disabled={busy} onClick={onBack} />
-      {steps.length > 0 ? (
-        <ol aria-label="Steps">
-          {steps.map((s, i) => <li key={s} className={i === at ? 'on' : i < at ? 'done' : undefined} aria-current={i === at ? 'step' : undefined}>{s}</li>)}
-        </ol>
-      ) : <span />}
-      <IconButton icon="x" size={17} label="Close" onClick={onClose} />
-    </div>
-  );
 }
 
 /** The part of a view that scrolls. It slides in from the side it's coming from. */
@@ -140,208 +125,43 @@ export function QuadFaces({ people, size = 18 }: { people: AvatarPerson[]; size?
   return <span className="cf-quad">{people.slice(0, 4).map((p, i) => <Avatar key={`${p.email ?? p.name}-${i}`} person={p} size={size} />)}</span>;
 }
 
-/** Someone, a group or a list in the Who field: one token, however many people it stands for (`count`). `held` shows it's selected, one press from going. */
-export function PersonToken({ people, label, count, title, held = false, onRemove, removeLabel }: {
-  people: AvatarPerson[]; label: string; count?: number | undefined; title?: string | undefined; held?: boolean | undefined; onRemove: () => void; removeLabel: string;
+/**
+ * Someone, a group or a list in the Who field: one token, however many people it stands for (`count`), in their arch.
+ * `state` says something beside the name: where an outside guest is ("Berlin, 1 h ahead"), or what someone answered
+ * ("Going"). `outside` rings someone whose calendar can't be read. `held` shows it's selected, one press from going.
+ * Without `onRemove` it's only read: someone on a call being moved.
+ */
+export function PersonToken({ people, label, count, title, state, outside = false, held = false, onRemove, removeLabel }: {
+  people: AvatarPerson[]; label: string; count?: number | undefined; title?: string | undefined; state?: string | undefined; outside?: boolean | undefined;
+  held?: boolean | undefined; onRemove?: (() => void) | undefined; removeLabel?: string | undefined;
 }) {
   return (
-    <span className={cn('cf-tok', held && 'is-held')} title={title}>
-      <span className="cf-face">{count === undefined ? <Faces people={people} size={26} max={1} /> : <QuadFaces people={people} size={12} />}</span>
+    <span className={cn('cf-tok', held && 'is-held', outside && 'is-out', !onRemove && 'is-fixed')} title={title}>
+      <span className="cf-face">{count === undefined ? <Faces people={people} size={20} max={1} /> : <QuadFaces people={people} size={10} />}</span>
       <span className="t ac-clamp-1">{label}</span>
       {count !== undefined && <small>{count}</small>}
-      <button type="button" className="x" aria-label={removeLabel} onClick={(e) => { e.stopPropagation(); onRemove(); }}><Icon name="x" size={13} /></button>
+      {state && <small>{state}</small>}
+      {onRemove && <button type="button" className="x" aria-label={removeLabel ?? `Remove ${label}`} onClick={(e) => { e.stopPropagation(); onRemove(); }}><Icon name="x" size={13} /></button>}
     </span>
   );
 }
 
 /* ---------- times ---------- */
 
-/** A time to pick: the day, the time, and a line under it. It fills when it's picked, and its tick pops. */
-export function TimeCard({ day, time, note, picked, ...rest }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & { day: ReactNode; time: ReactNode; note?: ReactNode; picked: boolean }) {
+/**
+ * A time to pick: the day, the time, and a line under it. It fills when it's picked, and its tick pops. As one of the times
+ * a guest picks from (`box`), it's a tick box: ticked, or empty.
+ */
+export function TimeCard({ day, time, note, picked, box = false, ...rest }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & { day: ReactNode; time: ReactNode; note?: ReactNode; picked: boolean; box?: boolean | undefined }) {
   return (
-    <button type="button" aria-pressed={picked} className={cn('cf-time', picked && 'on')} {...rest}>
+    <button type="button" aria-pressed={picked} className={cn('cf-time', picked && 'on', box && 'is-box')} {...rest}>
       <span className="d">{day}</span><b>{time}</b><small>{note}</small>
-      {picked && <span className="tk"><Icon name="check" size={13} /></span>}
+      {(picked || box) && <span className="tk">{picked && <Icon name="check" size={12} />}</span>}
     </button>
   );
 }
 /** Where a time card will be, while calendars are being read. */
 export const TimeCardWaiting = () => <span className="cf-time is-wait" aria-hidden="true"><i /><i /><i /></span>;
-
-/** An hour's height in the week, the room above its first hour line, and the row of days (flow.css's --hh, --top and .wk-d). */
-const HOUR = 34;
-const TOP = 8;
-const DAYS_ROW = 44;
-const twoDigits = (h: number) => String(h).padStart(2, '0');
-
-/** A day in the week. */
-export interface WeekDay { weekday: string; date: number; today: boolean; label: string }
-/** What's already in a day, in hours from midnight. `mine` is yours and can say what it is; `busy` is only that someone is. */
-export interface WeekEvent { day: number; from: number; to: number; kind: 'mine' | 'busy'; title?: string | undefined }
-
-/** The picked time's end moves a quarter hour at a time, dragged or with Shift and the arrow keys. */
-const SNAP = 0.25;
-/** An hour as a clock says it: 10.25 is "10:15", and the end of the day "24:00". */
-const clockOf = (h: number) => `${twoDigits(Math.floor(h))}:${twoDigits(Math.round((h % 1) * 60))}`;
-
-/**
- * A week to pick a time in: a column for each day, with what's in it. Every half hour can be picked. Tab reaches the
- * grid once and arrow keys move around it, and each half hour says what it is to a screen reader, busy or not. With
- * `onEnd`, the picked time ends where its block's bottom edge is dragged, or Shift and the up and down arrows on its half
- * hour move the end, a quarter hour at a time, and a screen reader hears where it ends.
- */
-export function WeekGrid({ days, events, pick, from, to, isBusy, isPast, onPick, onEnd, longest, label }: {
-  days: WeekDay[]; events: WeekEvent[];
-  /** The time picked, when it's on this week. */
-  pick: { day: number; from: number; to: number; label: string } | null;
-  /** The hours shown, each line labelled, the grid's end too. Nine in the morning is the top of the view as it opens. */
-  from: number; to: number;
-  isBusy: (day: number, hour: number) => boolean;
-  /** It's gone: it can't be picked. */
-  isPast: (day: number, hour: number) => boolean;
-  onPick: (day: number, hour: number) => void;
-  /** A new end for the pick, in hours from the start of its day. Without it the pick's length can't be changed here. */
-  onEnd?: ((end: number) => void) | undefined;
-  /** The longest the pick can be made, in hours. */
-  longest?: number | undefined;
-  label: string;
-}) {
-  const hours = Array.from({ length: to - from }, (_, i) => from + i);
-  const slots = (to - from) * 2;
-  const box = useRef<HTMLDivElement>(null);
-  const [cursor, setCursor] = useState(() => ({ day: pick?.day ?? 0, slot: Math.max(0, Math.min(slots - 1, Math.floor(((pick?.from ?? 9) - from) * 2))) }));
-  /* Where the pick ends while its edge is being dragged, and what a screen reader last heard of it. */
-  const [drag, setDrag] = useState<number | null>(null);
-  const [said, setSaid] = useState('');
-  /*
-   * Nine o'clock at the top of the view as it opens, or the pick when it's earlier, with its label clear of the days. After
-   * that, a pick out of view (from a card, or a time typed) is brought into it, moving as little as it takes.
-   */
-  const opened = useRef(false);
-  const end = pick ? Math.min(to, pick.to) : null;
-  useLayoutEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const y = (h: number) => (h - from) * HOUR + TOP;
-    if (!opened.current) {
-      opened.current = true;
-      el.scrollTop = y(Math.max(from, Math.min(pick?.from ?? 9, 9))) - 10;
-    }
-    if (!pick || end === null) return;
-    const view = el.clientHeight - DAYS_ROW;
-    if (y(pick.from) < el.scrollTop + 10) el.scrollTop = y(pick.from) - 10;
-    else if (y(end) > el.scrollTop + view - 10) el.scrollTop = Math.min(y(pick.from) - 10, y(end) - view + 10);
-  }, [from, pick?.day, pick?.from, end]);
-  /*
-   * Where the pick's end can go: on a quarter hour of the clock, at least 5 minutes after it starts, and no later than the
-   * longest it can be or the grid's end.
-   */
-  const endAt = (h: number) => {
-    if (!pick) return h;
-    const least = Math.ceil((pick.from + 5 / 60) / SNAP) * SNAP;
-    const most = Math.floor(Math.min(to, pick.from + (longest ?? to - from)) / SNAP) * SNAP;
-    return Math.min(most, Math.max(least, Math.round(h / SNAP) * SNAP));
-  };
-  const ended = (next: number) => {
-    setSaid(`Ends ${clockOf(next)}`);
-    if (pick && next !== end) onEnd?.(next);
-  };
-  /* Dragged past the edge of the view, the week scrolls along. */
-  const follow = (y: number) => {
-    const el = box.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    if (y > r.bottom - 20) el.scrollTop += 8;
-    else if (y < r.top + DAYS_ROW + 20) el.scrollTop -= 8;
-  };
-  const pickSlot = pick ? Math.floor((pick.from - from) * 2) : -1;
-  const move = (day: number, slot: number) => {
-    const next = { day: Math.max(0, Math.min(days.length - 1, day)), slot: Math.max(0, Math.min(slots - 1, slot)) };
-    setCursor(next);
-    box.current?.querySelector<HTMLElement>(`[data-at="${next.day}-${next.slot}"]`)?.focus();
-  };
-  const keys = (e: KeyboardEvent<HTMLButtonElement>, day: number, slot: number) => {
-    if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && onEnd && pick?.day === day && slot === pickSlot && end !== null) {
-      e.preventDefault();
-      ended(endAt(end + (e.key === 'ArrowDown' ? SNAP : -SNAP)));
-      return;
-    }
-    const next = e.key === 'ArrowUp' ? [day, slot - 1] : e.key === 'ArrowDown' ? [day, slot + 1] : e.key === 'ArrowLeft' ? [day - 1, slot] : e.key === 'ArrowRight' ? [day + 1, slot] : null;
-    if (!next) return;
-    e.preventDefault();
-    move(next[0] ?? day, next[1] ?? slot);
-  };
-  const shown = drag ?? end;
-  return (
-    <div ref={box} className="wk-scroll" role="group" aria-label={label}>
-      <span className="sr-only" role="status">{said}</span>
-      <div className="wk" style={{ '--rows': to - from, '--from': from, '--days': days.length }}>
-        <span className="wk-corner" />
-        {days.map((d) => <span key={d.label} className={cn('wk-d', d.today && 'today')} aria-hidden="true">{d.weekday}<b>{d.date}</b></span>)}
-        <div className="wk-hrs" aria-hidden="true">{hours.map((h) => <span key={h}>{twoDigits(h)}</span>)}<span>{twoDigits(to)}</span></div>
-        {days.map((d, day) => (
-          <div key={d.label} className="wk-c">
-            {events.filter((e) => e.day === day).map((e, i) => <span key={i} className={cn('ev', e.kind)} style={{ '--s': e.from, '--d': e.to - e.from }}>{e.title}</span>)}
-            {pick?.day === day && shown !== null && <span className="ev is-pick" style={{ '--s': pick.from, '--d': shown - pick.from }}>{pick.label}</span>}
-            {/* Its bottom edge, to drag: only this takes the pointer, so the week still scrolls under a finger anywhere else. */}
-            {pick?.day === day && shown !== null && onEnd && (
-              <span className={cn('wk-grip', drag !== null && 'is-on')} style={{ '--e': shown }} aria-hidden="true"
-                onPointerDown={(e) => {
-                  if (e.button !== 0) return;
-                  e.preventDefault();
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  setDrag(shown);
-                }}
-                onPointerMove={(e) => {
-                  const column = e.currentTarget.parentElement;
-                  if (drag === null || !column) return;
-                  setDrag(endAt(from + (e.clientY - column.getBoundingClientRect().top - TOP) / HOUR));
-                  follow(e.clientY);
-                }}
-                onPointerUp={() => { if (drag !== null) ended(drag); setDrag(null); }} onPointerCancel={() => setDrag(null)}>
-                {drag !== null && <b>{clockOf(drag)}</b>}
-              </span>
-            )}
-            {Array.from({ length: slots }, (_, slot) => {
-              const hour = from + slot / 2;
-              const past = isPast(day, hour);
-              const picked = pick?.day === day && slot === pickSlot && end !== null;
-              return (
-                <button key={slot} type="button" className="wk-slot" style={{ '--i': slot }} data-at={`${day}-${slot}`} tabIndex={cursor.day === day && cursor.slot === slot ? 0 : -1}
-                  aria-label={picked ? `${d.label}, ${pick.label} to ${clockOf(end)}, picked${onEnd ? '. Shift and the up or down arrow change when it ends' : ''}` : `${d.label}, ${clockOf(hour)}${isBusy(day, hour) ? ', busy' : ''}`}
-                  aria-pressed={picked} aria-keyshortcuts={picked && onEnd ? 'Shift+ArrowUp Shift+ArrowDown' : undefined} aria-disabled={past}
-                  onFocus={() => setCursor({ day, slot })} onKeyDown={(e) => keys(e, day, slot)} onClick={() => { if (!past) onPick(day, hour); }} />
-              );
-            })}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ---------- rows ---------- */
-
-/**
- * A line of a call: an icon, what it says, and what's at its end. As a button it opens: `expanded` for what opens in
- * place, nothing for what steps to another view. `on` lights its icon. Without `onClick` it's only read; `disabled`
- * holds it for now.
- */
-export function FlowRow({ icon, title, sub, end, on = false, expanded, onClick, chevron = true, id, disabled = false }: {
-  icon: IconName; title: ReactNode; sub?: ReactNode; end?: ReactNode; on?: boolean | undefined; expanded?: boolean | undefined;
-  onClick?: (() => void) | undefined; chevron?: boolean | undefined; id?: string | undefined; disabled?: boolean | undefined;
-}) {
-  const inside = (
-    <>
-      <Icon name={icon} size={18} />
-      <span className="min-w-0"><b className="ac-clamp-1">{title}</b>{sub !== undefined && sub !== '' && <small className="ac-clamp-2">{sub}</small>}</span>
-      <span className="cf-face">{end}</span>
-      {onClick && chevron && <span className="chev"><Icon name="chevron" size={16} /></span>}
-    </>
-  );
-  const cls = cn('cf-r', on && 'is-on', (!onClick || !chevron) && 'no-chev');
-  return onClick ? <button type="button" id={id} className={cls} aria-expanded={expanded} disabled={disabled} onClick={onClick}>{inside}</button> : <div id={id} className={cls}>{inside}</div>;
-}
 
 /** A switch with what it does: `control` is the Switch. */
 export function SwitchLine({ title, sub, control }: { title: ReactNode; sub?: ReactNode; control: ReactNode }) {

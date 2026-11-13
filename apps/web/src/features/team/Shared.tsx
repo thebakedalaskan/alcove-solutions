@@ -25,7 +25,7 @@ export function SharedWithGroups({ notes, me, now }: { notes: NoteSummary[]; me:
         <ul className="tp-rows">
           {(all ? shares : shares.slice(0, SHARES)).map((s) => (
             <li key={`${s.note.id} ${s.by.email} ${s.group}`}>
-              <Link to="/notes/$noteId" params={{ noteId: s.note.id }} className="tp-nr">
+              <Link to="/calls/$noteId" params={{ noteId: s.note.id }} className="tp-nr">
                 <Avatar person={s.by} size={26} />
                 <span className="tp-nr-t"><b className="ac-clamp-1">{s.note.title}</b><small className="ac-clamp-1">{sameEmail(s.by, me) ? 'You' : callName(s.by)} shared it with {s.group}</small></span>
                 <span className="tp-nr-w">{capital(pastDay(s.at, now))}</span>

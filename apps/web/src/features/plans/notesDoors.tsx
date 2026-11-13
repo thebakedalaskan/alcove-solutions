@@ -1,14 +1,15 @@
 /*
  * Two of the doors into checkout (docs/product/user-flows.md 16.10 and 16.12), both about the
  * period's notes running low: an hour left, said once a period as a toast (3), and none left where a call with notes is
- * started or scheduled (5). Only whoever pays meets them: what's left is your own plan's, and a call's notes are on its
- * organizer's, who is whoever starts or schedules it. Every number is the server's (GET /v1/plan, /v1/plan/offers).
+ * started or scheduled, or where a question across your calls was refused for it (5). Only whoever pays meets them: what's
+ * left is your own plan's, a call's notes are on its organizer's, who is whoever starts or schedules it, and a question is
+ * on whoever asks it. Every number is the server's (GET /v1/plan, /v1/plan/offers).
  */
-import type { Plan } from '@alcove/api';
+import { errorCode, errorMessage, type Plan } from '@alcove/api';
 import { Button, NoNotesLeft, buttonClass, useToast } from '@alcove/ui';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { log } from '~/lib/log';
 import { q } from '~/lib/queries';
 import { dayFullMonth } from '~/lib/time';
@@ -80,6 +81,29 @@ export function NoNotesLeftDoor({ at, alone = false, newTab = false, beforeCheck
   );
 }
 
+
+/**
+ * A question refused because whoever asked has no notes left this period (`plan-limit`), for where its answer would show:
+ * the plan is read again, and `out` is true once it says none are left, for NoNotesLeftDoor to show in the answer's place.
+ * A plan that still has notes, or that couldn't be read, leaves the server's words in a toast. Anything else refused is the
+ * caller's (`refused` is false). `clear` puts the door away, as typing or putting the answer away does.
+ */
+export function useAskRanOut(): { out: boolean; refused: (e: unknown) => boolean; clear: () => void } {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [out, setOut] = useState(false);
+  const refused = useCallback((e: unknown) => {
+    if (errorCode(e) !== 'plan-limit') return false;
+    const said = () => toast(errorMessage(e), { icon: 'x' });
+    void qc.fetchQuery({ ...q.plan(), staleTime: 0 }).then((plan) => {
+      if (!notesOut(plan)) { said(); return; }
+      plog.info('a question met no notes left', { kind: plan.kind });
+      setOut(true);
+    }, said);
+    return true;
+  }, [qc, toast]);
+  return { out, refused, clear: useCallback(() => setOut(false), []) };
+}
 
 /**
  * An hour left (16.12): once a period, when the notes left this period drop under an hour, a toast says so with the way to

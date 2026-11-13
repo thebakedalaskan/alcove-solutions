@@ -100,10 +100,10 @@ export function ShareNote({ note, size, align = 'end', className, onShared }: {
 }
 
 /**
- * Pins a note to the side panel, or unpins it. Pins whose notes are gone are dropped, never sent back; with
- * MAX_PINS pinned, it says to unpin one first.
+ * Pinning a note to the side panel, or unpinning it. Pins whose notes are gone are dropped, never sent back; with MAX_PINS
+ * pinned, it says to unpin one first.
  */
-export function PinNote({ noteId }: { noteId: string }) {
+export function usePinNote(noteId: string): { on: boolean; toggle: () => void } {
   const toast = useToast();
   const pins = usePins();
   const all = useQuery(q.notes()).data;
@@ -114,7 +114,16 @@ export function PinNote({ noteId }: { noteId: string }) {
   const toggle = async () => {
     if (!prefs) return;
     if (!on && pinned.length >= MAX_PINS) { toast(`${MAX_PINS} notes are pinned, the most there can be. Unpin one to pin these.`, { icon: 'pin' }); return; }
-    try { await pins.mutateAsync(on ? pinned.filter((id) => id !== noteId) : [...pinned, noteId]); } catch (e) { toast(errorMessage(e), { icon: 'x' }); }
+    try {
+      await pins.mutateAsync(on ? pinned.filter((id) => id !== noteId) : [...pinned, noteId]);
+      toast(on ? 'Unpinned from the side panel.' : 'Pinned to the side panel.', { icon: 'pin', ms: 2600 });
+    } catch (e) { toast(errorMessage(e), { icon: 'x' }); }
   };
+  return { on, toggle: () => void toggle() };
+}
+
+/** Pins a note to the side panel, or unpins it, as a button. */
+export function PinNote({ noteId }: { noteId: string }) {
+  const { on, toggle } = usePinNote(noteId);
   return <IconButton icon="pin" label="Pin these notes" title={on ? 'Pinned. Unpin these notes' : 'Pin these notes'} aria-pressed={on} on={on} onClick={toggle} />;
 }

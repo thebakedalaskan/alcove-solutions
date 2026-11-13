@@ -1,10 +1,11 @@
 /*
  * Google Calendar. Connecting the calendar leaves a refresh token
- * sealed in the account's vault. From it, Alcove reads the coming week's other events, and keeps
+ * sealed in the account's vault. From it, Alcove reads the other events of any week asked for, and keeps
  * its own calls on the calendar: an Alcove call is a Google event with the Alcove link and a private
  * marker, and Google sends everyone on it the invitation, every change and the cancellation
  * (sendUpdates=all). Someone invited has their own copy, without the marker, so it's the link that
- * says it's an Alcove call. Access tokens live in memory for under an hour and are never stored.
+ * says it's an Alcove call. A call offering times holds each of them with an event of the organizer's own, which
+ * nobody is invited to. Access tokens live in memory for under an hour and are never stored.
  */
 import { isTimeZone, type Busy, type Calendar, type CalendarEvent, type Interval, type Repeat, type RepeatRule, type Rsvp } from '@alcove/api';
 import { z } from 'zod';
@@ -21,6 +22,7 @@ import { isGuestAddress, type MeetingManifest } from './service';
 import { personOf } from '../account/portraits';
 
 const clog = log.child({ component: 'calendar' });
+const DAY = 86_400_000;
 
 const Connection = z.object({
   provider: z.literal('google'),
@@ -171,6 +173,8 @@ type GoogleEvent = z.infer<typeof GoogleEvent>;
 const GoogleList = z.object({ items: z.array(GoogleEvent).default([]), nextPageToken: z.string().optional(), timeZone: z.string().optional() });
 /** The private property that marks an event as an Alcove call. */
 const MARK = 'alcoveMeeting';
+/** The private property that marks an event as a time held for a call that offers it, until a guest picks. */
+const HOLD = 'alcoveHold';
 
 const VIDEO: [RegExp, string][] = [
   [/https:\/\/meet\.google\.com\/[a-z0-9-]+/i, 'Google Meet'],
@@ -209,7 +213,7 @@ function alcoveCodeOf(e: GoogleEvent, origin: string): string | undefined {
 function toEvent(e: GoogleEvent, series: ReadonlyMap<string, string>, origin: string): CalendarEvent | null {
   if (e.status === 'cancelled' || !e.start?.dateTime || !e.end?.dateTime) return null;
   if (e.eventType && e.eventType !== 'default') return null;
-  if (e.extendedProperties?.private?.[MARK]) return null;
+  if (e.extendedProperties?.private?.[MARK] || e.extendedProperties?.private?.[HOLD]) return null;
   const me = e.attendees?.find((a) => a.self);
   if (me?.responseStatus === 'declined') return null;
   const organizerEmail = (e.organizer?.email ?? '').toLowerCase();
@@ -225,21 +229,25 @@ function toEvent(e: GoogleEvent, series: ReadonlyMap<string, string>, origin: st
   };
 }
 
+/** The most events one read of a stretch asked for returns: a month of a busy calendar. */
+const MOST_IN_RANGE = 250;
 /**
- * The coming week's other events (and the last hour's, for calls already going). `series` reads
- * which of the account's own series follow which recurring events, by Google's IDs for them: only
- * once the calendar has answered with an occurrence of one, since it opens every call's manifest.
+ * The coming week's other events (and the last hour's, for calls already going), or with `range` every one in that
+ * stretch, past ones too: any week a calendar is looked at. `series` reads which of the account's own series follow
+ * which recurring events, by Google's IDs for them: only once the calendar has answered with an occurrence of one,
+ * since it opens every call's manifest.
  */
-export async function view(o: Owner, series: () => Promise<ReadonlyMap<string, string>>): Promise<Calendar> {
+export async function view(o: Owner, series: () => Promise<ReadonlyMap<string, string>>, range?: { from: Date; to: Date } | undefined): Promise<Calendar> {
   if ((await profile(o)).sample) return { source: 'sample', needsAccess: false, events: [] };
   const conn = await connection(o);
   if (!conn) return o.session?.provider === 'google' ? { source: 'google', needsAccess: true, events: [] } : { source: 'none', needsAccess: false, events: [] };
   if (!usable(conn)) return { source: 'google', needsAccess: true, events: [] };
   const now = Date.now();
+  const window = range ?? { from: new Date(now - 60 * 60_000), to: new Date(now + 7 * DAY) };
   let list: z.infer<typeof GoogleList>;
   try {
     list = await api(o, 'GET', '/calendars/primary/events', GoogleList, {
-      query: { timeMin: new Date(now - 60 * 60_000).toISOString(), timeMax: new Date(now + 7 * 86_400_000).toISOString(), singleEvents: 'true', orderBy: 'startTime', maxResults: '100' }
+      query: { timeMin: window.from.toISOString(), timeMax: window.to.toISOString(), singleEvents: 'true', orderBy: 'startTime', maxResults: String(range ? MOST_IN_RANGE : 100) }
     });
   } catch (e) {
     // Access withdrawn at Google is found out here: the app asks for it again instead of failing.
@@ -247,12 +255,13 @@ export async function view(o: Owner, series: () => Promise<ReadonlyMap<string, s
     throw e;
   }
   const followed = list.items.some((e) => e.recurringEventId) ? await series() : new Map<string, string>();
-  const events = list.items.flatMap((e) => { const x = toEvent(e, followed, o.cfg.WEB_ORIGIN); return x && new Date(x.endsAt).getTime() > now ? [x] : []; });
-  clog.debug('calendar read', { ownerId: o.ownerId, events: events.length });
+  // The coming week leaves out what's over; a stretch asked for keeps everything in it.
+  const shown = (x: CalendarEvent) => (range ? true : new Date(x.endsAt).getTime() > now);
+  const events = list.items.flatMap((e) => { const x = toEvent(e, followed, o.cfg.WEB_ORIGIN); return x && shown(x) ? [x] : []; });
+  clog.debug('calendar read', { ownerId: o.ownerId, events: events.length, range: !!range });
   return { source: 'google', needsAccess: false, events };
 }
 
-const DAY = 86_400_000;
 /**
  * Everyone on the events around now, as lower-cased addresses: the coming 7 days first, then the past
  * in 30-day windows (up to 90 days back), each read page by page, so the newest events come first.
@@ -371,8 +380,8 @@ async function othersBusy(o: Owner, emails: string[], range: { from: Date; to: D
   return read;
 }
 
-/** The stretch asked about, refused when it can't be read. */
-function stretch(from: string, to: string): { from: Date; to: Date } {
+/** The stretch asked about, of busy times or of your own calendar, refused when it can't be read or runs past 31 days. */
+export function stretch(from: string, to: string): { from: Date; to: Date } {
   const range = { from: new Date(from), to: new Date(to) };
   const days = (range.to.getTime() - range.from.getTime()) / DAY;
   if (Number.isNaN(days) || days <= 0) throw new ValidationError('Ask about a stretch of time that ends after it starts.', { context: { days: Number.isNaN(days) ? 'unreadable' : Math.round(days) } });
@@ -565,6 +574,46 @@ export async function changeInstance(o: Owner, eventId: string, meetingId: strin
   const { summary, location, description, attendees } = eventBody(o, meetingId, m);
   await api(o, 'PATCH', `/calendars/primary/events/${encodeURIComponent(eventId)}`, GoogleEvent, { query: { sendUpdates: quietly ? 'none' : 'all' }, body: { summary, location, description, attendees, ...inZone(m, timeZone) } });
   clog.info('call in a series updated on calendar', { ownerId: o.ownerId, meetingId, guests: m.guests.length, quietly });
+}
+
+/* ---------- times held for a call that offers them ---------- */
+
+/** What a held time is called: the call it holds the time for. */
+const holdTitle = (m: MeetingManifest) => `Hold: ${m.title}`;
+/** What a held time says: which call it holds the time for, on the organizer's own calendar, inviting nobody. */
+function holdBody(o: Owner, meetingId: string, m: MeetingManifest) {
+  const link = `${o.cfg.WEB_ORIGIN}/join/${m.code}`;
+  return {
+    summary: holdTitle(m),
+    description: `Held until your guest picks one of the times you offered for this call. Alcove clears the others then.\n\n${link}`,
+    extendedProperties: { private: { [HOLD]: meetingId } }, source: { title: 'Alcove', url: link }
+  };
+}
+
+/** Holds one time a call offers on the organizer's calendar: an event of theirs that invites nobody, so Google tells nobody. Its ID. */
+export async function hold(o: Owner, meetingId: string, m: MeetingManifest, at: string): Promise<string> {
+  const end = new Date(new Date(at).getTime() + (new Date(m.endsAt).getTime() - new Date(m.startsAt).getTime())).toISOString();
+  const e = await api(o, 'POST', '/calendars/primary/events', GoogleEvent, { query: { sendUpdates: 'none' }, body: { ...holdBody(o, meetingId, m), start: { dateTime: at }, end: { dateTime: end }, transparency: 'opaque' } });
+  clog.info('offered time held on calendar', { ownerId: o.ownerId, meetingId });
+  return e.id;
+}
+
+/** Gives a held time the call's name as it is now, telling nobody. */
+export async function retitleHold(o: Owner, eventId: string, m: MeetingManifest): Promise<void> {
+  if (!(await connected(o))) return;
+  await api(o, 'PATCH', `/calendars/primary/events/${encodeURIComponent(eventId)}`, GoogleEvent, { query: { sendUpdates: 'none' }, body: { summary: holdTitle(m) } });
+}
+
+/** Takes a held time off the calendar, telling nobody. Says what happened, as `withdraw` does. `signal` is the caller's own time limit. */
+export async function release(o: Owner, eventId: string, signal?: AbortSignal | undefined): Promise<'cancelled' | 'gone' | 'not-connected'> {
+  if (!(await connected(o))) return 'not-connected';
+  try {
+    await api(o, 'DELETE', `/calendars/primary/events/${encodeURIComponent(eventId)}`, z.unknown(), { query: { sendUpdates: 'none' }, signal });
+  } catch (e) {
+    if (!(e instanceof NotFoundError)) throw e;
+    return 'gone';
+  }
+  return 'cancelled';
 }
 
 /** Takes an occurrence the series has no call for off the calendar, without a word: it's part of a change everyone has already heard about. */

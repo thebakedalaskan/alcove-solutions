@@ -18,7 +18,7 @@ import { exec, maybeOne, tx, type Db } from '../../db';
 import { ConflictError, InternalError, ValidationError, notFound } from '../../errors';
 import { log } from '../../log';
 import { createItem, findItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../../vault';
-import { syncAccessOf } from './access';
+import { dropProposals, syncAccessOf } from './access';
 import { me } from '../account/account';
 import * as calendar from './calendar';
 import { indexCode } from './codes';
@@ -166,7 +166,7 @@ const ruleOf = ({ occurrences: _times, ...repeat }: RepeatInput): Repeat => repe
 /** Another call in a series, starting at `startsAt`: `like` in everything a series shares. */
 const anotherCall = (like: MeetingManifest, seriesId: string, seriesCode: string, startsAt: string, minutes: number): MeetingManifest => ({
   title: like.title, ...validTimes(startsAt, minutes), guests: like.guests, notes: like.notes, code: makeCode(), status: 'scheduled', seriesId, seriesCode,
-  instant: false, choices: like.choices, joinMuted: like.joinMuted, documents: like.documents, workspaceId: like.workspaceId, agenda: null
+  instant: false, choices: like.choices, joinMuted: like.joinMuted, documents: like.documents, workspaceId: like.workspaceId, agenda: null, holds: []
 });
 
 /** New calls with the same guests, in the caller's transaction: their items, where their codes lead, and who's invited. */
@@ -490,6 +490,9 @@ async function changeFollowing(o: Owner, id: string, seriesId: string, patch: Pa
     const like = changed[0];
     if (!like) throw notFound('That meeting', { meetingId: id });
     if (patch.guests) await syncAccessOf(o, c, kept.map((m) => m.itemId), like.guests);
+    // Calls that moved let go of the times people asked to move them to: they were asked of where each one was.
+    const moved = kept.filter((m, i) => changed[i]?.startsAt !== m.manifest.startsAt).map((m) => m.itemId);
+    if (moved.length) await dropProposals(o, c, moved);
     const added = await addCalls(o, c, (starts ?? []).slice(kept.length).map((s) => anotherCall(like, seriesId, series.manifest.code, s, minutesOf(like))));
     if (left.length) await deleteItems(o, c, left.map((m) => m.itemId));
     const next: SeriesManifest = { ...series.manifest, title: patch.title?.trim() || series.manifest.title, repeat: patch.repeat ? ruleOf(patch.repeat) : series.manifest.repeat };

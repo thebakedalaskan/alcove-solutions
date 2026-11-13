@@ -1,7 +1,8 @@
 /*
  * Journeys through a board in the call (user-flows 6, A board in the call), numbered after the call's own (06), in the
- * whiteboards canvas's words. A board opens on your stage just for you, from Board at the top right: a new one, which is the
- * board in the call, or one your team already has. Present, on its frame's bar, brings everyone. Then working on it together,
+ * whiteboards canvas's words. A board opens on your stage, only on your screen until you present it, from Board at the top right:
+ * a new one, or one your team already has, which comes into the call, and everyone in the call can edit either, as its frame's
+ * bar says. Present, on its frame's bar, brings everyone. Then working on it together,
  * beside a shared screen, the organizer closing someone's for everyone, its votes, how the call helps: ideas from
  * what's said, and Sort into themes, all of it on a phone, and a saved board renamed and opened again. You're Art, the
  * organizer, in the design review with Priya, Kofi and Aiko, who fill the board in the call as they talk
@@ -45,12 +46,12 @@ async function pick(row: string | RegExp, { userEvent }: Pick<Step, 'userEvent'>
   await still(picker);
   await userEvent.click(within(picker).getByRole('button', { name: row }));
 }
-/** Opens the board picker from Board at the top right and starts a new board from `template`, on your stage just for you. */
+/** Opens the board picker from Board at the top right and starts a new board from `template`, on your stage, only on your screen. */
 async function startFrom(template: 'Blank' | 'Retro' | 'Ideas' | 'Flow', c: Step): Promise<void> {
   await c.userEvent.click(await screen.findByRole('button', { name: 'Board' }, LATER));
   await pick(template, c);
 }
-/** The board Priya made, the board in this call, first in the picker under Board (in More on a phone): it opens on your stage, just for you. */
+/** The board Priya made, the board in this call, first in the picker under Board (in More on a phone): it opens on your stage, only on your screen. */
 async function openTheCallsBoard(c: Step, phone = false): Promise<void> {
   if (phone) await c.userEvent.click(await screen.findByRole('button', { name: MORE }, LATER));
   await c.userEvent.click(await screen.findByRole('button', { name: 'Board' }, LATER));
@@ -110,7 +111,7 @@ export const StartABoard: PageStory = {
     await step('The picker rises from it. Blank is one click; boards your team already has are underneath. Press Retro', async () => {
       await pick('Retro', c);
     });
-    await step('It opens on your stage, just for you, and the call carries on beside it. It’s the board in the call: Present, on its bar, brings everyone', async () => {
+    await step('It opens on your stage, only on your screen, and the call carries on beside it. It’s the board in the call, which everyone in the call can edit: Present, on its bar, brings everyone', async () => {
       await board();
     });
     await step('Double-click in Went well: a sticky in that frame’s colour, ready to type', async () => {
@@ -136,16 +137,18 @@ export const OpenASavedBoard: PageStory = {
     await step('Press Board: boards your team already has are under the templates, with where they’re from', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Board' }, LATER));
     });
-    await step('Press Onboarding flow. It opens on your stage, just for you: nothing in the call changes', async () => {
+    await step('Press Onboarding flow. Sam came in with the link and can’t open it: it asks once, in the picker’s place', async () => {
       await pick(/^Onboarding flow/, { userEvent });
+      await screen.findByText('Let everyone here edit Onboarding flow?', {}, LATER);
+    });
+    await step('Open it: everyone here can open it and edit it while they’re in the call, Sam too. It’s on your screen, and its bar says so', async () => {
+      // The question takes a press once its rows are still, as the picker's do.
+      await still(await screen.findByRole('dialog', { name: 'Open a board' }, SOON));
+      await userEvent.click(await pressable('button', 'Open it'));
       await board('Onboarding flow');
     });
-    await step('Present, on its bar. Sam came in with the link and can’t open it: you decide before anyone sees it', async () => {
+    await step('Present, on its bar: everyone follows you on it', async () => {
       await userEvent.click(await within(await board('Onboarding flow')).findByRole('button', { name: 'Present' }, SOON));
-    });
-    await step('Let them in for this call: everyone can work on it until the call ends, and after that, Sam can’t again. Everyone follows you on it', async () => {
-      // Present's question isn't a menu whose rows move: it takes a press once its button can be pressed.
-      await userEvent.click(await pressable('button', 'Let them in for this call'));
       await screen.findByText('Everyone follows you on Onboarding flow. They can add to it as you go.', {}, LATER);
     });
   }
@@ -156,7 +159,7 @@ export const WorkOnItTogether: PageStory = {
   ...review({ cues: at(1, opensBoard(PRIYA, 'retro')) }),
   play: async (c) => {
     const { userEvent, step } = c;
-    await step('Priya made the launch retro. Press Board: the board in this call is first. Open it, just for you', async () => {
+    await step('Priya made the launch retro. Press Board: the board in this call is first. Open it, on your screen', async () => {
       await openTheCallsBoard(c);
       await board();
     });
@@ -186,7 +189,7 @@ export const BesideASharedScreen: PageStory = {
     await step('Priya is sharing: her screen is on your stage, and everyone beside it', async () => {
       await screen.findByRole('region', { name: 'Priya’s screen, everyone sees it' }, LATER);
     });
-    await step('Press Board, then Retro: the board takes your stage, just for you, and Priya’s screen waits as a tile with the people, still live', async () => {
+    await step('Press Board, then Retro: the board takes your stage, only on your screen, and Priya’s screen waits as a tile with the people, still live', async () => {
       await startFrom('Retro', c);
       await board();
     });
@@ -229,7 +232,7 @@ export const Votes: PageStory = {
   ...review({ cues: at(1, opensBoard(PRIYA, 'retro')) }),
   play: async (c) => {
     const { userEvent, step } = c;
-    await step('Priya made the launch retro. Press Board, at the top right: the board in this call comes first. Open it, just for you', async () => {
+    await step('Priya made the launch retro. Press Board, at the top right: the board in this call comes first. Open it, on your screen', async () => {
       await openTheCallsBoard(c);
       await screen.findByText('Refresh staging every night', {}, LATER);
     });
@@ -253,7 +256,7 @@ export const IdeasFromTheCall: PageStory = {
   ...review({ notes: 'on', cues: [...at(1, opensBoard(PRIYA, 'retro')), ...at(1 + filledAfter() + 1, HEARD)] }),
   play: async (c) => {
     const { userEvent, step } = c;
-    await step('Priya made the launch retro. Press Board, then the board in this call: it opens on your stage, just for you', async () => {
+    await step('Priya made the launch retro. Press Board, then the board in this call: it opens on your stage, only on your screen', async () => {
       await openTheCallsBoard(c);
       await board();
     });
@@ -277,7 +280,7 @@ export const SortIntoThemes: PageStory = {
   ...review({ board: undefined, cues: at(1, opensBoard(PRIYA, 'blank', { draw: drawIdeas })) }),
   play: async (c) => {
     const { userEvent, step } = c;
-    await step('Priya made a board and put ideas on it. Press Board, then the board in this call: it opens on your stage, just for you', async () => {
+    await step('Priya made a board and put ideas on it. Press Board, then the board in this call: it opens on your stage, only on your screen', async () => {
       await openTheCallsBoard(c);
       await board();
     });
@@ -341,7 +344,7 @@ export const RenameItAndOpenItAgain: PageStory = {
   ...review({ board: undefined, then: () => { fillTemplate(boardDoc('ws-design', ONBOARDING), 'flow', null, ONBOARDING); } }),
   play: async (c) => {
     const { userEvent, step } = c;
-    await step('Press Board, then Onboarding flow, one of your team’s boards. It opens on your stage, just for you', async () => {
+    await step('Press Board, then Onboarding flow, one of your team’s boards. It comes into the call, on your screen, for everyone here to edit', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Board' }, LATER));
       await pick(/^Onboarding flow/, c);
       await board('Onboarding flow');
@@ -356,8 +359,10 @@ export const RenameItAndOpenItAgain: PageStory = {
       await userEvent.type(field, 'Onboarding, step by step{Enter}');
       await board('Onboarding, step by step');
     });
-    await step('Close, on its bar: it closes, just for you', async () => {
+    await step('Close, on its bar, then For everyone: it leaves the call, and stays saved in Design', async () => {
       await userEvent.click(await within(await board('Onboarding, step by step')).findByRole('button', { name: 'Close Onboarding, step by step' }, SOON));
+      const ask = await screen.findByRole('dialog', { name: 'Close Onboarding, step by step' }, SOON);
+      await userEvent.click(await within(ask).findByRole('button', { name: /^For everyone/ }, SOON));
     });
     await step('Press Board again: your team’s boards have it under its new name. Press it: it opens again, and keeps it', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Board' }, LATER));

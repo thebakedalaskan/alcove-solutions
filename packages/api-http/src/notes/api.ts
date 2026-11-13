@@ -4,13 +4,14 @@ import { AiModelsSchema, type AlcoveApi, AlcoveApiError, AnswerPartSchema, Inbox
 import { z } from 'zod';
 
 const audioPath = (id: string, segment: number, pieces: number) => `/notes/${encodeURIComponent(id)}/audio/${segment}?pieces=${pieces}`;
+const videoPath = (id: string, share: string, segment: number) => `/notes/${encodeURIComponent(id)}/screen/${encodeURIComponent(share)}/${segment}`;
 export function createNotesApi(t: HttpTransport): Pick<AlcoveApi, 'notes' | 'series' | 'models'> {
   const { base, ndjson, req, send } = t;
   const personal = createPersonalApi(t);
   return {
     notes: {
-      // Search terms go in the body so they never appear in URLs or access logs.
-      list: (q) => req(z.array(NoteFoundSchema), 'POST', '/notes/search', { ...(q?.kind ? { kind: q.kind } : {}), ...(q?.text ? { text: q.text } : {}) }),
+      // Search terms and whose lines to look in go in the body, so they never appear in URLs or access logs.
+      list: (q) => req(z.array(NoteFoundSchema), 'POST', '/notes/search', { ...(q?.kind ? { kind: q.kind } : {}), ...(q?.text ? { text: q.text } : {}), ...(q?.by ? { by: q.by } : {}) }),
       get: (id) => req(NoteSchema, 'GET', `/notes/${encodeURIComponent(id)}`),
       progress: (id) => ndjson(NoteProgressSchema, `/notes/${encodeURIComponent(id)}/progress`),
       audioUrl: (id, segment, pieces) => `${base}${audioPath(id, segment, pieces)}`,
@@ -24,7 +25,16 @@ export function createNotesApi(t: HttpTransport): Pick<AlcoveApi, 'notes' | 'ser
         }
       },
       screenUrl: (id, frameId) => `${base}/notes/${encodeURIComponent(id)}/screens/${encodeURIComponent(frameId)}`,
-      screenVideoUrl: (id, share, segment) => `${base}/notes/${encodeURIComponent(id)}/screen/${encodeURIComponent(share)}/${segment}`,
+      screenVideoUrl: (id, share, segment) => `${base}${videoPath(id, share, segment)}`,
+      screenVideo: async (id, share, segment, signal) => {
+        const res = await send('GET', videoPath(id, share, segment), null, {}, false, signal);
+        try {
+          return await res.blob();
+        } catch (cause) {
+          if (signal?.aborted) throw cause;
+          throw new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.', { cause });
+        }
+      },
       proposeDecision: (noteId, proposal) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(noteId)}/decisions`, proposal),
       proposeAction: (noteId, proposal) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(noteId)}/actions`, proposal),
       updateDecision: (noteId, decisionId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/decisions/${encodeURIComponent(decisionId)}`, patch),

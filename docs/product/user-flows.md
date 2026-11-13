@@ -27,21 +27,28 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    in as** the name, with the provider's mark (a key for single sign-on). **Your calendar**: how many calls are
    left today and which is next, from the connected or sample calendar (no row without calendar access). **Your
    team at** the company, with its size and faces, when it has people in it and has arrived by then (the screen
-   doesn't wait for it). **Notes are encrypted in storage** and follow the call’s sharing permissions. Then
-   "You’re in" and the arch opens into Home. **Skip**, **Escape** or **Enter** opens it straight away; with
+   doesn't wait for it), with who already uses Alcove, or **Invite them from Team** while nobody does. **Notes are
+   written in confidential compute**, and only the people invited to a call get its notes. Then
+   "You’re in" and the arch opens into Home, where the plans to choose from come first, once (16.20). **Skip**,
+   **Escape** or **Enter** opens it straight away; with
    reduced motion the finished screen shows for a moment and Home follows. After that, signing in goes
    straight to Home. From the welcome page it sails out of the cove: the headlands go by, the horizon comes up to
    Home's, the side panel and the page's frame form round the sea, and Home rises in, in about three and a half
    seconds (a press, a key or the wheel ends it at once; with reduced motion Home just opens).
-4. On first arriving in Home, a tour goes through it, one slide at a time: a card with a short animation, and
-   the page dimmed around the real thing the slide is about, with an arrow to it. **Start or schedule a call**
-   (Start a call, or Start now with the side panel hidden), **Notes for your calls** (the example note before there are
-   any, then Notes), **Join a call** (Join, when an Alcove call is on offer at the top of Home), **Record in the room**
-   (Record, in the side panel or the phone's tab bar), **Your notes stay yours** (the confidential-compute check in
-   the side panel, or the badge on Home on a phone) and **You’re ready** (Start a call). The card
-   moves beside its target, or along the bottom on a phone; **←**/**→** and **Enter** move through it and
-   **Escape** or **Skip tour** closes it. It isn't shown again on that browser for that account; **Take the
-   tour** in Settings (flow 11) plays it again.
+4. On first arriving in Home (past the plans), a tour goes through it, one stop at a time: a card with a short animation on the dawn sky,
+   and the page dimmed around the real thing the stop is about, with a ring round it and an arrow to it. **Start or
+   schedule a call** (Start now and Schedule, on Home's sky); **Join a call** (the line on Home that offers an Alcove
+   call, only while it does, from its last few minutes); **Notes for your calls** (the example note's card in Recent
+   notes before there are any notes, then Calls; it says they're written in confidential compute); **Search or ask** (at
+   the top right, or the search button in the phone's top bar); **Documents and boards** (Drive, in the side panel or the tab bar); **Record in the room** (Record); **Bring your
+   agent** (Agents, at the foot of the side panel; a phone has no Agents in its tab bar, so the stop is left out); and
+   **You’re ready** (Start now and Schedule again). Any stop whose target isn't on screen is left out. Shortcuts (**N**,
+   **J**, **⌘K** or **Ctrl K**) are named only where there's a keyboard. The card's button names the next stop (**Show me notes**,
+   **Show me the call**, **Show me search**, **Show me the Drive**, **Show me recording**, **Show me agents**, **Back to
+   the start**), and the last is **Start using Alcove**. The card moves beside its target, or along the bottom on a phone,
+   standing above the tab bar when it points at it; **←**/**→** and **Enter** move through it and **Escape** or **Skip
+   tour** closes it. A toast says it can be taken again from your menu. It isn't shown again on that browser for that
+   account; **Take the tour** in your menu (flow 2) or in Settings (flow 11) plays it again.
 
 The first sign-in creates the account: its keys, a profile with the name, email and photo from the sign-in,
 the notes default (on) and the Free plan, with all of its notes for the period. Later sign-ins bring the name, email and photo up to date. In local
@@ -55,55 +62,102 @@ screen. Signing in on another browser doesn't end the first session.
 
 ## 2. The side panel
 
-Beside every page, dark in both themes:
+Beside every page, dark in both themes, in two groups: your work at the top, and who works with you at the foot.
 
 - **Start a call** (or **N**) opens flow 4.
-- **Home**, with how many things are waiting on you; **Notes**, with how many notes you have; **Drive**, every workspace,
-  where you write together (flow 12); **Record**, where recording in the room starts (flow 9), with how many recordings on this
-  device are waiting to upload; and **Team** (flow 10), with how many people at your company use Alcove, you among them,
-  once anyone besides you does. Someone on their own, at a personal address, has no Team page and no groups here.
-- **Up next**, on every page: the next Alcove call today, or the next meeting on your calendar
-  that has a video link (unless **Show my other meetings on Home** is off), when it starts, who's coming,
-  and **Join**. With nothing left today it says the next call will show there, except before your first
-  notes, when it says nothing. On Home it makes way while Home's own line offers a call (from 5 minutes before
-  one with someone else on it, and while one is going), so there's one **Join** at a time.
-- **Pinned**: the notes you pinned, in the order you pinned them, up to 8. A pinned note that was deleted,
-  or that you removed from your notes, isn't listed. The pin beside the heading opens the palette to pick
-  notes to pin or unpin; with 8 pinned it says to unpin one first. With nothing pinned, a line says what
-  pins are for.
-- **Groups**: each of your groups and how many people are in it. Each opens on the Team page, and **+**
-  starts a new one there.
+- **Home**, **Calls** (flow 8), **Drive**, every workspace, where you write together (flow 12), and **Record**, where
+  recording in the room starts (flow 9). A count beside a place says something is waiting on you there: on Home, what's
+  for you; in the Drive, tags you haven't seen; on Record, recordings on this device waiting to upload. Nothing counts a
+  total, such as every call or everyone on Team.
+- **Pinned**, under them, once you've pinned a note: the notes you pinned, in the order you pinned them, up to 8. A pinned
+  note that was deleted, or that you removed from your notes, isn't listed. A call's page pins its notes; the pin at the end
+  of the heading, which shows while you point at Pinned, opens the palette to pick notes to pin or unpin, and with 8 pinned
+  it says to unpin one first. With nothing pinned there's no Pinned at all.
+- At the foot, **Team** (flow 10), where your groups are, and **Agents** (flow 14). Someone on their own, at a personal
+  address, has no Team page, and still has Agents.
+- Under them, on every page, while a call is going, or from 10 minutes before one with someone else on it until it ends:
+  the call, when it starts (or **Happening now** once someone's in it), and **Join**. A meeting on your calendar is offered when it has a video link (unless **Show my
+  other meetings on Home** is off). The rest of the day is on Home, under Upcoming. On Home it makes way while Home's own
+  line offers the call (from 5 minutes before, and while it's going), so there's one **Join** at a time.
 - At the bottom: the confidential-compute check (**Confidential compute · verified** when the server's
-  hardware answer is bound to this browser's request), then your plan (16.7). On Free, about how much of the period's notes
-  is left, "About 1 h 26 min of notes left" over a meter (warm under an hour, "No notes left until 1 Dec" in caution once
-  they've stopped), which opens Settings at your plan, then **Free plan · See plans ›**, which opens Plans. On Pro, one row
-  like the places: Pro's small sun, **Pro** and "Until 4 Nov 2027", opening Settings at your plan. While Pro is about to end
-  without renewing, its sun is half set and it says "Ends in 3 days · Extend", which opens checkout. A payment for a plan on
-  its way says "Waiting for 192 USDC", and **Pro, 12 months · Open** opens it again in checkout. "Pro renewed from your
-  balance" or "Pro ended. Nothing was deleted." is one line above until it's dismissed in Settings. On Plans, the row is the
-  place you're on.
+  hardware answer is bound to this browser's request), then your plan (16.7), in one row. On Free, about how much of the
+  period's notes is left, "About 1 h 26 min of notes left" over a meter (warm under an hour, "No notes left until 1 Dec" in
+  caution once they've stopped), which opens Settings at your plan. On Pro or Team, a row like the places: the plan's small
+  sun, **Pro** and "Until 4 Nov 2027", opening Settings at your plan; once notes are low or out it says that instead ("About
+  40 min of notes left", "No notes left until 1 Dec"). While Pro is about to end without renewing, its sun is half set and it
+  says "Ends in 3 days · Extend", which opens checkout. A payment for a plan on its way takes the row's place: "Waiting for
+  192 USDC", and **Pro, 12 months · Open**, which opens it again in checkout. "Pro renewed from your balance" or "Pro ended.
+  Nothing was deleted." is one line above the row until it's dismissed in Settings. On Plans, Pro's or Team's row, or a
+  payment's, is the place you're on.
 - Offline, a notice at the top says recording still works and everything else catches up when you're back
-  (with **Record without a connection** off, that recording waits for the connection too). Up next and the
-  check wait until the connection returns. Alcove also opens offline for someone signed in on this browser:
+  (with **Record without a connection** off, that recording waits for the connection too). The call about to start and
+  the check wait until the connection returns. Alcove also opens offline for someone signed in on this browser:
   Record works, and every other page says it's offline, with **Record**.
 - **Hide the side panel** gives the page the room; the button left in the top-left corner brings the panel
   back, and the offline notice moves to the top of the page meanwhile. This browser remembers which.
 
 At the top right of every page: **Search or ask** (**⌘K** on a Mac, **Ctrl+K** elsewhere), which opens the palette
-below, and you, which opens Settings (flow 11). In a narrow window search shrinks to its magnifying glass. Notes has
+below, and you, which opens your menu (below). In a narrow window search shrinks to its magnifying glass. Notes has
 its own search, so there's none at the top right, and the shortcut goes to the line in its sky (flow 8). In the workspace
 the shortcut is **Find** (flow 12), and **Search or ask** stays at the top right without it.
 
 On a phone (860 px wide or narrower) a top bar takes its place, with the brand, search (not on Notes), **Start a call** (a plus) and
-you (Settings), and a tab bar runs along the bottom: **Home**, **Notes**, **Record** (raised), **Drive** and **Team**
-when you're on one. Offline, the same notice sits under the top bar.
+you (your menu), and a tab bar runs along the bottom: **Home**, **Calls**, **Record** (raised), **Drive** and **Team**
+when you're on one. Agents isn't in it: on a phone it opens from **Settings → Connections** (flow 11). Offline, the same
+notice sits under the top bar.
 
-**The palette** is one line over the page. Before anything is typed it lists your five newest notes. Typing
-lists the notes whose titles, summaries or transcripts match, up to eight, with the match marked. **Enter**
-or **Ask** asks every note you have (flow 8), one question at a time: the answer appears under the line with
-the notes it comes from and the moments in them, and a moment opens its note with the player at that point,
-not playing. **↑** and **↓** pick a note instead, and **Enter** opens it. **Escape**, or the shortcut again,
-closes the palette, and focus goes back where it was. It never opens over another window, such as Start a call, and nothing opens over it.
+**Your menu** opens under you, at the top right of every page but Settings (where you stand on the horizon instead), and
+from the bottom as a sheet on a phone. At its top you stand on a small evening, with your name and address. Then:
+
+- **Pause notifications** opens three lengths in place under it: **For 30 minutes**, **For 1 hour** and **Until
+  tomorrow**, each with the time it ends (tomorrow at 9:00, in this computer's time zone). While paused, nothing reaches
+  you from the browser or by sound, except your own microphone going on and off and requests to join a call you host;
+  what shows on the page still shows. The row says **Paused until 17:12**, with **Resume**, and a small crossed-out bell
+  sits on you at the top right until then, on every page and every device you're signed in on. It ends by itself.
+- **Theme**: system, light or dark, as the three small evenings Settings shows. The page changes at once, the menu stays
+  open, and this browser keeps it.
+- **Settings** (flow 11) and **Take the tour** (the tour of Home again, flow 1), which close the menu. Settings is a link,
+  so ⌘-click, Ctrl-click or the middle button opens it in a new tab and leaves the menu open.
+- **Sign out**, which signs out at once, unless something on this device would be lost: then the menu asks in place, in
+  Settings' words, with **Stay signed in** (focused), **Copy what you wrote** when something written is waiting, and **Sign
+  out and delete them**. Everything Settings' **Sign out** does holds here too.
+
+**Escape** steps back one thing at a time (the question, then the menu, focus back on you), and **↓** and **↑** move
+between its rows. Storybook's journeys use these numbers: **2.9 Open your menu, then Settings**, **2.10 Pause
+notifications for an hour**, **2.11 Change the theme from your menu**, **2.12 Sign out with recordings on this device**
+and **2.13 Your menu on a phone**.
+
+**The palette** is a solid window over the page, with the page dimmed behind it and never blurred. On a wide screen what's
+lit in its list shows beside it; under 1100 px the list is alone, and on a phone it takes the screen, with **Cancel**.
+
+- Before anything is typed it shows the five people you have most calls with and your five newest notes. Pressing
+  someone shows everything they said.
+- Typing finds what was said, not just the note. **Ask "…"** comes first, then the people whose names have the words,
+  then every moment with them, call by call, newest call first: who said it, their words with the match marked, and the
+  time. A line that a decision or follow-up rests on says **Decision** or **Follow-up**. A call shows two or three of its
+  moments, and **N more** opens the rest in place; the list shows the eight newest calls. Notes that have the words only
+  in their title, summary, decisions or follow-ups come after, five at most, and **See all N moments in Calls** (or
+  notes), at the end of the list, opens Calls with the same words (flow 8), with every call that has them.
+- **Enter** does what's lit: the first thing found, or **Ask** when what's typed reads as a question. **↑** and **↓**
+  move it, the pointer too, and **Tab** asks about anything typed. **Enter** on someone puts them in the line, and what's
+  typed then searches only what they said; **Backspace** on an empty line takes them out. With them in the line, the
+  list ends with **Calls with Maya**, with no count: Calls lists the calls you're both on, with what's typed in its
+  line, not only what they said. Someone who said nothing you can read (they were invited and stayed quiet, or their
+  lines are the organizer's alone) says so: **Nothing Maya said is in your notes**, with **Calls with Maya**, which opens
+  Calls with the calls you're both on.
+- Beside the list: a moment in its transcript, a line before it and three after, with the decision or follow-up made
+  there (one still waiting can be confirmed, or said not to be one, right there), **Open at 3:15** and, when the call
+  kept its audio, **Play from 3:15**, which plays it from there once: going back to the note, or reloading it, opens it
+  at that moment without playing; someone, with the last things they said, **What Maya said** and **Calls with
+  Maya** (Notes, with only the notes you both have); a note's summary and what's open in it, with **Open notes**; or what
+  Ask will do.
+- Asking (flow 8) puts the answer in place of the list, one question at a time, written in confidential compute from
+  your notes only, with the moments it comes from under it, each in its call. A moment opens its note there, not
+  playing. **Escape** goes back to the results, and so does changing the question.
+- When nothing has the words it says what was searched, with **Ask** lit. The first day, a search that didn't go through
+  (**Try again**) and being offline each say so.
+- **Escape**, or the shortcut again, closes the palette, and focus goes back where it was. It never opens over another
+  window, such as Start a call, and nothing opens over it.
 
 ## 3. Home
 
@@ -118,58 +172,100 @@ visitors: a boat far out, stars after dark and now and then a shooting star. Wit
 - The date, top left. On a phone or with the side panel hidden, a **Confidential compute** badge (with the time the
   hardware was verified when this browser could check it) shows on Home too, since the panel's check isn't there.
 - **Start a call** (**Start your first call** before your first notes). **Start now** goes straight to the lobby
-  (flow 5). **Schedule** opens scheduling at Who (flow 4). The third button schedules a call for now and copies its
-  link, so it's listed with a card like any other (**Undo** cancels it), and isn't on a phone. Under them, up to three people on your team who use Alcove: pressing one starts a
-  call and rings them when you join. **+** opens scheduling at Who. Someone on their own has no one to show.
+  (flow 5). **Schedule** opens the scheduler on the Calls page (flow 4). Nothing else sits under them: ringing someone
+  starts from their arch on Team (flow 10), or from the lobby, which rings whoever you pick when you join (flow 5).
 - While a call is going, or from 5 minutes before one with someone else on it, a line above **Start a call** names it
   with **Join** (**J**), and says when it starts or **Happening now**. It's the one time a call comes near the top: people
   join from their calendar. A call that's going comes first. A calendar meeting needs a video link to get this line, and
-  its **Join** opens that link in a new tab. **Join** takes the filled button, and **Start now** gives it up. Until
-  then the side panel's **Up next** has the next call with its countdown and **Join**, as on every page, and it makes way
+  its **Join** opens that link in a new tab. **Join** takes the filled button, and **Start now** gives it up. From 10
+  minutes before until then, the call at the foot of the side panel offers **Join**, as on every page, and it makes way
   for this line while the line is there.
-- **For you**, with how many things are open: what needs an answer, as tiles, then your follow-ups as a checklist.
-  With nothing open, it says so. The side panel's **Home** shows the same count.
-- The tiles, newest first, the first six and then **Show more**. A **Decision** (rose) proposed in any note you organized or
-  were invited to that nobody has confirmed, by the notes or by someone else, saying whose words it's in: **Confirm**, or **×**
-  for it wasn't decided, each with **Undo**. On someone else's note, **×** says so for everyone and the organizer settles it,
-  and it stops waiting on you. On your own notes, **Disputed** is one someone confirmed that someone else says wasn't
-  decided: **Keep it confirmed**, or **×**. A **Follow-up** (blue) the notes suggest is yours, that someone gave you or suggested
-  (the tile says **From** them), or that changed since you took it on (**Changed by** them), with the date it's suggested for:
-  **I’ll do it**, which puts it in your follow-ups, or **×**, which leaves it with nobody (then **It’s mine** gives it back to
-  you, taken on). Each shows **What was said** and anything to be careful of. **Shared with you**: notes
-  someone shared in the last 7 days, with **Read the notes**. What you answer stays where it is, saying what you did,
-  until you leave Home. Each tile's time opens its note at the moment it was said, when the notes know it.
-- The checklist: the follow-ups you took on and haven't done, from every note you have, soonest first, with the rest
-  after them. The due words count from when they were said: the last time the due date was changed, or else the call. A
-  day ("today", "EOD", "tomorrow", "Friday", "Friday next week", "Nov 5") is that day, so "tomorrow" said yesterday is
-  due today, and it says when ("Today", "Thu", "Fri 13 Nov"). A stretch of time ("this week", "next week", "in two
-  weeks", "end of the month", "next month", "end of March", "Q1") is due when it ends, so "next week" said last Friday is
-  this week, and it keeps the words. Words with no date ("ASAP", "later") show as they were said, under the follow-up
-  when they're long. A follow-up's words open its note, at the moment it was said when the notes know it. Ticking one
-  crosses it out, and ticking it again puts it back.
-- **Coming up**: every Alcove call ahead and, with Google Calendar connected, the meetings with someone else on them,
-  one line each, soonest first: **Now**, the time today, the day and time this week, then the date. The call on offer
-  above stays listed too, so it can always be opened. Time blocked out on a calendar
-  with nobody else on it isn't listed. A call waiting for a guest to pick a time says **Soon** and **Waiting for Jamie
-  to pick** (someone invited reads **A time is being picked**). A call you're invited to and haven't answered says so, and
-  other people's calls are listed for the next 90 days. A series shows its next call only, and a calendar event that's a
-  copy of a listed call isn't listed twice. A call just scheduled rises in. An Alcove call's row opens its card (flow 4),
-  where **What carries over** opens its series. A calendar meeting has a menu (**⋯**) with **Open in Google Calendar**
-  (in a new tab), **Use Alcove instead** when you organized it (the calendar event gets the Alcove link, and Google tells
-  everyone on it), and **What carries over** when it's in a series. With **Show my other meetings on Home** off
-  (Settings), only Alcove calls count.
-- **Recent notes**: your four newest, one line each, and the heading opens all of them.
-- With Google Calendar disconnected, a card offers **Connect Google Calendar**. **Not now** puts it away in
-  this browser. Connect explains how Alcove uses Calendar data before sending you to Google for consent,
-  then returns to Calendar settings.
+- **For you** holds what's yours in two tabs, **To answer** and **Follow-ups**, each with how many are open; the side
+  panel's **Home** shows the two together. It opens on **To answer** when anything's there, else on **Follow-ups** when
+  anything's there, else on **To answer**. Each tab shows its first five, then **Show N more**.
+- **To answer**: what needs an answer from you, newest first, a row each with its kind, its words, the faces of whoever
+  was on the call (a microphone for a room recording) and the answer at the right. A row's words open its note at the
+  moment they were said, when the notes know it, and the call's name is the row's tooltip. What a decision or follow-up
+  rests on, and anything to be careful of, open from a small mark after its words.
+  - A **decision** proposed in any note you organized or were invited to that nobody has confirmed, by the notes or by
+    someone else: **Confirm**, or **×** for it wasn't decided, each with **Undo**. On someone else's note, **×** says so
+    for everyone and the organizer settles it, and it stops waiting on you. On your own notes, a decision someone
+    confirmed and someone else says wasn't decided is yours to settle: **Keep it confirmed**, or **×**.
+  - A **follow-up** the notes suggest is yours, that someone gave you or suggested, or that changed since you took it
+    on: **I’ll do it**, which puts it in your follow-ups, or **×**, which leaves it with nobody (then **It’s mine**
+    gives it back to you, taken on).
+  - **Notes shared with you** in the last 7 days ("Aiko shared the notes from Board prep"): **Read** opens them.
+  - What you answer stays where it is until you leave Home, saying what you did in a word or two: **Confirmed**, **Not
+    decided**, **Disputed**, **In your follow-ups** or **Not yours**.
+- **Follow-ups**: the ones you took on and haven't done, from every note you have, soonest first, with the rest after
+  them. Each row has the box to tick, the words, the call it came from and when it's due. The due words count from when
+  they were said: the last time the due date was changed, or else the call. A day ("today", "EOD", "tomorrow", "Friday",
+  "Friday next week", "Nov 5") is that day, so "tomorrow" said yesterday is due today, and it says when ("Today", "Thu",
+  "Fri 13 Nov"). A stretch of time ("this week", "next week", "in two weeks", "end of the month", "next month", "end of
+  March", "Q1") is due when it ends, so "next week" said last Friday is this week, and it keeps the words. Words with no
+  date ("ASAP", "later") show as they were said. Words go in the day's column when they fit; longer ones go after the
+  call it came from, and on a phone, where the call isn't shown, in the day's place. A follow-up's words open its
+  note, at the moment it was said when the notes know it. Ticking one crosses it out until you leave Home, and ticking
+  it again puts it back. While a tick saves, its row says **Saving…**; if it can't be saved, the box goes back and a
+  toast says why.
+- With nothing in a tab, it says so, with a small drawing. Once notes are written and both tabs are empty: **You're all
+  caught up** ("New ones show up after your calls."), under Home's small sunset, which shows only then. Otherwise the
+  drawing is rows not filled in yet, with boxes to tick on **Follow-ups**. Before your first notes: **Nothing to answer
+  yet** ("Decisions to confirm and follow-ups from your calls show up here.", or while they're being written, "Design
+  sync's notes are being written.") and **No follow-ups yet** ("What you take on shows up here, with when it's due.").
+  After them, with only the other tab holding anything: **Nothing to answer** ("Your follow-ups are in the next tab.")
+  or **No follow-ups** ("What you take on shows up here, with when it's due.").
+- **Upcoming**: every Alcove call ahead and, with Google Calendar connected, the meetings with someone else on them, by
+  day: today, then the next six days by weekday, then later days by date. A call waiting for a guest to pick a time
+  comes last, under **Soon**. Time blocked out on a calendar with nobody else on it isn't listed. Other people's calls
+  are listed for the next 90 days. A series shows its next call only, and a calendar event that's a copy of a listed
+  call isn't listed twice. With **Show my other meetings on Home** off (Settings), only Alcove calls count. The first
+  five show, then **Show N more**. The button at the right of its heading opens Settings at **Google Calendar**.
+- Each row has the time, the title and up to three faces, and a meeting from your calendar is marked as one. A call
+  waiting for a guest says **Jamie is picking a time** (someone invited reads **A time is being picked**). At the right,
+  only what needs saying: **In 4 min** in a call's last few minutes and **Now** while it's going (the call on offer
+  above stays listed, so it can always be opened); **Answer** on a call you're invited to and haven't answered; and
+  **Use Alcove** on a meeting you organized on your calendar.
+- An Alcove call's row opens its page (flow 8, before a call), where someone invited answers, and where its series
+  opens. A meeting from your calendar opens its menu, with what applies: **Use Alcove instead** when you organized it,
+  **Open in Google Calendar** (in a new tab), and **What carries over** when it's in a series. **Use Alcove** on the
+  row, or **Use Alcove instead** in the menu, makes the meeting an Alcove call: the calendar event gets the Alcove link,
+  Google tells everyone on it, a toast says who gets the new link, and from then on its row opens its page. A call just
+  scheduled, and meetings just connected, rise in once.
+- Until Google Calendar is connected, **Upcoming** offers to connect it. With nothing to list it says **See what's
+  coming up** ("Your meetings with other people show here."), with **Connect Google Calendar** and "Alcove reads your
+  events and adds the calls you schedule." With Alcove calls to list, they show, and a row at its foot says **See your
+  other meetings here**, with **Connect**. With **Show my other meetings on Home** off, neither promises meetings: both
+  say "The calls you schedule go on your calendar." Either goes straight to Google, with no page in between. Google asks for
+  access to the Google account you signed in with, then comes back to Home: connected, a toast says **Google Calendar is
+  connected.** and your meetings rise in. When Google wasn't allowed, the account was a different one, or connecting
+  failed, **Upcoming** says so in place of the connect (**Google didn't allow the calendar**, **Choose the Google
+  account you signed in with**, or **Google Calendar couldn't be connected**), with "Calls still work without it." and
+  **Try again**. Either way, Home then takes the result out of its address.
+- Without a Google account there's nothing to connect, and **Upcoming** lists Alcove calls only. A demo account's sample
+  calendar shows as a calendar. Connected, with nothing to list, it says **Nothing in the next 7 days**.
+- While the calendar is on its way, the Alcove calls ahead show, with "Your calendar is on its way" at the foot until it
+  comes (with none, a placeholder). If it doesn't load, **Upcoming** says **Your calendar didn't load** with **Try
+  again**: in place of the list when there's nothing else to list ("Calls still work without it."), otherwise in a row at
+  its foot. With **Show my other meetings on Home** off, it neither waits for the calendar nor says it didn't load.
+- **Recent notes**: your newest notes, up to eight, as a row of cards that scrolls sideways, with **View all** to
+  Calls' past calls (flow 8). Each card has the note's own small sunset as its cover, the faces of the people on it (two at most; a
+  microphone for a room recording), the title, and when and how long ("Today · 14 min"). A note still being written says
+  **Being written**. A card opens its note.
 
-The tiles and the checklist come from the inbox (`GET /v1/notes/inbox`): the follow-ups for you that aren't done
+**To answer** and **Follow-ups** come from the inbox (`GET /v1/notes/inbox`): the follow-ups for you that aren't done
 (taken on, or only suggested); the decisions in written notes that nobody has confirmed or rejected and that you can
 confirm, unless it's you who proposed one or said it wasn't decided; and, in notes you organized, confirmed decisions
 someone disputes; newest note first. Follow-ups in notes someone else shared with you count; ones you removed don't.
 
-Before your first notes, **Get set up** takes the place of **For you**, with what's left to do: **Read an example
-note**; **Connect your calendar**, unless one's connected; and **Invite your team**, unless you're on your own (flow 10).
+Before your first notes, Home has no list of things to set up: **For you** says there's nothing to answer yet,
+**Upcoming** offers **Connect Google Calendar** until a calendar is connected, and **Recent notes** has the example
+note's card, marked **Example**, which opens the example note, then a dashed card: **Notes from your calls land here**.
+Inviting your team is on the Team page (flow 10).
+
+Storybook's journeys use these numbers: **3.1 Start a call now**, **3.2 Schedule a call**, **3.3 A call is about to
+start**, **3.4 Move a meeting to Alcove**, **3.5 Clear what’s waiting**, **3.6 Tick off a follow-up** and **3.7 Your
+first day**.
 
 ## 4. Start or schedule a call
 
@@ -182,80 +278,105 @@ send to anyone".
 
 1. **Start now** creates the call and goes to the organizer's lobby, with anyone picked already there to ring. Night
    floods out from the card that was pressed. If the call can't be made, the modal stays and says why.
-2. **Schedule for later** stays in the same modal and asks one thing at a time: **Who**, **When**, **Details**. With
-   someone already picked it starts at **When**. Back goes the other way, and everything chosen so far stays. No window
-   ever opens over another.
-3. **Who** is one field. Typing finds people in the company directory, people from past calls, groups, and the whole
+2. **Scheduling happens on the Calls page**, not in a window. **Schedule for later** closes the modal and opens it there
+   with whoever was picked, and so do **Schedule a call** on Calls, **Schedule** and **+** on Home, **Schedule** in
+   someone's popover on Team, dragging across a free time on the Calls page's week (it opens with that time), **Meet
+   again** on a past call (the same people and name), and **Change the time** on a call (step 11). The scheduler takes
+   the rail's place and the sheet becomes the week. **← Calls** closes it, keeping nothing. The address says what it's
+   doing (`/calls?schedule=new`, `move` or `again`); who it's with never goes in it.
+3. **The name** is at the top, large, ready to type over: "Call with Priya and Kofi" once people are in, until you
+   type your own. Enter schedules.
+4. **Who** is one field. Typing finds people in the company directory, people from past calls, groups, and the whole
    company ("Everyone at Vandelay"; without a directory, "Everyone you meet at Harbourline"); on your own it's the
-   people you've met and any address. Pasting a list of addresses reads it at once: commas, semicolons, spaces and
-   lines, `Name <address>` as mail programs write it, each address once. A list stays one token however long it is,
-   and what can't be read is flagged one at a time with **Use it** when the list gives a fix away, or **Leave out**.
-   Groups, the company and a list can overlap, and everyone counts once. On an empty field, Backspace selects the last
-   token and a second Backspace removes it. A call can invite 300 people; past that it says so and waits, and a list
-   is removed whole and pasted again shorter. **Skip, I'll share a link** goes on with nobody invited.
-4. **When** suggests three times, soonest first, with the best already picked: never in the past, inside 9 to 17 on
-   weekdays where you are, never when you're busy. They're the times that suit the most people, on different days while
-   there are days to spread over, the sooner day first and today last (it leaves people the least notice). When that
-   doesn't tell them apart, as with no calendar connected, each day takes an hour the others haven't, from the hours
-   people find easiest (10:00, then 14:00, 11:00, 15:00 and so on). A time picked from the week takes the place of the
-   last of the three, and the other two stay. It says what's true:
-   "All 8 of you are free at these times.", how many are free under each time, that other calendars can't be read and
-   the times are free on yours, or with no calendar connected that these are open working hours. Under the cards the
-   time picked reads as it will, "Thu 5 Nov, [10:00] – [10:45]": its start and its end can be typed, as 24-hour times like
-   every other time here (14:15, or 1415), to the nearest 5 minutes, and count once you leave the field or press Enter;
-   the up and down arrows move one 5 minutes. A start moves the call and keeps its length; an end sets the
+   people you've met and any address. With nobody in yet, **Often with you** lists people and groups under the field
+   (on your own, **People you've met**); after the first, **Add someone else** brings the list back while you're adding,
+   without anyone already in. A group adds everyone in it, each their own token. Pasting a list of addresses reads it at
+   once: commas, semicolons, spaces and lines, `Name <address>` as mail programs write it, each address once. A list
+   stays one token however long it is, and what can't be read is flagged one at a time with **Use it** when the list
+   gives a fix away, or **Leave out**. Groups, the company and a list can overlap, and everyone counts once. On an
+   empty field, Backspace selects the last token and a second Backspace removes it. A call can invite 300 people; past
+   that it says so and waits, and a list is removed whole and pasted again shorter. Someone outside the company, whose
+   calendar can't be read, gets a line saying so and **Where are they?**: once you've said, their token reads "Berlin,
+   1 h ahead". Nobody at all is fine: pick a time, and the call gets a link to share.
+5. **When** shows once someone's in or a time is picked. One line says what's true: "All 3 of you are free at these
+   times.", "You and Priya are free at these times.", how many are free under each time, that other calendars can't be
+   read and the times are free on yours, or "Nothing is free in the next two weeks. Pick a time on the week." Three
+   times follow as cards, soonest first, the best already picked: never in the past, inside 9 to 17 on weekdays where you
+   are, never when you're busy. They're the times that suit the most people, on different days while there are days to
+   spread over, the sooner day first and today last (it leaves people the least notice). When that doesn't tell them
+   apart, as with no calendar connected, each day takes an hour the others haven't, from the hours people find easiest
+   (10:00, then 14:00, 11:00, 15:00 and so on). A time picked on the week takes the place of the last card. Under the
+   cards the time picked reads as it will, "Tomorrow, [10:00] – [10:45]": its start and its end can be typed, as 24-hour
+   times like every other time here (14:15, or 1415), to the nearest 5 minutes, and count once you leave the field or
+   press Enter; the up and down arrows move one 5 minutes. A start moves the call and keeps its length; an end sets the
    length, any from 5 minutes to 10 hours (earlier than the start, it's the next day's, for a call past midnight). A
    start that's gone, an end before the start, or a length past those limits says why under the line, and what was
    picked stays; so does anything a 24-hour clock doesn't say ("9", "2pm", "25:00"), with "Type a 24-hour time, like
-   14:15.", and a field left empty goes back to what was picked. A start off the half hour sits in the week where it
-   falls, and its card says how many are free then.
-   A call starts at 45 min; 30 min, 45 min and 1 h are a press away, and any other length shows beside them
-   ("1 h 15 min"). **Pick another time** widens the modal around the week, with your own things by name and when anyone
-   is busy, at their real times. It's a week, Monday to Sunday, the weekend a day like any other, and the whole day, 00:00
-   to 24:00, with every hour line labelled, the end included; it opens with 09:00 at its top, on the week of the time
-   picked, and turns to it whenever that changes. Every half hour can be picked (arrow keys move around it); the arrows go
-   a week at a time. The time picked has a bar on its bottom edge: drag it to change when the call ends, a quarter hour at
-   a time, with the end showing as you drag, as far as 10 hours or the end of the day; Shift with the up and down arrows
-   on its half hour does the same, and a screen reader hears where it ends. On a phone the bar takes a finger, and the
-   week still scrolls anywhere else. **Move this call** (Change the time, on a scheduled call's card) has the same line, lengths and
-   week.
-   **Doesn't repeat** opens Every Thursday, Every 2 weeks, Every month (on "the third Thursday"; a fifth one is "the
-   last") or Days you pick, with an end date, which counts once you leave the field or press Enter. Repeats keep their
-   clock time where you are when the clocks change, and one repeat is at most 60 calls. On your own, with one guest whose calendar can't be read, **Let Jamie pick** offers
-   the times on the cards instead (a time picked from the week is one of them, and the week closes): two or three stay
-   ticked, and the call has no time until Jamie picks one from its link.
-5. **Details** reads like the finished call. The name is ready to type over, When and Who step back, and notes open
-   in place: **Write notes**, and with them **Keep the transcript** (without it, it's used to write the notes and then
-   deleted), **Keep the recording**, and **Read shared screens** (on unless it's turned off: whoever shares is then
-   asked whether theirs goes in the notes; off, nobody is asked and no share is kept). Past 25 people, **Set up for a big call** is already
-   on, so everyone joins muted. **Documents** steps to the documents and boards you can open, by workspace, with a
-   search; what's shared with you from workspaces you aren't in sits under **Shared with you**. With nothing to bring yet
-   it says so, and the call works without. A call can bring 12, and anyone who can't open one is told whose it is, without
-   seeing its name, so they can ask for it. With Google Calendar disconnected, **Connect Google Calendar** opens in
-   a new tab. Your draft stays open, and you can still schedule and share its link yourself. The button says what it
-   will do: **Schedule**, **Schedule 4 calls** or **Get the link**.
-6. Once it's scheduled the modal settles away, the row rises on Home, and a toast says what happened, and only that.
-   With Google Calendar connected the call is on it and Google sends the invitations, with **Undo** for a moment. With
-   no calendar connected, or with **Put calls I schedule on my calendar** off (Settings), nobody has been told: the
-   toast says so and offers **Copy link**. With nobody invited, the link is copied. Letting a guest pick copies the
-   link to send them. While it saves, Back and the steps wait, so it can't be sent twice. If it can't be saved, the
-   error stays in the modal and nothing chosen is lost.
-7. **A scheduled call opens one card from its row**, for the organizer and for anyone invited: who's coming, notes,
-   documents, the link and **Join**. There's no Calls page: scheduled calls live in Home's list.
-   - For the organizer every row opens to change it (who, the time, notes, documents; the pen renames it), and only
-     what changed is sent. In a series each change asks **This call** or **This and later calls** before saving; a call
-     that doesn't repeat can start repeating from **Change the time**. With a calendar connected everyone gets the
-     update. **Undo** puts one call back; a change to later calls has none.
-   - A document in Trash, or deleted, leaves the card for everyone, and comes back if it's restored. One the organizer
-     can't open any more stays on the call, and shows among **Documents** for them to take off.
-   - **Cancel this call** asks once, in place. It comes off the calendar and everyone invited is told. **Undo**
-     schedules one call again as a new call: a toast says it has a new link, the old one won't work and answers start
-     over, and offers **Copy link**; if it can't be done, the toast says that. A call in a series can't rejoin it.
-   - Someone invited answers **Yes**, **Maybe** or **No**, and sees who's coming and what was brought. Past 25 people
-     they see only how many are invited. How a call repeats reads in their own time zone, like its time.
-   - A call that offers times shows them, says it's waiting for the guest, and has its link and **Cancel this call**.
-     Someone invited to it reads that a time is being picked, isn't asked whether they're coming, and has **Pick a
-     time**, which goes to its link.
+   14:15.", and a field left empty goes back to what was picked. A call starts at 45 min; 30 min, 45 min and 1 h are a
+   press away, and any other length shows beside them ("1 h 15 min"). **Doesn't repeat** opens in place: Every
+   Thursday, Every 2 weeks on Thursday, Every month on the first Thursday (a fifth one is "the last") or Days you pick,
+   and **Ends after 6 calls**, which counts once you leave the field or press Enter. Repeats keep their clock time where
+   you are when the clocks change, and one repeat is at most 60 calls. With no calendar connected, the line is a note:
+   these are open working hours, with **Connect Google Calendar**, which opens Google in a new tab (it comes back to
+   Settings with the result) and keeps the draft.
+6. **The week** beside it runs Monday to Sunday, 08:00 to 19:00 (further when the call does), with the hours outside
+   9 to 17 greyed. Your own calls and meetings show by name, dimmed; everyone else's busy time is hatched, never what it
+   is, and the key says whose ("Priya and Kofi busy"). The three times glow, and the call being made is solid, with a
+   grip on its bottom edge to drag its end a quarter hour at a time, as far as 10 hours (Shift with the up and down
+   arrows on its half hour does the same, and a screen reader hears where it ends). Pointing at a free time shows the
+   call there and who's free then ("All 3 free", or who's busy); pressing it picks it, and dragging across free time
+   picks the start and the length. Every half hour can be reached with the arrow keys; the arrows at its head go a week
+   at a time and **Today** comes back. On a phone there's no week: the scheduler is one column, and its foot stays above
+   the tabs.
+7. **Details** shows once someone's in or a time is picked. **Notes** is a switch ("Everyone invited gets them", or
+   "Nothing is recorded"), and **What the notes keep** opens under it: **Keep the transcript** (without it, it's used to
+   write the notes and then deleted), **Keep the recording**, **Read shared screens** (whoever shares is asked whether
+   theirs goes in the notes), and **Where they go** (a new workspace, or one of yours). Past 25 people, **Everyone joins
+   muted** is on. **Bring** adds an agenda, documents and boards you can open, as chips, up to 12; anyone who can't open
+   one is told whose it is, without seeing its name, so they can ask for it.
+8. **The foot** says what will happen beside the one button: "Google Calendar invites Priya and Kofi." and
+   **Schedule** (**Schedule 6 calls** for a repeat). With nobody and no time the button waits and the line says "Add who
+   it's with, or skip that and share a link."; with nobody and a time, "Nobody's invited: you get a link to share."; with
+   no calendar, "Without a calendar, nobody is told. Share the link yourself."
+9. **Once it's scheduled** the scheduler closes, the call is on Calls marked **Just scheduled**, and a toast says what
+   happened, and only that: "Scheduled for tomorrow at 14:00. Google Calendar invites Priya.", with **Undo** for a
+   moment. With no calendar connected, or with **Put calls I schedule on my calendar** off (Settings), nobody has been
+   told: the toast says so and offers **Copy link**. With nobody invited, the link is copied. While it saves the button
+   waits, so it can't be sent twice; if it can't be saved, the error stays above the foot with its reference, and nothing
+   chosen is lost.
+10. **Let a guest pick.** With one guest whose calendar can't be read, **Let Jonas pick** is on: the cards become tick
+    boxes, all three ticked, each with what Jonas's clock says then once you've said where he is ("12:00 for Jonas"),
+    and two or three stay ticked. The button reads **Send Jonas the times**, and the foot says they're held on your
+    calendar until he picks, and the others clear then. Each time offered goes on your Google Calendar as a hold that
+    invites nobody; when Jonas picks from the call's link the holds go and the call takes his time, and cancelling the
+    call clears them too. The link is copied to send him, and the call waits under **Waiting for a time** in Coming up.
+11. **Move a call** (**Change the time** on your call): "Move Hiring sync", with "Was Thu 5 Nov, 10:00 – 10:45" struck
+    through; who's on it, read only, each with their answer (**Going**, **Not going**, **Maybe**, **No answer yet**);
+    then When, with four times, a time someone asked for first ("Aiko asked"). The week shows where it is now dashed and
+    where it's going solid. In a series it asks **This call** or **This and later calls**, and how the later ones repeat.
+    **Move to tomorrow 15:30**: "Google Calendar tells Ines and Aiko.", and **Undo** puts one call back; a change to
+    later calls has none. **Cancel this call** waits at the foot and asks once, in place. A call that has started, or is
+    waiting for a guest to pick, can't be moved, and a call that's gone says so, with the way back to Calls.
+12. **Propose another time** (on a call you're invited to) opens the same scheduler for asking: "Another time for
+    Design crit", who's on it (the organizer, and who else is invited), the times that suit you and anyone whose
+    calendar can be read, and **Ask to move it to tomorrow 15:30**. The organizer sees the ask on the call's row, "Aiko
+    asks to move it to 11:00" in rose, with **Move it** and **Keep 10:00**: **Move it** moves the call there and Google
+    Calendar tells everyone; **Keep** turns it down. Asking again replaces your last ask, a call that moves drops every
+    ask, and only the organizer sees anyone else's.
+13. **A scheduled call opens its page from its row** (`/calls/upcoming/<meeting ID>`, from Home's Upcoming and Calls),
+    for the organizer and for anyone invited: who's invited and how they answered, the link and **Join**, the agenda
+    and the notes (flow 8, before a call).
+    - For the organizer **Change** opens the scheduler (step 11), and **More** changes the time, skips one in a series,
+      copies the link or cancels it. In a series a change asks **This call** or **This and later calls**. With a
+      calendar connected everyone gets the update. **Undo** puts one call back; a change to later calls has none.
+    - **Cancel this call** asks once, in place. It comes off the calendar and everyone invited is told. **Undo**
+      schedules one call again as a new call: a toast says it has a new link, the old one won't work and answers start
+      over, and offers **Copy link**; if it can't be done, the toast says that. A call in a series can't rejoin it.
+    - Someone invited answers **Yes**, **Maybe** or **No**, sees who's coming and what was brought, and has **Propose
+      another time** (step 12). How a call repeats reads in their own time zone, like its time.
+    - A call that offers times says it's waiting for the guest, with its link and **Cancel this call**. Someone invited
+      to it reads that a time is being picked, isn't asked whether they're coming, and has **Pick a time**, which goes
+      to its link.
 
 Alcove sends no emails of its own yet, so without a connected calendar nobody hears about the call, and calls
 started now don't go on the calendar: share the link. Everyone invited gets the notes (flow 7).
@@ -444,7 +565,7 @@ time, slides in on the right.
   lasts until you leave it.
 - **Presenting.** What you have open, or what someone presents, sits on your stage in one frame, with the people beside
   it. Its bar has whoever presents it (their face, or what kind of thing it is while nobody does), its name, which opens a
-  menu of what you can do with it, and a line: "Open just for you", "You’re presenting · 3 following" or "Priya is
+  menu of what you can do with it, and a line: "Only on your screen", "You’re presenting · 3 following" or "Priya is
   presenting". On the right it has only what applies: following, **Present**, focus (**⌘⇧F**, "Fill your window with
   it"), **Stop sharing** or **Close**.
   - **Open it just for you.** **Board** (from its picker) and **Workspace**, at the top right, open on your stage, and nobody
@@ -856,9 +977,9 @@ stops processing turns the camera off and says so: choose another background, or
 **6.22 Keep the call in view.** On a supported desktop browser, **Open floating call** in **More** opens a small,
 movable and resizable window over other apps. It shows the speaker or a selected live shared screen, with the same
 microphone, camera and raised-hand state as the meeting. Its controls act on this call. Closing the window keeps you
-in the call; **Return to call** brings the meeting forward. **Leave** asks only the current host to confirm; other
-participants leave immediately. Both save the last recording pieces before departing, and a failure keeps the call open
-with an explanation and Leave available to retry.
+in the call; **Return to call** brings the meeting forward. **Leave** asks only whoever hosts, in the window, with the
+same choices as the main stage (flow 7); other participants leave immediately. Both save the last recording pieces
+before departing, and a failure keeps the call open with an explanation and Leave available to retry.
 
 Hands, open Q&A, people asking to enter (for the host), and new chat have compact indicators that return to the full meeting: hands and people asking to enter open People, and Q&A and chat open Chat. The compact and full meeting controls share one confirmed action owner and the same speaker cues.
 The window shows no personal notes or message text. Its Chat count includes unread mentions; opening Chat returns to
@@ -881,18 +1002,21 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
 
 1. **Workspace**, at the top right, or **W**, opens the workspace on your stage, just for you: nobody else's screen changes,
    and the people sit beside it. **Open**, at the top of Notes, opens it on the call's notes. The count on the
-   button is what's been brought to this call. A call has one workspace, where its notes and transcript go, and only someone
-   pressing **New workspace** makes one: the organizer picks or makes it as they schedule the call, or in the call, and later
-   calls in its series keep it. A call with none says so: the organizer sees **This call has no workspace yet**, with **New
-   workspace** (made for the call, named after it, with everyone invited in it) and **Pick one of yours**; everyone else sees
-   who chooses it, and it opens for them once that's done. Until then nothing new can be made for the call: Board's picker
-   says so over **New** (saved boards still open), Share's **The workspace** says who picks it, and breakout rooms can't have
-   a board of their own. The first time the call's workspace opens, the call's own folder goes at its top, named after it and
-   the day (**Launch check-in · 5 Nov**), open, with **Notes**, **Follow-ups** and **Transcript** in it; a workspace used by
-   several calls has a folder for each, the newest first. Everyone sees the same workspace, late or back from
-   a reload. It opens on this call's agenda, or the first thing brought to it, or with neither on what you had open there
-   last, and **This call** at the top of the list holds what's been brought. Anyone who can open a document can bring it
-   from its row's menu (**Bring to this call**, **Take out of this call**), or by dropping its row on This call. Pressing
+   button is what's been brought to this call. Every call has a home, where its notes and transcript go: the workspace it
+   was scheduled with, as a continuation, or the one its series has; else, the first time anyone opens it, a new one made
+   for the call, named after it and the day (**Launch check-in · 5 Nov**), with the organizer and everyone invited in it.
+   Everyone let in to the call can open it and edit it, guests too (step 3). Its bar says "Only on your screen" and, beside
+   that, "Everyone in the call can edit", or "You can edit while you’re in the call" for a guest or anyone else not in the
+   workspace, which opens **Who’s in it**: the workspace's people, and everyone in the call. The workspace's name, on its
+   bar, is its one menu: **Switch workspace** for the organizer (step 2), **Find in the workspace**, **Who’s in it**,
+   **Rename** for an admin, and **Copy link**; a guest's has **Find in the workspace** and **Who’s in it**. The list's head
+   has only **Find** and **+**. At the top of the list is **This call**: the call's own folder in its home, named after the
+   call and the day as a new home is, with **Notes**, **Follow-ups** and **Transcript**, then whatever's made in it, and
+   what's been brought to the call. What you make during the call (**N**, **+**, **New document**) goes in This call. A
+   home for several calls has a folder for each, the newest first. Everyone sees the same workspace, late or back from a
+   reload. It opens on this call's agenda, or the first thing brought to it, or with neither on what you had open there
+   last. Anyone who can open a document can bring it from its row's menu (**Bring to this call**, **Take out of this
+   call**), or by dropping its row on This call. Pressing
    Workspace or **W** again, or **Close** on its bar (which asks first while you present it: step 5), puts it away and keeps
    your place: the document, where you'd scrolled to, your caret and your undo, for the rest of the call and across a
    reload, so opening it again takes you back there. A list that gives way for want of room comes over the page from the
@@ -920,35 +1044,40 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      following, and for everyone else you've left it.
    - **While breakout rooms are open** the organizer's stage, in the main room, shows the rooms, and the workspace stands
      beside them, as anything else open there does, the rooms where the people would be; Workspace, **W**, Find and the
-     notes' **Open** all open it there, and so does **Open the workspace** for someone in the main room asking to see it. On
-     a phone, or a window too narrow for both, the workspace goes over the rooms until it's closed. Focus isn't on offer
-     there until the rooms close; in a room, it is, as for anyone.
-   - **An organizer who can't open the call's workspace any more** (taken out of it) is told so, with **New workspace** and
-     **Pick one of yours** to give the call another. Everyone else carries on.
-2. **Only the organizer chooses the call's workspace**, from the name at the top of the list, or **Switch workspace** (with
-   none yet, **Choose a workspace**) in the workspace's name on its bar: their workspaces they can edit in, with who's in
-   each, the call's ticked, and **New workspace**. Picking one asks once, in place (**Use … for this call?**, or **Switch this
-   call to …?**), says who in the call can't open it, and that the call's notes and transcript go there from now on, as do
-   later calls in its series; **Switch to …** changes it for everyone at once, a toast says the notes go there (in two lines
-   at most), and **Back** on it changes it back; it goes when the call ends, or when Leave asks its question. The question
-   takes focus as it opens, and **Tab** reaches its answers. Someone following someone stops, and is told the call's
-   workspace changed. The call's Notes, Follow-ups and Transcript stay at the top of the list. Nobody is interrupted and
-   nothing is moved or copied: sound and video carry on, and whoever can't open it stays in the call and sees that it's
-   private, not what's in it. What was brought to the call from the workspace before stays with that one. **New workspace**
-   makes one for the call, with everyone invited in it to edit (a guest without an account isn't), named after the call, and
-   opens a blank document in it; it's still there after the call. Everyone else sees the name, and that the organizer
-   chooses. Its admins can **Delete workspace** from its name's menu, here or on the bar, which asks first: it goes for
-   everyone, and the call has no workspace until the organizer gives it another.
-3. **Someone who can't open it**, a guest or anyone outside the workspace, is told it's private, and nothing else: no
-   names, no folders, nobody's whereabouts. **Ask** (the organizer by name) changes the words in place, and they carry on
-   with the call. The organizer sees who's asking at the top of the call (above the dock on a phone, clear of the list's button), and
-   shares the document in front of them: **Let … read**, **Let … edit**, or **Not now**. With nothing open, **Open the
-   workspace** opens the document they were last in there, to share, or else the list to pick one, on a phone too. Only that document
-   opens for whoever asked, by itself, under Shared with you, and read only says to ask the organizer to edit. **Not now**
-   is said to them, and they can ask again. Share lists them as a guest in this call and **Remove** takes it back, and it
-   ends with the call.
-4. **Notes, Follow-ups and Transcript** are in the call's folder in its workspace, and at the top of the list, for everyone
-   in the call, whether or not they can open the workspace, and the count is what's still to do. They fill in as people talk. With notes off they go quiet and say why they're
+     notes' **Open** all open it there. On a phone, or a window too narrow for both, the workspace goes over the rooms until
+     it's closed. Focus isn't on offer there until the rooms close; in a room, it is, as for anyone.
+   - **An organizer taken out of the workspace** everyone's viewing is told so, and **New workspace** has everyone view one
+     of their own. The workspace's own people carry on. Once its organizer can't edit there, taken out or left only able to
+     read it, it stops opening to everyone else in the call, who's told it's private (step 3).
+2. **Only the organizer switches what everyone views**, from **Switch workspace** in the workspace's name on its bar: their
+   workspaces they can edit in, with who's in each, the call's home marked **This call's home**, and **New workspace**.
+   Picking one asks once, in place: it names who in the call isn't in that workspace, and says that while they're in the
+   call they can open and edit everything in it, that anything closed to some people stays closed, and that the notes
+   still go to the home. A workspace whose files don't count against the organizer's storage asks differently: those people
+   can't open it, "Its files don’t count against your storage, so it opens only for its own people."
+   **Switch** changes the list for everyone at once and opens it to everyone in the call (only to its own people when
+   someone else pays for it), a toast says where the notes still go (in two lines at most), and **Back** on it changes it
+   back; it goes when the call ends, or when Leave asks its question. The question takes focus as it opens, and **Tab** reaches its answers. Someone
+   following someone stops, and is told the call's workspace changed. The call's Notes, Follow-ups and Transcript stay at
+   the top of the list while another workspace is viewed. Nobody is interrupted and nothing is moved or copied: sound and
+   video carry on, and the workspace the call was using closes to anyone who had it only through the call. What was
+   brought to the call from the workspace before stays with that one. **New workspace** makes one for the call, with
+   everyone invited in it to edit, as its home has (a guest without an account isn't, and edits it through the call, as in
+   any workspace the call uses), named after the call, and opens a blank document in it; it's still there after the call.
+   The home doesn't change: the next call in the series still has it. Everyone else sees the name, and that the organizer
+   chooses.
+3. **Everyone in the call can open it and edit it**, a guest or anyone else outside the workspace too, for as long as they're
+   in the call and what's added counts against the organizer's storage: its folders, documents and boards, and its name,
+   as its people see them. They work in it as anyone who can
+   edit there does: make, rename, move and duplicate things, send them to Trash and bring them back, and write. A member
+   who can only read can edit too while they're in the call. What someone closed to some people stays closed to them, and
+   changing who's in it, sharing, deleting for good and renaming the workspace stay with its people. Leaving the call, or
+   the call ending, closes it for them, and what they wrote stays. If the organizer can't edit there any more, or its
+   files count against someone else's storage, it opens only to its own people: anyone else is told it's private, and nothing else, no names, no folders, nobody's whereabouts,
+   and carries on with the call.
+4. **Notes, Follow-ups and Transcript** are This call's first rows, in the call's folder in its home, and stay at the top of
+   the list wherever else, for everyone in the call, whether or not they can open the workspace, and the count is what's
+   still to do. They fill in as people talk. With notes off they go quiet and say why they're
    empty, and the organizer can turn notes on from there while anyone else asks; if something's written already it stays, and a line
    says what's holding the notes back. **Notes** is the summary and what's been decided so far, and a time opens the transcript at
    that moment. **Transcript** is the whole call so far, with who's talking at the end, and finds any word. Notes and Transcript
@@ -980,12 +1109,12 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      for anyone else, "This part of the recording can't be played.". A quote from a call that doesn't keep its recording
      says "This call doesn't keep its recording.", and one said in a breakout room, which is never recorded, "Breakout rooms
      aren't recorded.", with no Hear it.
-5. **Present the workspace**, from **Present** on its bar while it's open just for you (on a phone too), or with **Share ›
-   The workspace** in the dock, for anyone in the workspace, while nobody else presents a board or the workspace (Share
-   says "Priya is presenting. You can present once they stop."). Everyone in your part of the call who isn't watching
-   another presentation follows you, live, to the page and the line you're on, through the same Follow as working
-   together, and you're told "Everyone follows you in the workspace. They can unfollow to work alongside you." The bar says
-   how many follow ("You’re presenting · 3 following").
+5. **Present the workspace**, from **Present** on its bar while it's only on your screen (on a phone too), or with
+   **Share › The workspace** in the dock, for anyone it opens for, guests too, while nobody else presents a board or the
+   workspace (Share says "Priya is presenting. You can present once they stop."). Everyone in your part of the call who
+   isn't watching another presentation follows you, live, to the page and the line you're on, through the same Follow as
+   working together, and you're told "Everyone follows you in the workspace. They can unfollow to work alongside you." The
+   bar says how many follow ("You’re presenting · 3 following").
    - **Everyone else** finds it on their stage, unless they're watching another presentation, when it comes in as a tile
      with **Show it**. The bar says "Priya is presenting" and "Following Priya". **Unfollow** gives them their own place
      back, where they were before they followed, and a click, scroll or keystroke in it leaves them where they are, on their
@@ -1025,29 +1154,32 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
 
 ### A board in the call
 
-1. **Board**, at the top right, or **O**, opens the board picker under it: "Open a board" and "Only you see it until you
-   present it." **In this call**, if the call has a board, has its name and who brought it ("Priya · brought it"), or "Priya
-   is presenting it". **New** has **Blank**, **Retro**, **Ideas** and **Flow**. **Your team’s boards** has whatever's been
-   brought to this call first, then the newest from the workspaces in your Drive, three at most, with whose each is and
-   where it's from. At its foot: "Boards are encrypted in storage." Anyone invited can start one, in the main room or a
-   breakout room; a guest can't ("Guests can’t start a board here."). While someone else presents a board here, nobody can
-   start or bring in another, and the picker says "Priya is presenting a board. You can start one once they stop." With a
-   board on your stage, Board and **O** close it instead (step 5). **Share › A board** in the dock is the same picker, as
-   Share's next step, presenting what you pick straight away (step 11); while someone else presents a board or the
-   workspace here it says "Priya is presenting. You can present once they stop." instead, and nothing is made or brought
-   in. On a phone, Board is in **More** (step 14).
-2. **It opens just for you.** The board you pick opens on your stage, in the frame ("Open just for you"), with the people
-   beside it, and nobody else's screen changes. Opening a saved board this way doesn't touch the call. **New** makes a
-   board, saved in the call's workspace and named after the call, that's the board in this part of the call: the one
-   votes, ideas from the call, breakout rooms and the note's **Worked on in this call** hang on. It still opens only
-   for you, and everyone else finds it under **In this call**. Vote and ideas from the call show on the board in the
-   call, not on a saved board you opened yourself. Someone else starting a new board while you have the call's open leaves
-   yours on your stage, just for you. **Present**, on its bar, brings everyone (step 11).
-3. **Presenting a saved board brings it into the call first.** If some people here can't open it, a question comes first,
-   before anything is presented: "Kofi and Maya can't open Onboarding flow. It's in Design." **Let them in for this call**,
-   there only for someone who may share it, opens it to them until the call ends. **Present without them** presents it to
-   everyone else. Someone it isn't open to sees **A board you can't open** and who brought it, and nothing of its name;
-   **Ask Art for access** asks in the call's chat.
+1. **Board**, at the top right, or **O**, opens the board picker under it: "Open a board" and "Only on your screen until
+   you present it. Everyone in the call can edit it." **In this call**, if the call has a board, has its name and who
+   brought it ("Priya · brought it"), or "Priya is presenting it". **New** has **Blank**, **Retro**, **Ideas** and
+   **Flow**. **Your team’s boards** has whatever's been brought to this call first, then the newest from the workspaces
+   in your Drive, three at most, with whose each is and where it's from. At its foot: "Boards are encrypted in storage."
+   Anyone invited can start one, in the main room or a breakout room; a guest can't ("Guests can’t start a board
+   here."). While someone else presents a board here, nobody can start or bring in another, and the picker says "Priya
+   is presenting a board. You can start one once they stop." With a board on your stage, Board and **O** close it
+   instead (step 5). **Share › A board** in the dock is the same picker, as Share's next step, presenting what you pick
+   straight away (step 11); while someone else presents a board or the workspace here it says "Priya is presenting. You
+   can present once they stop." instead, and nothing is made or brought in. On a phone, Board is in **More** (step 14).
+2. **It opens only on your screen.** The board you pick opens on your stage, in the frame ("Only on your screen"), with the
+   people beside it, and nobody else's screen changes. A saved board some people here can't open asks first (step 3).
+   **New** makes a board, saved in This call, the call's folder, and named after the call, that's the board in this part
+   of the call: the one votes, ideas from the call, breakout rooms and the note's **Worked on in this call** hang on.
+   Everyone in the call can edit it, guests too. It still opens only for you, and everyone else finds it under **In this
+   call**. Vote and ideas from the call show on the board in the call, not on a saved board you opened yourself. Someone
+   else starting a new board while you have the call's open leaves yours on your stage, just for you. **Present**, on its
+   bar, brings everyone (step 11).
+3. **A saved board some here can't open asks first.** Picking one that's in a workspace some of them aren't in, or
+   closed to some people, asks once, before it opens: "Let everyone here edit Onboarding flow?", that Kofi and Maya can't
+   open it now, and that while they're in the call everyone here can open it and edit it. **Open it** opens it and lets
+   everyone here edit it until the call ends, anyone let in later too; **Not now** goes back to the picker. Someone who
+   may not share it gets **Open it anyway** instead, which lets nobody in. A board in the workspace the call uses that
+   isn't closed to anyone asks nothing: everyone here can open it already. Someone it isn't open to sees **A board you
+   can't open** and who brought it, and nothing of its name; **Ask Art for access** asks in the call's chat.
 4. **Working on it together.** Everyone's pointer carries their face and name, with dots while they type, and whoever's
    talking glows on their tile and their pointer. While Priya's on the board, unless it's being presented to you, her
    tile's menu has **Go to Priya**, which takes you to where Priya is, and **Follow Priya**, which keeps your view with
@@ -1067,9 +1199,9 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    screen, 14:05", and Priya is told. It's kept in the board's files, whether or not the share is in the notes. It's for whoever
    can add to the board, and isn't offered for your own screen.
 7. **The board's name**, on the frame's bar, is a menu. It has **Rename**, for anyone who can change it, and everyone sees
-   the new name at once, wherever it's named: a saved board renamed while it's open just for you is under its new name in
-   **Board**'s list once it's closed, and opens again with it (journey 6.37); **Open where it’s saved**, which brings up
-   that workspace if it's the call's workspace and opens any other in a tab of its own;
+   the new name at once, wherever it's named: a saved board renamed while it's in the call is under its new name in
+   **Board**'s list once it's closed for everyone, and opens again with it (journey 6.37); **Open where it’s saved**, which brings up
+   that workspace if it's the one the call is viewing and opens any other in a tab of its own;
    **Who can add to it**, for someone in that workspace who can edit the board, which opens the workspace's own **Share** for
    it under the name (add people by name or address, change what each can do, or keep it to the people added; someone it
    becomes read-only to sees it as **View only** at once, and once it's kept to the people added, nobody's told everyone here
@@ -1125,7 +1257,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    works with notes off, and on a board's own page. While notes are paused nothing goes to the AI, so it isn't offered.
    Fewer than two stickies with words says "Pick at least two stickies with words to sort.", and more than 80 "Sort up to 80
    stickies at a time."
-11. **Present.** **Present**, on the frame's bar of a board you can add to while it's open just for you, or **Share › A
+11. **Present.** **Present**, on the frame's bar of a board you can add to while it's only on your screen, or **Share › A
    board** in the dock, brings everyone with you, following your view, with nothing to prepare. It's still the board, tools
    and all, for everyone: nothing turns into slides. Neither is offered while someone else presents a board or the workspace
    here. The frame's bar has no Present on a phone, where **Share › A board** presents one. A saved board comes into the call
@@ -1172,7 +1304,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    and nobody else. **From your workspace** lists what you can open in the board's own workspace, the board aside, and puts one
    on the board as a card. It offers nothing from anywhere else, so a link only ever points where the board's readers can
    reach: each person sees it by their own name for it, opens it from the card (in the call when everyone's
-   in the call's workspace, in a tab of its own otherwise), or sees "A document you can't open" and nothing of its name.
+   viewing that workspace, in a tab of its own otherwise), or sees "A document you can't open" and nothing of its name.
    **Table** puts three by three where you're looking with its first cell open; Tab goes along a row and on to the next, and
    a row and a column are a press away while it's picked. Two people typing in one cell at once, an empty one too, both keep
    what they type. **Mind map** starts an idea: Tab branches from it, and Enter adds another branch beside it; two people
@@ -1232,7 +1364,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    of something. With no board open in the main room, one is made for them, and so it is when the one open can't take them any
    more (whoever brought it can't edit it now): it opens in its place, and the call says "The rooms' boards came back on a new
    board. The one that was open can't take them." When the call's workspace can't take a new board, they stay where they are:
-   "The rooms' boards didn't come back: this call's workspace can't take a new board. Each one is still saved where it was."
+   "The rooms' boards didn't come back: this call's home can't take a new board any more. Each one is still saved there."
    Afterwards a room's board is a saved board like any other, everyone invited's, and nothing to a teammate who wasn't invited.
    **Present** then makes each room's frame a stop on the pager, in the order they sit: the room reports back, and the
    organizer moves on.
@@ -1257,82 +1389,139 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
 
 ## 7. End the call and get the notes
 
-1. **Leave** immediately leaves for anyone who is not hosting, invited participants and guests alike: no confirmation,
-   on the main stage or in the floating call. The last audio and speech are saved before leaving; while that happens,
+1. **Leave** leaves at once for anyone who isn't hosting, invited participants and guests alike: nothing is asked, on
+   the main stage or in the floating call. The last audio and speech are saved before leaving; while that happens,
    Leave is disabled. A failed departure keeps the same call open with an explanation and a way to retry. The call goes
-   on for everyone else, and the call’s link is ready to join again. In-app navigation does the same cleanup before
-   continuing, and closing or reloading a participant’s tab does not ask for confirmation.
-   For the current host, **Leave › End the call** (with others in the call, **End call for everyone**) sends the last audio and
-   speech and ends the call. **Stay in the call** goes back. With someone invited in the call, whoever hosts can
-   also **Leave and keep it going**: the person who'll host is chosen already ("Priya will host until you're back"),
-   and **Change** picks someone else. The call goes on, the notes with it, and the organizer takes it back by
-   joining again. Someone standing in sees the same sheet, with leaving it going first. The browser still asks the current
-   host to confirm closing or reloading the tab.
-2. The sheet becomes **Call ended**: who gets the notes, and how they're coming along until "Notes are
-   ready", then **Read the notes** or **Go to Home**. The note shows the steps so far (call ended, audio
-   saved, the transcript's length, the notes being written), playback of the decrypted recording, and who
-   has it. Without notes, the sheet says there's nothing to send.
-   A call with notes and no workspace asks its organizer where they go: **These notes aren't in a workspace yet**, with a
-   choice of **New workspace** (made for the call, with everyone invited in it) or one of their workspaces they can edit in,
-   and **File them**. The call's folder goes at the top of it, and it's the call's from now on, and its series'. The sheet
-   then says where they went. Doing nothing leaves them in Notes, and the note asks the organizer the same, in a small
-   notice near what was worked on, until they're filed.
+   on for everyone else. In-app navigation does the same cleanup before continuing, and closing or reloading a
+   participant's tab doesn't ask.
+   Whoever hosts, with anyone else in the call, is asked in a popover over **Leave**, the way Close's question opens (a
+   sheet on a phone, and the same choices in the floating call's own window). **End for everyone** ("Everyone invited
+   gets the notes.", or without notes "It ends for everyone in the call.") sends the last audio and speech and ends the
+   call. When someone in the call can host, **Leave, Priya hosts** leaves it going with the best person chosen already,
+   and **Change** lists who else could, in the same popover. The call goes on, the notes with it, and the organizer
+   takes it back by joining again. Someone standing in sees leaving it going first. While the call ends the question
+   says **Ending the call…**, and a failure is said in it, with the call still open. When nobody here can
+   host, End for everyone is the only choice: "Guests can't host, so leaving ends it for everyone." Alone in the call,
+   pressing **Leave** ends it at once: there's nobody to hand it to and nothing to choose. Any other way out while alone,
+   such as going back a page or answering a ring from another call, asks first, so a stray Back doesn't end a call
+   people are about to join: Leave's question opens with **End for everyone** alone ("You're the only one here, so
+   leaving ends the call."), and putting it away keeps the call going. The browser still asks whoever hosts to confirm
+   closing or reloading the tab.
+2. When the call is over for you, the call eases back and fades as its own page rises in, on the call's night over a
+   cove. From the top: who was in the call (or who's still in it) in their arches, the title, one line, the notes and
+   the buttons, the first one filled. It never moves on by itself.
+
+   | What happened | Title | The line | Notes | Buttons |
+   |---|---|---|---|---|
+   | You ended it, notes on | {Title} has ended | {n} min with {names} (alone: {n} min) | Being written (step, who gets them), then the summary's first lines with decided and follow-up counts | **Open the notes** (then **Read the notes**), Go to Home |
+   | You ended it, no notes | {Title} has ended | {n} min with {names} (alone: {n} min) | No notes were taken. | **Go to Home** |
+   | Whoever hosts ended it, you get the notes | {Title} has ended | {n} min with {names} | Being written, then written | **Open the notes**, Go to Home |
+   | Whoever hosts ended it, you don't (a guest) | {Title} has ended | {Organizer} can share the notes with you. | none | none |
+   | You left, it goes on | You left {Title} | {names} are still in it, and how long it's run (ticking) | As notes were when you left, only if you get them: Notes are on. You get them when it ends. / Notes are paused. You get what was written when it ends. / Notes are off. You get what was written when it ends. | **Rejoin** (J), Go to Home (a guest: Rejoin only) |
+   | You hosted, and left it with someone | You left {Title} | {Name} is hosting until you're back (standing in for the organizer: until {Organizer} is back) | the same | **Rejoin**, Go to Home |
+   | You left, and it ended while you're here | {Title} has ended | It ended after you left. | Being written (if you get them) | **Open the notes**, Go to Home (a guest: none) |
+   | The notes take long, or their progress can't be followed | | | Still being written. They'll be in Calls when they're ready. You don't need to wait here. | as above |
+
+   The page keeps up while you're on it: the notes turn from being written into their first lines, a call you left
+   turns into the ended page within about 15 seconds of it ending, and how long it's run ticks while it goes on. Who's
+   still in it is who was in the call as you left, without you: once you've left there's no live view of the room.
+
+   A call that ends while you're in it, and not by you, says the same line as one you end. Alcove can't tell whether
+   whoever hosts ended it or it ended by itself (the host's connection gone, with nobody to stand in), so the page names
+   nobody. A guest is told who can share the notes whenever the call had them. While a call you left goes on, whoever
+   gets the notes is told how notes were as they left: on, paused, or off after being on. Paused or off, what was
+   written comes to them when the call ends. Notes the organizer's plan stopped aren't said as off: "Your notes for this
+   period have run out. What was said until then is in the notes." (or whose, or that storage is full), with the
+   organizer's ways to more (16.9).
+
+   **Rejoin** goes straight back in, with the microphone and camera as they were: no join page and no camera preview.
+   It says **Rejoining…** meanwhile, waits to be let in when it has to, and says on the page if it's refused; the call
+   comes back up in place as its page fades. **J** rejoins too, but with the microphone and camera off, so a stray key
+   never puts your voice and picture back into a call you chose to leave; J with Shift, ⌘, Ctrl or Alt does nothing.
+   **Go to Home** still works while it says Rejoining…: it's the way out while you wait to be let in, and it takes the
+   rejoin back without ending the call for anyone. **Go to Home** and **Open the notes** fade the page, and the frame
+   settles in with the side panel easing in. The call's page shows the steps so far (call ended, audio saved, the
+   transcript's length, the notes being written), plays the decrypted recording on its stage, and says who has it. Signing out, or deleting your
+   account, in another tab takes the page to the welcome page, as it does every other tab, and what it showed of the
+   notes goes with it. Reloading the call's address after leaving goes to the join page. Being removed, moving to
+   another device, the connection dropping and someone else hosting after a drop don't come here (flow 6).
+
    Notes are written in the language set in settings by the organizer (or, for a room recording, by whoever recorded):
    "Same as the call" by default. Every note gets a short summary of two or three sentences, and a longer full summary
    under it.
 3. Everyone invited gets the notes as the call ends, including people signed in whom the organizer let in
-   from the link (letting them in added them to the invite; removing them took them off it). They find them
-   under Notes when they sign in with that address, marked as from the organizer. Guests who joined with only
-   a name don't get them.
+   from the link (letting them in added them to the invite; removing them took them off it). They have them before
+   the call closes for anyone in it, so they can follow them being written on its page. They find them under Notes
+   when they sign in with that address, marked as from the organizer. Guests who joined with only a name don't get
+   them.
 4. If the notes service fails three times, the note is finished with its transcript and recording and no
    summary. On a server without NEAR AI, notes wait with "Waiting for the notes service to be connected".
    While the notes model's evidence can't be checked or doesn't check out, nothing is sent; and while it
    doesn't answer, nothing is lost. Either way notes wait with "Waiting for the notes model. The notes are
    written as soon as it’s verified and answering" and are tried again every five minutes.
 
-**Journeys:** 7.1 ends the call and reads its notes; 7.2 hands hosting over; 7.3 leaves as an invited participant
-(including phone and light theme); 7.4 leaves as a guest; 7.5 retries a participant departure that failed;
-7.6 accepts another call while participating and continues there without a confirmation; 7.7 ends a call with no workspace
-and files its notes in a new one.
+**Journeys:** 7.1 ends the call and reads the notes; 7.2 leaves it going with someone hosting, then rejoins; 7.3 leaves
+as a participant (on a phone, in the light theme); 7.4 leaves as a guest; 7.5 retries a departure that failed; 7.6 joins
+another call while in one; 7.7 the call ends while they're on its page; 7.8 alone, pressing Leave ends the call.
 
-## 8. Notes
+## 8. Calls
 
-- **Notes** lists every note you have, your own and those from other people, newest first and grouped by day
-  (Today, Yesterday, This week, Last week, then months), on the water under a band of sky. Each row has the faces of
-  whoever else has the note (an arch with a microphone for a recording only you have), its title, how you got it, the
-  start of the summary, chips for what's still open in it (decisions to confirm, follow-ups), the time or the day, and
-  a pin when it's pinned. On a wide screen the list scrolls under the horizon, so the sky stays in view; on a phone the
-  page scrolls as one.
-- **Search everything said, or ask** is the line in the middle of the sky (**⌘K** on a Mac, **Ctrl+K** elsewhere goes to
-  it; **↓** goes from it to the list, and **Escape** clears it). It finds the words, not just the note: every word typed
-  has to be somewhere in the note's title, summary or what was said, in any order, breakout rooms included. A row quotes
-  the line with most of the words and who said it, unless the summary has them, with a chip for each of the best moments,
-  up to three in the order they were said, and the preview lists up to four of them above the summary. A moment opens the note there, not playing. While a question is
-  being typed the list shows the notes with any of its words, and all of them when none has. Someone who can't read a
-  note's transcript finds the note only by what they can read, and nothing is quoted to them.
-- Under the line are the four people you have most notes with, and **+** to find anyone else you have notes with. Picking
-  someone shows only the notes they have too, under a chip whose × shows everyone's again, and **+** still changes who.
-  That person is in the address after `#with=` (the Team page links there), which never leaves the browser. Then **All**,
-  **Calls**, **In the room** and **Shared with you** (notes someone shared with you afterwards) narrow the list.
-- On a wide screen (more than 1240px) the note picked in the list shows beside it: whether it's ready, the pin, **Share**,
-  **More** and **Open notes**; when it was and who has it (pressing the faces shows **Who has these notes**); then the
-  summary, decisions and follow-ups. **Confirm** or **It wasn’t decided** settle a decision there, with **Undo** after,
-  or **Take that back**, or for the organizer **Keep it confirmed** when someone disputes a confirmed one; a follow-up ticks
-  off in place, and the row's chips follow. A click picks a note; a double click, Enter or **Open notes** opens it; ↑, ↓,
-  Home and End move through the list. Narrower, a note opens on its own page. Only one button is filled at a time: while
-  Share or the question in More is up, Open notes turns tinted.
-- **Enter** or **Ask** asks every note you have, whatever the filters are (see below). It reads them in confidential compute
-  while the horizon pulses, and the answer lands on the water above the list, with a chip for each note and moment it
-  comes from. The list and the preview then follow what it cites: each row quotes the line it used, and the preview lists
-  those moments. **×** puts the answer away, and so does typing, or picking someone or a filter. An answer that cites
-  nothing just says so and leaves the list alone. When a note it read was deleted or taken from you while it was being
+- **Calls** is every call, ahead and past, in one place: a short band of sky with the search and **Schedule a call**, then
+  a rail of places beside a sheet with what the place holds. On a wide screen the rail and the sheet each scroll under
+  the sky; on a phone the page scrolls as one, the places are chips at the top of the sheet (**All**, **Coming up**,
+  **Past**, **Series**), and **Schedule a call** is the top bar's plus.
+- The rail has **All calls**, **Coming up** with how many, **Past calls** with **In the room** and **Shared with you** under
+  it, and **Series**, each with when its next call is. At its foot **Google Calendar · Connected** opens Settings at
+  Google Calendar. The place you're on is in the address (`/calls?view=soon`, `/calls?series=…`), never any words or
+  anyone's address.
+- **All calls** shows later today and tomorrow, then **Show 6 more coming up**, then the calls that happened, by day
+  (Earlier today, Yesterday, Earlier this week, Last week, then the date). **Coming up** shows the calls waiting for a guest
+  to pick a time first, then each day: Alcove calls and, with Google Calendar connected, the meetings on it with someone
+  else. **Past calls**, **In the room** and **Shared with you** list what happened, by day.
+- A call ahead shows who's on it, its time and length in sun, and only what matters: its series or **From your calendar ·
+  Google Meet**, how the others have answered, quietly, and **No notes** only when it won't write them. An invitation
+  says **Kofi invited you** in rose, with **Yes**, **Maybe** and **No** as equal buttons; once answered it says
+  **You're going** with **Change**, the organizer sees it, and changing it offers **Undo**. When someone invited asks to
+  move your call, it says **Diego asks to move it to 14:00** in rose, with **Move it** (it moves, and Google Calendar
+  tells everyone invited, with **Undo**) and **Keep 11:00**. A call scheduled or moved a moment ago is lit once, and says
+  **Just scheduled** or **Moved**.
+- A call that happened shows who had it, how it came to you (**From Maya's call**, **In the room, only you**, **Shared by
+  Ines**), what it was about in a line, and only what waits on you from it (**1 to confirm** in rose, **2 follow-ups** in
+  horizon), or that it's still recording or being written. Its name opens the call.
+- **⋯** on a row does what that call allows, asking first in the same popover when something would be lost: **Change the
+  time** (the scheduler, flow 4, which asks for a call in a series you run whether it's this call or this and later ones),
+  **Copy link**, **Cancel this call** (it comes off your calendar and everyone invited is told, with **Undo**), **Skip this
+  one** and **Cancel the series**; on an invitation, **Propose another time** (the scheduler, with the times you're both
+  free; the organizer sees it on the row); on a meeting from your calendar, **Open in Google Calendar** and, for your own, **Use Alcove instead**; on a call
+  waiting for a guest, **Copy the link for Jonas**; on a call that happened, **Meet again** (scheduling, with the same
+  people and name) and **Share the notes**.
+- **Schedule a call**, on the sky or the phone's plus, opens the scheduler in place of the rail and the sheet (flow 4),
+  and **← Calls** goes back to the place that was open.
+- **Week** (from **List / Week** at the sheet's top right) shows Monday to Sunday, 08:00 to 19:00: what happened, with a
+  rose diamond for a decision to confirm and a blue dot for a follow-up, Alcove calls ahead, the calendar's meetings,
+  invitations, and times held for a guest, with the sun at now. **Last week**, **Today** and **Next week** move it; on a
+  phone it's today and the next two days. Pressing a call opens it; pressing a free time, or dragging across one, opens the
+  scheduler there, as long as the drag.
+- **Search every call, or ask** is the line in the middle of the sky (**⌘K** on a Mac, **Ctrl+K** elsewhere goes to it;
+  **↓** goes from it to the list, and **Escape** clears it). Coming from the palette's **See all in Calls** (flow 2), it
+  already holds the palette's words. It finds the words, not just the call: every word typed has to be somewhere in the
+  call's title, summary, decisions, follow-ups or what was said, or start the name of someone who spoke in it, in any order,
+  breakout rooms included. A row quotes the line with most of the words and who said it, unless the summary has them,
+  with a chip for each of the best moments, up to three in the order they were said. A moment opens the call there, not
+  playing. Someone who can't read a call's transcript finds it only by what they can read, and nothing is quoted to them.
+- A name in the line lists the calls with that person, coming up first, then the ones you've had. From the Team page or
+  the palette's **Calls with Priya**, they're a token in the line whose × shows everyone's calls again; that person is in
+  the address after `#with=`, which never leaves the browser.
+- **Enter** or **Ask** asks every call you have. It reads them in confidential compute, and the answer lands at the top of
+  the sheet with a chip for each call and moment it comes from, then the calls it read, each quoting the line it used.
+  **×** puts the answer away, and so does typing. When a call it read was deleted or taken from you while it was being
   written, it isn't shown, and **Ask again** asks once more.
-- When the list has nothing to show, it says why: nothing matches the search (**Clear search**, and **Search all notes**
-  when a filter is on), the search couldn't get an answer (**Try again**), nothing has been shared with you yet, nothing
-  was recorded in the room yet (**Record in the room**), or you have no notes with that person yet (**Show notes with
-  anyone**). Before your first notes there's nothing to search, so there's no line: **No notes yet**, with **Start a call**
-  and **Record in the room**, takes the middle of the sky, and an example on the water shows what notes look like, with
-  **Open the example**.
+- When there's nothing to show, it says why: nothing coming up, no calls yet, nothing recorded in the room yet (**Record
+  in the room**), nothing shared with you yet, no series yet, no calls with that person yet (**Show every call**), nothing
+  matches the search (**Clear search**), or the search couldn't get an answer (**Try again**). Without a calendar, one line
+  at the top of **All calls** and **Coming up** offers **Connect**. On the first day there's one empty state on the sheet:
+  **No calls yet**, with **Connect Google Calendar** and **Start a call now**. Either way, connecting goes straight to
+  Google, which comes back to Settings with the result.
 - **Share** gives the notes to more people by email, or to one of your groups (offered first, by name), once
   the call has ended or the room recording has stopped. Anyone who has the notes can share them; people who have them already are skipped, and someone
   who removed them gets them again. Each share records who shared the notes and when, and the group's name
@@ -1349,26 +1538,28 @@ and files its notes in a new one.
   beside their title, and **Who has these notes** says **By Priya's link**.
 - Someone else's notes say how you got them, beside their title: **From Priya’s call** when you were invited,
   **Shared by Theo** when someone shared them afterwards, or **Shared by Theo with Leads** when it was to one of
-  their groups. Notes lists them under the call they came from, and **Who has these notes** says how each person
+  their groups. Calls lists them under the call they came from, and **Who has these notes** says how each person
   got them: organizer, invited, or shared afterwards by whom (and with which group). A long list shows its
   first eight people until **Show all** opens it.
-- **More** has **Copy as text**, once the notes are written (the summary, the full summary, what was decided, what's
-  still open, the follow-ups and the shared notes), and **Delete notes**, which deletes your own notes for everyone, audio included, with anyone's own notes on them, once you say so,
-  and then lists what went. For notes from someone else it's **Remove from your notes**: everyone else keeps them, and
-  you're no longer listed as having them. Your own notes on them go for good, and what you added to the shared notes stays.
-  Beside the list it asks in place, and the row leaves the list. While the call is going, it waits until the call ends.
-- **Your notes**, beside the note, is what you kept in the call and more: write something, bookmark a line (the bookmark
-  beside it, **Bookmark this line in your own notes, which only you see**) or a shared screen, or **Keep in your notes**
-  under an answer. A bookmarked line's bookmark stays in sight, ticked; **Remove your bookmark** takes that line's own
-  bookmark back and leaves a moment marked near it in the call. It says **Only you**, and the note itself
-  says **Everyone with the notes**: nobody else reads Your notes, the organizer included. Each row starts with its kind
-  (lines of text for something you wrote, a bookmark, a question for a kept answer); pointing at a row, or moving the
-  keyboard into it, shows **Add to the shared notes**, **Change what you wrote** and **Delete**, which a touch screen
-  always shows.
-- The column beside the note scrolls by itself, under the line along the top: however far down the note you are, Your
-  notes and its box are in reach without scrolling back up, and scrolling one column doesn't move the other. In one
-  column (1180px wide and narrower, and phones), Your notes and **Shared notes** come before the transcript, two across
-  until a phone puts them one under the other; who has the notes, the series and Google Drive come after it.
+- **More**, on a call's page, has **Pin to the side panel** (at most eight pinned), **Copy as text** once the notes are
+  written (the summary, the full summary, what was decided, what's still open, the follow-ups and the shared notes),
+  **Meet again** (the scheduler, with the same people and name), **Google Drive** (a window with the call's own exports,
+  flow 15) and, for the organizer, **Write the notes again**; then **Delete notes**, which deletes your own notes for
+  everyone, audio included, with anyone's own notes on them, once you say so in the same popover, and then lists what went.
+  For notes from someone else it's **Remove from your notes**: everyone else keeps them, and you're no longer listed as
+  having them. Your own notes on them go for good, and what you added to the shared notes stays. While the call is going,
+  it waits until the call ends.
+- **Your notes**, a tab beside the call, is what you kept in the call and more: write something, bookmark a line (the
+  bookmark beside it, **Bookmark this line in your own notes, which only you see**) or a shared screen, or **Keep in your
+  notes** under an answer. A bookmarked line's bookmark stays in sight, ticked; **Remove your bookmark** takes that line's
+  own bookmark back and leaves a moment marked near it in the call. It says "Only you can read these. Not the others on the
+  call, not Alcove.": nobody else reads Your notes, the organizer included. Each row starts with its kind (lines of text for
+  something you wrote, a bookmark, a question for a kept answer); pointing at a row, or moving the keyboard into it, shows
+  **Add to the shared notes**, **Change what you wrote** and **Delete**, which a touch screen always shows.
+- A call's page is two halves. The left, the call, never scrolls: its stage, its line, and what was shared and made in it.
+  The right has the tabs (**Notes**, **Transcript**, **Your notes**), each scrolling by itself, with **Ask about this call**
+  at its foot. Narrower than 1100px (and on a phone) it's one column: the stage, the line, then the tabs, with what was
+  shared and made as a **Shared** tab, and the page scrolls as one.
 - **Add to the shared notes** on anything in Your notes shows, in place of the box you write in, exactly what goes:
   the words, which you can cut down, the moment they point at, **Shared notes** on this note, and everyone who
   has the notes. Nothing goes until **Add for 3 people**; only what's in the box goes, and never a question you asked.
@@ -1381,68 +1572,63 @@ and files its notes in a new one.
   who got them since; Enter again posts it for them too. What's posted can't be changed. **Take back** removes yours for
   everyone, once you say so in the row; something added from Your notes stays there. The organizer can **Remove** any
   of them the same way. During a call the shared place to write is the call's workspace pages.
-- A note's page is a slim band of sky, with the call drawn along the horizon. The band has a way back (**Notes /** its
-  title), the pin (**Pin these notes**, at most eight pinned), **Share**, **More**, and one line under the title: when
-  it was, who has it, how you got it, and **Written in confidential compute** with when the hardware was checked (or, in
-  caution, **Written by an unencrypted model**), which opens the model for each task (transcribing the speech, writing
-  the notes, reading the shared screens): verified ones with **Check this model at NEAR AI**, unencrypted ones marked
-  **Unencrypted**, and at its foot any other unencrypted model the call was sent to (**This call was also sent unencrypted to …**), for earlier versions or for notes that were stopped or couldn't be written. Until the notes are written that says **Being written in confidential
-  compute**, or **Still recording** beside what's been checked so far, and while they're written again, **Being written
-  again**.
-- The horizon is the call: **Play** and the time, then a line with the chapters standing on it, what was decided and
-  what's to do sitting on it (hollow until people have said so), where nothing was captured, and light under it drawn
-  from what was said, still where nobody spoke. Pointing at a chapter or a mark says what it is. Pressing one moves the sun
-  there without moving the page, as pressing along the line does, and the line being said is still marked; a chapter
-  that's breakout rooms opens them instead. Without a recording, pressing one goes to its line in the transcript. A moment chip anywhere else on the page
-  still goes to that line: the sun moves, and the transcript goes there and marks it, opening the rest if it has to.
-  Pressing a line of the transcript, its words or its time, goes to its moment and plays from there, and marks the line
-  where it is; selecting its words to copy them doesn't, a double or triple click included (a press on the words waits a
-  quarter of a second for it), and its own tools only do what they do. On a phone, where one line at a time shows its
-  tools, the line pressed keeps them while the call plays on past it, until another is pressed or it's scrolled out of
-  sight. Its time is still the keyboard's way in. A breakout room's lines have no moment to go to, since a room isn't in the recording.
-  The line shows at most 10 decisions and follow-ups, spaced apart, decisions first; a follow-up said at the same moment as a decision sits just beside it; the rest are in the notes. A shared screen opened from the transcript has its time in the corner, which closes it and plays the
-  call from there, with the page going up to the shared screens' video (or, without one, to that line). **Play** starts as soon as the first of the recording arrives; until it's pressed, moving along the line
-  reads nothing. Whatever was pressed last wins, even while the recording is on its way. As it plays the sun moves and
-  the line being said is marked. **Space** plays and pauses it, as in most players, with nothing focused or the line
-  itself, and the page doesn't scroll; in a field it types, a focused button or tick box is pressed as ever, and with a
-  menu or window open over the page it does nothing new. In the shared screen's full screen it plays and pauses whatever
-  has focus there. Shift+Space still scrolls up, and Page Down pages down. If part of it won't play, it says so, and **Play** tries again from there. The horizon
-  stays at the top of the page as you read. On a phone it shows the chapter you're in, and the chapters are listed
-  beside the note. While a call is still recording, the line ends where it has got to, and **Play** plays what's there
-  so far and carries on as more is recorded; at the very edge it stops, and says that's all so far. A call that didn't
-  keep its recording has the line and no player.
-- A written note shows the summary and, under it, a **Full summary** button that opens a longer account of the call in
-  order, a paragraph for about every ten minutes (a note written before this existed, or one whose full summary couldn't be
-  written, has no button; the organizer writing the notes again brings it), then **Decided**, **Still open**, **Follow-ups**,
-  **Worked on in this call** (each document worked on in the call that you can open, who changed it, and a row that opens
-  it; there whether or not the notes are written yet), the transcript (its first five lines,
-  then **Show all 24 minutes**, and how many shared screens are further on, which open from there) and, beside it, Your
-  notes, what people added, who has it and its series. On a wide screen the transcript moves beside what was decided, so
-  going to a moment never takes the note away. When a share went in the notes, the recording plays its video in step
-  with the audio, a short while after the call and before the notes are written, on the sky over the horizon: the line
-  runs along its foot as its seek bar, and sticks to the top as you read on, clear of it. It shows the share that started last
-  when two overlap, with a chip for each to switch. While a share's picture takes a moment to load, or to get to another
-  moment, the dark stage says **Loading Priya’s screen**; if it can't be played, it says so, with **Try again**. Where
-  no share in the notes covers the moment (before, between or after them, or a share that wasn't kept), it says **No
-  shared screen in the notes here**, with when screens were shared (**Priya’s screen 2:10–14:40**), each going there in
-  one press. The stage keeps its size whatever it shows, so nothing below it moves. A button in its
-  corner fills the screen with it, with play, the time and a bar to scrub through the recording along the foot (it
-  hides while playing until the pointer moves); Escape leaves. The transcript shows a frame of a share beside the line
-  said when what was shown mattered to what was said: only a screen the AI judged key, where what was said refers to it
-  or relies on what it holds, at most one a line, and never the same screen twice in a row. A share's first frame isn't
-  shown unless it was key, and the screen from before a change is only used to see what changed. The notes point at those
-  screens; frames that weren't shown only went into what the notes say, and aren't kept. It takes questions about the call: a suggested question or your own, in
-  a bar that stays at the bottom while you read (suggestions show above it at the end of the note, while the pointer is
-  over it, and while you're in it). Answers cite the moments in the recording they come from.
+- A call's page (`/calls/<note ID>`) is a slim band of sky over its head: the way back (**Calls**), **Share**, **Download**
+  and **More**, the title, and one line under it: when it was and how long, who has the notes (pressing their faces shows
+  **Who has these notes** and how each got them), how you got them, its series (how it repeats, opening the series' place
+  on Calls), and **Written in confidential compute** (or, in caution, **Written by an unencrypted model**), which opens the
+  model for each task (transcribing the speech, writing the notes, reading the shared screens) and when the hardware was
+  last checked: verified ones with **Check this model at NEAR AI**, unencrypted ones marked **Unencrypted**, and at its foot
+  any other unencrypted model the call was sent to (**This call was also sent unencrypted to …**). Until the notes are
+  written that says **Being written in confidential compute**, or **Still recording**, and while they're written again,
+  **Being written again**.
+- **The stage** plays the call, always night: everyone in arches, whoever's speaking lit, and what they said as captions
+  (**Hide captions** under it; they hide while the Transcript is open, which says the same). When a screen was shared and
+  kept, it plays there in step with the audio, with whose it is and the speaker small in its corner, and a chip for each
+  when two overlap; while its picture takes a moment it says **Loading Kofi’s screen**, and if it can't be played, says so
+  with **Try again**. A room recording has a microphone's arch. **Full screen** fills the screen with the stage and its
+  line; Escape leaves.
+- **The line**, under the stage: **Play** and the time, the chapter you're in above the line, the chapters as lengths, what
+  was decided as rose diamonds on it (hollow until confirmed) and follow-ups as blue dots under it, a shared screen as a
+  tinted length, the sun as the playhead, the end, **Speed** (1×, 1.25×, 1.5×, 2×, 0.75×), captions and full screen.
+  Pressing or dragging along it goes there, and so does a mark; the arrow keys move ten seconds. **Play** starts as soon as
+  the first of the recording arrives; **Space** plays and pauses it, as in most players, with nothing focused, and the page
+  doesn't scroll. While a call is still recording, the line ends at a recording-coloured edge where it has got to. A call
+  that didn't keep its recording has the line and nothing to play, and says the recording was deleted when the call ended.
+- Every ▶ chip on the page (a decision's, a follow-up's, a chapter's, an answer's) plays its moment on the stage without
+  changing the tab, and a moment opened from a link (`?at=`, from an answer or a search) opens the Transcript at the line
+  said then, lit, playing only when the link says so.
+- **Shared and made in this call**, under the line: each shared screen as a card with its ▶ moment and how long it was up,
+  lit while it plays; what the call worked on that you can open (documents with their first lines, boards drawn as they
+  are, a breakout room's saying which room), each opening where it lives; and **Open its workspace**, for whoever is in the
+  call's workspace (flow 12). With nothing, it says so.
+- **Notes** shows the gist and, under it, **Full summary**, a longer account of the call in order (a note written before
+  this existed, or one whose full summary couldn't be written, has none; writing the notes again brings it). Then **For
+  you**: what's asked of you, each with its two answers (**Confirm** or **It wasn’t decided** for a decision to confirm,
+  **I’ll do it** or **Not mine** for a follow-up suggested for you), each saying what happened with **Undo**; with nothing
+  left, "Nothing from this call is waiting on you". Then **Decided**, **Follow-ups** (yours first) and **Still open**, each
+  thing once, with who said it and its ▶ chip, its buttons, and a menu with the rest. Then the shared notes, and **How it
+  went**: each chapter, what it was about, what was shared then, and each breakout room under the chapter it was in.
+- **Transcript** has **Find in the transcript** (only the lines with every word, and how many), **Download the
+  transcript**, what was said by chapter, the line being played lit and kept in sight as it plays (unless you've just
+  scrolled), and **From the start** once you're down it. Pressing a line, its words or its time, goes to its moment and
+  plays from there; selecting its words to copy them doesn't (a press on the words waits a quarter of a second). On a phone,
+  where one line at a time shows its tools, the line pressed keeps them while the call plays on past it. A shared screen
+  sits among the lines said while it was up, when the AI judged it key to what was said, and opens to a closer look.
+- **Ask about this call** stays at the foot of the right column, **Only you**: a suggested question or your own (suggestions
+  show above it at the end of what's read, while it's pointed at, and while you're in it). Answers cite the moments they
+  come from, which play on the stage.
+- **Download** saves to this device, put together in the browser: the transcript (text, with times), the notes (Markdown),
+  the recording (its audio, a file for each part) and each shared screen (its video). "Opened on this device. Alcove can’t
+  read it."
 - Until the notes are written, the page says the audio is saved and encrypted (or, when the call doesn't keep its
   recording, that the call has ended) and the notes are being written
   in confidential compute, and ticks off each step (the call ended, the audio saved, the transcript, and shared screens ready to replay when a share was kept) with the
   one in progress marked. When nothing was said, it says so, the water is still, and **Play** stays on the line for the
   audio. A call that didn't keep its transcript or recording says so in one line where it would have been, and has no
-  player; you can still ask about what the notes say. After **Delete notes** it lists what went; a note that isn't
-  there (deleted, or never shared with you) says so, with **Back to notes**.
+  player; you can still ask about what the notes say. After **Delete notes** it lists what went; a call that isn't
+  there (deleted, or never shared with you) says so, with **Back to Calls**.
 - A question can also go across every note you have, your own and other people's (`POST /v1/notes/ask`,
-  behind the line in Notes' sky, and **Search or ask**, flow 2). The answer comes from those notes only, up
+  behind the line on Calls' sky, and **Search or ask**, flow 2). The answer comes from those notes only, up
   to 12 of them that share the most words with the question, and cites the notes and the moments in them it
   comes from. Until a note is written, or when nothing was said in any, it says so instead, and nothing is sent to
   the notes model. An answer written while a note it read was deleted or taken from you isn't shown: ask again.
@@ -1456,18 +1642,18 @@ and files its notes in a new one.
   offers show the choice. Meanwhile everyone still reads, asks about and confirms the notes as they were, marked
   **Being written again**. While they're written again the organizer can **Cancel**, which leaves the notes as they
   were, with the AI model they had; what was being written is thrown away.
-- A call with breakout rooms has a **Breakout rooms** part under its own notes, one section per room, closed until
-  opened: the room's name, who was in it and for how long, and inside, its own summary, decisions, open
-  questions, follow-ups and chapters, written from what was said in that room alone, and what was said there.
-  A room where nothing was said says so. Everyone who has the notes reads every room's section, and proposes,
-  confirms, answers, takes on and ticks off what a room's notes say as far as they can the call's; a room's lines are corrected like
-  the call's, and writing the notes again writes each room's section again too, keeping what people settled.
-  Questions about the notes cover the rooms. Deleting the notes deletes the rooms' sections with them. A call set
-  not to keep its transcript keeps each room's notes and deletes what was said there, as it does for the main room.
+- A call with breakout rooms has each room under the chapter it was in, in **How it went**: the room's name, who was in it
+  and for how long, and inside, its own summary, decisions, open questions, follow-ups and chapters, written from what was
+  said in that room alone. A room where nothing was said says so. The Transcript says which room you were in, and with whom,
+  and shows the others' in one press. Everyone who has the notes reads every room's, and proposes, confirms, answers, takes
+  on and ticks off what a room's notes say as far as they can the call's; a room's lines are corrected like the call's, and
+  writing the notes again writes each room's again too, keeping what people settled. Questions about the notes cover the
+  rooms. Deleting the notes deletes the rooms' with them. A call set not to keep its transcript keeps each room's notes and
+  deletes what was said there, as it does for the main room.
 - What the notes heard is a proposal until people say so. Each entry's row shows anything to be careful of (nothing
   said backs it, someone said otherwise, it was hard to hear, or a line behind it or its own words changed since), and
   its menu shows **What was said** behind it. Each decision says where it stands and who said so: proposed, confirmed,
-  not decided, or no longer holding, and it's solid on the horizon once it's confirmed. The organizer and anyone invited can **Confirm** what's proposed, except whoever proposed it
+  not decided, or no longer holding, and its diamond on the line is solid once it's confirmed. The organizer and anyone invited can **Confirm** what's proposed, except whoever proposed it
   or last reworded it; someone given the notes afterwards can propose and say what they think, but not confirm. Only
   the organizer can say **It wasn’t decided**, and anyone else saying so flags it, in their name, for the organizer to
   settle. Whoever confirmed a decision, or the organizer, can undo that or mark **It no longer holds**. New words on a
@@ -1484,51 +1670,62 @@ and files its notes in a new one.
   batch, with **Add** / **Dismiss** for a suggested task and **Apply change** / **Dismiss** for a proposed change to a task already
   there. Later suggestions wait behind a count. Accepted tasks retain their words and identity when notes are written again;
   dismissed suggestions do not return from the same source material. **I'll do it** remains a separate acceptance of responsibility.
-- Beside a call's notes is the series it's in: **Every Tuesday** when the last three calls in it were a week apart,
-  otherwise **In a series**, with the series' other calls (the newest three, with the start of each summary), how much
-  is still open across them and, for the organizer, the next call with **Change**; **All** opens the series page. When
-  it isn't in one, the organizer gets **Meet again › Schedule next week’s call**: the same people and notes setting, at
-  the same time of day a week on (still the same time when the clocks change in between), on the calendar. That starts
-  the series, so the next call shows there; **Change** moves it or cancels it.
-- The series page sits on the same evening as a note. Its calls stand on the horizon, each opening its notes, with the
-  sun on the latest and the next call at the end of the line. Under it is what carries over from the calls you have
-  notes from: decisions (confirmed, not
-  confirmed yet, and no longer holding), questions still open and answered since the last call, and follow-ups taken
-  on, not taken on yet and done since the last call, each with the call and moment it came from, breakout rooms'
-  with their room. Things can be settled there, and
-  questions asked across the calls, with answers that cite the calls and moments they come from, by the
-  days you saw them on. When a later call seems to have replaced a decision, it says which and offers **It no longer
-  holds** or **It still holds**; when one seems to have answered a question, **It was answered** or **It’s still open**.
-  Saying **It still holds** or **It’s still open** shows who said so, with **Undo**, and writing that call's notes
-  again doesn't change it, though a further call can suggest it again. A decision's is for the organizer and whoever
-  confirmed it, and a question's for anyone with both calls' notes. Only someone with both sees any of this, and
-  nothing changes until someone says so. Someone invited to only some of the calls sees only those. It shows the newest 24
-  calls and says how many older ones aren't shown. The organizer also sees the next call, with **Join** and
-  **Change this call**, or **Schedule next week’s call**. When the series follows a recurring Google event
-  and Google Calendar isn't connected any more, it says so and offers **Connect Google Calendar**.
+- A call in a series says so on its line: **Every weekday**, **Every other Tuesday** or **Every month on the first
+  Thursday** for its organizer, **Every Tuesday** for anyone else when the last three calls they have were a week apart,
+  otherwise **In a series**, opening the series' place on Calls. **More › Meet again** schedules another with the same
+  people and name.
+- A series has its place on Calls (`/calls?series=`): its next call, its calls so far, and what carries over from the
+  calls you have notes from: decisions (confirmed, not confirmed yet, and no longer holding), questions still open and
+  answered since the last call, and follow-ups taken on, not taken on yet and done since the last call, each with the call
+  and moment it came from, breakout rooms' with their room. Things can be settled there, and questions asked across the
+  calls, with answers that cite the calls and moments they come from. When a later call seems to have replaced a decision,
+  it says which and offers **It no longer holds** or **It still holds**; when one seems to have answered a question, **It
+  was answered** or **It’s still open**. Only someone with both calls' notes sees any of this, and nothing changes until
+  someone says so. Someone invited to only some of the calls sees only those.
+- **Before a call**, its page (`/calls/upcoming/<meeting ID>`, from Calls' rows, Home's Upcoming and the week) waits for
+  it. The stage has everyone invited in arches with how each answered: its organizer sees everyone's (**Accepted**,
+  **Maybe**, **Can’t come**, or **Invited** and dimmed until they answer); anyone else sees their own. **Join shows here
+  five minutes before it starts**, and then **Join** does; a call offering times says whose pick it's waiting on, and its
+  guest gets **Pick a time**. Under it, the link with **Copy link** (**Copy the link for Jonas** while he picks). Someone
+  invited answers **Are you coming?** (**Yes**, **Maybe** or **No**; then their answer with **Change**, and the organizer
+  sees it at once). The **Agenda** has what's brought to the call, each opening where it lives (whoever can't open one sees
+  whose it is), and **Add an agenda**, **New board** and **Upload**: each is made in the call's workspace (the one its
+  organizer chose, or one made for the call, with everyone invited in it), brought to the call and opened there, files
+  uploading into it, for everyone invited, before the call and in it. **Notes** says whether the call writes them, where,
+  what they keep and who can open them; its organizer can **Change** that here, for this call or this and later ones.
+  **Change** in the head opens the scheduler on it, and **More** offers what its row's menu does: change the time, skip
+  one in a series, copy the link, cancel it (asking first, with **Undo** for a single call), or for someone invited,
+  propose another time.
 
-### 8.51 Notes visible to a team, and @-references in Ask
+### 8.46 Notes visible to a team
 
-While you're licensed on a team, Share on a note you organized has **Visible to team** ("Everyone licensed on {team} can
-read it and ask about it."), and the note's head then says Visible to {team}. It works on notes from before you joined,
-and the note stays visible after you leave the team. A note someone else made visible opens for a licensed member from
-the Team page. It reads "From {organizer}, visible to {team}" and can be read, played and asked about, nothing more: no
-Share, no confirming or changing decisions and follow-ups, no proposing, no corrections, no own or shared notes, no
-Drive exports, and it can't be removed from yours. When asking across notes (the palette, or the line on Notes), typing
-@ or pressing @ offers the notes you can open, yours, the ones shared with you and your team's, by title. A picked note
-sits under the line as a chip and is read first, up to five per question. A note you can no longer open is refused in
-Alcove's words.
+While you're licensed on a team, Share on a call's notes you organized has **Visible to team** ("Everyone licensed on
+{team} can read it and ask about it."). It works on notes from before you joined, and they stay visible after you leave
+the team. A licensed member finds notes someone else made visible on the Team page, and they open on their call's page,
+saying "From {organizer}, visible to your team". They can be read, played and asked about, and asking across your notes
+reads them too. Anything else on them is their organizer's: the page has no Share and no Your notes, nothing to settle,
+propose, add or correct, an answer can't be kept, and More has no way to remove them. Anything asked of them anyway is
+refused in those words: "This note is visible to your team to read and ask about. Only its organizer changes it." Storybook
+shows one as **Pages / A call › A team note**.
 
-Storybook journeys **8.47** and **8.48** write straight into the shared notes: posting for everyone in one step, and
-someone getting the notes while the box is open, which it says before posting again. **8.49** shares the notes by a
-link, then revokes it, and **8.50** opens one signed out: it asks to sign in, then asks before opening the notes as that
+Storybook journeys **8.1–8.10** play Calls: open a call, find what was said, see the week, answer an invitation, answer
+a request to move, follow a series, connect your calendar, ask every call, the first day, and meet again (to where the
+scheduler opens).
+
+Storybook journeys (**Journeys / 8 A call**, 8.11–8.45) follow a call's page. **8.37** and **8.38** write straight into the shared notes: posting for everyone in one step, and
+someone getting the notes while the box is open, which it says before posting again. **8.39** shares the notes by a
+link, then revokes it, and **8.40** opens one signed out: it asks to sign in, then asks before opening the notes as that
 account.
 
-Storybook journeys **8.44–8.46** continue the same review after the call:
+Storybook journeys **8.34–8.36** continue the same review after the call:
 
-- **8.44 Review suggestions after the call:** accept or dismiss pending suggestions in the note, keeping the checklist separate.
-- **8.45 Apply a proposed change:** review the previous and proposed values before changing an existing task.
-- **8.46 Review a stale suggestion:** a concurrent review or task change is explained in place; unseen words are never silently accepted.
+- **8.34 Review suggestions after the call:** accept or dismiss pending suggestions in the note, keeping the checklist separate.
+- **8.35 Apply a proposed change:** review the previous and proposed values before changing an existing task.
+- **8.36 Review a stale suggestion:** a concurrent review or task change is explained in place; unseen words are never silently accepted.
+
+Before and around the call: **8.41** adds an agenda on a call ahead and opens it in the call's workspace, **8.42** answers
+an invitation on the call's page, **8.43** joins when it's time, **8.44** plays a moment from the notes on the stage, and
+**8.45** downloads from a call.
 
 ## 9. Record in the room
 
@@ -1590,8 +1787,9 @@ a piece that reaches Alcove late, or twice, still lands where it was recorded, o
 
 **Team** is your company, standing on the horizon: the company directory where there is one (the demo directory
 today), otherwise the people at your work email domain you have calls or calendar meetings with. A personal address
-(gmail.com, outlook.com, icloud.com and the like) has no company, so its Team page is only **Start a team** (10.22).
-On a team of your own (10.22 to 10.25), the line is the team's people instead, each under their license.
+(gmail.com, outlook.com, icloud.com and the like) has no company, so someone there has no Team page until they're on a
+team: nothing links to it, and its address goes Home. On a team, the page is the team's instead (16.17), and a company's
+page has a quiet **Start a team** while you're on none (16.15).
 
 - **The line**: the company's name in the middle of the sky, and everyone on the horizon in their arch. You stand in
   the middle, whoever you met most recently beside you, one to each side, and people not on Alcove yet at the ends,
@@ -1604,7 +1802,7 @@ On a team of your own (10.22 to 10.25), the line is the team's people instead, e
   address, and one line about the two of you: **Next call** at a time later today, how many meetings are coming up, or
   **Last call** with the day. **Ring** starts a call and goes straight to the lobby with them picked. **Schedule** opens
   Start a call at **When**, with them picked. **Notes you both have** lists the latest five in the same popover: each
-  opens its note, and **Open in Notes** lists them all (`/notes#with=<address>`: the address stays in the browser, since
+  opens its note, and **Open in Calls** lists them all (`/calls#with=<address>`: the address stays in the browser, since
   a fragment is never sent to the web host). Someone not on Alcove yet has **Invite** in place of Ring, then **Remind**.
   Your own arch has your address, the groups you're in and **Settings**.
 - **All 33 people**: past thirteen people a second button lists everyone, to search by name or address. Picking
@@ -1619,7 +1817,7 @@ On a team of your own (10.22 to 10.25), the line is the team's people instead, e
   hasn't been asked at once. Nobody moves when they're invited. Five show before **Show all**.
 - **Groups**: a tile for each, with its people standing on the tile's bottom edge, how many there are, and how many calls
   had all of them. The camera starts a call with all of them without opening it. A tile opens in place, across the
-  column (the side panel's groups open it too): its people, each with × to take them out (a group keeps at least one);
+  column: its people, each with × to take them out (a group keeps at least one);
   **Add people**, from anyone you could reach; **Start a call** with all of them; **Rename**; and **Delete**, which asks once
   and can be undone for a few seconds. **New group** is a tile too: it opens to name one (Enter opens the picker) and fill
   it, **Create group** takes the filled button once it's ready, and a group half made waits on its tile until you make it
@@ -1645,47 +1843,10 @@ arrives. If it doesn't load, the page says why (or that you're offline, and it c
 Your groups and notes load beside it: if your groups don't, their section says so, with **Try again**, and the rest of
 the page works.
 
-### 10.22 Start a team, buy licenses, invite
-
-A team is one admin (whoever starts it) and as many members as they invite; you're on one team at most. Not on a team,
-the Team page has a quiet **Start a team** beside Invite people (or, at a personal address, as the whole page): it opens
-a name in place, and **Make it** makes the team with you its admin. Its licenses are bought from the admin's balance on
-Team's card in **Settings → Plan** (11.28), reached from **Buy licenses in Settings** under the team's people. On the
-Team page the admin's **Invite** is the filled button: it makes a link for one person (`/team/join#…`), shown once with
-Copy, that works once and runs out after a day. Each press makes a new one.
-
-### 10.23 Join a team by its link
-
-The link's secret is after its `#`, so no server sees it, and it leaves the address bar at once. Signed in, the page asks
-"Join Vandelay Industries, Priya's team?" with **Join** and **Not now**; nothing happens until Join. Signed out, it asks
-you to sign in first, there, and then asks the same. Join takes one of the team's licenses if one is left and opens the
-Team page. A used or expired link, or being on a team already, is refused in Alcove's words.
-
-### 10.24 A team on the Team page
-
-The team's name stands in the sky, with how many people are on it (and, for its admin, how many licenses are left), and
-its people stand on the line. Under the water, **People on {team}** lists everyone with their role and license:
-"Licensed until 12 Dec", "License ended", or "Waiting for a license". The admin has **Remove** on each row, which asks in
-place (their license isn't refunded, they go back to Free, and notes they made visible to the team stay visible), and
-**Delete team** once nobody else is on it, which refunds the licenses nobody took. A member has **Leave team**, asked in
-place the same way. Beside them, **Visible to the team** lists the notes members made visible, each opening its note
-(8.51). Someone without a live license is told "You don't have a team license, so the team's notes and workspaces aren't
-open to you. Ask Priya to buy more." Groups and Shared with groups stay below, as ever.
-
-### 10.25 Licenses and visits
-
-A license is taken when someone without a live one uses Alcove: when the app opens signed in, when a tab comes back
-after 30 minutes or more away, or when they join. Nothing that reads in the background takes one. It runs a month from
-then, and an expired one is replaced only by the next visit. With none left, the admin's **Auto-purchase** buys one from
-their balance; otherwise the member stays on their own plan and is told to ask the admin, and the admin is told none
-were left. The admin is told too when fewer than 5 are left. A license replaces Pro at once: the month running is lost
-and the months that haven't started go back to the balance, which the member is told.
-
-Storybook's journeys **10.22** (start a team, buy licenses, invite) and **10.23** (join a team by its link) play these.
-
 ## 11. Settings
 
-**Settings** opens from you at the top right of every page, the phone's avatar or its **Settings** tab. You stand on
+**Settings** opens from your menu at the top right of every page, and on a phone from the same menu in the top bar
+(flow 2). You stand on
 the horizon with your name and address, beside **Take the tour** (the tour of Home again, flow 1) and **Sign out**.
 With recordings on this device that haven't uploaded, **Sign out** first says so: the sky grows to hold the question
 ("2 recordings on this device haven't uploaded. Signing out deletes them."), says what staying does (they upload by
@@ -1746,17 +1907,19 @@ notes on new calls while the oldest request fails.
   Alerts arrive while Alcove stays open in a background tab/window; there is no delivery service after every tab closes. They always hide names, messages and call/workspace details, including on lock screens: a ring says only that someone is calling you. Browser alerts are silent; sounds follow their own ticks.
   The relevant focused conversation/action suppresses a redundant alert. Events deduplicate across tabs and reconnects, bursts share one alert per category, and handling/reading/withdrawing an event closes or replaces its alert where supported. Enabling a category or joining a thread does not replay old messages. Clicking focuses an existing tab, preferring the original call connection, checks current access, then opens the exact conversation, thread, pending action or timer; a ring's alert brings the tab with the ring forward, and closes when the ring ends. An ended private session or handled action says it is no longer available. Sign-out, removal and revoked permission stop delivery and close the applicable alerts. Other-device preference changes arrive through background refresh.
 - **Connections**: **Google Calendar**, **Connected** with **Disconnect** (it removes the Calendar connection in
-  Alcove), or **Connect**, which first says how Alcove uses Calendar data (the events it reads to show meetings on Home,
-  the guest addresses and time range it sends Google to suggest times, and what it sends Google when you schedule, change
-  or cancel a call), with **Not now** and **Continue to Google**. Google asks for access to the same Google account you
-  signed in with and returns here with the result, said under the row: connected; access not granted, so you can still
-  schedule calls and share the link yourself; the wrong Google account; or a failure, to try again. A demo account has a
+  Alcove), or **Connect**, with Alcove's one line about it under the name: "Alcove reads your events and adds the calls
+  you schedule." **Connect** goes straight to Google, which asks for access to the same Google account you signed in
+  with. Google sends you back here, as it does from **Connect Google Calendar** while scheduling or in a series, with the
+  result said under the row: connected; access not granted, so you can still schedule calls and share the link yourself;
+  the wrong Google account; or a failure, to try again. A demo account has a
   sample calendar. Other accounts show **Not connected**: Google Calendar connects from an Alcove account that uses Google
   sign-in. A calendar that doesn't answer says why, with **Try again**. Under it, **Put calls I schedule on my calendar**
   (when Google Calendar is connected, Google sends the invitations; a sample calendar stands in for it) and **Show my
   other meetings on Home** (both on by default). Then **Google Drive**, one line that says where notes go until
   **Manage** opens it in place, where **Connect** and **Reconnect** first say what Google shares and what Alcove uploads
-  (flow 15), and **Agents**: named, revocable connections, then **Connect an agent**, which opens in place (flow 14).
+  (flow 15). Then **Agents**, one row: who's connected ("Claude, Cursor and Weekly digest are connected.", and past three
+  names how many more), or what agents are for while none is, with **Open Agents**, or **Connect an agent** while none
+  is, which opens Agents (flow 14). On a phone this row is the way to Agents.
 - **Plan** (16.7, 16.8, 16.14), in two panels. What you have: **Free** ("Every feature, with about 5 hours of notes and
   10 GB of storage.") or **Pro** ("Until Thursday 4 November 2027. Nothing renews by itself: Alcove reminds you before it
   ends.", or "It renews from your balance before it ends."), with **See plans** (Plans) and **Get Pro** or **Extend**
@@ -1773,7 +1936,8 @@ notes on new calls while the oldest request fails.
   a month) and, while months bought after this one haven't started, **Refund**, asked in place. Then **Payments**: first
   what's on its way or needs a person, each opening checkout (a payment for a plan) or the add-money sheet, with a cancel
   while nothing has reached it; then the balance's latest changes, each with **Receipt**, a receipt to print. Without a
-  server that takes payments the balance has no **Add money**. Team isn't on sale yet.
+  server that takes payments the balance has no **Add money**. On a team, the plan row says whose team it is and until when
+  your license runs, with **Open Team**, and Storage is the team's pool; its admin has the licenses too (16.18).
 - **Privacy**: what account and call information Alcove processes, then confidential compute: the time the hardware
   was verified when this browser could check it, or where your audio is opened and your notes are written. The **Privacy policy** explains how Alcove uses account and service
   data and how to disconnect Google services. Then, in its own panel at the end, **Delete account**.
@@ -1805,8 +1969,8 @@ Signing in again starts a new, empty account on Free.
 ### 11.24 Add money
 
 Open **Settings → Plan → Add money** beside **Balance**, choose **$20**, **$60**, **$120** or your own amount in dollars,
-then a token (USDC or USDT) and network. A token is a dollar, so $20 is 20 USDC. **Get an address** opens the amount to
-send, its QR code and one payment address. Send only the stated token on that network. A short payment shows what
+then the network to send it on, under **Pay with USDC**. A USDC is a dollar, so $20 is 20 USDC. **Get an address** opens the
+amount to send, its QR code and one payment address. Send only USDC on that network. A short payment shows what
 arrived and how much remains; send the remainder before the address expires. After expiry it asks for no more money
 and waits for the payment or refund to settle. The money appears in the balance once settlement is confirmed, and the
 sheet follows the payment until it does. A payment on its way stays under the balance in **Payments** with **Open**, as do
@@ -1836,38 +2000,78 @@ Journey **12.1** renames a workspace immediately: the list and breadcrumbs show 
 cannot be confirmed, **Edit name** restores the entered text; press Enter to retry without retyping or reloading. Later
 choices remain in place while older requests settle. Physical **Delete for good** completes only after Alcove confirms it.
 
-Documents and boards people make together, between calls as well as in them. A workspace is made only when someone presses
-**New workspace**: here, in a call (its organizer), when scheduling one, or filing an ended call's notes. A call uses one
-workspace, where its notes, follow-ups and transcript go, in a folder of their own. **Drive** in the side panel lists every
-workspace you're in, newest first: one made for a call with the call and when (**From Launch check-in, Today at 09:30**), and
-one made by hand with when it was made, each with who's in it. Ones made for a call with the same name, the same call twice
-in a day, say when each call started too (**Launch check-in, 14:30**, to the second if they started in the same minute),
-here, in the workspace picker and when choosing one while scheduling. Its admins have a menu at the end of its row
-(**More**), with **Delete workspace**, which asks once, in place, and waits for Alcove to say it's done: it goes for everyone
-in it, with every document and board, and notes from calls stay in Notes. Its own menu, at the top of its list, has
-**Delete workspace** too, which goes back to the Drive. Picking one opens it on its own page, which fills the page, in
-your theme, with search and you in the top of it: the list and a document side by side, at the document you had open in
-it last. Everything happens in the list: nothing opens a window, and nothing asks you to fill anything in. Whatever
-someone does here reaches everyone else in the workspace as it happens, and a row that arrives or moves glows for a moment
-for all of them.
+Documents and folders people write in together, between calls as well as in them. Every call has a workspace of its own,
+its home, where its notes, follow-ups and transcript go. Homes with the same name, the same call twice in a day, say
+when each call started too (**Launch check-in · 5 Nov, 14:30**, to the second if they started in the same minute), in
+the workspace picker and when choosing a home while scheduling. Outside a call a workspace opens full screen (below).
+Everything happens in its list: nothing opens a window, and nothing asks you to fill anything in. Whatever someone does
+here reaches everyone else in the workspace as it happens, and a row that arrives or moves glows for a moment for all of
+them.
 
-**A call's folder.** At the top of a call's workspace is the call's folder, named after it and the day, with its **Notes**,
-**Follow-ups** and **Transcript**: once the call's over they open its note, at that part of it, for whoever has the note,
-and in a call, in a tab of their own. Someone in the workspace without the note sees the folder and whatever's been put in
-it. It's a folder like any other: rename it, move it, put documents in it.
+**The Drive.** **Drive** in the side panel keeps every workspace you're in and everything in them: a tree of places beside a
+sheet of large previews. The tree has **Recent**; **Shared with you**, with how many; **Workspaces**, each with its mark,
+the one you're in open to its folders and files; **From calls**, each call's own workspace, the next ones first with their
+time, five until **Show N more**; and **Trash**. Recent is everything you can open, the most recently edited first, by day,
+as pictures or a list: each card shows what the file is (a document's first lines as it is now, a board, photos, a PDF),
+where it is (**From Team standup**, **For Launch check-in**, **In Launch**, **Shared with you**) and who touched it last and
+when. A workspace on the sheet shows who's in it, its folders, the calls kept in it with **Open the call**, its files, and
+**Open full screen**; a card inside it doesn't say which workspace again. A call's own workspace shows the call's **Notes**,
+**Follow-ups** and **Transcript** as cards, for whoever has its notes, then what the call made, with **New document**,
+**New board** and **Upload files**, and in a series the calls before. **Trash** is one list across every workspace: where
+each thing was, who moved it there and when, how many days it has left, and **Restore** for whoever can edit it. Pressing a
+card opens it beside the tree, in its workspace, with the tree open to it; **⤢** takes it full screen. Its **⋯** has
+**Open**, **Open full screen**, **Copy link**, **Rename** (typed in the same menu; a document's title follows, for everyone)
+and **Move to Trash**, with **Undo**. The search at the top (**⌘K**) narrows
+everything by name as it's typed, the workspaces it names first. **New** makes a document, a board or files where you are;
+on Recent, Shared with you or Trash it asks which workspace in the same menu, with **New workspace** last, named in place.
+On a phone the tree becomes chips along the top of the sheet, New sits beside the search, and a document opens full screen.
 
-**When scheduling** a call, the details hold **No workspace** (you can pick one in the call): open it for **New workspace**
-(made when you schedule, with everyone invited in it) or one of your workspaces you can edit in, so its notes go there,
-beside the calls before it.
+Journey **12.2** opens a workspace: under Workspaces, **Launch** shows its folders, calls and files beside the tree, and
+**Open full screen** takes it full screen. Journey **12.3** picks up where you left off: Recent's **Launch checklist** opens
+beside the tree, in the workspace it lives in, Team standup's, and **⤢** gives it the whole screen. Journey **12.4** is the
+first day: the Drive is Recent, Shared with you, New workspace and Trash, with one empty state; **New document** asks for a
+workspace to put it in, named in the same menu, and the document opens in it, beside the tree.
 
-**First day.** The Drive says **Nothing here yet**: make one here, or when you schedule a call. **New workspace** in its sky
-names one in place and opens it. Free can make as many as it likes: storage is the only limit. An empty workspace says **Nothing here yet** with **New document** and **New folder**.
+**A workspace, full screen.** Any workspace opens full screen, in a frame of its own in place of the app's: a side panel,
+dark in both themes, beside the page, with one bar over the page. The side panel has the logo (Home), the workspace
+switcher, **Search** (Find, **⌘K**), then **Home** and **Pages**, the tree with its folders, and **Calls**, the calls kept in
+it, each opening its call. **Trash** is at the foot, with a count only when something's in it, and who can open the
+workspace ("Priya, Kofi, Ines and you can open it"). The bar has **← Drive**, or **← Calls** when it was opened from a call,
+the path, how it's saving, who else is here ("Priya is here"), **Share**, **⋯**, **Leave full screen** and you. Leaving
+goes back where it came from: the Drive, at this workspace, or Calls. **Home** is the workspace's name on the evening after
+sunset; the line on what it's for, which an admin writes in place by pressing it (**Say what this workspace is for** until
+there is one), everyone in it reads, and nobody else is told of; who's in it; **Recently edited**, three large previews;
+and its calls, the next one first, for whoever organizes it. A call's own workspace has no Home: it opens on what the call
+made, with **The call, today ↗** first in its list (opening the call's page), then **Made in the call** (**For the call**
+before it), then in a series **Earlier calls**. A page says under its title the call it came from, as a chip that opens
+it, who made it and when it was last edited; a quote from a call says who said it, in which call, and its **▶** moment
+opens the call there; and something made in the last ten minutes says **New** in the list. On a phone the workspace's pages
+come first, under **← Drive**, and a page has **←** and the workspace's name to go back to them.
+
+Journey **12.5** works on a page: from Launch's Home, **Launch plan** opens with the call it came from and Priya writing in
+it; a to-do ticks, and the callout's count in the margin opens its comments; the path's **Launch** goes back to Home.
+Journey **12.6** is what a call made: this morning's standup, on its page, has **Open its workspace**; the standup's own
+workspace opens on what it made, with the call first in its list and the standups before it after; **Standup board** opens
+full screen.
+
+**A call's folder.** At the top of a call's home is the call's folder, named after it and the day. In a call it holds its
+**Notes**, **Follow-ups** and **Transcript**: while you're in the call they're its live pages, and once it's over they open
+its note, at that part of it, in a tab of their own, for whoever has the note. Full screen the folder is the call itself,
+a row that opens the call's own page, for whoever has its notes. Someone in the workspace without the note sees the folder
+and whatever's been put in it. It's a folder like any other: rename it, move it, put documents in it.
+
+**When scheduling** a call, the details hold **New workspace for this call**: open it to pick one of your workspaces as its
+home instead, so its notes go there, beside the calls before it.
+
+**First day.** The Drive's tree is Recent, Shared with you, **New workspace** (named in place, then open on the sheet) and
+Trash, and its sheet says **Nothing here yet**, with **New document**, **New board** and **Upload files**, each asking for a
+workspace to put it in. Free can make as many workspaces as it likes: storage is the only limit. An empty workspace says **Nothing here yet** with **New document** and **New folder**.
 **New document** opens an empty page with the caret in the title and a few ways to start under it: **Agenda**, **Decision
 log**, **Retro** and **Project brief**. They're only blocks: picking one fills the page, names an untitled document after
 it, and anything in it can change or go. Two people can have the same new document open: they get one title and one first
 line.
 
-**Making things.** **+** at the top of the list, or hovering a folder and pressing its **+**, offers **New document**,
+**Making things.** **+** on **Pages** (at the top of the list, in a call), or hovering a folder and pressing its **+**, offers **New document**,
 **New folder** and **New board** (flow 13); **N** and **⇧N** skip the menu when you aren't typing. A folder is named in its row: type, then
 **Enter**. **Esc**, or leaving it empty, makes nothing. A document's title is its name: the list and the path above the
 page follow as you type, for everyone.
@@ -1908,7 +2112,7 @@ block's **Move to…**, or dragging it onto a document in the list, sends it the
 
 **From the keyboard.** The list is one stop for Tab: **↑** and **↓** move through it, **←** and **→** close and open a
 folder, **Enter** opens a row and Tab reaches its buttons. **F2** renames, **Delete** moves to Trash, **⌥↑** and **⌥↓** move
-a row among its neighbours, and the menu key opens its menu. **⌘\** hides or shows the list. While the caret is in a
+a row among its neighbours, and the menu key opens its menu. In a call, **⌘\** hides or shows the list. While the caret is in a
 document, **N** and **⇧N** type letters; **Esc** goes to the block's handles, and again to the document's row in the list.
 
 **Find.** The magnifier at the top of the list, or **⌘K** (**Ctrl+K**), finds any document or any line you can open. What
@@ -1947,7 +2151,8 @@ everyone else's list. Someone it's shared with who isn't in the workspace sees t
 **Who's here.** Faces on a row and at the top of a document show who has it open, live, and go when they do. Pressing a face
 opens their card: where they are, in the words you may know (a document you can't open is **A document you can’t open**, never
 its name), **Follow**, **Go to where they are**, and **Tag them in this document** where you can write. Their caret shows their
-face and first name while they move, which fade after three seconds of quiet. Opening a document only moves you.
+face and first name while they move, which fade after three seconds of quiet; outside a call it's in the focus colour. Opening
+a document only moves you.
 
 **Following someone.** **Follow** goes where they go, to the same line: a frame around the workspace and a bar under the head
 say so, and the page scrolls to them. In a call that's the call's own **Notes**, **Follow-ups** and **Transcript** too, and the
@@ -1972,7 +2177,7 @@ the margin; pressing the words or the count opens the thread, and replies arrive
 away for everyone, and the toast's **Reopen** brings it back for a moment; History keeps the thread. Someone who can only
 read can open a thread and has nothing to press.
 
-**Workspaces.** The name at the top of the list lists your workspaces with who's in each, and opens another. **People**
+**Workspaces.** The switcher at the top of the side panel (in a call, the name at the top of the list) lists your workspaces with who's in each, and opens another. **People**
 shows who's in this one in the same sheet as Share: an admin adds people by name or address and sets each to **Admin**,
 **Can edit** or **Can read**, or removes them; anyone can leave. **Rename** (admins) and **New workspace** turn the name
 into a field: type, then **Enter**. A workspace always keeps an admin.
@@ -2022,8 +2227,8 @@ get one toast, with **Show it**.
 Signing out, or deleting your account, on this browser deletes every edit still kept here for it and where you were in
 your workspaces; Sign out asks first if anything hasn't reached Alcove.
 
-On a phone the list and the page take turns: the list until something's open, and the button at the top of the page
-brings it back. Menus and sheets rise from the bottom, and **Share** is in the document's **⋯**. Rows don't drag on a
+On a phone the list and the page take turns: full screen, the workspace's pages until something's open, and **←** with the
+workspace's name brings them back; in a call, the list, and the button at the top of the page. Menus and sheets rise from the bottom, and **Share** is in the document's **⋯**. Rows don't drag on a
 touch screen: **Move to…** does that. While you write, a bar rides on the keyboard with a block (as **/** does), the text's
 style, **@**, photos, a checklist and Done; sheets open above it. Holding a finger on a block opens its menu, the one its
 handle opens on a laptop, with **Download** on a photo or a video, and **Delete for good** on a photo, video or file. Someone's card and a comment are sheets too, and faces are on the list's rows. A bar's buttons go under its words.
@@ -2032,10 +2237,12 @@ handle opens on a laptop, with **Download** on a photo or a video, and **Delete 
 
 While you're licensed on a team, New workspace in the Drive asks who's in it under its name: **Whole team** (as it
 starts), so everyone licensed on the team can open and edit it, or **Only people I add**, so only you are in it until you
-add people. Either way it counts against the team's storage. A workspace made in a call or when scheduling one is only
-for the people invited, so a call's notes never reach the whole team unless someone chooses that. A team workspace's row
-in the Drive says Whole team. In its People sheet (its name at the top of the list, then People), its admins can switch
-between Whole team and Only people I add. Anyone else in it reads which it is.
+add people. Either way it counts against the team's storage. A call's home made for you, and a workspace made in a call,
+is only for the people invited, so a call's notes never reach the whole team unless someone chooses that. A team
+workspace's row in the Drive says Whole team. In its People sheet (its name at the top of the list, then People), its
+admins can switch between Whole team and Only people I add. Anyone else in it reads which it is. In a call, a team
+workspace opens to everyone in it only when the organizer pays for it, as for a call's home made for them; one a teammate
+made opens only for its own people (flow 6, The call's workspace, step 3).
 
 ## 13. Boards
 
@@ -2121,54 +2328,111 @@ frame at a size it can be read, you drag to look round and pinch to zoom, and th
 with one sticky, its colours and a button that says where it's going, and the sticky goes into that frame's first free
 place. Someone who can only look has it to look round. Drawing and moving things stay on bigger screens.
 
-**After the call.** Right under the note's summary are the boards that were open for everyone in the call, the ones you can
-open. The call's board is a card: a picture of all of it, as it is now, with its name, what's on it (**3 frames, 13
-stickies, saved in Product.**) and who can open it, and **Open the board**, which goes to its page. Anywhere on the card opens
-it too. The cards take the room their column has: where the call's card is 600px wide the picture sits beside the words, and
-narrower (on a wide screen, where what was said sits beside the notes) it goes above them. Each breakout room's board is a
-card beside the other rooms', two or three across as there's room, under how many rooms there were and for how long (**3
-breakout rooms · 10 min**, or **2 of 3 breakout rooms · 10 min** when a room had no board or one you can't open): its picture,
-the room's name, what came of it and who was there (**One owner for launch comms. Priya and Theo were here.**), and one click
-opens it. A screen reader hears a room's card by the room's name, then what came of it and who can open it. In a narrow
-column, as on a phone, the rooms' cards stack. Every picture is in your theme, as the board's own page is: dark in dark mode.
+**After the call.** The boards that were open in the call, the ones you can open, are among **Shared and made in this
+call** on the call's page, under its stage: each as a card with a picture of all of it, as it is now, in your theme as the
+board's own page is, its name and who worked on it, and a breakout room's saying which room (**In Comms**). One press opens
+its page. On a phone they're in the call's **Shared** tab.
 The stickies in the call's board's **Actions** frame come back as suggestions to review. Once accepted they appear under
-**Follow-ups from the board**, right after the boards: with owners, taking on, ticking and the rest, as any follow-up has. The notes read a board, along with what was
-said, only when everyone the notes went to can open it, because one summary goes to all of them; a board someone couldn't open
-says **Not everyone invited can open it, so the summary leaves it out.**, and only to people who can open it. A room's board's
+**Follow-ups from the board**, in Notes after the call's own: with owners, taking on, ticking and the rest, as any follow-up has. The notes read a board, along with what was
+said, only when everyone the notes went to can open it, because one summary goes to all of them; under the cards, the call's
+page says so to whoever can open one (**Not everyone invited can open Retro, so the summary leaves it out.**). A room's board's
 follow-ups are in that room's section of the notes, and the room's line says it had a board. The next call in a series brings
 the boards open in this one.
 
 
 ## 14. Agent access
 
-An agent connection delegates only the signed-in person's existing access. Reading, editing, sharing and deleting notes
-are separate choices, as are reading calls, managing calls and reading calendar availability. Alcove explains that the
-agent can receive readable information and its provider handles it under its own policies. Signing out of a browser
-does not disconnect an agent; Disconnect, expiry and account deletion end its access.
+An agent (Claude, ChatGPT, Cursor, VS Code, Claude Code, Codex, or anything else that works with MCP) uses Alcove only as
+far as you allow, and never beyond what you can do yourself. Notes, calls and your calendar each have a level, and sharing
+and deleting notes are choices of their own, off unless you turn them on. Wherever you allow one, Alcove says the agent
+gets readable information, which its maker handles under its own policies. Allowing an agent lasts 30 days, and a token as
+long as it was made for. Signing out of a browser doesn't disconnect an agent; **Disconnect**, its access running out and
+deleting the account end it.
 
-1. **Connect an agent, or create a personal token.** In **Settings → Connections → Agents**, press **Connect an agent**.
-   It opens in place with Alcove's MCP address and **Copy**, to paste into the agent's connections; the agent then opens
-   Alcove to sign in (14.3). For a script that can't sign in, press **Create a token**, give the connection a name and choose
-   when it expires: 7, 30 or 90 days (30 by default). Read permissions start selected. Choose any additional permissions explicitly;
-   sharing and deletion stay separate. **Create token** shows the token once, masked, with **Copy**, and Alcove's address under
-   it. **Done** removes it from the page and leaves the named connection, its permissions and expiry in the
-   list. If creation fails, the form stays open with the reason. If Copy is unavailable, the same view says so and keeps
-   the token available until Done.
-2. **Disconnect an agent.** Each connection lists its permissions, expiry and last use, or **Not used yet**. Press
-   **Disconnect** on that connection's row. It leaves the list and a toast says **Agent disconnected.** If the request
-   fails, the connection stays and the toast explains why. With no connections, **Connect an agent** says there are none
-   yet; loading and unavailable states keep the rest of Settings usable.
-3. **Sign in and review requested access.** Start connecting from the external agent, which opens `/connect` with an
-   opaque request pointer. If signed out, choose an Alcove sign-in method first; the same request resumes afterward.
-   The page names the requesting client (a name supplied by that client), the signed-in account and only the requested
-   permissions. Remove any permission before **Allow selected access**. Access ends after 30 days, or sooner when
-   disconnected. **Cancel** declines access. Either answer hands control back to the validated external client. A request
-   that expired or was already answered says **This request ended** and asks you to start again from the agent. Opening
-   `/connect` without a request grants nothing and says to open the connection from the agent. A failed request or decision
-   stays on the page with a reason and a way to retry.
+**Agents** (`/agents`) is a place at the foot of the side panel, after Team (flow 2). On a phone
+it opens from **Settings → Connections** (flow 11), and its head has a way back to Settings. It's Team's evening the other
+way round, the sun low on the right just past the end of the line, and the agents stand on the horizon as windows, as people
+stand in arches:
 
-Storybook's journeys use these numbers: **14.1 Connect an agent, or create a personal token**, **14.2 Disconnect an
-agent**, and **14.3 Sign in and review requested access**. The OAuth journey plays up to the external-client hand-off; it does not open another app.
+- the connected ones first, solid, each with its name and when it was last used under it (**4 min ago**, **Yesterday**,
+  **Not used yet**, or **Just connected** in its first minutes), in the order of the list below, then other agents, then
+  tokens
+- then a gap, and the agents people use that aren't connected yet, dashed: Claude, ChatGPT, Cursor, VS Code, Claude Code
+  and Codex
+- then **Another agent**, a plug
+
+A connection's mark comes from the name the agent gives itself, and is only ever its picture: a token is a key, and a name
+Alcove doesn't know is a bot. One whose access ends within three days says **Ends tomorrow** (or **Ends today**, or the
+day) under its name, in caution, with a dot on its window. Before one is connected the sky says **Connect your agent**,
+*Ask it about your calls, and let it book them. It can do only what you allow.*; after, **Your agents**. Each window opens a
+popover under it (a sheet on a phone) with one thing to do.
+
+1. **Connect Claude.** Press **Agents** in the side panel, then Claude on the horizon. Its popover says *Paste this address
+   into Claude’s connectors.* over Alcove's address, and **Copy and open Claude** copies the address and opens Claude's
+   connectors in a new tab (ChatGPT's is the same, with ChatGPT's). The button gives way to **Waiting for Claude**, and
+   Agents looks for the new connection every 3 seconds while it waits. Add Alcove in Claude, and Claude opens Alcove to ask
+   what it can do (14.2). The moment it's allowed, this tab knows too: Claude stands on the horizon, and its popover says
+   **Claude is connected**, *Ask it something in Claude, like:* "What did we decide about the launch?", with copy.
+2. **Allow it, with less than it asks for.** The agent opens Alcove's `/connect` with its request, a pointer that carries no
+   credential. Signed in, Agents asks in its place; signed out, you sign in first (**Sign in to connect your agent**), and
+   Agents asks after. The sky grows, and the agent's window, outlined in rose, stands on the horizon beside you in your arch,
+   joined by a dashed line. **Claude wants to use your Alcove**, then a row for each part of Alcove it asked for, each set to
+   all it asked for and each a menu of levels that say what they allow: **Notes** (Off, Read, Read and edit), **Calls** (Off,
+   See, See and book) and **Calendar** (Off, See), with only the levels it asked for. When it asked to share or delete
+   notes, **Share or delete notes** has a switch for each, off until you turn it on. *Claude gets readable information from
+   Alcove, under its maker’s own policies.* **Allow** can't be pressed while everything is off; beside it is **Cancel**, and
+   under them *Only allow this if you just added Alcove to Claude. It lasts 30 days.* Allowed, the line between you closes
+   with a tick, **Claude is connected**, *Taking you back to Claude…*, and a moment later the browser goes back to Claude.
+   An agent that's an app on this computer opens without the page going anywhere: then the page is as it was, with the agent
+   on the horizon. **Cancel** tells Claude no, and a toast says nothing was shared with it. While the request is read it says
+   **Reading the request**; one that doesn't load says **This request didn’t load**, with **Try again**. `/connect` without
+   a request grants nothing, and says to open the connection from the agent.
+3. **One button: Cursor or VS Code.** Cursor's popover says *Cursor asks to add Alcove. Then you choose what it can do,
+   here.*, and **Add to Cursor** opens Cursor, which asks to add Alcove. The popover waits; Cursor opens Alcove, Agents asks,
+   as in 14.2, and once it's allowed the popover says it's connected.
+4. **One line: Claude Code or Codex.** Claude Code's popover has the line to run in your terminal, with **Copy command**:
+   *Run this in your terminal, then /mcp in Claude Code to sign in.* Codex's line signs in as well: *Run this in your
+   terminal. Codex opens Alcove to sign in.* The popover waits, and Agents asks, as in 14.2.
+5. **Change what an agent can do.** Press a connected agent. Its popover says when it was last used (**Used 4 min ago**,
+   or **Token · used Mon** for a token), then **What it can do**: Read notes, Edit notes, Share notes, Delete notes, Read
+   calls, Book calls and Read calendar. Pressing one changes it at once, **Saved** shows beside the heading, and the agent
+   can, or can't, from its next request. The last one can't be taken away: a toast says to disconnect instead. The foot has
+   **Disconnect** and when its access ends (**Until 20 Nov**).
+6. **Disconnect an agent.** **Disconnect** asks in the same popover: **Disconnect Claude?** *It stops working at once. To use
+   it again, connect it again.*, with **Keep Claude** (filled) and **Disconnect**. It leaves the horizon, with what it did,
+   and a toast says it can't reach Alcove any more.
+7. **See what your agents did.** Once an agent is connected, under the horizon, **What your agents did** (*Only you see
+   this*) lists each thing your agents read or changed, by day and newest first: a mark for what was done, a sentence
+   (*Claude booked* **Onboarding review**), a second line (when the call is, or how many it found) and the time. A note in
+   it opens the note, and a call opens its page. Reading is quiet; a booked call is warm, a follow-up in horizon and a
+   decision in rose. **Show more** goes further back. A note or call that's gone, or isn't yours any more, isn't named: it's
+   "a note", *Not there any more*. It keeps 30 days, and the last 1,000 things at most, and goes with the agent that did
+   it. Before anything's done it's one row, **Nothing yet**: *What Claude reads and changes in Alcove shows here, newest
+   first.* If it doesn't load, its row says **Didn’t load**, with **Try again**. Beside it, **Ask your agent**: four things
+   to ask, naming people you work with, each with the mark of the row it will make, and copy. Once an agent is connected,
+   each says which of your agents can do it (**Claude and Cursor can do this**) or what they can't (**Claude can’t book
+   calls**). Tokens aren't among them: nobody asks a script. With nothing connected there's nothing your agents could have
+   done, so the water is only **Ask your agent**, two across.
+8. **A token for a script.** Press **Another agent**: Alcove's address with **Copy address**, then *A script that can’t sign
+   in?* **Create a token**. Give it a name, choose how long it **Lasts** (7, 30 or 90 days; 30 to start) and **What it can
+   do** (reading, to start), and press **Create token**. It shows once, hidden but for its ends, with copy, and Alcove's
+   address under it with copy: *Copy it into your script now, with Alcove’s address. It won’t show again.* **Done** forgets
+   it, since nothing else keeps it, and the token stands on the horizon with a key.
+9. **Keep one longer.** An agent whose access ends tomorrow says so under its window. Its popover says *Its access ends
+   tomorrow* and offers **Keep it 30 more days**, which keeps it for 30 days from then, and a toast says until when.
+10. **A request that ended.** A request that waited too long, or was answered in another tab, says **This request ended**,
+    *It waited too long, or was answered in another tab. Start again from Claude.* (from your agent, when the request can no
+    longer say whose it was), with **Show me how**, which opens that agent's popover on the line, or Another agent's.
+11. **Settings points to Agents.** **Settings → Connections** keeps one row for agents: who's connected, and **Open
+    Agents** (flow 11).
+12. **On a phone.** Agents opens from Settings. The line scrolls sideways under the sky, and what your agents did follows
+    under it. A window opens a sheet, allowing works the same, and the page's head goes back to Settings.
+
+While Agents loads, three empty windows breathe on the line. **Your agents didn’t load** says Alcove couldn't reach the
+server, with **Try again**. Offline, **You’re offline**: your agents keep working, and the page catches up when you're back.
+
+Storybook's journeys use these numbers, **14.1** to **14.12**. Claude, Cursor and the terminal are outside Storybook, so a
+journey plays up to handing over to them, opening no tab or app, and the stand-in plays the agent's side.
 
 ## 15. Google Drive exports
 
@@ -2190,7 +2454,7 @@ happened, leaving the existing settings in place after cancellation or failure.
    folder checks current write permission before it is saved. An unavailable destination is refused, with no fallback to
    another folder. The selected folder’s existing sharing rules apply to the readable exported copy; Alcove never adds
    people, makes public links or exports another person’s private notes.
-3. **Override one call.** On a call’s saved notes, your **Google Drive** part says whether automatic exports cover it:
+3. **Override one call.** On a call’s page, **More › Google Drive** opens a window that says whether automatic exports cover it:
    "Uses your automatic export settings.", "This call ended before automatic exports were on, so it isn’t exported." for a
    call that ended before they were turned on, or "Automatic exports are off, so this call isn’t exported.". When a call
    they don't cover has files in Drive already (it went while they covered it, before they were turned off, or off and
@@ -2238,23 +2502,24 @@ loses a payment on its way: the side panel and Settings show it, and opening it 
 ### 16.1 See the plans
 
 **Plans** (`/plans`) is what each plan brings and what it costs: Free and Pro side by side (Team joins when it's offered), on
-the last of the sunset. It's reached from the side panel's **See plans**, Settings › Plan's **See plans**, checkout's
+the last of the sunset. It's reached from Settings › Plan's **See plans**, checkout's
 **Compare plans**, and the welcome page's **Get Pro** (16.13), which opens it with checkout open on Pro (`/plans?checkout=pro`;
 `?checkout=hours` opens it on more notes); the address forgets it once checkout is open.
 
-1. On Free, **See plans** opens Plans priced for a year: Pro is $16 a month, "$192 for 12 months. You save $48.", and **Get
+1. On Free, Settings › Plan's **See plans** opens Plans priced for a year: Pro is $16 a month, "$192 for 12 months. You save $48.", and **Get
    Pro** is the one filled button. Free's button area says **Your plan** with a tick.
 2. **Monthly** shows $20 a month, "For as many months as you choose. Or $16 for a year or more."; **Yearly · 20% off** goes
    back. The switch shows only while a year or more costs less, and the saving is worked out from the two prices.
 3. Every number is the server's: about how many hours of notes a period brings (Free: "Back to 5 hours on the 1st of each
    period"), the storage and the largest file. Free's last line says what more notes cost this period while they're offered.
    Under the plans, **On every plan**, then how paying works: "for 1 to 12 months at a time. Nothing renews by itself…".
-4. **Get Pro** opens checkout over Plans (16.2), on 12 months with Yearly chosen and 1 with Monthly. While on Plans, the side
-   panel's foot row is the place you're on.
+4. **Get Pro** opens checkout over Plans (16.2), on 12 months with Yearly chosen and 1 with Monthly.
 
 On Pro, Pro says **Your plan**, **Extend** is a second choice, and Free says "Where you’re back to if a plan ends". While Pro is
-ending it says "Ends in 3 days" and **Extend** is filled. While the prices load, the cards wait in place; if they don't load,
-the page says why with **Try again**, and offline they show once you're back.
+ending it says "Ends in 3 days" and **Extend** is filled. On a team license Pro isn't sold, and its card says "Not while you’re on
+your team’s plan" where its button would be. While the prices load, the cards wait in place; if they don't load, the page says
+why with **Try again**, and offline they show once you're back. The first time Home opens for an account, it opens on Plans
+instead, once (16.20).
 
 ### 16.2 Get Pro, paying with USDC
 
@@ -2311,8 +2576,8 @@ notes; they don't carry into the next period. Done says "10 more hours of notes"
 
 A payment for a year of Pro is on its way: the foot says "Waiting for 192 USDC", and **Pro, 12 months · Open** reopens it in
 checkout. When it arrives, Pro is bought from it in the same go, and within half a minute the foot becomes Pro's own row: its
-sun up, "Until …". Pressing it opens Settings at your plan, with the payment and its receipt. On Free, **See plans** opens
-Plans, where the row is the place you're on.
+sun up, "Until …". Pressing it opens Settings at your plan, with the payment and its receipt. On Plans, that row is the
+place you're on.
 
 ### 16.8 Renew, refund and your payments
 
@@ -2328,13 +2593,20 @@ this period's 5 hours. The call carries on. Notes start again the moment you hav
 for storage says storage, with **Make room**. Everyone else reads whose notes ran out, with nothing to buy. Once the
 organizer has bought more, wherever the payment lands (in checkout, after closing it, or in another tab), notes come on
 again by themselves: "You're on Pro. Notes are on again.", and the notes mark **Notes stopped** and **Notes on again**. When
-the plan has notes again without a purchase (a new period), the organizer is asked instead, with **Turn notes on**.
+the plan has notes again without a purchase (a new period), the organizer is asked instead, with **Turn notes on**. Leaving
+while notes are still stopped, the call's page says so in caution rather than "Notes are off": "Your notes for this period
+have run out. What was said until then is in the notes." (anyone else reads whose), and the organizer has the same ways to
+more there, none of them filled, since **Rejoin** is the page's filled button.
 
 ### 16.10 Start a call with no notes left
 
-With none left this period, **Start a call** says "No notes left until 20 November" with **Get Pro** and **Start without
-notes**. Scheduling a call with notes before the period renews says "None left until …" under the notes switch, with **Get
-Pro** (in a new tab, so the call being scheduled stays).
+With none left this period and notes on by default, **Start a call** says "No notes left until 20 November" under the ways,
+with **Get Pro** (on a paid plan, **Add 10 hours · $15** while more are offered), which closes the window and opens
+checkout, and **Start without notes**. Scheduling a call with notes on for a time before the period renews says "None left
+until 20 November" under the Notes switch, with the same way to more, opening checkout over the Calls page, so the call
+being scheduled stays. A question asked across your calls (the palette's **Ask**, or the Calls page's) with none left says
+"No notes left until 20 November" in the answer's place, with the same way to more; typing again or putting the answer away
+puts it away.
 
 ### 16.11 Storage full
 
@@ -2362,5 +2634,88 @@ top and in the foot until dismissed. When Pro ends without renewing you're back 
 top, with **Get Pro again**, and in the foot. Over Free's storage, everything works as before for a grace, then uploads and
 notes stop until you make room or get Pro again, which lifts it at once.
 
-Storybook's journeys use **16.1–16.14** above. The addresses, payments and networks in it are made up; a real payment through
-1Click needs a hand check with a wallet.
+### 16.15 Start a team
+
+A team is one admin (whoever starts it) and as many people as it has licenses for, and you're on one team at most. Team's card
+on Plans says what a license is (a price for each person, for a period: $40 for 30 days unless the limits say otherwise), and
+**Start a team** on it opens checkout on Team over the page; a company's Team page has the same as a quiet row while you're on
+none.
+
+1. The team's name, the company's to start with, with you its admin, and how many licenses: one for each person, you included.
+2. Pay from the balance, or with USDC on a network (16.2): the summary says exactly what to send. Getting the address makes the
+   team at once, with you its admin, and opens the payment for its licenses; the side panel waits for it as for Pro's.
+3. Once the payment is added, so are the licenses, with nothing to press: "{team} is on Team". Your license is taken then, and
+   each of the others when the person it's for next opens Alcove.
+4. **Done** has the way to invite them: a link for one person (16.17). Team is your plan on Plans from then, with **Buy
+   licenses** on its card. A license replaces Pro at once: the month running ends, and the months that haven't started go back
+   to the balance, which you're told.
+
+### 16.16 Join a team by its link
+
+An invite is a page of its own (`/team/join#…`), one card on the team's evening. Its secret is after the `#`, so no server sees
+it, and it leaves the address bar at once. Signed out, it asks you to sign in first, there (Google's way back comes back to it),
+while the invite waits in the tab. Then it says whose team it is and what joining gives you (notes of your own, what the team
+shares, its storage), with **Join** and **Not now**: nothing happens until Join. Join takes one of the team's licenses for a
+period if one is left, and **Open Alcove** opens the team's page, with you on it under your license. A used or expired link, or
+being on a team already, is refused in Alcove's words.
+
+### 16.17 Your team: people, licenses and invites
+
+On a team, Team is the team's page: its name in the sky over how many are on it, and its people on the horizon, each under
+their license, opening their popover as on a company's line. On the water, everyone as a row with their role and license
+("Licensed until 12 Dec", "License ended", "Waiting for a license"); the admin's **Remove** asks in place, under the row (their
+license isn't refunded, they go back to Free, and notes they made visible to the team stay visible). At the foot, **Leave team**
+for a member, asked the same way, or for the admin **Delete team** once nobody else is on it, which refunds the licenses nobody
+took. Then the notes made visible to the team, each opening its call's page (8.46), and your groups and what's shared with them,
+as ever. Beside them, for the admin: **Licenses**, how many are left and who's waiting for one, with **Buy licenses** (filled
+while someone waits), which opens checkout on Team, and buying one from the balance whenever it's needed; and **Invite
+people**: **Make an invite link** makes a link that lets one person join, for a day, shown with **Copy**; each press of **Make
+another** makes a new one. A member without a live license is told first, at the top of the water, why the team's notes and
+workspaces aren't open to them.
+
+### 16.18 Licenses running low
+
+A license is taken when someone without a live one uses Alcove: when the app opens signed in, when a tab comes back after 30
+minutes or more away, or when they join. Nothing that reads in the background takes one. It runs a period from then, and an
+ended one is replaced only by the next visit. With fewer than five left, the team's admin is told: the side panel's Team row
+says how many, in warm, with **Buy** ("2 licenses left · Buy"), which opens checkout on Team over the page you're on, and
+Settings › Plan says it at the top ("2 licenses left on Vandelay Industries. Buy more so nobody is left without one.") until
+it's dismissed, when the row says the team's name again. In Settings, **Licenses** says how many are left of how many, with
+**Buy licenses**; **Buy one when it’s needed** buys a license from the admin's balance whenever someone needs one and none is
+left; and **Refund** gives back the licenses nobody has taken, asked in place.
+
+### 16.19 On a team without a license
+
+When none was left for you, you stay on your own plan, and the team's admin is told. The side panel says it in caution, "No team
+license yet", under your notes left in place of the meter (on Pro, as the row's second line), and the row opens Team, which says
+who has been told. Settings › Plan says it once at the top, over your plan. The next time you open Alcove after the admin buys
+more, one is yours: your plan is Team, your license runs a period, and the side panel's foot is Team's row, over the team's name.
+
+### 16.20 Choose a plan
+
+The first time Home opens for an account, it opens on the plans instead, once: the plan choice, Plans in Home's place with a
+head of its own. That's every new account, after its arrival (1), and every account from before plans, the first time it opens
+Alcove normally after plans came.
+
+1. Someone with no notes yet reads **Choose a plan**: "Every plan has calls, workspaces and confidential compute. They differ in
+   hours of notes and storage." Someone who has used Alcove reads **Alcove has plans now** and which plan they're on, in the
+   server's numbers: "You’re on Free: about 5 hours of notes a month and 10 GB of storage." Over Free's storage, it says until
+   when everything works as before instead.
+2. Under the head, Plans as ever: Monthly / Yearly, then Free, Pro and Team. The plan you're on leads straight on: **Continue on
+   Free**, quiet, on Free's card (on Pro or Team, **Continue on Pro** or **Continue on Team** on theirs), goes to Home.
+3. **Get Pro** is the one filled button and opens checkout over the plans (16.2), as **Start a team** opens Team's (16.15). Once
+   what was bought is yours and checkout has closed, Home follows, with nothing more to choose. Closing checkout without buying
+   leaves the plans as they were.
+4. A new account's tour of Home (1, step 4) starts once Home is there, never over the plans.
+5. Only Home opens on them. A link to a call, a call's page, a join link, an agent's consent page, a public page or a team
+   invite is never interrupted, and nor is signing in from a call's link or for an agent: the plans wait for the next time Home
+   is reached.
+6. Once the plans have been on screen for a moment (the tab showing, nothing open over them), Alcove is told, and they aren't
+   shown again. Plans itself counts too. If telling Alcove fails, it's tried again quietly, and this tab doesn't show them again;
+   a later visit does. Left before their prices came (still loading, offline, or not loaded), they show again on a later visit.
+
+While the prices load, the cards wait in place and **Continue on Free** is already on Free's; offline it says the plans show once
+you're back, and when they don't load it says why, each with **Continue on Free** to go on.
+
+Storybook's journeys use **16.1–16.20** above. The addresses, payments and networks in it are made up; a real
+payment through 1Click needs a hand check with a wallet.

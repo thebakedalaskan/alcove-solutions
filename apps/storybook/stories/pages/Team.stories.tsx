@@ -19,7 +19,7 @@ export const Busy = page('/team', 'busy');
 export const BusyPhone = phone(Busy);
 export const FirstDay = page('/team', 'first-day');
 export const Lots = page('/team', 'lots');
-/** A group open, from the side panel. */
+/** A group open, from its tile under the water. */
 export const AGroup = page('/team?group=g-product', 'busy');
 /** Deleting a group asks once, in a popover, and can be undone for a few seconds after. */
 export const DeleteAGroup = page('/team?group=g-product', 'busy', {

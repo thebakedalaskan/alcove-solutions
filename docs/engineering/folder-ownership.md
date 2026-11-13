@@ -35,16 +35,22 @@ apps/web/src/features/
     boards/          the board in the call: its session, picker (BoardPicker.tsx), presenting and vote
     playback/        synchronized media
   calls/
-    flow/            making a call and its details
-    scheduling/      choosing times and availability
+    flow/            Start a call's modal: Start now, or Schedule for later, which opens the scheduler on Calls
+    scheduling/      times and availability, and the scheduler on Calls (Scheduling, WeekSheet, PeopleField, when, Bring,
+                     places, search)
     lobby/           entry checks and joining
     ringing/         incoming-call UI and sound
-    list/            call cards
+    list/            the Calls page (every call ahead and past, the rail, the week, row menus, a series) and a call ahead
+                     (Upcoming.tsx, /calls/upcoming/$meetingId)
+  notes/             a call's page (/calls/$noteId): the player, its tabs, downloads, and the parts a note shares
+  drive/             the Drive: its tree, the sheet of large previews, and Trash across workspaces
+  workspace/         a workspace: in a call (List.tsx), beside the Drive's tree (Beside.tsx), and full screen (Frame,
+                     Side, Bar, Head, Home, Origin, calls.ts)
 apps/api/src/
   app.ts             shared middleware and feature-route composition
   features/
     account/         account, people and photos
-    agents/          scoped agent grants, OAuth, MCP operations and tools
+    agents/          scoped agent grants, OAuth, MCP operations and tools, and what agents did
     meetings/        schedule, invitations, calendar and repeats
     calls/           active-call lifecycle, state, rooms, MLS and notes/capture
     notes/           saved notes, additions, personal notes, series and writing

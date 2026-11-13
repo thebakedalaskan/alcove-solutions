@@ -92,15 +92,17 @@ var FLOCK = [{ x: 0, y: 0, w: 28, after: '0s' }, { x: -30, y: -11, w: 23, after:
 var LIFE = {
   home: { quick: ['gulls', 'gulls', 'gulls', 'fish', 'fish', 'dolphins', 'school', 'flyer', 'marlin', 'whale'], slow: ['sail', 'sail', 'steamer', 'trawler', 'tall', 'freighter', 'tug', 'balloon'], gulls: [42, 104], fish: [30, 58] },
   team: { quick: ['gulls', 'gulls', 'fish', 'school', 'flyer', 'dolphins'], slow: ['sail', 'steamer', 'trawler', 'tall', 'tug'], gulls: [46, 120], fish: [34, 56] },
+  agents: { quick: ['gulls', 'gulls', 'fish', 'school', 'flyer', 'dolphins'], slow: ['sail', 'steamer', 'trawler', 'tall', 'tug'], gulls: [46, 120], fish: [34, 56] },
   notes: { quick: ['gulls', 'star', 'fish', 'school'], slow: ['sail', 'trawler', 'freighter'], gulls: [16, 44], fish: [16, 34] },
   drive: { quick: ['gulls', 'star', 'fish'], slow: ['sail', 'tug', 'trawler'], gulls: [18, 48], fish: [14, 30] },
   /* As Notes', with the fish in the band of water between the horizon and the plans. */
   plans: { quick: ['gulls', 'star', 'fish', 'school'], slow: ['sail', 'trawler', 'freighter'], gulls: [16, 44], fish: [10, 24] },
   note: { quick: ['star'], slow: [], gulls: [0, 0], fish: [0, 0] },
   settings: { quick: [], slow: ['sail', 'freighter'], gulls: [0, 0], fish: [0, 0] },
-  record: { quick: ['star', 'star', 'fish', 'whale'], slow: ['sail', 'tall', 'trawler'], gulls: [0, 0], fish: [30, 70] }
+  record: { quick: ['star', 'star', 'fish', 'whale'], slow: ['sail', 'tall', 'trawler'], gulls: [0, 0], fish: [30, 70] },
+  after: { quick: ['star'], slow: [], gulls: [0, 0], fish: [0, 0] }
 };
-var CLOUDS = {home: [{ x: 9, at: 0.24, w: 290, rows: 6, takes: 560 }, { x: 66, at: 0.1, w: 210, rows: 5, takes: 800 }, { x: 82, at: 0.44, w: 330, rows: 7, takes: 470 }, { x: 34, at: 0.56, w: 170, rows: 4, takes: 690 }], team: [{ x: 78, at: 0.12, w: 270, rows: 6, takes: 600 }, { x: 6, at: 0.34, w: 230, rows: 5, takes: 740 }, { x: 44, at: 0.05, w: 170, rows: 4, takes: 860 }], notes: [{ x: 16, at: 0.3, w: 230, rows: 4, takes: 720 }, { x: 72, at: 0.14, w: 170, rows: 3, takes: 900 }], drive: [{ x: 64, at: 0.24, w: 220, rows: 4, takes: 780 }, { x: 10, at: 0.12, w: 160, rows: 3, takes: 960 }], plans: [], note: [{ x: 58, at: 0.2, w: 190, rows: 3, takes: 880 }], settings: [{ x: 44, at: 0.26, w: 190, rows: 3, takes: 960 }], record: [{ x: 24, at: 0.3, w: 260, rows: 4, takes: 940 }]};
+var CLOUDS = {home: [{ x: 9, at: 0.24, w: 290, rows: 6, takes: 560 }, { x: 66, at: 0.1, w: 210, rows: 5, takes: 800 }, { x: 82, at: 0.44, w: 330, rows: 7, takes: 470 }, { x: 34, at: 0.56, w: 170, rows: 4, takes: 690 }], team: [{ x: 78, at: 0.12, w: 270, rows: 6, takes: 600 }, { x: 6, at: 0.34, w: 230, rows: 5, takes: 740 }, { x: 44, at: 0.05, w: 170, rows: 4, takes: 860 }], agents: [{ x: 4, at: 0.12, w: 270, rows: 6, takes: 600 }, { x: 78, at: 0.34, w: 230, rows: 5, takes: 740 }, { x: 46, at: 0.05, w: 170, rows: 4, takes: 860 }], notes: [{ x: 16, at: 0.3, w: 230, rows: 4, takes: 720 }, { x: 72, at: 0.14, w: 170, rows: 3, takes: 900 }], drive: [{ x: 64, at: 0.24, w: 220, rows: 4, takes: 780 }, { x: 10, at: 0.12, w: 160, rows: 3, takes: 960 }], plans: [], note: [{ x: 58, at: 0.2, w: 190, rows: 3, takes: 880 }], settings: [{ x: 44, at: 0.26, w: 190, rows: 3, takes: 960 }], record: [{ x: 24, at: 0.3, w: 260, rows: 4, takes: 940 }]};
 function seeded(n) { return function () { n = (n * 16807) % 2147483647; return (n - 1) / 2147483646; }; }
 function between(a, b) { return a + Math.random() * (b - a); }
 function coin(c) { return Math.random() < (c == null ? 0.5 : c); }

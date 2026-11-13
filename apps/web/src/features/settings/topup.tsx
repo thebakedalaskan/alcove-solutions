@@ -1,10 +1,10 @@
 /*
- * Adding money to the balance with a stablecoin, from Settings › Plan: choose how much, then a token and its chain, and get
- * an address made for one payment of exactly that, sent from any wallet or exchange. A token is added as a dollar. The
- * sheet follows the payment on its own until it's added (or isn't), and opens again on it from Plan's payments, so closing
- * it loses nothing. Buying Pro or more notes is checkout's (features/plans/checkout.tsx), which asks for what it needs.
+ * Adding money to the balance with USDC, from Settings › Plan: choose how much, then the network to send it on, and get an
+ * address made for one payment of exactly that, sent from any wallet or exchange. A USDC is added as a dollar. The sheet
+ * follows the payment on its own until it's added (or isn't), and opens again on it from Plan's payments, so closing it
+ * loses nothing. Buying Pro or more notes is checkout's (features/plans/checkout.tsx), which asks for what it needs.
  */
-import { errorMessage, MAX_TOP_UP_MICRO_USD, type TopUpRoute } from '@alcove/api';
+import { errorMessage, MAX_TOP_UP_MICRO_USD } from '@alcove/api';
 import { Button, Chip, CopyField, CryptoMark, Dots, Icon, IconButton, Notice, QrCode, RequestRef, Select, Sheet, Spinner, type SelectOption } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useState, type ReactNode } from 'react';
@@ -72,35 +72,31 @@ function Body({ topUpId, onClose }: { topUpId: string | null; onClose: () => voi
   );
 }
 
-/** Choosing how much, then a token and its chain, then getting an address for one payment of it. */
+/** Choosing how much, then the network to send USDC on, then getting an address for one payment of it. */
 function Pick({ onStarted }: { onStarted: (id: string) => void }) {
   const routes = useQuery(q.topUpRoutes());
   const start = useStartTopUp();
   const group = useId();
   const ownId = useId();
-  const [token, setToken] = useState<TopUpRoute['token'] | undefined>(undefined);
-  const [chain, setChain] = useState<string | undefined>(undefined);
+  const [routeId, setRouteId] = useState<string | undefined>(undefined);
   const [amount, setAmount] = useState<number | 'own' | null>(null);
   const [own, setOwn] = useState('');
   const data = routes.data;
   const list = data?.routes ?? [];
-  // Nothing is chosen for them: the token first, then a network it's offered on.
-  const tokenOptions: SelectOption<TopUpRoute['token']>[] = [...new Set(list.map((r) => r.token))]
-    .map((t) => ({ value: t, label: t, mark: <CryptoMark name={t} /> }));
-  const chainOptions: SelectOption<string>[] = list.filter((r) => r.token === token)
-    .map((r) => ({ value: r.chain, label: r.chainName, mark: <CryptoMark name={r.chain} /> }));
-  const route = list.find((r) => r.token === token && r.chain === chain);
-  const pickToken = (t: TopUpRoute['token']) => {
-    setToken(t);
-    if (!list.some((r) => r.token === t && r.chain === chain)) setChain(undefined);
-  };
+  /*
+   * Nothing is chosen for them: they pick the network. Every route offered is USDC, one per network, so the list shows
+   * only networks and the legend and prices say USDC. If the server offers another token again (its allowlist in
+   * apps/api/src/features/billing/oneclick.ts), bring back a token choice here first.
+   */
+  const chainOptions: SelectOption<string>[] = list.map((r) => ({ value: r.id, label: r.chainName, mark: <CryptoMark name={r.chain} /> }));
+  const route = list.find((r) => r.id === routeId);
   const presets = data?.presets ?? [];
   const picked = amount ?? presets[0] ?? 'own';
   const microUsd = picked === 'own' ? typedMicroUsd(own) : picked;
   const least = route ? Math.round(Number(route.minimum) * 1_000_000) : 0;
   const below = route !== undefined && microUsd !== null && microUsd < least;
-  /** What `n` comes to in the chosen token, a token a dollar ("20 USDC"): nothing until one is chosen, since it's the amount already. */
-  const price = (n: number) => (token ? <span className="p"><b>{tokens.format(n / 1_000_000)} {token}</b></span> : null);
+  /** What `n` comes to in USDC, a USDC a dollar ("20 USDC"): exactly what's sent. */
+  const price = (n: number) => <span className="p"><b>{tokens.format(n / 1_000_000)} USDC</b></span>;
   const go = () => { if (route && microUsd !== null) start.mutate({ routeId: route.id, microUsd }, { onSuccess: (t) => onStarted(t.id) }); };
   return (
     <>
@@ -131,9 +127,8 @@ function Pick({ onStarted }: { onStarted: (id: string) => void }) {
                 </div>
               </fieldset>
               <fieldset className="set-topup-pick">
-                <legend>Pay with</legend>
-                <Select<TopUpRoute['token']> label="Token" placeholder="Token" value={token} options={tokenOptions} onChange={pickToken} />
-                <Select<string> label="Network" placeholder="Network" value={chain} options={chainOptions} onChange={setChain} disabled={!token} />
+                <legend>Pay with <CryptoMark name="USDC" />USDC</legend>
+                <Select<string> label="Network" placeholder="Network" value={routeId} options={chainOptions} onChange={setRouteId} />
               </fieldset>
               {route && below && (
                 <Notice tone="caution">

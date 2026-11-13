@@ -33,27 +33,22 @@ function useBusy(emails: readonly string[], range: { from: string; to: string },
   const moving = except ? (i: Interval) => i.from === except.startsAt && i.to === except.endsAt : () => false;
   const you = useMemo<Interval[]>(() => [...own, ...(data?.you ?? []).filter((i) => !moving(i))], [own, data]);
   const readable = useMemo(() => (data?.people ?? []).flatMap((p) => (p.busy ? [p.busy] : [])), [data]);
-  return { loading: read.isPending, failed: read.isError, source: data?.source ?? 'none', you, own, readable };
+  /* Whose calendars can't be read, by address: all of them until it's read, and when it can't be. */
+  const unreadable = useMemo(() => emails.filter((e) => !data?.people.some((p) => p.email.toLowerCase() === e.toLowerCase() && p.busy)), [emails, data]);
+  return { loading: read.isPending, failed: read.isError, source: data?.source ?? 'none', you, own, readable, unreadable };
 }
 
-/** Three good times, and what can be said about any other, for `emails` and `minutes`. */
-export function useTimes(emails: readonly string[], minutes: number, except?: Meeting | undefined) {
+/** Good times (three unless it says), and what can be said about any other, for `emails` and `minutes`. */
+export function useTimes(emails: readonly string[], minutes: number, except?: Meeting | undefined, count = 3) {
   const [now] = useState(() => new Date());
   const range = useMemo(() => {
     const from = startOfDay(now);
     return { from: from.toISOString(), to: new Date(from.getTime() + AHEAD_DAYS * DAY).toISOString() };
   }, [now]);
   const busy = useBusy(emails, range, except);
-  const slots = useMemo(() => suggestTimes({ now, minutes, you: busy.you, people: busy.readable }), [now, minutes, busy.you, busy.readable]);
+  const slots = useMemo(() => suggestTimes({ now, minutes, you: busy.you, people: busy.readable, count }), [now, minutes, busy.you, busy.readable, count]);
   /* Guests the read said nothing about, or that it said can't be read. */
   const unknown = emails.length - busy.readable.length;
   return { now, ...busy, slots, unknown, slot: (at: Date): Slot => slotAt(at, minutes, busy.you, busy.readable) };
 }
 
-/** What's in the days of a week, for the grid: your own things by name, and when anyone else is busy. */
-export function useWeek(emails: readonly string[], days: readonly Date[], except?: Meeting | undefined) {
-  const first = days[0] ?? new Date();
-  const last = days.at(-1) ?? first;
-  const range = useMemo(() => ({ from: startOfDay(first).toISOString(), to: new Date(startOfDay(last).getTime() + DAY).toISOString() }), [first, last]);
-  return useBusy(emails, range, except);
-}

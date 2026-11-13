@@ -2,7 +2,7 @@
 
 [Docs home](../README.md) · [Notes and inference](notes-and-inference.md) · [Privacy, keys and sessions](privacy-keys-and-sessions.md)
 
-A call's workspace, and the board in it, work the same on every plan, kept afterwards in the Drive. Plans differ only in how much
+Every call gets its own workspace and board on every plan, kept afterwards in the Drive. Plans differ only in how much
 they bring: notes and storage. Every feature is on every plan.
 
 | | Free | Pro | Team |
@@ -39,8 +39,8 @@ when an organizer is told it's close; how long a period and a grace last; a call
 | Pro for a year or more at a lower price; more notes for a period | Working (server; see [Pro](#pro) and [More notes](#more-notes)) |
 | A payment that buys what it was for (Pro, more notes or a team's licenses) once it's added | Working (server; see [A payment that buys](#a-payment-that-buys)) |
 | Teams, licenses, visits, alerts, the pool (server; see [Team](#team)) | Working |
-| Team notes, Ask across them with @-references, team workspaces (server; see [Team](#team)) | Working |
-| Picking a plan at first sign-in | Not built (phase 4). `Plan.choose` already says who hasn't. |
+| Team notes, Ask across them, team workspaces (server; see [Team](#team)) | Working. Ask's `refs` (@-references) work on the server; the app's Ask, main's palette, has no way to add them |
+| Picking a plan at first sign-in | Working. `Plan.choose` is true for every account until the app says the plans were shown (`POST /v1/plan/chosen`, `PlansApi.chose()`); an account from before plans is shown them once. In the app it's the plan choice: Home opens on Plans once, in its place (`apps/web/src/features/plans/PlanChoice.tsx`), and only Home, never a deep link (decided in `features/plans/choice.ts`). Once the plans have been on screen there or on Plans, the app says so, quietly trying again if that fails ([user-flows 16.20](../product/user-flows.md#1620-choose-a-plan)) |
 | Withdrawing the balance | Not built, and not planned yet |
 
 ## Notes: the AI allowance
@@ -87,7 +87,7 @@ fallback`, with their IDs), never with every request.
 | The live transcript, live notes, board ideas and captions in a call, for everyone | The call's organizer |
 | Writing a call's notes, reading its shared screens, comparing it with its series | The organizer |
 | A room recording's transcript and notes | Whoever records |
-| A question or a catch-up in a call | Whoever asks, from their own plan; a guest's, the organizer |
+| A question or a catch-up in a call | Whoever asks, from their own plan; a guest's, the organizer (6 a minute for each guest) |
 | Asking a note, or every note; asking a series; an agent's questions (MCP) | Whoever asks |
 | AI on a document or board (shorter, checklist, what was said, sort into themes) | Whoever the workspace counts against |
 
@@ -136,8 +136,24 @@ after notes stop too; a cheaper one always goes.
 ## Storage
 
 What an account stores is its own row's `stored_bytes` (its calls' audio and shared screens, its room recordings) and
-every workspace it pays for (`workspaces.payer_owner_id`): the shared ones it made, and its calls' own, whose files count
-against the organizer whoever adds them, guests included (`features/billing/storage.ts`).
+every workspace it pays for (`workspaces.payer_owner_id`): the shared ones it made, and its calls' homes, whose files count
+against the organizer whoever adds them, guests included (`features/billing/storage.ts`). A home's payer is the call's
+organizer whoever's action made it: their scheduling choice, getting the call ready before it starts (`calls.ready`), the
+first time anyone opens Workspace in it, or its end with notes (`makeHome`).
+Only someone in a workspace pays for it: when its payer leaves it or is taken out, it counts against whoever made
+it if they're still in it, else its first admin with an account, at once. Upkeep settles any it missed every 5 minutes,
+whatever made a payer stop being in a workspace. A workspace none of whose admins has an account counts against nobody,
+and takes no files ("Files can't be added until one of this workspace's admins signs in to Alcove."), until upkeep's
+next pass after an admin signs in.
+
+A call opens the workspace it uses to everyone in it, guests included, so whatever they add there counts against its payer,
+and AI they ask for there is paid by it. So it does that only while the organizer pays for it: its payer is the account the
+call is kept in, and the organizer can still edit there (`access.ts › holdersOf`, asked on every request, so a change of
+payer or role takes effect at once). A workspace someone else pays for, made the call's by an organizer who can edit there,
+opens only for its own people; the Switch workspace question says so ("Its files don’t count against your storage, so it
+opens only for its own people."). A team's pool isn't counted as the organizer's here, though a teammate's
+workspace counts against the same pool: AI a guest asks for in a team's workspace is paid by the workspace's payer, so a call
+opening one a teammate pays for would spend that teammate's allowance.
 
 - A file bigger than the payer's plan's file size is refused at its start. A piece that would take the payer past their
   storage is refused (`plan-limit`, "Your storage is full…"), uploads in every workspace they pay for, and call audio and
@@ -369,8 +385,8 @@ with the question; nothing else goes that the search didn't pick. The asker pays
 **Team workspaces.** A workspace made by someone live-licensed on a team is the team's (`workspaces.team_id`), counted
 against its pool through its maker, who pays for it. `POST /v1/workspaces { name, access? }`, the Drive's New workspace,
 makes it the whole team's (`team_access = 'team'`) unless `access` is `added` (only the people added); off a team,
-`access` means nothing. One made in a call, when scheduling or for filing notes is `added`, so a call's notes never reach
-the whole team without someone choosing that. Its admins change it (`PUT /v1/workspaces/:id/team-access { access }` →
+`access` means nothing. One made in a call, and a call's home made for an organizer on a team, is `added`, so a call's
+notes never reach the whole team without someone choosing that. Its admins change it (`PUT /v1/workspaces/:id/team-access { access }` →
 `{ changed: true }`): someone else in it is refused ("Only an admin can do that."), a workspace that isn't a team's is
 `conflict` ("This workspace isn’t a team’s, so there’s no team to open it to."), and opening it to the whole team takes
 an admin live-licensed on that team ("Only someone with a license on its team can open this workspace to the whole
@@ -398,7 +414,9 @@ An address signed in to more than one account (through different providers) is r
 
 ## Adding money
 
-The balance plans are bought with is filled with USDC or USDT, at face value: a token is a dollar. The person chooses an
+The balance plans are bought with is filled with USDC, at face value: a USDC is a dollar. USDT isn't taken (a top-up
+opened with it before only USDC was taken still settles and shows as before, its line in the balance's history with the
+coins rather than a mark, since there's no USDT mark). The person chooses an
 amount (the presets are one, three and six periods of Pro, or their own, at least the route's minimum: $5, $20 on
 Ethereum, and at most $8,000), and is asked to send exactly that. What's added goes by what was sent; Alcove absorbs
 1Click's fee:
@@ -420,19 +438,20 @@ is `arriving`, logged at error once with the reason, and fails at its deadline s
 | Part | State |
 | --- | --- |
 | Balance and history, sealed under `Kservice` (never under owner keys), in `plan_accounts` | Working |
-| Top-up routes (`GET /v1/plan/routes`) | Working. USDC on NEAR, Ethereum, Base, Arbitrum, Solana, Polygon, BNB Chain, Optimism and Avalanche, and USDT on NEAR, Ethereum, Solana, Tron, Polygon, BNB Chain, Optimism and Avalanche, while 1Click lists them, each with its minimum. A server without `TREASURY_INTENTS_ACCOUNT` answers `unavailable` on every top-up endpoint; `ONECLICK_API_KEY` is optional and only lowers 1Click's fee |
+| Top-up routes (`GET /v1/plan/routes`) | Working. USDC on NEAR, Ethereum, Solana, Base, Arbitrum, Polygon, BNB Chain, Optimism and Avalanche, in that order, while 1Click lists them, each with its minimum. USDT isn't offered; a USDT top-up opened before still settles and shows as before. A server without `TREASURY_INTENTS_ACCOUNT` answers `unavailable` on every top-up endpoint; `ONECLICK_API_KEY` is optional and only lowers 1Click's fee |
 | Opening a top-up (`POST /v1/plan/top-ups { routeId, microUsd, buys }`) | Working. With `buys`, what it's to buy is checked first ([below](#a-payment-that-buys)). A 1Click quote paying the treasury exactly that gives a one-off deposit address on the route's chain, open for 24 hours, kept sealed (`deposits`, record kind `deposit`). At most 10 a minute per account per API instance; refused with `conflict` while the account has 15 top-ups waiting for a payment to an address that hasn't expired, or has opened 30 in the last 24 hours (cancelled ones count). Both counts are checked in Postgres, again under a lock on the account in the transaction that inserts the deposit |
 | Cancelling a top-up (`POST /v1/plan/top-ups/:id/cancel`) | Working. Only a `waiting` top-up can be cancelled. Its address is no longer shown and it no longer counts toward the 15 waiting. 1Click can't cancel a quote, so a payment that reaches it is still added. It still counts toward the 30 a day |
 | Adding a top-up | Working. On `SUCCESS` or `REFUNDED` that passes the checks above, what was sent is added by the rules above, in the transaction that marks the deposit `credited`, under its row lock: once, however many checks race. What it was opened to buy is bought in that transaction. `FAILED` is `failed`, logged at error. A `failed`, `expired` or `cancelled` deposit is still added when 1Click later settles it, and still buys |
 | Watching top-ups | Working, unchanged: every open deposit is asked about every 10 s for 15 minutes, every minute until 2 hours, then every 5 minutes, thinning out after its deadline (see below) |
-| A top-up the previous release settled while this one deployed | Working. It added credits, which no longer count: upkeep adds it again as dollars, once (`creditCarried`, by `billing_cutover`) |
-| Adding money in the app | Working. Settings › Plan › Add money opens a sheet: choose $20, $60, $120 or your own, then a token and its chain, and get an address (with a QR code) for one payment of exactly that; the sheet follows it until it's added; while it waits for a payment it can be cancelled there; open and recent top-ups are listed under the balance |
+| A top-up paid for before plans, or settled by the previous release while this one deployed | Working. It added credits, which no longer count: upkeep adds it again as dollars, once (`creditCarried`: every `credited` deposit settled before a day after `billing_cutover`, looked at once each, then `check_after` infinity) |
+| Adding money in the app | Working. Settings › Plan › Add money opens a sheet: choose $20, $60, $120 or your own, then the network to send USDC on (under Pay with USDC; every route is USDC, so there's no token to pick), and get an address (with a QR code) for one payment of exactly that; the sheet follows it until it's added; while it waits for a payment it can be cancelled there; open and recent top-ups are listed under the balance |
 
 ### How a top-up works
 
-1. **Routes.** `GET /v1/plan/routes` lists one route per stablecoin and chain on the allowlist in
-   `features/billing/oneclick.ts` that 1Click currently lists in `/v0/tokens` (cached for 10 minutes), with its minimum,
-   and the presets.
+1. **Routes.** `GET /v1/plan/routes` lists one route per chain on the allowlist of USDC in
+   `features/billing/oneclick.ts` that 1Click currently lists in `/v0/tokens` (cached for 10 minutes), in the allowlist's
+   order whatever order 1Click lists them in, with its minimum, and the presets. Add money and checkout offer the networks
+   in that order. Offering another token means giving Add money its token choice back first.
 2. **Address.** `POST /v1/plan/top-ups` asks 1Click for a `FLEX_INPUT` quote for exactly that amount of the token, whose
    recipient and refund target are both the treasury's Intents account (fields in
    [Stack and provider setup › 1Click as built](../references/stack-and-provider-setup.md#1click-as-built)). A quote for
@@ -510,7 +529,7 @@ deposit's ID, provider, what it buys (`pro`, `hours`, `licenses`) and why not (`
 
 The server never holds a key that can move treasury money. By hand, in near.com, signed in as the treasury account:
 
-- **Refunds.** A refund lands in the treasury's Intents balance as the token that was sent, not USDC. Swap these to USDC
+- **Refunds.** A refund lands in the treasury's Intents balance as the token that was sent, as Intents holds it (Solana's USDC, say), not as USDC on NEAR. Swap these to USDC
   on NEAR from time to time.
 - **Withdrawals.** Withdraw USDC from the Intents balance in batches, when topping up NEAR AI, not after every payment:
   each withdrawal costs a flat 0.004615 USDC.
@@ -526,19 +545,27 @@ The server never holds a key that can move treasury money. By hand, in near.com,
 
 ## How it upgrades
 
-- Migration `0026_plans.sql` adds `plan_accounts` (record kind `plan-account`), `ai_meters` (`ai-meter`), and
-  `billing_cutover` with the time it ran. `0027_workspace_payers.sql` adds a nullable `payer_owner_id` to
-  `workspaces` and backfills who pays from `workspace_authors` and the first admin. The previous release
-  ignores all of it while the deploy migrates.
-- Credits are gone: every account starts on Free at $0, its old balance ignored. `billing_accounts` is no longer read,
-  and goes in a later release.
+- Migration `0029_plans.sql` adds `plan_accounts` (record kind `plan-account`), `ai_meters` (`ai-meter`), and
+  `billing_cutover` with the time it ran. `0030_workspace_payers.sql` adds a nullable `payer_owner_id` to
+  `workspaces` and backfills who pays from `workspace_authors` and the first admin: a shared workspace's maker
+  (`made_workspace`), and a call's home's first admin, its organizer, since a home is made with `made_workspace` false.
+  That's who `makeHome` and `createIn` name now, and what upkeep's `settlePayers` gives a workspace nobody pays for, so the
+  backfill, upkeep and new homes agree. The previous release ignores all of it while the deploy migrates. These three
+  migrations follow main's `0026_workspace_calls.sql`, `0027_agent_activity.sql` and `0028_meeting_proposals.sql`, and
+  nothing in them depends on those. No shared database ran them under the numbers they had on the plans branches
+  (`0026_plans.sql`, `0027_workspace_payers.sql`, `0028_teams.sql`); a local one that did is refused by `migrate.ts`
+  until those three rows of `schema_migrations` are renamed to the new names (the files' contents, so their checksums,
+  are unchanged).
+- Credits are gone: every account starts on Free at $0, its old balance ignored, and then every top-up it paid for is
+  added again as dollars, at face value (above): welcome credits aren't, and what credits were spent on notes isn't taken
+  off. `billing_accounts` is no longer read, and goes in a later release.
 - An account's plan row is made the first time it's touched, or by upkeep. One already over Free's limits gets the grace
-  first. Workspaces the previous release makes while this one deploys, and those whose payer deletes their account, are
-  settled by upkeep.
-- A deposit record from before keeps its `credits` and `rate` (ignored now); one settled by the previous release has no
-  `addedMicroUsd` and is added again as dollars once if it settled after the cutover (above).
+  first. Workspaces the previous release makes while this one deploys, those whose payer deletes their account, and those
+  whose payer had left them before this release (the backfill counts them against whoever made them) are settled by upkeep.
+- A deposit record from before keeps its `credits` and `rate` (ignored now); one settled by a release before plans has no
+  `addedMicroUsd` and is added again as dollars once (above).
 - A live call's state from before has no `notes.limit`, and reads as not stopped (`.default`).
-- Team is migration `0028_teams.sql`: `teams`, `team_members`, `team_invites`, `team_notes`, and `team_id` and
+- Team is migration `0031_teams.sql`: `teams`, `team_members`, `team_invites`, `team_notes`, and `team_id` and
   `team_access` on `workspaces` (null on every workspace there is). The previous release ignores them: while both serve,
   it opens a team's note or workspace only for people who have it otherwise, and its workspaces aren't a team's. A notice in a
   `plan-account` record from before has no `count`: it reads as null (`.default`), and its `until` stays as it was. The

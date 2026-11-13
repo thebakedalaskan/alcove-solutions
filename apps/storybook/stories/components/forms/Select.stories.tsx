@@ -104,15 +104,6 @@ export const NetworkMarks: Story = {
   },
   argTypes: { value: { control: 'select', options: ['base', 'sol', 'near'] } }
 };
-export const TokenMarks: Story = {
-  args: {
-    label: 'Token', value: undefined, placeholder: 'Token', options: [
-      { value: 'USDC', label: 'USDC', mark: <CryptoMark name="USDC" /> },
-      { value: 'USDT', label: 'USDT', mark: <CryptoMark name="USDT" /> }
-    ]
-  },
-  argTypes: { value: { control: 'select', options: ['USDC', 'USDT'] } }
-};
 /** On the night recorder: the microphone to record with, centred under its button. */
 export const OnTheStage: Story = {
   name: 'On the stage',

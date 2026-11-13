@@ -17,7 +17,7 @@
 /* --sky is the sky at rest, from the top of the window: the page runs on under the frame. The route measures --ask, how tall the question in the sky is, and --bar, the phone's top bar. */
 .set { --sky: 136px; --ask: 0px; --bar: 66px; --idx: 176px; --col: 940px; --hz: var(--sky); transition: --hz var(--duration-3) var(--ease-out); }
 .set > .dusk-in { padding-bottom: 140px; }
-/* You're on the page already, in the sky, so the link to it goes. */
+/* You're in the sky already, with the tour and Sign out beside you, so your face at the top right makes way. */
 .main:has(> .main-in > .set) .top-me { display: none; }
 
 /* The water goes still and becomes the page. */
@@ -265,20 +265,11 @@
 .set-note-x.ac-icon-btn { width: 30px; height: 30px; margin-block: -5px; color: var(--ink-2); }
 .set-note-x.ac-icon-btn:hover { background: color-mix(in oklch, var(--ink) 8%, transparent); color: var(--ink); }
 
-/* Something opened in place: what it is, then what to do. */
+/* The foot of something open in place: what to know, and how to close it. */
+/* Something opened in place inside a panel: its title and what it is, then what to do. */
 .set-step { padding: 16px 0 4px; }
 .set-step-t { font: 600 15px/22px var(--font-sans); color: var(--ink); }
 .set-step-h { max-width: 62ch; margin-top: 3px; font: 400 13.5px/19px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
-.set-step > .ac-agent-copy, .set-step > .ac-agent-token { margin-top: 14px; }
-/* A form opened in place: a label over each control. */
-.set-form { display: grid; gap: 16px; max-width: 600px; margin-top: 14px; }
-.set-field { display: grid; gap: 7px; min-width: 0; }
-.set-field > span, .set-form .ac-field label { font: 500 13px/18px var(--font-sans); color: var(--ink-2); }
-.set-form .ac-field { gap: 7px; }
-.set-form .ac-input { height: 40px; border-radius: 12px; background: color-mix(in oklch, var(--ink) 6%, transparent); font-size: 14.5px; }
-.set-field .ac-seg { width: 300px; max-width: 100%; }
-
-/* The foot of something open in place: what to know, and how to close it. */
 .set-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; padding: 14px 0 16px; }
 .set-foot > p { flex: 1 1 320px; max-width: 62ch; font: 400 13px/18px var(--font-sans); color: var(--ink-3); text-wrap: pretty; }
 .set-foot-a { display: flex; align-items: center; gap: 6px; margin-left: auto; }
@@ -295,7 +286,11 @@
 .set-eve:focus-visible .set-win { outline: 2px solid var(--focus); outline-offset: 5px; }
 .set-win { position: relative; display: block; width: 100%; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 12px; box-shadow: 0 0 0 1px var(--line); transition: box-shadow var(--duration-1); }
 .set-eve:hover .set-win { box-shadow: 0 0 0 1px var(--line-control); }
-.set-eve[aria-pressed="true"] .set-win { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--sun); }
+/* The ring stands 2px off the window, on whatever the evenings sit on (`--eve-on`): a panel here, your menu's popover there. */
+.set-eve[aria-pressed="true"] .set-win { box-shadow: 0 0 0 2px var(--eve-on, var(--surface)), 0 0 0 3.5px var(--sun); }
+/* Small (`small`, your menu's Theme): the window alone, named by its tooltip. */
+.set-eve.is-small { display: block; width: 40px; height: 26px; border-radius: 8px; }
+.set-eve.is-small .set-win { height: 100%; aspect-ratio: auto; border-radius: 8px; }
 /* The evening's own colours (styles/horizon.css), here so each is drawn in its theme whatever the page's theme is. */
 .set-art {
   --art-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.872 0.042 275) 58%, oklch(0.916 0.051 9.412) 100%);
@@ -371,7 +366,7 @@
 .set-pay-t small.is-wait { color: var(--horizon); }
 .set-pay-t small.is-problem { color: var(--caution); }
 .set-pay-a { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
-.set-pays > .hm-more { padding: 4px 0 2px; border-top: 1px solid var(--line); }
+.set-pays > .ac-more { padding: 4px 0 2px; border-top: 1px solid var(--line); }
 
 
 /* ------------------------------------------------------------------ privacy: what Alcove knows beside what it can't read */
@@ -463,7 +458,6 @@
   .set-mx-t { gap: 10px; font-size: 14px; }
   .set-led { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 12px; }
   .set-gs { grid-template-columns: minmax(0, 1fr); row-gap: 16px; }
-  .set-field .ac-seg { width: 100%; }
   .set-foot-a { margin-left: 0; }
   .set-eves { gap: 12px; }
 }
@@ -491,8 +485,9 @@
 .set-topup-amt .p { display: flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
 .set-topup-amt .p b { font: 600 14px/1.3 var(--font-sans); color: var(--ink); }
 .set-topup-amt .p .ac-chip { height: 22px; padding: 0 var(--space-2); font-size: 12px; }
-/* Pay with: the token, then a network it's offered on, side by side. */
-.set-topup-pick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* Pay with USDC, its mark beside it, over the network to send it on. */
+.set-topup-pick legend { display: flex; align-items: center; gap: var(--space-2); }
+.set-topup-pick legend .ac-crypto { width: 16px; height: 16px; }
 .set-topup-pick .ac-select { width: 100%; height: 44px; padding-inline: var(--space-3); }
 .set-topup-pick .ac-select .v { flex: 1; }
 /* Waiting on the server: a quiet line with dots. */

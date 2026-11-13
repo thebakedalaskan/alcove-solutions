@@ -61,8 +61,8 @@ partners.near-intents.org) when it is set, and `User-Agent: alcove-api`, with a 
 (about 0.013% on USDC on Base when checked on 6 November 2026, against 0.01% with a key); a key that is set but wrong is
 refused (401), which makes top-ups unavailable.
 
-- `GET /v0/tokens`: intersected with the allowlist of USDC and USDT asset IDs, each with its decimals pinned (checked
-  5 November 2026 and again 6 November: 18 for the BNB Chain stablecoins, 6 for the rest), cached for 10 minutes; a
+- `GET /v0/tokens`: intersected with the allowlist of USDC asset IDs, each with its decimals pinned (checked
+  5 November 2026 and again 6 November: 18 for BNB Chain's USDC, 6 for the rest), cached for 10 minutes; a
   route listed with other decimals isn't offered and is logged at error. A failure is remembered for 30 s.
 - `POST /v0/quote`: `swapType: FLEX_INPUT` (any deposit from the quote's `minAmountIn` up is swapped in full),
   `depositType: ORIGIN_CHAIN`, `originAsset` the route's asset, `amount` the dollars chosen (a token is a dollar), in the

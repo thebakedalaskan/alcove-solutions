@@ -2,7 +2,7 @@ import { type HttpTransport } from '../transport/http';
 import { type HttpOptions } from '../transport/options';
 import { HttpWorkspaceLive, PRESENCE_BEAT_MS, QUIET_MS } from './live';
 import { pictureReader, sendFile } from './media';
-import { type AlcoveApi, AlcoveApiError, BoardThemesSchema, CALL_PASS_HEADER, LIVE_STREAM_HEADER, CreatedSchema, DOC_UPDATE_TYPE, DocAppendedSchema, DocAskPartSchema, DocLiveEventSchema, DocumentLibrarySchema, DocumentShareSchema, DocVersionLineSchema, type DocVersionSummary, DocVersionSummarySchema, fromBase64Url, MediaTokenAnswerSchema, MentionNoticeSchema, PersonIdsSchema, PresenterFrameNotesSchema, SearchDocSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspaceMediaSchema, WorkspacePersonSchema, type WorkspaceReadOptions, WorkspaceSummarySchema, WorkspaceTreeSchema } from '@alcove/api';
+import { type AlcoveApi, AlcoveApiError, BoardThemesSchema, CALL_PASS_HEADER, LIVE_STREAM_HEADER, CreatedSchema, DOC_UPDATE_TYPE, DocAppendedSchema, DocAskPartSchema, DocLiveEventSchema, DocumentLibrarySchema, DocumentPreviewSchema, DocumentShareSchema, MAX_PREVIEWS, TrashedSchema, DocVersionLineSchema, type DocVersionSummary, DocVersionSummarySchema, fromBase64Url, MediaTokenAnswerSchema, MentionNoticeSchema, PersonIdsSchema, PresenterFrameNotesSchema, SearchDocSchema, WorkspaceAboutSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspaceMediaSchema, WorkspacePersonSchema, type WorkspaceReadOptions, WorkspaceSummarySchema, WorkspaceTreeSchema } from '@alcove/api';
 import { z } from 'zod';
 
 export function createWorkspacesApi(t: HttpTransport, o: HttpOptions): Pick<AlcoveApi, 'documents' | 'workspaces'> {
@@ -31,18 +31,28 @@ export function createWorkspacesApi(t: HttpTransport, o: HttpOptions): Pick<Alco
       setTeamAccess: async (id, access) => { await req(z.unknown(), 'PUT', `${space(id)}/team-access`, { access }); },
       get: (id, w) => req(WorkspaceTreeSchema, 'GET', space(id), undefined, withPass(w)),
       rename: async (id, name) => { await req(z.unknown(), 'PATCH', space(id), { name }); },
+      about: async (id) => (await req(WorkspaceAboutSchema, 'GET', `${space(id)}/about`)).about,
+      // What it's for goes in the body, so it's never in a URL or an access log.
+      setAbout: async (id, about) => { await req(z.unknown(), 'PUT', `${space(id)}/about`, { about }); },
       remove: async (id) => { await req(z.unknown(), 'DELETE', space(id)); },
+      // IDs only in the query, a screen of cards at a time: what comes back is read from each document and kept nowhere.
+      previews: async (id, items, w) => {
+        const asks = Array.from({ length: Math.ceil(items.length / MAX_PREVIEWS) }, (_, i) => items.slice(i * MAX_PREVIEWS, (i + 1) * MAX_PREVIEWS));
+        const found = await Promise.all(asks.map((ids) => req(z.array(DocumentPreviewSchema), 'GET', `${space(id)}/previews?items=${ids.map(encodeURIComponent).join(',')}`, undefined, withPass(w))));
+        return found.flat();
+      },
+      trashed: () => req(z.array(TrashedSchema), 'GET', '/trash'),
       people: (id) => req(z.array(WorkspacePersonSchema), 'GET', `${space(id)}/people`),
       addPerson: (id, email, role) => req(CreatedSchema, 'POST', `${space(id)}/people`, { email, role }),
       setRole: async (id, personId, role) => { await req(z.unknown(), 'PATCH', `${space(id)}/people/${encodeURIComponent(personId)}`, { role }); },
       removePerson: async (id, personId) => { await req(z.unknown(), 'DELETE', `${space(id)}/people/${encodeURIComponent(personId)}`); },
       items: {
         get: (id, itemId, w) => req(WorkspaceItemSchema, 'GET', itemIn(id, itemId), undefined, withPass(w)),
-        create: (id, input) => req(CreatedSchema, 'POST', `${space(id)}/items`, input),
+        create: (id, input, w) => req(CreatedSchema, 'POST', `${space(id)}/items`, input, withPass(w)),
         rename: async (id, itemId, name, w) => { await req(z.unknown(), 'PATCH', itemIn(id, itemId), { name }, withPass(w)); },
-        move: async (id, itemId, to) => { await req(z.unknown(), 'POST', `${itemIn(id, itemId)}/move`, to); },
-        duplicate: (id, itemId) => req(CreatedSchema, 'POST', `${itemIn(id, itemId)}/duplicate`, {}),
-        trash: async (id, itemId) => { await req(z.unknown(), 'POST', `${itemIn(id, itemId)}/trash`, {}); },
+        move: async (id, itemId, to, w) => { await req(z.unknown(), 'POST', `${itemIn(id, itemId)}/move`, to, withPass(w)); },
+        duplicate: (id, itemId, w) => req(CreatedSchema, 'POST', `${itemIn(id, itemId)}/duplicate`, {}, withPass(w)),
+        trash: async (id, itemId, w) => { await req(z.unknown(), 'POST', `${itemIn(id, itemId)}/trash`, {}, withPass(w)); },
         restore: async (id, itemId, w) => { await req(z.unknown(), 'POST', `${itemIn(id, itemId)}/restore`, {}, withPass(w)); },
         deleteForever: async (id, itemId) => { await req(z.unknown(), 'DELETE', itemIn(id, itemId)); }
       },

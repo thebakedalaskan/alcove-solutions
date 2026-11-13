@@ -7,24 +7,23 @@
  * undo, and where you were is kept with how you arranged this call (view.ts), so a reload finds that too. Only your screen
  * changes, whatever you do here.
  */
-import { errorMessage, firstName, type CallSession, type CallWorkspace, type Person } from '@alcove/api';
-import { DURATION, Icon, Kbd, WsDeleteAsk, WsLostSpace, WsNoAccess, WsNoSpace, WsPane, cn, useSettledPress, useToast, wsToast, type IconName, type WsPop, type WsToastData } from '@alcove/ui';
+import { errorMessage, firstName, type CallParticipant, type CallRole, type CallSession, type CallWorkspace, type Person } from '@alcove/api';
+import { DURATION, Icon, Kbd, WsLostSpace, WsNameSheet, WsNoAccess, WsPane, cn, useSettledPress, useToast, wsToast, type IconName, type WsToastData } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useReducedMotion } from 'motion/react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { CallPerson, CallTogether, SpaceHead, WorkspaceCall, WorkspacePlace, WorkspacePlaying, WorkspaceTogether } from '~/features/workspace/context';
+import type { CallPerson, CallTogether, WorkspaceCall, WorkspacePlace, WorkspacePlaying, WorkspaceTogether } from '~/features/workspace/context';
 import type { StopFollowing } from '~/features/workspace/follow';
 import { LiveRows } from '~/features/workspace/live/LiveRows';
 import { OutsideSpace } from '~/features/workspace/live/OutsideSpace';
-import { PeopleSheetFor } from '~/features/workspace/Sheets';
+import { CallPeopleSheet, PeopleSheetFor, type InTheCall } from '~/features/workspace/Sheets';
 import type { LiveCall } from '~/features/workspace/live/types';
 import { Workspace } from '~/features/workspace/Workspace';
 import { moveFocusOut, overlayOpen, shortcut } from '~/lib/keys';
 import { log } from '~/lib/log';
-import { useDeleteWorkspace, useFirstDocument, q, useMentionSeen } from '~/lib/queries';
+import { useFirstDocument, q, useMentionSeen, useRenameWorkspace } from '~/lib/queries';
 import { SpacePicker } from './SpacePicker';
 import type { CallView } from '../layout/view';
-import { useAskAnswered } from './WorkspaceAsks';
 
 const wlog = log.child({ component: 'call-workspace' });
 
@@ -50,6 +49,9 @@ function firstPlace(w: CallWorkspace): WorkspacePlace {
  */
 export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace, view: CallView, stage: { open: boolean; setOpen: (open: boolean) => void }) {
   const push = useToast();
+  const qc = useQueryClient();
+  /** A workspace's name, as your Drive has it: the call names only the one everyone views. */
+  const spaceName = useCallback((id: string) => qc.getQueryData(q.workspaces().queryKey)?.find((w) => w.id === id)?.name ?? 'the call’s home', [qc]);
   const kept = view.layout.workspace;
   const open = stage.open;
   const setOpen = stage.setOpen;
@@ -75,7 +77,7 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
 
   /** What the workspace said last: it says one thing at a time, so a second toast never climbs over the foot of the list. */
   const said = useRef<(() => void) | null>(null);
-  const firstDocument = useFirstDocument().mutateAsync;
+  const firstDocument = useFirstDocument(session.ticket.pass).mutateAsync;
   const makeFirst = useRef(firstDocument);
   makeFirst.current = firstDocument;
   const act = useMemo(() => {
@@ -84,25 +86,20 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
     const failed = (e: unknown) => { say(wsToast.failed(errorMessage(e))); };
     const reveal = () => { setOpen(true); };
     const hide = () => { setOpen(false); setPeek(false); setFinding(false); };
-    /**
-     * Organizer only: a workspace of theirs is the call's, at once, for everyone, and its notes and transcript go there from now
-     * on. Back goes back to the one it had, if it had one.
-     */
+    /** The call's home by name, when everyone's viewing another workspace: where the notes still go. */
+    const homeName = (w: CallWorkspace) => (w.home === null || w.home === w.id ? null : spaceName(w.home));
+    /** Organizer only: everyone views another workspace, or the home again, at once, and Back goes back. The notes stay in the home. */
     const switchTo = (to: string) => {
       const from = session.getSnapshot().workspace.id;
       session.setWorkspace(to).then(() => {
         const w = session.getSnapshot().workspace;
-        say(wsToast.switched(w.name ?? 'Untitled', from ? () => switchTo(from) : undefined));
+        say(wsToast.switched(w.name ?? 'Untitled', homeName(w), () => { if (from) switchTo(from); }));
       }, failed);
     };
     return {
       say, failed, hide, reveal, switchTo,
-      /** The call's workspace was just deleted, from here: the call says again which workspace it has, which is none now. */
-      deleted: () => { session.openWorkspace().catch(failed); },
       /** Organizer only: what moving the call to another workspace would mean, for the question the picker asks. Changes nothing. */
       preview: (id: string) => session.previewWorkspace(id),
-      /** Anyone who can't open the call's workspace: asks the organizer, who can open one document to them. */
-      ask: () => { session.askForWorkspace(true).catch(failed); },
       /** A workspace that won't open any more: back to the call, which is asked again, so what opens next time is what it says now. */
       leave: () => { hide(); session.openWorkspace().catch(failed); },
       /** A toast of the call's own, beside whatever the workspace is saying. It returns what takes it away. */
@@ -110,7 +107,7 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
       /** ⌘K: Find, with the workspace opened for it. */
       find: () => { reveal(); setFinding(true); },
       found: () => setFinding(false),
-      /** Opens it on something to share: the document last open there, or its list to pick one, on a phone too (`WorkspaceCall.list.wanted`). */
+      /** Opens it where you left it, for a board's Saved in: the document last open there, or its list, on a phone too (`WorkspaceCall.list.wanted`). */
       wantList: () => { reveal(); setListWanted((n) => n + 1); },
       /** Takes away what the workspace said last, for something it would sit over, such as the call ending. */
       hush: () => { said.current?.(); said.current = null; },
@@ -137,22 +134,21 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
         unlit.current = setTimeout(() => setLit(null), LIT_MS);
       },
       /**
-       * Organizer only: a workspace made for this call, with everyone invited in it, and it's the call's. It starts with one blank
-       * document, open, ready to write in: from the picker, for a call with none yet, or for an organizer who's lost the one the
+       * Organizer only: a workspace made for this call, with everyone invited in it as the home has, and the call moves to it.
+       * It starts with one blank document, open, ready to write in: from the picker, or for an organizer who's lost the one the
        * call uses.
        */
       newWorkspace: () => {
         session.newWorkspace().then(async () => {
           const w = session.getSnapshot().workspace;
-          say(wsToast.newSpace(w.name ?? 'Untitled'));
+          say(wsToast.newSpace(w.name ?? 'Untitled', homeName(w)));
           if (w.id === null) return;
           const { id } = await makeFirst.current(w.id);
           setAt({ kind: 'document', id });
         }).catch(failed);
       }
     };
-  }, [push, session, setOpen]);
-  useAskAnswered(workspace, act);
+  }, [push, session, spaceName, setOpen]);
 
   /* Tagged here with the workspace not open: the call says so, and nothing moves until Go there. Someone with no account has only their stream. */
   const signedIn = !!useQuery(q.session()).data;
@@ -262,22 +258,12 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   /** Shows the list, and never hides it. */
   onShowList: () => void;
 }) {
-  const chooser = firstName(workspace.chosenBy.name);
   const documents = useMemo(() => workspace.documents.filter((d) => d.workspaceId === workspace.id).map((d) => d.id), [workspace.documents, workspace.id]);
-  /* The organizer chooses the call's workspace from the name at the top of the list; everyone else is told who chooses. */
-  const picker = useMemo(() => (organizer ? (head: SpaceHead) => <SpacePicker head={head} close={head.close} act={act} /> : undefined), [organizer, act]);
   const call = useMemo((): WorkspaceCall => ({
-    top: LIVE_ROWS, foot, live, documents, onBring: act.bring, onDeleted: act.deleted, picker, chooser: organizer ? undefined : chooser, say: act.say, closed: !showing, people, invited, onTogether: act.setTogether, onTagged: act.tagged, together: reach, finding, onFinding: act.found,
+    top: LIVE_ROWS, foot, live, documents, onBring: act.bring, say: act.say, closed: !showing, people, invited, onTogether: act.setTogether, onTagged: act.tagged, together: reach, finding, onFinding: act.found,
     list: { off: listOff, peek: listPeek, onToggle: onToggleList, onShow: onShowList, wanted: listWanted },
     presenter, playing
-  }), [ foot, workspace.id, live, documents, act, picker, reach, people, invited, organizer, chooser, showing, finding, listOff, listPeek, listWanted, onToggleList, onShowList, presenter, playing ]);
-  /* Pick one of yours, for an organizer whose call has no workspace they can open: their workspaces, read again as it opens. */
-  const qc = useQueryClient();
-  const [picking, setPicking] = useState(false);
-  const pick: WsPop = {
-    open: picking, content: picking ? <SpacePicker head={null} close={() => setPicking(false)} act={act} /> : null,
-    onOpenChange: (to) => { setPicking(to); if (to) void qc.invalidateQueries({ queryKey: q.workspaces().queryKey, exact: true }); }
-  };
+  }), [ foot, workspace.id, live, documents, act, reach, people, invited, showing, finding, listOff, listPeek, listWanted, onToggleList, onShowList, presenter, playing ]);
   /* In a call the picker says what happens, and nothing else goes to another workspace. */
   const switchNowhere = useCallback(() => undefined, []);
   /*
@@ -288,16 +274,17 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   const { leaving, gone, box, held } = useLeaving(now, settled);
   /* Nothing opens until the call has said what's here: what it opens on may have only just been made. */
   if (!settled) return <WsPane />;
-  /*
-   * Being in the call opens nothing. A call with no workspace yet says who chooses one, and its organizer makes or picks one;
-   * an organizer who can't open the one it has gives it another; anyone else who can't open it is told it's private, and can ask
-   * the organizer. The call's own pages are around it, for everyone.
-   */
-  const outside = !workspace.chosen ? <WsNoSpace organizer={chooser} {...(organizer ? { onNew: act.newWorkspace, pick } : {})} />
-    : organizer ? <WsLostSpace onNew={act.newWorkspace} pick={pick} /> : <WsNoAccess organizer={chooser} asked={workspace.asked === 'asking'} onAsk={act.ask} />;
   const draw = (s: Shown) => (s.id !== null
     ? <Workspace mode="call" workspaceId={s.id} at={s.at} onGo={act.go} onSwitch={switchNowhere} onLeave={act.leave} pass={pass} call={s.call} />
-    : <OutsideSpace live={live} at={s.at} go={act.go} say={act.say} closed={s.call.closed} list={s.call.list}>{outside}</OutsideSpace>);
+    /*
+     * The workspace the call uses opens to everyone in it: someone it doesn't open for (once its organizer can't edit there) is
+     * told it's private, and the organizer can give the call another. The call's own pages are around it, for everyone.
+     */
+      : (
+        <OutsideSpace live={live} at={s.at} go={act.go} say={act.say} closed={s.call.closed} list={s.call.list}>
+          {organizer ? <WsLostSpace onNew={act.newWorkspace} /> : <WsNoAccess />}
+        </OutsideSpace>
+      ));
   return (
     <div className="ic-wsx">
       {leaving && <div key={leaving.key} ref={held} className={cn('ic-wsx-slot is-leaving', gone && 'is-gone')} inert aria-hidden>{draw(leaving)}</div>}
@@ -365,45 +352,77 @@ function useLeaving(now: Shown, settled: boolean) {
 }
 
 /**
- * What the workspace's frame's name menu offers: Switch workspace (the organizer), or Choose a workspace while the call has none
- * they can open; Find in the workspace, Who's in it (for someone in it), Copy link, and Delete workspace for its admins. Switch
- * workspace, Choose a workspace, Who's in it and Delete workspace open in place of the rows; deleting asks first.
+ * Who's in it, as Who's in it shows them: everyone in the call, as you may know them. Someone with no address is a guest, as far
+ * as you can tell: everyone's is kept from a guest, so a guest knows only that they're one themselves.
  */
-export function WorkspaceMenuRows({ workspace, organizer, act, onFind, onCopy, onDone }: {
+export function inTheCall(participants: readonly CallParticipant[], viewer: CallRole): InTheCall[] {
+  return participants.map((p) => ({
+    person: p.person, isMe: p.isMe, organizer: p.isOrganizer,
+    guest: p.isMe ? viewer === 'guest' : viewer !== 'guest' && !p.isOrganizer && p.person.email === ''
+  }));
+}
+
+/**
+ * The workspace's one menu, on its name on the frame's bar. The organizer: Switch workspace, Find in the workspace, Who's in it,
+ * Rename (an admin) and Copy link. Anyone else in it: the same but Switch workspace. Someone it's open to only through the call,
+ * a guest say: Find in the workspace and Who's in it. Switch workspace, Who's in it and Rename open in place of the rows; `start`
+ * opens it on Who's in it, from who can edit it on the bar.
+ */
+export function WorkspaceMenuRows({ workspace, organizer, people, act, start, onFind, onCopy, onRenamed, onDone }: {
   workspace: CallWorkspace; organizer: boolean; act: WorkspacePanelState['act'];
+  /** Everyone in the call, for Who's in it. */
+  people: readonly InTheCall[];
+  start: 'access' | null;
   onFind: () => void;
   onCopy: (() => void) | undefined;
+  /** A new name was kept: the call says it from then on. */
+  onRenamed: () => void;
   onDone: () => void;
 }) {
-  const [inside, setInside] = useState<'switch' | 'people' | 'delete' | null>(null);
-  const remove = useDeleteWorkspace();
-  const press = useSettledPress(['switch', 'find', 'people', 'link', 'delete'].join('\n'));
-  const pick = (f: () => void) => press(() => { onDone(); f(); });
-  const name = workspace.name ?? 'Untitled';
-  if (inside === 'switch') {
-    return <SpacePicker head={workspace.id === null ? null : { workspaceId: workspace.id, name, people: null, about: [], close: onDone }} close={onDone} act={act} />;
-  }
-  if (inside === 'people' && workspace.id !== null) {
-    return <div className="ic-menu-sheet"><PeopleSheetFor workspaceId={workspace.id} name={name} admin={workspace.role === 'admin'} say={act.say} /></div>;
-  }
+  const [inside, setInside] = useState<'switch' | 'people' | 'name' | null>(start === 'access' ? 'people' : null);
+  const rename = useRenameWorkspace();
   const id = workspace.id;
-  if (inside === 'delete' && id !== null) {
-    /* Gone for everyone: the call says again which workspace it has, which is none, and its organizer can make or pick another. */
-    const drop = () => {
-      remove.mutateAsync(id).then(() => { onDone(); act.say(wsToast.spaceDeleted(name)); act.deleted(); }, (e: unknown) => { onDone(); act.failed(e); });
-    };
-    return <WsDeleteAsk name={name} busy={remove.isPending} onDelete={drop} onKeep={onDone} />;
+  const name = workspace.name ?? 'Untitled';
+  const member = workspace.role !== null;
+  const admin = workspace.role === 'admin';
+  const copy = member ? onCopy : undefined;
+  /* Before the call has said which workspace it uses, or once it doesn't open for you, there's only Find. */
+  const opened = id !== null;
+  /* A press waits a moment after the rows change, as in every menu. */
+  const press = useSettledPress([...(organizer && opened ? ['switch'] : []), 'find', ...(opened ? ['people'] : []), ...(admin ? ['rename'] : []), ...(copy ? ['link'] : [])].join('\n'));
+  const pick = (f: () => void) => press(() => { onDone(); f(); });
+  if (inside === 'switch' && id !== null) return <SpacePicker current={{ id, name }} home={workspace.home} act={act} onClose={onDone} />;
+  if (inside === 'people' && id !== null) {
+    return (
+      <div className="ic-menu-sheet">
+        {member
+          ? <PeopleSheetFor workspaceId={id} name={name} admin={admin} say={act.say} call={workspace.everyone ? people : undefined} />
+          : <CallPeopleSheet name={name} people={people} />}
+      </div>
+    );
   }
-  const row = (icon: IconName, label: string, onPick: () => void, o: { kb?: string; caution?: boolean } = {}) => (
-    <button type="button" className={cn('mi', o.caution && 'is-caution')} role="menuitem" onClick={onPick}><Icon name={icon} size={17} /><span className="t">{label}</span>{o.kb && <Kbd>{o.kb}</Kbd>}</button>
+  if (inside === 'name' && id !== null) {
+    return (
+      <div className="ic-menu-sheet">
+        <WsNameSheet name={name} onCommit={(typed) => {
+          onDone();
+          const to = typed.replace(/\s+/g, ' ').trim();
+          if (!to || to === name) return;
+          rename.mutateAsync({ id, name: to }).then(onRenamed, act.failed);
+        }} />
+      </div>
+    );
+  }
+  const row = (icon: IconName, label: string, onPick: () => void, kb?: string) => (
+    <button type="button" className="mi" role="menuitem" onClick={onPick}><Icon name={icon} size={17} /><span className="t">{label}</span>{kb && <Kbd>{kb}</Kbd>}</button>
   );
   return (
     <>
-      {organizer && row('folders', id === null ? 'Choose a workspace' : 'Switch workspace', press(() => setInside('switch')))}
-      {row('search', 'Find in the workspace', pick(onFind), { kb: shortcut('K') })}
-      {id !== null && workspace.role !== null && row('people', 'Who’s in it', press(() => setInside('people')))}
-      {onCopy && row('link', 'Copy link', pick(onCopy))}
-      {id !== null && workspace.role === 'admin' && row('trash', 'Delete workspace', press(() => setInside('delete')), { caution: true })}
+      {organizer && opened && row('folders', 'Switch workspace', press(() => setInside('switch')))}
+      {row('search', 'Find in the workspace', pick(onFind), shortcut('K'))}
+      {opened && row('people', 'Who’s in it', press(() => setInside('people')))}
+      {admin && row('pen', 'Rename', press(() => setInside('name')))}
+      {copy && row('link', 'Copy link', pick(copy))}
     </>
   );
 }

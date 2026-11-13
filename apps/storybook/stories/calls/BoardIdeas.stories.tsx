@@ -25,9 +25,9 @@ const SOON = { timeout: 10000 };
 /** Long enough for the script to get there: the board opening and filling, and the call hearing what's worth a sticky. */
 const LATER = { timeout: 40000 };
 const REVIEWERS: Present[] = [{ who: PRIYA }, { who: KOFI }, { who: AIKO }];
-/** Board, then the board in this call: on your stage, just for you. */
+/** Board, then the board in this call: on your stage, only on your screen. */
 const onTheBoard: Play = async (c) => {
-  await c.step('Press Board, then the retro in this call: it opens just for you', async () => { await openCallBoard(c, 'Design review'); });
+  await c.step('Press Board, then the retro in this call: it opens on your screen', async () => { await openCallBoard(c, 'Design review'); });
 };
 /** The design review with notes on: Priya opens the launch retro, you open it, the review fills it, and the call hears three ideas. */
 const heard = (play?: Play): PageStory => inCall({

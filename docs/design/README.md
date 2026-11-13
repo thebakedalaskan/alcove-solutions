@@ -23,7 +23,7 @@ anything, whether it's a page, a flow, a component or a design canvas.
 | The scene behind every page | `packages/ui/src/components/horizon.tsx` and `styles/horizon.css` |
 | What each page does, feature by feature | [docs/product/user-flows.md](../product/user-flows.md) |
 | What's built: the foundations, every component, page and journey, on made-up data (`pnpm storybook`) | [apps/storybook](../../apps/storybook/README.md) |
-| The canvas every new design starts from: Home, Notes, a note, a series, Team, Record and Settings as boards, with each page's journeys (a series has none yet) | [canvas/](canvas/) |
+| The canvas every new design starts from: Home, Notes, a note, a series, Team, Record, Settings and Agents as boards, with each page's journeys (a series has none yet) | [canvas/](canvas/) |
 
 ## The one rule that holds it together
 

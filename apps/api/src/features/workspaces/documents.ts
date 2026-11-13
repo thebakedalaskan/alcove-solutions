@@ -127,7 +127,7 @@ const awarenessHeader = (p: Place, documentId: string): RecordHeader => ({ v: 1,
 /**
  * Who's written as a client: a keyed hash for each way access knows them, bound to the document and the client, so no two rows
  * can be linked. An account is one of those ways, because its address can change: what someone wrote or kept before a new
- * address is still theirs after it.
+ * address is still theirs after it. What a call opens to everyone in it isn't one: it says nothing about who anyone is.
  */
 const PERSON_TAG_BYTES = 32;
 const clientsKey = (o: Owner, documentId: string): Uint8Array => stateKey(o.root, o.ownerId, `document-clients:${documentId}`);
@@ -569,12 +569,15 @@ export async function documentsAt(db: Db, ownerId: string, documentIds: string[]
     'SELECT document_id, next_seq, version_at, coalesce(closed_until > now(), false) AS closed FROM documents WHERE owner_id = $1 AND document_id = ANY($2::text[])', [ownerId, documentIds]);
   return new Map(found.map((r) => [r.document_id, { at: `${r.next_seq}:${r.version_at?.getTime() ?? 0}`, closed: r.closed }]));
 }
-/** Asks a document something, for code that has decided the reader may have it (`requireDocument`). What can be asked is in documentOps.ts. */
-export async function readDocument<N extends keyof Reads>(w: Held, documentId: string, op: N, args: ArgsOf<Reads[N]>): Promise<ResultOf<Reads[N]>> {
+/**
+ * Asks a document something, for code that has decided the reader may have it (`requireDocument`). What can be asked is in
+ * documentOps.ts. `who`: whose turn it's on, for someone who asked (`limitKey`); the workspace's when it's the server's own.
+ */
+export async function readDocument<N extends keyof Reads>(w: Held, documentId: string, op: N, args: ArgsOf<Reads[N]>, who?: string | undefined): Promise<ResultOf<Reads[N]>> {
   requireContent(w, documentId);
   requireKind(w, documentId, args);
   const row = await documentRow(w, documentId);
-  const done = await working(w, documentId, row, async () => w.owner.docs.run('read', { ...(await sealedLog(w, documentId)), op, args }, jobFor(w, documentId, row)));
+  const done = await working(w, documentId, row, async () => w.owner.docs.run('read', { ...(await sealedLog(w, documentId)), op, args }, jobFor(w, documentId, row, who)));
   report(w, documentId, done.found);
   return reads[op].result.parse(done.value);
 }
@@ -1255,6 +1258,7 @@ function docRoomFor(d: Deps, w: Place, documentId: string, tree: Room): DocRoom 
 /** What a stream starts with, once: it's let go of as soon as it's written. `ascii`: the update, as base64url, ready to go on a line. `sent`: all of it has gone, or the reader has. */
 interface First { seq: number; ascii: Uint8Array; sent(): void }
 
+/** Whether two readers are one person: by who they are, never by a call they're both in, which everyone in it carries. */
 const samePerson = (a: Who, b: Who): boolean => a.principals.some((p) => b.principals.some((q) => Buffer.compare(p, q) === 0));
 
 /** One browser's stream of a document: who it's for, and how far they've been told. Nothing of the document stays here. */
@@ -1406,7 +1410,7 @@ export async function open(d: Deps, credentials: Credentials, reader: Reader, wo
     if (item.kind === 'document') await started(w, documentId, row);
     const tree = roomFor(d, workspaceId);
     const room = docRoomFor(d, w, documentId, tree);
-    const stream = new DocStream(d, tree, room, credentials, { email: reader.email, principals: reader.principals }, w.version, place, role, trashOf(w.state, documentId) !== null, limitKey(reader), address);
+    const stream = new DocStream(d, tree, room, credentials, { email: reader.email, principals: reader.principals, calls: reader.calls }, w.version, place, role, trashOf(w.state, documentId) !== null, limitKey(reader), address);
     tree.join(stream);
     room.join(stream);
     try {

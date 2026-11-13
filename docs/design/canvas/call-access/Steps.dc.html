@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Every journey, step by step</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="call.css">
+<link rel="stylesheet" href="end.css">
+<script src="icons.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="jr" style="width: 3140px">
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="4">
+<section class="jr-r">
+<h2 class="jr-h">{{r.name}}</h2>
+<div class="jr-fs">
+<sc-for list="{{r.frames}}" as="f" hint-placeholder-count="4">
+<figure class="jr-f">
+<figcaption class="jr-c"><b>{{f.n}}</b><span>{{f.t}}</span></figcaption>
+<div class="jr-box"><div class="jr-in"><dc-import name="Main" step="{{f.step}}" hint-size="1440px,900px"></dc-import></div></div>
+</figure>
+</sc-for>
+</div>
+</section>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":3140,"height":2712}}'>
+/* Each journey from what's pressed to what happens, one row each, every frame the call board at that moment. */
+var JOURNEYS = [
+  { name: '1 · Art opens the call’s workspace', frames: [
+    { step: 'wsArt', t: 'Click Workspace. It opens on your screen. The bar says so, and that everyone in the call can edit it. Noor, a guest, is already writing in Launch plan.' },
+    { step: 'wsMenu', t: 'Click its name. One menu: switch, find, who’s in it, rename, copy link. The list doesn’t repeat the name any more.' },
+    { step: 'wsPeople', t: 'Click Who’s in it, or the line on the bar. The workspace’s people, and Noor: a guest, who can edit while they’re in the call.' },
+    { step: 'wsNew', t: 'Press N, or +. The new document goes in This call, beside the notes, and opens with the caret in its title.' }
+  ] },
+  { name: '2 · Noor, a guest with no account, opens it too', frames: [
+    { step: 'wsNoor', t: 'Noor clicks Workspace. It opens, as it does for everyone in the call: nothing private, nobody to ask. The bar says it’s theirs to edit while they’re in the call.' },
+    { step: 'wsNoorMenu', t: 'Their menu has what a guest can use: find, and who’s in it. Switching and renaming are the organizer’s.' },
+    { step: 'boardNoor', t: 'Noor clicks Board. The call’s board opens, and they add a sticky. When they leave the call, both close for them; what they wrote stays.' }
+  ] },
+  { name: '3 · Art moves the call to another workspace', frames: [
+    { step: 'wsSwitch', t: 'Click the name, then Switch workspace. Your workspaces, this call’s home ticked.' },
+    { step: 'wsSwitchAsk', t: 'Pick Q4 planning. Once, it says who it opens to: Kofi and Noor aren’t in it.' },
+    { step: 'wsSwitched', t: 'Click Switch. Everyone’s in Q4 planning. This call’s pages stay at the top, the notes still go home, and Budget stays closed to all but Art and Aiko.' }
+  ] },
+  { name: '4 · Art opens a board from another workspace', frames: [
+    { step: 'boardPick', t: 'Click Board. A new board or one of your team’s: whatever opens here, everyone in the call can edit.' },
+    { step: 'boardAsk', t: 'Pick Onboarding flow. It’s in Design, so it says, once, who it opens to.' },
+    { step: 'boardArt', t: 'Click Open it. It’s on your screen, and Kofi and Noor are already on it.' }
+  ] }
+];
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      rows: JOURNEYS.map(function (j) {
+        return { name: j.name, frames: j.frames.map(function (f, k) { return { step: f.step, t: f.t, n: String(k + 1) }; }) };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

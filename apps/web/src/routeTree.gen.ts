@@ -13,12 +13,12 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SplatRouteImport } from './routes/$'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as ConnectRouteImport } from './routes/connect'
-import { Route as ConnectCalendarRouteImport } from './routes/connect-calendar'
 import { Route as LinkRouteImport } from './routes/link'
 import { Route as MoveRouteImport } from './routes/move'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ReadyRouteImport } from './routes/ready'
 import { Route as WelcomeRouteImport } from './routes/welcome'
+import { Route as AppAgentsRouteImport } from './routes/_app/agents'
 import { Route as AppHomeRouteImport } from './routes/_app/home'
 import { Route as AppPlansRouteImport } from './routes/_app/plans'
 import { Route as AppRecordRouteImport } from './routes/_app/record'
@@ -28,14 +28,14 @@ import { Route as CallCodeRouteImport } from './routes/call.$code'
 import { Route as JoinCodeRouteImport } from './routes/join.$code'
 import { Route as RecordLiveRouteImport } from './routes/record.live'
 import { Route as TeamJoinRouteImport } from './routes/team.join'
+import { Route as AppCallsIndexRouteImport } from './routes/_app/calls.index'
+import { Route as AppCallsNoteIdRouteImport } from './routes/_app/calls.$noteId'
 import { Route as AppDriveIndexRouteImport } from './routes/_app/drive.index'
 import { Route as AppDriveWorkspaceIdRouteImport } from './routes/_app/drive.$workspaceId'
-import { Route as AppNotesIndexRouteImport } from './routes/_app/notes.index'
-import { Route as AppNotesNoteIdRouteImport } from './routes/_app/notes.$noteId'
+import { Route as AppCallsUpcomingMeetingIdRouteImport } from './routes/_app/calls.upcoming.$meetingId'
 import { Route as AppDriveWorkspaceIdIndexRouteImport } from './routes/_app/drive.$workspaceId.index'
 import { Route as AppDriveWorkspaceIdDocumentIdRouteImport } from './routes/_app/drive.$workspaceId.$documentId'
 import { Route as AppDriveWorkspaceIdTrashRouteImport } from './routes/_app/drive.$workspaceId.trash'
-import { Route as AppNotesSeriesSeriesIdRouteImport } from './routes/_app/notes.series.$seriesId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -54,11 +54,6 @@ const AppRoute = AppRouteImport.update({
 const ConnectRoute = ConnectRouteImport.update({
   id: '/connect',
   path: '/connect',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ConnectCalendarRoute = ConnectCalendarRouteImport.update({
-  id: '/connect-calendar',
-  path: '/connect-calendar',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LinkRoute = LinkRouteImport.update({
@@ -85,6 +80,11 @@ const WelcomeRoute = WelcomeRouteImport.update({
   id: '/welcome',
   path: '/welcome',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppAgentsRoute = AppAgentsRouteImport.update({
+  id: '/agents',
+  path: '/agents',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppHomeRoute = AppHomeRouteImport.update({
   id: '/home',
@@ -131,6 +131,16 @@ const TeamJoinRoute = TeamJoinRouteImport.update({
   path: '/team/join',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppCallsIndexRoute = AppCallsIndexRouteImport.update({
+  id: '/calls/',
+  path: '/calls/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCallsNoteIdRoute = AppCallsNoteIdRouteImport.update({
+  id: '/calls/$noteId',
+  path: '/calls/$noteId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDriveIndexRoute = AppDriveIndexRouteImport.update({
   id: '/drive/',
   path: '/drive/',
@@ -141,16 +151,12 @@ const AppDriveWorkspaceIdRoute = AppDriveWorkspaceIdRouteImport.update({
   path: '/drive/$workspaceId',
   getParentRoute: () => AppRoute,
 } as any)
-const AppNotesIndexRoute = AppNotesIndexRouteImport.update({
-  id: '/notes/',
-  path: '/notes/',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppNotesNoteIdRoute = AppNotesNoteIdRouteImport.update({
-  id: '/notes/$noteId',
-  path: '/notes/$noteId',
-  getParentRoute: () => AppRoute,
-} as any)
+const AppCallsUpcomingMeetingIdRoute =
+  AppCallsUpcomingMeetingIdRouteImport.update({
+    id: '/calls/upcoming/$meetingId',
+    path: '/calls/upcoming/$meetingId',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppDriveWorkspaceIdIndexRoute =
   AppDriveWorkspaceIdIndexRouteImport.update({
     id: '/',
@@ -169,22 +175,17 @@ const AppDriveWorkspaceIdTrashRoute =
     path: '/trash',
     getParentRoute: () => AppDriveWorkspaceIdRoute,
   } as any)
-const AppNotesSeriesSeriesIdRoute = AppNotesSeriesSeriesIdRouteImport.update({
-  id: '/notes/series/$seriesId',
-  path: '/notes/series/$seriesId',
-  getParentRoute: () => AppRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
   '/connect': typeof ConnectRoute
-  '/connect-calendar': typeof ConnectCalendarRoute
   '/link': typeof LinkRoute
   '/move': typeof MoveRoute
   '/privacy': typeof PrivacyRoute
   '/ready': typeof ReadyRoute
   '/welcome': typeof WelcomeRoute
+  '/agents': typeof AppAgentsRoute
   '/home': typeof AppHomeRoute
   '/plans': typeof AppPlansRoute
   '/record': typeof AppRecordRoute
@@ -194,25 +195,25 @@ export interface FileRoutesByFullPath {
   '/join/$code': typeof JoinCodeRoute
   '/record/live': typeof RecordLiveRoute
   '/team/join': typeof TeamJoinRoute
+  '/calls/$noteId': typeof AppCallsNoteIdRoute
   '/drive/$workspaceId': typeof AppDriveWorkspaceIdRouteWithChildren
-  '/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/calls/': typeof AppCallsIndexRoute
   '/drive/': typeof AppDriveIndexRoute
-  '/notes/': typeof AppNotesIndexRoute
+  '/calls/upcoming/$meetingId': typeof AppCallsUpcomingMeetingIdRoute
   '/drive/$workspaceId/$documentId': typeof AppDriveWorkspaceIdDocumentIdRoute
   '/drive/$workspaceId/trash': typeof AppDriveWorkspaceIdTrashRoute
-  '/notes/series/$seriesId': typeof AppNotesSeriesSeriesIdRoute
   '/drive/$workspaceId/': typeof AppDriveWorkspaceIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
   '/connect': typeof ConnectRoute
-  '/connect-calendar': typeof ConnectCalendarRoute
   '/link': typeof LinkRoute
   '/move': typeof MoveRoute
   '/privacy': typeof PrivacyRoute
   '/ready': typeof ReadyRoute
   '/welcome': typeof WelcomeRoute
+  '/agents': typeof AppAgentsRoute
   '/home': typeof AppHomeRoute
   '/plans': typeof AppPlansRoute
   '/record': typeof AppRecordRoute
@@ -222,12 +223,12 @@ export interface FileRoutesByTo {
   '/join/$code': typeof JoinCodeRoute
   '/record/live': typeof RecordLiveRoute
   '/team/join': typeof TeamJoinRoute
-  '/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/calls/$noteId': typeof AppCallsNoteIdRoute
+  '/calls': typeof AppCallsIndexRoute
   '/drive': typeof AppDriveIndexRoute
-  '/notes': typeof AppNotesIndexRoute
+  '/calls/upcoming/$meetingId': typeof AppCallsUpcomingMeetingIdRoute
   '/drive/$workspaceId/$documentId': typeof AppDriveWorkspaceIdDocumentIdRoute
   '/drive/$workspaceId/trash': typeof AppDriveWorkspaceIdTrashRoute
-  '/notes/series/$seriesId': typeof AppNotesSeriesSeriesIdRoute
   '/drive/$workspaceId': typeof AppDriveWorkspaceIdIndexRoute
 }
 export interface FileRoutesById {
@@ -236,12 +237,12 @@ export interface FileRoutesById {
   '/$': typeof SplatRoute
   '/_app': typeof AppRouteWithChildren
   '/connect': typeof ConnectRoute
-  '/connect-calendar': typeof ConnectCalendarRoute
   '/link': typeof LinkRoute
   '/move': typeof MoveRoute
   '/privacy': typeof PrivacyRoute
   '/ready': typeof ReadyRoute
   '/welcome': typeof WelcomeRoute
+  '/_app/agents': typeof AppAgentsRoute
   '/_app/home': typeof AppHomeRoute
   '/_app/plans': typeof AppPlansRoute
   '/_app/record': typeof AppRecordRoute
@@ -251,13 +252,13 @@ export interface FileRoutesById {
   '/join/$code': typeof JoinCodeRoute
   '/record/live': typeof RecordLiveRoute
   '/team/join': typeof TeamJoinRoute
+  '/_app/calls/$noteId': typeof AppCallsNoteIdRoute
   '/_app/drive/$workspaceId': typeof AppDriveWorkspaceIdRouteWithChildren
-  '/_app/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/_app/calls/': typeof AppCallsIndexRoute
   '/_app/drive/': typeof AppDriveIndexRoute
-  '/_app/notes/': typeof AppNotesIndexRoute
+  '/_app/calls/upcoming/$meetingId': typeof AppCallsUpcomingMeetingIdRoute
   '/_app/drive/$workspaceId/$documentId': typeof AppDriveWorkspaceIdDocumentIdRoute
   '/_app/drive/$workspaceId/trash': typeof AppDriveWorkspaceIdTrashRoute
-  '/_app/notes/series/$seriesId': typeof AppNotesSeriesSeriesIdRoute
   '/_app/drive/$workspaceId/': typeof AppDriveWorkspaceIdIndexRoute
 }
 export interface FileRouteTypes {
@@ -266,12 +267,12 @@ export interface FileRouteTypes {
     | '/'
     | '/$'
     | '/connect'
-    | '/connect-calendar'
     | '/link'
     | '/move'
     | '/privacy'
     | '/ready'
     | '/welcome'
+    | '/agents'
     | '/home'
     | '/plans'
     | '/record'
@@ -281,25 +282,25 @@ export interface FileRouteTypes {
     | '/join/$code'
     | '/record/live'
     | '/team/join'
+    | '/calls/$noteId'
     | '/drive/$workspaceId'
-    | '/notes/$noteId'
+    | '/calls/'
     | '/drive/'
-    | '/notes/'
+    | '/calls/upcoming/$meetingId'
     | '/drive/$workspaceId/$documentId'
     | '/drive/$workspaceId/trash'
-    | '/notes/series/$seriesId'
     | '/drive/$workspaceId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/$'
     | '/connect'
-    | '/connect-calendar'
     | '/link'
     | '/move'
     | '/privacy'
     | '/ready'
     | '/welcome'
+    | '/agents'
     | '/home'
     | '/plans'
     | '/record'
@@ -309,12 +310,12 @@ export interface FileRouteTypes {
     | '/join/$code'
     | '/record/live'
     | '/team/join'
-    | '/notes/$noteId'
+    | '/calls/$noteId'
+    | '/calls'
     | '/drive'
-    | '/notes'
+    | '/calls/upcoming/$meetingId'
     | '/drive/$workspaceId/$documentId'
     | '/drive/$workspaceId/trash'
-    | '/notes/series/$seriesId'
     | '/drive/$workspaceId'
   id:
     | '__root__'
@@ -322,12 +323,12 @@ export interface FileRouteTypes {
     | '/$'
     | '/_app'
     | '/connect'
-    | '/connect-calendar'
     | '/link'
     | '/move'
     | '/privacy'
     | '/ready'
     | '/welcome'
+    | '/_app/agents'
     | '/_app/home'
     | '/_app/plans'
     | '/_app/record'
@@ -337,13 +338,13 @@ export interface FileRouteTypes {
     | '/join/$code'
     | '/record/live'
     | '/team/join'
+    | '/_app/calls/$noteId'
     | '/_app/drive/$workspaceId'
-    | '/_app/notes/$noteId'
+    | '/_app/calls/'
     | '/_app/drive/'
-    | '/_app/notes/'
+    | '/_app/calls/upcoming/$meetingId'
     | '/_app/drive/$workspaceId/$documentId'
     | '/_app/drive/$workspaceId/trash'
-    | '/_app/notes/series/$seriesId'
     | '/_app/drive/$workspaceId/'
   fileRoutesById: FileRoutesById
 }
@@ -352,7 +353,6 @@ export interface RootRouteChildren {
   SplatRoute: typeof SplatRoute
   AppRoute: typeof AppRouteWithChildren
   ConnectRoute: typeof ConnectRoute
-  ConnectCalendarRoute: typeof ConnectCalendarRoute
   LinkRoute: typeof LinkRoute
   MoveRoute: typeof MoveRoute
   PrivacyRoute: typeof PrivacyRoute
@@ -394,13 +394,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/connect-calendar': {
-      id: '/connect-calendar'
-      path: '/connect-calendar'
-      fullPath: '/connect-calendar'
-      preLoaderRoute: typeof ConnectCalendarRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/link': {
       id: '/link'
       path: '/link'
@@ -435,6 +428,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/welcome'
       preLoaderRoute: typeof WelcomeRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_app/agents': {
+      id: '/_app/agents'
+      path: '/agents'
+      fullPath: '/agents'
+      preLoaderRoute: typeof AppAgentsRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_app/home': {
       id: '/_app/home'
@@ -499,6 +499,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TeamJoinRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/calls/': {
+      id: '/_app/calls/'
+      path: '/calls'
+      fullPath: '/calls/'
+      preLoaderRoute: typeof AppCallsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/calls/$noteId': {
+      id: '/_app/calls/$noteId'
+      path: '/calls/$noteId'
+      fullPath: '/calls/$noteId'
+      preLoaderRoute: typeof AppCallsNoteIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/drive/': {
       id: '/_app/drive/'
       path: '/drive'
@@ -513,18 +527,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDriveWorkspaceIdRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/notes/': {
-      id: '/_app/notes/'
-      path: '/notes'
-      fullPath: '/notes/'
-      preLoaderRoute: typeof AppNotesIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/notes/$noteId': {
-      id: '/_app/notes/$noteId'
-      path: '/notes/$noteId'
-      fullPath: '/notes/$noteId'
-      preLoaderRoute: typeof AppNotesNoteIdRouteImport
+    '/_app/calls/upcoming/$meetingId': {
+      id: '/_app/calls/upcoming/$meetingId'
+      path: '/calls/upcoming/$meetingId'
+      fullPath: '/calls/upcoming/$meetingId'
+      preLoaderRoute: typeof AppCallsUpcomingMeetingIdRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/drive/$workspaceId/': {
@@ -548,13 +555,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDriveWorkspaceIdTrashRouteImport
       parentRoute: typeof AppDriveWorkspaceIdRoute
     }
-    '/_app/notes/series/$seriesId': {
-      id: '/_app/notes/series/$seriesId'
-      path: '/notes/series/$seriesId'
-      fullPath: '/notes/series/$seriesId'
-      preLoaderRoute: typeof AppNotesSeriesSeriesIdRouteImport
-      parentRoute: typeof AppRoute
-    }
   }
 }
 
@@ -574,29 +574,31 @@ const AppDriveWorkspaceIdRouteWithChildren =
   AppDriveWorkspaceIdRoute._addFileChildren(AppDriveWorkspaceIdRouteChildren)
 
 interface AppRouteChildren {
+  AppAgentsRoute: typeof AppAgentsRoute
   AppHomeRoute: typeof AppHomeRoute
   AppPlansRoute: typeof AppPlansRoute
   AppRecordRoute: typeof AppRecordRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppTeamRoute: typeof AppTeamRoute
+  AppCallsNoteIdRoute: typeof AppCallsNoteIdRoute
   AppDriveWorkspaceIdRoute: typeof AppDriveWorkspaceIdRouteWithChildren
-  AppNotesNoteIdRoute: typeof AppNotesNoteIdRoute
+  AppCallsIndexRoute: typeof AppCallsIndexRoute
   AppDriveIndexRoute: typeof AppDriveIndexRoute
-  AppNotesIndexRoute: typeof AppNotesIndexRoute
-  AppNotesSeriesSeriesIdRoute: typeof AppNotesSeriesSeriesIdRoute
+  AppCallsUpcomingMeetingIdRoute: typeof AppCallsUpcomingMeetingIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAgentsRoute: AppAgentsRoute,
   AppHomeRoute: AppHomeRoute,
   AppPlansRoute: AppPlansRoute,
   AppRecordRoute: AppRecordRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppTeamRoute: AppTeamRoute,
+  AppCallsNoteIdRoute: AppCallsNoteIdRoute,
   AppDriveWorkspaceIdRoute: AppDriveWorkspaceIdRouteWithChildren,
-  AppNotesNoteIdRoute: AppNotesNoteIdRoute,
+  AppCallsIndexRoute: AppCallsIndexRoute,
   AppDriveIndexRoute: AppDriveIndexRoute,
-  AppNotesIndexRoute: AppNotesIndexRoute,
-  AppNotesSeriesSeriesIdRoute: AppNotesSeriesSeriesIdRoute,
+  AppCallsUpcomingMeetingIdRoute: AppCallsUpcomingMeetingIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
@@ -606,7 +608,6 @@ const rootRouteChildren: RootRouteChildren = {
   SplatRoute: SplatRoute,
   AppRoute: AppRouteWithChildren,
   ConnectRoute: ConnectRoute,
-  ConnectCalendarRoute: ConnectCalendarRoute,
   LinkRoute: LinkRoute,
   MoveRoute: MoveRoute,
   PrivacyRoute: PrivacyRoute,

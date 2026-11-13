@@ -89,6 +89,7 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
 - Rate limits answer `503 unavailable` ("Too many attempts. Wait a minute and try again.") and log the
   limit's name: `sign-in` (30 a minute) and `telemetry` (60 a minute) per client address, `transcribe`
   (240 a minute, calls and room recordings together; 40 for each voice in a call), `ask` (20 a minute, writing a note's notes again included) and `carry-over` (60 a minute) per account, and
+  `guest ask` and `guest catch-up` (6 a minute per guest: the organizer pays for them),
   `request-notes` (10 a minute), `others-point` (20 a minute), `screen-video` (60 a minute), and `share` and `share-ended`
   (30 a minute together) per person in a call, and `ring` (20 a minute) per organizer, `ring answer` and `rings` (30 a minute each) per
   account, `calls` (30 a minute) per account on everything that makes one, and `open rings` when a process holds all

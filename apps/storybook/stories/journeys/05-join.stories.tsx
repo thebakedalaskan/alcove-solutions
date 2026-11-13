@@ -211,7 +211,7 @@ const SYNC: StoryCall = { id: 'm-sync-jny', title: 'Design sync', startsAt: iso(
 
 export const BeingRung: PageStory = {
   name: '5.10 Being rung, and not now',
-  ...rung({ scenario: 'busy', path: '/notes', call: SYNC, from: PRIYA }, {}),
+  ...rung({ scenario: 'busy', path: '/calls', call: SYNC, from: PRIYA }, {}),
   play: async ({ userEvent, step }) => {
     await step('Priya rings you. A card drops in on whatever page is open, and doesn’t take the focus', async () => {
       await screen.findByRole('alertdialog', { name: 'Priya is ringing you' }, LATER);

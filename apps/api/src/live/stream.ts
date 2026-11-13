@@ -1,9 +1,10 @@
 /*
  * One browser's stream of something in a workspace (docs: Data and storage › Live traffic). It holds no keys and nothing of
  * what it shows: only who it's for and what's next, so hundreds fit in a little memory. A stream sleeps until there's a
- * line to write, pings to say it's still there, and checks at each ping that its reader still is. It ends when they lose
- * what it shows, the browser goes or can't keep up, the browser says it closed it, its person needs its place for another,
- * this instance shuts down, or it's time to let go, for the browser to open it again.
+ * line to write, pings to say it's still there, and checks at each ping that its reader still is, and at once when it's
+ * told something they carried stopped counting. It ends when they lose what it shows, the browser goes or can't keep up,
+ * the browser says it closed it, its person needs its place for another, this instance shuts down, or it's time to let go,
+ * for the browser to open it again.
  */
 import type { StreamingApi } from 'hono/utils/stream';
 import type { Deps } from '../context';
@@ -16,7 +17,7 @@ import type { StreamPlace } from './hub';
 import type { Room, RoomMember, Snapshot } from './room';
 
 const slog = log.child({ component: 'live' });
-const sameness = (who: Who): string => who.principals.map(b64u).join();
+const sameness = (who: Who): string => `${who.principals.map(b64u).join()}|${who.calls.map(b64u).join()}`;
 
 /** How much goes to a browser at a time. */
 const PIECE_BYTES = 64 * 1024;
@@ -52,6 +53,8 @@ export abstract class LiveStream<L> implements RoomMember {
   /** Something arrived since the last step, which the step may have missed. */
   private poked = false;
   private over = false;
+  /** Something its reader carried stopped counting, and who they are is to be worked out again (`recheck`). */
+  private unsure = false;
   private next: Snapshot | undefined;
 
   constructor(
@@ -63,6 +66,13 @@ export abstract class LiveStream<L> implements RoomMember {
   ) {}
 
   get principals(): Uint8Array[] { return this.who.principals; }
+  get calls(): Uint8Array[] { return this.who.calls; }
+  /**
+   * Something its reader carried stopped counting, which no snapshot shows: their seat, when they left the call or were taken
+   * out of it, or the call's index for a workspace it's moved on from. Who they are is worked out again before anything else,
+   * as at a ping, and a reader with nothing left loses what this shows.
+   */
+  recheck(): void { this.unsure = true; this.poke(); }
   /** Something changed: only the latest matters, so a slow browser skips to it. */
   offer(s: Snapshot): void {
     this.next = s;
@@ -112,7 +122,7 @@ export abstract class LiveStream<L> implements RoomMember {
     try {
       const reader = await readerOf(this.d, this.credentials);
       const before = sameness(this.who);
-      this.who = { email: reader.email, principals: reader.principals };
+      this.who = { email: reader.email, principals: reader.principals, calls: reader.calls };
       if (sameness(this.who) !== before) {
         this.version = -1;
         void this.room.read();
@@ -165,6 +175,12 @@ export abstract class LiveStream<L> implements RoomMember {
           ping = now + pingMs;
           if (!(await this.stillThere())) { why = 'closed'; session = true; break; }
           await line(this.ping());
+          continue;
+        }
+        if (this.unsure) {
+          this.unsure = false;
+          // Only a stream with a pass carries what can stop counting. Nobody left: they've lost what this shows.
+          if (!(await this.stillThere())) { why = 'closed'; break; }
           continue;
         }
         this.poked = false;

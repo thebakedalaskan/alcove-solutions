@@ -10,9 +10,9 @@
  */
 import type { Person } from '@alcove/api';
 import {
-  Avatar, Button, FollowUpEditor, type FollowUpValues, Icon, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsEmpty, WsFade, WsFollowBar, WsFollowUps, WsHistory, WsList, WsListHead, WsMovePicker,
+  Avatar, Button, FollowUpEditor, type FollowUpValues, Icon, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsEmpty, WsFade, WsFollowBar, WsFollowUps, WsHistory, WsList, WsListHead, WsListTools, WsMovePicker,
   WsNewMenu, WsNotesPage, WsPage, WsPersonCard, WsRenameRow, WsRow, WsRowMenu, WsScroll, WsSection, WsShareSheet,
-  WsSpacePicker, WsSwitchSheet, WsTail, WsTemplates, WsTranscript, cn, wsToast,
+  WsSpacePicker, WsTail, WsTemplates, WsTranscript, cn, wsToast,
   type IconName, type WsDecision, type WsFace, type WsFolderChoice, type WsFollowing, type WsFollowUp, type WsPop, type WsPoint, type WsSaid,
   type WsSave, type WsShareMatch, type WsShareRow, type WsSpaceChoice, type WsToastData, type WsVersion
 } from '@alcove/ui';
@@ -188,8 +188,6 @@ const ITEMS: ReadonlyMap<string, Item[]> = new Map([
   ['ws-product', PRODUCT_ITEMS],
   ['ws-design', [{ id: 'empty-states', name: 'Empty states', kind: 'document', parent: null }]]
 ]);
-/** Who in the call can't open each workspace, by first name. */
-const CANT_OPEN: ReadonlyMap<string, string[]> = new Map([['ws-design', ['Maya']], ['ws-new', ['Priya', 'Kofi', 'Aiko', 'Maya']]]);
 
 /** The documents brought to the call, at the top of the list under This call. */
 export const BROUGHT = ['plan', 'checklist'];
@@ -284,8 +282,8 @@ export function useToasts(initial: readonly WsToastData[] = []) {
 
 /** What's on the page: a document or one of the call's pages, and which part of the list it was opened from. */
 export interface At { id: string; area: 'pins' | 'tree' }
-/** The popover that's open, where someone right-clicked, and whether Move to… or a switch has taken the menu's place. */
-export interface Opened { key: string; at?: WsPoint | undefined; step?: 'move' | 'switch' | undefined; to?: string | undefined }
+/** The popover that's open, where someone right-clicked, and whether Move to… has taken the menu's place. */
+export interface Opened { key: string; at?: WsPoint | undefined; step?: 'move' | undefined }
 /** A row being named: an item, or a new folder (`id` null) in `parent`. */
 export interface Naming { id: string | null; kind: Kind; parent: string | null }
 
@@ -293,11 +291,11 @@ const toggled = (set: ReadonlySet<string>, id: string): ReadonlySet<string> => {
 
 /**
  * A workspace's state, kept as the app keeps it. `call`: it's the call's, with This call at the top of the list and the
- * documents brought to it. `organizer`: Art organizes the call, so he chooses its workspace (in Priya's Launch check-in
- * he doesn't). `start`: what's open first. `space`: which workspace.
+ * documents brought to it, and the frame's bar names it, so the list's top is Find and New. `start`: what's open first.
+ * `space`: which workspace.
  */
-export function useWorkspace({ call, organizer = false, start = 'plan', space: startSpace = 'ws-product', opened: startOpened = null, onGo }: {
-  call: boolean; organizer?: boolean | undefined; start?: string | undefined; space?: string | undefined;
+export function useWorkspace({ call, start = 'plan', space: startSpace = 'ws-product', opened: startOpened = null, onGo }: {
+  call: boolean; start?: string | undefined; space?: string | undefined;
   /** A popover that's open when the story starts: `picker`, `new`, `share`, `more`, `menu:tree:plan`… */
   opened?: Opened | null | undefined;
   /** Something was opened from the list: following stops, and a phone's list or a peek goes away. */
@@ -430,7 +428,7 @@ export function useWorkspace({ call, organizer = false, start = 'plan', space: s
     setHistory(null);
     const firstDoc = next.find((i) => i.kind === 'document');
     setAt({ id: firstDoc?.id ?? '', area: 'tree' });
-    if (call) say(wsToast.switched(spaces.find((s) => s.id === id)?.name ?? 'Product', () => switchBack(was)));
+    if (call) say(wsToast.switched(spaces.find((s) => s.id === id)?.name ?? 'Product', id === 'ws-product' ? null : 'Product', () => switchBack(was)));
   };
   const switchBack = (id: string) => {
     setSpace(id);
@@ -445,20 +443,10 @@ export function useWorkspace({ call, organizer = false, start = 'plan', space: s
     setBrought([]);
     setOpened(null);
     setAt({ id: '', area: 'tree' });
-    if (call) say(wsToast.newSpace(NEW_SPACE.name));
+    if (call) say(wsToast.newSpace(NEW_SPACE.name, 'Product'));
   };
-  /** The workspace picker: in a call, choosing another asks first, in the picker's place. */
-  const pick = (id: string) => {
-    if (id === space) { setOpened(null); return; }
-    if (call) setOpened({ key: 'picker', step: 'switch', to: id });
-    else switchTo(id);
-  };
-  const picker = pop('picker', call && !organizer
-    ? <WsSpacePicker spaces={spaces} current={space} canChoose={false} organizer={first(CALL.organizer)} onPick={() => setOpened(null)} onNew={() => setOpened(null)} />
-    : opened?.key === 'picker' && opened.step === 'switch' && opened.to
-    ? <WsSwitchSheet name={spaces.find((s) => s.id === opened.to)?.name ?? ''} current={spaceName} cantOpen={CANT_OPEN.get(opened.to) ?? []}
-      onSwitch={() => { if (opened.to) switchTo(opened.to); }} onKeep={() => setOpened(null)} />
-    : <WsSpacePicker spaces={spaces} current={space} canChoose {...(call ? {} : { heading: 'Workspaces' })} onPick={pick} onNew={newSpace} />);
+  /** The workspace picker at the top of the list, in the app: choosing one opens it. */
+  const picker = pop('picker', <WsSpacePicker spaces={spaces} current={space} heading="Workspaces" onPick={(id) => { if (id === space) setOpened(null); else switchTo(id); }} onNew={newSpace} />);
 
   return {
     call, toasts, say, space, spaceName, shown, texts, folders, at, brought, opened, naming, flash, history,
@@ -537,10 +525,12 @@ export function ListOf({ ws, quiet = false, onFind, onFollow }: { ws: Workspace;
     )),
     ...ws.brought.flatMap((id) => { const it = ws.itemOf(id); return it ? [row(it, 'pins', 0)] : []; })
   ] : [];
+  const create = ws.pop('new', <WsNewMenu onDocument={() => ws.newDocument(null)} onFolder={() => ws.newFolder(null)} onUpload={() => ws.open(null)} />);
   return (
     <WsList listKey={ws.space} empty={ws.shown.length === 0 && ws.naming === null ? 'yours' : false}
-      head={<WsListHead name={ws.spaceName} picker={ws.picker} onFind={onFind ?? did('onFind')}
-        create={ws.pop('new', <WsNewMenu onDocument={() => ws.newDocument(null)} onFolder={() => ws.newFolder(null)} onUpload={() => ws.open(null)} />)} />}>
+      head={ws.call
+        ? <WsListTools onFind={onFind ?? did('onFind')} findKey="⌘K" create={create} />
+        : <WsListHead name={ws.spaceName} picker={ws.picker} onFind={onFind ?? did('onFind')} create={create} />}>
       {pins}
       <WsSection key="sec:docs" label="Documents" />
       {tree(null, 0)}
@@ -597,16 +587,16 @@ export function TranscriptLive({ query: startQuery = '', lines = LINES, speaking
 
 /* ---------- a document ---------- */
 
-/** Share, for a document: the workspace, who it's shared with (each with what they can do), who the field finds, and a guest in the call. */
-export function ShareFor({ title, call, query: startQuery = '', restricted = false }: { title: string; call: boolean; query?: string | undefined; restricted?: boolean | undefined }) {
+/** Share, for a document: the workspace, who it's shared with (each with what they can do), and who the field finds. */
+export function ShareFor({ title, query: startQuery = '', restricted = false }: { title: string; query?: string | undefined; restricted?: boolean | undefined }) {
   const [query, setQuery] = useState(startQuery);
-  const [added, setAdded] = useState<{ person: Person; role: 'Can edit' | 'Can read'; guest: boolean }[]>([{ person: LENA, role: 'Can read', guest: false }]);
+  const [added, setAdded] = useState<{ person: Person; role: 'Can edit' | 'Can read' }[]>([{ person: LENA, role: 'Can read' }]);
   const [everyone, setEveryone] = useState(!restricted);
   const typed = query.trim().toLowerCase();
   const has = (p: Person) => added.some((a) => a.person === p);
   const found = (p: Person) => p.name.toLowerCase().split(' ').some((w) => w.startsWith(typed)) || p.email.startsWith(typed);
   const matches: WsShareMatch[] = typed ? FINDABLE.filter((p) => !has(p) && found(p)).map((p) => ({
-    id: p.email, person: p, sub: p.email, onAdd: () => { setAdded((now) => [...now, { person: p, role: 'Can edit', guest: false }]); setQuery(''); }
+    id: p.email, person: p, sub: p.email, onAdd: () => { setAdded((now) => [...now, { person: p, role: 'Can edit' }]); setQuery(''); }
   })) : [];
   const setRole = (p: Person, role: 'Can edit' | 'Can read') => setAdded((now) => now.map((a) => (a.person === p ? { ...a, role } : a)));
   const rows: WsShareRow[] = [
@@ -616,17 +606,16 @@ export function ShareFor({ title, call, query: startQuery = '', restricted = fal
     },
     ...(everyone ? [] : [{ id: 'maker', people: [PRIYA], name: PRIYA.name, sub: 'Made this', role: { label: 'Can edit' } }]),
     ...added.map((a): WsShareRow => ({
-      id: a.person.email, people: [a.person], name: a.person.name, sub: a.guest ? 'Guest in this call' : a.person.email,
+      id: a.person.email, people: [a.person], name: a.person.name, sub: a.person.email,
       role: {
         label: a.role, options: [
-          ...(a.guest ? [] : [{ label: 'Can edit', onSelect: () => setRole(a.person, 'Can edit') }, { label: 'Can read', onSelect: () => setRole(a.person, 'Can read') }]),
+          { label: 'Can edit', onSelect: () => setRole(a.person, 'Can edit') }, { label: 'Can read', onSelect: () => setRole(a.person, 'Can read') },
           { label: 'Remove', caution: true, onSelect: () => setAdded((now) => now.filter((x) => x.person !== a.person)) }
         ]
       }
     }))
   ];
-  const guest = call && !has(GUEST) ? { person: GUEST, onRead: () => setAdded((now) => [...now, { person: GUEST, role: 'Can read', guest: true }]) } : null;
-  return <WsShareSheet title={title} query={query} onQuery={setQuery} onAdd={() => matches[0]?.onAdd()} matches={matches} rows={rows} guest={guest} />;
+  return <WsShareSheet title={title} query={query} onQuery={setQuery} onAdd={() => matches[0]?.onAdd()} matches={matches} rows={rows} />;
 }
 
 /** Someone's card from their face at the top of a document: they're in it, so there's nowhere to go. */
@@ -644,10 +633,11 @@ function faceCard(ws: Workspace, person: Person, where: string, following: Perso
  * The document side, as the call and the app put it together: the head, the bars, and the page (or one of the call's
  * pages), with History beside it when it's open. `following`: who you're following, for the bar and the faces.
  */
-export function DocOf({ ws, save = 'saved', quiet = false, following = null, onFollow, onStopFollowing, onToggleList, bars }: {
+export function DocOf({ ws, save = 'saved', quiet = false, following = null, onFollow, onStopFollowing, onToggleList, onExpand, bars }: {
   ws: Workspace; save?: WsSave | undefined; quiet?: boolean | undefined;
   following?: WsFollowing | null | undefined; onFollow?: ((person: Person, where: string) => void) | undefined; onStopFollowing?: (() => void) | undefined;
-  onToggleList: () => void;
+  /** Beside the list: its button. Beside the Drive's tree instead: ⤢ (`onExpand`). */
+  onToggleList?: (() => void) | undefined; onExpand?: (() => void) | undefined;
   /** Bars under the head: offline, gone, read only. */
   bars?: ReactNode;
 }) {
@@ -657,7 +647,7 @@ export function DocOf({ ws, save = 'saved', quiet = false, following = null, onF
   if (live) {
     return (
       <WsDoc>
-        <WsDocHead crumbs={[CALL.title, live.name]} save={quiet ? 'quiet' : 'live'} onToggleList={onToggleList} />
+        <WsDocHead crumbs={[CALL.title, live.name]} save={quiet ? 'quiet' : 'live'} onToggleList={onToggleList} onExpand={onExpand} />
         <WsFollowBar following={following} onStop={stop} />
         <WsScroll onWheel={following ? stop : undefined}>
           <WsFade id={live.id}>{live.id === '$notes' ? <NotesLive /> : live.id === '$followups' ? <FollowUpsLive /> : <TranscriptLive />}</WsFade>
@@ -669,7 +659,7 @@ export function DocOf({ ws, save = 'saved', quiet = false, following = null, onF
   if (!item) {
     return (
       <WsDoc>
-        <WsDocHead crumbs={[ws.spaceName]} save="quiet" onToggleList={onToggleList} />
+        <WsDocHead crumbs={[ws.spaceName]} save="quiet" onToggleList={onToggleList} onExpand={onExpand} />
         <WsEmpty space={ws.spaceName} onDocument={() => ws.newDocument(null)} onFolder={() => ws.newFolder(null)} />
       </WsDoc>
     );
@@ -684,8 +674,8 @@ export function DocOf({ ws, save = 'saved', quiet = false, following = null, onF
   return (
     <>
       <WsDoc>
-        <WsDocHead crumbs={[ws.spaceName, ...ws.above(item.id).map((f) => f.name), name]} save={save} faces={faces} onToggleList={onToggleList}
-          share={ws.pop('share', <ShareFor title={`Share ${name}`} call={ws.call} />)}
+        <WsDocHead crumbs={[ws.spaceName, ...ws.above(item.id).map((f) => f.name), name]} save={save} faces={faces} onToggleList={onToggleList} onExpand={onExpand}
+          share={ws.pop('share', <ShareFor title={`Share ${name}`} />)}
           more={ws.pop('more', moving
             ? <WsMovePicker name={name} space={ws.spaceName} folders={foldersFor(ws, item.id)} onRoot={() => ws.moveTo(item.id, null)} onFolder={(f) => ws.moveTo(item.id, f)} />
             : <WsDocMenu onShare={() => ws.open({ key: 'share' })}
