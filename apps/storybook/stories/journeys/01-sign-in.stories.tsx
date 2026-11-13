@@ -8,7 +8,7 @@
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { page, pages, type PageArgs, type PageStory } from '../../src/page';
-import { away, first, LATER, pause, pressable, SOON } from './play';
+import { away, first, LAPTOP, LATER, pause, pressable, SOON } from './play';
 
 /** Signing in from the welcome page sails out of its cove to Home: about three and a half seconds. */
 const SAILING_OUT = 3600;
@@ -21,6 +21,8 @@ const tourCard = (title: string) => screen.findByRole('dialog', { name: title },
 export const FirstTime: PageStory = {
   name: '1.1 Sign in for the first time',
   ...page('/', 'first-sign-in'),
+  // The tour's stops are a laptop's: on a phone Agents isn't one.
+  globals: LAPTOP,
   play: async ({ userEvent, step }) => {
     await step('Open Alcove. Signed out, the welcome page shows what Alcove does. Continue with Microsoft', async () => {
       await userEvent.click(await first(screen.findAllByRole('button', { name: 'Continue with Microsoft' }, SOON)));

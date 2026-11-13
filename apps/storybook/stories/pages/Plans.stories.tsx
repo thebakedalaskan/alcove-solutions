@@ -8,7 +8,7 @@
  * place: a head of its own, and the plan you're on leads straight on.
  */
 import type { Meta } from '@storybook/react-vite';
-import { screen, within } from 'storybook/test';
+import { screen, waitFor, within } from 'storybook/test';
 import { setOnline } from '../../src/browser';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
@@ -151,8 +151,15 @@ export const PlanChoicePaymentsOff = page('/home', 'plan-choice', {
   }
 });
 
+/** A place in the frame by its name, as it's on screen: the side panel's row, or the tab bar's on a phone. */
+const place = (name: string) => waitFor(() => {
+  const link = screen.queryAllByRole('link', { name: new RegExp(`^${name}`) }).find((l) => l.getClientRects().length > 0 && !l.closest('[inert]'));
+  if (!link) throw new Error(`${name} isn’t in the frame yet.`);
+  return link;
+}, { timeout: 8000 });
+
 /**
- * Telling the server the plans were seen fails, quietly, and is tried again in the background. Continue on Free, then Notes and
+ * Telling the server the plans were seen fails, quietly, and is tried again in the background. Continue on Free, then Calls and
  * back to Home: Home is Home, since the plans were seen in this tab. A later visit shows them again.
  */
 export const PlanChoiceNotMarkedSeen = page('/home', 'plan-choice', {
@@ -162,11 +169,10 @@ export const PlanChoiceNotMarkedSeen = page('/home', 'plan-choice', {
       await userEvent.click(await within(await card('Free')).findByRole('button', { name: 'Continue on Free' }, { timeout: 8000 }));
       await screen.findByRole('region', { name: 'Start your first call' }, { timeout: 8000 });
     });
-    await step('Notes, then Home again, from the side panel: still Home', async () => {
-      const side = await screen.findByRole('complementary', { name: 'Side panel' }, { timeout: 8000 });
-      await userEvent.click(within(side).getByRole('link', { name: /^Notes/ }));
-      await screen.findByRole('heading', { name: 'Notes', level: 1 }, { timeout: 8000 });
-      await userEvent.click(within(side).getByRole('link', { name: /^Home/ }));
+    await step('Calls, then Home again, from the side panel (the tab bar on a phone): still Home', async () => {
+      await userEvent.click(await place('Calls'));
+      await screen.findByRole('heading', { name: 'Calls', level: 1 }, { timeout: 8000 });
+      await userEvent.click(await place('Home'));
       await screen.findByRole('region', { name: 'Start your first call' }, { timeout: 8000 });
     });
   }

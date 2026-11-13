@@ -4,9 +4,10 @@
  * go by on either side, nearest first, the horizon comes up to Home's and the sun eases to Home's size, only ever rising;
  * then the frame forms round the sea, Home's parts rise in, and the sea clears. A press, a key or the wheel clears it at
  * once. Here it sails out over a stand-in for Home, and again a moment after it's done; the real one plays in
- * Journeys › 1 Sign in › 1.3 and 1.5.
+ * Journeys › 1 Sign in › 1.3 and 1.5. When the plans are up in Home's place, it sails onto them instead, and the sun sinks to
+ * their last sliver (`onto: 'plans'`; the real one plays in Journeys › 16 The plan choice).
  */
-import { Horizon, SailOut, type SailFrom, type SailHome } from '@alcove/ui';
+import { Horizon, PlanSunset, SailOut, type SailFrom, type SailHome } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useLayoutEffect, useRef, useState } from 'react';
 
@@ -14,9 +15,16 @@ const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
 /** Home's sky, as its stylesheet sets it. */
 const HOME_SKY = 'clamp(352px, 45vh, 540px)';
+/** The plans' sky, as theirs does. */
+const PLANS_SKY = '270px';
+/** The plans' last sliver of sun, drawn once. */
+const SLIVER = <PlanSunset />;
 
-/** Sails out over a stand-in for Home: the evening at Home's horizon, with its title rising in. `framed`: inside an 8px frame. */
-function SailingOut({ framed }: { framed: boolean }) {
+/**
+ * Sails out over a stand-in for Home: the evening at Home's horizon, with its title rising in. `framed`: inside an 8px frame.
+ * `onto`: Home, or the plans in its place, whose own sun (`data-sun`) sits lower.
+ */
+function SailingOut({ framed, onto }: { framed: boolean; onto: 'home' | 'plans' }) {
   const page = useRef<HTMLDivElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
   const [round, setRound] = useState(0);
@@ -26,17 +34,22 @@ function SailingOut({ framed }: { framed: boolean }) {
     if (!el || !sun) return;
     const width = document.documentElement.clientWidth, tall = document.documentElement.clientHeight;
     const at = sun.getBoundingClientRect();
+    const drawn = el.querySelector(':scope > .hz [data-sun]')?.getBoundingClientRect();
+    const r = drawn ? drawn.width / 2 : 48;
     const line = Math.round(tall * 0.7);
     setSail({
       from: { width, line, sky: line, foot: Math.round(Math.max(line + 110, line + (tall - line) * 0.94)), sun: 0, r: clamp(width * 0.041, 44, 60), words: [], seed: 5 },
-      home: { line: at.top, x: at.left, r: 48, frame: framed ? { top: 8, right: 8, bottom: 8, left: 8, radius: 24 } : null, side: null, rise: title.current ? [title.current] : [] }
+      home: {
+        line: at.top, x: drawn ? drawn.left + r : at.left, r, sink: drawn ? drawn.top + r - at.top : 0,
+        frame: framed ? { top: 8, right: 8, bottom: 8, left: 8, radius: 24 } : null, side: null, rise: title.current ? [title.current] : []
+      }
     });
-  }, [round, framed]);
+  }, [round, framed, onto]);
   const again = () => { setSail(null); setTimeout(() => setRound((n) => n + 1), 1600); };
   return (
-    <div ref={page} className="relative isolate h-dvh overflow-hidden text-ink" style={{ '--hz': HOME_SKY }}>
-      <Horizon moment="home" />
-      <h1 ref={title} className="relative pt-[18vh] text-center font-display text-[clamp(36px,3.8vw,56px)] leading-[1.1]">Start a call</h1>
+    <div ref={page} className="relative isolate h-dvh overflow-hidden text-ink" style={{ '--hz': onto === 'plans' ? PLANS_SKY : HOME_SKY }}>
+      {onto === 'plans' ? <Horizon moment="plans" sky={SLIVER} /> : <Horizon moment="home" />}
+      <h1 ref={title} className="relative pt-[18vh] text-center font-display text-[clamp(36px,3.8vw,56px)] leading-[1.1]">{onto === 'plans' ? 'Choose a plan' : 'Start a call'}</h1>
       {sail && <SailOut key={round} from={sail.from} home={sail.home} onDone={again} />}
     </div>
   );
@@ -46,7 +59,8 @@ const meta = {
   title: 'Components/The evening/SailOut',
   component: SailingOut,
   parameters: { layout: 'fullscreen' },
-  args: { framed: true }
+  args: { framed: true, onto: 'home' },
+  argTypes: { onto: { control: 'inline-radio', options: ['home', 'plans'] } }
 } satisfies Meta<typeof SailingOut>;
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -57,3 +71,7 @@ export const Framed: Story = {};
 export const FramedDark: Story = { name: 'Framed, dark', globals: { theme: 'dark' } };
 /** On a phone there's no frame: the sea clears straight into Home. */
 export const Phone: Story = { args: { framed: false }, globals: { viewport: { value: 'phone', isRotated: false } } };
+/** Onto the plans, up in Home's place once: the horizon comes up to theirs and the sun sinks to their last sliver. */
+export const OntoThePlans: Story = { name: 'Onto the plans', args: { onto: 'plans' } };
+/** The same at night. */
+export const OntoThePlansDark: Story = { name: 'Onto the plans, dark', args: { onto: 'plans' }, globals: { theme: 'dark' } };

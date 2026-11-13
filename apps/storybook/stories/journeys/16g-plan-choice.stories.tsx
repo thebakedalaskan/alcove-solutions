@@ -1,14 +1,18 @@
 /*
  * The plan choice (docs/product/user-flows.md › 16. Plans and paying, 16.20): Plans, opened by itself once in Home's place,
  * for a new account and, once, for an account from before plans. A new account's arrival opens on it, and the tour of Home
- * waits for Home; Get Pro opens checkout over it, and once Pro is bought, Done goes on to Home. The payment's other side is the
- * stand-in's: a payment opened to buy something is seen, added and bought a few seconds apart, and the window, which reads it
- * every few seconds, follows it.
+ * waits for Home; Get Pro opens checkout over it, and once Pro is bought, Done goes on to Home. Signing in from the welcome page
+ * sails out of its cove onto them, as it would onto Home. The payment's other side is the stand-in's: a payment opened to buy
+ * something is seen, added and bought a few seconds apart, and the window, which reads it every few seconds, follows it.
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { page, pages, type PageArgs, type PageStory } from '../../src/page';
-import { away, LAPTOP, LATER, pressable, SOON } from './play';
+import { carriedOver } from '../../src/world/plans';
+import { away, before, first, LAPTOP, LATER, pause, pressable, SOON } from './play';
+
+/** Signing in from the welcome page sails out of its cove: about three and a half seconds. */
+const SAILING_OUT = 3600;
 
 const meta = { title: 'Journeys/16 The plan choice', ...pages, globals: LAPTOP } satisfies Meta<PageArgs>;
 export default meta;
@@ -65,6 +69,27 @@ export const ChooseProFromThePlans: PageStory = {
       await says('You’re on Pro');
       await userEvent.click(await pressable('button', 'Done', SOON, await win()));
       await screen.findByRole('region', { name: 'Start your first call' }, LATER);
+    });
+  }
+};
+
+export const ChooseAfterSigningIn: PageStory = {
+  name: '16.20 Choose a plan: signing in from the welcome page',
+  ...page('/', 'signed-out'),
+  beforeEach: before((w) => { w.plan = carriedOver(); }),
+  play: async ({ userEvent, step }) => {
+    await step('Art has used Alcove for weeks, and plans came while he was away. On the welcome page, use single sign-on', async () => {
+      await userEvent.click(await first(screen.findAllByRole('button', { name: 'Use single sign-on' }, SOON)));
+      await userEvent.type(await screen.findByRole('textbox', { name: 'Work email' }, SOON), 'art@vandelay.industries');
+    });
+    await step('Continue. Out of the cove to sea, onto the plans in Home’s place, its sun sinking to their last sliver: Alcove has plans now', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await screen.findByRole('heading', { name: 'Alcove has plans now', level: 1 }, LATER);
+      await pause(SAILING_OUT);
+    });
+    await step('Continue on Free, on Free’s card. Home opens as it is, with nothing more to sail', async () => {
+      await userEvent.click(await pressable('button', 'Continue on Free', SOON, within(await plan('Free'))));
+      await screen.findByRole('region', { name: 'For you' }, LATER);
     });
   }
 };
