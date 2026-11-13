@@ -49,8 +49,10 @@ const WHOLE_DOWNLOAD_BYTES = 512 * MiB;
  * a team license's price and Pro's lower price for a year or more, the most months or licenses one purchase buys and when
  * Pro's end is told; more notes for a period, their price and the most bought at once; when a team's admin is told licenses
  * are low and how long an invite works; what an hour of notes is reckoned at, when AI stops and when an organizer is told
- * it's close, and how much of it guests in one call may spend; how long a plan's period and its grace last; the longest call and the most people in one; and what one
- * person uploads in a day, everywhere. A ceiling leaves room to raise a default a long way, except a file's, which is
+ * it's close, and how much of it guests in one call may spend; how long a plan's period and its grace last; the longest call and the most people in one; what one
+ * person uploads in a day, everywhere, and what others add in a day to an account's storage, what's kept of it for the
+ * account's own notes, and how long a workspace's files wait to count against whoever its payment moves to. A ceiling
+ * leaves room to raise a default a long way, except a file's, which is
  * WHOLE_DOWNLOAD_BYTES for every plan: a whole file is read in one response, which is cut at 280 seconds, so 512 MiB
  * already needs about 15 Mbit/s to download whole. Zero is a value: none.
  */
