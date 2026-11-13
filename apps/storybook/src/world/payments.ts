@@ -2,7 +2,7 @@
 import type { PlanOffers, Purchase, TopUp, TopUpRoute, TopUpRoutes, TopUpState } from '@alcove/api';
 import { iso } from './clock';
 import type { World } from './index';
-import { buyFromBalance, PLAN_OFFERS, PRO_PRICE } from './plans';
+import { buyFromBalance, LICENSE_YEAR, PLAN_OFFERS, PRO_PRICE } from './plans';
 import { addLicenses } from './teams';
 
 /**
@@ -65,7 +65,7 @@ export function withPayments(w: World, play: PaymentPlay = 'pays'): void {
 }
 /**
  * The prices go up while the story is open: Pro to $24 a month ($19.20 for a year or more), more notes to $18 for 10 hours, a
- * team license to $48.
+ * team license to $48 ($38.40 a period for a year).
  */
 export function raisePrices(w: World): void {
   const o = w.payments.offers;
@@ -73,19 +73,20 @@ export function raisePrices(w: World): void {
     ...o,
     pro: { ...o.pro, microUsdPerMonth: 24_000_000, yearly: o.pro.yearly ? { ...o.pro.yearly, microUsdPerMonth: 19_200_000 } : null },
     hours: o.hours ? { ...o.hours, microUsd: 18_000_000 } : null,
-    team: { ...o.team, microUsdPerLicense: 48_000_000 }
+    team: { ...o.team, microUsdPerLicense: 48_000_000, yearly: o.team.yearly ? { ...o.team.yearly, microUsdPerLicense: 38_400_000 } : null }
   };
 }
 
 /**
  * `buys` bought from the balance, as the server buys it once its checks pass: the plan pays for it (and has Pro's months or
- * more notes), and licenses go to the team Art runs, not taken by anyone yet. `entry` is the balance's line for it.
+ * more notes), and licenses go to the team Art runs, not taken by anyone yet, each with what it cost and how many periods it
+ * runs once taken. `entry` is the balance's line for it.
  */
 export function boughtFromBalance(w: World, buys: Purchase, entry: string, now = Date.now()): void {
   w.plan = buyFromBalance(w.plan, buys, entry, now);
   // Months of Pro bought at the price in force: what renewing goes by from now on.
   if (buys.kind === 'pro') w.payments.proMonthly = w.payments.offers.pro.microUsdPerMonth;
-  if (buys.kind === 'licenses' && w.myTeam) addLicenses(w.myTeam, buys.count, buys.microUsdPerLicense);
+  if (buys.kind === 'licenses' && w.myTeam) addLicenses(w.myTeam, buys.count, buys.microUsdPerLicense * buys.periods, buys.periods);
 }
 
 /** An ID for a new line of the balance that none of its lines has yet: a list of them keys on it. */
@@ -130,8 +131,10 @@ export function purchaseTopUp(id: string, buys: Purchase, asked: number, expires
 
 /** A year of Pro at the yearly price: what most of the checkout's stories are buying. */
 export const PRO_YEAR: Purchase = { kind: 'pro', months: 12, microUsdPerMonth: 16_000_000 };
-/** Six licenses at $40, for the six people at Vandelay on Alcove: what starting Art's team buys. */
-export const TEAM_SIX: Purchase = { kind: 'licenses', count: 6, microUsdPerLicense: PLAN_OFFERS.team.microUsdPerLicense };
+/** Six licenses at $40, for the six people at Vandelay on Alcove: what starting Art's team buys, a period at a time. */
+export const TEAM_SIX: Purchase = { kind: 'licenses', count: 6, microUsdPerLicense: PLAN_OFFERS.team.microUsdPerLicense, periods: 1 };
+/** The same six for a year, at $32 a period: $2,304. */
+export const TEAM_SIX_YEAR: Purchase = { kind: 'licenses', count: 6, ...LICENSE_YEAR };
 /** Why a purchase whose price went up before its payment arrived wasn't bought, as the server says it. */
 const PRICE_CHANGED: Record<Purchase['kind'], string> = {
   pro: 'The price of Pro changed before your payment arrived. It’s in your balance.',

@@ -12,7 +12,7 @@
 import type { Purchase, TopUp } from '@alcove/api';
 import type { World } from '../world';
 import { addToBalance, boughtFromBalance, freshEntryId, raisePrices, type PaymentPlay } from '../world/payments';
-import { hoursOf, proPriceOf } from '../world/plans';
+import { costOf as priceOf, hoursOf, proPriceOf } from '../world/plans';
 import { meOn } from '../world/teams';
 import { me } from './state';
 
@@ -24,8 +24,8 @@ const micro = (amount: string) => Math.round(Number(amount) * 1_000_000);
 
 /** An amount as the server's refusals say it: "$192", "$12.50". */
 const dollars = (microUsd: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: microUsd % 1_000_000 === 0 ? 0 : 2 }).format(microUsd / 1_000_000);
-/** "12 months of Pro", "20 hours of notes", "2 team licenses": what a purchase buys, as refusals say it. */
-const amountOf = (buys: Purchase) => (buys.kind === 'pro' ? `${months(buys.months)} of Pro` : buys.kind === 'licenses' ? teamLicenses(buys.count) : `${(buys.packs * buys.minutesPerPack) / 60} hours of notes`);
+/** "12 months of Pro", "20 hours of notes", "2 team licenses", "6 team licenses for a year": what a purchase buys, as refusals say it. */
+const amountOf = (buys: Purchase) => (buys.kind === 'pro' ? `${months(buys.months)} of Pro` : buys.kind === 'licenses' ? `${teamLicenses(buys.count)}${buys.periods > 1 ? ` for ${buys.periods === 12 ? 'a year' : months(buys.periods)}` : ''}` : `${(buys.packs * buys.minutesPerPack) / 60} hours of notes`);
 const teamLicenses = (n: number) => `${n} team ${n === 1 ? 'license' : 'licenses'}`;
 /** What it buys and what that costs, as refusals say it: "1 month of Pro costs", "2 team licenses cost". */
 const costOf = (buys: Purchase) => {
@@ -59,7 +59,15 @@ export function refusalOf(w: World, buys: Purchase): { code: 'invalid' | 'confli
     if (!Number.isInteger(buys.count) || buys.count < 1 || buys.count > max) {
       return { code: 'invalid', asked: `Buy 1 to ${max} licenses at a time.`, arrived: `Since your payment was made, one purchase buys at most ${teamLicenses(max)}. It’s in your balance.` };
     }
-    if (buys.microUsdPerLicense !== o.team.microUsdPerLicense) {
+    // A period at a time at a license's price, or a year's periods at its lower price while one is offered.
+    const yearly = o.team.yearly;
+    if (!Number.isInteger(buys.periods) || (buys.periods !== 1 && buys.periods !== yearly?.periods)) {
+      return yearly
+        ? { code: 'conflict', asked: 'Licenses are bought for a month or for a year. Look at them again before buying.', arrived: 'Licenses for that long aren’t offered any more. It’s in your balance.' }
+        : { code: 'conflict', asked: 'Licenses for a year aren’t offered right now. Look at them again before buying.', arrived: 'Licenses for a year stopped being offered before your payment arrived. It’s in your balance.' };
+    }
+    const price = buys.periods === 1 ? o.team.microUsdPerLicense : yearly?.microUsdPerLicense;
+    if (buys.microUsdPerLicense !== price) {
       return { code: 'conflict', asked: 'The price of a team license has changed. Look at it again before buying.', arrived: 'The price of a team license changed before your payment arrived. It’s in your balance.' };
     }
     return null;
@@ -79,7 +87,7 @@ export function refusalOf(w: World, buys: Purchase): { code: 'invalid' | 'confli
 
 /** Why the balance can't pay for it, or null when it can: as it's asked for, never saying the balance itself. */
 export function shortOf(w: World, buys: Purchase): string | null {
-  const cost = buys.kind === 'pro' ? buys.months * buys.microUsdPerMonth : buys.kind === 'licenses' ? buys.count * buys.microUsdPerLicense : buys.packs * buys.microUsdPerPack;
+  const cost = priceOf(buys);
   if (w.plan.balance.microUsd >= cost) return null;
   return `Your balance is short of what ${costOf(buys)} (${dollars(cost)}). Add money first.`;
 }

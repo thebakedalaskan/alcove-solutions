@@ -16,8 +16,10 @@ export const FREE = { minutes: 300, storage: 10 * GiB, file: 512 * MiB } as cons
 const PRO = { minutes: 3000, storage: 100 * GiB, file: 512 * MiB } as const;
 /** What a team license brings each person a period: 50 hours of notes, 100 GB to the team's pool, files up to 512 MB. */
 export const TEAM = { minutes: 3000, storage: 100 * GiB, file: 512 * MiB } as const;
-/** What a team license costs: $40. */
+/** What a team license costs: $40, for one person for a period. */
 export const LICENSE_PRICE = 40_000_000;
+/** A team license for a year: one person for 12 periods at $32 a period ($384), 20% off. */
+export const LICENSE_YEAR = { periods: 12, microUsdPerLicense: 32_000_000 } as const;
 /** How long a period, and a month of Pro, is. */
 export const PERIOD_DAYS = 30;
 export const PERIOD_MS = PERIOD_DAYS * 86_400_000;
@@ -30,7 +32,7 @@ export const PLAN_OFFERS: PlanOffers = {
   free: { notesMinutes: FREE.minutes, storageBytes: FREE.storage, fileBytes: FREE.file },
   pro: { notesMinutes: PRO.minutes, storageBytes: PRO.storage, fileBytes: PRO.file, microUsdPerMonth: PRO_PRICE, maxMonths: 12, yearly: { fromMonths: 12, microUsdPerMonth: 16_000_000 } },
   hours: { minutes: 600, microUsd: 15_000_000, maxPacks: 5 },
-  team: { notesMinutes: TEAM.minutes, storageBytes: TEAM.storage, fileBytes: TEAM.file, microUsdPerLicense: LICENSE_PRICE, maxLicenses: 500 }
+  team: { notesMinutes: TEAM.minutes, storageBytes: TEAM.storage, fileBytes: TEAM.file, microUsdPerLicense: LICENSE_PRICE, maxLicenses: 500, yearly: { ...LICENSE_YEAR } }
 };
 /** Nothing of Pro bought. */
 export const NO_PRO: Plan['pro'] = { months: [], until: null, renew: false, renewal: null, refundableMicroUsd: 0 };
@@ -142,14 +144,21 @@ export function proPriceOf(offers: PlanOffers, months: number): number {
 /** About how many hours `packs` of more notes are, as the offers have it. */
 export const hoursOf = (offers: PlanOffers, packs: number): number => (packs * (offers.hours?.minutes ?? 0)) / 60;
 
+/** "6 licenses", "6 licenses for a year": licenses bought, and how long each runs when it's more than a period. */
+export const licensesFor = (count: number, periods: number): string =>
+  `${count} ${count === 1 ? 'license' : 'licenses'}${periods <= 1 ? '' : periods === 12 ? ' for a year' : ` for ${periods} months`}`;
+/** What a purchase costs at the price it carries: licenses are a price a period, for each of their periods. */
+export const costOf = (buys: Purchase): number =>
+  (buys.kind === 'pro' ? buys.months * buys.microUsdPerMonth : buys.kind === 'licenses' ? buys.count * buys.periods * buys.microUsdPerLicense : buys.packs * buys.microUsdPerPack);
+
 /**
  * `plan` with `buys` bought from its balance, as the server buys it: months of Pro after the last bought (or from now),
- * or more notes for this period, which lift notes that the allowance stopped; and the balance's line for it, `entry`.
- * Whoever calls it has checked that it can be bought.
+ * or more notes for this period, which lift notes that the allowance stopped; and the balance's line for it, `entry`
+ * ("Team, 6 licenses for a year"). Whoever calls it has checked that it can be bought.
  */
 export function buyFromBalance(plan: Plan, buys: Purchase, entry: string, now = Date.now()): Plan {
-  const cost = buys.kind === 'pro' ? buys.months * buys.microUsdPerMonth : buys.kind === 'licenses' ? buys.count * buys.microUsdPerLicense : buys.packs * buys.microUsdPerPack;
-  const label = buys.kind === 'pro' ? `Pro, ${buys.months} ${buys.months === 1 ? 'month' : 'months'}` : buys.kind === 'licenses' ? `Team, ${buys.count} ${buys.count === 1 ? 'license' : 'licenses'}` : `${(buys.packs * buys.minutesPerPack) / 60} more hours of notes`;
+  const cost = costOf(buys);
+  const label = buys.kind === 'pro' ? `Pro, ${buys.months} ${buys.months === 1 ? 'month' : 'months'}` : buys.kind === 'licenses' ? `Team, ${licensesFor(buys.count, buys.periods)}` : `${(buys.packs * buys.minutesPerPack) / 60} more hours of notes`;
   const line: BalanceEntry = { id: entry, at: new Date(now).toISOString(), label, microUsd: -cost };
   const paid = { ...plan, balance: { microUsd: plan.balance.microUsd - cost, history: [line, ...plan.balance.history] } };
   if (buys.kind === 'pro') {

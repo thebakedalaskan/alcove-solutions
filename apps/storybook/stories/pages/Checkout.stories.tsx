@@ -13,7 +13,7 @@ import { current } from '../../src/api/state';
 import { setOnline } from '../../src/browser';
 import { checkout, checkouts, type CheckoutArgs, type CheckoutStory } from '../../src/checkout';
 import { changing } from '../../src/page';
-import { addToBalance, PREVIEW_TOP_UP, PRO_YEAR, purchaseAt, raisePrices, TEAM_SIX, withPayments, type PaymentPlay, type PurchaseAt } from '../../src/world/payments';
+import { addToBalance, PREVIEW_TOP_UP, PRO_YEAR, purchaseAt, raisePrices, TEAM_SIX, TEAM_SIX_YEAR, withPayments, type PaymentPlay, type PurchaseAt } from '../../src/world/payments';
 import { ART } from '../../src/world/people';
 import { planWithTeam, priyasTeam } from '../../src/world/teams';
 import { LATER, pressable, SOON } from '../journeys/play';
@@ -223,6 +223,62 @@ export const StartATeamOffline = checkout('/record', 'payments', { plan: 'team',
 });
 
 export const StartATeamOfflinePhone: CheckoutStory = { ...StartATeamOffline, globals: PHONE };
+
+/* ---------- Team: licenses for a year ---------- */
+
+/**
+ * Start a team from Plans on Yearly: checkout opens on licenses for a year, Monthly / Yearly · 20% off over how many. Six for a
+ * year are $384 each, $2,304 in all: "6 licenses for a year at $32 a month", each running a year from when it's taken.
+ */
+export const StartATeamForAYear = checkout('/plans', 'payments', { plan: 'team', from: 'plans', yearly: true });
+export const StartATeamForAYearNight: CheckoutStory = { ...StartATeamForAYear, globals: DARK };
+export const StartATeamForAYearPhone: CheckoutStory = { ...StartATeamForAYear, globals: PHONE };
+export const StartATeamForAYearPhoneNight: CheckoutStory = { ...StartATeamForAYear, globals: { ...PHONE, ...DARK } };
+/** Monthly, pressed: back to $40 each, one person for 30 days. */
+export const StartATeamForAMonth = checkout('/plans', 'payments', { plan: 'team', from: 'plans', yearly: true }, {
+  play: async ({ userEvent }) => {
+    await userEvent.click(await within(await screen.findByRole('group', { name: 'How long' }, LATER)).findByRole('button', { name: 'Monthly' }, LATER));
+  }
+});
+/** Base chosen: the summary says exactly what to send for six licenses for a year. */
+export const StartATeamForAYearNetworkChosen = checkout('/plans', 'payments', { plan: 'team', from: 'plans', yearly: true }, {
+  play: async ({ userEvent }) => { await userEvent.click(await network('Base')); }
+});
+export const StartATeamForAYearNetworkChosenNight: CheckoutStory = { ...StartATeamForAYearNetworkChosen, globals: DARK };
+
+/** Checkout reopened on the payment for a new team's six licenses for a year (2,304 USDC on Base) where it is now: `where`. */
+const teamYear = (where: PurchaseAt, more: Partial<CheckoutStory> = {}): CheckoutStory =>
+  checkout('/plans', 'team-buying', { plan: 'team', licenses: 6, yearly: true, topUpId: PREVIEW_TOP_UP }, { beforeEach: changing(purchaseAt(where, TEAM_SIX_YEAR, 2304)), ...more });
+/** The payment for six licenses for a year, waiting: the amount, the QR code and the address. */
+export const TeamForAYearWaiting = teamYear('waiting');
+export const TeamForAYearWaitingNight: CheckoutStory = { ...TeamForAYearWaiting, globals: DARK };
+export const TeamForAYearWaitingPhone: CheckoutStory = { ...TeamForAYearWaiting, globals: PHONE };
+/**
+ * Seen, then bought a few seconds later: Vandelay Industries is on Team with six licenses for a year, Art's taken now and each
+ * running a year from when it's taken.
+ */
+export const TeamForAYearDone = lands('team-buying', { path: '/plans', from: 'plans', licenses: 6, yearly: true }, 'pays', TEAM_SIX_YEAR, 2304);
+export const TeamForAYearDoneNight: CheckoutStory = { ...TeamForAYearDone, globals: DARK };
+export const TeamForAYearDonePhone: CheckoutStory = { ...TeamForAYearDone, globals: PHONE };
+/** Done's Receipt: Team, 6 licenses for a year, $2,304.00. */
+export const TeamForAYearReceipt = lands('team-buying', { path: '/plans', from: 'plans', licenses: 6, yearly: true }, 'pays', TEAM_SIX_YEAR, 2304, {
+  play: async ({ userEvent }) => { await userEvent.click(await pressable('button', 'Receipt', LATER, within(await win()))); }
+});
+/** With $2,500 in the balance: six for a year come from it, with no network to choose, and Buy with your balance. */
+export const StartATeamForAYearWithYourBalance = checkout('/plans', 'payments', { plan: 'team', from: 'plans', yearly: true }, {
+  beforeEach: changing((w) => addToBalance(w, 2_500_000_000, '2500'))
+});
+export const StartATeamForAYearWithYourBalanceNight: CheckoutStory = { ...StartATeamForAYearWithYourBalance, globals: DARK };
+/** Bought from the balance: Vandelay Industries is on Team, six licenses for a year, Art's taken now. */
+export const StartedForAYearWithYourBalance: CheckoutStory = { ...StartATeamForAYearWithYourBalance, play: press('Buy with your balance') };
+export const StartedForAYearWithYourBalanceNight: CheckoutStory = { ...StartedForAYearWithYourBalance, globals: DARK };
+export const StartedForAYearWithYourBalancePhone: CheckoutStory = { ...StartedForAYearWithYourBalance, globals: PHONE };
+/** Its admin buying three more for a year from a balance of $1,180: 3 more licenses for a year, and Maya gets one. */
+export const BoughtLicensesForAYear = checkout('/plans', 'team-admin-none', { plan: 'team', from: 'plans', licenses: 3, yearly: true }, {
+  beforeEach: changing((w) => addToBalance(w, 1_000_000_000, '1000')),
+  play: press('Buy with your balance')
+});
+export const BoughtLicensesForAYearNight: CheckoutStory = { ...BoughtLicensesForAYear, globals: DARK };
 
 /* ---------- Team: paying for its licenses ---------- */
 

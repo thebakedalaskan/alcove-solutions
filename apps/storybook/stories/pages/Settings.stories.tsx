@@ -7,7 +7,7 @@ import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
-import { withTopUp } from '../../src/world/payments';
+import { addToBalance, boughtFromBalance, freshEntryId, TEAM_SIX_YEAR, withTopUp } from '../../src/world/payments';
 import { withDriveJustConnected, withDriveReconnect } from '../../src/world/drive-exports';
 import type { World } from '../../src/world';
 import { adminWithoutLicense, checkFails, keptHere, mayaWaits, noCalendar, notAttested, paysForLaunch, replacedPro, sharedDemo, troubled, unencryptedDefault } from './changes';
@@ -413,6 +413,14 @@ export const TeamAdmin = page('/settings#plan', 'team-admin');
 export const TeamAdminNight = night(TeamAdmin);
 export const TeamAdminPhone = phone(TeamAdmin);
 export const TeamAdminPhoneNight = phoneNight(TeamAdmin);
+/**
+ * Six more licenses bought for a year with 2,304 USDC: "Team, 6 licenses for a year" in the payments, and the nine nobody has
+ * taken refund what each cost ($384 for a year's, $40 for a month's).
+ */
+export const TeamAdminBoughtForAYear = page('/settings#plan', 'team-admin', {
+  beforeEach: changing((w) => { addToBalance(w, 2_304_000_000, '2304'); boughtFromBalance(w, TEAM_SIX_YEAR, freshEntryId(w)); })
+});
+export const TeamAdminBoughtForAYearNight = night(TeamAdminBoughtForAYear);
 /** Two left: said at the top until it's dismissed, and in warm in the side panel's Team row, with Buy. */
 export const LicensesLow = page('/settings#plan', 'team-admin-low');
 export const LicensesLowNight = night(LicensesLow);

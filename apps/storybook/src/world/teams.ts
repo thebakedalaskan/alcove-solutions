@@ -26,8 +26,8 @@ export interface TeamWorld {
   id: string;
   name: string;
   members: TeamMemberWorld[];
-  /** What each license bought and not yet taken cost. */
-  unconsumed: number[];
+  /** Each license bought and not yet taken: what it cost (all its periods), and how many periods it runs once taken. */
+  unconsumed: UnconsumedLicense[];
   autoPurchase: boolean;
   /** Whether the admin has been told the licenses are low, until there are 5 or more again. */
   lowSaid: boolean;
@@ -36,6 +36,8 @@ export interface TeamWorld {
   /** What the licensed members store, together. */
   usedBytes: number;
 }
+/** A license bought and not yet taken: what it cost, for all its periods, and how many it runs (1, or a year's 12). */
+export interface UnconsumedLicense { microUsd: number; periods: number }
 /** A link to join a team: its secret, until when it works, and the team. */
 export interface TeamInviteWorld { secret: string; expiresAt: string; team: TeamWorld; admin: Person }
 
@@ -48,11 +50,16 @@ export const isLive = (m: TeamMemberWorld, now = Date.now()): boolean => m.licen
 export const meOn = (t: TeamWorld, email: string): TeamMemberWorld | undefined => t.members.find((m) => m.person.email === email);
 export const adminOf = (t: TeamWorld): TeamMemberWorld | undefined => t.members.find((m) => m.role === 'admin');
 
-/** `count` licenses bought for the team at `microUsd` each, from its admin's balance or by a payment: nobody's taken them yet. */
-export function addLicenses(t: TeamWorld, count: number, microUsd: number): void {
-  t.unconsumed = [...t.unconsumed, ...Array.from({ length: count }, () => microUsd)];
+/**
+ * `count` licenses bought for the team at `microUsd` each (for all its `periods`), from its admin's balance or by a payment:
+ * nobody's taken them yet.
+ */
+export function addLicenses(t: TeamWorld, count: number, microUsd: number, periods = 1): void {
+  t.unconsumed = [...t.unconsumed, ...Array.from({ length: count }, (): UnconsumedLicense => ({ microUsd, periods }))];
   if (t.unconsumed.length >= LOW_LICENSES) t.lowSaid = false;
 }
+/** What refunding the licenses nobody has taken gives back: what each cost. */
+export const refundOf = (t: TeamWorld): number => t.unconsumed.reduce((s, x) => s + x.microUsd, 0);
 /** The team's storage: 100 GB for each live license. */
 export const poolOf = (t: TeamWorld, now = Date.now()): number => t.members.filter((m) => isLive(m, now)).length * TEAM.storage;
 
@@ -68,7 +75,7 @@ export function teamView(t: TeamWorld, email: string, now = Date.now()): MyTeam 
     id: t.id, name: t.name, role: mine.role, licensed: isLive(mine, now), members,
     storage: { usedBytes: t.usedBytes, limitBytes: poolOf(t, now) },
     licenses: mine.role === 'admin'
-      ? { unconsumed: t.unconsumed.length, refundableMicroUsd: t.unconsumed.reduce((s, x) => s + x, 0), autoPurchase: t.autoPurchase }
+      ? { unconsumed: t.unconsumed.length, refundableMicroUsd: refundOf(t), autoPurchase: t.autoPurchase }
       : null
   };
 }
@@ -163,7 +170,7 @@ export function vandelayTeam(): TeamWorld {
       member('art', ART, 'admin', takenAgo(12), 60), member('priya', PRIYA, 'member', takenAgo(10), 58), member('kofi', KOFI, 'member', takenAgo(9), 58),
       member('aiko', AIKO, 'member', takenAgo(4), 40), member('ines', INES, 'member', takenAgo(2), 30), member('maya', MAYA, 'member', endedAgo(6), 45)
     ],
-    unconsumed: [LICENSE_PRICE, LICENSE_PRICE, LICENSE_PRICE], autoPurchase: false, lowSaid: true,
+    unconsumed: Array.from({ length: 3 }, (): UnconsumedLicense => ({ microUsd: LICENSE_PRICE, periods: 1 })), autoPurchase: false, lowSaid: true,
     notes: teamNotes(), usedBytes: Math.round(210 * GiB)
   };
 }
