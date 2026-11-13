@@ -7,7 +7,7 @@ they bring: notes and storage. Every feature is on every plan.
 
 | | Free | Pro | Team |
 | --- | --- | --- | --- |
-| Price | $0 | $20 a month (a period), or $16 a month bought 12 or more at once, from the balance | $40 a person a period |
+| Price | $0 | $20 a month (a period), or $16 a month bought 12 or more at once, from the balance | $40 a person a period, or $32 a period for a license for a year (12 periods, $384) |
 | Calls | Unlimited, up to 10 hours each, 100 people | Same | Same |
 | Notes (an estimate: what a call uses varies) | About 5 hours a period | About 50 hours | About 50 hours a person |
 | More notes this period | 10 hours for $15, from the balance, up to 50 hours at a time | Same | Same |
@@ -16,11 +16,12 @@ they bring: notes and storage. Every feature is on every plan.
 | Shared workspaces not tied to a call | As many as you like (storage is the limit) | Same | Same |
 
 A period is 30 days from when the plan began; a month of Pro is one period, and so is a team license from when it's
-taken. A change to how long a period is applies from each account's next one: a period that has begun runs to its end
-as it began. This page says what's built now.
+taken (a license for a year is 12 periods, one after another). A change to how long a period is applies from each
+account's next one: a period that has begun runs to its end as it began. This page says what's built now.
 
 Every number is a limit (`apps/api/src/limits.ts`, [Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)),
-changeable without a deploy: each plan's notes, storage, files and price; Pro's lower price for a year or more; the most
+changeable without a deploy: each plan's notes, storage, files and price; Pro's lower price for a year or more, and a team
+license's for a year, with how many periods that is; the most
 months of Pro one purchase buys and how long before Pro ends its owner is told; more notes for a period, their price and
 the most bought at once; the most workspaces one account makes; what an hour of notes is reckoned at; when AI stops and
 when an organizer is told it's close; how much of an organizer's allowance guests in one call spend; how long a period
@@ -41,6 +42,7 @@ account's AI meter keeps the period it's in ([Pro › The plan in force](#pro)).
 | Pro for a year or more at a lower price; more notes for a period | Working (server; see [Pro](#pro) and [More notes](#more-notes)) |
 | A payment that buys what it was for (Pro, more notes or a team's licenses) once it's added | Working (server; see [A payment that buys](#a-payment-that-buys)) |
 | Teams, licenses, visits, alerts, the pool (server; see [Team](#team)) | Working |
+| A team license for a year, 12 periods at a lower price a period, from the balance or by payment | Working (server; see [Team](#team)) |
 | Team notes, Ask across them, team workspaces (server; see [Team](#team)) | Working. Ask's `refs` (@-references) work on the server; the app's Ask, main's palette, has no way to add them |
 | Picking a plan at first sign-in | Working. `Plan.choose` is true for every account until the app says the plans were shown (`POST /v1/plan/chosen`, `PlansApi.chose()`); an account from before plans is shown them once. In the app it's the plan choice: Home opens on Plans once, in its place (`apps/web/src/features/plans/PlanChoice.tsx`), and only Home, never a deep link (decided in `features/plans/choice.ts`). Once the plans have been on screen there or on Plans, the app says so, quietly trying again if that fails ([user-flows 16.20](../product/user-flows.md#1620-choose-a-plan)) |
 | Withdrawing the balance | Not built, and not planned yet |
@@ -407,26 +409,42 @@ who's on it are sealed under the team's own key (it's an owner, as a workspace i
 (`team-billing`). Every change locks the team's row first, then the plans it touches, so takes and purchases at once on
 any instance never spend a license or money twice.
 
-**Licenses** are bought by the admin from their own balance (`POST /v1/team/licenses { count, microUsdPerLicense }`), or
-with a payment that buys them once it's added ([A payment that buys](#a-payment-that-buys)), through the same code
+**Licenses** are bought by the admin from their own balance (`POST /v1/team/licenses { count, microUsdPerLicense, periods }`),
+or with a payment that buys them once it's added ([A payment that buys](#a-payment-that-buys)), through the same code
 (`teams.ts › licensesBought`, on the terms in `plans.ts › termsOf`): 1 to `team.max_licenses` (500) at a time ("Buy 1 to
-500 licenses at a time."), at `plan.team.price_micro_usd` ($40), the price shown (a changed one is `conflict`, "The price
-of a team license has changed. Look at it again before buying."), refused with nothing changed when the balance is short
-(`conflict`, "Your balance is short of what 2 team licenses cost ($80). Add money first.": what they cost, never the
-balance, as for Pro). The history says "Team, 3 licenses", or "Team, 1 license"; logged `team licenses bought` with the
-owner, team and count.
-`POST /v1/team/licenses/refund` returns every unconsumed license at what it cost ("Team licenses refunded, 2"); a taken one
-isn't refunded.
+500 licenses at a time."), each for one period (`periods` 1, the default) at `plan.team.price_micro_usd` ($40), or for a
+year (below), at the price shown (a changed one is `conflict`, "The price of a team license has changed. Look at it again
+before buying."), refused with nothing changed when the balance is short (`conflict`, "Your balance is short of what 2
+team licenses cost ($80). Add money first.": what they cost, never the balance, as for Pro). The history says "Team, 3
+licenses", or "Team, 1 license"; logged `team licenses bought` with the owner, team, count and periods.
+`POST /v1/team/licenses/refund` returns every unconsumed license at what it cost ("Team licenses refunded, 2"): its price a
+period for each of its periods, so one for a year nobody took gives back all $384. A taken one isn't refunded.
+
+**A license for a year** (`offers.team.yearly`, `{ periods, microUsdPerLicense }`) is one person for
+`plan.team.yearly_periods` (12) periods at `plan.team.yearly_price_micro_usd` ($32, 20% off $40) a period: $384. It's
+`null`, and none can be bought, while either is 0, it's for one period, or its price isn't below a license's; the app works
+out its "20% off" from the two prices, as for Pro. A purchase is for `periods` 1 at a license's price, or the offer's
+`periods` at its price, and costs count × periods × price ("Your balance is short of what 3 team licenses for a year cost
+($1152). Add money first."); the history says "Team, 2 licenses for a year". Anything else is `conflict`, with nothing
+changed: a year at a period's price, or a length that isn't offered, "The price of a team license for a year has changed.
+Look at it again before buying." (6 periods: "…for 6 months…"; one period at the yearly price: "The price of a team license
+has changed…"), and a year while none is offered, "Team licenses for a year can’t be bought right now." `periods` under 1
+or over 120 is `invalid`. Each license keeps how many periods it's for and its price a period in the `team-billing` record
+(`periods`, `microUsd`), and they're taken oldest first whatever they're for. Taken, it's live for its periods ×
+`plan.period_seconds` from then, and each of those is a period of its own with all of Team's notes, as each month of a
+year of Pro is ([On Team](#team)).
 
 **A license is taken on a visit**, by a member without a live one: signing in (both sign-in handlers), and
 `POST /v1/session/visit` (`AuthApi.visit`), which the app sends when it loads, when a tab comes back after 30 minutes or
 more, and right after its admin's checkout sees licenses bought (so the buyer's own license is taken then, as Done says). Nothing that only reads (`GET /v1/session`, `GET /v1/plan`, …) takes one, so polling never does. A taken license is
-live for `plan.period_seconds` from then (`licensed_from`, `licensed_until`); one that has ended is only replaced by a visit.
+live for its periods × `plan.period_seconds` from then (`licensed_from`, `licensed_until`): one period, or a year's 12; one
+that has ended is only replaced by a visit.
 On a visit:
 
-1. An unconsumed license is taken, the oldest bought.
+1. An unconsumed license is taken, the oldest bought, live for the periods it was bought for: one, or a year's 12.
 2. None left, with auto-purchase on (`PUT /v1/team/auto-purchase { on }`), the price no higher than a license last cost
-   the team, and the admin's balance enough: one is bought ("Team license, bought for a member") and taken.
+   the team, and the admin's balance enough: one for a period is bought at `plan.team.price_micro_usd` ("Team license,
+   bought for a member") and taken. Auto-purchase never buys a license for a year.
 3. Otherwise none is: the member stays on their own plan and is told `license-needed` (ask your admin; never the admin
    themselves), `wanted_at` is set, and the admin is told `licenses-none`, once until more are bought. Logged `team license
    wanted, none left`, with why none was bought: `off`, `price` or `short`.
@@ -434,6 +452,9 @@ On a visit:
 Auto-purchase follows renewing's rule ([Pro](#pro)): a higher price is never taken from the balance without the admin
 seeing it. What a license last cost the team is kept in its `team-billing` record: the last bought, by the admin (from
 their balance or with a payment) or by auto-purchase, or, before any was, the price when auto-purchase was turned on.
+Licenses for a year set it to a license's price for a period as it was when they were bought, not the lower yearly price,
+since auto-purchase buys for a period (as Pro's renewing goes by a month's price after a year at the lower one): buying a
+year at $32 a period leaves auto-purchase buying at $40.
 Once the price is higher, auto-purchase buys nothing and the admin is told `licenses-none`; when they buy licenses at the
 new price themselves, as checkout shows it, it's what auto-purchase goes by. A lower price is bought, and becomes what it
 goes by.
@@ -448,7 +469,10 @@ many are left, once until there are 5 or more again. These notices are in `Plan.
 `count` where it says), shown and notified as Pro's are.
 
 **On Team** the plan's kind is `team`, its period the license's, its notes `plan.team.notes_minutes` (3,000) for each
-member, metered as their own (a new license is a fresh period, with all of it), and its largest file
+member, metered as their own (a new license is a fresh period, with all of it). A license for a year is that many periods
+running on from when it was taken (`plans.ts › planAt`, `periodAt`), as Free's do: each with all of its notes, the one
+running as the meter keeps it, each after it at the length `plan.period_seconds` has when it begins, and the last ending
+with the license. Its largest file
 `plan.team.file_bytes` (512 MiB, as Pro's). Storage is the team's **pool**: `plan.team.storage_bytes` (100 GiB) for
 each live license, against what everyone licensed stores (their own and the workspaces they pay for). `Plan.storage` and
 `MyTeam.storage` show the pool. When the pool shrinks below what's stored (a license ends, someone leaves or is taken off),
@@ -629,13 +653,14 @@ Choosing how many months of Pro (packs of more notes, a team's licenses) and sen
 closing the window: the top-up says what it's for, and the server buys it once the money is in, whoever is watching.
 
 1. **Opening.** `POST /v1/plan/top-ups { routeId, microUsd, buys }`, with `buys` `{ kind: 'pro', months, microUsdPerMonth }`,
-   `{ kind: 'hours', packs, microUsdPerPack, minutesPerPack }` or `{ kind: 'licenses', count, microUsdPerLicense }` (`null`,
-   the default, only adds money). Before anything is quoted, `buys` is checked as buying it now would be, but for the
-   balance, with the same refusals and words: past the most one purchase buys (`invalid`), a price other than the one in
-   force for it (`conflict`, "The price of Pro has changed. Look at it again before buying."), a pack of other minutes
-   (`conflict`), more notes not offered (`conflict`), licenses by anyone but a team's admin (`conflict`, "Only a team’s
-   admin buys its licenses.": a team is made before a payment for its licenses is opened). It's sealed in the `deposit`
-   record with what's become of it (`purchase`), and `TopUp.purchase` reports it: `{ buys, outcome: 'waiting', why: null }`.
+   `{ kind: 'hours', packs, microUsdPerPack, minutesPerPack }` or `{ kind: 'licenses', count, microUsdPerLicense, periods }`
+   (`periods` 1 by default, or a year's at the yearly price; `buys` `null`, the default, only adds money). Before anything
+   is quoted, `buys` is checked as buying it now would be, but for the balance, with the same refusals and words: past the
+   most one purchase buys (`invalid`), a price other than the one in force for it (`conflict`, "The price of Pro has
+   changed. Look at it again before buying."), a pack of other minutes (`conflict`), more notes or licenses for a year not
+   offered (`conflict`), licenses by anyone but a team's admin (`conflict`, "Only a team’s admin buys its licenses.": a
+   team is made before a payment for its licenses is opened). It's sealed in the `deposit` record with what's become of it
+   (`purchase`), and `TopUp.purchase` reports it: `{ buys, outcome: 'waiting', why: null }`.
    The app asks for what the balance is short of the total (`max(0, total − balance)`), raised to the route's minimum, and
    opens no payment when the balance covers it.
 2. **Buying.** In the transaction that adds the settled deposit, after the money is added and under the same locks (the
@@ -657,10 +682,14 @@ closing the window: the top-up says what it's for, and the server buys it once t
    - the payment arrived after the top-up was cancelled, expired or failed: "Your payment arrived after its address
      closed, so nothing was bought. It’s in your balance.";
    - the price changed: "The price of Pro changed before your payment arrived. It’s in your balance." ("The price of more
-     notes changed…" for notes, "The price of a team license changed…" for licenses), or a pack's minutes did: "The hours
-     more notes bring changed before your payment arrived. It’s in your balance.";
+     notes changed…" for notes, "The price of a team license changed…" for licenses, "The price of a team license for a
+     year changed…" for licenses for a year), or a pack's minutes did: "The hours more notes bring changed before your
+     payment arrived. It’s in your balance.";
+   - licenses for a year stopped being offered: "Team licenses for a year stopped being offered before your payment
+     arrived. It’s in your balance.";
    - less arrived than asked for, and the balance with it is short: "Less arrived than 3 months of Pro cost. It’s in your
-     balance." ("Less arrived than 2 team licenses cost…" for licenses);
+     balance." ("Less arrived than 2 team licenses cost…" for licenses, "…than 1 team license for a year costs…" for a
+     year);
    - everything arrived but the balance it counted on was spent meanwhile: "Your balance was short of what 1 month of Pro
      costs when your payment arrived. It’s in your balance.";
    - one purchase buys fewer now: "Since your payment was made, one purchase buys at most 6 months of Pro. It’s in your
@@ -835,3 +864,25 @@ WHERE w.payer_owner_id IS DISTINCT FROM k.owner_id;
 `0032` before main's `0029_tee_keys.sql` and `0030_tls_certificates.sql` took those numbers, or before `0031_plans.sql` lost
 `ai_meters.version`, `0032` and `0033` their domain-typed columns, and `0033` `team_members.email_index`) are refused by
 `migrate.ts`: start them over (`pnpm db:reset`). Neither main nor production has run them.
+
+**Licenses for a year** (after `main` at `f5cf148e5`, the previous release for them) need no migration: what's new is in
+sealed records, the contract and the limits.
+
+- A `team-billing` record's licenses have `periods` (`.default(1)`): one the previous release wrote, or a license it bought,
+  reads as a license for one period at its `microUsd`, which is what it was, so taking, refunding and
+  `MyTeam.licenses.refundableMicroUsd` read as before. It's written with `periods: 1` the next time the team's record is
+  saved.
+- A `deposit` record's licenses (`purchase.buys`) have `periods` (`.default(1)`): a payment for licenses opened on the
+  previous release buys licenses for one period at the price it was opened at, as it would have.
+- `PurchaseSchema`'s licenses and `POST /v1/team/licenses` take `periods`, 1 when it's left out, so a tab opened before the
+  deploy buys licenses for a period, from the balance or by payment, as before. It ignores `PlanOffers.team.yearly`.
+- The new limits, `plan.team.yearly_periods` (12) and `plan.team.yearly_price_micro_usd` ($32), have defaults: no row is
+  needed.
+- **While both serve,** the previous release reads a license for a year as a license for one period: a visit it serves
+  takes it for one period, a refund it makes gives back one period's price ($32, not $384), and anything it saves of that
+  team's record (a visit, a purchase, a refund, auto-purchase, upkeep reckoning the pool) drops every license's `periods`,
+  leaving each a license for one period at the lower price. For a member already on one, its plan's period is the whole
+  license, and a meter it touches keeps that as one period, which this release then runs to its end: a year's notes in one
+  allowance. So that none is sold before the previous release has stopped serving, set `plan.team.yearly_price_micro_usd`
+  to 0 in `service_limits` before deploying (the previous release ignores names it doesn't know, and the new one offers no
+  license for a year at 0), and delete that row once the previous release's VM is gone.

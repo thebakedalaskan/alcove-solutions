@@ -46,14 +46,16 @@ const key = (d: Pick<Deps, 'cfg'>) => serviceKey(unb64u(d.cfg.KSERVICE, 32), 'ac
 const header = (ownerId: string, depositId: string) => ({ v: 1 as const, kind: 'deposit', ownerId, depositId, keyVersion: '1' });
 const units = z.string().regex(/^\d+$/);
 /**
- * What a top-up is to buy, as its buyer asked for it: months of Pro at the price they were shown, or packs of more notes at
- * the price and size they were shown. Kept as a record's own shape, not the contract's, so a bound the contract changes
- * never stops a record from opening. One kept without a pack's size reads as a pack of the default size.
+ * What a top-up is to buy, as its buyer asked for it: months of Pro at the price they were shown, packs of more notes at
+ * the price and size they were shown, or licenses at the price a period they were shown, each for `periods` periods. Kept as
+ * a record's own shape, not the contract's, so a bound the contract changes never stops a record from opening. One kept
+ * without a pack's size reads as a pack of the default size; licenses kept without `periods` (opened before licenses for a
+ * year) read as licenses for one period, which is what they were.
  */
 const Buys = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('pro'), months: z.number().int(), microUsdPerMonth: z.number().int() }),
   z.object({ kind: z.literal('hours'), packs: z.number().int(), microUsdPerPack: z.number().int(), minutesPerPack: z.number().int().default(LIMITS['plan.hours.pack_minutes'].default) }),
-  z.object({ kind: z.literal('licenses'), count: z.number().int(), microUsdPerLicense: z.number().int() })
+  z.object({ kind: z.literal('licenses'), count: z.number().int(), microUsdPerLicense: z.number().int(), periods: z.number().int().default(1) })
 ]);
 
 /**

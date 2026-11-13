@@ -6,6 +6,7 @@
  * keeps its default. Each instance reads the rows again once its copy is LIMITS_CACHE_MS old, so a change made from
  * `limits set` or the database's console is in force everywhere within that, and every instance that sees one says so.
  */
+import { MAX_LICENSE_PERIODS } from '@alcove/api';
 import pg from 'pg';
 import { z } from 'zod';
 import type { Config } from './config';
@@ -70,6 +71,8 @@ export const LIMITS = {
   'plan.pro.max_months': { default: 12, floor: 1, ceiling: 120, unit: 'count', measures: 'The most months of Pro one purchase buys.' },
   'plan.pro.remind_seconds': { default: 3 * DAY, floor: 0, ceiling: 30 * DAY, unit: 'seconds', measures: 'How long before Pro ends its owner is told, and a month is bought if renewing is on.' },
   'plan.team.price_micro_usd': { default: 40_000_000, floor: 0, ceiling: 10_000_000_000, unit: 'micro-usd', measures: 'Team: one license, a person for one period.' },
+  'plan.team.yearly_price_micro_usd': { default: 32_000_000, floor: 0, ceiling: 10_000_000_000, unit: 'micro-usd', measures: 'Team: a license for a year, a person for one of its plan.team.yearly_periods periods. None while it’s 0 or not below plan.team.price_micro_usd.' },
+  'plan.team.yearly_periods': { default: 12, floor: 0, ceiling: MAX_LICENSE_PERIODS, unit: 'count', measures: 'Team: how many periods a license for a year covers, at plan.team.yearly_price_micro_usd each. None while it’s 0 or 1.' },
   'plan.team.notes_minutes': { default: 3_000, floor: 0, ceiling: 600_000, unit: 'minutes', measures: 'Team: the notes a license’s period brings its member, reckoned at ai.hour_micro_usd an hour.' },
   'plan.team.storage_bytes': { default: 100 * GiB, floor: 0, ceiling: 10 * TiB, unit: 'bytes', measures: 'Team: the storage each live license adds to its team’s pool; also what someone who leaves a team is held to through plan.grace_seconds.' },
   'plan.team.file_bytes': { default: 512 * MiB, floor: 0, ceiling: WHOLE_DOWNLOAD_BYTES, unit: 'bytes', measures: 'Team: one file.' },
