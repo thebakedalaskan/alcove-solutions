@@ -141,12 +141,13 @@ describe('one set of live notes for the call', () => {
     await say(host, B, 4000);
     await say(host, C, 8000);
     const before = runs();
-    // A busy model, so both browsers are looking while the run is on its way.
-    h.near.slowNext(700);
+    // The model answers only once the other browser has seen the run on its way, so both are looking while it is.
+    let meanwhile: CallState | undefined;
+    h.near.holdNext(async () => { meanwhile = await settle(kofi, (s) => s.liveNotes.writing); });
     const stop = [host.watchNotes(), kofi.watchNotes()];
     await waitFor(() => runs() > before, 'the notes model to be asked');
-    expect((await settle(kofi, (s) => s.liveNotes.writing)).liveNotes.writing).toBe(true);
     const seen = await notesOf(host);
+    expect(meanwhile?.liveNotes.writing).toBe(true);
     expect(texts(seen.decided)).toEqual([A]);
     expect(seen.next).toEqual([]);
     expect(proposalsOf(host)).toEqual([expect.objectContaining({ text: B, owner: 'Kofi', due: 'Friday', done: false, id: expect.any(String) })]);
@@ -1786,12 +1787,13 @@ describe('what stays', () => {
     // A refresh still on its way when the call ends finds nothing to save into, and nothing comes back.
     const late = await twoInCall();
     await say(late.host, A);
-    h.near.slowNext(600);
+    // The call ends while the notes model has the refresh, before it answers.
+    let left: unknown = 'not asked';
+    h.near.holdNext(async () => { left = await late.host.leave().then(() => 'ended', (e: unknown) => e); });
     const before = runs();
-    const look1 = look(h.baseUrl, late.kofi);
-    await waitFor(() => runs() > before, 'a refresh under way');
-    await late.host.leave();
-    expect((await look1).body).toEqual({ refreshed: false });
+    expect((await look(h.baseUrl, late.kofi)).body).toEqual({ refreshed: false });
+    expect(left).toBe('ended');
+    expect(runs()).toBe(before + 1);
     expect(await notesRows(late.host.ticket.callId)).toBe(0);
 
     // An earlier release knows nothing of live notes, so a call it ended leaves them behind until upkeep.

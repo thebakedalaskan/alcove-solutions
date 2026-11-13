@@ -449,20 +449,21 @@ describe('catching up during a call', () => {
     await inGroup(kofi);
     await host.appendAudio(piece(audioBytes('recheck'), 0, 0));
     await host.transcribe(speech('We agreed to sell the old van.', 0, 5000), host.ticket.identity);
-    /** Asks while the notes model takes its time, and does `meanwhile` once the question has reached it. */
-    const slowly = async (ask: () => Promise<unknown>, meanwhile: () => Promise<void>): Promise<unknown> => {
+    /** Asks, and does `meanwhile` once the question has reached the notes model, which answers only after it. */
+    const whileAnswering = async (ask: () => Promise<unknown>, meanwhile: () => Promise<void>): Promise<unknown> => {
       const sent = h.near.prompts.length;
-      h.near.slowNext(1500);
-      const answer = ask().catch((e: unknown) => e);
-      await waitFor(() => h.near.prompts.length > sent, 'the question to reach the notes model');
-      await meanwhile();
+      let done: unknown = 'the question never reached the notes model';
+      h.near.holdNext(async () => { done = await meanwhile().then(() => 'done', (e: unknown) => e); });
+      const answer = await ask().catch((e: unknown) => e);
+      expect(done).toBe('done');
+      expect(h.near.prompts.length).toBeGreaterThan(sent);
       return answer;
     };
-    const removed = await slowly(() => sam.catchUp({ kind: 'all' }), () => host.remove(sam.ticket.identity));
+    const removed = await whileAnswering(() => sam.catchUp({ kind: 'all' }), () => host.remove(sam.ticket.identity));
     expect([code(removed), message(removed)]).toEqual(['forbidden', 'The host removed you from this call.']);
-    const gone = await slowly(() => kofi.askSoFar('Who buys the van?', { kind: 'all' }), async () => { await kofi.leave(); });
+    const gone = await whileAnswering(() => kofi.askSoFar('Who buys the van?', { kind: 'all' }), async () => { await kofi.leave(); });
     expect([code(gone), message(gone)]).toEqual(['forbidden', 'You left the call while the answer was being written, so it isn’t shown.']);
-    const ended = await slowly(() => host.catchUp({ kind: 'all' }), async () => { await host.leave(); });
+    const ended = await whileAnswering(() => host.catchUp({ kind: 'all' }), async () => { await host.leave(); });
     expect([code(ended), message(ended)]).toEqual(['conflict', 'The call ended while the answer was being written. Its notes have everything.']);
     expect(h.logs.join('')).not.toContain('old van');
   });

@@ -320,11 +320,12 @@ describe('asking across the series during a call', () => {
     const { org, bea, one, now, host, inBea } = await third();
     const gone = ['conflict', 'Notes from one of these calls were deleted or removed from yours while the answer was being written, so it isn’t shown. Ask again.'];
     const sent = h.near.prompts.length;
-    h.near.slowNext(1500);
-    const answer = inBea.askEarlier('Why did we drop the tablet?', ZONE).catch((e: unknown) => e);
-    await waitFor(() => h.near.prompts.length > sent, 'the question to reach the notes model');
-    await org.api.notes.delete(one.noteId);
-    expect(refusal(await answer)).toEqual(gone);
+    // The note goes once the question has reached the notes model, which answers only after it.
+    let deleted: unknown = 'the question never reached the notes model';
+    h.near.holdNext(async () => { deleted = await org.api.notes.delete(one.noteId).then(() => 'deleted', (e: unknown) => e); });
+    expect(refusal(await inBea.askEarlier('Why did we drop the tablet?', ZONE).catch((e: unknown) => e))).toEqual(gone);
+    expect(deleted).toBe('deleted');
+    expect(h.near.prompts.length).toBeGreaterThan(sent);
     // Asked again, it answers from what's left; what went is in neither what carries over nor the answer.
     expect(await inBea.askEarlier('Why did we drop the tablet?', ZONE)).toEqual([{ type: 'text', text: 'That wasn’t covered in these meetings.' }]);
     expect(JSON.stringify(await bea.api.calls.series(now.code))).not.toMatch(/tablet/);

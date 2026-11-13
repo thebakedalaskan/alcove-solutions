@@ -64,11 +64,6 @@ function weekOn(iso: string): string {
 const scheduleNext = async (api: AlcoveApi, meetingId: string) => api.meetings.scheduleNext(meetingId, weekOn((await api.meetings.get(meetingId)).startsAt));
 /** Whether `later` is a week after `earlier`: exactly, or an hour either way when the clocks change in between. */
 const aWeekOn = (earlier: string, later: string) => Math.abs(new Date(later).getTime() - new Date(earlier).getTime() - 7 * 86_400_000) <= 3_600_000;
-/** Polls until `ok` holds. */
-async function until(ok: () => boolean, what: string): Promise<void> {
-  for (let i = 0; i < 200; i++) { if (ok()) return; await new Promise((r) => setTimeout(r, 25)); }
-  throw new Error(`Timed out waiting for ${what}`);
-}
 
 /** Signs in with Google the way a browser does, following each redirect by hand. */
 async function viaGoogle(b: Browser, user: GoogleUser): Promise<void> {
@@ -391,21 +386,22 @@ describe('memory across a series', () => {
     await hold(org.api, next.code, 'We decided to hire two engineers.');
     expect((await asked(bea.api, seriesId, 'Who tells the board?'))[0]).toEqual({ type: 'text', text: 'From meeting 2: Bea will tell the board by Friday.' });
 
-    /** Asks while the notes model takes its time, and does `meanwhile` once the question has reached it. */
-    const slowly = async (api: AlcoveApi, meanwhile: () => Promise<void>): Promise<unknown> => {
+    /** Asks, and does `meanwhile` once the question has reached the notes model, which answers only after it. */
+    const whileAnswering = async (api: AlcoveApi, meanwhile: () => Promise<void>): Promise<unknown> => {
       const sent = h.near.prompts.length;
-      h.near.slowNext(1500);
-      const answer = asked(api, seriesId, 'Who tells the board?').catch((e: unknown) => e);
-      await until(() => h.near.prompts.length > sent, 'the question to reach the notes model');
-      await meanwhile();
+      let done: unknown = 'the question never reached the notes model';
+      h.near.holdNext(async () => { done = await meanwhile().then(() => 'done', (e: unknown) => e); });
+      const answer = await asked(api, seriesId, 'Who tells the board?').catch((e: unknown) => e);
+      expect(done).toBe('done');
+      expect(h.near.prompts.length).toBeGreaterThan(sent);
       return answer;
     };
     const gone = ['conflict', 'Notes from one of these calls were deleted or removed from yours while the answer was being written, so it isn’t shown. Ask again.'];
     // Bea removes the first call's notes from hers while her answer is being written: the answer, which quotes them, isn't sent.
-    expect(refusal(await slowly(bea.api, () => bea.api.notes.delete(one.noteId)))).toEqual(gone);
+    expect(refusal(await whileAnswering(bea.api, () => bea.api.notes.delete(one.noteId)))).toEqual(gone);
     expect(await asked(bea.api, seriesId, 'Who tells the board?')).toEqual([{ type: 'text', text: 'That wasn’t covered in these meetings.' }]);
     // The organizer deletes them while answering the organizer: the same.
-    expect(refusal(await slowly(org.api, () => org.api.notes.delete(one.noteId)))).toEqual(gone);
+    expect(refusal(await whileAnswering(org.api, () => org.api.notes.delete(one.noteId)))).toEqual(gone);
     expect(await asked(org.api, seriesId, 'Who tells the board?')).toEqual([{ type: 'text', text: 'That wasn’t covered in these meetings.' }]);
     expect(h.logs.join('')).not.toContain('tell the board');
   });
