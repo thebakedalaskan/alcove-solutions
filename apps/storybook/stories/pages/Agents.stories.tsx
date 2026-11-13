@@ -43,7 +43,7 @@ const following = (name: string | RegExp, said: string): Play => async ({ userEv
 /** Claude connects, as if Art had added Alcove in Claude and allowed it in another tab. */
 const claudeConnects: Play = async ({ step }) => {
   await step('In another tab, Art adds Alcove to Claude and allows it', async () => {
-    await screen.findByText(/^Waiting for Claude/, {}, SOON);
+    await screen.findByRole('link', { name: /^Copy and open Claude/ }, SOON);
     const held = agentsFor(current());
     held.save([...held.connections, connectionAllowed('Claude', ['notes:read', 'notes:write', 'meetings:read', 'meetings:write', 'calendar:read'])]);
   });
@@ -66,10 +66,10 @@ export const JustConnectedPhone = phone(JustConnected);
 export const Ending = page('/agents', 'agents-ending');
 
 /* ---------- connecting an agent */
-/** Claude: paste Alcove's address into its connectors. One button copies it and opens Claude. */
+/** Claude: add Alcove as a custom connector, with its address. One button copies it and opens Claude's connectors. */
 export const ConnectClaude = page('/agents', 'busy', { play: opening('Connect Claude', 'Press Claude, dashed: it isn’t connected yet') });
-/** Pressed, the button waits for Claude, which opens in a new tab with the address copied. */
-export const WaitingForClaude = page('/agents', 'busy', {
+/** Pressed, it copies the address and opens Claude in a new tab, and stays as it was, to press again: nothing waits here. */
+export const CopiedAndOpened = page('/agents', 'busy', {
   play: then(opening('Connect Claude', 'Press Claude'), following(/^Copy and open Claude/, 'Press Copy and open Claude'))
 });
 /** Claude connected in another tab: the popover moves to it, now solid, and offers a first question. */

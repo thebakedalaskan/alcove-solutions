@@ -58,7 +58,7 @@ function Place({ spot, at, state, now, next }: { spot: Exclude<Spot, { type: 'ga
     return (
       <AgentPlace place={k.id} icon={k.icon} name={k.name} look="dashed" label={`Connect ${k.name}`} popLabel={`Connect ${k.name}`}
         open={open !== undefined} onOpenChange={opens('connect')} at={at}>
-        <ConnectPop kind={k} waiting={state.waiting} onWait={() => state.wait()} />
+        <ConnectPop kind={k} onAct={() => state.lookOut()} />
       </AgentPlace>
     );
   }
@@ -67,7 +67,7 @@ function Place({ spot, at, state, now, next }: { spot: Exclude<Spot, { type: 'ga
       open={open !== undefined} onOpenChange={opens('connect')} at={at}>
       {open === 'token'
         ? <TokenPop onBack={() => state.show(spot.key, 'connect')} onDone={() => state.close(spot.key)} />
-        : <ConnectPop kind={undefined} waiting={state.waiting} onWait={() => state.wait()} onToken={() => state.show(spot.key, 'token')} />}
+        : <ConnectPop kind={undefined} onAct={() => state.lookOut()} onToken={() => state.show(spot.key, 'token')} />}
     </AgentPlace>
   );
 }

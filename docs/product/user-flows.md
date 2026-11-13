@@ -2404,11 +2404,13 @@ day) under its name, in caution, with a dot on its window. Before one is connect
 *Ask it about your calls, and let it book them. It can do only what you allow.*; after, **Your agents**. Each window opens a
 popover under it (a sheet on a phone) with one thing to do.
 
-1. **Connect Claude.** Press **Agents** in the side panel, then Claude on the horizon. Its popover says *Paste this address
-   into Claude’s connectors.* over Alcove's address, and **Copy and open Claude** copies the address and opens Claude's
-   connectors in a new tab (ChatGPT's is the same, with ChatGPT's). The button gives way to **Waiting for Claude**, and
-   Agents looks for the new connection every 3 seconds while it waits. Add Alcove in Claude, and Claude opens Alcove to ask
-   what it can do (14.2). The moment it's allowed, this tab knows too: Claude stands on the horizon, and its popover says
+1. **Connect Claude.** Press **Agents** in the side panel, then Claude on the horizon. Its popover says *In Claude, press
+   Add, then Add custom connector, and paste this address.* over Alcove's address, and **Copy and open Claude** copies the
+   address and opens Claude's connectors (Customize › Connectors) in a new tab. ChatGPT's says *In ChatGPT, press +, then
+   Add custom MCP server, and paste this address.*, and opens ChatGPT's plugins. The popover stays as it was, so the button
+   can be pressed again: nothing here waits for Claude, which asks on a page of its own. While the popover is open after
+   that, Agents looks for a new connection every 3 seconds. Add Alcove in Claude, and Claude opens Alcove to ask what it
+   can do (14.2). The moment it's allowed, this tab knows too: Claude stands on the horizon, and its popover says
    **Claude is connected**, *Ask it something in Claude, like:* "What did we decide about the launch?", with copy.
 2. **Allow it, with less than it asks for.** The agent opens Alcove's `/connect` with its request, a pointer that carries no
    credential. Signed in, Agents asks in its place; signed out, you sign in first (**Sign in to connect your agent**), and
@@ -2425,11 +2427,11 @@ popover under it (a sheet on a phone) with one thing to do.
    **Reading the request**; one that doesn't load says **This request didn’t load**, with **Try again**. `/connect` without
    a request grants nothing, and says to open the connection from the agent.
 3. **One button: Cursor or VS Code.** Cursor's popover says *Cursor asks to add Alcove. Then you choose what it can do,
-   here.*, and **Add to Cursor** opens Cursor, which asks to add Alcove. The popover waits; Cursor opens Alcove, Agents asks,
-   as in 14.2, and once it's allowed the popover says it's connected.
+   here.*, and **Add to Cursor** opens Cursor, which asks to add Alcove. The popover stays as it was; Cursor opens Alcove,
+   Agents asks, as in 14.2, and once it's allowed the popover says it's connected.
 4. **One line: Claude Code or Codex.** Claude Code's popover has the line to run in your terminal, with **Copy command**:
    *Run this in your terminal, then /mcp in Claude Code to sign in.* Codex's line signs in as well: *Run this in your
-   terminal. Codex opens Alcove to sign in.* The popover waits, and Agents asks, as in 14.2.
+   terminal. Codex opens Alcove to sign in.* The popover stays as it was, and Agents asks, as in 14.2.
 5. **Change what an agent can do.** Press a connected agent. Its popover says when it was last used (**Used 4 min ago**,
    or **Token · used Mon** for a token), then **What it can do**: Read notes, Edit notes, Share notes, Delete notes, Read
    calls, Book calls and Read calendar. Pressing one changes it at once, **Saved** shows beside the heading, and the agent

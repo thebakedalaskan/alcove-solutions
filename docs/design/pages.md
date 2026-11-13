@@ -450,8 +450,9 @@ Team's evening the other way round: the sun is low and to the right, just past t
 - **A window's popover** opens under it, with a caret, and slides to stay on the page; on a phone it's a sheet. Each has
   one thing to do, and no numbered steps, floating links or lines of facts:
   - **To connect:** Connect Claude, one line of what to do, the address or the command in a quiet mono well when it needs
-    one, and one full-width filled button. Pressed, the button gives way to Waiting for Claude, with three dots, and once
-    Claude is connected the popover says so, with something to ask it in a well with copy.
+    one, and one full-width filled button. Pressed, it stays as it was, to press again: nothing in the popover waits for
+    the agent, which asks on a page of its own. Once Claude is connected the popover says so, with something to ask it in
+    a well with copy. Three dots stand in the button's place only while Alcove's address loads.
   - **Another agent:** the address and Copy address, with a foot row, A script that can't sign in? Create a token →.
     The token's form opens in the same popover, with a way back; made, the token is masked in a well with copy, and the
     address is under it.

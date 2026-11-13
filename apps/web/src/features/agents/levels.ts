@@ -15,7 +15,7 @@ const AREAS: readonly { id: Area; name: string; icon: IconName; levels: readonly
     id: 'notes', name: 'Notes', icon: 'notes', levels: [
       { id: 'off', title: 'Off', detail: 'It can’t see your notes', scopes: [] },
       { id: 'read', title: 'Read', detail: 'Find notes, read transcripts, ask questions', scopes: ['notes:read'] },
-      { id: 'edit', title: 'Read and edit', detail: 'Also propose decisions, add follow-ups, fix a transcript', scopes: ['notes:read', 'notes:write'] }
+      { id: 'edit', title: 'Read and edit', detail: 'Also propose decisions, add follow-ups and questions, fix a transcript', scopes: ['notes:read', 'notes:write'] }
     ]
   },
   {

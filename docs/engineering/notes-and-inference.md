@@ -846,7 +846,7 @@ manifest, the call's own lists and each breakout room's, so it has no table of i
 
   | Follow-up | Who |
   | --- | --- |
-  | Add one | Anyone with the note; for someone else it's a suggestion, for yourself it's taken on |
+  | Add one | Anyone with the note, straight onto the checklist; who it's for and when are a suggestion until that person takes it on, even when it's whoever added it |
   | Take it on ("I'll do it") | Only the person it's for |
   | Take that back (`takeOn: false`, Undo after I'll do it) | Only whoever took it on: recorded as `reopened`, and it waits on them again |
   | "Not mine" (`owner: null`) | The person it's for: recorded as `declined`, and nobody has it |
@@ -911,8 +911,11 @@ manifest, the call's own lists and each breakout room's, so it has no table of i
 - **Adding to the notes.** `POST /v1/notes/:id/decisions` and `…/actions` with the exact words, optionally the `lines` it
   rests on (at most three, of that part of the note, or `400 invalid`) and a breakout room's section (`room`, or
   `404 not-found`). Nothing asks a model, and the same words again add nothing, so a retry is safe and no receipt is kept.
-  A part holds at most 60 of each (`409 conflict`). Besides the notes model, this and **Shared notes**
-  ([Adding to the shared notes](#adding-to-the-shared-notes)) are the only ways anything reaches the shared notes, and both
+  A part holds at most 60 of each (`409 conflict`). Someone's agent adds the same way, as them
+  ([Agents and MCP › A note's entries](agents-and-mcp.md#a-notes-entries)): `propose_decision` a decision and
+  `add_follow_up` a follow-up, straight onto the checklist, and `add_question` an open question too (`notes.addQuestion`,
+  which has no route of its own, since the app doesn't add questions). Besides the notes model, these and **Shared notes**
+  ([Adding to the shared notes](#adding-to-the-shared-notes)) are the only ways anything reaches the shared notes, and all
   take someone sending exactly those words, so nothing someone keeps for themselves gets in by itself. A person's entry has
   `proposed` as its first change, which is also what keeps it when the notes are written again.
 - **In the app.** The note says where each decision stands in words as well as colour, who said so, **What was said**
@@ -1308,7 +1311,7 @@ Ending the call hands accepted tasks, pending proposals and review receipts to t
 
 Fresh actions inferred while writing notes, including board actions, are suggestions until someone accepts them. The writer reconciles them with the existing sealed actions and review outcomes instead of rebuilding the checklist. Notes written again preserve accepted tasks, pending proposals and dismissals. Main-room and breakout-room sections have separate suggestion lists and use the same review boundary: `api.notes.reviewAction(noteId, review)` returns the updated note. Actual-only projections drive open counts, inbox and series carry-over.
 
-Proposal and review-receipt admission is bounded to 200 records per part. Inference stops adding proposals at that ceiling; explicit agent proposals get a conflict. This budget is separate from the actual-task limit, so dismissing suggestions cannot stop somebody adding a manual task. Accepted tasks and dismissal receipts are never evicted to admit more model output.
+Proposal and review-receipt admission is bounded to 200 records per part. Inference stops adding proposals at that ceiling. This budget is separate from the actual-task limit, so dismissing suggestions cannot stop somebody, or their agent, adding a manual task. Accepted tasks and dismissal receipts are never evicted to admit more model output.
 
 ### Stored-record upgrade
 

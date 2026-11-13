@@ -92,7 +92,7 @@ export const ActionPatchSchema = z.object({
 export type ActionPatch = z.infer<typeof ActionPatchSchema>;
 
 
-/** The most lines someone can pick as what a decision or follow-up they propose rests on. */
+/** The most lines someone can pick as what a decision, open question or follow-up they add rests on. */
 export const MAX_PROPOSAL_LINES = 3;
 
 /**
@@ -115,6 +115,14 @@ export const ActionProposalSchema = DecisionProposalSchema.extend({
 });
 
 export type ActionProposal = z.infer<typeof ActionProposalSchema>;
+
+/**
+ * Someone with the notes adding an open question the notes didn't hear: its words, the lines it rests on, and the breakout
+ * room's section it goes in (the call's, without one). It starts open, and anyone who has the notes can say it was answered.
+ */
+export const QuestionProposalSchema = DecisionProposalSchema;
+
+export type QuestionProposal = z.infer<typeof QuestionProposalSchema>;
 
 
 /**
