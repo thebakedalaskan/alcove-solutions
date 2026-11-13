@@ -405,11 +405,18 @@ live for `plan.period_seconds` from then (`licensed_from`, `licensed_until`); on
 On a visit:
 
 1. An unconsumed license is taken, the oldest bought.
-2. None left, with auto-purchase on (`PUT /v1/team/auto-purchase { on }`) and the admin's balance enough: one is bought
-   ("Team license, bought for a member") and taken.
+2. None left, with auto-purchase on (`PUT /v1/team/auto-purchase { on }`), the price no higher than a license last cost
+   the team, and the admin's balance enough: one is bought ("Team license, bought for a member") and taken.
 3. Otherwise none is: the member stays on their own plan and is told `license-needed` (ask your admin; never the admin
    themselves), `wanted_at` is set, and the admin is told `licenses-none`, once until more are bought. Logged `team license
-   wanted, none left`.
+   wanted, none left`, with why none was bought: `off`, `price` or `short`.
+
+Auto-purchase follows renewing's rule ([Pro](#pro)): a higher price is never taken from the balance without the admin
+seeing it. What a license last cost the team is kept in its `team-billing` record: the last bought, by the admin (from
+their balance or with a payment) or by auto-purchase, or, before any was, the price when auto-purchase was turned on.
+Once the price is higher, auto-purchase buys nothing and the admin is told `licenses-none`; when they buy licenses at the
+new price themselves, as checkout shows it, it's what auto-purchase goes by. A lower price is bought, and becomes what it
+goes by.
 
 A license taken replaces Pro at once: the running month ends then (not refunded), every month that hasn't started goes,
 and the balance gets back what refunding them would give ([Refunds](#pro): what was paid, less a month's price's

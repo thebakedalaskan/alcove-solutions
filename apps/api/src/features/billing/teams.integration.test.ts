@@ -7,6 +7,7 @@
 import { AlcoveApiError, type AlcoveApi, type Purchase, type TranscriptClip } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import type { LimitName } from '../../limits';
 import { maintain } from '../../maintenance';
 import { speechWav } from '../../testing/fake-near';
@@ -216,6 +217,39 @@ describe('licenses', () => {
     expect(await kinds(ann)).toEqual(['licenses-none', 'licenses-low']);
     expect(await kinds(cy)).toEqual(['license-needed']);
     expect(await refusal(bob.api.teams.setAutoPurchase(false))).toBe(ADMIN_ONLY);
+  });
+
+  it('G5′: auto-purchase never pays more for a license than one last cost the team: the admin is told none are left, and buying at the new price makes it what it goes by', async () => {
+    const DEARER = 60_000_000;
+    const LOWER = 30_000_000;
+    const wanted = (from: number) => h.logs.slice(from).flatMap((l) => { const r = z.object({ msg: z.string() }).passthrough().safeParse(JSON.parse(l)); return r.success && r.data.msg === 'team license wanted, none left' ? [r.data] : []; });
+    const ann = await account();
+    const [bob, cy, dee, eve] = await Promise.all([account(), account(), account(), account()]);
+    await team(ann);
+    // Turned on before any license was bought: $40, the price then, is what it goes by.
+    await ann.api.teams.setAutoPurchase(true);
+    await give(ann, 3 * DEARER);
+    // The price rises. Bob joins with none left: nothing is bought, though the balance has it.
+    await setLimit('plan.team.price_micro_usd', DEARER);
+    const from = h.logs.length;
+    expect(await joined(ann, bob)).toMatchObject({ licensed: false });
+    expect(await ann.api.plans.plan()).toMatchObject({ balance: { microUsd: 3 * DEARER, history: [{ label: 'Added by support' }] } });
+    expect(await kinds(ann)).toEqual(['licenses-none']);
+    expect(await kinds(bob)).toEqual(['license-needed']);
+    expect(wanted(from)).toEqual([expect.objectContaining({ buying: true, why: 'price' })]);
+    // The admin buys one at $60, as checkout shows it: Bob's next visit takes it, and auto-purchase buys Cy's at $60.
+    await ann.api.teams.buyLicenses(1, DEARER);
+    await bob.api.auth.visit();
+    expect(await bob.api.plans.plan()).toMatchObject({ kind: 'team' });
+    expect(await joined(ann, cy)).toMatchObject({ licensed: true });
+    expect(await labels(ann)).toEqual(['Team license, bought for a member', 'Team, 1 license', 'Added by support']);
+    // A lower price is bought, and is what it goes by from then: back at $60, Eve gets none, and the admin is told again.
+    await setLimit('plan.team.price_micro_usd', LOWER);
+    expect(await joined(ann, dee)).toMatchObject({ licensed: true });
+    await setLimit('plan.team.price_micro_usd', DEARER);
+    expect(await joined(ann, eve)).toMatchObject({ licensed: false });
+    expect(await ann.api.plans.plan()).toMatchObject({ balance: { microUsd: 3 * DEARER - 2 * DEARER - LOWER } });
+    expect(await kinds(ann)).toEqual(['licenses-none', 'licenses-low', 'licenses-none']);
   });
 
   it('G6: an ended license isn’t taken again by reading the session or the plan, only by a visit', async () => {
