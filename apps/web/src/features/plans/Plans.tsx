@@ -6,7 +6,7 @@
  * Extend open checkout over the page, on a year when Yearly is chosen; Start a team and Buy licenses open it on Team, whose
  * licenses are a period at a time whichever way the prices are shown. While a team license is yours, Pro waits: the server
  * doesn't sell it then. Reached from the side panel's foot, Settings › Plan, checkout's Compare plans, and the welcome page's
- * Get Pro, which opens checkout as the page opens. Opened by itself once, in Home's place, it's the plan choice
+ * Get Pro and Start a team, which open checkout as the page opens. Opened by itself once, in Home's place, it's the plan choice
  * (PlanChoice.tsx): a head of its own, and the plan you're on leads straight on. Here or there, once the plans have been on
  * screen while the server says they haven't been shown, it's told (choice.ts).
  */
@@ -92,8 +92,9 @@ const atATime = (maxMonths: number): string => (maxMonths > 1 ? `for 1 to ${maxM
 /* ---------- the page ---------- */
 
 /**
- * Opens checkout once as the page opens, on what the address asked for (`?checkout=pro`, the welcome page's Get Pro after
- * signing in), then takes it out of the address (`done`). It owns nothing that needs undoing: checkout is the provider's.
+ * Opens checkout once as the page opens, on what the address asked for (`?checkout=pro`, `?checkout=team`: the welcome page's
+ * Get Pro and Start a team after signing in), then takes it out of the address (`done`). It owns nothing that needs undoing:
+ * checkout is the provider's.
  */
 function useCheckoutFromAddress(what: CheckoutParam | undefined, done: (() => void) | undefined): void {
   const { open } = useCheckout();
@@ -101,7 +102,7 @@ function useCheckoutFromAddress(what: CheckoutParam | undefined, done: (() => vo
   useEffect(() => {
     if (!what || opened.current) return;
     opened.current = true;
-    open(what === 'pro' ? { plan: 'pro' } : { plan: 'hours' }, 'welcome');
+    open({ plan: what }, 'welcome');
     done?.();
   }, [what, open, done]);
 }
