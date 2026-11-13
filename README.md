@@ -33,25 +33,20 @@
 
 <br>
 
+## Architecture overview
+
+Calls are end-to-end encrypted in your browser, so LiveKit, the media relay, only ever carries
+ciphertext. Notes are written inside Alcove’s server, which runs in a confidential VM on Intel TDX: TLS ends inside it, its
+key is released only to the signed image the hardware attests to, and your browser checks that attestation before it shows
+the seal. Everything it stores is sealed under keys for each account, and the AI models it uses run in enclaves Alcove
+verifies before sending them anything. [More in How it works →](#how-it-works)
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/readme/architecture-dark.svg">
     <img alt="Architecture: browsers send end-to-end encrypted media through LiveKit; Alcove's API runs inside Google Cloud Confidential Space on Intel TDX, with its key released by Cloud KMS only to the signed image; Postgres and the object store hold ciphertext; NEAR AI's models run in verified enclaves and receive requests sealed with Oblivious HTTP." src="docs/readme/architecture-light.svg" width="100%">
   </picture>
 </p>
-
-**How it stays private.** Calls are end-to-end encrypted in your browser, so LiveKit, the media relay, only ever carries
-ciphertext. Notes are written inside Alcove’s server, which runs in a confidential VM on Intel TDX: TLS ends inside it, its
-key is released only to the signed image the hardware attests to, and your browser checks that attestation before it shows
-the seal. Everything it stores is sealed under keys for each account, and the AI models it uses run in enclaves Alcove
-verifies before sending them anything. [More in How it works →](#how-it-works)
-
-<br>
-
-<p align="center">
-  <img src="docs/readme/call.gif" alt="A design review in Alcove: as people talk, each line lands in the transcript under who said it, the live notes keep up with what was decided, and the seal shows the call is sealed." width="100%">
-</p>
-<p align="center"><sub>A design review in Alcove. Every line lands under who said it, the live notes keep up, and the seal says what’s sealed.</sub></p>
 
 <br>
 
@@ -66,6 +61,11 @@ Meeting notes come from one of three places today, and each is wrong for a sensi
 Alcove puts confidential transcription and notes inside an end-to-end encrypted video platform, and backs the promise with
 hardware evidence instead of a privacy policy: your browser checks what Alcove’s server runs on, and the server checks what
 the AI runs on, before anything is sent.
+
+<p align="center">
+  <img src="docs/readme/call.gif" alt="A design review in Alcove: as people talk, each line lands in the transcript under who said it, the live notes keep up with what was decided, and the seal shows the call is sealed." width="100%">
+</p>
+<p align="center"><sub>A design review in Alcove. Every line lands under who said it, the live notes keep up, and the seal says what’s sealed.</sub></p>
 
 > [!TIP]
 > **Use it now at [alcove.solutions](https://alcove.solutions).** Sign in with Google. Every account starts on Free with
@@ -237,7 +237,7 @@ nothing renews by itself unless you turn it on.
 
 The goal is simple to state: readable content exists only in the browsers of the people it belongs to, and inside Alcove’s
 server process while it works on it. Everything else (the database, the object store, the media relay, the logs, the
-network) sees ciphertext. The picture at the top shows the whole path; here’s how each part holds.
+network) sees ciphertext. The [architecture overview](#architecture-overview) shows the whole path; here’s how each part holds.
 
 ### Calls are end-to-end encrypted
 
