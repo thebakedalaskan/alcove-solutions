@@ -67,6 +67,11 @@ const HereNotice = z.object({
   typing: z.boolean(),
   /** The call's own page they're on. A notice from an instance a release behind has none. */
   page: CallPageSchema.nullable().default(null),
+  /**
+   * The workspace's version when what it says was checked. One checked before a change the room has since settled is settled
+   * again before anyone's shown it. A notice from an instance a release behind has none, and is settled again too.
+   */
+  version: z.number().nullable().default(null),
   gone: z.boolean()
 });
 type HereNotice = z.infer<typeof HereNotice>;
@@ -75,11 +80,11 @@ interface Here { who: Who; member: boolean; person: Person; connection: string; 
 const hereHeader = (o: Owner, workspaceId: string): RecordHeader => ({ v: 1, kind: 'workspace-presence', ownerId: o.ownerId, workspaceId });
 
 /** Tells every instance where this reader's connection is, or that it's gone. Nothing of it is kept anywhere that lasts. */
-export async function announce(w: { owner: Owner; workspaceId: string; role: Standing['role'] }, reader: Reader, person: Person, connection: string, where: WorkspaceWhere | 'gone'): Promise<void> {
+export async function announce(w: { owner: Owner; workspaceId: string; role: Standing['role']; version: number }, reader: Reader, person: Person, connection: string, where: WorkspaceWhere | 'gone'): Promise<void> {
   const place: WorkspaceWhere = where === 'gone' ? { document: null, block: null, typing: false, page: null } : where;
   const notice: HereNotice = {
     person, email: reader.email ?? null, principals: reader.principals.map(b64u), calls: reader.calls.map(b64u), member: w.role !== null, connection, callId: reader.seat?.callId ?? null, callIdentity: reader.seat?.viewer.pass.identity ?? null,
-    ...place, page: reader.seat ? place.page : null, gone: where === 'gone'
+    ...place, page: reader.seat ? place.page : null, version: w.version, gone: where === 'gone'
   };
   await publish(w.owner.pool, w.workspaceId, `${PRESENCE}${fromUtf8(sealJson(workspaceKey(w.owner), hereHeader(w.owner, w.workspaceId), toJson(notice)))}`);
 }
@@ -111,6 +116,8 @@ export class Room {
   private heardHere: string[] = [];
   /** What was read last, for where people are. Only while anyone's here: a tree is big, and people are said to be in its items. */
   private latest: Snapshot | undefined;
+  /** Someone's here on a check older than `latest`, so they could have lost what they say since: the next read settles them. */
+  private unsettled = false;
   private off: (() => void) | undefined;
   private expiry: ReturnType<typeof setTimeout> | undefined;
   private telling: ReturnType<typeof setTimeout> | undefined;
@@ -180,10 +187,13 @@ export class Room {
     do {
       this.again = false;
       try {
+        // What's been heard goes in first, so a read here settles it with everyone else: a browser's word was checked when it
+        // was said, and the workspace can have moved on since.
+        const heard = await this.openHere();
         const version = (await maybeOne(this.d.pool, z.object({ version: bigintText }), 'SELECT version FROM workspaces WHERE workspace_id = $1', [this.workspaceId]))?.version ?? null;
         const behind = [...this.members].filter((m) => m.version !== version);
-        const placing = this.here.size > 0 || this.heardHere.length > 0;
-        const stale = placing && (this.latest === undefined || (this.latest?.version ?? null) !== version);
+        const placing = this.here.size > 0;
+        const stale = placing && (this.unsettled || this.latest === undefined || (this.latest?.version ?? null) !== version);
         if (behind.length || stale) {
           const here = [...this.here.values()].map((e) => e.who);
           const s = await readSnapshot(this.d, this.workspaceId, {
@@ -191,17 +201,22 @@ export class Room {
             calls: [...behind.flatMap((m) => m.calls), ...here.flatMap((who) => who.calls)]
           });
           this.settle(s);
+          this.unsettled = false;
           this.latest = placing ? s : undefined;
           for (const m of behind) m.offer(s);
         }
-        if ((await this.openHere()) || behind.length || stale) this.tell();
+        if (heard || behind.length || stale) this.tell();
       } catch (e) {
         rlog.warn('workspace not read for its streams', { workspaceId: this.workspaceId, err: e });
       }
     } while (this.again);
   }
 
-  /** Opens the presence heard: with keys opened for this and not kept, however many notices that is. */
+  /**
+   * Opens the presence heard: with keys opened for this and not kept, however many notices that is. A notice checked before
+   * the version everyone here was last settled at may say what its sender has lost since (a document taken back while it was
+   * on its way), so it leaves the room `unsettled`, for the read that follows to settle.
+   */
   private async openHere(): Promise<boolean> {
     const heard = this.heardHere.splice(0);
     if (!heard.length) return false;
@@ -209,11 +224,13 @@ export class Room {
     const owner = ownerId === undefined ? undefined : await findOwner(this.d, ownerId, undefined);
     if (!owner) return false;
     const until = Date.now() + this.d.cfg.LIVE_PRESENCE_MS;
+    const settledAt = this.latest?.version;
     for (const text of heard) {
       const n = openJson(workspaceKey(owner), hereHeader(owner, this.workspaceId), utf8(text), HereNotice);
       const key = `${n.person.id}:${n.connection}`;
       if (n.gone) { this.here.delete(key); continue; }
-      const { email, principals, calls, gone: _, ...rest } = n;
+      const { email, principals, calls, gone: _, version, ...rest } = n;
+      if (version === null || (settledAt !== undefined && version < settledAt)) this.unsettled = true;
       // Whoever moved last comes last, so of someone's windows the one they're using can be told from one left open.
       const was = this.here.get(key);
       if (was && (was.document !== n.document || was.block !== n.block || was.typing !== n.typing || was.page !== n.page)) this.here.delete(key);

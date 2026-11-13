@@ -630,4 +630,45 @@ describe('where people are', () => {
     expect(of(a, theo)).toBeUndefined();
     a.close();
   });
+
+  it('doesn’t bring someone back for what they said just before their access went, however late that’s heard', async () => {
+    const ann = await account();
+    const out = await account();
+    const id = await workspace(ann, 'Ours');
+    const doc = await make(ann, id, 'Doc');
+    await ann.api.workspaces.share.set(id, doc, [{ email: out.email }], 'edit');
+    // Ann is on an instance that's slow to read what it hears: its look at how far the workspace has moved on waits, as
+    // behind other requests for a connection.
+    const own = new pg.Pool({ connectionString: process.env['TEST_DATABASE_URL'] });
+    const original = own.query.bind(own);
+    let gate: Promise<void> | null = null;
+    let open: () => void = () => undefined;
+    let held = 0;
+    Object.defineProperty(own, 'query', { value: async (...args: unknown[]) => { if (gate && args[0] === 'SELECT version FROM workspaces WHERE workspace_id = $1') { held++; await gate; } return Reflect.apply(original, own, args); } });
+    const second = await h.secondServer({}, undefined, own);
+    const a = createHttpApi({ baseUrl: second.baseUrl, fetch: ann.fetch }).workspaces.live(id);
+    const connection = madeUp();
+    const say = () => out.fetch(`${h.baseUrl}/v1/workspaces/${id}/presence`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ connection, document: doc, block: 'b2', typing: false, page: null }) });
+    try {
+      await opened(a, 'Ann’s stream');
+      expect((await say()).status).toBe(200);
+      await until(() => of(a, out)?.document === doc, 'Ann to see them in the document');
+      gate = new Promise<void>((go) => { open = () => { gate = null; go(); }; });
+      // Said again while they can still open it, and heard there, where it waits to be read.
+      expect((await say()).status).toBe(200);
+      await until(() => held > 0, 'Ann’s instance to be reading what it heard');
+      // Taken back before that instance has read it.
+      const entry = (await ann.api.workspaces.share.list(id, doc)).entries.find((e) => e.person.email === out.email);
+      await ann.api.workspaces.share.remove(id, doc, entry?.id ?? '');
+      open();
+      await until(() => of(a, out) === undefined, 'the outsider to go');
+      await rest(300);
+      expect(of(a, out)).toBeUndefined();
+    } finally {
+      open();
+      a.close();
+      await second.close();
+      await own.end();
+    }
+  });
 });

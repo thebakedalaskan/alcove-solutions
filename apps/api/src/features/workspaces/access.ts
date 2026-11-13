@@ -365,8 +365,8 @@ export async function workspaceVersion(d: Deps, workspaceId: string): Promise<nu
 
 /** A yes to something, as of a version of the workspace, until a team license it came from ends (null: none). Only that: no keys, and nothing of the tree. */
 interface Yes { version: number; role: WorkspaceRole | null; editedAt: string; until: number | null }
-/** What a remembered yes gives: the keys of this request, and what was true of the tree. */
-export interface Allowed extends Omit<Yes, 'version' | 'until'> { owner: Owner; workspaceId: string }
+/** What a remembered yes gives: the keys of this request, what was true of the tree, and the version it was true at. */
+export interface Allowed extends Omit<Yes, 'until'> { owner: Owner; workspaceId: string }
 const MAX_REMEMBERED = 4096;
 const yesByHub = new WeakMap<Hub, Map<string, Yes>>();
 const VersionRow = z.object({ owner_id: z.string(), version: bigintText });
@@ -386,7 +386,7 @@ async function remembering(d: Deps, who: Who, workspaceId: string, what: string,
   if (row && yes?.version === row.version && (yes.until === null || Date.now() < yes.until)) {
     const owner = await findOwner(d, row.owner_id, undefined, db);
     if (!owner) throw missing(workspaceId);
-    return { owner, workspaceId, role: yes.role, editedAt: yes.editedAt };
+    return { owner, workspaceId, role: yes.role, editedAt: yes.editedAt, version: yes.version };
   }
   const w = await workspaceFor(d, who, workspaceId, db, lock);
   const editedAt = ask(w);
@@ -396,7 +396,7 @@ async function remembering(d: Deps, who: Who, workspaceId: string, what: string,
     if (remembered.size <= MAX_REMEMBERED) break;
     remembered.delete(oldest);
   }
-  return { owner: w.owner, workspaceId, role: w.role, editedAt };
+  return { owner: w.owner, workspaceId, role: w.role, editedAt, version: w.version };
 }
 /** `requireDocument(..., 'edit')`, for each update. */
 export const editableBy = (d: Deps, who: Who, workspaceId: string, documentId: string, db: Db = d.pool, lock?: keyof typeof LOCKS): Promise<Allowed> =>
