@@ -240,12 +240,20 @@ even when nobody comes or goes.
 
 ### The server runs in confidential compute
 
-The API and the web app ship as one container image. CI builds it, signs it with cosign using a Cloud KMS key, and records
-the signature in [Sigstore’s public log](https://docs.sigstore.dev/logging/overview/). It runs in Google Cloud Confidential
-Space on Intel TDX. The master key is made inside the VM and stored only as Cloud KMS wrapped it, and Cloud KMS unwraps it
-only for a VM whose attestation shows that signed image. TLS ends inside the enclave, with a certificate key derived from the
-master. Your browser fetches the server’s attestation (Google’s token and the image’s log entry), checks it, and only then
-says **Confidential compute · verified**. [Alcove in Confidential Space →](infra/confidential-space/README.md)
+The API and the web app ship as one container image. CI builds every image, signs it with cosign using a Cloud KMS key,
+and logs the signature publicly in [Sigstore’s Rekor](https://docs.sigstore.dev/logging/overview/). It runs in Google
+Cloud Confidential Space on Intel TDX, and nowhere else.
+
+- **The master key** is made inside the VM. Cloud KMS releases it only to an attested, CI-signed production image with
+  debugging off.
+- **TLS ends inside the VM**, with a key only the VM has, and a CAA record pins certificate issuance to the VM’s own ACME
+  account.
+- **Your browser checks the attestation itself**, against Google’s root and the Rekor proof, before it shows the seal.
+  CI checks it again after every deploy, including that the server’s TLS key is the attested one.
+- **Nothing is left outside.** The keys from before the move are retired and deleted, the old Cloud Run service is gone,
+  and all 28 accounts moved in.
+
+[Alcove in Confidential Space →](infra/confidential-space/README.md)
 
 ### Everything stored is sealed
 
@@ -304,8 +312,9 @@ https://api.alcove.solutions verified: commit 952140e6…, image sha256:532386d4
 <summary><b>Known limits</b>, stated plainly</summary>
 <br>
 
-- Accounts made before production moved into confidential compute (13 November 2026) keep their root keys, so whoever held
-  the earlier master key could still open those. [Moving to confidential computing →](docs/engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing)
+- The 28 accounts made before the move kept their root keys, wrapped again under the enclave’s master. The old master is
+  retired and deleted, but whoever had copied it before could still unwrap those accounts’ keys from the database.
+  [Moving to confidential computing →](docs/engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing)
 - The Google Cloud project’s owners can still use the Cloud KMS key that wraps the master. Its use is audit-logged, and
   moving it to a project only CI administers is next. [Known limits →](infra/confidential-space/README.md#known-limits)
 - What runs inside NEAR AI’s enclaves is NEAR AI’s model code; its OS image is pinned and measured, the model code isn’t

@@ -18,9 +18,10 @@ copies ([Drive exports](drive-exports.md), [What is still visible](#what-is-stil
 being present. That is how invited people read an organizer's notes, and how the notes worker writes notes
 after a call. It also means that whoever runs the process, or can read `KMASTER`, can read everything.
 "Alcove can't read your notes" holds only when `KMASTER` is released to nothing but an attested
-confidential VM running the expected server image. That is a production requirement, not the current
-state: locally `KMASTER` is a value in `.env` read by an ordinary Node process
-([Production requirements](#production-requirements)). Inference is verified before anything is sent:
+confidential VM running the expected server image. Production does that: the API runs in Google Cloud Confidential
+Space on Intel TDX, its master is made there, and Cloud KMS releases it only to an attested, CI-signed production image
+with debugging off ([Moving to confidential computing](#moving-to-confidential-computing)). Locally `KMASTER` is a value
+in `.env` read by an ordinary Node process ([Production requirements](#production-requirements)). Inference is verified before anything is sent:
 NEAR AI's models get content only sealed to keys that their attested VMs, booted from published dstack images,
 vouch for. What runs in those VMs is NEAR AI's choice and isn't pinned to a reviewable build
 ([Notes and inference › What's left](notes-and-inference.md#whats-left)). Inside the process, modules are not
