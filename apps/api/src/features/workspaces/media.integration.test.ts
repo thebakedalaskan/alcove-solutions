@@ -2021,9 +2021,15 @@ describe('what a process takes on at once', () => {
   it('keeps to its share of the core, however many people are reading, each within their limit', async () => {
     const people = await Promise.all(Array.from({ length: 6 }, () => reader()));
     // A byte costs a whole piece, so this asks as much of the core as can be asked for as little as can be read here, on the same core.
-    const from = performance.eventLoopUtilization();
+    // What it takes of the core is the CPU time this thread spends against the time it has nothing to do. The event loop's own
+    // measure counts a wait for a CPU as busy, and on a shared machine that's other processes' doing. Reading without taking
+    // turns comes to the whole core, however busy the machine.
+    const loop = performance.eventLoopUtilization();
+    const cpu = process.threadCpuUsage();
     await Promise.all(people.flatMap((p) => Array.from({ length: readingEach }, async () => { for (let i = 0; i < 4; i++) await read(p, p.url, 'bytes=0-0'); })));
-    expect(performance.eventLoopUtilization(from).utilization).toBeLessThan(0.7);
+    const spent = process.threadCpuUsage(cpu);
+    const busyMs = (spent.user + spent.system) / 1000;
+    expect(busyMs / (busyMs + performance.eventLoopUtilization(loop).idle)).toBeLessThan(0.7);
   });
 
   it('counts every piece opened against someone’s reads, because one byte costs a whole piece', async () => {
