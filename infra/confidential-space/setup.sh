@@ -363,7 +363,8 @@ deployer_permissions=(
   compute.instances.get compute.instances.list
   compute.regions.get
   compute.regionBackendServices.get compute.regionBackendServices.update
-  compute.regionHealthChecks.get compute.regionHealthChecks.useReadOnly
+  # A rolling update re-reads the group's autohealing check, which takes use, not useReadOnly (13 Nov 2026).
+  compute.regionHealthChecks.get compute.regionHealthChecks.use compute.regionHealthChecks.useReadOnly
   compute.networks.get compute.subnetworks.get compute.subnetworks.use
 )
 role_state="$(cs_gc iam roles describe "$CS_DEPLOYER_ROLE" --format='value(deleted)' 2>/dev/null || echo missing)"
@@ -392,6 +393,9 @@ cs_iam artifacts repositories add-iam-policy-binding "$CS_REPOSITORY" --location
   --member="serviceAccount:$CS_DEPLOY_SA" --role=roles/artifactregistry.writer
 # Deploys and runs the migration job (Cloud Run), which needs no IAM changes.
 cs_iam projects add-iam-policy-binding "$CS_PROJECT" --member="serviceAccount:$CS_DEPLOY_SA" --role=roles/run.developer
+# Making or rolling a group makes its VMs as the caller, which needs compute.instances.create and the permissions around
+# it (disks, the subnet, metadata, the attached account): the first production deploy (13 Nov 2026) failed without them.
+cs_iam projects add-iam-policy-binding "$CS_PROJECT" --member="serviceAccount:$CS_DEPLOY_SA" --role=roles/compute.instanceAdmin.v1
 
 cs_say "$CS_ENV's load balancer: a regional external proxy Network Load Balancer on $CS_ADDRESS"
 exists cs_gc compute addresses describe "$CS_ADDRESS" --region="$CS_REGION" ||
