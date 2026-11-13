@@ -2,16 +2,20 @@
  * The call as a line, under its stage: play and where it's got to, then the line itself, its chapters as lengths with the one
  * you're in named above it, what was decided as rose diamonds on it (hollow until someone confirms it), follow-ups as blue
  * dots under it, a screen that was shared as a tinted length, stretches nothing was captured in as a pause, and the sun where
- * the recording has got to; then how long it is, its speed, the captions and full screen. Pressing or dragging along it, or
- * pressing a mark, moves the sun there, playing on if it was. While the call is still being recorded, the line ends where it
- * has got to, in the colour of recording. A call that kept no recording has the line and no player.
+ * the recording has got to; then how long it is, its speed (a menu of speeds to pick from), the captions and full screen.
+ * Pressing or dragging along it, or pressing a mark, moves the sun there, playing on if it was. While the call is still
+ * being recorded, the line ends where it has got to, in the colour of recording. A call that kept no recording has the line
+ * and no player.
  */
 import type { CaptureGap, Chapter, NoteAction, NoteDecision, ScreenShare } from '@alcove/api';
-import { Icon, IconButton, Spinner, cn } from '@alcove/ui';
+import { Icon, IconButton, Select, Spinner, cn, type SelectOption } from '@alcove/ui';
 import { useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { gapLabel } from '~/lib/capture';
 import { position } from '~/lib/time';
 import { RATES, usePlayerAt, type PlayerState } from './Player';
+
+/** The speeds, as the menu lists them: "0.75×", "1×" … "2×". */
+const SPEEDS: SelectOption<string>[] = RATES.map((r) => ({ value: String(r), label: `${r}×` }));
 
 /** Where something is on the line, as a share of it. */
 const share = (at: number, span: number) => (span > 0 ? Math.max(0, Math.min(1, at / span)) : 0);
@@ -112,8 +116,8 @@ export function CallLine({ player, span, chapters, marks, shares, gaps, here, ed
   const current = Math.max(0, parts.findLastIndex((c) => c.at <= pos));
   const now = parts[current];
   const shown = useMemo(() => fewMarks(marks, span), [marks, span]);
-  const rate = player.rate;
-  const nextRate = RATES[(RATES.findIndex((r) => r === rate) + 1) % RATES.length] ?? 1;
+  /* In full screen only the player shows, so the speeds open inside it. */
+  const fullScreen = full?.on ? document.fullscreenElement : null;
   return (
     <div className={cn('cd-line', !hasAudio && 'is-silent', live && 'is-live')} style={{ '--p': percent(p), '--edge': percent(share(end, span)) }}>
       {hasAudio && (
@@ -154,7 +158,7 @@ export function CallLine({ player, span, chapters, marks, shares, gaps, here, ed
       </div>
       <span className="cd-end" title={hasAudio ? 'The recording is encrypted. Only the people who have these notes can play it.' : undefined}>{position(end)}</span>
       <span className="cd-ctl">
-        {hasAudio && <button type="button" className="cd-speed" aria-label={`Speed: ${rate}×. Play at ${nextRate}×`} title="Speed" onClick={() => player.setRate(nextRate)}>{rate}×</button>}
+        {hasAudio && <Select value={String(player.rate)} onChange={(r) => player.setRate(Number(r))} options={SPEEDS} label="Speed" align="end" container={fullScreen} className="cd-speed" />}
         {captions && <IconButton icon="captions" label={captions.on ? 'Hide captions' : 'Show captions'} size={17} on={captions.on} aria-pressed={captions.on} onClick={captions.toggle} />}
         {full && <IconButton icon={full.on ? 'shrink' : 'grow'} label={full.on ? 'Leave full screen' : 'Full screen'} size={17} onClick={full.toggle} />}
       </span>

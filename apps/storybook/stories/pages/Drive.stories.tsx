@@ -5,7 +5,7 @@
  * tree becomes chips.
  */
 import type { Meta } from '@storybook/react-vite';
-import { screen } from 'storybook/test';
+import { screen, within } from 'storybook/test';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import { driveId, withNothingYet, withTheDrive } from '../../src/world/drive';
 
@@ -66,6 +66,15 @@ export const ReadOnly = page('/drive?ws=dv-handbook', 'busy', DRIVE);
 export const ACallsWorkspace = page('/drive?ws=dv-standup', 'busy', DRIVE);
 export const ACallsWorkspaceNight = page('/drive?ws=dv-standup', 'busy', { ...DRIVE, globals: NIGHT });
 export const ACallsWorkspacePhone = page('/drive?ws=dv-standup', 'busy', { ...DRIVE, globals: { ...PHONE, ...NIGHT } });
+/** Its row in the tree pressed again: folded, and still the place you're on. Pressed once more, it opens. */
+const folding: Play = async ({ userEvent, step }) => {
+  await step('Press the open row of the call you’re on, under From calls. It folds, and the sheet stays on the call', async () => {
+    const tree = await screen.findByRole('navigation', { name: 'Places in the Drive' }, LATER);
+    await userEvent.click(await within(tree).findByRole('button', { expanded: true }, LATER));
+  });
+};
+export const ACallsWorkspaceFolded = page('/drive?ws=dv-standup', 'busy', { ...DRIVE, play: folding });
+export const ACallsWorkspaceFoldedNight = page('/drive?ws=dv-standup', 'busy', { ...DRIVE, globals: NIGHT, play: folding });
 /** A document open beside the tree, in the workspace it lives in, with ⤢ to give it the whole screen. */
 export const ADocumentBesideTheTree = page(`/drive?ws=dv-standup&doc=${driveId('Launch checklist')}`, 'busy', DRIVE);
 export const ADocumentBesideTheTreeNight = page(`/drive?ws=dv-standup&doc=${driveId('Launch checklist')}`, 'busy', { ...DRIVE, globals: NIGHT });

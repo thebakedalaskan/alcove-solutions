@@ -253,8 +253,9 @@ right what came of it, in tabs, each its own scroll area. A series has no page o
   recording has a microphone's arch. Full screen fills the screen with the stage and its line.
 - **The line,** under the stage (play controls sit under the picture, never over it): play, the time, the chapter you're in
   above the line, the chapters as lengths along it, decisions as rose diamonds on it (hollow until confirmed) and follow-ups
-  as blue dots under it, a shared screen as a tinted length with a screen under it, the sun as the playhead, the end, speed,
-  captions and full screen. Pressing or dragging along it goes there; a mark goes to its moment. While the call is still
+  as blue dots under it, a shared screen as a tinted length with a screen under it, the sun as the playhead, the end, speed
+  (a quiet `Select`, its value and a small caret, opening the speeds to pick from, inside the player in full screen, which is
+  night whatever the theme), captions and full screen. Pressing or dragging along it goes there; a mark goes to its moment. While the call is still
   recording, it ends at a recording-coloured edge.
 - **Shared and made in this call,** under the line: each shared screen as a card with its ▶ moment and how long it was up
   (lit while it plays), then what the call worked on that you can open, as the Drive's cards (a document's first lines, a
@@ -310,7 +311,8 @@ its own page.
   sentences:
   - Recent; Shared with you, with how many
   - Workspaces, each with a neutral mark (its first letter, or two where two share one, the oldest keeping its own) and a
-    `+` on the heading. The one you're in opens to its folders and files, and a folder you're in opens to what's in it
+    `+` on the heading. The one you're in opens to its folders and files, and a folder you're in opens to what's in it.
+    Pressing the row of the one you're on folds it, and again opens it; going anywhere else opens the one you go to
   - From calls: each call's own workspace by the call's name, the next ones first with their time ("17:30", or the day),
     then the latest. The one you're in opens to what the call made. Five, then Show N more. Two with the same name say when
     each was. Its heading's chevron opens Calls
@@ -532,7 +534,10 @@ The last of the light, with you in it, then seven groups. Change one thing and l
   sit at the right.
 - **The index.** It stays beside the page as you scroll, and a small sun on it follows the group in view: You, Calls and
   notes, Audio and video, Notifications, Connections, Plan, Privacy. At 1000px and narrower it becomes a strip
-  that stays at the top. A group is found by what it's for, so a setting has one obvious home.
+  that stays at the top. A group is found by what it's for, so a setting has one obvious home. A link to a place inside a
+  group (Home's Calendar settings, Record's Settings, a note's Google Drive, Agents) lands with the group's heading over the
+  place when the place is near the group's top, and the place shows in `horizon-soft` across its panel, fading out, so it's
+  what's seen first rather than the group after it.
 - **Groups of panels.** Each group is a heading over one or two panels (`SettingsGroup`, `SettingsPanel`): `surface`, a
   hairline edge, rows separated by hairlines inside, never a card per row. A panel is a set of things you'd change
   together, which is what makes a long page scannable. Every control sits at the panel's right edge, and Saved appears

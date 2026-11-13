@@ -2,7 +2,8 @@
  * The Drive's places, down its left: Recent; Shared with you, with how many; Workspaces, each with its mark, opening to its
  * folders and files; From calls, each call's own workspace, the next ones first with their time, opening to what the call
  * made, five of them until Show more; and Trash, apart at the foot. The place you're in is the one shaded row, and only its
- * workspace is open. No sentences: on the first day it's the same rows, with New workspace where workspaces will be.
+ * workspace is open. Pressing that row again folds it, and again opens it; going anywhere opens the workspace you go to.
+ * No sentences: on the first day it's the same rows, with New workspace where workspaces will be.
  */
 import type { WorkspaceItem, WorkspaceSummary } from '@alcove/api';
 import { Icon, IconButton, WS_ITEM_ICONS, cn, type IconName } from '@alcove/ui';
@@ -83,6 +84,26 @@ function callAt(iso: string): string {
   return n === 0 ? hm(d) : n < 7 ? weekday(d).slice(0, 3) : dayMonth(d);
 }
 
+/** Where you are in the Drive, as one string, so a fold lasts only while you stay. */
+const spotOf = (at: DriveAt): string => JSON.stringify([at.show ?? null, at.ws ?? null, at.folder ?? null, at.doc ?? null, at.q ?? null]);
+
+/**
+ * Whether the workspace you're in is folded: pressing its row while the sheet shows that workspace folds it, and again
+ * opens it. Going anywhere else, from the tree, the sheet or Back, opens the workspace you're in again. `press` is what a
+ * workspace's row does: fold or open it while you're on it, else go there.
+ */
+function useFold(at: DriveAt, go: (to: DriveAt) => void): { folded: boolean; press: (ws: string) => void } {
+  const spot = spotOf(at);
+  const [fold, setFold] = useState({ spot, folded: false });
+  if (fold.spot !== spot) setFold({ spot, folded: false });
+  const folded = fold.spot === spot && fold.folded;
+  const press = (ws: string) => {
+    if (at.ws === ws && !at.folder && !at.doc && !at.q) setFold({ spot, folded: !folded });
+    else go({ ws });
+  };
+  return { folded, press };
+}
+
 export function Tree({ at, spaces, shared, actions }: {
   at: DriveAt; spaces: readonly WorkspaceSummary[];
   /** How many documents are shared with you, when there are any. */
@@ -99,6 +120,7 @@ export function Tree({ at, spaces, shared, actions }: {
   const shownCalls = allCalls ? calls : calls.filter((w, i) => i < CALLS_SHOWN || w.id === at.ws);
   const recent = !at.ws && !at.show && !at.q;
   const go = (to: DriveAt) => { actions.go(to); };
+  const { folded, press } = useFold(at, go);
   return (
     <nav className="dv-tree" aria-label="Places in the Drive">
       <Row icon="clock" label="Recent" current={recent} onPress={() => go({})} />
@@ -109,8 +131,8 @@ export function Tree({ at, spaces, shared, actions }: {
         const here = at.ws === w.id;
         return (
           <div key={w.id}>
-            <Row mark={mark(w)} label={named(w)} current={here && !at.folder && !at.doc} open={here} onPress={() => go({ ws: w.id })} />
-            {here && <SpaceKids workspaceId={w.id} at={at} actions={actions} />}
+            <Row mark={mark(w)} label={named(w)} current={here && !at.folder && !at.doc} open={here && !folded} onPress={() => press(w.id)} />
+            {here && !folded && <SpaceKids workspaceId={w.id} at={at} actions={actions} />}
           </div>
         );
       })}
@@ -128,8 +150,8 @@ export function Tree({ at, spaces, shared, actions }: {
             const ahead = isAhead(w);
             return (
               <div key={w.id}>
-                <Row icon={ahead ? 'cal' : 'video'} label={callTitle(w)} small={w.call && (ahead || twice.has(callTitle(w))) ? callAt(w.call.at) : undefined} current={here && !at.doc} open={here} onPress={() => go({ ws: w.id })} />
-                {here && <CallKids workspaceId={w.id} at={at} actions={actions} />}
+                <Row icon={ahead ? 'cal' : 'video'} label={callTitle(w)} small={w.call && (ahead || twice.has(callTitle(w))) ? callAt(w.call.at) : undefined} current={here && !at.doc} open={here && !folded} onPress={() => press(w.id)} />
+                {here && !folded && <CallKids workspaceId={w.id} at={at} actions={actions} />}
               </div>
             );
           })}

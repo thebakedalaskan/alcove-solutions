@@ -1694,7 +1694,8 @@ another call while in one; 7.7 the call ends while they're on its page; 7.8 alon
   line; Escape leaves.
 - **The line**, under the stage: **Play** and the time, the chapter you're in above the line, the chapters as lengths, what
   was decided as rose diamonds on it (hollow until confirmed) and follow-ups as blue dots under it, a shared screen as a
-  tinted length, the sun as the playhead, the end, **Speed** (1×, 1.25×, 1.5×, 2×, 0.75×), captions and full screen.
+  tinted length, the sun as the playhead, the end, **Speed** (it opens the speeds, 0.75×, 1×, 1.25×, 1.5× and 2×, to pick
+  one from; in full screen they open over the player), captions and full screen.
   Pressing or dragging along it goes there, and so does a mark; the arrow keys move ten seconds. **Play** starts as soon as
   the first of the recording arrives; **Space** plays and pauses it, as in most players, with nothing focused, and the page
   doesn't scroll. While a call is still recording, the line ends at a recording-coloured edge where it has got to. A call
@@ -1964,7 +1965,8 @@ out says so and nothing happens later by itself. Under the water the page is
 seven groups, each a heading over one or two panels, with an index beside it that stays as you scroll, jumps to each group
 and moves a small sun to the one in view; on a narrow screen the index is a strip that stays at the top. A link into
 Settings can name a group or one of the places other pages point at (**Recording in the room**, **Google Calendar**,
-**Google Drive**, **Agents**); the page lands there and the index lights its group. Every control changes immediately and
+**Google Drive**, **Agents**); the page lands there, with its group's heading over it when it's near the group's top, the
+place shows in a soft blue that fades as the page settles, and the index lights its group. Every control changes immediately and
 says **Saving…** while its request is pending. **Saved** shows for a moment just left of the control, only once its
 latest choice is confirmed (**Saved for new notes** for the language). A refusal says **Couldn’t confirm**, with a
 toast explaining why; it removes only that attempt, keeping later choices. Pick the setting again to retry. Panels that
@@ -2123,7 +2125,8 @@ them.
 **The Drive.** **Drive** in the side panel keeps every workspace you're in and everything in them: a tree of places beside a
 sheet of large previews. The tree has **Recent**; **Shared with you**, with how many; **Workspaces**, each with its mark,
 the one you're in open to its folders and files; **From calls**, each call's own workspace, the next ones first with their
-time, five until **Show N more**; and **Trash**. Recent is everything you can open, the most recently edited first, by day,
+time, five until **Show N more**; and **Trash**. Pressing the row of the workspace you're on folds it, and pressing it again
+opens it; going anywhere else opens the workspace you go to. Recent is everything you can open, the most recently edited first, by day,
 as pictures or a list: each card shows what the file is (a document's first lines as it is now, a board, photos, a PDF),
 where it is (**From Team standup**, **For Launch check-in**, **In Launch**, **Shared with you**) and who touched it last and
 when. A workspace on the sheet shows who's in it, its folders, the calls kept in it with **Open the call**, its files, and

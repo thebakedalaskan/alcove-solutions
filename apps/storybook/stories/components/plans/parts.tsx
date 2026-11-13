@@ -27,7 +27,7 @@ export const TEAM_FACTS: PlanFact[] = [
 /** Free's last line, while more notes are offered. */
 export const MORE_NOTES = 'Out of notes before the period ends? 10 more hours are $15.';
 /** Team's last line. */
-export const LICENSES_TAKEN = 'A license is taken when someone next opens Alcove. Ones nobody takes can be refunded.';
+export const LICENSES_TAKEN = 'Licenses start when people open Alcove. Unused ones can be refunded.';
 
 /** The last of the sun, as Plans draws it on its sky. */
 export const SUNSET = <PlanSunset />;

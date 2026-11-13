@@ -58,6 +58,14 @@ export const PlayingAMoment = page('/calls/n2', 'busy', {
     });
   }
 });
+/** Speed, on the line: the speeds open under it, 0.75× to 2×, the one it plays at ticked, and one press picks another. */
+const choosingASpeed: NonNullable<PageStory['play']> = async ({ canvas, userEvent, step }) => {
+  await step('Press the speed, 1×, at the end of the line. The speeds open, and one press picks one', async () => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Speed: 1×' }, { timeout: 30000 }));
+  });
+};
+export const ChoosingASpeed = page('/calls/n2', 'busy', { ...everyState, play: choosingASpeed });
+export const ChoosingASpeedNight = page('/calls/n2', 'busy', { ...everyState, globals: night, play: choosingASpeed });
 /** Opened at a moment, from an answer or a search: the Transcript, at the line said then, lit; the stage shows who said it. */
 export const AtAMoment = page('/calls/n2?at=372', 'busy');
 /** While Kofi's screen was shared (9:20): it plays on the stage, with whose it is and Kofi small in the corner. */
