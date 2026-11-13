@@ -576,19 +576,26 @@ describe('who reads what of them', () => {
     stop();
     return { host, browser, sam, code: c };
   }
+  /**
+   * Transcript positions and presence both round to tenths: once a line is said, waits for a later tick of the call's
+   * clock, so someone who comes back now is back after that line. Returns the tick the line was said by.
+   */
+  async function laterTick(host: CallSession): Promise<number> {
+    const awayThrough = (await host.catchUpWindow()).now;
+    const until = Date.now() + 15_000;
+    while ((await host.catchUpWindow()).now <= awayThrough) {
+      if (Date.now() > until) throw new Error('timed out waiting for a later call-clock tick before rejoining');
+      await sleep(25);
+    }
+    return awayThrough;
+  }
   /** The guest's page goes, something's said while it's gone, and they're back. */
   async function backAfter(g: { host: CallSession; browser: ReturnType<typeof guestBrowser>; code: string }, sam: CallSession, said: string, atMs: number) {
     sam.closing();
     await gone(g.host, sam);
     await sleep(1200);
     await sayNow(g.host, said, atMs);
-    // Transcript positions and presence both round to tenths. Rejoin on a later server-clock tick, so this line stays away.
-    const awayThrough = (await g.host.catchUpWindow()).now;
-    const until = Date.now() + 15_000;
-    while ((await g.host.catchUpWindow()).now <= awayThrough) {
-      if (Date.now() > until) throw new Error('timed out waiting for a later call-clock tick before rejoining');
-      await sleep(25);
-    }
+    const awayThrough = await laterTick(g.host);
     const back = await g.browser.calls.join(g.code, { mic: true, cam: false, name: 'Sam', previous: sam.ticket.pass });
     await inGroup(back);
     await sleep(300);
@@ -607,7 +614,7 @@ describe('who reads what of them', () => {
     const before = runs();
     h.near.failNext(1, 'prose');
     const stop = back.watchNotes();
-    const failed = await settle(back, (s) => s.liveNotes.error !== null, 3000);
+    const failed = await settle(back, (s) => s.liveNotes.error !== null);
     expect(failed.liveNotes.error).toBe(NOT_UPDATED);
     expect(texts(failed.liveNotes.notes?.decided ?? [])).toEqual([FIRST]);
     // It's tried again after the half minute, and meanwhile looks don't read the transcript for it.
@@ -675,9 +682,11 @@ describe('who reads what of them', () => {
     await sleep(1200);
     const AWAY = 'We agreed on the price while Sam was away.';
     await sayNow(g.host, AWAY, 3000);
+    const awayThrough = await laterTick(g.host);
     const back = await g.browser.calls.join(g.code, { mic: true, cam: false, name: 'Sam', previous: g.sam.ticket.pass });
     await inGroup(back);
     await sleep(300);
+    expect((await back.catchUpWindow()).here?.at(-1)?.from).toBeGreaterThan(awayThrough);
     const NOW = 'We agreed on the date with Sam back.';
     await sayNow(g.host, NOW, 6000);
     await later(back);
