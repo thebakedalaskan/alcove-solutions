@@ -1294,9 +1294,10 @@ What's in the code (`apps/api/src/serverKeys.ts`, `config.ts`, `gcp.ts`, `tee.ts
   secrets, each with the secret it's in (`DATABASE_URL=alcove-database-url,…`), and may name only these: `DATABASE_URL`,
   the object store's keys (`OBJECTS_ACCESS_KEY`, `OBJECTS_SECRET_KEY`), LiveKit's (`LIVEKIT_API_KEY`,
   `LIVEKIT_API_SECRET`), NEAR AI's (`NEAR_AI_API_KEY`), the Google client (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`),
-  Google's tester list (`GOOGLE_SIGNUP_TESTERS`) and the Cloudflare token (`CLOUDFLARE_API_TOKEN`). Anything else (where
-  Google sign-in goes, what inference is checked against) is the environment's, which the image's launch policy limits and
-  the attestation shows, so a secret can't change it unseen. Each is read at start from Secret Manager in `GCP_PROJECT` as
+  Google's tester list (`GOOGLE_SIGNUP_TESTERS`), the Cloudflare token (`CLOUDFLARE_API_TOKEN`), and for top-ups the
+  treasury's NEAR key (`TREASURY_INTENTS_KEY`) and 1Click's partner key (`ONECLICK_API_KEY`). Anything else (where Google
+  sign-in goes, which treasury top-ups pay, what inference is checked against) is the environment's, which the image's
+  launch policy limits and the attestation shows, so a secret can't change it unseen. Each is read at start from Secret Manager in `GCP_PROJECT` as
   the attested identity, trimmed, and given to the configuration beside the environment, never put in it (`start.ts`).
   Any other setting there is refused, and so is a setting that's also in the environment, one read before secrets are,
   `KMASTER` or `KSERVICE`; outside a TEE, so is every one of these settings. Every rule about where the API runs is

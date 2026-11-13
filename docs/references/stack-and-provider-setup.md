@@ -63,6 +63,20 @@ all set. The partner key is required, not just cheaper: 1Click reads `Authorizat
 `/v0/status` as the treasury's session only beside a valid `X-API-Key`, and without one as a partner JWT, refusing a
 session token as `401 Invalid token` (checked live on 12 November 2026, with a throwaway account, as near.com sends both).
 
+In production, in Confidential Space, `TREASURY_INTENTS_ACCOUNT=alcove-treasury.near` is in the API's environment
+(`infra/confidential-space/env.sh`), and the key and the partner key are secrets it reads from Secret Manager at start as
+its attested identity, never through the environment: `alcove-treasury-intents-key` and `alcove-oneclick-api-key`. A
+person adds each without printing it, then `setup.sh production` grants them to production's attested VMs alone:
+
+```sh
+printf %s "$TREASURY_INTENTS_KEY" | gcloud --project=alcove-solutions secrets create alcove-treasury-intents-key --replication-policy=automatic --data-file=-
+printf %s "$ONECLICK_API_KEY" | gcloud --project=alcove-solutions secrets create alcove-oneclick-api-key --replication-policy=automatic --data-file=-
+CLOUDSDK_ACTIVE_CONFIG_NAME=alcove infra/confidential-space/setup.sh production
+```
+
+A deploy refuses to roll out until both exist with a version and are granted ([Confidential Space runbook › The top-up
+secrets](../../infra/confidential-space/README.md#the-top-up-secrets)). Staging has no treasury and reads neither.
+
 - **Signing in** (`oneclick-session.ts`, as near.com's `createVerificationMessage` does): `POST /v0/auth/authenticate
   { signedData }`, where `signedData` is a NEP-413 MultiPayload `{ standard: 'nep413', payload: { message, nonce,
   recipient: 'intents.near' }, public_key: 'ed25519:…', signature: 'ed25519:…' }`. `message` is the empty intent
@@ -131,7 +145,7 @@ session token as `401 Invalid token` (checked live on 12 November 2026, with a t
 | 5. C01 deployment | API and meeting application IDs, accepted OS/node/instance configuration, measurements, verified channel/key binding, distinct service-seal paths | Actual attestation and permitted secret bootstrap; invalid evidence rejected |
 | 6. Sign-in and keys | Google and Microsoft OAuth clients and the OIDC SSO configuration; `KMASTER` released only to the attested API VM | Verified sign-in, session expiry, cross-owner and ciphertext tests |
 | 7. I01 route | Canonical model ID, approved endpoint, SDK/source integrity, request/receipt handling, supplier funding and deadlines | Actual protected request, cited usable answer and truthful expense/verification state |
-| 8. P01 top-ups | `TREASURY_INTENTS_ACCOUNT`, `TREASURY_INTENTS_KEY` (a full access key registered for it in intents.near) and `ONECLICK_API_KEY`; the allowlisted routes still listed in `/v0/tokens` | The treasury signs in; a real supported SUCCESS outcome in the confidential balance linked to its top-up; once-only adding and retry checks |
+| 8. P01 top-ups | `TREASURY_INTENTS_ACCOUNT` (env.sh), `TREASURY_INTENTS_KEY` (a full access key registered for it in intents.near) and `ONECLICK_API_KEY`, in production the secrets `alcove-treasury-intents-key` and `alcove-oneclick-api-key`, granted by `setup.sh`; the allowlisted routes still listed in `/v0/tokens` | The treasury signs in; a real supported SUCCESS outcome in the confidential balance linked to its top-up; once-only adding and retry checks |
 | 9. Meet route | Guest-enabled meeting permission, visible attendee name, actual browser/media egress, frozen source selectors and local speech image | Host-admitted actual remote audio, stop/leave, timed encrypted transcript and import |
 | 10. Release rehearsal | The linked engineering acceptance checklist and MVP task dependencies | Real purchase → documents → paid chat → actual meeting → cross-source answer → private receipt/storage inspection |
 

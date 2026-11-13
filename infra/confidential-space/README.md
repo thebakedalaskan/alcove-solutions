@@ -19,7 +19,7 @@ Cloudflare DNS, DNS only (never proxied)
                            one container: the API and the web app, as the image's unprivileged user
                              ├─ Cloud SQL Auth Proxy ─► Cloud SQL alcove-db (ciphertext only)
                              ├─ Cloud KMS alcove-master and Secret Manager ◄─ only an attested, signed image, as alcove-cs
-                             └─ through Cloud NAT: Let's Encrypt, Cloudflare's API, R2, LiveKit, NEAR AI
+                             └─ through Cloud NAT: Let's Encrypt, Cloudflare's API, R2, LiveKit, NEAR AI, 1Click, NEAR's RPC
 GitHub Actions (deploy.yml): build ─► cosign + Cloud KMS ─► Rekor ─► migrations (Cloud Run job) ─► deploy.sh
                              then, in a job with no Google credentials: verify-server.ts
 ```
@@ -33,7 +33,7 @@ GitHub Actions (deploy.yml): build ─► cosign + Cloud KMS ─► Rekor ─►
 | Master key | Cloud KMS `alcove/alcove-master` | Wraps the master key production's VM makes; only production's attested VMs may encrypt or decrypt with it. |
 | Workload Identity | pool `alcove`, provider `confidential-space` | Turns the launcher's attestation token into Google credentials, only for a token that passes [the policy](#the-attestation-policy), and maps the account the VM runs as to `attribute.service_account`, so each environment's attested VMs are a principal set of their own. |
 | VM service account | `alcove-cs` | Pulls the image and its signatures, writes logs, gets attestation tokens, and reaches Cloud SQL. Opens no secrets: its attested VMs do, as production's principal set. |
-| Deploy account | `alcove-deploy` (bootstrap-gcp.sh) | Custom role `alcoveDeployer` (instance templates, the groups, their backends, the region's quota), `iam.serviceAccountUser` on each environment's VM account, `cloudkms.signerVerifier` and `cloudkms.viewer` on the signing key (cosign looks the key up before it signs), `artifactregistry.writer`, `run.developer`, and `compute.instanceAdmin.v1` (a group makes its VMs as the caller). |
+| Deploy account | `alcove-deploy` (bootstrap-gcp.sh) | Custom role `alcoveDeployer` (instance templates, the groups, their backends, the region's quota), `iam.serviceAccountUser` on each environment's VM account, `cloudkms.signerVerifier` and `cloudkms.viewer` on the signing key (cosign looks the key up before it signs), `artifactregistry.writer`, `run.developer`, `compute.instanceAdmin.v1` (a group makes its VMs as the caller), and `secretmanager.viewer` (deploy.sh checks the API's secrets are there before it rolls out: names, versions and policies, never a value). |
 | Network | `default`, proxy-only subnet `alcove-proxy-only` (`10.120.0.0/23`), `alcove-router`/`alcove-nat` | The VMs have no external address; outbound traffic goes through Cloud NAT, and Google's APIs stay on Google's network. |
 | Firewall | `alcove-allow-lb-proxies`, `alcove-allow-health-checks` | tcp:8080 and 8443 to the `alcove-api` tag, from the proxy-only subnet and from Google's probes (`35.191.0.0/16`, `130.211.0.0/22`). |
 | Address | `alcove-api-ip` | The static IPv4 the DNS names point at. |
@@ -75,7 +75,10 @@ Why some choices:
 production` to see it. Nothing in it is secret, and nothing secret may be added, because every variable of the container's
 environment (the template's `tee-env-*`, the image's `ENV`, and `HOSTNAME`) is in the attestation token's claims, which the
 launcher writes to Cloud Logging at every refresh. The API reads its secrets from Secret Manager at startup with the attested
-identity, by the names in `SECRETS` (`ENV=secret`), and the old keys by `LEGACY_SECRETS` while they're carried.
+identity, by the names in `SECRETS` (`ENV=secret`), and the old keys by `LEGACY_SECRETS` while they're carried. A VM that
+can't read one of them doesn't start. Production's `SECRETS` include the two top-up secrets, since it has a treasury
+(`CS_TREASURY_ACCOUNT`, given to the API as `TREASURY_INTENTS_ACCOUNT`), which only a person makes ([The top-up
+secrets](#the-top-up-secrets)).
 
 The image accepts exactly the variables named in its `tee.launch_policy.allow_env_override` label; the launcher refuses to
 start it with any other, and the VM powers off. deploy.sh checks env.sh against the Dockerfile's label before it changes
@@ -107,7 +110,8 @@ it differs in:
   and `-secret-staging` hold placeholders that open nothing (the API won't start without a key and secret). Joining a
   call fails there, and its upkeep can't reach anyone's rooms.
 - **No NEAR AI**: recordings are kept, and their notes wait.
-- **Demo sign-in on and Google sign-in off** (Google's client doesn't list staging's callback), and **credit top-ups off**.
+- **Demo sign-in on and Google sign-in off** (Google's client doesn't list staging's callback), and **top-ups off**: it
+  has no treasury, so it reads neither top-up secret, which would sign it in to 1Click as production's treasury.
 
 ## What's signed
 
@@ -187,6 +191,40 @@ printf %s "$CLOUDFLARE_DNS_TOKEN" | gcloud --project=alcove-solutions secrets ve
 bootstrap-gcp.sh makes the secret, and setup.sh fails until it has a version, since the API can't start without it.
 Staging's is a second token, made the same way ([Staging](#staging)).
 
+## The top-up secrets
+
+Production's top-ups pay the treasury's confidential Intents balance, and its API reads two secrets for them
+([Plans and usage › Treasury runbook](../../docs/engineering/plans-and-usage.md#treasury-runbook)):
+
+| Secret | Setting | Value |
+| --- | --- | --- |
+| `alcove-treasury-intents-key` | `TREASURY_INTENTS_KEY` | A full access key of `alcove-treasury.near`, in NEAR's format (`ed25519:` and 64 bytes, base58), registered for it in intents.near. It can move everything the treasury holds. |
+| `alcove-oneclick-api-key` | `ONECLICK_API_KEY` | 1Click's partner key, from partners.near-intents.org. |
+
+env.sh names them in an environment's `SECRETS` (`CS_TOPUP_SECRETS`) when it has a treasury (`CS_TREASURY_ACCOUNT`),
+which only production has: staging reads neither. No script makes them or reads them: a person makes each, with its
+value, and never prints it. Put each value in a variable of your shell without echoing it (`read -rs
+TREASURY_INTENTS_KEY`, paste, Enter; the same for `ONECLICK_API_KEY`), then:
+
+```sh
+printf %s "$TREASURY_INTENTS_KEY" | gcloud --project=alcove-solutions secrets create alcove-treasury-intents-key --replication-policy=automatic --data-file=-
+printf %s "$ONECLICK_API_KEY" | gcloud --project=alcove-solutions secrets create alcove-oneclick-api-key --replication-policy=automatic --data-file=-
+unset TREASURY_INTENTS_KEY ONECLICK_API_KEY
+```
+
+Then `setup.sh production` grants both to production's principal set alone, as it does every secret production's API
+reads. It runs before they exist: it reports each that doesn't exist yet, or has no version, with the command that adds
+it, grants nothing for it, and carries on without failing for it. deploy.sh is what refuses: before it changes anything,
+it checks that every secret the API reads exists, has an enabled version and is granted to the environment's VMs, and
+stops while one isn't, naming it and, for a top-up secret, the command that adds it. The VM couldn't start without it, so
+the rollout would only stall; this way the group keeps running what it ran. It reads names, versions' states and
+policies (`roles/secretmanager.viewer`, which setup.sh gives the deploy account and which reads no value), so a deploy
+from before setup.sh last ran sees none of them, and says so.
+
+A new value, such as a rotated key, goes in as a new version (`printf %s "$TREASURY_INTENTS_KEY" | gcloud
+--project=alcove-solutions secrets versions add alcove-treasury-intents-key --data-file=-`), and reaches the API at its
+next start: a deploy, or a refresh. Never leave either without an enabled version: a VM that starts then won't.
+
 ## First setup
 
 Production, once: done on 2026-11-13, and kept as the record of how. Use the `alcove` gcloud configuration
@@ -244,7 +282,9 @@ pnpm --filter @alcove/confidential-space exec tsx verify-server.ts https://api.a
   --web https://alcove.solutions --commit "$COMMIT" --digest "${IMAGE#*@}"
 ```
 
-build.sh refuses a checkout that isn't exactly that commit, unchanged. deploy.sh first checks the region's C3 quota
+build.sh refuses a checkout that isn't exactly that commit, unchanged. deploy.sh first checks that every secret the API
+reads exists, has an enabled version and is granted to the environment's VMs, and refuses up front, naming what to add,
+while one isn't ([The top-up secrets](#the-top-up-secrets)). It checks the region's C3 quota
 (`C3_CPUS`, 8 vCPUs) can hold the VM a rollout adds, and refuses up front, naming what else holds it, when it can't. Then it
 makes a template, rolls the group (the new VM first; the old one drains for up to 300 s and goes once the new one is
 healthy), waits until the group is stable and both backend services call the new VM healthy (up to about an hour), and

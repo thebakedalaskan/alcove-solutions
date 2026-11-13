@@ -737,11 +737,14 @@ balance, and any money still reaching them still does.
 ### The treasury's key is on the server
 
 The API holds a **full access key** of `alcove-treasury.near` (`TREASURY_INTENTS_KEY`, from Secret Manager's
-`alcove-treasury-intents-key`, bound to the API service and to nothing else). This was chosen over a separate receiving
-account or a key registered only in intents.near, knowing the risk. The API uses the key for one thing: signing in to
-1Click as the treasury, so quotes pay its confidential balance. Nothing but the API's own code keeps it to that. The key
-can do anything the treasury can, so anyone who gets the server's secrets (access to that secret, the API's environment
-or memory, the deploy pipeline, or code deployed to the API) can, as the treasury:
+`alcove-treasury-intents-key`, granted to production's attested VMs alone, which read it at start and never through
+their environment; [Deployment](deployment-and-acceptance.md) says how it's added). This was chosen over a separate
+receiving account or a key registered only in intents.near, knowing the risk. The API uses the key for one thing:
+signing in to 1Click as the treasury, so quotes pay its confidential balance. Nothing but the API's own code keeps it to
+that. Whoever can read the secret can get the key: production's attested VMs, so any code deployed to the API (any image
+CI signs from `main`), and the project's Owners, whose basic role reads every secret. So can whoever can change who may:
+the secret's IAM policy, or the Workload Identity provider's condition. The deploy account sees the secret's name,
+versions and policy, never its value. The key can do anything the treasury can, so whoever gets it can, as the treasury:
 
 - sign NEAR transactions: send all its NEAR and tokens, add or delete its access keys (locking everyone else out), deploy
   a contract to it, or delete the account;
@@ -760,17 +763,22 @@ Keep the balance small: withdraw what's in it regularly (below), so the key neve
 
 1. In a wallet that holds another full access key of `alcove-treasury.near`, add a new full access key to the account,
    and register its public key for the account in intents.near: signing in to near.com with the new key asks to add it.
-2. Add the new key as a version of the secret, never printing it:
-   `printf %s "$TREASURY_INTENTS_KEY" | gcloud secrets versions add alcove-treasury-intents-key --data-file=-`, then
-   redeploy (run the deploy workflow). The API reads the key at startup and signs in with it.
+2. Add the new key as a version of the secret, never printing it (`read -rs TREASURY_INTENTS_KEY`, paste, Enter):
+   `printf %s "$TREASURY_INTENTS_KEY" | gcloud --project=alcove-solutions secrets versions add alcove-treasury-intents-key --data-file=-`,
+   then `unset TREASURY_INTENTS_KEY`. The API reads the key only at start, so it takes a new VM: run the deploy workflow
+   (Actions › Deploy › Run workflow, on `main`), or the refresh workflow, which starts one on the same release.
 3. Remove the old key everywhere: delete it from the account's access keys, and remove its public key from intents.near
-   (`remove_public_key`, or in near.com). Disable the secret's old version. Check intents.near's `public_keys_of` for the
-   account lists only keys you know.
+   (`remove_public_key`, or in near.com). Disable the secret's old version once the new VM serves:
+   `gcloud --project=alcove-solutions secrets versions list alcove-treasury-intents-key` names it, and
+   `gcloud --project=alcove-solutions secrets versions disable <version> --secret=alcove-treasury-intents-key` disables
+   it. Never leave the secret without an enabled version: a VM that starts then (a deploy, the refresh, autohealing) can't
+   read it and won't start. Check intents.near's `public_keys_of` for the account lists only keys you know.
 4. Check that it works: the API logs `treasury signed in to 1Click` after starting, and a top-up opens.
 
 If the key may be exposed and can't be rotated at once, move the treasury's money to an account it can't reach first,
-then rotate. Taking the key out of the API's settings turns top-ups off ("Adding money isn’t available on this server."):
-nothing is opened or checked meanwhile, and once it's back the watcher picks up every deposit it still watches.
+then rotate. Setting `CS_TREASURY_ACCOUNT=''` for production in `infra/confidential-space/env.sh` and deploying turns
+top-ups off ("Adding money isn’t available on this server.") and stops the API reading either secret: nothing is opened
+or checked meanwhile, and once it's back the watcher picks up every deposit it still watches.
 
 ### By hand, in near.com, signed in as the treasury
 
@@ -793,7 +801,8 @@ nothing is opened or checked meanwhile, and once it's back the watcher picks up 
   support added it, so its money is never added twice. It still reads as failed in the person's list of top-ups, and
   their balance's history says "Added by support".
 - **A depeg (accepted risk).** Every amount sent is valued at face (1 token = 1 USD). When a stablecoin depegs, turn
-  top-ups off (take `TREASURY_INTENTS_ACCOUNT` out of the API's settings in `deploy.yml` and redeploy) until it recovers.
+  top-ups off (set `CS_TREASURY_ACCOUNT=''` for production in `infra/confidential-space/env.sh` and deploy) until it
+  recovers.
 
 ## How it upgrades
 
@@ -972,4 +981,5 @@ release reads a record this one wrote (the same fields). While both serve, the p
 the public balance, which this release settles as ones from before, and asks about a confidential deposit without the
 treasury's token, which 1Click may refuse: that's logged at warn (`top-up check failed`) and asked again a minute later,
 by then by this release. The deploy needs `alcove-treasury-intents-key` and `alcove-oneclick-api-key` in Secret Manager
-first ([Deployment](deployment-and-acceptance.md)).
+first, granted to production's VMs by `setup.sh`: `deploy.sh` refuses to roll out until they are, and the previous
+release serves meanwhile ([Deployment](deployment-and-acceptance.md)).
