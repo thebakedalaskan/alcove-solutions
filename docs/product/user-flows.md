@@ -2753,5 +2753,12 @@ Alcove normally after plans came.
 While the prices load, the cards wait in place and **Continue on Free** is already on Free's; offline it says the plans show once
 you're back, and when they don't load it says why, each with **Continue on Free** to go on.
 
-Storybook's journeys use **16.1–16.20** above. The addresses, payments and networks in it are made up; a real
+### 16.21 Team at the third invite
+
+On a company's Team page while you're on no team, the invite that makes three of you (you, everyone on Alcove and everyone
+invited) goes as ever, and Team is offered beside it, once for the account on this browser: "That makes 3 of you. Put everyone
+on one plan: Team, $40 a person a month." in the server's price, with **See Team**, which opens checkout on Team over the page
+(16.15). Leaving it is Not now: it goes by itself, and invites after it say nothing more. Nothing is offered on a team.
+
+Storybook's journeys use **16.1–16.21** above. The addresses, payments and networks in it are made up; a real
 payment through 1Click needs a hand check with a wallet.

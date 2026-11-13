@@ -14,7 +14,7 @@ import { caretAtEnd, page, pages, type PageArgs, type PageStory } from '../../sr
 import { addToBalance, boughtFromBalance, freshEntryId } from '../../src/world/payments';
 import { notesStopped, PRO_PRICE } from '../../src/world/plans';
 import { AIKO, KOFI, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK } from '../calls/talk';
-import { LAPTOP, LATER, SOON, first } from './play';
+import { keepMail, LAPTOP, LATER, SOON, first } from './play';
 
 const meta = { title: 'Journeys/16 Where checkout shows', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -136,6 +136,28 @@ export const PlansBeforeSigningIn: PageStory = {
     await step('Get Pro signs in with Google, then opens Plans with checkout on Pro. Google’s own page is the hand-off', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Get Pro' }, SOON));
       await first(screen.findAllByRole('button', { name: 'Waiting for Google…' }, SOON));
+    });
+  }
+};
+
+export const TeamAtTheThirdInvite: PageStory = {
+  name: '16.21 Team at the third invite',
+  ...page('/team', 'first-day', { globals: LAPTOP }),
+  beforeEach: keepMail,
+  play: async ({ userEvent, step }) => {
+    await step('On no team, Art invites Priya and Diego from the Team page. With Art, that makes three', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Invite people' }, LATER));
+      const invite = await screen.findByRole('dialog', { name: 'Invite people' }, SOON);
+      await userEvent.click(await within(invite).findByRole('option', { name: /^Priya Raman/ }, SOON));
+      await userEvent.click(await within(invite).findByRole('option', { name: /^Diego Ruiz/ }, SOON));
+      await userEvent.click(within(invite).getByRole('button', { name: 'Invite 2' }));
+    });
+    await step('The invite goes as ever, and Team is offered once, beside it: "That makes 3 of you"', async () => {
+      await screen.findByText(/^Your email opens with an invitation to /, {}, SOON);
+      await screen.findByText(/^That makes 3 of you\./, {}, SOON);
+    });
+    await step('See Team opens checkout with Team chosen', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'See Team' }, SOON));
     });
   }
 };
