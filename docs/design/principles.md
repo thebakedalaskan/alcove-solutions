@@ -161,9 +161,9 @@ don't jump.
 
 Four places take Newsreader without being a page's title or hero. They're named exceptions, because they're the approved
 plans canvas's look ([canvas/plans](canvas/plans/README.md)): the plan's name in the side panel's foot (Pro, Team),
-checkout's headlines (`CheckoutBig`: "You're on Pro", "Nothing arrived in 24 hours"), a receipt's title (`PaymentReceipt`),
-and the plans' prices, on Plans and on the welcome page. Nothing else does: a new place for Newsreader is a design
-decision, not a style.
+checkout's headlines (`CheckoutBig`: "You're on Pro", "Nothing arrived in 24 hours", which Add money's payment says with
+the same parts), a receipt's title (`PaymentReceipt`), and the plans' prices, on Plans and on the welcome page. Nothing
+else does: a new place for Newsreader is a design decision, not a style.
 
 In the light theme, `ink-3` doesn't reach 4.5:1 out on the sky or the sea. Meta text on the scene uses `ink-2`; `ink-3` is
 for text on `surface` and `ground`. Warm `sun-text` on the light sky is kept large or put on an icon.

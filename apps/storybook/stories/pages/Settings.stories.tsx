@@ -468,8 +468,8 @@ export const PaymentCancelled = page('/settings#plan', 'payments', {
   beforeEach: changing(withTopUp('waiting')),
   play: async (context) => {
     await openTopUp(context);
-    await context.step('Cancel the top-up', async () => {
-      await context.userEvent.click(await screen.findByRole('button', { name: 'Cancel top-up' }, { timeout: 8000 }));
+    await context.step('Cancel the payment', async () => {
+      await context.userEvent.click(await screen.findByRole('button', { name: 'Cancel payment' }, { timeout: 8000 }));
     });
   }
 });

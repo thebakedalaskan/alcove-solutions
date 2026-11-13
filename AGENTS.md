@@ -238,7 +238,8 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `components/checkout.tsx`: `CheckoutWindow` (on `Modal`, in your theme over a call; `receipt` for the receipt alone) with
   `CheckoutPanel`, `CheckoutSteps`, `MonthsPicker`, `HoursPicker`, `NetworkPicker`, `PlanWindow` (what you're buying under its
   own small evening, whose sun rises with the payment), `CheckoutSummary`, `PayStatus`, `PayAmount`, `PayAddress` (the QR code
-  with the USDC mark, the address with its ends in bold), `PayArrived`, `PayTrack`, `CheckoutDone`, `CheckoutAsk`,
+  with the USDC mark, the address with its ends in bold), `PayArrived`, `PayTrack` (checkout's Pay step and Settings' Add money
+  follow a payment with these, through the app's `features/plans/paying.tsx`), `CheckoutDone`, `CheckoutAsk`,
   `CheckoutNote`, `CheckoutBig`, `CheckoutLine`, `PaymentReceipt` (one payment as paper, alone on the page when printed) and
   `ReceiptWindow` (a receipt over Settings).
   The workspace kit is in `components/workspace/`, every part stateless, taking plain data and handlers: `WsPane` holds
@@ -315,8 +316,9 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   else; Hanken Grotesk for everything you read and operate, times and data included (`tabular-nums`, or `ac-mono`,
   keeps digits in step), and IBM Plex Mono only for code and hashes. Labels and eyebrows are sentence case, never
   uppercase. Fonts are served from `packages/ui/src/fonts`. Named exceptions, the approved plans canvas's look: Newsreader
-  for the side panel's plan name (`.sb-pro b`), checkout's headlines (`CheckoutBig`, `.ck-big`), a receipt's title
-  (`PaymentReceipt`) and the plans' prices (`.pl-price` on Plans, `.lp-plan-price` on the welcome page). Nothing else.
+  for the side panel's plan name (`.sb-pro b`), checkout's headlines (`CheckoutBig`, `.ck-big`, in Add money's payment
+  too), a receipt's title (`PaymentReceipt`) and the plans' prices (`.pl-price` on Plans, `.lp-plan-price` on the welcome
+  page). Nothing else.
 - The call is always night, but for your side in it, which takes your theme: the stage uses `stage`, `stage-tile`,
   `stage-raised`, `stage-ink`, `stage-ink-2`, `stage-sun` for what's chosen on night controls whatever theme is round them,
   and whoever speaks gets the `speak` ring. People appear in the arch, never a circle.

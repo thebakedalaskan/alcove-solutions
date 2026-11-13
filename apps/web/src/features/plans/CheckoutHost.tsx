@@ -6,15 +6,16 @@
  * you pay, with you its admin). When the balance covers it, Buy with your balance takes it from there at once.
  * Otherwise choose a network, and Get the address opens a top-up for what the balance is short of (raised to the
  * network's least, the rest staying in the balance) that buys it the moment it's added. From then on the window follows
- * that top-up, which q.topUp reads every 5 seconds: waiting, less arrived, seen, bought, and every way it can go wrong.
+ * that top-up, which q.topUp reads every 5 seconds: waiting, less arrived, seen, bought, and every way it can go wrong, with
+ * the parts Add money follows a payment with too (paying.tsx).
  * Closing leaves the payment running, and checkout opened on the same thing again opens that payment, not another.
  * Every price and limit is the server's; a price that changed in between is refused, read again and said. Licenses
  * bought are a visit too, which takes the buyer's own when they have none (docs: Plans and usage › Team).
  */
 import { errorCode, errorMessage, errorRequestId, type BalanceEntry, type MyTeam, type Plan, type PlanOffers, type Purchase, type TopUp, type TopUpRoute } from '@alcove/api';
 import {
-  Avatar, Button, CheckoutAsk, CheckoutBig, CheckoutDone, CheckoutLine, CheckoutNote, CheckoutWindow, Dots, HoursPicker, LicensesLeft,
-  LicensesPicker, MonthsPicker, NetworkPicker, PayAddress, PayAmount, PayArrived, PayStatus, PayTrack, PaymentReceipt, RequestRef,
+  Avatar, Button, CheckoutAsk, CheckoutDone, CheckoutNote, CheckoutWindow, Dots, HoursPicker, LicensesLeft, LicensesPicker, MonthsPicker,
+  NetworkPicker, PaymentReceipt, RequestRef,
   TeamInvite, TeamName, useTheme, useToast,
   type AvatarPerson, type CheckoutStage, type CheckoutSummaryData, type HoursOption, type LicensesOption, type MonthsOption,
   type ReceiptLine, type SummaryLine
@@ -24,16 +25,16 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useNow, useOnline } from '~/lib/live';
 import { callName, someNames } from '~/lib/people';
 import { q, topUpOpen, useBuy, useCancelTopUp, useCreateTeam, useLicensesBought, useStartTopUp } from '~/lib/queries';
-import { byWhen, fullDate, hm, longDay, shortDate } from '~/lib/time';
+import { fullDate, hm, longDay, shortDate } from '~/lib/time';
 import { plural, usd, usdCents } from '~/lib/words';
 import { useInvite } from '../team/invite';
 import type { CheckoutOpen } from './checkout';
+import { PayAdded, PayNow, PayOver, PaySeen, isOver, payingOf, useSeenWhileOpen, type Paying } from './paying';
 import { teamLicenses } from './plan-state';
 import {
-  LENGTHS, LICENSES, costOf, kindOf, lapsed, microOf, plainTokens, proPrice, purchaseName, repriced, roundTokens, sameTerms, tokens,
+  LENGTHS, LICENSES, costOf, kindOf, lapsed, microOf, proPrice, purchaseName, repriced, roundTokens, sameTerms, tokens,
   waitingPurchase, yearlyOff
 } from './purchase';
-import { walletLink } from './wallet';
 import { hoursOfNotes, moreHoursOfNotes } from './words';
 
 const DAY = 86_400_000;
@@ -87,20 +88,7 @@ function leftNow(t: MyTeam | null): string | null {
 /** What the window shows: choosing; a top-up opened to buy it, followed to the end; or bought from the balance. */
 type View = { step: 'choose' } | { step: 'pay'; id: string } | { step: 'bought'; plan: Plan; buys: Purchase; at: number };
 
-/** Where a top-up is, as the window says it. */
-type Paying = 'send' | 'short' | 'closed-short' | 'seen' | 'bought' | 'refused' | 'added' | 'expired' | 'cancelled' | 'failed' | 'held';
-function payingOf(t: TopUp, now: number): Paying {
-  switch (t.state) {
-    case 'waiting': return lapsed(t, now) ? 'expired' : 'send';
-    case 'short': return lapsed(t, now) ? 'closed-short' : 'short';
-    case 'arriving': return 'seen';
-    case 'credited': return !t.purchase ? 'added' : t.purchase.outcome === 'bought' ? 'bought' : t.purchase.outcome === 'refused' ? 'refused' : 'seen';
-    case 'held': return 'held';
-    case 'failed': return 'failed';
-    case 'expired': return 'expired';
-    case 'cancelled': return 'cancelled';
-  }
-}
+/** Where the window is, by where its payment is (paying.tsx). */
 const STAGE: Record<Paying, CheckoutStage> = {
   send: 'send', short: 'short', 'closed-short': 'closed', seen: 'seen', bought: 'done', refused: 'choose', added: 'done',
   expired: 'closed', cancelled: 'closed', failed: 'closed', held: 'closed'
@@ -249,9 +237,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   }
 
   /* The amount that arrived counts up only when it's seen while the window is open. */
-  const stageNow = paying ?? view?.step ?? 'choose';
-  const [lastStage, setLastStage] = useState<{ at: string; count: boolean }>({ at: stageNow, count: false });
-  if (lastStage.at !== stageNow) setLastStage({ at: stageNow, count: stageNow === 'seen' && (lastStage.at === 'send' || lastStage.at === 'short') });
+  const counting = useSeenWhileOpen(paying);
 
   /* ---------- what it costs ---------- */
   const kind: Purchase['kind'] = t?.purchase?.buys.kind ?? (view?.step === 'bought' ? view.buys.kind : kindOf(open.what.plan));
@@ -519,27 +505,10 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
     } else {
       // Licenses a payment bought say so once the visit after them is made: until then, they're still being added.
       stage = settling ? 'seen' : STAGE[paying];
-      const asked = microOf(t.asked.amount) ?? 0;
-      const got = microOf(t.received?.amount ?? '') ?? 0;
-      const { chain, chainName } = t.route;
-      const expires = `Open until ${byWhen(t.expiresAt, now)}`;
-      const onlyThis = <CheckoutNote>Only send USDC on {chainName}. Anything else may be lost. Sending from an exchange? Add its withdrawal fee on top.</CheckoutNote>;
       if (paying === 'send' || paying === 'short') {
-        const short = paying === 'short';
-        const rest = short ? Math.max(0, asked - got) : asked;
         body = (
           <>
-            {short
-              ? <PayStatus tone="caution" icon="alert" label="Less than asked arrived" expires={expires} />
-              : <PayStatus dots label="Waiting for your payment" expires={expires} />}
-            <PayAmount label={short ? 'Send the rest' : 'Send exactly'} amount={tokens(rest)} copy={plainTokens(rest)} chain={chain} chainName={chainName}
-              arrived={short ? `${tokens(got)} of ${tokens(asked)} USDC arrived.` : null} />
-            {t.address && (
-              <PayAddress address={t.address} memo={t.memo} chainName={chainName} tag={short ? 'same' : 'new'} listening quiet={asking}
-                walletHref={walletLink(t.route, t.address, plainTokens(rest))} />
-            )}
-            {short && <CheckoutNote tone="info">If you don’t, the {roundTokens(got)} USDC that arrived stays in your balance.</CheckoutNote>}
-            {onlyThis}
+            <PayNow t={t} now={now} quiet={asking} />
             {cancel.isError && <CheckoutNote>{errorMessage(cancel.error)}</CheckoutNote>}
           </>
         );
@@ -550,19 +519,12 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
         ) : (
           <>
             <p className="hint">{wording.close}</p>
-            {!short && <Button variant="quiet" disabled={!online} onClick={() => setAsking(true)}>Cancel payment</Button>}
+            {paying === 'send' && <Button variant="quiet" disabled={!online} onClick={() => setAsking(true)}>Cancel payment</Button>}
             {close}
           </>
         );
       } else if (paying === 'seen' || settling) {
-        body = (
-          <>
-            <PayStatus dots label="Payment seen" />
-            <PayArrived amount={tokens(got || asked)} value={(got || asked) / 1_000_000} chainName={chainName} count={lastStage.count} />
-            <CheckoutLine>{wording.seen}</CheckoutLine>
-            <PayTrack steps={['Sent', `Seen on ${chainName}`, wording.last]} />
-          </>
-        );
+        body = <PaySeen t={t} count={counting} doing={wording.seen} last={wording.last} />;
         foot = <><p className="hint">You can close this. It finishes by itself.</p>{close}</>;
       } else if (paying === 'bought' && t.purchase) {
         step = 3;
@@ -570,72 +532,28 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
         foot = finish;
       } else if (paying === 'added' || paying === 'bought') {
         step = 3;
-        body = <CheckoutDone title="Added to your balance" lines={[`${usd(t.received?.microUsd ?? 0)} is in your balance now.`]} receipt={null} reminder={null} />;
+        body = <PayAdded t={t} />;
         foot = finish;
-      } else if (paying === 'closed-short') {
-        // Less than asked arrived and the address closed: what arrived settles into the balance, and what it was for is had another way.
-        const next = wayOn(t);
+      } else if (isOver(paying)) {
+        // What it was for is had another way, as fits: a new address, or choosing again. One a person has to look at has none.
+        const looked = paying === 'failed' || paying === 'held';
+        const next = looked ? null : wayOn(t);
+        const fresh = next?.label === 'Get a new address';
         const what = wording.what;
-        body = (
-          <>
-            <PayStatus tone="quiet" icon="clock" label="Address closed" />
-            <CheckoutBig>{tokens(got)} of {tokens(asked)} USDC arrived</CheckoutBig>
-            <CheckoutLine>The address has closed, so nothing more can be sent to it. What arrived goes into your balance once the payment settles.</CheckoutLine>
-            {next && (
-              <CheckoutLine>
-                {next.label === 'Get a new address'
-                  ? `To get ${what} now, get a new address. What arrived here isn’t in your balance until it settles, so it doesn’t count toward it.`
-                  : `To get ${what} now, choose again.`}
-              </CheckoutLine>
-            )}
-            {note}
-          </>
-        );
-        foot = (
-          <>
-            <Button variant="quiet" className="ck-push" onClick={onClose}>Close</Button>
-            {offline}
-            {next && <Button variant="primary" loading={start.isPending} disabled={!online || busy} onClick={next.go}>{next.label}</Button>}
-          </>
-        );
-      } else if (paying === 'expired' || paying === 'cancelled') {
-        const expired = paying === 'expired';
-        const next = wayOn(t);
-        const what = wording.what;
-        body = (
-          <>
-            <PayStatus tone="quiet" icon={expired ? 'clock' : 'x'} label={expired ? 'Address closed' : 'Payment cancelled'} />
-            <CheckoutBig>{expired ? 'Nothing arrived in 24 hours' : 'This payment was cancelled'}</CheckoutBig>
-            <CheckoutLine>
-              {expired ? 'So nothing was charged.' : 'A payment already sent to its address still counts when it arrives.'}
-              {next && (next.label === 'Get a new address'
-                ? ` If you still want ${what}, get a new address${expired ? ': it’s made for the next 24 hours' : ''}.`
-                : ` If you still want ${what}, choose again.`)}
-            </CheckoutLine>
-            {note}
-          </>
-        );
-        foot = (
-          <>
-            <Button variant="quiet" className="ck-push" onClick={onClose}>Close</Button>
-            {offline}
-            {next && <Button variant="primary" loading={start.isPending} disabled={!online || busy} onClick={next.go}>{next.label}</Button>}
-          </>
-        );
-      } else if (paying === 'failed' || paying === 'held') {
-        const failed = paying === 'failed';
-        body = (
-          <>
-            <PayStatus tone="caution" icon="alert" label={failed ? 'Something went wrong' : 'Too little arrived'} />
-            <CheckoutBig>{failed ? 'Something went wrong with this payment' : 'Too little arrived to add'}</CheckoutBig>
-            <CheckoutLine>
-              {failed
-                ? 'It needs a person to look at it. Give support this reference and they’ll sort it out.'
-                : 'What arrived is too little to add. If you think that’s wrong, give support this reference.'}
-            </CheckoutLine>
-            <RequestRef id={t.id} className="ck-ref" />
-          </>
-        );
+        const then = !next ? null
+          : paying === 'closed-short'
+            ? fresh ? `To get ${what} now, get a new address. What arrived here isn’t in your balance until it settles, so it doesn’t count toward it.` : `To get ${what} now, choose again.`
+            : fresh ? `If you still want ${what}, get a new address${paying === 'expired' ? ': it’s made for the next 24 hours' : ''}.` : `If you still want ${what}, choose again.`;
+        body = <><PayOver t={t} over={paying} then={then} />{!looked && note}</>;
+        if (next) {
+          foot = (
+            <>
+              <Button variant="quiet" className="ck-push" onClick={onClose}>Close</Button>
+              {offline}
+              <Button variant="primary" loading={start.isPending} disabled={!online || busy} onClick={next.go}>{next.label}</Button>
+            </>
+          );
+        }
       }
     }
   } else if (notAdmin && teamNow) {

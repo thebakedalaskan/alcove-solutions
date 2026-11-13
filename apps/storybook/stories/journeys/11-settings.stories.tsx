@@ -548,7 +548,7 @@ export const AddMoney: PageStory = {
       const w = current();
       const t = w.payments.topUps[0];
       if (t) receiveTopUp(w, t.id, 'credited');
-      await within(await sheet()).findByText('It’s in your balance now.', {}, LATER);
+      await within(await sheet()).findByText('Added to your balance', {}, LATER);
       await userEvent.click(within(await sheet()).getByRole('button', { name: 'Done' }));
     });
     await step('The balance says $20, and the payment is in the list with its receipt', async () => {

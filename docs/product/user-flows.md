@@ -1969,15 +1969,18 @@ Signing in again starts a new, empty account on Free.
 ### 11.24 Add money
 
 Open **Settings → Plan → Add money** beside **Balance**, choose **$20**, **$60**, **$120** or your own amount in dollars,
-then the network to send it on, under **Pay with USDC**. A USDC is a dollar, so $20 is 20 USDC. **Get an address** opens the
-amount to send, its QR code and one payment address. Send only USDC on that network. A short payment shows what
-arrived and how much remains; send the remainder before the address expires. After expiry it asks for no more money
-and waits for the payment or refund to settle. The money appears in the balance once settlement is confirmed, and the
-sheet follows the payment until it does. A payment on its way stays under the balance in **Payments** with **Open**, as do
-failed and held payments with their support reference; once it's added it shows as "Added, 20 USDC" with **Receipt**. A
-waiting payment can be cancelled; a payment already sent still counts when it settles. Deleting an account warns when one
-of its payment addresses could still receive money. Buying Pro or more notes is checkout's (16.2–16.5), which adds the
-money and buys with it in one go.
+then the network to send it on, under **Pay with USDC**. A USDC is a dollar, so $20 is 20 USDC. **Get an address** follows
+the payment as checkout's Pay step does (16.2), with the same parts and words: "Waiting for your payment" and until when
+the address is open, **Send exactly** the amount with Copy, the QR code and the address made for this one payment, its
+first six and last four characters in bold (on a phone, **Open in wallet** in place of the code), and "Only send USDC on
+Base". A short payment says "Less than asked arrived", with **Send the rest** to the same address before it closes; after
+that it asks for no more money, and what arrived goes into the balance once the payment settles. Seen, the amount that
+arrived counts up and the line runs to "Added to your balance"; then the tick, and how much is in the balance now. A
+payment on its way stays under the balance in **Payments** with **Open**, as do failed and held payments with their support
+reference; once it's added it shows as "Added, 20 USDC" with **Receipt**. **Cancel payment** stops a waiting one; a payment
+already sent still counts. Over, **Start a new payment** starts again. Deleting an account warns when one of its payment
+addresses could still receive money. Buying Pro or more notes is checkout's (16.2–16.5), which adds the money and buys with
+it in one go.
 
 ### 11.25 Choose what reaches you
 
