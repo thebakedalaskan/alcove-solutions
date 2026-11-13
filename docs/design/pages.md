@@ -583,18 +583,21 @@ Board: `plans/Plans.dc.html`.
 
 The last of the sunset, with the plans on the water: a page you compare on, so mostly water.
 - **The sky.** Plans at the top left, search and you at the right. In the middle, Monthly / Yearly · 20% off, Yearly to
-  start, only while a year costs less. Under it, the last sliver of the sun, which the page draws on the evening
-  (`PlanSunset`, through `Evening`'s `sky`) behind whatever passes through. The horizon is 8px + 262px; on a phone it's
-  300px and the sky runs up behind the top bar.
+  start, only while a year costs less (Pro's, or a team license's). Under it, the last sliver of the sun, which the page
+  draws on the evening (`PlanSunset`, through `Evening`'s `sky`) behind whatever passes through. The horizon is 8px +
+  262px; on a phone it's 300px and the sky runs up behind the top bar.
 - **The plans** (`PlanCards`, `PlanCard`): light cards whose parts share rows through subgrid, so the names, prices, bill
   lines, buttons and facts line up. Each is at most a third of 1120px, so Free and Pro stand together in the middle, and a
   third card joins when Team is offered. Pro is lifted: raised, a firmer edge, a 2px warm edge on top. A warm chip marks the
   plan you're on (never Free, whose button area says it) or "Ends in N days".
 - **One filled button:** Get Pro on Free, Extend only while Pro is ending. Both open checkout over the page. On a team
   license Pro isn't sold: its card says "Not while you’re on your team’s plan", quietly, where the button would be.
-- **Team's card:** licenses at $40 a person for 30 days (from the offers), its people at the end of its name's row, its facts
-  and its last line. The Yearly switch doesn't change it. Its button is secondary: Start a team, or Buy licenses for its
-  admin; a member gets a quiet line saying who buys them. While the prices wait, three waiting cards.
+- **Team's card:** licenses at a price a person (from the offers), its people at the end of its name's row, its facts and its
+  last line. It follows the switch as Pro does: Yearly shows a license for a year's price a period, "$32 a person a month",
+  "$384 a person for 12 months. You save $96."; Monthly a period's, "$40", "Each license is one person for 30 days. Or $32 a
+  month for a year.". With no license for a year on offer (`offers.team.yearly` null), it's a period's on both sides. Its
+  button is secondary: Start a team, or Buy licenses for its admin, which open checkout on a year when Yearly is chosen; a
+  member gets a quiet line saying who buys them. While the prices wait, three waiting cards.
 - **Under them:** On every plan, as chips, and the paying line with its wallet.
 - **States:** waiting cards, failed with Try again, offline. On a phone the cards stand one under another.
 - On Pro or Team, or with a payment on its way, the side panel's plan row is the place you're on while you're here.
@@ -634,9 +637,15 @@ you're buying on the right, under its own small evening (`PlanWindow`) whose sun
   shows at once and only the dots and glints fade.
 - **Team:** Start a team names it first (`TeamName`, the company's name to start with); Buy licenses shows the team's
   people and who's waiting (`LicensesLeft`). Both choose with `LicensesPicker` (3, 6, 10 or 25, each saying what it's for,
-  and Another number). The summary is Team's window with people on its horizon, and each license runs 30 days from when
-  it's taken. The team is made only as you pay, and the app tells Alcove you're here as soon as the licenses are bought, so
-  the admin's own license is taken at once. Done has inviting under the receipt (`CheckoutDone`'s `invite`, a bare
+  and Another number). While a license for a year is offered, How long comes first: Monthly / Yearly · 20% off, on the
+  kit's `Segmented` (`LicensesPicker`'s `term`), on Yearly when Plans' switch was and on Monthly from anywhere else. A
+  year's license is one person for 12 periods at the yearly price ("$384 each, one person for a year"), and the purchase
+  carries its `periods`. The summary is Team's window with people on its horizon, its line "6 licenses for a year at $32 a
+  month" ($2,304, count × periods × price) or "6 licenses at $40", and each license runs 30 days, or a year, from when
+  it's taken. Done ("6 licenses for a year, for you and the people you invite…", "3 more licenses for a year"), the receipt
+  and the payments say "for a year". With none on offer, there's no How long and licenses are a period's. The team is
+  made only as you pay, and the app tells Alcove you're here as soon as the licenses are bought, so the admin's own
+  license is taken at once. Done has inviting under the receipt (`CheckoutDone`'s `invite`, a bare
   `TeamInvite`) and no renewal reminder. Someone on another's team (a member, or an admin who stopped being one) has nothing
   to buy here: the window has no steps (`CheckoutPanel`'s `step` is null) and says it once, in one note, who buys the
   licenses, after what became of a payment that couldn't buy them (its money is in the balance), with Close.

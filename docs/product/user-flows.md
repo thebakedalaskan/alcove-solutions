@@ -2687,18 +2687,23 @@ notes stop until you make room or get Pro again, which lifts it at once.
 ### 16.15 Start a team
 
 A team is one admin (whoever starts it) and as many people as it has licenses for, and you're on one team at most. Team's card
-on Plans says what a license is (a price for each person, for a period: $40 for 30 days unless the limits say otherwise), and
-**Start a team** on it opens checkout on Team over the page; a company's Team page has the same as a quiet row while you're on
-none.
+on Plans says what a license is (a price for each person, for a period: $40 for 30 days unless the limits say otherwise) and,
+on **Yearly**, what one for a year costs a month ($32, $384 a person for 12 months), and **Start a team** on it opens checkout
+on Team over the page, for a year while Plans is on **Yearly**; a company's Team page has the same as a quiet row while you're
+on none, opening on a month.
 
-1. The team's name, the company's to start with, with you its admin, and how many licenses: one for each person, you included.
+1. The team's name, the company's to start with, with you its admin; how long, **Monthly** or **Yearly · 20% off** (while a
+   license for a year is offered); and how many licenses: one for each person, you included. A license for a year is one
+   person for 12 periods, $384 ("6 licenses for a year at $32 a month": $2,304); it runs a year from when it's taken, is
+   refunded in full while nobody has taken it, and isn't once it's taken.
 2. Pay from the balance, or with USDC on a network (16.2): the summary says exactly what to send. Getting the address makes the
    team at once, with you its admin, and opens the payment for its licenses; the side panel waits for it as for Pro's.
 3. Once the payment is added, so are the licenses, with nothing to press: "{team} is on Team". Your license is taken then, and
    each of the others when the person it's for next opens Alcove.
-4. **Done** has the way to invite them: a link for one person (16.17). Team is your plan on Plans from then, with **Buy
-   licenses** on its card. A license replaces Pro at once: the month running ends, and the months that haven't started go back
-   to the balance, which you're told.
+4. **Done** has the way to invite them: a link for one person (16.17), and its receipt says what was bought ("Team, 6 licenses
+   for a year"), as Settings' payments do. Team is your plan on Plans from then, with **Buy licenses** on its card. A license
+   replaces Pro at once: the month running ends, and the months that haven't started go back to the balance, which you're
+   told.
 
 ### 16.16 Join a team by its link
 
@@ -2718,10 +2723,10 @@ license isn't refunded, they go back to Free, and notes they made visible to the
 for a member, asked the same way, or for the admin **Delete team** once nobody else is on it, which refunds the licenses nobody
 took. Then the notes made visible to the team, each opening its call's page (8.46), and your groups and what's shared with them,
 as ever. Beside them, for the admin: **Licenses**, how many are left and who's waiting for one, with **Buy licenses** (filled
-while someone waits), which opens checkout on Team, and buying one from the balance whenever it's needed; and **Invite
-people**: **Make an invite link** makes a link that lets one person join, for a day, shown with **Copy**; each press of **Make
-another** makes a new one. A member without a live license is told first, at the top of the water, why the team's notes and
-workspaces aren't open to them.
+while someone waits), which opens checkout on Team, month by month or for a year as 16.15, and buying one for a period from
+the balance whenever it's needed; and **Invite people**: **Make an invite link** makes a link that lets one person join, for
+a day, shown with **Copy**; each press of **Make another** makes a new one. A member without a live license is told first, at
+the top of the water, why the team's notes and workspaces aren't open to them.
 
 ### 16.18 Licenses running low
 

@@ -241,7 +241,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `components/checkout.tsx`: `CheckoutWindow` (on `Modal`, in your theme over a call; `receipt` for the receipt alone) with
   `CheckoutPanel`, `CheckoutSteps`, `MonthsPicker`, `HoursPicker`, `NetworkPicker`, `TeamName` (a team being started, its name
   in a box with its label inside), `LicensesPicker` (how many of Team's licenses, Another number up to the most one purchase
-  buys), `LicensesLeft` (the team's people, how many licenses are left and who's waiting), `PlanWindow` (what you're buying
+  buys, and How long, Monthly / Yearly · 20% off on `Segmented`, over them while a year is offered: its `term`), `LicensesLeft` (the team's people, how many licenses are left and who's waiting), `PlanWindow` (what you're buying
   under its own small evening, whose sun rises with the payment), `CheckoutSummary`, `PayStatus`, `PayAmount`, `PayAddress`
   (the QR code with the USDC mark, the address with its ends in bold), `PayArrived`, `PayTrack` (checkout's Pay step and
   Settings' Add money follow a payment with these, through the app's `features/plans/paying.tsx`), `CheckoutDone` (`invite`
