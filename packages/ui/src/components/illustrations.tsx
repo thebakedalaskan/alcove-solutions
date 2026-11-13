@@ -42,15 +42,27 @@ export function EmptyRows({ ticks = false }: { ticks?: boolean | undefined }) {
   );
 }
 
-/** A week, drawn: three days with a few meetings in them, tinted as calls and decisions are. For a calendar with nothing in it yet. */
-export function EmptyWeek() {
+/**
+ * A week, drawn: three days. `blocks` says what's in them: `calls`, a few meetings tinted as calls and decisions are, for a
+ * calendar with nothing in it yet; `own`, your own time, hatched, for a week whose events have only you on them; `none`,
+ * nothing, for a week that's clear.
+ */
+export function EmptyWeek({ blocks = 'calls' }: { blocks?: 'calls' | 'own' | 'none' | undefined }) {
   return (
-    <span className="ac-empty-week" aria-hidden="true">
-      <span><i /><i className="r" /></span>
-      <span><i className="s" /></span>
-      <span><i /><i /></span>
+    <span className={cn('ac-empty-week', blocks !== 'calls' && `is-${blocks}`)} aria-hidden="true">
+      {blocks === 'none' ? <><span /><span /><span /></>
+        : blocks === 'own' ? <><span><i /><i /></span><span><i className="t" /></span><span><i /><i /></span></>
+          : <><span><i /><i className="r" /></span><span><i className="s" /></span><span><i /><i /></span></>}
     </span>
   );
+}
+
+/**
+ * A small square of hatching: your own time, as scheduling's week hatches the time you're busy. It marks a calendar event
+ * with only you on it.
+ */
+export function Hatch({ className }: { className?: string | undefined }) {
+  return <i className={cn('ac-hatch', className)} aria-hidden="true" />;
 }
 
 /** Home's small sunset: the sun half down on the horizon, its glitter on the water. For when everything's done. */

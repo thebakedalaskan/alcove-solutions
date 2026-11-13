@@ -496,6 +496,11 @@
 .ac-empty-week i { display: block; height: 12px; border-radius: 4px; background: color-mix(in oklch, var(--horizon) 30%, transparent); }
 .ac-empty-week i.r { background: color-mix(in oklch, var(--rose) 30%, transparent); }
 .ac-empty-week i.s { background: color-mix(in oklch, var(--sun-text) 34%, transparent); }
+/* Your own time, hatched as scheduling's week hatches busy time; or days with nothing in them. */
+.ac-empty-week.is-own i { background: repeating-linear-gradient(135deg, color-mix(in oklch, var(--ink) 30%, transparent) 0 1.3px, transparent 1.3px 3.6px); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 22%, transparent); }
+.ac-empty-week.is-own i.t { height: 26px; }
+/* Hatch: a calendar event with only you on it. */
+.ac-hatch { flex: none; display: inline-block; width: 12px; height: 12px; border-radius: 3.5px; background: repeating-linear-gradient(135deg, color-mix(in oklch, var(--ink) 42%, transparent) 0 1.3px, transparent 1.3px 3.6px); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 30%, transparent); }
 /* SmallSunset: the sun half down on the horizon, and its glitter. */
 .ac-small-sunset { display: block; overflow: visible; }
 .ac-small-sunset .s { fill: var(--gold); }

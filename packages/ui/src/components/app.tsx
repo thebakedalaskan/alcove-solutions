@@ -45,13 +45,14 @@ export function Card({ title, aside, children, className, style, label }: {
 /**
  * One card on a page's water, the way the big apps build a home: its head (an icon in a tile, the `title`, then `end`, what
  * the head holds after the title: tabs, or a quiet button at its end), its body, and, only while the list in it is longer
- * than it shows, a foot that says how many more and shows them (`more`). `foot` sits at the card's foot, under the body and
- * before that. `bare` leaves the card out: the head and what's under it sit on the page, as a row of cards does. `body` makes
- * the body something more than a list (a tab's panel). The heading can take focus (`headingRef`), for when the row that had
- * it goes.
+ * than it shows, a foot that says how many more and shows them (`more`). `footEnd` sits at that foot's end, after Show N
+ * more, and keeps the foot there once everything shows: a quiet toggle, as Upcoming's count of events with only you on them.
+ * `foot` sits at the card's foot, under the body and before that. `bare` leaves the card out: the head and what's under it sit
+ * on the page, as a row of cards does. `body` makes the body something more than a list (a tab's panel). The heading can take
+ * focus (`headingRef`), for when the row that had it goes.
  */
-export function Widget({ icon, title, end, foot, more, bare = false, headingRef, body, className, children }: {
-  icon: IconName; title: string; end?: ReactNode; foot?: ReactNode;
+export function Widget({ icon, title, end, foot, footEnd, more, bare = false, headingRef, body, className, children }: {
+  icon: IconName; title: string; end?: ReactNode; foot?: ReactNode; footEnd?: ReactNode;
   more?: { count: number; onShow: () => void } | undefined;
   bare?: boolean | undefined; headingRef?: Ref<HTMLHeadingElement> | undefined;
   body?: Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'className'> | undefined;
@@ -67,7 +68,12 @@ export function Widget({ icon, title, end, foot, more, bare = false, headingRef,
       </header>
       <div {...body} className="ac-widget-b">{children}</div>
       {foot}
-      {more && <footer className="ac-widget-f"><button type="button" className="ac-widget-more" onClick={more.onShow}>Show {more.count} more</button></footer>}
+      {(more || footEnd) && (
+        <footer className="ac-widget-f">
+          {more && <button type="button" className="ac-widget-more" onClick={more.onShow}>Show {more.count} more</button>}
+          {footEnd}
+        </footer>
+      )}
     </section>
   );
 }
