@@ -29,9 +29,12 @@ const Tools = ({ marked = false }: { marked?: boolean | undefined }) => (
   </>
 );
 
-/** The transcript's lines, as the note's page lays them out. A room recording's name nobody (`nameless`). */
-function Lines({ nameless = false, children }: { nameless?: boolean | undefined; children: ReactNode }) {
-  return <div className="nd" style={{ width: 'min(720px, 100%)' }}><div className={cn('nd-lines', nameless && 'is-nameless')}>{children}</div></div>;
+/**
+ * The transcript's lines, as a call's Transcript tab lays them out, under `head` when there's something above them (the
+ * key to what isn't sure). A room recording's name nobody (`nameless`).
+ */
+function Lines({ nameless = false, head, children }: { nameless?: boolean | undefined; head?: ReactNode; children: ReactNode }) {
+  return <div className="cd-said" style={{ width: 'min(720px, 100%)' }}>{head}<div className={cn('nd-lines', nameless && 'is-nameless')}>{children}</div></div>;
 }
 /** A line from the standup, said by someone named: `more` when they said the line before it too. */
 function Line({ mmss, who, name, more = false, children }: { mmss: string; who: AvatarPerson; name: ReactNode; more?: boolean | undefined; children: ReactNode }) {
@@ -109,16 +112,13 @@ export const RoomRecording: Story = {
 export const NotSure: Story = {
   name: 'Not sure',
   render: () => (
-    <div style={{ width: 'min(720px, 100%)' }}>
-      <div className="nd-sh"><h2>Transcript</h2><UnsureKey words speaker className="nd-key" /></div>
-      <Lines>
-        <TranscriptLine time={time('0:21')} person={PRIYA} name="Priya" tools={<Tools />} onPress={press}>
-          <Unsure of="words">The new onboarding is done. Design signed off last night and the last coffee changes went in first thing.</Unsure>
-        </TranscriptLine>
-        <TranscriptLine time={time('16:58')} person={KOFI} name={<Unsure of="speaker">Kofi</Unsure>} tools={<Tools />} onPress={press}>
-          Rollout’s fine. We start with one per cent and go from there.
-        </TranscriptLine>
-      </Lines>
-    </div>
+    <Lines head={<UnsureKey words speaker className="cd-key" />}>
+      <TranscriptLine time={time('0:21')} person={PRIYA} name="Priya" tools={<Tools />} onPress={press}>
+        <Unsure of="words">The new onboarding is done. Design signed off last night and the last coffee changes went in first thing.</Unsure>
+      </TranscriptLine>
+      <TranscriptLine time={time('16:58')} person={KOFI} name={<Unsure of="speaker">Kofi</Unsure>} tools={<Tools />} onPress={press}>
+        Rollout’s fine. We start with one per cent and go from there.
+      </TranscriptLine>
+    </Lines>
   )
 };

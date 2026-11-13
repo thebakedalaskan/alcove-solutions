@@ -35,10 +35,14 @@ export interface PageThread { id: string; on: number; quote: string; says: { who
  * the call's ID, or null outside calls. What it says is what the page says.
  */
 export interface PageVersion { at: string; by: Person[]; call: string | null; reason: 'edits' | 'call' }
+/** Someone else writing in a page as the story opens: who, and the words their caret is just after (src/api/writers.ts). */
+export interface PageWriter { who: Person; after: string }
 export interface Page {
   blocks: BlockJSON[]; threads?: PageThread[] | undefined; refused?: Refused | undefined; versions?: PageVersion[] | undefined;
   /** How it stands for this browser as it opens: its stream can't reach Alcove (`offline`), until Try now, online, brings it back. */
   standing?: 'offline' | undefined;
+  /** Who else is writing in it, each with their caret on the page. */
+  here?: PageWriter[] | undefined;
 }
 
 /**
@@ -51,8 +55,13 @@ export interface BoardSpec {
   here?: { who: Person; x: number; y: number }[] | undefined;
   standing?: 'offline' | 'failed' | 'gone' | undefined;
 }
-/** A workspace as the world keeps it: its tree, and what the Drive says of it besides (when it was made, and its call). */
-export type Space = WorkspaceTree & Pick<WorkspaceSummary, 'createdAt' | 'call'>;
+/**
+ * A workspace as the world keeps it: its tree, and what the Drive says of it besides (when it was made, and its call), who's in
+ * it besides you (`members`, or else everyone on the team who's on Alcove), the line on what it's for (`about`), and who pays
+ * for it, where a story says (`paidBy`): its files count against their storage, so a call someone else organizes opens it only
+ * to its own people. Without it, whoever organizes the call it's in is taken to pay, as for a call's home.
+ */
+export type Space = WorkspaceTree & Pick<WorkspaceSummary, 'createdAt' | 'call'> & { members?: Person[] | undefined; about?: string | undefined; paidBy?: Person | undefined };
 /**
  * A file in a workspace: what the API says of it, and its bytes, made when they're first read (a picture is drawn). A photo
  * uploaded here keeps the small preview its browser made, as the API does; one the story starts with has none, as a photo
@@ -158,7 +167,7 @@ export const session = (over: Partial<Session> = {}): Session => ({
 
 export const PREFS: Preferences = {
   sounds: DEFAULT_SOUND_PREFERENCES,
-  notesDefault: 'on', notesLanguage: 'call', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
+  notesDefault: 'on', notesLanguage: 'call', addToCalendar: true, showOtherMeetings: true, showSoloEvents: false, recordOffline: true,
   notifications: { ...DEFAULT_NOTIFICATION_PREFERENCES, enabled: true, beforeCall: 1, followUpDue: true },
-  pinned: [], groups: [], model: null
+  pinned: [], groups: [], model: null, notificationsPausedUntil: null
 };

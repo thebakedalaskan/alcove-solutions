@@ -36,7 +36,7 @@ export const CalendarSchema = z.object({
   source: z.enum(['google', 'sample', 'none']),
   /** Signed in with Google without giving calendar access; the app can ask for it. */
   needsAccess: z.boolean(),
-  /** The coming week's other events, soonest first. */
+  /** The other events in the stretch asked for (by default the coming week), soonest first. */
   events: z.array(CalendarEventSchema)
 });
 

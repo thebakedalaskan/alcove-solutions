@@ -63,8 +63,14 @@ export const YourAgent = at('agents', 'Your agent can use Alcove');
 export const RecordingOffline = at('offline', 'Offline recordings');
 /** The same note, as you see it and as Alcove's servers hold it. */
 export const WhatAlcoveCanSee = at('privacy', 'What Alcove can see');
-/** Plans, in a cove at night with the last of the sun: Free and Pro as small cards, then Start free and Get Pro. */
+/**
+ * Plans, in a cove at night with the last of the sun: Free, Pro and Team as small cards, Team priced for each person, then Start
+ * free, Get Pro and Start a team, all secondary: the last ask's Continue with Google, the page's filled button, comes into view
+ * with them. Get Pro and Start a team sign in, then open Plans with checkout on Pro or on Team (Pages › Plans › Start a team
+ * from the welcome page).
+ */
 export const Plans = at('plans', 'Plans');
+/** On a phone the three plans stand one under another, the ways in under them. */
 export const PlansPhone = phone(Plans);
 /** Morning comes up behind the last ask, in a cove of its own. */
 export const StartYourFirstCall = at('start', 'Start your first call');

@@ -12,16 +12,16 @@ import { demoDay, demoIdentity, isSharedDemo } from '../../demo';
 import type { GoogleIdentity, Identity } from '../../identity';
 import { ForbiddenError, GoogleEmailRequiredError, GoogleSignupInviteRequiredError, NotFoundError } from '../../errors';
 import { log } from '../../log';
-import { createOwner, masterKey, openOwner, ownerFrom } from '../../owners';
+import { createOwner, indexKey, openOwner, ownerFrom } from '../../owners';
 import { closeSession, openSession } from '../../sessions';
 import { createItem, listItems, saveRevision, lockItem } from '../../vault';
 import { forgetAnswers } from '../meetings/access';
 import { takeAllBack } from '../notes/additions';
 import { forgetAllMade } from '../notes/links';
 import { queueDelete } from '../recordings/audio';
-import { open as openPlan } from '../billing/plans';
-import { forgetMembership, refuseDeletingAdmin } from '../billing/teams';
-import { forgetAccess, grantToRevoke, revokeGrant, unreachable, withdraw } from '../meetings/calendar';
+import { open as openPlan, tellPayers } from '../billing/plans';
+import { forgetMembership, memberChanged, refuseDeletingAdmin } from '../billing/teams';
+import { forgetAccess, grantToRevoke, release, revokeGrant, unreachable, withdraw } from '../meetings/calendar';
 import { create as createMeeting, findUpcoming } from '../meetings/service';
 import { deleteOwnNote, heldNoteIds } from '../notes/service';
 import { photoUrl } from './photos';
@@ -58,10 +58,10 @@ export const Profile = z.object({
 export type Profile = z.infer<typeof Profile>;
 
 const DEFAULT_PREFERENCES: StoredPreferences = {
-  notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
+  notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, showSoloEvents: false, recordOffline: true,
   notifications: DEFAULT_NOTIFICATION_PREFERENCES,
   sounds: DEFAULT_SOUND_PREFERENCES,
-  pinned: [], groups: [], model: null
+  pinned: [], groups: [], model: null, notificationsPausedUntil: null
 };
 
 async function profileItem(o: Owner, db: Db) {
@@ -103,7 +103,7 @@ export const demoSignIn = (d: Deps, body: SignInBody) => signIn(d, { provider: b
 
 /** An integration granted by Google must belong to the signed-in account's provider identity. */
 export async function hasIdentity(d: Deps, ownerId: string, who: Identity): Promise<boolean> {
-  const subject = blindIndex(masterKey(d), 'subject', who.subject);
+  const subject = blindIndex(indexKey(d), 'subject', who.subject);
   return (await exec(d.pool, 'SELECT 1 FROM identities WHERE owner_id = $1 AND subject_index = $2', [ownerId, subject])) > 0;
 }
 
@@ -114,8 +114,8 @@ type SignIn = { provider: 'google'; who: GoogleIdentity } | { provider: DemoProv
  * its profile from the provider, and its plan (Free); a demo identity also gets the sample calendar.
  */
 export async function signIn(d: Deps, { provider, who }: SignIn): Promise<{ owner: Owner; sessionId: string; isNew: boolean }> {
-  const subject = blindIndex(masterKey(d), 'subject', who.subject);
-  const email = blindIndex(masterKey(d), 'email', who.email);
+  const subject = blindIndex(indexKey(d), 'subject', who.subject);
+  const email = blindIndex(indexKey(d), 'email', who.email);
 
   const found = await tx(d.pool, async (c) => {
     // Two first sign-ins at once must not make two accounts: serialise on the identity.
@@ -134,6 +134,8 @@ export async function signIn(d: Deps, { provider, who }: SignIn): Promise<{ owne
         await changeProfile(await openOwner(d, existing.owner_id, undefined, c), c, (p) => ({ ...p, email: who.email }));
         await moveAddress(d, c, existing.owner_id, existing.email_index, who.email);
       }
+      // Their team shows them as their provider has them now, name and address, from this sign-in on.
+      await memberChanged(d, c, existing.owner_id, { name: who.name, email: who.email });
       return { ownerId: existing.owner_id, isNew: false };
     }
     if (provider === 'google' && d.cfg.GOOGLE_SIGNUP_MODE === 'testers' && !d.cfg.GOOGLE_SIGNUP_TESTERS.includes(who.email)) {
@@ -240,12 +242,12 @@ export async function deleteAccount(o: Owner): Promise<void> {
     }
     // Its profile's address is the one it has other people's notes under (notes.ts › locate).
     const received = await exec(c, `DELETE FROM note_access WHERE email_index = $1 AND owner_id <> $2
-                                    AND NOT EXISTS (SELECT 1 FROM identities WHERE email_index = $1 AND owner_id <> $2)`, [blindIndex(masterKey(o), 'email', p.manifest.email), o.ownerId]);
+                                    AND NOT EXISTS (SELECT 1 FROM identities WHERE email_index = $1 AND owner_id <> $2)`, [blindIndex(indexKey(o), 'email', p.manifest.email), o.ownerId]);
     const answers = await forgetAnswers(o, c, p.manifest.email);
     // Rings to its address, in other people's calls: its own calls' went with its meetings.
     const rings = await forgetRings(o, c, p.manifest.email);
     // Its address in feature flags' groups and grants, on the same condition as note_access.
-    const featureFlags = await forgetFeatureFlags(c, blindIndex(masterKey(o), 'email', p.manifest.email), o.ownerId);
+    const featureFlags = await forgetFeatureFlags(c, indexKey(o), p.manifest.email, o.ownerId);
     const workspaces = await forgetAccount(o, c, p.manifest.email, callIds);
     // Its place on a team, and the team itself if it's the admin of one nobody else is on.
     const team = await forgetMembership(c, o.ownerId);
@@ -264,6 +266,8 @@ export async function deleteAccount(o: Owner): Promise<void> {
   // The audio, screens and workspaces' files first: a slow Google mustn't hold them up.
   await queueDelete(o, gone.objects);
   await collect(o, gone.workspaces.owners);
+  // Whoever pays for a workspace it paid for now is told, once that's so.
+  await tellPayers(o, gone.workspaces.moves);
   await revokeGrant(o, refreshToken, AbortSignal.timeout(REVOKE_MS));
   alog.info('account deleted', {
     ownerId: o.ownerId, calendarCancelled: calendar.cancelled, calendarKept: calendar.kept, calendarNotCancelled: calendar.notCancelled,
@@ -275,17 +279,19 @@ export async function deleteAccount(o: Owner): Promise<void> {
 /**
  * Cancels on Google Calendar every call Upcoming lists, begun or not, as Cancel call does, so their guests are
  * told. A series' calls go with their recurring event, which tells everyone once. An event the organizer made in
- * Google Calendar and moved to Alcove is theirs, so it's kept as it was (its Alcove link stops working). Google has
+ * Google Calendar and moved to Alcove is theirs, so it's kept as it was (its Alcove link stops working). The times
+ * held for a call waiting for a guest to pick go too, telling nobody, since nobody was invited to them. Google has
  * CANCEL_MS in all: cancelling stops at the first timeout or network
  * failure, or when the time is up. Counts what was cancelled, kept, and not cancelled (failed, left when it
  * stopped, or with no calendar connected any more), with a warning that says why when something went wrong.
  */
 async function withdrawCalls(o: Owner): Promise<{ cancelled: number; kept: number; notCancelled: number }> {
   const out = { cancelled: 0, kept: 0, notCancelled: 0 };
-  const due: { meetingId: string; eventId: string }[] = [];
+  const due: { meetingId: string; eventId: string; held?: boolean }[] = [];
   try {
     const upcoming = await findUpcoming(o);
     for (const m of upcoming) {
+      for (const h of m.manifest.holds) due.push({ meetingId: m.itemId, eventId: h.eventId, held: true });
       const event = m.manifest.calendarEvent;
       if (!event || event.master) continue;
       if (event.adopted) out.kept++;
@@ -301,7 +307,7 @@ async function withdrawCalls(o: Owner): Promise<{ cancelled: number; kept: numbe
   for (const [i, d] of due.entries()) {
     if (budget.aborted) { out.notCancelled += due.length - i; failure = budget.reason; break; }
     try {
-      const r = await withdraw(o, d.eventId, d.meetingId, budget);
+      const r = d.held ? await release(o, d.eventId, budget) : await withdraw(o, d.eventId, d.meetingId, budget);
       if (r === 'cancelled') out.cancelled++;
       else if (r === 'not-connected') out.notCancelled++;
     } catch (e) {
@@ -346,11 +352,14 @@ export async function updatePreferences(o: Owner, patch: Patch<Preferences>): Pr
     summaryLength: p.preferences.summaryLength,
     addToCalendar: patch.addToCalendar ?? p.preferences.addToCalendar,
     showOtherMeetings: patch.showOtherMeetings ?? p.preferences.showOtherMeetings,
+    showSoloEvents: patch.showSoloEvents ?? p.preferences.showSoloEvents,
     recordOffline: patch.recordOffline ?? p.preferences.recordOffline,
     notifications: patch.notifications ?? p.preferences.notifications,
     sounds: patch.sounds ?? p.preferences.sounds,
     pinned: patch.pinned ?? p.preferences.pinned,
     groups: patch.groups ?? p.preferences.groups,
-    model: patch.model === undefined ? p.preferences.model : patch.model
+    model: patch.model === undefined ? p.preferences.model : patch.model,
+    // Null resumes; a time already past is kept as given and means nothing is paused.
+    notificationsPausedUntil: patch.notificationsPausedUntil === undefined ? p.preferences.notificationsPausedUntil : patch.notificationsPausedUntil
   } }))).preferences;
 }

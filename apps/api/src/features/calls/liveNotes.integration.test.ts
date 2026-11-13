@@ -375,6 +375,46 @@ describe('who reads what of them', () => {
     await host.leave();
   });
 
+  it('takes a guest’s own notes and captions out of the guests’ share: past it they stop and say why, and everyone’s go on', async () => {
+    // Guests in a call may spend nothing of the organizer's plan here: no questions, and nothing that's for a guest alone.
+    await h.setLimit('ai.guests_call_percent', 0);
+    try {
+      const { org, host, kofi, code: c } = await twoInCall();
+      await say(host, 'We agreed on the budget before Sam came.');
+      await sleep(1100);
+      const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+      await letIn(host, sam);
+      await sleep(300);
+      const SAID = 'Sam will review the plan by Monday.';
+      await sayNow(host, SAID, 6000);
+      // Sam's own notes, which read less than everyone's, would be for Sam alone: nothing reaches the model, and they say why.
+      const before = runs();
+      const stop = sam.watchNotes();
+      const shown = await settle(sam, (x) => x.liveNotes.error !== null);
+      stop();
+      expect(shown.liveNotes).toMatchObject({ notes: null, error: 'These notes aren’t being updated: guests in this call have used as much of the organizer’s plan as it allows them.' });
+      expect(runs()).toBe(before);
+      // Captions in another language are Sam's alone too: refused in the guests' words, with nothing sent.
+      const line = (await settle(sam, (x) => x.transcript.some((l) => l.text === SAID))).transcript.find((l) => l.text === SAID)?.id ?? 'no line';
+      const sent = h.near.calls.length;
+      const refused = await sam.translate([line], 'es').catch((e: unknown) => e);
+      expect([code(refused), said(refused)]).toEqual(['plan-limit', 'Guests in this call have used as much of the organizer’s plan as it allows them.']);
+      expect(h.near.calls.length).toBe(sent);
+      // Everyone's notes and someone invited's captions are the call's, for everyone, and go on, the organizer paying as ever.
+      const k = kofi.watchNotes();
+      expect(texts((await notesOf(kofi)).decided)).toContain('We agreed on the budget before Sam came.');
+      k();
+      expect(runs()).toBe(before + 1);
+      expect(await kofi.translate([line], 'es')).toEqual([{ id: line, text: `[Spanish] ${SAID}` }]);
+      // What's translated already costs nothing, so Sam reads it.
+      expect(await sam.translate([line], 'es')).toEqual([{ id: line, text: `[Spanish] ${SAID}` }]);
+      expect((await standing(h.deps, h.pool, org.session.ownerId)).stopped).toBe(false);
+      await host.leave();
+    } finally {
+      await h.resetLimits();
+    }
+  });
+
   it('shares one run among everyone who can read the same lines, and costs another only for a different view', async () => {
     const { host, code: c } = await twoInCall();
     await say(host, 'We agreed on the budget before anyone came.');
@@ -1572,7 +1612,10 @@ describe('accepted follow-ups into the note', () => {
     const note = await written(org.api, ended?.pendingNoteId);
     h.near.reword(DECK, null);
     h.near.reword(ROOM, null);
-    expect(h.near.instructions.at(-1)).toContain('Write in French.');
+    // This call's own note: another call's notes written in the background can be the stand-in's last request.
+    const ours = h.near.instructions.filter((system, i) => system.startsWith('You write the notes') && (h.near.prompts[i] ?? '').includes(`Organizer: ${org.session.user.name}`));
+    expect(ours.length).toBeGreaterThan(0);
+    for (const system of ours) expect(system).toContain('Write in French.');
     expect(note.actions).toEqual([expect.objectContaining({ id: deck.id, text: DECK, done: true })]);
     expect(note.suggestions.some((a) => a.text === ROOM)).toBe(true);
   });

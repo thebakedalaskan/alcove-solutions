@@ -10,7 +10,7 @@ import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } 
 import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
 import { absolutePositionToRelativePosition, relativePositionToAbsolutePosition } from 'y-prosemirror';
 import * as Y from 'yjs';
-import type { EditorRuntime } from '../runtime';
+import type { EditorRuntime, ThreadAuthor } from '../runtime';
 import { schema, textOf } from '../schema';
 import { syncOf } from '../ydoc';
 import { allBlocks, countLine } from '../commands';
@@ -60,8 +60,8 @@ function writingDots(): HTMLElement {
   return dots;
 }
 
-/** Comments in a block, open ones only: the first thread's ID, and how many messages there are in all. */
-function threadsIn(block: PMNode, rt: EditorRuntime): { id: string; count: number } | null {
+/** Comments in a block, open ones only: the first thread's ID, how many messages there are in all, and who wrote them, each once. */
+function threadsIn(block: PMNode, rt: EditorRuntime): { id: string; count: number; by: ThreadAuthor[] } | null {
   if (rt.threads.get().size === 0) return null;
   const seen = new Set<string>();
   block.descendants((node) => {
@@ -73,8 +73,13 @@ function threadsIn(block: PMNode, rt: EditorRuntime): { id: string; count: numbe
   const [first] = seen;
   if (first === undefined) return null;
   let count = 0;
-  for (const id of seen) count += rt.threads.get().get(id)?.count ?? 0;
-  return { id: first, count };
+  const by: ThreadAuthor[] = [];
+  for (const id of seen) {
+    const thread = rt.threads.get().get(id);
+    count += thread?.count ?? 0;
+    for (const a of thread?.by ?? []) if (!by.some((x) => x.id === a.id)) by.push(a);
+  }
+  return { id: first, count, by };
 }
 
 export function decorPlugin(rt: EditorRuntime): Plugin {
@@ -123,7 +128,7 @@ export function decorPlugin(rt: EditorRuntime): Plugin {
           if (b.id && rt.props.changed?.has(b.id)) classes.push('is-added');
           const threads = threadsIn(b.node, rt);
           if (classes.length || threads || number !== null) {
-            out.push(Decoration.node(b.pos, b.pos + b.node.nodeSize, classes.length ? { class: classes.join(' ') } : {}, { number, threadId: threads?.id, threadCount: threads?.count }));
+            out.push(Decoration.node(b.pos, b.pos + b.node.nodeSize, classes.length ? { class: classes.join(' ') } : {}, { number, threadId: threads?.id, threadCount: threads?.count, threadBy: threads?.by }));
           }
         }
 

@@ -1,9 +1,14 @@
-/** One sealed account preference model; guests deliberately opt in using the same validated local shape. */
+/**
+ * One sealed account preference model; guests deliberately opt in using the same validated local shape.
+ * `notificationsPauseEnd` is when the account's pause on notifications ends (lib/notification-pause.ts), for every source to
+ * hand the delivery: a guest has none.
+ */
 import { DEFAULT_NOTIFICATION_PREFERENCES, NotificationPrefsSchema, errorMessage, type NotificationPrefs, type Session } from '@alcove/api';
 import { useToast } from '@alcove/ui';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { log } from './log';
+import { notificationsPauseEndOf } from './notification-pause';
 import { announceNotificationPreferences, notificationPreferenceIntent, watchNotificationPreferences } from './notification-preference-channel';
 import { accountGeneration } from './signedOut';
 import { q, usePreferences } from './queries';
@@ -112,7 +117,7 @@ export function useNotificationPreferences() {
     }
   };
   const prefs = useMemo(() => ({ ...(account ? profile.data?.notifications ?? DEFAULT_NOTIFICATION_PREFERENCES : guest), ...notificationPreferenceIntent(account?.ownerId ?? null) }), [account, profile.data?.notifications, guest, intentVersion]);
-  return { prefs, update,
+  return { prefs, notificationsPauseEnd: account ? notificationsPauseEndOf(profile.data) : null, update,
     scope: `${identityOf(account)}:${identity.current.revision}`, capturePermissionIntent, ownerId: account?.ownerId ?? null,
     ready: !session.isPending && !session.isError && (!account || Boolean(profile.data)) };
 }

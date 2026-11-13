@@ -11,7 +11,8 @@ import { at, asksForNotes, notesRunningOut, notesStop, run, says, UNENCRYPTED_MO
 import { current } from '../../src/api/state';
 import { MORE, clearSide, inCall, light, phone, plays, press, reach } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
-import { monthsFrom, notesStopped, overLimits, proPlan, withProMonths } from '../../src/world/plans';
+import { addToBalance, boughtFromBalance, freshEntryId } from '../../src/world/payments';
+import { notesStopped, overLimits, PLAN_OFFERS, PRO_PRICE, proPlan } from '../../src/world/plans';
 import { FOLLOW_UP_SCRIPT } from './followUps';
 import { AIKO, CHECK_IN, CHECK_IN_SUMMARY, CHECK_IN_TALK, KOFI, MAYA, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK } from './talk';
 
@@ -129,16 +130,29 @@ export const PausedByTheOrganizer = inCall({
  * the sign at the top Notes stopped; the banner waits while Notes is open. Only the organizer has the ways to more (Get Pro,
  * Add 10 hours · $15, Make room), which open checkout over the call. Once their plan has more, notes come on again by
  * themselves, and the notes mark where they stopped and came on again. The world's plan stops with the call, as the server's
- * does: the organizer is Art, so it's his.
+ * does: the organizer is Art, so it's Art's.
  */
 /** Art's notes for the period run out: the world's plan says so too. */
 const planOut = run(() => { current().plan = notesStopped(); });
 /** Art's storage is full, past its grace. */
 const storageOut = run(() => { current().plan = overLimits(); });
-/** A payment for a month of Pro lands, from checkout or a phone: Pro starts now, with its whole allowance. */
-const proBought = run(() => { const w = current(); w.plan = withProMonths(w.plan, monthsFrom(Date.now() - 60_000, 1)); });
-/** 10 more hours of notes for this period, bought from the balance: they add to the period's notes, which aren't stopped now. */
-const hoursBought = run(() => { const w = current(); w.plan = { ...w.plan, notes: { minutesLeft: 600, minutesPerPeriod: w.plan.notes.minutesPerPeriod + 600, stopped: false } }; });
+/**
+ * A payment for a month of Pro lands, from checkout or a phone: it's added and buys Pro in the same go, as the server does, so
+ * Pro starts now with its whole allowance, and the plan has a purchase since notes stopped.
+ */
+const proBought = run(() => {
+  const w = current();
+  addToBalance(w, PRO_PRICE, '20');
+  boughtFromBalance(w, { kind: 'pro', months: 1, microUsdPerMonth: PRO_PRICE }, freshEntryId(w));
+});
+/** 10 more hours of notes for this period, paid for the same way: they add to the period's notes, which aren't stopped now. */
+const hoursBought = run(() => {
+  const w = current();
+  const pack = PLAN_OFFERS.hours;
+  if (!pack) return;
+  addToBalance(w, pack.microUsd, String(pack.microUsd / 1_000_000));
+  boughtFromBalance(w, { kind: 'hours', packs: 1, microUsdPerPack: pack.microUsd, minutesPerPack: pack.minutes }, freshEntryId(w));
+});
 
 /** Art organizes this review on Free. Three seconds in, Art's notes are about to run out at this call's pace: only Art is told. */
 export const NotesRunningOut = inCall({ scenario: 'call-soon', call: REVIEW, script: { ...LATE, cues: at(3, notesRunningOut()) } });
@@ -170,7 +184,7 @@ export const NotesStoppedForTheOrganizer = inCall({
 export const NotesStoppedForTheOrganizerPhone = phone(NotesStoppedForTheOrganizer);
 export const NotesStoppedForTheOrganizerLight = light(NotesStoppedForTheOrganizer);
 /**
- * Notes stop three seconds in, and two seconds later Art's payment for Pro lands. Within ten seconds his browser hears it, notes
+ * Notes stop three seconds in, and two seconds later Art's payment for Pro lands. Within ten seconds Art's browser hears it, notes
  * come on again by themselves, a toast says "You're on Pro. Notes are on again." and the notes mark "Notes stopped" and "Notes
  * on again", in rec.
  */

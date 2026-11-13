@@ -37,7 +37,10 @@ export const providerUnavailable = (provider: DepositProviderName, context: Reco
 /** The states of a deposit that money can still be on its way to. */
 export type OpenDepositState = 'waiting' | 'arriving' | 'short';
 
-/** One token on one chain. `minimum` is in the token's smallest unit; `chainName` is the chain as people call it. */
+/**
+ * One token on one chain. `minimum` is in the token's smallest unit; `chainName` is the chain as people call it. Only
+ * USDC is offered; USDT is the route of a deposit opened before that, still watched and settled.
+ */
 export interface DepositRoute { id: string; provider: DepositProviderName; chain: string; chainName: string; token: 'USDC' | 'USDT'; decimals: number; minimum: bigint }
 /**
  * Where a deposit is paid, and the provider's quote for it as it was kept, which is all a provider needs to say what

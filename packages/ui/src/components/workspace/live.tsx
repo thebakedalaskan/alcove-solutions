@@ -183,18 +183,3 @@ export function WsNotesOff({ organizer, onTurnOn, onAsk, onTakeBack }: { organiz
     </div>
   );
 }
-
-/** A document worked on in a call. `sub`: who did what, in words, for someone who can open it. */
-export interface WsWorkedOnDoc { id: string; name: string; sub: string }
-
-/**
- * On the note after the call, under its own heading among the note's sections: what was worked on, a row for each document
- * that opens it. Show only what the reader can open.
- */
-export function WsWorkedOn({ documents, onOpen }: { documents: WsWorkedOnDoc[]; onOpen: (id: string) => void }) {
-  return (
-    <div className="ws-ndocs">
-      {documents.map((d) => <button key={d.id} type="button" className="ws-ndoc" onClick={() => onOpen(d.id)}><Icon name="fileText" size={17} /><span><b>{d.name}</b><small>{d.sub}</small></span><Icon name="right" size={15} /></button>)}
-    </div>
-  );
-}

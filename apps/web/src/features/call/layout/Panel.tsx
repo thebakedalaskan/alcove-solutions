@@ -24,7 +24,7 @@ import { AskForNotes, askerOf, notesBrowser, organizerName, roomScribe, useNotNo
 import { callTimes, type CallTimes } from '../notes/CatchUp';
 import { CallLines } from '../notes/LiveLines';
 import { NotesFollowUps } from '../notes/FollowUps';
-import { StopMarks, type StopMark } from '../notes/PlanStop';
+import { StopMarks, planStopOf, type StopMark } from '../notes/PlanStop';
 import { useActionFocus, type ActionJump } from './actionFocus';
 import type { NotesTab } from './side';
 import { statusText } from './status';
@@ -99,7 +99,7 @@ export function NotesHead({ pill, modelPrivate, onOpen, onClose }: { pill: React
       {pill}
       {!modelPrivate && <Unencrypted compact />}
       <span className="sp" />
-      <IconButton icon="external" label="Open in the workspace, just for you" onClick={onOpen} />
+      <IconButton icon="external" label="Open in the workspace, on your screen" onClick={onOpen} />
       <IconButton icon="x" label="Close Notes" onClick={onClose} />
     </div>
   );
@@ -135,8 +135,7 @@ export function NotesBars({ state, controls, problems, capture }: { state: CallS
   if (here.mode === 'on' && here.transcript.mode === 'unavailable' && !(state.isHost && problems.length > 0)) {
     bars.push({ key: 'unheard', tone: 'caution', icon: 'alert', text: `${notesBrowser(state)} can’t listen right now, so nothing new is transcribed. Notes pick up as soon as it can.` });
   }
-  const planStopped = c.stopped !== null && !notesAreOn(c.mode);
-  if (capture && !planStopped) {
+  if (capture && !planStopOf(c)) {
     const since = c.recording.since ? ` at ${hm(c.recording.since)}` : '';
     if (here.mode === 'unavailable') {
       bars.push({ key: 'unavailable', tone: 'caution', icon: 'alert', text: c.room ? ROOM_UNHEARD : c.away
@@ -274,7 +273,7 @@ export function NotesView({ session, state, getting, problems, controls, carried
     );
   } else if (c.mode === 'off' && !any) {
     // The organizer's plan stopped them: the bar over the tabs says why, and what to do; here, only that nothing's written yet.
-    empty = c.stopped ? (
+    empty = planStopOf(c) ? (
       <EmptyState title="Nothing written yet">Notes start here the moment they’re on again.</EmptyState>
     ) : host && askers.length > 0 ? (
       <EmptyState art={<Faces people={askers} size={40} max={3} />} title={`${listNames(askers)} asked for notes`}

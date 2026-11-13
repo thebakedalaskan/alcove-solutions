@@ -1,0 +1,110 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-11T23:58:00Z"
+  },
+  "title": "Home, under the horizon",
+  "launch": {
+    "view": "canvas",
+    "page": "home"
+  },
+  "pages": [
+    {
+      "id": "home",
+      "name": "Home"
+    },
+    {
+      "id": "states",
+      "name": "Every state"
+    },
+    {
+      "id": "journeys",
+      "name": "Every journey"
+    },
+    {
+      "id": "parts",
+      "name": "Parts"
+    }
+  ],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Home",
+      "page": "home",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "States.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 4668,
+      "h": 3823,
+      "title": "Home, every state",
+      "page": "states"
+    },
+    "Journeys.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 4668,
+      "h": 5722,
+      "title": "Home, every journey step by step",
+      "page": "journeys"
+    },
+    "Side.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 256,
+      "h": 900,
+      "title": "The side panel, as the app draws it",
+      "page": "parts"
+    },
+    "Faces.dc.html": {
+      "x": 336,
+      "y": 0,
+      "w": 1000,
+      "h": 820,
+      "title": "People in the arch",
+      "page": "parts"
+    },
+    "SkyArt.dc.html": {
+      "x": 1416,
+      "y": 0,
+      "w": 1000,
+      "h": 340,
+      "title": "The sunset, drawn",
+      "page": "parts"
+    },
+    "Visitors.dc.html": {
+      "x": 1416,
+      "y": 460,
+      "w": 1200,
+      "h": 420,
+      "title": "What passes through",
+      "page": "parts"
+    },
+    "Overlays.dc.html": {
+      "x": 2696,
+      "y": 0,
+      "w": 1000,
+      "h": 300,
+      "title": "What opens over a page",
+      "page": "parts"
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "States.dc.html",
+    "Journeys.dc.html",
+    "Side.dc.html",
+    "Faces.dc.html",
+    "SkyArt.dc.html",
+    "Visitors.dc.html",
+    "Overlays.dc.html"
+  ],
+  "notes": {},
+  "designSystems": []
+}

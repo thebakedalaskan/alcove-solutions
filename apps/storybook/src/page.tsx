@@ -2,9 +2,9 @@
  * What a page's stories share: the real app (src/app.tsx) full screen at an address, on a scenario that Controls can
  * switch. A page story is an address and a scenario:
  *
- *   const meta = { title: 'Pages/Notes', ...pages } satisfies Meta<PageArgs>;
+ *   const meta = { title: 'Pages/Calls', ...pages } satisfies Meta<PageArgs>;
  *   export default meta;
- *   export const Busy = page('/notes', 'busy');
+ *   export const Busy = page('/calls', 'busy');
  */
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { SCENARIO_NAMES, checked, type ScenarioName } from './api/scenarios';
@@ -53,7 +53,7 @@ const changed = new WeakSet<World>();
  * notes in a state no scenario has, a part of Alcove that fails, recordings kept on this device. It goes in the story's
  * `beforeEach`, and may wait for what it puts in place.
  *
- *   export const Unwritten = page('/notes/n-unwritten', 'busy', { beforeEach: changing(inEveryState) });
+ *   export const Unwritten = page('/calls/n-unwritten', 'busy', { beforeEach: changing(inEveryState) });
  */
 export const changing = (...changes: ((w: World) => void | Promise<void>)[]) => async (): Promise<void> => {
   const w = current();

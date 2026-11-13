@@ -3,12 +3,14 @@
  * what you have: the plan and what it brings, about how much of the period's notes is left (with the sun on the row's own
  * hairline), storage against its limit, and on Free more notes for this period. Get Pro, Extend and Add 10 hours open
  * checkout (features/plans/checkout.tsx); See plans opens Plans. Pro about to end is said by the plan itself, with Extend
- * the page's one filled button, as Get Pro is once notes have run out; Pro renewed or ended is said at the top until it's
+ * the page's one filled button, as Get Pro is once notes have stopped (run out, or over Free's storage); over the plan's
+ * storage, a note says so with Make room, which opens the Drive. Pro renewed or ended is said at the top until it's
  * dismissed. The second panel is what you pay with: the balance with Add money (topup.tsx), renewing from it and refunding
  * the months that haven't started (on Pro), then the payments: what's on its way, each opening where it's being paid, and
- * what the balance took in and paid for, each with its receipt.
+ * what the balance took in and paid for, each with its receipt. Team's parts (its plan row, waiting for a license, its
+ * notices, and for its admin the licenses, buying one when it's needed and refunding them) are PlanTeam.tsx's.
  */
-import { errorMessage, type BalanceEntry, type Plan, type PlanOffers, type TopUp } from '@alcove/api';
+import { errorMessage, type BalanceEntry, type MyTeam, type Plan, type PlanNotice, type PlanOffers, type TopUp } from '@alcove/api';
 import {
   Button, CryptoMark, Icon, IconButton, PaymentReceipt, PaymentRow, SettingFact, SettingFoot, SettingNote, SettingPayments, SettingRow,
   ReceiptWindow, SettingStep, SettingsGroup, SettingsPanel, ShowMore, SunLine, Switch, buttonClass, cn, useToast, type ReceiptLine
@@ -17,13 +19,14 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { useCheckout } from '~/features/plans/checkout';
-import { PLAN_NAMES, endsIn, nextPeriodMinutes, noticesNow, notesLeft, notesLow, notesOut, notesShare, proEnding } from '~/features/plans/plan-state';
+import { PLAN_NAMES, endsIn, nextPeriodMinutes, noticesLike, noticesNow, notesLeft, notesLow, notesOut, notesShare, paidFor, payingNow, proEnding, renews, teamLicenses } from '~/features/plans/plan-state';
 import { checkoutFor, purchaseName, restToSend, tokensExact } from '~/features/plans/purchase';
 import { hoursOfNotes } from '~/features/plans/words';
 import { useNow } from '~/lib/live';
 import { q, topUpOpen, useCancelTopUp, useDismissPlanNotice, useRefundPro, useSetRenew } from '~/lib/queries';
-import { byDay, byWhen, dayFullMonth, fullDate, hm, longDay, shortDate, shortDay } from '~/lib/time';
+import { byDay, byWhen, dayFullMonth, fullDate, hm, longDay, shortDate } from '~/lib/time';
 import { plural, roomLabel, usd, usdCents } from '~/lib/words';
+import { AutoBuy, Licenses, RefundLicenses, TeamPlanRow, TeamStorageNote, WaitingNote, balanceBuys, teamNoticeSays, teamNotesHelp, teamStorageHelp } from './PlanTeam';
 import { useSaveState, useSaving } from './save';
 import { AddMoneySheet } from './topup';
 
@@ -31,19 +34,26 @@ export function PlanGroup({ plan }: { plan: Plan }) {
   const offers = useQuery(q.offers()).data;
   // Whether this server takes payments: one that doesn't answers unavailable, and there's no way to add money.
   const canAdd = useQuery(q.topUpRoutes()).data !== undefined;
+  // The team you're on, as you see it: its admin, and for the admin its licenses. Someone waiting for one makes Buy
+  // licenses the one thing to do here.
+  const team = useQuery({ ...q.myTeam(), enabled: plan.team !== null }).data;
+  const licenses = teamLicenses(team);
+  const waiting = Boolean(licenses?.waiting.length);
   const [sheet, setSheet] = useState<{ open: boolean; topUpId: string | null }>({ open: false, topUpId: null });
   return (
     <SettingsGroup id="plan" title="Plan">
       <SettingsPanel>
-        <Notices plan={plan} />
-        <PlanRow plan={plan} offers={offers} />
+        <Notices plan={plan} team={team} />
+        <WaitingNote plan={plan} team={team} />
+        {plan.kind === 'team' ? <TeamPlanRow plan={plan} team={team} /> : <PlanRow plan={plan} offers={offers} quiet={waiting} />}
         <NotesRow plan={plan} offers={offers} />
-        <SettingRow label="Storage" help={`Uploads and call recordings. Files up to ${roomLabel(plan.storage.fileBytes)}.`}
+        <SettingRow label="Storage" help={plan.kind === 'team' ? teamStorageHelp(plan, offers) : `Uploads and call recordings. Files up to ${roomLabel(plan.storage.fileBytes)}.`}
           control={<SettingFact icon="hardDrive" tone={plan.grace?.storage || plan.over.storage ? 'no' : undefined}>{roomLabel(plan.storage.usedBytes)} of {roomLabel(plan.storage.limitBytes)}</SettingFact>} />
-        <Limits plan={plan} />
+        {plan.kind === 'team' ? <TeamStorageNote plan={plan} team={team} room={<MakeRoom lead={plan.over.storage && !waiting} />} /> : <Limits plan={plan} quiet={waiting} />}
         <MoreNotes plan={plan} offers={offers} />
+        {licenses && <Licenses licenses={licenses} offers={offers} />}
       </SettingsPanel>
-      <Paying plan={plan} offers={offers} canAdd={canAdd} onAddMoney={(topUpId) => setSheet({ open: true, topUpId })} />
+      <Paying plan={plan} offers={offers} canAdd={canAdd} team={team} onAddMoney={(topUpId) => setSheet({ open: true, topUpId })} />
       <AddMoneySheet open={sheet.open} topUpId={sheet.topUpId} onOpenChange={(o) => setSheet((s) => ({ ...s, open: o }))} />
     </SettingsGroup>
   );
@@ -51,33 +61,53 @@ export function PlanGroup({ plan }: { plan: Plan }) {
 
 /* ------------------------------------------------------------------ what you have */
 
-/** Pro renewed or ended, at the top until dismissed. Dismissing one leaves focus on the next, or on the plan. */
-function Notices({ plan }: { plan: Plan }) {
+/**
+ * What the plan's owner was told, at the top until dismissed (plan-state's noticesNow): Pro renewed or ended, a team's
+ * (PlanTeam.tsx), and that you pay for a workspace now, named from the workspaces you're in. Dismissing one dismisses those
+ * it stood for too, and leaves focus on the next, or on the plan.
+ */
+function Notices({ plan, team }: { plan: Plan; team: MyTeam | null | undefined }) {
   const dismiss = useDismissPlanNotice();
   const toast = useToast();
-  const shown = noticesNow(plan);
-  const close = (id: string) => dismiss.mutate(id, {
-    onSuccess: () => requestAnimationFrame(() => {
+  // The workspaces you're in, read only while a notice names one: the plan keeps its ID, never its name.
+  const spaces = useQuery({ ...q.workspaces(), enabled: plan.notices.some(payingNow) }).data;
+  const shown = noticesNow(plan, team, spaces);
+  const close = (n: PlanNotice) => {
+    const all = async () => { for (const id of noticesLike(plan, n)) await dismiss.mutateAsync(id); };
+    void all().then(() => requestAnimationFrame(() => {
       const next = document.querySelector<HTMLButtonElement>('#plan .set-note-x');
       if (next) next.focus();
       else document.getElementById('plan')?.focus({ preventScroll: true });
-    }),
-    onError: (e) => toast(errorMessage(e), { icon: 'x' })
+    }), (e: unknown) => toast(errorMessage(e), { icon: 'x' }));
+  };
+  return shown.map((n) => {
+    const teams = teamNoticeSays(n, plan, team);
+    const paying = paidFor(n, spaces);
+    if (paying) {
+      return (
+        <SettingNote key={n.id} icon="hardDrive" onDismiss={() => close(n)} dismissLabel="Dismiss this notice">
+          {`You now pay for ${paying.name}, since whoever paid for it isn’t in it any more. Its files count against your storage ${n.until === null ? 'from now' : `from ${longDay(new Date(n.until))}`}.`}
+        </SettingNote>
+      );
+    }
+    return (
+      <SettingNote key={n.id} icon={teams?.icon ?? (n.kind === 'pro-renewed' ? 'repeat' : 'info')} onDismiss={() => close(n)} dismissLabel="Dismiss this notice">
+        {teams ? teams.text : n.kind === 'pro-renewed'
+          ? 'Pro renewed from your balance, for another month.'
+          : n.until === null ? 'Pro ended. Nothing was deleted: you’re back on Free.' : `Pro ended on ${longDay(new Date(n.until))}. Nothing was deleted: you’re back on Free.`}
+      </SettingNote>
+    );
   });
-  return shown.map((n) => (
-    <SettingNote key={n.id} icon={n.kind === 'pro-renewed' ? 'repeat' : 'info'} onDismiss={() => close(n.id)} dismissLabel="Dismiss this notice">
-      {n.kind === 'pro-renewed'
-        ? 'Pro renewed from your balance, for another month.'
-        : n.until === null ? 'Pro ended. Nothing was deleted: you’re back on Free.' : `Pro ended on ${longDay(new Date(n.until))}. Nothing was deleted: you’re back on Free.`}
-    </SettingNote>
-  ));
 }
 
-/** The plan, what it brings or until when, and its two ways on: See plans, and Get Pro or Extend. */
-function PlanRow({ plan, offers }: { plan: Plan; offers: PlanOffers | undefined }) {
+/**
+ * The plan, what it brings or until when, and its two ways on: See plans, and Get Pro or Extend (on Team, PlanTeam.tsx's).
+ * `quiet` keeps its button unfilled while something else needs doing more: someone waiting for a team license.
+ */
+function PlanRow({ plan, offers, quiet }: { plan: Plan; offers: PlanOffers | undefined; quiet: boolean }) {
   const checkout = useCheckout();
   const now = useNow();
-  const ending = proEnding(plan, offers, now);
+  const ending = proEnding(plan, now);
   const until = plan.pro.until;
   let help: string | undefined;
   if (plan.kind === 'free') {
@@ -85,13 +115,14 @@ function PlanRow({ plan, offers }: { plan: Plan; offers: PlanOffers | undefined 
   } else if (ending) {
     help = `${endsIn(ending.days)}, on ${longDay(new Date(ending.until))}. Then you’re back on Free, and nothing is deleted.`;
   } else if (until !== null) {
-    help = `Until ${fullDate(new Date(until))}. ${plan.pro.renew ? 'It renews from your balance before it ends.' : 'Nothing renews by itself: Alcove reminds you before it ends.'}`;
+    help = `Until ${fullDate(new Date(until))}. ${renews(plan) ? 'It renews from your balance before it ends.' : 'Nothing renews by itself: Alcove reminds you before it ends.'}`;
   }
-  // Pressing is filled only when something needs doing: notes have run out, or Pro is about to end.
+  // Pressing is filled only when something needs doing: notes have stopped (run out, or over Free's storage), or Pro is about
+  // to end.
   const again = noticesNow(plan).some((n) => n.kind === 'pro-ended');
   const buy = plan.kind === 'free'
-    ? <Button variant={notesOut(plan) ? 'primary' : 'secondary'} size="sm" onClick={() => checkout.open({ plan: 'pro' }, 'settings')}>{again ? 'Get Pro again' : 'Get Pro'}</Button>
-    : plan.kind === 'pro' ? <Button variant={ending ? 'primary' : 'secondary'} size="sm" onClick={() => checkout.open({ plan: 'pro' }, 'settings')}>Extend</Button>
+    ? <Button variant={(notesOut(plan) || plan.over.storage) && !quiet ? 'primary' : 'secondary'} size="sm" onClick={() => checkout.open({ plan: 'pro' }, 'settings')}>{again ? 'Get Pro again' : 'Get Pro'}</Button>
+    : plan.kind === 'pro' ? <Button variant={ending && !quiet ? 'primary' : 'secondary'} size="sm" onClick={() => checkout.open({ plan: 'pro' }, 'settings')}>Extend</Button>
     : null;
   return (
     <SettingRow label={PLAN_NAMES[plan.kind]} help={help} warm={ending !== null} under
@@ -99,13 +130,17 @@ function PlanRow({ plan, offers }: { plan: Plan; offers: PlanOffers | undefined 
   );
 }
 
-/** About how much of the period's notes is left, the sun on the row's hairline: warm under an hour, set once they've stopped. */
+/**
+ * About how much of the period's notes is left, the sun on the row's hairline: warm under an hour, set once they've stopped.
+ * On Team they're your own, back when your license is next taken.
+ */
 function NotesRow({ plan, offers }: { plan: Plan; offers: PlanOffers | undefined }) {
   const out = notesOut(plan);
   const low = notesLow(plan);
   const on = dayFullMonth(new Date(plan.period.to));
   const next = hoursOfNotes(nextPeriodMinutes(plan, offers));
-  const help = out ? `Calls go on without notes until ${on}.`
+  const help = plan.kind === 'team' ? teamNotesHelp({ out, low, next })
+    : out ? `Calls go on without notes until ${on}.`
     : low ? `Under an hour left. Back to ${next} on ${on}.`
     : `Back to ${next} on ${on}. Calls without notes are free.`;
   return (
@@ -116,21 +151,38 @@ function NotesRow({ plan, offers }: { plan: Plan; offers: PlanOffers | undefined
   );
 }
 
-/** Being over the plan's storage, said once: until when everything works as before, or what has stopped since. */
-function Limits({ plan }: { plan: Plan }) {
+/**
+ * Make room: the Drive, where what's stored can be deleted. Filled (`lead`) once uploads and notes have stopped and it's the
+ * way out, unless the plan row's button already is.
+ */
+function MakeRoom({ lead }: { lead: boolean }) {
+  return <Link to="/drive" className={buttonClass({ variant: lead ? 'primary' : 'secondary', size: 'sm' })}>Make room</Link>;
+}
+
+/**
+ * Being over the plan's storage, said once: until when everything works as before, or what has stopped since, with Make room.
+ * Once they've stopped, Make room is filled on Pro, where it's the way out, unless Extend is (Pro ending) or something else
+ * needs doing more (`quiet`); on Free, Get Pro is.
+ */
+function Limits({ plan, quiet }: { plan: Plan; quiet: boolean }) {
+  const now = useNow();
   const { grace, over } = plan;
   const name = PLAN_NAMES[plan.kind];
   const free = plan.kind === 'free';
   if (grace?.storage) {
     return (
-      <SettingNote tone="caution">
+      <SettingNote tone="caution" action={<MakeRoom lead={false} />}>
         You’re over {name}’s {roomLabel(plan.storage.limitBytes)} of storage. Everything works as before until {longDay(new Date(grace.until))}; then
         uploads and notes stop until you {free ? 'get Pro or make room' : 'make room'}.
       </SettingNote>
     );
   }
   if (over.storage) {
-    return <SettingNote tone="caution">Uploads and notes have stopped: you’re over {name}’s {roomLabel(plan.storage.limitBytes)} of storage. {free ? 'Get Pro, or make room.' : 'Make room to start them again.'}</SettingNote>;
+    return (
+      <SettingNote tone="caution" action={<MakeRoom lead={!free && proEnding(plan, now) === null && !quiet} />}>
+        Uploads and notes have stopped: you’re over {name}’s {roomLabel(plan.storage.limitBytes)} of storage. {free ? 'Get Pro, or make room.' : 'Make room to start them again.'}
+      </SettingNote>
+    );
   }
   return null;
 }
@@ -158,20 +210,28 @@ const listed = (plan: Plan) => (t: TopUp): boolean =>
   || (t.state === 'credited' && t.purchase !== null
     && (t.purchase.outcome === 'waiting' || (t.purchase.outcome === 'refused' && plan.balance.microUsd >= (t.received?.microUsd ?? 0))));
 
-/** The balance, renewing from it and refunding to it on Pro, then the payments. Nothing to show, and it isn't there. */
-function Paying({ plan, offers, canAdd, onAddMoney }: { plan: Plan; offers: PlanOffers | undefined; canAdd: boolean; onAddMoney: (topUpId: string | null) => void }) {
+/**
+ * The balance, renewing from it and refunding to it on Pro, buying a team's licenses from it and refunding them for its
+ * admin (PlanTeam.tsx), then the payments. Nothing to show, and it isn't there.
+ */
+function Paying({ plan, offers, canAdd, team, onAddMoney }: {
+  plan: Plan; offers: PlanOffers | undefined; canAdd: boolean; team: MyTeam | null | undefined; onAddMoney: (topUpId: string | null) => void;
+}) {
   // Payments on their way show whether or not 1Click answers right now; a server without payments has none to show.
   const topUps = (useQuery(q.topUps()).data ?? []).filter(listed(plan));
   const add = useRef<HTMLButtonElement>(null);
   const onPro = plan.kind === 'pro';
+  const licenses = team?.licenses ?? null;
   const history = plan.balance.history;
-  if (!onPro && !canAdd && plan.balance.microUsd === 0 && !topUps.length && !history.length) return null;
+  if (!onPro && !licenses && !canAdd && plan.balance.microUsd === 0 && !topUps.length && !history.length) return null;
   return (
     <SettingsPanel>
-      <SettingRow label="Balance" help={`What Pro and more notes are bought with.${canAdd ? ' Add money from any wallet or exchange.' : ''}`} under={canAdd}
+      <SettingRow label="Balance" help={`What ${balanceBuys(plan, team)} bought with.${canAdd ? ' Add money from any wallet or exchange.' : ''}`} under={canAdd}
         control={<><SettingFact>{usd(plan.balance.microUsd)}</SettingFact>{canAdd && <Button ref={add} size="sm" icon="plus" onClick={() => onAddMoney(null)}>Add money</Button>}</>} />
       {onPro && <Renew plan={plan} offers={offers} canAdd={canAdd} />}
       {onPro && <Refund plan={plan} />}
+      {licenses && <AutoBuy plan={plan} offers={offers} canAdd={canAdd} on={licenses.autoPurchase} />}
+      {licenses && <RefundLicenses left={licenses.unconsumed} back={licenses.refundableMicroUsd} auto={licenses.autoPurchase} />}
       {(topUps.length > 0 || history.length > 0) && <Payments topUps={topUps} history={history} add={add} onAddMoney={onAddMoney} />}
     </SettingsPanel>
   );
@@ -189,16 +249,24 @@ function Renew({ plan, offers, canAdd }: { plan: Plan; offers: PlanOffers | unde
     void saving(RENEW, () => renew.mutateAsync(on)).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' }));
   };
   const price = offers?.pro.microUsdPerMonth;
-  const short = plan.pro.renew && price !== undefined && plan.balance.microUsd < price;
+  // Why it won't renew, as the server says (`pro.renewal`): the balance is short, or a month costs more than the last did.
+  const why = plan.pro.renewal === 'short' ? `Your balance is short of a month${price === undefined ? '' : ` (${usdCents(price)})`}, so Pro won’t renew.${canAdd ? ' Add money to keep it.' : ''}`
+    : plan.pro.renewal === 'price' ? `A month of Pro costs ${price === undefined ? 'more now' : `${usdCents(price)} now, more`} than your last did, so it won’t renew by itself. Extend to keep it at that price.`
+    : null;
   return (
-    <SettingRow label={RENEW} saveState={state(RENEW)} problem={short} onLabel={() => set(!plan.pro.renew)}
-      help={short ? `Your balance is short of a month (${usdCents(price)}), so Pro won’t renew.${canAdd ? ' Add money to keep it.' : ''}` : 'Buys a month from your balance 3 days before Pro ends.'}
+    <SettingRow label={RENEW} saveState={state(RENEW)} problem={why !== null} onLabel={() => set(!plan.pro.renew)}
+      help={why ?? 'Buys a month from your balance 3 days before Pro ends.'}
       control={<Switch label={RENEW} checked={plan.pro.renew} onChange={set} />} />
   );
 }
 
 
-/** Refunding the months that haven't started, asked in place: what goes back to the balance, and when Pro ends then. */
+/**
+ * Refunding the months that haven't started, asked in place: what goes back to the balance, that renewing from it turns off
+ * (a refund turns it off, so upkeep doesn't buy back a month just given back), and when Pro ends then. It's all the server's:
+ * on Pro, its months are the one running now and those bought after it, so the ones to refund are those after the first, and
+ * the one running now ends with the period. The toast says what the refund's answer says came back.
+ */
 function Refund({ plan }: { plan: Plan }) {
   const refund = useRefundPro();
   const toast = useToast();
@@ -207,32 +275,35 @@ function Refund({ plan }: { plan: Plan }) {
   const ask = useRef<HTMLButtonElement>(null);
   const back = plan.pro.refundableMicroUsd;
   if (back <= 0) return null;
-  const now = Date.now();
-  const later = plan.pro.months.filter((m) => Date.parse(m.from) > now);
-  const running = plan.pro.months.find((m) => Date.parse(m.from) <= now && Date.parse(m.to) > now);
+  const later = plan.pro.months.slice(1).length;
   const go = () => {
     setRefused(null);
     refund.mutate(undefined, {
-      onSuccess: () => { setAsking(false); toast(`Refunded ${usdCents(back)} to your balance.`, { icon: 'check' }); },
+      onSuccess: (after) => {
+        setAsking(false);
+        const entry = after.balance.history[0];
+        toast(entry && entry.microUsd > 0 ? `Refunded ${usdCents(entry.microUsd)} to your balance.` : 'Refunded to your balance.', { icon: 'check' });
+      },
       onError: (e) => setRefused(errorMessage(e))
     });
   };
   if (!asking) {
     return (
-      <SettingRow label={`Refund ${plural(later.length, 'month')} that ${later.length === 1 ? 'hasn’t' : 'haven’t'} started`}
+      <SettingRow label={`Refund ${plural(later, 'month')} that ${later === 1 ? 'hasn’t' : 'haven’t'} started`}
         help={`${usdCents(back)} goes back to your balance. A month that has started isn’t refunded.`}
         control={<Button ref={ask} variant="quiet" size="sm" onClick={() => { setRefused(null); setAsking(true); }}>Refund ({usdCents(back)})</Button>} />
     );
   }
   return (
     <>
-      <SettingStep title={`Refund ${plural(later.length, 'month')} of Pro?`}
-        help={`${usdCents(back)} goes back to your balance.${running ? ` Pro ends on ${shortDay(new Date(running.to))}, when the month running now does.` : ''}`}>
+      <SettingStep title={`Refund ${plural(later, 'month')} of Pro?`}
+        help={`${usdCents(back)} goes back to your balance${plan.pro.renew ? ', and renewing from your balance turns off' : ''}. Pro ends on ${longDay(new Date(plan.period.to))}, when the month running now does.`}>
         {refused !== null && <p className="set-err" role="alert">{refused}</p>}
       </SettingStep>
       <SettingFoot actions={
         <>
-          <Button variant="quiet" size="sm" disabled={refund.isPending} onClick={() => { setAsking(false); requestAnimationFrame(() => ask.current?.focus()); }}>{later.length === 1 ? 'Keep it' : 'Keep them'}</Button>
+          {/* The answer that loses nothing is the filled one, and takes the focus as the question opens. */}
+          <Button variant="primary" size="sm" autoFocus disabled={refund.isPending} onClick={() => { setAsking(false); requestAnimationFrame(() => ask.current?.focus()); }}>{later === 1 ? 'Keep it' : 'Keep them'}</Button>
           <Button variant="secondary" size="sm" loading={refund.isPending} onClick={go}>Refund {usdCents(back)}</Button>
         </>
       } />
@@ -293,9 +364,10 @@ function Payments({ topUps, history, add, onAddMoney }: {
       })}
       {shown.map((e) => {
         const day = shortDate(new Date(e.at));
-        const token = /\b(USDC|USDT)\b/.exec(e.label)?.[1];
+        // Money added in USDC shows its mark; anything else, USDT added before only USDC was taken included, the coins.
+        const usdc = /\bUSDC\b/.test(e.label);
         return (
-          <PaymentRow key={`${e.id} ${e.at}`} mark={token ? <CryptoMark name={token} /> : <Icon name="coins" size={18} />} label={e.label}
+          <PaymentRow key={`${e.id} ${e.at}`} mark={usdc ? <CryptoMark name="usdc" /> : <Icon name="coins" size={18} />} label={e.label}
             detail={`${e.microUsd >= 0 ? '+' : '−'}${usdCents(Math.abs(e.microUsd))} · ${day}`}
             actions={<Button variant="quiet" size="sm" icon="download" aria-label={`Receipt for ${e.label}, ${day}`} onClick={() => setReceipt(e)}>Receipt</Button>} />
         );
@@ -311,7 +383,7 @@ function paymentLine(t: TopUp, now: number): { text: string; tone: 'wait' | 'pro
   const on = `${t.route.token} on ${t.route.chainName}`;
   const live = Date.parse(t.expiresAt) > now;
   const got = t.received?.amount ?? '0';
-  const buying = t.purchase === null ? 'adding it to your balance' : t.purchase.buys.kind === 'pro' ? 'starting Pro' : 'adding the notes';
+  const buying = t.purchase === null ? 'adding it to your balance' : t.purchase.buys.kind === 'pro' ? 'starting Pro' : t.purchase.buys.kind === 'licenses' ? 'adding the licenses' : 'adding the notes';
   switch (t.state) {
     case 'waiting': return live
       ? { text: `Waiting for ${tokensExact(t.asked.amount)} ${on} · open until ${byWhen(t.expiresAt, now)}`, tone: 'wait' }

@@ -2,18 +2,20 @@
  * The account being created, after a first sign-in. One arch carries the moment: its outline draws
  * itself, dawn fills it from the horizon, the sun rises and the stars fade, while what came with the
  * account arrives a row at a time, each with a check. Then "You’re in" and the arch opens into Home,
- * which has been loading behind it. Skip, Escape or Enter goes straight to the opening; under reduced
- * motion the finished screen shows for a moment and Home follows without the opening.
+ * which has been loading behind it, or onto the plans in its place while they haven't been shown, as for
+ * every new account (features/plans/choice.ts). Skip, Escape or Enter goes straight to the opening; under
+ * reduced motion the finished screen shows for a moment and Home follows without the opening.
  */
 import { firstName, type Meeting, type CalendarEvent, type SignInProvider } from '@alcove/api';
 import { Button, CheckDraw, Faces, Icon, ProviderMark, cn } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { animate, useReducedMotion, type AnimationPlaybackControls } from 'motion/react';
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { usePlansFirst } from '~/features/plans/choice';
 import { listNames } from '~/lib/people';
 import { q } from '~/lib/queries';
 import { daysFromToday, hm } from '~/lib/time';
-import { arrival, useArrival } from './store';
+import { arrival, useArrival, useArrivalHost } from './store';
 
 /* GSAP-style curves for the sky, as cubic beziers. */
 const E = {
@@ -31,6 +33,7 @@ const VIA: Record<SignInProvider, string> = { google: 'with Google', microsoft: 
 interface Row { id: string; icon: ReactNode; text: ReactNode; sub: string }
 
 export function Arrival() {
+  useArrivalHost();
   const { stage } = useArrival();
   return stage === 'none' ? null : <Creating />;
 }
@@ -80,13 +83,13 @@ function useRows(): Row[] {
     rows.push({
       id: 'team', icon: <Faces people={team.members.slice(0, 3).map((m) => m.person)} size={14} max={3} />,
       text: <>Your team at {team.name}: <b>{team.members.length + 1} people</b></>,
-      sub: on.length ? `${listNames(on)} already ${on.length > 1 ? 'use' : 'uses'} Alcove` : 'Invite them from Home'
+      sub: on.length ? `${listNames(on)} already ${on.length > 1 ? 'use' : 'uses'} Alcove` : 'Invite them from Team'
     });
   }
   rows.push({
     id: 'seal', icon: <Icon name="sealed" size={18} />,
-    text: <>Notes are <b>encrypted in storage</b></>,
-    sub: 'Your notes follow the call’s sharing permissions'
+    text: <>Notes are <b>written in confidential compute</b></>,
+    sub: 'Only the people invited to a call get its notes'
   });
   return rows;
 }
@@ -106,8 +109,13 @@ const archHole = (x: number, y: number, w: number, h: number) => {
 
 function Creating() {
   const reduce = useReducedMotion() ?? false;
+  const { over } = useArrival();
+  /* Over the welcome page the screen fades in; with the app's first render it's there at once (the store's `over`). */
+  const rise = !reduce && over;
   const session = useQuery(q.session()).data;
   const rows = useRows();
+  /* What the arch opens onto: Home, or the plans first, as Home itself decides. */
+  const opens = usePlansFirst() ? 'Opening Plans' : 'Opening Home';
   const id = useId().replace(/:/g, '');
   const [done, setDone] = useState(0);
   const [inside, setInside] = useState(false);
@@ -177,6 +185,7 @@ function Creating() {
     if (reduce) {
       setDone(Number.MAX_SAFE_INTEGER);
       setInside(true);
+      arrival.cover();
       later(1.4, () => void finish(false));
       return halt;
     }
@@ -184,7 +193,13 @@ function Creating() {
     const len = rim ? rim.getTotalLength() : 0;
     if (rim) { rim.style.strokeDasharray = `${len}`; rim.style.strokeDashoffset = `${len}`; }
     const root = el.root.current;
-    if (root) run(animate(root, { opacity: [0, 1] }, { duration: 0.5, ease: E.out2 }));
+    // Home loads behind the screen once it covers the page (routes/ready.tsx), so it always comes up whole: Skip doesn't stop
+    // it. It covers by the clock rather than when the fade reports its end: a hidden tab draws no frames, so the fade (and
+    // Home) would wait there. The clock finishes the fade too, so the screen is whole when the tab is seen again.
+    if (root && rise) {
+      const fade = animate(root, { opacity: [0, 1] }, { duration: 0.5, ease: E.out2 });
+      setTimeout(() => { fade.complete(); arrival.cover(); }, 500);
+    } else arrival.cover();
     if (rim) run(animate(rim, { strokeDashoffset: 0 }, { duration: 1.3, delay: 0.1, ease: E.inOut2 }));
     [el.title.current, el.sub.current].forEach((t, i) => { if (t) run(animate(t, { opacity: [0, 1], y: [12, 0] }, { duration: 0.8, delay: 0.3 + i * 0.07, ease: E.expoOut })); });
     if (el.skip.current) run(animate(el.skip.current, { opacity: [0, 1] }, { duration: 0.6, delay: 0.8, ease: E.out2 }));
@@ -233,7 +248,7 @@ function Creating() {
 
   const hidden = reduce ? undefined : { opacity: 0 };
   return (
-    <div ref={el.root} className="cr dark" role="dialog" aria-modal="true" aria-labelledby={`${id}t`} tabIndex={-1} style={hidden}>
+    <div ref={el.root} className="cr dark" role="dialog" aria-modal="true" aria-labelledby={`${id}t`} tabIndex={-1} style={rise ? hidden : undefined}>
       <div ref={el.sky} className="cr-sky"><div ref={el.glow} className="cr-glow" style={reduce ? { opacity: 1 } : undefined} /></div>
       <div className="cr-box">
         <div ref={el.arch} className="cr-arch" aria-hidden="true">
@@ -270,7 +285,7 @@ function Creating() {
         </div>
         <div ref={el.head} className="cr-head" aria-live="polite">
           <h2 ref={el.title} id={`${id}t`} className="cr-title" style={hidden}>{inside ? `You’re in, ${first}` : 'Creating your account'}</h2>
-          <p ref={el.sub} className="cr-sub" style={hidden}>{inside ? 'Opening Home' : session ? VIA[session.provider] : ''}</p>
+          <p ref={el.sub} className="cr-sub" style={hidden}>{inside ? opens : session ? VIA[session.provider] : ''}</p>
         </div>
         <ul ref={el.list} className="cr-list">
           {rows.map((r, i) => (

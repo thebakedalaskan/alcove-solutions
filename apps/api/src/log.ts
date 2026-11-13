@@ -2,7 +2,8 @@
  * The one logger for the API. Every module imports `log` (or a child of it) and never `console`.
  *
  * - Levels: debug < info < warn < error, set with LOG_LEVEL (default: info; debug in tests if asked).
- * - Format: JSON lines in production (LOG_FORMAT=json), readable lines in development (pretty).
+ * - Format: JSON lines in production (LOG_FORMAT=json), readable lines in development (pretty). Each JSON line carries
+ *   pino's numeric `level` and the `severity` Cloud Logging reads (DEBUG, INFO, WARNING, ERROR).
  * - Context: request ID, method, route and owner are attached automatically from AsyncLocalStorage;
  *   `log.child({...})` binds more. Errors go in `err` and are serialized with their cause chain.
  * - Privacy: never pass content (titles, names, chat, audio, notes, request bodies). Logs are built
@@ -27,10 +28,11 @@ export const withLogContext = <T>(ctx: Record<string, Value>, fn: () => T): T =>
 export function addLogContext(ctx: Record<string, Value>) { const s = store.getStore(); if (s) Object.assign(s, ctx); }
 export const currentLogContext = (): Record<string, Value> => ({ ...store.getStore() });
 
-const REDACT = [
-  'secret', 'root', 'wrapKey', 'key', 'krec', 'password', 'cookie', 'authorization', 'sessionId', 'body', 'plaintext', 'accessToken', 'refreshToken',
-  'NEAR_AI_API_KEY', 'KMASTER', 'KSERVICE', 'DATABASE_URL', 'TREASURY_INTENTS_KEY', 'ONECLICK_API_KEY'
-].flatMap((k) => [k, `*.${k}`, `ctx.${k}`]);
+const REDACT = ['secret', 'root', 'wrapKey', 'key', 'krec', 'password', 'cookie', 'authorization', 'sessionId', 'body', 'plaintext', 'NEAR_AI_API_KEY', 'KMASTER', 'KSERVICE',
+  'INDEX_KEY', 'PHOTO_KEY', 'LEGACY_KMASTER', 'LEGACY_KSERVICE', 'indexKey', 'photoKey', 'kservice', 'legacyKmaster', 'DATABASE_URL', 'OBJECTS_SECRET_KEY',
+  'LIVEKIT_API_SECRET', 'GOOGLE_CLIENT_SECRET', 'CLOUDFLARE_API_TOKEN', 'privateKeyPem', 'subjectToken', 'access_token',
+  'accessToken', 'refreshToken', 'TREASURY_INTENTS_KEY', 'ONECLICK_API_KEY']
+  .flatMap((k) => [k, `*.${k}`, `ctx.${k}`]);
 
 export interface LogOptions { level?: Level | 'silent'; format?: 'json' | 'pretty'; destination?: DestinationStream; service?: string }
 
@@ -56,6 +58,9 @@ function scrubObject(o: Record<string, unknown>, depth = 0): Record<string, unkn
   return out;
 }
 
+/** Cloud Logging's name for each level: it reads a line's `severity`, and takes a line without one as INFO whatever it says. */
+const SEVERITY: Record<string, string> = { debug: 'DEBUG', info: 'INFO', warn: 'WARNING', error: 'ERROR', fatal: 'CRITICAL' };
+
 function build(o: LogOptions): Pino {
   const options = {
     level: o.level ?? 'info',
@@ -66,12 +71,15 @@ function build(o: LogOptions): Pino {
     // Errors are serialized (with their cause chain) by the scrubber below, so pino's own `err` serializer steps aside.
     serializers: { err: (v: unknown) => v },
     redact: { paths: REDACT, censor: '[redacted]' },
-    formatters: { log: (o: Record<string, unknown>) => scrubObject(o) },
+    formatters: {
+      level: (label: string, number: number) => ({ level: number, severity: SEVERITY[label] ?? 'DEFAULT' }),
+      log: (o: Record<string, unknown>) => scrubObject(o)
+    },
     mixin: () => ({ ...store.getStore() })
   };
   if (o.destination) return pino(options, o.destination);
   return (o.format ?? 'pretty') === 'pretty'
-    ? pino(options, pretty({ colorize: true, translateTime: 'HH:MM:ss.l', ignore: 'pid,hostname,service', singleLine: true }))
+    ? pino(options, pretty({ colorize: true, translateTime: 'HH:MM:ss.l', ignore: 'pid,hostname,service,severity', singleLine: true }))
     : pino(options);
 }
 

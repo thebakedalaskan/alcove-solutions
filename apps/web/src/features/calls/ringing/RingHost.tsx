@@ -52,11 +52,11 @@ function Signed() {
 
 function Cards({ rings }: { rings: Rings }) {
   const all = useLive(rings);
-  const { prefs, ready } = useSoundPreferences();
+  const { prefs, notificationsPauseEnd, ready } = useSoundPreferences();
   const owner = useRef({});
-  const current = useRef({ prefs, speakerId: readPrefs().speaker ?? null });
-  current.current = { prefs, speakerId: readPrefs().speaker ?? null };
-  useEffect(() => () => stopSounds(owner.current), [prefs]);
+  const current = useRef({ prefs, notificationsPauseEnd, speakerId: readPrefs().speaker ?? null });
+  current.current = { prefs, notificationsPauseEnd, speakerId: readPrefs().speaker ?? null };
+  useEffect(() => () => stopSounds(owner.current), [prefs, notificationsPauseEnd]);
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const toast = useToast();

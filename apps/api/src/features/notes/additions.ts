@@ -13,17 +13,17 @@
  * reader's moments are read for them, each time. It stays when its author later removes the note, as the notes they
  * shared on do; it goes with the note, and when its author deletes their account, whatever became of their own notes.
  */
-import { MAX_NOTE_ADDITIONS, type NoteAddition, type PromoteBody, type PromotionPreview, type Person, type SharedAudience, type SharedWrite } from '@alcove/api';
+import { MAX_NOTE_ADDITIONS, type AudienceTeam, type NoteAddition, type PromoteBody, type PromotionPreview, type Person, type SharedAudience, type SharedWrite } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../../context';
 import { b64u, blindIndex, equalBytes, id128, jcs, mac, openJson, sealJson, stateKey, toJson, utf8 } from '../../crypto';
 import { bytea, exec, maybeOne, rows, tx, type Db } from '../../db';
 import { ConflictError, ForbiddenError, ValidationError, notFound } from '../../errors';
 import { log } from '../../log';
-import { masterKey } from '../../owners';
+import { indexKey } from '../../owners';
 import { lockItem } from '../../vault';
 import { me, profile } from '../account/account';
-import { asRead, audienceOf, holdAccess, locate, type Seen } from './service';
+import { asRead, audienceOf, holdAccess, locate, type Audience, type Seen } from './service';
 import * as personal from './personal';
 import { personOf } from '../account/portraits';
 
@@ -46,7 +46,7 @@ const header = (owner: Owner, noteId: string, additionId: string) => ({ v: 1 as 
 const Row = z.object({ addition_id: z.string(), body_ciphertext: bytea });
 const opened = (owner: Owner, noteId: string, r: z.infer<typeof Row>) => openJson(key(owner, noteId), header(owner, noteId, r.addition_id), r.body_ciphertext, Stored);
 /** Finds everything an account added, on anyone's notes, without opening any of them. */
-const authorIndex = (o: Owner) => blindIndex(masterKey(o), 'addition-author', o.ownerId);
+const authorIndex = (o: Owner) => blindIndex(indexKey(o), 'addition-author', o.ownerId);
 
 /**
  * Takes everything an account added out of everyone's notes, in the transaction that deletes it. Its own words go with
@@ -92,19 +92,24 @@ function whatGoes(e: personal.Entry, reader: personal.Reader, ctx: { noteId: str
   return { text: e.answer, points: [...new Map(points.map((p) => [JSON.stringify(p), p])).values()] };
 }
 
-/** Binds a preview to this entry, its moments and everyone who has the notes: it stops working once any of them changes. */
-function sealOf(o: Owner, noteId: string, entryId: string, points: Point[], audience: Person[]): string {
-  const people = audience.map((p) => p.email.toLowerCase()).sort();
-  return b64u(mac(stateKey(o.root, o.ownerId, `promotion:${noteId}`), utf8(jcs(toJson({ entryId, points, people })))));
+/** Who reads it, as a seal binds it: everyone who has the notes, by address, and the team they're visible to, by its ID. */
+const sealed = (a: Audience) => ({ people: a.people.map((p) => p.email.toLowerCase()).sort(), team: a.team?.id ?? null });
+/**
+ * Binds a preview to this entry, its moments and who reads the notes: everyone who has them and the team they're visible to.
+ * It stops working once any of them changes, a team made able to read them included.
+ */
+function sealOf(o: Owner, noteId: string, entryId: string, points: Point[], audience: Audience): string {
+  return b64u(mac(stateKey(o.root, o.ownerId, `promotion:${noteId}`), utf8(jcs(toJson({ entryId, points, ...sealed(audience) })))));
 }
+/** Who reads it, as someone adding to the shared notes is shown: the people by name, and a team by its name and how many more. */
+const shownOf = (a: Audience): { audience: Person[]; team: AudienceTeam | null } => ({ audience: a.people, team: a.team && { name: a.team.name, people: a.team.people } });
 
 const NOT_WRITTEN = 'These notes are still being written. You can add this once they are.';
 const FULL = 'These notes can’t take any more additions.';
 
-/** Holds what's written straight into the shared notes to everyone who has them now: a keyed hash of who they are, under the writer's keys. */
-function writeSeal(o: Owner, noteId: string, audience: Person[]): string {
-  const people = audience.map((p) => p.email.toLowerCase()).sort();
-  return b64u(mac(stateKey(o.root, o.ownerId, `promotion:${noteId}`), utf8(jcs(toJson({ write: 'shared', people })))));
+/** Holds what's written straight into the shared notes to who reads them now: a keyed hash of who they are, and of the team they're visible to, under the writer's keys. */
+function writeSeal(o: Owner, noteId: string, audience: Audience): string {
+  return b64u(mac(stateKey(o.root, o.ownerId, `promotion:${noteId}`), utf8(jcs(toJson({ write: 'shared', ...sealed(audience) })))));
 }
 
 /** Who'd read something written straight into the shared notes now, once they're written, and the seal that holds it to them. Nothing changes. */
@@ -113,7 +118,7 @@ export async function audience(o: Owner, noteId: string): Promise<SharedAudience
   const m = l.note.manifest;
   if (m.status !== 'ready') throw new ConflictError(NOT_WRITTEN, { context: { noteId, status: m.status } });
   const people = await audienceOf(l);
-  return { audience: people, seal: writeSeal(o, noteId, people) };
+  return { ...shownOf(people), seal: writeSeal(o, noteId, people) };
 }
 
 /**
@@ -137,16 +142,16 @@ export async function write(o: Owner, noteId: string, body: SharedWrite): Promis
     const people = await audienceOf(l, c);
     // Compared as text, in constant time: it's a keyed hash either way.
     if (!equalBytes(utf8(writeSeal(o, noteId, people)), utf8(body.seal))) {
-      throw new ConflictError('Someone got these notes since you started writing. Look at who reads it now, then post it.', { context: { ...ctx, audience: people.length } });
+      throw new ConflictError('Someone got these notes since you started writing. Look at who reads it now, then post it.', { context: { ...ctx, audience: people.people.length, team: people.team !== null } });
     }
     const n = await maybeOne(c, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM note_additions WHERE owner_id = $1 AND note_item_id = $2', [owner.ownerId, noteId]);
     if ((n?.n ?? 0) >= MAX_NOTE_ADDITIONS) throw new ConflictError(FULL, { context: ctx });
     const stored: Stored = { text: body.text, by: { id: o.ownerId, name: who.name, email: who.email }, at, points: [] };
     await exec(c, 'INSERT INTO note_additions (owner_id, note_item_id, addition_id, author_index, body_ciphertext) VALUES ($1,$2,$3,$4,$5)',
       [owner.ownerId, noteId, additionId, authorIndex(o), sealJson(key(owner, noteId), header(owner, noteId, additionId), toJson(stored))]);
-    return people.length;
+    return { people: people.people.length, team: people.team !== null };
   });
-  alog.info('written into the shared notes', { ...ctx, additionId, audience, mine: owner.ownerId === o.ownerId });
+  alog.info('written into the shared notes', { ...ctx, additionId, audience: audience.people, team: audience.team, mine: owner.ownerId === o.ownerId });
 }
 
 /** What adding one of your own entries to the shared notes would do. Nothing changes. */
@@ -159,10 +164,10 @@ export async function preview(o: Owner, noteId: string, entryId: string): Promis
   const reader = personal.noteReader(asRead(l));
   const { text, points } = whatGoes(entry, reader, ctx);
   const audience = await audienceOf(l);
-  alog.debug('addition previewed', { ...ctx, audience: audience.length, moments: points.length });
+  alog.debug('addition previewed', { ...ctx, audience: audience.people.length, team: audience.team !== null, moments: points.length });
   return {
     entryId, text, moments: points.flatMap((p) => { const s = reader.source(p); return s.moment ? [s.moment] : []; }),
-    destination: { noteId, title: m.title }, audience, seal: sealOf(o, noteId, entryId, points, audience)
+    destination: { noteId, title: m.title }, ...shownOf(audience), seal: sealOf(o, noteId, entryId, points, audience)
   };
 }
 
@@ -177,7 +182,7 @@ export async function addToShared(o: Owner, noteId: string, entryId: string, bod
   const additionId = id128();
   const at = new Date().toISOString();
   const who = await profile(o);
-  const { audience, moments } = await tx(o.pool, async (c) => {
+  const { audience, team, moments } = await tx(o.pool, async (c) => {
     await personal.hold(c, o.ownerId, noteId);
     await lockItem(owner, c, noteId);
     const l = await locate(o, noteId, c);
@@ -194,7 +199,7 @@ export async function addToShared(o: Owner, noteId: string, entryId: string, bod
     const people = await audienceOf(l, c);
     // Compared as text, in constant time: it's a keyed hash either way.
     if (!equalBytes(utf8(sealOf(o, noteId, entryId, points, people)), utf8(body.seal))) {
-      throw new ConflictError('Who has these notes changed since the preview, or what this points at did. Look again before you add it.', { context: { ...ctx, audience: people.length } });
+      throw new ConflictError('Who has these notes changed since the preview, or what this points at did. Look again before you add it.', { context: { ...ctx, audience: people.people.length, team: people.team !== null } });
     }
     if (!body.text && !points.length) throw new ValidationError('Say what to add.', { context: ctx });
     const n = await maybeOne(c, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM note_additions WHERE owner_id = $1 AND note_item_id = $2', [owner.ownerId, noteId]);
@@ -203,9 +208,9 @@ export async function addToShared(o: Owner, noteId: string, entryId: string, bod
     await exec(c, 'INSERT INTO note_additions (owner_id, note_item_id, addition_id, author_index, body_ciphertext) VALUES ($1,$2,$3,$4,$5)',
       [owner.ownerId, noteId, additionId, authorIndex(o), sealJson(key(owner, noteId), header(owner, noteId, additionId), toJson(stored))]);
     await personal.markShared(c, place, entryId, { additionId, at });
-    return { audience: people.length, moments: points.length };
+    return { audience: people.people.length, team: people.team !== null, moments: points.length };
   });
-  alog.info('added to the shared notes', { ...ctx, additionId, audience, moments, mine: owner.ownerId === o.ownerId });
+  alog.info('added to the shared notes', { ...ctx, additionId, audience, team, moments, mine: owner.ownerId === o.ownerId });
 }
 
 /** Holds an addition for the rest of the transaction, or says it isn't on this note. */

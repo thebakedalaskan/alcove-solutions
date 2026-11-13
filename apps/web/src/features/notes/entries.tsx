@@ -28,11 +28,11 @@ const when = (iso: string) => { const d = new Date(iso); return `${shortDay(d)},
 /** Someone saying a follow-up isn't theirs, as the reader reads it. */
 export const notTheirs = (c: Change, me: string | undefined): string => (byName(c.by, me) === 'you' ? 'You said it isn’t yours' : `${capital(byName(c.by, me))} said it isn’t theirs`);
 
-/** One change, as a sentence. */
-export function changeLine(c: Change, me: string | undefined): string {
+/** One change, as a sentence. Adding an open question (`question`) to the notes is asking it. */
+export function changeLine(c: Change, me: string | undefined, question = false): string {
   const who = capital(byName(c.by, me));
   switch (c.what) {
-    case 'proposed': return `${who} proposed it`;
+    case 'proposed': return question ? `${who} asked it` : `${who} proposed it`;
     case 'accepted': return `${who} accepted the suggestion`;
     case 'dismissed': return `${who} dismissed the suggestion`;
     case 'confirmed': return `${who} confirmed it`;
@@ -53,12 +53,12 @@ export function changeLine(c: Change, me: string | undefined): string {
 }
 
 /** Every change to something, newest first: who, when, what it was and what it became, and whether they got the notes afterwards. */
-export function ChangeList({ changes, me }: { changes: Change[]; me: string | undefined }) {
+export function ChangeList({ changes, me, question = false }: { changes: Change[]; me: string | undefined; question?: boolean | undefined }) {
   return (
     <ol className="ent-hist">
       {[...changes].reverse().map((c, i) => (
         <li key={`${c.at}-${i}`}>
-          <span>{changeLine(c, me)}</span>
+          <span>{changeLine(c, me, question)}</span>
           <span className="ac-mono">{when(c.at)}</span>
           {(c.what === 'reworded' || c.what === 'due') && c.before && c.after && <p className="was"><s>{c.before}</s></p>}
           {c.by.as === 'shared' && <small>{capital(byName(c.by, me))} got these notes afterwards</small>}
@@ -84,18 +84,17 @@ const disputeLine = (disputes: Dispute[], me: string | undefined) => {
   return `${you ? `You and ${listNames(others)}` : listNames(others)} ${others.length > 1 || you ? 'say' : 'says'} this wasn’t decided`;
 };
 
-/** What to be careful of in an entry, in plain words. Nothing shows when there's nothing to say. */
-export function EvidenceFlags({ evidence, disputes = [], me }: { evidence: NoteEvidence; disputes?: Dispute[] | undefined; me: string | undefined }) {
+/** What to be careful of in an entry, in plain words, one line each: nothing when there's nothing to say. */
+export function cautionsOf(evidence: NoteEvidence, disputes: Dispute[], me: string | undefined): string[] {
   // A conflict that's only a dispute says whose it is; one with a line against it says that too.
   const said = evidence.moments.some((m) => m.kind === 'line' && m.against);
   const flags = evidence.flags.filter((f) => f !== 'conflict' || said);
-  if (!flags.length && !disputes.length) return null;
-  return (
-    <>
-      {flags.map((f) => <span key={f} className="ent-flag"><Icon name="alert" size={13} />{FLAGS[f]}</span>)}
-      {disputes.length > 0 && <span className="ent-flag"><Icon name="alert" size={13} />{disputeLine(disputes, me)}</span>}
-    </>
-  );
+  return [...flags.map((f) => FLAGS[f]), ...(disputes.length ? [disputeLine(disputes, me)] : [])];
+}
+
+/** What to be careful of in an entry, in plain words. Nothing shows when there's nothing to say. */
+export function EvidenceFlags({ evidence, disputes = [], me }: { evidence: NoteEvidence; disputes?: Dispute[] | undefined; me: string | undefined }) {
+  return <>{cautionsOf(evidence, disputes, me).map((line) => <span key={line} className="ent-flag"><Icon name="alert" size={13} />{line}</span>)}</>;
 }
 
 /** One moment an entry rests on: who said what, when, and whether it cuts against it. */

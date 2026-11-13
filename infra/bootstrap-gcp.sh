@@ -2,11 +2,11 @@
 # One-time GCP setup for Alcove. Safe to re-run; requires gcloud, Node and openssl.
 # Uses the caller's gcloud configuration without changing its default project.
 #   CLOUDSDK_ACTIVE_CONFIG_NAME=alcove PROJECT_ID=alcove-solutions REGION=us-central1 \
-#     GITHUB_REPO=thebakedalaskan/the-privacy-suite ./infra/bootstrap-gcp.sh
+#     GITHUB_REPO=thebakedalaskan/alcove-solutions ./infra/bootstrap-gcp.sh
 set -euo pipefail
 : "${PROJECT_ID:?set PROJECT_ID}" "${REGION:?set REGION}" "${GITHUB_REPO:?set GITHUB_REPO (owner/name)}"
 SQL_INSTANCE="${SQL_INSTANCE:-alcove-db}"
-if [[ "$GITHUB_REPO" == thebakedalaskan/the-privacy-suite ]]; then
+if [[ "$GITHUB_REPO" == thebakedalaskan/alcove-solutions ]]; then
   GITHUB_REPOSITORY_ID="${GITHUB_REPOSITORY_ID:-1442472668}"
   GITHUB_REPOSITORY_OWNER_ID="${GITHUB_REPOSITORY_OWNER_ID:-280182442}"
 fi
@@ -108,42 +108,24 @@ fi
 unset DB_PASSWORD DB_URL NORMALIZED_DB_URL ALCOVE_DB_PASSWORD
 
 echo "› Secrets (values you add once)"
-for s in alcove-kmaster alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret alcove-google-signup-testers alcove-livekit-api-key alcove-livekit-api-secret; do
+for s in alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret alcove-google-signup-testers alcove-livekit-api-key alcove-livekit-api-secret; do
   ensure_secret "$s"
 done
-# The two server keys are generated here once and never rotated by this script: KMASTER wraps every
-# account's root key, KSERVICE seals billing state. Losing KMASTER makes every account unreadable.
-for key in alcove-kmaster alcove-kservice; do
-  KEY_VERSION="$(latest_secret_version "$key")"
-  if [[ -z "$KEY_VERSION" ]]; then
-    openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n' | gcp secrets versions add "$key" --data-file=-
-  elif [[ "$(gcp secrets versions describe "$KEY_VERSION" --secret="$key" --format='value(state)')" != ENABLED ]]; then
-    echo "The latest $key version is not enabled. Restore that version explicitly; no key was changed." >&2
-    exit 1
-  fi
-done
+# The Cloudflare token the API in Confidential Space orders its certificates with, and dns.sh changes records with.
+# Only the attested production VMs read it (infra/confidential-space/setup.sh), never the Cloud Run runtime account.
+ensure_secret alcove-cloudflare-dns-token
+# No server keys here: the API in Confidential Space makes its own master and keeps it wrapped by Cloud KMS
+# (infra/confidential-space/README.md). The KMASTER and KSERVICE from before it were retired on 2026-11-13.
 
 echo "› Service accounts"
 gcp iam service-accounts describe "alcove-api@$PROJECT_ID.iam.gserviceaccount.com" >/dev/null 2>&1 || gcp iam service-accounts create alcove-api --display-name "Alcove API runtime"
 gcp iam service-accounts describe "alcove-deploy@$PROJECT_ID.iam.gserviceaccount.com" >/dev/null 2>&1 || gcp iam service-accounts create alcove-deploy --display-name "Alcove GitHub deploys"
 RUNTIME="alcove-api@$PROJECT_ID.iam.gserviceaccount.com"; DEPLOY="alcove-deploy@$PROJECT_ID.iam.gserviceaccount.com"
 gcp_iam projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$RUNTIME" --role roles/cloudsql.client --condition None >/dev/null
-for s in alcove-database-url alcove-kmaster alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret alcove-google-signup-testers alcove-livekit-api-key alcove-livekit-api-secret; do
-  gcp_iam secrets add-iam-policy-binding "$s" --member "serviceAccount:$RUNTIME" --role roles/secretmanager.secretAccessor --condition None >/dev/null
-done
-echo "› Top-up secrets (added by hand; this script never creates or reads them)"
-# The treasury's NEAR full access key, which signs the API in to 1Click as the treasury, and 1Click's partner key. Only a
-# person adds their values, so a secret that doesn't exist yet is reported and left: deploys bind both, and fail without them.
-MISSING_SECRETS=()
-for s in alcove-treasury-intents-key alcove-oneclick-api-key; do
-  if gcp secrets describe "$s" >/dev/null 2>&1; then
-    gcp_iam secrets add-iam-policy-binding "$s" --member "serviceAccount:$RUNTIME" --role roles/secretmanager.secretAccessor --condition None >/dev/null
-  else
-    echo "The secret $s doesn't exist yet, so the API wasn't given access to it. Add it by hand (below), then run this script again." >&2
-    MISSING_SECRETS+=("$s")
-  fi
-done
-gcp_iam projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$DEPLOY" --role roles/run.admin --condition None >/dev/null
+# The runtime account only runs the keyless migration job now, which reads the database URL and nothing else.
+gcp_iam secrets add-iam-policy-binding alcove-database-url --member "serviceAccount:$RUNTIME" --role roles/secretmanager.secretAccessor --condition None >/dev/null
+# The migration job (Cloud Run). The API itself runs in Confidential Space, whose grants infra/confidential-space/setup.sh makes.
+gcp_iam projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$DEPLOY" --role roles/run.developer --condition None >/dev/null
 gcp_iam artifacts repositories add-iam-policy-binding alcove --location "$REGION" --member "serviceAccount:$DEPLOY" --role roles/artifactregistry.writer --condition None >/dev/null
 gcp_iam iam service-accounts add-iam-policy-binding "$RUNTIME" --member "serviceAccount:$DEPLOY" --role roles/iam.serviceAccountUser --condition None >/dev/null
 
@@ -154,7 +136,7 @@ if gcp iam workload-identity-pools providers describe github --location global -
 gcp iam workload-identity-pools providers "$PROVIDER_ACTION" github --location global --workload-identity-pool github \
   --issuer-uri https://token.actions.githubusercontent.com \
   --attribute-mapping 'google.subject=assertion.sub,attribute.repository_id=assertion.repository_id,attribute.repository_owner_id=assertion.repository_owner_id,attribute.ref=assertion.ref' \
-  --attribute-condition "assertion.repository_id=='$GITHUB_REPOSITORY_ID' && assertion.repository_owner_id=='$GITHUB_REPOSITORY_OWNER_ID' && assertion.repository=='$GITHUB_REPO' && assertion.ref=='refs/heads/main' && assertion.workflow_ref=='$GITHUB_REPO/.github/workflows/deploy.yml@refs/heads/main' && assertion.event_name in ['workflow_run','workflow_dispatch']"
+  --attribute-condition "assertion.repository_id=='$GITHUB_REPOSITORY_ID' && assertion.repository_owner_id=='$GITHUB_REPOSITORY_OWNER_ID' && assertion.repository=='$GITHUB_REPO' && assertion.ref=='refs/heads/main' && ((assertion.workflow_ref=='$GITHUB_REPO/.github/workflows/deploy.yml@refs/heads/main' && assertion.event_name in ['workflow_run','workflow_dispatch']) || (assertion.workflow_ref=='$GITHUB_REPO/.github/workflows/refresh.yml@refs/heads/main' && assertion.event_name in ['schedule','workflow_dispatch']))"
 NUM="$(gcp projects describe "$PROJECT_ID" --format 'value(projectNumber)')"
 gcp_iam iam service-accounts add-iam-policy-binding "$DEPLOY" --role roles/iam.workloadIdentityUser \
   --member "principalSet://iam.googleapis.com/projects/$NUM/locations/global/workloadIdentityPools/github/attribute.repository_id/$GITHUB_REPOSITORY_ID" --condition None >/dev/null
@@ -183,18 +165,9 @@ Optional Google provider credentials and the newline-separated tester roster for
   printf %s "\$GOOGLE_CLIENT_ID" | gcloud --project="$PROJECT_ID" secrets versions add alcove-google-client-id --data-file=-
   printf %s "\$GOOGLE_CLIENT_SECRET" | gcloud --project="$PROJECT_ID" secrets versions add alcove-google-client-secret --data-file=-
   gcloud --project="$PROJECT_ID" secrets versions add alcove-google-signup-testers --data-file="\$GOOGLE_SIGNUP_TESTER_FILE"
-Set CLOUDFLARE_ACCOUNT_ID as a repository variable and CLOUDFLARE_API_TOKEN as a production environment secret.
+A Cloudflare API token for the zone, a custom token with Zone › DNS › Edit and Zone › Zone › Read on alcove.solutions
+alone (Cloudflare › My Profile › API Tokens), which Confidential Space's setup needs:
+  printf %s "\$CLOUDFLARE_DNS_TOKEN" | gcloud --project="$PROJECT_ID" secrets versions add alcove-cloudflare-dns-token --data-file=-
+Then set up Confidential Space, where the API and web app run: infra/confidential-space/README.md › First setup.
 Set DEPLOY_ENABLED=true as a repository variable only after the remaining infrastructure is configured.
 OUT
-
-if (( ${#MISSING_SECRETS[@]} )); then
-  cat >&2 <<OUT
-
-Not done yet, these secrets don't exist: ${MISSING_SECRETS[*]}. Deploys bind both top-up secrets and fail without either.
-Add each that's missing by hand (never print or commit their values), then run this script again to give the API access:
-  printf %s "\$TREASURY_INTENTS_KEY" | gcloud --project="$PROJECT_ID" secrets create alcove-treasury-intents-key --replication-policy automatic --data-file=-
-  printf %s "\$ONECLICK_API_KEY" | gcloud --project="$PROJECT_ID" secrets create alcove-oneclick-api-key --replication-policy automatic --data-file=-
-TREASURY_INTENTS_KEY is a full access key of alcove-treasury.near (ed25519:..., registered for it in intents.near), and
-ONECLICK_API_KEY the partner key from partners.near-intents.org (docs/engineering/deployment-and-acceptance.md).
-OUT
-fi

@@ -1,4 +1,4 @@
-import { FollowUpReviewSchema, ActionPatchSchema, ActionProposalSchema, AskBodySchema, DecisionPatchSchema, DecisionProposalSchema, LinePatchSchema, NoteKindSchema, NoteLinkClaimSchema, QuestionPatchSchema, RevisitPatchSchema, RewriteBodySchema, SeriesAskBodySchema, ShareInputSchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema, SharedWriteSchema } from '@alcove/api';
+import { FollowUpReviewSchema, ActionPatchSchema, ActionProposalSchema, AskBodySchema, DecisionPatchSchema, DecisionProposalSchema, LinePatchSchema, NoteLinkClaimSchema, NoteSearchBodySchema, QuestionPatchSchema, RevisitPatchSchema, RewriteBodySchema, SeriesAskBodySchema, ShareInputSchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema, SharedWriteSchema } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { stream } from 'hono/streaming';
 import { z } from 'zod';
@@ -24,10 +24,10 @@ export function registerNoteRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   const { noteChangeLimiter, askLimiter, personalLimiter } = runtime.limits;
 
   /* notes */
-  // Search terms travel in the body, never the URL, so they can't end up in access logs.
+  // Search terms and whose lines to look in travel in the body, never the URL, so they can't end up in access logs.
   app.post('/v1/notes/search', async (c) => {
-    const q = await body(c, z.object({ kind: NoteKindSchema.optional(), text: z.string().max(200).optional() }));
-    return c.json(await notes.list(c.get('owner'), { kind: q.kind, text: q.text }));
+    const q = await body(c, NoteSearchBodySchema);
+    return c.json(await notes.list(c.get('owner'), { kind: q.kind, text: q.text, by: q.by }));
   });
 
   app.get('/v1/notes/inbox', async (c) => c.json(await notes.inbox(c.get('owner'))));
@@ -138,11 +138,22 @@ export function registerNoteRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   /* Confirming what the notes say, and adding to it: as far as the grants let them (packages/api/src/grants.ts), and everyone sees who did. */
   const changing = (c: Context<Env>) => { const o = c.get('owner'); noteChangeLimiter(o.ownerId, 'note-change'); return o; };
 
-  app.post('/v1/notes/:id/decisions', async (c) => c.json(await notes.proposeDecision(changing(c), c.req.param('id'), await body(c, DecisionProposalSchema))));
+  // Adding answers with the note as it now is, read after the write, for the app to show.
+  app.post('/v1/notes/:id/decisions', async (c) => {
+    const o = changing(c);
+    const id = c.req.param('id');
+    await notes.proposeDecision(o, id, await body(c, DecisionProposalSchema));
+    return c.json(await notes.get(o, id));
+  });
 
   app.post('/v1/notes/:id/actions/review', async (c) => c.json(await notes.reviewAction(changing(c), c.req.param('id'), await body(c, FollowUpReviewSchema))));
 
-  app.post('/v1/notes/:id/actions', async (c) => c.json(await notes.proposeAction(changing(c), c.req.param('id'), await body(c, ActionProposalSchema))));
+  app.post('/v1/notes/:id/actions', async (c) => {
+    const o = changing(c);
+    const id = c.req.param('id');
+    await notes.proposeAction(o, id, await body(c, ActionProposalSchema));
+    return c.json(await notes.get(o, id));
+  });
 
   app.patch('/v1/notes/:id/decisions/:decisionId', async (c) => c.json(await notes.updateDecision(changing(c), c.req.param('id'), c.req.param('decisionId'), await body(c, DecisionPatchSchema))));
 

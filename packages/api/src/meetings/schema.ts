@@ -70,6 +70,21 @@ export const RsvpCountsSchema = z.object({ yes: z.number(), maybe: z.number(), n
 
 export type RsvpCounts = z.infer<typeof RsvpCountsSchema>;
 
+/** Someone invited, by their address, and what they answered: null until they have. */
+export const GuestAnswerSchema = z.object({ email: z.string(), answer: RsvpSchema.nullable() });
+
+export type GuestAnswer = z.infer<typeof GuestAnswerSchema>;
+
+/** A time someone invited has asked to move a call to, by their address. */
+export const ProposalSchema = z.object({ email: z.string(), startsAt: ISODateSchema });
+
+export type Proposal = z.infer<typeof ProposalSchema>;
+
+/** The organizer's answer to a request to move a call: move it there, or keep the time it has. */
+export const ProposalAnswerSchema = z.enum(['move', 'keep']);
+
+export type ProposalAnswer = z.infer<typeof ProposalAnswerSchema>;
+
 
 export const MeetingSchema = z.object({
   id: IDSchema,
@@ -95,15 +110,24 @@ export const MeetingSchema = z.object({
   /** What was brought to the call. */
   documents: z.array(CallDocumentSchema),
   /**
-   * The call's workspace, for its organizer: everyone in the call views it, and its notes and transcript go there, in a
-   * folder of their own. Null while it has none (the organizer picks or makes one when scheduling, in the call, or for its
-   * notes once it's over), and for everyone else, who find out in the call what they can open.
+   * The call's home, for its organizer: the workspace its notes and transcript go to, in a folder of its own. Null until
+   * there is one, and for everyone else, who find out in the call what they can open.
    */
   workspaceId: IDSchema.nullable(),
   /** How everyone invited has answered. */
   rsvps: RsvpCountsSchema,
   /** Your own answer, when you're invited; null when you haven't answered, and for the organizer. */
   rsvp: RsvpSchema.nullable(),
+  /**
+   * What each person invited answered, in the order of `guests`: only for the organizer. Everyone else sees how many
+   * (`rsvps`) and their own (`rsvp`).
+   */
+  answers: z.array(GuestAnswerSchema).optional(),
+  /**
+   * The times people invited have asked to move it to: everyone's for its organizer, who can move it there or keep its
+   * time, and only your own for someone invited. A call that moves lets go of them all.
+   */
+  proposals: z.array(ProposalSchema).optional(),
   /** Times offered to a guest, while they haven't picked one: `startsAt` means nothing until they have. */
   offer: z.object({ times: z.array(ISODateSchema) }).optional(),
   /** Present once the call has happened with notes on. */
@@ -145,37 +169,18 @@ export const MeetingInputSchema = z.object({
   /** Documents brought to the call, by the IDs the library gives them. */
   documents: z.array(IDSchema).max(MAX_CALL_DOCUMENTS).optional(),
   /**
-   * The call's workspace: one of the organizer's workspaces they can edit in, where its notes and transcript go. Null: none,
-   * until the organizer picks or makes one. Nothing makes one by itself.
+   * The call's home: one of the organizer's workspaces they can edit in, where its notes and transcript go. Null: a new
+   * workspace made for the call, named after it and its date, when someone first opens it or the call ends with notes.
    */
   workspaceId: IDSchema.nullable().optional(),
   /** Schedules a call for each occurrence, as one series with one link. */
   repeat: RepeatInputSchema.optional(),
   /**
    * Offers these times to a guest instead of settling on one: the call goes on no calendar until someone with its
-   * link picks one (see calls.pick). `startsAt` is the first of them. Can't be combined with `repeat`.
+   * link picks one (see calls.pick), and meanwhile each time is held on the organizer's calendar. `startsAt` is the
+   * first of them. Can't be combined with `repeat`.
    */
   offer: z.array(ISODateSchema).min(2).max(3).optional()
 });
 
 export type MeetingInput = z.infer<typeof MeetingInputSchema>;
-
-/**
- * A call to schedule. `newWorkspace`: a new workspace is made for it as it's scheduled, named after it, with everyone invited
- * in it to edit, and it's the call's workspace (and its series'). Not with `workspaceId`, which picks one already there.
- */
-export const MeetingCreateSchema = MeetingInputSchema.extend({ newWorkspace: z.boolean().optional() })
-  .refine((m) => !(m.newWorkspace && m.workspaceId), 'Pick a workspace or make a new one, not both.');
-
-export type MeetingCreate = z.infer<typeof MeetingCreateSchema>;
-
-/**
- * Where an ended call's notes go, when it had no workspace: one of the organizer's workspaces they can edit in, or a new one
- * made for it. `timeZone`, where the browser is: the day the call's folder (and a new workspace) is named after.
- */
-export const FileNotesSchema = z.union([
-  z.object({ workspaceId: IDSchema, timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.').optional() }),
-  z.object({ newWorkspace: z.literal(true), timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.').optional() })
-]);
-
-export type FileNotes = z.infer<typeof FileNotesSchema>;

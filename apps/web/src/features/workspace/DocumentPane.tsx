@@ -4,14 +4,18 @@
  * and whatever they wrote that didn't reach Alcove stays theirs to copy, save as a new document, or let go.
  */
 import { errorMessage, firstName, type DocSession, type DocStatus, type Person, type WorkspaceItem } from '@alcove/api';
-import { WsCantOpen, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsFade, WsFollowBar, WsGoneBar, WsMentionPrompt, WsMovePicker, WsOfflineBar, WsOfflineEmpty, WsPage, WsPopover, WsReadOnlyBar, WsScroll, WsTemplates, WsVersionBar, WsUnavailable, WsUnsavedBar, Button, wsToast, type WsFace, type WsPop, type WsSave, type WsUnsaved } from '@alcove/ui';
+import { WsCantOpen, WsDoc, WsDocBy, WsDocMenu, WsFade, WsFollowBar, WsGoneBar, WsMentionPrompt, WsMovePicker, WsOfflineBar, WsOfflineEmpty, WsPage, WsPopover, WsReadOnlyBar, WsScroll, WsTemplates, WsVersionBar, WsUnavailable, WsUnsavedBar, Button, wsToast, type WsFace, type WsPop, type WsSave, type WsUnsaved } from '@alcove/ui';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useLive, useNow, useOnline } from '~/lib/live';
+import { q } from '~/lib/queries';
 import { agoLabel } from '~/lib/time';
 import { focusRow } from './actions';
 import type { CommentOpen } from './Comments';
 import { useAsk } from './Ask';
 import { useWs, type Ws } from './context';
+import { DocMeta, QuoteCite } from './Origin';
+import { PaneHead } from './Head';
 import { useDocumentMedia } from './DocumentMedia';
 import { Editor } from './editor/lazy';
 import { useHistory } from './History';
@@ -28,7 +32,7 @@ import { useBackOnline, useOpensAgain, useSession, useTriesWhenShown, type Opene
 import { withDocument } from './session';
 import { ShareSheet } from './Sheets';
 import { tagRect, useTags } from './tags';
-import { documentsIn, foldersAbove, foldersFor, nameFrom, nameOf } from './tree';
+import { documentsIn, folderName, foldersAbove, foldersFor, nameFrom, nameOf } from './tree';
 
 const Comments = lazy(() => import('./Comments'));
 
@@ -61,9 +65,11 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
     return () => { if (ws.openDoc.current?.doc === session.doc) ws.openDoc.current = null; };
   }, [ws.openDoc, item.id, session.doc, editor]);
   const { call: fromCall, people: inCall } = useEditorCall(ws, editor, session.doc, readOnly);
+  /* Outside a call, everyone who can open the workspace, so someone who commented and has gone still has their face. */
+  const members = useQuery({ ...q.workspacePeople(ws.workspaceId), enabled: ws.mode !== 'call' && ws.sent.role !== null }).data;
   /* A caret goes by what someone's known by here, which is how they're listed among who's here. */
   /* Whose face goes on a caret, a tag or a comment: people here last, who may know more about themselves than the list does. */
-  const faces = useMemo(() => [...tagged, ...inCall, ...ws.here.map((h) => h.person)], [tagged, inCall, ws.here]);
+  const faces = useMemo(() => [...(members ?? []).map((m) => m.person), ...tagged, ...inCall, ...ws.here.map((h) => h.person)], [members, tagged, inCall, ws.here]);
   const byId = useMemo(() => new Map(faces.map((p) => [p.id, p])), [faces]);
   /* Hearing a quote takes the notes, which take an account, except in the call it's from, which plays it for anyone in it. */
   const signedIn = ws.owner !== null;
@@ -213,7 +219,8 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
             onTitle={(title) => ws.actions.titled(item.id, title)} onToast={toast}
             onCopyBlockLink={(id) => ws.actions.copyLink(item.id, id)}
             moveTargets={() => others.map((d) => ({ id: d.id, name: nameOf(d) }))} onMoveBlock={moveBlock} blockDrop={blockDrop} onAsk={readOnly ? undefined : alcove.onAsk}
-            byline={item.by ? <WsDocBy person={item.by} name={firstName(item.by.name)} edited={`Edited ${agoLabel(item.editedAt, now)}`} /> : undefined}
+            byline={ws.mode !== 'call' ? <DocMeta item={item} now={now} /> : item.by ? <WsDocBy person={item.by} name={firstName(item.by.name)} edited={`Edited ${agoLabel(item.editedAt, now)}`} /> : undefined}
+            cite={ws.mode !== 'call' ? (quote) => <QuoteCite {...quote} /> : undefined}
             whenBlank={readOnly ? undefined : <WsTemplates templates={TEMPLATES} onPick={pick} />} />
         </Suspense>
         {media.popovers}
@@ -250,10 +257,10 @@ export function DocumentPane({ item }: { item: WorkspaceItem }) {
 
 /** The head with nothing to do yet. */
 function Blank({ ws, item }: { ws: Ws; item: WorkspaceItem }) {
-  return <WsDocHead crumbs={crumbsOf(ws, item)} save="quiet" onToggleList={ws.toggleList} />;
+  return <PaneHead crumbs={crumbsOf(ws, item)} save="quiet" />;
 }
 
-const crumbsOf = (ws: Ws, item: WorkspaceItem) => [...(ws.sent.name === null ? [] : [ws.spaceName]), ...foldersAbove(ws.tree, item.id).map(nameOf), nameOf(item)];
+const crumbsOf = (ws: Ws, item: WorkspaceItem) => [...(ws.sent.name === null ? [] : [ws.spaceName]), ...foldersAbove(ws.tree, item.id).map((f) => folderName(f, ws.callFolder)), nameOf(item)];
 
 /** Why what's written here isn't reaching Alcove, as the bar says it, if it says anything. */
 function unsavedOf(status: DocStatus, ready: boolean, guest: boolean): WsUnsaved | null {
@@ -296,7 +303,7 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
   if (gone) {
     return (
       <WsDoc>
-        <WsDocHead crumbs={ws.sent.name === null ? [] : [ws.spaceName]} save="quiet" onToggleList={ws.toggleList} />
+        <PaneHead crumbs={ws.sent.name === null ? [] : [ws.spaceName]} save="quiet" />
         <WsCantOpen what="document" unsent={rescue !== null}
           action={rescue ?? <Button size="sm" onClick={() => ws.go({ kind: 'home' }, { replace: true })}>Back to {ws.spaceName}</Button>} />
       </WsDoc>
@@ -307,7 +314,7 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
   const morePop: WsPop = {
     open: more !== null, onOpenChange: (to) => setMore(to ? 'menu' : null),
     content: more === 'move' ? (
-      <WsMovePicker name={nameOf(item)} space={ws.spaceName} folders={foldersFor(ws.tree, item.id)}
+      <WsMovePicker name={nameOf(item)} space={ws.spaceName} folders={foldersFor(ws.tree, item.id, ws.callFolder)}
         onRoot={() => { close(); ws.actions.move(item.id, { parent: null }); }} onFolder={(id) => { close(); ws.actions.move(item.id, { parent: id }); }} />
     ) : (
       <WsDocMenu onShare={canShare ? () => { close(); setShare(true); } : undefined}
@@ -325,12 +332,12 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
   /* Scrolling or pressing the page stops following: you stay where you are. */
   const stayHere = () => ws.stopFollowing();
   const save: WsSave = status.closed === 'unavailable' || offline ? 'offline' : status.closed === 'session' ? (status.unsent ? 'failed' : 'quiet') : ready ? status.status : 'quiet';
-  /* Who to ask to edit: in a call, someone outside the workspace was let in by the organizer, so it's them. */
-  const askToEdit = ws.call?.chooser && !member ? ws.call.chooser : item.by ? firstName(item.by.name) : 'whoever shared it';
+  /* Who to ask to edit: whoever made it, if anyone's known to have. */
+  const askToEdit = item.by ? firstName(item.by.name) : 'whoever shared it';
   return (
     <>
     <WsDoc>
-      <WsDocHead crumbs={crumbsOf(ws, item)} save={save} onToggleList={ws.toggleList} faces={faces}
+      <PaneHead crumbs={crumbsOf(ws, item)} save={save} faces={faces}
         share={canShare ? { open: share, onOpenChange: setShare, content: <ShareSheet item={item} /> } : undefined} more={morePop} />
       <WsFollowBar following={ws.following?.quiet ? null : ws.following} onStop={() => ws.stopFollowing()} />
       <WsOfflineBar show={offline && ready && status.closed === null} online={online} onTry={session.retry} />

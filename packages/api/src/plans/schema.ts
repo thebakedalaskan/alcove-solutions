@@ -11,6 +11,8 @@ export type PlanKind = z.infer<typeof PlanKindSchema>;
 export const MicroUsdSchema = z.number().int();
 /** The most one top-up can add: 8,000 USD. */
 export const MAX_TOP_UP_MICRO_USD = 8_000_000_000;
+/** The most periods one team license can be bought for (a year's is 12). */
+export const MAX_LICENSE_PERIODS = 120;
 
 /** One change to the balance: money added, or spent on a plan. */
 export const BalanceEntrySchema = z.object({ id: z.string(), at: ISODateSchema, label: z.string(), microUsd: MicroUsdSchema });
@@ -23,22 +25,30 @@ export type ProMonth = z.infer<typeof ProMonthSchema>;
 /**
  * Something about the plan its owner is told, in the app and, if they've turned it on, from the browser
  * (`NotificationPrefs.plan`), until they dismiss it:
- * - `pro-ending`: Pro ends at `until`, a few days from now, and won't renew (renewing is off, or the balance is short).
+ * - `pro-ending`: Pro ends at `until`, a week from now (told again a day before), and won't renew: renewing is off, the
+ *   balance is short, or a month costs more now than when the last was bought, which renewing never pays without its owner
+ *   buying at it first.
  * - `pro-renewed`: a month was bought from the balance, so Pro now runs to `until`.
  * - `pro-ended`: Pro ended at `until`; the account is on Free.
  * - `licenses-low` (a team's admin): `count` licenses are left unconsumed, fewer than the team's low mark.
  * - `licenses-none` (a team's admin): a member needed a license and none was left (nor bought, with auto-purchase).
  * - `license-needed` (a member): there was no license to take, so they're on their own plan until the admin buys more.
  * - `license-replaced-pro` (a member): a team license replaced Pro; `count` unstarted months went back to the balance.
+ * - `workspace-payer` (an admin of `workspaceId`): whoever paid for that workspace isn't in it any more, so its payment
+ *   moved to this account, its longest-standing admin with an account. Its files count against this account's storage
+ *   from `until`, the end of its grace (null: at once). The workspace's name is never kept with the plan: the app says it
+ *   from the workspaces its reader is in.
  */
-export const PlanNoticeKindSchema = z.enum(['pro-ending', 'pro-renewed', 'pro-ended', 'licenses-low', 'licenses-none', 'license-needed', 'license-replaced-pro']);
+export const PlanNoticeKindSchema = z.enum(['pro-ending', 'pro-renewed', 'pro-ended', 'licenses-low', 'licenses-none', 'license-needed', 'license-replaced-pro', 'workspace-payer']);
 export type PlanNoticeKind = z.infer<typeof PlanNoticeKindSchema>;
 export const PlanNoticeSchema = z.object({
   id: z.string(), kind: PlanNoticeKindSchema, at: ISODateSchema,
-  /** Pro's end, for Pro's notices; null for a team's. */
+  /** Pro's end, for Pro's notices; when a workspace's files start to count, for `workspace-payer`; null for a team's. */
   until: ISODateSchema.nullable(),
   /** How many, for `licenses-low` and `license-replaced-pro`; null otherwise. */
-  count: z.number().int().nonnegative().nullable()
+  count: z.number().int().nonnegative().nullable(),
+  /** The workspace, for `workspace-payer`; null otherwise. */
+  workspaceId: IDSchema.nullable()
 });
 export type PlanNotice = z.infer<typeof PlanNoticeSchema>;
 
@@ -79,8 +89,18 @@ export const PlanSchema = z.object({
     months: z.array(ProMonthSchema),
     /** When the last month bought ends (null: no Pro bought that hasn't ended). */
     until: ISODateSchema.nullable(),
-    /** Whether a month is bought from the balance as Pro is about to end, while the balance has enough. */
+    /**
+     * Whether renewing is on: a month is bought from the balance as Pro is about to end, while the balance has enough and a
+     * month costs no more than when the last was bought.
+     */
     renew: z.boolean(),
+    /**
+     * Whether renewing will buy the next month as Pro ends, as the server would decide now, and why not when it won't:
+     * `buys`; `off`, renewing is off; `price`, a month costs more now than it did when the last was bought, which renewing
+     * never pays without its owner buying at the new price first; `short`, the balance is short of a month. Null while no
+     * month of Pro is left to renew.
+     */
+    renewal: z.enum(['buys', 'off', 'price', 'short']).nullable(),
     /** What refunding the months that haven't started would add back to the balance (0: none to refund). */
     refundableMicroUsd: MicroUsdSchema
   }),
@@ -92,18 +112,18 @@ export const PlanSchema = z.object({
 export type Plan = z.infer<typeof PlanSchema>;
 
 /** What a plan brings, from the limits: notes as minutes a period, storage and the largest file. */
-export const PlanAllowanceSchema = z.object({
+export const PlanBringsSchema = z.object({
   notesMinutes: z.number().int().nonnegative(),
   storageBytes: z.number().int().nonnegative(),
   fileBytes: z.number().int().nonnegative()
 });
-export type PlanAllowance = z.infer<typeof PlanAllowanceSchema>;
+export type PlanBrings = z.infer<typeof PlanBringsSchema>;
 /** The plans on offer and what each costs now. Buying sends the price seen here, so a change in between is refused. */
 export const PlanOffersSchema = z.object({
   /** How long a period, and a month of Pro, is. */
   periodDays: z.number().nonnegative(),
-  free: PlanAllowanceSchema,
-  pro: PlanAllowanceSchema.extend({
+  free: PlanBringsSchema,
+  pro: PlanBringsSchema.extend({
     microUsdPerMonth: MicroUsdSchema,
     /** The most months one purchase can buy. */
     maxMonths: z.number().int().positive(),
@@ -113,10 +133,16 @@ export const PlanOffersSchema = z.object({
   /** More notes for this period, bought from the balance in packs of `minutes` at `microUsd` each, or null when not offered. */
   hours: z.object({ minutes: z.number().int().positive(), microUsd: MicroUsdSchema, maxPacks: z.number().int().positive() }).nullable(),
   /** Team: what each licensed person gets (storage is pooled: this much for each live license). */
-  team: PlanAllowanceSchema.extend({
+  team: PlanBringsSchema.extend({
+    /** A license's price: one person for one period. */
     microUsdPerLicense: MicroUsdSchema,
     /** The most licenses one purchase can buy. */
-    maxLicenses: z.number().int().positive()
+    maxLicenses: z.number().int().positive(),
+    /**
+     * A license for a year: one person for `periods` periods (12), at a lower price a period (`microUsdPerLicense`), so it
+     * costs `periods` × that. Null when there's none.
+     */
+    yearly: z.object({ periods: z.number().int().min(2).max(MAX_LICENSE_PERIODS), microUsdPerLicense: MicroUsdSchema }).nullable()
   })
 });
 export type PlanOffers = z.infer<typeof PlanOffersSchema>;
@@ -134,28 +160,34 @@ export const BuyHoursBodySchema = z.object({ packs: z.number().int().min(1).max(
 export type BuyHoursBody = z.infer<typeof BuyHoursBodySchema>;
 /**
  * What a purchase buys, from the balance or once a payment is added, as it was offered when its buyer was shown it: months of
- * Pro at a month's price, packs of more notes at a pack's price and size, or licenses for its buyer's team at a license's price.
+ * Pro at a month's price, packs of more notes at a pack's price and size, or licenses for its buyer's team at a license's price
+ * a period, each for `periods` periods: 1 at a license's price, or a year's (`PlanOffers.team.yearly.periods`) at its lower one.
  */
 export const PurchaseSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('pro'), months: z.number().int().min(1).max(1000), microUsdPerMonth: MicroUsdSchema.min(0) }),
   z.object({ kind: z.literal('hours'), packs: z.number().int().min(1).max(1000), microUsdPerPack: MicroUsdSchema.min(0), minutesPerPack: z.number().int().min(1) }),
-  /** Licenses for the team its buyer is the admin of, at the price they were shown for one (docs: Plans and usage › Team). */
-  z.object({ kind: z.literal('licenses'), count: z.number().int().min(1).max(100_000), microUsdPerLicense: MicroUsdSchema.min(0) })
+  /**
+   * Licenses for the team its buyer is the admin of, at the price a period they were shown for one, each for `periods`
+   * periods (docs: Plans and usage › Team). Without `periods` (a payment opened before licenses for a year), one period.
+   */
+  z.object({ kind: z.literal('licenses'), count: z.number().int().min(1).max(100_000), microUsdPerLicense: MicroUsdSchema.min(0), periods: z.number().int().min(1).max(MAX_LICENSE_PERIODS).default(1) })
 ]);
 export type Purchase = z.infer<typeof PurchaseSchema>;
 export const RenewBodySchema = z.object({ renew: z.boolean() });
 /**
- * What the Plans page opens checkout on as it opens (`/plans?checkout=pro`): Pro, or more notes for this period. The welcome
- * page's Get Pro lands there once signed in.
+ * What the Plans page opens checkout on as it opens (`/plans?checkout=pro`): Pro, more notes for this period, or Team. The
+ * welcome page's Get Pro and Start a team land there once signed in.
  */
-export const CheckoutParamSchema = z.enum(['pro', 'hours']);
+export const CheckoutParamSchema = z.enum(['pro', 'hours', 'team']);
 export type CheckoutParam = z.infer<typeof CheckoutParamSchema>;
 
 /* ---------- adding money ---------- */
 
 /** A way to add money: a stablecoin on one chain. */
 export const TopUpRouteSchema = z.object({
-  id: z.string(), chain: z.string(), chainName: z.string(), token: z.enum(['USDC', 'USDT']),
+  id: z.string(), chain: z.string(), chainName: z.string(),
+  /** Routes offered are all USDC; USDT is only on a top-up opened before USDC was the one way to pay. */
+  token: z.enum(['USDC', 'USDT']),
   /** The least that can be sent, in tokens, as a decimal string ("5"). */
   minimum: z.string()
 });
@@ -185,8 +217,9 @@ export const TopUpSchema = z.object({
   received: z.object({ amount: z.string(), microUsd: MicroUsdSchema.nullable() }).nullable(),
   /**
    * What it was opened to buy, and how that went once it was added: `waiting` until then, `bought`, or `refused` (the
-   * price changed, or too little arrived) with why, in words for people. A refused purchase leaves the money in the balance.
-   * Null for a top-up that only adds money.
+   * price changed, too little arrived, or the payment arrived after the top-up was cancelled, expired or failed, when only
+   * the money is added) with why, in words for people. A refused purchase leaves the money in the balance. Null for a
+   * top-up that only adds money.
    */
   purchase: z.object({ buys: PurchaseSchema, outcome: z.enum(['waiting', 'bought', 'refused']), why: z.string().nullable() }).nullable()
 });

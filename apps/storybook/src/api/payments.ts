@@ -3,15 +3,18 @@
  * scenario's switch, world/payments.ts › PaymentPlay), a step every few seconds from when each was opened: seen, then
  * added and bought; more than asked; less, the address waiting for the rest; refused because the price went up in between;
  * expired; failed. As the server does, a purchase is decided once, in the step that adds the payment: bought from the
- * balance (what was there and what arrived), or refused with why, the money staying in the balance.
+ * balance (what was there and what arrived), or refused with why, the money staying in the balance. Licenses bought go to
+ * the team Art runs, for anyone on it without one to take.
  *
  * Nothing runs on a timer: whenever the stand-in is asked about the plan or a payment, the payments catch up with the
  * clock first. So nothing from one story runs on into the next.
  */
 import type { Purchase, TopUp } from '@alcove/api';
 import type { World } from '../world';
-import { addToBalance, freshEntryId, raisePrices, type PaymentPlay } from '../world/payments';
-import { buyFromBalance, hoursOf, proPriceOf } from '../world/plans';
+import { addToBalance, boughtFromBalance, freshEntryId, raisePrices, type PaymentPlay } from '../world/payments';
+import { costOf as priceOf, forPeriods, hoursOf, proPriceOf } from '../world/plans';
+import { meOn } from '../world/teams';
+import { me } from './state';
 
 /** How long each step of a payment takes: long enough to see each state, short enough to play one through. */
 export const PAYMENT_STEP_MS = 5_000;
@@ -21,8 +24,14 @@ const micro = (amount: string) => Math.round(Number(amount) * 1_000_000);
 
 /** An amount as the server's refusals say it: "$192", "$12.50". */
 const dollars = (microUsd: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: microUsd % 1_000_000 === 0 ? 0 : 2 }).format(microUsd / 1_000_000);
-/** "12 months of Pro", "20 hours of notes": what a purchase buys, as refusals say it. */
-const amountOf = (buys: Purchase) => (buys.kind === 'pro' ? `${months(buys.months)} of Pro` : buys.kind === 'licenses' ? `${buys.count} team ${buys.count === 1 ? 'license' : 'licenses'}` : `${(buys.packs * buys.minutesPerPack) / 60} hours of notes`);
+/** "12 months of Pro", "20 hours of notes", "2 team licenses", "6 team licenses for a year": what a purchase buys, as refusals say it. */
+const amountOf = (buys: Purchase) => (buys.kind === 'pro' ? `${months(buys.months)} of Pro` : buys.kind === 'licenses' ? `${teamLicenses(buys.count)}${forPeriods(buys.periods)}` : `${(buys.packs * buys.minutesPerPack) / 60} hours of notes`);
+const teamLicenses = (n: number) => `${n} team ${n === 1 ? 'license' : 'licenses'}`;
+/** What it buys and what that costs, as refusals say it: "1 month of Pro costs", "2 team licenses cost". */
+const costOf = (buys: Purchase) => {
+  const one = buys.kind === 'pro' ? buys.months === 1 : buys.kind === 'licenses' ? buys.count === 1 : buys.packs * buys.minutesPerPack === 60;
+  return `${amountOf(buys)} ${one ? 'costs' : 'cost'}`;
+};
 
 /**
  * Why a purchase can't be had on today's terms, as the server's terms say it, or null when it can: when it's asked for
@@ -40,8 +49,29 @@ export function refusalOf(w: World, buys: Purchase): { code: 'invalid' | 'confli
     }
     return null;
   }
-  // Team's licenses: the stand-in's Team checkout says what refuses them (a placeholder until it lands).
-  if (buys.kind === 'licenses') return buys.microUsdPerLicense === o.team.microUsdPerLicense ? null : { code: 'conflict', asked: 'The price of a team license has changed. Look at it again before buying.', arrived: 'The price of a team license changed before your payment arrived. It’s in your balance.' };
+  if (buys.kind === 'licenses') {
+    // Licenses are for the team their buyer runs: one they're the admin of, then and when the payment arrives.
+    const mine = w.myTeam ? meOn(w.myTeam, me().email) : undefined;
+    if (mine?.role !== 'admin') {
+      return { code: 'conflict', asked: 'Only a team’s admin buys its licenses.', arrived: 'You weren’t a team’s admin when your payment arrived, so no licenses were bought. It’s in your balance.' };
+    }
+    const max = o.team.maxLicenses;
+    if (!Number.isInteger(buys.count) || buys.count < 1 || buys.count > max) {
+      return { code: 'invalid', asked: `Buy 1 to ${max} licenses at a time.`, arrived: `Since your payment was made, one purchase buys at most ${teamLicenses(max)}. It’s in your balance.` };
+    }
+    // A period at a license's price, or a year's periods at the yearly price while one is offered: any other length is a
+    // changed price, as the server has it.
+    const yearly = o.team.yearly;
+    const term = forPeriods(buys.periods);
+    if (buys.periods > 1 && !yearly) {
+      return { code: 'conflict', asked: `Team licenses${term} can’t be bought right now.`, arrived: `Team licenses${term} stopped being offered before your payment arrived. It’s in your balance.` };
+    }
+    const price = buys.periods === 1 ? o.team.microUsdPerLicense : buys.periods === yearly?.periods ? yearly.microUsdPerLicense : null;
+    if (buys.microUsdPerLicense !== price) {
+      return { code: 'conflict', asked: `The price of a team license${term} has changed. Look at it again before buying.`, arrived: `The price of a team license${term} changed before your payment arrived. It’s in your balance.` };
+    }
+    return null;
+  }
   if (!o.hours) return { code: 'conflict', asked: 'More notes can’t be bought right now.', arrived: 'More notes stopped being offered before your payment arrived. It’s in your balance.' };
   if (!Number.isInteger(buys.packs) || buys.packs < 1 || buys.packs > o.hours.maxPacks) {
     return { code: 'invalid', asked: `Buy up to ${hoursOf(o, o.hours.maxPacks)} hours of notes at a time.`, arrived: `Since your payment was made, one purchase buys at most ${hoursOf(o, o.hours.maxPacks)} hours of notes. It’s in your balance.` };
@@ -57,9 +87,9 @@ export function refusalOf(w: World, buys: Purchase): { code: 'invalid' | 'confli
 
 /** Why the balance can't pay for it, or null when it can: as it's asked for, never saying the balance itself. */
 export function shortOf(w: World, buys: Purchase): string | null {
-  const cost = buys.kind === 'pro' ? buys.months * buys.microUsdPerMonth : buys.kind === 'licenses' ? buys.count * buys.microUsdPerLicense : buys.packs * buys.microUsdPerPack;
+  const cost = priceOf(buys);
   if (w.plan.balance.microUsd >= cost) return null;
-  return `Your balance is short of what ${amountOf(buys)} ${buys.kind === 'pro' && buys.months === 1 ? 'costs' : 'cost'} (${dollars(cost)}). Add money first.`;
+  return `Your balance is short of what ${costOf(buys)} (${dollars(cost)}). Add money first.`;
 }
 
 /** Why a purchase can't be bought once its payment is added, in the server's words, or null when it can. */
@@ -67,8 +97,8 @@ function whyNot(w: World, buys: Purchase, lessArrived: boolean): string | null {
   const r = refusalOf(w, buys);
   if (r) return r.arrived;
   if (!shortOf(w, buys)) return null;
-  return lessArrived ? `Less arrived than ${amountOf(buys)} cost. It’s in your balance.`
-    : `Your balance was short of what ${amountOf(buys)} ${buys.kind === 'pro' && buys.months === 1 ? 'costs' : 'cost'} when your payment arrived. It’s in your balance.`;
+  return lessArrived ? `Less arrived than ${costOf(buys)}. It’s in your balance.`
+    : `Your balance was short of what ${costOf(buys)} when your payment arrived. It’s in your balance.`;
 }
 
 /** One step of a payment: what the top-up becomes, and what that does to the world. */
@@ -91,7 +121,7 @@ const credit: Step = (w, t) => {
   if (!t.purchase) return settled;
   const why = whyNot(w, t.purchase.buys, added < micro(t.asked.amount));
   if (why) return { ...settled, purchase: { ...t.purchase, outcome: 'refused', why } };
-  w.plan = buyFromBalance(w.plan, t.purchase.buys, freshEntryId(w));
+  boughtFromBalance(w, t.purchase.buys, freshEntryId(w));
   return { ...settled, purchase: { ...t.purchase, outcome: 'bought', why: null } };
 };
 

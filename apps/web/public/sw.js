@@ -69,10 +69,10 @@ self.addEventListener('notificationclick', (event) => {
 /** The page a notification leads to: `open` is the app's NotificationOpenSchema. */
 function pathOf(open) {
   if (open?.to === 'call') return `/join/${encodeURIComponent(open.code)}`;
-  if (open?.to === 'note') return `/notes/${encodeURIComponent(open.noteId)}`;
+  if (open?.to === 'note') return `/calls/${encodeURIComponent(open.noteId)}`;
   if (open?.to === 'document') return `/drive/${encodeURIComponent(open.workspaceId)}/${encodeURIComponent(open.documentId)}${open.block ? `#${encodeURIComponent(open.block)}` : ''}`;
   if (open?.to === 'plan') return '/settings';
-  return open?.to === 'notes' ? '/notes' : '/home';
+  return open?.to === 'notes' ? '/calls' : '/home';
 }
 
 /** A window reports opaque account/connection IDs, never content or access credentials. */

@@ -14,7 +14,7 @@ import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { iso } from '../../src/world/clock';
 import { ME_ID } from '../../src/world/people';
 import { RETRO } from './boards';
-import { notAttested } from '../pages/changes';
+import { checkFails, notAttested } from '../pages/changes';
 import { close, frameOf, openCallBoard, shareATab, tileOf } from './plays';
 import { AIKO, ALL_HANDS, CHECK_IN, CHECKLIST, DIEGO, EVERYONE, KOFI, KOFI_TALKS, MAYA, ONE_ON_ONE, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM } from './talk';
 
@@ -113,6 +113,9 @@ export const Shield = {
 export const ShieldLight = light(Shield);
 /** The server says it doesn't run in confidential compute yet: the shield states the promise, with nothing verified and no caveat. */
 export const ShieldNotAttested: PageStory = { ...Shield, name: 'The shield, not attested', beforeEach: [notAttested, ...[Shield.beforeEach ?? []].flat()] };
+/** This browser's check of the server didn't pass (here, its image isn't in the public log): the shield says why, and the call goes on. */
+export const ShieldCheckFailed: PageStory = { ...Shield, name: 'The shield, check failed', beforeEach: [checkFails('unreleased'), ...[Shield.beforeEach ?? []].flat()] };
+export const ShieldCheckFailedLight = light(ShieldCheckFailed);
 
 /** A message addressed to Art is highlighted when Chat opens, and viewing it clears its unread attention. */
 export const MentionedInChat = inCall({
@@ -457,7 +460,7 @@ export const FirstTimeYouPointAtATileBesideAShare = {
 export const MoveSomeonesTileBesideABoard = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, notes: 'off', talk: { lines: REVIEW_TALK, every: 6 }, board: RETRO, cues: at(1, opensBoard(PRIYA, 'retro')) } }, {
   name: 'Move someone’s tile beside a board',
   play: async (c) => {
-    await c.step('Open the board in the call, just for you', async () => { await openCallBoard(c, 'Design review'); });
+    await c.step('Open the board in the call, on your screen', async () => { await openCallBoard(c, 'Design review'); });
     await c.step('Drag Priya’s tile down the column, and let go: it moves there, and nothing opens', async () => {
       const tile = await screen.findByRole('group', { name: /^Priya/ }, { timeout: 10000 });
       const r = tile.getBoundingClientRect();

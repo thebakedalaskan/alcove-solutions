@@ -105,7 +105,7 @@ async function request(d: Deps, id: string, db: Db = d.pool, lock = false) {
 }
 export async function authorization(o: Owner, id: string) {
   const { row, info } = await request(o, id);
-  return { clientName: info.clientName, scopes: info.scopes, expiresAt: row.expires_at.toISOString(), ownerId: o.ownerId, accountEmail: (await profile(o)).email };
+  return { clientName: info.clientName, redirectHost: new URL(info.redirectUri).host, scopes: info.scopes, expiresAt: row.expires_at.toISOString(), ownerId: o.ownerId, accountEmail: (await profile(o)).email };
 }
 export async function decide(o: Owner, id: string, decision: AgentDecisionInput) {
   if (decision.ownerId !== o.ownerId) throw new ForbiddenError('Your signed-in account changed. Review the connection again.');
@@ -184,7 +184,9 @@ async function refresh(d: Deps, input: z.infer<typeof AgentTokenBodySchema>) {
         olog.info('agent refresh replay revoked its connection', { ownerId: o.ownerId, grantId: grant.id });
         return undefined;
       }
-      if (input.scope !== undefined && input.scope !== info.scopes.join(' ')) return fail('invalid_scope');
+      // What a connection can do changes after it's made, so a client may still ask for what it was first given. Only names
+      // Alcove doesn't know are refused: what's issued is always what the connection can do now.
+      if (input.scope !== undefined) scopesFrom(input.scope);
       const history = await maybeOne(db, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM agent_tokens WHERE owner_id = $1 AND grant_id = $2', [o.ownerId, grant.id]);
       if ((history?.n ?? 0) >= MAX_TOKEN_HISTORY) return fail('temporarily_unavailable');
       await exec(db, 'UPDATE agent_tokens SET consumed = true WHERE owner_id = $1 AND token_hash = $2', [o.ownerId, hash]);

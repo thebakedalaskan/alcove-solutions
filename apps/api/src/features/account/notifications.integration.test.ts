@@ -150,4 +150,98 @@ describe('browser notification preferences', () => {
     await other.api.auth.signIn('sso', { email: `other.${Date.now()}@tests.example` });
     expect((await other.api.account.preferences()).notifications).toMatchObject({ enabled: false, privateMessages: true, questions: false, ringing: true });
   });
+  it('pauses notifications for the account until a time, keeps the pause through other changes, and resumes', async () => {
+    const browser = h.browser();
+    const email = `paused.${Date.now()}@tests.example`;
+    await browser.api.auth.signIn('sso', { email });
+    expect((await browser.api.account.preferences()).notificationsPausedUntil).toBeNull();
+    const until = new Date(Date.now() + 60 * 60_000).toISOString();
+    expect((await browser.api.account.updatePreferences({ notificationsPausedUntil: until })).notificationsPausedUntil).toBe(until);
+    expect((await browser.api.account.preferences()).notificationsPausedUntil).toBe(until);
+    // The pause is the account's, so every device signed in has it; a change that leaves it out, from any of them, keeps it.
+    const anotherDevice = h.browser();
+    await anotherDevice.api.auth.signIn('sso', { email });
+    expect((await anotherDevice.api.account.preferences()).notificationsPausedUntil).toBe(until);
+    expect(await anotherDevice.api.account.updatePreferences({ notesLanguage: 'fr' })).toMatchObject({ notesLanguage: 'fr', notificationsPausedUntil: until });
+    expect(await browser.api.account.preferences()).toMatchObject({ notesLanguage: 'fr', notificationsPausedUntil: until });
+    // Only a date-time with its offset is taken. Anything else is refused and changes nothing.
+    const patchRaw = async (body: unknown) => (await browser.fetch(`${h.baseUrl}/v1/account/preferences`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body)
+    })).status;
+    for (const refused of ['tomorrow', '2026-11-13', '2026-11-13T09:00:00', Date.now() + 60_000]) expect(await patchRaw({ notificationsPausedUntil: refused })).toBe(400);
+    expect((await browser.api.account.preferences()).notificationsPausedUntil).toBe(until);
+    // Whatever time it's given is kept as given: another device's own offset, or a time already past (which pauses nothing).
+    const theirs = '2026-11-13T09:00:00+01:00';
+    expect((await anotherDevice.api.account.updatePreferences({ notificationsPausedUntil: theirs })).notificationsPausedUntil).toBe(theirs);
+    expect((await browser.api.account.updatePreferences({ notificationsPausedUntil: '2020-01-01T09:00:00Z' })).notificationsPausedUntil).toBe('2020-01-01T09:00:00Z');
+    // Null resumes, everywhere.
+    expect((await browser.api.account.updatePreferences({ notificationsPausedUntil: null })).notificationsPausedUntil).toBeNull();
+    expect((await anotherDevice.api.account.preferences()).notificationsPausedUntil).toBeNull();
+    // Someone else's account was never paused.
+    const other = h.browser();
+    await other.api.auth.signIn('sso', { email: `unpaused-other.${Date.now()}@tests.example` });
+    expect((await other.api.account.preferences()).notificationsPausedUntil).toBeNull();
+  });
+  it('refuses a pause whose end is longer than any date-time needs, and keeps the pause it had', async () => {
+    const browser = h.browser();
+    await browser.api.auth.signIn('sso', { email: `long-pause.${Date.now()}@tests.example` });
+    const until = new Date(Date.now() + 30 * 60_000).toISOString();
+    expect((await browser.api.account.updatePreferences({ notificationsPausedUntil: until })).notificationsPausedUntil).toBe(until);
+    // An ISO date-time takes any number of fractions of a second, and what's taken is sealed into every revision of the profile.
+    const tooLong = `2026-11-13T09:00:00.${'1'.repeat(100_000)}Z`;
+    const refused = await browser.fetch(`${h.baseUrl}/v1/account/preferences`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notificationsPausedUntil: tooLong })
+    });
+    expect(refused.status).toBe(400);
+    expect((await browser.api.account.preferences()).notificationsPausedUntil).toBe(until);
+    // One to the nanosecond, with its offset, is as long as any needs to be, and is kept as given.
+    const precise = '2026-11-13T09:00:00.123456789+01:00';
+    expect((await browser.api.account.updatePreferences({ notificationsPausedUntil: precise })).notificationsPausedUntil).toBe(precise);
+    expect((await browser.api.account.preferences()).notificationsPausedUntil).toBe(precise);
+  });
+  it('opens a profile sealed before notifications could be paused as not paused, and saves it with the pause', async () => {
+    const browser = h.browser();
+    const { session } = await browser.api.auth.signIn('sso', { email: `before-pause.${Date.now()}@tests.example` });
+    const owner = await openOwner(h.deps, session.ownerId, undefined);
+    const stored = z.object({ preferences: z.record(z.string(), z.unknown()) });
+    const [item] = await listItems(owner, h.pool, 'profile', Profile);
+    if (!item) throw new Error('No profile to upgrade');
+    // The release before wrote preferences without the field.
+    const { notificationsPausedUntil, ...previous } = item.manifest.preferences;
+    expect(notificationsPausedUntil).toBeNull();
+    await saveRevision(owner, h.pool, item.itemId, item.revisionId, { ...item.manifest, preferences: previous });
+    expect((await listItems(owner, h.pool, 'profile', stored))[0]?.manifest.preferences).not.toHaveProperty('notificationsPausedUntil');
+    expect((await browser.api.account.preferences()).notificationsPausedUntil).toBeNull();
+    // Saved for anything else, it's written in the new shape, not paused.
+    expect(await browser.api.account.updatePreferences({ notesLanguage: 'de' })).toMatchObject({ notesLanguage: 'de', notificationsPausedUntil: null });
+    expect((await listItems(owner, h.pool, 'profile', stored))[0]?.manifest.preferences).toMatchObject({ notesLanguage: 'de', notificationsPausedUntil: null });
+    // It pauses like any other, and the release before still opens the profile, paused or not.
+    const until = new Date(Date.now() + 30 * 60_000).toISOString();
+    expect((await browser.api.account.updatePreferences({ notificationsPausedUntil: until })).notificationsPausedUntil).toBe(until);
+    const [opened] = await listItems(owner, h.pool, 'profile', Profile.extend({ preferences: PreferencesSchema.omit({ notificationsPausedUntil: true }) }));
+    expect(opened?.manifest.preferences.notesLanguage).toBe('de');
+  });
+  it('opens a profile sealed before Upcoming could show your own events as not showing them, and saves it with the choice', async () => {
+    const browser = h.browser();
+    const { session } = await browser.api.auth.signIn('sso', { email: `before-own-events.${Date.now()}@tests.example` });
+    const owner = await openOwner(h.deps, session.ownerId, undefined);
+    const stored = z.object({ preferences: z.record(z.string(), z.unknown()) });
+    const [item] = await listItems(owner, h.pool, 'profile', Profile);
+    if (!item) throw new Error('No profile to upgrade');
+    // The release before wrote preferences without the field.
+    const { showSoloEvents, ...previous } = item.manifest.preferences;
+    expect(showSoloEvents).toBe(false);
+    await saveRevision(owner, h.pool, item.itemId, item.revisionId, { ...item.manifest, preferences: previous });
+    expect((await listItems(owner, h.pool, 'profile', stored))[0]?.manifest.preferences).not.toHaveProperty('showSoloEvents');
+    expect((await browser.api.account.preferences()).showSoloEvents).toBe(false);
+    // Saved for anything else, it's written in the new shape, not showing them.
+    expect(await browser.api.account.updatePreferences({ notesLanguage: 'de' })).toMatchObject({ notesLanguage: 'de', showSoloEvents: false });
+    expect((await listItems(owner, h.pool, 'profile', stored))[0]?.manifest.preferences).toMatchObject({ notesLanguage: 'de', showSoloEvents: false });
+    // Shown, then hidden again, and the release before still opens the profile while they're shown.
+    expect((await browser.api.account.updatePreferences({ showSoloEvents: true })).showSoloEvents).toBe(true);
+    const [opened] = await listItems(owner, h.pool, 'profile', Profile.extend({ preferences: PreferencesSchema.omit({ showSoloEvents: true }) }));
+    expect(opened?.manifest.preferences.notesLanguage).toBe('de');
+    expect((await browser.api.account.updatePreferences({ showSoloEvents: false })).showSoloEvents).toBe(false);
+    expect((await browser.api.account.preferences()).showSoloEvents).toBe(false);
+  });
 });

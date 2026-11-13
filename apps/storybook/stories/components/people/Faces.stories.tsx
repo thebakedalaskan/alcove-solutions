@@ -33,6 +33,8 @@ export const Two: Story = {};
 export const MoreThanMax: Story = { name: 'More than max', args: { people: [PRIYA, KOFI, AIKO, MAYA, INES, LENA, SAM] } };
 /** Portraits beside initials, for people drawn without one. */
 export const PortraitsAndInitials: Story = { name: 'Portraits and initials', args: { people: [PRIYA, INES, KOFI, RUTH, AIKO, MILO].filter(isPerson), max: 6 } };
+/** At night, someone without a portrait is a pale arch like the rest, so the row has no gap. */
+export const PortraitsAndInitialsNight: Story = { ...PortraitsAndInitials, name: 'Portraits and initials, night', globals: { theme: 'dark' } };
 /** The sizes the app uses them at, from a dense row to a card's head. */
 export const Sizes: Story = {
   args: { people: [PRIYA, KOFI, AIKO, MAYA] },

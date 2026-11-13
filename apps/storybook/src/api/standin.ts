@@ -7,26 +7,26 @@
  *
  * A method nothing renders yet answers with something sensible and empty. When the contract grows, this grows with it.
  */
-import { StartTopUpBodySchema, type Purchase, type TopUp } from '@alcove/api';
-import { freshEntryId, PREVIEW_BASE_ADDRESS, PREVIEW_DEPOSIT_ADDRESS } from '../world/payments';
-import { buyFromBalance, withProMonths } from '../world/plans';
+import { StartTopUpBodySchema, type Plan, type Purchase, type TopUp, AgentUpdateInputSchema } from '@alcove/api';
+import { boughtFromBalance, freshEntryId, PREVIEW_BASE_ADDRESS, PREVIEW_DEPOSIT_ADDRESS } from '../world/payments';
+import { withProMonths, withRenewal } from '../world/plans';
 import { playPayment, refusalOf, settlePayments, shortOf } from './payments';
 import { DriveExportInputSchema, NOTE_LINK_DAYS, type DriveAutomatic, type DriveCallExports, type DriveExportFormat, type DriveExportInput, type DriveExportJob, type NewNoteLink, type NoteLink, type NoteLinkClaimed } from '@alcove/api';
 import { disconnectedDrive } from '../world/drive-exports';
-import type { BoardSortBody, DocAskBody, DocAskPart } from '@alcove/api';
+import type { BoardSortBody, DocAskBody, DocAskPart, WorkspaceReadOptions } from '@alcove/api';
 import {
-  ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpReview, type FollowUpTarget, type NoteAction, AgentAuthorizationIdSchema, AgentConnectionIdSchema, AgentDecisionInputSchema, AgentTokenInputSchema, DEFAULT_NOTES_CHOICES, searchOf, termsIn, type ActionPatch, type ActionProposal, type AlcoveApi, type AgentConnection, type AnswerPart, type Busy, type CallCard,
+  ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpReview, type FollowUpTarget, type NoteAction, AgentAuthorizationIdSchema, AgentConnectionIdSchema, AgentDecisionInputSchema, AgentTokenInputSchema, DEFAULT_NOTES_CHOICES, searchOf, termsIn, termsSaid, type ActionPatch, type ActionProposal, type AlcoveApi, type AgentConnection, type AnswerPart, type Busy, type CallCard,
   type CallDocument, type CallSession, type Change, type ChangeScope, type DecisionPatch, type DecisionProposal, type ID, type Inbox, type IncomingRing,
-  type FileNotes, type InstantCallInput, type Interval, type LinePatch, type Meeting, type MeetingCreate, type MeetingInput, type Note, type NoteFound, type NoteKind, type NoteProgress,
-  type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series, type SharedAudience, type SharedWrite,
-  type SeriesAnswerPart, type SeriesNote, type SignInResult, type DemoProvider, type RoomRecordingInput, type RoomRecording, type CallMoveIn, type TeamAccess, type WorkspaceItem
+  type InstantCallInput, type Interval, type LinePatch, type Meeting, type MeetingInput, type Note, type NoteFound, type NoteKind, type NoteProgress, type NoteSaid,
+  type AudienceTeam, type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series, type SharedAudience, type SharedWrite,
+  type SeriesAnswerPart, type SeriesNote, type SignInResult, type DemoProvider, type RoomRecordingInput, type RoomRecording, type CallMoveIn, type TeamAccess, type TranscriptLine, type Attestation
 } from '@alcove/api';
 import { isOnline } from '../browser';
 import { canvasTheme } from '../world/boards';
 import { changer, foundOf } from '../world/build';
 import { personAt } from '../world/people';
 import { session as sessionFor, type World } from '../world';
-import { joinCall, type ScriptedCall } from './call';
+import { forgetGoingOn, joinCall, type ScriptedCall } from './call';
 import { Pushed, pause } from './live';
 import { audioUrlFor, quietAudio, screenImage } from './media';
 import { ScriptedMove } from './move';
@@ -34,9 +34,14 @@ import { personalFor } from './personal';
 import { ScriptedRecording } from './recording';
 import { AI_MODELS, atTheDoor } from './script';
 import { current, me, nextId, openedAs } from './state';
-import { agentsFor, EXPIRED_AGENT_REQUEST, forgetAgents, PREVIEW_AGENT_TOKEN, PREVIEW_MCP_ENDPOINT } from './agents';
+import { activityOf, agentRequest, agentsFor, answer as answerRequest, answered, connectionAllowed, EXPIRED_AGENT_REQUEST, forgetAgents, PREVIEW_AGENT_TOKEN, PREVIEW_MCP_ENDPOINT } from './agents';
 import * as spaces from './workspaces';
 import { licensed, licensedCount, teamNoteIn, teamNotesFor, teamsApi, visit } from './teams';
+import { isLive } from '../world/teams';
+import type { CallAheadMake, ProposalAnswer } from '@alcove/api';
+import { readyIn } from '../world/call-page';
+import { previewsIn, trashIn } from './drive';
+import { attested } from './attestation';
 
 /* ---------- how every answer comes back ---------- */
 
@@ -54,15 +59,37 @@ function checkPurchase(w: World, buys: Purchase): void {
   const r = refusalOf(w, buys);
   if (r) throw refused(r.code, r.asked);
 }
+/** The plan as the server answers with it: saying whether renewing will buy the next month, at the prices in force now. */
+const planOf = (w: World): Plan => withRenewal(w.plan, w.payments.offers.pro.microUsdPerMonth, w.payments.proMonthly);
 /** Buys from the balance once the purchase checks out, refused with nothing charged when the balance is short. */
 function buyNow(w: World, buys: Purchase) {
   checkPurchase(w, buys);
   const short = shortOf(w, buys);
   if (short) throw refused('conflict', short);
-  w.plan = buyFromBalance(w.plan, buys, freshEntryId(w));
-  return w.plan;
+  boughtFromBalance(w, buys, freshEntryId(w));
+  return planOf(w);
 }
-const offline = () =>new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.');
+const offline = () => new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.');
+/**
+ * A question about your notes is paid from your own notes (apps/api/src/features/billing/meter.ts): once this period's have
+ * run out, the server refuses it before anything is written, in its own words.
+ */
+function mayAsk(w: World): void {
+  if (w.plan.notes.stopped || w.plan.notes.minutesLeft <= 0) {
+    throw new AlcoveApiError('plan-limit', 'Your notes for this period have run out. They start again when your plan renews.', { requestId: nextId('sb-req') });
+  }
+}
+/** With a call's pass, anyone in the call asks, a guest too, as the API reads it with the pass; without one, an account. */
+const asWho = (o?: WorkspaceReadOptions | undefined): 'anyone' | 'signed-in' => (o?.pass ? 'anyone' : 'signed-in');
+/**
+ * Changing what's in a workspace's tree: someone in it who can edit, or with a call's pass, anyone in a call that uses it.
+ * Deleting for good is never a pass's (`alone`).
+ */
+function mayChange(id: string, o?: WorkspaceReadOptions | undefined, alone = false): void {
+  const tree = spaces.treeOf(id);
+  if (tree.role === 'admin' || tree.role === 'edit' || (!alone && o?.pass !== undefined && tree.inCall)) return;
+  throw refused('forbidden', 'You can read this workspace, but not change it.');
+}
 
 /** Answers after a moment, from the world as it is then, as a copy: what the app holds never changes under it. */
 async function answer<T>(read: (w: World) => T, who: 'anyone' | 'signed-in' = 'signed-in'): Promise<T> {
@@ -117,8 +144,17 @@ function driveChoice(w: World, input: DriveExportInput) {
 /** The links to a note that still work, newest first. */
 const linksTo = (w: World, noteId: string): NoteLink[] => (w.noteLinks ?? []).filter((x) => x.noteId === noteId && Date.parse(x.link.expiresAt) > Date.now()).map((x) => x.link).reverse();
 
-/** What holds a box for writing into the shared notes to who had the notes when it opened: if anyone gets them since, it's refused. */
-const audienceSeal = (n: Note) => `shared:${n.people.map((p) => p.email.toLowerCase()).sort().join(' ')}`;
+/**
+ * The team a note is visible to, as whoever adds to it is shown: Art's own notes are visible to Art's team when he says so, and
+ * everyone live-licensed on it reads them, `people` of them not on the note already.
+ */
+const teamReading = (w: World, n: Note): AudienceTeam | null => {
+  const t = w.myTeam;
+  return n.teamVisible && t ? { name: t.name, people: t.members.filter((m) => isLive(m) && !n.people.some((p) => sameAddress(p.email, m.person.email))).length } : null;
+};
+const sameAddress = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+/** What holds a box for writing into the shared notes to who had the notes when it opened, and the team they were visible to: if either changes, it's refused. */
+const audienceSeal = (n: Note) => `shared:${n.people.map((p) => p.email.toLowerCase()).sort().join(' ')}${n.teamVisible ? ':team' : ''}`;
 
 /** Whether automatic exports cover a call, as the server's rule has it: on, and the call ended after they were turned on. */
 function automaticFor(w: World, n: Note): DriveAutomatic {
@@ -169,19 +205,39 @@ function inboxOf(w: World): Inbox {
 
 /* ---------- searching and asking, simply ---------- */
 
-function found(w: World, kind: NoteKind | undefined, text: string | undefined): NoteFound[] {
+/** Lines of what was said a found note shows, at most, as the API has it. */
+const SAID_SHOWN = 10;
+/** Everything said in a note: the main room, then each breakout room's lines, which say which room. */
+const saidIn = (n: Note): TranscriptLine[] => [...(n.transcript ?? []), ...n.rooms.flatMap((r) => r.transcript.map((l) => ({ ...l, room: { id: r.id, name: r.name } })))];
+/** What a line became in its part of the call: what a decision that isn't rejected rests on, or else a follow-up. */
+function madeOf(n: Note, line: TranscriptLine): NoteSaid['made'] {
+  const part = line.room ? n.rooms.find((r) => r.id === line.room?.id) : n;
+  if (part?.decisions.some((d) => d.state !== 'rejected' && d.lines.includes(line.id))) return 'decision';
+  return part?.actions.some((a) => a.lines.includes(line.id)) ? 'follow-up' : undefined;
+}
+
+/**
+ * What a search finds, as the API finds it: a note has a word in its title, summary, decisions, follow-ups or anything
+ * said, or when the word starts a name of someone who spoke in it. With `by` (an address) only their lines count.
+ */
+function found(w: World, kind: NoteKind | undefined, text: string | undefined, by: string | undefined): NoteFound[] {
   const notes = w.notes.filter((n) => !kind || n.kind === kind);
-  if (!text?.trim()) return notes.map(foundOf);
-  const { terms, question } = searchOf(text);
-  if (!terms.length) return notes.map(foundOf);
+  const { terms, question } = searchOf(text ?? '');
+  const whose = by?.trim().toLowerCase();
+  if (!terms.length && !whose) return notes.map(foundOf);
   return notes.flatMap((n) => {
-    const words = [n.title, n.excerpt, n.summary, ...(n.transcript ?? []).map((l) => l.text)].join(' ');
-    const hits = termsIn(words, terms);
-    if (question ? hits === 0 : hits < terms.length) return [];
-    const said = (n.transcript ?? []).map((l) => ({ l, k: termsIn(l.text, terms) })).filter((x) => x.k > 0).sort((a, b) => b.k - a.k).map(({ l }) => ({
-      id: l.id, at: l.at, text: l.text, ...(l.speaker ? { speaker: l.speaker } : {}), ...(l.room ? { room: l.room } : {})
-    }));
-    return [{ ...foundOf(n), said: said.slice(0, 3), saidCount: said.length }];
+    const all = saidIn(n);
+    const lines = whose ? all.filter((l) => l.speaker?.person?.email.toLowerCase() === whose) : all;
+    if (whose && !lines.length) return [];
+    const words = whose ? '' : [n.title, n.excerpt, n.summary, ...[n, ...n.rooms].flatMap((p) => [...p.decisions, ...p.actions].map((e) => e.text))].join(' ');
+    const has = terms.filter((t) => termsIn(words, [t]) || lines.some((l) => termsSaid(l, [t]))).length;
+    if (terms.length && (question ? has === 0 : has < terms.length)) return [];
+    const matched = lines.flatMap((line) => { const k = terms.length ? termsSaid(line, terms) : 1; return k ? [{ line, k }] : []; });
+    const said = matched.sort((a, b) => b.k - a.k || a.line.at - b.line.at).slice(0, SAID_SHOWN).map(({ line }): NoteSaid => {
+      const made = madeOf(n, line);
+      return { id: line.id, at: line.at, text: line.text, ...(line.speaker ? { speaker: line.speaker } : {}), ...(line.room ? { room: line.room } : {}), ...(made ? { made } : {}) };
+    });
+    return [{ ...foundOf(n), said, saidCount: matched.length }];
   });
 }
 
@@ -211,7 +267,7 @@ function answerAbout(n: Note, question: string): AnswerPart[] {
 
 /** An answer across every note: what the notes that match say, citing where. */
 function answerAcross(w: World, question: string): AnswerPart[] {
-  const hits = found(w, undefined, question).filter((n) => n.status === 'ready');
+  const hits = found(w, undefined, question, undefined).filter((n) => n.status === 'ready');
   if (!w.notes.some((n) => n.status === 'ready')) return [{ type: 'text', text: 'There are no written notes to answer from yet.' }];
   if (!hits.length) return [{ type: 'text', text: 'None of your notes say anything about that.' }];
   const top = hits.slice(0, 3);
@@ -296,36 +352,16 @@ function documentsFor(w: World, ids: string[] | undefined): CallDocument[] {
   const all = w.documents.workspaces.flatMap((s) => s.documents);
   return (ids ?? []).flatMap((id) => { const d = all.find((x) => x.id === id); return d ? [{ id, kind: d.kind, by: d.by, name: d.name }] : []; });
 }
-/**
- * A workspace made for a call, as it's scheduled or its notes are filed: named after it, with you its admin and everyone invited
- * in it to edit. `folder`: the call's folder at its top, holding its note.
- */
-function spaceFor(w: World, call: { title: string; at: string; people: number }, folder?: { name: string; noteId: string } | undefined): string {
-  const id = nextId('ws');
-  const now = new Date().toISOString();
-  const items: WorkspaceItem[] = folder ? [{
-    id: nextId('folder').padEnd(22, '0'), kind: 'folder', name: folder.name, parent: null, by: null, createdAt: now, editedAt: now, trashedAt: null, trashedBy: null,
-    restricted: false, role: 'edit', call: { startedAt: call.at, on: false, here: false, noteId: folder.noteId }
-  }] : [];
-  w.workspaces.push({ id, name: call.title.replace(/\s+/g, ' ').trim().slice(0, 120) || 'Untitled', role: 'admin', people: call.people, teamAccess: null, items, createdAt: now, call: { title: call.title, at: call.at } });
-  return id;
-}
-/** What a call's folder is called: the call, and the day it started, 'Design review · 4 Nov'. */
-const folderName = (title: string, at: string) => `${title} · ${new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(at))}`;
-
-function meetingFrom(w: World, input: MeetingCreate): Meeting {
+function meetingFrom(w: World, input: MeetingInput): Meeting {
   const id = nextId('m');
   const guests = input.guests.map(personAt);
   const startsAt = input.offer?.[0] ?? input.startsAt;
   const repeat = input.repeat ? { rule: input.repeat.rule, until: input.repeat.until, timeZone: input.repeat.timeZone } : undefined;
-  // One of yours you can edit in, or a new one made now, or none until someone picks one in the call.
-  const picked = input.workspaceId ? w.workspaces.find((x) => x.id === input.workspaceId && (x.role === 'admin' || x.role === 'edit')) : undefined;
-  if (input.workspaceId && !picked) throw refused('not-found', 'That workspace isn’t there, or you can’t make things in it.');
-  const workspaceId = picked ? picked.id : input.newWorkspace ? spaceFor(w, { title: input.title, at: startsAt, people: guests.length + 1 }) : null;
   return {
     id, title: input.title, startsAt, endsAt: addMinutes(startsAt, input.durationMinutes), organizer: me(), isOrganizer: true, guests, guestCount: guests.length,
     notes: input.notes, choices: input.choices ?? DEFAULT_NOTES_CHOICES, code: newCode(), status: 'scheduled', instant: false, joinMuted: input.joinMuted ?? false,
-    documents: documentsFor(w, input.documents), workspaceId, rsvps: { yes: 0, maybe: 0, no: 0, waiting: guests.length }, rsvp: null,
+    documents: documentsFor(w, input.documents), workspaceId: null, rsvps: { yes: 0, maybe: 0, no: 0, waiting: guests.length }, rsvp: null,
+    answers: guests.map((g) => ({ email: g.email, answer: null })), proposals: [],
     ...(input.offer ? { offer: { times: input.offer } } : { calendarUrl: `https://calendar.example.com/events/${id}` }),
     ...(repeat ? { repeat, seriesId: nextId('series'), seriesCode: newCode() } : {})
   };
@@ -355,10 +391,11 @@ export function ringYou(r: IncomingRing): void {
 const calls = new Set<ScriptedCall>();
 const recordings = new Set<ScriptedRecording>();
 const moves = new Set<ScriptedMove>();
-/** Whatever the last story left open stops: its calls, its recordings, its rings, a move on its way. */
+/** Whatever the last story left open stops: its calls (and those it left going), its recordings, its rings, a move on its way. */
 export function stopLive(): void {
   for (const c of calls) c.close();
   calls.clear();
+  forgetGoingOn();
   for (const r of recordings) r.forget();
   recordings.clear();
   for (const r of ringing) r.close();
@@ -369,12 +406,14 @@ export function stopLive(): void {
 
 /* ---------- what the API runs on ---------- */
 
-const hex = (b: ArrayBuffer) => Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, '0')).join('');
-/** As a deployment inside a TEE answers: bound to this browser's nonce, so the app reports receipt of hosting hardware evidence. */
-async function attest(nonce: string) {
-  const commit = 'storybook';
-  const reportData = hex(await crypto.subtle.digest('SHA-512', new TextEncoder().encode(`alcove-attestation/v1\n${nonce}\n${commit}`)));
-  return answer(() => ({ tee: 'dstack' as const, nonce, build: { commit }, reportData, quote: 'storybook', eventLog: '[]', appId: 'storybook', instanceId: 'storybook' }), 'anyone');
+/**
+ * As Alcove's server answers from Confidential Space: a token made now with Storybook's own anchors, which the app checks
+ * in full with them (attestation.ts), so it says verified. Stories change it for a server outside a TEE, or a check that
+ * fails (stories/pages/changes.ts).
+ */
+async function attest(): Promise<Attestation> {
+  await answer(() => null, 'anyone');
+  return attested();
 }
 
 /* ---------- the stand-in ---------- */
@@ -399,8 +438,10 @@ export const standIn: AlcoveApi = {
       const p = w.prefs;
       w.prefs = {
         notesDefault: patch.notesDefault ?? p.notesDefault, notesLanguage: patch.notesLanguage ?? p.notesLanguage,
-        addToCalendar: patch.addToCalendar ?? p.addToCalendar, showOtherMeetings: patch.showOtherMeetings ?? p.showOtherMeetings, recordOffline: patch.recordOffline ?? p.recordOffline,
-        sounds: patch.sounds ?? p.sounds, notifications: patch.notifications ?? p.notifications, pinned: patch.pinned ?? p.pinned, groups: patch.groups ?? p.groups, model: patch.model === undefined ? p.model : patch.model
+        addToCalendar: patch.addToCalendar ?? p.addToCalendar, showOtherMeetings: patch.showOtherMeetings ?? p.showOtherMeetings,
+        showSoloEvents: patch.showSoloEvents ?? p.showSoloEvents, recordOffline: patch.recordOffline ?? p.recordOffline,
+        sounds: patch.sounds ?? p.sounds, notifications: patch.notifications ?? p.notifications, pinned: patch.pinned ?? p.pinned, groups: patch.groups ?? p.groups, model: patch.model === undefined ? p.model : patch.model,
+        notificationsPausedUntil: patch.notificationsPausedUntil === undefined ? p.notificationsPausedUntil : patch.notificationsPausedUntil
       };
       return w.prefs;
     }),
@@ -457,22 +498,39 @@ export const standIn: AlcoveApi = {
       const held = agentsFor(w);
       held.save(held.connections.filter((connection) => connection.id !== id));
     }),
+    update: (id, input) => answer((w) => {
+      AgentConnectionIdSchema.parse(id);
+      const parsed = AgentUpdateInputSchema.parse(input);
+      const held = agentsFor(w);
+      const found = held.connections.find((connection) => connection.id === id);
+      if (!found) throw refused('not-found', 'That connection is no longer available.');
+      const expiresAt = parsed.renew ? new Date(Math.max(Date.parse(found.expiresAt), Date.now() + 30 * 86_400_000)).toISOString() : found.expiresAt;
+      const next: AgentConnection = { ...found, scopes: parsed.scopes ?? found.scopes, expiresAt };
+      held.save(held.connections.map((connection) => (connection.id === id ? next : connection)));
+      return next;
+    }),
+    activity: (query) => answer((w) => activityOf(w, query)),
     authorization: (requestId) => answer((w) => {
       AgentAuthorizationIdSchema.parse(requestId);
-      if (requestId === EXPIRED_AGENT_REQUEST) throw refused('not-found', 'This connection request has expired.');
+      const asked = agentRequest(requestId);
+      if (!asked || requestId === EXPIRED_AGENT_REQUEST) throw refused('not-found', 'This connection request has expired.');
       if (!w.session) throw new AlcoveApiError('unauthenticated', 'Sign in to Alcove first.');
-      return { ownerId: w.session.ownerId, accountEmail: w.session.user.email, clientName: 'Workspace assistant', scopes: ['notes:read', 'meetings:read', 'calendar:read'], expiresAt: new Date(Date.now() + 10 * 60_000).toISOString() };
+      if (answered(w, requestId)) throw refused('not-found', 'This connection request has expired.');
+      return { ownerId: w.session.ownerId, accountEmail: w.session.user.email, clientName: asked.clientName, redirectHost: asked.redirectHost, scopes: [...asked.scopes], expiresAt: new Date(Date.now() + 10 * 60_000).toISOString() };
     }),
     decide: (requestId, decision) => answer((w) => {
       AgentAuthorizationIdSchema.parse(requestId);
-      if (requestId === EXPIRED_AGENT_REQUEST) throw refused('not-found', 'This connection request has expired.');
+      const asked = agentRequest(requestId);
+      if (!asked || requestId === EXPIRED_AGENT_REQUEST) throw refused('not-found', 'This connection request has expired.');
       if (decision.ownerId !== w.session?.ownerId) throw refused('conflict', 'Your account changed. Review this connection again.');
       // Story accounts have descriptive IDs, so compare those directly while parsing the actual permission choices.
       const allow = AgentDecisionInputSchema.shape.allow.parse(decision.allow);
       const scopes = AgentDecisionInputSchema.shape.scopes.parse(decision.scopes);
-      const requested = new Set(['notes:read', 'meetings:read', 'calendar:read']);
-      if (scopes.some((scope) => !requested.has(scope)) || new Set(scopes).size !== scopes.length || (allow && !scopes.length)) throw refused('invalid', 'Choose only permissions this agent requested.');
-      return { redirectUrl: `https://agent.example/callback?${allow ? 'code=storybook-preview' : 'error=access_denied'}` };
+      if (scopes.some((scope) => !asked.scopes.includes(scope)) || new Set(scopes).size !== scopes.length || (allow && !scopes.length)) throw refused('invalid', 'Choose only permissions this agent requested.');
+      if (!answerRequest(w, requestId)) throw refused('not-found', 'This connection request has expired.');
+      if (allow) { const held = agentsFor(w); held.save([...held.connections, connectionAllowed(asked.clientName, scopes)]); }
+      // The agent waits at its own address, outside Storybook: here it's a place in this frame, so the story stays put.
+      return { redirectUrl: new URL(`#agent-callback-${allow ? 'allowed' : 'access-denied'}`, location.href).href };
     })
   },
   people: {
@@ -498,34 +556,7 @@ export const standIn: AlcoveApi = {
     past: () => answer((w) => w.meetings.filter((m) => m.status === 'ended').sort((a, b) => b.startsAt.localeCompare(a.startsAt))),
     get: (id: ID) => answer((w) => meetingIn(w, id)),
     byCode: (code: string) => answer((w) => byCode(w, code) ?? null),
-    create: (input: MeetingCreate) => answer((w) => { const m = meetingFrom(w, input); w.meetings.push(m); return m; }),
-    /**
-     * An ended call's notes, filed by its organizer when it had no workspace: in one of theirs they can edit in, or a new one.
-     * The call's folder goes at the top, holding its note, and the workspace is the call's, and its series' later calls'.
-     */
-    file: (id: ID, to: FileNotes) => answer((w) => {
-      const m = meetingIn(w, id);
-      if (!m.isOrganizer) throw refused('not-found', 'That meeting isn’t there.');
-      if (m.status !== 'ended') throw refused('conflict', 'This call isn’t over yet.');
-      const noteId = m.noteId ?? w.notes.find((n) => n.meetingId === id)?.id;
-      if (!noteId) throw refused('conflict', 'This call has no notes to file.');
-      if (m.workspaceId && w.workspaces.some((x) => x.id === m.workspaceId)) throw refused('conflict', 'These notes are in a workspace already.');
-      const folder = { name: folderName(m.title, m.startsAt), noteId };
-      let workspaceId: string;
-      if ('workspaceId' in to) {
-        const there = w.workspaces.find((x) => x.id === to.workspaceId && (x.role === 'admin' || x.role === 'edit'));
-        if (!there) throw refused('not-found', 'That workspace isn’t there, or you can’t make things in it.');
-        const now = new Date().toISOString();
-        there.items = [{
-          id: nextId('folder').padEnd(22, '0'), kind: 'folder', name: folder.name, parent: null, by: null, createdAt: now, editedAt: now, trashedAt: null, trashedBy: null,
-          restricted: false, role: 'edit', call: { startedAt: m.startsAt, on: false, here: false, noteId }
-        }, ...there.items];
-        workspaceId = there.id;
-      } else workspaceId = spaceFor(w, { title: m.title, at: m.startsAt, people: m.guests.length + 1 }, folder);
-      const next: Meeting = { ...m, workspaceId };
-      w.meetings = w.meetings.map((x) => (x.id === id || (m.seriesId && x.seriesId === m.seriesId && x.startsAt > m.startsAt) ? { ...x, workspaceId } : x));
-      return next;
-    }),
+    create: (input: MeetingInput) => answer((w) => { const m = meetingFrom(w, input); w.meetings.push(m); return m; }),
     update: (id: ID, input: Patch<MeetingInput>, _opts?: { scope?: ChangeScope | undefined }) => answer((w) => {
       const m = meetingIn(w, id);
       const startsAt = input.startsAt ?? m.startsAt;
@@ -533,7 +564,8 @@ export const standIn: AlcoveApi = {
       const guests = input.guests ? input.guests.map(personAt) : m.guests;
       const next: Meeting = {
         ...m, title: input.title ?? m.title, startsAt, endsAt: addMinutes(startsAt, minutes), guests, guestCount: guests.length, notes: input.notes ?? m.notes,
-        choices: input.choices ?? m.choices, joinMuted: input.joinMuted ?? m.joinMuted, documents: input.documents ? documentsFor(w, input.documents) : m.documents
+        choices: input.choices ?? m.choices, joinMuted: input.joinMuted ?? m.joinMuted, documents: input.documents ? documentsFor(w, input.documents) : m.documents,
+        ...followGuests(m, guests.map((g) => g.email), startsAt !== m.startsAt)
       };
       w.meetings = w.meetings.map((x) => (x.id === id ? next : x));
       return next;
@@ -552,10 +584,14 @@ export const standIn: AlcoveApi = {
       w.meetings = [...w.meetings.map((x) => (x.id === id ? { ...x, seriesId } : x)), next];
       w.notes = w.notes.map((n) => (n.meetingId === id ? { ...n, seriesId } : n));
       return next;
-    })
+    }),
+
+    propose: (id: ID, startsAt: string) => answer((w) => proposeIn(w, id, startsAt)),
+    answerProposal: (id: ID, email: string, reply: ProposalAnswer) => answer((w) => answerProposalIn(w, id, email, reply)),
+
   },
   calendar: {
-    get: () => answer((w) => ({ ...w.calendar, events: w.calendar.events.filter((e) => Date.parse(e.endsAt) > Date.now()) })),
+    get: (range) => answer((w) => ({ ...w.calendar, events: w.calendar.events.filter((e) => (range ? e.endsAt > range.from && e.startsAt < range.to : Date.parse(e.endsAt) > Date.now())) })),
     busy: (emails: string[], range) => answer((w) => busyFor(w, emails, range)),
     connectUrl: () => '#connecting-google-calendar',
     disconnect: () => answer((w) => { w.calendar = { source: 'google', needsAccess: true, events: [] }; return w.calendar; }),
@@ -584,7 +620,7 @@ export const standIn: AlcoveApi = {
       return doorOf(w, code);
     }, 'anyone'),
     series: (code: string) => answer((w) => { const m = byCode(w, code); return m?.seriesId && w.notes.some((n) => n.seriesId === m.seriesId) ? seriesIn(w, m.seriesId) : null; }),
-    join: async (code: string, opts: { name?: string | undefined }): Promise<CallSession> => {
+    join: async (code: string, opts: { name?: string | undefined; previous?: string | undefined }): Promise<CallSession> => {
       const m = await answer((w) => {
         const found = byCode(w, code);
         if (!found) throw refused('not-found', 'That call link doesn’t lead anywhere.');
@@ -606,7 +642,9 @@ export const standIn: AlcoveApi = {
       const move = new ScriptedMove(spec);
       moves.add(move);
       return move;
-    }
+    },
+    // A call before it starts, made ready from its page (S3 · A call).
+    ready: (meetingId: ID, make: CallAheadMake, name?: string | undefined) => answer((w) => readyIn(w, meetingId, make, name))
   },
   rings: {
     live: () => {
@@ -630,7 +668,7 @@ export const standIn: AlcoveApi = {
     }
   },
   notes: {
-    list: (query) => answer((w) => found(w, query?.kind, query?.text)),
+    list: (query) => answer((w) => found(w, query?.kind, query?.text, query?.by)),
     // A note of the team's opens for a licensed member: to read and ask about.
     get: (id: ID) => answer((w) => teamNoteIn(w, id) ?? noteIn(w, id)),
     progress: (id: ID): AsyncIterable<NoteProgress> => progressOf(id),
@@ -700,13 +738,13 @@ export const standIn: AlcoveApi = {
       const actions = n.actions.map((a) => {
         if (a.id !== actionId) return a;
         const owner = p.owner === null ? undefined : p.owner ? personAt(p.owner) : a.owner?.person;
-        const changes = [...a.changes, ...(p.takeOn ? [changeBy(n, 'took-on')] : []), ...(p.done !== undefined ? [changeBy(n, p.done ? 'done' : 'undone')] : []),
+        const changes = [...a.changes, ...(p.takeOn ? [changeBy(n, 'took-on')] : []), ...(p.takeOn === false && a.takenOn ? [changeBy(n, 'reopened')] : []), ...(p.done !== undefined ? [changeBy(n, p.done ? 'done' : 'undone')] : []),
           ...(p.owner !== undefined ? [changeBy(n, p.owner === null ? 'declined' : 'reassigned')] : []), ...(p.due !== undefined ? [changeBy(n, 'due', { after: p.due ?? '' })] : []),
           ...(p.text !== undefined ? [changeBy(n, 'reworded', { before: a.text, after: p.text })] : [])];
         const { owner: _was, due: _due, ...rest } = a;
         const due = p.due === null ? undefined : p.due ?? a.due;
         return {
-          ...rest, revision: nextId('revision'), text: p.text ?? a.text, done: p.done ?? a.done, takenOn: p.takeOn ? true : p.owner !== undefined || (a.owner?.person?.email !== me().email && (p.text !== undefined || p.due !== undefined)) ? false : a.takenOn,
+          ...rest, revision: nextId('revision'), text: p.text ?? a.text, done: p.done ?? a.done, takenOn: p.takeOn ? true : p.takeOn === false ? false : p.owner !== undefined || (a.owner?.person?.email !== me().email && (p.text !== undefined || p.due !== undefined)) ? false : a.takenOn,
           ...(owner ? { owner: { name: owner.name, person: owner } } : {}), ...(due ? { due } : {}), changes
         };
       });
@@ -746,8 +784,13 @@ export const standIn: AlcoveApi = {
       if (w.writing?.id === noteId) w.writing = null;
       return { ...n, writingAgain: false };
     }),
-    ask: (noteId: ID, question: string) => stream((w) => asWritten(answerAbout(teamNoteIn(w, noteId) ?? noteIn(w, noteId), question))),
+    ask: (noteId: ID, question: string) => stream((w) => {
+      const n = teamNoteIn(w, noteId) ?? noteIn(w, noteId);
+      mayAsk(w);
+      return asWritten(answerAbout(n, question));
+    }),
     // Your notes, the ones shared with you and your team's; the ones @-referenced first, and one you can't open refused.
+    // With written notes to answer from and none of your notes left this period, it's refused before anything is written.
     askAll: (question: string, refs?: ID[]) => stream((w) => {
       const team = teamNotesFor(w).filter((n) => n.received?.role === 'team');
       const all = [...w.notes, ...team];
@@ -756,6 +799,7 @@ export const standIn: AlcoveApi = {
         if (!n) throw refused('not-found', 'One of the notes you referred to isn’t there, or you can’t open it.');
         return n;
       });
+      if (all.some((n) => n.status === 'ready')) mayAsk(w);
       const about = named.filter((n) => n.status === 'ready').flatMap((n) => answerAbout(n, question));
       return asWritten([...about, ...(about.length ? [] : answerAcross({ ...w, notes: all }, question))]);
     }),
@@ -781,7 +825,7 @@ export const standIn: AlcoveApi = {
       if (!e) throw refused('not-found', 'That isn’t in your notes any more.');
       const text = e.kind === 'note' ? e.text : e.kind === 'bookmark' ? e.label : e.answer;
       const moments = e.kind === 'bookmark' ? (e.moment ? [e.moment] : []) : e.kind === 'answer' ? e.moments : [];
-      return { entryId, text, moments, destination: { noteId: id, title: n.title }, audience: n.people, seal: `seal-${entryId}` };
+      return { entryId, text, moments, destination: { noteId: id, title: n.title }, audience: n.people, team: teamReading(w, n), seal: `seal-${entryId}` };
     }),
     addToShared: (id: ID, entryId: ID, body: PromoteBody) => changeNote(id, (n, w) => {
       const e = (w.personal[id] ?? []).find((x) => x.id === entryId);
@@ -817,7 +861,7 @@ export const standIn: AlcoveApi = {
     sharedAudience: (id: ID) => answer((w): SharedAudience => {
       const n = noteIn(w, id);
       if (n.status !== 'ready') throw refused('conflict', 'These notes are still being written. You can add this once they are.');
-      return { audience: n.people, seal: audienceSeal(n) };
+      return { audience: n.people, team: teamReading(w, n), seal: audienceSeal(n) };
     }),
     writeShared: (id: ID, body: SharedWrite) => changeNote(id, (n) => {
       if (n.status !== 'ready') throw refused('conflict', 'These notes are still being written. You can add this once they are.');
@@ -828,12 +872,20 @@ export const standIn: AlcoveApi = {
       w.personal[id] = (w.personal[id] ?? []).map((x) => (x.shared?.additionId === additionId ? { ...x, shared: null } : x));
       return { ...n, additions: n.additions.filter((a) => a.id !== additionId) };
     }),
-    delete: (id: ID) => answer((w) => { noteIn(w, id); w.notes = w.notes.filter((n) => n.id !== id); })
+    delete: (id: ID) => answer((w) => { noteIn(w, id); w.notes = w.notes.filter((n) => n.id !== id); }),
+
+    // The stand-in keeps no video of a share: what's saved is silence as long as its part of the recording, as replay plays.
+    screenVideo: (id: ID, share: ID, segment: number) => answer((w) => {
+      const part = noteIn(w, id).shares.find((s) => s.id === share)?.segments.find((g) => g.segment === segment);
+      return part ? part.until - part.at : 60;
+    }).then(quietAudio),
+
   },
   series: {
     get: (id: ID) => answer((w) => seriesIn(w, id)),
     ask: (id: ID, question: string): AsyncIterable<SeriesAnswerPart> => stream((w) => {
       const s = seriesIn(w, id);
+      mayAsk(w);
       const parts = answerAcross({ ...w, notes: w.notes.filter((n) => n.seriesId === id) }, question);
       return parts.flatMap((p): SeriesAnswerPart[] => {
         if (p.type === 'text') return [p];
@@ -841,7 +893,8 @@ export const standIn: AlcoveApi = {
         const n = s.notes.find((x) => x.id === p.noteId);
         return n ? [{ type: 'source', noteId: n.id, title: n.title, startedAt: n.startedAt, at: p.at }] : [];
       });
-    })
+    }),
+
   },
   workspaces: {
     list: () => answer(spaces.workspaceList),
@@ -849,30 +902,30 @@ export const standIn: AlcoveApi = {
     create: (name: string, opts?: { access?: TeamAccess | undefined }) => answer((w) => {
       const id = nextId('ws');
       const teamAccess = licensed(w) ? opts?.access ?? 'team' : null;
-      w.workspaces.push({ id, name, role: 'admin', people: teamAccess === 'team' ? licensedCount(w) : 1, teamAccess, items: [], createdAt: new Date().toISOString(), call: null });
+      w.workspaces.push({ id, name, role: 'admin', inCall: false, people: teamAccess === 'team' ? licensedCount(w) : 1, teamAccess, items: [], createdAt: new Date().toISOString(), call: null });
       return { id };
     }),
     setTeamAccess: (id: ID, access: TeamAccess) => answer((w) => {
       const space = spaces.treeOf(id);
-      if (space.role !== 'admin') throw refused('forbidden', 'Only the workspace’s admins can change who’s in it.');
-      if (space.teamAccess === null) throw refused('invalid', 'This workspace isn’t a team’s.');
+      if (space.role !== 'admin') throw refused('forbidden', 'Only an admin can do that.');
+      if (space.teamAccess === null) throw refused('conflict', 'This workspace isn’t a team’s, so there’s no team to open it to.');
       space.teamAccess = access;
       space.people = access === 'team' ? Math.max(space.people ?? 1, licensedCount(w)) : space.people;
     }),
-    get: (id: ID) => answer(() => spaces.treeFor(id)),
+    get: (id: ID, o) => answer(() => spaces.treeFor(id), asWho(o)),
     presenterNotes: {
       frames: (_id: ID, boardId: ID) => answer(() => ({ frames: spaces.presenterFrameNotes(boardId) })),
       setFrame: (_id: ID, boardId: ID, frame: string, text: string) => answer(() => { spaces.keepFrameNotes(boardId, frame, text); })
     },
     media: {
-      upload: async (id: ID, documentId: ID, file: File, o) => { await answer(() => null); return spaces.upload(id, documentId, file, o); },
+      upload: async (id: ID, documentId: ID, file: File, o) => { await answer(() => null, asWho(o)); return spaces.upload(id, documentId, file, o); },
       // A `download` needs nothing more here: the URL is this page's own, so the link the app follows saves it under its name.
-      url: async (id: ID, documentId: ID, mediaId: ID) => { await answer(() => null); return spaces.urlOf(id, documentId, mediaId); },
-      picture: async (id: ID, documentId: ID, mediaId: ID, o) => { await answer(() => null); return spaces.pictureOf(id, documentId, mediaId, o); },
-      preview: async (id: ID, documentId: ID, mediaId: ID, o) => { await answer(() => null); return spaces.previewOf(id, documentId, mediaId, o); },
-      attach: (id: ID, documentId: ID, mediaId: ID) => answer(() => spaces.attach(id, documentId, mediaId)),
-      list: (id: ID) => answer(() => spaces.mediaIn(id)),
-      remove: (id: ID, documentId: ID, mediaId: ID, o) => answer(() => spaces.removeMedia(id, documentId, mediaId, o))
+      url: async (id: ID, documentId: ID, mediaId: ID, o) => { await answer(() => null, asWho(o)); return spaces.urlOf(id, documentId, mediaId); },
+      picture: async (id: ID, documentId: ID, mediaId: ID, o) => { await answer(() => null, asWho(o)); return spaces.pictureOf(id, documentId, mediaId, o); },
+      preview: async (id: ID, documentId: ID, mediaId: ID, o) => { await answer(() => null, asWho(o)); return spaces.previewOf(id, documentId, mediaId, o); },
+      attach: (id: ID, documentId: ID, mediaId: ID, o) => answer(() => spaces.attach(id, documentId, mediaId), asWho(o)),
+      list: (id: ID, o) => answer(() => spaces.mediaIn(id), asWho(o)),
+      remove: (id: ID, documentId: ID, mediaId: ID, o) => answer(() => spaces.removeMedia(id, documentId, mediaId, o), asWho(o))
     },
     ask: (_id: ID, _documentId: ID, body: DocAskBody) => (async function* (): AsyncIterable<DocAskPart> {
       if (body.action === 'checklist') { for (const line of body.text.split(/[.\n]+/).map((x) => x.trim()).filter(Boolean)) yield { type: 'todo', text: line }; return; }
@@ -898,18 +951,18 @@ export const standIn: AlcoveApi = {
     setRole: (id: ID) => answer(() => { spaces.treeOf(id); }),
     removePerson: (id: ID) => answer(() => { spaces.treeOf(id); }),
     items: {
-      get: (id: ID, itemId: ID) => answer(() => {
+      get: (id: ID, itemId: ID, o) => answer(() => {
         const item = spaces.treeOf(id).items.find((i) => i.id === itemId);
         if (!item) throw refused('not-found', 'That isn’t there, or you can’t open it.');
         return item;
-      }),
-      create: (id: ID, input) => answer(() => spaces.createItem(id, input)),
-      rename: (id: ID, itemId: ID, name: string) => answer(() => spaces.renameItem(id, itemId, name)),
-      move: (id: ID, itemId: ID, to) => answer(() => spaces.moveItem(id, itemId, to)),
-      duplicate: (id: ID, itemId: ID) => answer(() => spaces.duplicateItem(id, itemId)),
-      trash: (id: ID, itemId: ID) => answer(() => spaces.trashItem(id, itemId)),
-      restore: (id: ID, itemId: ID) => answer(() => spaces.restoreItem(id, itemId)),
-      deleteForever: (id: ID, itemId: ID) => answer(() => spaces.deleteItem(id, itemId))
+      }, asWho(o)),
+      create: (id: ID, input, o) => answer(() => { mayChange(id, o); return spaces.createItem(id, input); }, asWho(o)),
+      rename: (id: ID, itemId: ID, name: string, o) => answer(() => spaces.renameItem(id, itemId, name), asWho(o)),
+      move: (id: ID, itemId: ID, to, o) => answer(() => { mayChange(id, o); spaces.moveItem(id, itemId, to); }, asWho(o)),
+      duplicate: (id: ID, itemId: ID, o) => answer(() => { mayChange(id, o); return spaces.duplicateItem(id, itemId); }, asWho(o)),
+      trash: (id: ID, itemId: ID, o) => answer(() => { mayChange(id, o); spaces.trashItem(id, itemId); }, asWho(o)),
+      restore: (id: ID, itemId: ID, o) => answer(() => spaces.restoreItem(id, itemId), asWho(o)),
+      deleteForever: (id: ID, itemId: ID) => answer(() => { mayChange(id, undefined, true); spaces.deleteItem(id, itemId); })
     },
     share: {
       list: (id: ID, documentId: ID) => answer(() => spaces.shareOf(id, documentId)),
@@ -917,21 +970,31 @@ export const standIn: AlcoveApi = {
       remove: (_id: ID, documentId: ID, entryId: ID) => answer(() => spaces.unshare(documentId, entryId)),
       restrict: (id: ID, documentId: ID, restricted: boolean) => answer(() => spaces.restrict(id, documentId, restricted))
     },
-    mention: (id: ID, documentId: ID, tag) => answer(() => spaces.mention(id, documentId, tag)),
-    ids: (id: ID, emails: string[]) => answer(() => spaces.idsIn(id, emails)),
+    mention: (id: ID, documentId: ID, tag, o) => answer(() => spaces.mention(id, documentId, tag), asWho(o)),
+    ids: (id: ID, emails: string[], o) => answer(() => spaces.idsIn(id, emails), asWho(o)),
     mentions: () => answer(() => spaces.mentionsEverywhere()),
-    mentionSeen: (_id: ID, mentionId: ID) => answer(() => spaces.seeMention(mentionId)),
+    mentionSeen: (_id: ID, mentionId: ID, o) => answer(() => spaces.seeMention(mentionId), asWho(o)),
     live: (id: ID) => spaces.liveWorkspace(id),
-    document: async (id: ID, documentId: ID) => { await answer(() => null); return spaces.openDocument(id, documentId); },
+    document: async (id: ID, documentId: ID, o) => { await answer(() => null, asWho(o)); return spaces.openDocument(id, documentId); },
     saveCopy: (id: ID, input) => answer(() => spaces.saveCopy(id, input)),
-    versions: (id: ID, documentId: ID) => answer(() => spaces.versionsOf(id, documentId)),
-    version: (id: ID, documentId: ID, versionId: ID) => answer(() => spaces.versionOf(id, documentId, versionId)),
-    restoreVersion: (id: ID) => answer(() => { spaces.treeOf(id); }),
-    searchText: (id: ID) => spaces.searchText(id)
+    versions: (id: ID, documentId: ID, o) => answer(() => spaces.versionsOf(id, documentId), asWho(o)),
+    version: (id: ID, documentId: ID, versionId: ID, o) => answer(() => spaces.versionOf(id, documentId, versionId), asWho(o)),
+    restoreVersion: (id: ID, _documentId: ID, _versionId: ID, o) => answer(() => { spaces.treeOf(id); }, asWho(o)),
+    searchText: (id: ID) => spaces.searchText(id),
+
+    previews: (id: ID, items: ID[]) => answer((w) => previewsIn(w, id, items)),
+    trashed: () => answer(trashIn),
+
+    about: (id: ID) => answer((w) => { spaces.treeOf(id); return w.workspaces.find((x) => x.id === id)?.about ?? ''; }),
+    setAbout: (id: ID, about: string) => answer((w) => {
+      spaces.treeOf(id);
+      const space = w.workspaces.find((x) => x.id === id);
+      if (space) space.about = about.replace(/\s+/g, ' ').trim();
+    }),
   },
   plans: {
     // The payments playing out catch up with the clock whenever the plan or a payment is read (api/payments.ts).
-    plan: () => answer((w) => { settlePayments(w); return w.plan; }),
+    plan: () => answer((w) => { settlePayments(w); return planOf(w); }),
     offers: () => answer((w) => w.payments.offers),
     buyPro: (months, microUsdPerMonth) => answer((w) => buyNow(w, { kind: 'pro', months, microUsdPerMonth })),
     refundPro: () => answer((w) => {
@@ -941,15 +1004,22 @@ export const standIn: AlcoveApi = {
       const back = later.reduce((sum, m) => sum + m.microUsd, 0);
       const { balance } = w.plan;
       const entry = { id: freshEntryId(w), at: new Date(now).toISOString(), label: `Pro refunded, ${later.length} ${later.length === 1 ? 'month' : 'months'}`, microUsd: back };
-      const refunded = { ...w.plan, balance: { microUsd: balance.microUsd + back, history: [entry, ...balance.history] } };
+      // As the server does: renewing goes off, so what was refunded isn't bought back, and a notice that Pro was renewed
+      // into a month refunded goes.
+      const ends = new Set(later.map((m) => m.to));
+      const refunded = {
+        ...w.plan, balance: { microUsd: balance.microUsd + back, history: [entry, ...balance.history] }, pro: { ...w.plan.pro, renew: false },
+        notices: w.plan.notices.filter((n) => !(n.kind === 'pro-renewed' && n.until !== null && ends.has(n.until)))
+      };
       w.plan = withProMonths(refunded, w.plan.pro.months.filter((m) => Date.parse(m.from) <= now), now);
-      return w.plan;
+      return planOf(w);
     }),
-    setRenew: (renew) => answer((w) => { w.plan = { ...w.plan, pro: { ...w.plan.pro, renew } }; return w.plan; }),
+    setRenew: (renew) => answer((w) => { w.plan = { ...w.plan, pro: { ...w.plan.pro, renew } }; return planOf(w); }),
+    chose: () => answer((w) => { w.plan = { ...w.plan, choose: false }; return planOf(w); }),
     dismissNotice: (id) => answer((w) => {
-      if (!w.plan.notices.some((n) => n.id === id)) throw refused('not-found', 'That notice isn’t there any more.');
+      if (!w.plan.notices.some((n) => n.id === id)) throw refused('not-found', 'That notice doesn’t exist, or you don’t have access to it.');
       w.plan = { ...w.plan, notices: w.plan.notices.filter((n) => n.id !== id) };
-      return w.plan;
+      return planOf(w);
     }),
     routes: () => answer(paymentRoutes),
     buyHours: (packs, microUsdPerPack, minutesPerPack) => answer((w) => buyNow(w, { kind: 'hours', packs, microUsdPerPack, minutesPerPack })),
@@ -993,14 +1063,15 @@ export const standIn: AlcoveApi = {
     remove: (memberId: ID) => answer((w) => teamsApi.remove(w, memberId)),
     leave: () => answer(teamsApi.leave),
     delete: () => answer(teamsApi.delete),
-    buyLicenses: (count: number, microUsdPerLicense: number) => answer((w) => teamsApi.buyLicenses(w, count, microUsdPerLicense)),
+    buyLicenses: (count: number, microUsdPerLicense: number, periods?: number) => answer((w) => teamsApi.buyLicenses(w, count, microUsdPerLicense, periods ?? 1)),
     refundLicenses: () => answer(teamsApi.refundLicenses),
     setAutoPurchase: (on: boolean) => answer((w) => teamsApi.setAutoPurchase(w, on)),
     notes: () => answer(teamsApi.notes)
   },
   models: { list: () => answer(() => AI_MODELS) },
   trust: { attestation: attest },
-  featureFlags: { on: () => answer((w) => w.featureFlags ?? []) },
+  /* Signed out too, as the API answers: a guest's call reads them as it opens. */
+  featureFlags: { on: () => answer((w) => w.featureFlags ?? [], 'anyone') },
   diagnostics: { report: () => Promise.resolve() }
 };
 
@@ -1030,4 +1101,38 @@ async function* progressOf(id: string): AsyncIterable<NoteProgress> {
   w.notes = w.notes.map((n) => (n.id === id ? written : n));
   w.writing = null;
   yield steps(4, true);
+}
+
+/**
+ * The organizer's view of who answered and who asked to move a call, kept in step with a change to it as the server
+ * keeps it: someone taken off goes, answer and request with them, and a call that moves lets go of every request.
+ */
+function followGuests(m: Meeting, emails: string[], moved: boolean): Pick<Meeting, 'answers' | 'proposals'> {
+  if (!m.isOrganizer) return {};
+  return {
+    answers: emails.map((email) => m.answers?.find((a) => a.email === email) ?? { email, answer: null }),
+    proposals: moved ? [] : (m.proposals ?? []).filter((p) => emails.includes(p.email))
+  };
+}
+/** You, invited, asking the organizer to move a call: they see it on theirs, and you see your own. */
+function proposeIn(w: World, id: string, startsAt: string): Meeting {
+  const m = meetingIn(w, id);
+  if (m.isOrganizer) throw refused('not-found', 'That call isn’t there any more.');
+  if (m.offer) throw refused('conflict', 'A time is still being picked for this call.');
+  if (Date.parse(startsAt) <= Date.now()) throw refused('invalid', 'Ask for a time that’s still to come.');
+  const next: Meeting = { ...m, proposals: [{ email: me().email, startsAt: new Date(startsAt).toISOString() }] };
+  w.meetings = w.meetings.map((x) => (x.id === id ? next : x));
+  return next;
+}
+/** The organizer answering a request: Move it moves the call there and lets go of every request; Keep lets go of this one. */
+function answerProposalIn(w: World, id: string, email: string, reply: ProposalAnswer): Meeting {
+  const m = meetingIn(w, id);
+  const asked = m.isOrganizer ? m.proposals?.find((p) => p.email === email) : undefined;
+  if (!asked) throw refused('not-found', 'That request to move the call doesn’t exist, or you don’t have access to it.');
+  const minutes = Math.round((Date.parse(m.endsAt) - Date.parse(m.startsAt)) / 60_000);
+  const next: Meeting = reply === 'move'
+    ? { ...m, startsAt: asked.startsAt, endsAt: addMinutes(asked.startsAt, minutes), proposals: [] }
+    : { ...m, proposals: (m.proposals ?? []).filter((p) => p.email !== email) };
+  w.meetings = w.meetings.map((x) => (x.id === id ? next : x));
+  return next;
 }

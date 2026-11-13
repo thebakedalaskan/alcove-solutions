@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The call, one moment at a time</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="call.css">
+<link rel="stylesheet" href="end.css">
+<script src="icons.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="nc stage is-wide" style="width: 1440px; height: 900px" onClick="{{v.shut}}">
+
+<header class="nc-top">
+<span class="nc-ttl">Launch review</span>
+<span class="nc-clock">24:18</span>
+<span class="nc-vr"></span>
+<span class="nc-sign"><i></i>Notes on</span>
+<button type="button" class="nc-shield" aria-label="Confidential compute, verified"><svg class="i" width="19" height="19" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg></button>
+<div class="nc-end">
+<button type="button" class="nc-view" aria-label="Your view"><svg class="i" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.viewAuto}}"></path></svg>View<svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.down}}"></path></svg></button>
+<div class="nc-yours" role="group" aria-label="What opens here, on your screen">
+<button type="button" class="{{v.boardBtn}}" onClick="{{v.openBoard}}"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.presentation}}"></path></svg><span class="yl">Board</span></button>
+<button type="button" class="{{v.wsBtn}}" onClick="{{v.openWs}}"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.folderOpen}}"></path></svg><span class="yl">Workspace</span></button>
+<span class="nc-ysep"></span>
+<button type="button" class="nc-yb has-l"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.notebook}}"></path></svg><span class="yl">Notes</span></button>
+<button type="button" class="nc-yb has-l"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chat}}"></path></svg><span class="yl">Chat</span><span class="badge">2</span></button>
+<span class="nc-ysep"></span>
+<button type="button" class="nc-yb is-faces" aria-label="People in this call"><dc-import name="Faces" who="{{v.facesWho}}" size="24" max="4" ring="#10192B" hint-size="78px,26px"></dc-import><span>4</span></button>
+</div>
+</div>
+</header>
+
+<sc-for list="{{v.tiles}}" as="t" hint-placeholder-count="4">
+<div class="{{t.cls}}" style="{{t.style}}"><div class="fig"><dc-import name="Faces" who="{{t.who}}" figure="{{true}}" hint-size="100%,100%"></dc-import></div><span class="ac-tile-name"><sc-if value="{{t.talk}}" hint-placeholder-val="{{false}}"><span class="ac-level" aria-hidden="true"><i></i><i></i><i></i></span></sc-if>{{t.name}}</span></div>
+</sc-for>
+
+<section class="nc-frame" style="left: 16px; top: 64px; width: 1148px; height: 752px" aria-label="{{v.f.name}}, only on your screen">
+<div class="nc-fbar">
+<div class="nc-fwho">
+<span class="nc-fic"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{v.f.icon}}"></path></svg></span>
+<button type="button" class="nc-fname" onClick="{{v.f.nameClick}}" aria-haspopup="menu"><span class="nm">{{v.f.name}}</span><svg class="i" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.down}}"></path></svg></button>
+<span class="nc-fmeta">Only on your screen</span>
+<button type="button" class="en-acc" onClick="{{v.f.accClick}}" title="Who’s in it"><svg class="i" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.people}}"></path></svg>{{v.f.acc}}</button>
+</div>
+<div class="nc-fend">
+<button type="button" class="nc-present" title="Everyone follows you"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.presentation}}"></path></svg>Present</button>
+<button type="button" class="nc-fib" aria-label="Focus on it"><svg class="i" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.maximize}}"></path></svg></button>
+<button type="button" class="nc-close" title="Close it"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg>Close</button>
+</div>
+</div>
+<div class="nc-fbody">
+
+<sc-if value="{{v.isWs}}" hint-placeholder-val="{{true}}">
+<div class="th th-ws" style="display: flex">
+<aside class="th-wl">
+<div class="en-tools">
+<button type="button" class="en-find"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg>Find<span class="nc-kbd">⌘K</span></button>
+<button type="button" class="en-add" onClick="{{v.add}}" aria-label="New document, folder or board" title="New document, folder or board · N"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg></button>
+</div>
+<div class="th-wlab en-live">This call<i></i></div>
+<sc-for list="{{v.callRows}}" as="r" hint-placeholder-count="4"><button type="button" class="{{r.cls}}" onClick="{{r.click}}"><svg class="i ic" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.d}}"></path></svg><span class="nm">{{r.t}}</span><sc-if value="{{r.hasWho}}" hint-placeholder-val="{{false}}"><dc-import name="Faces" who="{{r.who}}" size="16" max="3" ring="#10203A" hint-size="40px,18px"></dc-import></sc-if><sc-if value="{{r.hasN}}" hint-placeholder-val="{{false}}"><span class="cnt">{{r.n}}</span></sc-if></button></sc-for>
+<div class="th-wlab">Documents</div>
+<sc-for list="{{v.docRows}}" as="r" hint-placeholder-count="4"><button type="button" class="{{r.cls}}" onClick="{{r.click}}"><svg class="i ic" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.d}}"></path></svg><span class="nm">{{r.t}}</span><sc-if value="{{r.hasWho}}" hint-placeholder-val="{{false}}"><dc-import name="Faces" who="{{r.who}}" size="16" max="3" ring="#10203A" hint-size="40px,18px"></dc-import></sc-if><sc-if value="{{r.hasLk}}" hint-placeholder-val="{{false}}"><span class="lk">{{r.lk}}</span></sc-if></button></sc-for>
+</aside>
+<main class="th-wd">
+<div class="th-wdh"><span class="crumb">{{v.crumb.space}}<svg class="i" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chevron}}"></path></svg><sc-if value="{{v.crumb.inCall}}" hint-placeholder-val="{{false}}">This call<svg class="i" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chevron}}"></path></svg></sc-if><b>{{v.crumb.page}}</b></span><sc-if value="{{v.hasHere}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{v.here}}" size="20" max="4" ring="#172944" hint-size="64px,22px"></dc-import></sc-if></div>
+<div class="th-wpage">
+
+<sc-if value="{{v.isPlan}}" hint-placeholder-val="{{true}}">
+<h1>Launch plan</h1>
+<section class="th-sec">
+<h2>The date</h2>
+<p>The launch moves to Wednesday 18 November. Sign-ups are back up since the pricing change, so the date holds.</p>
+</section>
+<section class="th-sec">
+<h2>What goes out</h2>
+<ul><li>Paying for minutes of notes, with free minutes every month</li><li>A monthly option on the team plan</li><li>The new onboarding, as the design review leaves it</li></ul>
+</section>
+<section class="th-sec is-cur">
+<h2>Who does what</h2>
+<ul><li>Kofi: the status page and the changelog</li><li>Aiko: the empty states, by Thursday</li><li>Priya: the pricing page copy</li><li class="new">Noor: the partner FAQ, by Friday<i class="th-car"></i></li></ul>
+<span class="th-caret" style="--c: #1F8A70"><dc-import name="Faces" who="noor" size="16" ring="transparent" hint-size="16px,18px"></dc-import>{{v.noorLabel}}</span>
+</section>
+<section class="th-sec">
+<h2>Risks</h2>
+<p>Nobody has tried the importer with a large team yet. Maya runs it on Vandelay’s own account on Monday.</p>
+</section>
+</sc-if>
+
+<sc-if value="{{v.isNew}}" hint-placeholder-val="{{false}}">
+<h1 class="is-empty">Untitled<i class="th-car"></i></h1>
+</sc-if>
+
+<sc-if value="{{v.isGoals}}" hint-placeholder-val="{{false}}">
+<h1>Q4 goals</h1>
+<section class="th-sec">
+<h2>What we said we’d do</h2>
+<ul><li>Launch paid minutes of notes</li><li>Two teams of 50 or more on Alcove</li><li>Calls that start in under two seconds</li></ul>
+</section>
+<section class="th-sec">
+<h2>Where it stands</h2>
+<p>The launch is set for 18 November. One large team is trying it; the second starts after the importer’s been run.</p>
+</section>
+</sc-if>
+
+</div>
+</main>
+</div>
+</sc-if>
+
+<sc-if value="{{v.isBoard}}" hint-placeholder-val="{{false}}">
+<div class="th th-board">
+<sc-for list="{{v.bframes}}" as="f" hint-placeholder-count="3">
+<div class="th-f" style="{{f.style}}">
+<h4>{{f.title}}<small>{{f.n}}</small></h4>
+<div class="th-notes">
+<sc-for list="{{f.notes}}" as="n" hint-placeholder-count="2"><div class="{{f.stCls}}">{{n}}</div></sc-for>
+<sc-if value="{{f.hasDraft}}" hint-placeholder-val="{{false}}"><div class="th-st is-draft">Partner FAQ goes out with the launch<i class="th-car"></i><span class="th-you" style="background: #1F8A70">{{v.noorLabel}}</span></div></sc-if>
+</div>
+</div>
+</sc-for>
+<sc-for list="{{v.ptrs}}" as="p" hint-placeholder-count="2">
+<div class="th-ptr" style="{{p.style}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.cursor}}"></path></svg><span><dc-import name="Faces" who="{{p.who}}" size="16" ring="transparent" hint-size="16px,18px"></dc-import>{{p.name}}</span></div>
+</sc-for>
+<div class="th-rail" aria-hidden="true">
+<sc-for list="{{v.rail}}" as="r" hint-placeholder-count="12">
+<sc-if value="{{r.isSep}}" hint-placeholder-val="{{false}}"><hr></sc-if>
+<sc-if value="{{r.isTool}}" hint-placeholder-val="{{true}}"><i class="{{r.cls}}"><svg class="i" width="18" height="18" viewBox="0 0 24 24"><path d="{{r.d}}"></path></svg></i></sc-if>
+</sc-for>
+</div>
+<div class="th-zoom" aria-hidden="true"><i><svg class="i" width="15" height="15" viewBox="0 0 24 24"><path d="{{I.minus}}"></path></svg></i><span>87%</span><i><svg class="i" width="15" height="15" viewBox="0 0 24 24"><path d="{{I.plus}}"></path></svg></i></div>
+</div>
+</sc-if>
+
+</div>
+</section>
+
+<sc-if value="{{v.pop.menu}}" hint-placeholder-val="{{false}}">
+<div class="nc-pop nc-fmenu" style="left: 26px; top: 114px" role="menu" aria-label="{{v.f.name}}">
+<sc-for list="{{v.menuRows}}" as="r" hint-placeholder-count="5"><button type="button" class="nc-mi" role="menuitem" onClick="{{r.click}}"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.d}}"></path></svg><span class="t">{{r.t}}</span><sc-if value="{{r.hasK}}" hint-placeholder-val="{{false}}"><span class="nc-kbd">{{r.k}}</span></sc-if></button></sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{v.pop.people}}" hint-placeholder-val="{{false}}">
+<div class="nc-pop en-people" style="left: 26px; top: 114px" role="dialog" aria-label="Who’s in it" onClick="{{v.keep}}">
+<div class="hd"><b>Who’s in {{v.f.name}}</b><span>Everyone in the call can open it and edit it while they’re here.</span></div>
+<sc-for list="{{v.people}}" as="p" hint-placeholder-count="4"><div class="en-prow"><dc-import name="Faces" who="{{p.who}}" size="30" ring="transparent" hint-size="30px,33px"></dc-import><div><b>{{p.name}}<sc-if value="{{p.guest}}" hint-placeholder-val="{{false}}"><span class="en-tag">Guest</span></sc-if></b><span class="d">{{p.d}}</span></div><span class="role">{{p.role}}</span></div></sc-for>
+<sc-if value="{{v.isArt}}" hint-placeholder-val="{{true}}"><div class="sep"></div><button type="button" class="nc-mi"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.addUser}}"></path></svg><span class="t">Add people, to keep it after the call</span></button></sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{v.pop.switch}}" hint-placeholder-val="{{false}}">
+<div class="nc-pop en-switch" style="left: 26px; top: 114px" role="dialog" aria-label="Switch workspace" onClick="{{v.keep}}">
+<div class="hd"><b>Switch workspace</b><span>Everyone in the call goes with you. The notes stay in this call’s home.</span></div>
+<sc-for list="{{v.spaces}}" as="w" hint-placeholder-count="3"><button type="button" class="en-srow" onClick="{{w.click}}"><span class="sq"><svg class="i" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.folders}}"></path></svg></span><span><b>{{w.name}}</b><small>{{w.sub}}</small></span><sc-if value="{{w.on}}" hint-placeholder-val="{{false}}"><svg class="i ok" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></sc-if></button></sc-for>
+<div class="sep"></div>
+<button type="button" class="nc-mi"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg><span class="t">New workspace</span></button>
+</div>
+</sc-if>
+
+<sc-if value="{{v.pop.switchAsk}}" hint-placeholder-val="{{false}}">
+<div class="nc-pop en-ask" style="left: 26px; top: 114px" role="dialog" aria-label="Switch everyone to Q4 planning?" onClick="{{v.keep}}">
+<div class="hd"><b class="big">Switch everyone to Q4 planning?</b></div>
+<p>Kofi and Noor aren’t in it. While they’re in the call, they can open and edit everything in it.</p>
+<div class="who"><dc-import name="Faces" who="kofi,noor" size="22" ring="#1F2B42" hint-size="40px,24px"></dc-import>Kofi Asante and Noor Haddad, a guest</div>
+<p class="m">Anything closed to some people stays closed. The notes still go to Launch review · 4 Nov.</p>
+<div class="act"><button type="button" class="nc-quiet" onClick="{{v.keepThis}}">Keep this one</button><button type="button" class="nc-press" onClick="{{v.doSwitch}}">Switch</button></div>
+</div>
+</sc-if>
+
+<sc-if value="{{v.pop.boardPick}}" hint-placeholder-val="{{false}}">
+<div class="nc-pop nc-share nc-bpick" style="left: 904px; top: 58px" role="dialog" aria-label="Open a board" onClick="{{v.keep}}">
+<div class="hd"><b>Open a board</b><span>Only on your screen until you present it. Everyone in the call can edit it.</span></div>
+<div class="lab" style="padding-top: 4px">New</div>
+<div class="nc-tpls">
+<sc-for list="{{v.templates}}" as="b" hint-placeholder-count="4"><button type="button" class="nc-tpl" onClick="{{v.newRetro}}"><span class="pic"><sc-for list="{{b.rects}}" as="q" hint-placeholder-count="3"><i style="{{q}}"></i></sc-for></span>{{b.t}}</button></sc-for>
+</div>
+<div class="lab">Your team’s boards</div>
+<button type="button" class="nc-rrow" onClick="{{v.newRetro}}"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.presentation}}"></path></svg><b style="font-weight: 600">Launch retro<span style="margin-left: 8px; font-weight: 500">Priya · Product</span></b><span>Today</span></button>
+<button type="button" class="nc-rrow" onClick="{{v.pickFlow}}"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.presentation}}"></path></svg><b style="font-weight: 600">Onboarding flow<span style="margin-left: 8px; font-weight: 500">Aiko · Design</span></b><span>Mon</span></button>
+<div class="foot"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg>Sealed. Alcove can’t read boards.</div>
+</div>
+</sc-if>
+
+<sc-if value="{{v.pop.boardAsk}}" hint-placeholder-val="{{false}}">
+<div class="nc-pop en-ask" style="left: 932px; top: 58px" role="dialog" aria-label="Let everyone here edit Onboarding flow?" onClick="{{v.keep}}">
+<div class="hd"><b class="big">Let everyone here edit Onboarding flow?</b></div>
+<p>It’s in Design, and Kofi and Noor aren’t. While they’re in the call, they can open it and edit it.</p>
+<div class="who"><dc-import name="Faces" who="kofi,noor" size="22" ring="#1F2B42" hint-size="40px,24px"></dc-import>Kofi Asante and Noor Haddad, a guest</div>
+<div class="act"><button type="button" class="nc-quiet" onClick="{{v.backPick}}">Not now</button><button type="button" class="nc-press" onClick="{{v.openFlow}}">Open it</button></div>
+</div>
+</sc-if>
+
+<sc-if value="{{v.hasToast}}" hint-placeholder-val="{{false}}">
+<div class="nc-toast" role="status" style="left: 32px; bottom: 96px"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.folders}}"></path></svg><span>Everyone’s in Q4 planning now. The notes still go to Launch review · 4 Nov.</span><button type="button" class="nc-tact" onClick="{{v.keepThis}}">Back</button></div>
+</sc-if>
+
+<footer class="nc-dockbar">
+<div class="nc-dock">
+<span class="nc-split"><button type="button" class="nc-db" aria-label="Mute"><svg class="i" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.mic}}"></path></svg></button><button type="button" class="nc-chev" aria-label="Microphone and speaker"><svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.up}}"></path></svg></button></span>
+<span class="nc-split"><button type="button" class="nc-db" aria-label="Turn camera off"><svg class="i" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.video}}"></path></svg></button><button type="button" class="nc-chev" aria-label="Camera and background"><svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.up}}"></path></svg></button></span>
+<span class="nc-dsep"></span>
+<button type="button" class="nc-dword"><svg class="i" width="19" height="19" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.screen}}"></path></svg>Share</button>
+<button type="button" class="nc-db" aria-label="Raise your hand"><svg class="i" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.hand}}"></path></svg></button>
+<button type="button" class="nc-db" aria-label="More"><svg class="i" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.more}}"></path></svg></button>
+<span class="nc-dsep"></span>
+<button type="button" class="nc-leave"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.leave}}"></path></svg>Leave</button>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"step":{"editor":"enum","options":["wsArt","wsMenu","wsPeople","wsNew","wsSwitch","wsSwitchAsk","wsSwitched","boardPick","boardAsk","boardArt","retroArt","wsNoor","wsNoorMenu","wsNoorPeople","boardNoor"],"default":"wsArt"},"$preview":{"width":1440,"height":900}}'>
+/*
+ * The call at one moment, as the end state has it: the call's workspace and board open to everyone in the call, guests
+ * too, for as long as they're in it. Art Vandelay organizes; Priya and Kofi were invited; Noor Haddad is a guest with no
+ * account. `step` picks the moment (or #step= in the address), and alone every control here goes where it would.
+ */
+var STEPS = {
+  wsArt: { me: 'art', open: 'ws', page: 'plan' },
+  wsMenu: { me: 'art', open: 'ws', page: 'plan', pop: 'menu' },
+  wsPeople: { me: 'art', open: 'ws', page: 'plan', pop: 'people' },
+  wsNew: { me: 'art', open: 'ws', page: 'new', made: true },
+  wsSwitch: { me: 'art', open: 'ws', page: 'plan', pop: 'switch' },
+  wsSwitchAsk: { me: 'art', open: 'ws', page: 'plan', pop: 'switchAsk' },
+  wsSwitched: { me: 'art', open: 'ws', space: 'q4', page: 'goals', toast: true },
+  boardPick: { me: 'art', open: 'ws', page: 'plan', pop: 'boardPick' },
+  boardAsk: { me: 'art', open: 'ws', page: 'plan', pop: 'boardAsk' },
+  boardArt: { me: 'art', open: 'board', board: 'flow' },
+  retroArt: { me: 'art', open: 'board', board: 'retro' },
+  wsNoor: { me: 'noor', open: 'ws', page: 'plan' },
+  wsNoorMenu: { me: 'noor', open: 'ws', page: 'plan', pop: 'menu' },
+  wsNoorPeople: { me: 'noor', open: 'ws', page: 'plan', pop: 'people' },
+  boardNoor: { me: 'noor', open: 'board', board: 'retro' }
+};
+var NAMES = { art: 'Art Vandelay', priya: 'Priya Raman', kofi: 'Kofi Asante', noor: 'Noor Haddad' };
+var FIRST = { art: 'Art', priya: 'Priya', kofi: 'Kofi', noor: 'Noor' };
+var COLOUR = { art: '#5B4BE0', priya: '#C2406E', kofi: '#2F6FD6', noor: '#1F8A70' };
+var BOARDS = {
+  retro: { name: 'Launch retro', frames: [
+    { title: 'Went well', tone: 'butter', notes: ['Beta sign-ups beat the plan', 'Support ran launch day with no queue', 'Pricing page shipped a week early'] },
+    { title: 'Could improve', tone: 'rose', notes: ['Nobody owned the status page', 'Changelog went out after the launch post'] },
+    { title: 'Actions', tone: 'sky', notes: ['Kofi owns the status page from now on', 'Changelog goes out before the post'], draft: true }
+  ] },
+  flow: { name: 'Onboarding flow', frames: [
+    { title: 'Sign up', tone: 'sky', notes: ['Email or a passkey', 'Name the team'] },
+    { title: 'Pick a plan', tone: 'butter', notes: ['Free minutes first', 'Team plan, monthly'] },
+    { title: 'First call', tone: 'rose', notes: ['Ring a teammate', 'Notes on from the start'] }
+  ] }
+};
+var TEMPLATES = [
+  { t: 'Blank', rects: [] },
+  { t: 'Retro', rects: ['left: 9px; top: 12px; width: 16px; height: 16px; background: #84591A', 'left: 30px; top: 12px; width: 16px; height: 16px; background: #6D3349', 'left: 51px; top: 12px; width: 16px; height: 16px; background: #384893'] },
+  { t: 'Ideas', rects: ['left: 10px; top: 10px; width: 13px; height: 13px; background: #84591A', 'left: 30px; top: 17px; width: 13px; height: 13px; background: #6D3349', 'left: 50px; top: 8px; width: 13px; height: 13px; background: #384893', 'left: 18px; top: 31px; width: 13px; height: 13px; background: #384893', 'left: 42px; top: 33px; width: 13px; height: 13px; background: #84591A'] },
+  { t: 'Flow', rects: ['left: 7px; top: 20px; width: 17px; height: 13px; box-shadow: inset 0 0 0 1.5px #8EBCEC', 'left: 29px; top: 20px; width: 17px; height: 13px; box-shadow: inset 0 0 0 1.5px #8EBCEC', 'left: 51px; top: 20px; width: 17px; height: 13px; box-shadow: inset 0 0 0 1.5px #8EBCEC'] }
+];
+class Component extends DCLogic {
+  base() {
+    var hash = typeof location !== 'undefined' ? /step=([A-Za-z]+)/.exec(location.hash) : null;
+    var asked = this.props.step && STEPS[this.props.step] ? this.props.step : 'wsArt';
+    return asked === 'wsArt' && hash && STEPS[hash[1]] ? hash[1] : asked;
+  }
+  renderVals() {
+    var self = this, I = window.NCI || {};
+    var base = this.base(), st = this.state || {};
+    var id = st.from === base && st.step && STEPS[st.step] ? st.step : base;
+    var s = STEPS[id];
+    var go = function (to) { return function (e) { if (e && e.stopPropagation) e.stopPropagation(); if (to) self.setState({ step: to, from: base }); }; };
+    var art = s.me === 'art';
+    var home = art ? 'wsArt' : 'wsNoor';
+    var v = { isArt: art, keep: go(null) };
+    v.shut = s.pop ? go(home) : go(null);
+
+    /* The people: you first, beside what's open. */
+    var order = art ? ['art', 'priya', 'kofi', 'noor'] : ['noor', 'art', 'priya', 'kofi'];
+    var tops = [64, 255, 446, 637];
+    v.tiles = order.map(function (p, k) {
+      var name = p === s.me ? FIRST[p] + ' (you)' : p === 'noor' ? 'Noor · Guest' : FIRST[p];
+      return { who: p, name: name, talk: p === 'priya', cls: p === 'priya' ? 'nc-tile is-speaking' : 'nc-tile', style: 'left: 1176px; top: ' + tops[k] + 'px; width: 248px; height: 179px' };
+    });
+    v.facesWho = order.join(',');
+
+    /* The top bar: Board and Workspace open here, on your screen. */
+    var picking = s.pop === 'boardPick' || s.pop === 'boardAsk';
+    v.wsBtn = s.open === 'ws' && !picking ? 'nc-yb has-l is-on' : 'nc-yb has-l';
+    v.boardBtn = s.open === 'board' || picking ? 'nc-yb has-l is-on' : 'nc-yb has-l';
+    v.openWs = go(home);
+    v.openBoard = go(art ? 'boardPick' : 'boardNoor');
+
+    /* The frame's bar: its name is the one menu; then where it shows, and who can edit it. */
+    var q4 = s.space === 'q4';
+    var spaceName = q4 ? 'Q4 planning' : 'Launch review · 4 Nov';
+    v.isWs = s.open === 'ws';
+    v.isBoard = s.open === 'board';
+    var board = BOARDS[s.board] || BOARDS.retro;
+    v.f = {
+      icon: v.isWs ? I.folderOpen : I.presentation,
+      name: v.isWs ? spaceName : board.name,
+      acc: art ? 'Everyone in the call can edit' : 'You can edit while you’re in the call',
+      nameClick: v.isWs ? go(art ? 'wsMenu' : 'wsNoorMenu') : go(null),
+      accClick: go(art ? 'wsPeople' : 'wsNoorPeople')
+    };
+    v.noorLabel = art ? 'Noor' : 'You';
+
+    /* The list: This call holds the call's pages and whatever's made in it; then the rest of the workspace. */
+    var row = function (r) {
+      var who = r.who || '';
+      return {
+        d: I[r.icon], t: r.t, who: who, hasWho: who.length > 0, n: r.n || '', hasN: !!r.n && !who, lk: r.lk || '', hasLk: !!r.lk,
+        cls: ['th-wr', r.on ? 'is-on' : '', r.glow ? 'is-glow' : ''].join(' '), click: go(r.to || null)
+      };
+    };
+    var others = art ? 'noor,priya' : 'art,priya';
+    var call = [{ icon: 'notes', t: 'Notes' }, { icon: 'todos', t: 'Follow-ups', n: '2' }, { icon: 'transcript', t: 'Transcript' }];
+    if (!q4) {
+      if (s.made) call.push({ icon: 'fileText', t: 'Untitled', on: true, glow: true });
+      call.push({ icon: 'presentation', t: 'Launch retro', to: art ? 'retroArt' : 'boardNoor' });
+    }
+    v.callRows = call.map(row);
+    var docs = q4 ? [
+      { icon: 'fileText', t: 'Q4 goals', on: true, who: 'priya,kofi,noor' },
+      { icon: 'fileText', t: 'Hiring plan' },
+      { icon: 'fileLock', t: 'Budget', lk: 'You and Aiko' }
+    ] : [
+      { icon: 'fileText', t: 'Launch plan', on: s.page === 'plan', who: others },
+      { icon: 'fileText', t: 'Launch checklist' },
+      { icon: 'fileText', t: 'Pricing page copy' },
+      { icon: 'film', t: 'Onboarding walkthrough' }
+    ];
+    v.docRows = docs.map(row);
+    v.add = go(art ? 'wsNew' : null);
+    v.isPlan = s.page === 'plan';
+    v.isNew = s.page === 'new';
+    v.isGoals = s.page === 'goals';
+    v.crumb = { space: spaceName, inCall: v.isNew, page: v.isPlan ? 'Launch plan' : v.isNew ? 'Untitled' : 'Q4 goals' };
+    v.here = v.isPlan ? others : v.isGoals ? 'priya,kofi,noor' : '';
+    v.hasHere = v.here.length > 0;
+
+    /* The board: everyone in the call on it, Noor's sticky as she writes it. */
+    var X = [7, 37, 67];
+    v.bframes = board.frames.map(function (f, k) {
+      return { title: f.title, n: String(f.notes.length), notes: f.notes, stCls: 'th-st ' + f.tone, style: 'left: ' + X[k] + '%; width: 27.5%', hasDraft: !!f.draft };
+    });
+    var spots = s.board === 'flow' ? [['kofi', 44, 40], ['noor', 82, 52]] : art ? [['priya', 30, 46], ['noor', 79, 58]] : [['priya', 30, 46], ['art', 50, 66]];
+    v.ptrs = spots.map(function (p) { return { who: p[0], name: FIRST[p[0]], style: 'left: ' + p[1] + '%; top: ' + p[2] + '%; --c: ' + COLOUR[p[0]] }; });
+    v.rail = [['cursor', true], ['stickyNote'], ['type'], ['shapes'], ['arrowUpRight'], ['pen'], ['frame'], ['plus'], 0, ['timer'], ['vote'], 0, ['undo'], ['redo']].map(function (r) {
+      return r ? { isTool: true, isSep: false, d: I[r[0]], cls: r[1] ? 'on' : '' } : { isTool: false, isSep: true, d: '', cls: '' };
+    });
+
+    /* The name's menu: the one place for the workspace's own commands. A guest gets what a guest can use. */
+    var mi = function (icon, t, to, k) { return { d: I[icon], t: t, click: go(to || home), k: k || '', hasK: !!k }; };
+    v.menuRows = art
+      ? [mi('folders', 'Switch workspace', 'wsSwitch'), mi('search', 'Find in the workspace', null, '⌘K'), mi('people', 'Who’s in it', 'wsPeople'), mi('pen', 'Rename'), mi('link', 'Copy link')]
+      : [mi('search', 'Find in the workspace', null, '⌘K'), mi('people', 'Who’s in it', 'wsNoorPeople')];
+
+    /* Who's in it: its people, and everyone in the call, who can edit while they're here. */
+    v.people = [
+      { who: 'art', name: art ? 'Art Vandelay (you)' : 'Art Vandelay', d: 'Organizer', role: 'Admin', guest: false },
+      { who: 'priya', name: 'Priya Raman', d: 'Invited', role: 'Can edit', guest: false },
+      { who: 'kofi', name: 'Kofi Asante', d: 'Invited', role: 'Can edit', guest: false },
+      { who: 'noor', name: art ? 'Noor Haddad' : 'Noor Haddad (you)', d: art ? 'In the call now' : 'In the call now', role: 'Can edit', guest: true }
+    ];
+
+    /* Switch workspace: the organizer's workspaces, the call's home marked. */
+    v.spaces = [
+      { name: 'Launch review · 4 Nov', sub: 'This call’s home · 3 people', on: true, click: go('wsArt') },
+      { name: 'Q4 planning', sub: '2 people: you and Aiko', on: false, click: go('wsSwitchAsk') },
+      { name: 'Design crit', sub: '5 people', on: false, click: go(null) }
+    ];
+    v.keepThis = go('wsArt');
+    v.doSwitch = go('wsSwitched');
+    v.templates = TEMPLATES;
+    v.newRetro = go('retroArt');
+    v.pickFlow = go('boardAsk');
+    v.backPick = go('boardPick');
+    v.openFlow = go('boardArt');
+
+    v.pop = { menu: s.pop === 'menu', people: s.pop === 'people', switch: s.pop === 'switch', switchAsk: s.pop === 'switchAsk', boardPick: s.pop === 'boardPick', boardAsk: s.pop === 'boardAsk' };
+    v.hasToast = !!s.toast;
+    return { v: v, I: I };
+  }
+}
+</script>
+</body>
+</html>

@@ -91,8 +91,13 @@ export const WorkspaceTreeSchema = z.object({
   id: IDSchema,
   /** Null for someone outside the workspace who has documents in it. */
   name: z.string().nullable(),
-  /** Your role in it, or null when you only have documents in it. */
+  /** Your role in it, or null when you're not in it: you only have documents in it, or a call you're in uses it. */
   role: WorkspaceRoleSchema.nullable(),
+  /**
+   * A call you're in uses it: you can open it as its people can, folders and all, and change what isn't restricted, while
+   * you're in the call. It gives no say in who has what. Read with the call's pass.
+   */
+  inCall: z.boolean(),
   /** How many people are in it. Null for someone outside it. */
   people: z.number().nullable(),
   /** On a team's workspace, who's in it (the whole team, or only the people added); null when it isn't a team's. */
@@ -105,11 +110,14 @@ export type WorkspaceTree = z.infer<typeof WorkspaceTreeSchema>;
 
 /**
  * A workspace in your Drive, newest first. Someone outside it who has documents in it sees only that it's there: `createdAt`
- * is null for them. `call`: the call it was made for, as a call's home, for someone in it.
+ * is null for them. `call`: the call it was made for, as a call's home, for someone in it. `youPay`: its files count against
+ * your storage, and AI in it against your plan (docs: Plans and usage › Storage), so a call you organize in it opens it, its
+ * boards and its files to everyone in the call; one someone else pays for opens only for its own people.
  */
-export const WorkspaceSummarySchema = WorkspaceTreeSchema.omit({ items: true }).extend({
+export const WorkspaceSummarySchema = WorkspaceTreeSchema.omit({ items: true, inCall: true }).extend({
   createdAt: ISODateSchema.nullable(),
-  call: z.object({ title: z.string(), at: ISODateSchema }).nullable()
+  call: z.object({ title: z.string(), at: ISODateSchema }).nullable(),
+  youPay: z.boolean()
 });
 
 export type WorkspaceSummary = z.infer<typeof WorkspaceSummarySchema>;
@@ -146,8 +154,20 @@ export const DocumentShareSchema = z.object({
 export type DocumentShare = z.infer<typeof DocumentShareSchema>;
 
 
+/**
+ * What a workspace is for, in one line, as its Home says under its name: empty until an admin says. It's kept with the
+ * workspace's name, sealed, and read by anyone in it.
+ */
+export const WorkspaceAboutSchema = z.object({ about: z.string() });
+
+export type WorkspaceAbout = z.infer<typeof WorkspaceAboutSchema>;
+
+
 /* ---------- requests ---------- */
 export const WorkspaceInputSchema = z.object({ name: oneLine(1, 120) });
+
+/** Saying what a workspace is for: one line, however it was typed, up to 200 characters. Empty says nothing. */
+export const WorkspaceAboutInputSchema = z.object({ about: oneLine(0, 200) });
 
 export const WorkspacePersonInputSchema = z.object({ email: EmailSchema, role: WorkspaceRoleSchema });
 

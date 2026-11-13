@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Upcoming</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="water.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="water.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="{{wrapCls}}" data-mode="{{mode}}" style="{{wrapStyle}}">
+<!-- Upcoming: a calendar widget. Calls and meetings with other people, by day; events with only you on them are counted at the foot, and shown, quieter, when you ask. -->
+<section class="wg wg-up" aria-labelledby="{{headId}}">
+<header class="wg-h"><span class="wg-ic" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.cal}}"></path></svg></span><h2 id="{{headId}}">Upcoming</h2><span class="aside"><button type="button" class="wg-dots" aria-label="Calendar settings" title="Calendar settings" onClick="{{u.settings}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.gear}}"></path></svg></button></span></header>
+<div class="wg-body">
+<sc-if value="{{u.loading}}" hint-placeholder-val="{{false}}"><div class="wg-sk" aria-label="Loading"><i style="width: 70%"></i><i style="width: 84%"></i><i style="width: 60%"></i></div></sc-if>
+<sc-if value="{{u.connectState}}" hint-placeholder-val="{{false}}">
+<div class="up-connect">
+<span class="up-art" aria-hidden="true"><span><i></i><i class="r"></i></span><span><i class="s"></i></span><span><i></i><i></i></span></span>
+<b>See what’s coming up</b>
+<p>Your meetings with other people show here.</p>
+<button type="button" class="b b-line{{u.hotConnect}}" onClick="{{u.connect}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.cal}}"></path></svg>Connect Google Calendar</button>
+<small>Alcove reads your events and adds the calls you schedule.</small>
+</div>
+</sc-if>
+<sc-if value="{{u.denied}}" hint-placeholder-val="{{false}}">
+<div class="up-connect is-warn" role="status">
+<span class="up-warn" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.alert}}"></path></svg></span>
+<b>Google didn’t allow the calendar</b>
+<p>Calls still work without it.</p>
+<button type="button" class="b b-line" onClick="{{u.connect}}">Try again</button>
+</div>
+</sc-if>
+<sc-if value="{{u.failedBody}}" hint-placeholder-val="{{false}}">
+<div class="up-connect is-warn" role="status">
+<span class="up-warn" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.alert}}"></path></svg></span>
+<b>Your calendar didn’t load</b>
+<p>Calls still work without it.</p>
+<button type="button" class="b b-line" onClick="{{u.retry}}">Try again</button>
+</div>
+</sc-if>
+<sc-for list="{{u.days}}" as="d" hint-placeholder-count="2">
+<div class="up-day{{d.cls}}">
+<div class="up-d"><small>{{d.word}}</small><sc-if value="{{d.hasNum}}" hint-placeholder-val="{{true}}"><b>{{d.num}}</b></sc-if></div>
+<div class="up-list">
+<sc-for list="{{d.rows}}" as="e" hint-placeholder-count="1">
+<div class="up-e{{e.cls}}" style="{{e.delay}}">
+<sc-if value="{{e.solo}}" hint-placeholder-val="{{false}}">
+<button type="button" class="up-b is-solo" onClick="{{e.go}}"><span class="up-tm">{{e.timeText}}</span><span class="up-own"><i class="up-hatch" aria-hidden="true"></i><span class="up-own-t clamp1">{{e.title}}</span><span class="sr-only">, only you</span></span></button>
+</sc-if>
+<sc-if value="{{e.notSolo}}" hint-placeholder-val="{{true}}">
+<button type="button" class="up-b" onClick="{{e.go}}"><span class="up-tm">{{e.timeText}}</span><span class="up-t"><b class="clamp1">{{e.title}}</b><span class="up-w"><sc-if value="{{e.isCal}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-label="On Google Calendar"><path d="{{I.cal}}"></path></svg></sc-if><sc-if value="{{e.picking}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.clock}}"></path></svg>Lena is picking a time</sc-if><sc-if value="{{e.hasFaces}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{e.faces}}" size="16" max="3" ring="var(--surface)" hint-size="34px,18px"></dc-import></sc-if></span></span></button>
+<span class="up-x">
+<sc-if value="{{e.soonRow}}" hint-placeholder-val="{{false}}"><span class="up-soon">In 4 min</span></sc-if>
+<sc-if value="{{e.answer}}" hint-placeholder-val="{{false}}"><span class="up-answer">Answer</span></sc-if>
+<sc-if value="{{e.canMove}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-line b-xs{{e.hotMove}}" title="The meeting gets an Alcove link, and Google tells everyone on it" onClick="{{e.move}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.video}}"></path></svg>Use Alcove</button></sc-if>
+<sc-if value="{{e.movedNow}}" hint-placeholder-val="{{false}}"><span class="up-moved"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg>On Alcove</span></sc-if>
+</span>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-for>
+<sc-if value="{{u.ownEmpty}}" hint-placeholder-val="{{false}}">
+<div class="up-connect up-empty">
+<span class="up-art is-own" aria-hidden="true"><span><i></i><i></i></span><span><i></i></span><span><i></i><i></i></span></span>
+<b>No meetings with other people in the next 7 days</b>
+<p>{{u.ownLine}}</p>
+<button type="button" class="b b-line b-sm{{u.hotShowOwn}}" onClick="{{u.showOwn}}">Show them</button>
+</div>
+</sc-if>
+<sc-if value="{{u.clear}}" hint-placeholder-val="{{false}}">
+<div class="up-connect up-empty">
+<span class="up-art is-clear" aria-hidden="true"><span></span><span></span><span></span></span>
+<b>Nothing on your calendar in the next 7 days</b>
+<p>Calls you schedule show up here.</p>
+</div>
+</sc-if>
+<sc-if value="{{u.before}}" hint-placeholder-val="{{false}}"><p class="up-none is-app">Nothing in the next 7 days</p></sc-if>
+</div>
+<sc-if value="{{u.missing}}" hint-placeholder-val="{{false}}"><div class="up-miss"><span class="up-miss-i" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.cal}}"></path></svg></span><p>See your other meetings here</p><button type="button" class="b b-line b-sm{{u.hotConnect}}" onClick="{{u.connect}}">Connect</button></div></sc-if>
+<sc-if value="{{u.failedFoot}}" hint-placeholder-val="{{false}}"><div class="up-miss" role="status"><span class="up-miss-i is-warn" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.alert}}"></path></svg></span><p>Your calendar didn’t load</p><button type="button" class="b b-line b-sm" onClick="{{u.retry}}">Try again</button></div></sc-if>
+<sc-if value="{{u.hasFoot}}" hint-placeholder-val="{{false}}">
+<footer class="wg-foot">
+<sc-if value="{{u.hasMore}}" hint-placeholder-val="{{false}}"><button type="button" class="wg-link" onClick="{{u.showMore}}">{{u.more}}</button></sc-if>
+<sc-if value="{{u.hasSolo}}" hint-placeholder-val="{{false}}"><button type="button" class="up-solo{{u.soloCls}}" aria-pressed="{{u.soloPressed}}" title="{{u.soloTip}}" onClick="{{u.toggleSolo}}"><i class="up-hatch" aria-hidden="true"></i>{{u.soloLabel}}</button></sc-if>
+</footer>
+</sc-if>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"u":{"editor":null,"default":null},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"step":{"editor":"enum","options":["today","upSolo","upOwnWeek","upOwnWeekShown","upOwnWeekBefore","upClear","upClearBefore","soon","firstConnected","first","loading","upCalFailed","upCalFailedEmpty","firstDenied"],"default":"today"},"width":{"editor":null,"default":452},"$preview":{"width":500,"height":472}}'>
+class Component extends DCLogic {
+  componentWillUnmount() { clearTimeout(this.__hwToast); }
+  renderVals() {
+    var AH = window.AH, p = this.props || {};
+    /* On Home, the page hands over the widget's model; alone, it works out its own from `step`. */
+    var inPage = !!p.u;
+    var mode = (inPage ? p.mode : AH.hash().mode || p.mode) === 'light' ? 'light' : 'dark';
+    var u = inPage ? p.u : AH.HW.view(this).upcoming;
+    var step = AH.hash().step || p.step || 'today';
+    return {
+      I: AH.I, u: u, mode: mode,
+      wrapCls: inPage ? 'up-host' : 'ah up-alone',
+      wrapStyle: inPage ? '' : AH.rootStyle('blue-hour', mode, 17) + '; --w: ' + (p.width || 452) + 'px',
+      headId: inPage ? 'wg-up' : 'wg-up-' + step + '-' + mode
+    };
+  }
+}
+</script>
+</body>
+</html>

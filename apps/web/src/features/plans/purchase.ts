@@ -1,8 +1,9 @@
 /*
  * What a purchase is and costs (docs/design/pages.md › Checkout), from the
  * server's offers: Pro's price a month for that many months (the lower, yearly one from `yearly.fromMonths` on), packs of
- * more notes, what the balance covers and what's left to send, and the words for a purchase that the side panel, Settings
- * and checkout share. Every amount is micro-USD, as the server's; a token is sent as a dollar.
+ * more notes, Team's licenses a period at a time or for a year (each at the lower, yearly price a period), what the balance
+ * covers and what's left to send, and the words for a purchase that the side panel, Settings and checkout share. Every
+ * amount is micro-USD, as the server's; a token is sent as a dollar.
  */
 import type { PlanOffers, Purchase, TopUp } from '@alcove/api';
 import { plural } from '~/lib/words';
@@ -11,6 +12,11 @@ import { hoursOfNotes } from './words';
 
 /** The lengths of Pro offered as cards, up to the most one purchase buys. */
 export const LENGTHS = [1, 3, 6, 12, 24] as const;
+/** The numbers of Team's licenses offered as cards, up to the most one purchase buys. */
+export const LICENSES = [3, 6, 10, 25] as const;
+
+/** What checkout opened on, as the kind of purchase it makes: Team buys licenses. */
+export const kindOf = (plan: CheckoutFor['plan']): Purchase['kind'] => (plan === 'team' ? 'licenses' : plan);
 
 
 /** Pro's price a month for buying `months` at once: the yearly price from the yearly offer's length on. */
@@ -27,34 +33,73 @@ export function yearlyOff(offers: PlanOffers): number | null {
   return Math.round((1 - yearly.microUsdPerMonth / month) * 100);
 }
 
-/** What a purchase costs at the price it carries. */
-export const costOf = (buys: Purchase): number =>
-  (buys.kind === 'pro' ? buys.months * buys.microUsdPerMonth : buys.kind === 'hours' ? buys.packs * buys.microUsdPerPack : buys.count * buys.microUsdPerLicense);
+/**
+ * How much less a period a license for a year is than one a period at a time, in whole percent ("20"), or null when there's
+ * none (the server offers one only when it's lower).
+ */
+export function teamYearlyOff(offers: PlanOffers): number | null {
+  const yearly = offers.team.yearly;
+  const each = offers.team.microUsdPerLicense;
+  if (!yearly || each <= 0) return null;
+  return Math.round((1 - yearly.microUsdPerLicense / each) * 100);
+}
 
-/** Whether two purchases are on the same terms: a month of Pro at one price, a pack of notes at one price and size, or a license at one price. */
+/**
+ * A license's terms today: for a year (`yearly`, while one is offered), its lower price a period and the periods it runs; else
+ * a period at a time at a license's price.
+ */
+export function licenseTerms(offers: PlanOffers, yearly: boolean): { microUsdPerLicense: number; periods: number } {
+  const year = offers.team.yearly;
+  return yearly && year ? { microUsdPerLicense: year.microUsdPerLicense, periods: year.periods } : { microUsdPerLicense: offers.team.microUsdPerLicense, periods: 1 };
+}
+
+/** How long a license runs once it's taken: "30 days" a period at a time, "a year" for a year's 12 periods, else "6 months". */
+export const licenseRuns = (periods: number, periodDays: number): string =>
+  (periods <= 1 ? plural(periodDays, 'day') : periods === 12 ? 'a year' : plural(periods, 'month'));
+
+/** How long licenses bought for more than a period run, said after them: " for a year", " for 6 months"; nothing for a period's. */
+export const licenseTerm = (periods: number): string => (periods <= 1 ? '' : ` for ${periods === 12 ? 'a year' : plural(periods, 'month')}`);
+/** "6 licenses", "6 licenses for a year", "1 license for a year": licenses bought, and how long each runs when it's more than a period. */
+export const licensesWord = (count: number, periods: number): string => `${plural(count, 'license')}${licenseTerm(periods)}`;
+
+/** What a purchase costs at the price it carries: licenses are a price a period, for each of their periods. */
+export const costOf = (buys: Purchase): number =>
+  (buys.kind === 'pro' ? buys.months * buys.microUsdPerMonth : buys.kind === 'hours' ? buys.packs * buys.microUsdPerPack : buys.count * buys.periods * buys.microUsdPerLicense);
+
+/**
+ * Whether two purchases are on the same terms: a month of Pro at one price, a pack of notes at one price and size, or a
+ * license at one price for as many periods.
+ */
 export function sameTerms(a: Purchase, b: Purchase): boolean {
   if (a.kind === 'pro') return b.kind === 'pro' && a.microUsdPerMonth === b.microUsdPerMonth;
   if (a.kind === 'hours') return b.kind === 'hours' && a.microUsdPerPack === b.microUsdPerPack && a.minutesPerPack === b.minutesPerPack;
-  return b.kind === 'licenses' && a.microUsdPerLicense === b.microUsdPerLicense;
+  return b.kind === 'licenses' && a.microUsdPerLicense === b.microUsdPerLicense && a.periods === b.periods;
 }
 
-/** The same purchase on today's terms, or null when it isn't offered any more (more notes switched off). */
+/**
+ * The same purchase on today's terms, or null when it isn't offered any more: more notes switched off, or licenses for a year
+ * when none is (or a year is as many periods no more).
+ */
 export function repriced(offers: PlanOffers, buys: Purchase): Purchase | null {
   if (buys.kind === 'pro') return { kind: 'pro', months: buys.months, microUsdPerMonth: proPrice(offers, buys.months) };
-  if (buys.kind === 'licenses') return { kind: 'licenses', count: buys.count, microUsdPerLicense: offers.team.microUsdPerLicense };
+  if (buys.kind === 'licenses') {
+    const terms = licenseTerms(offers, buys.periods > 1);
+    return terms.periods === buys.periods ? { kind: 'licenses', count: buys.count, ...terms } : null;
+  }
   return offers.hours ? { kind: 'hours', packs: buys.packs, microUsdPerPack: offers.hours.microUsd, minutesPerPack: offers.hours.minutes } : null;
 }
 
-/** "Pro, 12 months", "10 hours of notes": what a purchase is, as the side panel, Settings and checkout say it. */
+/** "Pro, 12 months", "Team, 6 licenses for a year", "10 hours of notes": what a purchase is, as the side panel, Settings and checkout say it. */
 export function purchaseName(buys: Purchase): string {
   if (buys.kind === 'pro') return `Pro, ${plural(buys.months, 'month')}`;
-  if (buys.kind === 'licenses') return `Team, ${plural(buys.count, 'license')}`;
+  if (buys.kind === 'licenses') return `Team, ${licensesWord(buys.count, buys.periods)}`;
   return `${hoursOfNotes(buys.packs * buys.minutesPerPack)} of notes`;
 }
 
 /** What checkout opens on to see a purchase through. */
 export const checkoutFor = (buys: Purchase): CheckoutFor =>
-  (buys.kind === 'pro' ? { plan: 'pro', months: buys.months } : buys.kind === 'hours' ? { plan: 'hours', packs: buys.packs } : { plan: 'team', licenses: buys.count });
+  (buys.kind === 'pro' ? { plan: 'pro', months: buys.months } : buys.kind === 'hours' ? { plan: 'hours', packs: buys.packs }
+    : { plan: 'team', licenses: buys.count, yearly: buys.periods > 1 });
 
 /** Whether a payment's address has closed: past its expiry, nothing more can be sent to it, whatever its state says yet. */
 export const lapsed = (t: TopUp, now = Date.now()): boolean => Date.parse(t.expiresAt) <= now;

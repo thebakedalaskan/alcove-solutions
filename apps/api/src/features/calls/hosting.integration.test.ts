@@ -338,6 +338,38 @@ describe('host hand-off', () => {
     expect((await callRow(host.ticket.callId)).state).toBe('ended');
   });
 
+  it('brings back whoever handed the call on: a stand-in as a member past their own lock, and only the organizer hosting again', async () => {
+    const { org, host, code: c, people: [priya, kofi] } = await hostedCall(['Priya', 'Kofi']);
+    if (!priya || !kofi) throw new Error('Priya and Kofi expected');
+    // The organizer leaves the call to Kofi, who locks it and leaves it to Priya in turn.
+    await host.handOff(kofi.call.ticket.identity);
+    await settle(kofi.call, (x) => x.isHost, 'Kofi hosting');
+    await kofi.call.lock(true);
+    await kofi.call.handOff(priya.call.ticket.identity);
+    const standing = await settle(priya.call, (x) => x.isHost, 'Priya hosting');
+
+    // Kofi comes back from the call's page. Without the pass his tab kept he's anyone new at a locked call; with it he's
+    // straight back in, past his own lock, as someone in the call: Priya hosts on, in the same generation.
+    expect(code(await kofi.browser.api.calls.join(c, { mic: true, cam: false }).catch((e: unknown) => e))).toBe('forbidden');
+    const kofiBack = await kofi.browser.api.calls.join(c, { mic: true, cam: false, previous: kofi.call.ticket.pass });
+    await inGroup(kofiBack);
+    expect(await settle(kofiBack, (x) => x.participants.some((p) => p.isMe), 'Kofi back in the call'))
+      .toMatchObject({ isHost: false, locked: true, host: { id: priya.call.ticket.identity, standIn: true } });
+    expect(await callRow(host.ticket.callId)).toEqual({ state: 'live', host: priya.call.ticket.identity, generation: standing.generation });
+    await waitFor(() => keyOf(kofiBack) === keyOf(priya.call), 'Kofi in Priya’s group');
+
+    // The organizer comes back the same way: hosting again at once, in a new generation, never as a stand-in. Priya is in
+    // the call like anyone again, and she and Kofi rejoin the organizer's group.
+    const back = await org.api.calls.join(c, { mic: true, cam: false, previous: host.ticket.pass });
+    expect(back.getSnapshot()).toMatchObject({ isHost: true, isOrganizer: true, host: { id: back.ticket.identity, standIn: false }, generation: standing.generation + 1 });
+    await inGroup(back);
+    await settle(priya.call, (x) => !x.isHost && x.host.id === back.ticket.identity, 'Priya back to a member');
+    await waitFor(() => keyOf(priya.call) === keyOf(back) && keyOf(kofiBack) === keyOf(back), 'everyone in the organizer’s group');
+    expect(members(back)).toEqual([back.ticket.identity, priya.call.ticket.identity, kofiBack.ticket.identity].sort());
+    expect(await callRow(host.ticket.callId)).toMatchObject({ state: 'live', host: back.ticket.identity });
+    await back.leave();
+  });
+
   it('keeps the invite the organizer’s while someone stands in, and hands the call only to someone who can host', async () => {
     const { org, host, hostRoom, code: c, people: [priya, kofi] } = await hostedCall(['Priya', 'Kofi']);
     if (!priya || !kofi) throw new Error('Priya and Kofi expected');
@@ -603,7 +635,13 @@ describe('host hand-off', () => {
     // ...and ends once they've been gone as long as it always waited.
     await upkeepAfter(HOST_GRACE_MS);
     expect((await callRow(host.ticket.callId)).state).toBe('ended');
-    expect(code(await sam.refresh().catch((e: unknown) => e))).toBe('conflict');
+    // Sam's browser is told the call has ended one way or the other: a read of its own is refused, or its own log sync has
+    // already heard it and closed the call here, after which a refresh has nothing to read and sending says it's ended.
+    const read: unknown = await sam.refresh({ call: true, log: false }).then(() => null, (e: unknown) => e);
+    if (read === null) {
+      const sent: unknown = await sam.sendChat('Still there?').catch((e: unknown) => e);
+      expect(sent instanceof AlcoveApiError ? sent.message : sent).toBe('This call has ended.');
+    } else expect(code(read)).toBe('conflict');
   });
 
   it('never resumes or starts capture because the host changed: paused stays paused, off stays off, and only the organizer changes it', async () => {

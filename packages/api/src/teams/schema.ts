@@ -1,5 +1,5 @@
 import { PersonSchema } from '../identity/people';
-import { MicroUsdSchema } from '../plans/schema';
+import { MAX_LICENSE_PERIODS, MicroUsdSchema } from '../plans/schema';
 import { IDSchema, ISODateSchema } from '../shared/ids';
 import { z } from '../shared/zod';
 
@@ -65,11 +65,13 @@ export const TeamNameSchema = z.string().trim().min(1).max(120);
 export const CreateTeamBodySchema = z.object({ name: TeamNameSchema });
 /** The secret from an invite's link (after its `#`). */
 export const TeamSecretBodySchema = z.object({ secret: z.string().min(16).max(200) });
-export const BuyLicensesBodySchema = z.object({ count: z.number().int().min(1).max(100_000), microUsdPerLicense: MicroUsdSchema.min(0) });
+/**
+ * `count` licenses at `microUsdPerLicense` a period, the price the buyer was shown, each for `periods` periods: 1 at a
+ * license's price, or a year's (`PlanOffers.team.yearly`) at its lower price. Without `periods`, one.
+ */
+export const BuyLicensesBodySchema = z.object({ count: z.number().int().min(1).max(100_000), microUsdPerLicense: MicroUsdSchema.min(0), periods: z.number().int().min(1).max(MAX_LICENSE_PERIODS).default(1) });
 export const AutoPurchaseBodySchema = z.object({ on: z.boolean() });
 /** Who sees a workspace made on a team: every licensed member (`team`, "Whole team"), or only the people added (`added`). */
 export const TeamAccessSchema = z.enum(['team', 'added']);
 export type TeamAccess = z.infer<typeof TeamAccessSchema>;
 export const TeamAccessBodySchema = z.object({ access: TeamAccessSchema });
-/** An invite's secret kept in one tab while its opener signs in, for ten minutes at most (the app's afterSignIn). */
-export const TeamJoinReturnStoredSchema = z.object({ secret: TeamSecretBodySchema.shape.secret, until: z.number() });

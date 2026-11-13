@@ -1,6 +1,6 @@
 /*
- * WsDeleteAsk: Delete forever, from Trash, or Delete workspace, from its menu, asked once on a workspace popover. It goes for
- * everyone, with everything in it. The keyboard starts on Keep it, and `busy` waits for Alcove to say it's done.
+ * WsDeleteAsk: Delete forever, from Trash, asked once on a workspace popover. It goes for everyone, with everything in it.
+ * The keyboard starts on Keep it.
  */
 import { WsDeleteAsk } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -18,5 +18,3 @@ type Story = StoryObj<typeof meta>;
 
 export const ADocument: Story = {};
 export const LongName: Story = { args: { name: 'Quarterly planning: what goes into the first quarter of next year, and what waits until the summer' } };
-/** A workspace, from its own menu, on its way. */
-export const AWorkspaceDeleting: Story = { name: 'A workspace, deleting', args: { name: 'Design review', busy: true } };

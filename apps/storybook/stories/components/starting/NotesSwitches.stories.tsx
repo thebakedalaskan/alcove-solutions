@@ -1,10 +1,10 @@
 /*
- * NotesSwitches: whether a call writes notes, and what they keep, as it's set when a call is scheduled. Off, nothing
- * else matters, so only Write notes shows. On, the transcript and the recording can each be kept or deleted, and shared
- * screens can be read. It opens under the Notes row in Details, and on its own view of a scheduled call's card.
+ * NotesSwitches: whether a call writes notes, and what they keep, changed on the Notes view of a scheduled call's card.
+ * Off, nothing else matters, so only Write notes shows. On, the transcript and the recording can each be kept or deleted,
+ * and shared screens can be read. Scheduling a call sets the same things under Notes, on the scheduler.
  */
 import type { NotesChoices } from '@alcove/api';
-import { Button, FlowBody, FlowFoot, FlowRow, FlowSteps, FlowView, NotesSwitches } from '@alcove/ui';
+import { Button, FlowBody, FlowFoot, FlowHead, FlowView, NotesSwitches } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useArgs } from 'storybook/preview-api';
 import { ModalFrame, did } from '../../../src/component';
@@ -22,10 +22,9 @@ const meta = {
     return (
       <ModalFrame>
         <FlowView>
-          <FlowSteps steps={[]} at={0} onBack={did('onBack')} onClose={did('onClose')} />
+          <FlowHead title="Notes" onClose={did('onClose')} />
           <FlowBody>
-            <h2>Notes</h2>
-            <div className="cf-rows" style={{ borderTop: 0 }}>
+            <div>
               <NotesSwitches {...args} onNotes={(notes) => { args.onNotes(notes); update({ notes }); }} onChoices={(choices) => { args.onChoices(choices); update({ choices }); }} />
             </div>
           </FlowBody>
@@ -46,28 +45,3 @@ export const Off: Story = { args: { notes: 'off' } };
 export const KeepingOnlyTheNotes: Story = { name: 'Keeping only the notes', args: { choices: { keepTranscript: false, keepRecording: false, allowScreens: false } } };
 /** The organizer's AI model runs outside a secure enclave: the line under the switches says so. */
 export const UnencryptedModel: Story = { name: 'Unencrypted AI model', args: { modelPrivate: false } };
-/** Under the Notes row in Details, the last step of scheduling, where it opens in place. */
-export const InDetails: Story = {
-  name: 'Under its row in Details',
-  render: function Render(args) {
-    const [, update] = useArgs<typeof args>();
-    const on = args.notes === 'on';
-    return (
-      <ModalFrame>
-        <FlowView>
-          <FlowSteps steps={['Who', 'When', 'Details']} at={2} onBack={did('onBack')} onClose={did('onClose')} />
-          <FlowBody>
-            <h2>Design review</h2>
-            <div className="cf-rows">
-              <FlowRow icon="notes" on={on} title={on ? 'Notes on' : 'Notes off'} sub={on ? 'Everyone invited gets them' : 'Nothing is recorded'} expanded onClick={did('onRow')} />
-              <div className="cf-more">
-                <NotesSwitches {...args} onNotes={(notes) => { args.onNotes(notes); update({ notes }); }} onChoices={(choices) => { args.onChoices(choices); update({ choices }); }} />
-              </div>
-            </div>
-          </FlowBody>
-          <FlowFoot summary="Priya and Kofi get an invitation."><Button variant="primary" icon="cal">Schedule</Button></FlowFoot>
-        </FlowView>
-      </ModalFrame>
-    );
-  }
-};

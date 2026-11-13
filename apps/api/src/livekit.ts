@@ -9,6 +9,12 @@ import type { Config } from './config';
 import { log } from './log';
 
 const llog = log.child({ component: 'livekit' });
+/**
+ * How far LiveKit's clock may be from this server's, in seconds, when a webhook's token is checked. LiveKit's SDK allows 10,
+ * and Confidential Space's VMs ran up to 9.5 s behind on 2026-11-13, drifting about a second a day (gcp.ts logs it as
+ * `clock offset`).
+ */
+const CLOCK_SKEW_S = 60;
 
 export interface LiveKit {
   /** True when LiveKit's server API answers with our credentials. */
@@ -108,7 +114,7 @@ export function createLiveKit(cfg: Config): LiveKit {
       return new Set((await rooms.listRooms(names)).map((r) => r.name));
     },
     async verifyWebhook(body, authorization) {
-      const ev = await webhooks.receive(body, authorization).catch((e: unknown) => { throw new AuthError('Webhook signature is not valid.', { cause: e, level: 'warn' }); });
+      const ev = await webhooks.receive(body, authorization, false, CLOCK_SKEW_S).catch((e: unknown) => { throw new AuthError('Webhook signature is not valid.', { cause: e, level: 'warn' }); });
       return { event: ev.event, roomName: ev.room?.name ?? null, identity: ev.participant?.identity ?? null };
     }
   };

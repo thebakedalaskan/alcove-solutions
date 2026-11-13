@@ -1,8 +1,8 @@
 import { type HttpTransport } from '../transport/http';
-import { type AlcoveApi, AttestationSchema, FeatureFlagsSchema, MyTeamSchema, NoteSummarySchema, PersonSuggestionSchema, PlanOffersSchema, PlanSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamInvitePeekSchema, TeamInviteSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema } from '@alcove/api';
+import { type AlcoveApi, FeatureFlagsSchema, MyTeamSchema, NoteSummarySchema, PersonSuggestionSchema, PlanOffersSchema, PlanSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamInvitePeekSchema, TeamInviteSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema } from '@alcove/api';
 import { z } from 'zod';
 
-export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'plans' | 'teams' | 'trust' | 'featureFlags'> {
+export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'plans' | 'teams' | 'featureFlags'> {
   const { base, req } = t;
   return {
     auth: {
@@ -31,6 +31,7 @@ export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'ac
     plans: {
       plan: () => req(PlanSchema, 'GET', '/plan'),
       offers: () => req(PlanOffersSchema, 'GET', '/plan/offers'),
+      chose: () => req(PlanSchema, 'POST', '/plan/chosen', {}),
       buyPro: (months, microUsdPerMonth) => req(PlanSchema, 'POST', '/plan/pro', { months, microUsdPerMonth }),
       buyHours: (packs, microUsdPerPack, minutesPerPack) => req(PlanSchema, 'POST', '/plan/hours', { packs, microUsdPerPack, minutesPerPack }),
       refundPro: () => req(PlanSchema, 'POST', '/plan/pro/refund', {}),
@@ -53,13 +54,10 @@ export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'ac
       remove: (memberId) => req(MyTeamSchema, 'DELETE', `/team/members/${encodeURIComponent(memberId)}`),
       leave: async () => { await req(z.unknown(), 'POST', '/team/leave', {}); },
       delete: async () => { await req(z.unknown(), 'DELETE', '/team/mine'); },
-      buyLicenses: (count, microUsdPerLicense) => req(MyTeamSchema, 'POST', '/team/licenses', { count, microUsdPerLicense }),
+      buyLicenses: (count, microUsdPerLicense, periods = 1) => req(MyTeamSchema, 'POST', '/team/licenses', { count, microUsdPerLicense, periods }),
       refundLicenses: () => req(MyTeamSchema, 'POST', '/team/licenses/refund', {}),
       setAutoPurchase: (on) => req(MyTeamSchema, 'PUT', '/team/auto-purchase', { on }),
       notes: () => req(z.array(NoteSummarySchema), 'GET', '/team/notes')
-    },
-    trust: {
-      attestation: (nonce) => req(AttestationSchema, 'GET', `/attestation?nonce=${encodeURIComponent(nonce)}`)
     },
     featureFlags: {
       on: async () => (await req(FeatureFlagsSchema, 'GET', '/feature-flags')).on

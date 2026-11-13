@@ -29,6 +29,7 @@ import { isOnline } from '../browser';
 import type { PageThread, Space } from '../world';
 import { personAt } from '../world/people';
 import { Pushed, pause } from './live';
+import { writersIn } from './writers';
 import { current, me, nextId } from './state';
 
 const notFound = () => new AlcoveApiError('not-found', 'That workspace isn’t there, or you can’t open it.');
@@ -42,10 +43,15 @@ export function treeOf(id: string): Space {
 /** Its tree, as the API sends it: what the Drive says of it besides stays out. */
 const treeOnly = ({ createdAt: _made, call: _call, ...tree }: Space): WorkspaceTree => tree;
 export const treeFor = (id: string): WorkspaceTree => treeOnly(treeOf(id));
-const summaryOf = ({ items: _items, ...rest }: Space): WorkspaceSummary => rest;
+/**
+ * A workspace in `you`'s Drive, as the API sends it. They pay for it when the world says they do (`paidBy`), or, where it says
+ * nobody, when they're its admin, as whoever makes one is.
+ */
+export const summaryOf = ({ items: _items, inCall: _inCall, paidBy, ...rest }: Space, you: Person): WorkspaceSummary =>
+  ({ ...rest, youPay: rest.role !== null && (paidBy ? paidBy.email.toLowerCase() === you.email.toLowerCase() : rest.role === 'admin') });
 /** Your Drive: every workspace you're in, the newest first, then each one you only have documents in. */
 const drive = (a: WorkspaceSummary, b: WorkspaceSummary) => Number(a.role === null) - Number(b.role === null) || (b.createdAt ?? '').localeCompare(a.createdAt ?? '');
-export const workspaceList = (): WorkspaceSummary[] => current().workspaces.map(summaryOf).sort(drive);
+export const workspaceList = (): WorkspaceSummary[] => current().workspaces.map((w) => summaryOf(w, me())).sort(drive);
 
 const authorOf = () => { const p = me(); return p.portrait ? { name: p.name, portrait: p.portrait } : null; };
 
@@ -86,23 +92,11 @@ export function restoreItem(id: string, itemId: string): void {
   edit(id, (items) => items.map((i) => (i.id === itemId ? { ...i, trashedAt: null, trashedBy: null } : i)));
   sessionsHear([itemId], (s) => ({ ...s, trashed: false }));
 }
-/** Whoever hears of workspaces deleted: a call whose workspace it was has none now. */
-const goneListeners = new Set<(id: string) => void>();
-/** Hears of each workspace deleted, until what it returns is called. */
-export function onWorkspaceGone(listener: (id: string) => void): () => void {
-  goneListeners.add(listener);
-  return () => { goneListeners.delete(listener); };
-}
-/**
- * A workspace deleted, and everything in it: whoever has something of it open is told it's gone for everyone, its own stream
- * ends for whoever has it open (`closed`, as the server's says it), and a call whose workspace it was has none now.
- */
+/** A workspace deleted, and everything in it: whoever has something of it open is told it's gone for everyone. */
 export function removeWorkspace(id: string): void {
   const ids = treeOf(id).items.map((i) => i.id);
   current().workspaces = current().workspaces.filter((x) => x.id !== id);
   sessionsHear(ids, (s) => ({ ...s, closed: 'deleted' }));
-  for (const live of [...watching]) live.gone(id);
-  for (const listener of [...goneListeners]) listener(id);
 }
 export const deleteItem = (id: string, itemId: string) => edit(id, (items) => items.filter((i) => i.id !== itemId && i.parent !== itemId));
 export function duplicateItem(id: string, itemId: string): { id: string } {
@@ -115,8 +109,8 @@ export function duplicateItem(id: string, itemId: string): { id: string } {
 export function peopleIn(id: string): WorkspacePerson[] {
   const mine: WorkspaceRole = treeOf(id).role ?? 'read';
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
-  const team = (current().team?.members ?? []).filter((m) => m.onAlcove)
-    .map((m, i): WorkspacePerson => ({ id: `wp-${i}`, person: m.person, role: mine !== 'admin' && i === 0 ? 'admin' : 'edit', since, isMe: false }));
+  const members = current().workspaces.find((w) => w.id === id)?.members ?? (current().team?.members ?? []).filter((m) => m.onAlcove).map((m) => m.person);
+  const team = members.map((person, i): WorkspacePerson => ({ id: `wp-${i}`, person, role: mine !== 'admin' && i === 0 ? 'admin' : 'edit', since, isMe: false }));
   return [{ id: 'wp-me', person: me(), role: mine, since, isMe: true }, ...team];
 }
 export function addPerson(id: string, email: string, _role: WorkspaceRole): { id: string } {
@@ -162,13 +156,16 @@ export function unshare(documentId: string, entryId: string): void {
 }
 export const restrict = (id: string, documentId: string, restricted: boolean) => edit(id, (items) => items.map((i) => (i.id === documentId ? { ...i, restricted } : i)));
 
-/** The IDs this workspace's documents know people by, for the addresses asked about: a member's is the one they have here. */
+/**
+ * The IDs this workspace's documents know people by, for the addresses asked about: a member's is the one they have here,
+ * the one the people list and who's here give them too, as the API's are, so a tag, a comment and a caret find the same face.
+ */
 export function idsIn(id: string, emails: string[]): Record<string, string> {
   const people = peopleIn(id);
   return Object.fromEntries(emails.flatMap((email) => {
     const lower = email.trim().toLowerCase();
     const found = people.find((p) => p.person.email.toLowerCase() === lower);
-    return found ? [[lower, found.id]] : [];
+    return found ? [[lower, found.person.id]] : [];
   }));
 }
 
@@ -222,10 +219,11 @@ const watching = new Set<LiveWorkspace>();
  */
 function hereNow(id: string): WorkspaceHere[] {
   const you: WorkspaceHere = { person: me(), connection: 'standin-you', callIdentity: null, document: null, block: null, typing: false, page: null, elsewhere: false, isMe: true };
-  const boards = treeOf(id).items.filter((i) => i.kind === 'board' && i.trashedAt === null);
-  return [you, ...boards.flatMap((b) => (current().boards[b.id]?.here ?? []).map(({ who }): WorkspaceHere => ({
-    person: who, connection: `standin-${b.id}-${who.id}`, callIdentity: null, document: b.id, block: null, typing: false, page: null, elsewhere: false, isMe: false
-  }))), ...(presence.get(id) ?? [])];
+  const open = treeOf(id).items.filter((i) => i.kind !== 'folder' && i.trashedAt === null);
+  const on = (i: WorkspaceItem, who: Person, typing: boolean): WorkspaceHere => ({
+    person: who, connection: `standin-${i.id}-${who.id}`, callIdentity: null, document: i.id, block: null, typing, page: null, elsewhere: false, isMe: false
+  });
+  return [you, ...open.flatMap((i) => [...(current().boards[i.id]?.here ?? []).map(({ who }) => on(i, who, false)), ...(current().pages[i.id]?.here ?? []).map(({ who }) => on(i, who, true))]), ...(presence.get(id) ?? [])];
 }
 
 class LiveWorkspace extends Pushed<WorkspaceView> implements WorkspaceLive {
@@ -246,12 +244,6 @@ class LiveWorkspace extends Pushed<WorkspaceView> implements WorkspaceLive {
   /** Shown again: nothing here is ever under way, so a stream that's down is only waiting, and tries now, as Try now does. */
   wake = (): void => { this.retry(); };
   refresh(id: string): void { if (id === this.id) this.update((v) => ({ ...v, tree: structuredClone(treeFor(id)), here: hereNow(id), mentions: mentionsIn(id) })); }
-  /** Deleted: the stream says so and ends, showing nothing, and stays ended. */
-  gone(id: string): void {
-    if (id !== this.id) return;
-    this.set({ status: 'closed', tree: null, here: [], mentions: [] });
-    this.close();
-  }
   present(_where: WorkspaceWhere): void { /* Nobody else is here to see where you are. */ }
   async seen(mentionId: string): Promise<void> {
     await pause(60);
@@ -290,8 +282,9 @@ function fileIn(id: string, documentId: string, mediaId: string) {
 export async function upload(id: string, documentId: string, file: File, o: MediaUploadOptions = {}): Promise<WorkspaceMedia> {
   editable(id, documentId);
   if (file.size > MOST_BYTES) throw new AlcoveApiError('invalid', 'This file is bigger than 512 MiB, the most a file can be.');
-  // As the server's requireRoom (billing/plans.ts): a file that would take whoever pays past their storage is refused, before
-  // any of it is kept. Art is who pays here, so it's the world's plan: over it in `plan-over`, with room on the busy afternoon.
+  // As the server's limits on a file (features/workspaces/media.ts › withinLimits): one that would take whoever pays past their
+  // storage is refused, before any of it is kept. Art is who pays here, so it's the world's plan: over it in `plan-over`, with
+  // room on the busy afternoon. What someone else can add to his storage isn't played here.
   const { storage, over } = current().plan;
   if (over.storage || storage.usedBytes + file.size > storage.limitBytes) throw new AlcoveApiError('plan-limit', 'Your storage is full. Delete something, or move to a plan with more room.');
   const stopped = () => new AlcoveApiError('network', 'That upload was stopped.');
@@ -539,7 +532,7 @@ class Document extends Pushed<DocStatus> implements DocSession {
     this.awareness = new Awareness(this.doc);
     const sending = sendingIn(current().pages[item.id]?.blocks ?? []);
     if (sending.length > 0) this.awareness.states.set(SOMEONE_ELSE, { uploading: sending });
-    this.leave = item.kind === 'board' ? othersOn(item, this.awareness) : () => undefined;
+    this.leave = item.kind === 'board' ? othersOn(item, this.awareness) : writersIn(this.doc, this.awareness, current().pages[item.id]?.here ?? []);
     this.ready = Promise.resolve();
   }
   /** What Alcove refused of this document, which is all this browser wrote here that it hasn't taken. */
@@ -617,7 +610,6 @@ export function forgetDocuments(): void {
   boardSessions.clear();
   sessions.clear();
   watching.clear();
-  goneListeners.clear();
   presence.clear();
   for (const url of urls.values()) URL.revokeObjectURL(url);
   urls.clear();

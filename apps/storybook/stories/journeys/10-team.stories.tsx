@@ -4,9 +4,8 @@ import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { standIn } from '../../src/api/standin';
 import { isOnline, setOnline } from '../../src/browser';
-import { withTeamInvite } from '../../src/api/scenarios';
-import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
-import { away, holding, keepMail, LATER, outage, pressable, SOON, swap, unreachable } from './play';
+import { page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { away, holding, keepMail, LATER, outage, SOON, swap, unreachable } from './play';
 
 const meta = { title: 'Journeys/10 Team', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -53,19 +52,13 @@ export const ScheduleWithSomeone: PageStory = {
       await userEvent.click(await arch('Priya Raman'));
       await userEvent.click(within(await popover('Priya Raman')).getByRole('button', { name: 'Schedule' }));
     });
-    await step('When? Only times you’re both free, with them already picked', async () => {
-      const flow = await screen.findByRole('dialog', { name: 'Schedule a call' }, SOON);
-      await within(flow).findByText('You and Priya are free at these times.', {}, SOON);
-      await userEvent.click(within(flow).getByRole('button', { name: /^Use / }));
+    await step('The scheduler opens on the Calls page with Priya in it: only times you’re both free, the best one picked', async () => {
+      const scheduler = await screen.findByRole('complementary', { name: 'Schedule a call' }, SOON);
+      await within(scheduler).findByText('You and Priya are free at these times.', {}, LATER);
     });
-    await step('Check the details, then Schedule', async () => {
-      const flow = await screen.findByRole('dialog', { name: 'Schedule a call' }, SOON);
-      await within(flow).findByRole('textbox', { name: 'Name the call' }, SOON);
-      await userEvent.click(within(flow).getByRole('button', { name: 'Schedule' }));
-    });
-    await step('Back on Team, and it’s on your calendar: Priya gets an invitation', async () => {
-      await screen.findByText(/^On your Google Calendar\. Priya gets an invitation\./, {}, SOON);
-      await screen.findByRole('heading', { name: 'Vandelay Industries', level: 1 }, SOON);
+    await step('Schedule. It’s on your calendar, and Google Calendar invites Priya', async () => {
+      await userEvent.click(within(await screen.findByRole('complementary', { name: 'Schedule a call' }, SOON)).getByRole('button', { name: 'Schedule' }));
+      await screen.findByText(/Google Calendar invites Priya/, {}, SOON);
     });
   }
 };
@@ -78,9 +71,9 @@ export const NotesYouBothHave: PageStory = {
       await userEvent.click(await arch('Priya Raman'));
       await userEvent.click(within(await popover('Priya Raman')).getByRole('button', { name: /^Notes you both have/ }));
     });
-    await step('The same popover lists them, and the last line opens them all in Notes. Each one opens its note', async () => {
+    await step('The same popover lists them, and the last line opens them all in Calls. Each one opens its note', async () => {
       const notes = await popover('Priya Raman');
-      await within(notes).findByRole('link', { name: 'Open in Notes' }, SOON);
+      await within(notes).findByRole('link', { name: 'Open in Calls' }, SOON);
       await userEvent.click(within(notes).getByRole('link', { name: /^Team standup/ }));
       await screen.findByRole('heading', { name: 'Team standup', level: 1 }, LATER);
     });
@@ -257,7 +250,7 @@ export const OpenAGroup: PageStory = {
   name: '10.12 Open a group in place',
   ...page('/team', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Click a group’s tile. It says how many calls had all of them. The side panel’s groups do the same', async () => {
+    await step('Click a group’s tile. It says how many calls had all of them', async () => {
       await within(await groups()).findByText('3 people · 1 call', {}, SOON);
       await userEvent.click(within(await groups()).getByRole('button', { name: 'Open Leads' }));
     });
@@ -326,12 +319,11 @@ export const RenameAGroup: PageStory = {
       await userEvent.type(name, 'Product{Enter}');
       await screen.findByText('You already have a group called Product.', {}, SOON);
     });
-    await step('Renamed. The side panel follows', async () => {
+    await step('Renamed, where it is', async () => {
       const name = screen.getByRole('textbox', { name: 'Group name' });
       await userEvent.clear(name);
       await userEvent.type(name, 'Leadership{Enter}');
       await screen.findByRole('heading', { name: 'Leadership', level: 3 }, SOON);
-      await within(screen.getByRole('complementary', { name: 'Side panel' })).findByRole('link', { name: /^Leadership/ }, SOON);
     });
   }
 };
@@ -445,48 +437,6 @@ export const OfflineAndGroups: PageStory = {
     await step('If only your groups fail, their section says so. The rest of the page works', async () => {
       await within(await groups()).findByText('Your groups didn’t load.', {}, LATER);
       await screen.findByRole('region', { name: 'Not on Alcove yet' }, SOON);
-    });
-  }
-};
-
-export const StartATeamAndInvite: PageStory = {
-  name: '10.22 Start a team, buy licenses, invite',
-  ...page('/team', 'no-team'),
-  play: async ({ userEvent, step }) => {
-    await step('Start a team, and name it', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Start a team' }, LATER));
-      await userEvent.type(await screen.findByRole('textbox', { name: 'Name the team' }, SOON), 'Vandelay Industries');
-      await userEvent.click(screen.getByRole('button', { name: 'Make it' }));
-    });
-    await step('You’re its admin. Licenses are bought in Settings › Plan', async () => {
-      await userEvent.click(await screen.findByRole('link', { name: 'Buy licenses in Settings' }, LATER));
-    });
-    await step('Pick how many on Team’s card, and buy them from the balance', async () => {
-      const count = await screen.findByRole('spinbutton', { name: 'Licenses' }, LATER);
-      await userEvent.clear(count);
-      await userEvent.type(count, '2');
-      await userEvent.click(await pressable('button', 'Buy 2 licenses'));
-      await screen.findByText(/Bought 2 licenses/, {}, SOON);
-    });
-    await step('Back on Team, Invite makes a link for one person, shown once to copy', async () => {
-      await userEvent.click((await screen.findAllByRole('link', { name: 'Team' }, SOON))[0] ?? screen.getByRole('link', { name: 'Team' }));
-      await userEvent.click(await screen.findByRole('button', { name: /^Invite$/ }, LATER));
-      await screen.findByRole('group', { name: 'Link to join the team' }, SOON);
-    });
-  }
-};
-
-export const JoinATeam: PageStory = {
-  name: '10.23 Join a team by its link',
-  ...page('/team/join', 'team-join'),
-  beforeEach: changing(withTeamInvite()),
-  play: async ({ userEvent, step }) => {
-    await step('The link asks first: whose team, and Join or Not now', async () => {
-      await screen.findByRole('heading', { name: /^Join Vandelay Industries, Priya’s team\?$/ }, LATER);
-    });
-    await step('Join takes one of the team’s licenses, and the Team page opens on it', async () => {
-      await userEvent.click(screen.getByRole('button', { name: 'Join' }));
-      await screen.findByRole('region', { name: 'People on Vandelay Industries' }, LATER);
     });
   }
 };

@@ -22,6 +22,9 @@ export function createHttpLimits() {
 
   const attestLimiter = rateLimit(30, 60_000);
 
+  /** Switching feature flags through the operator route, per client address. */
+  const operatorLimiter = rateLimit(30, 60_000);
+
   /*
    * Speech and questions go to NEAR AI. A browser sends a clip every few seconds while someone talks: in a call the
    * host's browser sends one stream of clips per voice it hears, each limited on its own, all within the account's.
@@ -31,6 +34,9 @@ export function createHttpLimits() {
   const voiceLimiter = rateLimit(40, 60_000);
 
   const askLimiter = rateLimit(20, 60_000);
+
+  /** A guest's questions and catch-ups in a call, which the organizer's plan pays for: a few a minute each. */
+  const guestAskLimiter = rateLimit(6, 60_000);
 
   /** Changing what a note says: each change writes a whole new revision of it, so nobody can churn one, or its history. */
   const noteChangeLimiter = rateLimit(120, 60_000);
@@ -79,9 +85,6 @@ export function createHttpLimits() {
 
   /** Reading the call's follow-ups, per connection to a call: a browser showing them does every 5 seconds, and each read opens the documents worked on. */
   const followUpsLimiter = rateLimit(30, 60_000);
-
-  /** Asking to see the workspace, per person in a call: each ask reaches the organizer. */
-  const askSpaceLimiter = rateLimit(10, 60_000);
 
   /** What goes on in a call's workspace, per person in it: each step makes every browser fetch the call again. */
   const spaceLimiter = rateLimit(240, 60_000);
@@ -178,6 +181,9 @@ export function createHttpLimits() {
   /** Reading every document someone can open, for searching: once when search opens. */
   const searchLimiter = rateLimit(12, 60_000);
 
+  /** What documents say at the top, for the Drive's cards, per person, by how many: each opens a document. A screen of cards asks for a few dozen. */
+  const previewLimiter = rateLimit(600, 60_000);
+
   /** Tagging people and saying you've heard, per person: a tag is typed, so this is far more than anyone writes. */
   const mentionLimiter = rateLimit(240, 60_000);
 
@@ -198,5 +204,11 @@ export function createHttpLimits() {
 
   /** Following a top-up, per account: the app asks every 5 s while one is open, and each ask may ask 1Click. */
   const topUpCheckLimiter = rateLimit(60, 60_000);
-  return { limiter, telemetryLimiter, attestLimiter, speechLimiter, voiceLimiter, askLimiter, noteChangeLimiter, callLimiter, pickLimiter, cardLimiter, chatLimiter, rejoinLimiter, askNotesLimiter, othersPointLimiter, nudgeLimiter, statusLimiter, followUpLimiter, notesWatchLimiter, ideasWatchLimiter, sortLimiter, followUpsLimiter, askSpaceLimiter, spaceLimiter, moveLimiter, moveOpenLimiter, moveCheckLimiter, moveSecretCheckLimiter, moveSecretChangeLimiter, captionLimiter, videoLimiter, shareLimiter, momentLimiter, makeLimiter, busyLimiter, ringLimiter, ringAnswerLimiter, ringStreamLimiter, personalLimiter, carryLimiter, treeLimiter, liveLimiter, workspaceLimiter, workspaceListLimiter, documentLiveLimiter, updateLimiter, updateBytesLimiter, versionLimiter, awarenessLimiter, presenceLimiter, searchLimiter, mentionLimiter, idsLimiter, presenterLimiter, pieceLimiter, mediaLimiter, topUpLimiter, topUpCheckLimiter };
+
+  /**
+   * Reading what your agents did, per account: the Agents page reads each page it shows again every minute, and a page
+   * names the notes and calls on it, opening the keys of whoever else's they are.
+   */
+  const agentActivityLimiter = rateLimit(60, 60_000);
+  return { limiter, telemetryLimiter, attestLimiter, operatorLimiter, speechLimiter, voiceLimiter, askLimiter, guestAskLimiter, noteChangeLimiter, callLimiter, pickLimiter, cardLimiter, chatLimiter, rejoinLimiter, askNotesLimiter, othersPointLimiter, nudgeLimiter, statusLimiter, followUpLimiter, notesWatchLimiter, ideasWatchLimiter, sortLimiter, followUpsLimiter, spaceLimiter, moveLimiter, moveOpenLimiter, moveCheckLimiter, moveSecretCheckLimiter, moveSecretChangeLimiter, captionLimiter, videoLimiter, shareLimiter, momentLimiter, makeLimiter, busyLimiter, ringLimiter, ringAnswerLimiter, ringStreamLimiter, personalLimiter, carryLimiter, treeLimiter, liveLimiter, workspaceLimiter, workspaceListLimiter, documentLiveLimiter, updateLimiter, updateBytesLimiter, versionLimiter, awarenessLimiter, presenceLimiter, searchLimiter, previewLimiter, mentionLimiter, idsLimiter, presenterLimiter, pieceLimiter, mediaLimiter, topUpLimiter, topUpCheckLimiter, agentActivityLimiter };
 }

@@ -1,9 +1,10 @@
 import { errorCode, type Session } from '@alcove/api';
 import type { QueryClient } from '@tanstack/react-query';
 import { redirect } from '@tanstack/react-router';
-import { linkWaiting, takeAgentReturn, takePlansReturn, takeReturn, teamWaiting } from './afterSignIn';
+import { clearReturn, keptReturn } from './afterSignIn';
 import { signedInHere } from './device';
 import { q } from './queries';
+import { signedOut } from './signedOut';
 
 /**
  * Who's using the app: the signed-in session, or, when Alcove can't be asked (no connection), the account this
@@ -13,10 +14,12 @@ export type Account = { offline: false; session: Session } | { offline: true; ow
 
 /**
  * The session as Alcove says (null: signed out), or 'offline' when it can't be asked: no connection, or the request
- * didn't get through. A 401 is a signed-out session as ever; other failures throw.
+ * didn't get through. A 401 is a signed-out session as ever; other failures throw. An account signed out in this browser
+ * is signed out, though the app still holds its session while it leaves for the welcome page (useSignOut, lib/queries.ts).
  */
 export async function sessionOrOffline(qc: QueryClient): Promise<Session | null | 'offline'> {
   const known = qc.getQueryData(q.session().queryKey);
+  if (known && signedOut(known.ownerId)) return null;
   if (known !== undefined) return known;
   if (!navigator.onLine) return 'offline';
   try {
@@ -28,9 +31,10 @@ export async function sessionOrOffline(qc: QueryClient): Promise<Session | null 
 }
 
 /**
- * The signed-in account, or off to the welcome screen to sign in. Someone who signed in with Google from a call's join
- * page goes back to it, wherever Google's way back landed them, and someone who pressed Get Pro on the welcome page goes to
- * Plans with checkout on Pro; a preload (a link hovered) never uses either up.
+ * The signed-in account, or off to the welcome screen to sign in. Signing in that started on a page with somewhere to come
+ * back to goes there, wherever Google's way back landed (lib/afterSignIn.ts): a call's join page, Agents for an agent's
+ * request, where it asks, Plans with checkout open for Get Pro or Start a team on the welcome page, or the page of a link to
+ * someone's notes or of an invite to a team, which asks before anything opens. A preload (a link hovered) never uses one up.
  * Without a connection, someone signed in on this device carries on offline.
  */
 export async function requireAccount(qc: QueryClient, preload = false): Promise<{ account: Account }> {
@@ -41,17 +45,14 @@ export async function requireAccount(qc: QueryClient, preload = false): Promise<
     return { account: { offline: true, ownerId: here.ownerId } };
   }
   if (!s) throw redirect({ to: '/welcome' });
-  const agent = preload ? null : takeAgentReturn();
-  if (agent) throw redirect({ to: '/connect', search: { request: agent }, replace: true });
-  const back = preload ? null : takeReturn();
-  if (back) throw redirect({ to: '/join/$code', params: { code: back }, replace: true });
-  // Get Pro on the welcome page: Plans, which opens checkout on what was kept for it.
-  const checkout = preload ? null : takePlansReturn();
-  if (checkout) throw redirect({ to: '/plans', search: { checkout }, replace: true });
-  // Signed in from a link to someone's notes, Google's way back lands here: back to the link, which asks before opening them.
-  if (!preload && linkWaiting()) throw redirect({ to: '/link', replace: true });
-  // The same from a link to join a team: back to it, which asks before joining.
-  if (!preload && teamWaiting()) throw redirect({ to: '/team/join', replace: true });
+  const back = preload ? null : keptReturn();
+  // A link's page and an invite's take their own secret, which never goes in a URL; the rest are used up here.
+  if (back?.to === 'link') throw redirect({ to: '/link', replace: true });
+  if (back?.to === 'team') throw redirect({ to: '/team/join', replace: true });
+  if (back) clearReturn();
+  if (back?.to === 'call') throw redirect({ to: '/join/$code', params: { code: back.code }, replace: true });
+  if (back?.to === 'agent') throw redirect({ to: '/agents', search: { request: back.requestId }, replace: true });
+  if (back?.to === 'plans') throw redirect({ to: '/plans', search: { checkout: back.checkout }, replace: true });
   return { account: { offline: false, session: s } };
 }
 

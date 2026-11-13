@@ -2,7 +2,8 @@
 import type { PlanOffers, Purchase, TopUp, TopUpRoute, TopUpRoutes, TopUpState } from '@alcove/api';
 import { iso } from './clock';
 import type { World } from './index';
-import { buyFromBalance, PLAN_OFFERS } from './plans';
+import { buyFromBalance, forPeriods, LICENSE_YEAR, PLAN_OFFERS, PRO_PRICE } from './plans';
+import { addLicenses } from './teams';
 
 /**
  * How a payment opened to buy something plays out by itself, a step every few seconds from when it's opened, as 1Click
@@ -16,6 +17,11 @@ export type PaymentPlay = 'pays' | 'over' | 'short' | 'refused' | 'expires' | 'f
 export interface PaymentsWorld {
   /** What the plans cost now, as the server offers them. A story raises them to show a price that changed. */
   offers: PlanOffers;
+  /**
+   * What a month of Pro cost when the last month was bought (the server's `monthlyMicroUsd`): renewing never pays more than
+   * this without Art buying at the new price first. Pro's price, until Pro is bought at another.
+   */
+  proMonthly: number;
   /** The ways to pay, or null for a server that takes no payments. */
   routes: TopUpRoutes | null;
   topUps: TopUp[];
@@ -42,30 +48,50 @@ const route = (id: string, chain: string, chainName: string, token: TopUpRoute['
 const BASE = route('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 'base', 'Base', 'USDC');
 /** Pro is $20 a period; the amounts offered first are one, three and six periods of it, in micro-USD. */
 const ROUTES: TopUpRoutes = {
+  // USDC only, in the order the server offers them (its allowlist's, apps/api/src/features/billing/oneclick.ts).
   routes: [
-    BASE, route('preview-sol-USDC', 'sol', 'Solana', 'USDC'), route('preview-eth-USDC', 'eth', 'Ethereum', 'USDC', 20),
-    route('preview-arb-USDC', 'arb', 'Arbitrum', 'USDC'), route('preview-pol-USDC', 'pol', 'Polygon', 'USDC'),
-    route('preview-near-USDC', 'near', 'NEAR', 'USDC'), route('preview-op-USDC', 'op', 'Optimism', 'USDC'),
-    route('preview-avax-USDC', 'avax', 'Avalanche', 'USDC'), route('preview-bsc-USDC', 'bsc', 'BNB Chain', 'USDC'),
-    route('preview-near-USDT', 'near', 'NEAR', 'USDT'), route('preview-bsc-USDT', 'bsc', 'BNB Chain', 'USDT')
+    route('preview-near-USDC', 'near', 'NEAR', 'USDC'), route('preview-eth-USDC', 'eth', 'Ethereum', 'USDC', 20), route('preview-sol-USDC', 'sol', 'Solana', 'USDC'),
+    BASE, route('preview-arb-USDC', 'arb', 'Arbitrum', 'USDC'), route('preview-pol-USDC', 'pol', 'Polygon', 'USDC'),
+    route('preview-bsc-USDC', 'bsc', 'BNB Chain', 'USDC'), route('preview-op-USDC', 'op', 'Optimism', 'USDC'), route('preview-avax-USDC', 'avax', 'Avalanche', 'USDC')
   ],
   presets: [20_000_000, 60_000_000, 120_000_000]
 };
 
 /** A server without a treasury, used by the existing scenarios. */
-export const paymentsOff = (): PaymentsWorld => ({ offers: structuredClone(PLAN_OFFERS), routes: null, topUps: [], play: 'pays', playing: {} });
+export const paymentsOff = (): PaymentsWorld => ({ offers: structuredClone(PLAN_OFFERS), proMonthly: PRO_PRICE, routes: null, topUps: [], play: 'pays', playing: {} });
 /** A server taking payments, without a top-up opened yet: a payment opened to buy something plays out as `play` says. */
 export function withPayments(w: World, play: PaymentPlay = 'pays'): void {
   w.payments = { ...w.payments, routes: structuredClone(ROUTES), topUps: [], play, playing: {} };
 }
-/** The prices go up while the story is open: Pro to $24 a month ($19.20 for a year or more), more notes to $18 for 10 hours. */
+/**
+ * The prices go up while the story is open: Pro to $24 a month ($19.20 for a year or more), more notes to $18 for 10 hours, a
+ * team license to $48 ($38.40 a period for a year).
+ */
 export function raisePrices(w: World): void {
   const o = w.payments.offers;
   w.payments.offers = {
     ...o,
     pro: { ...o.pro, microUsdPerMonth: 24_000_000, yearly: o.pro.yearly ? { ...o.pro.yearly, microUsdPerMonth: 19_200_000 } : null },
-    hours: o.hours ? { ...o.hours, microUsd: 18_000_000 } : null
+    hours: o.hours ? { ...o.hours, microUsd: 18_000_000 } : null,
+    team: { ...o.team, microUsdPerLicense: 48_000_000, yearly: o.team.yearly ? { ...o.team.yearly, microUsdPerLicense: 38_400_000 } : null }
   };
+}
+
+/**
+ * `buys` bought from the balance, as the server buys it once its checks pass: the plan pays for it (and has Pro's months or
+ * more notes), and licenses go to the team Art runs, not taken by anyone yet, each with what it cost and how many periods it
+ * runs once taken. `entry` is the balance's line for it.
+ */
+export function boughtFromBalance(w: World, buys: Purchase, entry: string, now = Date.now()): void {
+  w.plan = buyFromBalance(w.plan, buys, entry, now);
+  // Months of Pro bought at the price in force: what renewing goes by from now on.
+  if (buys.kind === 'pro') w.payments.proMonthly = w.payments.offers.pro.microUsdPerMonth;
+  if (buys.kind === 'licenses' && w.myTeam) addLicenses(w.myTeam, buys.count, buys.microUsdPerLicense * buys.periods, buys.periods);
+}
+
+/** No team license for a year on offer, as the release that brings them ships at first: a license is a period's alone. */
+export function noTeamYear(w: World): void {
+  w.payments.offers = { ...w.payments.offers, team: { ...w.payments.offers.team, yearly: null } };
 }
 
 /** An ID for a new line of the balance that none of its lines has yet: a list of them keys on it. */
@@ -110,6 +136,14 @@ export function purchaseTopUp(id: string, buys: Purchase, asked: number, expires
 
 /** A year of Pro at the yearly price: what most of the checkout's stories are buying. */
 export const PRO_YEAR: Purchase = { kind: 'pro', months: 12, microUsdPerMonth: 16_000_000 };
+/** Six licenses at $40, for the six people at Vandelay on Alcove: what starting Art's team buys, a period at a time. */
+export const TEAM_SIX: Purchase = { kind: 'licenses', count: 6, microUsdPerLicense: PLAN_OFFERS.team.microUsdPerLicense, periods: 1 };
+/** The same six for a year, at $32 a period: $2,304. */
+export const TEAM_SIX_YEAR: Purchase = { kind: 'licenses', count: 6, ...LICENSE_YEAR };
+/** Why a purchase whose price went up before its payment arrived wasn't bought, as the server says it. */
+const priceChanged = (buys: Purchase): string => (buys.kind === 'pro' ? 'The price of Pro changed before your payment arrived. It’s in your balance.'
+  : buys.kind === 'hours' ? 'The price of more notes changed before your payment arrived. It’s in your balance.'
+  : `The price of a team license${forPeriods(buys.periods)} changed before your payment arrived. It’s in your balance.`);
 
 /** Where a payment opened to buy something is, for a story that opens on it. */
 export type PurchaseAt = 'waiting' | 'short' | 'closed-short' | 'seen' | 'bought' | 'over' | 'refused' | 'expired' | 'cancelled' | 'failed';
@@ -136,16 +170,13 @@ export const purchaseAt = (at: PurchaseAt, buys: Purchase = PRO_YEAR, asked = 19
     case 'bought':
     case 'over':
       addToBalance(w, settled.microUsd, String(sent));
-      w.plan = buyFromBalance(w.plan, buys, freshEntryId(w));
+      boughtFromBalance(w, buys, freshEntryId(w));
       now = { ...t, ...closed, state: 'credited', received: settled, purchase: { buys, outcome: 'bought', why: null } };
       break;
     case 'refused':
       raisePrices(w);
       addToBalance(w, settled.microUsd, String(sent));
-      now = {
-        ...t, ...closed, state: 'credited', received: settled,
-        purchase: { buys, outcome: 'refused', why: buys.kind === 'pro' ? 'The price of Pro changed before your payment arrived. It’s in your balance.' : 'The price of more notes changed before your payment arrived. It’s in your balance.' }
-      };
+      now = { ...t, ...closed, state: 'credited', received: settled, purchase: { buys, outcome: 'refused', why: priceChanged(buys) } };
       break;
     case 'expired': now = { ...t, ...closed, state: 'expired', expiresAt: new Date(Date.now() - 60_000).toISOString() }; break;
     case 'cancelled': now = { ...t, ...closed, state: 'cancelled' }; break;
@@ -191,7 +222,7 @@ export function settlePurchase(w: World, id: string, now = Date.now()): void {
   if (!t || !t.purchase) return;
   const microUsd = Math.round(Number(t.asked.amount) * 1_000_000);
   addToBalance(w, microUsd, t.asked.amount);
-  w.plan = buyFromBalance(w.plan, t.purchase.buys, `sb-entry-bought-${id}`, now);
+  boughtFromBalance(w, t.purchase.buys, `sb-entry-bought-${id}`, now);
   w.payments.topUps = w.payments.topUps.map((x) => x.id === id && x.purchase ? {
     ...x, state: 'credited', address: null, received: { amount: x.asked.amount, microUsd }, purchase: { ...x.purchase, outcome: 'bought' }
   } : x);

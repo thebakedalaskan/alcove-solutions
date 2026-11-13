@@ -1,14 +1,13 @@
 /*
- * Google Calendar, first in Connections: the connection on one row, and, once there's a calendar, its two switches nested
- * under it. Connect opens the page that says how Alcove uses Calendar data (CalendarConsent.tsx), which goes on to
- * Google's consent; Google sends you back here with `?calendar=` saying how it went, which the row says under it.
+ * Google Calendar, first in Connections: the connection on one row, and, once there's a calendar, its switches nested under
+ * it (Show my own events on Home only while Show my other meetings on Home is on). Connect goes straight to Google, which asks for access; Google sends you back here with `?calendar=` saying
+ * how it went, which the row says under it.
  */
 import { errorMessage, type CalendarConnectResult, type Preferences } from '@alcove/api';
 import { Button, Icon, ProviderMark, SettingFact, SettingNote, SettingRow, buttonClass, useToast, type SettingRowProps } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
 import { useRef } from 'react';
-import { q, useDisconnectCalendar } from '~/lib/queries';
+import { calendarConnectUrl, q, useDisconnectCalendar } from '~/lib/queries';
 import { SwitchSetting, useSave } from './save';
 
 /** What Google's way back said, as the row says it. */
@@ -47,7 +46,7 @@ export function GoogleCalendar({ prefs, result }: { prefs: Preferences | undefin
       : { ...plain, control: <SettingFact>Looking…</SettingFact> })
       : cal.source === 'sample' ? { ...plain, label: 'Sample calendar', help: 'A day of calls, placed around when you signed in.', control: <SettingFact>Demo account</SettingFact> }
         : cal.source === 'none' ? { ...plain, help: 'Connect Google Calendar from an Alcove account that uses Google sign-in.', control: <SettingFact>Not connected</SettingFact> }
-          : cal.needsAccess ? { ...theirs, help: 'Your meetings show on Home, and the calls you schedule go on it.', control: <Link to="/connect-calendar" className={buttonClass({ size: 'sm' })}>Connect</Link> }
+          : cal.needsAccess ? { ...theirs, help: 'Alcove reads your events and adds the calls you schedule.', control: <a href={calendarConnectUrl()} className={buttonClass({ size: 'sm' })}>Connect</a> }
             : {
               ...theirs,
               help: email,
@@ -68,6 +67,11 @@ export function GoogleCalendar({ prefs, result }: { prefs: Preferences | undefin
             help={cal?.source === 'sample' ? 'Your sample calendar stands in for Google Calendar.' : 'When Google Calendar is connected, Google sends the invitations.'}
             checked={prefs.addToCalendar} onChange={(on) => save('Put calls I schedule on my calendar', { addToCalendar: on })} />
           <SwitchSetting sub label="Show my other meetings on Home" checked={prefs.showOtherMeetings} onChange={(on) => save('Show my other meetings on Home', { showOtherMeetings: on })} />
+          {/* Upcoming's own count does the same: these are among the other meetings, so they come and go with them. */}
+          {prefs.showOtherMeetings && (
+            <SwitchSetting sub label="Show my own events on Home" help="Events with nobody else on them, in their days under your calls and meetings."
+              checked={prefs.showSoloEvents} onChange={(on) => save('Show my own events on Home', { showSoloEvents: on })} />
+          )}
         </>
       )}
     </>

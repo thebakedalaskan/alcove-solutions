@@ -2,6 +2,12 @@
 
 Status: approved design (the canvas), building. 12 November 2026.
 
+Merged with main's calls the same day, three things here changed. The side panel's foot is one plan row on #283's calmer
+panel, and Plans isn't reached from it ([The frame](../../design/pages.md#the-frame)). A call's notes aren't filed: every
+call has a home ([calls and recordings](../../engineering/calls-and-recordings.md#the-calls-home)). And with no notes left, the door sits
+under the start window's ways, with **Start without notes**, and under the scheduler's Notes switch
+([user flows](../../product/user-flows.md) 16.10).
+
 The design is the canvas **Plans and checkout**, copied into the repo at
 [docs/design/canvas/plans/](../../design/canvas/plans/) (open it as [canvas.md](../../design/canvas.md) says, with its own
 `support.js`). Its boards are the source of truth for how everything looks and moves:
@@ -241,8 +247,8 @@ The canvas's Plan group, plus what it missed:
    Pro** (Free) or **Make room** (Drive); a file over the plan's size says its limit and offers nothing (Pro's is the same today).
 7. **Pro ending:** the notices and the side panel's ending row (above), and the browser notification phase 2 sends.
 
-Dropped for now, because the backend doesn't limit them: the second shared workspace, and Team at the third invite (until
-phase 3).
+Dropped for now, because the backend doesn't limit it: the second shared workspace. Team at the third invite came with
+Team (user-flows 16.21).
 
 ## Storybook
 

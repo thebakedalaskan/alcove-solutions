@@ -1,7 +1,7 @@
 /*
  * Plans: what each plan brings and what it costs, on the last of the sunset (features/plans/Plans.tsx). `checkout` opens
- * checkout on Pro or on more notes as the page opens, once, and leaves the address: the welcome page's Get Pro lands here
- * after signing in (`/plans?checkout=pro`).
+ * checkout on Pro, on more notes or on Team as the page opens, once, and leaves the address: the welcome page's Get Pro and
+ * Start a team land here after signing in (`/plans?checkout=pro`, `/plans?checkout=team`).
  */
 import { CheckoutParamSchema, type CheckoutParam } from '@alcove/api';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';

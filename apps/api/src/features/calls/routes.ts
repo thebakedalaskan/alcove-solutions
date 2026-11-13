@@ -29,8 +29,21 @@ import type { HttpRuntime } from '../../http/runtime';
 
 export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   const { d } = runtime;
-  const { cardLimiter, pickLimiter, carryLimiter, callLimiter, moveOpenLimiter, moveSecretChangeLimiter, moveCheckLimiter, moveSecretCheckLimiter, spaceLimiter, followUpsLimiter, followUpLimiter, askNotesLimiter, othersPointLimiter, nudgeLimiter, statusLimiter, ringLimiter, askSpaceLimiter, chatLimiter, rejoinLimiter, moveLimiter, voiceLimiter, speechLimiter, videoLimiter, shareLimiter, askLimiter, notesWatchLimiter, ideasWatchLimiter, momentLimiter, personalLimiter, captionLimiter } = runtime.limits;
+  const { cardLimiter, pickLimiter, carryLimiter, callLimiter, moveOpenLimiter, moveSecretChangeLimiter, moveCheckLimiter, moveSecretCheckLimiter, spaceLimiter, followUpsLimiter, followUpLimiter, askNotesLimiter, othersPointLimiter, nudgeLimiter, statusLimiter, ringLimiter, chatLimiter, rejoinLimiter, moveLimiter, voiceLimiter, speechLimiter, videoLimiter, shareLimiter, askLimiter, guestAskLimiter, notesWatchLimiter, ideasWatchLimiter, momentLimiter, personalLimiter, captionLimiter } = runtime.limits;
   const { optionalOwner, signedIn } = runtime.context;
+  /**
+   * A question or catch-up in a call, limited for whoever asks: someone signed in by their account, which pays; a guest, whom
+   * the organizer pays for, by the call and the person their pass names, which a reload or a pass from an earlier connection
+   * keeps (a new connection is a new identity, never a new person: joining.ts), and a few a minute, below what someone
+   * signed in gets.
+   */
+  const asking = async (v: callsParticipants.Viewer, what: string) => {
+    const account = await v.session();
+    if (account) { askLimiter(account.ownerId, what); return; }
+    const guest = `${v.pass.callId}:${v.pass.person}`;
+    askLimiter(guest, what);
+    guestAskLimiter(guest, `guest ${what}`);
+  };
 
   /* LiveKit's webhooks: outside /v1 (no Origin, no session); trusted only by their signature. */
   app.post('/hooks/livekit', async (c) => {
@@ -57,7 +70,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   app.post('/v1/calls/:code/join', async (c) => {
     callLimiter(clientAddress(c), 'call join');
     const b = await body(c, CallJoinBodySchema);
-    return c.json(await callsJoining.join(d, c.req.param('code'), { owner: await optionalOwner(c), name: b.name, mic: b.mic, cam: b.cam, identity: b.identity, keyPackage: b.keyPackage, previous: b.previous }));
+    return c.json(await callsJoining.join(d, c.req.param('code'), { owner: await optionalOwner(c), name: b.name, mic: b.mic, cam: b.cam, identity: b.identity, keyPackage: b.keyPackage, previous: b.previous, address: clientAddress(c) }));
   });
 
   /*
@@ -210,8 +223,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
     if (a.type === 'status') statusLimiter(c.get('viewer').pass.person, 'status');
     if (a.type === 'ring') ringLimiter(c.get('viewer').organizer.ownerId, 'ring');
     if (a.type === 'follow-up' || a.type === 'follow-up-add' || a.type === 'follow-up-edit' || a.type === 'follow-up-review') followUpLimiter(c.get('viewer').pass.person, 'follow-up');
-    if (a.type === 'workspace-ask') askSpaceLimiter(c.get('viewer').pass.person, 'workspace-ask');
-    else if (a.type.startsWith('workspace-') || a.type.startsWith('present-') || a.type.startsWith('play-') || a.type.startsWith('board-')) spaceLimiter(c.get('viewer').pass.person, 'workspace');
+    if (a.type.startsWith('workspace-') || a.type.startsWith('present-') || a.type.startsWith('play-') || a.type.startsWith('board-')) spaceLimiter(c.get('viewer').pass.person, 'workspace');
     return c.json(await callsService.act(c.get('viewer'), c.req.param('id'), a));
   });
 
@@ -323,14 +335,14 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   app.post('/v1/live/calls/:id/catch-up', async (c) => {
     const v = c.get('viewer');
     callsParticipants.requireIn(v, 'catch-up');
-    askLimiter(v.pass.identity, 'catch-up');
+    await asking(v, 'catch-up');
     return c.json(await callsInsights.catchUp(v, c.req.param('id'), (await body(c, CatchUpBodySchema)).range));
   });
 
   app.post('/v1/live/calls/:id/ask', async (c) => {
     const v = c.get('viewer');
     callsParticipants.requireIn(v, 'ask');
-    askLimiter(v.pass.identity, 'ask');
+    await asking(v, 'ask');
     const { question, range } = await body(c, AskSoFarBodySchema);
     return c.json(await callsInsights.askSoFar(v, c.req.param('id'), question, range));
   });

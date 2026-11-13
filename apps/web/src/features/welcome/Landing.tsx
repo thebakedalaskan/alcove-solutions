@@ -37,10 +37,10 @@ const TOOLS = [
   ['get_inbox', 'What’s yours to do, and when'],
   ['get_availability', 'When people are busy, so your agent can find a time'],
   ['schedule_call', 'Book it, with notes on or off'],
-  ['update_action', 'Update your follow-ups and mark them done']
+  ['update_follow_up', 'Update your follow-ups and mark them done']
 ] as const;
 const FACTS: readonly (readonly [IconName, string])[] = [
-  ['badgeCheck', 'Alcove checks the hardware of confidential AI models before sending them call content.'],
+  ['badgeCheck', 'Alcove runs in a confidential VM, and checks AI models’ hardware before sending them call content.'],
   ['lock', 'Titles, names, chat, audio and notes are sealed before they’re stored, under keys for your account.'],
   ['trash', 'Deleting a note removes it from Alcove’s live systems. Drive exports stay in Drive.']
 ];
@@ -136,7 +136,7 @@ function Hero({ auth }: { auth: Auth }) {
         ))}
       </h1>
       <motion.p className="lp-lede" {...rise(0)}>
-        Video calls with the note taker built in. Get a transcript, a summary and follow-ups, with recordings and notes encrypted in storage.
+        Calls, whiteboards, docs and notes in one place, with AI that runs in confidential compute, so Alcove can’t read your meetings.
       </motion.p>
       <motion.div {...rise(1)}><WaysIn auth={auth} layout="hero" note="Free to start, with about 5 hours of notes a month." /></motion.div>
     </div>
@@ -211,7 +211,7 @@ export function Landing({ auth }: { auth: Auth }) {
             <section className="lp-wrap lp-sealed" id="privacy" aria-labelledby="privacy-title">
               <div>
                 <PartHead id="privacy-title" title="What Alcove can see">
-                  Live call audio and video are end-to-end encrypted. When notes are on, Alcove processes call audio and transcripts to write them. The beta’s hosting server can decrypt stored content to provide these features and does not run in an attested confidential environment.
+                  Live call audio and video are end-to-end encrypted. When notes are on, Alcove reads call audio and transcripts to write them, only inside a confidential VM on Intel TDX. The key that opens what’s stored is made there and released only to Alcove’s signed, attested server, and your browser checks that attestation itself.
                 </PartHead>
                 <ul className="lp-facts">{FACTS.map(([icon, text]) => <li key={text}><Icon name={icon} size={18} />{text}</li>)}</ul>
               </div>

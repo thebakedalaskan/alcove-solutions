@@ -1,3 +1,8 @@
+import { AgentAuthorizationIdSchema } from '../agents/schema';
+import { CallCodeSchema } from '../calls/entry';
+import { NoteLinkSecretSchema } from '../notes/links';
+import { CheckoutParamSchema } from '../plans/schema';
+import { TeamSecretBodySchema } from '../teams/schema';
 import { z } from '../shared/zod';
 
 /** Correlates a popup with its waiting tab; never a session or an OAuth credential. */
@@ -15,3 +20,23 @@ export const GoogleSignInSearchSchema = z.object({
   next: GoogleSignInNextSchema.optional().catch(undefined),
   signin: GoogleSignInRefusalSchema.optional().catch(undefined)
 });
+
+/**
+ * Where a tab goes once it's signed in, when signing in started on a page with somewhere to come back to. Google's way back
+ * lands on /ready or /home, so it waits in that tab's sessionStorage (the app's lib/afterSignIn.ts), never in a URL: a
+ * call's code and a link's or an invite's secret are secrets. One at a time, so a sign-in started somewhere else since takes
+ * its place. A call's join page (`call`), an agent's request to be let in (`agent`, a pointer with no credential), a link to
+ * someone's notes or an invite to a team, whose own pages take the secret (`link`, `team`), or Plans with checkout open on
+ * what the welcome page's Get Pro or Start a team chose (`plans`).
+ */
+export const AfterSignInSchema = z.discriminatedUnion('to', [
+  z.object({ to: z.literal('call'), code: CallCodeSchema }),
+  z.object({ to: z.literal('agent'), requestId: AgentAuthorizationIdSchema }),
+  z.object({ to: z.literal('link'), secret: NoteLinkSecretSchema }),
+  z.object({ to: z.literal('team'), secret: TeamSecretBodySchema.shape.secret }),
+  z.object({ to: z.literal('plans'), checkout: CheckoutParamSchema })
+]);
+export type AfterSignIn = z.infer<typeof AfterSignInSchema>;
+/** The same as the tab keeps it: with until when it counts (ms), ten minutes, like the sign-in attempt itself. */
+export const AfterSignInStoredSchema = z.object({ back: AfterSignInSchema, until: z.number() });
+export type AfterSignInStored = z.infer<typeof AfterSignInStoredSchema>;

@@ -155,7 +155,10 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
  * layer over the whole of the main area, gliding there with motion.
  */
 .ic-call { position: absolute; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; padding: 0 max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px)); overflow: hidden; animation: ac-fade var(--duration-3) var(--ease-out) both; }
-.ic-call.is-ended .ic-main, .ic-call.is-ended .ic-dockbar { opacity: .35; transition: opacity var(--duration-3) var(--ease-out); }
+/* Ending or leaving it: the call eases back and fades as its page rises in over it, out of reach. With reduced motion, a fade. */
+.ic-call.is-leaving { animation: ic-recede var(--duration-page-2) var(--ease-in-out) both; pointer-events: none; }
+@keyframes ic-recede { to { opacity: 0; transform: scale(.985); } }
+@media (prefers-reduced-motion: reduce) { .ic-call.is-leaving { animation: ac-fade-out var(--duration-2) linear both !important; } }
 
 /* top bar */
 .ic-top { display: flex; align-items: center; gap: 14px; height: 64px; min-width: 0; transition: transform var(--duration-3) var(--ease-out), opacity var(--duration-3) var(--ease-out); }
@@ -553,7 +556,7 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-foot button.ac-chip:disabled { opacity: .5; cursor: default; }
 .ic-tr { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding-top: 14px; }
 .ic-tr > .ac-notice { margin: 0 16px; }
-.ic-tr .tx { padding: 2px 20px 18px; }
+.ic-tr .tx-log { padding: 2px 20px 18px; }
 .tx-l.is-hit { border-radius: var(--radius-sm); background: var(--sun-soft); box-shadow: 0 0 0 6px var(--sun-soft); transition: background-color var(--duration-3); }
 .ic-qa { display: grid; gap: 16px; margin-top: 18px; }
 .ic-qa-item { display: grid; gap: 10px; }
@@ -755,8 +758,6 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-menu .mi .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ic-menu .mi:hover .ac-scope { background: var(--surface); }
 .ic-menu .mi[disabled] { opacity: .45; pointer-events: none; }
-/* What can't be undone, such as Delete workspace. */
-.ic-menu .mi.is-caution, .ic-menu .mi.is-caution .ac-i { color: var(--caution); }
 .ic-menu .mi .ac-kbd { flex: none; }
 .ic-menu .mi .tick { flex: none; margin-left: auto; color: var(--sun-text); opacity: 0; }
 .ic-menu .mi[aria-checked="true"] .tick { opacity: 1; }
@@ -866,29 +867,6 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-call.is-focus .ic-dockbar .ac-dock { transform: translateY(calc((var(--bar) - 56px) / 2)); }
 
 
-/* leaving */
-.ic-leave .in { padding: 28px 28px 24px; }
-.ic-leave h2 { margin: 8px 0 0; }
-.ic-leave p { margin: 8px 0 0; color: var(--ink-2); }
-.ic-leave .acts { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
-.ic-leave .who { display: flex; align-items: center; gap: 12px; margin-top: 18px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--sunk); font-size: 13.5px; line-height: 1.4; color: var(--ink-2); }
-.ic-leave .who .ac-faces .ac-avatar { --ring: var(--sunk); }
-.ic-leave .state { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 13.5px; color: var(--ink-3); }
-.ic-leave .state .ac-i { color: var(--sun-text); }
-.ic-leave .state .ok { display: inline-flex; align-items: center; gap: 10px; }
-/* Notes from a call with no workspace: where its organizer files them (note.css's nd-file), in a panel as who gets them is. */
-.ic-leave .filing { margin-top: 16px; padding: 14px; border-radius: var(--radius-md); box-shadow: inset 0 0 0 1px var(--line); }
-.ic-leave .filing p { margin: 0; }
-.ic-leave .filing .nd-file-err { color: var(--caution); }
-/* Whoever hosts, leaving: who takes over (the best person, chosen already), and Change for who else could. */
-.ic-leave .next-host { margin-top: 16px; }
-.ic-leave .next-host .who { margin-top: 0; }
-.ic-leave .next-host .who b { color: var(--ink); font-weight: 600; }
-.ic-leave .next-host .change { flex: none; margin-left: auto; }
-.ic-leave .next-host .pick { overflow: hidden; }
-.ic-leave .next-host .pick > :first-child { margin-top: 6px; }
-.ic-leave .next-host .ic-opt { height: 40px; }
-
 /* Narrower windows: the top bar keeps its controls and drops their words, widest first. Their names stay for a screen reader. */
 @media (max-width: 1100px) {
   .ic-top { gap: 10px; }
@@ -932,9 +910,12 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
   .ac-pop.is-sheet .mi { height: 44px; }
 }
 @keyframes ic-sheet-up { from { transform: translateY(24px); opacity: 0; } }
-/* The transcript in the panel: newest at the bottom, following along unless you scroll up. */
+/*
+ * The transcript in the panel: newest at the bottom, following along unless you scroll up. Its lines scroll in `tx-log`,
+ * a name nothing else uses: a scroll area that keeps the wheel for itself, put on a row's words, stops the page scrolling.
+ */
 .tx-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.tx { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 20px 18px; }
+.tx-log { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 20px 18px; }
 .tx-l { display: grid; grid-template-columns: 26px minmax(0, 1fr); column-gap: 10px; }
 .tx-start { margin-top: 16px; }
 .tx-h { display: flex; align-items: baseline; gap: 8px; min-height: 26px; padding-top: 4px; }
@@ -943,7 +924,7 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .tx-l p { margin-top: 6px; font-size: 14px; line-height: 1.5; color: var(--ink); text-wrap: pretty; }
 .tx-start p { margin-top: 0; }
 .tx-in { animation: ac-rise var(--duration-3) var(--ease-out) both; }
-.tx .tx-key { margin: 6px 0 2px; }
+.tx-log .tx-key { margin: 6px 0 2px; }
 .tx-latest { position: absolute; left: 50%; bottom: 12px; translate: -50% 0; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 13px 0 10px; border-radius: var(--radius-pill); background: var(--ink); color: var(--ground); font: 600 12.5px/1 var(--font-sans); box-shadow: var(--shadow-2); animation: ac-rise var(--duration-2) var(--ease-out) both; }
 
 /* ---- smaller screens ---- */
@@ -1051,8 +1032,17 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-fname { flex: 0 1 auto; display: inline-flex; align-items: center; gap: 6px; min-width: 48px; max-width: 100%; height: 34px; padding: 0 8px 0 6px; border-radius: 9px; color: var(--stage-ink); font: 600 14px/1.2 var(--font-sans); text-align: left; transition: background-color var(--duration-1); }
 button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 255 / .07); }
 .ic-fname .ac-i { flex: none; color: var(--stage-ink-2); }
-/* How it stands gives way first: a long name keeps its room, and neither ever widens the bar. */
+/*
+ * How it stands, then who can edit it (`ic-facc`, in horizon: what's so, and the way to who has it). How it stands gives way
+ * first, then who can edit it: a long name keeps its room, and none of them ever widens the bar.
+ */
+.ic-fstat { flex: 0 1000 auto; display: flex; align-items: center; gap: 6px; min-width: 0; }
 .ic-fmeta { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--stage-ink-2); font: 500 12.5px/1.2 var(--font-sans); }
+.ic-facc { flex: 0 1 auto; display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 26px; padding: 0 9px 0 7px; border-radius: 8px; background: color-mix(in srgb, var(--horizon) 13%, transparent); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); white-space: nowrap; }
+.ic-facc .ac-i { flex: none; color: var(--horizon); }
+.ic-facc .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+button.ic-facc { transition: background-color var(--duration-1); }
+button.ic-facc:hover, button.ic-facc[aria-expanded="true"] { background: color-mix(in srgb, var(--horizon) 22%, transparent); }
 .ic-fend { flex: none; display: flex; align-items: center; gap: 6px; }
 /* Following its presenter: horizon, the colour of what you're being shown, with Unfollow inside. */
 .ic-fol { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 4px 0 7px; border-radius: 11px; background: color-mix(in srgb, var(--horizon) 15%, transparent); color: var(--horizon); }
@@ -1084,7 +1074,12 @@ button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 25
 .ic-frame-box.is-phone .ic-fbar { height: 54px; padding: 0 6px 0 8px; gap: 6px; }
 .ic-frame-box.is-phone .ic-fnm { flex: 1 1 auto; flex-direction: column; align-items: flex-start; gap: 1px; }
 .ic-frame-box.is-phone .ic-fname { height: 24px; min-width: 0; padding: 0 6px 0 5px; font-size: 13.5px; border-radius: 7px; }
-.ic-frame-box.is-phone .ic-fmeta { max-width: 100%; padding: 0 5px; font-size: 11.5px; }
+.ic-frame-box.is-phone .ic-fstat { max-width: 100%; gap: 5px; padding: 0 5px; }
+.ic-frame-box.is-phone .ic-fmeta { font-size: 11.5px; }
+/* Who can edit it is its icon alone on a phone, beside how it stands: its words are still read out, and it opens who has it. */
+.ic-frame-box.is-phone .ic-facc { flex: none; height: 18px; padding: 0 5px; border-radius: 6px; }
+.ic-frame-box.is-phone .ic-facc .ac-i { width: 12px; height: 12px; }
+.ic-frame-box.is-phone .ic-facc .t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .ic-frame-box.is-phone .ic-fol { padding-left: 5px; }
 .ic-frame-box.is-phone :is(.ic-fol .t, .ic-follow .ft small) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .ic-frame-box.is-phone .ic-follow { padding: 0 10px 0 6px; }
@@ -1146,6 +1141,38 @@ button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 25
 .ic-presentask p { color: var(--stage-ink-2); font: 400 13.5px/1.45 var(--font-sans); }
 .ic-presentask p b { color: var(--stage-ink); font-weight: 600; }
 .ic-presentask .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+/*
+ * Leave's question for whoever hosts, over Leave: End for everyone, and Leave, Kofi hosts with Change at its end, which turns
+ * the question into who could host and back. What's on its way says so and stays lit; the other waits, dimmed.
+ */
+.ic-leaveask { width: 332px; max-width: calc(100vw - 24px); padding: 8px; }
+.ic-leaveask[data-side="top"]:not(.is-sheet) { animation-name: ic-ask-up; }
+@keyframes ic-ask-up { from { opacity: 0; transform: translateY(6px) scale(.98); } }
+.ic-leavesteps .ic-cm { position: relative; }
+.ic-leavesteps .ic-cm:is(:disabled, [aria-disabled="true"]) { cursor: default; }
+.ic-leavesteps .ic-cm:is(:disabled, [aria-disabled="true"]):hover { background: transparent; }
+.ic-leavesteps .ic-cm:disabled { opacity: .45; }
+.ic-leavesteps .ic-cm .ac-spin { width: 17px; height: 17px; }
+.ic-lv-keep { position: relative; }
+.ic-lv-keep.has-change .ic-cm { padding-right: 88px; }
+.ic-lv-keep.has-change:hover .ic-cm:not(:disabled, [aria-disabled="true"]) { background: rgb(255 255 255 / .06); }
+.ic-lv-change { position: absolute; top: 50%; right: 12px; translate: 0 -50%; padding: 6px 9px; border-radius: 9px; background: rgb(255 255 255 / .06); color: var(--stage-ink-2); font: 600 12.5px/1 var(--font-sans); transition: background-color var(--duration-1), color var(--duration-1); }
+.ic-lv-change:hover { background: rgb(255 255 255 / .12); color: var(--stage-ink); }
+.ic-lv-change:disabled { opacity: .45; cursor: default; pointer-events: none; }
+.ic-lv-error { display: flex; align-items: flex-start; gap: 8px; margin: 6px 12px 4px; color: var(--caution); font: 500 12.5px/1.4 var(--font-sans); }
+.ic-lv-error .ac-i { flex: none; margin-top: 1px; }
+.ic-lv-stay { display: flex; align-items: center; justify-content: center; width: 100%; height: 40px; margin-top: 4px; border-radius: 11px; color: var(--stage-ink-2); font: 600 13.5px/1 var(--font-sans); transition: background-color var(--duration-1), color var(--duration-1); }
+.ic-lv-stay:hover { background: rgb(255 255 255 / .06); color: var(--stage-ink); }
+.ic-lv-stay:disabled { opacity: .45; cursor: default; pointer-events: none; }
+/* Change: who could host, the chosen one ticked, and the way back to the question. */
+.ic-lv-step { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 4px 6px; }
+.ic-lv-step b { min-width: 0; color: var(--stage-ink); font: 600 15px/1.2 var(--font-sans); }
+.ic-lv-hosts { display: grid; gap: 2px; }
+.ic-lv-host { display: grid; grid-template-columns: 28px minmax(0, 1fr) 16px; gap: 12px; align-items: center; width: 100%; min-height: 50px; padding: 8px 12px 8px 10px; border-radius: 13px; color: var(--stage-ink); text-align: left; font: 600 14px/1.25 var(--font-sans); transition: background-color var(--duration-1); }
+.ic-lv-host:hover { background: rgb(255 255 255 / .06); }
+.ic-lv-host .ac-avatar { background: var(--stage-tile); }
+.ic-lv-host .tick { color: var(--stage-sun); opacity: 0; }
+.ic-lv-host[aria-checked="true"] .tick { opacity: 1; }
 
 /* Share, over the dock: one popover, each step in the place of the one before. */
 .ic-sharepop { width: 412px; max-width: calc(100vw - 24px); padding: 8px; background: var(--stage-raised); color: var(--stage-ink); }
@@ -1271,14 +1298,10 @@ button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 25
 .ac-floating-feedback p { display: flex; align-items: center; gap: 5px; margin: 0; overflow-wrap: anywhere; }
 .ac-floating-feedback button { display: flex; align-items: center; gap: var(--space-2); width: fit-content; color: var(--stage-ink); padding: 5px 0; text-decoration: underline; text-underline-offset: 3px; }
 .ac-floating-question { flex: 1; min-height: 0; overflow: auto; }
-.ac-floating-question .ic-leave { width: auto; max-height: none; padding: var(--space-4); border: 0; background: var(--stage); border-radius: 0; }
-.ac-floating-question .ic-leave .in { width: auto; }
-.ac-floating-question .ic-leave .ac-display-s { font-size: 25px; }
-.ac-floating-question .ic-leave .acts { flex-direction: column; align-items: stretch; }
-.ac-floating-question .ic-leave .next-host .who { flex-wrap: wrap; }
+/* Leave's question, in the floating call's own window: the same steps, filling the window under its head. */
+.ac-floating-question .ic-leavechoices { padding: var(--space-2); }
 
 .ic-floating-root { position: fixed; inset: 0; }
-.ac-floating-question .ic-leave .in { padding: 0; }
 
 
 /* A validated notification focuses its exact pending action without changing the tab order. */

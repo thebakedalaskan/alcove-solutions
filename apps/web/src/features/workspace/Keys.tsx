@@ -1,6 +1,7 @@
 /*
  * The keyboard list, as the canvas's Keyboard board has it, from the foot of Find or ?. What only means something in a call
- * shows in a call. A key joins this list with what it does: opening a board, B, comes with boards.
+ * shows in a call, such as hiding the list: full screen, the side panel stays. A key joins this list with what it does:
+ * opening a board, B, comes with boards.
  */
 import { WsKeyboard, type WsKeyGroup } from '@alcove/ui';
 import { shortcut } from '~/lib/keys';
@@ -23,7 +24,7 @@ export function Keys({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
       keys: [
         ...(inCall ? [{ label: 'Open or close the workspace', key: 'W' }, { label: 'Open a board', key: 'O' }] : []),
         { label: 'Find anything', key: shortcut('K') },
-        { label: 'Show or hide the list', key: shortcut('\\') },
+        ...(inCall ? [{ label: 'Show or hide the list', key: shortcut('\\') }] : []),
         ...(inCall ? [{ label: 'Make the people smaller or bigger', key: '⇧P' }, { label: 'Fill your window with it, and back', key: shortcut('⇧F') }, { label: 'Stop following', key: 'Esc' }] : []),
         { label: 'New document', key: 'N' },
         { label: 'New folder', key: '⇧N' }

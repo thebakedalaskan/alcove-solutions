@@ -8,7 +8,7 @@ import { Button, Faces, PlanCard, PlanCards, PlanHere } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { did } from '../../../src/component';
 import { AIKO, KOFI, MAYA, PRIYA } from '../../../src/world/people';
-import { FREE_FACTS, MORE_NOTES, PRO_FACTS, TEAM_FACTS, onTheWater } from './parts';
+import { FREE_FACTS, LICENSES_TAKEN, MORE_NOTES, PRO_FACTS, TEAM_FACTS, onTheWater } from './parts';
 
 /** Which plan you're on, and how the prices are shown. */
 interface Shown { on: 'free' | 'pro' | 'ending'; yearly: boolean; team: boolean; waiting: boolean }
@@ -19,6 +19,7 @@ function Plans({ on, yearly, team, waiting }: Shown) {
       <PlanCards>
         <PlanCard waiting kind="free" name="Free" sub="For a few calls a month" />
         <PlanCard waiting kind="pro" name="Pro" sub="For one person" lifted />
+        {team && <PlanCard waiting kind="team" name="Team" sub="For a company" facts={4} />}
       </PlanCards>
     );
   }
@@ -33,10 +34,9 @@ function Plans({ on, yearly, team, waiting }: Shown) {
         action={<Button variant={on === 'pro' ? 'secondary' : 'primary'} onClick={did(onPro ? 'onExtend' : 'onGetPro')}>{onPro ? 'Extend' : 'Get Pro'}</Button>}
         facts={PRO_FACTS} />
       {team && (
-        <PlanCard kind="team" name="Team" sub="For 3 people or more" price={yearly ? '$32' : '$40'} per="a person a month"
-          bill={yearly ? '$384 a person for 12 months.' : 'For as many months as you choose.'} save={yearly ? 'You save $96 each.' : 'Or $32 for a year or more.'}
+        <PlanCard kind="team" name="Team" sub="For a company" price="$40" per="a person a month" bill="Each license is one person for 30 days."
           people={<Faces people={[PRIYA, KOFI, AIKO, MAYA]} size={22} max={4} />}
-          action={<Button onClick={did('onGetTeam')}>Get Team</Button>} facts={TEAM_FACTS} />
+          action={<Button variant="secondary" onClick={did('onStartATeam')}>Start a team</Button>} facts={TEAM_FACTS} more={LICENSES_TAKEN} />
       )}
     </PlanCards>
   );
@@ -61,7 +61,12 @@ export const MonthByMonth: Story = { name: 'Month by month', args: { yearly: fal
 export const OnPro: Story = { name: 'On Pro', args: { on: 'pro' } };
 /** Pro ending: Extend filled. */
 export const ProEnding: Story = { name: 'Pro ending', args: { on: 'ending' } };
-/** Once Team is offered, a third card, with its people's arches. Narrower than 1180px, three stand one under another. */
+/**
+ * With Team, a third card, with its people's arches: licenses, the same price month by month or yearly. Its four facts and
+ * Free's last line share rows. Narrower than 1180px, three stand one under another.
+ */
 export const WithTeam: Story = { name: 'With Team', args: { team: true } };
 /** The prices on their way: the cards hold their places. */
 export const Waiting: Story = { args: { waiting: true } };
+/** The three on their way. */
+export const WaitingWithTeam: Story = { name: 'Waiting, with Team', args: { waiting: true, team: true } };

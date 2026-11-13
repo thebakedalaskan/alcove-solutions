@@ -30,7 +30,7 @@ function stepOf(stage: CheckoutStage, count: boolean, pm: number): { step: 1 | 2
     return {
       step: 3, foot: <Button variant="primary">Done</Button>,
       body: <CheckoutDone title="You’re on Pro" lines={['Until Saturday 30 October 2027.']} reminder="Nothing renews by itself. Alcove reminds you before it ends."
-        receipt={{ title: '192.00 USDC on Base', sub: '4 Nov 2026 · Pro, 12 months', reference: 'k3Fq9xZ2', onOpen: did('onReceipt') }} />
+        receipt={{ title: '192.00 USDC on Base', sub: '4 Nov 2026 · Pro, 12 months', reference: 'k3Fq9xZ2', onOpen: did('onReceipt') }} pm={pm} />
     };
   }
   if (stage === 'seen') {

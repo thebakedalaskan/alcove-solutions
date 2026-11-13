@@ -1,14 +1,14 @@
 /*
  * Two of the doors into checkout (docs/product/user-flows.md 16.10 and 16.12), both about the
  * period's notes running low: an hour left, said once a period as a toast (3), and none left where a call with notes is
- * started or scheduled (5). Only whoever pays meets them: what's left is your own plan's, and a call's notes are on its
- * organizer's, who is whoever starts or schedules it. Every number is the server's (GET /v1/plan, /v1/plan/offers).
+ * started or scheduled, or where a question across your calls was refused for it (5). Only whoever pays meets them: what's
+ * left is your own plan's, a call's notes are on its organizer's, who is whoever starts or schedules it, and a question is
+ * on whoever asks it. Every number is the server's (GET /v1/plan, /v1/plan/offers).
  */
-import type { Plan } from '@alcove/api';
-import { Button, NoNotesLeft, buttonClass, useToast } from '@alcove/ui';
-import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
-import { useEffect, useRef } from 'react';
+import { errorCode, errorMessage, type Plan } from '@alcove/api';
+import { Button, NoNotesLeft, useToast } from '@alcove/ui';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { log } from '~/lib/log';
 import { q } from '~/lib/queries';
 import { dayFullMonth } from '~/lib/time';
@@ -53,33 +53,49 @@ export function useMoreNotes(plan: Plan | undefined, wanted: boolean): MoreNotes
  *
  * - `at`: when the call starts (now when left out). A call after the period renews has notes, so nothing is said.
  * - `alone`: nothing beside it says it's about notes (Start now), so it names them.
- * - `newTab`: checkout can't open where this is, inside a window it would stack over: Get Pro opens Plans in a new tab with
- *   checkout on Pro, and what was chosen here stays.
  * - `beforeCheckout`: what to do before checkout opens over the page, such as closing the window this is in.
+ * - `afterCheckout`: what to do once checkout closes again, such as opening that window again, as it was.
  * - `without`: the way on without notes, such as Start without notes.
  */
-export function NoNotesLeftDoor({ at, alone = false, newTab = false, beforeCheckout, without, className }: {
-  at?: Date | undefined; alone?: boolean | undefined; newTab?: boolean | undefined; beforeCheckout?: (() => void) | undefined;
+export function NoNotesLeftDoor({ at, alone = false, beforeCheckout, afterCheckout, without, className }: {
+  at?: Date | undefined; alone?: boolean | undefined; beforeCheckout?: (() => void) | undefined; afterCheckout?: (() => void) | undefined;
   without?: { label: string; onClick: () => void } | undefined; className?: string | undefined;
 }) {
   const left = useNotesLeft(at);
   const more = useMoreNotes(left.plan, left.none);
   const checkout = useCheckout();
   if (!left.none || !left.until) return null;
-  const away = buttonClass({ variant: 'secondary', size: 'sm' });
   return (
     <NoNotesLeft until={dayFullMonth(left.until)} alone={alone} className={className}>
-      {more && (newTab
-        // In a new tab, Plans opens with checkout on Pro; more hours are bought from Settings › Plan.
-        ? more.what.plan === 'pro'
-          ? <Link className={away} to="/plans" search={{ checkout: 'pro' }} target="_blank" rel="noopener noreferrer">{more.label}</Link>
-          : <Link className={away} to="/settings" hash="plan" target="_blank" rel="noopener noreferrer">{more.label}</Link>
-        : <Button size="sm" variant="secondary" onClick={() => { beforeCheckout?.(); checkout.open(more.what, 'door'); }}>{more.label}</Button>)}
+      {more && <Button size="sm" variant="secondary" onClick={() => { beforeCheckout?.(); checkout.open(more.what, 'door', afterCheckout); }}>{more.label}</Button>}
       {without && <Button size="sm" variant="quiet" onClick={without.onClick}>{without.label}</Button>}
     </NoNotesLeft>
   );
 }
 
+
+/**
+ * A question refused because whoever asked has no notes left this period (`plan-limit`), for where its answer would show:
+ * the plan is read again, and `out` is true once it says none are left, for NoNotesLeftDoor to show in the answer's place.
+ * A plan that still has notes, or that couldn't be read, leaves the server's words in a toast. Anything else refused is the
+ * caller's (`refused` is false). `clear` puts the door away, as typing or putting the answer away does.
+ */
+export function useAskRanOut(): { out: boolean; refused: (e: unknown) => boolean; clear: () => void } {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [out, setOut] = useState(false);
+  const refused = useCallback((e: unknown) => {
+    if (errorCode(e) !== 'plan-limit') return false;
+    const said = () => toast(errorMessage(e), { icon: 'x' });
+    void qc.fetchQuery({ ...q.plan(), staleTime: 0 }).then((plan) => {
+      if (!notesOut(plan)) { said(); return; }
+      plog.info('a question met no notes left', { kind: plan.kind });
+      setOut(true);
+    }, said);
+    return true;
+  }, [qc, toast]);
+  return { out, refused, clear: useCallback(() => setOut(false), []) };
+}
 
 /**
  * An hour left (16.12): once a period, when the notes left this period drop under an hour, a toast says so with the way to

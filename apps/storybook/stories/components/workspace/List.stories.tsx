@@ -1,12 +1,13 @@
 /*
- * The list down the side of the workspace. WsList holds its head (WsListHead: which workspace, Find, and New), the
+ * The list down the side of the workspace. WsList holds its head (WsListHead in the app: which workspace, Find, and New; in a
+ * call WsListTools, Find and New, as the frame's bar names the workspace), the
  * headings (WsSection: This call, Documents) and a row for each document, folder and page of the call (WsRow), with the
  * sealed line at the foot. A row is named in place (WsRenameRow). A row being dragged leaves a ghost under the pointer
  * (WsDragGhost) and a line where it will land (WsDropLine). Arrow keys move through the rows, Left and Right close and
  * open a folder, a double-click renames, and right-clicking opens a row's menu where you clicked.
  */
 import {
-  Button, ICON_NAMES, WsDragGhost, WsDropLine, WsList, WsListHead, WsMovePicker, WsNewMenu, WsPane, WsPersonCard, WsRenameRow, WsRow, WsRowMenu,
+  Button, ICON_NAMES, WsDragGhost, WsDropLine, WsList, WsListHead, WsListTools, WsMovePicker, WsNewMenu, WsPane, WsPersonCard, WsRenameRow, WsRow, WsRowMenu,
   WsSection, WsSpacePicker, WsToasts, type IconName, type WsPop, type WsRowProps
 } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -22,10 +23,10 @@ function ListBox({ height = 560, children }: { height?: number | undefined; chil
 }
 
 /** The Product workspace's list, answering everything, as the Pane stories have it. `switcher` puts a button above it to change workspace. */
-function Live({ call, organizer, space, opened, switcher = false }: {
-  call: boolean; organizer?: boolean | undefined; space?: string | undefined; opened?: Opened | undefined; switcher?: boolean | undefined;
+function Live({ call, space, opened, switcher = false }: {
+  call: boolean; space?: string | undefined; opened?: Opened | undefined; switcher?: boolean | undefined;
 }) {
-  const ws = useWorkspace({ call, organizer, space, start: space === NEW_SPACE.id ? '' : 'plan', opened });
+  const ws = useWorkspace({ call, space, start: space === NEW_SPACE.id ? '' : 'plan', opened });
   const other = SPACES.find((s) => s.id !== ws.space);
   return (
     <Stack>
@@ -44,7 +45,7 @@ function Nothing(args: ComponentProps<typeof WsList>) {
   return (
     <ListBox>
       <WsList {...args} head={<WsListHead name={NEW_SPACE.name} onFind={did('onFind')}
-        picker={pop('picker', <WsSpacePicker spaces={[...SPACES, NEW_SPACE]} current={NEW_SPACE.id} canChoose heading="Workspaces" onPick={close} onNew={close} />)}
+        picker={pop('picker', <WsSpacePicker spaces={[...SPACES, NEW_SPACE]} current={NEW_SPACE.id} heading="Workspaces" onPick={close} onNew={close} />)}
         create={pop('new', <WsNewMenu onDocument={close} onFolder={close} onUpload={close} />)} />}>
         <WsSection key="docs" label="Documents" />
       </WsList>
@@ -87,8 +88,9 @@ type Story = StoryObj<typeof meta>;
 /** In the app: Documents, folders first open or not as you left them. Rows open, folders twist, ⋯ and right-click open each row's menu. */
 export const InTheApp: Story = { name: 'List: in the app', render: () => <Live call={false} /> };
 /**
- * In a call: This call at the top, with the call's Notes, Follow-ups (and how many are still open) and Transcript, then
- * the documents brought to it, each with the faces of whoever's in it. A document there is in Documents too.
+ * In a call: Find and New at the top, as the frame's bar names the workspace. This call at the top, with the call's Notes,
+ * Follow-ups (and how many are still open) and Transcript, then the documents brought to it, each with the faces of whoever's
+ * in it. A document there is in Documents too.
  */
 export const InACall: Story = { name: 'List: in a call', render: () => <Live call /> };
 /** Nothing made yet, in a workspace you can make things in: the list says what will appear. */
@@ -102,14 +104,20 @@ export const Switching: Story = { name: 'List: switching workspace', render: () 
 
 /* ---------- the head ---------- */
 
-/** The name at the top opens your workspaces; outside a call, choosing one opens it. */
+/** The name at the top opens your workspaces; choosing one opens it. */
 export const HeadWorkspaces: Story = { name: 'Head: workspaces, in the app', render: () => <Live call={false} opened={{ key: 'picker' }} /> };
-/** In Priya's call the workspace is hers to choose: the menu says which it is, and who chooses. */
-export const HeadSomeoneElses: Story = { name: 'Head: workspaces, someone else’s call', render: () => <Live call opened={{ key: 'picker' }} /> };
-/** In your own call, choosing another workspace asks first, in the menu's place, and says who can't open it. */
-export const HeadYourCall: Story = { name: 'Head: workspaces, your call', render: () => <Live call organizer opened={{ key: 'picker' }} /> };
 /** Plus: a document opens at once, a folder is named in its row. */
 export const HeadNew: Story = { name: 'Head: New', render: () => <Live call={false} opened={{ key: 'new' }} /> };
+/** In a call: Find, as wide as there's room for, with its key, and New. The workspace's name and its one menu are on the frame's bar. */
+export const HeadInACall: StoryObj<typeof WsListTools> = {
+  name: 'Head: in a call',
+  render: () => <ListBox height={160}><WsList head={<WsListTools onFind={did('onFind')} findKey="⌘K" create={{ open: false, onOpenChange: did('onOpenChange'), content: null }} />} /></ListBox>
+};
+/** In a call, for someone who can only read it: Find alone. */
+export const HeadInACallReading: StoryObj<typeof WsListTools> = {
+  name: 'Head: in a call, only to read',
+  render: () => <ListBox height={160}><WsList head={<WsListTools onFind={did('onFind')} findKey="⌘K" />} /></ListBox>
+};
 
 /* ---------- headings ---------- */
 

@@ -43,11 +43,12 @@ export function PlanBanners({ state, stop, notesOpen }: {
       });
     }
   } else if (runningOut) {
+    // How soon is a limit (`ai.warn_seconds`) the wire doesn't carry, so the banner names no time.
     banners.push({
       key: `running-out:${runningOut.at}`,
       node: (key) => (
-        <CallBanner key={key} icon="clock" title="About 5 minutes of notes left" onClose={() => close(key)}>
-          At this call’s pace. Notes stop then, and the call goes on.
+        <CallBanner key={key} icon="clock" title="Notes are about to run out" onClose={() => close(key)}>
+          At this call’s pace. When they do, notes stop and the call goes on.
         </CallBanner>
       )
     });

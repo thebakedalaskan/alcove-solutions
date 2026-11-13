@@ -1,19 +1,26 @@
 /*
  * What page stories change about their scenario's world as they open (`changing()` in src/page.tsx): a part of Alcove
  * that fails or keeps the page waiting, recordings kept on this device, the calendar, the shared demo account, a call on
- * its way here, the calls other people asked Art to, and notes in every state. All made up, in the demo world.
+ * its way here, the calls other people asked Art to, nothing waiting on Art, notes in every state, and a team's
+ * licenses. All made up, in the demo world.
  */
 import { NOTE_LINK_DAYS, type PersonalEntry } from '@alcove/api';
+import { returnTo } from '~/lib/afterSignIn';
 import { UNENCRYPTED_MODEL } from '../../src/api/script';
+import { attested, type Broken } from '../../src/api/attestation';
 import { standIn } from '../../src/api/standin';
 import type { Troubles } from '../../src/api/trouble';
 import { keepHere, type KeptSpec } from '../../src/api/kept';
 import type { World } from '../../src/world';
-import { connected, notConnected } from '../../src/world/build';
+import { calendarEvent, changer, connected, notConnected, writeNote } from '../../src/world/build';
+import { firstDayEvents, ownWeekEvents } from '../../src/world/calls';
+import { pricingFollowUp, pricingFollowUpWritten } from '../../src/world/notes';
 import { iso } from '../../src/world/clock';
 import { INVITATIONS, MOVING } from '../../src/world/invitations';
 import { withDriveExports } from '../../src/world/drive-exports';
 import { AIKO, ART, DIEGO, ELENA, LENA, MAYA, ME_ID, NADIA, OMAR, PRIYA, SAM, THEO } from '../../src/world/people';
+import { planWithTeam } from '../../src/world/teams';
+import { LAUNCH, withWorkspaces } from '../../src/world/workspaces';
 import { swap } from '../journeys/play';
 
 /** These parts of Alcove go wrong while the story is open (src/api/trouble.ts). */
@@ -39,13 +46,79 @@ export const standupTwice = (w: World): void => {
 };
 
 /**
- * The server answers that it doesn't run in confidential compute, as the public beta on Cloud Run does: a story's
- * `beforeEach`, put back when the next story opens. Everywhere still says Confidential compute, with nothing verified.
+ * The server answers that it doesn't run in confidential compute, as a server run locally does: a story's `beforeEach`,
+ * put back when the next story opens. Everywhere still says Confidential compute, with nothing verified.
  */
-export const notAttested = (): (() => void) => swap(standIn.trust, 'attestation', async (nonce) => ({ tee: 'none', nonce, build: { commit: 'storybook' } }));
+export const notAttested = (): (() => void) => swap(standIn.trust, 'attestation', async () => ({ tee: 'none' as const, build: { commit: 'storybook' } }));
+
+/**
+ * The server is in Confidential Space, but this browser's check of it doesn't pass, one way of each kind: its token is
+ * signed under a root that isn't Google's (`another-root`), it's too old (`too-old`), the server could be debugged
+ * (`debuggable`), the token names another build than the server reports (`another-build`), or the image isn't in the
+ * public log (`unreleased`). Nothing is blocked: everywhere says Confidential compute without · verified, and where the
+ * check's details are (Settings › Privacy, the call's shield, pointing at the side panel's check) it says why.
+ */
+export const checkFails = (why: Broken) => (): (() => void) => swap(standIn.trust, 'attestation', () => attested(why));
 
 /** Signed in with Google without sharing the calendar. */
 export const noCalendar = (w: World): void => { w.calendar = notConnected; };
+
+/** Show my other meetings on Home is off (Settings, Google Calendar): Upcoming lists Alcove calls only. */
+export const otherMeetingsOff = (w: World): void => { w.prefs = { ...w.prefs, showOtherMeetings: false }; };
+
+/** Show my own events on Home is on (Settings, Google Calendar, or Upcoming's count): events with only Art on them are listed. */
+export const ownEventsShown = (w: World): void => { w.prefs = { ...w.prefs, showSoloEvents: true }; };
+
+/** No calls ahead, whatever the calendar holds. */
+export const noCallsAhead = (w: World): void => { w.meetings = []; };
+
+/** No calls ahead, and nobody else on anything on the calendar this week: only Art's own time. */
+export const onlyOwnEvents = (w: World): void => { w.meetings = []; w.calendar = connected(ownWeekEvents()); };
+
+/** No calls ahead, and nothing on the calendar in the next 7 days. */
+export const clearWeek = (w: World): void => { w.meetings = []; w.calendar = connected([]); };
+
+/** Back from Google on the first day, the calendar just connected: the week's meetings with other people on them. */
+export const calendarJustConnected = (w: World): void => { w.calendar = connected(firstDayEvents()); };
+
+/** A meeting Art set up on Google Calendar himself, on Google Meet, with Maya and Lena on Friday: one he can move to Alcove. */
+export const yourMeeting = (w: World): void => {
+  w.calendar = { ...w.calendar, events: [...w.calendar.events, calendarEvent({ id: 'e-pricing-review', title: 'Pricing review', startsAt: iso(2, 14, 0), minutes: 30, guests: [MAYA, LENA], meet: true })] };
+};
+
+/** Maya gave Art the pricing draft to send, after the pricing sync: it waits for his answer, from her. */
+export const givenByMaya = (w: World): void => {
+  const given = { by: changer(MAYA, 'organizer'), at: iso(-1, 16, 10), what: 'reassigned' as const, after: ART.email };
+  w.notes = w.notes.map((n) => (n.id === 'n3' ? { ...n, actions: n.actions.map((a) => (a.id === 'n3-a1' ? { ...a, changes: [...a.changes, given] } : a)) } : n));
+};
+
+/** Art's first call has just ended: its notes are being written, and they're written a few seconds later. */
+export const firstNotesWriting = (w: World): void => {
+  w.notes = [writeNote(pricingFollowUp)];
+  w.writing = { id: pricingFollowUp.id, seconds: 12, written: pricingFollowUpWritten };
+};
+
+/** Every decision settled, and nothing shared with Art this past week. */
+const allSettled = (w: World): void => {
+  const weeksAgo = iso(-10, 9, 0);
+  w.notes = w.notes.map((n) => ({
+    ...n,
+    decisions: n.decisions.map((d) => (d.state === 'proposed' || d.disputes.length ? { ...d, state: 'confirmed' as const, disputes: [] } : d)),
+    ...(n.received ? { received: { ...n.received, at: weeksAgo } } : {})
+  }));
+};
+
+/** Nothing waiting on Art: every decision settled, every follow-up of his done, and nothing shared with him this past week. */
+export const caughtUp = (w: World): void => {
+  allSettled(w);
+  w.notes = w.notes.map((n) => ({ ...n, actions: n.actions.map((a) => ({ ...a, done: true })) }));
+};
+
+/** Nothing for Art to answer, with his follow-ups still open: every decision settled, nothing shared, all of his taken on. */
+export const nothingToAnswer = (w: World): void => {
+  allSettled(w);
+  takenOn(w);
+};
 
 /** The calls other people asked Art to, and the ones offering times to pick from. */
 export const invited = (w: World): void => { w.meetings = [...w.meetings, ...INVITATIONS]; };
@@ -75,6 +148,13 @@ export const longSuggestions = (w: World): void => {
 
 /** Nothing recorded in the room yet: only calls have notes. */
 export const noRoomNotes = (w: World): void => { w.notes = w.notes.filter((n) => n.kind !== 'room'); };
+
+/** Theo sat in on yesterday's design review and said nothing: Search or ask offers him, with no line of his to find. */
+export const quietGuest = (w: World): void => {
+  w.notes = w.notes.map((n) => (n.id === 'n4'
+    ? { ...n, people: [...n.people, THEO], recipients: [...n.recipients, { person: THEO, role: 'invited' as const, at: iso(-1, 11, 45) }] }
+    : n));
+};
 
 /** Record without a connection is off: this browser remembers that too, so it holds without a connection. */
 export const recordsOnlyOnline = (w: World): void => {
@@ -151,7 +231,20 @@ export const linkToReadout = (expired = false) => (w: World): void => {
   const art = w.session?.user ?? ART;
   const recipients = [...n.recipients.filter((r) => r.person.email !== art.email), { person: art, role: 'shared' as const, by: PRIYA, link: true as const, at }];
   w.noteLinks = [{ link: { id: 'link-readout', by: PRIYA, at, expiresAt, revocable: false }, noteId: 'n9', secret: READOUT_SECRET, note: { ...n, recipients, received: { role: 'shared', by: PRIYA, link: true, at } } }];
-  try { sessionStorage.setItem('alcove.link-after-sign-in', JSON.stringify({ secret: READOUT_SECRET, until: Date.now() + 600_000 })); } catch { /* without storage there's no link to open */ }
+  returnTo({ to: 'link', secret: READOUT_SECRET });
+};
+
+/**
+ * The standup with an open question Art added afterwards, through his agent (add_question): nothing said backs it, so its
+ * row says he asked it, and so does its history.
+ */
+export const aQuestionAdded = (w: World): void => {
+  const n = w.notes.find((x) => x.id === 'n2');
+  if (!n) return;
+  n.questions = [...n.questions, {
+    id: 'n2-q-added', text: 'Does the help article need a version for teams on the old plan?', state: 'open', lines: [], against: [],
+    changes: [{ by: changer(ART, 'organizer'), at: iso(0, 10, 15), what: 'proposed' }], evidence: { moments: [], flags: ['missing'] }
+  }];
 };
 
 /** Art has Priya's research readout from her link, and Theo has it from Art's: the note says so, and so does who has it. */
@@ -166,4 +259,43 @@ export const fromALink = (w: World): void => {
     { person: THEO, role: 'shared', by: ART, link: true, at: iso(0, 11, 0) }
   ];
   if (!n.people.some((p) => p.email === THEO.email)) n.people.push(THEO);
+};
+
+/* ---------- a team (src/world/teams.ts) ---------- */
+
+/** Maya needed a license this morning when none was left, and is waiting for one. */
+export const mayaWaits = (w: World): void => {
+  if (w.myTeam) w.myTeam.members = w.myTeam.members.map((m) => (m.person === MAYA ? { ...m, wanted: iso(0, 11, 20) } : m));
+};
+/**
+ * Art, the team's admin, whose own license ran out two days ago with none left to take: on Free, waiting with the rest, and
+ * told none were left.
+ */
+export const adminWithoutLicense = (w: World): void => {
+  const t = w.myTeam;
+  if (!t) return;
+  t.unconsumed = [];
+  t.members = t.members.map((m) => (m.person === ART ? { ...m, license: { from: iso(-32, 9, 0), until: iso(-2, 9, 0) }, wanted: iso(0, 9, 5) } : m));
+  // On Free, what Art stores counts against Art's own storage again, not the team's.
+  const free = planWithTeam(w.plan, t, ART.email);
+  w.plan = { ...free, storage: { ...free.storage, usedBytes: Math.round(2.1 * 2 ** 30) }, notices: [{ id: 'sb-notice-none', kind: 'licenses-none', at: iso(0, 9, 5), until: null, count: null, workspaceId: null }] };
+};
+/**
+ * Whoever paid for Launch left it this morning, so its payment moved to Art, its longest-standing admin with an account: he
+ * pays for it now, and its files count against his storage from a fortnight on, when its grace ends. Said at the top of
+ * Settings › Plan, and in a line over the side panel's plan, by the name Art sees it by, which is read from the workspaces
+ * he's in: so Launch is put in the world first (the busy afternoon has it only with `withWorkspaces`), or nothing names it.
+ */
+export const paysForLaunch = (w: World): void => {
+  if (!w.workspaces.some((s) => s.id === LAUNCH)) withWorkspaces(w);
+  w.plan = { ...w.plan, notices: [{ id: 'sb-notice-paying', kind: 'workspace-payer', at: iso(0, 9, 40), until: iso(15, 9, 40), count: null, workspaceId: LAUNCH }, ...w.plan.notices] };
+};
+/** Art's team license replaced Pro this morning: the two months that hadn't started went back to Art's balance. */
+export const replacedPro = (w: World): void => {
+  const at = iso(0, 9, 5);
+  w.plan = {
+    ...w.plan,
+    balance: { microUsd: w.plan.balance.microUsd + 40_000_000, history: [{ id: 'sb-entry-replaced', at, label: 'Refund: 2 months of Pro, for a team license', microUsd: 40_000_000 }, ...w.plan.balance.history] },
+    notices: [{ id: 'sb-notice-replaced', kind: 'license-replaced-pro', at, until: null, count: 2, workspaceId: null }]
+  };
 };

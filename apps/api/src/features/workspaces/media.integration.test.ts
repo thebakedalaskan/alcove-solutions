@@ -19,8 +19,7 @@ import { blindIndex } from '../../crypto';
 import { LIMITS } from '../../limits';
 import { maintain } from '../../maintenance';
 import { MEDIA_LIMITS } from './media';
-import { masterKey } from '../../owners';
-import { withWorkspace } from '../../testing/call-workspace';
+import { indexKey } from '../../owners';
 import { pictureJpeg } from '../../testing/video';
 import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from '../../testing/harness';
 
@@ -1272,6 +1271,47 @@ describe('guests in a call', () => {
     await host.leave();
   });
 
+  it('see the pictures of anything unrestricted in the workspace the call uses, by URL alone, and lose them on the next range once it moves on or they’re taken out', async () => {
+    const org = await account();
+    const id = await workspace(org, 'Ours');
+    const other = await workspace(org, 'Other');
+    const agenda = await make(org, id, 'document', 'Agenda');
+    const secret = await make(org, id, 'document', 'Restricted');
+    const bytes = bytesOf(PIECE + 50);
+    const shown = await org.api.workspaces.media.upload(id, agenda, fileOf(bytes));
+    const hidden = await org.api.workspaces.media.upload(id, secret, fileOf(bytesOf(8), 'CANARY-RESTRICTED.png'));
+    await org.api.workspaces.share.restrict(id, secret, true);
+    const { host, guests } = await callWith(org, ['Sam Guest', 'Jo Guest']);
+    const [sam, jo] = guests;
+    if (!sam || !jo) throw new Error('nobody joined');
+    const m = sam.api.workspaces.media;
+    const opts = { pass: sam.pass };
+    // Nothing yet: the call uses no workspace.
+    expect(await refusal(m.url(id, agenda, shown.id, opts))).toEqual(await refusal(m.url(madeUp(), agenda, shown.id, opts)));
+    await host.setWorkspace(id);
+
+    // Nothing given to their seat: the call opens it, and an `<img>` reads it with no cookie and no header.
+    const url = await m.url(id, agenda, shown.id, opts);
+    expect(same((await read({ fetch }, url)).bytes, bytes)).toBe(true);
+    expect((await m.list(id, opts)).map((x) => x.id)).toEqual([shown.id]);
+    // What's restricted stays closed, as a file nobody has.
+    expect(await refusal(m.url(id, secret, hidden.id, opts))).toEqual(await refusal(m.url(id, madeUp(), hidden.id, opts)));
+
+    // The call moves on: the very next range is refused, as for a URL nobody made. Back again, the same URL reads.
+    const nobody = await nothing();
+    await host.setWorkspace(other);
+    expect(await refused({ fetch }, url, 'bytes=0-0')).toEqual(nobody);
+    await host.setWorkspace(id);
+    expect((await read({ fetch }, url, 'bytes=0-0')).status).toBe(206);
+
+    // Taken out: refused on the next range, and someone still in the call reads on.
+    const joUrl = await jo.api.workspaces.media.url(id, agenda, shown.id, { pass: jo.pass });
+    await host.remove(sam.call.ticket.identity);
+    expect(await refused({ fetch }, url, 'bytes=1-1')).toEqual(nobody);
+    expect((await read({ fetch }, joUrl, 'bytes=1-1')).status).toBe(206);
+    await host.leave();
+  });
+
   it('lose a picture when they leave, even if what the call gave them is still on its row', async () => {
     const org = await account();
     const id = await workspace(org, 'Ours');
@@ -1294,8 +1334,7 @@ describe('guests in a call', () => {
     const { host, guests } = await callWith(org, ['Sam Guest']);
     const [sam] = guests;
     if (!sam) throw new Error('nobody joined');
-    // A board the call opens is made in its workspace, the one the organizer makes in it, in the call's folder.
-    await withWorkspace(host);
+    // A board the call opens is made in its home, beside the call's folder.
     await host.openBoard({ template: 'blank' });
     const id = host.getSnapshot().board.open?.workspaceId ?? '';
     const board = host.getSnapshot().board.open?.documentId ?? '';
@@ -1327,7 +1366,7 @@ describe('guests in a call', () => {
     if (!sam) throw new Error('nobody joined');
     await org.api.workspaces.share.set(id, agenda, [{ seat: sam.seat }], 'edit', { pass: host.ticket.pass });
     // Under a blind index of the person their pass names, never the pass, the person, the call or a name.
-    const index = blindIndex(masterKey(h.deps), 'upload-guest', readPass(h.deps.cfg, sam.pass)?.person ?? '');
+    const index = blindIndex(indexKey(h.deps), 'upload-guest', readPass(h.deps.cfg, sam.pass)?.person ?? '');
     const days = async () => (await h.pool.query<{ day: string; bytes: string }>("SELECT to_char(day, 'YYYY-MM-DD') AS day, bytes::text AS bytes FROM media_guest_upload_days WHERE guest_index = $1 ORDER BY day", [index])).rows.map((r) => [r.day, Number(r.bytes)]);
     const ago = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
     const send = (api: AlcoveApi, bytes: number) => api.workspaces.media.upload(id, agenda, fileOf(bytesOf(bytes)), { pass: sam.pass });
@@ -1353,8 +1392,7 @@ describe('guests in a call', () => {
     const { host, guests } = await callWith(org, ['Sam Guest']);
     const [sam] = guests;
     if (!sam) throw new Error('nobody joined');
-    // The board is made in the call's workspace, and the document that reuses its picture is there too.
-    await withWorkspace(host);
+    // The board is made in the call's home, and the document that reuses its picture is there too.
     await host.openBoard({ template: 'blank' });
     const id = host.getSnapshot().board.open?.workspaceId ?? '';
     const board = host.getSnapshot().board.open?.documentId ?? '';
@@ -1432,9 +1470,10 @@ describe('guests in a call', () => {
     await send(sam, MiB);
     expect(await refusal(send(sam, MiB + MiB / 2))).toEqual(TODAYS);
     await send(jo, MiB + MiB / 2);
-    // And the storage of whoever the workspace counts against holds what it holds, whoever’s adding to it.
+    // And the storage of whoever the workspace counts against holds what it holds, whoever’s adding to it: a guest hears that
+    // the workspace can't take more, never whose storage it is.
     await h.setLimit('plan.free.storage_bytes', 2 * MiB);
-    expect(await refusal(send(jo, 16))).toEqual(FULL);
+    expect(await refusal(send(jo, 16))).toEqual({ code: 'plan-limit', message: 'This workspace can’t take more files: the storage it counts against is full.', status: 402 });
   });
 });
 
@@ -2252,7 +2291,7 @@ describe('storage limits', () => {
     expect(logsSince(from).filter((l) => l.msg === 'service limit clamped')).toEqual([expect.objectContaining({ level: 40, limit: 'plan.free.storage_bytes', value: 1e15, used: ceiling })]);
   });
 
-  it('is set from the command line, against any database, saying what it was and what it is now', async () => {
+  it('is set from the command line, against any database, in bytes, dollars or time as it lists them, saying what it was and what it is now', async () => {
     const cli = (...args: string[]) => new Promise<{ code: number | null; out: string }>((resolve, reject) => {
       const run = spawn(process.execPath, ['--import', 'tsx', 'src/limits-cli.ts', ...args], {
         env: { ...process.env, DATABASE_URL: process.env['TEST_DATABASE_URL'], LOG_FORMAT: 'json', LOG_LEVEL: 'info' }, stdio: ['ignore', 'pipe', 'pipe']
@@ -2291,6 +2330,22 @@ describe('storage limits', () => {
       expect([args.join(' '), refused.code, loggedBy(refused.out).filter((l) => l.level >= 50)]).toEqual([args.join(' '), 1, []]);
     }
     expect(await stored()).toEqual([['media.account_day_bytes', 2 * MiB], ['plan.free.storage_bytes', 5 * GiB]]);
+
+    // Money in dollars and time with a unit, as `limits list` shows them, which `set` takes back unchanged.
+    const setTo = async (name: string, typed: string) => loggedBy((await cli('set', name, typed)).out).filter((l) => l.msg === 'service limit set');
+    expect(await setTo('ai.hour_micro_usd', '$0.60')).toEqual([expect.objectContaining({ limit: 'ai.hour_micro_usd', old: 500_000, new: 600_000 })]);
+    expect(await setTo('plan.period_seconds', '7d')).toEqual([expect.objectContaining({ limit: 'plan.period_seconds', old: 30 * 86_400, new: 7 * 86_400 })]);
+    const listing = (await cli('list')).out;
+    expect(listing).toMatch(/^ai\.hour_micro_usd +\$0\.60 /m);
+    expect(listing).toMatch(/^plan\.period_seconds +7 d /m);
+    expect(await setTo('ai.hour_micro_usd', '$0.60')).toEqual([expect.objectContaining({ old: 600_000, new: 600_000 })]);
+    expect(await setTo('plan.period_seconds', '7 d')).toEqual([expect.objectContaining({ old: 7 * 86_400, new: 7 * 86_400 })]);
+    // A unit of the wrong kind, and money past six places, are refused, and nothing changes.
+    for (const args of [['set', 'plan.free.file_bytes', '$5'], ['set', 'plan.period_seconds', '5MiB'], ['set', 'plan.free.notes_minutes', '300m'], ['set', 'call.max_people', '$5'], ['set', 'ai.hour_micro_usd', '$0.1234567']]) {
+      const refused = await cli(...args);
+      expect([args.join(' '), refused.code, loggedBy(refused.out).filter((l) => l.level >= 50).length, loggedBy(refused.out).some((l) => l.msg === 'limit not set')]).toEqual([args.join(' '), 1, 0, true]);
+    }
+    expect(await stored()).toEqual([['ai.hour_micro_usd', 600_000], ['media.account_day_bytes', 2 * MiB], ['plan.free.storage_bytes', 5 * GiB], ['plan.period_seconds', 7 * 86_400]]);
   });
 
   it('warns once each time someone’s storage or their day passes 80% of its limit', async () => {
@@ -2314,7 +2369,7 @@ describe('storage limits', () => {
     expect(lines[0]).toEqual(expect.objectContaining({ workspaceId: id, ownerId: ann.ownerId, limitBytes: 10 * MiB }));
     expect(lines[2]).toEqual(expect.objectContaining({ ownerId: ann.ownerId, uploadedBytes: 11.5 * MiB, limitBytes: 12 * MiB }));
     // Sizes and IDs, and nothing anyone wrote.
-    for (const l of lines) expect(Object.keys(l).filter((k) => !['level', 'time', 'service', 'msg', 'component', 'requestId', 'method', 'path', 'ownerId', 'workspaceId', 'storedBytes', 'uploadedBytes', 'limitBytes'].includes(k))).toEqual([]);
+    for (const l of lines) expect(Object.keys(l).filter((k) => !['level', 'severity', 'time', 'service', 'msg', 'component', 'requestId', 'method', 'path', 'ownerId', 'workspaceId', 'storedBytes', 'uploadedBytes', 'limitBytes'].includes(k))).toEqual([]);
   });
 
   it('keeps a day’s count through a restart, forgets it after two days, and deletes it with the account', async () => {

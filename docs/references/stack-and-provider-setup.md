@@ -81,8 +81,8 @@ session token as `401 Invalid token` (checked live on 12 November 2026, with a t
   out or is refused (400, 401, 403), and does one sign-in or refresh at a time. A quote or status call answered 401 signs
   in again once and is made again; 401 again is unavailable, logged at error. A refused sign-in makes top-ups unavailable
   for a minute, logged once at error with its status.
-- `GET /v0/tokens`: intersected with the allowlist of USDC and USDT asset IDs, each with its decimals pinned (checked
-  5 November 2026 and again 6 November: 18 for the BNB Chain stablecoins, 6 for the rest), cached for 10 minutes; a
+- `GET /v0/tokens`: intersected with the allowlist of USDC asset IDs, each with its decimals pinned (checked
+  5 November 2026 and again 6 November: 18 for BNB Chain's USDC, 6 for the rest), cached for 10 minutes; a
   route listed with other decimals isn't offered and is logged at error. A failure is remembered for 30 s.
 - `POST /v0/quote`, with `Authorization: Bearer <the treasury's access token>`: `swapType: FLEX_INPUT` (any deposit from the quote's `minAmountIn` up is swapped in full),
   `depositType: ORIGIN_CHAIN`, `originAsset` the route's asset, `amount` the dollars chosen (a token is a dollar), in the

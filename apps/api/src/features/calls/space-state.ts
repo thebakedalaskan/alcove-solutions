@@ -52,9 +52,6 @@ export type PresentEnded = z.infer<typeof PresentEnded>;
 /** A video playing in one part of the call. `positionMs` is where it was at `atMs`, on this server's clock. Only IDs: the video stays in its document. */
 const Playing = z.object({ place: z.string(), workspaceId: z.string(), documentId: z.string(), mediaId: z.string(), by: Controller, playing: z.boolean(), positionMs: z.number(), atMs: z.number() });
 export type Playing = z.infer<typeof Playing>;
-/** Someone asking to see the workspace, while they're asking and once they've been told not now. */
-const SpaceAsk = z.object({ id: z.string(), person: z.string(), at: z.number(), state: z.enum(['asking', 'declined']) });
-export type SpaceAsk = z.infer<typeof SpaceAsk>;
 
 /**
  * The next agenda while it's being made: the document it's made as, so trying again fills the same one, and until when
@@ -64,15 +61,13 @@ const AgendaDraft = z.object({ workspaceId: z.string(), documentId: z.string(), 
 export type AgendaDraft = z.infer<typeof AgendaDraft>;
 
 /**
- * This run of the call's folder in the call's workspace (the meeting's `workspaceId`): the ID it's made as, taken under the
- * call's row so that everyone opening Workspace at once makes one between them, and whether it's made. Made once: someone
- * deleting it doesn't bring it back. Null while the call has no workspace, and again once the organizer picks another.
+ * This run of the call's folder in its home: the ID it's made as, taken under the call's row so that everyone opening Workspace
+ * at once makes one between them, and whether it's made. Made once: someone deleting it doesn't bring it back.
  */
 const CallHome = z.object({ workspaceId: z.string(), folderId: z.string(), made: z.boolean() });
 export type CallHome = z.infer<typeof CallHome>;
 
 export const CallSpace = z.object({
-  asks: z.array(SpaceAsk).default([]),
   present: z.array(Presenting).default([]),
   /** Not in `present`: a release that knows only documents and boards there couldn't open the call. */
   space: z.array(SpacePresenting).default([]),
@@ -82,11 +77,14 @@ export const CallSpace = z.object({
   /** This run of the call has its agenda, or has found there's none to make, so nobody opening Workspace looks again. */
   agendaLooked: z.boolean().default(false),
   agendaDraft: AgendaDraft.nullable().default(null),
-  // The call's workspace is the meeting's: a previous release's `viewing` and `made` here go unread.
-  home: CallHome.nullable().default(null)
+  /** The workspace everyone views, when the organizer switched from the home: the home's on the meeting. */
+  viewing: z.string().nullable().default(null),
+  home: CallHome.nullable().default(null),
+  /** The workspaces made in this run of the call (New workspace), the latest last: who's in them follows its invite while it's on. */
+  made: z.array(z.string()).default([])
 });
 export type CallSpace = z.infer<typeof CallSpace>;
-export const NO_SPACE: CallSpace = { asks: [], present: [], space: [], ended: [], play: [], worked: [], agendaLooked: false, agendaDraft: null, home: null };
+export const NO_SPACE: CallSpace = { present: [], space: [], ended: [], play: [], worked: [], agendaLooked: false, agendaDraft: null, viewing: null, home: null, made: [] };
 
 /**
  * A vote on a board, on one of its frames or with none on every sticky. Each person's votes are kept by who they are to it:

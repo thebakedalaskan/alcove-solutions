@@ -9,6 +9,7 @@ import {
   TrackPublishOptions, TrackSource, VideoBufferType, VideoFrame, VideoSource, dispose, type RemoteTrack
 } from '@livekit/rtc-node';
 import { KeyDerivationFunction } from '@livekit/rtc-ffi-bindings';
+import { SignJWT } from 'jose';
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import { createHash, randomBytes } from 'node:crypto';
 import type { Config } from '../config';
@@ -255,11 +256,20 @@ export async function disposeLiveKit(): Promise<void> {
   await dispose();
 }
 
-/** Signs a webhook body the way LiveKit does: a JWT from the API key whose sha256 claim is the body's digest. */
-export async function signWebhook(cfg: Config, body: string): Promise<string> {
-  const t = new AccessToken(cfg.LIVEKIT_API_KEY, cfg.LIVEKIT_API_SECRET);
-  t.sha256 = createHash('sha256').update(body).digest('base64');
-  return t.toJwt();
+/**
+ * Signs a webhook body the way LiveKit does: a JWT from the API key whose sha256 claim is the body's digest, current from the
+ * moment it's signed. `aheadS` dates it that far ahead, as LiveKit's clock is to an API whose own clock runs behind.
+ */
+export async function signWebhook(cfg: Config, body: string, aheadS = 0): Promise<string> {
+  const sha256 = createHash('sha256').update(body).digest('base64');
+  if (aheadS === 0) {
+    const t = new AccessToken(cfg.LIVEKIT_API_KEY, cfg.LIVEKIT_API_SECRET);
+    t.sha256 = sha256;
+    return t.toJwt();
+  }
+  const signed = Math.floor(Date.now() / 1000) + aheadS;
+  return new SignJWT({ sha256 }).setProtectedHeader({ alg: 'HS256' }).setIssuer(cfg.LIVEKIT_API_KEY)
+    .setNotBefore(signed).setExpirationTime(signed + 600).sign(new TextEncoder().encode(cfg.LIVEKIT_API_SECRET));
 }
 
 /** A join token minted with the API key itself, as LiveKit (which holds the key) could: no API, no MLS group. */

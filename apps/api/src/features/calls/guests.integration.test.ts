@@ -1,16 +1,21 @@
 /**
  * Joining a call by its link without being invited: what the link tells anyone before they join; signed-in people the
  * organizer lets in (added to the invite, so they get the notes, but only from accounts the notes may go to, only when
- * the organizer saw who, and only as long as they're let in) next to guests (who don't); how every refusal fails
- * safely with a request ID; and what a guest's call pass can reach (its own call, nothing else). The real API over
+ * the organizer saw who, and only as long as they're let in) next to guests (who don't); who a full call still takes;
+ * how every refusal fails safely with a request ID; and what a guest's call pass can reach (its own call, nothing else). The real API over
  * HTTP via @alcove/api-http, real Postgres, the object store and the local LiveKit server.
  */
 import { AlcoveApiError, type AlcoveApi, type CallSession, type CallState, type TranscriptClip } from '@alcove/api';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { createApp } from '../../app';
+import { openJson, sealJson, toJson } from '../../crypto';
+import { maintain } from '../../maintenance';
+import { openOwner } from '../../owners';
 import { speechWav } from '../../testing/fake-near';
-import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
+import { ORIGIN, cookieFetch, startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
+import { header as callHeader, key as callKey } from './state';
 
 // Calls go through the real LiveKit server; every wait below is bounded and says what it was waiting for.
 vi.setConfig({ testTimeout: 90_000 });
@@ -18,7 +23,7 @@ vi.setConfig({ testTimeout: 90_000 });
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
 afterAll(async () => { await h?.close(); await disposeLiveKit(); });
-afterEach(() => { vi.useRealTimers(); h.closeCalls(); });
+afterEach(async () => { vi.useRealTimers(); h.closeCalls(); await h.resetLimits(); });
 
 const code = (e: unknown) => (e instanceof AlcoveApiError ? e.code : 'not-an-api-error');
 let seq = 0;
@@ -411,6 +416,152 @@ describe('what guests see', () => {
   });
 });
 
+describe('a full call', () => {
+  /** A call with room for `most` people at once (docs: Plans and usage › Calls), its organizer hosting, and `invited` on its invite. */
+  async function roomFor(most: number, invited: string[] = []) {
+    await h.setLimit('call.max_people', most);
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({ guests: invited });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    return { org, c, host };
+  }
+  const full = (most: number) => `conflict: This call is full: ${most} people are in it, the most a call can have.`;
+  const MANY = 'conflict: Too many people on your network are already asking to join this call. Try again once the host has answered them.';
+  const joining = (p: Promise<CallSession>) => p.then((call) => ({ call, said: 'asked' }), (e: unknown) => ({ call: null, said: e instanceof AlcoveApiError ? `${e.code}: ${e.message}` : String(e) }));
+  const ask = (c: string, name: string, api = guestBrowser(), previous?: string | undefined) => joining(api.calls.join(c, { mic: true, cam: false, name, ...(previous ? { previous } : {}) }));
+  /** What pressing Let in came to. */
+  const letting = (host: CallSession, who: CallSession) => host.admit(who.ticket.identity).then(() => 'let in', (e: unknown) => (e instanceof AlcoveApiError ? `${e.code}: ${e.message}` : String(e)));
+  /** Let in once the host's browser is ready to try again: after a refusal it waits a moment before its next commit. */
+  async function letInAgain(host: CallSession, who: CallSession) {
+    await settle(host, (s) => s.waiting.some((w) => w.id === who.ticket.identity));
+    for (let tries = 0; ; tries++) {
+      const said = await letting(host, who);
+      if (said === 'let in') break;
+      if (tries > 20 || !said.startsWith('unavailable: ')) throw new Error(`not let in: ${said}`);
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    await inGroup(who);
+  }
+  /** A guest's browser coming from one network, as several in an office do, or a script: every request from `address`. */
+  const fromNetwork = (address: string) => {
+    const f = cookieFetch(ORIGIN);
+    return h.browser({ fetch: (input, init) => { const headers = new Headers(init?.headers); headers.set('x-forwarded-for', address); return f(input, { ...init, headers }); } }).api;
+  };
+  /** As if the browser asking as `identity` went quiet `ms` ago: its ask was made, and last said it was still asking, then. */
+  async function quietSince(ownerId: string, callId: string, identity: string, ms: number) {
+    const o = await openOwner(h.deps, ownerId, undefined);
+    const row = z.object({ state_ciphertext: z.instanceof(Uint8Array) }).parse((await h.pool.query('SELECT state_ciphertext FROM calls WHERE owner_id = $1 AND call_id = $2', [ownerId, callId])).rows[0]);
+    const s = openJson(callKey(o, callId), callHeader(o, callId), row.state_ciphertext, z.object({ people: z.array(z.looseObject({ identity: z.string() })) }).loose());
+    const people = s.people.map((p) => (p.identity === identity ? { ...p, since: Date.now() - ms, askedAt: Date.now() - ms } : p));
+    await h.pool.query('UPDATE calls SET state_ciphertext = $3 WHERE owner_id = $1 AND call_id = $2', [ownerId, callId, sealJson(callKey(o, callId), callHeader(o, callId), toJson({ ...s, people }))]);
+  }
+
+  it('takes no place for an ask: a call is full only by the people in it, and letting someone in past it is refused in its words', async () => {
+    const { org, c, host } = await roomFor(3);
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    // The organizer and Sam are in. Asks hold no place, so three can ask at once for the one place left.
+    const asks = await Promise.all(['Lee', 'Ada', 'Bo'].map((name) => ask(c, name)));
+    expect(asks.map((a) => a.said)).toEqual(['asked', 'asked', 'asked']);
+    const [lee, ada] = asks.map((a) => a.call);
+    if (!lee || !ada) throw new Error('Lee and Ada didn’t ask');
+    expect((await settle(host, (s) => s.waiting.length === 3)).waiting).toHaveLength(3);
+    // Letting Lee in takes the last place. Kim can still ask, in a call full by the people in it.
+    await letIn(host, lee);
+    const kim = await ask(c, 'Kim');
+    expect(kim.said).toBe('asked');
+    // Letting Ada in too is refused in the words joining a full call has, and she's still asking, as Bo and Kim are.
+    expect(await letting(host, ada)).toBe(full(3));
+    const after = await settle(host, (s) => s.participants.length === 3 && s.waiting.length === 3);
+    expect(after.participants.map((p) => p.person.name).sort()).toEqual([org.session.user.name, 'Lee', 'Sam'].sort());
+    expect(after.waiting.map((w) => w.id).sort()).toEqual([ada.ticket.identity, asks[2]?.call?.ticket.identity, kim.call?.ticket.identity].sort());
+    // Sam leaves: there's room again, and Ada is let in.
+    await sam.leave();
+    await settle(host, (s) => s.participants.length === 2);
+    await letInAgain(host, ada);
+    expect((await settle(host, (s) => s.participants.length === 3)).participants.map((p) => p.person.name).sort()).toEqual([org.session.user.name, 'Ada', 'Lee'].sort());
+    await host.leave();
+  });
+
+  it('lets in someone invited however many are asking, until the people in it fill it; someone coming back keeps their place', async () => {
+    const ivy = await account();
+    const jo = await account();
+    const { c, host } = await roomFor(3, [ivy.session.user.email, jo.session.user.email]);
+    const sams = guestBrowser();
+    const sam = await sams.calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    // Four asks wait, past the one place left: none of them keeps Ivy, who's invited, out.
+    const leesBrowser = guestBrowser();
+    const asks = [await ask(c, 'Lee', leesBrowser), ...await Promise.all(['Ada', 'Bo', 'Cy'].map((name) => ask(c, name)))];
+    expect(asks.map((a) => a.said)).toEqual(['asked', 'asked', 'asked', 'asked']);
+    await settle(host, (s) => s.waiting.length === 4);
+    const ivys = await ivy.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(ivys);
+    // Full now, by the people in it: Jo, invited too, is turned away, and whoever hosts is told. Asking is as ever.
+    expect((await joining(jo.api.calls.join(c, { mic: true, cam: false }))).said).toBe(full(3));
+    expect((await settle(host, (s) => s.notices.some((n) => n.text.startsWith('Someone tried to join')))).notices.map((n) => n.text)).toContain('Someone tried to join, but this call is full: 3 people is the most a call can have.');
+    expect((await ask(c, 'Kim')).said).toBe('asked');
+    // Sam reloads: back in their place, without asking.
+    const samBack = await sams.calls.join(c, { mic: true, cam: false, name: 'Sam', previous: sam.ticket.pass });
+    sam.close();
+    await inGroup(samBack);
+    // Lee reloads while still asking: the new ask takes the earlier one's place, so whoever hosts is asked once.
+    const lee = asks[0]?.call;
+    const leeAgain = await ask(c, 'Lee', leesBrowser, lee?.ticket.pass);
+    lee?.close();
+    expect(leeAgain.said).toBe('asked');
+    const asking = await settle(host, (s) => s.waiting.some((w) => w.id === leeAgain.call?.ticket.identity) && !s.waiting.some((w) => w.id === lee?.ticket.identity));
+    expect(asking.waiting.filter((w) => w.person.name === 'Lee')).toHaveLength(1);
+    expect(asking.waiting).toHaveLength(5);
+    expect((await settle(host, (s) => s.participants.length === 3)).participants.map((p) => p.person.name).sort()).toEqual([host.getSnapshot().participants.find((p) => p.isOrganizer)?.person.name, ivy.session.user.name, 'Sam'].sort());
+    await host.leave();
+  });
+
+  it('gives the last place to one of several invited people joining at once', async () => {
+    const people = await Promise.all([account(), account(), account()]);
+    const { c, host } = await roomFor(2, people.map((p) => p.session.user.email));
+    const tried = await Promise.all(people.map((p) => joining(p.api.calls.join(c, { mic: true, cam: false }))));
+    expect(tried.filter((t) => t.said === 'asked')).toHaveLength(1);
+    expect(tried.filter((t) => t.said === full(2))).toHaveLength(2);
+    const one = tried.find((t) => t.call)?.call;
+    if (one) await inGroup(one);
+    expect((await settle(host, (s) => s.participants.length === 2)).participants.map((p) => p.id)).toContain(one?.ticket.identity);
+    await host.leave();
+  });
+
+  it('holds only so many asks from one network at once: one gone quiet doesn’t count, upkeep turns it away, and an answered one makes room', async () => {
+    await h.setLimit('call.asks_per_address', 2);
+    const { org, c, host } = await roomFor(10);
+    // Everyone here comes from one network, as several people in an office do, or a script.
+    const office = '203.0.113.7';
+    const lee = await fromNetwork(office).calls.join(c, { mic: true, cam: false, name: 'Lee' });
+    const ada = await fromNetwork(office).calls.join(c, { mic: true, cam: false, name: 'Ada' });
+    await settle(host, (s) => s.waiting.length === 2);
+    expect((await ask(c, 'Bo', fromNetwork(office))).said).toBe(MANY);
+    // Asks from anywhere else, and anyone invited, are as ever.
+    expect((await ask(c, 'Cy')).said).toBe('asked');
+    expect((await settle(host, (s) => s.waiting.length === 3)).waiting.map((w) => w.id)).not.toContain(undefined);
+    // Lee's browser closed while it asked, and last said it was still asking 91 seconds ago: whoever hosts can't see it, and
+    // it holds nothing from the office.
+    lee.close();
+    await quietSince(org.session.ownerId, host.ticket.callId, lee.ticket.identity, 91_000);
+    const bo = await ask(c, 'Bo', fromNetwork(office));
+    expect(bo.said).toBe('asked');
+    // Upkeep turns the quiet ask away, so nothing kept of it reads as asking: its pass finds it turned away.
+    const from = h.logs.length;
+    await maintain(h.deps);
+    expect(h.logs.slice(from).some((l) => l.includes('asks to join that went quiet turned away') && l.includes(host.ticket.callId))).toBe(true);
+    const admission = await h.browser().fetch(`${h.baseUrl}/v1/live/calls/${lee.ticket.callId}/mls?after=0`, { headers: { 'x-alcove-call': lee.ticket.pass } });
+    expect(await admission.json()).toMatchObject({ admission: 'denied' });
+    // Answered asks make room: Ada is let in, and the office can ask again.
+    expect((await ask(c, 'Di', fromNetwork(office))).said).toBe(MANY);
+    await letIn(host, ada);
+    expect((await ask(c, 'Di', fromNetwork(office))).said).toBe('asked');
+    await host.leave();
+  });
+});
+
 describe('failing safely', () => {
   /** A refusal: its code, its message, and a request ID that finds its log lines, which name no code, pass or name. */
   async function refused(attempt: () => Promise<unknown>, secrets: string[]) {
@@ -487,9 +638,11 @@ describe('what a guest’s pass reaches', () => {
     const MOVES = ['/v1/moves/claim', '/v1/moves/status', '/v1/moves/ready', '/v1/moves/arrive', '/v1/moves/cancel'];
     // A file's URL is public too: its token says who's asking, and it answers for nobody else, a pass included.
     const PUBLIC = new Set(['/health', '/healthz', '/hooks/livekit', '/v1/telemetry', '/v1/attestation', '/v1/feature-flags', '/v1/session', '/v1/auth/sign-in', '/v1/auth/google', '/v1/auth/google/callback', '/v1/calls/:code/card', '/v1/calls/:code/join', '/v1/media/:token', '/v1/calls/:code/pick', ...MOVES]);
-    // OAuth discovery and callbacks are public; each validates its own inputs and credentials, never a call pass.
+    // OAuth discovery and callbacks are public; each validates its own inputs and credentials, never a call pass. So does the
+    // operators' route for feature flags, which takes only its bearer token, and isn't there while it has none (as here).
     // Match methods and paths exactly so another endpoint cannot inherit this exception by sharing a prefix.
     const PUBLIC_PROTOCOL_ROUTES = [
+      { method: 'POST', path: '/v1/operator/feature-flags', status: 404 },
       { method: 'GET', path: '/.well-known/oauth-authorization-server', status: 200 },
       { method: 'GET', path: '/.well-known/oauth-protected-resource/mcp', status: 200 },
       { method: 'POST', path: '/oauth/register', status: 400 },
@@ -511,10 +664,12 @@ describe('what a guest’s pass reaches', () => {
       expect(`${path} → ${res.status}`).toBe(`${path} → 404`);
       expect(await res.text()).not.toContain('Standup');
     }
-    // The only routes outside the call's that take a pass: what may be shared with someone's seat in a call. Each one is listed
-    // here on purpose, and without anything shared it answers as if the workspace weren't there.
+    // The only routes outside the call's that take a pass: what may be shared with someone's seat in a call, and what the
+    // workspace a call uses opens to everyone in it. Each one is listed here on purpose, and for a workspace this call doesn't
+    // use, with nothing shared, it answers as if the workspace weren't there.
     const BY_PASS = new Set([
-      'GET /v1/workspaces/:id', 'GET /v1/workspaces/:id/live', 'GET /v1/workspaces/:id/items/:item', 'PATCH /v1/workspaces/:id/items/:item', 'POST /v1/workspaces/:id/items/:item/restore', 'POST /v1/workspaces/:id/presence', 'GET /v1/workspaces/:id/search',
+      'GET /v1/workspaces/:id', 'GET /v1/workspaces/:id/live', 'GET /v1/workspaces/:id/previews', 'GET /v1/workspaces/:id/items/:item', 'PATCH /v1/workspaces/:id/items/:item', 'POST /v1/workspaces/:id/items/:item/restore',
+      'POST /v1/workspaces/:id/items', 'POST /v1/workspaces/:id/items/:item/move', 'POST /v1/workspaces/:id/items/:item/duplicate', 'POST /v1/workspaces/:id/items/:item/trash', 'POST /v1/workspaces/:id/presence', 'GET /v1/workspaces/:id/search',
       'GET /v1/workspaces/:id/documents/:doc/live', 'POST /v1/workspaces/:id/documents/:doc/updates', 'POST /v1/workspaces/:id/documents/:doc/awareness', 'GET /v1/workspaces/:id/documents/:doc/versions',
       'GET /v1/workspaces/:id/documents/:doc/versions/:version', 'POST /v1/workspaces/:id/documents/:doc/versions/:version/restore',
       'GET /v1/workspaces/:id/documents/:doc/presenter-notes/frames', 'POST /v1/workspaces/:id/documents/:doc/presenter-notes/frames', 'POST /v1/workspaces/:id/documents/:doc/ask',
@@ -555,7 +710,8 @@ describe('what a guest’s pass reaches', () => {
     expect(mcpGet.status).toBe(405);
     expect(mcpGet.headers.get('allow')).toBe('POST');
     const passRoutes = table.filter(byPass);
-    expect(passRoutes.map((r) => `${r.method} ${r.path}`).sort()).toEqual([...BY_PASS].sort());
+    // Changing the tree is there twice: for a guest, with the pass alone, and for everyone signed in, behind sign-in.
+    expect([...new Set(passRoutes.map((r) => `${r.method} ${r.path}`))].sort()).toEqual([...BY_PASS].sort());
     // Each with what it takes, so what answers is whether it's there to reach and not what was sent.
     const update = 'AQHpxYYMAAQBB2NvbnRlbnQBeAA';
     const presence = { connection: 'x'.repeat(22), document: null, block: null, typing: false, page: null };
@@ -565,10 +721,13 @@ describe('what a guest’s pass reaches', () => {
       'POST /v1/workspaces/:id/documents/:doc/ask': { action: 'shorter', text: 'Words' },
       'POST /v1/workspaces/:id/documents/:doc/sort': { stickies: [{ id: 'a', text: 'Ship on Monday' }, { id: 'b', text: 'Tell support' }] },
       'POST /v1/workspaces/:id/documents/:doc/mentions': { to: { email: 'someone@example.com' }, block: null },
-      'POST /v1/workspaces/:id/ids': { emails: ['someone@example.com'] }
+      'POST /v1/workspaces/:id/ids': { emails: ['someone@example.com'] },
+      'POST /v1/workspaces/:id/items': { kind: 'document', name: 'From a guest', parent: null }, 'POST /v1/workspaces/:id/items/:item/move': { parent: null }
     };
+    // What a read takes in its query, as the bodies above are what the others take.
+    const query: Record<string, string> = { 'GET /v1/workspaces/:id/previews': `?items=${encodeURIComponent(agenda)}` };
     for (const r of passRoutes) {
-      const res = await send(r.method, fill(r.path), JSON.stringify(asking[`${r.method} ${r.path}`] ?? { name: 'Renamed by a guest' }));
+      const res = await send(r.method, `${fill(r.path)}${query[`${r.method} ${r.path}`] ?? ''}`, JSON.stringify(asking[`${r.method} ${r.path}`] ?? { name: 'Renamed by a guest' }));
       expect(`${r.method} ${r.path} → ${res.status}`).toBe(`${r.method} ${r.path} → 404`);
       expect(await res.text()).not.toContain('Standup');
     }

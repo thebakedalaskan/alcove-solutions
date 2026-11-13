@@ -18,29 +18,23 @@ const olog = log.child({ component: 'oneclick' });
 /** USDC on NEAR: every payment ends as this, in the treasury's confidential Intents balance. */
 const NEAR_USDC = 'nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1';
 /**
- * The routes Alcove takes, keyed by 1Click asset ID (from /v0/tokens, checked 5 November 2026): USD stablecoins on
- * chains that don't need a memo, each with its decimals as listed then (18 for BNB Chain's, 6 for the rest). Every
- * amount is priced and read in those decimals, so a route 1Click lists with others isn't offered. Ethereum's minimum is
- * higher for its gas.
+ * The routes Alcove takes, keyed by 1Click asset ID (from /v0/tokens, checked 5 November 2026): USDC on chains that
+ * don't need a memo, each with its decimals as listed then (18 for BNB Chain's, 6 for the rest). Every amount is
+ * priced and read in those decimals, so a route 1Click lists with others isn't offered. Ethereum's minimum is higher
+ * for its gas. USDT isn't taken, though 1Click lists it. Routes are offered in this order, whatever order 1Click lists them in.
+ * The app asks only for a network, under Pay with USDC (apps/web/src/features/settings/topup.tsx): offering another
+ * token means giving it back its token choice there.
  */
-const ALLOWLIST: Record<string, { chain: string; chainName: string; token: 'USDC' | 'USDT'; decimals: number; minimumUsd: bigint }> = {
+const ALLOWLIST: Record<string, { chain: string; chainName: string; token: 'USDC'; decimals: number; minimumUsd: bigint }> = {
   'nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1': { chain: 'near', chainName: 'NEAR', token: 'USDC', decimals: 6, minimumUsd: 5n },
   'nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near': { chain: 'eth', chainName: 'Ethereum', token: 'USDC', decimals: 6, minimumUsd: 20n },
+  'nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near': { chain: 'sol', chainName: 'Solana', token: 'USDC', decimals: 6, minimumUsd: 5n },
   'nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near': { chain: 'base', chainName: 'Base', token: 'USDC', decimals: 6, minimumUsd: 5n },
   'nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near': { chain: 'arb', chainName: 'Arbitrum', token: 'USDC', decimals: 6, minimumUsd: 5n },
-  'nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near': { chain: 'sol', chainName: 'Solana', token: 'USDC', decimals: 6, minimumUsd: 5n },
   'nep245:v2_1.omni.hot.tg:137_qiStmoQJDQPTebaPjgx5VBxZv6L': { chain: 'pol', chainName: 'Polygon', token: 'USDC', decimals: 6, minimumUsd: 5n },
   'nep245:v2_1.omni.hot.tg:56_2w93GqMcEmQFDru84j3HZZWt557r': { chain: 'bsc', chainName: 'BNB Chain', token: 'USDC', decimals: 18, minimumUsd: 5n },
   'nep245:v2_1.omni.hot.tg:10_A2ewyUyDp6qsue1jqZsGypkCxRJ': { chain: 'op', chainName: 'Optimism', token: 'USDC', decimals: 6, minimumUsd: 5n },
-  'nep245:v2_1.omni.hot.tg:43114_3atVJH3r5c4GqiSYmg9fECvjc47o': { chain: 'avax', chainName: 'Avalanche', token: 'USDC', decimals: 6, minimumUsd: 5n },
-  'nep141:usdt.tether-token.near': { chain: 'near', chainName: 'NEAR', token: 'USDT', decimals: 6, minimumUsd: 5n },
-  'nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near': { chain: 'eth', chainName: 'Ethereum', token: 'USDT', decimals: 6, minimumUsd: 20n },
-  'nep141:sol-c800a4bd850783ccb82c2b2c7e84175443606352.omft.near': { chain: 'sol', chainName: 'Solana', token: 'USDT', decimals: 6, minimumUsd: 5n },
-  'nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near': { chain: 'tron', chainName: 'Tron', token: 'USDT', decimals: 6, minimumUsd: 5n },
-  'nep245:v2_1.omni.hot.tg:137_3hpYoaLtt8MP1Z2GH1U473DMRKgr': { chain: 'pol', chainName: 'Polygon', token: 'USDT', decimals: 6, minimumUsd: 5n },
-  'nep245:v2_1.omni.hot.tg:56_2CMMyVTGZkeyNZTSvS5sarzfir6g': { chain: 'bsc', chainName: 'BNB Chain', token: 'USDT', decimals: 18, minimumUsd: 5n },
-  'nep245:v2_1.omni.hot.tg:10_359RPSJVdTxwTJT9TyGssr2rFoWo': { chain: 'op', chainName: 'Optimism', token: 'USDT', decimals: 6, minimumUsd: 5n },
-  'nep245:v2_1.omni.hot.tg:43114_372BeH7ENZieCaabwkbWkBiTTgXp': { chain: 'avax', chainName: 'Avalanche', token: 'USDT', decimals: 6, minimumUsd: 5n }
+  'nep245:v2_1.omni.hot.tg:43114_3atVJH3r5c4GqiSYmg9fECvjc47o': { chain: 'avax', chainName: 'Avalanche', token: 'USDC', decimals: 6, minimumUsd: 5n }
 };
 const TOKENS_FOR_MS = 10 * 60_000;
 /** How long a /v0/tokens failure is remembered, so a 1Click outage isn't asked about on every request. */
@@ -180,15 +174,17 @@ export function oneClick(o: { baseUrl: string; nearRpcUrl: string; apiKey: strin
         tokens = { failed: true, until: Date.now() + TOKENS_FAILED_FOR_MS };
         throw e;
       }
-      const routes = data.flatMap((t): DepositRoute[] => {
-        const a = ALLOWLIST[t.assetId];
-        if (!a) return [];
-        if (t.decimals !== a.decimals) {
+      // The allowlist's routes that 1Click lists, in the allowlist's order.
+      const listed = new Map(data.map((t) => [t.assetId, t.decimals]));
+      const routes = Object.entries(ALLOWLIST).flatMap(([id, a]): DepositRoute[] => {
+        const decimals = listed.get(id);
+        if (decimals === undefined) return [];
+        if (decimals !== a.decimals) {
           // Every amount on this route would be off by a power of ten: it isn't offered until someone looks.
-          olog.error('route listed with other decimals than allowlisted', { provider: 'oneclick', route: t.assetId, listed: t.decimals, allowlisted: a.decimals });
+          olog.error('route listed with other decimals than allowlisted', { provider: 'oneclick', route: id, listed: decimals, allowlisted: a.decimals });
           return [];
         }
-        return [{ id: t.assetId, provider: 'oneclick', chain: a.chain, chainName: a.chainName, token: a.token, decimals: a.decimals, minimum: a.minimumUsd * 10n ** BigInt(a.decimals) }];
+        return [{ id, provider: 'oneclick', chain: a.chain, chainName: a.chainName, token: a.token, decimals: a.decimals, minimum: a.minimumUsd * 10n ** BigInt(a.decimals) }];
       });
       tokens = { routes, until: Date.now() + TOKENS_FOR_MS };
       return routes;

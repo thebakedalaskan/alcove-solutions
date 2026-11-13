@@ -26,8 +26,8 @@ export interface TeamWorld {
   id: string;
   name: string;
   members: TeamMemberWorld[];
-  /** What each license bought and not yet taken cost. */
-  unconsumed: number[];
+  /** Each license bought and not yet taken: what it cost (all its periods), and how many periods it runs once taken. */
+  unconsumed: UnconsumedLicense[];
   autoPurchase: boolean;
   /** Whether the admin has been told the licenses are low, until there are 5 or more again. */
   lowSaid: boolean;
@@ -36,6 +36,8 @@ export interface TeamWorld {
   /** What the licensed members store, together. */
   usedBytes: number;
 }
+/** A license bought and not yet taken: what it cost, for all its periods, and how many it runs (1, or a year's 12). */
+export interface UnconsumedLicense { microUsd: number; periods: number }
 /** A link to join a team: its secret, until when it works, and the team. */
 export interface TeamInviteWorld { secret: string; expiresAt: string; team: TeamWorld; admin: Person }
 
@@ -47,6 +49,17 @@ export const INVITE_MS = 86_400_000;
 export const isLive = (m: TeamMemberWorld, now = Date.now()): boolean => m.license !== null && Date.parse(m.license.until) > now;
 export const meOn = (t: TeamWorld, email: string): TeamMemberWorld | undefined => t.members.find((m) => m.person.email === email);
 export const adminOf = (t: TeamWorld): TeamMemberWorld | undefined => t.members.find((m) => m.role === 'admin');
+
+/**
+ * `count` licenses bought for the team at `microUsd` each (for all its `periods`), from its admin's balance or by a payment:
+ * nobody's taken them yet.
+ */
+export function addLicenses(t: TeamWorld, count: number, microUsd: number, periods = 1): void {
+  t.unconsumed = [...t.unconsumed, ...Array.from({ length: count }, (): UnconsumedLicense => ({ microUsd, periods }))];
+  if (t.unconsumed.length >= LOW_LICENSES) t.lowSaid = false;
+}
+/** What refunding the licenses nobody has taken gives back: what each cost. */
+export const refundOf = (t: TeamWorld): number => t.unconsumed.reduce((s, x) => s + x.microUsd, 0);
 /** The team's storage: 100 GB for each live license. */
 export const poolOf = (t: TeamWorld, now = Date.now()): number => t.members.filter((m) => isLive(m, now)).length * TEAM.storage;
 
@@ -62,14 +75,27 @@ export function teamView(t: TeamWorld, email: string, now = Date.now()): MyTeam 
     id: t.id, name: t.name, role: mine.role, licensed: isLive(mine, now), members,
     storage: { usedBytes: t.usedBytes, limitBytes: poolOf(t, now) },
     licenses: mine.role === 'admin'
-      ? { unconsumed: t.unconsumed.length, refundableMicroUsd: t.unconsumed.reduce((s, x) => s + x, 0), autoPurchase: t.autoPurchase }
+      ? { unconsumed: t.unconsumed.length, refundableMicroUsd: refundOf(t), autoPurchase: t.autoPurchase }
       : null
   };
 }
 
 /**
+ * The period of a live license running at `now`, as the server runs it (plans.ts › planAt): one period from when it was
+ * taken, then each after it, the last ending with the license. A license for one period is that period.
+ */
+function licensePeriod(license: { from: string; until: string }, now: number): { from: string; to: string } {
+  const from = Date.parse(license.from);
+  const n = Math.max(0, Math.floor((now - from) / PERIOD_MS));
+  const start = from + n * PERIOD_MS;
+  const end = start + PERIOD_MS;
+  return { from: n === 0 ? license.from : new Date(start).toISOString(), to: end >= Date.parse(license.until) ? license.until : new Date(end).toISOString() };
+}
+
+/**
  * The plan as the team makes it: on Team while the license is live, with a fresh period and the whole of a person's notes
- * when the license is a new one, and storage from the team's pool. Without a live license, Free (with the team named).
+ * when a new period of it starts (a license for a year runs 12 of them, each with all its notes), and storage from the
+ * team's pool. Without a live license, Free (with the team named).
  */
 export function planWithTeam(plan: Plan, t: TeamWorld | null, email: string, now = Date.now()): Plan {
   const mine = t ? meOn(t, email) : undefined;
@@ -77,10 +103,10 @@ export function planWithTeam(plan: Plan, t: TeamWorld | null, email: string, now
   const licensed = isLive(mine, now);
   const team: Plan['team'] = { id: t.id, name: t.name, role: mine.role, licensed };
   if (!licensed || !mine.license) return plan.kind === 'team' ? onFree({ ...plan, team }, now) : { ...plan, team };
-  const fresh = plan.kind !== 'team' || plan.period.from !== mine.license.from;
+  const period = licensePeriod(mine.license, now);
+  const fresh = plan.kind !== 'team' || plan.period.from !== period.from;
   return {
-    ...plan, team, kind: 'team',
-    period: { from: mine.license.from, to: mine.license.until },
+    ...plan, team, kind: 'team', period,
     notes: fresh ? { minutesLeft: TEAM.minutes, minutesPerPeriod: TEAM.minutes, stopped: false } : plan.notes,
     storage: { usedBytes: t.usedBytes, limitBytes: poolOf(t, now), fileBytes: TEAM.file },
     grace: null, over: { storage: false }
@@ -108,7 +134,7 @@ export function proReplaced(plan: Plan, now = Date.now()): Plan {
   const history = later.length
     ? [{ id: `sb-entry-replaced-${now}`, at, label: `Refund: ${later.length} ${later.length === 1 ? 'month' : 'months'} of Pro, for a team license`, microUsd: back }, ...plan.balance.history]
     : plan.balance.history;
-  const said: PlanNotice = { id: `sb-notice-replaced-${now}`, kind: 'license-replaced-pro', at, until: null, count: later.length };
+  const said: PlanNotice = { id: `sb-notice-replaced-${now}`, kind: 'license-replaced-pro', at, until: null, count: later.length, workspaceId: null };
   return { ...plan, pro: NO_PRO, balance: { microUsd: plan.balance.microUsd + back, history }, notices: [said, ...plan.notices] };
 }
 
@@ -157,8 +183,19 @@ export function vandelayTeam(): TeamWorld {
       member('art', ART, 'admin', takenAgo(12), 60), member('priya', PRIYA, 'member', takenAgo(10), 58), member('kofi', KOFI, 'member', takenAgo(9), 58),
       member('aiko', AIKO, 'member', takenAgo(4), 40), member('ines', INES, 'member', takenAgo(2), 30), member('maya', MAYA, 'member', endedAgo(6), 45)
     ],
-    unconsumed: [LICENSE_PRICE, LICENSE_PRICE, LICENSE_PRICE], autoPurchase: false, lowSaid: true,
+    unconsumed: Array.from({ length: 3 }, (): UnconsumedLicense => ({ microUsd: LICENSE_PRICE, periods: 1 })), autoPurchase: false, lowSaid: true,
     notes: teamNotes(), usedBytes: Math.round(210 * GiB)
+  };
+}
+
+/**
+ * Vandelay's team as Art has just started it, from checkout's Start a team: Art alone as its admin, made today, with nothing
+ * bought for it yet and nobody licensed. `usedBytes`: what Art stores, which counts against the team's storage once Art is licensed.
+ */
+export function startedTeam(usedBytes = 0): TeamWorld {
+  return {
+    id: 'team-vandelay', name: COMPANY.name, members: [member('art', ART, 'admin', null, 0)],
+    unconsumed: [], autoPurchase: false, lowSaid: false, notes: [], usedBytes
   };
 }
 

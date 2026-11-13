@@ -70,6 +70,8 @@ export interface PlanCardWaiting extends PlanCardBase {
   waiting: true;
   /** How many facts will come, so nothing moves when they do. */
   facts?: number | undefined;
+  /** What can be done before the prices come, in the button's place (the plan choice's way on). Otherwise a bar waits there. */
+  action?: ReactNode;
 }
 
 export type PlanCardProps = PlanCardShown | PlanCardWaiting;
@@ -93,7 +95,9 @@ export function PlanCard(props: PlanCardProps) {
         <p className="pl-sub">{sub}</p>
         <p className="pl-price" aria-hidden="true"><i className="pl-wait is-price" /></p>
         <p className="pl-bill" aria-hidden="true"><i className="pl-wait is-bill" /></p>
-        <div className="pl-act" aria-hidden="true"><i className="pl-wait is-act" /></div>
+        {has(props.action)
+          ? <div className="pl-act">{props.action}</div>
+          : <div className="pl-act" aria-hidden="true"><i className="pl-wait is-act" /></div>}
         <ul className="pl-facts" aria-hidden="true" style={{ '--facts': n }}>
           {Array.from({ length: n }, (_, i) => <li key={i} className="pl-fact"><i className="pl-wait is-icon" /><i className="pl-wait is-line" /></li>)}
         </ul>
@@ -159,10 +163,11 @@ export function PlanCycle({ value, onChange, off, month = 'Monthly', year = 'Yea
 
 /**
  * The last sliver of the sun on the horizon, and its long glow over the sky. Plans puts it on the evening behind everything
- * that passes through (`Evening`'s `sky`), at the middle of the horizon (--hz), since its moment has no sun of its own.
+ * that passes through (`Evening`'s `sky`), at the middle of the horizon (--hz), since its moment has no sun of its own. Its sun
+ * is marked `data-sun` (its box as wide as the sun, its top the sun's), so signing in from the welcome page can sail onto it.
  */
 export function PlanSunset({ className }: { className?: string | undefined }) {
-  return <div className={cn('pl-sunset', className)} aria-hidden="true"><i className="pl-sunset-glow" /><i className="pl-sunset-sun" /></div>;
+  return <div className={cn('pl-sunset', className)} aria-hidden="true"><i className="pl-sunset-glow" /><i className="pl-sunset-sun" data-sun="" /></div>;
 }
 
 /* ---------- under the plans ---------- */

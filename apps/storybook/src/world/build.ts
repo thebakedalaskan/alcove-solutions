@@ -9,19 +9,6 @@ import {
   type NotesSetting, type Person, type Received, type Recipient, type RecipientRole, type Repeat, type RsvpCounts, type ScreenMoment, type ScreenShare, type TranscriptLine
 } from '@alcove/api';
 import { ART } from './people';
-import type { Space } from './index';
-
-/**
- * The workspace a call's organizer made for it as they scheduled it (New workspace): named after the call, with its organizer
- * its admin and everyone invited in it to edit, made the day before it. Empty until the call's folder goes in, the first time
- * Workspace opens. The call's `workspaceId` names it.
- */
-export function spaceMadeFor(m: Meeting, id = `ws-${m.id}`): Space {
-  return {
-    id, name: m.title, role: m.isOrganizer ? 'admin' : 'edit', people: m.guests.length + 1, teamAccess: null, items: [],
-    createdAt: new Date(Date.parse(m.startsAt) - 86_400_000).toISOString(), call: { title: m.title, at: m.startsAt }
-  };
-}
 
 /** A moment in a recording as the canvas writes it, '06:12' or '1:04:30', in seconds. */
 export function mmss(t: string): number {
@@ -186,7 +173,8 @@ export function writeNote(s: NoteSpec, me: Person = ART): Note {
     audio: kept.recording && status !== 'recording' ? [{ index: 0, seconds, pieces: Math.ceil(seconds / 5), mimeType: 'audio/webm;codecs=opus' }] : [],
     kept,
     inference: written ? inferenceAt(addMinutes(ended, 1), (s.screens?.length ?? 0) > 0 || (s.shares?.length ?? 0) > 0) : [],
-    ...(s.seriesId ? { seriesId: s.seriesId } : {})
+    ...(s.seriesId ? { seriesId: s.seriesId } : {}),
+    home: null
   };
 }
 
@@ -195,7 +183,7 @@ export function summaryOf(n: Note): NoteSummary {
   return {
     id: n.id, kind: n.kind, status: n.status, title: n.title, startedAt: n.startedAt, duration: n.duration, people: n.people, sharedWith: n.sharedWith,
     excerpt: n.excerpt, openActions: n.openActions, totalActions: n.totalActions, ...(n.meetingId ? { meetingId: n.meetingId } : {}),
-    ...(n.received ? { received: n.received } : {}), groupShares: n.groupShares, teamVisible: n.teamVisible
+    ...(n.received ? { received: n.received } : {}), ...(n.seriesId ? { seriesId: n.seriesId } : {}), groupShares: n.groupShares, teamVisible: n.teamVisible
   };
 }
 export const foundOf = (n: Note): NoteFound => ({ ...summaryOf(n), said: [], saidCount: 0 });

@@ -20,6 +20,9 @@
 .pl-cycle button[aria-pressed="true"] { background: var(--surface-raised); color: var(--ink); box-shadow: var(--shadow-1); }
 .dark .pl-cycle button[aria-pressed="true"] { background: color-mix(in oklch, var(--ink) 16%, transparent); box-shadow: none; }
 .pl-cycle .off { font-weight: 600; color: var(--horizon); }
+/* At night the chosen segment, over the glow, is lighter than horizon text takes at 4.5:1: the discount's horizon is drawn
+   toward the ink (in oklab, so the blue never turns), and reads at 5:1 there. */
+.dark .pl-cycle .off { color: color-mix(in oklab, var(--horizon) 45%, var(--ink)); }
 
 /*
  * The last of the sun, drawn on the evening's sky behind whatever passes through (Evening's `sky`): a sliver of its disc
@@ -31,6 +34,18 @@
 .pl-sunset-glow { left: -490px; top: -130px; width: 980px; height: 260px; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in oklch, var(--pl-sun-glow) 40%, transparent), transparent); clip-path: inset(0 0 50% 0); }
 .pl-sunset-sun { left: -70px; top: -18px; width: 140px; height: 18px; overflow: hidden; }
 .pl-sunset-sun::before { content: ""; position: absolute; left: 0; top: 0; width: 140px; height: 140px; border-radius: 50%; background: radial-gradient(circle at 50% 22%, var(--pl-sun-core), var(--pl-sun-edge) 50%, var(--pl-sun-glow) 80%); }
+
+/*
+ * The plan choice (apps/web features/plans/PlanChoice.tsx): Plans opened by itself once, its head a short title in the page's
+ * own type with one line under it, in place of the title. The head and the sky are one block down to the horizon, so the
+ * switch keeps its place over the sun however many lines the head takes.
+ */
+.pl-lead { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: calc(var(--hz) - 30px); }
+.pl-lead > .pl-sky { height: auto; align-self: end; }
+/* The title stands where every page's does, in a row of the head's own height, and the line comes under it. */
+.pl-head.dusk-top { flex-direction: column; align-items: flex-start; gap: 2px; }
+.pl-head .dusk-title { display: flex; align-items: center; min-height: 40px; }
+.pl-lede { max-width: 720px; font: 400 15px/22px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
 
 /* ------------------------------------------------------------ the water: the plans, then what every plan has */
 .pl-water { max-width: 1120px; margin: 34px auto 0; }
@@ -110,6 +125,10 @@
   .pl { --hz: 300px; --behind: 66px; margin-top: -66px; }
   .pl .dusk-in { padding-top: 66px; padding-bottom: 28px; }
   .pl-sky { height: calc(var(--hz) - 110px); }
+  .pl-lead { min-height: calc(var(--hz) - 66px); }
+  .pl-head.dusk-top { gap: 0; }
+  .pl-head .dusk-title { min-height: 44px; }
+  .pl-lede { font-size: 14px; line-height: 20px; }
   .pl-cycle { margin-bottom: 40px; }
   .pl-sunset-glow { left: -280px; width: 560px; }
   .pl-water { margin-top: 24px; }

@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The tour's art</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="tour.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="tour-art.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="ta-root" aria-hidden="true">
+
+<!-- Start or schedule a call -->
+<sc-if value="{{is.start}}" hint-placeholder-val="{{false}}">
+<div class="ta"><div class="ta-in ta-stack">
+<div class="ta-sched ta-glass">
+<div class="ta-sh"><span class="{{a.titleCls}}" style="{{a.titleStyle}}">{{a.title}}</span><span class="ta-sh-who"><span class="ta-who" style="{{a.who1}}"><dc-import name="Faces" who="maya" size="20" hint-size="20px,22px"></dc-import></span><span class="ta-who" style="{{a.who2}}"><dc-import name="Faces" who="kofi" size="20" hint-size="20px,22px"></dc-import></span></span></div>
+<div class="ta-wk">
+<sc-for list="{{a.days}}" as="d" hint-placeholder-count="5">
+<div class="ta-d"><small>{{d.label}}</small><span class="ta-col"><sc-for list="{{d.blocks}}" as="b" hint-placeholder-count="2"><i class="{{b.cls}}" style="{{b.style}}"></i></sc-for></span></div>
+</sc-for>
+</div>
+</div>
+<div class="ta-chip ta-glass" style="{{a.done}}"><span class="ta-ok"><svg class="i" viewBox="0 0 24 24"><path d="{{I.check}}"></path></svg></span>Thu 15:00 · Invites sent</div>
+</div></div>
+</sc-if>
+
+<!-- Notes for your calls -->
+<sc-if value="{{is.notes}}" hint-placeholder-val="{{false}}">
+<div class="ta"><div class="ta-in ta-col-c">
+<div class="ta-notes ta-glass">
+<div class="hd"><span>Weekly product call</span><span class="ta-sign"><i></i>Notes on</span></div>
+<div class="ta-rows">
+<sc-for list="{{a.rows}}" as="r" hint-placeholder-count="3">
+<div class="ta-row" style="{{r.style}}">
+<sc-if value="{{r.isDecide}}" hint-placeholder-val="{{true}}"><span class="ta-dec" style="{{r.mark}}"><svg class="i" viewBox="0 0 24 24"><path d="{{I.diamond}}"></path></svg></span></sc-if>
+<sc-if value="{{r.isOwn}}" hint-placeholder-val="{{false}}"><span class="ta-owner" style="{{r.mark}}"><dc-import name="Faces" who="{{r.who}}" size="16" hint-size="16px,18px"></dc-import>{{r.name}}</span></sc-if>
+<span class="ta-rt">{{r.text}}</span>
+<span class="ta-at" style="{{r.atStyle}}"><svg class="i" viewBox="0 0 24 24"><path d="{{I.play}}"></path></svg>{{r.at}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+<div class="ta-label"><span class="ta-lab"><svg class="i" viewBox="0 0 24 24"><path d="{{I.sealed}}"></path></svg>Written in confidential compute</span></div>
+</div></div>
+</sc-if>
+
+<!-- Search or ask -->
+<sc-if value="{{is.ask}}" hint-placeholder-val="{{false}}">
+<div class="ta"><div class="ta-in">
+<div class="ta-pal ta-glass">
+<div class="ta-pl"><svg class="i" viewBox="0 0 24 24"><path d="{{I.search}}"></path></svg><span class="ta-q" style="{{a.qStyle}}"><sc-if value="{{a.empty}}" hint-placeholder-val="{{false}}"><span class="ta-ph">Search or ask</span></sc-if>{{a.q}}</span><i class="ta-caret" style="{{a.caret}}"></i><span class="ta-k">⌘K</span></div>
+<div class="ta-pa">
+<div class="ta-askrow" style="{{a.askRow}}"><svg class="i" viewBox="0 0 24 24"><path d="{{I.sparkles}}"></path></svg><span>Ask “What did we decide on pricing?”</span></div>
+<p class="ta-ans"><sc-for list="{{a.words}}" as="w" hint-placeholder-count="12"><span class="ta-w" style="{{w.style}}">{{w.w}} </span></sc-for></p>
+<div class="ta-moms"><span class="ta-mom" style="{{a.m1}}"><svg class="i" viewBox="0 0 24 24"><path d="{{I.play}}"></path></svg>Pricing sync · 6:12</span><span class="ta-mom" style="{{a.m2}}"><svg class="i" viewBox="0 0 24 24"><path d="{{I.play}}"></path></svg>Design review · 31:40</span></div>
+</div>
+</div>
+</div></div>
+</sc-if>
+
+<!-- Documents and boards -->
+<sc-if value="{{is.drive}}" hint-placeholder-val="{{false}}">
+<div class="ta"><div class="ta-in ta-col-c">
+<div class="ta-dr">
+<div class="ta-doc ta-glass">
+<b>Launch plan</b>
+<i class="ta-ln" style="{{a.l1}}"></i><i class="ta-ln" style="{{a.l2}}"></i><i class="ta-ln" style="{{a.l3}}"></i>
+<span class="ta-cur" style="{{a.c1}}"><svg viewBox="0 0 24 24"><path d="{{I.pointer}}"></path></svg><em>Priya</em></span>
+</div>
+<div class="ta-brd ta-glass">
+<i class="ta-st is-a" style="{{a.s1}}"></i><i class="ta-st is-b" style="{{a.s2}}"></i><i class="ta-st is-c" style="{{a.s3}}"></i>
+<span class="ta-cur is-k" style="{{a.c2}}"><svg viewBox="0 0 24 24"><path d="{{I.pointer}}"></path></svg><em>Kofi</em></span>
+</div>
+</div>
+<div class="ta-label"><span class="ta-lab"><svg class="i" viewBox="0 0 24 24"><path d="{{I.folder}}"></path></svg>Kept with the call, and in the Drive</span></div>
+</div></div>
+</sc-if>
+
+<!-- Record in the room -->
+<sc-if value="{{is.room}}" hint-placeholder-val="{{false}}">
+<div class="ta"><div class="ta-room">
+<div class="ta-phone"><div class="scr"><span class="ta-rec"><i></i>Rec 04:12</span><div class="ta-wave"><sc-for list="{{a.bars}}" as="b" hint-placeholder-count="14"><i style="{{b.style}}"></i></sc-for></div></div></div>
+<div class="ta-status">
+<sc-for list="{{a.pills}}" as="p" hint-placeholder-count="3">
+<div class="ta-pill ta-glass" style="{{p.style}}"><span class="{{p.icCls}}"><svg class="i" viewBox="0 0 24 24"><path d="{{p.icon}}"></path></svg></span><span><b>{{p.title}}</b><small>{{p.sub}}</small></span></div>
+</sc-for>
+</div>
+</div></div>
+</sc-if>
+
+<!-- Bring your agent -->
+<sc-if value="{{is.agents}}" hint-placeholder-val="{{false}}">
+<div class="ta"><div class="ta-in ta-ag">
+<span class="ta-hz"></span>
+<svg class="ta-join" viewBox="0 0 400 180"><path d="M150 124 C 188 94, 216 94, 254 124" style="{{a.join}}"></path></svg>
+<span class="ta-win"><span class="ta-halo" style="{{a.halo}}"></span><span class="ta-ring" style="{{a.ring}}"></span><svg class="i" viewBox="0 0 24 24"><path d="{{I.agent}}"></path></svg><span class="ta-tk" style="{{a.tick}}"><svg class="i" viewBox="0 0 24 24"><path d="{{I.check}}"></path></svg></span></span>
+<span class="ta-me"><dc-import name="Faces" who="art" size="46" hint-size="46px,51px"></dc-import></span>
+<div class="ta-bub ta-glass" style="{{a.ask}}">
+<b>Claude asks to use your Alcove</b>
+<span class="ta-sw"><span class="ta-tr is-on"><i></i></span>Find notes</span>
+<span class="ta-sw"><span class="ta-tr"><span class="on" style="{{a.track}}"></span><i style="{{a.knob}}"></i></span>Book calls</span>
+</div>
+<div class="ta-did ta-glass" style="{{a.did}}"><span class="ta-ok"><svg class="i" viewBox="0 0 24 24"><path d="{{I.check}}"></path></svg></span>Claude booked Pricing review · Thu 15:00</div>
+</div></div>
+</sc-if>
+
+<!-- You're ready -->
+<sc-if value="{{is.sun}}" hint-placeholder-val="{{false}}">
+<svg class="ta-sky" viewBox="0 0 400 180" preserveAspectRatio="xMidYMax slice">
+<defs>
+<radialGradient id="ta-sun-n" cx=".42" cy=".38" r=".72"><stop offset="0" stop-color="#FFF6E0"></stop><stop offset=".5" stop-color="#FFD58A"></stop><stop offset="1" stop-color="#FFB547"></stop></radialGradient>
+<radialGradient id="ta-sun-g"><stop offset="0" stop-color="#FFD58A" stop-opacity=".9"></stop><stop offset="1" stop-color="#FF9E5E" stop-opacity="0"></stop></radialGradient>
+<clipPath id="ta-sun-u"><rect width="400" height="146"></rect></clipPath>
+</defs>
+<g fill="#fff"><circle cx="60" cy="34" r="1.3" opacity="{{a.s0}}"></circle><circle cx="130" cy="22" r="1" opacity="{{a.s1}}"></circle><circle cx="250" cy="30" r="1.4" opacity="{{a.s2}}"></circle><circle cx="320" cy="52" r="1" opacity="{{a.s3}}"></circle><circle cx="352" cy="24" r="1.2" opacity="{{a.s4}}"></circle><circle cx="96" cy="70" r=".9" opacity="{{a.s5}}"></circle></g>
+<g clip-path="url(#ta-sun-u)"><g transform="{{a.sunT}}" opacity="{{a.fade}}"><circle cx="200" cy="146" r="112" fill="url(#ta-sun-g)"></circle><circle cx="200" cy="146" r="44" fill="url(#ta-sun-n)"></circle></g></g>
+<rect y="146" width="400" height="34" fill="#231C5E"></rect>
+<g opacity="{{a.refl}}"><rect x="150" y="155" width="100" height="3.5" rx="1.75" fill="#FFB36E" opacity=".85"></rect><rect x="172" y="165" width="56" height="3" rx="1.5" fill="#FFB36E" opacity=".5"></rect></g>
+</svg>
+</sc-if>
+
+<!-- Join a call -->
+<sc-if value="{{is.call}}" hint-placeholder-val="{{false}}">
+<div class="ta"><div class="ta-in ta-call">
+<div class="ta-tiles"><sc-for list="{{a.tiles}}" as="p" hint-placeholder-count="3"><div class="{{p.cls}}"><dc-import name="Faces" who="{{p.who}}" size="40" hint-size="40px,44px"></dc-import><span class="ta-tn">{{p.name}}</span></div></sc-for></div>
+<div class="ta-cap ta-glass">
+<div class="who"><dc-import name="Faces" who="{{a.who}}" size="14" hint-size="14px,16px"></dc-import>{{a.name}}<span class="lbl">Captions</span></div>
+<p><sc-for list="{{a.words}}" as="w" hint-placeholder-count="6"><span class="ta-w" style="{{w.style}}">{{w.w}} </span></sc-for></p>
+</div>
+</div></div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"k":{"editor":"enum","options":["start","notes","ask","drive","room","agents","sun","call"],"default":"start"},"still":{"editor":"boolean","default":false},"paused":{"editor":null,"default":false},"slow":{"editor":null,"default":false},"$preview":{"width":400,"height":180}}'>
+class Component extends DCLogic {
+  componentDidMount() { this.run(); }
+  componentDidUpdate(pp) {
+    var p = this.props;
+    if (pp.k !== p.k || pp.still !== p.still || pp.paused !== p.paused) this.run();
+    else if (pp.slow !== p.slow) this.run(true);
+  }
+  componentWillUnmount() { this.halt(); }
+  halt() { if (this.__raf) cancelAnimationFrame(this.__raf); this.__raf = 0; }
+  /* One clock per loop. Still (a journey frame, reduced motion) or paused (the art on its way out) holds one frame. */
+  run(keep) {
+    var self = this, A = window.AH.ART[this.props.k || 'start'];
+    this.halt();
+    if (!A) return;
+    var reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (this.props.still || reduce) { this.setState({ t: A.still }); return; }
+    if (this.props.paused) return;
+    var speed = this.props.slow ? 0.25 : 1;
+    var from = keep ? (this.state && this.state.t) || 0 : 0;
+    var t0 = performance.now();
+    if (!keep) this.setState({ t: 0 });
+    var tick = function (now) {
+      self.setState({ t: Math.max(0, from + (now - t0) / 1000 * speed) % A.period });
+      self.__raf = requestAnimationFrame(tick);
+    };
+    this.__raf = requestAnimationFrame(tick);
+  }
+  renderVals() {
+    var ART = window.AH.ART, k = this.props.k || 'start', A = ART[k] || ART.start;
+    var t = this.state && typeof this.state.t === 'number' ? this.state.t : (this.props.still ? A.still : 0);
+    var is = {};
+    ['start', 'notes', 'ask', 'drive', 'room', 'agents', 'sun', 'call'].forEach(function (n) { is[n] = n === k; });
+    return { is: is, a: A.view(t), I: ART.I };
+  }
+}
+</script>
+</body>
+</html>

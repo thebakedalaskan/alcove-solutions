@@ -10,7 +10,7 @@ import type { Deps } from '../../context';
 import { limitsNow } from '../../limits';
 import { storageOf } from './held';
 import { minutesOf, standing } from './meter';
-import { accountOf, freeAllowance, historyOf, hoursOf, noticesOf, proAllowance, proOf, teamAllowance, yearlyOf } from './plans';
+import { accountOf, freeBrings, historyOf, hoursOf, noticesOf, proBrings, proOf, teamBrings, teamYearlyOf, yearlyOf } from './plans';
 import { teamOf } from './teams';
 
 /** How many of the balance's latest changes are shown. */
@@ -43,15 +43,16 @@ export async function planOf(d: Pick<Deps, 'cfg' | 'pool'>, ownerId: string): Pr
 
 /**
  * The plans on offer, from the limits in force: what each brings, what a month of Pro and a team license cost, and less
- * for a year or more of Pro, the most one purchase buys, and more notes for a period, on any plan.
+ * for a year or more of Pro and for a team license for a year, the most one purchase buys, and more notes for a period, on
+ * any plan.
  */
 export async function offersOf(d: Pick<Deps, 'cfg' | 'pool'>): Promise<PlanOffers> {
   const l = await limitsNow(d);
   return {
     periodDays: l.get('plan.period_seconds') / 86_400,
-    free: freeAllowance(l),
-    pro: { ...proAllowance(l), microUsdPerMonth: l.get('plan.pro.price_micro_usd'), maxMonths: l.get('plan.pro_max_months'), yearly: yearlyOf(l) },
+    free: freeBrings(l),
+    pro: { ...proBrings(l), microUsdPerMonth: l.get('plan.pro.price_micro_usd'), maxMonths: l.get('plan.pro.max_months'), yearly: yearlyOf(l) },
     hours: hoursOf(l),
-    team: { ...teamAllowance(l), microUsdPerLicense: l.get('plan.team.price_micro_usd'), maxLicenses: l.get('team.max_licenses') }
+    team: { ...teamBrings(l), microUsdPerLicense: l.get('plan.team.price_micro_usd'), maxLicenses: l.get('team.max_licenses'), yearly: teamYearlyOf(l) }
   };
 }

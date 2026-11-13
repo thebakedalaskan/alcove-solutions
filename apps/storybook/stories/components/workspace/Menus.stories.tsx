@@ -14,9 +14,9 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useRef, useState, type ComponentProps, type KeyboardEvent } from 'react';
 import { useArgs } from 'storybook/preview-api';
 import { screen } from 'storybook/test';
-import { Box, PopSurface, Row, did } from '../../../src/component';
+import { Box, PopSurface, did } from '../../../src/component';
 import { AIKO, KOFI, MAYA, PRIYA } from '../../../src/world/people';
-import { DocOf, ListOf, NEW_SPACE, PRODUCT_ITEMS, SPACES, first, useWorkspace, type Opened } from './parts';
+import { DocOf, ListOf, NEW_SPACE, PRODUCT_ITEMS, SPACES, useWorkspace, type Opened } from './parts';
 
 const meta = {
   title: 'Components/Workspace/Menus',
@@ -62,15 +62,15 @@ function Everything({ label }: { label: string }) {
 /** Headings, separators, people, keys, a caution and a line of text, with the chosen one ticked in the colour you can press. */
 export const MenuEvery: Story = { name: 'Menu: every kind of row', args: { label: 'This call’s workspace', rows: [] }, argTypes: { rows: { control: false } }, render: ({ label }) => <Everything label={label} /> };
 
-const chosen = (fixed: boolean): WsMenuRow[] => [
+const chosen: WsMenuRow[] = [
   { type: 'head', label: 'This call’s workspace' },
-  { id: 'product', icon: 'folders', label: 'Product', sub: '6 people', ticked: true, fixed, onSelect: pressed },
-  ...(fixed ? [{ type: 'text', label: 'Priya chooses the workspace for this call.' } satisfies WsMenuRow] : [{ id: 'design', icon: 'folders', label: 'Design', sub: '4 people', ticked: false, onSelect: pressed } satisfies WsMenuRow])
+  { id: 'product', icon: 'folders', label: 'Product', sub: '6 people', ticked: true, onSelect: pressed },
+  { id: 'design', icon: 'folders', label: 'Design', sub: '4 people', ticked: false, onSelect: pressed }
 ];
-/** Ticked, for the one you chose and can change; fixed, when it only says what someone else chose, so the tick isn't in the colour you can press. */
-export const MenuFixed: Story = {
-  name: 'Menu: ticked, and fixed', args: { label: 'This call’s workspace', rows: [] }, argTypes: { rows: { control: false } },
-  render: ({ label }) => <Row><PopSurface ws><WsMenu label={label} rows={chosen(false)} /></PopSurface><PopSurface ws><WsMenu label={label} rows={chosen(true)} /></PopSurface></Row>
+/** Ticked, for the one you chose and can change, in the colour you can press. */
+export const MenuTicked: Story = {
+  name: 'Menu: ticked', args: { label: 'This call’s workspace', rows: [] }, argTypes: { rows: { control: false } },
+  render: ({ label }) => <PopSurface ws><WsMenu label={label} rows={chosen} /></PopSurface>
 };
 
 /** A field that keeps focus while Up and Down move the highlight in the menu under it, as tagging someone does. */
@@ -154,7 +154,7 @@ function OverWords() {
   const close = () => setOpen(false);
   return (
     <Box width={560} height={300}>
-      <WsPane page>
+      <WsPane>
         <WsDoc>
           <WsScroll>
             <WsPage>
@@ -234,12 +234,10 @@ const picking: SpaceStory['render'] = function Render(args) {
 };
 const SPACE_PICKER = { spaces: ALL_SPACES, current: 'ws-product', onPick: did('onPick'), onNew: did('onNew') };
 const spaceTypes: SpaceStory['argTypes'] = { spaces: { control: 'object' }, current: { control: 'inline-radio', options: ALL_SPACES.map((s) => s.id) } };
-/** The organizer's: their workspaces, each with who's in it, and New workspace. */
-export const SpacePickerOrganizer: SpaceStory = { name: 'Space picker: the organizer chooses', args: { ...SPACE_PICKER, canChoose: true }, argTypes: spaceTypes, render: picking };
-/** Everyone else's: which workspace it is, and who chooses. */
-export const SpacePickerSomeoneElse: SpaceStory = { name: 'Space picker: someone else', args: { ...SPACE_PICKER, canChoose: false, organizer: first(PRIYA) }, argTypes: spaceTypes, render: picking };
+/** The organizer's, from Switch workspace in the workspace's menu in a call: their workspaces, each with who's in it, and New workspace. */
+export const SpacePickerOrganizer: SpaceStory = { name: 'Space picker: the organizer chooses', args: SPACE_PICKER, argTypes: spaceTypes, render: picking };
 /** Outside a call it's just your workspaces. */
-export const SpacePickerApp: SpaceStory = { name: 'Space picker: outside a call', args: { ...SPACE_PICKER, canChoose: true, heading: 'Workspaces' }, argTypes: spaceTypes, render: picking };
+export const SpacePickerApp: SpaceStory = { name: 'Space picker: outside a call', args: { ...SPACE_PICKER, heading: 'Workspaces' }, argTypes: spaceTypes, render: picking };
 
 /** Ask, on the bar over a selection: three things Alcove can do with it. */
 export const AskMenu: StoryObj<typeof WsAskMenu> = {

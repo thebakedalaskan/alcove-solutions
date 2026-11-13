@@ -24,12 +24,15 @@ export function ThemeScope({ theme, children }: { theme: 'light' | 'dark' | null
  * `takeFocus={false}` for one that opens as you hover or focus its anchor: focus doesn't move into it when it
  * opens, nor back to the anchor when it closes, so Tab carries on past it and moving the mouse away doesn't
  * open it again. `caret` points it at its anchor, and it keeps pointing there when the panel slides to stay in the window.
- * `onCloseFocus` puts focus somewhere else when it closes: return true once it has, as a Modal's does.
+ * `onCloseFocus` puts focus somewhere else when it closes: return true once it has, as a Modal's does. `within` keeps it
+ * inside a part of the page rather than the window, such as the page beside the side panel. Escape closes it, unless
+ * `onEscapeKeyDown` prevents that, as Sheet's does (your menu steps back one thing at a time before it closes).
  */
-export function Popover({ open, onOpenChange, anchor, children, align = 'start', side = 'bottom', stage = false, takeFocus = true, caret = false, onCloseFocus, label, tip, className }: {
+export function Popover({ open, onOpenChange, anchor, children, align = 'start', side = 'bottom', stage = false, takeFocus = true, caret = false, onCloseFocus, onEscapeKeyDown, label, tip, within, className }: {
   open: boolean; onOpenChange: (open: boolean) => void; anchor: ReactNode; children: ReactNode;
   align?: 'start' | 'center' | 'end'; side?: 'top' | 'bottom'; stage?: boolean; takeFocus?: boolean; caret?: boolean | undefined;
-  onCloseFocus?: (() => boolean) | undefined; label: string; tip?: ReactNode; className?: string;
+  onCloseFocus?: (() => boolean) | undefined; onEscapeKeyDown?: ((event: globalThis.KeyboardEvent) => void) | undefined;
+  label: string; tip?: ReactNode; within?: Element | null | undefined; className?: string;
 }) {
   const returning = useRef(false);
   const scoped = useContext(Scoped);
@@ -48,8 +51,9 @@ export function Popover({ open, onOpenChange, anchor, children, align = 'start',
         </RTooltip.Root>
       )}
       <RPopover.Portal>
-        <RPopover.Content side={side} align={align} sideOffset={OFFSET} collisionPadding={EDGE} aria-label={label} className={cn('ac-pop', stage && 'is-stage', scoped, className)}
+        <RPopover.Content side={side} align={align} sideOffset={OFFSET} collisionPadding={EDGE} collisionBoundary={within ?? []} aria-label={label} className={cn('ac-pop', stage && 'is-stage', scoped, className)}
           onOpenAutoFocus={takeFocus ? undefined : (e) => e.preventDefault()}
+          onEscapeKeyDown={onEscapeKeyDown}
           // Radix focuses the anchor right after this, synchronously, if it focuses it at all (not when it already has
           // focus, or after a click elsewhere), so the mark lasts only until then.
           onCloseAutoFocus={(e) => {
@@ -229,14 +233,23 @@ function useFocusBack(open: boolean) {
   return (e: Event) => { if (back?.isConnected) { e.preventDefault(); back.focus({ preventScroll: true }); } };
 }
 
-/** A single sheet that drops from the top around one input, for finding something. Closing it puts focus back where it was. */
-export function Sheet({ open, onOpenChange, label, children, className }: { open: boolean; onOpenChange: (open: boolean) => void; label: string; children: ReactNode; className?: string }) {
+/**
+ * A single sheet that drops from the top around one input, for finding something. Closing it puts focus back where it was;
+ * when that has gone, `onCloseFocus` puts it somewhere else (return true once it has), as a Popover's does.
+ * `overlayClassName` gives the veil behind it a look of its own, as the palette's `pal-scrim` does. Escape closes it, unless
+ * `onEscapeKeyDown` prevents that (the palette goes back from an answer to its results first).
+ */
+export function Sheet({ open, onOpenChange, label, children, className, overlayClassName, onEscapeKeyDown, onCloseFocus }: {
+  open: boolean; onOpenChange: (open: boolean) => void; label: string; children: ReactNode; className?: string | undefined; overlayClassName?: string | undefined;
+  onEscapeKeyDown?: ((event: globalThis.KeyboardEvent) => void) | undefined; onCloseFocus?: (() => boolean) | undefined;
+}) {
   const focusBack = useFocusBack(open);
   return (
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
-        <RDialog.Overlay className="ac-scrim" />
-        <RDialog.Content aria-describedby={undefined} className={cn('ac-sheet', className)} onCloseAutoFocus={focusBack}>
+        <RDialog.Overlay className={cn('ac-scrim', overlayClassName)} />
+        <RDialog.Content aria-describedby={undefined} className={cn('ac-sheet', className)} onEscapeKeyDown={onEscapeKeyDown}
+          onCloseAutoFocus={(e) => { focusBack(e); if (!e.defaultPrevented && onCloseFocus?.()) e.preventDefault(); }}>
           <RDialog.Title className="sr-only">{label}</RDialog.Title>
           {children}
         </RDialog.Content>
@@ -259,8 +272,7 @@ export function Tooltip({ label, children, side = 'top' }: { label: ReactNode; c
 }
 
 /**
- * A modal over the page: centred for a choice that needs room (what to share), or rising from the
- * bottom for a quick decision (leaving a call). The rest of the page waits behind a veil. Something with
+ * A modal over the page, centred, for a choice that needs room. The rest of the page waits behind a veil. Something with
  * several questions asks them one at a time inside the one modal: no window ever opens over another.
  * Closing it puts focus back where it was when it opened, since a shortcut can open it from anywhere;
  * `onCloseFocus` puts it somewhere else instead, when what it came from has gone (return true once it has).
@@ -269,9 +281,9 @@ export function Tooltip({ label, children, side = 'top' }: { label: ReactNode; c
  * it takes that theme, as a popover does: checkout over a call opens in your own theme while the call stays night.
  */
 export const Modal = forwardRef<HTMLDivElement, {
-  open: boolean; onOpenChange: (open: boolean) => void; label: string; children: ReactNode; placement?: 'center' | 'bottom'; className?: string | undefined;
+  open: boolean; onOpenChange: (open: boolean) => void; label: string; children: ReactNode; className?: string | undefined;
   onCloseFocus?: (() => boolean) | undefined; focusSelf?: boolean | undefined; focusOn?: string | undefined;
-}>(function Modal({ open, onOpenChange, label, children, placement = 'center', className, onCloseFocus, focusSelf = false, focusOn }, ref) {
+}>(function Modal({ open, onOpenChange, label, children, className, onCloseFocus, focusSelf = false, focusOn }, ref) {
   const focusBack = useFocusBack(open);
   // A theme the modal names itself (a receipt is paper in both) wins over the one it opened in.
   const named = /(^|\s)(light|dark)(\s|$)/.test(className ?? '');
@@ -280,7 +292,7 @@ export const Modal = forwardRef<HTMLDivElement, {
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
         <RDialog.Overlay className="ac-scrim" />
-        <RDialog.Content ref={ref} aria-describedby={undefined} className={cn('ac-modal', placement === 'bottom' && 'is-bottom', named ? null : scoped, className)}
+        <RDialog.Content ref={ref} aria-describedby={undefined} className={cn('ac-modal', named ? null : scoped, className)}
           onOpenAutoFocus={focusSelf || focusOn ? (e) => {
             if (!(e.currentTarget instanceof HTMLElement)) return;
             const first = focusSelf ? e.currentTarget : focusOn ? e.currentTarget.querySelector<HTMLElement>(focusOn) : null;

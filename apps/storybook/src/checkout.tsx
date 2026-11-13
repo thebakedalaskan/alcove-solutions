@@ -28,6 +28,8 @@ export interface CheckoutArgs extends PageArgs {
   packs?: number | undefined;
   /** Team's licenses it starts on. */
   licenses?: number | undefined;
+  /** Team's licenses for a year, as Plans' Yearly opens it; otherwise a period at a time. */
+  yearly?: boolean | undefined;
   /** Where it's opened from: Done says Back to the call from a call, and Compare plans shows away from Plans. */
   from: CheckoutFrom;
   /** A payment on its way, to open on (the side panel's Open): none opens on choosing, or on one already on its way. */
@@ -38,7 +40,8 @@ const FROM: CheckoutFrom[] = ['plans', 'settings', 'side', 'call', 'door', 'welc
 
 /** What a door opens checkout on, from the story's args. */
 function openFrom(a: CheckoutArgs): CheckoutOpen {
-  const what = a.plan === 'pro' ? { plan: 'pro' as const, months: a.months } : a.plan === 'team' ? { plan: 'team' as const, licenses: a.licenses } : { plan: 'hours' as const, packs: a.packs };
+  const what = a.plan === 'pro' ? { plan: 'pro' as const, months: a.months } : a.plan === 'team' ? { plan: 'team' as const, licenses: a.licenses, yearly: a.yearly }
+    : { plan: 'hours' as const, packs: a.packs };
   return { what, from: a.from, topUpId: a.topUpId ?? null };
 }
 
@@ -71,6 +74,8 @@ export const checkouts = {
     plan: { control: 'inline-radio', options: ['pro', 'hours', 'team'], description: 'What checkout opens on' },
     months: { control: 'number', description: 'The months of Pro it starts on' },
     packs: { control: 'number', description: 'The packs of notes it starts on' },
+    licenses: { control: 'number', description: 'Team’s licenses it starts on' },
+    yearly: { control: 'boolean', description: 'Team’s licenses for a year, as Plans’ Yearly opens it' },
     from: { control: 'select', options: FROM, description: 'Where it was opened from' },
     topUpId: { control: 'text', description: 'A payment on its way, to open on' }
   }

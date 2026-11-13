@@ -43,7 +43,7 @@ const bringable = (t: WorkspaceTree): Document[] => t.items.flatMap((x): Documen
 )).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
 /** A workspace as someone sees it, unless it went, or they lost it, since it was listed. */
-async function stillThere(o: Owner, reader: Reader, workspaceId: string): Promise<WorkspaceTree | undefined> {
+export async function stillThere(o: Owner, reader: Reader, workspaceId: string): Promise<WorkspaceTree | undefined> {
   try {
     return await tree(o, reader, workspaceId);
   } catch (e) {

@@ -32,8 +32,8 @@ export function useNotificationNavigation(): (data: BrowserNotificationData) => 
   const revision = useRef(0);
   useEffect(() => () => { revision.current++; }, []);
   const go = useCallback((open: NotificationOpen) => {
-    if (open.to === 'note') void router.navigate({ to: '/notes/$noteId', params: { noteId: open.noteId } });
-    else if (open.to === 'notes') void router.navigate({ to: '/notes' });
+    if (open.to === 'note') void router.navigate({ to: '/calls/$noteId', params: { noteId: open.noteId } });
+    else if (open.to === 'notes') void router.navigate({ to: '/calls' });
     else if (open.to === 'home') void router.navigate({ to: '/home' });
     else if (open.to === 'plan') void router.navigate({ to: '/settings', hash: 'plan' });
     else if (open.to === 'document') void router.navigate({ to: '/drive/$workspaceId/$documentId', params: { workspaceId: open.workspaceId, documentId: open.documentId }, ...(open.block ? { hash: open.block } : {}) });

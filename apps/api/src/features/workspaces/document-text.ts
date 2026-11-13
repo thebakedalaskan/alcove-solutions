@@ -10,7 +10,7 @@
  * Nothing here is taken on trust: other people's browsers wrote it. Blocks are flat, so these readers go a fixed few levels
  * deep however deep someone nests what they send.
  */
-import { DOC_FRAGMENT, type DocTextBlock } from '@alcove/api';
+import { DOC_FRAGMENT, type DocTextBlock, type PreviewLineKind } from '@alcove/api';
 import { isGone, newBlockId } from '@alcove/api/retire';
 import { boardText } from '@alcove/board';
 import * as Y from 'yjs';
@@ -86,6 +86,58 @@ export function documentText(doc: Y.Doc, kind: ContentKind): { title: string; bl
       return { title: '', blocks: text ? [{ id: BOARD_BLOCK, type: 'board', text }] : [] };
     }
   }
+}
+
+/* ---------- a card's preview ---------- */
+
+/** How much of a document a card shows: so many lines, each so long. */
+export interface PreviewLimits { lines: number; chars: number }
+/** What a card shows of a document: its first lines with words in them, the pictures and videos it holds, and its first file's ending. */
+export interface DocPreview { lines: { text: string; kind: PreviewLineKind }[]; pictures: number; videos: number; file: string | null }
+
+/** How a line starts on the page, as a card draws it. */
+function previewKind(line: Y.XmlElement): PreviewLineKind {
+  switch (textAttr(line, 'kind')) {
+    case 'heading': return 'heading';
+    case 'bullet':
+    case 'numbered': return 'bullet';
+    case 'todo': { const done: unknown = line.getAttribute('done'); return done === true ? 'done' : 'todo'; }
+    default: return 'text';
+  }
+}
+/** Words cut at a word, with an ellipsis, so a card never ends half way through one. */
+function atWord(text: string, chars: number): string {
+  if (text.length <= chars) return text;
+  const cut = text.slice(0, chars);
+  const space = cut.lastIndexOf(' ');
+  return `${(space > chars / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:.–—-]+$/, '')}…`;
+}
+/** A file's name says what it is by its ending, which is all a card says of it. */
+const endingOf = (name: string): string => /\.([A-Za-z0-9]{1,5})$/.exec(name)?.[1]?.toUpperCase() ?? 'FILE';
+const GalleryItems = z.array(z.unknown());
+
+/**
+ * What a card shows of a document. Lines are the page's own (not a toggle, a table or a block of code), as they read there: a
+ * tag says the name, and a date the day. Nothing past the limits comes back. A board has nothing here: its card draws one.
+ */
+export function documentPreview(doc: Y.Doc, kind: ContentKind, l: PreviewLimits): DocPreview {
+  const out: DocPreview = { lines: [], pictures: 0, videos: 0, file: null };
+  if (kind !== 'document') return out;
+  for (const el of blocksOf(doc)) {
+    switch (el.nodeName) {
+      case 'gallery': out.pictures += GalleryItems.safeParse(el.getAttribute('items')).data?.length ?? 0; break;
+      case 'video': out.videos += 1; break;
+      case 'file': out.file ??= endingOf(textAttr(el, 'name')); break;
+      case 'line': {
+        if (out.lines.length >= l.lines) break;
+        const text = runsOf(el).map((r) => ('text' in r ? r.text : 'mention' in r ? r.mention.name : dayWords(r.date))).join('').replace(/\s+/g, ' ').trim();
+        if (text) out.lines.push({ text: atWord(text, l.chars), kind: previewKind(el) });
+        break;
+      }
+      default: break;
+    }
+  }
+  return out;
 }
 
 /** A `todo` block: what it says, who it tags and when, for the call's follow-ups. */

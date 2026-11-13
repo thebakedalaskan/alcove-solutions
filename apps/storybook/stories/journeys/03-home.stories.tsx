@@ -1,18 +1,22 @@
 /*
- * Journeys on Home (docs/product/user-flows.md › 3. Home), as the canvas's Home board draws them (docs/design/canvas/home.js,
- * AH.JOURNEYS_HOME and AH.JOURNEYS). Asking your notes from Search or ask is the side panel's (2.1), and Start a call's
- * modal is flow 4's.
+ * Journeys on Home (docs/product/user-flows.md › 3. Home), as the canvas's Home board draws them
+ * (docs/design/canvas/home/water.js, AH.HW.JOURNEYS), and 3.8 and 3.9 as Upcoming's own canvas does
+ * (docs/design/canvas/upcoming). Asking your notes from Search or ask is the side panel's (2.4), and
+ * Start a call's modal is flow 4's. Google's pages can't open in Storybook, so connecting the calendar plays up to the
+ * hand-off; Home as Google sends you back to it is in Pages/Home (Back from Google, Google didn't allow).
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
-import { calendarEvent, notConnected } from '../../src/world/build';
-import { iso } from '../../src/world/clock';
-import { LENA, MAYA } from '../../src/world/people';
+import { notConnected } from '../../src/world/build';
 import { page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { onlyOwnEvents, yourMeeting } from '../pages/changes';
 import { before, holding, LATER, SOON } from './play';
 
 const meta = { title: 'Journeys/3 Home', ...pages } satisfies Meta<PageArgs>;
 export default meta;
+
+/** One of Home's widgets, by its title. */
+const widget = (name: string) => screen.findByRole('region', { name }, SOON);
 
 export const StartACallNow: PageStory = {
   name: '3.1 Start a call now',
@@ -36,50 +40,30 @@ export const ScheduleACall: PageStory = {
   name: '3.2 Schedule a call',
   ...page('/home', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Click Schedule. No chooser in between', async () => {
+    await step('Click Schedule. No chooser in between: the Calls page opens on the scheduler, beside the week', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Schedule' }, SOON));
+      await screen.findByRole('complementary', { name: 'Schedule a call' }, SOON);
     });
     await step('Who’s it with? Type a name and pick them', async () => {
       await userEvent.type(await screen.findByRole('combobox', { name: 'Add people' }, SOON), 'Priya');
       await userEvent.click(await screen.findByRole('option', { name: /Priya Raman/ }, SOON));
-      await userEvent.click(screen.getByRole('button', { name: 'Find a time' }));
+      await userEvent.keyboard('{Escape}');
     });
-    await step('When? Only times you’re free. The best one is picked already', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: /^Use / }, SOON));
+    await step('Only times you’re both free, glowing on the week. The best one is picked already', async () => {
+      await screen.findByText('You and Priya are free at these times.', {}, LATER);
     });
-    await step('Check the details, then Schedule', async () => {
-      await screen.findByRole('textbox', { name: 'Name the call' }, SOON);
+    await step('Schedule. It’s on your calendar, which is where you’ll join it, and Google Calendar invites Priya', async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Schedule' }));
-    });
-    await step('Back on Home. It’s on your calendar, which is where you’ll join it', async () => {
-      await screen.findByText(/On your Google Calendar/, {}, SOON);
-      await within(await screen.findByRole('region', { name: 'Coming up' })).findByRole('button', { name: /Call with Priya/ }, SOON);
-    });
-  }
-};
-
-export const RingSomeone: PageStory = {
-  name: '3.3 Ring someone',
-  ...page('/home', 'busy'),
-  play: async ({ userEvent, step }) => {
-    await step('Click someone you talk to', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Ring Priya Raman' }, SOON));
-    });
-    await step('The join screen, and they get a ring as you join', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Join and ring 1' }, SOON));
-    });
-    await step('In the call, Priya’s arch waits for her answer, and she comes in', async () => {
-      await screen.findByRole('toolbar', { name: 'Call controls' }, LATER);
-      await screen.findByRole('group', { name: /^Priya/ }, LATER);
+      await screen.findByText(/Google Calendar invites Priya/, {}, SOON);
     });
   }
 };
 
 export const ACallIsAboutToStart: PageStory = {
-  name: '3.4 A call is about to start',
+  name: '3.3 A call is about to start',
   ...page('/home', 'call-soon'),
   play: async ({ userEvent, step }) => {
-    await step('Only in the last few minutes, a slim line offers Join, and the side panel’s Up next makes way for it. Click it, or press J', async () => {
+    await step('Only in the last few minutes, a slim line offers Join, Upcoming counts down, and the call at the foot of the side panel makes way. Click Join, or press J', async () => {
       const line = await screen.findByRole('region', { name: 'Start a call' }, SOON);
       await within(line).findByText('Design review');
       await userEvent.click(within(line).getByRole('link', { name: 'Join' }));
@@ -91,63 +75,60 @@ export const ACallIsAboutToStart: PageStory = {
   }
 };
 
-/** A meeting Art set up on Google Calendar himself, on Google Meet: it can move to Alcove. */
-const PRICING_REVIEW = calendarEvent({ id: 'e-pricing-review', title: 'Pricing review', startsAt: iso(2, 14, 0), minutes: 30, guests: [MAYA, LENA], meet: true });
-
 export const MoveAMeetingToAlcove: PageStory = {
-  name: '3.5 Move a meeting to Alcove',
+  name: '3.4 Move a meeting to Alcove',
   ...page('/home', 'busy'),
-  beforeEach: before((w) => { w.calendar.events.push(structuredClone(PRICING_REVIEW)); }),
+  beforeEach: before(yourMeeting),
   play: async ({ userEvent, step }) => {
-    await step('Open the menu on a meeting in Coming up', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'More for Pricing review' }, SOON));
+    await step('A meeting you organized on Google Calendar has Use Alcove at the end of its row', async () => {
+      await userEvent.click(within(await holding('listitem', 'Pricing review')).getByRole('button', { name: 'Use Alcove' }));
     });
-    await step('Use Alcove instead. The meeting gets an Alcove link, and Google tells everyone on it', async () => {
-      const menu = await screen.findByRole('dialog', { name: 'Pricing review' }, SOON);
-      await userEvent.click(within(menu).getByRole('button', { name: /^Use Alcove instead/ }));
+    await step('It’s an Alcove call now: the meeting gets an Alcove link, Google tells everyone on it, and the toast says who', async () => {
+      await screen.findByText(/Pricing review is an Alcove call now/, {}, SOON);
     });
-    await step('It’s an Alcove call now. Click it, and its call card opens over Home', async () => {
-      const coming = await screen.findByRole('region', { name: 'Coming up' });
-      await userEvent.click(await within(coming).findByRole('button', { name: /^Fri 14:00 Pricing review/ }, SOON));
-      await screen.findByRole('dialog', { name: /Pricing review/ }, SOON);
+    await step('Click it, and its page opens: who’s invited, its link and its agenda', async () => {
+      await userEvent.click(await within(await widget('Upcoming')).findByRole('link', { name: /^Fri 14:00 Pricing review/ }, SOON));
+      await screen.findByRole('heading', { name: 'Pricing review', level: 1 }, LATER);
     });
   }
 };
 
 export const ClearWhatsWaiting: PageStory = {
-  name: '3.6 Clear what’s waiting',
+  name: '3.5 Clear what’s waiting',
   ...page('/home', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Answer on the tile. No page to open: Confirm the decision from Art’s call', async () => {
-      const tile = await holding('listitem', 'Orders placed before the move ship from the old warehouse.');
-      await userEvent.click(within(tile).getByRole('button', { name: 'Confirm' }));
+    await step('Answer in the row. No page to open: Confirm the decision from Art’s call', async () => {
+      const row = await holding('listitem', 'Orders placed before the move ship from the old warehouse.');
+      await userEvent.click(within(row).getByRole('button', { name: 'Confirm' }));
     });
-    await step('It says what you did, with Undo. Nothing jumps', async () => {
-      await screen.findByText('Confirmed for everyone.', {}, SOON);
+    await step('The row stays where it is and says Confirmed, with Undo. Nothing jumps', async () => {
+      await within(await holding('listitem', 'Orders placed before the move ship from the old warehouse.')).findByRole('button', { name: 'Undo' }, SOON);
     });
-    await step('Take it on, or the ✕ for Not mine', async () => {
+    await step('Take one on with I’ll do it, or the ✕ for Not mine', async () => {
       await userEvent.click(within(await holding('listitem', 'Book the movers for the 14th')).getByRole('button', { name: 'I’ll do it' }));
       await userEvent.click(within(await holding('listitem', 'List which suppliers move with us')).getByRole('button', { name: 'Not mine' }));
-      await screen.findByText('Nobody has it now.', {}, SOON);
+      await within(await holding('listitem', 'List which suppliers move with us')).findByRole('button', { name: 'It’s mine' }, SOON);
     });
-    await step('Next time you’re here, what you took on is on your list', async () => {
-      await userEvent.click(screen.getByRole('link', { name: /^Notes/ }));
-      await screen.findByRole('heading', { name: 'Notes', level: 1 }, SOON);
-      await userEvent.click(screen.getByRole('link', { name: /^Home/ }));
-      await screen.findByRole('list', { name: 'Your follow-ups' }, SOON);
+    await step('What you took on is in Follow-ups now', async () => {
+      await userEvent.click(within(await widget('For you')).getByRole('tab', { name: /^Follow-ups/ }));
+      await within(await screen.findByRole('list', { name: 'Your follow-ups' }, SOON)).findByText('Book the movers for the 14th', {}, SOON);
     });
   }
 };
 
 export const TickOffAFollowUp: PageStory = {
-  name: '3.7 Tick off a follow-up',
+  name: '3.6 Tick off a follow-up',
   ...page('/home', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Take on the launch checklist from this morning’s standup: it joins your follow-ups', async () => {
-      await userEvent.click(within(await holding('listitem', 'Review the launch checklist')).getByRole('button', { name: 'I’ll do it' }));
-      await screen.findByRole('list', { name: 'Your follow-ups' }, SOON);
+    await step('Show 3 more: the rest of what’s waiting on you', async () => {
+      await userEvent.click(within(await widget('For you')).getByRole('button', { name: 'Show 3 more' }));
     });
-    await step('Tick the box', async () => {
+    await step('Take on the launch checklist from this morning’s standup: it’s due today', async () => {
+      await userEvent.click(within(await holding('listitem', 'Review the launch checklist')).getByRole('button', { name: 'I’ll do it' }));
+      await within(await holding('listitem', 'Review the launch checklist')).findByText('In your follow-ups', {}, SOON);
+    });
+    await step('Open Follow-ups, and tick the box', async () => {
+      await userEvent.click(within(await widget('For you')).getByRole('tab', { name: /^Follow-ups/ }));
       await userEvent.click(await screen.findByRole('checkbox', { name: 'Mark done: Review the launch checklist' }, SOON));
     });
     await step('It crosses out where it is, until you leave Home', async () => {
@@ -157,23 +138,50 @@ export const TickOffAFollowUp: PageStory = {
 };
 
 export const YourFirstDay: PageStory = {
-  name: '3.8 Your first day',
+  name: '3.7 Your first day',
   ...page('/home', 'first-day'),
   beforeEach: before((w) => { w.calendar = notConnected; }),
   play: async ({ userEvent, step }) => {
-    await step('Before any notes: start a call, or get set up', async () => {
+    await step('Before any notes: start your first call. For you says what will show up there', async () => {
       await screen.findByRole('region', { name: 'Start your first call' }, SOON);
-      await screen.findByRole('region', { name: 'Get set up' }, SOON);
+      await within(await widget('For you')).findByText('Nothing to answer yet', {}, SOON);
     });
-    await step('Connect your calendar explains how Alcove uses it. Choose Not now to return to Home', async () => {
-      await userEvent.click(await screen.findByRole('link', { name: 'Connect your calendar' }, SOON));
-      const disclosure = await screen.findByRole('dialog', { name: 'Connect Google Calendar' }, SOON);
-      await userEvent.click(within(disclosure).getByRole('button', { name: 'Not now' }));
-      await screen.findByRole('region', { name: 'Get set up' }, SOON);
+    await step('Upcoming is the way to connect your calendar. Connect Google Calendar goes straight to Google, with nothing in between, and Google sends you back to Home', async () => {
+      await userEvent.click(within(await widget('Upcoming')).getByRole('link', { name: 'Connect Google Calendar' }));
     });
-    await step('Read an example note, to see what notes look like', async () => {
-      await userEvent.click(screen.getByRole('link', { name: 'Read an example note' }));
+    await step('Read the example note in Recent notes, to see what notes look like', async () => {
+      await userEvent.click(within(await widget('Recent notes')).getByRole('link', { name: 'Weekly product call' }));
       await screen.findByRole('heading', { level: 1 }, SOON);
+    });
+  }
+};
+
+export const SeeYourOwnEvents: PageStory = {
+  name: '3.8 See your own events',
+  ...page('/home', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Events with only you on them aren’t calls, so Upcoming counts them at its foot. Click 2 with only you', async () => {
+      await userEvent.click(await within(await widget('Upcoming')).findByRole('button', { name: '2 with only you' }, SOON));
+    });
+    await step('They show in their days, one slim line each after the hatch your own time has when you schedule. It’s a preference, so they stay shown wherever you’re signed in', async () => {
+      await within(await widget('Upcoming')).findAllByRole('link', { name: /Focus time, only you/ }, SOON);
+    });
+    await step('Click 2 with only you again to hide them', async () => {
+      await userEvent.click(within(await widget('Upcoming')).getByRole('button', { name: '2 with only you' }));
+    });
+  }
+};
+
+export const AWeekOfYourOwnEvents: PageStory = {
+  name: '3.9 A week of only your own events',
+  ...page('/home', 'busy'),
+  beforeEach: before(onlyOwnEvents),
+  play: async ({ userEvent, step }) => {
+    await step('Nobody else is on anything this week: Upcoming says so, and how many of your own events it isn’t showing. Click Show them', async () => {
+      await userEvent.click(await within(await widget('Upcoming')).findByRole('button', { name: 'Show them' }, SOON));
+    });
+    await step('Your week, quietly, in its days, with Show 4 more. The count at the foot hides it again', async () => {
+      await within(await widget('Upcoming')).findByRole('button', { name: '12 with only you' }, SOON);
     });
   }
 };

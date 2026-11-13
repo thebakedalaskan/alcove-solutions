@@ -1,6 +1,6 @@
 # Shared presenter timer sequences implementation plan
 
-**Goal:** Implement [issue #84](https://github.com/thebakedalaskan/the-privacy-suite/issues/84): reusable, host-controlled presenter agendas with a synchronized timer for every admitted participant.
+**Goal:** Implement [issue #84](https://github.com/thebakedalaskan/alcove-solutions/issues/84): reusable, host-controlled presenter agendas with a synchronized timer for every admitted participant.
 
 **Architecture:** The call owns a sealed sequence and server-clock anchors, independent of its boards and workspace. Existing locked call mutations serialize commands; a timer revision refuses stale controls. Named presets belong to the signed-in account, are sealed independently and only change by an explicit save. Applying a preset copies definitions into a fresh call sequence.
 

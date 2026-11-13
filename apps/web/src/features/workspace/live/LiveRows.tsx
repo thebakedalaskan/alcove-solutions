@@ -1,17 +1,16 @@
 /*
- * This call's three rows: in its folder in its home, or at the top of the list while everyone views another workspace. They
- * stay whatever the notes are doing, and say so by going quiet.
+ * This call's three rows, first in This call at the top of the list, whichever workspace everyone views. They stay whatever the
+ * notes are doing, and say so by going quiet.
  */
 import { WsRow } from '@alcove/ui';
 import { useEffect } from 'react';
-import type { WorkspaceArea } from '../context';
 import { useLive } from '~/lib/live';
 import { useLiveHost, type LiveHost } from './host';
 import { modeHere } from './lines';
 import type { LiveBeside, LivePageId } from './types';
 import { useFollowUps } from './useFollowUps';
 
-function Rows({ host, depth, area }: { host: LiveHost; depth: number; area: WorkspaceArea }) {
+function Rows({ host }: { host: LiveHost }) {
   const { live, at, closed } = host;
   const state = useLive(live.session);
   const { open } = useFollowUps({ ...host, session: live.session });
@@ -26,7 +25,7 @@ function Rows({ host, depth, area }: { host: LiveHost; depth: number; area: Work
     if (current(page)) host.go(host.lastDocument ? { kind: 'document', id: host.lastDocument } : { kind: 'home' });
   };
   const row = (page: LivePageId, name: string, icon: 'notes' | 'todos' | 'transcript', more: { count?: number; onBeside?: () => void }) => (
-    <WsRow key={page} id={`$${page}`} name={name} kind="live" icon={icon} depth={depth} area={area} quiet={quiet} current={current(page)} onOpen={() => host.go({ kind: 'live', page })} {...more} />
+    <WsRow key={page} id={`$${page}`} name={name} kind="live" icon={icon} area="pins" quiet={quiet} current={current(page)} onOpen={() => host.go({ kind: 'live', page })} {...more} />
   );
   return (
     <>
@@ -37,8 +36,7 @@ function Rows({ host, depth, area }: { host: LiveHost; depth: number; area: Work
   );
 }
 
-/** `depth` and `area`: where they sit, in the call's folder or pinned at the top. */
-export function LiveRows({ depth = 0, area = 'pins' }: { depth?: number | undefined; area?: WorkspaceArea | undefined }) {
+export function LiveRows() {
   const host = useLiveHost();
-  return host ? <Rows host={host} depth={depth} area={area} /> : null;
+  return host ? <Rows host={host} /> : null;
 }

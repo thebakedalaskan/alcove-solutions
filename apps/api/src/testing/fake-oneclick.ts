@@ -23,7 +23,10 @@ import { z } from 'zod';
 
 /** A token 1Click swaps that isn't on Alcove's allowlist: wrapped NEAR. */
 export const NOT_ALLOWLISTED = 'nep141:wrap.near';
-/** What 1Click lists at /v0/tokens: every route on the allowlist, and one that isn't. BNB Chain's tokens have 18 decimals. */
+/**
+ * What 1Click lists at /v0/tokens: every route on the allowlist, and some that aren't (USDT, which Alcove doesn't take,
+ * and wrapped NEAR). BNB Chain's tokens have 18 decimals.
+ */
 const TOKENS: readonly { assetId: string; decimals: number; blockchain: string; symbol: string }[] = [
   { blockchain: 'near', symbol: 'USDC', assetId: 'nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1', decimals: 6 },
   { blockchain: 'eth', symbol: 'USDC', assetId: 'nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near', decimals: 6 },
@@ -109,6 +112,11 @@ export interface FakeOneClick {
   listDecimals(assetId: string, decimals: number | null): void;
   /** 1Click refuses every request (true), or answers again (false). */
   down(on: boolean): void;
+  /**
+   * Holds back what 1Click says about a deposit: a status request for it waits until `release`, then is answered as 1Click
+   * is set then (refused, if it's down). `asked` settles once one is waiting, so a test knows a check of it is on its way.
+   */
+  hold(address: string): { asked: Promise<void>; release(): void };
   close(): Promise<void>;
 }
 
@@ -269,6 +277,8 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
   const listed = new Map<string, number>();
   let isDown = false;
   let override: NextQuote = {};
+  /** Deposits whose status is held back, with the requests waiting for it. */
+  const held = new Map<string, { waiting: (() => void)[]; asked: () => void }>();
 
   const mint = (kind: 'access' | 'refresh', account: string) => {
     const token = `${kind === 'access' ? 'at' : 'rt'}-${randomBytes(24).toString('base64url')}`;
@@ -366,6 +376,12 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
     const who = sessionOf(req);
     if (who === 'refused') return send(res, 401, { message: 'Invalid token' });
     const address = url.searchParams.get('depositAddress') ?? '';
+    const holding = held.get(address);
+    if (holding) {
+      holding.waiting.push(() => (isDown ? send(res, 503, { message: 'Service Unavailable' }) : status(req, url, res)));
+      holding.asked();
+      return;
+    }
     const d = deposits.get(address);
     if (!d) return send(res, 404, { message: 'Deposit address not found' });
     // A deposit into a confidential balance is told only to that balance's account, signed in.
@@ -430,6 +446,19 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
     nextQuote(o) { override = o; },
     listDecimals(assetId, decimals) { if (decimals === null) listed.delete(assetId); else listed.set(assetId, decimals); },
     down(on) { isDown = on; },
+    hold(address) {
+      let asked: () => void = () => undefined;
+      const waited = new Promise<void>((r) => { asked = () => r(); });
+      const waiting: (() => void)[] = [];
+      held.set(address, { waiting, asked: () => asked() });
+      return {
+        asked: waited,
+        release() {
+          held.delete(address);
+          for (const answer of waiting.splice(0)) answer();
+        }
+      };
+    },
     close: () => new Promise<void>((r) => server.close(() => r()))
   };
 }

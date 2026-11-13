@@ -56,6 +56,13 @@ const REFUSED_MS = 30_000;
 const COLLATERAL_MS = 30 * 60_000;
 /** Up to date, or up to date with software hardening Intel expects the TD's own software to provide. */
 const ACCEPTED_TCB = new Set(['UpToDate', 'SWHardeningNeeded']);
+/**
+ * How far NVIDIA's clock may be from this server's, in seconds, when its verdict and its signing chain are checked. A
+ * verdict holds from the moment NVIDIA issues it, and Confidential Space's VMs ran 7–9.5 s behind on 2026-11-13 (gcp.ts
+ * logs it as `clock offset`), so with no allowance no model checked out. The verdict answers this server's own nonce, so
+ * allowing for the clocks lets nothing old through.
+ */
+const CLOCK_SKEW_S = 60;
 
 export const hex = (b: Uint8Array): string => Buffer.from(b).toString('hex');
 /** Strict hex, with or without 0x: null for anything else. */
@@ -262,10 +269,14 @@ async function nrasKeys(cfg: Config, kid: string): Promise<z.infer<typeof Jwks>[
   keysets.set(url, { until: Date.now() + 60 * 60_000, keys });
   return keys.find((k) => k.kid === kid);
 }
-/** True when `chain` (leaf first) ends at `root`, every certificate current and each one signed by the next, a CA. */
+/**
+ * True when `chain` (leaf first) ends at `root`, every certificate current (allowing for the clocks, CLOCK_SKEW_S) and each
+ * one signed by the next, a CA.
+ */
 function chainsTo(chain: X509Certificate[], root: X509Certificate, now: Date): boolean {
   const path = chain.at(-1)?.fingerprint256 === root.fingerprint256 ? chain.slice(0, -1) : chain;
-  const current = (c: X509Certificate) => new Date(c.validFrom) <= now && now <= new Date(c.validTo);
+  const skew = CLOCK_SKEW_S * 1000;
+  const current = (c: X509Certificate) => Date.parse(c.validFrom) - skew <= now.getTime() && now.getTime() <= Date.parse(c.validTo) + skew;
   return path.length > 0 && current(root) && path.every((c, i) => {
     const issuer = path[i + 1] ?? root;
     return current(c) && (i === 0 || c.ca) && issuer.ca && c.checkIssued(issuer) && c.verify(issuer.publicKey);
@@ -298,7 +309,7 @@ async function checkGpu(cfg: Config, payloadText: string | undefined, nonce: Uin
     const chain = jwk.x5c.map((c) => new X509Certificate(Buffer.from(c, 'base64')));
     const leaf = chain[0];
     if (!leaf || !chainsTo(chain, new X509Certificate(cfg.NVIDIA_ROOT_CA), new Date())) return refuse('gpu', 'NRAS’s signing key doesn’t chain to NVIDIA’s root');
-    const { payload: verdict } = await jwtVerify(token, leaf.publicKey, { algorithms: ['ES384'], issuer: new URL(cfg.NVIDIA_NRAS_URL).origin });
+    const { payload: verdict } = await jwtVerify(token, leaf.publicKey, { algorithms: ['ES384'], issuer: new URL(cfg.NVIDIA_NRAS_URL).origin, clockTolerance: CLOCK_SKEW_S });
     claims = Verdict.parse(verdict);
   } catch (e) {
     if (e instanceof Refusal) throw e;

@@ -9,18 +9,17 @@
  * reading further is a new URL. The note draws all this as its horizon (CallLine.tsx). Where it's got to changes several
  * times a second, so what shows it reads `pos` through `usePlayerAt`, and the rest of the page isn't drawn again for it.
  *
- * Shares kept for the notes play on the sky over the horizon, in step (`Replay`), so the line runs along their foot as their
- * seek bar. The audio is the clock: the recording's timeline is the audio segments one after another, which is the
- * timeline the server places shares on, so `pos` is a share's time too. A muted video follows it.
+ * Shares kept for the notes play on the call's stage while the moment they cover plays (`useShareOnStage`). The audio is the
+ * clock: the recording's timeline is the audio segments one after another, which is the timeline the server places shares
+ * on, so `pos` is a share's time too. A muted video follows it, at the same speed.
  */
 import { errorCode, type AudioSegment, type ScreenShare, type ScreenShareSegment } from '@alcove/api';
-import { Icon, ReplayScrub, ScreenReplay, useToast, type ReplayState } from '@alcove/ui';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
+import { useToast } from '@alcove/ui';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { api } from '~/lib/api';
 import { overlayOpen, typing } from '~/lib/keys';
 import { log } from '~/lib/log';
 import { useRecheckNote } from '~/lib/queries';
-import { position } from '~/lib/time';
 
 const plog = log.child({ component: 'player' });
 
@@ -36,7 +35,13 @@ export interface PlayerState {
   pos: () => number;
   /** Says when `pos` changes. */
   subscribe: (on: () => void) => () => void;
+  /** How fast it plays, 1 being as it was said. */
+  rate: number;
+  setRate: (rate: number) => void;
 }
+
+/** The speeds a recording plays at, in the order the button goes through them. */
+export const RATES = [1, 1.25, 1.5, 2, 0.75] as const;
 
 /** Something worked out from where the player has got to, which draws again only when it changes. */
 export function usePlayerAt<T extends string | number | boolean | undefined>(player: PlayerState, read: (pos: number) => T): T {
@@ -93,6 +98,9 @@ export function usePlayer(noteId: string, segments: AudioSegment[], live: boolea
   const listeners = useRef(new Set<() => void>());
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** How fast it plays: kept as the element changes what it reads, which puts its own speed back. */
+  const [rate, setRate] = useState(1);
+  const speed = useRef(1);
 
   const move = useCallback((seconds: number) => { here.current = seconds; for (const on of listeners.current) on(); }, []);
   const pos = useCallback(() => here.current, []);
@@ -116,6 +124,7 @@ export function usePlayer(noteId: string, segments: AudioSegment[], live: boolea
   }, []);
 
   const start = useCallback((a: HTMLAudioElement) => {
+    a.playbackRate = speed.current;
     a.play().catch((e: unknown) => {
       // Something newer was asked of it, or the segment failed, which `error` deals with.
       if (e instanceof DOMException && (e.name === 'AbortError' || e.name === 'NotSupportedError')) return;
@@ -229,6 +238,8 @@ export function usePlayer(noteId: string, segments: AudioSegment[], live: boolea
     const on = (type: keyof HTMLMediaElementEventMap, run: () => void) => a.addEventListener(type, run, { signal: off.signal });
     const inElement = () => latest.current.segments[at.current]?.seconds ?? 0;
     for (const type of ['play', 'pause', 'playing', 'waiting', 'seeking', 'seeked', 'canplay', 'emptied'] as const) on(type, sync);
+    // Reading another piece puts the element's speed back to its default: the speed chosen is its default.
+    on('loadedmetadata', () => { a.defaultPlaybackRate = speed.current; a.playbackRate = speed.current; });
     on('timeupdate', () => {
       if (at.current < 0 || wanted.current !== null || aim.current !== null) return;
       const { starts, total } = latest.current;
@@ -286,8 +297,13 @@ export function usePlayer(noteId: string, segments: AudioSegment[], live: boolea
     else if (growing) void more(true);
     else seek(0, true);
   }, [more, seek, sync]);
+  useEffect(() => {
+    speed.current = rate;
+    const a = audio.current;
+    if (a) { a.defaultPlaybackRate = rate; a.playbackRate = rate; }
+  }, [rate]);
   const { total } = plan;
-  return useMemo(() => ({ total, playing, busy, toggle, seek, pos, subscribe }), [total, playing, busy, toggle, seek, pos, subscribe]);
+  return useMemo(() => ({ total, playing, busy, toggle, seek, pos, subscribe, rate, setRate }), [total, playing, busy, toggle, seek, pos, subscribe, rate]);
 }
 
 /** What Space presses by itself when it has focus: a button, a tick box, a field, a fold. */
@@ -327,43 +343,37 @@ export function useSpaceToPlay(player: PlayerState) {
   }, [on, toggle]);
 }
 
-/**
- * The shared screens stand on the sky, over the line along the horizon: the sky grows by their height (`--nd-stage` on the
- * note's page), so the line still sits on the horizon, along their foot. Measured before the page is drawn, and again
- * whenever their size changes with the window.
- */
-export function useStageOnTheSky(stage: RefObject<HTMLElement | null>, on: boolean) {
-  useLayoutEffect(() => {
-    const el = stage.current;
-    const page = el?.closest('.nd');
-    if (!on || !el || !(page instanceof HTMLElement)) return undefined;
-    const measure = () => page.style.setProperty('--nd-stage', `${el.offsetHeight}px`);
-    measure();
-    const watch = new ResizeObserver(measure);
-    watch.observe(el);
-    return () => { watch.disconnect(); page.style.removeProperty('--nd-stage'); };
-  }, [stage, on]);
-}
-
 /** How far the video may drift from the audio before it's put back in step, in seconds. */
 const DRIFT = 0.3;
 
 /** The part of a share's video that covers a moment of the recording, if any. */
 const segmentAt = (s: ScreenShare, t: number): ScreenShareSegment | undefined => s.segments.find((g) => g.at <= t && t < g.until);
 
-/** How many of the note's shares the stage offers to go to while none is at the moment: the nearest. */
-const NEAREST = 4;
+/** What the picture of a share is doing: on its way (loading, or going to another moment), there, or it couldn't be played. */
+export type ShareState = 'loading' | 'shown' | 'failed';
+
+/** A shared screen on the call's stage at the moment the recording is at, as `useShareOnStage` gives it. */
+export interface ShareOnStage {
+  /** The app's own `<video>`, kept mounted so it can follow the audio. */
+  video: ReactNode;
+  /** The share showing, when one covers this moment. */
+  share: ScreenShare | undefined;
+  /** Every share going on at this moment, to switch between when there's more than one. */
+  shares: ScreenShare[];
+  pick: (id: string) => void;
+  state: ShareState;
+  retry: () => void;
+}
 
 /**
- * The shared screen to show with the audio: the shares going on at `pos`, and of those the one picked, or else the
- * one that started last. A muted video follows the audio: it plays and pauses with it, jumps when it seeks or moves
- * to another segment, and is put back in step when it drifts more than `DRIFT`. What its picture is doing comes from
- * the video's own events: on its way while it loads, goes to a moment or waits for more to play on; there once it can
- * show this moment; or failed, until it's tried again or another part of a share is loaded. With no share at `pos`,
- * the nearest of the note's shares, to go to.
+ * The shared screen to show on the stage with the audio: the shares going on at `pos`, and of those the one picked, or else
+ * the one that started last. A muted video follows the audio: it plays and pauses with it, at its speed, jumps when it seeks or
+ * moves to another segment, and is put back in step when it drifts more than `DRIFT`. What its picture is doing comes from the
+ * video's own events: on its way while it loads, goes to a moment or waits for more to play on; there once it can show this
+ * moment; or failed, until it's tried again or another part of a share is loaded.
  */
-function useReplay(noteId: string, shares: ScreenShare[], player: PlayerState) {
-  const { playing, busy, seek } = player;
+export function useShareOnStage(noteId: string, shares: ScreenShare[], player: PlayerState): ShareOnStage {
+  const { playing, busy, rate } = player;
   const pos = usePlayerAt(player, (p) => p);
   const video = useRef<HTMLVideoElement | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
@@ -372,8 +382,8 @@ function useReplay(noteId: string, shares: ScreenShare[], player: PlayerState) {
   const share = active.find((s) => s.id === picked) ?? latest;
   const seg = share ? segmentAt(share, pos) : undefined;
   const src = share && seg ? api.notes.screenVideoUrl(noteId, share.id, seg.segment) : null;
-  const want = useRef({ pos, playing: playing && !busy, at: seg?.at ?? 0, on: src !== null });
-  want.current = { pos, playing: playing && !busy, at: seg?.at ?? 0, on: src !== null };
+  const want = useRef({ pos, playing: playing && !busy, at: seg?.at ?? 0, on: src !== null, rate });
+  want.current = { pos, playing: playing && !busy, at: seg?.at ?? 0, on: src !== null, rate };
 
   const follow = useCallback(() => {
     const v = video.current;
@@ -381,15 +391,16 @@ function useReplay(noteId: string, shares: ScreenShare[], player: PlayerState) {
     const w = want.current;
     if (!w.on) { if (!v.paused) v.pause(); return; }
     if (v.readyState < HTMLMediaElement.HAVE_METADATA) return;
+    if (v.playbackRate !== w.rate) { v.defaultPlaybackRate = w.rate; v.playbackRate = w.rate; }
     const target = Math.max(0, w.pos - w.at);
-    if (Math.abs(v.currentTime - target) > DRIFT) v.currentTime = target;
+    if (Math.abs(v.currentTime - target) > DRIFT * w.rate) v.currentTime = target;
     if (w.playing && v.paused) v.play().catch((e: unknown) => plog.debug('shared screen could not play', { err: e }));
     if (!w.playing && !v.paused) v.pause();
   }, []);
-  // Every tick of the audio clock, a seek, play or pause, or another share or segment.
-  useEffect(follow, [follow, pos, playing, busy, src]);
+  // Every tick of the audio clock, a seek, play or pause, a change of speed, or another share or segment.
+  useEffect(follow, [follow, pos, playing, busy, src, rate]);
 
-  const [state, setState] = useState<ReplayState>('loading');
+  const [state, setState] = useState<ShareState>('loading');
   /** It stopped while playing for want of more of the video, until it plays on. */
   const stalled = useRef(false);
   const look = useCallback(() => {
@@ -400,7 +411,7 @@ function useReplay(noteId: string, shares: ScreenShare[], player: PlayerState) {
   }, []);
   const label = share?.label ?? '';
   const element = (
-    <video ref={video} src={src ?? undefined} muted playsInline preload="metadata" aria-label={label ? `Shared screen: ${label}` : 'Shared screen'}
+    <video ref={video} src={src ?? undefined} muted playsInline preload="metadata" aria-label={label ? `Shared screen: ${label}` : 'Shared screen'} hidden={src === null}
       onLoadStart={() => { stalled.current = false; look(); }} onLoadedMetadata={() => { follow(); look(); }} onLoadedData={look} onCanPlay={look}
       onSeeking={look} onSeeked={look} onWaiting={() => { stalled.current = true; look(); }} onPlaying={() => { stalled.current = false; look(); }} onPause={look} onEmptied={look}
       onError={() => { plog.warn('shared screen could not load', { share: share?.id, segment: seg?.segment }); look(); }} />
@@ -410,32 +421,5 @@ function useReplay(noteId: string, shares: ScreenShare[], player: PlayerState) {
     plog.debug('shared screen read again', { share: share?.id, segment: seg?.segment });
     video.current?.load();
   };
-  const away = (s: ScreenShare) => (pos < s.at ? s.at - pos : pos - s.until);
-  const elsewhere = src !== null ? [] : [...shares].sort((a, b) => away(a) - away(b)).slice(0, NEAREST).sort((a, b) => a.at - b.at)
-    .map((s) => ({ id: s.id, label: s.label, when: `${position(s.at)}\u2060–\u2060${position(s.until)}` }));
-  // Going to a share moves the sun to its start, playing on if it was playing, as the line does.
-  const go = (id: string) => { const s = shares.find((x) => x.id === id); if (s) seek(s.at); };
-  return {
-    element, nothing: src === null, current: share?.id ?? null,
-    shares: active.map((s) => ({ id: s.id, label: s.label })), pick: setPicked, state, retry, elsewhere, go
-  };
-}
-
-/** The shared screens that went with the recording, drawn in step with it; where none was going on, when there were, to go to. */
-export function Replay({ noteId, shares, player }: { noteId: string; shares: ScreenShare[]; player: PlayerState }) {
-  const r = useReplay(noteId, shares, player);
-  const { total, playing, toggle, seek } = player;
-  const pos = usePlayerAt(player, (p) => p);
-  const marks = useMemo(() => shares.map((s) => ({ at: s.at, until: s.until })), [shares]);
-  // Full screen hides the player below, so play, the time and a scrub bar go along the replay's foot. Scrubbing
-  // while paused moves the picture without starting the audio.
-  const controls = (
-    <>
-      <button type="button" className="play" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'} aria-keyshortcuts="Space"><Icon name={playing ? 'pause' : 'play'} size={18} /></button>
-      <span>{position(pos)}</span>
-      <ReplayScrub pos={pos} total={total} format={position} marks={marks} onSeek={(t) => seek(t, playing)} />
-      <span>{position(total)}</span>
-    </>
-  );
-  return <ScreenReplay video={r.element} nothing={r.nothing} shares={r.shares} current={r.current} onPick={r.pick} state={r.state} onRetry={r.retry} elsewhere={r.elsewhere} onGo={r.go} controls={controls} playing={playing} />;
+  return { video: element, share: src === null ? undefined : share, shares: active, pick: setPicked, state, retry };
 }
