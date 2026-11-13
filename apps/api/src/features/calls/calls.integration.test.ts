@@ -1069,6 +1069,11 @@ describe('breakout rooms, each with its own keys', () => {
     expect(resumed.capture.room?.gaps.map((g) => ({ kind: g.kind, open: g.to === null }))).toEqual([{ kind: 'paused', open: false }]);
     // Speech that began while Design was paused isn't taken once it carries on either: the pause counts when it began.
     expect(code(await kofi.call.transcribe(speech('CANARY-PAUSED begun while paused.', 0, 5000, 4000, 'en', true, inPause), kofi.call.ticket.identity).catch((e: unknown) => e))).toBe('conflict');
+    // Speech said just now begins by the server's clock, which this process shares, and Design carries on from where its
+    // resume was kept: to the nearest tenth of a second, so up to 50 ms after the organizer pressed it. Speech begun before
+    // that moment still falls inside the pause, so it's said once the moment has passed.
+    const carriedOn = Date.parse(resumed.capture.room?.gaps[0]?.to ?? '');
+    await waitFor(() => Date.now() > carriedOn, 'Design’s kept resume to pass');
     await kofi.call.transcribe(speech('Design again.', 0, 6000), kofi.call.ticket.identity);
     const again = await settle(kofi.call, (x) => x.transcript.some((l) => l.text === 'Design again.'));
     expect(again.transcript.map((l) => l.text)).not.toContain('CANARY-PAUSED said in Design.');
