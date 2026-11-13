@@ -5,16 +5,7 @@
   </picture>
 </p>
 
-<h3 align="center">The meeting superapp: calls, whiteboards, docs, notes and scheduling in one place, with confidential AI.</h3>
-
-<p align="center">
-  Alcove isn’t a note taker you add to someone else’s call. It’s where the whole meeting happens: end-to-end encrypted
-  calls with breakout rooms, whiteboards, a workspace for every call, notes written as people talk, scheduling and your
-  own AI agents. The AI runs in hardware enclaves that Alcove checks first, and Alcove’s own server runs in an attested
-  confidential VM, so a meeting is decrypted only in the browsers of the people it belongs to and inside that verified
-  hardware, unless someone with access sends it elsewhere. <a href="#known-limits">Known limits</a> lists what still rests
-  on trust.
-</p>
+<h3 align="center">The whole meeting in one app, with AI that runs in verified hardware enclaves.</h3>
 
 <p align="center">
   <a href="https://alcove.solutions"><img alt="Try it at alcove.solutions" src="docs/readme/try-it.svg" height="44"></a>
