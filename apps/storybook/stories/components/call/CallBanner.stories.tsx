@@ -43,10 +43,10 @@ export const NotesStoppedForEveryoneElse: Story = {
   name: 'Notes stopped, for everyone else',
   args: { title: 'Notes stopped', children: 'Priya’s notes for this period are used up, and the call carries on. What was written before stays.', actions: undefined }
 };
-/** The organizer alone, about 5 minutes before notes would stop at this call's pace. */
+/** The organizer alone, when what's left would last `ai.warn_seconds` (5 minutes) at this call's pace: it names no time. */
 export const RunningOut: Story = {
   name: 'Notes running out',
-  args: { icon: 'clock', tone: 'info', title: 'About 5 minutes of notes left', children: 'At this call’s pace. Notes stop then, and the call goes on.', actions: undefined }
+  args: { icon: 'clock', tone: 'info', title: 'Notes are about to run out', children: 'At this call’s pace. When they do, notes stop and the call goes on.', actions: undefined }
 };
 /** Everyone, 5 minutes before the call reaches its longest. */
 export const EndsSoon: Story = {
