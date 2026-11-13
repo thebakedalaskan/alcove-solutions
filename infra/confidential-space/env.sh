@@ -128,7 +128,8 @@ cs_env() {
       # carry: the API reads the old KMASTER and KSERVICE once (LEGACY_SECRETS) and re-wraps every account under its own
       # master. retired: set only after every account has moved and the switch is confirmed (README.md › The old keys);
       # the next deploy then forgets the old master (RETIRE_LEGACY_KMASTER) and nothing may read the old secrets.
-      CS_LEGACY=carry
+      # Retired on 2026-11-13: all 28 accounts had moved (owners rewrapped, remaining 0) and the user confirmed the switch.
+      CS_LEGACY=retired
       ;;
     staging)
       CS_ENV=staging
