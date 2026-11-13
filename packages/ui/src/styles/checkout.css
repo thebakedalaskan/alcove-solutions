@@ -133,6 +133,8 @@
 .ck-card .p { margin-top: auto; font: 600 17px/22px var(--font-sans); color: var(--ink); font-variant-numeric: tabular-nums; }
 .ck-card .m { font: 400 12.5px/16px var(--font-sans); color: var(--ink-2); white-space: nowrap; }
 .ck-card .tag { display: none; }
+/* What a number of licenses is for ("24 spare after Maya’s") is longer than a length's price a month: it wraps in its card. */
+.ck-cards.is-licenses .ck-card .m { white-space: normal; text-wrap: balance; }
 /* The lower price, said once, over the lengths that get it. */
 .ck-brk { display: flex; align-items: center; gap: 8px; height: 22px; margin-bottom: 2px; color: var(--horizon); font: 600 12px/1 var(--font-sans); white-space: nowrap; }
 .ck-brk::before, .ck-brk::after { content: ""; flex: 1; height: 8px; margin-top: 8px; border-top: 1.5px solid color-mix(in oklch, var(--horizon) 55%, transparent); }
