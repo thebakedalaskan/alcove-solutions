@@ -249,8 +249,13 @@ export function usePlanRestart(state: CallState, session: Pick<CallSession, 'set
   const [ready, setReady] = useState(false);
   const stoppedAt = s?.at ?? null;
   const reason = s?.reason ?? null;
+  /*
+   * The plan's kind before anything was bought, to say "You're on Pro" when Pro is what came: as read before the stop, or
+   * after it while nothing has been bought since. The call page doesn't read the plan until notes stop, and one read before
+   * (on another page) is long gone from the cache by the time notes run out.
+   */
   const wasKind = useRef<Plan['kind'] | null>(null);
-  if (stoppedAt && plan && readAt < Date.parse(stoppedAt)) wasKind.current = plan.kind;
+  if (stoppedAt && plan && (readAt < Date.parse(stoppedAt) || !boughtSince(plan, stoppedAt))) wasKind.current = plan.kind;
 
   const turnOn = useCallback((pro: boolean, tries = 0) => {
     if (!stoppedAt || !reason || !plan) return;

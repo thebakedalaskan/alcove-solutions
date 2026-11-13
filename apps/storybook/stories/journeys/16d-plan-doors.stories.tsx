@@ -71,7 +71,7 @@ export const StartWithNoNotesLeft: PageStory = {
     });
     await step('Get Pro: checkout opens in the window’s place, on Pro, since no window opens over another', async () => {
       await userEvent.click(within(await flow()).getByRole('button', { name: 'Get Pro' }));
-      await screen.findByRole('dialog', { name: 'Get Pro' }, SOON);
+      await within(await screen.findByRole('dialog', { name: 'Get Pro' }, SOON)).findByRole('radiogroup', { name: 'How long' }, SOON);
     });
     await step('Close checkout without buying. Start a call comes back as it was', async () => {
       await userEvent.click(within(await screen.findByRole('dialog', { name: 'Get Pro' }, SOON)).getByRole('button', { name: 'Close' }));
