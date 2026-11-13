@@ -464,7 +464,7 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
             <SchedRow>
               <SchedSwitch title={`Let ${guest} pick the time`} line={`You can’t see ${guest}’s calendar.`} checked={!!offers} onChange={letPick} />
             </SchedRow>
-          ) : unseen.length > 0 && !noCalendar && <SchedLine tone="quiet">{unseenLine(unseen)}</SchedLine>}
+          ) : unseen.length > 0 && !noCalendar && !times.failed && <SchedLine tone="quiet">{unseenLine(unseen)}</SchedLine>}
         </SchedGroup>
 
         {offers ? (
@@ -510,14 +510,15 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
                   {busyLine({ yours, busy: youBusy, people: theyBusy })}
                 </SchedLine>
               ) : times.readable.length > 0 && <SchedLine>{freeLine({ seen: guests.filter((g) => !times.unreadable.some((e) => sameEmail({ email: e }, g))), everyone: !times.unreadable.length, picked: touched, outside: outsideWork(chosen, when.minutes) })}</SchedLine>}
+            {/* A read that failed is said where who's free would be: under the time. */}
+            {times.failed && <SchedLine tone="quiet">Calendars can’t be read just now, so only your Alcove calls are known.</SchedLine>}
             {asked.map((p) => (
               <SchedLine key={p.at.getTime()} action={p.at.getTime() !== chosen.getTime() ? { label: 'Move it there', onClick: () => moveFromLine(p.at) } : undefined}>{askedLine(p.who, p.at, now)}</SchedLine>
             ))}
             {length < when.minutes && (job.kind === 'new' || changed) && <SchedLine tone="quiet">It stops at midnight: a call ends on the day it starts.</SchedLine>}
             {job.kind === 'new' && <RepeatRow repeat={draft.repeat} at={chosen} {...open} onChange={(r) => change({ repeat: r })} />}
             {job.kind === 'move' && series && scope === 'following' && <RepeatRow repeat={repeatMove} at={chosen} zone={zoneHere} keep {...open} onChange={setRepeatMove} />}
-            {times.failed ? <SchedLine tone="quiet">Calendars can’t be read just now, so only your Alcove calls are known.</SchedLine>
-              : noCalendar && <SchedLine tone="quiet" action={{ label: 'Connect Google Calendar', href: calendarConnectUrl() }}>Only your Alcove calls are known without a calendar.</SchedLine>}
+            {noCalendar && !times.failed && <SchedLine tone="quiet" action={{ label: 'Connect Google Calendar', href: calendarConnectUrl() }}>Only your Alcove calls are known without a calendar.</SchedLine>}
           </SchedGroup>
         )}
 

@@ -130,7 +130,7 @@ const PRESS = 5;
 /** Held this close to the edge of the days (px) for this long (ms), a dragged call turns the week, again and again. */
 const EDGE = 18;
 const TURN = 650;
-/** The day row: one line, or the weekday over the date where the days are narrow. */
+/** The day row: one line, or the weekday over the date where the days are narrow. Its stylesheet takes it as `--dh`. */
 const HEAD = 44;
 const HEAD_NARROW = 50;
 const NARROW_DAY = 76;
@@ -356,11 +356,11 @@ const NO_BUSY: readonly CallsWeekBusy[] = [];
 const NO_CALLS: readonly CallsWeekCall[] = [];
 const NO_LABELS: readonly string[] = [];
 
-/** Whether a minute of a day has gone. */
-const pastFor = (now: { day: number; minute: number } | null, day: number, minute: number) => !!now && (day < now.day || (day === now.day && minute < now.minute));
+/** Up to which minute `day` has gone: all of it before today, until now today, none of it after. */
+const goneUntil = (now: { day: number; minute: number } | null, day: number) => (!now || day > now.day ? 0 : day < now.day ? DAY : now.minute);
 /* Never into the past: a time gone becomes the next quarter hour from now. */
 function notBefore(now: { day: number; minute: number } | null, day: number, start: number): { day: number; start: number } {
-  if (!now || !pastFor(now, day, start)) return { day, start };
+  if (!now || start >= goneUntil(now, day)) return { day, start };
   const s = Math.ceil(now.minute / QUARTER) * QUARTER;
   return s < DAY ? { day: now.day, start: s } : { day: now.day + 1, start: 0 };
 }
@@ -454,7 +454,7 @@ export function CallsWeek({
   const live = useRef(latest);
   useLayoutEffect(() => { live.current = latest; });
 
-  const pastAt = (day: number, minute: number) => pastFor(live.current.now, day, minute);
+  const pastAt = (day: number, minute: number) => minute < goneUntil(live.current.now, day);
   const say = (words: string) => setSaid(words);
   const dayName = (day: number) => live.current.days[day]?.label ?? '';
 
@@ -561,7 +561,7 @@ export function CallsWeek({
     }
     if (g.kind === 'range') {
       const n = L.now;
-      let a = Math.max(0, quarter(Math.min(g.m0, m)), n && g.day === n.day ? Math.ceil(n.minute / QUARTER) * QUARTER : 0);
+      let a = Math.max(0, quarter(Math.min(g.m0, m)), Math.ceil(goneUntil(n, g.day) / QUARTER) * QUARTER);
       let b = quarter(Math.max(g.m0, m));
       /* No longer than a call can be: the end where it was pressed stays, and the other stops. */
       if (b - a > L.longest) { if (m >= g.m0) b = a + L.longest; else a = b - L.longest; }
@@ -879,7 +879,6 @@ export function CallsWeek({
     const end = Math.min(DAY, to.start + (moving.end - moving.start));
     return { day: to.day, start: to.start, end, top: to.start, bottom: end };
   })() : null;
-  const goneAt = (day: number, minute: number) => !!now && (day < now.day || (day === now.day && minute <= now.minute));
   const itemsOf = (d: number): Item[] => {
     const items: Item[] = [];
     for (const b of blocks) {
@@ -888,7 +887,7 @@ export function CallsWeek({
       const e = Math.min(DAY, Math.max(s + 5, b.end));
       items.push({
         key: `b-${b.id}`, s, e, lane: 0, of: 1, ev: true, role: scheduling ? 'ev' : 'block', block: b,
-        cls: cn('is-ev', `is-${b.kind}`, goneAt(d, e) && 'is-gone'), startOnly: b.kind !== 'fresh', name: b.title,
+        cls: cn('is-ev', `is-${b.kind}`, e <= goneUntil(now, d) && 'is-gone'), startOnly: b.kind !== 'fresh', name: b.title,
         range: `${clock(s)} – ${clock(e)}`, start: clock(s)
       });
     }
@@ -922,7 +921,7 @@ export function CallsWeek({
       }
     }
     /* Busy time that's gone isn't drawn; each band's label sits at the first stretch of it no block covers, or nowhere. */
-    const from = now ? (d < now.day ? DAY : d === now.day ? now.minute : 0) : 0;
+    const from = goneUntil(now, d);
     for (const x of busy) {
       if (x.day !== d || x.end <= from) continue;
       const s = Math.max(x.start, from);
@@ -933,7 +932,7 @@ export function CallsWeek({
       }
       z.push({ k: 'busy', s, e: x.end, who: x.who, lt: lt - s, tall: ((x.end - lt) / 60) * hp >= 22 });
     }
-    if (now && d <= now.day) z.push({ k: 'past', s: 0, e: d < now.day ? DAY : now.minute });
+    if (from) z.push({ k: 'past', s: 0, e: from });
     return z;
   };
 
@@ -943,7 +942,7 @@ export function CallsWeek({
 
   return (
     <div className={cn('cw', scheduling ? 'is-schedule' : 'is-browse', narrow && 'is-narrow', className)}
-      style={{ '--hp': `${hp.toFixed(2)}px`, '--n': shown.length }}>
+      style={{ '--hp': `${hp.toFixed(2)}px`, '--dh': `${head}px`, '--n': shown.length }}>
       <span className="sr-only" role="status">{said}</span>
       <div className="cw-wk">
         <div ref={box} className="cw-box" onScroll={onScroll}>
@@ -951,7 +950,7 @@ export function CallsWeek({
             <span />
             {shown.map((i) => {
               const d = days[i];
-              return d && <span key={i} className={cn('cw-day', d.today && 'is-today', !!now && i < now.day && 'is-gone')}>{d.weekday}<b>{d.date}</b></span>;
+              return d && <span key={i} className={cn('cw-day', d.today && 'is-today', goneUntil(now, i) === DAY && 'is-gone')}>{d.weekday}<b>{d.date}</b></span>;
             })}
           </div>
           <div className="cw-grid">
@@ -967,7 +966,7 @@ export function CallsWeek({
                 const day = days[d];
                 if (!day) return null;
                 const items = itemsOf(d);
-                const open = !now || d > now.day ? 0 : d < now.day ? SLOTS : Math.ceil(now.minute / 30);
+                const open = Math.ceil(goneUntil(now, d) / 30);
                 const range = stretch && stretch.day === d ? stretch : null;
                 const rangeNote = range && scheduling ? free?.(d, range.start, range.end) : undefined;
                 return (

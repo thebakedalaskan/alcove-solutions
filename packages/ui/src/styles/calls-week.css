@@ -18,8 +18,8 @@
 .cw-end { display: inline-flex; margin-left: 8px; }
 
 /* ------------------------------------------------------------ the week */
-.cw { --gut: 54px; --dh: 44px; --cw-hl: color-mix(in srgb, var(--ink) 6.5%, transparent); --cw-hl2: color-mix(in srgb, var(--ink) 10%, transparent); position: relative; flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.cw.is-narrow { --dh: 50px; }
+/* The day row's height, `--dh`, is the component's: it fits ten hours under it, so it's set where they're measured. */
+.cw { --gut: 54px; --cw-hl: color-mix(in srgb, var(--ink) 6.5%, transparent); --cw-hl2: color-mix(in srgb, var(--ink) 10%, transparent); position: relative; flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .cw-wk { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .cw-box { position: relative; flex: 1; min-height: 0; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--ink) 18%, transparent) transparent; }
 /* The days stay put as the hours scroll under them. */
