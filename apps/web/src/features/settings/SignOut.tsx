@@ -59,8 +59,8 @@ export interface SigningOut {
  * was in it (`holding`).
  */
 export function useSigningOut({ back, holding }: { back: () => void; holding: () => boolean }): SigningOut {
-  const signOut = useSignOut();
   const navigate = useNavigate();
+  const signOut = useSignOut(() => navigate({ to: '/welcome', replace: true }));
   const toast = useToast();
   const { list } = useLive(uploads);
   const waiting = list.length;
@@ -69,7 +69,7 @@ export function useSigningOut({ back, holding }: { back: () => void; holding: ()
   const [words, setWords] = useState(0);
   const [copying, setCopying] = useState(false);
   const [asking, setAsking] = useState(false);
-  const go = () => signOut.mutate(undefined, { onSuccess: () => void navigate({ to: '/welcome', replace: true }), onError: (e) => toast(errorMessage(e), { icon: 'x' }) });
+  const go = () => signOut.mutate(undefined, { onError: (e) => toast(errorMessage(e), { icon: 'x' }) });
   const stay = () => { setAsking(false); back(); };
   // Decided on what's really here: a list not read yet would look empty, and sign out without a word.
   const press = () => {

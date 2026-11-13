@@ -4,7 +4,7 @@
  * Lives in memory only: a reload lands on Home like any other visit.
  */
 import { HomeTourSchema } from '@alcove/api';
-import { useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { log } from '~/lib/log';
 
 const olog = log.child({ component: 'onboarding' });
@@ -12,21 +12,45 @@ const olog = log.child({ component: 'onboarding' });
 export interface ArrivalState {
   /** creating: the account screen is up. opening: the arch is opening into Home. */
   stage: 'none' | 'creating' | 'opening';
+  /**
+   * The account screen went up over the app already on the page (the welcome page, or the app's empty frame when Google's
+   * way back loads it here), so it fades in over it. Otherwise the app's root came with the first route, as in Storybook
+   * opening at /ready, and the screen is there at once.
+   */
+  over: boolean;
   /** Counts arches opened, so the app shell can come in again behind one. */
   opened: number;
   /** The tour, once asked for. `auto`: after the account was created, so only if it wasn't seen yet. */
   tour: { n: number; auto: boolean } | null;
 }
 
-let state: ArrivalState = { stage: 'none', opened: 0, tour: null };
+let state: ArrivalState = { stage: 'none', over: false, opened: 0, tour: null };
 const subs = new Set<() => void>();
 const set = (patch: Partial<ArrivalState>) => { state = { ...state, ...patch }; for (const f of subs) f(); };
 const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f); }; };
 let asked = 0;
+/** The account screen's place is on the page (`useArrivalHost`): the app has rendered. */
+let hosted = false;
+/** The account screen covers the page, so what's under it can change unseen. */
+let covers = false;
+const covering = new Set<() => void>();
 
 export const arrival = {
-  /** A new account: the account screen goes up over whatever is there. */
-  begin: () => { olog.info('account arrival started'); set({ stage: 'creating' }); },
+  /**
+   * A new account: the account screen goes up over whatever is there. Settles once it covers the page, so Home loads behind
+   * it unseen rather than showing through it as it fades in: at once when the app's root hasn't rendered yet, as the screen
+   * is then there from the first frame.
+   */
+  begin: (): Promise<void> => {
+    if (state.stage === 'none') {
+      olog.info('account arrival started');
+      covers = !hosted;
+      set({ stage: 'creating', over: hosted });
+    }
+    return covers ? Promise.resolve() : new Promise((resolve) => { covering.add(resolve); });
+  },
+  /** The account screen covers the page. */
+  cover: () => { covers = true; for (const f of covering) f(); covering.clear(); },
   /** The arch starts opening; Home comes in behind it. */
   open: () => set({ stage: 'opening', opened: state.opened + 1 }),
   /** Home is fully in view: the tour follows. */
@@ -38,6 +62,11 @@ export const arrival = {
 };
 
 export const useArrival = () => useSyncExternalStore(subscribe, () => state, () => state);
+
+/** The account screen's place (features/onboarding/Arrival.tsx) is on the page while this is mounted. */
+export function useArrivalHost(): void {
+  useEffect(() => { hosted = true; return () => { hosted = false; }; }, []);
+}
 
 /* Whether someone has seen the tour: remembered in this browser, per account. */
 const tourKey = (ownerId: string) => `alcove.tour.${ownerId}`;
