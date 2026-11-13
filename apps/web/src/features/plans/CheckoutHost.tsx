@@ -11,7 +11,7 @@
  * Every price and limit is the server's; a price that changed in between is refused, read again and said. Licenses
  * bought are a visit too, which takes the buyer's own when they have none (docs: Plans and usage › Team).
  */
-import { errorCode, errorMessage, errorRequestId, type BalanceEntry, type MyTeam, type Plan, type PlanOffers, type Purchase, type TeamMember, type TopUp, type TopUpRoute } from '@alcove/api';
+import { errorCode, errorMessage, errorRequestId, type BalanceEntry, type MyTeam, type Plan, type PlanOffers, type Purchase, type TopUp, type TopUpRoute } from '@alcove/api';
 import {
   Avatar, Button, CheckoutAsk, CheckoutBig, CheckoutDone, CheckoutLine, CheckoutNote, CheckoutWindow, Dots, HoursPicker, LicensesLeft,
   LicensesPicker, MonthsPicker, NetworkPicker, PayAddress, PayAmount, PayArrived, PayStatus, PayTrack, PaymentReceipt, RequestRef,
@@ -28,6 +28,7 @@ import { byWhen, fullDate, hm, longDay, shortDate } from '~/lib/time';
 import { plural, usd, usdCents } from '~/lib/words';
 import { useInvite } from '../team/invite';
 import type { CheckoutOpen } from './checkout';
+import { teamLicenses } from './plan-state';
 import {
   LENGTHS, LICENSES, costOf, kindOf, lapsed, microOf, plainTokens, proPrice, purchaseName, repriced, roundTokens, sameTerms, tokens,
   waitingPurchase, yearlyOff
@@ -59,8 +60,6 @@ const FOLK = [18, 20, 17] as const;
  */
 const starts = (t: MyTeam | null): boolean =>
   t === null || (t.role === 'admin' && (t.licenses?.unconsumed ?? 0) === 0 && t.members.every((m) => m.license.state === 'none'));
-/** The people on a team waiting for a license: they needed one when none was left, and haven't had one since. */
-const waitingOn = (t: MyTeam | null): TeamMember[] => (t?.members ?? []).filter((m) => m.license.state !== 'live' && m.license.wanted !== null);
 const isAre = (n: number) => (n === 1 ? 'is' : 'are');
 
 /** What Done says of the licenses a team was started with: whose they are, and when each is taken. */
@@ -72,9 +71,9 @@ function startedWith(count: number, yoursTaken: boolean): string {
 }
 /** What Done says once more licenses are bought: how many are left now, and whether the people waiting each get one. */
 function leftNow(t: MyTeam | null): string | null {
-  const left = t?.licenses?.unconsumed;
-  if (left === undefined) return null;
-  const waiting = waitingOn(t);
+  const counts = teamLicenses(t);
+  if (!counts) return null;
+  const { left, waiting } = counts;
   const n = waiting.length;
   const who = someNames(waiting.map((m) => m.person));
   if (left === 0) return n ? `None left now. ${who} ${isAre(n)} still waiting for one.` : 'None left now.';
@@ -273,8 +272,10 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
    * beside who's waiting. Either starts on enough for them.
    */
   const teamNow = team.data ?? null;
-  const wanting = waitingOn(teamNow);
-  const left = teamNow?.licenses?.unconsumed ?? 0;
+  /* How many are left of how many, and who's waiting: the same count Settings › Plan and the Team page say (plan-state). */
+  const counts = teamLicenses(teamNow);
+  const wanting = counts?.waiting ?? [];
+  const left = counts?.left ?? 0;
   const known = 1 + (directory.data?.members.filter((m) => m.onAlcove).length ?? 0);
   const maxLicenses = o?.team.maxLicenses ?? 1;
   const licenseCards = LICENSES.filter((n) => n <= maxLicenses);
@@ -664,14 +665,13 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
       if (named1) return spare ? `${spare} spare after ${named1}’s` : `For ${named1}`;
       return spare ? `${wanting.length} waiting, ${spare} spare` : `For the ${wanting.length} waiting`;
     };
-    const live = teamNow?.members.filter((m) => m.license.state === 'live').length ?? 0;
     const runs = `Each runs ${plural(o.periodDays, 'day')} from when it’s taken.`;
     const yours = starting !== false ? (
       <TeamName value={teamNow?.name ?? teamName ?? ''} onChange={setTeamName} disabled={teamNow !== null} placeholder="Your company or team"
         autoFocus={teamNow === null && !teamName} />
     ) : teamNow && (
       <LicensesLeft people={teamNow.members.map((m) => m.person)}
-        title={live + left === 0 ? 'No licenses yet' : left > 0 ? `${left} of ${plural(live + left, 'license')} left` : live === 1 ? 'Its one license is taken' : `All ${live} licenses taken`}
+        title={!counts || counts.of === 0 ? 'No licenses yet' : counts.left > 0 ? `${counts.left} of ${plural(counts.of, 'license')} left` : counts.live === 1 ? 'Its one license is taken' : `All ${counts.live} licenses taken`}
         sub={wanting.length ? `${someNames(wanting.map((m) => m.person))} ${isAre(wanting.length)} waiting for one. ${runs}` : runs} />
     );
     body = (

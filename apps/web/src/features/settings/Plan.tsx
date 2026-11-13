@@ -36,7 +36,7 @@ export function PlanGroup({ plan }: { plan: Plan }) {
   // The team you're on, as you see it: its admin, and for the admin its licenses. Someone waiting for one makes Buy
   // licenses the one thing to do here.
   const team = useQuery({ ...q.myTeam(), enabled: plan.team !== null }).data;
-  const licenses = team ? teamLicenses(team) : null;
+  const licenses = teamLicenses(team);
   const [sheet, setSheet] = useState<{ open: boolean; topUpId: string | null }>({ open: false, topUpId: null });
   return (
     <SettingsGroup id="plan" title="Plan">

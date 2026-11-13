@@ -83,24 +83,28 @@ export function noticesNow(plan: Plan, team?: MyTeam | null | undefined): PlanNo
 export const noticesLike = (plan: Plan, n: PlanNotice): string[] => plan.notices.filter((m) => m.kind === n.kind).map((m) => m.id);
 
 /** How many licenses a short notice is about: how many are left now, once the team is known, else as many as it counted. */
-export const licensesLeft = (n: PlanNotice, team: MyTeam | null | undefined): number => team?.licenses?.unconsumed ?? (n.kind === 'licenses-low' ? n.count ?? 0 : 0);
+export const licensesLeft = (n: PlanNotice, team: MyTeam | null | undefined): number => teamLicenses(team)?.left ?? (n.kind === 'licenses-low' ? n.count ?? 0 : 0);
 
 /** A team's admin, as `teams.mine` lists them. */
 export const teamAdmin = (team: MyTeam | null | undefined): Person | undefined => team?.members.find((m) => m.role === 'admin')?.person;
 
-/** A team's licenses: how many are left to take, of how many are running or left, and who's waiting for one. */
-export interface TeamLicenses { left: number; of: number; waiting: TeamMember[] }
+/** Whether someone on a team is waiting for a license: they needed one when none was left, and haven't had one since. */
+export const waitsForLicense = (m: TeamMember): boolean => m.license.state !== 'live' && m.license.wanted !== null;
+
 /**
- * A team's licenses as its admin sees them (null for a member): how many are left to take, of how many are running or left,
- * and who needed one when none was left and is waiting for one still.
+ * A team's licenses: how many are left to take, how many people have one now (`live`), how many there are (`of`, both), and
+ * who's waiting for one.
  */
-export function teamLicenses(team: MyTeam): TeamLicenses | null {
-  if (!team.licenses) return null;
+export interface TeamLicenses { left: number; live: number; of: number; waiting: TeamMember[] }
+/**
+ * A team's licenses as its admin counts them (null for a member, who isn't shown them, and before the team is known). Settings
+ * › Plan, checkout and the Team page all say "2 of 8 left" from this, so their numbers always agree.
+ */
+export function teamLicenses(team: MyTeam | null | undefined): TeamLicenses | null {
+  if (!team?.licenses) return null;
   const left = team.licenses.unconsumed;
-  return {
-    left, of: left + team.members.filter((m) => m.license.state === 'live').length,
-    waiting: team.members.filter((m) => m.license.state !== 'live' && m.license.wanted !== null)
-  };
+  const live = team.members.filter((m) => m.license.state === 'live').length;
+  return { left, live, of: left + live, waiting: team.members.filter(waitsForLicense) };
 }
 
 /**
