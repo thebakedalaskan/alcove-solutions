@@ -12,7 +12,8 @@
  *    call opened to everyone in it, and lets go of tags nobody came back for in 30 days;
  *  - deletes live notes a call left behind when a release from before them ended it;
  *  - settles who pays for workspaces nobody does, gives accounts from before plans their plan, ends graces that are
- *    over, and adds as dollars top-ups the previous release settled;
+ *    over, renews Pro from the balance or tells its owner Pro is ending or has ended, and adds as dollars, once each, the
+ *    top-ups a release before plans settled, paid before this one or while it deployed;
  *  - deletes team invites that expired, and reckons the storage pool of each team whose license ended or whose grace did;
  *  - takes away what an upload left when its browser went, a day on, and forgets uploads counted before yesterday;
  *  - deletes agent connections and credentials that ran out, and what agents did after 30 days or past each connection's
@@ -76,7 +77,7 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const rings = await step('rings', () => sweepRings(d), 0);
   const liveNotes = await step('live notes', () => sweepLiveNotes(d), 0);
   const attention = await step('attention', () => sweepAttention(d), 0);
-  // Plans: who pays for each workspace, every account's plan, graces that ended, and top-ups paid for before plans.
+  // Plans: who pays for each workspace, every account's plan, graces that ended, Pro renewed, ending or ended, and top-ups paid for before plans.
   const plans = await step('plans', () => plansUpkeep(d).then((r) => r.settled + r.carried + r.due), 0);
   const carried = await step('carried top-ups', () => creditCarried(d), 0);
   // Teams: invites that expired, and pools that shrank as a license ended, or whose grace ended.

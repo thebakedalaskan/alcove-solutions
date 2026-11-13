@@ -7,9 +7,9 @@
  *
  * A method nothing renders yet answers with something sensible and empty. When the contract grows, this grows with it.
  */
-import { StartTopUpBodySchema, type Purchase, type TopUp, AgentUpdateInputSchema } from '@alcove/api';
-import { freshEntryId, PREVIEW_BASE_ADDRESS, PREVIEW_DEPOSIT_ADDRESS } from '../world/payments';
-import { buyFromBalance, withProMonths } from '../world/plans';
+import { StartTopUpBodySchema, type Plan, type Purchase, type TopUp, AgentUpdateInputSchema } from '@alcove/api';
+import { boughtFromBalance, freshEntryId, PREVIEW_BASE_ADDRESS, PREVIEW_DEPOSIT_ADDRESS } from '../world/payments';
+import { withProMonths, withRenewal } from '../world/plans';
 import { playPayment, refusalOf, settlePayments, shortOf } from './payments';
 import { DriveExportInputSchema, NOTE_LINK_DAYS, type DriveAutomatic, type DriveCallExports, type DriveExportFormat, type DriveExportInput, type DriveExportJob, type NewNoteLink, type NoteLink, type NoteLinkClaimed } from '@alcove/api';
 import { disconnectedDrive } from '../world/drive-exports';
@@ -57,13 +57,15 @@ function checkPurchase(w: World, buys: Purchase): void {
   const r = refusalOf(w, buys);
   if (r) throw refused(r.code, r.asked);
 }
+/** The plan as the server answers with it: saying whether renewing will buy the next month, at the prices in force now. */
+const planOf = (w: World): Plan => withRenewal(w.plan, w.payments.offers.pro.microUsdPerMonth, w.payments.proMonthly);
 /** Buys from the balance once the purchase checks out, refused with nothing charged when the balance is short. */
 function buyNow(w: World, buys: Purchase) {
   checkPurchase(w, buys);
   const short = shortOf(w, buys);
   if (short) throw refused('conflict', short);
-  w.plan = buyFromBalance(w.plan, buys, freshEntryId(w));
-  return w.plan;
+  boughtFromBalance(w, buys, freshEntryId(w));
+  return planOf(w);
 }
 const offline = () => new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.');
 /** With a call's pass, anyone in the call asks, a guest too, as the API reads it with the pass; without one, an account. */
@@ -962,7 +964,7 @@ export const standIn: AlcoveApi = {
   },
   plans: {
     // The payments playing out catch up with the clock whenever the plan or a payment is read (api/payments.ts).
-    plan: () => answer((w) => { settlePayments(w); return w.plan; }),
+    plan: () => answer((w) => { settlePayments(w); return planOf(w); }),
     offers: () => answer((w) => w.payments.offers),
     buyPro: (months, microUsdPerMonth) => answer((w) => buyNow(w, { kind: 'pro', months, microUsdPerMonth })),
     refundPro: () => answer((w) => {
@@ -972,17 +974,22 @@ export const standIn: AlcoveApi = {
       const back = later.reduce((sum, m) => sum + m.microUsd, 0);
       const { balance } = w.plan;
       const entry = { id: freshEntryId(w), at: new Date(now).toISOString(), label: `Pro refunded, ${later.length} ${later.length === 1 ? 'month' : 'months'}`, microUsd: back };
-      // As the server does, a refund turns renewing from the balance off, so the months given back aren't bought again.
-      const refunded = { ...w.plan, balance: { microUsd: balance.microUsd + back, history: [entry, ...balance.history] }, pro: { ...w.plan.pro, renew: false } };
+      // As the server does: renewing goes off, so what was refunded isn't bought back, and a notice that Pro was renewed
+      // into a month refunded goes.
+      const ends = new Set(later.map((m) => m.to));
+      const refunded = {
+        ...w.plan, balance: { microUsd: balance.microUsd + back, history: [entry, ...balance.history] }, pro: { ...w.plan.pro, renew: false },
+        notices: w.plan.notices.filter((n) => !(n.kind === 'pro-renewed' && n.until !== null && ends.has(n.until)))
+      };
       w.plan = withProMonths(refunded, w.plan.pro.months.filter((m) => Date.parse(m.from) <= now), now);
-      return w.plan;
+      return planOf(w);
     }),
-    setRenew: (renew) => answer((w) => { w.plan = { ...w.plan, pro: { ...w.plan.pro, renew } }; return w.plan; }),
-    chose: () => answer((w) => { w.plan = { ...w.plan, choose: false }; return w.plan; }),
+    setRenew: (renew) => answer((w) => { w.plan = { ...w.plan, pro: { ...w.plan.pro, renew } }; return planOf(w); }),
+    chose: () => answer((w) => { w.plan = { ...w.plan, choose: false }; return planOf(w); }),
     dismissNotice: (id) => answer((w) => {
       if (!w.plan.notices.some((n) => n.id === id)) throw refused('not-found', 'That notice doesn’t exist, or you don’t have access to it.');
       w.plan = { ...w.plan, notices: w.plan.notices.filter((n) => n.id !== id) };
-      return w.plan;
+      return planOf(w);
     }),
     routes: () => answer(paymentRoutes),
     buyHours: (packs, microUsdPerPack, minutesPerPack) => answer((w) => buyNow(w, { kind: 'hours', packs, microUsdPerPack, minutesPerPack })),

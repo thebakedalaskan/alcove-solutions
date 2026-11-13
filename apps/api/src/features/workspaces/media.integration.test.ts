@@ -2290,7 +2290,7 @@ describe('storage limits', () => {
     expect(logsSince(from).filter((l) => l.msg === 'service limit clamped')).toEqual([expect.objectContaining({ level: 40, limit: 'plan.free.storage_bytes', value: 1e15, used: ceiling })]);
   });
 
-  it('is set from the command line, against any database, saying what it was and what it is now', async () => {
+  it('is set from the command line, against any database, in bytes, dollars or time as it lists them, saying what it was and what it is now', async () => {
     const cli = (...args: string[]) => new Promise<{ code: number | null; out: string }>((resolve, reject) => {
       const run = spawn(process.execPath, ['--import', 'tsx', 'src/limits-cli.ts', ...args], {
         env: { ...process.env, DATABASE_URL: process.env['TEST_DATABASE_URL'], LOG_FORMAT: 'json', LOG_LEVEL: 'info' }, stdio: ['ignore', 'pipe', 'pipe']
@@ -2329,6 +2329,22 @@ describe('storage limits', () => {
       expect([args.join(' '), refused.code, loggedBy(refused.out).filter((l) => l.level >= 50)]).toEqual([args.join(' '), 1, []]);
     }
     expect(await stored()).toEqual([['media.account_day_bytes', 2 * MiB], ['plan.free.storage_bytes', 5 * GiB]]);
+
+    // Money in dollars and time with a unit, as `limits list` shows them, which `set` takes back unchanged.
+    const setTo = async (name: string, typed: string) => loggedBy((await cli('set', name, typed)).out).filter((l) => l.msg === 'service limit set');
+    expect(await setTo('ai.hour_micro_usd', '$0.60')).toEqual([expect.objectContaining({ limit: 'ai.hour_micro_usd', old: 500_000, new: 600_000 })]);
+    expect(await setTo('plan.period_seconds', '7d')).toEqual([expect.objectContaining({ limit: 'plan.period_seconds', old: 30 * 86_400, new: 7 * 86_400 })]);
+    const listing = (await cli('list')).out;
+    expect(listing).toMatch(/^ai\.hour_micro_usd +\$0\.60 /m);
+    expect(listing).toMatch(/^plan\.period_seconds +7 d /m);
+    expect(await setTo('ai.hour_micro_usd', '$0.60')).toEqual([expect.objectContaining({ old: 600_000, new: 600_000 })]);
+    expect(await setTo('plan.period_seconds', '7 d')).toEqual([expect.objectContaining({ old: 7 * 86_400, new: 7 * 86_400 })]);
+    // A unit of the wrong kind, and money past six places, are refused, and nothing changes.
+    for (const args of [['set', 'plan.free.file_bytes', '$5'], ['set', 'plan.period_seconds', '5MiB'], ['set', 'plan.free.notes_minutes', '300m'], ['set', 'call.max_people', '$5'], ['set', 'ai.hour_micro_usd', '$0.1234567']]) {
+      const refused = await cli(...args);
+      expect([args.join(' '), refused.code, loggedBy(refused.out).filter((l) => l.level >= 50).length, loggedBy(refused.out).some((l) => l.msg === 'limit not set')]).toEqual([args.join(' '), 1, 0, true]);
+    }
+    expect(await stored()).toEqual([['ai.hour_micro_usd', 600_000], ['media.account_day_bytes', 2 * MiB], ['plan.free.storage_bytes', 5 * GiB], ['plan.period_seconds', 7 * 86_400]]);
   });
 
   it('warns once each time someone’s storage or their day passes 80% of its limit', async () => {

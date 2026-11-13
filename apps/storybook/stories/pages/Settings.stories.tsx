@@ -355,6 +355,12 @@ export const AReceiptPhone = phone(AReceipt);
 export const ProEnding = page('/settings#plan', 'plan-pro-ending');
 export const ProEndingNight = night(ProEnding);
 export const ProEndingPhone = phone(ProEnding);
+/**
+ * Pro ends in 3 days though renewing is on with the money for a month: a month costs $24 now, more than the last did, so it
+ * won't renew by itself. The plan says when, warm, and Renew from balance says why.
+ */
+export const ProEndingPriceRose = page('/settings#plan', 'plan-pro-ending-price');
+export const ProEndingPriceRoseNight = night(ProEndingPriceRose);
 /** Pro extended by a year with a payment yesterday: until a year on, the twelve months to refund, and the payment with its receipt. */
 export const ProExtended = page('/settings#plan', 'plan-pro-extended');
 export const ProExtendedNight = night(ProExtended);

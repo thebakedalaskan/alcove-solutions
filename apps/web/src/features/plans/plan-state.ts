@@ -19,9 +19,11 @@ export const notesLeft = (plan: Plan): string => hoursAndMinutes(plan.notes.minu
 /** How much of the period's notes is left, 0 to 1, for the meter and the sun on its line. */
 export const notesShare = (plan: Plan): number => (plan.notes.minutesPerPeriod > 0 ? Math.min(1, plan.notes.minutesLeft / plan.notes.minutesPerPeriod) : 0);
 
-/** Whether renewing from the balance will buy the next month of Pro: it's on, and the balance has a month's price. */
-export const renews = (plan: Plan, offers: PlanOffers | undefined): boolean =>
-  plan.pro.renew && offers !== undefined && plan.balance.microUsd >= offers.pro.microUsdPerMonth;
+/**
+ * Whether renewing from the balance will buy the next month of Pro, as the server would decide now (`pro.renewal`): it's on,
+ * the balance has a month's price, and a month costs no more than the last did.
+ */
+export const renews = (plan: Plan): boolean => plan.pro.renewal === 'buys';
 
 /** Pro about to end: when, and how many days away by the calendar (0 is today). */
 export interface ProEnding { until: string; days: number }
@@ -29,12 +31,13 @@ export interface ProEnding { until: string; days: number }
 /**
  * Whether Pro is about to end: the one rule Plans, the side panel's foot and Settings › Plan say "ending" by. Pro is ending
  * while a pro-ending notice's `until` is the end Pro has now (`plan.pro.until`), unless renewing will buy the next month
- * (it's on, and the balance has a month's price): once Pro is extended, or renewing will keep it, the notice no longer
- * says anything true. Null otherwise.
+ * (`renews`): once Pro is extended, or renewing will keep it, the notice no longer says anything true. A month that costs
+ * more than the last did isn't renewed, so after a price rise Pro is ending, said the moment its owner is told. Null
+ * otherwise.
  */
-export function proEnding(plan: Plan, offers: PlanOffers | undefined, now = Date.now()): ProEnding | null {
+export function proEnding(plan: Plan, now = Date.now()): ProEnding | null {
   const until = plan.pro.until;
-  if (plan.kind !== 'pro' || until === null || renews(plan, offers)) return null;
+  if (plan.kind !== 'pro' || until === null || renews(plan)) return null;
   const warned = plan.notices.some((n) => n.kind === 'pro-ending' && n.until !== null && Date.parse(n.until) === Date.parse(until));
   return warned ? { until, days: Math.max(0, daysFromToday(new Date(until), new Date(now))) } : null;
 }
@@ -116,5 +119,5 @@ export function nextPeriodMinutes(plan: Plan, offers: PlanOffers | undefined): n
   if (plan.kind === 'free') return offers.free.notesMinutes;
   if (plan.kind === 'team') return offers.team.notesMinutes;
   const lastMonth = plan.pro.until === null || Date.parse(plan.pro.until) <= Date.parse(plan.period.to) + 60_000;
-  return lastMonth && !renews(plan, offers) ? offers.free.notesMinutes : offers.pro.notesMinutes;
+  return lastMonth && !renews(plan) ? offers.free.notesMinutes : offers.pro.notesMinutes;
 }
