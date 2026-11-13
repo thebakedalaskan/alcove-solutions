@@ -7,7 +7,7 @@
 import { AlcoveApiError, MAX_TOP_UP_MICRO_USD, type AlcoveApi, type Purchase, type TopUp } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
 import { randomBytes } from 'node:crypto';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
 import { creditCarried, DepositRecord, watch } from './deposits';
@@ -1264,6 +1264,68 @@ describe('top-ups that buy', () => {
     expect(await paid(api, t, 2 * HOURS)).toMatchObject({ state: 'credited', purchase: { buys: hours(2), outcome: 'bought', why: null } });
     expect(await api.plans.plan()).toMatchObject({ kind: 'free', notes: { minutesLeft: 1500, minutesPerPeriod: 1500 }, balance: { microUsd: 0 } });
     expect(await labels(api)).toEqual(['20 more hours of notes', 'Added, 30 USDC']);
+  });
+
+  it('buys more notes for the period the payment lands in, not the one it was opened in', async () => {
+    await h.setLimit('plan.period_seconds', 3600);
+    const { api } = await account();
+    const opened = await api.plans.plan();
+    const t = await api.plans.startTopUp(BASE_USDC, HOURS, hours(1));
+    // The payment lands a minute into the next hour's period.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.parse(opened.period.to) + 60_000 });
+    try {
+      expect(await paid(api, t, HOURS)).toMatchObject({ state: 'credited', purchase: { buys: hours(1), outcome: 'bought' } });
+      const plan = await api.plans.plan();
+      expect(plan.period.from).toBe(opened.period.to);
+      expect(plan.notes).toMatchObject({ minutesPerPeriod: 300 + 600, minutesLeft: 300 + 600 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a payment that buys and a buy from the balance at once, with money for one: whichever takes the plan’s lock first buys, the other is refused as short', async () => {
+    const plansLockWaits = async () => (await h.pool.query<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_stat_activity
+      WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%FROM plan_accounts WHERE owner_id = $1 FOR UPDATE%'
+    `)).rows[0]?.n;
+    for (const first of ['payment', 'balance'] as const) {
+      // $15 in the balance, and a $5 payment opened to buy a $15 pack: together, money for one pack, not two.
+      const { api, session } = await withBalance(HOURS);
+      const t = await api.plans.startTopUp(BASE_USDC, 5_000_000, hours(1));
+      h.oneclick.set(addr(t), 'SUCCESS', { depositedAmount: '5000000', amountOut: '5000000', intentHashes: [`race-${first}-${t.id}`] });
+      await forgetCheck(t.id);
+      const gate = await h.pool.connect();
+      let payment: Promise<TopUp> | undefined;
+      let buy: Promise<string> | undefined;
+      try {
+        // The plan's row held: whichever asks first waits first, and takes it first once it's let go.
+        await gate.query('BEGIN');
+        await gate.query('SELECT 1 FROM plan_accounts WHERE owner_id = $1 FOR UPDATE', [session.ownerId]);
+        const startPayment = () => api.plans.topUp(t.id);
+        const startBuy = () => said(api.plans.buyHours(1, HOURS, PACK));
+        if (first === 'payment') payment = startPayment(); else buy = startBuy();
+        await expect.poll(plansLockWaits, { timeout: 5000 }).toBe(1);
+        if (first === 'payment') buy = startBuy(); else payment = startPayment();
+        await expect.poll(plansLockWaits, { timeout: 5000 }).toBe(2);
+        await gate.query('COMMIT');
+        const [paidFor, bought] = await Promise.all([payment, buy]);
+        if (first === 'payment') {
+          expect(paidFor).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
+          expect(bought).toBe('conflict: Your balance is short of what 10 hours of notes cost ($15). Add money first.');
+          expect(await labels(api)).toEqual(['10 more hours of notes', 'Added, 5 USDC', 'Added by support']);
+        } else {
+          expect(bought).toBe('succeeded');
+          expect(paidFor).toMatchObject({ state: 'credited', purchase: { outcome: 'refused', why: 'Your balance was short of what 10 hours of notes cost when your payment arrived. It’s in your balance.' } });
+          expect(await labels(api)).toEqual(['Added, 5 USDC', '10 more hours of notes', 'Added by support']);
+        }
+        // Either way one pack was bought, once, and what's left is what the two brought less it.
+        expect(await api.plans.plan()).toMatchObject({ balance: { microUsd: 5_000_000 }, notes: { minutesPerPeriod: 900 } });
+      } finally {
+        await gate.query('ROLLBACK');
+        gate.release();
+        await Promise.allSettled([payment, buy]);
+      }
+    }
   });
 
   it('refuses to open a payment for no, fewer than none or part of a month or pack, a price below nothing or a pack of no minutes, before anything is quoted', async () => {
