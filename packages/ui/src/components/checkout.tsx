@@ -347,7 +347,8 @@ export function CheckoutSummary({ summary: s, rise = 'rest', className }: { summ
 export interface CheckoutPanelProps {
   /** "Get Pro", "Extend Pro", "More notes", "Start a team", "Buy licenses". */
   title: string;
-  step: 1 | 2 | 3;
+  /** Where it is in Choose, Pay and Done; null when there's nothing to buy here (someone else buys it), and no steps. */
+  step: 1 | 2 | 3 | null;
   stage: CheckoutStage;
   summary: CheckoutSummaryData;
   /** The step itself. It rises in each time the stage changes. */
@@ -379,7 +380,7 @@ export function CheckoutPanel({ title, step, stage, summary, children, foot, foo
           </div>
           <header className="ck-h">
             <h2>{title}</h2>
-            <CheckoutSteps at={step} />
+            {step !== null && <CheckoutSteps at={step} />}
           </header>
           <div key={stage} className="ck-b">{children}</div>
           <footer key={`${stage}-${footKey}`} className="ck-f">{foot}</footer>

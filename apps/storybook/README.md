@@ -508,7 +508,7 @@ changed, offline, extending, more notes), then paying (waiting, Cancel payment a
 arrived, refused, expired, cancelled, failed, the receipt), in both themes and on a phone. Team has the same: Start a team
 (its name, how many licenses, from the balance or a payment, unnamed, a changed price, payments off, offline), its first
 licenses' payment (`team-buying`) waiting, seen, bought, refused and expired, and its admin's Buy licenses (`team-admin-*`:
-who's waiting, from the balance, bought, with a payment), a member, and an admin who stopped being one. The stand-in plays
+who's waiting, from the balance, bought, with a payment), a member, and an admin who stopped being one (before buying, or while their payment was on its way), with nothing to buy and no steps. The stand-in plays
 a payment opened to buy something by itself (`src/api/payments.ts`): seen, then added and bought, a step every 5 seconds
 from when it was opened, or as the `payment-*` scenarios say; nothing runs on a timer, so nothing carries into the next
 story. `purchaseAt()` and `playsOut()` put one where a story needs it. Every address is a made-up preview no wallet takes.

@@ -616,7 +616,9 @@ you're buying on the right, under its own small evening (`PlanWindow`) whose sun
   and Another number). The summary is Team's window with people on its horizon, and each license runs 30 days from when
   it's taken. The team is made only as you pay, and the app tells Alcove you're here as soon as the licenses are bought, so
   the admin's own license is taken at once. Done has inviting under the receipt (`CheckoutDone`'s `invite`, a bare
-  `TeamInvite`) and no renewal reminder.
+  `TeamInvite`) and no renewal reminder. Someone on another's team (a member, or an admin who stopped being one) has nothing
+  to buy here: the window has no steps (`CheckoutPanel`'s `step` is null) and says it once, in one note, who buys the
+  licenses, after what became of a payment that couldn't buy them (its money is in the balance), with Close.
 - **On a phone** it fills the screen, with what you're buying in one line at the top. Its foot keeps only the buttons, but
   offline, why the button waits ("You're offline…") is said on a line over them, as it is beside them on a wider screen.
 
