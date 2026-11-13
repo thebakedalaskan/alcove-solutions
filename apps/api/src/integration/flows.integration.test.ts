@@ -297,7 +297,7 @@ describe('signing in', () => {
     const patchRaw = async (body: unknown) => (await fetch(`${h.baseUrl}/v1/account/preferences`, { method: 'PATCH', headers: { 'content-type': 'application/json', origin: ORIGIN }, body: JSON.stringify(body) })).status;
     const defaults = {
       sounds: DEFAULT_SOUND_PREFERENCES,
-      notesDefault: 'on', notesLanguage: 'call', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
+      notesDefault: 'on', notesLanguage: 'call', addToCalendar: true, showOtherMeetings: true, showSoloEvents: false, recordOffline: true,
       notifications: DEFAULT_NOTIFICATION_PREFERENCES,
       pinned: [], groups: [], model: null, notificationsPausedUntil: null
     };
@@ -311,12 +311,17 @@ describe('signing in', () => {
     const sounds = { ...DEFAULT_SOUND_PREFERENCES, enabled: false, quiet: true, volume: 0.25, hands: false, replies: false };
     expect((await api.account.updatePreferences({ sounds })).sounds).toEqual(sounds);
     expect((await api.account.preferences()).sounds).toEqual(sounds);
+    // Upcoming's events with only you on them: hidden until asked for, then kept by patches that leave them out.
+    expect((await api.account.updatePreferences({ showSoloEvents: true })).showSoloEvents).toBe(true);
+    expect(await patchRaw({ showSoloEvents: 'yes' })).toBe(400);
     const other = await account();
     expect((await other.api.account.preferences()).sounds).toEqual(DEFAULT_SOUND_PREFERENCES);
+    expect((await other.api.account.preferences()).showSoloEvents).toBe(false);
     expect(await patchRaw({ sounds: { ...sounds, volume: 2 } })).toBe(400);
     const grouped = await api.account.updatePreferences({ groups: [{ id: 'g1', name: 'Design', emails: ['sam@example.com'] }] });
     expect(grouped.groups).toHaveLength(1);
     expect(grouped.sounds).toEqual(sounds);
+    expect(grouped.showSoloEvents).toBe(true);
     expect(await patchRaw({ notesLanguage: 'xx' })).toBe(400);
     expect(await patchRaw({ pinned: ['a', 'a'] })).toBe(400);
     expect(await api.account.preferences()).toEqual(grouped);
@@ -2392,6 +2397,39 @@ describe('verified private inference', () => {
       expect(own.near.calls).toHaveLength(sent);
     } finally {
       await own.close();
+    }
+  });
+
+  it('checks models out while NVIDIA’s clock is up to a minute ahead of the API’s, and refuses a verdict dated further ahead', async () => {
+    // Confidential Space's VMs ran 7–9.5 s behind (2026-11-13). Every verdict NVIDIA issued holds from the moment it's
+    // issued, which looked still to come, so no model checked out and Ask couldn't verify NEAR AI's private model.
+    const own = await ownNear();
+    try {
+      own.near.nvidiaAhead(30);
+      const rec = await own.api.recordings.start({ title: 'Clocks apart' });
+      await rec.transcribe(speech('We agreed the clocks are apart.', 0, 0));
+      expect(rec.getSnapshot().transcript.map((l) => l.text)).toEqual(['We agreed the clocks are apart.']);
+      const { pendingNoteId } = await rec.stop();
+      await written(own.api, pendingNoteId);
+      expect((await own.api.notes.get(pendingNoteId)).inference.map((x) => x.task)).toEqual(['transcript', 'notes']);
+      expect((await asked(own.api, pendingNoteId, 'What did we agree?'))[0]).toEqual({ type: 'text', text: 'From the call: We agreed the clocks are apart.' });
+    } finally {
+      await own.close();
+    }
+
+    const far = await ownNear();
+    try {
+      far.near.nvidiaAhead(5 * 60);
+      const rec = await far.api.recordings.start({ title: 'Clocks too far apart' });
+      const from = h.logs.length;
+      const e = await rec.transcribe(speech('CANARY-AHEAD the merger closes on Friday.', 0, 0)).catch((x: unknown) => x);
+      expect([code(e), said(e)]).toEqual(['unavailable', 'We couldn’t verify NEAR AI’s private model, so nothing was sent. Try again in a moment.']);
+      expect(logsSince(from).find((l) => l.msg === 'model evidence refused')).toMatchObject({ model: 'openai/whisper-large-v3', task: 'transcript', code: 'gpu' });
+      expect(far.near.calls).toEqual([]);
+      unreadable(far.near.received, 'CANARY-AHEAD', 'merger closes');
+      await rec.discard();
+    } finally {
+      await far.close();
     }
   });
 });

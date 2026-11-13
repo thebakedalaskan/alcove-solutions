@@ -432,6 +432,12 @@ balancer keeps no request logs, so it logs no client addresses either.
   pins issuance to our ACME account, whose key only the VM holds.
 - **Attestation quota.** Google Cloud Attestation allows 5 requests a second per project per region, and a token costs two.
   The API holds one token and refreshes it when it's 10 minutes old; every browser gets that one.
+- **The VMs' clocks run behind.** On 2026-11-13 every production VM ran 7–9.5 s behind Google's clock, drifting about a
+  second a day, and nothing in the workload can set it. A token another service dates by its own clock looked as if it
+  came from the future: every NVIDIA verdict was refused, so every model check failed from the move until the fix (the
+  first one tried was at 16:16 UTC), and LiveKit's webhooks were within half a second of refused. Every check of such a token now allows a minute
+  (`evidence.ts`, `livekit.ts`, `google.ts`), and each start logs `clock offset` (`behindGoogleS`), at warn past 30 s.
+  A VM lives until the next deploy or the monthly refresh, so drift stays well inside that.
 - **Maintenance stops a TDX VM.** TDX VMs don't live-migrate: a host maintenance event stops the VM, with 7 days' notice
   (`curl -H Metadata-Flavor:Google http://metadata.google.internal/computeMetadata/v1/instance/maintenance-event`), and the
   group recreates it. With one VM, that's a few minutes without the API. TDX VMs can't use reservations, so capacity in

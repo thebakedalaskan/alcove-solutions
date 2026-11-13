@@ -222,7 +222,7 @@ function withFields(p: Preferences, from: PreferenceChange, fields: PreferenceCh
   const notify = <K extends keyof Preferences['notifications']>(k: K): Preferences['notifications'][K] => fields.notifications?.[k] !== undefined ? from.notifications?.[k] ?? p.notifications[k] : p.notifications[k];
   return {
     notesDefault: f('notesDefault'), notesLanguage: f('notesLanguage'), addToCalendar: f('addToCalendar'),
-    showOtherMeetings: f('showOtherMeetings'), recordOffline: f('recordOffline'), pinned: f('pinned'), groups: f('groups'), model: f('model'),
+    showOtherMeetings: f('showOtherMeetings'), showSoloEvents: f('showSoloEvents'), recordOffline: f('recordOffline'), pinned: f('pinned'), groups: f('groups'), model: f('model'),
     notificationsPausedUntil: f('notificationsPausedUntil'),
     sounds: { enabled: sound('enabled'), volume: sound('volume'), quiet: sound('quiet'), mic: sound('mic'), people: sound('people'), hands: sound('hands'), questions: sound('questions'), messages: sound('messages'), replies: sound('replies'), mentions: sound('mentions'), admissions: sound('admissions'), timers: sound('timers'), ringing: sound('ringing') },
     notifications: { enabled: notify('enabled'), privateMessages: notify('privateMessages'), replies: notify('replies'), chatMentions: notify('chatMentions'), hands: notify('hands'), questions: notify('questions'), admissions: notify('admissions'), timers: notify('timers'), ringing: notify('ringing'), beforeCall: notify('beforeCall'), notesReady: notify('notesReady'), sharedWithYou: notify('sharedWithYou'), notesRequested: notify('notesRequested'), followUpDue: notify('followUpDue'), tagged: notify('tagged'), plan: notify('plan') }

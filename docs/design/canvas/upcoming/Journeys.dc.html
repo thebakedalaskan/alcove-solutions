@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Upcoming, every journey step by step</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="water.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="water.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="fl" style="width: 3904px">
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="2">
+<section class="fl-r">
+<h2 class="fl-h">{{r.name}}</h2>
+<div class="fl-s">
+<sc-for list="{{r.frames}}" as="f" hint-placeholder-count="3">
+<div class="fl-f{{f.cls}}">
+<p class="fl-c"><span>{{f.n}}</span>{{f.t}}</p>
+<sc-if value="{{f.isWidget}}" hint-placeholder-val="{{false}}"><div class="uw-box"><dc-import name="Upcoming" step="{{f.step}}" mode="{{f.mode}}" hint-size="500px,472px"></dc-import></div></sc-if>
+<sc-if value="{{f.isPage}}" hint-placeholder-val="{{true}}"><div class="fl-box"><div class="fl-in"><dc-import name="Main" mode="{{f.mode}}" step="{{f.step}}" scroll="{{f.scroll}}" hint-size="1440px,900px"></dc-import></div></div></sc-if>
+</div>
+</sc-for>
+</div>
+</section>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":3904,"height":3657}}'>
+class Component extends DCLogic {
+  renderVals() {
+    /* Each journey from the click to what it leads to: on Home where the page takes part, otherwise the widget alone. */
+    var HW = window.AH.HW;
+    return { rows: HW.frames(HW.JOURNEYS.concat(HW.PHONE_JOURNEYS)) };
+  }
+}
+</script>
+</body>
+</html>

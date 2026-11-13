@@ -1,10 +1,11 @@
 /*
  * Widget: one card on a page's water, the way Home holds For you and Upcoming. Its head: an icon in a tile, the title,
  * then `end`, what the head holds after it (tabs, or a quiet button at its end). Its body. And, only while the list in it
- * is longer than it shows, a foot with Show N more. `foot` sits at the card's foot, under the body. `bare` leaves the card
- * out: the head and what's under it sit on the page, as Home's Recent notes does.
+ * is longer than it shows, a foot with Show N more; `footEnd` sits at that foot's end, and keeps the foot once everything
+ * shows. `foot` sits at the card's foot, under the body. `bare` leaves the card out: the head and what's under it sit on the
+ * page, as Home's Recent notes does.
  */
-import { EmptyRows, Icon, NoteCard, Widget, coverFor } from '@alcove/ui';
+import { EmptyRows, Hatch, Icon, NoteCard, Widget, coverFor } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { did } from '../../../src/component';
 import { KOFI, MAYA, PRIYA } from '../../../src/world/people';
@@ -24,7 +25,7 @@ const meta = {
   args: { icon: 'cal', title: 'Upcoming', children: list(ROWS) },
   argTypes: {
     title: { control: 'text' }, bare: { control: 'boolean' },
-    icon: { control: false }, end: { control: false }, foot: { control: false }, more: { control: false }, body: { control: false },
+    icon: { control: false }, end: { control: false }, foot: { control: false }, footEnd: { control: false }, more: { control: false }, body: { control: false },
     headingRef: { control: false }, className: { control: false }, children: { control: false }
   },
   render: (args) => <div style={{ width: 'min(520px, 100%)' }}><Widget {...args} /></div>
@@ -38,6 +39,17 @@ export const Default: Story = {
 };
 /** Longer than it shows: Show 3 more at its foot. Once everything shows, the foot goes. */
 export const ShowMore: Story = { name: 'Show more', args: { children: list(ROWS.slice(0, 3)), more: { count: 3, onShow: did('onShow') } } };
+/**
+ * Something at the end of the foot, after Show 3 more: Upcoming's count of the events with only you on them, a quiet toggle.
+ * The foot stays for it once everything shows.
+ */
+export const FootEnd: Story = {
+  name: 'Foot end',
+  args: {
+    children: list(ROWS.slice(0, 3)), more: { count: 3, onShow: did('onShow') },
+    footEnd: <button type="button" className="hm-solo" aria-pressed={false} onClick={() => open('solo')}><Hatch />2 with only you</button>
+  }
+};
 /** Something at the card's foot, under the body: what's missing, and the way to it. */
 export const WithAFoot: Story = {
   name: 'With a foot',

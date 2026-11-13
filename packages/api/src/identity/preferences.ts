@@ -127,6 +127,11 @@ export const PreferencesSchema = z.object({
   addToCalendar: z.boolean(),
   /** Show calendar events that aren't Alcove calls. */
   showOtherMeetings: z.boolean(),
+  /**
+   * Show the calendar events with only you on them in Home's Upcoming, quieter, in their days. Otherwise it counts them at
+   * its foot. A profile written before this existed reads as not shown.
+   */
+  showSoloEvents: z.boolean().default(false),
   /** Keep recording on this device when the connection drops, and upload afterwards. */
   recordOffline: z.boolean(),
   notifications: NotificationPrefsSchema,
@@ -148,10 +153,12 @@ export const PreferencesSchema = z.object({
 export type Preferences = z.infer<typeof PreferencesSchema>;
 /**
  * Flat leaves are optional; an included notification or sound group is complete, with no input defaults. `model` and
- * `notificationsPausedUntil` take null (the default model; not paused), and a patch that leaves them out keeps them.
+ * `notificationsPausedUntil` take null (the default model; not paused), and a patch that leaves them out keeps them, as one
+ * that leaves out `showSoloEvents` does.
  */
 export const PreferencesPatchSchema = PreferencesSchema.extend({
-  model: ModelIdSchema.nullable(), notificationsPausedUntil: PreferencesSchema.shape.notificationsPausedUntil.removeDefault()
+  model: ModelIdSchema.nullable(), notificationsPausedUntil: PreferencesSchema.shape.notificationsPausedUntil.removeDefault(),
+  showSoloEvents: PreferencesSchema.shape.showSoloEvents.removeDefault()
 }).partial().extend({
   notifications: NotificationPrefsInputSchema.optional(), sounds: SoundPreferencesInputSchema.optional()
 });

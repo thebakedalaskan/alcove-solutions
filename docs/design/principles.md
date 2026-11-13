@@ -273,8 +273,9 @@ Everything comes from the tokens in `styles.css`. Don't invent values.
 ## Product rules that shape screens
 
 - Home is for starting a call and for what's yours. People join calls from their calendar, so a call only comes near the
-  top of Home in its last few minutes, as a slim line with Join. A calendar block with nobody else on it isn't a call and
-  isn't shown.
+  top of Home in its last few minutes, as a slim line with Join. A calendar block with nobody else on it isn't a call, so
+  it's never offered or listed as one: Upcoming counts such blocks, says so when they're all there is, and shows them,
+  slim and hatched, only when asked.
 - Whether a call has notes is set when it's scheduled. Mid-call only the organizer turns notes on; others ask, like raising a
   hand. Notes go to everyone invited, and anyone with them can share them afterwards.
 - Camera and video appear only on the join screen and in a call: never on onboarding, Home or an illustration elsewhere.

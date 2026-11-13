@@ -95,7 +95,9 @@ with `x-no-aliasing: true`, and checks the gateway's report and every model repo
 5. **A model's GPUs**: its `nvidia_payload` carries our nonce; NVIDIA's Remote Attestation Service
    (`NVIDIA_NRAS_URL`) checks it, and its verdict is a JWT signed ES384 by a key from NRAS's published keys
    whose certificate chain (CAs only, all current) ends at `NVIDIA_ROOT_CA`, from NRAS, not expired, for our
-   nonce, with one result per GPU and `x-nvidia-overall-att-result: true`.
+   nonce, with one result per GPU and `x-nvidia-overall-att-result: true`. Its times and its chain's are checked
+   allowing a minute between NVIDIA's clock and ours: a verdict holds from the moment NVIDIA issues it, and
+   Confidential Space's VMs ran 7–9.5 s behind on 2026-11-13, when, with no allowance, no model checked out.
 6. **A model's OHTTP key**: `ohttp_attestation` is an Ed25519 signature by the attested key over the exact
    key configuration, which must offer X25519 with HKDF-SHA256 and AES-128-GCM.
 7. The report is for the model asked for, and its public key is its signing address.

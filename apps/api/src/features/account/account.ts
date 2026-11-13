@@ -58,7 +58,7 @@ export const Profile = z.object({
 export type Profile = z.infer<typeof Profile>;
 
 const DEFAULT_PREFERENCES: StoredPreferences = {
-  notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
+  notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, showSoloEvents: false, recordOffline: true,
   notifications: DEFAULT_NOTIFICATION_PREFERENCES,
   sounds: DEFAULT_SOUND_PREFERENCES,
   pinned: [], groups: [], model: null, notificationsPausedUntil: null
@@ -352,6 +352,7 @@ export async function updatePreferences(o: Owner, patch: Patch<Preferences>): Pr
     summaryLength: p.preferences.summaryLength,
     addToCalendar: patch.addToCalendar ?? p.preferences.addToCalendar,
     showOtherMeetings: patch.showOtherMeetings ?? p.preferences.showOtherMeetings,
+    showSoloEvents: patch.showSoloEvents ?? p.preferences.showSoloEvents,
     recordOffline: patch.recordOffline ?? p.preferences.recordOffline,
     notifications: patch.notifications ?? p.preferences.notifications,
     sounds: patch.sounds ?? p.preferences.sounds,
