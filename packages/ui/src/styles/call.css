@@ -492,11 +492,15 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
  * Your side: one view at a time, at the right of the main area, in your own theme (`.light` or `.dark` on it) while the call
  * around it stays night. Where the stage beside it would be too narrow, it sits over the stage (`is-over`), lifted off it,
  * and the stage dims behind it (`.ic-scrim.is-over`, the main area's alone: the top bar and the dock stay as they are); on a
- * phone it's a sheet over the call, which dims behind it.
+ * phone it's a sheet over the call, which dims behind it. A window too short for it between the bars, as a phone on its side
+ * is (side.ts's SIDE_MIN_HEIGHT), has the sheet too, standing at the right the whole height of the window.
  */
 .ic-side { position: absolute; z-index: 20; display: flex; flex-direction: column; border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); overflow: hidden; outline: none; }
 .ic-side.is-over { box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
 .ic-side.is-sheet { position: fixed; z-index: 30; left: 0; right: 0; top: 64px; bottom: 0; border-radius: 24px 24px 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
+@media (min-width: 600px) {
+  .ic-side.is-sheet { left: auto; top: 8px; right: 8px; bottom: 8px; width: min(368px, calc(100% - 16px)); border-radius: var(--radius-lg); }
+}
 .ic-scrim { position: fixed; z-index: 29; inset: 0; background: color-mix(in srgb, var(--stage) 55%, transparent); }
 .ic-scrim.is-over { position: absolute; z-index: 19; border-radius: var(--radius-lg); }
 /* What's on your stage, each in its frame (frame.tsx): placed over the main area where panels.ts puts it. */
@@ -749,7 +753,9 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-msep { height: 1px; margin: 6px 4px; background: var(--line); }
 .ic-cprev { position: relative; height: 150px; }
 .ic-cprev .ac-tile { position: absolute; inset: 0; }
+/* A menu that can't fit beside what opens it (a phone on its side, a short window) scrolls in the room there is. */
 .ic-menu { width: 290px; padding: 6px; }
+.ac-pop.ic-menu { max-height: var(--radix-popover-content-available-height, none); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .ic-menu.narrow { width: 230px; }
 .ic-menu .mh { display: flex; align-items: center; gap: 10px; height: 40px; margin-bottom: 4px; padding: 0 10px; border-bottom: 1px solid var(--line); font: 600 13.5px/1 var(--font-sans); }
 .ic-menu .mi { display: flex; align-items: center; gap: 10px; width: 100%; height: 40px; padding: 0 10px; border-radius: calc(var(--radius-lg) - 6px); color: var(--ink); font: 500 14px/1 var(--font-sans); text-align: left; transition: background-color var(--duration-1); }
@@ -785,7 +791,7 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-morepop { width: 304px; padding: 8px; }
 .ic-morepop .mi { gap: 12px; padding: 0 10px 0 12px; border-radius: calc(var(--radius-lg) - 8px); font-size: 13.5px; }
 /* On a phone it starts with what's at the top right on a wider screen, as a grid a thumb can reach. */
-.ic-mgrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; padding: 2px 0 4px; }
+.ic-mgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 2px 0 4px; }
 .ic-mg { position: relative; display: grid; justify-items: center; gap: 8px; min-width: 0; padding: 14px 2px 12px; border-radius: 14px; background: rgb(255 255 255 / 0.05); color: var(--ink); font: 600 11.5px/1 var(--font-sans); transition: background-color var(--duration-1); }
 .ic-mg:hover, .ic-mg[aria-pressed="true"] { background: rgb(255 255 255 / 0.09); }
 .ic-mg > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -908,6 +914,9 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
   .ac-pop.is-sheet { width: auto; max-width: none; max-height: calc(100dvh - 64px); margin: 0; padding: 10px 10px calc(20px + env(safe-area-inset-bottom, 0px)); overflow-y: auto; overscroll-behavior: contain; border-radius: 24px 24px 0 0; box-shadow: inset 0 0 0 1px var(--line), 0 0 0 100vmax color-mix(in srgb, var(--stage) 55%, transparent); animation: ic-sheet-up var(--duration-2) var(--ease-out) both; }
   .ac-pop.is-sheet::before { content: ""; display: block; width: 40px; height: 4px; margin: 0 auto 8px; border-radius: 2px; background: var(--line-control); }
   .ac-pop.is-sheet .mi { height: 44px; }
+  /* React's eight emoji across the sheet, as the dock's picker has them on a wider screen. */
+  .ac-pop.is-sheet .ac-react-pick { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .ac-pop.is-sheet .ac-react-opt { width: auto; height: 48px; }
 }
 @keyframes ic-sheet-up { from { transform: translateY(24px); opacity: 0; } }
 /*
