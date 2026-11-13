@@ -1703,6 +1703,10 @@ describe('what a process takes on at once', () => {
   }
   /** How many reads have had a place since `from`, by the server's own word. */
   const placed = (from: number) => logsSince(from).filter((l) => l.msg === 'a read has its place').length;
+  /** How many pieces have had a place since `from`, by the server's own word: a piece sent is only counted once it's got that far. */
+  const piecesPlaced = (from: number) => logsSince(from).filter((l) => l.msg === 'a piece has its place').length;
+  /** How many reads have joined the line since `from`, by the server's own word. */
+  const joinedLine = (from: number) => logsSince(from).filter((l) => l.msg === 'waiting for a place').length;
   /** Says a piece is 4 MiB and sends what it's told to: this is what the process is about to hold. */
   const pieceFrom = (cookie: string, url: string, first: number) => {
     const req = request(url, { method: 'POST', agent: false, headers: { origin: ORIGIN, cookie, 'content-type': 'application/octet-stream', 'content-length': String(PIECE) } });
@@ -1743,11 +1747,12 @@ describe('what a process takes on at once', () => {
       // Answered while the rest are still in, and never read: nothing past the limit reached the store.
       expect(new Set(statuses)).toEqual(new Set([503]));
       expect(store.state.storing).toBeLessThanOrEqual(working);
-      // An upload that comes along now isn't lost: it tries again until there's room.
+      // An upload that comes along now isn't lost: turned away, it tries again until there's room.
       const first = places[0]?.[0];
       if (!first) throw new Error('nobody');
+      const from = h.logs.length;
       late = first.who.api.workspaces.media.upload(first.id, first.doc, fileOf(bytesOf(8)));
-      await pause(300);
+      await until(() => logsSince(from).some((l) => l.msg === 'Too many files are on the move right now. Try again in a moment.'), 'the late upload to be turned away');
       store.open();
       const done = await Promise.all(all);
       expect(done.filter((s) => s === 200)).toHaveLength(arriving);
@@ -1782,10 +1787,10 @@ describe('what a process takes on at once', () => {
     const id = await workspace(ann, 'Ours');
     const doc = await make(ann, id, 'document', 'Plan');
     const urls = await Promise.all(Array.from({ length: arrivingEach + 1 }, async () => `${place(id, doc)}/${await started(ann, id, doc, PIECE)}/pieces/0`));
-    const slow = urls.slice(1).map((url) => pieceFrom(ann.cookie(), url, 1024));
     const from = h.logs.length;
+    const slow = urls.slice(1).map((url) => pieceFrom(ann.cookie(), url, 1024));
     try {
-      await pause(300);
+      await until(() => piecesPlaced(from) === slow.length, 'the slow pieces to have their places');
       expect((await sendPiece(ann, urls[0] ?? '', bytesOf(16))).status).toBe(503);
     } finally { for (const req of slow) req.destroy(); }
     await until(async () => (await sendPiece(ann, urls[0] ?? '', bytesOf(PIECE))).status === 200, 'their places to come back');
@@ -1799,14 +1804,15 @@ describe('what a process takes on at once', () => {
     const id = await workspace(ann, 'Ours');
     const doc = await make(ann, id, 'document', 'Plan');
     const urls = await Promise.all(Array.from({ length: arrivingEach + 1 }, async () => `${place(id, doc)}/${await started(ann, id, doc, PIECE)}/pieces/0`));
+    const from = h.logs.length;
     const held = urls.slice(1).map((url) => pieceFrom(ann.cookie(), url, 1024));
     const [first, second] = held;
     // Half send nothing more. Half keep sending, too little to ever get there: 4 MiB at this rate is hours.
     const trickle = setInterval(() => { for (const req of [first, second]) if (req && !req.destroyed) req.write(Buffer.alloc(64)); }, 200);
-    const from = h.logs.length;
-    const began = Date.now();
     try {
-      await pause(300);
+      // Timed from when they all hold places, which is when their clocks start.
+      await until(() => piecesPlaced(from) === held.length, 'the pieces to have their places');
+      const began = Date.now();
       expect((await sendPiece(ann, urls[0] ?? '', bytesOf(16))).status).toBe(503);
       await Promise.all(held.map(closed));
       expect(Date.now() - began).toBeLessThan(arrivalMs + 3000);
@@ -1849,7 +1855,9 @@ describe('what a process takes on at once', () => {
     try {
       // Their next read waits in line, holding nothing. Nobody else is held up by them.
       let answered = false;
+      const from = h.logs.length;
       const next = read(ann, ann.url, 'bytes=0-9').then((r) => { answered = true; return r; });
+      await until(() => joinedLine(from) === 1, 'their next read to wait in line');
       expect((await read(theo, theo.url, 'bytes=0-9')).status).toBe(206);
       await pause(200);
       expect(answered).toBe(false);
@@ -1870,8 +1878,9 @@ describe('what a process takes on at once', () => {
     const stoppedReads = await Promise.all(Array.from({ length: readingEach }, () => stopped(ann, url)));
     try {
       let answered = false;
+      const from = h.logs.length;
       const next = ann.fetch(url, { headers: { range: 'bytes=0-0' } }).then(async (r) => { answered = true; await r.arrayBuffer(); });
-      await pause(300);
+      await until(() => joinedLine(from) === 1, 'the next read to wait in line');
       expect(answered).toBe(false);
       stoppedReads[0]?.end();
       await next;
@@ -1946,7 +1955,7 @@ describe('what a process takes on at once', () => {
       const from = h.logs.length;
       const stops = Array.from({ length: waitingEach }, () => new AbortController());
       const left = stops.map((stop) => ann.fetch(ann.url, { signal: stop.signal, headers: { range: 'bytes=0-9' } }).catch(() => 'gone'));
-      await pause(300);
+      await until(() => joinedLine(from) === waitingEach, 'all their reads to wait in line');
       for (const stop of stops) stop.abort();
       await Promise.all(left);
       expect(await refusals(from, 'That browser has gone.', waitingEach)).toEqual(stops.map(() => ordinary));
@@ -1954,8 +1963,9 @@ describe('what a process takes on at once', () => {
       // A line they'd left full would refuse this at once. It waits, and only it gets a piece opened.
       const get = vi.spyOn(h.deps.objects, 'get');
       let answered = false;
+      const lineFrom = h.logs.length;
       const next = read(ann, ann.url, 'bytes=0-9').then((r) => { answered = true; return r; });
-      await pause(300);
+      await until(() => joinedLine(lineFrom) === 1, 'the next read to wait in line');
       expect(answered).toBe(false);
       mine[0]?.end();
       expect((await next).status).toBe(206);
@@ -1967,8 +1977,9 @@ describe('what a process takes on at once', () => {
     const ann = await reader();
     const mine = await Promise.all(Array.from({ length: readingEach }, () => stopped(ann, ann.url)));
     try {
+      const from = h.logs.length;
       const next = ann.fetch(ann.url, { headers: { range: 'bytes=0-9' } });
-      await pause(300);
+      await until(() => joinedLine(from) === 1, 'the read to wait in line');
       await ann.api.auth.signOut();
       mine[0]?.end();
       const answer = await next;
@@ -2002,8 +2013,9 @@ describe('what a process takes on at once', () => {
       expect(told.status).toBe(503);
       expect(Date.now() - began).toBeGreaterThanOrEqual(waitMs - 500);
       // One person can't take the line, and once it's full nobody waits at all.
+      const lineFrom = h.logs.length;
       const waitingReads = [...Array.from({ length: waitingEach }, () => inLine(first)), ...Array.from({ length: waiting - waitingEach }, () => inLine(second))];
-      await pause(300);
+      await until(() => joinedLine(lineFrom) === waiting, 'the line to be full');
       const overTheirShare = Date.now();
       expect((await read(first, first.url, 'bytes=0-0')).status).toBe(503);
       expect((await read(newcomer, newcomer.url, 'bytes=0-0')).status).toBe(503);
