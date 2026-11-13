@@ -1,6 +1,6 @@
 # Camera effects
 
-Complete [#90](https://github.com/thebakedalaskan/the-privacy-suite/issues/90) on the existing local, fail-closed camera pipeline. The issue and the implementation instruction authorize this design; ordinary choices below are implementation decisions.
+Complete [#90](https://github.com/thebakedalaskan/alcove-solutions/issues/90) on the existing local, fail-closed camera pipeline. The issue and the implementation instruction authorize this design; ordinary choices below are implementation decisions.
 
 - Off, mild/strong blur, three original preset pictures, Slate/Sand/Rose solid backgrounds and up to six custom JPEG/PNG/WebP pictures (20 MB input limit). The stable solid palette lives with the reusable picker and supplies both swatches and the processed output, independent of surrounding theme. Old stored blur choices read as strong.
 - Prejoin and in-call use the same picker and processed track. Choosing an effect while the camera is off never starts it. Device switches and reconnects retain the choice. A browser without effects explains why and offers an explicit Off choice; an effect that fails stops camera output until someone deliberately retries or chooses Off.

@@ -1,6 +1,6 @@
 # Floating call implementation
 
-Issue: https://github.com/thebakedalaskan/the-privacy-suite/issues/109
+Issue: https://github.com/thebakedalaskan/alcove-solutions/issues/109
 
 ## Scope and constraints
 
