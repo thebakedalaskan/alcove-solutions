@@ -121,6 +121,7 @@ export function withAgentConnections(w: World, cursorEnds = iso(28, 9, 40)): voi
     did(CLAUDE, 0, 16, 7, 'get_note', { noteId: 'n7' }, 10),
     did(CLAUDE, 0, 16, 6, 'list_notes', { count: 3 }),
     did(CLAUDE, 0, 11, 40, 'add_follow_up', { noteId: 'n1' }),
+    did(CLAUDE, 0, 10, 15, 'add_question', { noteId: 'n2' }),
     did(CLAUDE, 0, 10, 2, 'propose_decision', { noteId: 'n2' }),
     did(CURSOR, -1, 17, 30, 'get_note', { noteId: 'n4' }),
     did(CURSOR, -1, 15, 20, 'list_meetings', { count: 5 }),

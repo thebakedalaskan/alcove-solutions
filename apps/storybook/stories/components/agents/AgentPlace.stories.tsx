@@ -154,7 +154,7 @@ export const TokenMade: Story = {
     )
   }
 };
-/** Just connected, while its popover waited: a tick, and something to ask it first. */
+/** Just connected, after its button was pressed: a tick, and something to ask it first. */
 export const JustConnected: Story = {
   name: 'Just connected',
   args: {

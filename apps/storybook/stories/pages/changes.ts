@@ -234,6 +234,19 @@ export const linkToReadout = (expired = false) => (w: World): void => {
   returnTo({ to: 'link', secret: READOUT_SECRET });
 };
 
+/**
+ * The standup with an open question Art added afterwards, through his agent (add_question): nothing said backs it, so its
+ * row says he asked it, and so does its history.
+ */
+export const aQuestionAdded = (w: World): void => {
+  const n = w.notes.find((x) => x.id === 'n2');
+  if (!n) return;
+  n.questions = [...n.questions, {
+    id: 'n2-q-added', text: 'Does the help article need a version for teams on the old plan?', state: 'open', lines: [], against: [],
+    changes: [{ by: changer(ART, 'organizer'), at: iso(0, 10, 15), what: 'proposed' }], evidence: { moments: [], flags: ['missing'] }
+  }];
+};
+
 /** Art has Priya's research readout from her link, and Theo has it from Art's: the note says so, and so does who has it. */
 export const fromALink = (w: World): void => {
   const n = w.notes.find((x) => x.id === 'n9');

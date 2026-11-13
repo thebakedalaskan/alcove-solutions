@@ -15,7 +15,7 @@ import { FOLLOW_UP_NOTE, withFollowUpProposals } from '../../src/world/follow-up
 import { FOR_JONAS } from '../../src/world/invitations';
 import { DESIGN_CRIT, HIRING_SYNC, withDesignCrit, withHiringSync } from '../../src/world/scheduling';
 import { STATES, inEveryState } from '../../src/world/states';
-import { fromALink, invited, longSide, longSuggestions, troubled, writtenUnencrypted } from './changes';
+import { aQuestionAdded, fromALink, invited, longSide, longSuggestions, troubled, writtenUnencrypted } from './changes';
 
 const meta = { title: 'Pages/A call', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -238,6 +238,8 @@ export const WithABoardPhone = phone(page(`/calls/${RETRO_NOTE}?tab=shared`, 'bu
 export const Example = page('/calls/example', 'first-day');
 /** Notes that came by a link: From Priya’s link, beside the title. */
 export const FromALink = page('/calls/n9', 'busy', { beforeEach: changing(fromALink) });
+/** An open question Art added afterwards, through his agent: Still open says You asked, with nothing said behind it. */
+export const AQuestionAdded = page('/calls/n2', 'busy', { beforeEach: changing(aQuestionAdded) });
 
 /** The shared notes, in Notes, for everyone with them: what Priya added, and their own box, which says who reads it. */
 export const SharedNotesBox = page('/calls/n2', 'busy', {

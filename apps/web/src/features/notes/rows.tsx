@@ -175,8 +175,8 @@ export function Decisions({ items, reader, onChange, ...row }: { items: readonly
 
 /** Who asked a question someone added to the notes themselves (their own, or through their agent): nothing said names them. */
 function addedBy(x: Question, me: string | undefined): string | undefined {
-  const first = x.changes[0];
-  return first?.what === 'proposed' ? `${capital(byName(first.by, me))} asked` : undefined;
+  const by = proposerOf(x);
+  return by ? `${capital(byName(by, me))} asked` : undefined;
 }
 
 function QuestionRow({ x, onChange, me, onSeek, shown, room }: { x: NoteQuestion; onChange?: ((x: Question, patch: QuestionPatch) => void) | undefined } & RowProps) {
