@@ -1,10 +1,13 @@
 /*
  * The bar over a phone's keyboard while you write in a document: blocks, styles, @, photos and checklists, which a phone
  * has no slash key or shortcuts for. It shows while the caret is in the page and rises with the keyboard, which the
- * visual viewport says the height of. While it's up, sheets sit above it (`--kbar`, which workspace.css reads).
+ * visual viewport says the height of. While it's up, sheets sit above it (`--kbar`, which workspace.css reads). It's drawn on
+ * the page's body, not where the document is: in a call the workspace sits in the stage's frame, under the dock, which would
+ * otherwise cover the bar whenever no keyboard lifts it (a document opened with the caret already in it, a hidden keyboard).
  */
 import { WsKeyboardBar, WsMenu, WsPopover, type WsMenuRow } from '@alcove/ui';
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMedia } from '~/lib/live';
 import type { EditorHandle } from './editor/types';
 
@@ -80,7 +83,7 @@ export function KeyboardBar({ editor }: { editor: EditorHandle }) {
     { id: 'h3', label: 'Heading 3', icon: 'h3', onSelect: then(() => editor.turnInto('h3')) },
     { id: 'quote', label: 'Quote', icon: 'quote', onSelect: then(() => editor.turnInto('quote')) }
   ];
-  return (
+  return createPortal(
     <>
       {/* Pressing a tool keeps the caret, and the keyboard, where they are. */}
       <div onPointerDown={(e) => e.preventDefault()} onMouseDown={(e) => e.preventDefault()}>
@@ -94,6 +97,7 @@ export function KeyboardBar({ editor }: { editor: EditorHandle }) {
           <WsMenu rows={rows} label="Text style" />
         </WsPopover>
       )}
-    </>
+    </>,
+    document.body
   );
 }
