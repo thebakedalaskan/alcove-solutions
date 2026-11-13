@@ -895,11 +895,12 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
 - **Your agent** (`AgentScene`) books a call over MCP, beside the tools it can use.
 - **Recording in the room** is Record's night, inset on the water (`RecordScene`): the recorder stands on the horizon,
   records offline and sets, then the session notes rise. **What Alcove can see** (`SealedScene`) sits on its water.
-- **Plans** looks out of a cove of its own (seed 8) on the plans moment, the last of the sun on its horizon: Free and Pro as small
-  cards on the water, Pro raised with a warm edge, then Start free and Get Pro, which signs in and opens Plans with checkout
-  on Pro. Both are secondary, though the Doors board fills Get Pro: the page's one filled button is its way in, and the last
-  ask's Continue with Google comes into view with them as the page scrolls on. Its prices are kept beside it, since the
-  server's offers need a session.
+- **Plans** looks out of a cove of its own (seed 8) on the plans moment, the last of the sun on its horizon: Free, Pro and Team
+  as small cards on the water, Pro raised with a warm edge, standing one under another below a tablet's width; then Start
+  free, Get Pro, which signs in and opens Plans with checkout on Pro, and Start a team, which signs in and opens it on Team.
+  All three are secondary, though the Doors board fills Get Pro: the page's one filled button is its way in, and the last
+  ask's Continue with Google comes into view with them as the page scrolls on. Its prices are kept beside it by hand, in the
+  Plans page's words, since the server's offers need a session.
 - **The last ask** is morning on the same sea, in a cove of its own (seed 11): the sun comes up as the page reaches it.
   The footer sits on the water.
 - **Signing in sails out of the cove to Home.** Every way in on the page keeps where the hero's cove stands on screen as

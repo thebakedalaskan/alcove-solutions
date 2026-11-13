@@ -2522,9 +2522,9 @@ loses a payment on its way: the side panel and Settings show it, and opening it 
 
 ### 16.1 See the plans
 
-**Plans** (`/plans`) is what each plan brings and what it costs: Free and Pro side by side (Team joins when it's offered), on
-the last of the sunset. It's reached from Settings › Plan's **See plans**, checkout's
-**Compare plans**, and the welcome page's **Get Pro** (16.13), which opens it with checkout open on Pro (`/plans?checkout=pro`;
+**Plans** (`/plans`) is what each plan brings and what it costs: Free, Pro and Team side by side, on the last of the sunset.
+It's reached from Settings › Plan's **See plans**, checkout's **Compare plans**, and the welcome page's **Get Pro** and
+**Start a team** (16.13), which open it with checkout open on Pro (`/plans?checkout=pro`) or on Team (`?checkout=team`;
 `?checkout=hours` opens it on more notes); the address forgets it once checkout is open.
 
 1. On Free, Settings › Plan's **See plans** opens Plans priced for a year: Pro is $16 a month, "$192 for 12 months. You save $48.", and **Get
@@ -2656,8 +2656,9 @@ a call. The side panel's number turns warm.
 
 ### 16.13 Plans before signing in
 
-The welcome page's **Plans**: Free and Pro in a cove at the last of the sun, with what they cost, their notes and storage,
-**Start free**, and **Get Pro**, which signs in and then opens Plans with checkout open on Pro.
+The welcome page's **Plans**: Free, Pro and Team in a cove at the last of the sun, with what they cost (Team's for each person),
+their notes and storage, **Start free**, **Get Pro**, which signs in and then opens Plans with checkout open on Pro, and
+**Start a team**, which signs in and then opens it with checkout open on starting a team (16.15).
 
 ### 16.14 Pro ending, renewed, ended
 
@@ -2674,7 +2675,7 @@ notes stop until you make room or get Pro again, which lifts it at once.
 A team is one admin (whoever starts it) and as many people as it has licenses for, and you're on one team at most. Team's card
 on Plans says what a license is (a price for each person, for a period: $40 for 30 days unless the limits say otherwise), and
 **Start a team** on it opens checkout on Team over the page; a company's Team page has the same as a quiet row while you're on
-none.
+none, and the welcome page's signs in first (16.13).
 
 1. The team's name, the company's to start with, with you its admin, and how many licenses: one for each person, you included.
 2. Pay from the balance, or with USDC on a network (16.2): the summary says exactly what to send. Getting the address makes the
