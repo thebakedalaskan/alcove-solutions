@@ -69,8 +69,13 @@ export function useWorkspacePresenting({ session, present, ended, participants, 
    */
   const want = watching && following && connection !== null;
   const followable = connection !== null && together.followable.includes(connection);
-  const followingThem = connection !== null && together.following === connection;
-  const followingOther = together.following !== null && !followingThem;
+  /*
+   * Whom the workspace follows, by their seat, which a reconnection keeps: while the presenter reloads, their old connection and
+   * their new one are both them. Someone the call doesn't know yet isn't taken for someone else.
+   */
+  const followedSeat = together.following === null ? null : participants.find((p) => p.id === together.following)?.seat ?? null;
+  const followingThem = together.following !== null && (together.following === connection || (by !== null && followedSeat === by.seat));
+  const followingOther = together.following !== null && !followingThem && followedSeat !== null;
   /* Where you were before following, so Unfollow takes you back there. */
   const before = useRef<WorkspacePlace | null>(null);
   const atNow = useRef(at);
@@ -82,11 +87,19 @@ export function useWorkspacePresenting({ session, present, ended, participants, 
     before.current = null;
     latest.current.onOwn();
   }, []);
+  /*
+   * Following them starts (they present, or you press Follow): they take over from whoever you followed. Once it's going,
+   * choosing someone else is your own way.
+   */
+  const was = useRef<{ want: boolean; connection: string | null; following: string | null }>({ want: false, connection: null, following: null });
   useEffect(() => {
+    const prev = was.current;
+    was.current = { want, connection, following: together.following };
     if (!want || !connection) return;
-    if (followingOther) ownWay();
-    else if (!followingThem && followable) latest.current.act.follow(connection);
-  }, [want, connection, followable, followingThem, followingOther, ownWay]);
+    const starting = !prev.want || prev.connection !== connection;
+    if (!starting && followingOther && prev.following !== together.following) { ownWay(); return; }
+    if (!followingThem && followable) latest.current.act.follow(connection);
+  }, [want, connection, followable, followingThem, followingOther, together.following, ownWay]);
 
   const wasWant = useRef(want);
   useEffect(() => {

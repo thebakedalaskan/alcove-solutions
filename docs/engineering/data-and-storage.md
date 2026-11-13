@@ -741,7 +741,7 @@ and this way it runs through the same auth, origin check and tests as everything
   call), and each reader is told only `followsYou`: true for someone following them, in a call they're both in, and false to
   everyone else, so nobody learns who follows whom but the person followed. That's what a presenter's bar counts. A notice
   from an instance a release behind has no `following`, and counts as following nobody. On a board, a browser says only
-  `withPresenter` on its awareness (`@alcove/board`'s `BoardPresence`): whether it follows whoever presents, never whom else.
+  `withPresenter` on its awareness (`@alcove/board`'s `BoardPresence`): whether it follows whoever presents, never whom else. Awareness goes to everyone on the board, so they can tell who's with the presenter, as they can from where each view is.
 - **Who's reading is checked again** at every ping, on the clock, however busy the workspace is, from the session and pass
   the stream came with. For a session it's one indexed read and nothing of the workspace; a pass takes the call's state,
   and only people in a call have one. A session or pass that ended ends it within 25 seconds at most. A notice about the
