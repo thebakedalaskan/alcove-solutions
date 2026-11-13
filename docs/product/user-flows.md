@@ -1973,15 +1973,18 @@ Signing in again starts a new, empty account on Free.
 ### 11.24 Add money
 
 Open **Settings → Plan → Add money** beside **Balance**, choose **$20**, **$60**, **$120** or your own amount in dollars,
-then the network to send it on, under **Pay with USDC**. A USDC is a dollar, so $20 is 20 USDC. **Get an address** opens the
-amount to send, its QR code and one payment address. Send only USDC on that network. A short payment shows what
-arrived and how much remains; send the remainder before the address expires. After expiry it asks for no more money
-and waits for the payment or refund to settle. The money appears in the balance once settlement is confirmed, and the
-sheet follows the payment until it does. A payment on its way stays under the balance in **Payments** with **Open**, as do
-failed and held payments with their support reference; once it's added it shows as "Added, 20 USDC" with **Receipt**. A
-waiting payment can be cancelled; a payment already sent still counts when it settles. Deleting an account warns when one
-of its payment addresses could still receive money. Buying Pro or more notes is checkout's (16.2–16.5), which adds the
-money and buys with it in one go.
+then the network to send it on, under **Pay with USDC**. A USDC is a dollar, so $20 is 20 USDC. **Get an address** follows
+the payment as checkout's Pay step does (16.2), with the same parts and words: "Waiting for your payment" and until when
+the address is open, **Send exactly** the amount with Copy, the QR code and the address made for this one payment, its
+first six and last four characters in bold (on a phone, **Open in wallet** in place of the code), and "Only send USDC on
+Base". A short payment says "Less than asked arrived", with **Send the rest** to the same address before it closes; after
+that it asks for no more money, and what arrived goes into the balance once the payment settles. Seen, the amount that
+arrived counts up and the line runs to "Added to your balance"; then the tick, and how much is in the balance now. A
+payment on its way stays under the balance in **Payments** with **Open**, as do failed and held payments with their support
+reference; once it's added it shows as "Added, 20 USDC" with **Receipt**. **Cancel payment** stops a waiting one; a payment
+already sent still counts. Over, **Start a new payment** starts again. Deleting an account warns when one of its payment
+addresses could still receive money. Buying Pro or more notes is checkout's (16.2–16.5), which adds the money and buys with
+it in one go.
 
 ### 11.25 Choose what reaches you
 
@@ -2586,9 +2589,10 @@ place you're on.
 ### 16.8 Renew, refund and your payments
 
 On Pro, Settings › Plan says until when, with **Extend**. Turn on **Renew from balance**: it's kept and **Saved** shows. **Refund
-($40.00)** asks in place; **Refund $40.00** returns the months that haven't started to the balance, and "Pro refunded, 2
-months" is first in the payments. A refund turns **Renew from balance** off, so the months given back aren't bought again:
-Pro ends when the month running now does. **Receipt** opens a payment's receipt over the page as paper, with **Print**.
+($40.00)** asks in place: what goes back to the balance, that renewing from it turns off (while it's on), and that Pro ends
+when the month running now does. **Refund $40.00** returns the months that haven't started to the balance, and the toast says
+what came back; "Pro refunded, 2 months" is first in the payments. A refund turns **Renew from balance** off, so the months
+given back aren't bought again. **Receipt** opens a payment's receipt over the page as paper, with **Print**.
 
 ### 16.9 Notes run out in a call
 
@@ -2606,8 +2610,9 @@ more there, none of them filled, since **Rejoin** is the page's filled button.
 ### 16.10 Start a call with no notes left
 
 With none left this period and notes on by default, **Start a call** says "No notes left until 20 November" under the ways,
-with **Get Pro** (on a paid plan, **Add 10 hours · $15** while more are offered), which closes the window and opens
-checkout, and **Start without notes**. Scheduling a call with notes on for a time before the period renews says "None left
+with **Get Pro** (on a paid plan, **Add 10 hours · $15** while more are offered), which opens checkout in the window's place,
+and **Start without notes**. Once checkout closes, bought or not, **Start a call** opens again as it was, with whoever and
+whatever it was opened with. Scheduling a call with notes on for a time before the period renews says "None left
 until 20 November" under the Notes switch, with the same way to more, opening checkout over the Calls page, so the call
 being scheduled stays. A question asked across your calls (the palette's **Ask**, or the Calls page's) with none left says
 "No notes left until 20 November" in the answer's place, with the same way to more; typing again or putting the answer away

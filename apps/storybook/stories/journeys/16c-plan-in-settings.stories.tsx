@@ -22,9 +22,10 @@ const row = (name: string | RegExp) => screen.findByRole('group', { name }, LATE
 /** Long enough for Alcove to check on a payment on its way (every half minute) or read the plan again (every minute). */
 const POLL = { timeout: 70_000 };
 
-/** From any page, you at the top right open Settings; the index goes to Plan. */
+/** From any page, your face at the top right opens your menu, and its Settings opens Settings; the index goes to Plan. */
 const toPlan = async (click: (el: Element) => Promise<void>) => {
-  await click(await screen.findByRole('link', { name: 'Art Vandelay, settings' }, LATER));
+  await click(await screen.findByRole('button', { name: /^Art Vandelay, your menu/ }, LATER));
+  await click(await within(await screen.findByRole('dialog', { name: 'Your menu' }, SOON)).findByRole('link', { name: 'Settings' }, SOON));
   await click(within(await screen.findByRole('navigation', { name: 'Settings' }, LATER)).getByRole('link', { name: 'Plan' }));
   await plan();
 };
@@ -66,13 +67,15 @@ export const RenewRefundAndYourPayments: PageStory = {
       await userEvent.click(within(await row('Renew from balance')).getByRole('switch', { name: 'Renew from balance' }));
       await within(await row('Renew from balance')).findByText('Saved', {}, SOON);
     });
-    await step('Press Refund ($40.00). It asks in place: what goes back to the balance, and when Pro ends then', async () => {
+    await step('Press Refund ($40.00). It asks in place: what goes back to the balance, that renewing from it turns off, and when Pro ends then', async () => {
       await userEvent.click(within(await plan()).getByRole('button', { name: 'Refund ($40.00)' }));
       await screen.findByText('Refund 2 months of Pro?', {}, SOON);
+      await within(await plan()).findByText(/renewing from your balance turns off\. Pro ends on/, {}, SOON);
     });
-    await step('Refund $40.00. The two months go back to the balance, and the refund is first in the payments', async () => {
+    await step('Refund $40.00. The two months go back to the balance, the refund is first in the payments, and Renew from balance is off, so they aren’t bought again', async () => {
       await userEvent.click(within(await plan()).getByRole('button', { name: 'Refund $40.00' }));
       await within(await plan()).findByText('Pro refunded, 2 months', {}, SOON);
+      await within(await row('Renew from balance')).findByRole('switch', { name: 'Renew from balance', checked: false }, SOON);
     });
     await step('Press its Receipt. The receipt opens over the page, as paper, to print', async () => {
       await userEvent.click(within(await plan()).getByRole('button', { name: /^Receipt for Pro refunded, 2 months/ }));
@@ -111,7 +114,7 @@ export const ProEndingRenewedEnded: PageStory = {
       const w = current();
       const t = w.payments.topUps[0];
       if (t) receiveTopUp(w, t.id, 'credited');
-      await within(await sheet()).findByText('It’s in your balance now.', {}, LATER);
+      await within(await sheet()).findByText('Added to your balance', {}, LATER);
       await userEvent.click(within(await sheet()).getByRole('button', { name: 'Done' }));
       await within(await plan()).findByText(/It renews from your balance before it ends\.$/, {}, LATER);
     });

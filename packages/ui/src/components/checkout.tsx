@@ -14,7 +14,7 @@ import { useEffect, useId, useState, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { CryptoMark, Logo } from './brand';
 import { Icon, type IconName } from './icon';
-import { Dots } from './motion';
+import { CheckDraw, CountUp, Dots } from './motion';
 import { Modal, ThemeScope } from './overlay';
 import { Faces, type AvatarPerson } from './people';
 import { Button, CopyField, IconButton, buttonClass } from './primitives';
@@ -496,36 +496,18 @@ export function PayAddress({ address, chainName, token = 'USDC', tag, walletHref
   );
 }
 
-/** Counts up to `to` over `ms` (cubic out) once, from when it mounts, while `run` says so: null when it's done or not counting. */
-function useCountUp(to: number, run: boolean, ms: number): number | null {
-  const reduce = useReducedMotion() === true;
-  const counting = run && !reduce;
-  const [now, setNow] = useState<number | null>(counting ? 0 : null);
-  useEffect(() => {
-    if (!counting) return;
-    let frame = 0;
-    const from = performance.now();
-    const tick = (t: number) => {
-      const k = Math.min(1, Math.max(0, (t - from) / ms));
-      setNow(k < 1 ? to * (1 - Math.pow(1 - k, 3)) : null);
-      if (k < 1) frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [to, counting, ms]);
-  return counting ? now : null;
-}
+/** An amount to the cent as it counts up: "187.42". */
+const cents = (v: number) => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /**
- * "187.00 USDC arrived on Base", the amount in sans and tabular. `count` counts it up as it lands (0.65 s, slowed by `pm`),
- * for a payment seen while you watch; reopened later, it's simply there.
+ * "187.00 USDC arrived on Base", the amount in sans and tabular. `count` counts it up as it lands (`CountUp`, 0.65 s, slowed
+ * by `pm`), for a payment seen while you watch, ending on the amount as it's said; reopened later, it's simply there.
  */
 export function PayArrived({ amount, value, token = 'USDC', chainName, count = false, pm = 1 }: {
   /** The amount as it's said, "187.00"; `value` the same as a number, to count. */
   amount: string; value: number; token?: string | undefined; chainName: string; count?: boolean | undefined; pm?: number | undefined;
 }) {
-  const now = useCountUp(value, count, 650 * pm);
-  const shown = now === null ? amount : now.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const shown = count ? <CountUp value={value} duration={0.65 * pm} format={(v) => (v >= value ? amount : cents(v))} /> : amount;
   return <p className="ck-big"><span className="ac">{shown}</span> {token} arrived on {chainName}</p>;
 }
 
@@ -555,22 +537,28 @@ export function CheckoutLine({ children }: { children: ReactNode }) {
 export interface ReceiptRowData { title: string; sub: string; reference: string | null; onOpen: () => void }
 
 /**
- * Done: a tick that draws in, what you have now in Newsreader, a line or two on it, the receipt's row, and a reminder that
- * nothing renews by itself. A team just started has inviting its people under the receipt (`invite`, under its heading
- * and what an invite does: `inviteTitle`, `inviteHint`).
+ * Done: a tick that draws in (`CheckDraw`, 0.5 s, slowed by `pm`) as its circle pops, what you have now in Newsreader, a line
+ * or two on it, the receipt's row, and a reminder that nothing renews by itself. A team just started has inviting its people
+ * under the receipt (`invite`, under its heading and what an invite does: `inviteTitle`, `inviteHint`).
  */
-export function CheckoutDone({ title, lines, receipt, reminder, invite, inviteTitle = 'Invite your team', inviteHint = 'Each link lets one person join, for a day. A license is taken when they next open Alcove.' }: {
+export function CheckoutDone({ title, lines, receipt, reminder, invite, inviteTitle = 'Invite your team', inviteHint = 'Each link lets one person join, for a day. A license is taken when they next open Alcove.', pm = 1 }: {
   title: string; lines: string[]; receipt: ReceiptRowData | null; reminder: string | null;
   /** What invites people: a link to make, then the link with Copy. Nothing shows without it. */
   invite?: ReactNode;
   inviteTitle?: string | undefined;
   inviteHint?: string | undefined;
+  /** Slows the tick's drawing by this much, with the window's other moves. */
+  pm?: number | undefined;
 }) {
   const q = useId();
+  const reduce = useReducedMotion() === true;
+  /* The tick draws itself as Done opens; with reduced motion it's simply there. */
+  const [drawn, setDrawn] = useState(false);
+  useEffect(() => setDrawn(true), []);
   return (
     <div className="ck-done">
       <div className="ck-done-said" role="status">
-        <span className="ck-tick"><Icon name="check" size={28} /></span>
+        <span className="ck-tick"><CheckDraw done={drawn} size={28} duration={reduce ? 0 : 0.5 * pm} /></span>
         <p className="ck-big">{title}</p>
         {lines.map((l) => <p key={l} className="ck-line2">{l}</p>)}
       </div>

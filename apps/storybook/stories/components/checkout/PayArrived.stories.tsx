@@ -2,7 +2,7 @@ import { PayArrived } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Step } from './parts';
 
-/** "192.00 USDC arrived on Base": the amount counts up as it lands (0.65 s, cubic out) when it's seen while you watch. */
+/** "192.00 USDC arrived on Base": the amount counts up as it lands (the kit's CountUp, 0.65 s) when it's seen while you watch. */
 const meta = {
   title: 'Components/Checkout/PayArrived', component: PayArrived, parameters: { layout: 'centered' },
   args: { amount: '192.00', value: 192, chainName: 'Base', count: false, pm: 1 },

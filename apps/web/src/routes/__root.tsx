@@ -48,8 +48,8 @@ function Root() {
       <ThemeProvider>
         <TooltipProvider>
           <ToastProvider>
-            {/* Checkout, over whatever page is open: Compare plans closes it and goes to Plans. */}
-            <CheckoutProvider window={(open, close) => <CheckoutHost open={open} onClose={close} onCompare={() => { close(); void router.navigate({ to: '/plans' }); }} />}>
+            {/* Checkout, over whatever page is open: Compare plans leaves it for Plans. */}
+            <CheckoutProvider window={(open, close, leave) => <CheckoutHost open={open} onClose={close} onCompare={() => { leave(); void router.navigate({ to: '/plans' }); }} />}>
               <Outlet />
               <Arrival />
               <RingHost />

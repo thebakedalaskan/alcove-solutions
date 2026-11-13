@@ -525,17 +525,22 @@ The last of the light, with you in it, then seven groups. Change one thing and l
   their own: the agent tile, who's connected (or what agents are for, while none is), and Open Agents →, or Connect an
   agent → while none is. On a phone it's the way to Agents.
 - **Plan says what you have, then what you pay with.** The first panel: the plan row (Free or Pro with its help, See plans
-  quiet and Get Pro or Extend secondary, filled only when notes have run out or Pro is ending), Notes left this period and
-  Storage, each with a `SunLine` on the row's own hairline (the sun at the end in a fresh period and moving back as it's
-  used), and More notes on Free (or on any plan once notes are low or out). The AI allowance is kept in dollars and never
+  quiet and Get Pro or Extend secondary, filled only when notes have run out or Pro is ending), Notes left this period with
+  a `SunLine` on the row's own hairline (the sun at the end in a fresh period and moving back as it's used), Storage saying
+  what's used of the limit ("2.1 GB of 10 GB", in caution once it's over), and More notes on Free (or on any plan once notes
+  are low or out). The AI allowance is kept in dollars and never
   shown: notes left is said as time, as an estimate, with a small "About" before the number. Over the plan's limits, one
   `SettingNote` says until when everything works as before. Pro renewed and Pro ended are `SettingNote`s with × at the top
-  until dismissed; ending is said once, in warm, in the plan row. The second panel: Balance with Add money (a sheet with the
-  deposit address and its QR code, never a window over the page), Renew from balance and Refund on Pro (asked in place), and
-  Payments (`SettingPayments`, `PaymentRow`): first what's on its way or needs a person, then the balance's latest changes,
-  each with Receipt opening `PaymentReceipt`, paper in both themes and alone on the page when printed. Buying is
-  checkout's, never this page's. Controls drop under their words on a phone. The code is `features/settings/Plan.tsx`,
-  with `features/plans/plan-state.ts`, which the side panel's foot and Plans share.
+  until dismissed; ending is said once, in warm, in the plan row. The second panel: Balance with Add money (a sheet that
+  follows the payment with checkout's own parts and words, `features/plans/paying.tsx`: the deposit address with its QR code
+  and bold ends, never a window over the page), then on Pro Renew from balance and Refund. Renew says, in caution, why it
+  won't renew when it won't, as the server decides it (`pro.renewal`): the balance short of a month, or a month costing more
+  than the last did ("A month of Pro costs $24.00 now, more than your last did, so it won't renew by itself. Extend to keep it
+  at that price."). Refund asks in place: what goes back, that renewing turns off (while it's on), and that Pro ends with
+  the month running now. Then Payments (`SettingPayments`, `PaymentRow`): first what's on its way or needs a person, then
+  the balance's latest changes, each with Receipt opening `PaymentReceipt`, paper in both themes and alone on the page when
+  printed. Buying is checkout's, never this page's. Controls drop under their words on a phone. The code is
+  `features/settings/Plan.tsx`, with `features/plans/plan-state.ts`, which the side panel's foot and Plans share.
 - **Sign out** signs you out at once. Only when recordings haven't uploaded does it ask first: the sky grows to hold the
   question, it says they'll be deleted, and Stay signed in is the filled answer. Signing out (from here or your menu), the
   page holds until the welcome page replaces it in one step, rather than blanking or emptying first.
@@ -600,7 +605,8 @@ you're buying on the right, under its own small evening (`PlanWindow`) whose sun
   it's taken. The team is made only as you pay, and the app tells Alcove you're here as soon as the licenses are bought, so
   the admin's own license is taken at once. Done has inviting under the receipt (`CheckoutDone`'s `invite`, a bare
   `TeamInvite`) and no renewal reminder.
-- **On a phone** it fills the screen, with what you're buying in one line at the top.
+- **On a phone** it fills the screen, with what you're buying in one line at the top. Its foot keeps only the buttons, but
+  offline, why the button waits ("You're offline…") is said on a line over them, as it is beside them on a wider screen.
 
 ## Connecting an agent
 
@@ -622,8 +628,9 @@ failing to, use the same sheet. Storybook records its states under **Pages / Con
 Start a call is one small modal with one question, and a sheet on a phone.
 - It opens on Start now (↵) or Schedule for later (S). Starting floods the screen into the night of the call.
 - With no notes left this period and notes on, a caution note sits under the ways ("No notes left until 20 November", Get
-  Pro, Start without notes), and in the scheduler a line under the Notes switch says the same, with Get Pro or more hours,
-  for a call that starts before they come back (`NoNotesLeft`).
+  Pro, Start without notes). Get Pro opens checkout in the modal's place, since no window opens over another, and the modal
+  comes back as it was, with its people, documents and board, once checkout closes. In the scheduler a line under the Notes
+  switch says the same, with Get Pro or more hours, for a call that starts before they come back (`NoNotesLeft`).
 - Ringing someone puts a card on their screen on any page, over a modal if one is open.
 
 Scheduling isn't in a window. It takes the Calls page's rail, and the sheet becomes the week.
