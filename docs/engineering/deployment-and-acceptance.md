@@ -203,23 +203,23 @@ everywhere within a minute.
 | --- | --- | --- | --- | --- |
 | `plan.free.notes_minutes` | 300 | 0 | 60,000 | Free: the minutes of notes a period brings, reckoned at `ai.hour_micro_usd` an hour. |
 | `plan.free.storage_bytes` | 10 GiB | 0 | 1 TiB | Free: what an account stores, its uploads and its recordings. |
-| `plan.free.file_bytes` | 512 MiB | 0 | 4 GiB | Free: one file. |
+| `plan.free.file_bytes` | 512 MiB | 0 | 512 MiB | Free: one file. |
 | `plan.pro.notes_minutes` | 3,000 | 0 | 600,000 | Pro: the minutes of notes a period (a month of Pro) brings, reckoned at `ai.hour_micro_usd` an hour. |
 | `plan.pro.storage_bytes` | 100 GiB | 0 | 10 TiB | Pro: what an account stores, its uploads and its recordings. Held this high for `plan.grace_seconds` after Pro ends. |
-| `plan.pro.file_bytes` | 2 GiB | 0 | 4 GiB | Pro: one file. What's enforced is at most 512 MiB (`WHOLE_DOWNLOAD_BYTES`) until downloads can pick up where they stopped. |
+| `plan.pro.file_bytes` | 512 MiB | 0 | 512 MiB | Pro: one file. |
 | `plan.pro.price_micro_usd` | $20 | $0 | $10,000 | Pro: one period. |
 | `plan.pro.yearly_price_micro_usd` | $16 | $0 | $10,000 | Pro: one period, bought `plan.pro.yearly_from_months` or more at once. None while it's 0 or not below `plan.pro.price_micro_usd`. |
-| `plan.pro.yearly_from_months` | 12 | 1 | 120 | The fewest months of Pro one purchase buys at `plan.pro.yearly_price_micro_usd`. None while it's more than `plan.pro_max_months`. |
+| `plan.pro.yearly_from_months` | 12 | 1 | 120 | The fewest months of Pro one purchase buys at `plan.pro.yearly_price_micro_usd`. None while it's more than `plan.pro.max_months`. |
+| `plan.pro.max_months` | 12 | 1 | 120 | The most months of Pro one purchase buys. |
+| `plan.pro.remind_seconds` | 3 d | 0 | 30 d | How long before Pro ends its owner is told, and a month is bought if renewing is on. |
 | `plan.team.price_micro_usd` | $40 | $0 | $10,000 | Team: one license, a person for one period. |
 | `plan.team.notes_minutes` | 3,000 | 0 | 600,000 | Team: the minutes of notes a license's period brings its member, reckoned at `ai.hour_micro_usd` an hour. |
 | `plan.team.storage_bytes` | 100 GiB | 0 | 10 TiB | Team: the storage each live license adds to its team's pool; also what someone who leaves a team is held to through `plan.grace_seconds`. |
-| `plan.team.file_bytes` | 2 GiB | 0 | 4 GiB | Team: one file. What's enforced is at most 512 MiB (`WHOLE_DOWNLOAD_BYTES`) until downloads can pick up where they stopped. |
-| `plan.pro_max_months` | 12 | 1 | 120 | The most months of Pro one purchase buys. |
+| `plan.team.file_bytes` | 512 MiB | 0 | 512 MiB | Team: one file. |
 | `plan.hours.pack_minutes` | 600 | 1 | 60,000 | More notes: the minutes one pack adds to the period it's bought in, reckoned at `ai.hour_micro_usd` an hour. |
 | `plan.hours.price_micro_usd` | $15 | $0 | $10,000 | More notes: one pack. At 0, more notes aren't offered. |
 | `plan.hours.max_packs` | 5 | 1 | 100 | More notes: the most packs one purchase buys. |
-| `plan.pro_remind_seconds` | 3 d | 0 | 30 d | How long before Pro ends its owner is told, and a month is bought if renewing is on. |
-| `plan.period_seconds` | 30 d | 1 m | 365 d | A plan's period: notes renew, and paid time runs, in these. |
+| `plan.period_seconds` | 30 d | 1 m | 365 d | A plan's period: notes renew, and paid time runs, in these. Not changed in production for now (below). |
 | `plan.grace_seconds` | 15 d | 0 | 90 d | Once an account is over its plan's limits: how long until what's over stops taking more. |
 | `ai.hour_micro_usd` | $0.50 | $0.000001 | $100 | What an hour of notes is reckoned at, to give the AI allowance as time. |
 | `ai.stop_micro_usd` | $0.005 | $0 | $10 | What's left of an allowance when transcription and every AI request stop. |
@@ -236,14 +236,21 @@ everywhere within a minute.
 | `media.account_day_bytes` | 20 GiB | 0 | 200 GiB | What one person uploads in a day (UTC), in every workspace. |
 
 Zero is a value: none. A file size or a day's uploads at 0 stops every upload, with "Files can’t be uploaded right now."; storage
-at 0 says storage is full; notes at 0 brings none. A file's ceiling is the most
-that can be read whole: a whole file is read in one response, which is cut at 280 seconds, so it takes about 15 Mbit/s to
-download 512 MiB in one answer, and about 120 Mbit/s for 4 GiB. Slower, a download picks up where it stopped when the browser resumes it (by itself, or with
-its Resume), asking for the rest with the file's `ETag`.
-Everyone is on Free, so a plan's limits are the same for everyone; the day's uploads are the same for everyone, guests in a call
-included. Lowering one deletes nothing: it refuses the next upload, and the next piece of one already going
+at 0 says storage is full; notes at 0 brings none. Every plan's file limit has the same ceiling, 512 MiB
+(`WHOLE_DOWNLOAD_BYTES`), the most that can be read whole for now: a whole file is read in one response, which is cut at
+280 seconds, so it takes about 15 Mbit/s to download 512 MiB in one answer. A file limit can be lowered without a deploy,
+not raised past that; Pro's and Team's 2 GiB wait for downloads that pick up where they stopped. Slower, a download picks
+up where it stopped when the browser resumes it (by itself, or with its Resume), asking for the rest with the file's `ETag`.
+Each account is held to its own plan's limits, Free's, Pro's or, licensed on a team, Team's (with the team's pool for its
+storage), so a change to a plan's limit reaches only the accounts on that plan; the day's uploads are the same for everyone,
+guests in a call included. Lowering one deletes nothing: it refuses the next upload, and the next piece of one already going
 ([Data and storage › Media](data-and-storage.md#media)). What happens to an account over its plan's limits is in
 [Plans and usage › Over the limit](plans-and-usage.md#over-the-limit-the-grace).
+
+Don't change `plan.period_seconds` in production for now. An account on Free has its periods counted from when it began,
+in lengths of whatever the limit says when they're read, so a change starts a new period at once, with all its notes and
+any stop lifted, for every account on Free past its first period. Months of Pro and team licenses keep the length they
+were bought with. It's safe to change once each account keeps its own period.
 
 `media.file_bytes` and `media.workspace_bytes` are gone: a file's size and what's stored are each plan's now, and storage is
 counted for each account, not each workspace. A row for either is ignored with `service limit ignored` at warn, and what it

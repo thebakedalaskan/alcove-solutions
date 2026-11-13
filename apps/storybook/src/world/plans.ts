@@ -33,7 +33,21 @@ export const PLAN_OFFERS: PlanOffers = {
   team: { notesMinutes: TEAM.minutes, storageBytes: TEAM.storage, fileBytes: TEAM.file, microUsdPerLicense: LICENSE_PRICE, maxLicenses: 500 }
 };
 /** Nothing of Pro bought. */
-export const NO_PRO: Plan['pro'] = { months: [], until: null, renew: false, refundableMicroUsd: 0 };
+export const NO_PRO: Plan['pro'] = { months: [], until: null, renew: false, renewal: null, refundableMicroUsd: 0 };
+
+/**
+ * `plan` saying whether renewing will buy the next month as Pro ends, and why not, worked out as the server works it out
+ * (apps/api/src/features/billing/plans.ts › notRenewed): none while no month of Pro is left; off; a month costs more now
+ * (`price`) than it did when the last was bought (`monthly`); the balance is short of a month; or it buys.
+ */
+export function withRenewal(plan: Plan, price: number, monthly: number): Plan {
+  const renewal: Plan['pro']['renewal'] = plan.pro.until === null ? null
+    : !plan.pro.renew ? 'off'
+    : price > monthly ? 'price'
+    : plan.balance.microUsd < price ? 'short'
+    : 'buys';
+  return { ...plan, pro: { ...plan.pro, renewal } };
+}
 
 /**
  * Art on Free, the demo afternoon: 3 h 20 min of its 5 hours of notes left, 2.1 GB of 10 GB used, nothing in the balance, and the period renewing in about 12 days.
@@ -202,6 +216,20 @@ export const proEnding = (): Plan => {
   ];
   const plan = withProMonths({ ...freePlan(), balance: { microUsd: 5_000_000, history } }, months, AFTERNOON());
   return { ...plan, notes: { ...plan.notes, minutesLeft: 940 }, notices: [notice('sb-notice-ending', 'pro-ending', iso(0, 10, 0), months[0]?.to ?? iso(3, 10, 0))] };
+};
+
+/**
+ * Pro's last month ends in 3 days and won't renew, though renewing is on and $60 is in the balance: a month costs more now
+ * than the $20 the last did (the scenario raises the price), and renewing never pays more without Art buying at it first.
+ * Art is told Pro is ending.
+ */
+export const proEndingPriceRose = (): Plan => {
+  const plan = proEnding();
+  const history: BalanceEntry[] = [
+    { id: 'sb-entry-pro', at: iso(-27, 10, 0), label: 'Pro, 1 month', microUsd: -PRO_PRICE },
+    { id: 'sb-entry-1', at: iso(-27, 9, 55), label: 'Added, 80 USDC', microUsd: 80_000_000 }
+  ];
+  return { ...plan, balance: { microUsd: 60_000_000, history }, pro: { ...plan.pro, renew: true } };
 };
 
 /** Renewing is on, so this morning, 3 days before Pro was to end, a month was bought from the balance: Pro runs a month further. */

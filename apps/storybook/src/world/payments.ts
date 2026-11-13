@@ -2,7 +2,7 @@
 import type { PlanOffers, Purchase, TopUp, TopUpRoute, TopUpRoutes, TopUpState } from '@alcove/api';
 import { iso } from './clock';
 import type { World } from './index';
-import { buyFromBalance, PLAN_OFFERS } from './plans';
+import { buyFromBalance, PLAN_OFFERS, PRO_PRICE } from './plans';
 import { addLicenses } from './teams';
 
 /**
@@ -17,6 +17,11 @@ export type PaymentPlay = 'pays' | 'over' | 'short' | 'refused' | 'expires' | 'f
 export interface PaymentsWorld {
   /** What the plans cost now, as the server offers them. A story raises them to show a price that changed. */
   offers: PlanOffers;
+  /**
+   * What a month of Pro cost when the last month was bought (the server's `monthlyMicroUsd`): renewing never pays more than
+   * this without Art buying at the new price first. Pro's price, until Pro is bought at another.
+   */
+  proMonthly: number;
   /** The ways to pay, or null for a server that takes no payments. */
   routes: TopUpRoutes | null;
   topUps: TopUp[];
@@ -53,7 +58,7 @@ const ROUTES: TopUpRoutes = {
 };
 
 /** A server without a treasury, used by the existing scenarios. */
-export const paymentsOff = (): PaymentsWorld => ({ offers: structuredClone(PLAN_OFFERS), routes: null, topUps: [], play: 'pays', playing: {} });
+export const paymentsOff = (): PaymentsWorld => ({ offers: structuredClone(PLAN_OFFERS), proMonthly: PRO_PRICE, routes: null, topUps: [], play: 'pays', playing: {} });
 /** A server taking payments, without a top-up opened yet: a payment opened to buy something plays out as `play` says. */
 export function withPayments(w: World, play: PaymentPlay = 'pays'): void {
   w.payments = { ...w.payments, routes: structuredClone(ROUTES), topUps: [], play, playing: {} };
@@ -78,6 +83,8 @@ export function raisePrices(w: World): void {
  */
 export function boughtFromBalance(w: World, buys: Purchase, entry: string, now = Date.now()): void {
   w.plan = buyFromBalance(w.plan, buys, entry, now);
+  // Months of Pro bought at the price in force: what renewing goes by from now on.
+  if (buys.kind === 'pro') w.payments.proMonthly = w.payments.offers.pro.microUsdPerMonth;
   if (buys.kind === 'licenses' && w.myTeam) addLicenses(w.myTeam, buys.count, buys.microUsdPerLicense);
 }
 
