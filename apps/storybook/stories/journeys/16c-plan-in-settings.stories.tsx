@@ -22,9 +22,10 @@ const row = (name: string | RegExp) => screen.findByRole('group', { name }, LATE
 /** Long enough for Alcove to check on a payment on its way (every half minute) or read the plan again (every minute). */
 const POLL = { timeout: 70_000 };
 
-/** From any page, you at the top right open Settings; the index goes to Plan. */
+/** From any page, your face at the top right opens your menu, and its Settings opens Settings; the index goes to Plan. */
 const toPlan = async (click: (el: Element) => Promise<void>) => {
-  await click(await screen.findByRole('link', { name: 'Art Vandelay, settings' }, LATER));
+  await click(await screen.findByRole('button', { name: /^Art Vandelay, your menu/ }, LATER));
+  await click(await within(await screen.findByRole('dialog', { name: 'Your menu' }, SOON)).findByRole('link', { name: 'Settings' }, SOON));
   await click(within(await screen.findByRole('navigation', { name: 'Settings' }, LATER)).getByRole('link', { name: 'Plan' }));
   await plan();
 };
