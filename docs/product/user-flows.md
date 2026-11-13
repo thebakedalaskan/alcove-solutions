@@ -2606,8 +2606,9 @@ more there, none of them filled, since **Rejoin** is the page's filled button.
 ### 16.10 Start a call with no notes left
 
 With none left this period and notes on by default, **Start a call** says "No notes left until 20 November" under the ways,
-with **Get Pro** (on a paid plan, **Add 10 hours · $15** while more are offered), which closes the window and opens
-checkout, and **Start without notes**. Scheduling a call with notes on for a time before the period renews says "None left
+with **Get Pro** (on a paid plan, **Add 10 hours · $15** while more are offered), which opens checkout in the window's place,
+and **Start without notes**. Once checkout closes, bought or not, **Start a call** opens again as it was, with whoever and
+whatever it was opened with. Scheduling a call with notes on for a time before the period renews says "None left
 until 20 November" under the Notes switch, with the same way to more, opening checkout over the Calls page, so the call
 being scheduled stays. A question asked across your calls (the palette's **Ask**, or the Calls page's) with none left says
 "No notes left until 20 November" in the answer's place, with the same way to more; typing again or putting the answer away

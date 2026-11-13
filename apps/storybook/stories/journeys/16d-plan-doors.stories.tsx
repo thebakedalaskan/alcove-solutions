@@ -56,13 +56,23 @@ export const StartWithNoNotesLeft: PageStory = {
   name: '16.10 Start a call with no notes left',
   ...page('/home', 'plan-stopped', { globals: LAPTOP }),
   play: async ({ userEvent, step }) => {
+    /** Start a call's window, once it's open: the side panel says notes are out too, so what's in it is found in it. */
+    const flow = () => screen.findByRole('dialog', { name: 'Start a call' }, SOON);
     await step('This period’s notes are used up. Start a call says so under the ways to start, until they come back, with Get Pro', async () => {
       const side = await screen.findByRole('complementary', { name: 'Side panel' }, SOON);
       await userEvent.click(within(side).getByRole('button', { name: /^Start a call/ }));
-      await screen.findByText(/^No notes left until/, {}, SOON);
+      await within(await flow()).findByText(/^No notes left until/, {}, SOON);
+    });
+    await step('Get Pro: checkout opens in the window’s place, on Pro, since no window opens over another', async () => {
+      await userEvent.click(within(await flow()).getByRole('button', { name: 'Get Pro' }));
+      await screen.findByRole('dialog', { name: 'Get Pro' }, SOON);
+    });
+    await step('Close checkout without buying. Start a call comes back as it was', async () => {
+      await userEvent.click(within(await screen.findByRole('dialog', { name: 'Get Pro' }, SOON)).getByRole('button', { name: 'Close' }));
+      await within(await flow()).findByText(/^No notes left until/, {}, SOON);
     });
     await step('Start without notes: the call is made with notes off, and its lobby opens', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Start without notes' }, SOON));
+      await userEvent.click(within(await flow()).getByRole('button', { name: 'Start without notes' }));
       await screen.findByRole('button', { name: 'Join' }, LATER);
     });
   }

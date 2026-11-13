@@ -54,10 +54,11 @@ export function useMoreNotes(plan: Plan | undefined, wanted: boolean): MoreNotes
  * - `at`: when the call starts (now when left out). A call after the period renews has notes, so nothing is said.
  * - `alone`: nothing beside it says it's about notes (Start now), so it names them.
  * - `beforeCheckout`: what to do before checkout opens over the page, such as closing the window this is in.
+ * - `afterCheckout`: what to do once checkout closes again, such as opening that window again, as it was.
  * - `without`: the way on without notes, such as Start without notes.
  */
-export function NoNotesLeftDoor({ at, alone = false, beforeCheckout, without, className }: {
-  at?: Date | undefined; alone?: boolean | undefined; beforeCheckout?: (() => void) | undefined;
+export function NoNotesLeftDoor({ at, alone = false, beforeCheckout, afterCheckout, without, className }: {
+  at?: Date | undefined; alone?: boolean | undefined; beforeCheckout?: (() => void) | undefined; afterCheckout?: (() => void) | undefined;
   without?: { label: string; onClick: () => void } | undefined; className?: string | undefined;
 }) {
   const left = useNotesLeft(at);
@@ -66,7 +67,7 @@ export function NoNotesLeftDoor({ at, alone = false, beforeCheckout, without, cl
   if (!left.none || !left.until) return null;
   return (
     <NoNotesLeft until={dayFullMonth(left.until)} alone={alone} className={className}>
-      {more && <Button size="sm" variant="secondary" onClick={() => { beforeCheckout?.(); checkout.open(more.what, 'door'); }}>{more.label}</Button>}
+      {more && <Button size="sm" variant="secondary" onClick={() => { beforeCheckout?.(); checkout.open(more.what, 'door', afterCheckout); }}>{more.label}</Button>}
       {without && <Button size="sm" variant="quiet" onClick={without.onClick}>{without.label}</Button>}
     </NoNotesLeft>
   );

@@ -614,8 +614,9 @@ failing to, use the same sheet. Storybook records its states under **Pages / Con
 Start a call is one small modal with one question, and a sheet on a phone.
 - It opens on Start now (↵) or Schedule for later (S). Starting floods the screen into the night of the call.
 - With no notes left this period and notes on, a caution note sits under the ways ("No notes left until 20 November", Get
-  Pro, Start without notes), and in the scheduler a line under the Notes switch says the same, with Get Pro or more hours,
-  for a call that starts before they come back (`NoNotesLeft`).
+  Pro, Start without notes). Get Pro opens checkout in the modal's place, since no window opens over another, and the modal
+  comes back as it was, with its people, documents and board, once checkout closes. In the scheduler a line under the Notes
+  switch says the same, with Get Pro or more hours, for a call that starts before they come back (`NoNotesLeft`).
 - Ringing someone puts a card on their screen on any page, over a modal if one is open.
 
 Scheduling isn't in a window. It takes the Calls page's rail, and the sheet becomes the week.
