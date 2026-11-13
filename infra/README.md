@@ -32,7 +32,7 @@ command and do not change the default gcloud project. First the project's base:
 ```sh
 CLOUDSDK_ACTIVE_CONFIG_NAME=alcove \
   PROJECT_ID=alcove-solutions REGION=us-central1 \
-  GITHUB_REPO=thebakedalaskan/the-privacy-suite \
+  GITHUB_REPO=thebakedalaskan/alcove-solutions \
   ./infra/bootstrap-gcp.sh
 ```
 
@@ -99,7 +99,7 @@ the web app, built for its API's origin with its Content-Security-Policy, and th
 
 ## GitHub configuration
 
-Use repository `thebakedalaskan/the-privacy-suite` and its isolated GitHub identity. In Settings ›
+Use repository `thebakedalaskan/alcove-solutions` and its isolated GitHub identity. In Settings ›
 Environments, create `production` and restrict deployments to `main`. Required reviewers pause every
 deployment, so leave that requirement off for automatic deployment after CI.
 
