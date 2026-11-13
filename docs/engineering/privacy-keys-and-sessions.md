@@ -40,7 +40,7 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | Key | How it's made | Where it lives |
 | --- | --- | --- |
 | `KMASTER` | Outside a TEE: 32 random bytes, base64url (43 characters), from the environment. Inside one: 32 random bytes made in the TEE the first time it starts on a database | `.env` locally. Inside the TEE, only in the VM's memory, and in `server_keys` row `master` as Cloud KMS wrapped it (the key `KMS_MASTER_KEY`, which only the identity attested builds are exchanged for can use). Inside the TEE it wraps every root key (`root_envelope_v2`) and seals the [server keys](#moving-to-confidential-computing); outside one it wraps them in `root_envelope`. The sign-in attempt, call pass, media token, TLS and ACME account keys derive from it: nothing they seal or sign is kept, so none has to outlive a master. What's kept under keys from the master a database started with (blind indexes, photo tokens) is under keys the server keys carry over |
-| Old master | The `KMASTER` a database's accounts were made under before the TEE | Read by the TEE at start from Secret Manager (`LEGACY_SECRETS`) through its attestation, and never through its environment; carried in the server keys until it's retired, but used only while the TEE is started with it, which its attestation shows (`LEGACY_SECRETS` is in its environment). Opens `owners.root_envelope`, to wrap each root again under `KMASTER`; while it's held, new accounts get a `root_envelope` under it too. Outside a TEE it's `KMASTER` itself |
+| Old master | The `KMASTER` a database's accounts were made under before the TEE | Read by the TEE at start from Secret Manager (`LEGACY_SECRETS`) through its attestation, and never through its environment; carried in the server keys until it's retired, but used only while the TEE is started with it, which its attestation shows (`LEGACY_SECRETS` is in its environment). Opens `owners.root_envelope`, to wrap each root again under `KMASTER`; while it's held, new accounts get a `root_envelope` under it too. Outside a TEE it's `KMASTER` itself. Production's was retired on 2026-11-13, and the secrets that held it and the old `KSERVICE` deleted |
 | Server keys key | `HKDF(KMASTER, "alcove/server-keys/v1")` | Derived at start; seals the `server-keys` record in `server_keys` |
 | Attested access token | Google's Security Token Service exchanges the launcher's attestation token for it, for the Workload Identity Federation provider `WIF_PROVIDER` | Inside the TEE, in memory, for up to an hour. The only credential Secret Manager and Cloud KMS take for the master, the old keys and the provider secrets |
 | TLS key | P-256, from `HKDF(KMASTER, "alcove/tls/v1")`, 48 bytes reduced mod n | Derived at start, in memory only: TLS ends with it inside the TEE ([the edge](system-architecture.md#the-edge)). Its certificate is public, in `tls_certificates`; its SPKI hash is a nonce of the attestation token |
@@ -1021,11 +1021,10 @@ loads.
   photos, files, and the hidden frame a file downloads in), `blob:` for a picture read into the page and for what's played from it, and the LiveKit host for calls (with `*.livekit.cloud`, where LiveKit Cloud's media servers are). Inline scripts run only by the SHA-256 of what the build produced (`apps/web/scripts/csp.mjs`
   writes the policy at deploy), and nothing may `eval` (the contract configures zod not to compile code at
   runtime). `Permissions-Policy` also opts out of the browser's ad-topics API.
-- **No analytics.** The app has no analytics, error-tracking or tag scripts. Cloudflare Pages inserts its
-  own Web Analytics beacon into pages when that's on for the project. Every page is served with
-  `Cache-Control: no-transform` (`apps/web/public/_headers`), which tells Cloudflare's edge not to rewrite
-  it, and the CSP blocks the beacon from loading if it's inserted anyway. Keep Web Analytics switched off
-  for the project in Cloudflare (Workers & Pages › alcove-web › Metrics).
+- **No analytics.** The app has no analytics, error-tracking or tag scripts, and nothing between the browser
+  and the TEE can add one: Alcove's names are DNS only, so Cloudflare's edge never sees a page, and TLS ends
+  inside the VM. Every page is still served with `Cache-Control: no-transform` (`apps/web/public/_headers`),
+  which asks any proxy not to rewrite it, and the CSP blocks any script it doesn't name.
 - **Diagnostics** go to Alcove's own API only (`POST /v1/telemetry`): warnings and errors with codes,
   request IDs, statuses and timings, scrubbed like every other log line ([Logging](logging-and-errors.md)).
 
@@ -1248,9 +1247,10 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 
 ## Moving to confidential computing
 
-On Cloud Run, `KMASTER` and `KSERVICE` come from Secret Manager, so whoever operates the service, Google
-Cloud included, could open any account. The API is built to move into a confidential VM (Google Cloud
-Confidential Space, on Intel TDX) and carry the accounts it holds into it, with no reset. Postgres and
+On Cloud Run, `KMASTER` and `KSERVICE` came from Secret Manager, so whoever operated the service, Google
+Cloud included, could open any account. On 2026-11-13 the API moved into a confidential VM (Google Cloud
+Confidential Space, on Intel TDX) and carried the accounts it held into it, with no reset: 28 accounts, none
+failed. The old keys were retired and deleted the same day. Postgres and
 the object store stay outside: they hold only sealed records, opaque IDs and timing
 ([What is still visible](#what-is-still-visible)). The keys, and every plaintext, exist only in the VM.
 Calls' media never reaches the VM at all: it's end-to-end encrypted between the browsers in the call.
@@ -1439,8 +1439,9 @@ Moving, in order:
    every account has moved (`remaining: 0`) and the switch is confirmed, deploy with `RETIRE_LEGACY_KMASTER=true` and
    without `LEGACY_SECRETS`: it refuses while any account's root is under the old master alone, or in a
    `root_envelope_v2` only the old master stands behind, and otherwise seals the server keys again without it, for good.
-   Then delete `alcove-kmaster` and `alcove-kservice` from Secret Manager; a later migration drops `owners.root_envelope`.
-   Nothing is encrypted again: each account's root key, the index and photo token keys and `KSERVICE` are the ones made
+   Then delete `alcove-kmaster` and `alcove-kservice` from Secret Manager. Production did all of this on 2026-11-13.
+   Retiring leaves each account's `root_envelope` where it was, and the column stays: outside a TEE, root keys are
+   wrapped there alone. Nothing is encrypted again: each account's root key, the index and photo token keys and `KSERVICE` are the ones made
    before the TEE, so whoever kept a copy of the old master and of the database can still open the accounts made before
    it ([Production requirements](#production-requirements)).
    What doesn't carry over: everything a browser holds that was sealed or signed under the old master stops opening when
@@ -1470,7 +1471,7 @@ Moving, in order:
 | Encrypted manifest binding all chunks; rollback detection | Not implemented: a database writer could roll a head back or drop trailing pieces | To do (version-bound associated data and an encrypted piece list) |
 | Plan accounts, AI meters and top-ups keyed by a random account ID plus `owner_tag` | Keyed by `owner_id` | To do before payments |
 | Guests (#17): joining a call grants no notes, and a shareable link alone is not authorization to read owner content | Notes can be shared by a link (#259), which reads nothing by itself: opened by a signed-in account the notes may go to, it gives that account the notes as shared by its maker, listed in who has them, for seven days or until revoked. No URL reads a note | The product owner chose this over a public link anyone could read (which would need an unauthenticated way to open the organizer's keys) and over notes for guests only through the call's own sign-in |
-| Provider secrets never in environment variables | Outside a TEE, `KMASTER`, `KSERVICE`, the NEAR AI key and the Google client secret are environment variables (Secret Manager on Cloud Run). With `TEE=confidential-space` the master is made in the TEE and kept wrapped by Cloud KMS for attested builds only, the index key and `KSERVICE` come from the server keys sealed under it, and both keys are refused from the environment; the provider secrets (`SECRETS`) and the old keys (`LEGACY_SECRETS`) are read at start from Secret Manager as the attested identity, never through the environment | Accepted locally. In production the master exists unwrapped only in the attested VM, and provider secrets aren't environment variables there, since Confidential Space puts the environment in its attestation. |
+| Provider secrets never in environment variables | Outside a TEE, `KMASTER`, `KSERVICE`, the NEAR AI key and the Google client secret are environment variables (`.env` locally). With `TEE=confidential-space` the master is made in the TEE and kept wrapped by Cloud KMS for attested builds only, the index key and `KSERVICE` come from the server keys sealed under it, and both keys are refused from the environment; the provider secrets (`SECRETS`) and, while a database's accounts are carried over, the old keys (`LEGACY_SECRETS`) are read at start from Secret Manager as the attested identity, never through the environment | Accepted locally. In production the master exists unwrapped only in the attested VM, and provider secrets aren't environment variables there, since Confidential Space puts the environment in its attestation. |
 
 ## Production requirements
 
@@ -1499,8 +1500,8 @@ Moving, in order:
    sends its room's speech as clips (left: an attested notes participant, so no browser sends audio in the clear to
    the API).
 5. **Key rotation:** the master moved once, into the TEE: every root key wrapped again under it (`keyVersion` 2),
-   the index and photo token keys and `Kservice` carried over sealed, and the old master retired once every account has
-   moved ([Moving to confidential computing](#moving-to-confidential-computing)). Left: the index key (recomputing every
+   the index and photo token keys and `Kservice` carried over sealed, and the old master retired once every account had
+   moved, on 2026-11-13 ([Moving to confidential computing](#moving-to-confidential-computing)). Left: the index key (recomputing every
    blind index, which needs the subjects and emails the indexes hide), the photo token key (the photos' URLs notes keep),
    `Kowner` (encrypting again what it seals: until then, whoever kept the old master and a copy of the database can open
    the accounts made before the TEE), and `Kservice`.

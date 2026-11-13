@@ -151,5 +151,5 @@ again. Deleting rows can only ever take a feature away from people; the name in 
   would be a new way of answering "which groups is this person in" in `feature-flags.ts`.
 
 Inside the confidential VM the key addresses are hashed with exists only there, so nothing outside the API can switch a flag
-for a person or a group: the operator route does it inside the VM. The Cloud Run job `alcove-feature-flags` ran the CLI with
-`KMASTER` bound, which outside the VM nothing has once the old master is retired; it goes with the move into the VM.
+for a person or a group: the operator route does it inside the VM. The Cloud Run job `alcove-feature-flags`, which ran the CLI
+with the old `KMASTER` bound, was deleted on 2026-11-13 with that master, which nothing outside the VM has any more.
