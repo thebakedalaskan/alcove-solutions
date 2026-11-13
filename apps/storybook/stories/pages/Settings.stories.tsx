@@ -7,7 +7,7 @@ import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
-import { withTopUp } from '../../src/world/payments';
+import { addToBalance, boughtFromBalance, freshEntryId, TEAM_SIX_YEAR, withTopUp } from '../../src/world/payments';
 import { withDriveJustConnected, withDriveReconnect } from '../../src/world/drive-exports';
 import type { World } from '../../src/world';
 import { adminWithoutLicense, checkFails, keptHere, mayaWaits, noCalendar, notAttested, paysForLaunch, replacedPro, sharedDemo, troubled, unencryptedDefault } from './changes';
@@ -371,12 +371,12 @@ export const RefundedRenewing = page('/settings#plan', 'plan-pro', {
 export const AReceipt = page('/settings#plan', 'plan-pro', { play: pressing(/^Receipt for Pro, 3 months/, 'Press Receipt beside Pro, 3 months') });
 export const AReceiptNight = night(AReceipt);
 export const AReceiptPhone = phone(AReceipt);
-/** Pro ends in 3 days and won't renew: the plan says when, warm, and Extend is the one filled button. */
+/** Pro ends in 6 days and won't renew: the plan says when, warm, and Extend is the one filled button. */
 export const ProEnding = page('/settings#plan', 'plan-pro-ending');
 export const ProEndingNight = night(ProEnding);
 export const ProEndingPhone = phone(ProEnding);
 /**
- * Pro ends in 3 days though renewing is on with the money for a month: a month costs $24 now, more than the last did, so it
+ * Pro ends in 6 days though renewing is on with the money for a month: a month costs $24 now, more than the last did, so it
  * won't renew by itself. The plan says when, warm, and Renew from balance says why.
  */
 export const ProEndingPriceRose = page('/settings#plan', 'plan-pro-ending-price');
@@ -384,7 +384,7 @@ export const ProEndingPriceRoseNight = night(ProEndingPriceRose);
 /** Pro extended by a year with a payment yesterday: until a year on, the twelve months to refund, and the payment with its receipt. */
 export const ProExtended = page('/settings#plan', 'plan-pro-extended');
 export const ProExtendedNight = night(ProExtended);
-/** A month was bought from the balance 3 days before Pro ended: said at the top until it's dismissed. */
+/** A month was bought from the balance a week before Pro was to end: said at the top until it's dismissed. */
 export const ProRenewed = page('/settings#plan', 'plan-pro-renewed');
 export const ProRenewedNight = night(ProRenewed);
 /** Pro ended: back on Free, said at the top until it's dismissed, Get Pro again, and over Free's storage, so the grace is said too. */
@@ -413,6 +413,14 @@ export const TeamAdmin = page('/settings#plan', 'team-admin');
 export const TeamAdminNight = night(TeamAdmin);
 export const TeamAdminPhone = phone(TeamAdmin);
 export const TeamAdminPhoneNight = phoneNight(TeamAdmin);
+/**
+ * Six more licenses bought for a year with 2,304 USDC: "Team, 6 licenses for a year" in the payments, and the nine nobody has
+ * taken refund what each cost ($384 for a year's, $40 for a month's).
+ */
+export const TeamAdminBoughtForAYear = page('/settings#plan', 'team-admin', {
+  beforeEach: changing((w) => { addToBalance(w, 2_304_000_000, '2304'); boughtFromBalance(w, TEAM_SIX_YEAR, freshEntryId(w)); })
+});
+export const TeamAdminBoughtForAYearNight = night(TeamAdminBoughtForAYear);
 /** Two left: said at the top until it's dismissed, and in warm in the side panel's Team row, with Buy. */
 export const LicensesLow = page('/settings#plan', 'team-admin-low');
 export const LicensesLowNight = night(LicensesLow);

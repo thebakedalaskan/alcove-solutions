@@ -5,6 +5,7 @@
 import { errorMessage, type Person, type Team } from '@alcove/api';
 import { Button, GhostArch, Icon, PickList, Popover, buttonClass, cn, useToast, type ButtonVariant, type PickRow } from '@alcove/ui';
 import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useTeamAtThirdInvite } from '~/features/plans/teamDoor';
 import { log } from '~/lib/log';
 import { byEmail, callName, fold, isEmail, sameEmail, someNames, typedIn } from '~/lib/people';
 import { useInviteTeam } from '~/lib/queries';
@@ -50,12 +51,20 @@ export function useCopyInvite() {
 
 const names = (people: Person[]) => someNames(people, 2);
 
-/** Marks people on your team invited (as their invitation opens in your email) and says so, or why not. */
+/**
+ * Marks people on your team invited (as their invitation opens in your email) and says so, or why not. An invite that makes
+ * three of you, while you're on no team, offers Team beside it, once (features/plans/teamDoor.ts).
+ */
 function useMarkInvited() {
   const invite = useInviteTeam();
   const toast = useToast();
+  const third = useTeamAtThirdInvite();
   return (people: Person[], others: Person[] = []) => {
-    const opened = () => toast(`Your email opens with an invitation to ${names([...people, ...others])}.`, { icon: 'mail' });
+    const offer = third(people.length + others.length);
+    const opened = () => {
+      toast(`Your email opens with an invitation to ${names([...people, ...others])}.`, { icon: 'mail' });
+      offer();
+    };
     if (!people.length) { opened(); return; }
     void invite.mutateAsync(people.map((p) => p.email)).then(opened, (e: unknown) => toast(errorMessage(e), { icon: 'x' }));
   };

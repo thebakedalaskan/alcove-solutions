@@ -247,8 +247,8 @@ The canvas's Plan group, plus what it missed:
    Pro** (Free) or **Make room** (Drive); a file over the plan's size says its limit and offers nothing (Pro's is the same today).
 7. **Pro ending:** the notices and the side panel's ending row (above), and the browser notification phase 2 sends.
 
-Dropped for now, because the backend doesn't limit them: the second shared workspace, and Team at the third invite (until
-phase 3).
+Dropped for now, because the backend doesn't limit it: the second shared workspace. Team at the third invite came with
+Team (user-flows 16.21).
 
 ## Storybook
 

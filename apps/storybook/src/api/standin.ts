@@ -1063,7 +1063,7 @@ export const standIn: AlcoveApi = {
     remove: (memberId: ID) => answer((w) => teamsApi.remove(w, memberId)),
     leave: () => answer(teamsApi.leave),
     delete: () => answer(teamsApi.delete),
-    buyLicenses: (count: number, microUsdPerLicense: number) => answer((w) => teamsApi.buyLicenses(w, count, microUsdPerLicense)),
+    buyLicenses: (count: number, microUsdPerLicense: number, periods?: number) => answer((w) => teamsApi.buyLicenses(w, count, microUsdPerLicense, periods ?? 1)),
     refundLicenses: () => answer(teamsApi.refundLicenses),
     setAutoPurchase: (on: boolean) => answer((w) => teamsApi.setAutoPurchase(w, on)),
     notes: () => answer(teamsApi.notes)

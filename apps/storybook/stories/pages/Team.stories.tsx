@@ -1,8 +1,10 @@
 /* Team: your company standing on the horizon, your groups and the people not on Alcove yet on the water (user-flows 10). */
 import type { Meta } from '@storybook/react-vite';
+import { screen, within } from 'storybook/test';
 import { setOnline } from '../../src/browser';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { keepMail, SOON } from '../journeys/play';
 import { troubled } from './changes';
 
 const meta = { title: 'Pages/Team', ...pages } satisfies Meta<PageArgs>;
@@ -46,6 +48,25 @@ export const InvitePeople = page('/team', 'busy', {
   play: async ({ canvas, userEvent, step }) => {
     await step('Press Invite people', async () => {
       await userEvent.click(await canvas.findByRole('button', { name: 'Invite people' }));
+    });
+  }
+});
+/**
+ * On no team, the invite that makes three of you (Art, Priya and Diego): it goes as ever, and Team is offered once beside it,
+ * with See Team, which opens checkout on Team (user-flows 16.21; the canvas's Doors board, door 8).
+ */
+export const TheThirdInvite = page('/team', 'first-day', {
+  beforeEach: keepMail,
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Press Invite people, and tick Priya and Diego: with you, that makes three', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'Invite people' }, SOON));
+      const invite = await screen.findByRole('dialog', { name: 'Invite people' }, SOON);
+      await userEvent.click(await within(invite).findByRole('option', { name: /^Priya Raman/ }, SOON));
+      await userEvent.click(await within(invite).findByRole('option', { name: /^Diego Ruiz/ }, SOON));
+    });
+    await step('Invite 2 opens your email to both, and Team is offered beside it, once', async () => {
+      await userEvent.click(within(await screen.findByRole('dialog', { name: 'Invite people' })).getByRole('button', { name: 'Invite 2' }));
+      await screen.findByText(/^That makes 3 of you\./, {}, SOON);
     });
   }
 });

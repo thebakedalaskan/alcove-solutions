@@ -2,8 +2,9 @@
  * Teams (docs: Plans and usage › Team): one team for each account, made by its admin, who buys licenses for it from their
  * own balance, or with a payment that buys them once it's added (deposits.ts). A member without a live license takes one
  * when they visit (they sign in, or the app says it's being used:
- * `POST /v1/session/visit`); none is ever taken by a read. A live license puts its member on Team for `plan.period_seconds`
- * (features/billing/plans.ts › planNow), replacing any Pro they had, with storage from the team's pool:
+ * `POST /v1/session/visit`); none is ever taken by a read. A live license puts its member on Team for the periods it was
+ * bought for, `plan.period_seconds` each (one, or a year's 12; features/billing/plans.ts › planNow), replacing any Pro they
+ * had, with storage from the team's pool:
  * `plan.team.storage_bytes` for each live license, counting what every licensed member stores.
  *
  * A team is an owner of its own, like a workspace: its key seals its name and who's on it. What it bought (its unconsumed
@@ -35,13 +36,18 @@ type Service = Pick<Deps, 'cfg' | 'pool'>;
 
 /** What a team bought and what its admin has been told, sealed under Kservice's accounting key. */
 const Billing = z.object({
-  /** Licenses bought and not yet taken, oldest first, with what each cost. */
-  licenses: z.array(z.object({ id: z.string(), microUsd: z.number().int() })),
+  /**
+   * Licenses bought and not yet taken, oldest first, with what each cost a period (`microUsd`) and how many periods it's
+   * for (`periods`: 12 for a license for a year), so it cost `periods` × `microUsd`. One kept without `periods` (bought
+   * before licenses for a year) is for one period, which is what it was.
+   */
+  licenses: z.array(z.object({ id: z.string(), microUsd: z.number().int(), periods: z.number().int().default(1) })),
   /** Whether a license is bought from the admin's balance when a member needs one and none is left. */
   autoPurchase: z.boolean(),
   /**
-   * What a license last cost the team: the last bought, by its admin or by auto-purchase; before any was, the price when
-   * auto-purchase was turned on (null: neither yet). Auto-purchase never pays more (D3): a higher price is seen before
+   * What a license last cost the team: the last bought, by its admin or by auto-purchase (bought for a year, a license's
+   * price for a period then, since auto-purchase buys for a period); before any was, the price when auto-purchase was
+   * turned on (null: neither yet). Auto-purchase never pays more (D3): a higher price is seen before
    * it's paid, as the admin buys at it themselves. A record kept without it reads as null, and buys nothing by itself.
    */
   lastMicroUsd: z.number().int().nullable().default(null),
@@ -57,6 +63,8 @@ const Billing = z.object({
 });
 type Billing = z.infer<typeof Billing>;
 const fresh = (): Billing => ({ licenses: [], autoPurchase: false, lastMicroUsd: null, low: false, none: false, pool: { bytes: 0, grace: null } });
+/** What unconsumed licenses cost, which is what refunding them gives back: each its price a period for each of its periods. */
+const costOf = (licenses: Billing['licenses']) => licenses.reduce((n, x) => n + x.periods * x.microUsd, 0);
 
 const billingKey = (d: Pick<Deps, 'cfg'>) => serviceKey(unb64u(d.cfg.KSERVICE, 32), 'accounting');
 const billingHeader = (t: Pick<TeamRow, 'owner_id' | 'team_id'>) => ({ v: 1 as const, kind: 'team-billing', ownerId: t.owner_id, teamId: t.team_id, keyVersion: '1' });
@@ -185,9 +193,10 @@ async function asAdmin(c: Db, ownerId: string): Promise<{ m: MemberRow; t: TeamR
 
 /**
  * Someone is using Alcove (a sign-in, or the app loading or coming back after a while): a member of a team without a live
- * license takes one. One that's unconsumed; or, with auto-purchase on, the price no higher than a license last cost the
- * team and the admin's balance enough, one bought then; otherwise none, and they stay on their own plan, told to ask their
- * admin, who's told none are left. Taking one replaces any Pro the member had, and tells the admin when fewer than
+ * license takes one. One that's unconsumed, the oldest bought, live for the periods it was bought for (a year's, for a
+ * license for a year); or, with auto-purchase on, the price no higher than a license last cost the team and the admin's
+ * balance enough, one for a period bought then; otherwise none, and they stay on their own plan, told to ask their admin,
+ * who's told none are left. Taking one replaces any Pro the member had, and tells the admin when fewer than
  * `team.low_licenses` are left. Nothing happens for anyone on no team, or with a live license.
  */
 export async function visit(d: Service, ownerId: string): Promise<void> {
@@ -232,7 +241,9 @@ export async function visit(d: Service, ownerId: string): Promise<void> {
       tlog.info('team license wanted, none left', { ...ctx, buying: b.autoPurchase, why });
       return;
     }
-    const until = now + l.get('plan.period_seconds') * 1000;
+    // Live for the periods it was bought for: one, or a year's for a license for a year. One auto-purchase buys is for one.
+    const periods = first?.periods ?? 1;
+    const until = now + periods * l.get('plan.period_seconds') * 1000;
     await exec(c, 'UPDATE team_members SET licensed_from = $2, licensed_until = $3, wanted_at = NULL WHERE member_id = $1', [m.member_id, new Date(now), new Date(until)]);
     let refunded: number | null = null;
     await changePlan(d, c, ownerId, (a) => {
@@ -246,7 +257,7 @@ export async function visit(d: Service, ownerId: string): Promise<void> {
       b = { ...b, low: true };
     }
     await settle(d, c, t, b, l, now);
-    tlog.info('team license taken', { ...ctx, bought, left, proReplaced: refunded !== null, monthsRefunded: refunded ?? 0 });
+    tlog.info('team license taken', { ...ctx, bought, periods, left, proReplaced: refunded !== null, monthsRefunded: refunded ?? 0 });
   });
 }
 
@@ -434,7 +445,7 @@ export async function deleteTeam(o: Owner): Promise<void> {
     const b = openBilling(o, t);
     const now = Date.now();
     const l = await limitsNow(o, c);
-    const microUsd = b.licenses.reduce((n, x) => n + x.microUsd, 0);
+    const microUsd = costOf(b.licenses);
     await changePlan(o, c, o.ownerId, (a) => {
       const refunded = b.licenses.length ? withEntry(a, microUsd, `Team licenses refunded, ${b.licenses.length}`) : a;
       return isLive(m, now) ? leftTeam(refunded, l, now) : refunded;
@@ -467,30 +478,40 @@ export async function licensesBought(d: Service, c: Db, t: TeamRow | null, owner
   const r = await purchase(d, c, ownerId, buys, { admin: t !== null });
   if (!r.bought || !t) return r;
   const b = openBilling(d, t);
-  const licenses = [...b.licenses, ...Array.from({ length: buys.count }, () => ({ id: id128(), microUsd: buys.microUsdPerLicense }))];
-  const low = (await limitsNow(d, c)).get('team.low_licenses');
-  await saveBilling(d, c, t, { ...b, licenses, none: false, low: b.low && licenses.length < low, lastMicroUsd: buys.microUsdPerLicense });
-  tlog.info('team licenses bought', { ownerId, teamId: t.team_id, count: buys.count });
+  const { count, microUsdPerLicense, periods } = buys;
+  const licenses = [...b.licenses, ...Array.from({ length: count }, () => ({ id: id128(), microUsd: microUsdPerLicense, periods }))];
+  const l = await limitsNow(d, c);
+  // Auto-purchase buys a license for one period, so it goes by what one cost: bought for a year at its lower price, by a
+  // license's price for a period as it was then (as Pro's renewing goes by a month's price after a year at the lower one).
+  const lastMicroUsd = periods === 1 ? microUsdPerLicense : l.get('plan.team.price_micro_usd');
+  await saveBilling(d, c, t, { ...b, licenses, none: false, low: b.low && licenses.length < l.get('team.low_licenses'), lastMicroUsd });
+  tlog.info('team licenses bought', { ownerId, teamId: t.team_id, count, periods });
   return r;
 }
 
-/** Admin only: buys `count` licenses from their balance at `microUsdPerLicense`, the price they were shown. */
-export async function buyLicenses(o: Owner, count: number, microUsdPerLicense: number): Promise<MyTeam> {
+/**
+ * Admin only: buys `count` licenses from their balance at `microUsdPerLicense` a period, the price they were shown, each for
+ * `periods` periods: one at a license's price, or a year's at the yearly price.
+ */
+export async function buyLicenses(o: Owner, count: number, microUsdPerLicense: number, periods: number): Promise<MyTeam> {
   await tx(o.pool, async (c) => {
     const { t } = await asAdmin(c, o.ownerId);
-    const r = await licensesBought(o, c, t, o.ownerId, { kind: 'licenses', count, microUsdPerLicense });
-    if (!r.bought) throw refusedError(r.refusal, { ownerId: o.ownerId, teamId: t.team_id, kind: 'licenses', count });
+    const r = await licensesBought(o, c, t, o.ownerId, { kind: 'licenses', count, microUsdPerLicense, periods });
+    if (!r.bought) throw refusedError(r.refusal, { ownerId: o.ownerId, teamId: t.team_id, kind: 'licenses', count, periods });
   });
   return requireTeam(o, o.ownerId);
 }
 
-/** Admin only: every unconsumed license back to their balance, at what was paid for it. One someone has taken isn't refunded. */
+/**
+ * Admin only: every unconsumed license back to their balance, at what was paid for it: its price a period for each of its
+ * periods, so one for a year gives back the whole year. One someone has taken isn't refunded.
+ */
 export async function refundLicenses(o: Owner): Promise<MyTeam> {
   await tx(o.pool, async (c) => {
     const { t } = await asAdmin(c, o.ownerId);
     const b = openBilling(o, t);
     if (!b.licenses.length) throw conflict('There’s no license to refund that nobody has taken. A license someone has taken isn’t refunded.', { ownerId: o.ownerId, teamId: t.team_id });
-    const microUsd = b.licenses.reduce((n, x) => n + x.microUsd, 0);
+    const microUsd = costOf(b.licenses);
     await changePlan(o, c, o.ownerId, (a) => withEntry(a, microUsd, `Team licenses refunded, ${b.licenses.length}`));
     await saveBilling(o, c, t, { ...b, licenses: [] });
     tlog.info('team licenses refunded', { ownerId: o.ownerId, teamId: t.team_id, count: b.licenses.length, microUsd });
@@ -541,7 +562,7 @@ export async function mine(d: Service, ownerId: string): Promise<MyTeam | null> 
     return {
       id: t.team_id, name: nameIn(team, t), role: me.role, licensed: isLive(me, now), members,
       storage: { usedBytes: pool.usedBytes, limitBytes: pool.heldBytes },
-      licenses: me.role === 'admin' ? { unconsumed: b.licenses.length, refundableMicroUsd: b.licenses.reduce((n, x) => n + x.microUsd, 0), autoPurchase: b.autoPurchase } : null
+      licenses: me.role === 'admin' ? { unconsumed: b.licenses.length, refundableMicroUsd: costOf(b.licenses), autoPurchase: b.autoPurchase } : null
     };
   } finally { close(team); }
 }

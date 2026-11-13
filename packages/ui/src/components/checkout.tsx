@@ -6,6 +6,9 @@
  * buying is on the right, under a small evening of its own whose sun rises as the payment lands. On a phone the window
  * fills the screen, with what you're buying as one line at the top.
  *
+ * Team's licenses can be bought a period at a time or for a year, a choice over how many (Monthly / Yearly, the kit's
+ * Segmented, as Plans' switch says it).
+ *
  * Every part is stateless: plain data in and handlers out, the words as the app puts them. Only a copy button keeps
  * "Copied" for a moment, and the amount that arrived counts up while you watch.
  */
@@ -17,7 +20,7 @@ import { Icon, type IconName } from './icon';
 import { CheckDraw, CountUp, Dots } from './motion';
 import { Modal, ThemeScope } from './overlay';
 import { Faces, type AvatarPerson } from './people';
-import { Button, CopyField, IconButton, buttonClass } from './primitives';
+import { Button, CopyField, IconButton, Segmented, buttonClass } from './primitives';
 import { QrCode } from './qr';
 
 /** Which small evening a purchase is drawn as: Pro's sunset, Team's with its people, more notes' last light. */
@@ -186,25 +189,42 @@ export function MonthsPicker({ label = 'How long', options, value, onChange, off
 /** A number of Team's licenses: "6 licenses", "$240", and what that number is for: "For the 6 of you", "Room for 4 more". */
 export interface LicensesOption { count: number; total: string; sub: string }
 
+/** How long each license runs: a period at a time, or a year. */
+export type LicensesTermChoice = 'month' | 'year';
+/** For how long, over how many: the term chosen, and what a year saves (`off`, "20% off"), said beside Yearly. */
+export interface LicensesTerm { value: LicensesTermChoice; onChange: (v: LicensesTermChoice) => void; off?: string | null | undefined; label?: string | undefined }
+
 /**
  * How many licenses: a card for each number, each with its total and what it's for, under the price of one (`hint`, "$40
- * each, one person for 30 days"). Another number opens a stepper from 1 to `other.max` (the most one purchase buys), with
- * what it costs; while it's open, no card is ticked, and picking a card is the way back to them.
+ * each, one person for 30 days", or "$384 each, one person for a year"). Another number opens a stepper from 1 to
+ * `other.max` (the most one purchase buys), with what it costs; while it's open, no card is ticked, and picking a card is
+ * the way back to them. With `term` (while a year is offered), How long comes first: Monthly, or Yearly with what it saves.
  */
-export function LicensesPicker({ label = 'How many licenses', hint, options, value, onChange, other, autoFocus }: {
+export function LicensesPicker({ label = 'How many licenses', hint, options, value, onChange, other, term, autoFocus }: {
   label?: string | undefined; hint?: string | undefined; options: LicensesOption[]; value: number; onChange: (count: number) => void;
   other: OtherAmount;
+  term?: LicensesTerm | undefined;
   /** Focus on the number chosen as it appears. */
   autoFocus?: boolean | undefined;
 }) {
   const cards = options.map((o): Card => ({ id: String(o.count), name: licensesWord(o.count), price: o.total, sub: o.sub }));
+  const long = term?.label ?? 'How long';
   return (
-    <div className="ck-sec">
-      <Cards label={label} hint={hint} cards={cards} value={other.open ? null : String(value)} onChange={(id) => onChange(Number(id))} autoFocus={autoFocus}
-        className="is-licenses" />
-      <Another other={other} value={value} link="Another number" range={`Any number from 1 to ${other.max}.`} word={licensesWord}
-        group="Licenses" fewer="One license fewer" more="One more license" />
-    </div>
+    <>
+      {term && (
+        <div className="ck-sec">
+          <p className="ck-q"><span>{long}</span></p>
+          <Segmented<LicensesTermChoice> label={long} value={term.value} onChange={term.onChange}
+            options={[{ value: 'month', label: 'Monthly' }, { value: 'year', label: term.off ? `Yearly · ${term.off}` : 'Yearly' }]} />
+        </div>
+      )}
+      <div className="ck-sec">
+        <Cards label={label} hint={hint} cards={cards} value={other.open ? null : String(value)} onChange={(id) => onChange(Number(id))} autoFocus={autoFocus}
+          className="is-licenses" />
+        <Another other={other} value={value} link="Another number" range={`Any number from 1 to ${other.max}.`} word={licensesWord}
+          group="Licenses" fewer="One license fewer" more="One more license" />
+      </div>
+    </>
   );
 }
 

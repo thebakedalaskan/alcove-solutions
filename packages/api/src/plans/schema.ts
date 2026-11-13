@@ -11,6 +11,8 @@ export type PlanKind = z.infer<typeof PlanKindSchema>;
 export const MicroUsdSchema = z.number().int();
 /** The most one top-up can add: 8,000 USD. */
 export const MAX_TOP_UP_MICRO_USD = 8_000_000_000;
+/** The most periods one team license can be bought for (a year's is 12). */
+export const MAX_LICENSE_PERIODS = 120;
 
 /** One change to the balance: money added, or spent on a plan. */
 export const BalanceEntrySchema = z.object({ id: z.string(), at: ISODateSchema, label: z.string(), microUsd: MicroUsdSchema });
@@ -23,8 +25,9 @@ export type ProMonth = z.infer<typeof ProMonthSchema>;
 /**
  * Something about the plan its owner is told, in the app and, if they've turned it on, from the browser
  * (`NotificationPrefs.plan`), until they dismiss it:
- * - `pro-ending`: Pro ends at `until`, a few days from now, and won't renew: renewing is off, the balance is short, or a month
- *   costs more now than when the last was bought, which renewing never pays without its owner buying at it first.
+ * - `pro-ending`: Pro ends at `until`, a week from now (told again a day before), and won't renew: renewing is off, the
+ *   balance is short, or a month costs more now than when the last was bought, which renewing never pays without its owner
+ *   buying at it first.
  * - `pro-renewed`: a month was bought from the balance, so Pro now runs to `until`.
  * - `pro-ended`: Pro ended at `until`; the account is on Free.
  * - `licenses-low` (a team's admin): `count` licenses are left unconsumed, fewer than the team's low mark.
@@ -131,9 +134,15 @@ export const PlanOffersSchema = z.object({
   hours: z.object({ minutes: z.number().int().positive(), microUsd: MicroUsdSchema, maxPacks: z.number().int().positive() }).nullable(),
   /** Team: what each licensed person gets (storage is pooled: this much for each live license). */
   team: PlanBringsSchema.extend({
+    /** A license's price: one person for one period. */
     microUsdPerLicense: MicroUsdSchema,
     /** The most licenses one purchase can buy. */
-    maxLicenses: z.number().int().positive()
+    maxLicenses: z.number().int().positive(),
+    /**
+     * A license for a year: one person for `periods` periods (12), at a lower price a period (`microUsdPerLicense`), so it
+     * costs `periods` × that. Null when there's none.
+     */
+    yearly: z.object({ periods: z.number().int().min(2).max(MAX_LICENSE_PERIODS), microUsdPerLicense: MicroUsdSchema }).nullable()
   })
 });
 export type PlanOffers = z.infer<typeof PlanOffersSchema>;
@@ -151,21 +160,25 @@ export const BuyHoursBodySchema = z.object({ packs: z.number().int().min(1).max(
 export type BuyHoursBody = z.infer<typeof BuyHoursBodySchema>;
 /**
  * What a purchase buys, from the balance or once a payment is added, as it was offered when its buyer was shown it: months of
- * Pro at a month's price, packs of more notes at a pack's price and size, or licenses for its buyer's team at a license's price.
+ * Pro at a month's price, packs of more notes at a pack's price and size, or licenses for its buyer's team at a license's price
+ * a period, each for `periods` periods: 1 at a license's price, or a year's (`PlanOffers.team.yearly.periods`) at its lower one.
  */
 export const PurchaseSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('pro'), months: z.number().int().min(1).max(1000), microUsdPerMonth: MicroUsdSchema.min(0) }),
   z.object({ kind: z.literal('hours'), packs: z.number().int().min(1).max(1000), microUsdPerPack: MicroUsdSchema.min(0), minutesPerPack: z.number().int().min(1) }),
-  /** Licenses for the team its buyer is the admin of, at the price they were shown for one (docs: Plans and usage › Team). */
-  z.object({ kind: z.literal('licenses'), count: z.number().int().min(1).max(100_000), microUsdPerLicense: MicroUsdSchema.min(0) })
+  /**
+   * Licenses for the team its buyer is the admin of, at the price a period they were shown for one, each for `periods`
+   * periods (docs: Plans and usage › Team). Without `periods` (a payment opened before licenses for a year), one period.
+   */
+  z.object({ kind: z.literal('licenses'), count: z.number().int().min(1).max(100_000), microUsdPerLicense: MicroUsdSchema.min(0), periods: z.number().int().min(1).max(MAX_LICENSE_PERIODS).default(1) })
 ]);
 export type Purchase = z.infer<typeof PurchaseSchema>;
 export const RenewBodySchema = z.object({ renew: z.boolean() });
 /**
- * What the Plans page opens checkout on as it opens (`/plans?checkout=pro`): Pro, or more notes for this period. The welcome
- * page's Get Pro lands there once signed in.
+ * What the Plans page opens checkout on as it opens (`/plans?checkout=pro`): Pro, more notes for this period, or Team. The
+ * welcome page's Get Pro and Start a team land there once signed in.
  */
-export const CheckoutParamSchema = z.enum(['pro', 'hours']);
+export const CheckoutParamSchema = z.enum(['pro', 'hours', 'team']);
 export type CheckoutParam = z.infer<typeof CheckoutParamSchema>;
 
 /* ---------- adding money ---------- */
