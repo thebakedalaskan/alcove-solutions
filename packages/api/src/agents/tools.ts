@@ -44,4 +44,10 @@ export const AgentNextCallSchema = AgentMeetingIdSchema.extend({ operationId: Ag
 export const AgentStartCallSchema = z.object({ operationId: AgentOperationIdSchema, input: InstantCallInputSchema.extend({ title: z.string().trim().min(1).max(160).optional(), guests: z.array(z.string().trim().max(254)).max(300).optional() }).default({}) });
 export const AgentPeopleSchema = AgentPageSchema.extend({ query: PeopleSearchBodySchema.shape.query });
 export const AgentAvailabilitySchema = BusyBodySchema;
-export const AgentWriteResultSchema = z.object({ ok: z.literal(true), noteId: AgentResourceIdSchema.optional(), meetingId: AgentResourceIdSchema.optional(), entryId: AgentResourceIdSchema.optional(), url: z.url().optional() });
+/** A note's entry, by the ID the note gives it. */
+const EntryIdSchema = z.string().min(1).max(64);
+/** What a write hands back: an acknowledgment, and the IDs of what it made or changed, so it can be changed next without reading. */
+export const AgentWriteResultSchema = z.object({
+  ok: z.literal(true), noteId: AgentResourceIdSchema.optional(), meetingId: AgentResourceIdSchema.optional(), entryId: AgentResourceIdSchema.optional(),
+  decisionId: EntryIdSchema.optional(), followUpId: EntryIdSchema.optional(), questionId: EntryIdSchema.optional(), url: z.url().optional()
+});

@@ -74,6 +74,17 @@ function noteForAgents(n: Note) {
     rooms: rooms.map(({ actions: followUps, suggestions: suggestedFollowUps, ...room }) => ({ ...room, followUps, suggestedFollowUps }))
   };
 }
+/** What a note and each of its breakout rooms list: its decisions, open questions and follow-ups (the checklist). */
+interface Entries { decisions: readonly { id: string; text: string }[]; questions: readonly { id: string; text: string }[]; actions: readonly { id: string; text: string }[] }
+/**
+ * The ID of the entry with these words in the part of the note it went in (the call's, or a breakout room's): the one adding
+ * it made, or the one already there, since the same words again add nothing. Handed back so an agent can change what it
+ * added without reading the note, which it may not be allowed to.
+ */
+function idOf(n: Note, room: string | undefined, list: (part: Entries) => Entries[keyof Entries], text: string): string | undefined {
+  const part: Entries | undefined = room === undefined ? n : n.rooms.find((r) => r.id === room);
+  return part ? list(part).find((x) => x.text === text)?.id : undefined;
+}
 /** A note as list_notes finds it, its follow-ups counted under that name. */
 function foundForAgents(n: NoteFound) {
   const { openActions, totalActions, ...rest } = n;
@@ -181,16 +192,25 @@ export function buildServer(d: Deps, principal: AgentPrincipal, pending: Set<Pro
     const personalNotes = await personal.read(await personal.ofNote(o, q.noteId));
     return { noteId: q.noteId, ...page(personalNotes.entries, q) };
   });
-  register('propose_decision', 'notes:write', 'Propose a decision for a note’s Decided: something the call settled, in your own words. It stays proposed until it’s confirmed, by the organizer or by someone invited to the call who didn’t write its words. The same words again add nothing. Returns only an acknowledgment.', AgentDecisionProposalSchema, WRITE,
-    async q => { await notes.proposeDecision(o, q.noteId, q.proposal); return { ok: true, noteId: q.noteId }; });
+  register('propose_decision', 'notes:write', 'Propose a decision for a note’s Decided: something the call settled, in your own words. It stays proposed until it’s confirmed, by the organizer or by someone invited to the call who didn’t write its words. The same words again add nothing. Returns its decisionId, for update_decision.', AgentDecisionProposalSchema, WRITE,
+    async q => {
+      const decisionId = idOf(await notes.proposeDecision(o, q.noteId, q.proposal), q.proposal.room, (p) => p.decisions, q.proposal.text);
+      return { ok: true, noteId: q.noteId, ...(decisionId ? { decisionId } : {}) };
+    });
   register('update_decision', 'notes:write', 'Change one of a note’s decisions (Decided): confirm it, say it wasn’t decided, reopen it, say it no longer holds, reword it or dispute it, within your current permissions. Confirming needs seen: its words as you read them. Returns only an acknowledgment.', AgentDecisionPatchSchema, WRITE,
     async q => { await notes.updateDecision(o, q.noteId, q.decisionId, q.patch); return { ok: true, noteId: q.noteId }; });
-  register('add_follow_up', 'notes:write', 'Add a follow-up to a note’s Follow-ups: something someone will do. It’s on the checklist at once, as when you add one in Alcove. Who it’s for (owner, by email) must have the notes, and takes it on themselves; until then who and when are only suggestions. The same words again add nothing. Returns only an acknowledgment.', AgentFollowUpAddSchema, WRITE,
-    async q => { await notes.proposeAction(o, q.noteId, q.followUp); return { ok: true, noteId: q.noteId }; });
+  register('add_follow_up', 'notes:write', 'Add a follow-up to a note’s Follow-ups: something someone will do. It’s on the checklist at once, as when you add one in Alcove. Who it’s for (owner, by email) must have the notes, and takes it on themselves; until then who and when are only suggestions. The same words again add nothing. Returns its followUpId, for update_follow_up.', AgentFollowUpAddSchema, WRITE,
+    async q => {
+      const followUpId = idOf(await notes.proposeAction(o, q.noteId, q.followUp), q.followUp.room, (p) => p.actions, q.followUp.text);
+      return { ok: true, noteId: q.noteId, ...(followUpId ? { followUpId } : {}) };
+    });
   register('update_follow_up', 'notes:write', 'Change one of a note’s follow-ups (Follow-ups): tick it done, reword it, date it, give it to someone who has the notes or to nobody, or take it on when it’s yours, within your current permissions. Taking it on, or giving it to yourself, needs seen: its words and due date as you read them. Returns only an acknowledgment.', AgentFollowUpPatchSchema, WRITE,
     async q => { await notes.updateAction(o, q.noteId, q.followUpId, q.patch); return { ok: true, noteId: q.noteId }; });
-  register('add_question', 'notes:write', 'Add an open question to a note’s Still open: something the call asked and didn’t settle. Anyone with the notes can say it was answered, with update_question. The same words again add nothing. Returns only an acknowledgment.', AgentQuestionAddSchema, WRITE,
-    async q => { await notes.addQuestion(o, q.noteId, q.question); return { ok: true, noteId: q.noteId }; });
+  register('add_question', 'notes:write', 'Add an open question to a note’s Still open: something the call asked and didn’t settle. Anyone with the notes can say it was answered, with update_question. The same words again add nothing. Returns its questionId, for update_question.', AgentQuestionAddSchema, WRITE,
+    async q => {
+      const questionId = idOf(await notes.addQuestion(o, q.noteId, q.question), q.question.room, (p) => p.questions, q.question.text);
+      return { ok: true, noteId: q.noteId, ...(questionId ? { questionId } : {}) };
+    });
   register('update_question', 'notes:write', 'Change one of a note’s open questions (Still open): say it was answered, open it again, or reword it. Returns only an acknowledgment.', AgentQuestionPatchSchema, WRITE,
     async q => { await notes.updateQuestion(o, q.noteId, q.questionId, q.patch); return { ok: true, noteId: q.noteId }; });
   register('correct_transcript', 'notes:write', 'Correct or confirm a retained transcript line within your current permissions. Returns only an acknowledgment.', AgentTranscriptPatchSchema, WRITE,

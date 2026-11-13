@@ -274,12 +274,18 @@ describe('scoped SDK flows', () => {
       const listed = NotePage.parse((await agent.client.callTool({ name: 'list_notes', arguments: { limit: 1 } })).structuredContent);
       expect(listed.items.map(note => note.id)).toContain(noteId);
       const proposed = await agent.client.callTool({ name: 'propose_decision', arguments: { noteId, proposal: { text: 'Agent decision canary' } } });
-      expect(proposed.structuredContent).toEqual({ ok: true, noteId });
+      const proposedId = AgentWriteResultSchema.parse(proposed.structuredContent).decisionId;
+      expect(proposed.structuredContent).toEqual({ ok: true, noteId, decisionId: proposedId });
       expect(JSON.stringify(proposed)).not.toContain('Agent decision canary');
+      // Writing alone: the answer's ID is how it changes what it added, since it can't read the note to find it.
       const onlyWrite = await writeOnly.client.callTool({ name: 'add_follow_up', arguments: { noteId, followUp: { text: 'Writer-only follow-up' } } });
-      expect(onlyWrite.structuredContent).toEqual({ ok: true, noteId });
+      const writerFollowUp = AgentWriteResultSchema.parse(onlyWrite.structuredContent).followUpId;
+      if (!writerFollowUp) throw new Error('Adding a follow-up gave no ID.');
+      expect(onlyWrite.structuredContent).toEqual({ ok: true, noteId, followUpId: writerFollowUp });
       expect(JSON.stringify(onlyWrite)).not.toContain('MCP private note canary');
       await expect(writeOnly.client.callTool({ name: 'get_note', arguments: { noteId } })).rejects.toThrow('not found');
+      expect((await writeOnly.client.callTool({ name: 'update_follow_up', arguments: { noteId, followUpId: writerFollowUp, patch: { done: true } } })).structuredContent).toEqual({ ok: true, noteId });
+      expect((await browser.api.notes.get(noteId)).actions.find(item => item.id === writerFollowUp)).toMatchObject({ text: 'Writer-only follow-up', done: true });
       const note = await browser.api.notes.get(noteId);
       const question = note.questions[0];
       if (!question) throw new Error('The transcript did not produce a question.');
@@ -290,20 +296,21 @@ describe('scoped SDK flows', () => {
       expect((await agent.client.callTool({ name: 'get_inbox', arguments: { limit: 1 } })).isError).not.toBe(true);
       const decision = note.decisions.find(item => item.text === 'Agent decision canary');
       if (!decision) throw new Error('The decision was not proposed.');
+      expect(decision.id).toBe(proposedId);
       expect((await agent.client.callTool({ name: 'update_decision', arguments: { noteId, decisionId: decision.id, patch: { state: 'confirmed', seen: { text: decision.text } } } })).isError).not.toBe(true);
       // A follow-up goes straight onto the checklist, as Add a follow-up in Alcove puts it: not among the suggestions.
       const adding = { name: 'add_follow_up', arguments: { noteId, followUp: { text: 'Agent follow-up canary', due: 'Friday' } } };
       const added = await agent.client.callTool(adding);
-      expect(added.structuredContent).toEqual({ ok: true, noteId });
       expect(JSON.stringify(added)).not.toContain('Agent follow-up canary');
       const onList = await browser.api.notes.get(noteId);
       expect(onList.suggestions.some(item => item.text === 'Agent follow-up canary')).toBe(false);
       const followUp = onList.actions.find(item => item.text === 'Agent follow-up canary');
       if (!followUp) throw new Error('The follow-up is not on the checklist.');
+      expect(added.structuredContent).toEqual({ ok: true, noteId, followUpId: followUp.id });
       expect(followUp).toMatchObject({ review: 'accepted', takenOn: false, done: false, due: 'Friday', changes: [{ what: 'proposed', by: { email: ownEmail } }] });
       expect((await browser.api.notes.inbox()).followUps).toEqual([]);
-      // The same words again add nothing.
-      expect((await agent.client.callTool(adding)).structuredContent).toEqual({ ok: true, noteId });
+      // The same words again add nothing, and say which it is.
+      expect((await agent.client.callTool(adding)).structuredContent).toEqual({ ok: true, noteId, followUpId: followUp.id });
       expect((await browser.api.notes.get(noteId)).actions.filter(item => item.text === 'Agent follow-up canary')).toHaveLength(1);
       // Changed by its ID, as get_note gives it.
       const change = (patch: Record<string, unknown>) => agent.client.callTool({ name: 'update_follow_up', arguments: { noteId, followUpId: followUp.id, patch } });
@@ -372,13 +379,13 @@ describe('scoped SDK flows', () => {
     const asking = { name: 'add_question', arguments: { noteId, question: { text: 'CANARY-QUESTION who signs off on the budget?' } } };
     try {
       const asked = await agent.client.callTool(asking);
-      expect(asked.structuredContent).toEqual({ ok: true, noteId });
       expect(JSON.stringify(asked)).not.toContain('CANARY-QUESTION');
       const open = (await browser.api.notes.get(noteId)).questions.filter(item => item.text === asking.arguments.question.text);
       expect(open).toMatchObject([{ state: 'open', lines: [], changes: [{ what: 'proposed', by: { email, as: 'organizer' } }] }]);
       const questionId = open[0]?.id ?? '';
-      // The same words again add nothing.
-      expect((await agent.client.callTool(asking)).structuredContent).toEqual({ ok: true, noteId });
+      expect(asked.structuredContent).toEqual({ ok: true, noteId, questionId });
+      // The same words again add nothing, and say which it is.
+      expect((await agent.client.callTool(asking)).structuredContent).toEqual({ ok: true, noteId, questionId });
       expect((await browser.api.notes.get(noteId)).questions.filter(item => item.text === asking.arguments.question.text)).toHaveLength(1);
       // Said to be answered, as the notes' own are.
       expect((await agent.client.callTool({ name: 'update_question', arguments: { noteId, questionId, patch: { state: 'answered' } } })).structuredContent).toEqual({ ok: true, noteId });
