@@ -1,7 +1,6 @@
 # Alcove: rules for agents
 
-Alcove is a meeting superapp with confidential AI: end-to-end encrypted calls, breakout rooms, whiteboards, a workspace
-for every call, notes, scheduling, recording and AI agents over MCP. This repo is a pnpm + Turborepo monorepo.
+Alcove is private video calls with an AI note taker. This repo is a pnpm + Turborepo monorepo.
 
 ```
 apps/web            TanStack Start app (React 19, Tailwind v4, Motion). SPA mode.

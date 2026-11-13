@@ -287,7 +287,7 @@ first day**, **3.8 See your own events** and **3.9 A week of only your own event
 
 ## 4. Start or schedule a call
 
-**Start a call** (or **N**, anywhere outside a call, the Drive, a text field or another window) opens a small modal. On a phone it's the plus in the top bar, and the modal
+**Start a call** (or **N**) opens a small modal from anywhere. On a phone it's the plus in the top bar, and the modal
 is a sheet from the bottom. It asks one thing: **Start now** (**Enter**) or **Schedule for later** (**S**). **Escape**
 closes it, closing asks nothing, opening it again starts clean, and focus goes back where it was. A person or group on
 the Team page opens it with them already picked. Whether someone is on a team or on their own comes from their
