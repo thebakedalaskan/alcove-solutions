@@ -52,6 +52,11 @@ export const SidePanelProEndingNight = page('/home', 'plan-pro-ending', { global
 export const SidePanelProRenewed = page('/home', 'plan-pro-renewed', { globals: WIDE });
 /** Back on Free: Pro ended, said under Upgrade to Pro. */
 export const SidePanelProEnded = page('/home', 'plan-pro-ended', { globals: WIDE });
+/** The side panel's line for the team's notices: licenses low, none left, none for you. */
+export const SidePanelLicensesLow = page('/home', 'team-admin-low', { globals: WIDE });
+export const SidePanelNoLicensesLeft = page('/home', 'team-admin-none', { globals: WIDE });
+export const SidePanelNoLicenseForYou = page('/home', 'team-member-unlicensed', { globals: WIDE });
+export const SidePanelNoLicenseForYouNight = page('/home', 'team-member-unlicensed', { globals: { ...WIDE, theme: 'dark' } });
 export const OnTheirOwn = page('/home', 'on-their-own');
 export const Writing = page('/home', 'writing');
 export const Offline = page('/home', 'offline');

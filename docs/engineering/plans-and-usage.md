@@ -14,8 +14,8 @@ they bring: notes and storage. Every feature is on every plan.
 | Largest file | 512 MB | 512 MB, 2 GB once downloads resume | Same as Pro |
 | Shared workspaces not tied to a call | As many as you like (storage is the limit) | Same | Same |
 
-A period is 30 days from when the plan began; a month of Pro is one period. Team is built in a later phase: this page says
-what's built now.
+A period is 30 days from when the plan began; a month of Pro is one period, and so is a team license from when it's
+taken. This page says what's built now.
 
 Every number is a limit (`apps/api/src/limits.ts`, [Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)),
 changeable without a deploy: each plan's notes, storage, files and price; the most months of Pro one purchase buys and how
@@ -34,7 +34,8 @@ and its most people.
 | A call's 10 hours and 100 people | Working |
 | The USD balance, filled by stablecoin top-ups | Working |
 | Buying Pro, renewing, refunds, reminders, the grace after Pro | Working (server; see [Pro](#pro)) |
-| Teams, licenses, team notes and workspaces | Not built (phase 3) |
+| Teams, licenses, visits, alerts, the pool (server; see [Team](#team)) | Working |
+| Team notes, Ask across them with @-references, team workspaces (server; see [Team](#team)) | Working |
 | Picking a plan at first sign-in | Not built (phase 4). `Plan.choose` already says who hasn't. |
 | Withdrawing the balance | Not built, and not planned yet |
 
@@ -148,7 +149,8 @@ storage (`plan.pro.storage_bytes`, 100 GiB) and largest file (`plan.pro.file_byt
 file can be downloaded whole, until downloads resume: `WHOLE_DOWNLOAD_BYTES` in `limits.ts`). Free → Pro, and each new
 month, starts a fresh period with the whole allowance: nothing carries over, and going past an allowance isn't a debt.
 
-**The plan in force** (`inForce`) is Pro while a bought month covers now, and Free otherwise. Free's periods count from
+**The plan in force** (`inForce`, read with `planNow`) is Team while a team license is live ([Team](#team)), Pro while a
+bought month covers now, and Free otherwise. Free's periods count from
 when the account began, or from the end of the last month of Pro, whichever is later, so Free starts afresh when Pro ends,
 with or without upkeep.
 
@@ -193,6 +195,110 @@ After it, uploads and notes stop while over Free's storage, as above. Buying Pro
 `Plan.pro` gives the months running and bought (oldest first), when the last ends, whether renewing is on and what a
 refund would add. The record keeps the months that haven't ended and the latest that has (the grace and Free's periods
 count from it).
+
+## Team
+
+A team (`features/billing/teams.ts`, routes in `team-routes.ts`) is made by one account, its **admin**, who keeps its
+settings whether licensed or not. An account is on one team at most. Its people are `team_members` rows; its name and
+who's on it are sealed under the team's own key (it's an owner, as a workspace is), and what it bought under `Kservice`
+(`team-billing`). Every change locks the team's row first, then the plans it touches, so takes and purchases at once on
+any instance never spend a license or money twice.
+
+**Licenses** are bought by the admin from their own balance (`POST /v1/team/licenses { count, microUsdPerLicense }`):
+1 to `team.max_licenses` (500) at a time ("Buy 1 to 500 licenses at a time."), at `plan.team.price_micro_usd` ($40), the
+price shown (a changed one is `conflict`, as Pro's is), refused with nothing changed when the balance is short ("Your
+balance is short: 2 licenses cost $80 and your balance is $40. Add money first."). The history says "Team, 3 licenses".
+`POST /v1/team/licenses/refund` returns every unconsumed license at what it cost ("Team licenses refunded, 2"); a taken one
+isn't refunded.
+
+**A license is taken on a visit**, by a member without a live one: signing in (both sign-in handlers), and
+`POST /v1/session/visit` (`AuthApi.visit`), which the app sends when it loads and when a tab comes back after 30 minutes or
+more. Nothing that only reads (`GET /v1/session`, `GET /v1/plan`, …) takes one, so polling never does. A taken license is
+live for `plan.period_seconds` from then (`licensed_from`, `licensed_until`); one that has ended is only replaced by a visit.
+On a visit:
+
+1. An unconsumed license is taken, the oldest bought.
+2. None left, with auto-purchase on (`PUT /v1/team/auto-purchase { on }`) and the admin's balance enough: one is bought
+   ("Team license, bought for a member") and taken.
+3. Otherwise none is: the member stays on their own plan and is told `license-needed` (ask your admin; never the admin
+   themselves), `wanted_at` is set, and the admin is told `licenses-none`, once until more are bought. Logged `team license
+   wanted, none left`.
+
+A license taken replaces Pro at once: the running month ends then (not refunded), every month that hasn't started goes
+back to the balance ("Refund: 2 months of Pro, for a team license"), and the member is told `license-replaced-pro` with
+how many. Pro can't be bought while a license is live (`conflict`). When a take leaves fewer than `team.low_licenses` (5)
+unconsumed, the admin is told `licenses-low` with how many are left, once until there are 5 or more again. These notices
+are in `Plan.notices` with Pro's (`until` null, `count` where it says), shown and notified as Pro's are.
+
+**On Team** the plan's kind is `team`, its period the license's, its notes `plan.team.notes_minutes` (3,000) for each
+member, metered as their own (a new license is a fresh period, with all of it), and its largest file
+`plan.team.file_bytes`, held at 512 MiB as Pro's is. Storage is the team's **pool**: `plan.team.storage_bytes` (100 GiB) for
+each live license, against what everyone licensed stores (their own and the workspaces they pay for). `Plan.storage` and
+`MyTeam.storage` show the pool. When the pool shrinks below what's stored (a license ends, someone leaves or is taken off),
+it gets `plan.grace_seconds`, held to the pool as it was; upkeep reckons it at each license's end (`teams.due_at`). After
+the grace, uploads and notes stop while it's over, as for an account; it isn't given again until the team has been within
+its pool. Free's periods after a license count from its end.
+
+**Invites** (`POST /v1/team/invite`, admin only) are one-time links, `{WEB_ORIGIN}/team/join#<secret>`, for
+`team.invite_seconds` (1 day). Only a SHA-256 of the secret is kept (`team_invites`), deleted when it's used and by upkeep
+once expired; the secret travels only in POST bodies, and invites, peeks and joins keep no receipt. `POST /v1/team/peek`
+says whose team it is; `POST /v1/team/join` joins and takes a license (it's a visit). A used, expired or made-up link is
+the same `not-found`; someone on a team already is `conflict`, and the link is left for whoever it was for.
+
+**Leaving.** The admin takes people off (`DELETE /v1/team/members/:id`); a member leaves (`POST /v1/team/leave`). A live
+license isn't refunded: they're on Free from then, a fresh period, with `plan.grace_seconds` held to
+`plan.team.storage_bytes`. Notes they made visible to the team stay so. The admin can't leave or take themselves off, and
+deletes the team (`DELETE /v1/team/mine`) once nobody else is on it: its unconsumed licenses go back to their balance, its
+workspaces stop being the team's. Deleting the admin's account is refused while anyone else is on the team; once nobody
+is, the team goes with it. A member's account going takes their place with it.
+
+`GET /v1/team/mine` is the team as its caller sees it (`MyTeam`): its members with their licenses (`live`, `ended`,
+`none`, and when they last wanted one), the pool, and for the admin alone the unconsumed licenses, what refunding them
+adds, and auto-purchase. `Plan.team` says which team, the caller's role and whether they're licensed. `GET /v1/team` and
+`POST /v1/team/invites` are the people directory's, not a team's.
+
+What a team shares opens only for someone **live-licensed** on it, checked at each request: `teams.licensedOn` (an
+account) and `teams.licensedBy` (the addresses workspace access knows people by) are the one place that's asked.
+
+**Team notes.** A note's organizer makes it visible to their team (`PUT /v1/notes/:id/team { visible }` → `{ visible }`):
+only the organizer ("Only the organizer can make these notes visible to their team."), once the call has ended ("These
+notes can be made visible to your team once the call ends."), and only while live-licensed ("You need a license on a team
+to make notes visible to it."); any note of theirs, from before they joined too. It's a `team_notes` row (IDs only) for the
+team they're on; saying it again changes nothing. It stays visible after they leave the team; they can still make it not
+visible (`visible: false`), licensed or not, but not visible again until they're licensed on a team. It goes with the note,
+with their account, and with the team. Notes find it third, after their own and those given to them
+(`notes/service.ts › locateToRead`): a live-licensed member of that team can read it (`Note`, audio, shared screens,
+progress), ask about it, and Ask across notes reads it. `NoteSummary.teamVisible` says whether it's visible;
+`received` is `{ role: 'team', by: the organizer, at: when it was made visible }` for someone who has it only that way.
+Everything else, every change and anything of the reader's on it (sharing, links and their list, decisions, follow-ups,
+questions, transcript lines, writing it again, additions and who'd read them, their own notes on it, Drive exports,
+removing it from their notes), goes through `locate`, which refuses a note they have only through the team: `forbidden`,
+"This note is visible to your team to read and ask about. Only its organizer changes it." It isn't in their Notes list or
+inbox: `GET /v1/team/notes` (`teams.notes()`) lists every note visible to the caller's team, theirs too, newest first, as
+`NoteSummary`s (none without a live license).
+
+**Ask across notes** (`POST /v1/notes/ask { question, refs? }`) reads the asker's own notes, those given to them and
+their team's visible ones. `refs` are the notes the question @-references: more than 5 is refused ("Refer to 5 notes at
+most in one question."); each is opened as anything else is, and one the asker can't open is the same `not-found` as one
+that never was, before anything goes to the model; one not written yet is `conflict` ("A note you referred to isn’t
+written yet. Ask again once it’s ready."). Referenced notes go first, and send their transcript whatever words they share
+with the question; nothing else goes that the search didn't pick. The asker pays, as for any question.
+
+**Team workspaces.** A workspace made by someone live-licensed on a team is the team's (`workspaces.team_id`), counted
+against its pool through its maker, who pays for it. `POST /v1/workspaces { name, access? }`, the Drive's New workspace,
+makes it the whole team's (`team_access = 'team'`) unless `access` is `added` (only the people added); off a team,
+`access` means nothing. One made in a call, when scheduling or for filing notes is `added`, so a call's notes never reach
+the whole team without someone choosing that. Its admins change it (`PUT /v1/workspaces/:id/team-access { access }` →
+`{ changed: true }`): someone else in it is refused ("Only an admin can do that."), a workspace that isn't a team's is
+`conflict` ("This workspace isn’t a team’s, so there’s no team to open it to."), and opening it to the whole team takes
+an admin live-licensed on that team ("Only someone with a license on its team can open this workspace to the whole
+team."). On a whole team's workspace, everyone live-licensed on the team is in it to edit without a member row (one added
+as `read` edits too, an admin stays admin): `access.ts › standingIn`, from the addresses that sign in to their accounts.
+It's in their Drive, and `WorkspaceTree.teamAccess` / `WorkspaceSummary.teamAccess` say which it is. Anything remembered
+of that access ends when their license does, and someone leaving or taken off the team, or the team deleted, moves the
+team's workspaces on, so nothing remembered outlasts it and every stream looks again. **AI in a team's workspace**
+(documents, boards) is paid for by whoever pressed it, from their own allowance; someone there only by a seat in a call
+falls back to the workspace's payer. Elsewhere the workspace's payer pays, as before.
 
 ## Support
 
@@ -300,6 +406,12 @@ The server never holds a key that can move treasury money. By hand, in near.com,
 - A deposit record from before keeps its `credits` and `rate` (ignored now); one settled by a release before plans has no
   `addedMicroUsd` and is added again as dollars once (above).
 - A live call's state from before has no `notes.limit`, and reads as not stopped (`.default`).
+- Team is migration `0028_teams.sql`: `teams`, `team_members`, `team_invites`, `team_notes`, and `team_id` and
+  `team_access` on `workspaces` (null on every workspace there is). The previous release ignores them: while both serve,
+  it opens a team's note or workspace only for people who have it otherwise, and its workspaces aren't a team's. A notice in a
+  `plan-account` record from before has no `count`: it reads as null (`.default`), and its `until` stays as it was. The
+  previous release can't open a plan record holding a team's notice (a kind it doesn't know), which only an account on a
+  team, made by this release, has while both serve.
 - Pro needs no migration. A `plan-account` record from before has no `pro`, `renew`, `notices`, `reminded` or `ended`:
   each has a `.default` (none bought, renewing off, no notices), and the record is written in the new shape the next
   time it's saved. The previous release reads a record this one wrote (zod ignores the new fields), so an account that

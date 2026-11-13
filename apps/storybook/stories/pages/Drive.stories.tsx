@@ -6,12 +6,19 @@
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import type { World } from '../../src/world';
+import { iso } from '../../src/world/clock';
 import { standupTwice } from './changes';
 
 const meta = { title: 'Pages/Drive', ...pages } satisfies Meta<PageArgs>;
 export default meta;
 
 const PHONE = { viewport: { value: 'phone' } };
+/** Launch, a team workspace the whole team is in, made last week, which Art runs (`admin`) or edits in. */
+const withTeamSpace = (role: 'admin' | 'edit') => (w: World): void => {
+  w.workspaces = [...w.workspaces, { id: 'ws-launch', name: 'Launch', role, people: 5, teamAccess: 'team', createdAt: iso(-6, 11, 0), call: null, items: [] }];
+};
+
 /** Opens the standup's folder in its home's list: the row, not the workspace's own name, which is the same. */
 const openFolder: PageStory['play'] = async ({ canvas, userEvent }) => {
   const named = await canvas.findAllByRole('button', { name: /^Team standup · / });
@@ -40,6 +47,27 @@ export const EmptyPhoneNight = page('/drive', 'first-day', { globals: { ...PHONE
 export const NewWorkspace = page('/drive', 'busy', {
   play: async ({ canvas, userEvent }) => { await userEvent.click(await canvas.findByRole('button', { name: 'New workspace' })); }
 });
+/* ------------------------------------------------------------------ on a team */
+/** Presses New workspace. */
+const newWorkspace: PageStory['play'] = async ({ canvas, userEvent }) => { await userEvent.click(await canvas.findByRole('button', { name: 'New workspace' })); };
+/**
+ * Licensed on a team: New workspace asks who's in it under its name, Whole team (as it starts) or Only people I add. A team
+ * workspace's row says Whole team.
+ */
+export const NewWorkspaceOnATeam = page('/drive', 'team-member', { beforeEach: changing(withTeamSpace('admin')), play: newWorkspace });
+export const NewWorkspaceOnATeamNight = page('/drive', 'team-member', { beforeEach: changing(withTeamSpace('admin')), play: newWorkspace, globals: { theme: 'dark' } });
+export const NewWorkspaceOnATeamPhone = page('/drive', 'team-member', { beforeEach: changing(withTeamSpace('admin')), play: newWorkspace, globals: PHONE });
+export const NewWorkspaceOnATeamPhoneNight = page('/drive', 'team-member', { beforeEach: changing(withTeamSpace('admin')), play: newWorkspace, globals: { ...PHONE, theme: 'dark' } });
+/** Only people I add, chosen: it says who can open it. */
+export const NewWorkspaceOnlyPeopleAdded = page('/drive', 'team-member', {
+  play: async (c) => {
+    await newWorkspace?.(c);
+    await c.step('Choose Only people I add', async () => { await c.userEvent.click(await c.canvas.findByRole('button', { name: 'Only people I add' })); });
+  }
+});
+/** Not on a team: New workspace is only its name, as ever. */
+export const NewWorkspaceOffATeam = page('/drive', 'no-team', { play: newWorkspace });
+
 /** A workspace's menu, at the end of its row, for whoever runs it: Delete workspace. */
 const rowMenu: PageStory['play'] = async ({ canvas, userEvent, step }) => {
   await step('Press More at the end of Product’s row', async () => {

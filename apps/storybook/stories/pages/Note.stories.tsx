@@ -105,6 +105,36 @@ export const WaitingOnYou = page('/notes/n1', 'busy');
 export const Invited = page('/notes/n3', 'busy');
 /** Ines's board prep, shared with Art after the call: it says who shared it. */
 export const SharedWithYou = page('/notes/n8', 'busy');
+/* On a team (user-flows 8.51) */
+/** Opens Share, where Visible to team sits for a note you organized while you're licensed on a team. */
+const openShare: NonNullable<PageStory['play']> = async ({ canvas, userEvent, step }) => {
+  await step('Press Share. Visible to team is under the people to share with', async () => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Share' }, { timeout: 30000 }));
+    await screen.findByRole('switch', { name: 'Visible to team' }, { timeout: 8000 });
+  });
+};
+/** The standup, which Art made visible to Priya's team: the head says so, and Share has the switch on. */
+export const VisibleToTeam = page('/notes/n2', 'team-member', { play: openShare });
+export const VisibleToTeamNight = page('/notes/n2', 'team-member', { play: openShare, globals: { theme: 'dark' } });
+export const VisibleToTeamPhone = phone(VisibleToTeam);
+/** Art's design review isn't visible to his team yet: the switch is off. */
+export const VisibleToTeamOff = page('/notes/n4', 'team-admin', { play: openShare });
+/** Turning it on: everyone licensed on the team can read the notes and ask about them. */
+export const MakeVisibleToTeam = page('/notes/n4', 'team-admin', {
+  play: async (ctx) => {
+    await openShare(ctx);
+    await ctx.step('Turn on Visible to team', async () => {
+      await ctx.userEvent.click(await screen.findByRole('switch', { name: 'Visible to team' }));
+    });
+  }
+});
+/**
+ * Priya's roadmap review, visible to her team, as Art reads it on his license: from Priya, visible to Vandelay Industries,
+ * with nothing to change, share, add or follow up, and Ask about this call.
+ */
+export const ATeamNote = page('/notes/tn-roadmap', 'team-member');
+export const ATeamNoteNight = page('/notes/tn-roadmap', 'team-member', { globals: { theme: 'dark' } });
+export const ATeamNotePhone = phone(ATeamNote);
 /** A recording made in the room: nobody's name on the lines. */
 export const RoomRecording = page('/notes/n6', 'busy');
 /** Opened at a moment, from an answer or a search: the sun stands there, not playing, and the line said then is marked. */

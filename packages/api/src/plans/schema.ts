@@ -26,10 +26,20 @@ export type ProMonth = z.infer<typeof ProMonthSchema>;
  * - `pro-ending`: Pro ends at `until`, a few days from now, and won't renew (renewing is off, or the balance is short).
  * - `pro-renewed`: a month was bought from the balance, so Pro now runs to `until`.
  * - `pro-ended`: Pro ended at `until`; the account is on Free.
+ * - `licenses-low` (a team's admin): `count` licenses are left unconsumed, fewer than the team's low mark.
+ * - `licenses-none` (a team's admin): a member needed a license and none was left (nor bought, with auto-purchase).
+ * - `license-needed` (a member): there was no license to take, so they're on their own plan until the admin buys more.
+ * - `license-replaced-pro` (a member): a team license replaced Pro; `count` unstarted months went back to the balance.
  */
-export const PlanNoticeKindSchema = z.enum(['pro-ending', 'pro-renewed', 'pro-ended']);
+export const PlanNoticeKindSchema = z.enum(['pro-ending', 'pro-renewed', 'pro-ended', 'licenses-low', 'licenses-none', 'license-needed', 'license-replaced-pro']);
 export type PlanNoticeKind = z.infer<typeof PlanNoticeKindSchema>;
-export const PlanNoticeSchema = z.object({ id: z.string(), kind: PlanNoticeKindSchema, at: ISODateSchema, until: ISODateSchema });
+export const PlanNoticeSchema = z.object({
+  id: z.string(), kind: PlanNoticeKindSchema, at: ISODateSchema,
+  /** Pro's end, for Pro's notices; null for a team's. */
+  until: ISODateSchema.nullable(),
+  /** How many, for `licenses-low` and `license-replaced-pro`; null otherwise. */
+  count: z.number().int().nonnegative().nullable()
+});
 export type PlanNotice = z.infer<typeof PlanNoticeSchema>;
 
 /**
@@ -75,7 +85,9 @@ export const PlanSchema = z.object({
     refundableMicroUsd: MicroUsdSchema
   }),
   /** What the owner is told about their plan and hasn't dismissed, newest first. */
-  notices: z.array(PlanNoticeSchema)
+  notices: z.array(PlanNoticeSchema),
+  /** The team you're on, if any. Whether you're licensed decides `kind`. */
+  team: z.object({ id: IDSchema, name: z.string(), role: z.enum(['admin', 'member']), licensed: z.boolean() }).nullable()
 });
 export type Plan = z.infer<typeof PlanSchema>;
 
@@ -95,6 +107,12 @@ export const PlanOffersSchema = z.object({
     microUsdPerMonth: MicroUsdSchema,
     /** The most months one purchase can buy. */
     maxMonths: z.number().int().positive()
+  }),
+  /** Team: what each licensed person gets (storage is pooled: this much for each live license). */
+  team: PlanAllowanceSchema.extend({
+    microUsdPerLicense: MicroUsdSchema,
+    /** The most licenses one purchase can buy. */
+    maxLicenses: z.number().int().positive()
   })
 });
 export type PlanOffers = z.infer<typeof PlanOffersSchema>;

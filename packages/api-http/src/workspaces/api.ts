@@ -27,7 +27,8 @@ export function createWorkspacesApi(t: HttpTransport, o: HttpOptions): Pick<Alco
     },
     workspaces: {
       list: () => req(z.array(WorkspaceSummarySchema), 'GET', '/workspaces'),
-      create: (name) => req(CreatedSchema, 'POST', '/workspaces', { name }),
+      create: (name, opts) => req(CreatedSchema, 'POST', '/workspaces', { name, ...(opts?.access ? { access: opts.access } : {}) }),
+      setTeamAccess: async (id, access) => { await req(z.unknown(), 'PUT', `${space(id)}/team-access`, { access }); },
       get: (id, w) => req(WorkspaceTreeSchema, 'GET', space(id), undefined, withPass(w)),
       rename: async (id, name) => { await req(z.unknown(), 'PATCH', space(id), { name }); },
       remove: async (id) => { await req(z.unknown(), 'DELETE', space(id)); },

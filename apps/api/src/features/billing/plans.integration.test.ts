@@ -345,7 +345,8 @@ describe('Pro', () => {
     expect(await ann.api.plans.offers()).toEqual({
       periodDays: 30,
       free: { notesMinutes: 300, storageBytes: 10 * GiB, fileBytes: 512 * MiB },
-      pro: { notesMinutes: 3000, storageBytes: 100 * GiB, fileBytes: 512 * MiB, microUsdPerMonth: PRICE, maxMonths: 12 }
+      pro: { notesMinutes: 3000, storageBytes: 100 * GiB, fileBytes: 512 * MiB, microUsdPerMonth: PRICE, maxMonths: 12 },
+      team: { notesMinutes: 3000, storageBytes: 100 * GiB, fileBytes: 512 * MiB, microUsdPerLicense: 40_000_000, maxLicenses: 500 }
     });
     expect(await refusal(ann.api.plans.buyPro(1, PRICE))).toBe('conflict: Your balance is short: 1 month of Pro costs $20 and your balance is $0. Add money first.');
     const rec = await ann.api.recordings.start({ title: 'Used' });
@@ -465,7 +466,7 @@ describe('Pro', () => {
     const renewed = await ann.api.plans.plan();
     expect(renewed).toMatchObject({ kind: 'pro', balance: { microUsd: 0 }, pro: { until: new Date(end + 3_600_000).toISOString(), renew: true } });
     expect(renewed.pro.months.map((m) => m.from)).toEqual([new Date(end - 3_600_000).toISOString(), new Date(end).toISOString()]);
-    expect(renewed.notices).toEqual([{ id: expect.any(String), kind: 'pro-renewed', at: expect.any(String), until: new Date(end + 3_600_000).toISOString() }]);
+    expect(renewed.notices).toEqual([{ id: expect.any(String), kind: 'pro-renewed', at: expect.any(String), until: new Date(end + 3_600_000).toISOString(), count: null }]);
     expect(renewed.balance.history[0]).toMatchObject({ label: 'Pro, renewed for a month', microUsd: -PRICE });
     // Once: upkeep again changes nothing, and past the old end the new month is a fresh period.
     await upkeepAt(ann, end - 200_000);

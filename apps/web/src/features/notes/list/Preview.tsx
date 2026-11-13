@@ -9,7 +9,7 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { EvidenceFlags, useNoteReader } from '~/features/notes/entries';
 import { marked } from '~/features/notes/highlight';
-import { noteAsText, peopleLine, roleLine } from '~/features/notes/meta';
+import { noteAsText, peopleLine, readerRole, roleLine } from '~/features/notes/meta';
 import { decisionLine, notDecided } from '~/features/notes/parts';
 import { PinNote, ShareNote } from '~/features/notes/share';
 import { weeklyLabel } from '~/features/series/cards';
@@ -55,14 +55,16 @@ export function Preview({ s, me, terms, said, onDropped }: { s: NoteSummary; me:
   /* While More asks its question, its button is the view's filled one. */
   const [asking, setAsking] = useState(false);
   const how = s.received ? howOf(s, me) : undefined;
+  // A team's note is read and asked about, nothing more.
+  const teamNote = s.received?.role === 'team';
   return (
     <aside className="nt-pv" aria-labelledby={h}>
       <div className="nt-pv-top">
         <Status s={s} again={!!note?.writingAgain} />
         <div className="nt-acts" data-asking={asking || undefined}>
           <PinNote noteId={s.id} />
-          {note ? <ShareNote note={note} size="sm" align="center" className="nt-sharep" /> : <Button size="sm" icon="share" disabled><span className="share-t">Share</span></Button>}
-          <More s={s} note={note} onAsking={setAsking} onDropped={onDropped} />
+          {teamNote ? null : note ? <ShareNote note={note} size="sm" align="center" className="nt-sharep" /> : <Button size="sm" icon="share" disabled><span className="share-t">Share</span></Button>}
+          {!teamNote && <More s={s} note={note} onAsking={setAsking} onDropped={onDropped} />}
           <Link to="/notes/$noteId" params={{ noteId: s.id }} className={cn(buttonClass({ variant: 'primary', size: 'sm' }), 'nt-open')}>Open notes<Icon name="right" size={14} /></Link>
         </div>
       </div>
@@ -77,7 +79,7 @@ export function Preview({ s, me, terms, said, onDropped }: { s: NoteSummary; me:
           <WhoHas s={s} note={note} me={me} />
         </div>
         <Moments s={s} me={me} terms={terms} said={said} />
-        {note ? <Written note={note} me={me} short={said.lines.some((l) => l.text)} />
+        {note ? <Written note={note} me={me} short={said.lines.some((l) => l.text)} locked={teamNote} />
           : found.isError ? (
             <div className="nt-pv-gone">
               <GoneArch />
@@ -209,13 +211,13 @@ function Moments({ s, me, terms, said }: { s: NoteSummary; me: string | undefine
 }
 
 /** A note as far as it's written: where it's got to until then, otherwise its summary, decisions and follow-ups. */
-function Written({ note, me, short }: { note: Note; me: string | undefined; short: boolean }) {
+function Written({ note, me, short, locked }: { note: Note; me: string | undefined; short: boolean; locked: boolean }) {
   const toast = useToast();
   const decide = useUpdateDecision();
   const act = useUpdateAction();
   const models = useAiModels();
   const pending = usePendingActions();
-  const reader = useNoteReader()(note.received?.role ?? 'organizer');
+  const reader = useNoteReader()(readerRole(note.received));
   /* What you said here wasn't decided stays in place, saying so, with Undo, until you pick another note. */
   const [touched, setTouched] = useState<ReadonlySet<string>>(new Set());
   // Each press keeps its own answer (mutateAsync), so a quick second press, or picking another note, never loses the first one's error.
@@ -246,13 +248,13 @@ function Written({ note, me, short }: { note: Note; me: string | undefined; shor
       <p className={cn('nt-pv-s', short && 'ac-clamp-2')}>{note.summary}</p>
       {decided.length > 0 && (
         <section className="nt-sec" aria-label="Decisions">
-          {decided.slice(0, DECISIONS).map((d) => <DecisionRow key={d.id} d={d} note={note} me={me} reader={reader} busy={decide.isPending} onChange={(x, patch) => void change(x, patch)} />)}
+          {decided.slice(0, DECISIONS).map((d) => <DecisionRow key={d.id} d={d} note={note} me={me} reader={reader} busy={decide.isPending} locked={locked} onChange={(x, patch) => void change(x, patch)} />)}
           {more(decided.length - DECISIONS, decided.length - DECISIONS === 1 ? 'decision' : 'decisions')}
         </section>
       )}
       {note.actions.length > 0 && (
         <section className="nt-sec" aria-label="Follow-ups">
-          {note.actions.slice(0, FOLLOW_UPS).map((a) => <FollowUp key={a.id} a={a} note={note} me={me} reader={reader} syncing={pending.has(`${note.id}:${a.id}`)} onTick={(x, done) => void tick(x, done)} />)}
+          {note.actions.slice(0, FOLLOW_UPS).map((a) => <FollowUp key={a.id} a={a} note={note} me={me} reader={reader} locked={locked} syncing={pending.has(`${note.id}:${a.id}`)} onTick={(x, done) => void tick(x, done)} />)}
           {more(note.actions.length - FOLLOW_UPS, note.actions.length - FOLLOW_UPS === 1 ? 'follow-up' : 'follow-ups')}
         </section>
       )}
@@ -264,7 +266,7 @@ function Written({ note, me, short }: { note: Note; me: string | undefined; shor
 }
 
 /** A decision, settled where it sits: what's waiting offers Confirm, and what's settled says by whom, with Undo for whoever may. */
-function DecisionRow({ d, note, me, reader, busy, onChange }: { d: NoteDecision; note: Note; me: string | undefined; reader: NoteReader; busy: boolean; onChange: (d: Decision, patch: DecisionPatch) => void }) {
+function DecisionRow({ d, note, me, reader, busy, locked, onChange }: { d: NoteDecision; note: Note; me: string | undefined; reader: NoteReader; busy: boolean; locked: boolean; onChange: (d: Decision, patch: DecisionPatch) => void }) {
   const row = useRef<HTMLDivElement>(null);
   const was = useRef(d.state);
   /* Answering takes away the button you pressed: focus moves to what took its place, not the page. */
@@ -275,11 +277,11 @@ function DecisionRow({ d, note, me, reader, busy, onChange }: { d: NoteDecision;
     if (at === document.body || (at && row.current?.contains(at))) (row.current?.querySelector('button') ?? row.current)?.focus({ preventScroll: true });
   }, [d.state]);
   /* Confirmed, and someone says it wasn't decided: the organizer's to settle. */
-  const settling = d.state === 'confirmed' && reader.role === 'organizer' && d.disputes.length > 0;
-  const yes = settling || (d.state === 'proposed' && mayDecide(d, 'confirmed', reader));
-  const no = d.state === 'proposed' || settling ? notDecided(d, reader) : undefined;
+  const settling = !locked && d.state === 'confirmed' && reader.role === 'organizer' && d.disputes.length > 0;
+  const yes = !locked && (settling || (d.state === 'proposed' && mayDecide(d, 'confirmed', reader)));
+  const no = !locked && (d.state === 'proposed' || settling) ? notDecided(d, reader) : undefined;
   const mine = d.disputes.some((x) => isBy(x.by, reader));
-  const undo = (d.state === 'confirmed' || d.state === 'rejected') && !settling && mayDecide(d, 'proposed', reader);
+  const undo = !locked && (d.state === 'confirmed' || d.state === 'rejected') && !settling && mayDecide(d, 'proposed', reader);
   let under: ReactNode;
   if (!mine && (yes || no)) {
     under = (
@@ -292,7 +294,7 @@ function DecisionRow({ d, note, me, reader, busy, onChange }: { d: NoteDecision;
     under = (
       <p className="nt-d-s">
         <span>{mine ? 'You said this wasn’t decided' : decisionLine(d, me)}</span>
-        {mine && <button type="button" className="nt-act" disabled={busy} onClick={() => onChange(d, { dispute: false })}>Take that back</button>}
+        {mine && !locked && <button type="button" className="nt-act" disabled={busy} onClick={() => onChange(d, { dispute: false })}>Take that back</button>}
         {undo && <button type="button" className="nt-act" disabled={busy} onClick={() => onChange(d, { state: 'proposed' })}>Undo</button>}
       </p>
     );
@@ -311,12 +313,12 @@ function DecisionRow({ d, note, me, reader, busy, onChange }: { d: NoteDecision;
 }
 
 /** A follow-up, ticked off where it sits, with when it's due or, when it's someone else's, whose it is. */
-function FollowUp({ a, note, me, reader, syncing, onTick }: { a: ActionItem; note: Note; me: string | undefined; reader: NoteReader; syncing: boolean; onTick: (a: ActionItem, done: boolean) => void }) {
+function FollowUp({ a, note, me, reader, locked, syncing, onTick }: { a: ActionItem; note: Note; me: string | undefined; reader: NoteReader; locked: boolean; syncing: boolean; onTick: (a: ActionItem, done: boolean) => void }) {
   const theirs = a.owner && spokenName(a.owner, me) !== 'You' ? firstName(a.owner.name) : undefined;
   const whose = theirs ? `${theirs}${a.takenOn ? '' : '?'}` : a.due ?? '';
   return (
     <div aria-busy={syncing} className={cn('nt-f', a.done && 'is-done')}>
-      <Check checked={a.done} disabled={!mayChangeAction(a, reader)} onChange={(on) => onTick(a, on)} label={`Mark done: ${a.text}`} />
+      <Check checked={a.done} disabled={locked || !mayChangeAction(a, reader)} onChange={(on) => onTick(a, on)} label={`Mark done: ${a.text}`} />
       <span className="nt-f-t ac-clamp-1" title={a.text}>{a.text}</span>
       {a.at !== undefined ? <MomentChip noteId={note.id} noteTitle={note.title} at={a.at} /> : <span />}
       <span className="nt-f-d ac-clamp-1" role={syncing ? 'status' : undefined} title={theirs ? `${a.takenOn ? 'Took it on' : 'Suggested. Hasn’t taken it on yet'}${a.due ? `, ${a.due}` : ''}` : a.due}>{syncing ? 'Saving…' : whose}</span>

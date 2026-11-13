@@ -1275,7 +1275,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     if (no) return no;
     const id = nextId('ws');
     current().workspaces.push({
-      id, name: name?.trim() || this.meeting.title, role: 'admin', people: this.meeting.guests.length + 1, items: [], createdAt: new Date().toISOString(),
+      id, name: name?.trim() || this.meeting.title, role: 'admin', people: this.meeting.guests.length + 1, teamAccess: null, items: [], createdAt: new Date().toISOString(),
       call: { title: this.meeting.title, at: this.getSnapshot().startedAt }
     });
     this.choose(id);

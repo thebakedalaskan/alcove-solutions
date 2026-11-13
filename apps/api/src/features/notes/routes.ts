@@ -174,11 +174,24 @@ export function registerNoteRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
     return c.json(await notes.ask(c.get('owner'), c.req.param('id'), (await body(c, AskBodySchema)).question));
   });
 
-  /* Asking across every note you have, under the same limit as asking about one. */
+  /*
+   * Asking across every note you have, your team's visible ones too, under the same limit as asking about one. `refs` are
+   * the notes the question refers to (@-references): more than 5 is refused by the service, in words.
+   */
   app.post('/v1/notes/ask', async (c) => {
     askLimiter(c.get('owner').ownerId, 'ask');
-    return c.json(await notes.askAll(c.get('owner'), (await body(c, AskBodySchema)).question));
+    const { question, refs } = await body(c, AskBodySchema.extend({ refs: z.array(z.string().min(1).max(64)).max(50).optional() }));
+    return c.json(await notes.askAll(c.get('owner'), question, refs));
   });
+
+  /* Making a note visible to the organizer's team, to read and ask about, or not; and the team's notes, for its licensed members. */
+  app.put('/v1/notes/:id/team', async (c) => {
+    const { visible } = await body(c, z.object({ visible: z.boolean() }));
+    await notes.setTeamVisible(changing(c), c.req.param('id'), visible);
+    return c.json({ visible });
+  });
+
+  app.get('/v1/team/notes', async (c) => c.json(await notes.teamList(c.get('owner'))));
 
   app.post('/v1/notes/:id/share', async (c) => c.json(await notes.share(c.get('owner'), c.req.param('id'), await body(c, ShareInputSchema))));
 

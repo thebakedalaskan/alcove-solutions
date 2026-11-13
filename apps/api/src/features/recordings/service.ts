@@ -17,7 +17,7 @@ import * as transcripts from './transcripts';
 import * as writer from '../notes/writer';
 import { writingAtMost } from '../notes/drafting';
 import { meterFor, notesBlocked } from '../billing/meter';
-import { requireRoom } from '../billing/plans';
+import { requireRoom } from '../billing/held';
 import { log } from '../../log';
 
 const rlog = log.child({ component: 'recordings' });

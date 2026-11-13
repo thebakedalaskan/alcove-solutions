@@ -111,7 +111,10 @@ piece of a file is sealed on the one core every call runs on. A `media-piece` is
 | `workspace-mention` | state key `workspace` | workspace, document, tag (who tagged someone and on which line, until they've heard) |
 | `operation-result` | operation-result key | operation |
 | `billing` | accounting key | owner (the credits account of before plans: no longer read) |
-| `plan-account` | accounting key | owner (the plan, the balance in dollars and its history, any grace, the months of Pro bought, renewing, and the notices about Pro) |
+| `plan-account` | accounting key | owner (the plan, the balance in dollars and its history, any grace, the months of Pro bought, renewing, and the notices about Pro and the owner's team's licenses) |
+| `team-name` | state key `team` under the team's own owner | team (its name) |
+| `team-member` | state key `team` under the team's own owner | team, member (their name and address) |
+| `team-billing` | accounting key | team's owner, team (its unconsumed licenses and what each cost, auto-purchase, the alerts its admin has had, its pool as last reckoned and its grace), opened without anyone signed in so upkeep can reckon the pool |
 | `ai-meter` | accounting key | owner (the period's AI allowance in dollars, what's been spent by kind, what requests in flight and live calls hold, and when it ran out) |
 | `deposit` | accounting key | owner, deposit (a top-up's route, address, amounts and the provider's quote), opened without anyone signed in so the watcher can add it |
 | `sign-in-attempt` | sign-in attempt key | provider (`google`); the owner is empty, as nobody is signed in yet |
@@ -425,6 +428,15 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   group itself (its name and addresses) is sealed in its owner's profile: the app sends its addresses and name,
   and the server never looks a group up. Everyone who has the note sees how each person got it, and each reader
   is told their own way: invited to the organizer's call, or shared by whom and with which group.
+- **Visible to the team.** A note's organizer, while live-licensed on a team, can make it visible to that team
+  (`PUT /v1/notes/:id/team`, [Plans and usage › Team](plans-and-usage.md#team)): a `team_notes` row, `(owner_id,
+  note_item_id, team_id)`, IDs only. Anyone live-licensed on that team, checked at every request, can then read it and
+  ask about it, and Ask across notes reads it; nobody else, and not someone on the team without a license. It's read
+  only: nothing gives them a `note_access` row, they aren't listed among who has it, and every change, share, link,
+  addition, their own notes on it and Drive exports are refused (`403 forbidden`, one sentence that names nobody). A
+  transcript set to go once the notes are written stays the organizer's, as for everyone else. It stays visible after
+  the organizer leaves the team, until they say otherwise; the row goes with the note (it cascades from the item), with
+  the organizer's account, and with the team.
 - **By a link.** Anyone who can read a call's notes can make a link to them once the call has ended or the recording has
   stopped (`POST /v1/notes/:id/links`, `apps/api/src/features/notes/links.ts`). The link reads nothing by itself: opened
   by an account that's signed in (`POST /v1/note-links/claim`, the secret in the body), it gives that account the notes
@@ -573,6 +585,14 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   it's removed. An entry for a seat ends with the call: it's deleted when the call ends or that person is taken out of
   it, the pass stops opening it the moment either happens, and maintenance sweeps up any left by a process that stopped.
   Someone who also has it through their account keeps what that gives them.
+- **A team's workspace.** Made by someone live-licensed on a team, a workspace is that team's (`workspaces.team_id`), and
+  `team_access` says who's in it: `added`, only its members, as any workspace; or `team`, also everyone live-licensed on
+  the team, to edit, without a member row. That's worked out with the rest, from the reader's addresses: an address that
+  signs in to an account live-licensed on the workspace's team (`identities` joined to `team_members`, `licensedBy`). It
+  lasts only as long as the license: a remembered yes ends at `licensed_until`, and someone leaving or taken off the team,
+  or the team deleted, moves the team's workspaces on (`version`), so nothing remembered outlasts it. A workspace made in
+  a call, when scheduling or for filing notes is `added`; only its admins open it to the team, and only one live-licensed
+  on that team. Deleting the team makes its workspaces nobody's team's.
 - **A workspace made for a call.** Nothing makes one by itself: the organizer pressed New workspace, in the call or when
   scheduling, or to file its notes once it was over. It has the organizer as its admin and the people invited in it, to
   edit: the same people who get the call's notes. Someone let in from the link who goes on the invite is let in too, and
@@ -1028,7 +1048,9 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   own note does (shared-screen frames included), so everyone loses it; its `note_access` rows as a reader (found by its profile address's email index), so it's off every
   note other people gave it, unless another account still signs in with that address; what it answered on other
   people's calls, on the same condition (the invites stay: they're those organizers', who put the address on them); the
-  rings to its address in other people's calls; and its `owners` row,
+  rings to its address in other people's calls; its place on a team, and the team it's the admin of, with that team's
+  own owner row, members, invites and `team_notes` (the admin of a team anyone else is on is refused first, `409
+  conflict`, with nothing done); and its `owners` row,
   from which everything else keyed by the account cascades: its identity (subject and email indexes), every
   session in every browser, its profile (pins and groups with it), its Google connection (the refresh token),
   its receipts, notes jobs, plan account, AI meter, top-ups and what it uploaded each day. Then the API drops the Google access token it held in memory,

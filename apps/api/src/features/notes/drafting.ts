@@ -856,11 +856,12 @@ const NoteCite = z.object({ note: z.coerce.number().int(), line: Ref.nullish().c
  * first among equals. Each sends its summary, decisions and follow-ups. The notes that share words with the
  * question also send transcript lines, each numbered: those lines first, best match first, then the lines nearest them,
  * then the rest of a note that matched only outside its transcript, while they fit in what asking about one
- * note may send. The model cites a note and a line in it, and a cite's moment is that line's time. Only cites of notes
- * that were sent, and of lines that were, are kept. Says which notes were sent, and how many
+ * note may send. Notes in `referenced` (the question's @-references) go first, ahead of any that match, and send
+ * transcript lines whether they match or not. The model cites a note and a line in it, and a cite's moment is that line's
+ * time. Only cites of notes that were sent, and of lines that were, are kept. Says which notes were sent, and how many
  * transcript lines.
  */
-export async function answerFromNotes(cfg: Config, meter: Meter, notes: NoteBrief[], asker: Person, question: string, via?: ChatModel | undefined, beforeSend?: ((ids: string[]) => Promise<void>) | undefined): Promise<{ parts: AnswerPart[]; sent: string[]; lines: number }> {
+export async function answerFromNotes(cfg: Config, meter: Meter, notes: NoteBrief[], asker: Person, question: string, via?: ChatModel | undefined, beforeSend?: ((ids: string[]) => Promise<void>) | undefined, referenced: ReadonlySet<string> = new Set()): Promise<{ parts: AnswerPart[]; sent: string[]; lines: number }> {
   const terms = new Set(wordsOf(question));
   const shared = (text: string) => new Set(wordsOf(text).filter((w) => terms.has(w)));
   const found = notes.map((n) => ({
@@ -870,22 +871,23 @@ export async function answerFromNotes(cfg: Config, meter: Meter, notes: NoteBrie
   // A word in every note says little about which one a question is about; a word in one note says a lot.
   const weight = new Map([...terms].map((t) => [t, Math.log(1 + notes.length / Math.max(1, found.filter((f) => f.words.has(t)).length))]));
   const score = (words: Set<string>) => [...words].reduce((s, t) => s + (weight.get(t) ?? 0), 0);
-  const ranked = found.map((f) => ({ n: f.n, score: score(f.words) }))
-    .sort((a, b) => b.score - a.score || b.n.startedAt.localeCompare(a.n.startedAt))
+  // Notes the question refers to (@-references) come first, whatever words they share with it.
+  const ranked = found.map((f) => ({ n: f.n, score: score(f.words), referenced: referenced.has(f.n.id) }))
+    .sort((a, b) => Number(b.referenced) - Number(a.referenced) || b.score - a.score || b.n.startedAt.localeCompare(a.n.startedAt))
     .slice(0, NOTES_PER_QUESTION);
 
   // Within what asking about one note may send: each note's summary, decisions and follow-ups first...
   let left = MAX_TRANSCRIPT_CHARS;
-  const chosen: { n: NoteBrief; score: number; head: string; taken: Set<number> }[] = [];
+  const chosen: { n: NoteBrief; score: number; referenced: boolean; head: string; taken: Set<number> }[] = [];
   for (const r of ranked) {
     const head = headOf(r.n);
     if (head.length + NOTE_OVERHEAD > left) break;
     left -= head.length + NOTE_OVERHEAD;
     chosen.push({ ...r, head, taken: new Set() });
   }
-  // ...then the transcript lines of notes that share words with the question, nearest the lines that do first.
+  // ...then the transcript lines of notes that share words with the question, or that it refers to, nearest the lines that do first.
   const candidates = chosen.flatMap((c, note) => {
-    if (!c.score) return [];
+    if (!c.score && !c.referenced) return [];
     const scores = c.n.brief.lines.map((l) => score(shared(heard(l))));
     const far = nearest(scores.map((s) => s > 0));
     return scores.map((s, line) => ({ note, line, s, far: far[line] ?? Infinity }));

@@ -30,7 +30,7 @@ export const othersIn = (people: Person[], me: string | undefined): Person[] => 
 
 /** How a note came to you, or where it was made, when that's worth saying. */
 export function howOf(n: NoteSummary, me: string | undefined): { icon: IconName; text: string } | undefined {
-  if (n.received) return { icon: n.received.role === 'shared' ? 'share' : 'video', text: receivedLine(n.received) };
+  if (n.received) return { icon: n.received.role === 'shared' ? 'share' : n.received.role === 'team' ? 'people' : 'video', text: receivedLine(n.received) };
   const alone = !othersIn(n.people, me).length;
   if (n.kind === 'room') return { icon: 'mic', text: alone ? 'In the room, only you' : 'In the room' };
   return alone ? { icon: 'lock', text: 'Only you' } : undefined;

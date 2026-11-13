@@ -23,7 +23,7 @@ import { log } from '../../log';
 import { masterKey } from '../../owners';
 import { lockItem } from '../../vault';
 import { me, profile } from '../account/account';
-import { asRead, audienceOf, holdAccess, locate, type Located } from './service';
+import { asRead, audienceOf, holdAccess, locate, type Seen } from './service';
 import * as personal from './personal';
 import { personOf } from '../account/portraits';
 
@@ -55,7 +55,7 @@ const authorIndex = (o: Owner) => blindIndex(masterKey(o), 'addition-author', o.
 export const takeAllBack = (o: Owner, db: Db) => exec(db, 'DELETE FROM note_additions WHERE author_index = $1', [authorIndex(o)]);
 
 /** What's been added to a note, as `readerId` reads it: the moments are read for them, now, and any they can't open aren't there. */
-export async function of(l: Located, readerId: string): Promise<NoteAddition[]> {
+export async function of(l: Seen, readerId: string): Promise<NoteAddition[]> {
   const noteId = l.note.itemId;
   const found = await rows(l.owner.pool, Row, 'SELECT addition_id, body_ciphertext FROM note_additions WHERE owner_id = $1 AND note_item_id = $2 ORDER BY added_at, addition_id', [l.owner.ownerId, noteId]);
   if (!found.length) return [];

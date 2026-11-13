@@ -365,7 +365,7 @@ export function updateActionOptions(api: AlcoveApi, client: QueryClient, keys: A
         const mine = answer.owner?.person?.email === client.getQueryData<Session | null>(keys.session)?.user.email;
         const existing = inbox.followUps.some((a) => a.id === answer.id && a.noteId === note.id);
         const followUps = inbox.followUps.flatMap((a) => a.id !== answer.id || a.noteId !== note.id ? [a] : mine && !answer.done ? [confirmedAction(a, answer, ctx.input.patch)] : []);
-        if (mine && !answer.done && !existing) followUps.push({ ...answer, noteId: note.id, noteTitle: note.title, noteStartedAt: note.startedAt, role: note.received?.role ?? 'organizer' });
+        if (mine && !answer.done && !existing) followUps.push({ ...answer, noteId: note.id, noteTitle: note.title, noteStartedAt: note.startedAt, role: !note.received ? 'organizer' : note.received.role === 'team' ? 'shared' : note.received.role });
         return { ...inbox, followUps };
       });
     } },

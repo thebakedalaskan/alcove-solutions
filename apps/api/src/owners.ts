@@ -11,7 +11,7 @@ import { AuthError, IntegrityError } from './errors';
 import type { Session } from './sessions';
 
 const ROOT_SCOPE = 'owner-root';
-export const masterKey = (d: Deps) => unb64u(d.cfg.KMASTER, 32);
+export const masterKey = (d: Pick<Deps, 'cfg'>) => unb64u(d.cfg.KMASTER, 32);
 
 /** Creates an owner with a fresh root key, in the caller's transaction: an account, or a workspace (features/workspaces/service.ts). */
 export async function createOwner(d: Deps, db: Db): Promise<{ ownerId: string; root: Uint8Array }> {
@@ -46,6 +46,14 @@ export async function openOwner(d: Deps, ownerId: string, session: Session | und
  * vault, where their account being gone isn't the caller's sign-in ending.
  */
 export async function findOwner(d: Deps, ownerId: string, session: Session | undefined, db: Db = d.pool): Promise<Owner | undefined> {
+  const root = await openRoot(d, ownerId, db);
+  return root && ownerFrom(d, ownerId, root, session);
+}
+/**
+ * An owner's root key alone, opened and checked against its root check, or nothing once it's been deleted: for work that
+ * needs only a key derived from it (a team's, features/billing/teams.ts), even where there's no request. The caller zeroes it.
+ */
+export async function openRoot(d: Pick<Deps, 'cfg' | 'pool'>, ownerId: string, db: Db = d.pool): Promise<Uint8Array | undefined> {
   const r = await maybeOne(db, KeyRow, 'SELECT root_envelope, root_check FROM owners WHERE owner_id = $1', [ownerId]);
   if (!r) return undefined;
   const root = openKey(ownerRootWrapKey(masterKey(d), ownerId), ownerId, ROOT_SCOPE, r.root_envelope);
@@ -53,5 +61,5 @@ export async function findOwner(d: Deps, ownerId: string, session: Session | und
     root.fill(0);
     throw new IntegrityError('This account’s key doesn’t match its check.', { context: { ownerId } });
   }
-  return ownerFrom(d, ownerId, root, session);
+  return root;
 }

@@ -1,12 +1,13 @@
 import { type HttpTransport } from '../transport/http';
-import { type AlcoveApi, AttestationSchema, FeatureFlagsSchema, PersonSuggestionSchema, PlanOffersSchema, PlanSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema } from '@alcove/api';
+import { type AlcoveApi, AttestationSchema, FeatureFlagsSchema, MyTeamSchema, NoteSummarySchema, PersonSuggestionSchema, PlanOffersSchema, PlanSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamInvitePeekSchema, TeamInviteSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema } from '@alcove/api';
 import { z } from 'zod';
 
-export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'plans' | 'trust' | 'featureFlags'> {
+export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'plans' | 'teams' | 'trust' | 'featureFlags'> {
   const { base, req } = t;
   return {
     auth: {
       getSession: () => req(SessionSchema.nullable(), 'GET', '/session'),
+      visit: async () => { await req(z.unknown(), 'POST', '/session/visit', {}); },
       signInUrl: (provider, opts) => {
         const search = new URLSearchParams();
         if (opts?.next) search.set('next', opts.next);
@@ -39,6 +40,22 @@ export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'ac
       topUp: (id) => req(TopUpSchema, 'GET', `/plan/top-ups/${encodeURIComponent(id)}`),
       cancelTopUp: (id) => req(TopUpSchema, 'POST', `/plan/top-ups/${encodeURIComponent(id)}/cancel`),
       topUps: () => req(z.array(TopUpSchema), 'GET', '/plan/top-ups')
+    },
+    // A team's own routes are under /team/ with names of their own: GET /team and POST /team/invites are the people directory's.
+    teams: {
+      mine: () => req(MyTeamSchema.nullable(), 'GET', '/team/mine'),
+      create: (name) => req(MyTeamSchema, 'POST', '/team/new', { name }),
+      invite: () => req(TeamInviteSchema, 'POST', '/team/invite', {}),
+      // An invite's secret goes in the body, never in a URL, so no log can keep it.
+      peek: (secret) => req(TeamInvitePeekSchema, 'POST', '/team/peek', { secret }),
+      join: (secret) => req(MyTeamSchema, 'POST', '/team/join', { secret }),
+      remove: (memberId) => req(MyTeamSchema, 'DELETE', `/team/members/${encodeURIComponent(memberId)}`),
+      leave: async () => { await req(z.unknown(), 'POST', '/team/leave', {}); },
+      delete: async () => { await req(z.unknown(), 'DELETE', '/team/mine'); },
+      buyLicenses: (count, microUsdPerLicense) => req(MyTeamSchema, 'POST', '/team/licenses', { count, microUsdPerLicense }),
+      refundLicenses: () => req(MyTeamSchema, 'POST', '/team/licenses/refund', {}),
+      setAutoPurchase: (on) => req(MyTeamSchema, 'PUT', '/team/auto-purchase', { on }),
+      notes: () => req(z.array(NoteSummarySchema), 'GET', '/team/notes')
     },
     trust: {
       attestation: (nonce) => req(AttestationSchema, 'GET', `/attestation?nonce=${encodeURIComponent(nonce)}`)

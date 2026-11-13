@@ -26,6 +26,7 @@ import { Route as AppTeamRouteImport } from './routes/_app/team'
 import { Route as CallCodeRouteImport } from './routes/call.$code'
 import { Route as JoinCodeRouteImport } from './routes/join.$code'
 import { Route as RecordLiveRouteImport } from './routes/record.live'
+import { Route as TeamJoinRouteImport } from './routes/team.join'
 import { Route as AppDriveIndexRouteImport } from './routes/_app/drive.index'
 import { Route as AppDriveWorkspaceIdRouteImport } from './routes/_app/drive.$workspaceId'
 import { Route as AppNotesIndexRouteImport } from './routes/_app/notes.index'
@@ -119,6 +120,11 @@ const RecordLiveRoute = RecordLiveRouteImport.update({
   path: '/record/live',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TeamJoinRoute = TeamJoinRouteImport.update({
+  id: '/team/join',
+  path: '/team/join',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppDriveIndexRoute = AppDriveIndexRouteImport.update({
   id: '/drive/',
   path: '/drive/',
@@ -180,6 +186,7 @@ export interface FileRoutesByFullPath {
   '/call/$code': typeof CallCodeRoute
   '/join/$code': typeof JoinCodeRoute
   '/record/live': typeof RecordLiveRoute
+  '/team/join': typeof TeamJoinRoute
   '/drive/$workspaceId': typeof AppDriveWorkspaceIdRouteWithChildren
   '/notes/$noteId': typeof AppNotesNoteIdRoute
   '/drive/': typeof AppDriveIndexRoute
@@ -206,6 +213,7 @@ export interface FileRoutesByTo {
   '/call/$code': typeof CallCodeRoute
   '/join/$code': typeof JoinCodeRoute
   '/record/live': typeof RecordLiveRoute
+  '/team/join': typeof TeamJoinRoute
   '/notes/$noteId': typeof AppNotesNoteIdRoute
   '/drive': typeof AppDriveIndexRoute
   '/notes': typeof AppNotesIndexRoute
@@ -233,6 +241,7 @@ export interface FileRoutesById {
   '/call/$code': typeof CallCodeRoute
   '/join/$code': typeof JoinCodeRoute
   '/record/live': typeof RecordLiveRoute
+  '/team/join': typeof TeamJoinRoute
   '/_app/drive/$workspaceId': typeof AppDriveWorkspaceIdRouteWithChildren
   '/_app/notes/$noteId': typeof AppNotesNoteIdRoute
   '/_app/drive/': typeof AppDriveIndexRoute
@@ -261,6 +270,7 @@ export interface FileRouteTypes {
     | '/call/$code'
     | '/join/$code'
     | '/record/live'
+    | '/team/join'
     | '/drive/$workspaceId'
     | '/notes/$noteId'
     | '/drive/'
@@ -287,6 +297,7 @@ export interface FileRouteTypes {
     | '/call/$code'
     | '/join/$code'
     | '/record/live'
+    | '/team/join'
     | '/notes/$noteId'
     | '/drive'
     | '/notes'
@@ -313,6 +324,7 @@ export interface FileRouteTypes {
     | '/call/$code'
     | '/join/$code'
     | '/record/live'
+    | '/team/join'
     | '/_app/drive/$workspaceId'
     | '/_app/notes/$noteId'
     | '/_app/drive/'
@@ -337,6 +349,7 @@ export interface RootRouteChildren {
   CallCodeRoute: typeof CallCodeRoute
   JoinCodeRoute: typeof JoinCodeRoute
   RecordLiveRoute: typeof RecordLiveRoute
+  TeamJoinRoute: typeof TeamJoinRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -460,6 +473,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RecordLiveRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/team/join': {
+      id: '/team/join'
+      path: '/team/join'
+      fullPath: '/team/join'
+      preLoaderRoute: typeof TeamJoinRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app/drive/': {
       id: '/_app/drive/'
       path: '/drive'
@@ -574,6 +594,7 @@ const rootRouteChildren: RootRouteChildren = {
   CallCodeRoute: CallCodeRoute,
   JoinCodeRoute: JoinCodeRoute,
   RecordLiveRoute: RecordLiveRoute,
+  TeamJoinRoute: TeamJoinRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

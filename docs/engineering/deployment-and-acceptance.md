@@ -208,6 +208,10 @@ everywhere within a minute.
 | `plan.pro.storage_bytes` | 100 GiB | 0 | 10 TiB | Pro: what an account stores, its uploads and its recordings. Held this high for `plan.grace_seconds` after Pro ends. |
 | `plan.pro.file_bytes` | 2 GiB | 0 | 4 GiB | Pro: one file. What's enforced is at most 512 MiB (`WHOLE_DOWNLOAD_BYTES`) until downloads can pick up where they stopped. |
 | `plan.pro.price_micro_usd` | $20 | $0 | $10,000 | Pro: one period. |
+| `plan.team.price_micro_usd` | $40 | $0 | $10,000 | Team: one license, a person for one period. |
+| `plan.team.notes_minutes` | 3,000 | 0 | 600,000 | Team: the minutes of notes a license's period brings its member, reckoned at `ai.hour_micro_usd` an hour. |
+| `plan.team.storage_bytes` | 100 GiB | 0 | 10 TiB | Team: the storage each live license adds to its team's pool; also what someone who leaves a team is held to through `plan.grace_seconds`. |
+| `plan.team.file_bytes` | 2 GiB | 0 | 4 GiB | Team: one file. What's enforced is at most 512 MiB (`WHOLE_DOWNLOAD_BYTES`) until downloads can pick up where they stopped. |
 | `plan.pro_max_months` | 12 | 1 | 120 | The most months of Pro one purchase buys. |
 | `plan.pro_remind_seconds` | 3 d | 0 | 30 d | How long before Pro ends its owner is told, and a month is bought if renewing is on. |
 | `plan.period_seconds` | 30 d | 1 m | 365 d | A plan's period: notes renew, and paid time runs, in these. |
@@ -220,6 +224,9 @@ everywhere within a minute.
 | `ai.image_tokens` | 1,500 | 0 | 100,000 | The input tokens one image is taken to be at most, before NEAR AI says. |
 | `call.max_seconds` | 10 h | 10 m | 48 h | The longest a call runs: it ends then, everyone told 5 minutes before. |
 | `call.max_people` | 100 | 2 | 1,000 | The most people in a call at once, those waiting to be let in included. |
+| `team.max_licenses` | 500 | 1 | 100,000 | The most team licenses one purchase buys. |
+| `team.low_licenses` | 5 | 0 | 100,000 | Unconsumed licenses below which a team's admin is told they're running low. |
+| `team.invite_seconds` | 1 d | 1 m | 30 d | How long a link to join a team works, once. |
 | `workspaces.max_made` | 1,000 | 1 | 100,000 | The most workspaces one account makes, to stop one from making them without end. |
 | `media.account_day_bytes` | 20 GiB | 0 | 200 GiB | What one person uploads in a day (UTC), in every workspace. |
 

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Deps, Owner } from '../../context';
 import { id128 } from '../../crypto';
 import { exec, maybeOne, rows } from '../../db';
-import { NotFoundError } from '../../errors';
+import { ForbiddenError, NotFoundError } from '../../errors';
 import { log, withLogContext } from '../../log';
 import { findOwner } from '../../owners';
 import { artifact } from './drive-artifacts';
@@ -31,7 +31,8 @@ export async function synchronize(o: Owner, onlyNoteId?: string): Promise<void> 
   if (!onlyNoteId) await exec(o.pool, 'DELETE FROM drive_export_jobs WHERE owner_id = $1 AND NOT (note_id = ANY($2::text[]))', [o.ownerId, [...ids]]);
   for (const noteId of ids) {
     let found;
-    try { found = await locate(o, noteId); } catch (error) { if (error instanceof NotFoundError) continue; throw error; }
+    // Gone since, or only the team's to read now: nothing of it goes to their Drive.
+    try { found = await locate(o, noteId); } catch (error) { if (error instanceof NotFoundError || error instanceof ForbiddenError) continue; throw error; }
     try {
       if (found.note.manifest.kind !== 'call') continue;
       const selected = await override(o, noteId);
