@@ -6,7 +6,7 @@ import { claimAlerts, finishAlerts, type ReceiptClaim } from './notified';
 import { notificationOnScreen } from './notification-views';
 
 const nlog = log.child({ component: 'notification-delivery' });
-export type BrowserAlertKind = CallNotificationCategory | 'call' | 'ready' | 'shared' | 'due' | 'tagged' | 'ringing';
+export type BrowserAlertKind = CallNotificationCategory | 'call' | 'ready' | 'shared' | 'due' | 'tagged' | 'ringing' | 'plan';
 export interface BrowserAlert {
   readonly key: string; readonly kind: BrowserAlertKind; readonly context: string; readonly open: NotificationOpen;
   readonly raisedAt: number; readonly expiresAt: number;
@@ -71,6 +71,7 @@ function words(kind: BrowserAlertKind, many: boolean): { title: string; body: st
     case 'due': return { title: 'Follow-up due in Alcove', body: 'Open Alcove to review your outstanding follow-ups.' };
     case 'tagged': return { title: 'Mention in Alcove', body: 'Open Alcove to read the document.' };
     case 'ringing': return { title: 'Someone is calling you', body: 'Open Alcove to answer.' };
+    case 'plan': return { title: 'Your Alcove plan', body: 'Open Alcove to see what changed.' };
   }
 }
 async function close(tag: string): Promise<void> {

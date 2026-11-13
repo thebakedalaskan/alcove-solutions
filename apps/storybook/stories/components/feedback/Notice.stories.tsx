@@ -32,3 +32,8 @@ export const Long: Story = {
   },
   argTypes: { children: { control: false } }
 };
+/** Said until it's dismissed: an × at its end, as a plan's notices are on Settings › Plan. */
+export const Dismissible: Story = {
+  args: { icon: 'coins', children: 'Pro renewed from your balance. It now runs to Sat 5 Dec.', onDismiss: () => undefined, dismissLabel: 'Dismiss: Pro renewed' },
+  argTypes: { onDismiss: { control: false } }
+};

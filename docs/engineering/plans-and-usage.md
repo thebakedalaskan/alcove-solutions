@@ -7,17 +7,19 @@ they bring: notes and storage. Every feature is on every plan.
 
 | | Free | Pro | Team |
 | --- | --- | --- | --- |
-| Price | $0 | $20 a period | $40 a person a period |
+| Price | $0 | $20 a month (a period), from the balance | $40 a person a period |
 | Calls | Unlimited, up to 10 hours each, 100 people | Same | Same |
 | Notes (an estimate: what a call uses varies) | About 5 hours a period | About 50 hours | About 50 hours a person |
 | Storage (uploads and call recordings) | 10 GB | 100 GB | 100 GB a person, pooled |
 | Largest file | 512 MB | 512 MB, 2 GB once downloads resume | Same as Pro |
 | Shared workspaces not tied to a call | As many as you like (storage is the limit) | Same | Same |
 
-A period is 30 days from when the plan began. Pro and Team are built in later phases: this page says what's built now.
+A period is 30 days from when the plan began; a month of Pro is one period. Team is built in a later phase: this page says
+what's built now.
 
 Every number is a limit (`apps/api/src/limits.ts`, [Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)),
-changeable without a deploy: each plan's notes, storage, files and price; the most workspaces one account makes; what an hour of notes is
+changeable without a deploy: each plan's notes, storage, files and price; the most months of Pro one purchase buys and how
+long before Pro ends its owner is told; the most workspaces one account makes; what an hour of notes is
 reckoned at; when AI stops and when an organizer is told it's close; how long a period and a grace last; a call's longest
 and its most people.
 
@@ -31,7 +33,7 @@ and its most people.
 | Storage per account, recordings included; grace | Working |
 | A call's 10 hours and 100 people | Working |
 | The USD balance, filled by stablecoin top-ups | Working |
-| Buying Pro, renewing, refunds | Not built (phase 2) |
+| Buying Pro, renewing, refunds, reminders, the grace after Pro | Working (server; see [Pro](#pro)) |
 | Teams, licenses, team notes and workspaces | Not built (phase 3) |
 | Picking a plan at first sign-in | Not built (phase 4). `Plan.choose` already says who hasn't. |
 | Withdrawing the balance | Not built, and not planned yet |
@@ -124,10 +126,12 @@ added until one of this workspace's admins signs in to Alcove."), until upkeep's
 
 ### Over the limit: the grace
 
-An account over its plan's storage (after a plan ends, or at the release that brought plans for one already over Free's)
-gets `plan.grace_seconds` (15 days) with everything working as it did. Then upkeep ends the grace: uploads stop everywhere
-the account pays for, and notes stop for everyone, as above. Making room, or a bigger plan, lifts it; nothing is ever
-deleted for being over, and every workspace stays readable and editable.
+An account over its plan's storage gets `plan.grace_seconds` (15 days) with everything working as it did: when Pro ends
+(held to Pro's storage, [below](#pro)), or at the release that brought plans for one already over Free's (no limit until
+then; upkeep ends it). Then uploads stop everywhere the account pays for, and notes stop for everyone, as above. Making
+room, or buying Pro, lifts it; nothing is ever deleted for being over, and every workspace stays readable and editable.
+While both graces run the larger holds, and the plan shows the later end (`Plan.grace`). Buying Pro ends either at once:
+only Pro's limits apply on Pro.
 
 ## Calls
 
@@ -135,6 +139,74 @@ A call ends at its longest (`call.max_seconds`, 10 hours): `CallState.endsAt` sa
 before, and upkeep ends it every 30 seconds (`lifecycle.endOverdue`), writing its notes as when anyone ends it. At most
 `call.max_people` (100) are in a call or waiting to be let in: anyone more is refused ("This call is full…") and whoever
 hosts is told, at most once a minute. Someone coming back keeps their place.
+
+## Pro
+
+Pro is bought from the balance, a month at a time (`features/billing/plans.ts`, routes in `routes.ts`). A month is
+`plan.period_seconds` (30 days), and each is a period of its own: Pro's notes (`plan.pro.notes_minutes`, 3,000 minutes),
+storage (`plan.pro.storage_bytes`, 100 GiB) and largest file (`plan.pro.file_bytes`, 2 GiB, held at 512 MiB, the most a
+file can be downloaded whole, until downloads resume: `WHOLE_DOWNLOAD_BYTES` in `limits.ts`). Free → Pro, and each new
+month, starts a fresh period with the whole allowance: nothing carries over, and going past an allowance isn't a debt.
+
+**The plan in force** (`inForce`) is Pro while a bought month covers now, and Free otherwise. Free's periods count from
+when the account began, or from the end of the last month of Pro, whichever is later, so Free starts afresh when Pro ends,
+with or without upkeep.
+
+**What's offered** (`GET /v1/plan/offers`): the period in days, Free's and Pro's allowances (Pro's file size as enforced),
+the price of a month (`plan.pro.price_micro_usd`, $20) and the most months one purchase buys (`plan.pro_max_months`, 12).
+
+**Buying** (`POST /v1/plan/pro { months, microUsdPerMonth }`) runs in one transaction with the account's `plan_accounts`
+row locked, so buys at once on any instance never spend the same money twice:
+
+1. More than `plan.pro_max_months` is refused (`invalid`, "Buy 1 to 12 months at a time.").
+2. A price other than the one in force is refused (`conflict`, "The price of Pro has changed. Look at it again before
+   buying."): the app sends the price it showed, so a change in between charges nothing.
+3. A balance short of months × price is refused (`conflict`, "Your balance is short: 3 months of Pro cost $60 and your
+   balance is $50. Add money first."). Nothing changes.
+4. The months are added back to back, from the end of the last month bought that hasn't ended, or from now. The balance
+   goes down by the total, with "Pro, 3 months" in its history, and any grace ends. Logged `pro bought` with the owner,
+   months and amount.
+
+**Refunds** (`POST /v1/plan/pro/refund`): every month that hasn't started goes back to the balance at what was paid for it
+("Pro refunded, 2 months"). A month that has started isn't refunded; with none to refund it's `conflict` ("There’s no
+month of Pro to refund that hasn’t started…"). `Plan.pro.refundableMicroUsd` says what a refund would add.
+
+**Renewing** (`PUT /v1/plan/renew { renew }`) is off by default. Upkeep (`upkeep` in `plans.ts`, every 5 minutes, by
+`plan_accounts.due_at`) looks at an account at the earliest of: its release grace ending; `plan.pro_remind_seconds` (3
+days) before Pro ends, never before the last month starts; and Pro's end (the last month's `to`). The record keeps which
+end it has reminded about (`reminded`) and handled (`ended`), so each happens once for each end:
+
+- **At the reminder:** with renewing on and a month's price in the balance, a month is bought after the last ("Pro,
+  renewed for a month") and the owner told `pro-renewed`. Otherwise they're told `pro-ending`. Logged `pro renewed` or
+  `pro ending`.
+- **At the end:** with renewing on and the money now (turned on, or money added, since the reminder), a month is bought
+  from the end, `pro-renewed`. Otherwise the account is on Free and told `pro-ended`. Logged `pro ended`.
+
+**Notices** (`Plan.notices`, newest first, those not dismissed) are shown in the app and, with `NotificationPrefs.plan`
+on (the default), from the browser. `POST /v1/plan/notices/:id/dismiss` hides one; another account's ID, or an unknown
+one, is `not-found`. The record keeps the latest 20.
+
+**The grace after Pro.** On Free, for `plan.grace_seconds` after the last month of Pro ended, storage is held to Pro's;
+nothing runs for it, so it ends on time without upkeep. `Plan.grace` shows it while the account is over Free's storage.
+After it, uploads and notes stop while over Free's storage, as above. Buying Pro again lifts that at once.
+
+`Plan.pro` gives the months running and bought (oldest first), when the last ends, whether renewing is on and what a
+refund would add. The record keeps the months that haven't ended and the latest that has (the grace and Free's periods
+count from it).
+
+## Support
+
+`pnpm --filter @alcove/server billing` (`apps/api/src/billing-cli.ts`, `dist/billing-cli.js` in the image) is support's
+way into an account's plan, in whichever database `DATABASE_URL` names. It needs `KMASTER`, to find the account by the
+address it signs in with as sign-in does (its blind index), and `KSERVICE`, to open and seal the plan: in production run
+it as a one-off job on the API's image with the API's settings bound, so neither key reaches a laptop.
+
+- `billing show <email>`: the plan, its period, notes and storage, the balance and its latest changes, the months of Pro
+  and the notices. Nothing else about the person; the address isn't repeated.
+- `billing credit <email> <usd>`: adds dollars (`20`, `4.50`, at most $10,000) to the balance, as "Added by support",
+  logged `balance added by support` with the owner and amount. Locally it's the fake money for buying Pro without 1Click.
+
+An address signed in to more than one account (through different providers) is refused, and nothing is done.
 
 ## Adding money
 
@@ -206,9 +278,9 @@ The server never holds a key that can move treasury money. By hand, in near.com,
 - **A stray payment** (a second payment to a used address, or one after it expired) reaches the treasury as a 1Click
   refund and isn't added. The person gives support the top-up's reference (its deposit ID). Support opens that deposit's
   sealed record (`deposits`, under `Kservice`'s accounting key) to find its address, confirms the payment in 1Click's
-  status for it, and adds what reached the treasury to their balance by hand.
+  status for it, and adds what reached the treasury to their balance with `billing credit` ([Support](#support)).
 - **A failed top-up** (logged at error with its deposit ID and a reason) is one 1Click reported money for that wasn't
-  added. Support opens its record and 1Click's status as above, and adds only what 1Click shows reached the treasury. If
+  added. Support opens its record and 1Click's status as above, and adds only what 1Click shows reached the treasury (`billing credit`). If
   1Click settles it cleanly within 30 days, it's added by itself.
 - **A depeg (accepted risk).** Every amount sent is valued at face (1 token = 1 USD). When a stablecoin depegs, turn
   top-ups off (take `TREASURY_INTENTS_ACCOUNT` out of the API's settings in `deploy.yml` and redeploy) until it recovers.
@@ -228,3 +300,7 @@ The server never holds a key that can move treasury money. By hand, in near.com,
 - A deposit record from before keeps its `credits` and `rate` (ignored now); one settled by a release before plans has no
   `addedMicroUsd` and is added again as dollars once (above).
 - A live call's state from before has no `notes.limit`, and reads as not stopped (`.default`).
+- Pro needs no migration. A `plan-account` record from before has no `pro`, `renew`, `notices`, `reminded` or `ended`:
+  each has a `.default` (none bought, renewing off, no notices), and the record is written in the new shape the next
+  time it's saved. The previous release reads a record this one wrote (zod ignores the new fields), so an account that
+  bought Pro reads as Free there until this release is serving.

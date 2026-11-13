@@ -39,7 +39,13 @@ export interface LimitSpec {
 }
 
 /**
- * Every limit there is (docs: Plans and usage, and Deployment › Changing a limit): each plan's notes, storage and files, and its price; what an hour of notes is reckoned at, when AI stops and when an organizer is told
+ * The largest file any plan takes for now, whatever its limit says: a whole file is read in one response, so a bigger one
+ * waits until downloads can pick up where they stopped. Pro's 2 GiB is held in the table, and enforced at this.
+ */
+export const WHOLE_DOWNLOAD_BYTES = 512 * MiB;
+
+/**
+ * Every limit there is (docs: Plans and usage, and Deployment › Changing a limit): each plan's notes, storage and files, Pro's price, the most months one purchase buys and when Pro's end is told; what an hour of notes is reckoned at, when AI stops and when an organizer is told
  * it's close; how long a plan's period and its grace last; the longest call and the most people in one; and what one
  * person uploads in a day, everywhere. A ceiling leaves room to raise a default a long way, except a file's: a whole file
  * is read in one response, which is cut at 280 seconds and past 16 MiB can't pick up where it stopped, so 512 MiB needs
@@ -49,7 +55,12 @@ export const LIMITS = {
   'plan.free.notes_minutes': { default: 300, floor: 0, ceiling: 60_000, unit: 'minutes', measures: 'Free: the notes a period brings, reckoned at ai.hour_micro_usd an hour.' },
   'plan.free.storage_bytes': { default: 10 * GiB, floor: 0, ceiling: TiB, unit: 'bytes', measures: 'Free: what an account stores, its uploads and its recordings.' },
   'plan.free.file_bytes': { default: 512 * MiB, floor: 0, ceiling: MAX_MEDIA_BYTES, unit: 'bytes', measures: 'Free: one file.' },
+  'plan.pro.notes_minutes': { default: 3_000, floor: 0, ceiling: 600_000, unit: 'minutes', measures: 'Pro: the notes a period (a month of Pro) brings, reckoned at ai.hour_micro_usd an hour.' },
+  'plan.pro.storage_bytes': { default: 100 * GiB, floor: 0, ceiling: 10 * TiB, unit: 'bytes', measures: 'Pro: what an account stores, its uploads and its recordings. Held this high for plan.grace_seconds after Pro ends.' },
+  'plan.pro.file_bytes': { default: 2 * GiB, floor: 0, ceiling: MAX_MEDIA_BYTES, unit: 'bytes', measures: `Pro: one file. What's enforced is at most ${WHOLE_DOWNLOAD_BYTES / MiB} MiB (WHOLE_DOWNLOAD_BYTES) until downloads can pick up where they stopped.` },
   'plan.pro.price_micro_usd': { default: 20_000_000, floor: 0, ceiling: 10_000_000_000, unit: 'micro-usd', measures: 'Pro: one period.' },
+  'plan.pro_max_months': { default: 12, floor: 1, ceiling: 120, unit: 'count', measures: 'The most months of Pro one purchase buys.' },
+  'plan.pro_remind_seconds': { default: 3 * DAY, floor: 0, ceiling: 30 * DAY, unit: 'seconds', measures: 'How long before Pro ends its owner is told, and a month is bought if renewing is on.' },
   'plan.period_seconds': { default: 30 * DAY, floor: MINUTE, ceiling: 365 * DAY, unit: 'seconds', measures: 'A plan’s period: notes renew, and paid time runs, in these.' },
   'plan.grace_seconds': { default: 15 * DAY, floor: 0, ceiling: 90 * DAY, unit: 'seconds', measures: 'Once an account is over its plan’s limits: how long until what’s over stops taking more.' },
   'ai.hour_micro_usd': { default: 500_000, floor: 1, ceiling: 100_000_000, unit: 'micro-usd', measures: 'What an hour of notes is reckoned at, to give the AI allowance as time.' },

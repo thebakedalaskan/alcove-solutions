@@ -204,7 +204,12 @@ everywhere within a minute.
 | `plan.free.notes_minutes` | 300 | 0 | 60,000 | Free: the minutes of notes a period brings, reckoned at `ai.hour_micro_usd` an hour. |
 | `plan.free.storage_bytes` | 10 GiB | 0 | 1 TiB | Free: what an account stores, its uploads and its recordings. |
 | `plan.free.file_bytes` | 512 MiB | 0 | 4 GiB | Free: one file. |
-| `plan.pro.price_micro_usd` | $20 | $0 | $10,000 | Pro: one period. Pro isn't built yet. |
+| `plan.pro.notes_minutes` | 3,000 | 0 | 600,000 | Pro: the minutes of notes a period (a month of Pro) brings, reckoned at `ai.hour_micro_usd` an hour. |
+| `plan.pro.storage_bytes` | 100 GiB | 0 | 10 TiB | Pro: what an account stores, its uploads and its recordings. Held this high for `plan.grace_seconds` after Pro ends. |
+| `plan.pro.file_bytes` | 2 GiB | 0 | 4 GiB | Pro: one file. What's enforced is at most 512 MiB (`WHOLE_DOWNLOAD_BYTES`) until downloads can pick up where they stopped. |
+| `plan.pro.price_micro_usd` | $20 | $0 | $10,000 | Pro: one period. |
+| `plan.pro_max_months` | 12 | 1 | 120 | The most months of Pro one purchase buys. |
+| `plan.pro_remind_seconds` | 3 d | 0 | 30 d | How long before Pro ends its owner is told, and a month is bought if renewing is on. |
 | `plan.period_seconds` | 30 d | 1 m | 365 d | A plan's period: notes renew, and paid time runs, in these. |
 | `plan.grace_seconds` | 15 d | 0 | 90 d | Once an account is over its plan's limits: how long until what's over stops taking more. |
 | `ai.hour_micro_usd` | $0.50 | $0.000001 | $100 | What an hour of notes is reckoned at, to give the AI allowance as time. |

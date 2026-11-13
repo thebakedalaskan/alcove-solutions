@@ -12,6 +12,7 @@ import { UNENCRYPTED_MODEL, speechWav } from '../../testing/fake-near';
 import { startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
 import { standing } from './meter';
+import { creditByEmail } from './support';
 
 vi.setConfig({ testTimeout: 90_000 });
 
@@ -230,6 +231,30 @@ describe('running out', () => {
     await setLimit('plan.free.notes_minutes', 300);
     await next.host.setNotes(true);
     expect((await settle(next.host, (s) => s.capture.mode === 'on')).capture).toMatchObject({ mode: 'on', stopped: null });
+  });
+
+  it('after a Free organizer’s notes stop, an invitee on Pro still asks from their own allowance, and a guest can’t', async () => {
+    await setLimit('plan.free.notes_minutes', 1);
+    await setLimit('ai.hour_micro_usd', 3600);
+    await setLimit('ai.stop_micro_usd', 0);
+    const org = await account(unique('organizer'));
+    const kofi = await account(unique('kofi'));
+    await creditByEmail(h.deps, kofi.email, 20_000_000);
+    await kofi.api.plans.buyPro(1, 20_000_000);
+    const { host, meeting } = await call(org, [kofi.email]);
+    const theirs = await kofi.api.calls.join(meeting.code, { mic: true, cam: false });
+    await settle(theirs, (s) => s.participants.some((p) => p.isMe));
+    const guest = await h.browser().api.calls.join(meeting.code, { mic: true, cam: false, name: 'Sam Guest' });
+    await letIn(host, guest);
+    await host.appendAudio(piece('before', 0));
+    await host.transcribe(speech('We agreed to ship on Monday.', 0), host.ticket.identity);
+    expect((await settle(theirs, (s) => s.capture.stopped !== null)).capture.stopped).toEqual({ reason: 'notes', at: expect.any(String) });
+    expect(code(await guest.askSoFar('When do we ship?', { kind: 'all' }).catch((e: unknown) => e))).toBe('plan-limit');
+    await theirs.askSoFar('When do we ship?', { kind: 'all' });
+    const k = await meter(kofi);
+    expect(k.plan).toBe('pro');
+    expect(k.byKind['ask']).toBeGreaterThan(0);
+    expect((await meter(org)).byKind['ask'] ?? 0).toBe(0);
   });
 
   it('stops every call the organizer has going, not only the one that spent it', async () => {

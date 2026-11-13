@@ -46,6 +46,12 @@ export const UpNextOnHomeNight = page('/home', 'busy', { globals: { ...WIDE, the
 /** Four minutes before the design review: Home's line is the one Join on screen, and Up next has made way. */
 export const UpNextMakesWay = page('/home', 'call-soon', { globals: WIDE });
 export const UpNextMakesWayNight = page('/home', 'call-soon', { globals: { ...WIDE, theme: 'dark' } });
+/** The side panel's foot on Pro: the newest of the plan's notices as one short line over the notes left, opening Settings › Plan. */
+export const SidePanelProEnding = page('/home', 'plan-pro-ending', { globals: WIDE });
+export const SidePanelProEndingNight = page('/home', 'plan-pro-ending', { globals: { ...WIDE, theme: 'dark' } });
+export const SidePanelProRenewed = page('/home', 'plan-pro-renewed', { globals: WIDE });
+/** Back on Free: Pro ended, said under Upgrade to Pro. */
+export const SidePanelProEnded = page('/home', 'plan-pro-ended', { globals: WIDE });
 export const OnTheirOwn = page('/home', 'on-their-own');
 export const Writing = page('/home', 'writing');
 export const Offline = page('/home', 'offline');

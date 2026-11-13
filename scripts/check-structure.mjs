@@ -20,7 +20,7 @@ const callHomes = {
 const serverHomes = new Set(['account', 'agents', 'meetings', 'calls', 'notes', 'recordings', 'workspaces', 'billing']);
 // Stable infrastructure and deployment entries, not a home for another feature implementation.
 const serverRoot = new Set([
-  'app.ts', 'callPass.ts', 'config.ts', 'context.ts', 'crypto.ts', 'db.ts', 'demo.ts', 'dstack-images.ts',
+  'app.ts', 'billing-cli.ts', 'callPass.ts', 'config.ts', 'context.ts', 'crypto.ts', 'db.ts', 'demo.ts', 'dstack-images.ts',
   'errors.ts', 'evidence.ts', 'feature-flags-cli.ts', 'feature-flags.ts', 'google.ts', 'identity.ts', 'inference.ts', 'limits-cli.ts', 'limits.ts',
   'livekit.ts', 'log.ts', 'maintenance.ts', 'mediaToken.ts', 'migrate-cli.ts', 'migrate.ts', 'objects.ts',
   'ohttp.ts', 'owners.ts', 'roots.ts', 'server.ts', 'sessions.ts', 'tee.ts', 'vault.ts', 'zones.ts'

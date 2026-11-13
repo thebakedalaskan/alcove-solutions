@@ -1,5 +1,5 @@
 import { type HttpTransport } from '../transport/http';
-import { type AlcoveApi, AttestationSchema, FeatureFlagsSchema, PersonSuggestionSchema, PlanSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema } from '@alcove/api';
+import { type AlcoveApi, AttestationSchema, FeatureFlagsSchema, PersonSuggestionSchema, PlanOffersSchema, PlanSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema } from '@alcove/api';
 import { z } from 'zod';
 
 export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'plans' | 'trust' | 'featureFlags'> {
@@ -29,6 +29,11 @@ export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'ac
     },
     plans: {
       plan: () => req(PlanSchema, 'GET', '/plan'),
+      offers: () => req(PlanOffersSchema, 'GET', '/plan/offers'),
+      buyPro: (months, microUsdPerMonth) => req(PlanSchema, 'POST', '/plan/pro', { months, microUsdPerMonth }),
+      refundPro: () => req(PlanSchema, 'POST', '/plan/pro/refund', {}),
+      setRenew: (renew) => req(PlanSchema, 'PUT', '/plan/renew', { renew }),
+      dismissNotice: (id) => req(PlanSchema, 'POST', `/plan/notices/${encodeURIComponent(id)}/dismiss`, {}),
       routes: () => req(TopUpRoutesSchema, 'GET', '/plan/routes'),
       startTopUp: (routeId, microUsd) => req(TopUpSchema, 'POST', '/plan/top-ups', { routeId, microUsd }),
       topUp: (id) => req(TopUpSchema, 'GET', `/plan/top-ups/${encodeURIComponent(id)}`),

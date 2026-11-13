@@ -15,7 +15,7 @@ const nlog = log.child({ component: 'call-notifications' });
 interface Baseline { scope: string; active: boolean; ids: Set<string>; allowed: Map<string, CallNotificationCategory> }
 const messageKey = (target: CallNotificationTarget) => target.type === 'private' ? `private:${target.message}` : target.type === 'thread' || target.type === 'chat' ? `room:${target.message}` : null;
 function permits(prefs: NotificationPrefs, kind?: BrowserAlertKind): boolean {
-  return prefs.enabled && (kind === undefined || (kind !== 'call' && kind !== 'ready' && kind !== 'shared' && kind !== 'due' && kind !== 'tagged' && prefs[kind]));
+  return prefs.enabled && (kind === undefined || (kind !== 'call' && kind !== 'ready' && kind !== 'shared' && kind !== 'due' && kind !== 'tagged' && kind !== 'plan' && prefs[kind]));
 }
 export function useCallBrowserNotifications({ session, state, crypto, direct, active, foreground, onOpen }: {
   session: CallSession; state: CallState; crypto: CallCrypto; direct: DirectMessagesState; active: boolean; foreground: boolean; onOpen: (target: CallNotificationTarget) => void;

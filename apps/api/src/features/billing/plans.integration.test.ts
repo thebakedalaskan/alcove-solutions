@@ -19,6 +19,8 @@ import { creditCarried, DepositRecord } from './deposits';
 import { endOverdue } from '../calls/lifecycle';
 import { header as callHeader, key as callKey } from '../calls/state';
 import { openOwner } from '../../owners';
+import { creditByEmail, standingOf } from './support';
+import { createHttpApi } from '@alcove/api-http';
 
 vi.setConfig({ testTimeout: 90_000 });
 
@@ -314,6 +316,297 @@ describe('money', () => {
     await creditCarried(h.deps);
     expect((await ann.api.plans.plan()).balance.microUsd).toBe(25_000_000);
     expect(h.logs.slice(from).filter((l) => l.includes('from before plans can')).length).toBe(1);
+  });
+});
+
+const GiB = 1024 * MiB;
+const PRICE = 20_000_000;
+const BASE_USDC = 'nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near';
+/** Money in, as a person adds it: a top-up the fake 1Click settles in full. */
+async function deposit(who: Account, microUsd: number): Promise<void> {
+  const t = await who.api.plans.startTopUp(BASE_USDC, microUsd);
+  h.oneclick.set(t.address ?? '', 'SUCCESS', { depositedAmount: String(microUsd), amountOut: String(microUsd), intentHashes: [`intent-${t.id}`] });
+  await who.api.plans.topUp(t.id);
+}
+/** Money in for a test that isn't about adding it: as support adds it (`pnpm billing credit`). */
+const give = (who: Account, microUsd: number) => creditByEmail(h.deps, who.email, microUsd);
+/** Upkeep at `at`, with the account due. */
+async function upkeepAt(who: Account, at: number): Promise<void> {
+  vi.useFakeTimers({ toFake: ['Date'], now: at });
+  await h.pool.query('UPDATE plan_accounts SET due_at = now() WHERE owner_id = $1', [who.session.ownerId]);
+  await maintain(h.deps);
+}
+const labels = async (who: Account) => (await who.api.plans.plan()).balance.history.map((e) => e.label);
+
+describe('Pro', () => {
+  it('a new account buys Pro once it has the money, and gets all of Pro’s allowance, whatever it spent on Free', async () => {
+    await setLimit('ai.hour_micro_usd', 60_000);
+    const ann = await account();
+    expect(await ann.api.plans.offers()).toEqual({
+      periodDays: 30,
+      free: { notesMinutes: 300, storageBytes: 10 * GiB, fileBytes: 512 * MiB },
+      pro: { notesMinutes: 3000, storageBytes: 100 * GiB, fileBytes: 512 * MiB, microUsdPerMonth: PRICE, maxMonths: 12 }
+    });
+    expect(await refusal(ann.api.plans.buyPro(1, PRICE))).toBe('conflict: Your balance is short: 1 month of Pro costs $20 and your balance is $0. Add money first.');
+    const rec = await ann.api.recordings.start({ title: 'Used' });
+    await rec.transcribe(speech('We agreed to ship on Monday.', 0));
+    await written(ann.api, (await rec.stop()).pendingNoteId);
+    expect((await ann.api.plans.plan()).notes.minutesLeft).toBeLessThan(300);
+    await deposit(ann, PRICE);
+    const before = Date.now();
+    const pro = await ann.api.plans.buyPro(1, PRICE);
+    expect(pro).toMatchObject({
+      kind: 'pro', grace: null, over: { storage: false },
+      notes: { minutesLeft: 3000, minutesPerPeriod: 3000, stopped: false },
+      storage: { limitBytes: 100 * GiB, fileBytes: 512 * MiB },
+      balance: { microUsd: 0 },
+      pro: { renew: false, refundableMicroUsd: 0, until: pro.period.to },
+      notices: []
+    });
+    expect(pro.pro.months).toEqual([{ from: pro.period.from, to: pro.period.to, microUsd: PRICE }]);
+    expect(Date.parse(pro.period.from)).toBeGreaterThanOrEqual(before);
+    expect(Date.parse(pro.period.to) - Date.parse(pro.period.from)).toBe(30 * 86_400_000);
+    expect(pro.balance.history.map((e) => [e.label, e.microUsd])).toEqual([['Pro, 1 month', -PRICE], ['Added, 20 USDC', PRICE]]);
+  });
+
+  it('refuses a buy the balance is short for, and changes nothing', async () => {
+    const ann = await account();
+    await give(ann, 50_000_000);
+    const before = await ann.api.plans.plan();
+    expect(await refusal(ann.api.plans.buyPro(3, PRICE))).toBe('conflict: Your balance is short: 3 months of Pro cost $60 and your balance is $50. Add money first.');
+    expect(await ann.api.plans.plan()).toEqual(before);
+    expect(before).toMatchObject({ kind: 'free', balance: { microUsd: 50_000_000 }, pro: { months: [], until: null } });
+  });
+
+  it('refuses a buy at a price that has changed since it was shown, charging nothing', async () => {
+    const ann = await account();
+    await give(ann, 50_000_000);
+    const shown = (await ann.api.plans.offers()).pro.microUsdPerMonth;
+    await setLimit('plan.pro.price_micro_usd', 25_000_000);
+    expect(await refusal(ann.api.plans.buyPro(1, shown))).toBe('conflict: The price of Pro has changed. Look at it again before buying.');
+    expect((await ann.api.plans.plan())).toMatchObject({ kind: 'free', balance: { microUsd: 50_000_000 } });
+    // Looked at again, it's bought at the new price.
+    const now = (await ann.api.plans.offers()).pro.microUsdPerMonth;
+    expect(now).toBe(25_000_000);
+    expect(await ann.api.plans.buyPro(1, now)).toMatchObject({ kind: 'pro', balance: { microUsd: 25_000_000 }, pro: { months: [{ microUsd: 25_000_000 }] } });
+  });
+
+  it('two buys at once on two instances, with money for one: one goes through, the other is refused, and nothing is spent twice', async () => {
+    const ann = await account();
+    await give(ann, PRICE);
+    const second = await h.secondServer({});
+    const gate = await h.pool.connect();
+    let pending: Promise<string>[] = [];
+    try {
+      const there = createHttpApi({ baseUrl: second.baseUrl, fetch: ann.fetch });
+      // Both buys wait on the account's row, held here, and go once it's let go.
+      await gate.query('BEGIN');
+      await gate.query('SELECT 1 FROM plan_accounts WHERE owner_id = $1 FOR UPDATE', [ann.session.ownerId]);
+      pending = [ann.api, there].map((api) => refusal(api.plans.buyPro(1, PRICE)));
+      await expect.poll(async () => (await h.pool.query<{ n: number }>(`
+        SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%plan_accounts%'`)).rows[0]?.n, { timeout: 5000 }).toBe(2);
+      await gate.query('COMMIT');
+      const outcomes = await Promise.all(pending);
+      expect(outcomes.sort()).toEqual(['conflict: Your balance is short: 1 month of Pro costs $20 and your balance is $0. Add money first.', 'succeeded']);
+      expect(await ann.api.plans.plan()).toMatchObject({ kind: 'pro', balance: { microUsd: 0 }, pro: { months: [{ microUsd: PRICE }] } });
+    } finally {
+      await gate.query('ROLLBACK');
+      gate.release();
+      await Promise.all(pending);
+      await second.close();
+    }
+  });
+
+  it('buys 1 to 12 months at a time, and refuses 13', async () => {
+    const ann = await account();
+    await give(ann, 13 * PRICE);
+    expect((await ann.api.plans.buyPro(1, PRICE)).pro.months).toHaveLength(1);
+    const twelve = await ann.api.plans.buyPro(12, PRICE);
+    expect(twelve.pro.months).toHaveLength(13);
+    expect(twelve).toMatchObject({ kind: 'pro', balance: { microUsd: 0 }, pro: { refundableMicroUsd: 12 * PRICE } });
+    expect(Date.parse(twelve.pro.until ?? '') - Date.parse(twelve.period.from)).toBe(13 * 30 * 86_400_000);
+    await give(ann, 13 * PRICE);
+    expect(await refusal(ann.api.plans.buyPro(13, PRICE))).toBe('invalid: Buy 1 to 12 months at a time.');
+    expect((await ann.api.plans.plan()).balance.microUsd).toBe(13 * PRICE);
+  });
+
+  it('runs months back to back, refunds the ones that haven’t started, and never the running one', async () => {
+    await setLimit('plan.period_seconds', 3600);
+    const ann = await account();
+    await give(ann, 3 * PRICE);
+    await ann.api.plans.buyPro(1, PRICE);
+    const three = await ann.api.plans.buyPro(2, PRICE);
+    const [first, second, third] = three.pro.months;
+    expect(second?.from).toBe(first?.to);
+    expect(third?.from).toBe(second?.to);
+    expect(Date.parse(third?.to ?? '') - Date.parse(third?.from ?? '')).toBe(3_600_000);
+    expect(three.pro).toMatchObject({ until: third?.to, refundableMicroUsd: 2 * PRICE });
+    const refunded = await ann.api.plans.refundPro();
+    expect(refunded).toMatchObject({ kind: 'pro', balance: { microUsd: 2 * PRICE }, pro: { months: [first], until: first?.to, refundableMicroUsd: 0 } });
+    expect(refunded.balance.history[0]).toMatchObject({ label: 'Pro refunded, 2 months', microUsd: 2 * PRICE });
+    expect(await refusal(ann.api.plans.refundPro())).toBe('conflict: There’s no month of Pro to refund that hasn’t started. A month that has started isn’t refunded.');
+    // Bought again, they follow the running month, and a fresh account with nothing bought has nothing to refund.
+    expect((await ann.api.plans.buyPro(1, PRICE)).pro.months[1]?.from).toBe(first?.to);
+    expect(await refusal((await account()).api.plans.refundPro())).toBe('conflict: There’s no month of Pro to refund that hasn’t started. A month that has started isn’t refunded.');
+  });
+
+  it('renews from the balance before Pro ends while renewing is on, and ends it when the balance is short', async () => {
+    await setLimit('plan.period_seconds', 3600);
+    await setLimit('plan.pro_remind_seconds', 600);
+    // With money for the next month: bought at the reminder, after the last.
+    const ann = await account();
+    await give(ann, 2 * PRICE);
+    await ann.api.plans.buyPro(1, PRICE);
+    const on = await ann.api.plans.setRenew(true);
+    expect(on.pro.renew).toBe(true);
+    const end = Date.parse(on.pro.until ?? '');
+    await upkeepAt(ann, end - 300_000);
+    const renewed = await ann.api.plans.plan();
+    expect(renewed).toMatchObject({ kind: 'pro', balance: { microUsd: 0 }, pro: { until: new Date(end + 3_600_000).toISOString(), renew: true } });
+    expect(renewed.pro.months.map((m) => m.from)).toEqual([new Date(end - 3_600_000).toISOString(), new Date(end).toISOString()]);
+    expect(renewed.notices).toEqual([{ id: expect.any(String), kind: 'pro-renewed', at: expect.any(String), until: new Date(end + 3_600_000).toISOString() }]);
+    expect(renewed.balance.history[0]).toMatchObject({ label: 'Pro, renewed for a month', microUsd: -PRICE });
+    // Once: upkeep again changes nothing, and past the old end the new month is a fresh period.
+    await upkeepAt(ann, end - 200_000);
+    expect((await ann.api.plans.plan()).notices).toHaveLength(1);
+    vi.useFakeTimers({ toFake: ['Date'], now: end + 60_000 });
+    expect(await ann.api.plans.plan()).toMatchObject({ kind: 'pro', period: { from: new Date(end).toISOString() }, notes: { minutesLeft: 3000 } });
+    vi.useRealTimers();
+
+    // Without money: told at the reminder, then on Free at the end, its periods from there.
+    const bob = await account();
+    await give(bob, PRICE);
+    await bob.api.plans.buyPro(1, PRICE);
+    const bobEnd = Date.parse((await bob.api.plans.setRenew(true)).pro.until ?? '');
+    await upkeepAt(bob, bobEnd - 300_000);
+    expect(await bob.api.plans.plan()).toMatchObject({ kind: 'pro', notices: [{ kind: 'pro-ending', until: new Date(bobEnd).toISOString() }] });
+    await upkeepAt(bob, bobEnd + 60_000);
+    const ended = await bob.api.plans.plan();
+    expect(ended).toMatchObject({ kind: 'free', period: { from: new Date(bobEnd).toISOString() }, balance: { microUsd: 0 }, pro: { months: [], until: null, renew: true } });
+    expect(ended.notices.map((n) => [n.kind, n.until])).toEqual([['pro-ended', new Date(bobEnd).toISOString()], ['pro-ending', new Date(bobEnd).toISOString()]]);
+    vi.useRealTimers();
+
+    // Money added after the reminder: bought at the end instead.
+    const cy = await account();
+    await give(cy, PRICE);
+    await cy.api.plans.buyPro(1, PRICE);
+    const cyEnd = Date.parse((await cy.api.plans.setRenew(true)).pro.until ?? '');
+    await upkeepAt(cy, cyEnd - 300_000);
+    vi.useRealTimers();
+    await give(cy, PRICE);
+    await upkeepAt(cy, cyEnd + 60_000);
+    expect(await cy.api.plans.plan()).toMatchObject({
+      kind: 'pro', period: { from: new Date(cyEnd).toISOString() }, balance: { microUsd: 0 },
+      notices: [{ kind: 'pro-renewed', until: new Date(cyEnd + 3_600_000).toISOString() }, { kind: 'pro-ending' }]
+    });
+  });
+
+  it('tells its owner before Pro ends and when it has, until they dismiss it, and nobody else can', async () => {
+    await setLimit('plan.period_seconds', 3600);
+    await setLimit('plan.pro_remind_seconds', 600);
+    const ann = await account();
+    const bob = await account();
+    await give(ann, PRICE);
+    const end = Date.parse((await ann.api.plans.buyPro(1, PRICE)).pro.until ?? '');
+    // Not before the reminder.
+    await upkeepAt(ann, end - 900_000);
+    expect((await ann.api.plans.plan()).notices).toEqual([]);
+    await upkeepAt(ann, end - 300_000);
+    const [ending] = (await ann.api.plans.plan()).notices;
+    expect(ending).toMatchObject({ kind: 'pro-ending', until: new Date(end).toISOString() });
+    expect(await refusal(bob.api.plans.dismissNotice(ending?.id ?? ''))).toMatch(/^not-found: /);
+    expect(await refusal(ann.api.plans.dismissNotice('no-such-notice'))).toMatch(/^not-found: /);
+    expect((await ann.api.plans.dismissNotice(ending?.id ?? '')).notices).toEqual([]);
+    await upkeepAt(ann, end + 60_000);
+    const ended = await ann.api.plans.plan();
+    expect(ended).toMatchObject({ kind: 'free', notices: [{ kind: 'pro-ended', until: new Date(end).toISOString() }] });
+    // Once each: upkeep again tells nothing more.
+    await upkeepAt(ann, end + 120_000);
+    expect((await ann.api.plans.plan()).notices).toHaveLength(1);
+  });
+
+  it('holds storage to Pro’s through the grace after Pro ends, then takes no more files until Pro is bought again', async () => {
+    await setLimit('plan.period_seconds', 3600);
+    await setLimit('plan.grace_seconds', 1800);
+    await setLimit('plan.free.storage_bytes', MiB / 2);
+    const ann = await account();
+    await give(ann, 2 * PRICE);
+    const end = Date.parse((await ann.api.plans.buyPro(1, PRICE)).pro.until ?? '');
+    const ours = await workspace(ann, 'Ours');
+    const kept = await ann.api.workspaces.media.upload(ours.id, ours.doc, fileOf(MiB));
+    // Pro ends, over Free's storage: the grace, and files still go in.
+    await upkeepAt(ann, end + 60_000);
+    expect(await ann.api.plans.plan()).toMatchObject({ kind: 'free', grace: { until: new Date(end + 1_800_000).toISOString(), storage: true }, over: { storage: false } });
+    expect(await upload(ann, ours, 1024)).toBe('succeeded');
+    // After it: nothing more goes in, and what's there is read and deleted.
+    await upkeepAt(ann, end + 1_860_000);
+    expect(await ann.api.plans.plan()).toMatchObject({ kind: 'free', grace: null, over: { storage: true } });
+    expect(await upload(ann, ours, 1024)).toBe(FULL);
+    expect((await ann.fetch(await ann.api.workspaces.media.url(ours.id, ours.doc, kept.id))).status).toBe(200);
+    // Bought again, at once: only Pro's limits.
+    expect(await ann.api.plans.buyPro(1, PRICE)).toMatchObject({ kind: 'pro', grace: null, over: { storage: false } });
+    expect(await upload(ann, ours, 1024)).toBe('succeeded');
+    await ann.api.workspaces.media.remove(ours.id, ours.doc, kept.id);
+    vi.useRealTimers();
+
+    // Bought during the release's grace (no limit), that grace ends: Pro's storage is the limit from then.
+    await h.resetLimits();
+    const bob = await account();
+    const his = await workspace(bob, 'His');
+    expect(await upload(bob, his, MiB)).toBe('succeeded');
+    await setLimit('plan.free.storage_bytes', MiB / 2);
+    await setLimit('plan.pro.storage_bytes', MiB / 2);
+    await beforePlans(bob);
+    expect(await bob.api.plans.plan()).toMatchObject({ kind: 'free', grace: { storage: true } });
+    expect(await upload(bob, his, 1024)).toBe('succeeded');
+    await give(bob, PRICE);
+    expect(await bob.api.plans.buyPro(1, PRICE)).toMatchObject({ kind: 'pro', grace: null, over: { storage: true } });
+    expect(await upload(bob, his, 1024)).toBe(FULL);
+  });
+
+  it('holds an account on Pro to Pro’s storage and file size, and offers Pro’s files at 512 MiB until downloads resume', async () => {
+    const ann = await account();
+    await give(ann, PRICE);
+    await ann.api.plans.buyPro(1, PRICE);
+    // Pro's 2 GiB, or any more, is held at 512 MiB.
+    await setLimit('plan.pro.file_bytes', 4 * GiB);
+    expect((await ann.api.plans.offers()).pro.fileBytes).toBe(512 * MiB);
+    expect((await ann.api.plans.plan()).storage.fileBytes).toBe(512 * MiB);
+    await setLimit('plan.pro.file_bytes', MiB);
+    await setLimit('plan.pro.storage_bytes', 2 * MiB);
+    // Free's are larger, and don't count while on Pro.
+    await setLimit('plan.free.storage_bytes', 10 * MiB);
+    expect((await ann.api.plans.plan()).storage).toMatchObject({ limitBytes: 2 * MiB, fileBytes: MiB });
+    const ours = await workspace(ann, 'Ours');
+    expect(await upload(ann, ours, MiB + 1)).toBe('invalid: This file is bigger than 1 MiB, the most a file can be here.');
+    expect(await upload(ann, ours, MiB)).toBe('succeeded');
+    expect(await upload(ann, ours, MiB)).toBe(FULL);
+  });
+
+  it('reads a plan the previous release stored, with no months, renewing or notices, and buys Pro on it', async () => {
+    const ann = await account();
+    const key = serviceKey(unb64u(h.deps.cfg.KSERVICE, 32), 'accounting');
+    const header = { v: 1 as const, kind: 'plan-account', ownerId: ann.session.ownerId, keyVersion: '1' };
+    const previous = { balanceMicroUsd: 30_000_000, history: [{ id: 'old', at: new Date().toISOString(), label: 'Added, 30 USDC', microUsd: 30_000_000 }], freeFrom: new Date().toISOString(), choose: true, grace: null };
+    await h.pool.query('UPDATE plan_accounts SET state_ciphertext = $2 WHERE owner_id = $1', [ann.session.ownerId, sealJson(key, header, toJson(previous))]);
+    expect(await ann.api.plans.plan()).toMatchObject({
+      kind: 'free', balance: { microUsd: 30_000_000 }, pro: { months: [], until: null, renew: false, refundableMicroUsd: 0 }, notices: []
+    });
+    expect(await ann.api.plans.buyPro(1, PRICE)).toMatchObject({ kind: 'pro', balance: { microUsd: 10_000_000 } });
+    expect(await labels(ann)).toEqual(['Pro, 1 month', 'Added, 30 USDC']);
+  });
+});
+
+describe('support', () => {
+  it('finds an account by its address, adds dollars as support, and says where its plan stands', async () => {
+    const ann = await account();
+    await creditByEmail(h.deps, ann.email.toUpperCase(), 4_500_000);
+    expect(await labels(ann)).toEqual(['Added by support']);
+    const lines = await standingOf(h.deps, ann.session.ownerId);
+    expect(lines).toContain('Balance: $4.50');
+    expect(lines.join('\n')).not.toContain(ann.email);
+    await expect(creditByEmail(h.deps, unique('nobody'), 1)).rejects.toThrow('No account has signed in with that address.');
   });
 });
 

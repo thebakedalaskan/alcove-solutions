@@ -240,8 +240,14 @@ The last of the light, with you in it, then seven groups. Change one thing and l
 - **Plan says what's left, never what it costs.** Its first panel is Plan, Notes left and Storage. Notes
   left and Storage each have a `SunLine` on the row's own hairline, the sun at the end in a fresh period and moving back as
   it's used. The AI allowance is kept in dollars and never shown: notes left is said as time, as an estimate. Over the plan's
-  limits, one `SettingNote` says until when everything works as before. The balance is a second panel, and Add money opens a
-  sheet (the deposit address and its QR code), never a window over the page.
+  limits, one `SettingNote` says until when everything works as before. Above it, what the owner is told about the plan
+  (Pro ending, renewed, ended), each a `Notice` with × until dismissed. Under it, the plans as cards side by side
+  (`set-plans`, stacked on a phone, with room in the row for Team's): the name in Hanken Grotesk, the price to the cent,
+  what it brings, and "Your plan" on the one you're on, with a firmer edge. Pro's card buys months: Buy is the page's one
+  filled button when the balance covers it; when it doesn't, it's greyed out with what's short, and Add money is the filled
+  one. On Pro a panel holds Renew from balance and Refund, which asks in place. The balance is the last panel, and Add money
+  opens a sheet (the deposit address and its QR code), never a window over the page. The code is `features/settings/Plan.tsx`
+  and `PlanCards.tsx`.
 - **Sign out** signs you out at once. Only when recordings haven't uploaded does it ask first: the sky grows to hold the
   question, it says they'll be deleted, and Stay signed in is the filled answer.
 - **Delete account** sits apart, in its own panel at the end, and opens in place, with what goes beside what stays. The
