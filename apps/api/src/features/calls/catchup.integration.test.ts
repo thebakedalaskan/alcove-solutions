@@ -9,9 +9,13 @@ import { AlcoveApiError, type AudioPiece, type CallSession, type CallState, type
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { openJson, sealJson, toJson } from '../../crypto';
+import { tx } from '../../db';
+import { openOwner } from '../../owners';
 import { speechWav } from '../../testing/fake-near';
 import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
 import { connect, disposeLiveKit, signWebhook, type TestParticipant } from '../../testing/livekit';
+import { header as callHeader, key as callKey } from './state';
 
 // Calls set up MLS groups and LiveKit rooms, which a busy runner can be slow to do: every wait says what it waited for.
 vi.setConfig({ testTimeout: 90_000 });
@@ -76,6 +80,24 @@ async function letIn(host: CallSession, who: CallSession) {
 async function hook(event: string, roomName: string, identity: string) {
   const body = JSON.stringify({ event, room: { name: roomName }, participant: { identity } });
   return fetch(`${h.baseUrl}/hooks/livekit`, { method: 'POST', headers: { 'content-type': 'application/webhook+json', authorization: await signWebhook(h.deps.cfg, body) }, body });
+}
+/** Someone's times in the call as its sealed state keeps them (ms), with everything else about them as it is. */
+const Kept = z.looseObject({ identity: z.string(), since: z.number(), placedAt: z.number(), hosting: z.array(z.looseObject({ from: z.number(), to: z.number().nullable() })) });
+/**
+ * As if a call began `ms` earlier, and `identity` (whoever hosts it) came in, took their place and hosted from then: what
+ * the call times from moves back, under the call's row lock. What they say from now on can have begun that long ago.
+ */
+async function begunEarlier(ownerId: string, callId: string, identity: string, ms: number) {
+  const o = await openOwner(h.deps, ownerId, undefined);
+  await tx(h.pool, async (c) => {
+    const row = z.object({ state_ciphertext: z.instanceof(Uint8Array) }).parse((await c.query('SELECT state_ciphertext FROM calls WHERE owner_id = $1 AND call_id = $2 FOR UPDATE', [ownerId, callId])).rows[0]);
+    const s = openJson(callKey(o, callId), callHeader(o, callId), row.state_ciphertext, z.object({ people: z.array(Kept) }).loose());
+    const people = s.people.map((p) => (p.identity !== identity ? p : {
+      ...p, since: p.since - ms, placedAt: p.placedAt - ms, hosting: p.hosting.map((x) => ({ ...x, from: x.from - ms, to: x.to === null ? null : x.to - ms }))
+    }));
+    await c.query(`UPDATE calls SET state_ciphertext = $3, started_at = started_at - make_interval(secs => $4), host_joined_at = host_joined_at - make_interval(secs => $4)
+      WHERE owner_id = $1 AND call_id = $2`, [ownerId, callId, sealJson(callKey(o, callId), callHeader(o, callId), toJson({ ...s, people })), ms / 1000]);
+  });
 }
 /** The live transcript's line IDs by what was said, as the organizer sees it. */
 async function lineIds(host: CallSession, n: number): Promise<Map<string, string>> {
@@ -376,17 +398,18 @@ describe('catching up during a call', () => {
     await host.leave();
   });
 
-  // The shortest "last N minutes" is one, so this waits for a line to be more than a minute old.
+  // The shortest "last N minutes" is one, so this needs a line more than a minute old: the call's clock is moved back.
   it('reads only the last few minutes when asked for them, and nothing said before', async () => {
     const org = await account();
     const host = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
     await inGroup(host);
-    // The organizer's browser is in the room, as it is in a real call, or the call ends without them meanwhile.
+    // The organizer's browser is in the room, as it is in a real call, or the call ends without them.
     open.push(await connect(await host.room(), { sending: host.crypto }));
     await host.appendAudio(piece(audioBytes('recent'), 0, 0));
+    // As if the call, and the organizer in it, began just over a minute earlier, when this was said.
+    await begunEarlier(org.session.ownerId, host.ticket.callId, host.ticket.identity, 61_500);
     const OLD = 'We agreed to open with the roadmap.';
-    await host.transcribe(speech(OLD, 0, 0), host.ticket.identity);
-    await sleep(61_500);
+    await host.transcribe(speech(OLD, 0, 0, 4000, performance.now() - 61_500), host.ticket.identity);
     const NEW = 'We agreed to finish with pricing.';
     await host.transcribe(speech(NEW, 0, at((await host.catchUpWindow()).now - 2)), host.ticket.identity);
     const ids = await lineIds(host, 2);
@@ -402,7 +425,7 @@ describe('catching up during a call', () => {
     // The whole call still has both.
     expect((await host.catchUp({ kind: 'all' })).read.lines).toBe(2);
     await host.leave();
-  }, 120_000);
+  });
 
   it('says what it left out of a stretch too long to read at once, and points only at lines it read', async () => {
     const org = await account();
