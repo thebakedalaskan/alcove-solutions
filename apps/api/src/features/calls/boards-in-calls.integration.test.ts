@@ -524,8 +524,10 @@ describe('a new board', () => {
     const p = await invited(host, c, priya);
     await host.openBoard({ template: 'blank' });
     const board = host.getSnapshot().board.open?.documentId ?? '';
-    // A guest is let in, and has a seat on the board: that's how a change elsewhere finds this call.
+    // A guest is let in, and has a seat on the board: that's how a change elsewhere finds this call. The seat lands a moment
+    // after they're let in (calls/mls.ts), as for every guest who comes late.
     const jamie = await guest(host, c);
+    await until(async () => (await opened(jamie.call))?.role === 'edit', 'a seat for Jamie');
     expect(await opened(jamie.call)).toMatchObject({ documentId: board, role: 'edit' });
     expect(await seats(board)).toBe(1);
     const listening = await connect(await host.room(), { sending: host.crypto });
@@ -1003,9 +1005,12 @@ describe('a saved board', () => {
     expect(closing?.code).toBe('forbidden');
     expect(JSON.stringify(closing)).not.toContain('CANARY');
     expect(await code(theo.api.workspaces.get(id, { pass: t.ticket.pass }))).toBe('not-found');
-    // And the same once the name has changed.
+    // And the same once the name has changed. The organizer's page has the old name as it's renamed, and the next read of
+    // the call has the new one. (Its own reads every 200 ms can bring the new one a moment after the rename too, so it's
+    // what the page showed as it was renamed that's checked.)
+    const shown = host.getSnapshot().board.open?.name;
     await art.api.workspaces.items.rename(id, board, 'CANARY-RENAMED');
-    expect(host.getSnapshot().board.open?.name).toBe('CANARY-BOARD Onboarding flow');
+    expect(shown).toBe('CANARY-BOARD Onboarding flow');
     expect(await opened(host)).toMatchObject({ name: 'CANARY-RENAMED' });
     expect(said(await read(t))).not.toContain('CANARY');
     // The log says what happened by ID, and nothing that names it.

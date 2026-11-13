@@ -6,6 +6,7 @@
  */
 import { type AlcoveApi, type AudioPiece, type TranscriptClip } from '@alcove/api';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { speechWav } from '../../testing/fake-near';
 import { startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
@@ -34,7 +35,19 @@ async function asked(api: AlcoveApi, noteId: string, question: string): Promise<
   const i = h.near.chats.slice(from).findIndex((c) => c.system.startsWith('You answer a question about one meeting'));
   return h.near.prompts[from + i] ?? '';
 }
-const logged = (from: number, msg: string): { level: number; msg: string }[] => h.logs.slice(from).filter((l) => l.includes(`"msg":"${msg}`)).map((l) => JSON.parse(l));
+const LogLine = z.object({ level: z.number(), msg: z.string(), noteId: z.string().optional() });
+/** What the API logged about one note since `from`, by how the message starts. */
+const logged = (from: number, msg: string, noteId: string) => h.logs.slice(from).flatMap((l) => {
+  const r = LogLine.safeParse(JSON.parse(l));
+  return r.success && r.data.msg.startsWith(msg) && r.data.noteId === noteId ? [r.data] : [];
+});
+async function waitFor(pred: () => boolean, what: string, ms = 15_000): Promise<void> {
+  const until = Date.now() + ms;
+  while (!pred()) {
+    if (Date.now() > until) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 25));
+  }
+}
 
 /** A call with notes on where the organizer says two things, then leaves; once its notes are written: the note, and every chat request NEAR AI got meanwhile. */
 async function call(org: Awaited<ReturnType<typeof account>>) {
@@ -74,7 +87,7 @@ describe('the full summary', () => {
     expect(question).toContain('Summary: ');
     // The logs say it was written and how long, never what it says.
     const text = h.logs.slice(logsFrom).join('');
-    expect(logged(logsFrom, 'full summary written')).toMatchObject([{ level: 30 }]);
+    expect(logged(logsFrom, 'full summary written', r.noteId)).toMatchObject([{ level: 30 }]);
     expect(text).not.toContain('Then, Kofi');
   });
 
@@ -111,9 +124,11 @@ describe('the full summary', () => {
     expect(r.note.decisions).toHaveLength(1);
     expect(r.note.actions).toEqual([]);
     expect(r.note.suggestions).toHaveLength(1);
-    expect(logged(logsFrom, 'full summary written')).toEqual([]);
-    expect(logged(logsFrom, 'full summary not written')).toMatchObject([{ level: 40 }]);
-    expect(logged(logsFrom, 'notes written')).toHaveLength(1);
+    // The note is ready once its notes are saved; the job says it wrote them just after, once it has tidied up.
+    await waitFor(() => logged(logsFrom, 'notes written', r.noteId).length > 0, 'the job to say it wrote the notes');
+    expect(logged(logsFrom, 'full summary written', r.noteId)).toEqual([]);
+    expect(logged(logsFrom, 'full summary not written', r.noteId)).toMatchObject([{ level: 40 }]);
+    expect(logged(logsFrom, 'notes written', r.noteId)).toHaveLength(1);
     // Asking about the note goes on without it.
     expect(await asked(org.api, r.noteId, 'When does the beta ship?')).not.toContain('Full summary:');
   });

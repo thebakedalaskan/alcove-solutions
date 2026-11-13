@@ -399,6 +399,23 @@
   "groups": {
    "shared screens kept for the notes": 27,
    "shared screens in the notes": 285.6
+  },
+  "tests": {
+   "shared screens in the notes > looks at a shared screen where what was said points at it, with the model chosen, and attaches what matters to its line": 24.5,
+   "shared screens in the notes > takes no more frames than one for every fifteen seconds of sharing, the ones pointed at most plainly spread over the call, and one a second at most": 23.4,
+   "shared screens in the notes > reads at most one frame for every fifteen seconds of sharing, keeping what was pointed at plainly": 36.2,
+   "shared screens in the notes > attaches a screen that doesn’t change once, on the line said when it was first pointed at, however often it is pointed at after": 24.7,
+   "shared screens in the notes > attaches a screen again where it changed, but never one that only gives context, by the same rules when the notes can’t be written, and reads notes from before frames were attached to lines": 24,
+   "shared screens in the notes > reads a frame together with the screen five seconds before it when what was said is that it changed, and shows only the frame": 23.7,
+   "shared screens in the notes > takes the frame of a change on a share with room for one, not the share’s start nor the screen before it": 21.3,
+   "shared screens in the notes > takes a frame at the start of a share’s video for what was said about it just before the video began": 21,
+   "shared screens in the notes > reads shared screens with the notes model when the model chosen can’t be verified, and writes the notes all the same": 20.7,
+   "shared screens in the notes > keeps the note’s screens until new notes are saved, so notes that can’t be written again lose none of them": 20.9,
+   "shared screens in the notes > takes a presenter’s last piece for a little while after the call ends, and joins it into the video": 21.6,
+   "shared screens in the notes > replays a kept share once the tail is over, before the notes are written, and says so in the note’s progress": 0.8,
+   "shared screens in the notes > joins a kept share into video on its own once the tail is over, with no notes service to write notes": 20.8,
+   "shared screens in the notes > joins a share that is left in pieces when maintenance runs, and never twice when joins overlap": 0.7,
+   "shared screens in the notes > reads nothing of a share its presenter kept out of the notes": 1.5
   }
  },
  "src/features/recordings/transcripts.integration.test.ts": {
@@ -465,6 +482,26 @@
    "storage limits": 9.9,
    "deleting a file": 1.5,
    "deleting": 4
+  },
+  "tests": {
+   "what a process takes on at once > takes only so many pieces in, refusing the rest before reading them, and an upload just tries again": 1.9,
+   "what a process takes on at once > takes only so many pieces from one person, however few anyone else is sending": 0.3,
+   "what a process takes on at once > counts a piece from before its body is read, so one that’s slow to arrive holds its place like any other": 0.5,
+   "what a process takes on at once > cuts a piece that stops arriving, or only trickles, so nobody can hold a place by saying they’re about to send": 10.3,
+   "what a process takes on at once > takes a piece that’s slow but keeps coming, however long it takes": 16.1,
+   "what a process takes on at once > holds one piece for someone who stops reading, and only so many for each person; the next waits and gets their place": 2.1,
+   "what a process takes on at once > holds a place for what’s still to reach the browser, a small picture too": 0.9,
+   "what a process takes on at once > cuts a read that has stopped when someone is waiting, and only the one they need": 8.4,
+   "what a process takes on at once > gives someone at their own limit one of their own back, and takes nobody else’s for them": 6.4,
+   "what a process takes on at once > leaves a read that has stopped alone while nobody is waiting, so a paused video plays on": 6.5,
+   "what a process takes on at once > ends a read at its own time, however it’s going, and takes the place back": 4.9,
+   "what a process takes on at once > opens nothing for a browser that left while it waited, and gives its place in line to the next": 1.5,
+   "what a process takes on at once > asks again after a wait, so a session that ended in line reads nothing": 1,
+   "what a process takes on at once > refuses a read that gets no place, after a moment or at once when the line is full, and never more for someone than their share": 15.6,
+   "what a process takes on at once > keeps to its share of the core, however many people are reading, each within their limit": 9.4,
+   "what a process takes on at once > counts every piece opened against someone’s reads, because one byte costs a whole piece": 8.3,
+   "what a process takes on at once > spends nobody’s reads for whoever else holds their URL": 0.5,
+   "what a process takes on at once > asks again as a long read goes on, so someone who loses the document part way through stops": 1.2
   }
  },
  "src/features/workspaces/workspaceDocuments.integration.test.ts": {

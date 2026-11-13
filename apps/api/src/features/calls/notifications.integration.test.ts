@@ -27,7 +27,10 @@ describe('authorized browser notification candidates', () => {
     expect(guest.notifications.getSnapshot()).toMatchObject({ ready: false, candidates: [] });
     const admission = candidates(host).find((c) => c.category === 'admissions');
     expect(admission?.destination.target).toEqual({ type: 'admission', identity: guest.ticket.identity });
-    expect(JSON.stringify(admission)).not.toContain('Sam');
+    // No name in it. Its IDs are random, and three letters like Sam turn up in one now and then, so they're taken out first:
+    // what's left is words and numbers the browser puts there.
+    const ids = [guest.ticket.identity, host.ticket.identity, host.ticket.callId];
+    expect(ids.reduce((json, id) => json.replaceAll(id, ''), JSON.stringify(admission))).not.toContain('Sam');
     await host.admit(guest.ticket.identity);
     await until(() => host.notifications.getSnapshot().ready && guest.notifications.getSnapshot().ready && !candidates(host).some((c) => c.category === 'admissions'), 'admission reconciled');
     await guest.setHand(true);

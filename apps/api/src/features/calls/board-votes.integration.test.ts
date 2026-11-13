@@ -245,12 +245,16 @@ describe('a vote', () => {
     await host.startVote(b.fix, 5);
     const room = await connect(await p.room(), { sending: p.crypto });
     inRoom.push(room);
-    // A browser that's only just reached the room can miss what's sent that moment, so this one has heard something first.
-    let ready = false;
-    const warm = room.nextChange().then(() => { ready = true; });
-    while (!ready) { await host.lock(false); await rest(50); }
-    await warm;
+    // A browser that's only just reached the room can miss what's sent that moment, so this one has heard something first:
+    // one push at a time, each waited for, so none is still on its way once one has arrived.
     const nudges = () => room.received(CALL_TOPIC).filter((d) => d.from === null).length;
+    for (const by = Date.now() + 15_000; ;) {
+      const seen = nudges();
+      await host.lock(false);
+      for (const each = Date.now() + 2_000; nudges() === seen && Date.now() < each;) await rest(10);
+      if (nudges() > seen) break;
+      if (Date.now() > by) throw new Error('timed out waiting for the room to hear a push');
+    }
     const quiet = nudges();
     await k.castVote(b.s1);
     await k.castVote(b.s2);

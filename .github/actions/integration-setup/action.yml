@@ -1,0 +1,59 @@
+name: Integration test setup
+description: >-
+  What the integration tests run against on a runner: Postgres, an S3-compatible object store and LiveKit, started while
+  the dependencies install, and the settings the tests read. Used by CI and the flake finder; run it after checkout.
+runs:
+  using: composite
+  steps:
+    # Plain containers started in the background, rather than services, which start one after another before any step:
+    # so their images download while the dependencies install. Postgres takes 300 connections: a lane of tests
+    # (scripts/ci-tests.mjs) was seen holding 48 at once, so the three of a runner could pass its default of 100.
+    - name: Start Postgres, the object store and LiveKit
+      shell: bash
+      run: |
+        mkdir -p "$RUNNER_TEMP/services"
+        docker run -d --name db -p 54329:5432 -e POSTGRES_USER=alcove -e POSTGRES_PASSWORD=alcove -e POSTGRES_DB=alcove \
+          postgres:17 -c max_connections=300 > "$RUNNER_TEMP/services/db.log" 2>&1 &
+        docker run -d --name objects -p 9310:9000 -e RUSTFS_ACCESS_KEY=alcove -e RUSTFS_SECRET_KEY=alcove-ci-secret \
+          -e RUSTFS_VOLUMES=/data -e RUSTFS_ADDRESS=:9000 -e RUSTFS_CONSOLE_ENABLE=false \
+          rustfs/rustfs:latest > "$RUNNER_TEMP/services/objects.log" 2>&1 &
+        docker run -d --name livekit --add-host=host.docker.internal:host-gateway \
+          -p 7880:7880 -p 7881:7881 -p 7882:7882/udp -v "$GITHUB_WORKSPACE/infra/livekit/dev.yaml:/etc/livekit.yaml:ro" \
+          livekit/livekit-server:v1.13.11 --config /etc/livekit.yaml > "$RUNNER_TEMP/services/livekit.log" 2>&1 &
+    - uses: pnpm/action-setup@v4
+    - uses: actions/setup-node@v4
+      with: { node-version: 24, cache: pnpm }
+    - shell: bash
+      run: pnpm install --frozen-lockfile
+    # Postgres over TCP: while the image sets itself up it runs a server on its socket alone, then restarts.
+    - name: Wait for Postgres, the object store and LiveKit
+      shell: bash
+      run: |
+        for i in $(seq 1 90); do
+          if docker exec db pg_isready -q -h 127.0.0.1 -U alcove && curl -s -o /dev/null http://127.0.0.1:9310/ \
+            && curl -sf -o /dev/null http://127.0.0.1:7880/; then echo "Ready after $i checks."; exit 0; fi
+          sleep 1
+        done
+        for name in db objects livekit; do
+          echo "::group::$name"; cat "$RUNNER_TEMP/services/$name.log"; docker logs "$name" 2>&1 | tail -n 50; echo "::endgroup::"
+        done
+        exit 1
+    - name: The tests' settings
+      shell: bash
+      run: |
+        # Throwaway test keys; production keys live in Secret Manager. LiveKit's key is infra/livekit/dev.yaml's.
+        cat >> "$GITHUB_ENV" <<'EOF'
+        DATABASE_URL=postgres://alcove:alcove@127.0.0.1:54329/alcove
+        TEST_DATABASE_URL=postgres://alcove:alcove@127.0.0.1:54329/alcove_test
+        OBJECTS_ENDPOINT=http://127.0.0.1:9310
+        OBJECTS_BUCKET=alcove-objects
+        OBJECTS_ACCESS_KEY=alcove
+        OBJECTS_SECRET_KEY=alcove-ci-secret
+        WEB_ORIGIN=http://localhost:3000
+        API_URL=http://localhost:3000/api
+        KMASTER=ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8
+        KSERVICE=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8
+        LIVEKIT_URL=ws://127.0.0.1:7880
+        LIVEKIT_API_KEY=devkey
+        LIVEKIT_API_SECRET=devsecret-devsecret-devsecret-0123
+        EOF

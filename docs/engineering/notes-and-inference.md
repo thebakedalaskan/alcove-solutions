@@ -961,7 +961,10 @@ in `packages/api`, `correctLine` in `apps/api/src/features/notes/service.ts`):
   has the note), for a written note with transcript lines (`409` otherwise, also once a transcript the call didn't
   keep has been deleted): the same notes job is queued
   ([The notes worker](#the-notes-worker)) and the note stays `ready`, with `Note.writingAgain` set until the job is
-  done. Meanwhile everyone who has it reads the notes as they were, asks about them, confirms and corrects, and
+  done. A read says that as of the notes it shows: the job goes in the transaction that saves what it wrote, so the
+  job and the note's head revision are looked up in one statement, and a note that changed since it was read is read
+  again; a read never says the notes are written and shows the ones from before. Meanwhile everyone who has it
+  reads the notes as they were, asks about them, confirms and corrects, and
   series read it as before; the progress stream follows the job, as for the first time. While a job is queued
   or being written, asking again changes nothing (the job is looked for holding the note, so two asks at once
   queue one). Writing them can wait as long as the notes model can't be verified or doesn't answer, and the
@@ -1940,7 +1943,9 @@ clip without words with Whisper's favourite hallucination, writes notes (open qu
 transcript it was sent, answers a question across notes from the lines of each note it was sent, citing each
 by its note and second and adding a note it wasn't sent, as a model can make one up, answers a question
 across a series from the calls it was sent, "translates" captions by tagging each line with the language, and
-can fail its next replies (down, or prose instead of JSON) or take its time over the next one (`slowNext`).
+can fail its next replies (down, or prose instead of JSON), take its time over the next one (`slowNext`), or hold
+its next answer until something a test does has happened (`holdNext`): a test that needs something to happen while
+the model answers holds it, rather than racing a slow answer.
 It keeps every request body as it arrived, and with each request with content, the attested key of the model
 whose OHTTP key opened it; its evidence can be made to lie in each way [What is checked](#what-is-checked)
 refuses (on the gateway's report or a model's), Intel and NVIDIA can be made unreachable, out of date or

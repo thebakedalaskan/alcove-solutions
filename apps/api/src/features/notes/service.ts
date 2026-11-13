@@ -678,7 +678,7 @@ export async function seriesOf(l: Seen): Promise<string | undefined> {
   return meetingId ? (await findItem(l.owner, l.owner.pool, 'meeting', meetingId, MeetingManifest))?.manifest.seriesId : undefined;
 }
 export async function get(o: Owner, id: string): Promise<Note> {
-  const l = await locateToRead(o, id);
+  const { l, writingAgain } = await readWithJob(o, id);
   const m = l.note.manifest;
   const read = asRead(l);
   const organizer = await me(l.owner);
@@ -689,11 +689,31 @@ export async function get(o: Owner, id: string): Promise<Note> {
   const { decisions, questions, actions, suggestions, rooms } = entriesOf(read);
   return {
     ...summaryOf(l, organizer, who, await teamVisible(l), seriesId), recipients: who, summary: m.summary, decisions, questions, actions, suggestions, chapters: m.chapters,
-    gaps: m.gaps, screens: m.screens, transcript: read.transcript, rooms, additions: await additions.of(l, o.ownerId), writtenAt: m.writtenAt, writingAgain: m.status === 'ready' && !!(await jobOf(l.owner, l.owner.pool, id)),
+    gaps: m.gaps, screens: m.screens, transcript: read.transcript, rooms, additions: await additions.of(l, o.ownerId), writtenAt: m.writtenAt, writingAgain,
     details: m.details, suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), kept: m.keep, inference: m.inference, workedOn: await workedOnFor(o, m.workedOn, everyoneWith(m, organizer.email)),
     shares: m.keep.recording ? await screens.shareIntervals(l.owner, m.recordingId, m.segmentSeconds) : [], model: m.model, unencrypted: m.unencrypted,
     home: await homeFor(o, id, call?.workspaceId ?? null)
   };
+}
+const HeadAndJob = z.object({ head: z.string(), writing: z.boolean() });
+/**
+ * A note as this person may read it, and whether its notes are being written again, as of one moment. Notes written again
+ * are saved and their job dropped in one transaction (writer.ts), so a note read just before that, with its job looked
+ * for just after, would pass the notes from before off as the ones written again: the app would stop waiting, and show
+ * them. One statement says both whether there's a job and which revision is the head, and a note that changed since it
+ * was read is read again: what's said of its job is never newer than the note.
+ */
+async function readWithJob(o: Owner, id: string): Promise<{ l: Seen; writingAgain: boolean }> {
+  const l = await locateToRead(o, id);
+  // Notes still being written the first time say so themselves: only written notes are written again.
+  if (l.note.manifest.status !== 'ready') return { l, writingAgain: false };
+  const now = await maybeOne(l.owner.pool, HeadAndJob, `SELECT i.current_revision_id AS head, EXISTS (SELECT 1 FROM content_jobs j WHERE j.owner_id = $1 AND j.kind = 'notes'
+      AND j.revision_id IN (SELECT revision_id FROM revisions WHERE owner_id = $1 AND item_id = $2)) AS writing
+    FROM items i WHERE i.owner_id = $1 AND i.item_id = $2`, [l.owner.ownerId, id]);
+  if (!now || now.head === l.note.revisionId) return { l, writingAgain: now?.writing ?? false };
+  nlog.debug('note changed as it was read; read again', { noteId: id, writing: now.writing });
+  const again = await locateToRead(o, id);
+  return { l: again, writingAgain: again.note.manifest.status === 'ready' && now.writing };
 }
 /** A note's notes job while its notes are queued or being written, whichever of its revisions it was queued for. */
 async function jobOf(o: Owner, db: Db, noteId: string) {

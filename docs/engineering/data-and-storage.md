@@ -725,7 +725,9 @@ and this way it runs through the same auth, origin check and tests as everything
   /v1/workspaces/:id/presence`) when that changes and every 10 seconds, which travels sealed the same way, and every
   instance keeps what it hears in memory until it's said again. 30 seconds of silence and it's gone (`LIVE_PRESENCE_MS`), or at
   once when the browser says it's leaving. Someone can only be placed in what they can open, and every change to who has
-  what is checked against everyone here. What each reader is told is worked out for them: where someone is if they can open
+  what is checked against everyone here. A notice carries the workspace's version it was checked at, and one checked before
+  a change an instance has already checked everyone against is checked again before anyone hears of it: what someone said
+  just as their access went never brings them back. What each reader is told is worked out for them: where someone is if they can open
   it, otherwise `elsewhere`, with the document and block null. Someone outside the workspace hears of nobody who isn't in something
   they can open or in a call with them, and an address goes only between people in the workspace. Who's who (`isMe`) goes by
   someone's address or seat, never by what a call opens to everyone in it, which travels in the notice beside them (`calls`,

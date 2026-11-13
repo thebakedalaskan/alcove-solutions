@@ -75,6 +75,15 @@ const ownerRows = async (table: 'screen_pieces' | 'screen_videos' | 'screen_shar
 const objectsOf = async (ownerId: string) => (await h.pool.query<{ object_id: string }>(
   'SELECT object_id FROM screen_pieces WHERE owner_id = $1 UNION ALL SELECT object_id FROM screen_videos WHERE owner_id = $1', [ownerId])).rows.map((r) => r.object_id);
 const exists = (objectId: string) => h.objects.get(objectId).then(() => 'kept', () => 'gone');
+const BASE64URL = /^[A-Za-z0-9_-]+$/;
+/**
+ * All that anyone with the bucket can read of a stored piece or chunk of video: it's a sealed record, so that's its header.
+ * Its nonce and ciphertext are random bytes in base64url, which spell a short word like "webm" by chance (once in about 16
+ * million places, and a share's pieces run to hundreds of thousands), so they're held to being only that, and the header is
+ * compared whole.
+ */
+const sealedHeader = async (objectId: string) => z.object({ header: z.record(z.string(), z.unknown()), nonce: z.string().regex(BASE64URL), ciphertext: z.string().regex(BASE64URL) })
+  .strict().parse(JSON.parse(Buffer.from(await h.objects.get(objectId)).toString('utf8'))).header;
 async function* chunked(b: Uint8Array): AsyncGenerator<Uint8Array> { for (let i = 0; i < b.length; i += 65_536) yield b.subarray(i, i + 65_536); }
 const NOTES_FIRST = 'Turn on notes first: only then can a share go in them.';
 const onStage = new WeakSet<CallSession>();
@@ -114,14 +123,17 @@ describe('shared screens kept for the notes', () => {
     // Pieces from an earlier part of the recording aren't taken.
     expect(await fails(guest.appendScreen(piece(yes.share, 5, { segment: 1 })))).toEqual(['conflict', 'That video belongs to an earlier part of the recording.']);
 
-    // Sealed: rows hold sizes and places, objects hold ciphertext; who shared is sealed too.
+    // Sealed: rows hold sizes and places, objects hold ciphertext; who shared is sealed too. What can be read of a piece
+    // says where it belongs and nothing of what it is: no media type, no encoder.
     const shareRows = await ownerRows('screen_shares', org.session.ownerId);
     expect(shareRows).toHaveLength(1);
     expect(Buffer.from(z.instanceof(Buffer).parse(shareRows[0]?.['meta_ciphertext'])).toString('latin1')).not.toContain('Canary-7f3e');
-    for (const id of await objectsOf(org.session.ownerId)) {
-      const stored = Buffer.from(await h.objects.get(id)).toString('latin1');
-      expect(stored).not.toContain('webm');
-      expect(stored).not.toContain('libvpx');
+    const pieceRows = await ownerRows('screen_pieces', org.session.ownerId);
+    expect(pieceRows.map((r) => r['object_id']).sort()).toEqual((await objectsOf(org.session.ownerId)).sort());
+    for (const r of pieceRows) {
+      expect(await sealedHeader(z.string().parse(r['object_id']))).toEqual({
+        v: 1, kind: 'screen-video', keyVersion: '1', ownerId: org.session.ownerId, recordingId: r['recording_id'], shareId: yes.share, segment: r['segment'], seq: r['seq'], objectId: r['object_id']
+      });
     }
 
     // Sharing again ends the share before it: the new one, said no to, isn't recorded.
@@ -297,7 +309,11 @@ describe('shared screens kept for the notes', () => {
     for (const id of pieceObjects) expect(await exists(id)).toBe('gone');
     const chunks = await ownerRows('screen_videos', org.session.ownerId);
     expect(chunks.length).toBeGreaterThan(0);
-    for (const r of chunks) expect(Buffer.from(await h.objects.get(z.string().parse(r['object_id']))).toString('latin1')).not.toContain('webm');
+    for (const r of chunks) {
+      expect(await sealedHeader(z.string().parse(r['object_id']))).toEqual({
+        v: 1, kind: 'screen-video-chunk', keyVersion: '1', ownerId: org.session.ownerId, recordingId: r['recording_id'], shareId: share.share, segment: r['segment'], chunk: r['chunk'], chunks: r['chunks'], objectId: r['object_id']
+      });
+    }
 
     const url = org.api.notes.screenVideoUrl(noteId, share.share, 0);
     const whole = await org.fetch(url);
