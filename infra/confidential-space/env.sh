@@ -123,12 +123,10 @@ cs_env() {
       CS_GOOGLE_SIGNUP_MODE="${ALCOVE_GOOGLE_SIGNUP_MODE:-testers}"
       CS_NEAR_AI="${ALCOVE_NEAR_AI_ENABLED:-true}"
       CS_TREASURY_ACCOUNT=alcove-treasury.near
-      # The KMASTER and KSERVICE from before Confidential Space, which production's accounts were made under.
-      CS_LEGACY_KEY_SECRETS=(alcove-kmaster alcove-kservice)
-      # carry: the API reads the old KMASTER and KSERVICE once (LEGACY_SECRETS) and re-wraps every account under its own
-      # master. retired: set only after every account has moved and the switch is confirmed (README.md › The old keys);
-      # the next deploy then forgets the old master (RETIRE_LEGACY_KMASTER) and nothing may read the old secrets.
-      # Retired on 2026-11-13: all 28 accounts had moved (owners rewrapped, remaining 0) and the user confirmed the switch.
+      # The KMASTER and KSERVICE from before Confidential Space, which production's accounts were made under, were carried
+      # (carry: the API read them once, LEGACY_SECRETS, and re-wrapped every account under its own master), then retired on
+      # 2026-11-13, once all 28 accounts had moved and the user confirmed the switch: every deploy forgets the old master
+      # (RETIRE_LEGACY_KMASTER), and their secrets, alcove-kmaster and alcove-kservice, are deleted (README.md › The old keys).
       CS_LEGACY=retired
       ;;
     staging)

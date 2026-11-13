@@ -43,18 +43,17 @@ The project must already exist and have billing linked. The script enables APIs 
   required, automatic storage growth, daily backup window starting at **03:00 UTC**, seven retained
   backups and point-in-time recovery. Existing instances are checked too; drift is repaired and setup
   stops if the resulting backup settings do not match.
-- Secret Manager entries `alcove-database-url`, `alcove-kservice`, `alcove-objects-access-key`,
-  `alcove-objects-secret-key`, `alcove-livekit-api-key`, `alcove-livekit-api-secret`, optional
-  `alcove-near-ai-api-key`, and optional Google provider entries
-  `alcove-google-client-id` and `alcove-google-client-secret`. `alcove-kmaster` and `alcove-kservice` hold the keys
-  from before Confidential Space, until they're retired. `alcove-cloudflare-dns-token` holds the Cloudflare token
+- Secret Manager entries `alcove-database-url`, `alcove-objects-access-key`, `alcove-objects-secret-key`,
+  `alcove-livekit-api-key`, `alcove-livekit-api-secret`, optional `alcove-near-ai-api-key`, and optional Google
+  provider entries `alcove-google-client-id`, `alcove-google-client-secret` and `alcove-google-signup-testers`.
+  `alcove-cloudflare-dns-token` holds the Cloudflare token
   ([The Cloudflare token](confidential-space/README.md#the-cloudflare-token) says how to make it); only Confidential
-  Space's attested production VMs read it.
+  Space's attested production VMs read it. The keys from before Confidential Space, `alcove-kmaster` and
+  `alcove-kservice`, were retired and deleted on 2026-11-13 ([The old keys](confidential-space/README.md#the-old-keys)).
 - Runtime account `alcove-api@alcove-solutions.iam.gserviceaccount.com`, which runs the migration job, with Cloud SQL
-  access and access to those secrets: Cloud Run's API service ran as it and read them. The migration job reads only
-  `alcove-database-url`; the rest go with the Cloud Run service when the old keys are retired
-  ([The old keys](confidential-space/README.md#the-old-keys)). The deploy account `alcove-deploy` can publish to the
-  `alcove` registry, deploy and run Cloud Run jobs (`run.developer`), and act as this runtime account.
+  access and `alcove-database-url` alone. Cloud Run's API service ran as it until 2026-11-13. The deploy account
+  `alcove-deploy` can publish to the `alcove` registry, deploy and run Cloud Run jobs (`run.developer`), and act as this
+  runtime account.
 - Workload Identity Federation restricted to repository ID `1442472668`, owner ID `280182442`, `main`, and two
   workflows: `deploy.yml` on its workflow-run and manual-dispatch events, and `refresh.yml` on its schedule and manual
   dispatch. No GCP service-account key file is needed.
@@ -246,8 +245,8 @@ Each deployment ([.github/workflows/deploy.yml](../.github/workflows/deploy.yml)
    (`confidential-space/verify-server.ts`): the attestation the web app checks, that the TLS key the server presents is
    the attested one, that `/health` reaches LiveKit, and that it runs that commit and image.
 6. Nothing else is deployed. Support's billing CLI (`dist/billing-cli.js`, [Plans and usage › Support](../docs/engineering/plans-and-usage.md#support))
-   has no job: it needs `KSERVICE`, which the API keeps sealed in its server keys inside the TEE. The old `alcove-kservice`
-   secret is read only while the old keys are carried, and goes when they're retired.
+   has no job: it needs `KSERVICE`, which the API keeps sealed in its server keys inside the TEE. Nothing outside the TEE
+   has it: the old `alcove-kservice` secret was deleted when the old keys were retired (2026-11-13).
 
 The deploy's check does not establish that public domains work. Before recording a release as
 live, verify DNS, the HTTPS certificate on all three names, API health at the custom domain, CORS for the
@@ -256,11 +255,11 @@ loops, and a Google sign-in and recording flow that
 uploads, reads and physically deletes encrypted objects. Use the existing integration suite for automated checks; no
 browser test suite is permitted.
 
-The VMs' logs go to Cloud Logging ([Logs](confidential-space/README.md#logs)). The load balancer keeps no request logs.
-GCP's `_Default` logging sink still has an exclusion for `alcove-api` managed Cloud Run request logs, which contain raw
-URLs and can expose call codes or OAuth callback queries; keep it while the Cloud Run service exists, and apply an
-equivalent exclusion to any future sink that would retain such entries. Inspect settings without reading request-log
-contents:
+The VMs' logs go to Cloud Logging ([Logs](confidential-space/README.md#logs)). The load balancer keeps no request logs,
+so no log holds a request's URL. GCP's `_Default` logging sink still has the exclusion `alcove-api-request-urls`, for the
+request logs of Cloud Run's `alcove-api`, which held raw URLs that can expose call codes or OAuth callback queries; that
+service was deleted on 2026-11-13, so it matches nothing now. Give any future service or sink that would keep request
+URLs an equivalent exclusion. Inspect settings without reading request-log contents:
 
 ```sh
 CLOUDSDK_ACTIVE_CONFIG_NAME=alcove gcloud --project=alcove-solutions \
