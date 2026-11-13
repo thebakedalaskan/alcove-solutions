@@ -186,6 +186,13 @@ export class HttpCall extends Live<CallState> implements CallSession {
   /** A refused commit waits before the next one, longer each time, so a refusal can never turn into a loop. */
   private commitAfter = 0;
   private refusals = 0;
+  /** The last commit refused while it was letting people in: whom it was for, and the API's answer, which Let in says. */
+  private refusedEntry: { added: ReadonlySet<string>; error: AlcoveApiError } | null = null;
+  /** Why letting `identity` in was refused, when a commit letting them in was refused for it (`conflict`): the API's words. */
+  private entryRefused(identity: string): AlcoveApiError | null {
+    const r = this.refusedEntry;
+    return r && r.added.has(identity) && r.error.code === 'conflict' ? r.error : null;
+  }
   /**
    * Chat and reactions waiting to go out (encrypted in the sync loop, so nothing else touches the keys meanwhile), and
    * what was sent, by body, until it shows up in the log. Each goes to the part of the call it was written in, or not at all.
@@ -664,7 +671,9 @@ export class HttpCall extends Live<CallState> implements CallSession {
     } catch (e) {
       const code = errorCode(e);
       if (code === 'conflict' || code === 'invalid') {
-        // Refused: the call moved on, or someone in it isn't waiting any more. It's dropped, the log is read again, and the next commit waits a little.
+        // Refused: the call moved on, someone in it isn't waiting any more, or the call has no room for someone who asked. It's
+        // dropped, the log is read again, and the next commit waits a little.
+        if (c.added.length && e instanceof AlcoveApiError) this.refusedEntry = { added: new Set(c.added), error: e };
         await h.group.drop();
         this.refusals += 1;
         this.commitAfter = Date.now() + Math.min(30_000, 250 * 2 ** this.refusals);
@@ -881,10 +890,14 @@ export class HttpCall extends Live<CallState> implements CallSession {
     // An old notification is harmless: its identity is never re-used for a new request.
     if (!this.state.waiting.some((w) => w.id === identity)) return;
     this.approved.add(identity);
+    this.refusedEntry = null;
     try {
       await this.sync();
       await this.fetchState();
-      if (this.state.waiting.some((w) => w.id === identity)) throw new AlcoveApiError('unavailable', 'They haven’t been let in yet. Try again.');
+      if (this.state.waiting.some((w) => w.id === identity)) {
+        // The call refused letting them in (it's full, say): its own words, rather than a try again that can't work yet.
+        throw this.entryRefused(identity) ?? new AlcoveApiError('unavailable', 'They haven’t been let in yet. Try again.');
+      }
     } finally {
       // A failed press must not silently approve a future retry of the keys loop.
       this.approved.delete(identity);

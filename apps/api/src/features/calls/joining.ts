@@ -2,7 +2,7 @@ import { MAIN_PLACE, type CallCard, type CallRole, type CallState, type CallTick
 import { z } from 'zod';
 import { issuePass, readPass, type CallPass } from '../../callPass';
 import type { Deps, Owner } from '../../context';
-import { id128, openJson, sealJson, toJson } from '../../crypto';
+import { id128, mac, openJson, sealJson, stateKey, toJson, utf8 } from '../../crypto';
 import { exec, tx } from '../../db';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../errors';
 import { openOwner } from '../../owners';
@@ -17,10 +17,10 @@ import { callFor } from '../meetings/repeats';
 import type { Loaded } from '../../vault';
 import { findItem, getItem } from '../../vault';
 import { mayStandIn } from './hosting';
-import { Joined, admissionFresh } from './places';
+import { Joined, admissionFresh, placesTaken } from './places';
 import { attentionPrincipalOf } from './attention';
 import * as rings from './rings';
-import { log } from '../../log';
+import { log, type LogContext } from '../../log';
 import { header, hostHere, key, liveCall, load, notice, save, sharesEnd, tenthsIn, type Row, Stored, withPerson } from './state';
 import { anonymousCapture, view } from './read-model';
 import * as models from '../notes/models';
@@ -91,14 +91,43 @@ export async function pick(d: Deps, code: string, at: string, owner?: Owner | un
 /** A guest's name as typed, on one line: control characters and line breaks become spaces, and runs of spaces one. */
 const GuestName = z.string().transform((n) => n.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ').replace(/\s+/g, ' ').trim()).pipe(z.string().min(1).max(60));
 
+/** Refused for a call with no room: the people in it, and those it's letting in by itself, are as many as a call can have. */
+export const callFull = (most: number, context: LogContext): ConflictError =>
+  new ConflictError(`This call is full: ${most} people are in it, the most a call can have.`, { context: { ...context, reason: 'full' } });
+
+/** Refused for an ask from a network with as many waiting in the call as `call.asks_per_address` allows. */
+const MANY_ASKS = 'Too many people on your network are already asking to join this call. Try again once the host has answered them.';
+
+/** A network, as asks are counted by it: an IPv4 address as it is, an IPv6 address by its /64, what one network is given. */
+function networkOf(address: string): string {
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(address);
+  if (mapped?.[1]) return mapped[1];
+  if (!address.includes(':')) return address;
+  const [head = '', tail] = address.toLowerCase().split('::');
+  const left = head ? head.split(':') : [];
+  const right = tail ? tail.split(':') : [];
+  const groups = tail === undefined ? left : [...left, ...Array.from({ length: Math.max(0, 8 - left.length - right.length) }, () => '0'), ...right];
+  return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, '')).join(':')}::/64`;
+}
+/**
+ * The network an ask came from, as the call keeps it beside the ask (`Joined.askedFrom`): 16 bits of a MAC under this call's
+ * own key (`call-asks:<id>`), so about one network in 65,536 shares it, it's different in every call, and it's no use for
+ * telling where anyone was: only that two asks may have come from the same place.
+ */
+function askedFromOf(o: Owner, callId: string, address: string): number {
+  const tag = mac(stateKey(o.root, o.ownerId, `call-asks:${callId}`), utf8(networkOf(address)));
+  return ((tag[0] ?? 0) << 8) | (tag[1] ?? 0);
+}
+
 /**
  * Lets someone into a call by its link. The organizer hosts (one organizer connection at a time: a new one
  * takes over the recording on a new segment); invited people join with their accounts; anyone else asks: someone
  * signed in under their account's name, with their address when the notes may go to it (the organizer sees it, and
  * letting them in adds it to the invite), anyone else with a typed name. Everyone but the organizer waits until the
- * organizer is there, and is kept out while it's locked or once it has ended.
+ * organizer is there, and is kept out while it's locked or once it has ended. `address`: the client address the request
+ * came from, which only counts an ask against the others waiting from its network, and isn't kept.
  */
-export async function join(d: Deps, code: string, who: { owner?: Owner | undefined; name?: string | undefined; mic: boolean; cam: boolean; identity: string; keyPackage: string; previous?: string | undefined }): Promise<{ ticket: CallTicket; state: CallState }> {
+export async function join(d: Deps, code: string, who: { owner?: Owner | undefined; name?: string | undefined; mic: boolean; cam: boolean; identity: string; keyPackage: string; previous?: string | undefined; address: string }): Promise<{ ticket: CallTicket; state: CallState }> {
   const { organizer: o, meeting } = await meetingFor(d, code);
   // Nobody comes in until someone has picked a time, the organizer included: the call has none yet.
   if (meeting.manifest.offer) throw new ConflictError('This call doesn’t have a time yet.', { context: { meetingId: meeting.itemId } });
@@ -119,11 +148,11 @@ export async function join(d: Deps, code: string, who: { owner?: Owner | undefin
   const joined: Joined = {
     identity, person, attentionPrincipal: who.owner ? `account:${who.owner.ownerId}` : `guest:${person}`, role, name, ...(asker && keepsAddress ? { email: asker.email.toLowerCase(), ...(asker.photoUrl ? { photoUrl: asker.photoUrl } : {}) } : {}),
     status: role === 'host' ? 'in' : 'waiting', admit: role === 'guest' ? 'ask' : 'auto', keysFor: 0, group: role === 'host' ? MAIN_PLACE : null, from: 0,
-    placedAt: Date.now(), placedSeq: 0, wasIn: null, leftAt: {}, replaced: false, chatBefore: false, since: Date.now(), left: null, askedAt: Date.now(), earlier: [], hosting: []
+    placedAt: Date.now(), placedSeq: 0, wasIn: null, leftAt: {}, replaced: false, chatBefore: false, since: Date.now(), left: null, askedAt: Date.now(), earlier: [], hosting: [], askedFrom: null
   };
   // A pass from this browser's earlier connection to the same call: someone let in before is let in again without asking.
   const earlier = who.previous ? readPass(d.cfg, who.previous) : undefined;
-  return enter(d, o, meeting, joined, { mic: who.mic, cam: who.cam, keyPackage: who.keyPackage, earlier, owner: who.owner });
+  return enter(d, o, meeting, joined, { mic: who.mic, cam: who.cam, keyPackage: who.keyPackage, earlier, owner: who.owner, address: who.address });
 }
 
 /** A connection that came before, of someone coming back: from a reload's pass, or a move from another device. */
@@ -133,9 +162,9 @@ type Earlier = Pick<CallPass, 'callId' | 'identity' | 'person'>;
  * Lets a new connection into the call (joining, or coming back from a reload or another device), and hands back its
  * ticket. The organizer's takes over from their previous connection; anyone else's asks, or comes back as `earlier`.
  */
-async function enter(d: Deps, o: Owner, meeting: Loaded<MeetingManifest>, joined: Joined, who: { mic: boolean; cam: boolean; keyPackage: string; earlier?: Earlier | undefined; moving?: boolean | undefined; host?: string | undefined; owner?: Owner | undefined }): Promise<{ ticket: CallTicket; state: CallState }> {
+async function enter(d: Deps, o: Owner, meeting: Loaded<MeetingManifest>, joined: Joined, who: { mic: boolean; cam: boolean; keyPackage: string; earlier?: Earlier | undefined; moving?: boolean | undefined; host?: string | undefined; owner?: Owner | undefined; address?: string | undefined }): Promise<{ ticket: CallTicket; state: CallState }> {
   const { identity, role, name } = joined;
-  const j = role === 'host' ? await hostJoin(o, meeting, joined, who) : await guestJoin(o, meeting, joined, who.keyPackage, who.earlier, who.moving === true).catch(async (e: unknown) => {
+  const j = role === 'host' ? await hostJoin(o, meeting, joined, who) : await guestJoin(o, meeting, joined, who.keyPackage, who.earlier, who.moving === true, who.address).catch(async (e: unknown) => {
     if (e instanceof ConflictError && e.context['reason'] === 'full' && typeof e.context['callId'] === 'string') await toldFull(o, e.context['callId']);
     throw e;
   });
@@ -199,7 +228,7 @@ export async function moveIn(d: Deps, o: Owner, callId: string, from: { identity
   const joined: Joined = {
     identity: to.identity, person: was.person, attentionPrincipal: attentionPrincipalOf(was), role: was.role, name: was.name, ...(was.email ? { email: was.email } : {}), ...(was.photoUrl ? { photoUrl: was.photoUrl } : {}),
     status: host ? 'in' : 'waiting', admit: 'auto', keysFor: 0, group: host ? MAIN_PLACE : null, from: 0,
-    placedAt: Date.now(), placedSeq: 0, wasIn: null, leftAt: {}, replaced: false, chatBefore: false, since: Date.now(), left: null, askedAt: Date.now(), earlier: [], hosting: []
+    placedAt: Date.now(), placedSeq: 0, wasIn: null, leftAt: {}, replaced: false, chatBefore: false, since: Date.now(), left: null, askedAt: Date.now(), earlier: [], hosting: [], askedFrom: null
   };
   return enter(d, o, meeting, joined, { ...media, keyPackage: to.keyPackage, ...(host ? { host: from.identity } : { earlier: { callId, identity: from.identity, person: from.person }, moving: true }) });
 }
@@ -313,7 +342,7 @@ async function toldFull(o: Owner, callId: string): Promise<void> {
   if (room) await tellRoom(o, room, callId, { call: true, log: false });
 }
 
-async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joined, keyPackage: string, earlier: Earlier | undefined, moving = false): Promise<Joining> {
+async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joined, keyPackage: string, earlier: Earlier | undefined, moving = false, address?: string | undefined): Promise<Joining> {
   return tx(o.pool, async (c) => {
     const live = await liveCall(o, c, meeting.itemId, true);
     // Over and not started again: only the organizer can start it.
@@ -349,16 +378,25 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
     // account (or still none), so it holds no place of its own and the host isn't asked twice.
     const again = earlier && earlier.callId === live.call_id && !before
       ? state.people.find((j) => j.identity === earlier.identity && j.person === earlier.person && j.status === 'waiting' && (j.email ?? '') === (joined.email ?? '')) : undefined;
-    // At most `call.max_people` at once (docs: Plans and usage): everyone let in, and everyone asking to be who can still be
-    // let in, whose ask hasn't gone quiet (`admissionFresh`), so an ask nobody follows up holds no place once the host can't
-    // see it. Someone coming back keeps their place, anyone more is turned away, and whoever hosts is told.
-    if (!before) {
-      const most = (await limitsNow(o, c)).get('call.max_people');
-      const holding = (j: Joined) => j !== again && (j.status === 'in' || (j.status === 'waiting' && admissionFresh(j)));
-      const here = new Set(state.people.filter(holding).map((j) => j.person)).size;
-      if (here >= most) throw new ConflictError(`This call is full: ${most} people are in it, the most a call can have.`, { context: { callId: live.call_id, reason: 'full', people: here } });
+    const l = await limitsNow(o, c);
+    // At most `call.max_people` at once (docs: Plans and usage › Calls), and only the people in the call take places, with
+    // those it's letting in by itself (`placesTaken`). Someone invited is let in by the invite, so joining is when they take
+    // one: with none left they're turned away, and whoever hosts is told. An ask takes none, so asks can't fill a call and
+    // keep out whoever's invited, however many there are: it's letting someone in who asked that takes a place, only while
+    // there's one (`mlsCommit`). Someone coming back keeps their place.
+    if (!before && me.admit === 'auto') {
+      const most = l.get('call.max_people');
+      const here = placesTaken(state, Date.now(), again);
+      if (here >= most) throw callFull(most, { callId: live.call_id, people: here });
     }
-    let s: Stored = { ...state, people: [...state.people, me], spotlight: before && state.spotlight === before.identity ? me.identity : state.spotlight };
+    // One network has only so many asks waiting in a call at once (`call.asks_per_address`), so nobody fills the list of
+    // asks whoever hosts answers. Its own earlier ask, which this one replaces, doesn't count.
+    const askedFrom = me.admit === 'ask' && address !== undefined ? askedFromOf(o, live.call_id, address) : null;
+    if (askedFrom !== null) {
+      const waiting = state.people.filter((j) => j !== again && j.status === 'waiting' && j.admit === 'ask' && admissionFresh(j) && j.askedFrom === askedFrom).length;
+      if (waiting >= l.get('call.asks_per_address')) throw new ConflictError(MANY_ASKS, { context: { callId: live.call_id, reason: 'asks', waiting }, level: 'info' });
+    }
+    let s: Stored = { ...state, people: [...state.people, { ...me, askedFrom }], spotlight: before && state.spotlight === before.identity ? me.identity : state.spotlight };
     if (again) s = withPerson(s, again.identity, (j) => ({ ...j, status: 'denied' }));
     // An old connection still in never said it went (its page crashed, or its goodbye hasn't come): its stay ends when it
     // was last heard from, not now, so the time between isn't counted as theirs for a guest coming back to read.

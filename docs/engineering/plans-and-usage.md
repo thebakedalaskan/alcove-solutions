@@ -24,7 +24,7 @@ changeable without a deploy: each plan's notes, storage, files and price; Pro's 
 months of Pro one purchase buys and how long before Pro ends its owner is told; more notes for a period, their price and
 the most bought at once; the most workspaces one account makes; what an hour of notes is reckoned at; when AI stops and
 when an organizer is told it's close; how much of an organizer's allowance guests in one call spend; how long a period
-and a grace last; a call's longest and its most people. A period's length changes from each account's next period: each
+and a grace last; a call's longest, its most people, and how many asks to join it one network may have waiting. A period's length changes from each account's next period: each
 account's AI meter keeps the period it's in ([Pro › The plan in force](#pro)).
 
 ## Status
@@ -204,11 +204,22 @@ only Pro's limits apply on Pro.
 
 A call ends at its longest (`call.max_seconds`, 10 hours): `CallState.endsAt` says when, everyone is told 5 minutes
 before, and upkeep ends it every 30 seconds (`lifecycle.endOverdue`), writing its notes as when anyone ends it. At most
-`call.max_people` (100) are in a call or asking to be let in (`joining.ts › guestJoin`, under the call's row lock, so
-several asking at once for the last place can't all take it): anyone more is refused ("This call is full…") and whoever
-hosts is told, at most once a minute. Someone coming back keeps their place. An ask holds a place only while its browser
-keeps saying it's asking: one quiet for 90 seconds (`places.ts › admissionFresh`) can't be seen or let in, so it holds none, and upkeep turns it away (`lifecycle.ts › arrivals`). A reload of someone still asking takes the
-place of their earlier ask, which is turned away, so nobody is kept out by their own ask and whoever hosts is asked once.
+`call.max_people` (100) are in a call at once, and only the people in it take places, with those it's letting in by itself,
+invited or coming back, each person once (`places.ts › placesTaken`). Asking to be let in takes none, so asks can't fill a
+call and keep out whoever's invited: anyone with the link can ask, whatever the call holds, and it's letting someone in who
+asked that takes a place, only while there's one. Let in past it is refused ("This call is full: 100 people are in it, the
+most a call can have.", `mls.ts › mlsCommit`, under the call's row lock), and they go on asking. Someone invited is let in
+by the invite as they join, so that's when they take a place: with none left they're refused in those words and whoever
+hosts is told, at most once a minute (`joining.ts › guestJoin`, under the call's row lock, so several joining at once for
+the last place can't all take it). Someone coming back keeps their place. So that nobody can fill the list of asks whoever
+hosts answers, one network has at most `call.asks_per_address` (10) asks waiting in a call at once: an address, or an IPv6
+/64. The call keeps beside each ask only 16 bits of a keyed hash of its network under the call's own key (`Joined.askedFrom`,
+state key `call-asks:<id>`), different in every call, which says that two asks may share a network and never which; an ask
+past it is refused ("Too many people on your network are already asking to join this call. Try again once the host has
+answered them."). An ask counts only while its browser keeps saying it's asking: one quiet for 90 seconds
+(`places.ts › admissionFresh`) can't be seen or let in, so it counts for nothing, and upkeep turns it away
+(`lifecycle.ts › arrivals`). A reload of someone still asking takes the place of their earlier ask, which is turned away, so
+whoever hosts is asked once and it isn't counted twice.
 
 ## Pro
 
@@ -636,7 +647,11 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   whose payer had left them before this release (the backfill counts them against whoever made them) are settled by upkeep.
 - A deposit record from before keeps its `credits` and `rate` (ignored now); one settled by a release before plans has no
   `addedMicroUsd` and is added again as dollars once (above).
-- A live call's state from before has no `notes.limit`, and reads as not stopped (`.default`).
+- A live call's state from before has no `notes.limit`, and reads as not stopped (`.default`). Its asks have no
+  `askedFrom`: they read as null (`.default`) and count against no network's `call.asks_per_address`, and are written with it
+  as null the next time the call is saved. While both serve, the previous release still counts fresh asks among a call's
+  places when it takes a join, so a call can turn someone away there that this release would let ask; it ignores
+  `askedFrom` and saves the asks it keeps without it.
 - The guests' share needs no migration: an `ai-meter` record kept without it has no shares and holds for no call's guests,
   and reads as none spent (`.default`); it's written with them the next time it's saved. A live call's `call-notes` record kept
   without `guests` (why its last refresh didn't work) reads as false (`.default`), so a view that failed before says what it

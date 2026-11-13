@@ -13,7 +13,7 @@ import { openJson, sealJson, toJson } from '../../crypto';
 import { maintain } from '../../maintenance';
 import { openOwner } from '../../owners';
 import { speechWav } from '../../testing/fake-near';
-import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
+import { ORIGIN, cookieFetch, startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
 import { header as callHeader, key as callKey } from './state';
 
@@ -417,18 +417,37 @@ describe('what guests see', () => {
 });
 
 describe('a full call', () => {
-  /** A call with room for `most` people at once (docs: Plans and usage › Calls), its organizer hosting. */
-  async function roomFor(most: number) {
+  /** A call with room for `most` people at once (docs: Plans and usage › Calls), its organizer hosting, and `invited` on its invite. */
+  async function roomFor(most: number, invited: string[] = []) {
     await h.setLimit('call.max_people', most);
     const org = await account();
-    const { code: c } = await org.api.calls.startNow({});
+    const { code: c } = await org.api.calls.startNow({ guests: invited });
     const host = await org.api.calls.join(c, { mic: true, cam: false });
     await inGroup(host);
     return { org, c, host };
   }
   const full = (most: number) => `conflict: This call is full: ${most} people are in it, the most a call can have.`;
+  const MANY = 'conflict: Too many people on your network are already asking to join this call. Try again once the host has answered them.';
   const joining = (p: Promise<CallSession>) => p.then((call) => ({ call, said: 'asked' }), (e: unknown) => ({ call: null, said: e instanceof AlcoveApiError ? `${e.code}: ${e.message}` : String(e) }));
   const ask = (c: string, name: string, api = guestBrowser(), previous?: string | undefined) => joining(api.calls.join(c, { mic: true, cam: false, name, ...(previous ? { previous } : {}) }));
+  /** What pressing Let in came to. */
+  const letting = (host: CallSession, who: CallSession) => host.admit(who.ticket.identity).then(() => 'let in', (e: unknown) => (e instanceof AlcoveApiError ? `${e.code}: ${e.message}` : String(e)));
+  /** Let in once the host's browser is ready to try again: after a refusal it waits a moment before its next commit. */
+  async function letInAgain(host: CallSession, who: CallSession) {
+    await settle(host, (s) => s.waiting.some((w) => w.id === who.ticket.identity));
+    for (let tries = 0; ; tries++) {
+      const said = await letting(host, who);
+      if (said === 'let in') break;
+      if (tries > 20 || !said.startsWith('unavailable: ')) throw new Error(`not let in: ${said}`);
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    await inGroup(who);
+  }
+  /** A guest's browser coming from one network, as several in an office do, or a script: every request from `address`. */
+  const fromNetwork = (address: string) => {
+    const f = cookieFetch(ORIGIN);
+    return h.browser({ fetch: (input, init) => { const headers = new Headers(init?.headers); headers.set('x-forwarded-for', address); return f(input, { ...init, headers }); } }).api;
+  };
   /** As if the browser asking as `identity` went quiet `ms` ago: its ask was made, and last said it was still asking, then. */
   async function quietSince(ownerId: string, callId: string, identity: string, ms: number) {
     const o = await openOwner(h.deps, ownerId, undefined);
@@ -438,67 +457,107 @@ describe('a full call', () => {
     await h.pool.query('UPDATE calls SET state_ciphertext = $3 WHERE owner_id = $1 AND call_id = $2', [ownerId, callId, sealJson(callKey(o, callId), callHeader(o, callId), toJson({ ...s, people }))]);
   }
 
-  it('keeps their place for someone coming back, and a reload of someone still asking takes the place of their earlier ask', async () => {
-    const { c, host } = await roomFor(3);
+  it('takes no place for an ask: a call is full only by the people in it, and letting someone in past it is refused in its words', async () => {
+    const { org, c, host } = await roomFor(3);
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    // The organizer and Sam are in. Asks hold no place, so three can ask at once for the one place left.
+    const asks = await Promise.all(['Lee', 'Ada', 'Bo'].map((name) => ask(c, name)));
+    expect(asks.map((a) => a.said)).toEqual(['asked', 'asked', 'asked']);
+    const [lee, ada] = asks.map((a) => a.call);
+    if (!lee || !ada) throw new Error('Lee and Ada didn’t ask');
+    expect((await settle(host, (s) => s.waiting.length === 3)).waiting).toHaveLength(3);
+    // Letting Lee in takes the last place. Kim can still ask, in a call full by the people in it.
+    await letIn(host, lee);
+    const kim = await ask(c, 'Kim');
+    expect(kim.said).toBe('asked');
+    // Letting Ada in too is refused in the words joining a full call has, and she's still asking, as Bo and Kim are.
+    expect(await letting(host, ada)).toBe(full(3));
+    const after = await settle(host, (s) => s.participants.length === 3 && s.waiting.length === 3);
+    expect(after.participants.map((p) => p.person.name).sort()).toEqual([org.session.user.name, 'Lee', 'Sam'].sort());
+    expect(after.waiting.map((w) => w.id).sort()).toEqual([ada.ticket.identity, asks[2]?.call?.ticket.identity, kim.call?.ticket.identity].sort());
+    // Sam leaves: there's room again, and Ada is let in.
+    await sam.leave();
+    await settle(host, (s) => s.participants.length === 2);
+    await letInAgain(host, ada);
+    expect((await settle(host, (s) => s.participants.length === 3)).participants.map((p) => p.person.name).sort()).toEqual([org.session.user.name, 'Ada', 'Lee'].sort());
+    await host.leave();
+  });
+
+  it('lets in someone invited however many are asking, until the people in it fill it; someone coming back keeps their place', async () => {
+    const ivy = await account();
+    const jo = await account();
+    const { c, host } = await roomFor(3, [ivy.session.user.email, jo.session.user.email]);
     const sams = guestBrowser();
     const sam = await sams.calls.join(c, { mic: true, cam: false, name: 'Sam' });
     await letIn(host, sam);
-    const lees = guestBrowser();
-    const lee = await lees.calls.join(c, { mic: true, cam: false, name: 'Lee' });
-    await settle(host, (s) => s.waiting.some((w) => w.id === lee.ticket.identity));
-    // The organizer, Sam let in and Lee asking: three, so nobody else gets in.
-    expect((await ask(c, 'Ada')).said).toBe(full(3));
+    // Four asks wait, past the one place left: none of them keeps Ivy, who's invited, out.
+    const leesBrowser = guestBrowser();
+    const asks = [await ask(c, 'Lee', leesBrowser), ...await Promise.all(['Ada', 'Bo', 'Cy'].map((name) => ask(c, name)))];
+    expect(asks.map((a) => a.said)).toEqual(['asked', 'asked', 'asked', 'asked']);
+    await settle(host, (s) => s.waiting.length === 4);
+    const ivys = await ivy.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(ivys);
+    // Full now, by the people in it: Jo, invited too, is turned away, and whoever hosts is told. Asking is as ever.
+    expect((await joining(jo.api.calls.join(c, { mic: true, cam: false }))).said).toBe(full(3));
+    expect((await settle(host, (s) => s.notices.some((n) => n.text.startsWith('Someone tried to join')))).notices.map((n) => n.text)).toContain('Someone tried to join, but this call is full: 3 people is the most a call can have.');
+    expect((await ask(c, 'Kim')).said).toBe('asked');
     // Sam reloads: back in their place, without asking.
     const samBack = await sams.calls.join(c, { mic: true, cam: false, name: 'Sam', previous: sam.ticket.pass });
     sam.close();
     await inGroup(samBack);
-    // Lee reloads while still asking: the new ask takes the earlier one's place, so it isn't turned away by its own ask,
-    // and whoever hosts is asked once.
-    const leeAgain = await ask(c, 'Lee', lees, lee.ticket.pass);
-    lee.close();
+    // Lee reloads while still asking: the new ask takes the earlier one's place, so whoever hosts is asked once.
+    const lee = asks[0]?.call;
+    const leeAgain = await ask(c, 'Lee', leesBrowser, lee?.ticket.pass);
+    lee?.close();
     expect(leeAgain.said).toBe('asked');
-    const asking = await settle(host, (s) => s.waiting.some((w) => w.id === leeAgain.call?.ticket.identity));
-    expect(asking.waiting.map((w) => w.id)).toEqual([leeAgain.call?.ticket.identity]);
-    if (leeAgain.call) await letIn(host, leeAgain.call);
-    const all = await settle(host, (s) => s.participants.length === 3);
-    expect(all.participants.filter((p) => p.id !== host.ticket.identity).map((p) => p.person.name).sort()).toEqual(['Lee', 'Sam']);
-    expect((await ask(c, 'Ada')).said).toBe(full(3));
+    const asking = await settle(host, (s) => s.waiting.some((w) => w.id === leeAgain.call?.ticket.identity) && !s.waiting.some((w) => w.id === lee?.ticket.identity));
+    expect(asking.waiting.filter((w) => w.person.name === 'Lee')).toHaveLength(1);
+    expect(asking.waiting).toHaveLength(5);
+    expect((await settle(host, (s) => s.participants.length === 3)).participants.map((p) => p.person.name).sort()).toEqual([host.getSnapshot().participants.find((p) => p.isOrganizer)?.person.name, ivy.session.user.name, 'Sam'].sort());
     await host.leave();
   });
 
-  it('gives the last place to one of several asking at once', async () => {
-    const { c, host } = await roomFor(3);
-    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
-    await letIn(host, sam);
-    const asked = await Promise.all(['Ada', 'Bo', 'Cy'].map((name) => ask(c, name)));
-    expect(asked.filter((a) => a.said === 'asked')).toHaveLength(1);
-    expect(asked.filter((a) => a.said === full(3))).toHaveLength(2);
-    const one = asked.find((a) => a.call)?.call;
-    expect((await settle(host, (s) => s.waiting.length > 0)).waiting.map((w) => w.id)).toEqual([one?.ticket.identity]);
+  it('gives the last place to one of several invited people joining at once', async () => {
+    const people = await Promise.all([account(), account(), account()]);
+    const { c, host } = await roomFor(2, people.map((p) => p.session.user.email));
+    const tried = await Promise.all(people.map((p) => joining(p.api.calls.join(c, { mic: true, cam: false }))));
+    expect(tried.filter((t) => t.said === 'asked')).toHaveLength(1);
+    expect(tried.filter((t) => t.said === full(2))).toHaveLength(2);
+    const one = tried.find((t) => t.call)?.call;
+    if (one) await inGroup(one);
+    expect((await settle(host, (s) => s.participants.length === 2)).participants.map((p) => p.id)).toContain(one?.ticket.identity);
     await host.leave();
   });
 
-  it('holds no place for an ask that went quiet, and upkeep turns it away', async () => {
-    const { org, c, host } = await roomFor(2);
-    const lee = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Lee' });
-    await settle(host, (s) => s.waiting.some((w) => w.id === lee.ticket.identity));
-    expect((await ask(c, 'Ada')).said).toBe(full(2));
-    // Lee's browser closed while it asked, and last said it was still asking 91 seconds ago: whoever hosts can't see the
-    // ask any more, so it holds no place.
+  it('holds only so many asks from one network at once: one gone quiet doesn’t count, upkeep turns it away, and an answered one makes room', async () => {
+    await h.setLimit('call.asks_per_address', 2);
+    const { org, c, host } = await roomFor(10);
+    // Everyone here comes from one network, as several people in an office do, or a script.
+    const office = '203.0.113.7';
+    const lee = await fromNetwork(office).calls.join(c, { mic: true, cam: false, name: 'Lee' });
+    const ada = await fromNetwork(office).calls.join(c, { mic: true, cam: false, name: 'Ada' });
+    await settle(host, (s) => s.waiting.length === 2);
+    expect((await ask(c, 'Bo', fromNetwork(office))).said).toBe(MANY);
+    // Asks from anywhere else, and anyone invited, are as ever.
+    expect((await ask(c, 'Cy')).said).toBe('asked');
+    expect((await settle(host, (s) => s.waiting.length === 3)).waiting.map((w) => w.id)).not.toContain(undefined);
+    // Lee's browser closed while it asked, and last said it was still asking 91 seconds ago: whoever hosts can't see it, and
+    // it holds nothing from the office.
     lee.close();
     await quietSince(org.session.ownerId, host.ticket.callId, lee.ticket.identity, 91_000);
-    expect((await settle(host, (s) => s.waiting.length === 0)).waiting).toEqual([]);
-    const ada = await ask(c, 'Ada');
-    expect(ada.said).toBe('asked');
+    const bo = await ask(c, 'Bo', fromNetwork(office));
+    expect(bo.said).toBe('asked');
     // Upkeep turns the quiet ask away, so nothing kept of it reads as asking: its pass finds it turned away.
     const from = h.logs.length;
     await maintain(h.deps);
     expect(h.logs.slice(from).some((l) => l.includes('asks to join that went quiet turned away') && l.includes(host.ticket.callId))).toBe(true);
     const admission = await h.browser().fetch(`${h.baseUrl}/v1/live/calls/${lee.ticket.callId}/mls?after=0`, { headers: { 'x-alcove-call': lee.ticket.pass } });
     expect(await admission.json()).toMatchObject({ admission: 'denied' });
-    // Ada's ask is fresh, and still holds the second place.
-    expect((await settle(host, (s) => s.waiting.length > 0)).waiting.map((w) => w.id)).toEqual([ada.call?.ticket.identity]);
-    expect((await ask(c, 'Bo')).said).toBe(full(2));
+    // Answered asks make room: Ada is let in, and the office can ask again.
+    expect((await ask(c, 'Di', fromNetwork(office))).said).toBe(MANY);
+    await letIn(host, ada);
+    expect((await ask(c, 'Di', fromNetwork(office))).said).toBe('asked');
     await host.leave();
   });
 });
