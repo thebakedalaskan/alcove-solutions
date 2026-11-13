@@ -29,12 +29,14 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    team at** the company, with its size and faces, when it has people in it and has arrived by then (the screen
    doesn't wait for it), with who already uses Alcove, or **Invite them from Team** while nobody does. **Notes are
    written in confidential compute**, and only the people invited to a call get its notes. Then
-   "You’re in" and the arch opens into Home, where the plans to choose from come first, once (16.20). **Skip**,
+   "You’re in" and the arch opens into Home, where the plans to choose from come first, once (16.20): the screen says
+   "Opening Plans" then, and "Opening Home" when Home is next. **Skip**,
    **Escape** or **Enter** opens it straight away; with
    reduced motion the finished screen shows for a moment and Home follows. After that, signing in goes
    straight to Home. From the welcome page it sails out of the cove: the headlands go by, the horizon comes up to
    Home's, the side panel and the page's frame form round the sea, and Home rises in, in about three and a half
-   seconds (a press, a key or the wheel ends it at once; with reduced motion Home just opens).
+   seconds (a press, a key or the wheel ends it at once; with reduced motion Home just opens). While the plans haven't
+   been shown, it sails onto them in Home's place instead, the sun sinking to their last sliver (16.20).
 4. On first arriving in Home (past the plans), a tour goes through it, one stop at a time: a card with a short animation on the dawn sky,
    and the page dimmed around the real thing the stop is about, with a ring round it and an arrow to it. **Start or
    schedule a call** (Start now and Schedule, on Home's sky); **Join a call** (the line on Home that offers an Alcove
@@ -2710,7 +2712,8 @@ Alcove normally after plans came.
 4. A new account's tour of Home (1, step 4) starts once Home is there, never over the plans.
 5. Only Home opens on them. A link to a call, a call's page, a join link, an agent's consent page, a public page or a team
    invite is never interrupted, and nor is signing in from a call's link or for an agent: the plans wait for the next time Home
-   is reached.
+   is reached. Signing in from the welcome page sails out of its cove onto them, as it would onto Home (1, step 3), the sun
+   sinking to their last sliver; a new account's arrival says "Opening Plans" and its arch opens onto them.
 6. Once the plans have been on screen for a moment (the tab showing, nothing open over them), Alcove is told, and they aren't
    shown again. Plans itself counts too. If telling Alcove fails, it's tried again quietly, and this tab doesn't show them again;
    a later visit does. Left before their prices came (still loading, offline, or not loaded), they show again on a later visit.
