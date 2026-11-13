@@ -305,13 +305,22 @@ export const NoNotesLeftPhone = phone(NoNotesLeft);
 export const PaymentForProOnItsWay = page('/settings#plan', 'plan-buying-pro');
 export const PaymentForProOnItsWayNight = night(PaymentForProOnItsWay);
 export const PaymentForProOnItsWayPhone = phone(PaymentForProOnItsWay);
-/** Over Free's storage: 14.2 GB of 10. Everything works as before until the day the note names. */
+/** Over Free's storage: 14.2 GB of 10. Everything works as before until the day the note names; its Make room opens the Drive. */
 export const OverFreesLimitsInGrace = page('/settings#plan', 'plan-grace');
 export const OverFreesLimitsInGraceNight = night(OverFreesLimitsInGrace);
 export const OverFreesLimitsInGracePhone = phone(OverFreesLimitsInGrace);
-/** The grace is over: uploads have stopped, and the note says so. */
+/**
+ * The grace is over: uploads and notes have stopped, and the note says so. Get Pro is the one filled button, and the note's
+ * Make room opens the Drive (under its words on a phone).
+ */
 export const OverFreesLimits = page('/settings#plan', 'plan-over');
 export const OverFreesLimitsNight = night(OverFreesLimits);
+export const OverFreesLimitsPhoneNight = phoneNight(OverFreesLimits);
+/** Over Pro's 100 GB, its grace over: Make room is the way out, so it's the filled button, with Extend beside the plan. */
+export const OverProsStorage = page('/settings#plan', 'plan-pro', {
+  beforeEach: changing((w) => { w.plan = { ...w.plan, storage: { ...w.plan.storage, usedBytes: 104 * 2 ** 30 }, grace: null, over: { storage: true } }; })
+});
+export const OverProsStorageNight = night(OverProsStorage);
 /** $60 in the balance: a $20 top-up waiting for its payment, opening the add-money sheet, and the payments that made the balance. */
 export const ABalance = page('/settings#plan', 'plan-balance');
 export const ABalanceNight = night(ABalance);

@@ -3,7 +3,8 @@
  * what you have: the plan and what it brings, about how much of the period's notes is left (with the sun on the row's own
  * hairline), storage against its limit, and on Free more notes for this period. Get Pro, Extend and Add 10 hours open
  * checkout (features/plans/checkout.tsx); See plans opens Plans. Pro about to end is said by the plan itself, with Extend
- * the page's one filled button, as Get Pro is once notes have run out; Pro renewed or ended is said at the top until it's
+ * the page's one filled button, as Get Pro is once notes have stopped (run out, or over Free's storage); over the plan's
+ * storage, a note says so with Make room, which opens the Drive. Pro renewed or ended is said at the top until it's
  * dismissed. The second panel is what you pay with: the balance with Add money (topup.tsx), renewing from it and refunding
  * the months that haven't started (on Pro), then the payments: what's on its way, each opening where it's being paid, and
  * what the balance took in and paid for, each with its receipt. Team's parts (its plan row, waiting for a license, its
@@ -37,17 +38,18 @@ export function PlanGroup({ plan }: { plan: Plan }) {
   // licenses the one thing to do here.
   const team = useQuery({ ...q.myTeam(), enabled: plan.team !== null }).data;
   const licenses = teamLicenses(team);
+  const waiting = Boolean(licenses?.waiting.length);
   const [sheet, setSheet] = useState<{ open: boolean; topUpId: string | null }>({ open: false, topUpId: null });
   return (
     <SettingsGroup id="plan" title="Plan">
       <SettingsPanel>
         <Notices plan={plan} team={team} />
         <WaitingNote plan={plan} team={team} />
-        {plan.kind === 'team' ? <TeamPlanRow plan={plan} team={team} /> : <PlanRow plan={plan} offers={offers} quiet={Boolean(licenses?.waiting.length)} />}
+        {plan.kind === 'team' ? <TeamPlanRow plan={plan} team={team} /> : <PlanRow plan={plan} offers={offers} quiet={waiting} />}
         <NotesRow plan={plan} offers={offers} />
         <SettingRow label="Storage" help={plan.kind === 'team' ? teamStorageHelp(plan, offers) : `Uploads and call recordings. Files up to ${roomLabel(plan.storage.fileBytes)}.`}
           control={<SettingFact icon="hardDrive" tone={plan.grace?.storage || plan.over.storage ? 'no' : undefined}>{roomLabel(plan.storage.usedBytes)} of {roomLabel(plan.storage.limitBytes)}</SettingFact>} />
-        {plan.kind === 'team' ? <TeamStorageNote plan={plan} team={team} /> : <Limits plan={plan} />}
+        {plan.kind === 'team' ? <TeamStorageNote plan={plan} team={team} room={<MakeRoom lead={plan.over.storage && !waiting} />} /> : <Limits plan={plan} quiet={waiting} />}
         <MoreNotes plan={plan} offers={offers} />
         {licenses && <Licenses licenses={licenses} offers={offers} />}
       </SettingsPanel>
@@ -104,10 +106,11 @@ function PlanRow({ plan, offers, quiet }: { plan: Plan; offers: PlanOffers | und
   } else if (until !== null) {
     help = `Until ${fullDate(new Date(until))}. ${renews(plan) ? 'It renews from your balance before it ends.' : 'Nothing renews by itself: Alcove reminds you before it ends.'}`;
   }
-  // Pressing is filled only when something needs doing: notes have run out, or Pro is about to end.
+  // Pressing is filled only when something needs doing: notes have stopped (run out, or over Free's storage), or Pro is about
+  // to end.
   const again = noticesNow(plan).some((n) => n.kind === 'pro-ended');
   const buy = plan.kind === 'free'
-    ? <Button variant={notesOut(plan) && !quiet ? 'primary' : 'secondary'} size="sm" onClick={() => checkout.open({ plan: 'pro' }, 'settings')}>{again ? 'Get Pro again' : 'Get Pro'}</Button>
+    ? <Button variant={(notesOut(plan) || plan.over.storage) && !quiet ? 'primary' : 'secondary'} size="sm" onClick={() => checkout.open({ plan: 'pro' }, 'settings')}>{again ? 'Get Pro again' : 'Get Pro'}</Button>
     : plan.kind === 'pro' ? <Button variant={ending && !quiet ? 'primary' : 'secondary'} size="sm" onClick={() => checkout.open({ plan: 'pro' }, 'settings')}>Extend</Button>
     : null;
   return (
@@ -137,21 +140,38 @@ function NotesRow({ plan, offers }: { plan: Plan; offers: PlanOffers | undefined
   );
 }
 
-/** Being over the plan's storage, said once: until when everything works as before, or what has stopped since. */
-function Limits({ plan }: { plan: Plan }) {
+/**
+ * Make room: the Drive, where what's stored can be deleted. Filled (`lead`) once uploads and notes have stopped and it's the
+ * way out, unless the plan row's button already is.
+ */
+function MakeRoom({ lead }: { lead: boolean }) {
+  return <Link to="/drive" className={buttonClass({ variant: lead ? 'primary' : 'secondary', size: 'sm' })}>Make room</Link>;
+}
+
+/**
+ * Being over the plan's storage, said once: until when everything works as before, or what has stopped since, with Make room.
+ * Once they've stopped, Make room is filled on Pro, where it's the way out, unless Extend is (Pro ending) or something else
+ * needs doing more (`quiet`); on Free, Get Pro is.
+ */
+function Limits({ plan, quiet }: { plan: Plan; quiet: boolean }) {
+  const now = useNow();
   const { grace, over } = plan;
   const name = PLAN_NAMES[plan.kind];
   const free = plan.kind === 'free';
   if (grace?.storage) {
     return (
-      <SettingNote tone="caution">
+      <SettingNote tone="caution" action={<MakeRoom lead={false} />}>
         You’re over {name}’s {roomLabel(plan.storage.limitBytes)} of storage. Everything works as before until {longDay(new Date(grace.until))}; then
         uploads and notes stop until you {free ? 'get Pro or make room' : 'make room'}.
       </SettingNote>
     );
   }
   if (over.storage) {
-    return <SettingNote tone="caution">Uploads and notes have stopped: you’re over {name}’s {roomLabel(plan.storage.limitBytes)} of storage. {free ? 'Get Pro, or make room.' : 'Make room to start them again.'}</SettingNote>;
+    return (
+      <SettingNote tone="caution" action={<MakeRoom lead={!free && proEnding(plan, now) === null && !quiet} />}>
+        Uploads and notes have stopped: you’re over {name}’s {roomLabel(plan.storage.limitBytes)} of storage. {free ? 'Get Pro, or make room.' : 'Make room to start them again.'}
+      </SettingNote>
+    );
   }
   return null;
 }

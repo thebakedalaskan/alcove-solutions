@@ -9,7 +9,7 @@
 import { errorMessage, type MyTeam, type Plan, type PlanNotice, type PlanOffers, type TeamMember } from '@alcove/api';
 import { Button, SettingFoot, SettingNote, SettingRow, SettingStep, Switch, buttonClass, useToast, type IconName } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { useCheckout } from '~/features/plans/checkout';
 import { PLAN_NAMES, licensesLeft, teamAdmin, waitingForLicense, type TeamLicenses } from '~/features/plans/plan-state';
 import { callName } from '~/lib/people';
@@ -89,19 +89,28 @@ export function teamNotesHelp({ out, low, next }: { out: boolean; low: boolean; 
 export const teamStorageHelp = (plan: Plan, offers: PlanOffers | undefined): string =>
   `The team’s, shared by everyone with a license${offers ? `: ${roomLabel(offers.team.storageBytes)} for each` : ''}. Files up to ${roomLabel(plan.storage.fileBytes)}.`;
 
-/** The team over its storage, said once: until when everything works as before, or what has stopped since. */
-export function TeamStorageNote({ plan, team }: { plan: Plan; team: MyTeam | null | undefined }) {
+/**
+ * The team over its storage, said once: until when everything works as before, or what has stopped since, with `room` (Make
+ * room, Plan.tsx's) as what to do about it.
+ */
+export function TeamStorageNote({ plan, team, room }: { plan: Plan; team: MyTeam | null | undefined; room: ReactNode }) {
   const limit = roomLabel(plan.storage.limitBytes);
   const admin = Boolean(team?.licenses);
   if (plan.grace?.storage) {
     return (
-      <SettingNote tone="caution">
+      <SettingNote tone="caution" action={room}>
         The team is over its {limit} of storage. Everything works as before until {longDay(new Date(plan.grace.until))}; then uploads and notes stop
         until it makes room{admin ? ' or you buy more licenses' : ''}.
       </SettingNote>
     );
   }
-  if (plan.over.storage) return <SettingNote tone="caution">Uploads and notes have stopped: the team is over its {limit} of storage. {admin ? 'Make room, or buy more licenses.' : 'Make room to start them again.'}</SettingNote>;
+  if (plan.over.storage) {
+    return (
+      <SettingNote tone="caution" action={room}>
+        Uploads and notes have stopped: the team is over its {limit} of storage. {admin ? 'Make room, or buy more licenses.' : 'Make room to start them again.'}
+      </SettingNote>
+    );
+  }
   return null;
 }
 

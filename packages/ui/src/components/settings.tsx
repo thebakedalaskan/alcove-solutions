@@ -131,16 +131,18 @@ export function SettingTile({ icon }: { icon: IconName }) {
 
 /**
  * Something said inside a panel, on no hairline of its own: what just happened (back from Google, Pro renewed), or what's
- * in the way (`caution`). The icon says which unless `icon` says otherwise. With `onDismiss` it stays until its × is
- * pressed, named by `dismissLabel`.
+ * in the way (`caution`). The icon says which unless `icon` says otherwise. `action` is what to do about it (Make room), at
+ * the note's end and under its words on a phone. With `onDismiss` it stays until its × is pressed, named by `dismissLabel`.
  */
-export function SettingNote({ icon, tone = 'info', children, className, onDismiss, dismissLabel = 'Dismiss', ...rest }: {
+export function SettingNote({ icon, tone = 'info', children, className, action, onDismiss, dismissLabel = 'Dismiss', ...rest }: {
   icon?: IconName | undefined; tone?: 'info' | 'caution' | undefined; children: ReactNode; className?: string | undefined;
-  onDismiss?: (() => void) | undefined; dismissLabel?: string | undefined;
+  action?: ReactNode; onDismiss?: (() => void) | undefined; dismissLabel?: string | undefined;
 } & Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'className'>) {
+  const acts = action !== undefined && action !== null && action !== false;
   return (
-    <div {...rest} className={cn('set-note is-flush', tone === 'caution' && 'is-caution', onDismiss && 'has-x', className)}>
+    <div {...rest} className={cn('set-note is-flush', tone === 'caution' && 'is-caution', acts && 'has-a', onDismiss && 'has-x', className)}>
       <Icon name={icon ?? (tone === 'caution' ? 'alert' : 'info')} size={17} /><p>{children}</p>
+      {acts && <div className="set-note-a">{action}</div>}
       {onDismiss && <IconButton icon="x" size={16} label={dismissLabel} className="set-note-x" onClick={onDismiss} />}
     </div>
   );

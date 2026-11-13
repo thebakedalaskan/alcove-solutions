@@ -525,12 +525,16 @@ The last of the light, with you in it, then seven groups. Change one thing and l
   their own: the agent tile, who's connected (or what agents are for, while none is), and Open Agents →, or Connect an
   agent → while none is. On a phone it's the way to Agents.
 - **Plan says what you have, then what you pay with.** The first panel: the plan row (Free or Pro with its help, See plans
-  quiet and Get Pro or Extend secondary, filled only when notes have run out or Pro is ending), Notes left this period with
+  quiet and Get Pro or Extend secondary, filled only when notes have stopped, run out or over Free's storage, or Pro is
+  ending), Notes left this period with
   a `SunLine` on the row's own hairline (the sun at the end in a fresh period and moving back as it's used), Storage saying
   what's used of the limit ("2.1 GB of 10 GB", in caution once it's over), and More notes on Free (or on any plan once notes
   are low or out). The AI allowance is kept in dollars and never
-  shown: notes left is said as time, as an estimate, with a small "About" before the number. Over the plan's limits, one
-  `SettingNote` says until when everything works as before. Pro renewed and Pro ended are `SettingNote`s with × at the top
+  shown: notes left is said as time, as an estimate, with a small "About" before the number. Over the plan's storage, one
+  `SettingNote` says until when everything works as before, or that uploads and notes have stopped, with Make room at its end
+  (its `action`, under its words on a phone), which opens the Drive. Once they've stopped, the way out is the filled button:
+  Get Pro on Free, beside which Make room is secondary, and Make room on Pro or a team, unless Extend (Pro ending) or Buy
+  licenses (someone waiting) already is. Pro renewed and Pro ended are `SettingNote`s with × at the top
   until dismissed; ending is said once, in warm, in the plan row. The second panel: Balance with Add money, then on Pro
   Renew from balance and Refund. Add money opens a window over Settings (`features/settings/topup.tsx`, the kit's `Sheet`:
   560px, centred over the veiled page, and the width of a phone from its top), a small checkout of its own that shares
