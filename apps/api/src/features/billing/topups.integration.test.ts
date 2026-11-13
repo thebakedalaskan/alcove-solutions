@@ -457,7 +457,9 @@ describe('top-ups', () => {
     expect(await api.plans.topUp(t.id)).toMatchObject({ state: 'arriving' });
     await dueOnly(t.id);
     await watch(h.deps);
-    const errors = logsSince(from).filter((l) => l.level >= 40 && l.line.includes(t.id));
+    // Every line of a request for this top-up has its ID, in the path, so a statement that took over 250 ms there, which db.ts
+    // warns of as a slow query, does too: that says how busy the database was, not what became of the top-up.
+    const errors = logsSince(from).filter((l) => l.level >= 40 && l.msg !== 'slow query' && l.line.includes(t.id));
     expect(errors.length).toBe(1);
     expect(errors[0]?.level).toBe(50);
     expect(errors[0]?.line).toContain('unreadable-finished-swap');
