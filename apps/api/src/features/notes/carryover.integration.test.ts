@@ -557,15 +557,25 @@ describe('what later calls did to what earlier ones left', () => {
     const { org, bea, next, decision, seriesId } = await twoCalls();
     const replaced = async () => (await bea.api.series.get(seriesId)).decisions.find((d) => d.id === decision)?.replacedBy;
 
-    // The notes model takes its time over the comparison: everyone has the notes by the time it's even asked.
+    // The notes model holds its answer to the comparison until the notes are read: everyone has them by the time it's
+    // even asked. Anything else it's asked meanwhile goes by.
     const third = await scheduleNext(org.api, next.id);
     const sent = h.near.prompts.length;
-    h.near.slowNext(3000, COMPARING);
-    const three = await ended(org.api, third.code, 'We decided to end annual pricing instead.');
-    await waitFor(() => h.near.prompts.slice(sent).some((p) => p.includes(COMPARING)), 'the comparison to reach the notes model');
-    expect(await org.api.notes.get(three)).toMatchObject({ status: 'ready', summary: expect.stringMatching(/\S/), decisions: [{ text: 'We decided to end annual pricing instead.' }] });
-    expect(await bea.api.notes.get(three)).toMatchObject({ status: 'ready', summary: expect.stringMatching(/\S/) });
-    expect((await replaced())?.noteId).not.toBe(three);
+    let answer = () => {};
+    const answered = new Promise<void>((r) => { answer = () => r(); });
+    const hold = async (): Promise<void> => {
+      if (!h.near.instructions.at(-1)?.startsWith('You compare one meeting')) { h.near.holdNext(hold); return; }
+      await answered;
+    };
+    h.near.holdNext(hold);
+    let three = '';
+    try {
+      three = await ended(org.api, third.code, 'We decided to end annual pricing instead.');
+      await waitFor(() => h.near.prompts.slice(sent).some((p) => p.includes(COMPARING)), 'the comparison to reach the notes model');
+      expect(await org.api.notes.get(three)).toMatchObject({ status: 'ready', summary: expect.stringMatching(/\S/), decisions: [{ text: 'We decided to end annual pricing instead.' }] });
+      expect(await bea.api.notes.get(three)).toMatchObject({ status: 'ready', summary: expect.stringMatching(/\S/) });
+      expect((await replaced())?.noteId).not.toBe(three);
+    } finally { answer(); }
     await written(org.api, three);
     expect((await replaced())?.noteId).toBe(three);
 

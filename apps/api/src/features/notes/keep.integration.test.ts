@@ -56,11 +56,15 @@ async function written(api: AlcoveApi, noteId: string, first?: (() => void) | un
   for await (const p of api.notes.progress(noteId)) { steps.push(p); if (steps.length === 1) first?.(); }
   return steps;
 }
+/** Answers the notes model still holds, given after each test: one that failed part-way leaves nothing waiting. */
+const holds: (() => void)[] = [];
+afterEach(() => { for (const answer of holds.splice(0)) answer(); });
 /** The notes model keeps its next answer until the returned function is called: the notes are being written until then. */
 function holdNotes(): () => void {
   let answer = () => {};
   const answered = new Promise<void>((r) => { answer = () => r(); });
   h.near.holdNext(() => answered);
+  holds.push(() => answer());
   return () => answer();
 }
 async function asked(api: AlcoveApi, noteId: string, question: string): Promise<AnswerPart[]> {
