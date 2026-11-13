@@ -26,7 +26,8 @@ the setup, deploys, rollbacks, staging, certificates and release verification.
 
 1. **CI** (`.github/workflows/ci.yml`) runs on pull requests and pushes to `main`, as four checks:
    - **Policy:** integration tests only and strict typing; no `any`, assertions, non-null or suppressions.
-   - **Typecheck:** every package with strict compiler flags.
+   - **Typecheck:** every package with strict compiler flags, after writing the web app's route tree as its build
+     does (`pnpm --filter @alcove/web run routes`), without building.
    - **Build:** web, API bundle and API container.
    - **Integration tests:** the real API against Postgres and an S3-compatible store, signing in the way
      the web app does, with local stand-ins for Google (an OpenID provider and the Calendar API) and for
