@@ -37,6 +37,7 @@ export function useNoteOnScreen(noteId: string) {
   const owner = useQuery(q.session()).data?.ownerId;
   useEffect(() => owner ? watchNotificationViews(() => [`${owner}:note:${noteId}`]) : undefined, [owner, noteId]);
 }
+/** Whether the account's preferences let an alert of this kind through: only the kinds whose preference has another name are listed. */
 function category(prefs: NotificationPrefs, kind?: BrowserAlertKind): boolean {
   if (!prefs.enabled) return false;
   if (!kind) return true;
@@ -45,8 +46,6 @@ function category(prefs: NotificationPrefs, kind?: BrowserAlertKind): boolean {
     case 'ready': return prefs.notesReady;
     case 'shared': return prefs.sharedWithYou;
     case 'due': return prefs.followUpDue;
-    case 'tagged': return prefs.tagged;
-    case 'plan': return prefs.plan;
     default: return prefs[kind];
   }
 }
