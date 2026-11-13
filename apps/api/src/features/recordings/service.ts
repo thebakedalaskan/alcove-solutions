@@ -16,8 +16,8 @@ import { NoteManifest, blankNote, createNoteWithRecording, finishRecording, remo
 import * as transcripts from './transcripts';
 import * as writer from '../notes/writer';
 import { writingAtMost } from '../notes/drafting';
-import { meterFor, notesBlocked } from '../billing/meter';
-import { requireRoom } from '../billing/held';
+import { meterFor, notesBlocked, NOTES_ROOM } from '../billing/meter';
+import { requireRoom, roomContext, roomOf } from '../billing/held';
 import { log } from '../../log';
 
 const rlog = log.child({ component: 'recordings' });
@@ -69,7 +69,9 @@ export async function start(o: Owner, input: RoomRecordingInput): Promise<RoomRe
     // A new recording only while the plan has notes and room for them: one carrying on keeps what it was let start with.
     const blocked = await notesBlocked(o, c, o.ownerId);
     if (blocked === 'notes') throw new PlanLimitError('Your notes for this period have run out. They start again when your plan renews.', 'notes', { context: { secondsAgo } });
-    if (blocked === 'storage') throw new PlanLimitError('Your storage is full, so a recording can’t be kept. Delete something, or move to a plan with more room.', 'storage', { context: { secondsAgo } });
+    if (blocked === 'storage') {
+      throw new PlanLimitError('Your storage is full, so a recording can’t be kept. Delete something, or move to a plan with more room.', 'storage', { context: { secondsAgo, ...roomContext(await roomOf(o, c, o.ownerId), NOTES_ROOM) } });
+    }
     if (own) {
       if (secondsAgo > MAX_RECORDING_AGE_DAYS * 86_400) throw new ValidationError(`Recordings can be uploaded for up to ${MAX_RECORDING_AGE_DAYS} days after they start. This one started earlier.`, { context: { secondsAgo } });
       if (secondsAgo < -CLOCK_SKEW_SECONDS) throw new ValidationError('This recording starts in the future. Check the clock on this device.', { context: { secondsAgo } });

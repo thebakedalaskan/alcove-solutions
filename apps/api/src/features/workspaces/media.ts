@@ -20,15 +20,15 @@ import type { Deps, Owner } from '../../context';
 import { b64u, blindIndex, concat, equalBytes, id128, openBinary, openJson, sealBinary, sealJson, sha, stateKey, toJson, type RecordHeader } from '../../crypto';
 import { bigintText, bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { ConflictError, ForbiddenError, IntegrityError, InternalError, NotFoundError, UnavailableError, invalid, notFound, toAppError } from '../../errors';
-import { limitsNow, shown } from '../../limits';
+import { limitsNow, shown, type LimitName } from '../../limits';
 import { currentLogContext, log, withLogContext } from '../../log';
 import { masterKey } from '../../owners';
 import { issueMediaToken, readMediaToken, type MediaToken } from '../../mediaToken';
 import { deleteQueued, queueDelete } from '../recordings/audio';
 import { jpegSize } from '../recordings/screens';
 import { ID128, limitKey, requireDocument, roleOf, whoNamed, workspaceFor, type Reader, type Who, type Workspace } from './access';
-import { fileBytesFor, requireRoom, storageLimitOf } from '../billing/held';
-import { payerOf, usedBytes } from '../billing/storage';
+import { fileLimitOf, requireRoom, roomOf, type Room } from '../billing/held';
+import { payerOf } from '../billing/storage';
 
 const mlog = log.child({ component: 'media' });
 
@@ -247,12 +247,12 @@ const uploaderOf = (d: Deps, r: Reader): Uploader =>
  * (none of its admins has an account, or its payer just deleted theirs) takes no files: they'd count against no storage at
  * all. Upkeep settles who pays within minutes of an admin signing in (billing/storage.ts `settlePayers`).
  */
-interface Allowed { file: number; day: number; payer: string; storage: number | null }
+interface Allowed { file: { limit: LimitName; bytes: number }; day: number; payer: string }
 async function allowedIn(d: Deps, db: Db, w: Place): Promise<Allowed> {
   const limits = await limitsNow(d, db);
   const payer = await payerOf(db, w.owner.ownerId);
   if (!payer) throw new ConflictError('Files can’t be added until one of this workspace’s admins signs in to Alcove.', { context: { workspaceId: w.workspaceId, why: 'no payer' } });
-  return { file: await fileBytesFor(d, db, payer), day: limits.get('media.account_day_bytes'), payer, storage: await storageLimitOf(d, db, payer) };
+  return { file: await fileLimitOf(d, db, payer), day: limits.get('media.account_day_bytes'), payer };
 }
 
 /** Today, as uploads are counted: in UTC. */
@@ -278,12 +278,12 @@ const NO_UPLOADS = 'Files can’t be uploaded right now.';
  * Refuses what would take a file past its plan's size, its payer's storage past their plan's, or someone's day past what's
  * allowed, and anything at all in a workspace that's read-only, before anything of it is read: at the start, with the whole
  * file, and with each piece, so uploads going at once pass a limit by the pieces on their way and no more. Each says which,
- * and a file says how big one can be, because only the server knows.
+ * and a file says how big one can be, because only the server knows. Each logs the limit by its name and the sizes.
  */
 async function withinLimits(d: Deps, db: Db, w: Place, u: Uploader, allowed: Allowed, size: number, adding: number): Promise<void> {
   const context = { workspaceId: w.workspaceId, sizeBytes: size, addingBytes: adding };
-  if (size > allowed.file) {
-    throw invalid(allowed.file ? `This file is bigger than ${shown('plan.free.file_bytes', allowed.file)}, the most a file can be here.` : NO_UPLOADS, { ...context, limit: 'file', limitBytes: allowed.file });
+  if (size > allowed.file.bytes) {
+    throw invalid(allowed.file.bytes ? `This file is bigger than ${shown(allowed.file.limit, allowed.file.bytes)}, the most a file can be here.` : NO_UPLOADS, { ...context, limit: allowed.file.limit, limitBytes: allowed.file.bytes });
   }
   await requireRoom(d, db, allowed.payer, adding, context);
   const day = await uploadedToday(db, u);
@@ -296,9 +296,9 @@ async function withinLimits(d: Deps, db: Db, w: Place, u: Uploader, allowed: All
  * what it's allowed: IDs and sizes, nothing else.
  */
 const passes80 = (before: number, after: number, limit: number): boolean => before < 0.8 * limit && after >= 0.8 * limit;
-function nearTheLimits(w: Place, u: Uploader, allowed: Allowed, stored: { before: number; after: number }, day: { before: number; after: number }): void {
-  if (allowed.storage !== null && passes80(stored.before, stored.after, allowed.storage)) {
-    mlog.warn('an account is past 80% of its storage', { workspaceId: w.workspaceId, ownerId: allowed.payer, storedBytes: stored.after, limitBytes: allowed.storage });
+function nearTheLimits(w: Place, u: Uploader, allowed: Allowed, room: Room, added: number, day: { before: number; after: number }): void {
+  if (room.heldBytes !== null && passes80(room.usedBytes - added, room.usedBytes, room.heldBytes)) {
+    mlog.warn('an account is past 80% of its storage', { workspaceId: w.workspaceId, ownerId: allowed.payer, storedBytes: room.usedBytes, limitBytes: room.heldBytes });
   }
   if (passes80(day.before, day.after, allowed.day)) {
     mlog.warn('someone is past 80% of what they can upload today', { ...('guest' in u ? { callId: u.callId ?? null } : { ownerId: u.account }), uploadedBytes: day.after, limitBytes: allowed.day });
@@ -367,9 +367,9 @@ export async function storePiece(d: Deps, who: Reader, workspaceId: string, docu
     const bytes = await arrived(body, where);
     if (bytes.length !== length) throw invalid('That piece is the wrong size.', { ...where, bytes: bytes.length, length });
     const { objectId, digest, sealed } = await inTurn(() => sealedObject(w, mediaId, seq, bytes));
-    let kept: { stored: number; day: number } | undefined;
+    let day: number | undefined;
     try {
-      kept = await tx(d.pool, async (c) => {
+      day = await tx(d.pool, async (c) => {
         // The account's row before the workspace's, the order deleting an account takes them in, so the two can't wait on
         // each other: counting the piece towards its day below takes a lock on that row too.
         if ('account' in u) await exec(c, 'SELECT 1 FROM owners WHERE owner_id = $1 FOR KEY SHARE', [u.account]);
@@ -379,19 +379,18 @@ export async function storePiece(d: Deps, who: Reader, workspaceId: string, docu
         const n = await exec(c, 'INSERT INTO workspace_media_pieces (owner_id, media_id, seq, object_id, sha256, length) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING', [held.owner.ownerId, mediaId, seq, objectId, digest, sealed]);
         if (n !== 1) return undefined;
         await exec(c, 'UPDATE workspace_media SET bytes = bytes + $3 WHERE owner_id = $1 AND media_id = $2', [held.owner.ownerId, mediaId, sealed]);
-        const owner = await maybeOne(c, z.object({ stored_bytes: bigintText }), 'UPDATE owners SET stored_bytes = stored_bytes + $2, version = version + 1 WHERE owner_id = $1 RETURNING stored_bytes', [held.owner.ownerId, sealed]);
+        await exec(c, 'UPDATE owners SET stored_bytes = stored_bytes + $2, version = version + 1 WHERE owner_id = $1', [held.owner.ownerId, sealed]);
         // What they sent counts towards their day, with the piece, so a piece that isn't kept isn't counted.
-        return { stored: owner?.stored_bytes ?? sealed, day: await countDay(c, u, bytes.length) };
+        return countDay(c, u, bytes.length);
       });
     } catch (e) {
       mlog.at(toAppError(e).status < 500 ? 'info' : 'warn', 'piece not recorded; deleting its object', { ...where, objectId, err: e });
       await queueDelete(w.owner, [objectId]);
       throw e;
     }
-    if (kept) {
+    if (day !== undefined) {
       mlog.debug('piece stored', { ...where, bytes: sealed });
-      const stored = await usedBytes(d.pool, allowed.payer);
-      nearTheLimits(w, u, allowed, { before: stored - sealed, after: stored }, { before: kept.day - bytes.length, after: kept.day });
+      nearTheLimits(w, u, allowed, await roomOf(d, d.pool, allowed.payer), sealed, { before: day - bytes.length, after: day });
       return;
     }
     mlog.info('piece raced a retry; dropping the duplicate', where);

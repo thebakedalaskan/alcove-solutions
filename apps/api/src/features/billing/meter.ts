@@ -247,7 +247,7 @@ export async function standing(d: Service, db: Db, ownerId: string): Promise<Sta
 export const minutesOf = (nanoUsd: number, l: Limits): number => Math.max(0, Math.floor((nanoUsd * 60) / (l.get('ai.hour_micro_usd') * 1000)));
 
 /** Room a recording needs to start or carry on: a few minutes of a call's audio. */
-const NOTES_ROOM = 1024 * 1024;
+export const NOTES_ROOM = 1024 * 1024;
 /** Why notes can't be kept for an account now: its notes this period, or its storage (without NOTES_ROOM left), have run out. Null: they can. */
 export async function notesBlocked(d: Service, db: Db, ownerId: string): Promise<'notes' | 'storage' | null> {
   if ((await standing(d, db, ownerId)).stopped) return 'notes';
