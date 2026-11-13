@@ -25,7 +25,9 @@ const LOOKUPS_AT_ONCE = 4;
 export interface Did { tool: AgentTool; noteId?: string | undefined; meetingId?: string | undefined; count?: number | undefined }
 /**
  * Tools renamed since an earlier release sealed rows under their old names, and what they're called now. A row is never
- * sealed again, so it keeps its header and the old name, and it's read under the new one until upkeep deletes it.
+ * sealed again, so it keeps its header and the old name, and it's read under the new one until upkeep deletes it. Nothing
+ * writes an old name any more, so once the release that renamed them has served KEPT_DAYS, upkeep has deleted every such
+ * row: then this map and Body's transform go, and `tool` is a plain string again.
  */
 const RENAMED: ReadonlyMap<string, AgentTool> = new Map<string, AgentTool>([['propose_action', 'add_follow_up'], ['update_action', 'update_follow_up'], ['answer_call', 'respond_to_invite']]);
 /** As it's sealed. A tool a later release stops offering still opens; it just isn't listed. */

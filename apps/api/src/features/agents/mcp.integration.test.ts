@@ -1,4 +1,4 @@
-import { AgentWriteResultSchema, type AgentScope, type AlcoveApi } from '@alcove/api';
+import { AGENT_TOOLS, AgentPastCallSchema, AgentWriteResultSchema, type AgentScope, type AlcoveApi } from '@alcove/api';
 import { request as httpRequest } from 'node:http';
 import { z } from 'zod';
 import { id128, sealJson, stateKey } from '../../crypto';
@@ -70,18 +70,22 @@ function keysIn(value: unknown): string[] {
   return record.success ? Object.entries(record.data).flatMap(([key, inner]) => [key, ...keysIn(inner)]) : [];
 }
 /**
- * Gives a note a breakout room's section, as a call with rooms leaves one: its own follow-ups, a copy of the call's, both
- * those on the checklist and the ones the notes suggest. Stored as the call stores it, so it's read as one.
+ * Gives a note a breakout room's section, as a call with rooms leaves one, and says its ID. All it holds to start with is
+ * the follow-ups the notes suggested there, a copy of the call's: nothing on its checklist, and no decisions or questions.
+ * Stored as the call stores it, so it's read as one.
  */
-async function withRoom(ownerId: string, noteId: string): Promise<void> {
+async function withRoom(ownerId: string, noteId: string): Promise<string> {
   const owner = await openOwner(h.deps, ownerId, undefined);
   try {
     const raw = await getItem(owner, owner.pool, 'note', noteId, z.record(z.string(), z.unknown()), 'That note');
-    const actions = z.array(z.record(z.string(), z.unknown())).parse(raw.manifest['actions']).map(action => ({ ...action, id: id128() }));
-    const room = { id: id128(), name: 'Design', people: [], from: 0, to: 60, summary: '', decisions: [], questions: [], actions, chapters: [], gaps: [], transcript: [] };
+    const suggested = z.array(z.record(z.string(), z.unknown())).parse(raw.manifest['actions']).filter(action => action['review'] === 'suggested').map(action => ({ ...action, id: id128() }));
+    const room = { id: id128(), name: 'Design', people: [], from: 0, to: 60, summary: '', decisions: [], questions: [], actions: suggested, chapters: [], gaps: [], transcript: [] };
     await saveRevision(owner, owner.pool, raw.itemId, raw.revisionId, { ...raw.manifest, rooms: [room] });
+    return room.id;
   } finally { owner.root.fill(0); owner.wrapKey.fill(0); }
 }
+/** What adding to a note handed back. */
+const addedBy = (result: { structuredContent?: unknown }) => AgentWriteResultSchema.parse(result.structuredContent);
 /** Holds a call someone scheduled, with notes on, says something in it, ends it and waits for its notes to be written. */
 async function held(org: Browser, title: string, guests: string[]): Promise<{ meetingId: string; startsAt: string; noteId: string }> {
   const meeting = await org.api.meetings.create({ title, startsAt: new Date(Date.now() + 3_600_000).toISOString(), durationMinutes: 30, guests, notes: 'on' });
@@ -175,21 +179,28 @@ describe('scoped SDK flows', () => {
         const names = (await writer.client.listTools()).tools.map(tool => tool.name);
         expect(names).toEqual(expect.arrayContaining(['propose_decision', 'update_decision', 'add_follow_up', 'update_follow_up', 'add_question', 'update_question', 'respond_to_invite']));
         expect(names.filter(name => /action|answer_call/.test(name))).toEqual([]);
-        // Told once it connects: a note's three lists by the names Alcove shows, and the tools that add and change each.
+        // Told once it connects only what no one tool says: a note's three lists by the names Alcove shows, with their
+        // fields, and who confirms a decision. What each tool does, its own description says.
         const told = writer.client.getInstructions() ?? '';
-        for (const said of ['Decided', 'Follow-ups', 'Still open', 'add_follow_up', 'update_follow_up', 'add_question', 'update_question', 'propose_decision', 'respond_to_invite']) expect(told).toContain(said);
-        // Nothing about tools it doesn't have.
-        for (const unsaid of ['list_notes', 'get_note', 'list_meetings', 'action']) expect(told).not.toContain(unsaid);
+        for (const said of ['Decided (decisions', 'Follow-ups (followUps', 'Still open (questions', 'confirmed, by the organizer or by someone invited', 'IDs']) expect(told).toContain(said);
+        for (const tool of AGENT_TOOLS) expect(told).not.toContain(tool);
+        expect(told).not.toContain('action');
       } finally { await writer.client.close(); }
     }
+    // The same for any notes permission, and nothing about notes without one.
     const reader = await connect(browser, ['notes:read', 'meetings:read'], true);
+    const writerTold = (await connect(browser, ['notes:write'])).client;
     try {
       const told = reader.client.getInstructions() ?? '';
-      for (const said of ['Decided', 'Follow-ups', 'Still open', 'list_notes', 'get_note', 'list_meetings']) expect(told).toContain(said);
-      for (const unsaid of ['add_follow_up', 'add_question', 'propose_decision', 'respond_to_invite']) expect(told).not.toContain(unsaid);
-    } finally { await reader.client.close(); }
-    const calendar = await connect(browser, ['calendar:read']);
-    try { expect(calendar.client.getInstructions()).not.toMatch(/Follow-ups|list_notes|list_meetings|respond_to_invite/); } finally { await calendar.client.close(); }
+      expect(told).toBe(writerTold.getInstructions());
+      for (const tool of AGENT_TOOLS) expect(told).not.toContain(tool);
+    } finally { await reader.client.close(); await writerTold.close(); }
+    const calendar = await connect(browser, ['calendar:read', 'meetings:write']);
+    try {
+      const told = calendar.client.getInstructions() ?? '';
+      expect(told).toContain('IDs');
+      expect(told).not.toMatch(/Decided|Follow-ups|Still open|decision/);
+    } finally { await calendar.client.close(); }
   });
 
   it('schedules, reads, updates, answers and cancels calls with bounded write results and durable retry protection across instances', async () => {
@@ -274,14 +285,14 @@ describe('scoped SDK flows', () => {
       const listed = NotePage.parse((await agent.client.callTool({ name: 'list_notes', arguments: { limit: 1 } })).structuredContent);
       expect(listed.items.map(note => note.id)).toContain(noteId);
       const proposed = await agent.client.callTool({ name: 'propose_decision', arguments: { noteId, proposal: { text: 'Agent decision canary' } } });
-      const proposedId = AgentWriteResultSchema.parse(proposed.structuredContent).decisionId;
-      expect(proposed.structuredContent).toEqual({ ok: true, noteId, decisionId: proposedId });
+      const proposedId = addedBy(proposed).decisionId;
+      expect(proposed.structuredContent).toEqual({ ok: true, noteId, added: true, decisionId: proposedId });
       expect(JSON.stringify(proposed)).not.toContain('Agent decision canary');
       // Writing alone: the answer's ID is how it changes what it added, since it can't read the note to find it.
       const onlyWrite = await writeOnly.client.callTool({ name: 'add_follow_up', arguments: { noteId, followUp: { text: 'Writer-only follow-up' } } });
-      const writerFollowUp = AgentWriteResultSchema.parse(onlyWrite.structuredContent).followUpId;
+      const writerFollowUp = addedBy(onlyWrite).followUpId;
       if (!writerFollowUp) throw new Error('Adding a follow-up gave no ID.');
-      expect(onlyWrite.structuredContent).toEqual({ ok: true, noteId, followUpId: writerFollowUp });
+      expect(onlyWrite.structuredContent).toEqual({ ok: true, noteId, added: true, followUpId: writerFollowUp });
       expect(JSON.stringify(onlyWrite)).not.toContain('MCP private note canary');
       await expect(writeOnly.client.callTool({ name: 'get_note', arguments: { noteId } })).rejects.toThrow('not found');
       expect((await writeOnly.client.callTool({ name: 'update_follow_up', arguments: { noteId, followUpId: writerFollowUp, patch: { done: true } } })).structuredContent).toEqual({ ok: true, noteId });
@@ -306,11 +317,11 @@ describe('scoped SDK flows', () => {
       expect(onList.suggestions.some(item => item.text === 'Agent follow-up canary')).toBe(false);
       const followUp = onList.actions.find(item => item.text === 'Agent follow-up canary');
       if (!followUp) throw new Error('The follow-up is not on the checklist.');
-      expect(added.structuredContent).toEqual({ ok: true, noteId, followUpId: followUp.id });
+      expect(added.structuredContent).toEqual({ ok: true, noteId, added: true, followUpId: followUp.id });
       expect(followUp).toMatchObject({ review: 'accepted', takenOn: false, done: false, due: 'Friday', changes: [{ what: 'proposed', by: { email: ownEmail } }] });
       expect((await browser.api.notes.inbox()).followUps).toEqual([]);
-      // The same words again add nothing, and say which it is.
-      expect((await agent.client.callTool(adding)).structuredContent).toEqual({ ok: true, noteId, followUpId: followUp.id });
+      // The same words again add nothing, and say so, with the ID of the one they proposed.
+      expect((await agent.client.callTool(adding)).structuredContent).toEqual({ ok: true, noteId, added: false, followUpId: followUp.id });
       expect((await browser.api.notes.get(noteId)).actions.filter(item => item.text === 'Agent follow-up canary')).toHaveLength(1);
       // Changed by its ID, as get_note gives it.
       const change = (patch: Record<string, unknown>) => agent.client.callTool({ name: 'update_follow_up', arguments: { noteId, followUpId: followUp.id, patch } });
@@ -383,17 +394,19 @@ describe('scoped SDK flows', () => {
       const open = (await browser.api.notes.get(noteId)).questions.filter(item => item.text === asking.arguments.question.text);
       expect(open).toMatchObject([{ state: 'open', lines: [], changes: [{ what: 'proposed', by: { email, as: 'organizer' } }] }]);
       const questionId = open[0]?.id ?? '';
-      expect(asked.structuredContent).toEqual({ ok: true, noteId, questionId });
-      // The same words again add nothing, and say which it is.
-      expect((await agent.client.callTool(asking)).structuredContent).toEqual({ ok: true, noteId, questionId });
+      expect(asked.structuredContent).toEqual({ ok: true, noteId, added: true, questionId });
+      // The same words again add nothing, and say so, with the ID of the one they proposed.
+      expect((await agent.client.callTool(asking)).structuredContent).toEqual({ ok: true, noteId, added: false, questionId });
       expect((await browser.api.notes.get(noteId)).questions.filter(item => item.text === asking.arguments.question.text)).toHaveLength(1);
       // Said to be answered, as the notes' own are.
       expect((await agent.client.callTool({ name: 'update_question', arguments: { noteId, questionId, patch: { state: 'answered' } } })).structuredContent).toEqual({ ok: true, noteId });
       expect((await browser.api.notes.get(noteId)).questions.find(item => item.id === questionId)).toMatchObject({ state: 'answered', changes: [{ what: 'proposed' }, { what: 'answered' }] });
       // It rests on lines of the part it goes in, and goes only in a part the note has; nobody without the notes adds one.
       const line = (await browser.api.notes.get(noteId)).transcript?.[0]?.id ?? '';
-      expect((await agent.client.callTool({ name: 'add_question', arguments: { noteId, question: { text: 'Is the report late?', lines: [line] } } })).isError).not.toBe(true);
-      expect((await browser.api.notes.get(noteId)).questions.find(item => item.text === 'Is the report late?')).toMatchObject({ state: 'open', lines: [line], at: expect.any(Number) });
+      const late = addedBy(await agent.client.callTool({ name: 'add_question', arguments: { noteId, question: { text: 'Is the report late?', lines: [line] } } })).questionId;
+      expect((await browser.api.notes.get(noteId)).questions.find(item => item.text === 'Is the report late?')).toMatchObject({ id: late, state: 'open', lines: [line], at: expect.any(Number) });
+      // Lines from nowhere are refused whether or not the words are there already.
+      expect(refusalOf(await agent.client.callTool({ name: 'add_question', arguments: { noteId, question: { text: 'Is the report late?', lines: [id128()] } } }))).toBe('invalid');
       expect(refusalOf(await agent.client.callTool({ name: 'add_question', arguments: { noteId, question: { text: 'From nowhere?', lines: [id128()] } } }))).toBe('invalid');
       expect(refusalOf(await agent.client.callTool({ name: 'add_question', arguments: { noteId, question: { text: 'In no room?', room: id128() } } }))).toBe('not-found');
       expect(refusalOf(await outsider.client.callTool({ name: 'add_question', arguments: { noteId, question: { text: 'Not my call?' } } }))).toBe('not-found');
@@ -408,6 +421,17 @@ describe('scoped SDK flows', () => {
       }
       expect(h.logs.join('')).not.toContain('CANARY-QUESTION');
       expect(logged('question added')).toContainEqual(expect.objectContaining({ noteId, added: true, mine: true }));
+
+      // Written again, the notes keep what someone added as it stands: once, by the same ID, open, still theirs. The
+      // notes model is told it's settled.
+      const sent = h.near.prompts.length;
+      expect((await agent.client.callTool({ name: 'rewrite_note', arguments: { noteId } })).structuredContent).toEqual({ ok: true, noteId });
+      for await (const progress of browser.api.notes.progress(noteId)) if (progress.ready) break;
+      const again = (await browser.api.notes.get(noteId)).questions;
+      expect(again.filter(item => item.text === 'Is the report late?')).toMatchObject([{ id: late, state: 'open', changes: [{ what: 'proposed', by: { email } }] }]);
+      expect(again.filter(item => item.text === asking.arguments.question.text)).toMatchObject([{ id: questionId, state: 'answered' }]);
+      expect(h.near.prompts.slice(sent).some(prompt => prompt.includes('Question (still open): Is the report late?'))).toBe(true);
+      expect(h.logs.join('')).not.toContain('CANARY-QUESTION');
     } finally { await agent.client.close(); await outsider.client.close(); }
   });
 
@@ -417,12 +441,15 @@ describe('scoped SDK flows', () => {
     const noteId = await recorded(browser.api, 'MCP follow-ups note');
     const agent = await connect(browser, ['notes:read', 'notes:write']);
     try {
-      expect((await agent.client.callTool({ name: 'add_follow_up', arguments: { noteId, followUp: { text: 'Send the report' } } })).isError).not.toBe(true);
-      await withRoom(ownerId, noteId);
+      const roomId = await withRoom(ownerId, noteId);
+      for (const room of [undefined, roomId]) {
+        expect((await agent.client.callTool({ name: 'add_follow_up', arguments: { noteId, followUp: { text: 'Send the report', room } } })).isError).not.toBe(true);
+      }
       const note = await browser.api.notes.get(noteId);
       const room = note.rooms[0];
       if (!room) throw new Error('The note has no breakout room’s section.');
-      expect(room.actions.map(item => item.text)).toContain('Send the report');
+      expect(room.actions.map(item => item.text)).toEqual(['Send the report']);
+      expect(room.suggestions).toHaveLength(note.suggestions.length);
 
       const read = await agent.client.callTool({ name: 'get_note', arguments: { noteId } });
       const ids = z.array(z.object({ id: z.string() })).transform(items => items.map(item => item.id));
@@ -443,6 +470,91 @@ describe('scoped SDK flows', () => {
     } finally { await agent.client.close(); }
   });
 
+  it('changes only the checklist: a follow-up the notes only suggested is refused, and its words go onto the checklist as a follow-up of its own', async () => {
+    const browser = await account();
+    const noteId = await recorded(browser.api, 'MCP suggestion note');
+    const agent = await connect(browser, ['notes:read', 'notes:write']);
+    try {
+      // "Who will review the report?" is one the notes suggest, waiting for someone to add or dismiss it in Alcove.
+      const suggested = (await browser.api.notes.get(noteId)).suggestions[0];
+      if (!suggested) throw new Error('The notes suggested no follow-up.');
+      const read = z.object({ suggestedFollowUps: z.array(z.object({ id: z.string() })) }).parse((await agent.client.callTool({ name: 'get_note', arguments: { noteId } })).structuredContent);
+      expect(read.suggestedFollowUps.map(item => item.id)).toContain(suggested.id);
+      // It isn't on the checklist, so no change reaches it, and it's left as it was.
+      expect(refusalOf(await agent.client.callTool({ name: 'update_follow_up', arguments: { noteId, followUpId: suggested.id, patch: { done: true } } }))).toBe('not-found');
+      expect((await browser.api.notes.get(noteId)).suggestions.find(item => item.id === suggested.id)).toEqual(suggested);
+      // Its words added are a follow-up on the checklist, by an ID of its own; the suggestion stays beside it.
+      const added = addedBy(await agent.client.callTool({ name: 'add_follow_up', arguments: { noteId, followUp: { text: suggested.text } } }));
+      expect(added).toEqual({ ok: true, noteId, added: true, followUpId: expect.any(String) });
+      expect(added.followUpId).not.toBe(suggested.id);
+      const after = await browser.api.notes.get(noteId);
+      expect(after.actions.filter(item => item.text === suggested.text).map(item => item.id)).toEqual([added.followUpId]);
+      expect(after.suggestions.find(item => item.id === suggested.id)).toEqual(suggested);
+    } finally { await agent.client.close(); }
+  });
+
+  it('adds to a breakout room’s part alone, and hands back the room’s entry, not the call’s with the same words', async () => {
+    const browser = await account();
+    const ownerId = await ownerOf(browser);
+    const noteId = await recorded(browser.api, 'MCP room note');
+    const agent = await connect(browser, ['notes:write']);
+    /** A decision, a follow-up and an open question with the same words each time, in the call's part or a room's: their IDs. */
+    const add = async (room: string | undefined) => [
+      addedBy(await agent.client.callTool({ name: 'propose_decision', arguments: { noteId, proposal: { text: 'Ship on Friday', room } } })).decisionId,
+      addedBy(await agent.client.callTool({ name: 'add_follow_up', arguments: { noteId, followUp: { text: 'Book the room', room } } })).followUpId,
+      addedBy(await agent.client.callTool({ name: 'add_question', arguments: { noteId, question: { text: 'Who pays?', room } } })).questionId
+    ];
+    try {
+      const inCall = await add(undefined);
+      const roomId = await withRoom(ownerId, noteId);
+      const inRoom = await add(roomId);
+      for (const [i, id] of inRoom.entries()) {
+        expect(id).toEqual(expect.any(String));
+        expect(id).not.toBe(inCall[i]);
+      }
+      // Again in the room: nothing added, and the room's IDs, not the call's.
+      expect(await add(roomId)).toEqual(inRoom);
+      const note = await browser.api.notes.get(noteId);
+      const room = note.rooms.find(item => item.id === roomId);
+      if (!room) throw new Error('The note has no breakout room’s section.');
+      const ids = (part: { decisions: { id: string; text: string }[]; actions: { id: string; text: string }[]; questions: { id: string; text: string }[] }) => [
+        part.decisions.filter(item => item.text === 'Ship on Friday').map(item => item.id),
+        part.actions.filter(item => item.text === 'Book the room').map(item => item.id),
+        part.questions.filter(item => item.text === 'Who pays?').map(item => item.id)
+      ];
+      expect(ids(room)).toEqual(inRoom.map(id => [id]));
+      expect(ids(note)).toEqual(inCall.map(id => [id]));
+    } finally { await agent.client.close(); }
+  });
+
+  it('says whether adding added anything, and hands back an entry’s ID only for one its person proposed', async () => {
+    const browser = await account();
+    const other = await account();
+    const noteId = await recorded(browser.api, 'MCP whose entry note');
+    await browser.api.notes.share(noteId, { emails: [await emailOf(other)] });
+    await other.api.notes.proposeDecision(noteId, { text: 'Their decision' });
+    await other.api.notes.proposeAction(noteId, { text: 'Their follow-up' });
+    const note = await browser.api.notes.get(noteId);
+    const [notesDecision, notesQuestion] = [note.decisions.find(item => item.changes.length === 0), note.questions.find(item => item.changes.length === 0)];
+    if (!notesDecision || !notesQuestion) throw new Error('The notes wrote no decision or question of their own.');
+    // Writing alone: it can't read the note, and gets no handle on what someone else, or the notes, wrote.
+    const writer = await connect(browser, ['notes:write']);
+    const call = async (name: string, args: Record<string, unknown>) => (await writer.client.callTool({ name, arguments: { noteId, ...args } })).structuredContent;
+    try {
+      expect(await call('propose_decision', { proposal: { text: 'Their decision' } })).toEqual({ ok: true, noteId, added: false });
+      expect(await call('add_follow_up', { followUp: { text: 'Their follow-up' } })).toEqual({ ok: true, noteId, added: false });
+      expect(await call('propose_decision', { proposal: { text: notesDecision.text } })).toEqual({ ok: true, noteId, added: false });
+      expect(await call('add_question', { question: { text: notesQuestion.text } })).toEqual({ ok: true, noteId, added: false });
+      // What its person proposed: added with its ID, and again, not added, with the same ID.
+      for (const [name, payload, key] of [['propose_decision', { proposal: { text: 'Our decision' } }, 'decisionId'], ['add_follow_up', { followUp: { text: 'Our follow-up' } }, 'followUpId'], ['add_question', { question: { text: 'Our question?' } }, 'questionId']] as const) {
+        const first = AgentWriteResultSchema.parse(await call(name, payload));
+        expect(first).toEqual({ ok: true, noteId, added: true, [key]: expect.any(String) });
+        expect(await call(name, payload)).toEqual({ ok: true, noteId, added: false, [key]: first[key] });
+      }
+      expect((await browser.api.notes.get(noteId)).decisions.filter(item => item.text === 'Their decision')).toHaveLength(1);
+    } finally { await writer.client.close(); }
+  });
+
   it('lists the calls you were in: your own that ended, and the ones you were invited to that kept notes, not notes shared afterwards', async () => {
     const org = await account();
     const guest = await account();
@@ -450,24 +562,27 @@ describe('scoped SDK flows', () => {
     const [orgEmail, guestEmail, laterEmail] = [await emailOf(org), await emailOf(guest), await emailOf(later)];
     const past = await held(org, 'Past call canary', [guestEmail]);
     await org.api.notes.share(past.noteId, { emails: [laterEmail] });
+    // A call of the guest's own after it, set for later than the one they were invited to started.
+    const theirs = await held(guest, 'Own call canary', []);
     const ahead = await org.api.meetings.create({ title: 'Upcoming canary', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: [guestEmail], notes: 'on' });
     const agents = await Promise.all([org, guest, later].map(b => connect(b, ['meetings:read'])));
     const [orgAgent, guestAgent, laterAgent] = agents;
     if (!orgAgent || !guestAgent || !laterAgent) throw new Error('Three agents were not connected.');
     const person = (email: string) => expect.objectContaining({ email });
-    const Past = z.object({ items: z.array(z.unknown()), nextOffset: z.number().nullable() });
+    const Past = z.object({ items: z.array(AgentPastCallSchema), nextOffset: z.number().nullable() });
     const pastFor = async (agent: { client: Client }) => Past.parse((await agent.client.callTool({ name: 'list_meetings', arguments: { view: 'past' } })).structuredContent);
     try {
       // The organizer's own call, by its ID, which get_meeting reads.
       expect(await pastFor(orgAgent)).toEqual({ nextOffset: null, items: [
-        { meetingId: past.meetingId, noteId: past.noteId, title: 'Past call canary', startsAt: past.startsAt, minutes: 1, organizer: person(orgEmail), role: 'organizer', people: [person(guestEmail)] }
+        { meetingId: past.meetingId, noteId: past.noteId, title: 'Past call canary', startsAt: past.startsAt, minutes: 1, organizer: person(orgEmail), role: 'organizer', guests: [person(guestEmail)] }
       ] });
       expect((await orgAgent.client.callTool({ name: 'get_meeting', arguments: { meetingId: past.meetingId } })).isError).not.toBe(true);
-      // Its guest's invitation went when it was over, so they know it by its note, in the same shape. Whoever got the notes
-      // afterwards wasn't on it.
+      // Its guest's invitation went when it was over, so they know it by its note, in the same shape, beside their own
+      // call, newest first. Whoever got the notes afterwards wasn't on it.
       const startedAt = (await guest.api.notes.get(past.noteId)).startedAt;
       expect(await pastFor(guestAgent)).toEqual({ nextOffset: null, items: [
-        { meetingId: null, noteId: past.noteId, title: 'Past call canary', startsAt: startedAt, minutes: 1, organizer: person(orgEmail), role: 'invited', people: [person(guestEmail)] }
+        { meetingId: theirs.meetingId, noteId: theirs.noteId, title: 'Own call canary', startsAt: theirs.startsAt, minutes: 1, organizer: person(guestEmail), role: 'organizer', guests: [] },
+        { meetingId: null, noteId: past.noteId, title: 'Past call canary', startsAt: startedAt, minutes: 1, organizer: person(orgEmail), role: 'invited', guests: [person(guestEmail)] }
       ] });
       expect(refusalOf(await guestAgent.client.callTool({ name: 'get_meeting', arguments: { meetingId: past.meetingId } }))).toBe('not-found');
       // A note shared afterwards isn't a call they were in.
@@ -477,7 +592,7 @@ describe('scoped SDK flows', () => {
       const upcoming = z.object({ items: z.array(z.object({ id: z.string(), isOrganizer: z.boolean(), url: z.url() })) }).parse((await guestAgent.client.callTool({ name: 'list_meetings', arguments: {} })).structuredContent);
       expect(upcoming.items.filter(item => !item.isOrganizer)).toEqual([{ id: ahead.id, isOrganizer: false, url: `${h.deps.cfg.WEB_ORIGIN}/join/${ahead.code}` }]);
       // Each view keeps how many it found; the refused get_meeting isn't kept.
-      expect((await guest.api.agents.activity()).items.map(item => [item.tool, item.count])).toEqual([['list_meetings', upcoming.items.length], ['list_meetings', 1]]);
+      expect((await guest.api.agents.activity()).items.map(item => [item.tool, item.count])).toEqual([['list_meetings', upcoming.items.length], ['list_meetings', 2]]);
     } finally { await Promise.all(agents.map(agent => agent.client.close())); h.closeCalls(); }
   });
 
