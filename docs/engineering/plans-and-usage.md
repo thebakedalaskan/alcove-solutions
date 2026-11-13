@@ -876,13 +876,14 @@ sealed records, the contract and the limits.
   previous release buys licenses for one period at the price it was opened at, as it would have.
 - `PurchaseSchema`'s licenses and `POST /v1/team/licenses` take `periods`, 1 when it's left out, so a tab opened before the
   deploy buys licenses for a period, from the balance or by payment, as before. It ignores `PlanOffers.team.yearly`.
-- The new limits, `plan.team.yearly_periods` (12) and `plan.team.yearly_price_micro_usd` ($32), have defaults: no row is
-  needed.
+- The new limits, `plan.team.yearly_periods` (12) and `plan.team.yearly_price_micro_usd`, have defaults: no row is
+  needed. The yearly price ships at 0, so this release offers no license for a year; the next release sets its default to
+  $32, once this one serves alone.
 - **While both serve,** the previous release reads a license for a year as a license for one period: a visit it serves
   takes it for one period, a refund it makes gives back one period's price ($32, not $384), and anything it saves of that
   team's record (a visit, a purchase, a refund, auto-purchase, upkeep reckoning the pool) drops every license's `periods`,
   leaving each a license for one period at the lower price. For a member already on one, its plan's period is the whole
   license, and a meter it touches keeps that as one period, which this release then runs to its end: a year's notes in one
-  allowance. So that none is sold before the previous release has stopped serving, set `plan.team.yearly_price_micro_usd`
-  to 0 in `service_limits` before deploying (the previous release ignores names it doesn't know, and the new one offers no
-  license for a year at 0), and delete that row once the previous release's VM is gone.
+  allowance. So none is sold while the previous release still serves, licenses for a year ship switched off
+  (`plan.team.yearly_price_micro_usd` defaults to 0 in this release, and the new one offers no license for a year at 0); the
+  release after it, deployed once this one serves alone, turns them on by setting that default to $32. No row is needed.

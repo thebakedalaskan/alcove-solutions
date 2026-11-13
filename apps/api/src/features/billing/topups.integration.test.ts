@@ -1615,6 +1615,7 @@ describe('top-ups that buy', () => {
   });
 
   it('buys licenses for a year once its payment is added: each 12 periods at the yearly price a period', async () => {
+    await h.setLimit('plan.team.yearly_price_micro_usd', YEARLY_LICENSE);
     const { api } = await admin();
     // Two licenses for a year are 2 × 12 × $32: $768.
     const year = licenses(2, YEARLY_LICENSE, 12);
@@ -1629,6 +1630,7 @@ describe('top-ups that buy', () => {
   });
 
   it('refuses to open a payment for licenses for a year at a period’s price, for a length that isn’t offered, or while none is, before anything is quoted', async () => {
+    await h.setLimit('plan.team.yearly_price_micro_usd', YEARLY_LICENSE);
     const ann = await admin();
     const quotes = h.oneclick.quotes.length;
     expect(await said(ann.api.plans.startTopUp(BASE_USDC, LICENSE, licenses(1, LICENSE, 12)))).toBe('conflict: The price of a team license for a year has changed. Look at it again before buying.');
@@ -1649,6 +1651,7 @@ describe('top-ups that buy', () => {
   });
 
   it('says why it didn’t buy licenses for a year when their price changed, they stopped being offered or less arrived, and leaves the money in the balance', async () => {
+    await h.setLimit('plan.team.yearly_price_micro_usd', YEARLY_LICENSE);
     const year = licenses(1, YEARLY_LICENSE, 12);
     // A license for a year costs more a period now.
     const ann = await admin();
@@ -1660,6 +1663,7 @@ describe('top-ups that buy', () => {
     expect(await ann.api.plans.plan()).toMatchObject({ balance: { microUsd: 12 * YEARLY_LICENSE } });
     expect((await ann.api.teams.mine())?.licenses?.unconsumed).toBe(0);
     await h.resetLimits();
+    await h.setLimit('plan.team.yearly_price_micro_usd', YEARLY_LICENSE);
     // Licenses for a year stopped being offered.
     const bob = await admin();
     const off = await bob.api.plans.startTopUp(BASE_USDC, 12 * YEARLY_LICENSE, year);
@@ -1671,6 +1675,7 @@ describe('top-ups that buy', () => {
     expect((await bob.api.teams.mine())?.licenses?.unconsumed).toBe(0);
     expect(logsSince(fromOff).some((l) => l.line.includes(off.id) && l.line.includes('"why":"off"'))).toBe(true);
     await h.resetLimits();
+    await h.setLimit('plan.team.yearly_price_micro_usd', YEARLY_LICENSE);
     // $200 of the $384 asked arrives: under 1Click's band, so $200 is added, and the year isn't bought.
     const cy = await admin();
     const short = await cy.api.plans.startTopUp(BASE_USDC, 12 * YEARLY_LICENSE, year);
