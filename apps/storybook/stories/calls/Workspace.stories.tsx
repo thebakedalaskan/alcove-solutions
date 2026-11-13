@@ -172,7 +172,7 @@ export const SwitchQuestionPhone = phone(SwitchQuestion);
 
 /**
  * A workspace someone else pays for: Aiko pays for Design, so the call opens it only to its own people. The question says Sam
- * can't open it, and why, so nobody in the call fills Aiko's storage or spends her AI.
+ * can't open it, and why, so nobody in the call fills Aiko's storage or spends Aiko's AI.
  */
 export const SwitchQuestionNotYours = inCall(
   { scenario: 'call-soon', call: REVIEW, script: { here: [...REVIEWERS, { who: SAM, guest: true }] } },

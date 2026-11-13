@@ -30,7 +30,7 @@ const monthByMonth: NonNullable<PageStory['play']> = async ({ canvas, userEvent,
 };
 
 /* ------------------------------------------------------------------ Free */
-/** Art on Free, as Plans opens: priced for a year, Free's button area says it's his plan, and Get Pro is the one filled button. */
+/** Art on Free, as Plans opens: priced for a year, Free's button area says it's Art's plan, and Get Pro is the one filled button. */
 export const Free = page('/plans', 'busy');
 export const FreeNight = night(Free);
 export const FreePhone = phone(Free);
@@ -64,17 +64,17 @@ export const StartATeam = page('/plans', 'payments', {
   }
 });
 /**
- * Vandelay's admin, licensed: Team is his plan, with Buy licenses. Pro isn't sold while his license lasts, and its card says so
+ * Vandelay's admin, licensed: Team is Art's plan, with Buy licenses. Pro isn't sold while the license lasts, and its card says so
  * where Get Pro would be. Nothing is filled.
  */
 export const TeamAdmin = page('/plans', 'team-admin');
 export const TeamAdminNight = night(TeamAdmin);
 export const TeamAdminPhone = phone(TeamAdmin);
-/** On Priya's team, licensed: Team is his plan, Priya buys its licenses, and Pro says not while he's on the team's plan. */
+/** On Priya's team, licensed: Team is Art's plan, Priya buys its licenses, and Pro says not while Art is on the team's plan. */
 export const TeamMember = page('/plans', 'team-member');
 export const TeamMemberNight = night(TeamMember);
 export const TeamMemberPhone = phone(TeamMember);
-/** On Priya's team with no license to take: he's on Free meanwhile, so Team isn't his plan yet, and Priya buys its licenses. */
+/** On Priya's team with no license to take: Art is on Free meanwhile, so Team isn't Art's plan yet, and Priya buys its licenses. */
 export const TeamMemberWithoutALicense = page('/plans', 'team-member-unlicensed');
 
 /* ------------------------------------------------------------------ on their way, or not */
@@ -115,13 +115,13 @@ export const PlanChoicePhone = phone(PlanChoice);
 export const PlanChoicePhoneNight = night(phone(PlanChoice));
 /** Month by month, on the plan choice's sky too. */
 export const PlanChoiceMonthly = page('/home', 'plan-choice', { play: monthByMonth });
-/** An account from before plans: Alcove has plans now, and he's on Free, with what it brings in the server's numbers. */
+/** An account from before plans: Alcove has plans now, and Art is on Free, with what it brings in the server's numbers. */
 export const PlanChoiceFromBeforePlans = page('/home', 'plan-choice-before');
 export const PlanChoiceFromBeforePlansNight = night(PlanChoiceFromBeforePlans);
 export const PlanChoiceFromBeforePlansPhone = phone(PlanChoiceFromBeforePlans);
 /** From before plans, over Free's storage as they began: everything works as before until the grace ends, and it says when. */
 export const PlanChoiceInGrace = page('/home', 'plan-choice-before', { beforeEach: changing((w) => { w.plan = carriedOverInGrace(); }) });
-/** On a team license from before plans: Team is his plan and leads on, and Pro isn't sold while the license lasts. */
+/** On a team license from before plans: Team is Art's plan and leads on, and Pro isn't sold while the license lasts. */
 export const PlanChoiceOnATeam = page('/home', 'team-member', { beforeEach: changing((w) => { w.plan = { ...w.plan, choose: true }; }) });
 export const PlanChoiceOnATeamPhone = phone(PlanChoiceOnATeam);
 

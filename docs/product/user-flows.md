@@ -862,10 +862,11 @@ time, slides in on the right.
   When the browser can neither record nor listen, the sign says **Notes unavailable**, for everyone and on the
   join page, until it can again.
 - **When the organizer's notes or storage run out** (16.9). The organizer alone is told, once, when what's left would
-  last about 5 minutes at this call's pace: "About 5 minutes of notes left". Notes then stop for everyone and the call
-  carries on: Notes' pill says **Stopped** and the top bar **Notes stopped**. Over Notes' tabs, or in a banner while Notes is
-  closed, the organizer reads "Notes stopped at this period's 5 hours. The call carries on. Notes start again the moment
-  you have more." with **Get Pro** and **Add 10 hours · $15** (on Pro, the hours only), which open checkout over the call; a
+  last about 5 minutes at this call's pace (a limit, `ai.warn_seconds`, so the words name no time): "Notes are about to
+  run out". Notes then stop for everyone and the call carries on: Notes' pill says **Stopped** and the top bar **Notes
+  stopped**. Over Notes' tabs, or in a banner while Notes is closed, the organizer reads "Notes stopped at this period's
+  5 hours. The call carries on. Notes start again the moment you have more." with **Get Pro** and **Add 10 hours · $15**
+  (on Pro, the hours only), which open checkout over the call; a
   stop for storage says storage, with **Make room**. Everyone else, guests included, reads whose notes ran out ("Priya's
   notes for this period are used up, and the call carries on. What was written before stays.") with nothing to buy. What
   was said until then is in the notes, which are written when the call ends, even when writing them goes past what was

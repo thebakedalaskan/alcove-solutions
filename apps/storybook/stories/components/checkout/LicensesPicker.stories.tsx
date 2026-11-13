@@ -38,6 +38,6 @@ export const StartingATeam: Story = {};
 export const StartingATeamNight: Story = { globals: { theme: 'dark' } };
 /** Another number, at 7: no card is ticked. */
 export const AnotherNumber: Story = { args: { value: 7, other: { open: true, max: 500, price: '$280', onOpen: did('onOpen'), onStep: did('onStep') } } };
-/** Its admin buying more, with all five taken and Maya waiting: what's spare after hers. */
+/** Its admin buying more, with all five taken and Maya waiting: what's spare after Maya's. */
 export const BuyingMore: Story = { args: { options: MORE_LICENSES, value: 3, other: { open: false, max: 500, price: '$120', onOpen: did('onOpen'), onStep: did('onStep') } } };
 export const Phone: Story = { globals: { viewport: { value: 'phone' } } };

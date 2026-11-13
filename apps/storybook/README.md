@@ -73,7 +73,7 @@ Art Vandelay, and everyone is made up. Never write a real person's name. It's wr
 the builders in `src/world/build.ts`, and checked against the contract's schemas whenever a scenario starts. Its Drive holds
 the homes of the day's calls (the standup's, the pricing sync's and the design review's, each with the call's folder at its
 top, opening the call's note), then Product (Art runs it: a folder, a document closed to the workspace, the launch retro
-board, two things in Trash), Design (he edits; the onboarding flow board) and the company handbook (he can only read). What
+board, two things in Trash), Design (Art edits there; the onboarding flow board) and the company handbook (Art can only read it). What
 each document says is in `src/world/documents.ts`, in the editor's own blocks: tags name people by address and the
 stand-in writes in their IDs, comment threads are written as the app writes them, and photos, a video and a file are drawn
 and recorded here (`src/media/screens.ts`) and kept in the world's `media`. Who a document's shared with is in `shares`, a
@@ -91,13 +91,13 @@ Product, then the follow-ups from the retro board's Actions frame.
 |---|---|
 | `busy` | Wednesday afternoon at Vandelay Industries: a day of notes, things waiting on you, a design sync at 17:30, and two photos and a file in the Product workspace's Launch plan |
 | `first-day` | Art has just signed in and carried on with Free: no notes or calls, a team not on Alcove yet, no calendar access |
-| `on-their-own` | Art at a personal address: no team, no groups, recordings and calls with people he meets |
+| `on-their-own` | Art at a personal address: no team, no groups, recordings and calls with people Art meets |
 | `offline` | The busy afternoon opened with no connection, signed in on this browser: Record works, the rest says offline |
 | `writing` | Just after the pricing follow-up: its notes are written over a few seconds; a walkthrough records elsewhere |
 | `call-soon` | Wednesday at 10:26: the design review starts in four minutes |
 | `lots` | Thirty people on Alcove, three months of notes, eight pins, a dozen groups, long names |
 | `signed-out` | Nobody signed in on this browser: the welcome page; Microsoft or single sign-on signs Art in to the busy afternoon |
-| `unsaved` | The busy afternoon after Alcove wouldn't take some of Art's edits: the pricing copy's last edits, more interview notes than a document holds, and a line in the handbook he can only read now |
+| `unsaved` | The busy afternoon after Alcove wouldn't take some of Art's edits: the pricing copy's last edits, more interview notes than a document holds, and a line in the handbook Art can only read now |
 | `drive-connected` | Art has a separate Google Drive connection, authorized personal and shared-drive folders, and exports in pending, uploading, uploaded and failed states |
 | `payments` | Adding money is available, with networks under Pay with USDC; every deposit address is a made-up invalid preview. A payment opened to buy something (checkout) is seen, added and bought a few seconds apart |
 | `plan-waiting` | Art is on Free with a payment of 192 USDC on Base on its way, opened to buy 12 months of Pro; nothing has been sent yet |
@@ -121,15 +121,15 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `team-admin` | Art runs Vandelay's team: six people, Maya's license ended last week, three licenses left, auto-purchase off, $180 in the balance |
 | `team-admin-low` | The same with two licenses left: a `licenses-low` notice |
 | `team-admin-none` | None left, and Maya waiting for one: a `licenses-none` notice |
-| `team-member` | Art on Priya's team with a live license: the team's notes (`tn-roadmap`, `tn-onboarding`) and his standup visible to it |
+| `team-member` | Art on Priya's team with a live license: the team's notes (`tn-roadmap`, `tn-onboarding`) and Art's standup visible to it |
 | `team-member-unlicensed` | Art's license ended with none to take: on Free, with a `license-needed` notice |
 | `team-join` | Art isn't on a team and has Priya's link to join (stories add it to the tab with `withTeamInvite()`) |
 | `no-team` | The busy afternoon with $60 and payments: Start a team on Team |
-| `team-buying` | Art started Vandelay's team from Plans and opened a payment of 240 USDC on Base for its first six licenses, then closed checkout: the team is his with nothing bought yet, and the payment waits, in the side panel and in checkout |
+| `team-buying` | Art started Vandelay's team from Plans and opened a payment of 240 USDC on Base for its first six licenses, then closed checkout: the team is Art's with nothing bought yet, and the payment waits, in the side panel and in checkout |
 | `agents-connected` | Art has Claude signed in (it booked the onboarding review 4 minutes ago) and Cursor signed in to read, and a Weekly digest personal token, with three weeks of what they did |
 | `agents-ending` | The same three agents, with Cursor's access ending tomorrow |
-| `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, the plans to choose from, his first day, and Home's tour |
-| `plan-choice` | Art's account was made a few minutes ago and the plans haven't been shown to him (`Plan.choose`): Home opens on them once. Payments are taken |
+| `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, the plans to choose from, Art's first day, and Home's tour |
+| `plan-choice` | Art's account was made a few minutes ago and the plans haven't been shown yet (`Plan.choose`): Home opens on them once. Payments are taken |
 | `plan-choice-before` | Art has used Alcove for weeks, from before plans, and was put on Free two days ago: the busy afternoon, and Home opens on the plans once. Payments are taken |
 
 ## Add a component story
@@ -362,7 +362,7 @@ its documents are there to link, and `6.21 On a phone` in the board's journeys a
 vote, at a phone's size.
 
 ```tsx
-/** Priya opens the launch retro a second in, the others fill it as they talk, and she starts a vote on Could improve. */
+/** Priya opens the launch retro a second in, the others fill it as they talk, and Priya starts a vote on Could improve. */
 export const Voting = inCall({
   scenario: 'call-soon', call: REVIEW,
   script: { here: REVIEWERS, board: RETRO, cues: [...at(1, opensBoard(PRIYA, 'retro')), ...at(12, startsVote(PRIYA, 'Could improve', 3))] }

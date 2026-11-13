@@ -11,6 +11,7 @@ import {
   type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole, MyTeamSchema, type PlanNotice
 } from '@alcove/api';
 import { tileHintKey } from '~/features/call/layout/view';
+import { returnTo } from '~/lib/afterSignIn';
 import { sessions } from '~/lib/live';
 import { openBrowser } from '../browser';
 import { busyCalls, busyEvents, soonCalls } from '../world/calls';
@@ -85,8 +86,8 @@ function home(id: string, title: string, at: string, organizer: Person, role: Wo
   };
 }
 /**
- * The workspaces: the homes of the day's calls, the standup's newest; Product, which Art runs; Design, where he edits and Aiko
- * pays; and the company handbook, which he can only read.
+ * The workspaces: the homes of the day's calls, the standup's newest; Product, which Art runs; Design, where Art edits and Aiko
+ * pays; and the company handbook, which Art can only read.
  */
 function workspaces(): Space[] {
   const research = { parent: itemId('Research') };
@@ -344,7 +345,7 @@ function lots(): World {
   return w;
 }
 
-/** Someone on their own: Art at a personal address, so no team and no groups, with recordings and calls with people he meets. */
+/** Someone on their own: Art at a personal address, so no team and no groups, with recordings and calls with people Art meets. */
 function onTheirOwn(): World {
   const solo: Person = { ...ART, id: 'o-art-personal', email: 'art@personal.example' };
   const specs: NoteSpec[] = [
@@ -410,7 +411,7 @@ export const withTeamInvite = (expired = false) => (w: World): void => {
   const team = vandelayTeam();
   team.members = team.members.filter((m) => m.person !== ART).map((m) => (m.person === PRIYA ? { ...m, role: 'admin' } : m));
   w.teamInvites = [{ secret: TEAM_INVITE_SECRET, expiresAt: new Date(Date.now() + (expired ? -60_000 : 4 * 3_600_000)).toISOString(), team, admin: PRIYA }];
-  try { sessionStorage.setItem('alcove.team-after-sign-in', JSON.stringify({ secret: TEAM_INVITE_SECRET, until: Date.now() + 600_000 })); } catch { /* without storage there's no link to open */ }
+  returnTo({ to: 'team', secret: TEAM_INVITE_SECRET });
 };
 const teamNotice = (id: string, kind: PlanNotice['kind'], count: number | null, at = iso(0, 11, 20)): PlanNotice => ({ id, kind, at, until: null, count });
 
@@ -427,7 +428,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     make: () => ({ world: onTeam(vandelayTeam()), opening: {} })
   },
   'team-admin-low': {
-    title: 'Team licenses running low', about: 'Art’s team has two licenses left, and he’s told so.',
+    title: 'Team licenses running low', about: 'Two licenses are left on Art’s team, and Art is told so.',
     make: () => {
       const world = onTeam(vandelayTeam(), (t) => { t.unconsumed = t.unconsumed.slice(1); });
       world.plan = { ...world.plan, notices: [teamNotice('sb-notice-low', 'licenses-low', 2)] };
@@ -435,7 +436,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     }
   },
   'team-admin-none': {
-    title: 'No team licenses left', about: 'Maya came back this morning and needed a license, but none was left: she waits, and Art is told.',
+    title: 'No team licenses left', about: 'Maya came back this morning and needed a license, but none was left: Maya waits, and Art is told.',
     make: () => {
       const world = onTeam(vandelayTeam(), (t) => {
         t.unconsumed = [];
@@ -446,11 +447,11 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     }
   },
   'team-member': {
-    title: 'On a team, licensed', about: 'Art is on Priya’s team with a live license: its notes and workspaces are open to him.',
+    title: 'On a team, licensed', about: 'Art is on Priya’s team with a live license: the team’s notes and workspaces are open to Art.',
     make: () => ({ world: onTeam(priyasTeam()), opening: {} })
   },
   'team-member-unlicensed': {
-    title: 'On a team, without a license', about: 'Art’s license ran out and there was none to take: he’s on Free, and told to ask Priya.',
+    title: 'On a team, without a license', about: 'Art’s license ran out and there was none to take: Art is on Free, and told to ask Priya.',
     make: () => {
       const world = onTeam(priyasTeam(), (t) => {
         t.unconsumed = [];
@@ -574,7 +575,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     })
   },
   'plan-choice': {
-    title: 'Choosing a plan', about: 'Art’s account was made a few minutes ago, and the plans haven’t been shown to him yet: Home opens on them, once. Payments are taken.',
+    title: 'Choosing a plan', about: 'Art’s account was made a few minutes ago, and the plans haven’t been shown yet: Home opens on them, once. Payments are taken.',
     make: () => {
       const { world, opening } = SCENARIOS['first-day'].make();
       world.plan = newPlan();
@@ -583,10 +584,10 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     }
   },
   'plan-choice-before': {
-    title: 'Plans, new to an account from before them', about: 'Art has used Alcove for weeks, and the release that brought plans put him on Free two days ago: the busy afternoon, and Home opens on the plans, once. Payments are taken.',
+    title: 'Plans, new to an account from before them', about: 'Art has used Alcove for weeks, and the release that brought plans put the account on Free two days ago: the busy afternoon, and Home opens on the plans, once. Payments are taken.',
     make: () => { const world = busy(); withPayments(world); world.plan = carriedOver(); return { world, opening: {} }; }
   },
-  'on-their-own': { title: 'Someone on their own', about: 'Art at a personal address: no team, no groups, recordings and calls with people he meets.', make: () => ({ world: onTheirOwn(), opening: {} }) },
+  'on-their-own': { title: 'Someone on their own', about: 'Art at a personal address: no team, no groups, recordings and calls with people Art meets.', make: () => ({ world: onTheirOwn(), opening: {} }) },
   offline: {
     title: 'Offline', about: 'The busy afternoon, opened with no connection by someone signed in on this browser: Record works, every other page says it’s offline.',
     make: () => ({ world: busy(), opening: { browser: { online: false }, signedInHere: true } })
@@ -616,7 +617,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
   },
   unsaved: {
     title: 'Edits that didn’t save',
-    about: 'The busy afternoon, after Alcove wouldn’t take some of what Art wrote: his last edits to the pricing copy, more interview notes than one document holds, and a line in the handbook, which he can only read now.',
+    about: 'The busy afternoon, after Alcove wouldn’t take some of what Art wrote: the last edits to the pricing copy, more interview notes than one document holds, and a line in the handbook, which Art can only read now.',
     make: () => {
       const w = busy();
       const refuse = (name: string, why: Refused['why'], words: string[]) => {
@@ -631,11 +632,11 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     }
   },
   'first-sign-in': {
-    title: 'Signing in for the first time', about: 'Nobody is signed in, and Art has no account yet: signing in makes it on screen and opens on the plans to choose from, then his first day, and the tour of Home follows.',
+    title: 'Signing in for the first time', about: 'Nobody is signed in, and Art has no account yet: signing in makes it on screen and opens on the plans to choose from, then Art’s first day, and the tour of Home follows.',
     make: () => ({ world: { ...SCENARIOS['first-day'].make().world, session: null, plan: newPlan() }, opening: { tourSeen: false } })
   },
   'team-buying': {
-    title: 'Starting a team, paying', about: 'Art started Vandelay’s team from Plans and opened a payment of 240 USDC on Base for its first six licenses, then closed checkout: the team is his, with nothing bought yet, and the payment waits.',
+    title: 'Starting a team, paying', about: 'Art started Vandelay’s team from Plans and opened a payment of 240 USDC on Base for its first six licenses, then closed checkout: the team is Art’s, with nothing bought yet, and the payment waits.',
     make: () => {
       const world = busy();
       withPayments(world, 'waits');

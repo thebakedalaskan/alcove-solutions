@@ -42,7 +42,7 @@ export const APastCallPhone = phone(APastCall);
 export const APastCallPhoneNight = phone(page('/calls/n2', 'busy', { ...everyState, globals: night }));
 
 /**
- * A note Priya made visible to her team, as Art reads it while he's licensed on it: "From Priya, visible to your team", to read,
+ * A note Priya made visible to the team, as Art reads it while licensed on it: "From Priya, visible to your team", to read,
  * play and ask about. The rest is Priya's: no Share, no Your notes, nothing to settle, add or correct, and nothing to remove.
  */
 export const ATeamNote = page('/calls/tn-roadmap', 'team-member');
