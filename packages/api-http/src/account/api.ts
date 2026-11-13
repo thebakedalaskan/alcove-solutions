@@ -54,7 +54,7 @@ export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'ac
       remove: (memberId) => req(MyTeamSchema, 'DELETE', `/team/members/${encodeURIComponent(memberId)}`),
       leave: async () => { await req(z.unknown(), 'POST', '/team/leave', {}); },
       delete: async () => { await req(z.unknown(), 'DELETE', '/team/mine'); },
-      buyLicenses: (count, microUsdPerLicense) => req(MyTeamSchema, 'POST', '/team/licenses', { count, microUsdPerLicense }),
+      buyLicenses: (count, microUsdPerLicense, periods = 1) => req(MyTeamSchema, 'POST', '/team/licenses', { count, microUsdPerLicense, periods }),
       refundLicenses: () => req(MyTeamSchema, 'POST', '/team/licenses/refund', {}),
       setAutoPurchase: (on) => req(MyTeamSchema, 'PUT', '/team/auto-purchase', { on }),
       notes: () => req(z.array(NoteSummarySchema), 'GET', '/team/notes')
