@@ -487,15 +487,23 @@ function repeatingOf(m: Meeting, zone: string): Repeating {
   return { kind, days: r.rule.every === 'week' ? r.rule.days : [], calls: localDay(at, zone) <= r.until ? calls : null };
 }
 
-/** Where the notes go: a new workspace made for the call, or one of yours you can make things in. */
+/**
+ * Where the notes go: a new workspace made for the call, or one of yours you can make things in. One someone else pays for
+ * opens only for its own people, its boards and files too, as the call can't add to their storage or spend their AI: said once,
+ * under it, as Switch workspace says it in a call.
+ */
 function Home({ draft, change }: { draft: Draft; change: (d: Partial<Draft>) => void }) {
   const spaces = useQuery(q.workspaces()).data ?? [];
-  const homes = spaces.flatMap((w) => (w.name !== null && (w.role === 'admin' || w.role === 'edit') ? [{ id: w.id, name: w.name }] : []));
+  const homes = spaces.flatMap((w) => (w.name !== null && (w.role === 'admin' || w.role === 'edit') ? [{ id: w.id, name: w.name, youPay: w.youPay }] : []));
+  const theirs = homes.find((h) => h.id === draft.home?.id)?.youPay === false;
   return (
-    <SwitchLine title="Where they go" sub={draft.home ? 'In a folder of their own' : 'Everyone invited is in it'} control={
-      <Select label="Where the notes go" value={draft.home?.id ?? 'new'} align="end"
-        options={[{ value: 'new', label: 'A new workspace', icon: 'plus' }, ...homes.map((h) => ({ value: h.id, label: h.name, icon: 'folders' as const }))]}
-        onChange={(id) => change({ home: id === 'new' ? null : homes.find((h) => h.id === id) ?? null })} />
-    } />
+    <>
+      <SwitchLine title="Where they go" sub={draft.home ? 'In a folder of their own' : 'Everyone invited is in it'} control={
+        <Select label="Where the notes go" value={draft.home?.id ?? 'new'} align="end"
+          options={[{ value: 'new', label: 'A new workspace', icon: 'plus' }, ...homes.map((h) => ({ value: h.id, label: h.name, icon: 'folders' as const }))]}
+          onChange={(id) => { const h = homes.find((x) => x.id === id); change({ home: id === 'new' || !h ? null : { id: h.id, name: h.name } }); }} />
+      } />
+      {theirs && <p className="sc-own"><Icon name="people" size={14} />Its files don’t count against your storage, so its boards and files open only for its own people.</p>}
+    </>
   );
 }

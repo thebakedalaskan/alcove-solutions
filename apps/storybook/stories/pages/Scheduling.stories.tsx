@@ -61,6 +61,20 @@ export const FromTheWeek = page(`/calls?schedule=new&slot=${encodeURIComponent(i
 export const Repeats = page('/calls?schedule=new', 'busy', { play: playing(priyaAndKofi, readCalendars, press(/^Doesn’t repeat/, 'Open Doesn’t repeat')) });
 /** What the notes keep, opened under Notes, and where they go. */
 export const NotesKept = page('/calls?schedule=new', 'busy', { play: playing(priyaAndKofi, readCalendars, press('What the notes keep', 'Open What the notes keep')) });
+/**
+ * The notes go to Design, which Aiko pays for: what the call adds there wouldn't be Art's to pay for, so it opens only for its
+ * own people, its boards and files too, and that's said once, under where they go.
+ */
+export const NotesInSomeoneElses = page('/calls?schedule=new', 'busy', {
+  play: playing(priyaAndKofi, readCalendars, press('What the notes keep', 'Open What the notes keep'), async ({ userEvent, step }) => {
+    await step('Choose Design, which Aiko pays for, for where they go', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: /^Where the notes go/ }, SOON));
+      await userEvent.click(await screen.findByRole('option', { name: 'Design' }, SOON));
+    });
+  })
+});
+export const NotesInSomeoneElsesDark = { ...NotesInSomeoneElses, globals: { theme: 'dark' } } satisfies PageStory;
+export const NotesInSomeoneElsesPhone = phone(NotesInSomeoneElses);
 /** Bring: the library, to pick an agenda or a document from. */
 export const Bringing = page('/calls?schedule=new', 'busy', { play: playing(priyaAndKofi, readCalendars, press(/^An agenda or a document/, 'Open An agenda or a document')) });
 /**

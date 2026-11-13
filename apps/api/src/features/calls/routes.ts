@@ -31,9 +31,18 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   const { d } = runtime;
   const { cardLimiter, pickLimiter, carryLimiter, callLimiter, moveOpenLimiter, moveSecretChangeLimiter, moveCheckLimiter, moveSecretCheckLimiter, spaceLimiter, followUpsLimiter, followUpLimiter, askNotesLimiter, othersPointLimiter, nudgeLimiter, statusLimiter, ringLimiter, chatLimiter, rejoinLimiter, moveLimiter, voiceLimiter, speechLimiter, videoLimiter, shareLimiter, askLimiter, guestAskLimiter, notesWatchLimiter, ideasWatchLimiter, momentLimiter, personalLimiter, captionLimiter } = runtime.limits;
   const { optionalOwner, signedIn } = runtime.context;
-  /** A guest's question or catch-up, which the organizer pays for: limited for each guest, below what someone signed in gets. */
-  const guestAsking = async (v: callsParticipants.Viewer, what: string) => {
-    if (!(await v.session())) guestAskLimiter(v.pass.identity, what);
+  /**
+   * A question or catch-up in a call, limited for whoever asks: someone signed in by their account, which pays; a guest, whom
+   * the organizer pays for, by the call and the person their pass names, which a reload or a pass from an earlier connection
+   * keeps (a new connection is a new identity, never a new person: joining.ts), and a few a minute, below what someone
+   * signed in gets.
+   */
+  const asking = async (v: callsParticipants.Viewer, what: string) => {
+    const account = await v.session();
+    if (account) { askLimiter(account.ownerId, what); return; }
+    const guest = `${v.pass.callId}:${v.pass.person}`;
+    askLimiter(guest, what);
+    guestAskLimiter(guest, `guest ${what}`);
   };
 
   /* LiveKit's webhooks: outside /v1 (no Origin, no session); trusted only by their signature. */
@@ -326,16 +335,14 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   app.post('/v1/live/calls/:id/catch-up', async (c) => {
     const v = c.get('viewer');
     callsParticipants.requireIn(v, 'catch-up');
-    askLimiter(v.pass.identity, 'catch-up');
-    await guestAsking(v, 'guest catch-up');
+    await asking(v, 'catch-up');
     return c.json(await callsInsights.catchUp(v, c.req.param('id'), (await body(c, CatchUpBodySchema)).range));
   });
 
   app.post('/v1/live/calls/:id/ask', async (c) => {
     const v = c.get('viewer');
     callsParticipants.requireIn(v, 'ask');
-    askLimiter(v.pass.identity, 'ask');
-    await guestAsking(v, 'guest ask');
+    await asking(v, 'ask');
     const { question, range } = await body(c, AskSoFarBodySchema);
     return c.json(await callsInsights.askSoFar(v, c.req.param('id'), question, range));
   });

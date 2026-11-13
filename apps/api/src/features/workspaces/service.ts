@@ -228,10 +228,13 @@ export async function item(d: Deps, reader: Reader, workspaceId: string, itemId:
   return wireItem(itemId, found.item, found.role, w.role === null && !w.call, trashOf(w.state, itemId), calls.get(itemId) ?? null);
 }
 
-const ListedRow = z.object({ owner_id: z.string(), workspace_id: z.string(), state_ciphertext: bytea, role: z.enum(['admin', 'edit', 'read']).nullable(), people: z.number(), team_access: TeamAccessSchema.nullable(), created_at: timestamp });
+const ListedRow = z.object({
+  owner_id: z.string(), workspace_id: z.string(), state_ciphertext: bytea, role: z.enum(['admin', 'edit', 'read']).nullable(), people: z.number(), team_access: TeamAccessSchema.nullable(),
+  created_at: timestamp, you_pay: z.boolean()
+});
 /**
- * The Drive: every workspace someone's in, newest first, a call's home with the call it was made for; then each one they only
- * have documents in, which says nothing about itself, not even when it was made.
+ * The Drive: every workspace someone's in, newest first, a call's home with the call it was made for, and whether they pay for
+ * it; then each one they only have documents in, which says nothing about itself, not even when it was made.
  */
 export async function list(reader: Reader): Promise<WorkspaceSummary[]> {
   const o = reader.account?.owner;
@@ -240,20 +243,20 @@ export async function list(reader: Reader): Promise<WorkspaceSummary[]> {
   const teams = [...new Set((await licensedBy(o.pool, reader.principals)).map((l) => l.teamId))];
   const found = await rows(o.pool, ListedRow, `SELECT w.owner_id, w.workspace_id, w.state_ciphertext, w.team_access, w.created_at,
       CASE WHEN w.team_access = 'team' AND w.team_id = ANY($2::text[]) AND (m.role IS NULL OR m.role = 'read') THEN 'edit' ELSE m.role END AS role,
-      (SELECT count(*)::int FROM workspace_members x WHERE x.owner_id = w.owner_id) AS people
+      (SELECT count(*)::int FROM workspace_members x WHERE x.owner_id = w.owner_id) AS people, w.payer_owner_id IS NOT DISTINCT FROM $3 AS you_pay
     FROM workspaces w LEFT JOIN workspace_members m ON m.owner_id = w.owner_id AND m.email_index = ANY($1::bytea[])
     WHERE m.role IS NOT NULL OR (w.team_access = 'team' AND w.team_id = ANY($2::text[]))
       OR EXISTS (SELECT 1 FROM document_access a WHERE a.owner_id = w.owner_id AND a.principal_index = ANY($1::bytea[]))
-    ORDER BY w.created_at DESC, w.workspace_id`, [reader.principals, teams]);
+    ORDER BY w.created_at DESC, w.workspace_id`, [reader.principals, teams, o.ownerId]);
   const mine: WorkspaceSummary[] = [];
   const given: WorkspaceSummary[] = [];
   for (const r of found) {
-    if (r.role === null) { given.push({ id: r.workspace_id, name: null, role: null, people: null, teamAccess: null, createdAt: null, call: null }); continue; }
+    if (r.role === null) { given.push({ id: r.workspace_id, name: null, role: null, people: null, teamAccess: null, createdAt: null, call: null, youPay: false }); continue; }
     const owner = await findOwner(o, r.owner_id, undefined);
     // Deleted since its row was read: nobody has it any more.
     if (!owner) continue;
     const state = openState(owner, r.workspace_id, r.state_ciphertext);
-    mine.push({ id: r.workspace_id, name: state.name, role: r.role, people: r.people, teamAccess: r.team_access, createdAt: r.created_at.toISOString(), call: state.madeFor && { title: state.madeFor.title, at: state.madeFor.at } });
+    mine.push({ id: r.workspace_id, name: state.name, role: r.role, people: r.people, teamAccess: r.team_access, createdAt: r.created_at.toISOString(), call: state.madeFor && { title: state.madeFor.title, at: state.madeFor.at }, youPay: r.you_pay });
   }
   return [...mine, ...given];
 }

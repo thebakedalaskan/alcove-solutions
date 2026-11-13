@@ -4,13 +4,14 @@
  * Its head says what it's for in the page's own type, a title and one line: to someone with no notes yet, how the plans
  * differ; to someone who has used Alcove, that it has plans now and which one they're on. The plan you're on leads straight
  * on, to Home. Get Pro and Start a team open checkout over it, as Plans does, and once what was bought is yours and checkout
- * has closed, Home follows with no other question. Every number is the server's.
+ * has closed, Home follows with no other question. Signed in from the welcome page, it takes Home's sail out of the cove,
+ * onto its own last sliver of sun. Every number is the server's.
  */
 import type { Plan, PlanBrings, PlanOffers } from '@alcove/api';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { SailOutHere } from '~/features/home/SailOut';
 import { q } from '~/lib/queries';
-import { forgetSailOut } from '~/lib/sailOut';
 import { fullDate, longDay } from '~/lib/time';
 import { roomLabel } from '~/lib/words';
 import { useCheckout } from './checkout';
@@ -67,8 +68,7 @@ export function PlanChoice({ onLeave }: { onLeave: () => void }) {
   const offers = useQuery(q.offers()).data;
   const notes = useQuery(q.notes()).data;
   const { current } = useCheckout();
-  /* The plans take Home's place as it opens, and its sail out of the welcome page's cove with it: Home doesn't sail out later. */
-  useLayoutEffect(() => { forgetSailOut(); }, []);
+  const evening = useRef<HTMLDivElement>(null);
   /* Who it's for as it opens: a note written meanwhile doesn't change the head under the reader. */
   const [fresh] = useState(() => (notes ?? []).length === 0);
   /* What they're on as it opens, and whether checkout has opened over it since. */
@@ -80,5 +80,11 @@ export function PlanChoice({ onLeave }: { onLeave: () => void }) {
   const bought = openedCheckout && plan !== undefined && boughtSince(was, plan);
   useEffect(() => { if (bought && !open) onLeave(); }, [bought, open, onLeave]);
   const head = headOf(plan, offers, fresh);
-  return <Plans first={{ ...head, onContinue: onLeave }} />;
+  /* The plans take Home's place as it opens, and its sail out of the welcome page's cove with it (Home doesn't sail out later). */
+  return (
+    <>
+      <Plans first={{ ...head, onContinue: onLeave }} evening={evening} />
+      <SailOutHere page={evening} />
+    </>
+  );
 }

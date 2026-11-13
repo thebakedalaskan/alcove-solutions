@@ -29,12 +29,14 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    team at** the company, with its size and faces, when it has people in it and has arrived by then (the screen
    doesn't wait for it), with who already uses Alcove, or **Invite them from Team** while nobody does. **Notes are
    written in confidential compute**, and only the people invited to a call get its notes. Then
-   "You’re in" and the arch opens into Home, where the plans to choose from come first, once (16.20). **Skip**,
+   "You’re in" and the arch opens into Home, where the plans to choose from come first, once (16.20): the screen says
+   "Opening Plans" then, and "Opening Home" when Home is next. **Skip**,
    **Escape** or **Enter** opens it straight away; with
    reduced motion the finished screen shows for a moment and Home follows. After that, signing in goes
    straight to Home. From the welcome page it sails out of the cove: the headlands go by, the horizon comes up to
    Home's, the side panel and the page's frame form round the sea, and Home rises in, in about three and a half
-   seconds (a press, a key or the wheel ends it at once; with reduced motion Home just opens).
+   seconds (a press, a key or the wheel ends it at once; with reduced motion Home just opens). While the plans haven't
+   been shown, it sails onto them in Home's place instead, the sun sinking to their last sliver (16.20).
 4. On first arriving in Home (past the plans), a tour goes through it, one stop at a time: a card with a short animation on the dawn sky,
    and the page dimmed around the real thing the stop is about, with a ring round it and an arrow to it. **Start or
    schedule a call** (Start now and Schedule, on Home's sky); **Join a call** (the line on Home that offers an Alcove
@@ -331,8 +333,9 @@ send to anyone".
 7. **Details** shows once someone's in or a time is picked. **Notes** is a switch ("Everyone invited gets them", or
    "Nothing is recorded"), and **What the notes keep** opens under it: **Keep the transcript** (without it, it's used to
    write the notes and then deleted), **Keep the recording**, **Read shared screens** (whoever shares is asked whether
-   theirs goes in the notes), and **Where they go** (a new workspace, or one of yours). Past 25 people, **Everyone joins
-   muted** is on. **Bring** adds an agenda, documents and boards you can open, as chips, up to 12; anyone who can't open
+   theirs goes in the notes), and **Where they go** (a new workspace, or one of yours). One someone else pays for says so
+   once under it: "Its files don’t count against your storage, so its boards and files open only for its own people." Past
+   25 people, **Everyone joins muted** is on. **Bring** adds an agenda, documents and boards you can open, as chips, up to 12; anyone who can't open
    one is told whose it is, without seeing its name, so they can ask for it.
 8. **The foot** says what will happen beside the one button: "Google Calendar invites Priya and Kofi." and
    **Schedule** (**Schedule 6 calls** for a repeat). With nobody and no time the button waits and the line says "Add who
@@ -872,9 +875,10 @@ time, slides in on the right.
   the organizer is asked, "Your plan has notes again", with **Turn notes on**. While they're stopped, turning notes on or starting a room recording says "Your notes for this
   period have run out. They start again when your plan renews."
 - **How long a call runs.** A call ends at 10 hours, and everyone is told 5 minutes before ("This call ends at
-  14:30"); its notes are written as when anyone ends it. At most 100 people are in a call or waiting to be let in: one
+  14:30"); its notes are written as when anyone ends it. At most 100 people are in a call or asking to be let in: one
   more is told "This call is full: 100 people are in it, the most a call can have", and whoever hosts is told someone
-  tried.
+  tried. An ask whose browser closed stops holding a place once it's gone from the host's list, and someone who reloads
+  while asking asks again in place of their earlier ask.
 - **Asking for notes.** While notes are off or paused, anyone can ask for them: **Ask for notes** in what's captured,
   or in Notes, whose bar says **Ask to resume** while they're paused. Everyone sees who asked. The organizer gets a toast
   and sees the ask in People, and while notes are off, Notes says how many asked in its pill, in rose, with **Not now**
@@ -2715,7 +2719,8 @@ Alcove normally after plans came.
 4. A new account's tour of Home (1, step 4) starts once Home is there, never over the plans.
 5. Only Home opens on them. A link to a call, a call's page, a join link, an agent's consent page, a public page or a team
    invite is never interrupted, and nor is signing in from a call's link or for an agent: the plans wait for the next time Home
-   is reached.
+   is reached. Signing in from the welcome page sails out of its cove onto them, as it would onto Home (1, step 3), the sun
+   sinking to their last sliver; a new account's arrival says "Opening Plans" and its arch opens onto them.
 6. Once the plans have been on screen for a moment (the tab showing, nothing open over them), Alcove is told, and they aren't
    shown again. Plans itself counts too. If telling Alcove fails, it's tried again quietly, and this tab doesn't show them again;
    a later visit does. Left before their prices came (still loading, offline, or not loaded), they show again on a later visit.

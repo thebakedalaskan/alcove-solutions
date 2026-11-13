@@ -359,14 +359,19 @@ export interface SailFrom {
   seen?: boolean | undefined;
 }
 
-/** Home as it's laid out under the sail (px on the window): where it ends up, and the parts of it that come in. */
+/**
+ * Home as it's laid out under the sail (px on the window), or the page in its place (the plan choice): where it ends up, and the
+ * parts of it that come in.
+ */
 export interface SailHome {
-  /** Home's horizon. */
+  /** Its horizon. */
   line: number;
   /** Its sun's middle, across the window. */
   x: number;
   /** Its sun's radius. */
   r: number;
+  /** How far below the horizon its sun's middle stands: none for Home's, half risen; more for the last sliver of the plans'. */
+  sink?: number | undefined;
   /** The page's rounded edge, as insets from the window's edges, and its radius. None on a phone, which has no frame. */
   frame: { top: number; right: number; bottom: number; left: number; radius: number } | null;
   /** What slides in from the left as the frame forms: the side panel's contents. */
@@ -397,9 +402,9 @@ const hundredths = (v: number) => Math.round(v * 100) / 100;
 const px = (v: number) => `${v.toFixed(2)}px`;
 
 /**
- * Signing in, out of the cove to the real Home underneath (`home`). It plays once, as it mounts, over everything: in front
- * of the app and out of its way. Nothing in it can be focused, a press, a key, the wheel or a change of width clears it at
- * once, and it's done the moment Home has risen in.
+ * Signing in, out of the cove to the real Home underneath (`home`), or the plan choice in its place, whose sun sits lower. It
+ * plays once, as it mounts, over everything: in front of the app and out of its way. Nothing in it can be focused, a press, a
+ * key, the wheel or a change of width clears it at once, and it's done the moment the page has risen in.
  */
 export function SailOut({ from, home, onDone }: { from: SailFrom; home: SailHome; onDone: () => void }) {
   const root = useRef<HTMLDivElement>(null);
@@ -421,16 +426,17 @@ export function SailOut({ from, home, onDone }: { from: SailFrom; home: SailHome
     if (from.seen) v.style.visibility = 'hidden';
     else ours.push(v.animate([{ opacity: 1, visibility: 'visible' }, { opacity: 0, visibility: 'hidden' }], { duration: IN, easing: 'ease-out', fill: 'forwards' }));
 
-    /* The horizon comes up to Home's with the cove riding on it, and the sun eases to Home's size and onto the horizon. Its
-       middle moves by the same eased share as the horizon, so it only ever rises. */
+    /* The horizon comes up to Home's with the cove riding on it, and the sun eases to Home's size and onto the horizon (or as far
+       under it as the page's own sun sits). Its middle moves by the same eased share as the horizon, so it only ever rises. */
     const fromSun = from.line + from.sun;
+    const toSun = home.line + (home.sink ?? 0);
     let raf = 0;
     let t0 = -1;
     const step = (now: number) => {
       if (t0 < 0) t0 = now;
       const e = carry(clamp((now - t0 - IN) / SAIL, 0, 1));
       const line = hundredths(from.line + (home.line - from.line) * e);
-      const sun = hundredths(fromSun + (home.line - fromSun) * e);
+      const sun = hundredths(fromSun + (toSun - fromSun) * e);
       s.style.setProperty('--hz', px(line));
       s.style.setProperty('--cv-sink', px(sun - line));
       s.style.setProperty('--cv-sun-r', px(from.r + (home.r - from.r) * e));

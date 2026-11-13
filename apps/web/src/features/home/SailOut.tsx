@@ -2,7 +2,9 @@
  * Signing in from the welcome page sails out of its cove to Home (docs/design/pages.md › Welcome). The welcome page kept where
  * its cove stood on screen as a way in was pressed (lib/sailOut.ts). Home takes it as it first shows and sails out of that
  * cove onto itself, once: to its own horizon and sun, inside the page's real frame, with the side panel sliding in and its
- * own parts rising in as the sea clears. A new account has its arrival instead, and with reduced motion Home just opens.
+ * own parts rising in as the sea clears. When the plans are up in Home's place (features/plans/PlanChoice.tsx), they take it
+ * instead, and the sun sinks to their last sliver as it comes. A new account has its arrival instead, and with reduced motion
+ * the page just opens.
  */
 import type { SailOutStored } from '@alcove/api';
 import { SailOut, type SailFrom, type SailHome } from '@alcove/ui';
@@ -16,12 +18,18 @@ const slog = log.child({ component: 'sail-out' });
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const pxOf = (v: string) => Number.parseFloat(v) || 0;
 
-/** Home as it's laid out (`page` is its evening): its horizon and sun, the frame round it, and what comes in. */
+/**
+ * Home as it's laid out (`page` is its evening), or the plans in its place: its horizon and sun, the frame round it, and what
+ * comes in. A sun the page draws on its sky itself (`data-sun`, the plans' last sliver) is the one to sail onto: its box is as
+ * wide as the sun, and its top is the sun's.
+ */
 function homeAt(page: HTMLElement): SailHome | null {
   const scene = page.querySelector(':scope > .hz');
   const sun = scene?.querySelector(':scope > .hz-up > .hz-light');
   if (!scene || !sun) return null;
   const at = sun.getBoundingClientRect();
+  const drawn = scene.querySelector(':scope > .hz-up [data-sun]')?.getBoundingClientRect();
+  const r = drawn ? drawn.width / 2 : pxOf(getComputedStyle(scene).getPropertyValue('--hz-sun-r')) || 48;
   const shell = page.closest('.shell');
   /* The page's rounded edge is the shell's ::after (styles/shell.css); a phone has none. */
   const edge = shell ? getComputedStyle(shell, '::after') : null;
@@ -32,7 +40,7 @@ function homeAt(page: HTMLElement): SailHome | null {
   /* Search and you (or the phone's top bar), then Home's own parts in their order. */
   const rise = [shell?.querySelector(':scope > .ph-head'), shell?.querySelector('.top-acts'), ...Array.from(page.querySelector(':scope > .dusk-in')?.children ?? [])]
     .filter((el): el is Element => el instanceof Element);
-  return { line: at.top, x: at.left, r: pxOf(getComputedStyle(scene).getPropertyValue('--hz-sun-r')) || 48, frame, side, rise };
+  return { line: at.top, x: drawn ? drawn.left + r : at.left, r, sink: drawn ? Math.max(0, drawn.top + r - at.top) : 0, frame, side, rise };
 }
 
 /**
@@ -41,12 +49,13 @@ function homeAt(page: HTMLElement): SailHome | null {
  */
 function startFrom(hero: SailOutStored['hero'], home: SailHome): SailFrom {
   const width = document.documentElement.clientWidth;
-  if (hero && Math.abs(hero.width - width) <= 1 && hero.line + hero.sun > home.line + 1) return { ...hero, width, seen: true };
-  const line = Math.round(Math.max(document.documentElement.clientHeight * 0.7, home.line + 40));
+  const sun = home.line + (home.sink ?? 0);
+  if (hero && Math.abs(hero.width - width) <= 1 && hero.line + hero.sun > sun + 1) return { ...hero, width, seen: true };
+  const line = Math.round(Math.max(document.documentElement.clientHeight * 0.7, sun + 40));
   return { width, line, sky: line, foot: Math.round(HERO_COVE.foot(line)), sun: 0, r: clamp(width * 0.041, 44, 60), words: [], seed: HERO_COVE.seed };
 }
 
-/** Plays the sail over Home (`page`, its evening) if a way in on the welcome page was pressed on the way here. */
+/** Plays the sail over Home (`page`, its evening, or the plans' in its place) if a way in on the welcome page was pressed on the way here. */
 export function SailOutHere({ page }: { page: RefObject<HTMLElement | null> }) {
   const { stage } = useArrival();
   const arriving = useRef(stage !== 'none');

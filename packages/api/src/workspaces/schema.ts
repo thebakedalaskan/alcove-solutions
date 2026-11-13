@@ -110,11 +110,14 @@ export type WorkspaceTree = z.infer<typeof WorkspaceTreeSchema>;
 
 /**
  * A workspace in your Drive, newest first. Someone outside it who has documents in it sees only that it's there: `createdAt`
- * is null for them. `call`: the call it was made for, as a call's home, for someone in it.
+ * is null for them. `call`: the call it was made for, as a call's home, for someone in it. `youPay`: its files count against
+ * your storage, and AI in it against your plan (docs: Plans and usage › Storage), so a call you organize in it opens it, its
+ * boards and its files to everyone in the call; one someone else pays for opens only for its own people.
  */
 export const WorkspaceSummarySchema = WorkspaceTreeSchema.omit({ items: true, inCall: true }).extend({
   createdAt: ISODateSchema.nullable(),
-  call: z.object({ title: z.string(), at: ISODateSchema }).nullable()
+  call: z.object({ title: z.string(), at: ISODateSchema }).nullable(),
+  youPay: z.boolean()
 });
 
 export type WorkspaceSummary = z.infer<typeof WorkspaceSummarySchema>;

@@ -953,14 +953,15 @@ export async function searchText(d: Deps, reader: Reader, workspaceId: string, a
  * maker or, for a call's own, the organizer. In a team's workspace, whoever pressed it pays, from their own allowance (docs:
  * Plans and usage › Team); someone there only by a seat in a call, with no account, falls back to the workspace's payer. A
  * workspace nobody pays for yet (its payer just deleted their account, until upkeep settles it) is paid for by whoever asks,
- * if they're signed in.
+ * if they're signed in. A guest's, with no account, comes out of the share every guest in their call spends from
+ * (billing/meter.ts), as their questions in the call do.
  */
 async function workspaceMeter(d: Deps, reader: Reader, w: Workspace, spend: Spend) {
   const asker = reader.account?.owner.ownerId;
   const team = await maybeOne(d.pool, z.object({ team_id: z.string().nullable() }), 'SELECT team_id FROM workspaces WHERE owner_id = $1', [w.owner.ownerId]);
   const payer = (asker && team?.team_id ? asker : null) ?? (await payerOf(d.pool, w.owner.ownerId)) ?? asker;
   if (!payer) throw new ConflictError('AI isn’t available in this workspace right now.', { context: { workspaceId: w.workspaceId, why: 'no payer' } });
-  return meterFor(d, { payer, spend });
+  return meterFor(d, { payer, spend, ...(asker === undefined && reader.seat ? { guests: reader.seat.callId } : {}) });
 }
 
 /**
