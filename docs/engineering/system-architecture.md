@@ -202,11 +202,11 @@ with fewer than 30 days left, and each serves the newest stored, swapped in with
 
 | Concern | Local build | Production |
 | --- | --- | --- |
-| Trusted compute | Plain Node process | Google Cloud Confidential Space on Intel TDX: the API and the web app in one CI-signed image, whose attestation the app checks before trusting it and CI checks after every deploy |
-| Master key | `KMASTER` from `.env` | Made in the VM; Cloud KMS releases it only to an attested, CI-signed production image with debugging off, never to the deploy pipeline ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)) |
+| Trusted compute | Plain Node process | Google Cloud Confidential Space on Intel TDX: the API and the web app in one CI-signed image, whose attestation the app checks and shows (a failed check blocks nothing) and CI checks after every deploy |
+| Master key | `KMASTER` from `.env` | Made in the VM; Cloud KMS releases it only to an attested image signed with Alcove's key, on Confidential Space's production image with debugging off. The deploy pipeline never holds it, though it signs the images that get it, and the project's Owners can use the key that wraps it ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)) |
 | Sign-in | Google OpenID Connect when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set; stand-ins for Microsoft and SSO in `apps/api/src/demo.ts` | Google OpenID Connect; Microsoft OAuth and OIDC single sign-on, verified, are next |
 | Calendar and directory | An optional Google Calendar connection for Google accounts, a sample day and week of busy times for demo accounts, and a demo directory for `vandelay.industries` | Google Calendar; other providers' calendars and a company's own directory are next |
-| Transport | HTTP on localhost behind the Vite proxy | TLS ending inside the TEE with a key only the VM has ([the edge](#the-edge)), certificates pinned to its ACME account by a CAA record. Next: an attested end-to-end channel (HPKE), so even a certificate someone else got for these hosts would see only ciphertext |
+| Transport | HTTP on localhost behind the Vite proxy | TLS ending inside the TEE with a key derived from the master ([the edge](#the-edge)), certificates pinned to its ACME account by a CAA record. Next: an attested end-to-end channel (HPKE), so even a certificate someone else got for these hosts would see only ciphertext |
 | Call media | LiveKit in Docker (`infra/livekit/dev.yaml`); LiveKit Cloud in production. End-to-end encrypted: MLS keys made in browsers, frames encrypted before they leave ([Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption)) | The same |
 | Invitations | Sent by Google Calendar when the organizer's calendar is connected; otherwise none | The same; email (SMTP) is next |
 | Object store | RustFS in Docker | Cloudflare R2 |

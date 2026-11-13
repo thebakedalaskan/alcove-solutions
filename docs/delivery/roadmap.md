@@ -7,7 +7,7 @@
 - Monorepo, design system, web app: sign-in, Home for starting calls and what's yours, scheduling calls, pre-join,
   the full-screen call, notes, the room recorder and account.
 - API with encrypted vault, account keys wrapped under `KMASTER` and opened per request, sessions in Postgres,
-  meetings, single-participant calls with real camera, mic and screen sharing, chat, encrypted notes
+  meetings, group calls (end-to-end encrypted with MLS, on LiveKit) with real camera, mic and screen sharing, chat, encrypted notes
   recordings in calls and in the room, playback, notes for everyone invited, sharing by email, people search
   and how much of the plan's notes is left.
 - Real Google sign-in (OpenID Connect with PKCE, verified emails only) and optional Google Calendar access: meetings with other
@@ -93,6 +93,17 @@
   attestation token, naming its TLS key and build, with its release's entry in Sigstore's public log, which the app checks
   without asking anyone else. Nothing third-party loads in the browser, and logs are scrubbed so they can leave the VM
   ([Privacy › Moving to confidential computing](../engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing)).
+- Boards in calls: a Yjs document whose shape and rules the app and the API share ([`packages/board`](../../packages/board)),
+  sealed at rest under its workspace's keys, which everyone in the call edits at once, guests too, presented and followed,
+  with ideas from the call and themes from the verified notes model.
+- A workspace for every call and the Drive: documents a team writes together live, writing offline sealed in the browser,
+  the call's notes, follow-ups and transcript as live pages, and presenting the workspace in a call.
+- Agents over MCP: OAuth with PKCE and dynamic client registration, or personal tokens; 30 tools granted by seven scopes,
+  consent that can only lower what's asked for, and the Agents page with what each agent did
+  ([Agents and MCP](../engineering/agents-and-mcp.md)).
+- Plans and payments: Free for every account, Pro by the month or the year, Team licenses for a company, and a plan
+  chosen at first sign-in, all paid from a dollar balance filled with USDC through NEAR Intents 1Click
+  ([Plans and usage](../engineering/plans-and-usage.md)).
 - CI with merge-blocking checks; deploy pipeline and GCP bootstrap, first deployed on 3 November 2026
   ([deployment plan](../superpowers/plans/2026-11-03-alcove-deployment.md)); release acceptance is still open.
 
@@ -105,7 +116,7 @@
 | 3 | Release acceptance in the deployed environment | [Deployment and acceptance](../engineering/deployment-and-acceptance.md); public journeys, private storage and deletion |
 | 4 | Bind requests to the attestation (an HPKE channel to a key the TEE makes, so trust doesn't rest on TLS alone) and pin the client | The API runs in Confidential Space and the app checks it; [Moving to confidential computing](../engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing) |
 | 5 | An attested notes participant | A member of the call's MLS group in a TEE that browsers verify before adding it, so no browser sends audio to the API; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
-| 6 | Paid plans: buying Pro, renewing and refunds, Team, and picking a plan at first sign-in | Free, the metered AI allowance, per-account storage, call limits and the dollar balance filled by top-ups (1Click) are built; [Plans and usage](../engineering/plans-and-usage.md) |
+| 6 | Move the Cloud KMS keys and the Workload Identity pool to a project administered only through CI | So the Google Cloud project's Owners can no longer use the key that wraps the master; [Confidential Space runbook › Known limits](../../infra/confidential-space/README.md#known-limits) |
 | 7 | Pin the model code NEAR AI runs | Check what its compose manager starts against deployments with published provenance; bind the GPU evidence and the model's name to the VM; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
 | 8 | Speaker diarization for room recordings | Room transcripts name nobody today |
 | 9 | Remaining review items | Strict JSON parsing, rollback detection (version-bound associated data, encrypted piece manifest), billing account IDs, key rotation, deletion across backups |

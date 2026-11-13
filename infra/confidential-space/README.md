@@ -459,7 +459,7 @@ balancer keeps no request logs, so it logs no client addresses either.
   checked by verify-server.ts after each deploy and by watching Certificate Transparency, not by the app. The CAA record
   pins issuance to our ACME account, whose key only the VM holds.
 - **Attestation quota.** Google Cloud Attestation allows 5 requests a second per project per region, and a token costs two.
-  The API holds one token and refreshes it when it's 10 minutes old; every browser gets that one.
+  The API holds one token and refreshes it when it's 5 minutes old; every browser gets that one.
 - **The VMs' clocks run behind.** On 2026-11-13 every production VM ran 7–9.5 s behind Google's clock, drifting about a
   second a day, and nothing in the workload can set it. A token another service dates by its own clock looked as if it
   came from the future: every NVIDIA verdict was refused, so every model check failed from the move until the fix (the
