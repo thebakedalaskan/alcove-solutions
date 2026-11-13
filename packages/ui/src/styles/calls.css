@@ -244,6 +244,8 @@
   /* The sky goes up behind the phone's top bar, and the page scrolls as one. */
   .shell:has(> .main > .main-in > .cs) .ph-head { position: relative; z-index: 1; }
   .cs { --hz: 176px; --behind: 66px; height: auto; margin-top: -66px; }
+  /* The sky here is all top bar and search: a cloud drifting across it would cross the logo and the buttons. */
+  .cs .hz-puff { display: none; }
   .cs .dusk-in { display: block; height: auto; padding-top: 66px; padding-bottom: 20px; }
   .cs-sky { grid-template-columns: minmax(0, 1fr); height: auto; padding: 14px 0 2px; }
   .cs-sky-t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -267,6 +269,9 @@
   .cs-who { justify-content: flex-start; }
   .cs-who .ac-faces .ac-avatar { margin-left: -9px; }
   .cs-who .ac-faces .ac-avatar:first-child { margin-left: 0; }
+  /* Three faces fill the column, so how many more there are goes under them, never onto the call's name. */
+  .cs-who .ac-faces { position: relative; }
+  .cs-who .ac-faces .more { position: absolute; top: calc(100% + 5px); left: 0; margin: 0; }
   .cs-q-k.ac-kbd { display: none; }
   .cs-t1 { flex-wrap: wrap; row-gap: 3px; }
   .cs-from { display: none; }

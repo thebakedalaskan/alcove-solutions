@@ -24,7 +24,7 @@ export interface Target { workspaceId: string; folder: string | null }
 /** What can be made. */
 export type Making = 'document' | 'board' | 'upload';
 /** Where the frame becomes a phone's, with no room beside anything. */
-const PHONE = '(max-width: 860px)';
+export const PHONE = '(max-width: 860px)';
 /** Whether a role makes things and renames them. */
 export const canEdit = (role: WorkspaceRole | null | undefined): boolean => role === 'admin' || role === 'edit';
 
