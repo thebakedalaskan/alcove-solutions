@@ -43,6 +43,11 @@ function addr(t: TopUp): string {
 /** The API's log lines since `from`, parsed (pino levels: 40 warn, 50 error). */
 const LogLine = z.object({ level: z.number(), msg: z.string() }).passthrough();
 const logsSince = (from: number) => h.logs.slice(from).flatMap((l) => { const r = LogLine.safeParse(JSON.parse(l)); return r.success ? [{ ...r.data, line: l }] : []; });
+/**
+ * A log line without the moment it was written, to look for an amount in: that's milliseconds since 1970, thirteen digits that
+ * hold any run of seven of them once every few hours.
+ */
+const untimed = (line: string) => line.replace(/"time":\d+/, '');
 /** As if 5 seconds had passed since the app last asked 1Click about this top-up. */
 const forgetCheck = (id: string) => h.pool.query('UPDATE deposits SET checked_at = NULL WHERE deposit_id = $1', [id]);
 /** Makes only these top-ups due for the watcher; every other one still watched waits an hour, so a pass sees just these. */
@@ -153,7 +158,7 @@ describe('top-ups', () => {
     const from = h.logs.length;
     const e = await api.plans.startTopUp(BASE_USDC, 4_999_999).catch((x: unknown) => x);
     // The refusal is logged by its reason, never with how much was asked for.
-    expect(logsSince(from).filter((l) => l.line.includes('4999999'))).toEqual([]);
+    expect(logsSince(from).filter((l) => untimed(l.line).includes('4999999'))).toEqual([]);
     expect(code(e)).toBe('invalid');
     expect(e instanceof AlcoveApiError ? e.message : '').toBe('The least you can add with USDC on Base is $5.');
     const eth = await api.plans.startTopUp(ETH_USDC, 19_999_999).catch((x: unknown) => x);
@@ -456,7 +461,7 @@ describe('top-ups', () => {
     expect(errors.length).toBe(1);
     expect(errors[0]?.level).toBe(50);
     expect(errors[0]?.line).toContain('unreadable-finished-swap');
-    expect(logsSince(from).filter((l) => l.line.includes('25000000'))).toEqual([]);
+    expect(logsSince(from).filter((l) => untimed(l.line).includes('25000000'))).toEqual([]);
     expect(await balance(api)).toBe(0);
 
     await forgetCheck(t.id);
