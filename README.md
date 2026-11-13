@@ -84,8 +84,8 @@ shows you the result, and the server checks what the AI runs on before sending i
 Alcove was built during [NEAR HACKATHON](https://nearhackathon.com) in November 2026. The repository’s history starts
 on 2 November 2026 with a plan ([its first commit](https://github.com/thebakedalaskan/alcove-solutions/commit/2aa9b86a8)),
 so all of it is hackathon work, built on the open-source libraries listed in [Built with](#built-with) and the
-`package.json` files. Most of the code was written with an AI coding agent, Claude Code: 1,327 of the 1,360 commits that
-aren’t merges carry its Co-Authored-By line.
+`package.json` files. Most of the code was written with an AI coding agent, Claude Code, and nearly every commit says so
+in a Co-Authored-By line (1,328 of the 1,361 that aren’t merges, on 13 November).
 
 **Tracks:** Privacy & Private AI (private inference on NEAR AI Cloud, and a server in a TEE), and Real-World Money (plans
 and team licenses paid in USDC through NEAR Intents).
@@ -336,8 +336,8 @@ enclave, Google Calendar for the calls you schedule there, Drive exports and the
 Every browser in a call is an MLS client ([RFC 9420](https://www.rfc-editor.org/rfc/rfc9420), via ts-mls), guests
 included. Keys are made in the browser and never leave it. Each sender’s media key is exported from the group for every
 epoch, and LiveKit’s end-to-end encryption encrypts every frame (microphone, camera and shared screens) before it leaves
-the device, so LiveKit relays ciphertext; a browser that can’t do that is refused, never sent in the clear. Chat goes
-inside the group too. Alcove’s server orders and passes on MLS messages it can’t read, and says who each member is: there
+the device, so LiveKit relays ciphertext; a browser that can’t do that is refused, never sent in the clear. Chat travels
+as MLS messages too. Alcove’s server orders and passes on MLS messages it can’t read, and says who each member is: there
 are no safety codes yet, so that rests on the server, which runs attested code, and People lists every member. The host’s
 browser commits who’s in, removes whoever leaves, and rotates the keys every 10 minutes even when nobody comes or goes.
 While notes are on, the host’s browser also sends what it hears to the API, outside the media encryption
@@ -381,8 +381,8 @@ Alcove checks its evidence with a fresh nonce: the TDX quote and Intel’s colla
 the boot measurements against a published [dstack](https://github.com/Dstack-TEE/meta-dstack) image, the event log, the
 GPUs through NVIDIA’s attestation service for the same nonce, and the model’s encryption key, signed by the attested key.
 A check that passes is reused for up to 10 minutes. Each request is sealed with Oblivious HTTP to that key, so NEAR AI’s
-gateway and load balancers carry only ciphertext. If anything doesn’t check out, nothing is sent: speech in that stretch
-isn’t transcribed, and the notes wait until the model checks out. Speech always goes this way. An organizer can choose a
+gateway and load balancers carry only ciphertext; speech always goes this way. If anything doesn’t check out, nothing is
+sent: speech in that stretch isn’t transcribed, and the notes wait until the model checks out. An organizer can choose a
 model that doesn’t run in an enclave for a call’s notes, and anyone can for their own questions; the app marks it wherever
 that choice is made, and each note sent to such a model records it.
 
