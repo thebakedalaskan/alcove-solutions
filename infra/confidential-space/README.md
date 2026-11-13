@@ -326,12 +326,12 @@ deploy.sh refuses while staging's VM holds the rest.
 Before Confidential Space, `KMASTER` and `KSERVICE` lived in Secret Manager (`alcove-kmaster`, `alcove-kservice`). env.sh's
 `CS_LEGACY` says what happens to them:
 
-- **`carry`** (now, both environments: production's old keys, and staging's own). The API reads them once at startup with
+- **`carry`** (staging, its own, whenever it's made; production until 2026-11-13). The API reads them once at startup with
   the attested identity (`LEGACY_SECRETS`), checks the old master opens existing accounts, seals the index key and
   `KSERVICE` under its own master in the database, and re-wraps every account's root key under it in the background,
   logging `owners rewrapped` with `{ rewrapped, failed, remaining }`. Accounts made meanwhile get an envelope under both
   masters.
-- **`retired`**, only once `remaining` is 0, the switch is confirmed and the user agrees: set `CS_LEGACY=retired` for
+- **`retired`** (production since 2026-11-13), only once `remaining` is 0, the switch is confirmed and the user agrees: set `CS_LEGACY=retired` for
   production in env.sh and merge. The deploy runs with `RETIRE_LEGACY_KMASTER=true` and no `LEGACY_SECRETS`; the API
   refuses while any account lacks the new envelope, then forgets the old master for good. Then delete the secrets
   (`gcloud --project=alcove-solutions secrets delete alcove-kmaster` and `alcove-kservice`, which takes their grants with
