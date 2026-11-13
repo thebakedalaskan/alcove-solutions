@@ -49,7 +49,7 @@
 .ev figcaption { margin-top: 10px; font: 400 14px/1.4 var(--sans); color: var(--ink-2); }
 .ev figcaption b { display: block; font: 400 22px/1.2 var(--serif); color: var(--ink); }
 
-/* What passes through, as in the real scene (packages/ui/src/styles/horizon.css). */
+/* What passes through, as in the real scene (packages/ui/src/evening/horizon.css). */
 .lf { --hz-chop: var(--sc-chop); --hz-near: var(--sc-near); --hz-star: var(--sc-star); --hz-cloud: var(--sc-cloud); --hz-rim: var(--sc-rim); --hz-shape: var(--sc-shape); --hz-leaper: var(--sc-leaper); position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
 .sc .lf { z-index: auto; }
 .lf i { position: absolute; display: block; }

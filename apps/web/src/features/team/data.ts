@@ -1,10 +1,11 @@
 /*
- * What the Team page says about people, worked out from what the app already has. A call counts once it has notes, for
- * the people on it who still have them, and not for anyone the notes reached afterwards. What's coming up is your Alcove
- * calls and the coming week of your calendar, which is all of it Alcove reads, so nothing here claims to know a whole month.
+ * What the app says about people, worked out from what it already has: the Team page's lines, and the people you have notes
+ * with (`peopleOf`), whom search offers in the palette and on Calls. A call counts once it has notes, for the people on it
+ * who still have them, and not for anyone the notes reached afterwards. What's coming up is your Alcove calls and the coming
+ * week of your calendar, which is all of it Alcove reads, so nothing here claims to know a whole month.
  */
-import type { CalendarEvent, Group, GroupShare, Meeting, NoteSummary, Person, Team } from '@alcove/api';
-import { aheadOf, isOffered, peopleOn, started } from '~/features/home/day';
+import type { CalendarEvent, Group, GroupShare, Meeting, NoteFound, NoteSummary, Person, Team } from '@alcove/api';
+import { aheadOf, isOffered, peopleOn, started } from '~/features/calls/list/ahead';
 import { byEmail, sameEmail } from '~/lib/people';
 import { daysFromToday, hm, pastDay } from '~/lib/time';
 import { plural } from '~/lib/words';
@@ -130,3 +131,45 @@ export interface SharedNote extends GroupShare { note: NoteSummary }
 /** Every share of a note with a group, in all the notes you have, newest first. */
 export const groupShares = (notes: NoteSummary[]): SharedNote[] =>
   notes.flatMap((note) => note.groupShares.map((s) => ({ note, ...s }))).sort((a, b) => time(b.at) - time(a.at));
+
+/** Someone you have notes with, as search offers them. */
+export interface Someone {
+  person: Person;
+  /** Their title on your team, when they're on it. */
+  title: string | undefined;
+  /** Calls you have the notes of together (a recording in the room isn't a call). */
+  calls: number;
+  /** Notes you have together, calls or not. */
+  notes: number;
+  /** When your newest note with them started. */
+  last: string;
+}
+
+/**
+ * Everyone in your notes but you, named and titled as your team has them, the people you have most calls with first.
+ * Someone on your team you have no notes with has nothing to find, so isn't offered. One pass over your notes, which come
+ * newest first, so the first note someone's in is their newest.
+ */
+export function peopleOf(notes: NoteFound[], team: Team | null | undefined, me: string | undefined): Someone[] {
+  const mine = me?.toLowerCase();
+  const found = new Map<string, Omit<Someone, 'title'>>();
+  for (const n of notes) {
+    for (const p of n.people) {
+      const key = p.email.toLowerCase();
+      if (key === mine) continue;
+      const known = found.get(key);
+      if (!known) { found.set(key, { person: p, calls: n.kind === 'call' ? 1 : 0, notes: 1, last: n.startedAt }); continue; }
+      // Someone known only by their address in one note may have a name in another.
+      if (known.person.name === known.person.email) known.person = p;
+      if (n.kind === 'call') known.calls++;
+      known.notes++;
+    }
+  }
+  const members = new Map((team?.members ?? []).map((m) => [m.person.email.toLowerCase(), m] as const));
+  return [...found].map(([key, s]): Someone => {
+    const member = members.get(key);
+    // Known only by their address in your notes, but by name on your team.
+    const named = member && s.person.name === s.person.email ? { ...s.person, name: member.person.name } : s.person;
+    return { ...s, person: named, title: member?.title };
+  }).sort((a, b) => b.calls - a.calls || b.notes - a.notes || a.person.name.localeCompare(b.person.name));
+}

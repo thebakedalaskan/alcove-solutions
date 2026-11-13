@@ -1,5 +1,5 @@
 import type { DriveExportChoice, DriveExportJob, DriveFolder, DriveSettings } from '@alcove/api';
-import type { World } from './index';
+import type { World } from './world';
 import { iso } from './clock';
 
 export interface DriveWorld {

@@ -8,20 +8,21 @@
  */
 import { DEFAULT_NOTES_CHOICES, MAX_CALL_DOCUMENTS, MeetingStatusSchema, NotesChoicesSchema, NotesSettingSchema, firstName, type CallDocument, type ChangeScope, type GuestAnswer, type InstantCallInput, type Meeting, type MeetingInput, type NotesSetting, type Patch, type Person, type ProposalAnswer, type Repeat, type Rsvp } from '@alcove/api';
 import { z } from 'zod';
-import type { Owner } from '../../context';
-import { id128, random } from '../../crypto';
-import { exec, tx, type Db } from '../../db';
-import { ConflictError, ValidationError, notFound } from '../../errors';
-import { log } from '../../log';
-import { lockOwner } from '../../owners';
-import { createItem, findItem, findItems, getItem, listItems, lockItem, saveRevision, type Loaded } from '../../vault';
+import type { Owner } from '../../platform/context';
+import { id128, random } from '../../keys/crypto';
+import { exec, tx, type Db } from '../../platform/db';
+import { ConflictError, ValidationError, notFound } from '../../platform/errors';
+import { log } from '../../platform/log';
+import { lockOwner } from '../../keys/owners';
+import { createItem, findItem, findItems, getItem, listItems, lockItem, saveRevision, type Loaded } from '../../keys/vault';
 import { accessOf, answer as saveAnswer, countsFrom, countsOf, dropInvites, dropProposals, finished, invitedMeetings, inviteKey, locateInvited, propose as saveProposal, reconcileAccess, standing, syncAccess, type Access, type Invited } from './access';
-import { me, preferences, profile, type Profile } from '../account/account';
+import { me, profile, type Profile } from '../profile/profile';
 import * as calendar from './calendar';
-import { followInvites, invitesOf } from '../calls/workspace';
+import { followInvites, invitesOf } from './homes';
+import type { Calls } from '../workspaces/calls';
 import { indexCode } from './codes';
-import { boardsFrom, documentsFor, keptIds, shownOn, validDocuments } from '../workspaces/library';
-import { personOf } from '../account/portraits';
+import { boardsFrom, documentsFor, keptIds, shownOn, validDocuments } from '../workspaces/library/library';
+import { personOf } from '../profile/portraits';
 import { cancelInSeries, changeInSeries, leadsTo, repeatsOf, schedule } from './repeats';
 import { accountReader, requireRole, workspaceFor } from '../workspaces/access';
 
@@ -54,9 +55,9 @@ export const MeetingManifest = z.object({
   choices: NotesChoicesSchema.default(DEFAULT_NOTES_CHOICES),
   /** Everyone joins with their microphone and camera off. */
   joinMuted: z.boolean().default(false),
-  /** The documents brought to the call, by the IDs features/workspaces/library.ts gives them. Nothing about them is kept here. */
+  /** The documents brought to the call, by the IDs features/workspaces/library/library.ts gives them. Nothing about them is kept here. */
   documents: z.array(z.string()).default([]),
-  /** The workspace the call uses (features/calls/workspace.ts). Null until one's chosen, or someone opens Workspace. It carries to the next call in a series. */
+  /** The workspace the call uses (features/calls/workspace/workspace.ts). Null until one's chosen, or someone opens Workspace. It carries to the next call in a series. */
   workspaceId: z.string().nullable().default(null),
   /** The agenda this call has, for the next call in its series to carry on from. Only where it is: what it says stays in the document. */
   agenda: z.object({ workspaceId: z.string(), documentId: z.string() }).nullable().default(null),
@@ -239,7 +240,7 @@ export async function propose(o: Owner, id: string, startsAt: string): Promise<M
  * tells everyone through a connected calendar and lets go of every request, since they were asked of the time it had.
  * Keeping it lets go of this one request.
  */
-export async function answerProposal(o: Owner, id: string, email: string, answer: ProposalAnswer): Promise<Meeting> {
+export async function answerProposal(o: Owner, id: string, email: string, answer: ProposalAnswer, calls: Calls): Promise<Meeting> {
   const asked = (await accessOf(o, [id])).get(id)?.get(inviteKey(o, email))?.proposal;
   if (!asked) throw notFound('That request to move the call', { meetingId: id });
   if (answer === 'keep') {
@@ -248,7 +249,7 @@ export async function answerProposal(o: Owner, id: string, email: string, answer
     return own(o, id);
   }
   if (new Date(asked).getTime() <= Date.now()) throw new ConflictError('That time has passed. Pick another one.', { context: { meetingId: id } });
-  const moved = await update(o, id, { startsAt: asked });
+  const moved = await update(o, id, { startsAt: asked }, undefined, calls);
   mlog.info('request to move a call answered', { meetingId: id, moved: true });
   return moved;
 }
@@ -456,9 +457,9 @@ export async function changeCall(o: Owner, id: string, patch: Patch<MeetingInput
 /**
  * Changes a call that hasn't started, or more than one in a series (./repeats.ts). A call started now, or one offering
  * times, stays off the calendar: renaming a lobby emails nobody. A change to who's invited reaches the home made for the
- * calls it changed, as a change in the call does.
+ * calls it changed, as a change in the call does (./homes.ts), which asks the calls about their rooms' boards (`calls`).
  */
-export async function update(o: Owner, id: string, sent: Patch<MeetingInput>, scope?: ChangeScope | undefined): Promise<Meeting> {
+export async function update(o: Owner, id: string, sent: Patch<MeetingInput>, scope: ChangeScope | undefined, calls: Calls): Promise<Meeting> {
   if (sent.offer !== undefined) throw new ValidationError('The times a call offers can’t be changed. Cancel it and offer others.', { context: { meetingId: id } });
   await requireWorkspace(o, sent.workspaceId);
   const { manifest } = await getItem(o, o.pool, 'meeting', id, MeetingManifest, 'That meeting');
@@ -477,7 +478,7 @@ export async function update(o: Owner, id: string, sent: Patch<MeetingInput>, sc
     // Held times say which call they're for, so they take its new name: nobody else sees them, so nobody is told.
     else if (next.offer && patch.title !== undefined && next.title !== manifest.title) await retitleHolds(o, id, next);
   }
-  if (invites) await followInvites(o, invites);
+  if (invites) await followInvites(o, invites, calls);
   return own(o, id);
 }
 
@@ -543,7 +544,7 @@ export async function adopt(o: Owner, eventId: string, notes?: NotesSetting | un
   if (held) return toMeeting(o, held);
   const organizer = await me(o);
   const e = await calendar.ownEvent(o, eventId);
-  const setting = notes ?? (await preferences(o)).notesDefault;
+  const setting = notes ?? (await profile(o)).preferences.notesDefault;
   const made = await tx(o.pool, async (c) => {
     // One at a time per account, reading the calls only once it's this one's turn: two quick adopts
     // of one recurring event's occurrences share a series, and one event adopted twice is one call.
@@ -588,7 +589,7 @@ async function sweepUnjoined(o: Owner, db: Db): Promise<number> {
  */
 export async function startNow(o: Owner, input: InstantCallInput): Promise<{ code: string }> {
   const organizer = await me(o);
-  const notes = input.notes ?? (await preferences(o)).notesDefault;
+  const notes = input.notes ?? (await profile(o)).preferences.notesDefault;
   const documents = input.documents ?? [];
   await validDocuments(o, documents);
   const start = new Date();

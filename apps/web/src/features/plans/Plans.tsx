@@ -16,12 +16,13 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import { useNow, useOnline } from '~/lib/live';
 import { callName } from '~/lib/people';
-import { q } from '~/lib/queries';
+import { teamQueries } from '~/features/team/queries';
+import { planQueries } from './queries';
 import { hoursAndMinutes } from '~/lib/time';
 import { plural, roomLabel, usd } from '~/lib/words';
 import { useCheckout } from './checkout';
 import { usePlansSeen } from './choice';
-import { PLAN_NAMES, endsIn, proEnding } from './plan-state';
+import { PLAN_NAMES, endsIn, proEnding } from './planState';
 import { teamYearlyOff, yearlyOff } from './purchase';
 import { hoursOfNotes, perPeriod, periodHours } from './words';
 
@@ -137,11 +138,11 @@ export function Plans({ opening, onOpened, first, evening }: {
   opening?: CheckoutParam | undefined; onOpened?: (() => void) | undefined; first?: FirstTime | undefined; evening?: Ref<HTMLDivElement> | undefined;
 }) {
   /* The route's loader has tried them; offers that didn't load wait for Try again. */
-  const offers = useQuery({ ...q.offers(), retryOnMount: false });
-  const plan = useQuery(q.plan());
+  const offers = useQuery({ ...planQueries.offers(), retryOnMount: false });
+  const plan = useQuery(planQueries.plan());
   /* Team's people: the others on the team you're on (which says who buys its licenses too), else the company's on Alcove. */
-  const team = useQuery({ ...q.myTeam(), enabled: !!plan.data?.team });
-  const company = useQuery(q.team()).data ?? null;
+  const team = useQuery({ ...teamQueries.myTeam(), enabled: !!plan.data?.team });
+  const company = useQuery(teamQueries.team()).data ?? null;
   const onTeam = plan.data?.team ? (team.data?.members ?? []).filter((m) => !m.you).map((m) => m.person) : [];
   const atWork = company?.members.filter((m) => m.onAlcove).map((m) => m.person) ?? [];
   const online = useOnline();

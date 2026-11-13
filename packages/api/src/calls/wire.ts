@@ -6,14 +6,14 @@ import { IDSchema } from '../shared/ids';
 import { oneLine } from '../shared/validation';
 import { z } from '../shared/zod';
 import { ItemIdSchema } from '../workspaces/schema';
-import { BoardNewSchema, BoardObjectIdSchema, BoardSavedSchema, BoardVotesEachSchema, BreakoutBoardSchema } from './boards';
-import { CaptionLanguageSchema } from './captions';
-import { CaptureDevicePartSchema } from './capture';
-import { CatchUpRangeSchema } from './catchup';
-import { CallNudgeKindSchema, CallQuestionStatusSchema, CallStatusKindSchema, CallStatusMinutesSchema } from './attention';
-import { RingReplySchema } from './rings';
+import { BoardNewSchema, BoardObjectIdSchema, BoardSavedSchema, BoardVotesEachSchema, BreakoutBoardSchema } from './boards/boards';
+import { CaptionLanguageSchema } from './notes/captions';
+import { CaptureDevicePartSchema } from './notes/capture';
+import { CatchUpRangeSchema } from './notes/catchup';
+import { CallNudgeKindSchema, CallQuestionStatusSchema, CallStatusKindSchema, CallStatusMinutesSchema } from './attention/attention';
+import { RingReplySchema } from './ringing/rings';
 import { CallPlaceSchema } from './state';
-import { PlayMediaSchema, PlayPositionSchema, PresentSectionSchema, PresentStartSchema } from './workspace';
+import { PlayMediaSchema, PlayPositionSchema, PresentSectionSchema, PresentStartSchema } from './workspace/workspace';
 /** Someone's seat in the call (`CallParticipant.seat`), as an action names them by it. */
 const SeatSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 /** One state change in a call, sent as POST /calls/:id/actions. The server answers with the new CallState. */

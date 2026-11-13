@@ -15,10 +15,13 @@
  * otherwise lays itself out.
  */
 import {
-  CALL_LAYOUT_MAX, CallLayoutSchema, CallPanelsSchema, CallViewPrefsSchema, type CallLayout, type CallPanels, type CallSide, type CallViewPrefs, type SelfView, type StageCorner
+  CALL_LAYOUT_MAX, CallLayoutSchema, CallPanelsSchema, CallViewPrefsSchema, type CallLayout, type CallPanels, type CallSide, type CallViewPrefs, type Person, type SelfView, type StageCorner
 } from '@alcove/api';
-import { useCallback, useRef, useState } from 'react';
+import type { useToast } from '@alcove/ui';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { log } from '~/lib/log';
+import { callName } from '~/lib/people';
+import { SOMEONE } from '../session/participants';
 
 const vlog = log.child({ component: 'call-view' });
 
@@ -168,3 +171,66 @@ export function useCallView(callId: string, account: string | null | undefined) 
   };
 }
 export type CallView = ReturnType<typeof useCallView>;
+
+/** Who came in when, by seat, so someone coming back keeps their place on your stage. Only people the call names have a seat. */
+export function useArrivals(arrive: (seats: string[]) => void, seatKey: string): void {
+  useEffect(() => { if (seatKey) arrive(seatKey.split(' ')); }, [seatKey, arrive]);
+}
+
+/** Someone you pinned leaves: their pin waits, and comes back with them. Both are said, by the name they had here (`seatName`). */
+export function usePinsWait({ seatKey, pinKey, seatName, toast }: { seatKey: string; pinKey: string; seatName: (seat: string) => string; toast: ReturnType<typeof useToast> }): void {
+  const pinsHere = useRef<{ here: string[]; away: string[] } | null>(null);
+  useEffect(() => {
+    const here = new Set(seatKey.split(' '));
+    const pins = pinKey ? pinKey.split(' ') : [];
+    const was = pinsHere.current;
+    pinsHere.current = { here: pins.filter((s) => here.has(s)), away: pins.filter((s) => !here.has(s)) };
+    if (!was) return;
+    for (const s of was.here) if (pins.includes(s) && !here.has(s)) toast(`${seatName(s)} left. They’re pinned again if they come back.`, { icon: 'pin' });
+    for (const s of was.away) if (pins.includes(s) && here.has(s)) toast(`${seatName(s)} is back, pinned for you`, { icon: 'pin' });
+  }, [seatKey, pinKey, toast]);
+}
+
+/**
+ * Your view of the call as you change it: pins, where you see yourself and Reset layout, each said with a way back. Names by seat,
+ * seen in this call, so a toast can name someone you pinned after they've gone (kept in memory only). While the organizer's stage
+ * shows every room, their own view waits (`held`); in a room, it's their view as ever. A view of your own (`custom`) is said once
+ * (`onCustom`), and More offers Reset layout. Someone you pinned leaves: their pin waits, and comes back with them.
+ */
+export function useYourView({ view, seats, seatKey, held, toast }: {
+  view: CallView;
+  /** Everyone the call names, by seat. */
+  seats: readonly { seat: string; person: Person }[];
+  seatKey: string;
+  held: boolean;
+  toast: ReturnType<typeof useToast>;
+}) {
+  const seated = useRef(new Map<string, Person>());
+  for (const p of seats) seated.current.set(p.seat, p.person);
+  const seatName = (seat: string) => callName(seated.current.get(seat) ?? SOMEONE);
+  const setPin = (p: { seat: string; person: Person }) => {
+    const was = view.layout.pins.includes(p.seat);
+    if (!view.togglePin(p.seat, new Set(seatKey.split(' ')))) { toast(`You can pin up to ${CALL_LAYOUT_MAX.pins} people. Unpin someone first.`, { icon: 'pin' }); return; }
+    toast(was ? `${callName(p.person)} is unpinned` : `${callName(p.person)} is pinned for you. Only your view changes.`, { icon: was ? 'pinOff' : 'pin' });
+  };
+  const unpinAll = () => {
+    const was = view.layout.pins;
+    const first = was[0];
+    if (first === undefined) return;
+    view.setPins([]);
+    toast(was.length === 1 ? `${seatName(first)} is unpinned` : 'Everyone you pinned is unpinned', { icon: 'pinOff', action: { label: 'Undo', onClick: () => view.setPins(was) } });
+  };
+  const undoable = (text: string, icon: 'reset', was: ViewSnapshot) => toast(text, { icon, action: { label: 'Undo', onClick: () => view.restore(was) } });
+  const setSelf = (where: SelfView) => {
+    view.setSelf(where);
+    toast(where === 'hidden' ? 'You’re hidden from your own view. Everyone else still sees you.' : where === 'corner' ? 'You see yourself in a corner' : 'You see yourself in the grid',
+      { icon: where === 'hidden' ? 'eyeOff' : 'eye' });
+  };
+  const custom = isCustom(view.layout, view.panels);
+  const holds = () => { if (held) { toast('Your view comes back in a room, or when the rooms close', { icon: 'door' }); return true; } return false; };
+  const reset = () => { if (!holds()) undoable('Your view is back to the call’s layout', 'reset', view.reset()); };
+  const hinted = useRef(false);
+  const onCustom = () => { if (!hinted.current) { hinted.current = true; toast('Only your view changes. Reset layout, in More, puts it back.', { icon: 'eye' }); } };
+  usePinsWait({ seatKey, pinKey: view.layout.pins.join(' '), seatName, toast });
+  return { setPin, unpinAll, setSelf, custom, holds, reset, onCustom };
+}

@@ -2,9 +2,9 @@ import { AlcoveApiError, errorCode } from '@alcove/api';
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
 import { createRouter } from '@tanstack/react-router';
 import { RouteError } from './features/shell/OfflinePage';
-import { watchDevice } from './lib/device';
+import { watchDevice } from './features/account/device';
 import { log } from './lib/log';
-import { qk } from './lib/queries';
+import { accountKeys } from './features/account/queryKeys';
 import { interactiveWrites } from './lib/queryWrites';
 import { routeTree } from './routeTree.gen';
 
@@ -14,7 +14,7 @@ export function getRouter() {
     // Failed requests are already logged by the API client with their request ID; this catches the rest.
     if (!(e instanceof AlcoveApiError)) log.error('query or mutation failed', { err: e });
     if (errorCode(e) !== 'unauthenticated') return;
-    queryClient.setQueryData(qk.session, null);
+    queryClient.setQueryData(accountKeys.session, null);
     if (!router.state.location.pathname.startsWith('/welcome')) void router.navigate({ to: '/welcome' });
   };
   const queryClient: QueryClient = new QueryClient({

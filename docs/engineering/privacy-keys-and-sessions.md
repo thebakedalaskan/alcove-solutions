@@ -29,7 +29,7 @@ a security boundary: any code can reach `cfg.KMASTER`.
 
 **Sign-in is real only for Google.** Google sign-in is OpenID Connect with checked ID tokens and verified
 emails ([Accounts and sign-in](#accounts-and-sign-in)). Microsoft and single sign-on are still stand-ins in
-`apps/api/src/demo.ts`: Microsoft always signs in Art Vandelay, and SSO signs in whoever's work email is
+`apps/api/src/features/account/demo.ts`: Microsoft always signs in Art Vandelay, and SSO signs in whoever's work email is
 typed. Nothing checks those addresses, so SSO accepts only addresses no real person can have: domains
 reserved for examples (`example.com`, `.net` and `.org`, and anything under `.example`, `.test`,
 `.invalid` or `.localhost`) and the demo company's `vandelay.industries`. Any other address is refused, so
@@ -175,7 +175,7 @@ The hash is deterministic, so equal values show the same person across rows and 
 
 ## Accounts and sign-in
 
-1. **Sign in with Google** (`apps/api/src/google.ts`). `GET /v1/auth/google` redirects to Google's
+1. **Sign in with Google** (`apps/api/src/providers/google.ts`). `GET /v1/auth/google` redirects to Google's
    authorization endpoint, found by OpenID discovery, with a fresh `state`, `nonce` and PKCE verifier (an
    S256 challenge), the scopes `openid email profile` and `prompt=select_account`. Google sends the browser
    back to `GET /v1/auth/google/callback` (`$API_URL/v1/auth/google/callback`). The server deletes the
@@ -207,7 +207,7 @@ The hash is deterministic, so equal values show the same person across rows and 
    Signed in from the welcome page, Home opens by sailing out of the welcome page's cove: as a way in is pressed, where the
    cove stood on screen waits in that tab's sessionStorage (`alcove.sail-out`, `SailOutStoredSchema`: a time and geometry,
    no names, nothing typed) for ten minutes at most, and Home takes it once.
-4. **Every request opens the account's keys** (`openOwner` in `apps/api/src/owners.ts`): it reads
+4. **Every request opens the account's keys** (`openOwner` in `apps/api/src/keys/owners.ts`): it reads
    `root_envelope_v2`, `root_envelope` and `root_check`, unwraps `Kowner` and checks the root check (`IntegrityError`
    on a mismatch), and derives `Kwrap`. Inside a TEE it unwraps `root_envelope_v2` under `KMASTER`. An account with only
    `root_envelope`, made before the TEE, opens under the old master while one is held, after the same check, and so does
@@ -347,7 +347,7 @@ transcript or meeting. See [Agents and MCP](agents-and-mcp.md) for the complete 
   as it does for a connection from before that scope was asked for, which still reads its own events. With no
   calendar connected, your own calls are all there is and everyone is null. The answer goes to the browser and
   nowhere else: nothing is stored, it keeps no receipt ([Requests](#requests)), and logs have how many people and
-  how many were readable, never who or when. Demo accounts read a made-up week from `apps/api/src/demo.ts`, the same
+  how many were readable, never who or when. Demo accounts read a made-up week from `apps/api/src/features/meetings/demo-week.ts`, the same
   on every read: the company's for anyone at it, in working hours where the browser says it is, and null for
   anyone outside it.
 - **Never logged:** ID tokens, refresh and access tokens, Google's error descriptions, and Google's event IDs
@@ -496,7 +496,7 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   the organizer leaves the team, until they say otherwise; the row goes with the note (it cascades from the item), with
   the organizer's account, and with the team.
 - **By a link.** Anyone who can read a call's notes can make a link to them once the call has ended or the recording has
-  stopped (`POST /v1/notes/:id/links`, `apps/api/src/features/notes/links.ts`). The link reads nothing by itself: opened
+  stopped (`POST /v1/notes/:id/links`, `apps/api/src/features/notes/links/links.ts`). The link reads nothing by itself: opened
   by an account that's signed in (`POST /v1/note-links/claim`, the secret in the body), it gives that account the notes
   as sharing by address does, with a `note_access` row with role `shared`, and the note's sealed `shared` list says who
   made the link, that it was a link, and when. So every reader is still an account the note lists ("By Priya's link" in
@@ -516,7 +516,7 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   out, been revoked or never was is `404 not-found`, all alike, so a guess learns nothing. Whoever it already gave the
   notes to keeps them. Everyone with the notes sees the links that still work, who made each and until when. Anyone else
   gets `404 not-found` for a note's links, as for the note.
-- **The check.** `locate` in `apps/api/src/features/notes/service.ts` looks in the caller's own vault first. Otherwise it
+- **The check.** `locate` in `apps/api/src/features/notes/access.ts` looks in the caller's own vault first. Otherwise it
   needs a `note_access` row for that note and the caller's email index, taken from their profile email; only
   then does it open the organizer's keys and read the note. The note, its audio, its progress stream, its
   follow-ups, asking about it and sharing all go through this check. Anyone else gets `404 not-found`, the
@@ -849,7 +849,7 @@ takes a token out of anything that quotes a file's URL, a browser's report of a 
 
 ### Brought to a call
 
-`features/workspaces/library.ts` shows what's in workspaces to people with calls, and `features/workspaces/access.ts` still
+`features/workspaces/library/library.ts` shows what's in workspaces to people with calls, and `features/workspaces/access.ts` still
 decides.
 
 - **The library** (`GET /v1/documents`) is what someone can bring: everything they can open with their account, by
@@ -1011,7 +1011,7 @@ loads.
   note's page as on screen (`alcove.onScreen.<noteId>`) stay inside this browser.
 - **Fonts** (Newsreader, Hanken Grotesk, IBM Plex Mono) are served from the app (`packages/ui/src/fonts`, OFL), not a
   font service, so no page load tells anyone else who's visiting.
-- **Google profile photos** come through the API: the app gets `/v1/photos/<token>` (`features/account/photos.ts`),
+- **Google profile photos** come through the API: the app gets `/v1/photos/<token>` (`features/profile/photos.ts`),
   where the token is the provider URL sealed under a key derived from `KMASTER`. It's stable, so the
   browser caches it, and only this server can read it. The API fetches the image from an allowed host
   (`PHOTO_HOSTS`), keeps it in memory for an hour and serves it only to signed-in browsers. Google sees
@@ -1260,7 +1260,7 @@ the object store stay outside: they hold only sealed records, opaque IDs and tim
 Calls' media is end-to-end encrypted between the browsers in the call; it reaches the VM only while notes are on, as the
 host's browser sends what it hears ([Production requirements](#production-requirements), 4).
 
-What's in the code (`apps/api/src/serverKeys.ts`, `config.ts`, `gcp.ts`, `tee.ts`, `start.ts` and `edge/`):
+What's in the code (`apps/api/src/keys/server-keys.ts`, `config.ts`, `gcp.ts`, `tee.ts`, `start.ts` and `edge/`):
 
 - **A master made in the TEE.** With `TEE=confidential-space`, the master is 32 random bytes made inside the
   workload the first time it starts on a database, wrapped by Cloud KMS under a key only attested builds can use,

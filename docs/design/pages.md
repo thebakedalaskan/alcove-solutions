@@ -9,7 +9,7 @@ Storybook (`apps/storybook`, `stories/pages/`); the board it was designed as is 
 
 ## The frame
 
-Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `packages/ui/src/styles/shell.css`).
+Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `packages/ui/src/shell/shell.css`).
 
 - **The side panel**, on the left, is dark in both themes, in two groups: your work at the top, and who works with you
   at the foot. Board: [canvas/side-panel](canvas/side-panel/README.md). From the top:
@@ -48,7 +48,7 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
 - **The page** scrolls under a rounded edge. Search ("Search or ask", ⌘K opens the palette) and you (your arch, which opens
   your menu) sit at its top right on every page, outside the page itself, so moving between pages leaves them alone. A page's
   title sits at its top left, in the same place on every page, and keeps clear of them with `--top-room`.
-- **Your menu** (`features/shell/YouMenu.tsx`, the `You*` parts in `components/you.tsx`, `styles/you.css` (`ym-`)). Canvas:
+- **Your menu** (`features/account/YouMenu.tsx`, the `You*` parts in `you/you.tsx`, `you/you.css` (`ym-`)). Canvas:
   [you-menu](canvas/you-menu/README.md). A popover under your arch, aligned to its right edge with a caret, 312px wide:
   - At its top you stand on the horizon in the last of the light, Settings' own moment in small, with your name and address
     beside you. It says whose account the rest is about, so Sign out never needs to.
@@ -64,7 +64,7 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
   A tab bar sits at the bottom: Home, Calls, Record (standing up out of the bar as a small night recorder with its red
   light), Drive and Team. You in the top bar open the same menu as a sheet from the bottom, with Settings in it, and Agents
   opens from Settings › Connections, so the bar keeps its five.
-- **The palette** (`features/shell/Palette.tsx` and `palette/`, the `Palette*` parts, `styles/palette.css` (`pal-`)).
+- **The palette** (`features/shell/Palette.tsx` and `palette/`, the `Palette*` parts, `palette/palette.css` (`pal-`)).
   Board: `Search.dc.html`. It's solid: an opaque window on `surface-raised` with a hairline, over a page dimmed and never
   blurred, and the field that opens it at the top right is solid too.
   - It finds what was said, not just the note. A result is a moment: who said it (their arch), their words with the match
@@ -89,7 +89,7 @@ A workspace full screen has a frame of its own in place of this one ([A workspac
 
 ## Home
 
-`routes/_app/home.tsx`, `features/home/`, `styles/home.css` (`hm-`). Moment: `home`. Boards: `Home.dc.html`, and the
+`routes/_app/home.tsx`, `features/home/`, `home/home.css` (`hm-`). Moment: `home`. Boards: `Home.dc.html`, and the
 water's own in [canvas/home/](canvas/home/README.md).
 
 Home is for starting a call and for what's yours. It's nearly all sky.
@@ -162,7 +162,7 @@ Home is for starting a call and for what's yours. It's nearly all sky.
 
 ## Calls
 
-`routes/_app/calls.index.tsx`, `features/calls/list/`, the kit in `components/calls.tsx`, `styles/calls.css` (`cs-`).
+`routes/_app/calls.index.tsx`, `features/calls/list/`, the kit in `calls/calls.tsx`, `calls/calls.css` (`cs-`).
 Moment: `calls`. Designed in [the Calls and Drive design](../superpowers/specs/2026-11-12-calls-and-drive-design.md).
 
 Every call, ahead and past, in one place. The sun has just set: a short band of sky, then a rail of places beside a sheet.
@@ -234,7 +234,7 @@ The page doesn't scroll; the rail and the sheet each do.
 
 `routes/_app/calls.$noteId.tsx` and `features/notes/` for a call that happened (`Call.tsx`, with `Stage.tsx`, `Line.tsx`,
 `Made.tsx`, `NotesPane.tsx`, `TranscriptPane.tsx` and `Download.tsx`); `routes/_app/calls.upcoming.$meetingId.tsx` and
-`features/calls/list/Upcoming.tsx` for a call ahead. `styles/note.css` (`cd-`, and `nd-l` for the kit's transcript line).
+`features/calls/list/Upcoming.tsx` for a call ahead. `notes/note.css` (`cd-`, and `nd-l` for the kit's transcript line).
 Moment: `note`. Board: `Call.dc.html`.
 
 Everything about one call, on a slim band of sky, in two halves: on the left the call itself, which never scrolls; on the
@@ -295,7 +295,7 @@ Change in the head opens the scheduler; More is the list's menu for a call ahead
 
 ## The Drive
 
-`routes/_app/drive.index.tsx`, `features/drive/`, `styles/drive.css` (`dv-`), with the kit's `FileCard` for every file.
+`routes/_app/drive.index.tsx`, `features/drive/`, `drive/drive.css` (`dv-`), with the kit's `FileCard` for every file.
 Moment: `drive`. Board: `Drive.dc.html` (the Calls and Drive canvas).
 
 Every workspace you're in and everything in them, from your calls and made on purpose. A slim band of evening, then the
@@ -352,8 +352,8 @@ its own page.
 ## A workspace, full screen
 
 `routes/_app/drive.$workspaceId*.tsx`, `features/workspace/` (`Frame.tsx`, `Side.tsx`, `Bar.tsx`, `Home.tsx`, `Origin.tsx`;
-the editor and the rest of the workspace as in a call), `components/workspace/frame.tsx`, `styles/workspace.css` (`wf-`)
-and `styles/workspace-editor.css`. Moment: `note`, on Home. Board: `Workspace.dc.html` (the Calls and Drive canvas).
+the editor and the rest of the workspace as in a call), `workspace/frame.tsx`, `workspace/workspace.css` (`wf-`)
+and `workspace/workspace-editor.css`. Moment: `note`, on Home. Board: `Workspace.dc.html` (the Calls and Drive canvas).
 
 Any workspace opens full screen in Alcove's own evening, not as a stock editor: a frame of its own in place of the app's
 (`_app.tsx` gives way, keeping its guards and hosts), its side panel beside the page and one bar over the page. The Drive's
@@ -391,7 +391,7 @@ Any workspace opens full screen in Alcove's own evening, not as a stock editor: 
 
 ## Team
 
-`routes/_app/team.tsx`, `features/team/`, `styles/team.css` (`tp-`). Moment: `team`. Board: `Team.dc.html`.
+`routes/_app/team.tsx`, `features/team/`, `team/team.css` (`tp-`). Moment: `team`. Board: `Team.dc.html`.
 
 The sun is low and to the left, behind the people.
 
@@ -413,7 +413,7 @@ The sun is low and to the left, behind the people.
   - **Not on Alcove yet** lists each person with their title and meetings coming up, and Invite, or Invited with Remind.
     "Invite all N" sits on the heading when more than one is left.
   - **Shared with groups** lists the notes shared with a group, who shared them and when.
-- **On a team** (`features/team/OnTeam.tsx`, the kit's `components/team-plan.tsx` and `styles/team-plan.css`): the team's
+- **On a team** (`features/team/OnTeam.tsx`, the kit's `plans/team-plan.tsx` and `plans/team-plan.css`): the team's
   name in the sky over how many are on it, and its people on the horizon, up to ten, each under their license, opening
   their popover as on a company's line (`PersonPop`). On the water, its people as rows (role and license on each:
   "Licensed until 12 Dec", "License ended", "Waiting for a license"), with Remove for the admin, asked in place under the
@@ -437,7 +437,7 @@ The sun is low and to the left, behind the people.
 
 ## Agents
 
-`routes/_app/agents.tsx`, `features/agents/`, `components/agents.tsx`, `styles/agents.css` (`ag-`). Moment: `agents`.
+`routes/_app/agents.tsx`, `features/agents/`, `agents/agents.tsx`, `agents/agents.css` (`ag-`). Moment: `agents`.
 Boards: `Agents.dc.html`, with every journey in `StepsAgents.dc.html`.
 
 Team's evening the other way round: the sun is low and to the right, just past the end of the line of agents.
@@ -490,7 +490,7 @@ Team's evening the other way round: the sun is low and to the right, just past t
 
 ## Record
 
-`routes/_app/record.tsx`, `routes/record.live.tsx`, `features/record/`, `styles/record.css` (`rec-`). Moment: `record`.
+`routes/_app/record.tsx`, `routes/record.live.tsx`, `features/record/`, `record/record.css` (`rec-`). Moment: `record`.
 Board: `Record.dc.html`.
 
 Night, in both themes, with the recorder for a sun. The page is scoped `.dark` and the document goes with it, so search, the
@@ -525,7 +525,7 @@ phone's bars and anything that opens stay night.
 
 ## Settings
 
-`routes/_app/settings.tsx`, `features/settings/`, `components/settings.tsx`, `styles/settings.css` (`set-`). Moment:
+`routes/_app/settings.tsx`, `features/settings/`, `settings/settings.tsx`, `settings/settings.css` (`set-`). Moment:
 `settings`. Board: `Settings.dc.html`.
 
 The last of the light, with you in it, then seven groups. Change one thing and leave.
@@ -580,7 +580,7 @@ The last of the light, with you in it, then seven groups. Change one thing and l
   team's Refund of its licenses asks. Then Payments (`SettingPayments`, `PaymentRow`): first what's on its way or needs a person, then
   the balance's latest changes, each with Receipt opening `PaymentReceipt`, paper in both themes and alone on the page when
   printed. Buying is checkout's, never this page's. Controls drop under their words on a phone. The code is
-  `features/settings/Plan.tsx`, with `features/plans/plan-state.ts`, which the side panel's foot and Plans share.
+  `features/settings/Plan.tsx`, with `features/plans/planState.ts`, which the side panel's foot and Plans share.
 - **Sign out** signs you out at once. Only when recordings haven't uploaded does it ask first: the sky grows to hold the
   question, it says they'll be deleted, and Stay signed in is the filled answer. Signing out (from here or your menu), the
   page holds until the welcome page replaces it in one step, rather than blanking or emptying first.
@@ -589,7 +589,7 @@ The last of the light, with you in it, then seven groups. Change one thing and l
 
 ## Plans
 
-`routes/_app/plans.tsx`, `features/plans/Plans.tsx`, `components/plans.tsx`, `styles/plans.css` (`pl-`). Moment: `plans`.
+`routes/_app/plans.tsx`, `features/plans/Plans.tsx`, `plans/plans.tsx`, `plans/plans.css` (`pl-`). Moment: `plans`.
 Board: `plans/Plans.dc.html`.
 
 The last of the sunset, with the plans on the water: a page you compare on, so mostly water.
@@ -629,7 +629,7 @@ The last of the sunset, with the plans on the water: a page you compare on, so m
 ## Checkout
 
 `features/plans/checkout.tsx` (who opens it, and with what), `features/plans/CheckoutHost.tsx` (the window, from choosing to
-bought), `features/plans/purchase.ts`, `components/checkout.tsx`, `styles/checkout.css` (`ck-`). Boards:
+bought), `features/plans/purchase.ts`, `plans/checkout.tsx`, `plans/checkout.css` (`ck-`). Boards:
 `plans/Checkout.dc.html`, `plans/PayMotion.dc.html`.
 
 One window over any page, a call included, where it opens in your own theme: at most 944×672, the step on the left and what
@@ -669,19 +669,19 @@ you're buying on the right, under its own small evening (`PlanWindow`) whose sun
 
 ## Connecting an agent
 
-`routes/connect.tsx`, `AgentConsentFrame` in `components/agents.tsx`, `styles/agents.css` (`ac-agent-`). Where an agent
+`routes/connect.tsx` and `features/agents/ConnectPage.tsx`, `AgentConsentFrame` in `agents/agents.tsx`, `agents/agents.css` (`ac-agent-`). Where an agent
 sends you to let it in, with its request. Signed in, it hands over to Agents at once (`/agents?request=…`, in its place),
 and Agents asks on its sky (see [Agents](#agents)). Signed out, it's one quiet sheet on the theme's ground with the mark
 above it: Sign in to connect your agent and the ways in, and then Agents asks. No request, and checking the sign-in or
-failing to, use the same sheet. Storybook records its states under **Pages / Connect an agent**, and the journeys under
+failing to, use the same sheet. Storybook records its states under **Pages / Agents / Connect an agent**, and the journeys under
 **Journeys / 14 Agent access**; it has no board of its own on the canvas.
 
 
 ## Starting and scheduling a call
 
-`features/calls/flow/` (Start a call, in `styles/flow.css`, `cf-`) and `features/calls/scheduling/` (the scheduler, on
-the Calls page), drawing the editor's parts in `components/scheduler.tsx` (`styles/scheduler.css`, `sc-`) and the week in
-`components/calls-week.tsx` (`styles/calls-week.css`, `cw-`), with the lobby and ringing in `styles/ringing.css` (`rg-`).
+`features/calls/flow/` (Start a call, in `calls/flow.css`, `cf-`) and `features/calls/scheduling/` (the scheduler, on
+the Calls page), drawing the editor's parts in `calls/scheduler.tsx` (`calls/scheduler.css`, `sc-`) and the week in
+`calls/calls-week.tsx` (`calls/calls-week.css`, `cw-`), with the lobby and ringing in `calls/ringing.css` (`rg-`).
 Scheduling is designed in [Scheduling a call, rethought](../superpowers/specs/2026-11-13-scheduling-rethought-design.md).
 Boards: [canvas/scheduling/](canvas/scheduling/README.md).
 
@@ -740,8 +740,8 @@ to.
 
 ## A call
 
-`routes/call.$code.tsx`, `features/call/` (the shell in `layout/`), `styles/call.css`, styled with `ic-` classes, Chat in
-`styles/call-chat.css` (`ch-`), and Notes in `styles/call-notes.css` (`nn-`, and `nk-` for what's captured). Boards:
+`routes/call.$code.tsx`, `features/call/` (the shell in `layout/`), `call/call.css`, styled with `ic-` classes, Chat in
+`call/call-chat.css` (`ch-`), and Notes in `call/call-notes.css` (`nn-`, and `nk-` for what's captured). Boards:
 [canvas/call/](canvas/call/README.md), and Notes' own in [canvas/notes/](canvas/notes/README.md).
 
 Always night, in both themes, on the stage tokens, except your side, which takes your theme. People are in arches, never
@@ -856,8 +856,8 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
 
 ## After the call
 
-`features/call/session/CallOver.tsx` (Rejoin in `rejoin.ts`), drawing `components/call-over.tsx` and
-`styles/call-over.css` (`co-`). Moment: `after`. Boards: [canvas/after/](canvas/after/README.md).
+`features/call/session/CallOver.tsx` (Rejoin in `rejoin.ts`), drawing `call/call-over.tsx` and
+`call/call-over.css` (`co-`). Moment: `after`. Boards: [canvas/after/](canvas/after/README.md).
 
 When a call is over for you, its own page takes the call's place, on the call's night: the welcome page's cove after dark
 (`Cove`, seed 17), in both themes, with stars, a crescent moon high on the right and a rose glow on the horizon, its light
@@ -894,8 +894,8 @@ top right, but no Home link, since Go to Home is one of its buttons.
 
 ## A board
 
-`features/workspace/BoardPane.tsx`, beside the list, drawing `features/board/` (`BoardSurface`, `mode` `page`, `pageRead`
-for someone who can only look, or `pagePhone` on a phone), `styles/board.css` (`bz-`, `bd-`, `bp`, `bpg-`). The board was
+`features/workspace/document/BoardPane.tsx`, beside the list, drawing `features/board/` (`BoardSurface`, `mode` `page`, `pageRead`
+for someone who can only look, or `pagePhone` on a phone), `board/board.css` (`bz-`, `bd-`, `bp`, `bpg-`). The board was
 designed as the whiteboards canvas's page and its States board, and on a phone as its phone board.
 
 - The board fills where a document would be, on the ground, under the workspace's head, which says where it is (the
@@ -916,8 +916,8 @@ designed as the whiteboards canvas's page and its States board, and on a phone a
 
 ## Welcome
 
-`routes/welcome.tsx`, `features/welcome/`, `styles/welcome.css` and its scenes' `welcome-*.css` (`lp-`), with the cove in
-`components/cove.tsx` and `styles/cove.css` (`cv-`). It has no board on the canvas.
+`routes/welcome.tsx`, `features/welcome/`, `welcome/welcome.css` and its scenes' `welcome-*.css` (`lp-`), with the cove in
+`evening/cove.tsx` and `evening/cove.css` (`cv-`). It has no board on the canvas.
 
 Signed out, before anything else: what Alcove is, told as one evening on the app's own scene. Each part is a `Sky`
 (`features/welcome/Sky.tsx`): the evening behind it, a sky as tall as what stands on it, and the water under the horizon.
@@ -968,8 +968,8 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
 - **The last ask** is morning on the same sea, in a cove of its own (seed 11): the sun comes up as the page reaches it.
   The footer sits on the water.
 - **Signing in sails out of the cove to Home.** Every way in on the page keeps where the hero's cove stands on screen as
-  it's pressed (`lib/sailOut.ts`), across the trip to Google and back, and Home plays it once as it opens (`SailOut`,
-  `features/home/SailOut.tsx`), in about three and a half seconds (onto the plans instead while they're up in Home's place,
+  it's pressed (`features/onboarding/sailOut.ts`), across the trip to Google and back, and Home plays it once as it opens (`SailOut`,
+  `features/onboarding/SailOutHere.tsx`), in about three and a half seconds (onto the plans instead while they're up in Home's place,
   whose sun is the last sliver, so the sun eases down to it):
   1. the cove comes in where it was, its sun where it was, lifted or setting
   2. the headlands go by on either side, nearest first, and the bay's ripples slide away
@@ -985,8 +985,8 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
 
 ## A new account's way in: the arrival and the tour
 
-`features/onboarding/` (`Arrival.tsx`, `Tour.tsx` and `art.tsx`), with `TourDialog` in `components/guidance.tsx` and
-`styles/onboarding.css` (`cr-` for the account being created, `ta-` for the tour's art). Canvas:
+`features/onboarding/` (`Arrival.tsx`, `Tour.tsx` and `art.tsx`), with `TourDialog` in `onboarding/guidance.tsx` and
+`onboarding/onboarding.css` (`cr-` for the account being created, `ta-` for the tour's art). Canvas:
 [onboarding](canvas/onboarding/README.md).
 
 - **The arrival** is always night. One arch draws itself, dawn fills it and the sun rises while what came with the account
@@ -1006,10 +1006,10 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
 ## Not yet on the canvas
 
 These screens follow the same rules but have no section here and no board yet:
-- the join screen (`routes/join.$code.tsx`) and the organizer's lobby
+- the join screen (`routes/join.$code.tsx`, `features/calls/lobby/JoinPage.tsx`) and the organizer's lobby
 - a guest picking a time (`features/calls/scheduling/PickTime.tsx`)
-- sign-in's other ways in, on the join and move pages (`features/welcome/WaysIn.tsx`)
-- moving a call to another device (`routes/move.tsx`)
+- sign-in's other ways in, on the join and move pages (`features/account/WaysIn.tsx`)
+- moving a call to another device (`routes/move.tsx`, `features/move/MovePage.tsx`)
 - the offline page (`features/shell/OfflinePage.tsx`)
 
 Redesign one the way the pages above were, with a board and its journeys (see [canvas.md](canvas.md)).

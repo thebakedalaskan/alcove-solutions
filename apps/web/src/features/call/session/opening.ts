@@ -5,7 +5,7 @@
  * everyone. A reload in between forgets it.
  */
 import { useEffect } from 'react';
-import type { BoardToOpen } from '~/features/shell/context';
+import type { BoardToOpen } from '~/features/calls/flow/context';
 
 /** By the call's code. */
 const asked = new Map<string, BoardToOpen>();

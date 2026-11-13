@@ -4,7 +4,8 @@
  * each is asked for once per language. Turning captions off only hides them: the call is still
  * transcribed for notes while notes are on.
  */
-import type { CallSession, CaptionLanguage, TranscriptLine } from '@alcove/api';
+import { CAPTION_LANGUAGES, type CallSession, type CaptionLanguage, type TranscriptLine } from '@alcove/api';
+import type { useToast } from '@alcove/ui';
 import { useEffect, useRef, useState } from 'react';
 import { log } from '~/lib/log';
 
@@ -42,3 +43,25 @@ export function useCaptions(session: CallSession, lines: TranscriptLine[], langu
   const t = language ? cache.current.get(`${language}:${last.id}`) : undefined;
   return { line: last, text: t ?? last.text, translated: t !== undefined && t !== last.text, arrived: arrived.current.get(last.id) ?? Date.now() };
 }
+
+/**
+ * Captions in the call, for you alone: whether they're on (`on`, turned on or off by `flip`, which says so), in which language
+ * (`pick`, which says so too), and the line they show now. They show the lines of the part of the call you're in, while it's live.
+ */
+export function useCallCaptions({ session, lines, live, toast }: { session: CallSession; lines: TranscriptLine[]; live: boolean; toast: ReturnType<typeof useToast> }) {
+  const [cc, setCc] = useState(false);
+  const [lang, setLang] = useState<CaptionLanguage | null>(null);
+  const caption = useCaptions(session, lines, lang, cc && live);
+  const flip = () => {
+    const v = !cc;
+    setCc(v);
+    toast(v ? `Captions on${lang ? `, in ${CAPTION_LANGUAGES.find((x) => x.code === lang)?.english ?? lang}` : ''}` : 'Captions off. The call is still transcribed for notes.', { icon: 'captions' });
+  };
+  const pick = (code: CaptionLanguage | null) => {
+    setLang(code);
+    const info = CAPTION_LANGUAGES.find((x) => x.code === code);
+    toast(code ? `Captions in ${info?.english ?? code} for you` : 'Captions as they’re spoken', { icon: 'translate' });
+  };
+  return { on: cc, language: lang, caption, flip, pick };
+}
+export type CallCaptions = ReturnType<typeof useCallCaptions>;

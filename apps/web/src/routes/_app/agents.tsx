@@ -17,7 +17,8 @@ import { lineOf, OTHER_KEY, sunOf } from '~/features/agents/line';
 import { useAgentsLine } from '~/features/agents/open';
 import { OnTheWater } from '~/features/agents/Water';
 import { useNow, useOnline } from '~/lib/live';
-import { q } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { agentQueries } from '~/features/agents/queries';
 
 export const Route = createFileRoute('/_app/agents')({
   /** `request`: an agent's request to use your Alcove, sent here from `/connect` when you're signed in. */
@@ -31,9 +32,9 @@ export const Route = createFileRoute('/_app/agents')({
    */
   loader: async ({ context: { queryClient: qc } }) => {
     if (!navigator.onLine) return;
-    void qc.prefetchQuery(q.agentEndpoint());
+    void qc.prefetchQuery(agentQueries.agentEndpoint());
     await Promise.race([
-      Promise.allSettled([qc.ensureQueryData(q.agents()), qc.ensureInfiniteQueryData(q.agentActivity())]),
+      Promise.allSettled([qc.ensureQueryData(agentQueries.agents()), qc.ensureInfiniteQueryData(agentQueries.agentActivity())]),
       new Promise((r) => setTimeout(r, 1200))
     ]);
   },
@@ -47,7 +48,7 @@ function AgentsPage() {
   const { request } = Route.useSearch();
   const navigate = useNavigate();
   const toast = useToast();
-  const session = useQuery(q.session()).data;
+  const session = useQuery(accountQueries.session()).data;
   const online = useOnline();
   const now = useNow(60_000);
   const line = useAgentsLine();

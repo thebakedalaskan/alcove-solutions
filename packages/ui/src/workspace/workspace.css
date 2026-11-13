@@ -1,0 +1,643 @@
+/*
+ * The workspace: documents and folders beside a page, in a call and in the app. It follows the person's theme in the
+ * app, and in a call it's night like the rest of the call. Classes: ws- the pane and what floats over the call, wt- the list, wd- a document, wm- menus,
+ * wv- popovers, wp- presenting, wh- history, wl- the call's live pages. A document's blocks and the editor's menus are
+ * in workspace-editor.css; the call's frame, tiles and panels in call.css. On a phone (640px and under) popovers become
+ * sheets and the list goes full width, by themselves: nothing has to say so.
+ */
+.wd-stop kbd { font-family: var(--font-sans); }
+:where(.ws-pane, .ws-pop, .ws-play, .ws-toasts, .ws-ghost, .ws-kbar) .ac-i { flex: none; display: block; }
+.wt-in:focus-visible, .wv-fi:focus-visible, .wm-in:focus-visible, .wl-add input:focus-visible, .wl-find input:focus-visible, .wv-f input:focus-visible { outline: none; }
+
+@keyframes ws-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@keyframes ws-flash { 0%, 30% { background: var(--horizon-soft); } 100% { background: transparent; } }
+@keyframes ws-line-flash { 0%, 35% { background: var(--horizon-soft); box-shadow: 0 0 0 4px var(--horizon-soft); } 100% { background: transparent; box-shadow: 0 0 0 4px transparent; } }
+@keyframes ws-pop { from { opacity: 0; transform: translateY(4px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes ws-sheet { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes ws-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ws-side { from { transform: translateX(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.ws-dots { gap: 3px; }
+.ws-dots i { width: 4px; height: 4px; animation: ws-pulse 1s infinite; }
+
+/* ------------------------------------------------------------ the pane */
+.ws-pane { container: ws-pane / inline-size; position: relative; display: flex; width: 100%; height: 100%; min-width: 0; min-height: 0; border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); overflow: hidden; font: 400 15px/22px var(--font-sans); transition: box-shadow var(--duration-2) var(--ease-out); }
+.ws-pane.is-follow { box-shadow: 0 0 0 2px var(--speak), var(--shadow-2); transition-duration: var(--duration-3); }
+
+/* ------------------------------------------------------------ the list */
+/* The list takes more of a wide pane, so a workspace's name has room to say itself. */
+.wt { --wt-w: 244px; flex: none; width: var(--wt-w); display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: color-mix(in srgb, var(--sunk) 38%, var(--surface)); transition: margin-left var(--duration-2) var(--ease-out), visibility 0s; }
+@container ws-pane (min-width: 900px) { .wt { --wt-w: 264px; } }
+@container ws-pane (min-width: 1100px) { .wt { --wt-w: 292px; } }
+.ws-pane.tree-off .wt { margin-left: calc(-1 * var(--wt-w)); visibility: hidden; transition: margin-left var(--duration-2) var(--ease-out), visibility 0s linear var(--duration-2); }
+.ws-pane.tree-off.list-peek .wt { position: absolute; z-index: 6; left: 0; top: 0; bottom: 0; margin-left: 0; visibility: visible; box-shadow: var(--shadow-3); transition: none; }
+.wt-head { flex: none; display: flex; align-items: center; gap: 2px; height: 52px; padding: 0 8px; }
+.wt-name-save { flex: none; max-width: 76px; font: 500 11px/14px var(--font-sans); color: var(--ink-2); }
+.wt-name-save.is-failed { color: var(--caution); }
+/* The list's own connection dropped: under its head, in the words a document's head uses. */
+.wt-off { flex: none; display: flex; align-items: center; gap: 6px; min-height: 28px; margin: -6px 8px 4px; padding: 0 8px; border-radius: var(--radius-sm); background: var(--caution-soft); color: var(--caution); font: 500 12px/1.2 var(--font-sans); }
+.wt-off > span { flex: 1; min-width: 0; }
+.wt-off button { flex: none; padding: 3px 6px; margin-right: -4px; border-radius: var(--radius-sm); color: inherit; font-weight: 600; }
+.wt-off button:hover { background: color-mix(in srgb, var(--caution) 12%, transparent); }
+.wt-space { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 6px; border-radius: 10px; color: var(--ink-3); transition: background-color var(--duration-1); }
+.wt-space:hover, .wt-space[data-state="open"] { background: var(--sunk); }
+.wt-space.is-edit, .wt-space.is-edit:hover { gap: 8px; background: var(--sunk); padding-right: 8px; }
+.wt-space .n { text-align: left; font: 600 14px/18px var(--font-sans); color: var(--ink); }
+.wt-mark { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--horizon-soft); color: var(--horizon); }
+.wt-ib { width: 30px; height: 30px; border-radius: 8px; color: var(--ink-3); }
+/* In a call the frame's bar names the workspace: the list's top is Find, as wide as there's room for, and New beside it. */
+.wt-head.is-tools { gap: 6px; padding: 0 8px 0 10px; }
+.wt-find { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 6px 0 9px; border-radius: 9px; background: var(--sunk); color: var(--ink-3); font: 500 13px/1 var(--font-sans); text-align: left; transition: background-color var(--duration-1), color var(--duration-1); }
+.wt-find:hover { background: color-mix(in srgb, var(--ink) 6%, var(--sunk)); color: var(--ink-2); }
+.wt-find .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wt-find .ac-kbd { flex: none; }
+.wt-scroll { position: relative; flex: 1; min-height: 0; overflow: auto; padding: 0 8px 12px; scrollbar-width: thin; }
+.wt-scroll:first-child { padding-top: 6px; }
+.wt-sec { padding: 12px 8px 6px; border-radius: 8px; font: 500 12px/1 var(--font-sans); color: var(--ink-3); user-select: none; }
+.wt-sec.is-into { background: var(--horizon-soft); color: var(--horizon); }
+.wt-r { position: relative; display: flex; align-items: center; height: 32px; padding-left: calc(var(--d) * 16px); border-radius: 9px; color: var(--ink-2); user-select: none; transition: background-color var(--duration-1); }
+.wt-r:hover { background: var(--sunk); }
+.wt-r.is-cur { background: var(--sunk); color: var(--ink); }
+.wt-r.is-into { background: var(--horizon-soft); color: var(--horizon); box-shadow: inset 0 0 0 1.5px var(--horizon); }
+.wt-r.is-flash { animation: ws-flash 1.4s var(--ease-out); }
+/* The keyboard's ring goes round the row, with the buttons that show on it. */
+.wt-r:has(.wt-open:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; }
+.wt-open:focus-visible { outline: none; }
+.wt-tw { flex: none; display: grid; place-items: center; width: 20px; height: 32px; color: var(--ink-3); transition: transform var(--duration-1) var(--ease-out); }
+.wt-tw.is-open { transform: rotate(90deg); }
+.wt-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 4px 0 0; text-align: left; font: 500 13.5px/1 var(--font-sans); color: inherit; }
+.wt-r:not(:has(.wt-tw)) .wt-open { padding-left: 8px; }
+.wt-r[data-area="tree"]:not(:has(.wt-tw)) .wt-open, .wt-scroll.is-aligned .wt-r:not(:has(.wt-tw)) .wt-open { padding-left: 20px; }
+.wt-open .ac-i { color: var(--ink-3); }
+.wt-open .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
+.wt-c { flex: none; margin-left: auto; padding: 2px 6px; border-radius: 6px; background: var(--sunk); color: var(--ink-3); font: 500 11.5px/1.1 var(--font-sans); font-variant-numeric: tabular-nums; }
+.wt-r.is-live .wt-open .ac-i { color: var(--rec); }
+.wt-r.is-live.is-quiet .wt-open .ac-i { color: var(--ink-3); }
+.wt-f { flex: none; display: inline-flex; padding: 0 6px 0 0; border-radius: 6px; }
+.wt-f .ac-faces .ac-avatar { --ring: var(--surface); }
+/* Collapsed rather than display: none, which would make them unfocusable the moment focus leaves the row's other controls. */
+.wt-acts { flex: none; display: inline-flex; align-items: center; width: 0; overflow: hidden; }
+.wt-r:hover .wt-acts, .wt-r:has(:focus-visible) .wt-acts, .wt-r.is-menu .wt-acts { width: auto; padding-right: 3px; overflow: visible; }
+.wt-a { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; color: var(--ink-3); }
+.wt-a:hover { background: var(--line); color: var(--ink); }
+.wt-r.is-edit { display: flex; gap: 8px; padding-right: 6px; padding-left: calc(var(--d) * 16px + 20px); background: var(--sunk); color: var(--ink-3); }
+.wt-in { flex: 1; min-width: 0; height: 26px; border: 0; padding: 0; background: transparent; color: var(--ink); font: 500 13.5px/1 var(--font-sans); outline: none; }
+.wt-in::placeholder { color: var(--ink-3); }
+.wt-line { position: absolute; right: 8px; height: 2px; margin-top: -1px; background: var(--horizon); border-radius: 2px; pointer-events: none; }
+.wt-line::before { content: ""; position: absolute; left: -3px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--surface); box-shadow: inset 0 0 0 2px var(--horizon); }
+.wt-empty { padding: 10px 14px; font-size: 13px; line-height: 1.4; color: var(--ink-3); }
+.wt-bin { flex: none; padding: 0 8px 6px; }
+.wt-trash { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 8px; border-radius: 9px; color: var(--ink-3); font: 500 13px/1 var(--font-sans); transition: background-color var(--duration-1), color var(--duration-1); }
+.wt-trash:hover, .wt-trash.is-cur { background: var(--sunk); color: var(--ink-2); }
+.wt-trash .n { min-width: 0; line-height: 1.3; }
+.wt-trash.is-into { background: var(--caution-soft); color: var(--caution); box-shadow: inset 0 0 0 1.5px var(--caution); }
+.wt-foot { flex: none; display: flex; align-items: center; gap: 7px; height: 38px; padding: 0 14px; border-top: 1px solid var(--line); color: var(--ink-3); font: 500 12px/1 var(--font-sans); white-space: nowrap; overflow: hidden; }
+.wt-foot .ac-i { color: var(--sun-text); }
+
+/* ------------------------------------------------------------ a document */
+.wd { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; background: var(--surface); container-type: inline-size; }
+.wd-head { flex: none; display: flex; align-items: center; gap: 6px; height: 52px; padding: 0 10px; }
+.wd-ib { width: 32px; height: 32px; color: var(--ink-3); }
+/* Laid out from the document back: a folder that doesn't fit whole wraps onto a line that's cut off, so nothing is ever squeezed to a letter. */
+.wd-crumbs { flex: 1; min-width: 0; height: 17px; display: flex; flex-flow: row-reverse wrap; justify-content: flex-end; align-content: flex-start; align-items: center; gap: 4px; overflow: hidden; color: var(--ink-3); font: 500 13px/1 var(--font-sans); white-space: nowrap; }
+.wd-crumbs .cw { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
+/* A long path gives up its folders first: where you are stays readable. */
+.wd-crumbs .c { min-width: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
+.wd-crumbs .is-last .c { color: var(--ink); max-width: none; }
+.wd-save { flex: none; display: inline-flex; align-items: center; gap: 5px; margin-right: 4px; font: 500 12px/1 var(--font-sans); color: var(--ink-3); }
+.wd-save.is-offline, .wd-save.is-failed { color: var(--caution); }
+.wd-save.is-live { color: var(--rec); gap: 6px; }
+.wd-faces { flex: none; display: inline-flex; align-items: center; margin-right: 4px; }
+.wd-face { display: inline-flex; margin-left: -5px; border-radius: 8px; }
+.wd-face:first-child { margin-left: 0; }
+.wd-face .ac-avatar { --ring: var(--surface); }
+.wd-follow { flex: none; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 8px 0 14px; background: var(--horizon-soft); color: var(--horizon); font: 500 13.5px/1 var(--font-sans); }
+.wd-follow .t { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
+.wd-follow b { font-weight: 600; }
+.wd-follow .w { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .75; line-height: 1.3; }
+.wd-stop { flex: none; display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 6px 0 10px; border-radius: 8px; font: 600 13px/1 var(--font-sans); color: var(--horizon); }
+.wd-stop:hover { background: color-mix(in srgb, var(--horizon) 14%, transparent); }
+.wd-stop kbd { display: inline-grid; place-items: center; height: 20px; padding: 0 5px; border-radius: 5px; background: color-mix(in srgb, var(--horizon) 16%, transparent); font-size: 11px; }
+.wd-off, .wd-gone, .wd-ro { flex: none; display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 14px; font: 500 13.5px/1.3 var(--font-sans); }
+.wd-off, .wd-gone { background: var(--caution-soft); color: var(--caution); }
+.wd-off > span { flex: 1; min-width: 0; }
+.wd-off .ac-btn { flex: none; color: inherit; }
+.wd-gone span { flex: 1; min-width: 0; }
+.wd-ro { background: var(--sunk); color: var(--ink-2); }
+/* What didn't save says why, and what can be done with it beside that, under it when there's no room. */
+.wd-unsaved { flex-wrap: wrap; row-gap: 6px; }
+.wd-unsaved > .t { flex: 1 1 320px; min-width: 0; }
+.wd-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ac-empty-act .wd-acts { justify-content: center; }
+.wd-scroll { position: relative; flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; }
+.wd-page { max-width: 760px; margin: 0 auto; padding: 22px 72px 40px; }
+.wd-title { min-height: 44px; outline: none; font: 450 38px/1.14 var(--font-display); letter-spacing: -.02em; font-variation-settings: 'opsz' 40; color: var(--ink); word-break: break-word; }
+.wd-title:empty::before { content: attr(data-ph); color: var(--ink-3); opacity: .7; }
+.wd-by { display: flex; align-items: center; gap: 8px; font: 500 13px/1.2 var(--font-sans); color: var(--ink-2); }
+.wd-by .d { color: var(--ink-3); font-weight: 400; }
+.wd-blocks { position: relative; margin-top: 20px; }
+.wd-tail { display: block; width: 100%; height: 120px; cursor: text; }
+.wd-start { margin-top: 26px; display: grid; gap: 10px; }
+.wd-tpls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.wd-tpl { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); text-align: left; color: var(--ink-3); transition: background-color var(--duration-1), box-shadow var(--duration-1); }
+.wd-tpl:hover { background: var(--sunk); }
+.wd-tpl b { display: block; font: 600 14px/1.25 var(--font-sans); color: var(--ink); }
+.wd-tpl small { display: block; margin-top: 3px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
+.wd.is-bare > .wd-head { display: none; }
+.wd-none svg { animation: ws-fade var(--duration-3) var(--ease-out); }
+.wd-none { height: 100%; display: grid; align-content: center; justify-items: center; gap: 8px; padding: 32px; text-align: center; color: var(--ink-3); }
+.wd-none b { margin-top: 10px; font: 480 24px/1.2 var(--font-display); letter-spacing: -.015em; color: var(--ink); }
+.wd-none p { max-width: 34ch; font-size: 14.5px; line-height: 1.5; color: var(--ink-3); text-wrap: balance; }
+.wd-none .ac-empty-act { margin-top: 10px; flex-wrap: nowrap; gap: 8px; }
+
+.ws-dragging, .ws-dragging * { cursor: grabbing; }
+.ws-dragging .wt-acts { display: none; }
+
+/* ------------------------------------------------------------ popovers */
+.ws-pop { z-index: 60; border-radius: 16px; background: var(--surface-raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); outline: none; font: 400 15px/22px var(--font-sans); animation: ws-pop var(--duration-1) var(--ease-out); transform-origin: var(--radix-popover-content-transform-origin, top left); }
+.wm { width: 264px; padding: 6px; outline: none; }
+.wm-list { position: relative; max-height: 352px; overflow: auto; scrollbar-width: thin; }
+.wm-h { padding: 10px 10px 5px; font: 500 12px/1 var(--font-sans); color: var(--ink-3); }
+.wm-s { height: 1px; margin: 5px 8px; background: var(--line); }
+.wm-x { display: flex; align-items: center; gap: 6px; padding: 8px 10px; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
+.wm-r { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 5px 10px; border-radius: 10px; text-align: left; color: var(--ink); font: 500 14px/1.25 var(--font-sans); transition: background-color var(--duration-1); }
+/* A list highlights one row: the active one, which the keys move and the pointer makes by moving over it. A row on its own keeps a hover. */
+.wm-r.is-sel, .wm-list > .wm-r:focus, .wm-r:focus-visible, :not(.wm-list) > .wm-r:hover { background: var(--sunk); outline: none; }
+.wm-r .ac-i { color: var(--ink-2); }
+.wm-r .t { flex: 1; min-width: 0; }
+.wm-r .l { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wm-r small { display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12.5px/1.25 var(--font-sans); color: var(--ink-3); }
+.wm-r.is-caution, .wm-r.is-caution .ac-i { color: var(--caution); }
+.wm-r.is-on > .ac-i:last-child { color: var(--sun-text); }
+.wm-r.is-phone { display: none; }
+.wu { display: grid; gap: 8px; padding: 8px; }
+.wu .ac-eyebrow { margin-top: 4px; font-size: 11px; color: var(--ink-3); }
+.wu-g { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.wu-p { display: block; border-radius: 8px; overflow: hidden; }
+.wu-p img { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; }
+.wu-p:hover { outline: 2px solid var(--horizon); outline-offset: 1px; }
+/* A photo on its way, holding its place; the videos and files already in the workspace, as rows. */
+.wu-w { display: block; aspect-ratio: 3 / 2; background: var(--sunk); }
+.wu-f { display: grid; gap: 1px; margin: 0 -4px; }
+.wu-f .wm-r small { font-variant-numeric: tabular-nums; }
+.wm.is-upload { width: 268px; }
+.wm.is-role { width: max-content; min-width: 216px; max-width: 300px; }
+.wv-person { width: 264px; display: grid; gap: 8px; padding: 12px; }
+.wv-person .hd { display: flex; align-items: center; gap: 10px; }
+.wv-person .hd span { min-width: 0; overflow-wrap: anywhere; }
+.wv-person .hd b { display: block; font: 600 14.5px/1.25 var(--font-sans); }
+.wv-person .hd small { display: block; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
+.wv-person .ac-btn { width: 100%; }
+.wv-ask { width: 340px; padding: 12px; }
+.wv-ask .hd { display: flex; gap: 10px; align-items: flex-start; }
+.wv-ask p { min-width: 0; overflow-wrap: anywhere; font-size: 14px; line-height: 1.4; color: var(--ink-2); }
+.wv-ask b { color: var(--ink); font-weight: 600; }
+.wv-ask .ac, .wv-switch .ac { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.wv-cmt { width: 320px; padding: 10px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.wv-cmt .q { padding: 6px 8px; border-radius: 8px; background: var(--hl); font-size: 13px; line-height: 1.35; color: var(--ink-2); }
+.wv-cmt .in { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wv-cmt .in .wm-in { flex: 1; width: 0; }
+.wv-tags { order: -1; flex: 0 0 100%; max-height: 208px; margin: -2px 0 2px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.wv-tags .wm-h:first-child { padding-top: 2px; }
+.wn-w { color: var(--horizon); font-weight: 600; }
+.wm-in { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border: 0; border-radius: 10px; background: var(--sunk); color: var(--ink); font: 400 14px/1 var(--font-sans); outline: none; }
+.wm-in:focus { box-shadow: inset 0 0 0 2px var(--focus); }
+.wm-in::placeholder { color: var(--ink-3); }
+.ws-send { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--sun); color: var(--on-sun); }
+.wv-th { display: flex; align-items: center; gap: 8px; }
+.wv-th .q1 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 6px; border-radius: 6px; background: var(--hl); font-size: 13px; line-height: 1.4; color: var(--ink-2); }
+.wv-ms { display: grid; gap: 8px; max-height: min(320px, 50vh); overflow: auto; scrollbar-width: thin; }
+.wv-m { display: flex; gap: 8px; }
+.wv-m b { font: 600 13.5px/1.2 var(--font-sans); }
+.wv-m > div { min-width: 0; }
+.wv-m p { overflow-wrap: anywhere; font-size: 14px; line-height: 1.4; color: var(--ink-2); }
+.wv-share { width: 340px; padding: 12px; display: grid; gap: 8px; }
+.wv-h b { overflow-wrap: anywhere; font: 600 15px/1.2 var(--font-sans); }
+.wv-h p { margin-top: 4px; font-size: 12.5px; line-height: 1.4; color: var(--ink-2); }
+.wv-f { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; border-radius: 10px; background: var(--sunk); color: var(--ink-3); font-size: 14px; }
+.wv-f input { flex: 1; min-width: 0; height: 30px; border: 0; padding: 0; background: none; color: var(--ink); font: 400 14px/1 var(--font-sans); outline: none; }
+.wv-f input::placeholder { color: var(--ink-3); }
+.wv-f:focus-within { box-shadow: inset 0 0 0 2px var(--focus); }
+/* A person the field found lines up with the people under it, and its hover reaches past them. */
+.wv-share > .wm-r { width: calc(100% + 20px); margin: 0 -10px; }
+.wv-rows { display: grid; gap: 8px; max-height: 280px; overflow: auto; scrollbar-width: thin; }
+/* Whoever else is in the call, under the people: each list scrolls on its own, so neither hides the other. */
+.wv-rows:has(~ .wv-rows.is-call), .wv-rows.is-call { max-height: 196px; }
+.wv-pr { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.wv-pr .m { flex: 1; min-width: 0; }
+.wv-pr b { display: flex; align-items: center; gap: 6px; min-width: 0; font: 600 14px/1.25 var(--font-sans); }
+.wv-pr b .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A word after a name, such as Guest: information, so horizon. */
+.wv-tag { flex: none; height: 18px; padding: 0 6px; border-radius: 6px; background: var(--horizon-soft); color: var(--horizon); font: 600 11px/18px var(--font-sans); }
+.wv-pr small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
+.wv-pr .role { flex: none; display: inline-flex; align-items: center; gap: 3px; font: 500 13px/1 var(--font-sans); color: var(--ink-2); }
+.wv-pr button.role { border-radius: 6px; }
+.wv-pr button.role:hover { color: var(--ink); }
+.wv-sep { height: 1px; background: var(--line); }
+/* On a team's workspace: who's in it, under the sheet's title. */
+.wv-team { display: grid; gap: 6px; padding-bottom: 4px; }
+.wv-team > b { display: inline-flex; align-items: center; gap: 6px; font: 600 13.5px/1.2 var(--font-sans); color: var(--ink); }
+.wv-team > b .ac-i { color: var(--ink-2); }
+.wv-team > small { font-size: 12.5px; line-height: 1.35; color: var(--ink-3); }
+.wv-share .ac-eyebrow { font-size: 11px; color: var(--ink-3); }
+.wv-foot { display: flex; align-items: center; gap: 7px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
+.wv-foot .ac-i { color: var(--sun-text); }
+.wv-switch { width: 320px; padding: 14px; display: grid; gap: 6px; }
+/* Renaming the workspace, in place of the menu: as the people sheet is laid out, its heading over the field. */
+.wv-name { width: 340px; max-width: 100%; padding: 12px; display: grid; gap: 10px; }
+/* The question holds focus as it opens, for whoever reads it out; it isn't a control, so it draws no ring. */
+.wv-switch:focus { outline: none; }
+.wv-switch b { overflow-wrap: anywhere; font: 600 15px/1.25 var(--font-sans); }
+.wv-switch p { font-size: 13.5px; line-height: 1.42; color: var(--ink-2); }
+.wv-switch p.m { font-size: 12.5px; color: var(--ink-3); }
+/* The question takes the menu's place in the popover that's already open, so it pops in itself, 140 ms. */
+.ws-pop > .wv-switch { animation: ws-pop var(--duration-1) var(--ease-out); }
+.ws-scrim { position: fixed; inset: 0; z-index: 58; background: color-mix(in srgb, var(--stage) 34%, transparent); animation: ws-fade var(--duration-1) var(--ease-out); }
+.wv-find { position: fixed; left: 0; right: 0; top: 13vh; width: 520px; max-width: calc(100vw - 32px); margin: 0 auto; padding: 6px; }
+.wv-find .f { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 10px; border-bottom: 1px solid var(--line); margin-bottom: 4px; color: var(--ink-3); }
+.wv-fi { flex: 1; min-width: 0; height: 30px; padding: 1px 2px; border: 0; background: none; color: var(--ink); font: 400 15.5px/1 var(--font-sans); outline: none; }
+.wv-fi::placeholder { color: var(--ink-3); }
+.wv-more { justify-content: center; min-height: 34px; color: var(--ink-3); }
+.wv-said { width: 360px; max-width: 100%; max-height: min(420px, 60vh); padding: 6px; overflow: auto; scrollbar-width: thin; }
+.wv-said .answer { margin: 0; padding: 10px 10px 4px; animation: none; }
+.wv-said .answer p { font-size: 14.5px; line-height: 1.5; color: var(--ink); }
+/* Where it comes from, outside a call (features/workspace/find/Sources.tsx): each note once, with its moments, each opening it there. */
+.wv-src { margin: 12px -12px 0; padding: 6px 10px 2px; }
+.wv-src-h { padding: 14px 12px 6px; font: 500 12.5px/16px var(--font-sans); color: var(--ink-3); }
+.wv-src ul { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; margin: 0; padding: 0; list-style: none; }
+.wv-cite { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 12px; border-radius: 12px; }
+.wv-cite .t { min-width: 0; border-radius: 6px; }
+.wv-cite b { display: block; font: 600 14.5px/1.3 var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wv-cite small { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wv-cite .t:hover b { color: var(--sun-text); }
+.wv-cite .at { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 220px; }
+@media (max-width: 600px) {
+  .wv-cite { grid-template-columns: auto minmax(0, 1fr); }
+  .wv-cite .at { grid-column: 2; justify-content: flex-start; max-width: none; }
+}
+.wv-keyrow { margin: 4px 2px 0; padding-top: 4px; border-top: 1px solid var(--line); }
+.wv-keyrow .wm-r { min-height: 32px; color: var(--ink-3); }
+.wv-keys { position: fixed; left: 0; right: 0; top: 13vh; width: 1040px; max-width: calc(100vw - 32px); max-height: calc(100vh - 13vh - 16px); margin: 0 auto; overflow: auto; }
+.wv-keys-esc { position: absolute; top: 14px; right: 14px; }
+.ky { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 30px 40px; padding: 32px 36px; }
+.ky-g { display: grid; gap: 6px; align-content: start; }
+.ky-g h3 { margin: 0 0 6px; font: 500 12px/1 var(--font-sans); color: var(--ink-3); }
+.ky-r { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 30px; font-size: 14.5px; line-height: 1.25; }
+.ky-r kbd { flex: none; display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 6px; background: var(--surface); color: var(--ink-2); font: 500 12px/1 var(--font-mono); box-shadow: inset 0 0 0 1px var(--line), inset 0 -1px 0 var(--line); }
+.ky-note { grid-column: 1 / -1; font-size: 14px; line-height: 1.4; color: var(--ink-3); }
+.wv-switch .ac-btn { min-width: 0; max-width: 100%; }
+.ws-ghost { position: fixed; z-index: 65; display: inline-flex; align-items: center; gap: 7px; max-width: 280px; height: 32px; padding: 0 10px; border-radius: 9px; background: var(--surface-raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); font: 500 13.5px/1 var(--font-sans); pointer-events: none; rotate: -1.2deg; }
+.ws-ghost span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
+.ws-toasts { position: fixed; z-index: 70; left: 16px; bottom: 16px; display: grid; gap: 8px; justify-items: start; max-width: 300px; pointer-events: none; }
+.ac-toast.ws-toast { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 7px 8px 7px 14px; border-radius: var(--radius-lg); background: var(--stage-ink); color: var(--stage); font: 500 14px/1.3 var(--font-sans); box-shadow: 0 18px 40px -14px rgb(0 0 0 / .7); pointer-events: auto; }
+.ac-toast.ws-toast > .ac-i { color: #A63D02; }
+.ac-toast.ws-toast > span { padding-right: 4px; }
+.ac-toast.ws-toast button { flex: none; height: 30px; padding: 0 11px; border-radius: var(--radius-pill); font-weight: 600; color: var(--stage); background: color-mix(in srgb, var(--stage) 10%, transparent); white-space: nowrap; }
+.ac-toast.ws-toast button:hover { background: color-mix(in srgb, var(--stage) 18%, transparent); }
+
+/* Full screen, toasts sit in the corner of the page beside the workspace's side panel. */
+@media (min-width: 861px) { .ws-toasts.is-full { left: calc(264px + 24px); bottom: 24px; max-width: 420px; } }
+
+/* ------------------------------------------------------------ history and presenting */
+.wh { flex: none; width: 260px; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--surface); animation: ws-side var(--duration-2) var(--ease-out); }
+.wh-h { flex: none; display: flex; align-items: center; justify-content: space-between; height: 52px; padding: 0 8px 0 14px; }
+.wh-h b { font: 600 14.5px/1 var(--font-sans); }
+.wh-l { flex: 1; min-height: 0; overflow: auto; padding: 0 8px; display: grid; gap: 2px; align-content: start; }
+.wh-r { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 6px 8px; border-radius: 10px; text-align: left; }
+.wh-r:hover { background: var(--sunk); }
+.wh-r.is-cur { background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); }
+.wh-r .m { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.wh-r b { display: block; font: 600 13.5px/1.25 var(--font-sans); }
+.wh-r small { display: block; font-size: 12px; line-height: 1.3; color: var(--ink-3); }
+.wh-r .ac-time { flex: none; font-size: 11.5px; color: var(--ink-3); }
+.wh-r.is-fixed, .wh-r.is-fixed:hover { background: none; }
+.wh-n { padding: 6px 8px; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
+.wh-f { flex: none; padding: 10px; }
+.wh-f .ac-btn { width: 100%; }
+.wh-f p { margin-bottom: 8px; padding: 0 2px; font-size: 13px; line-height: 1.4; color: var(--ink-2); }
+.wh-f .ac { display: grid; gap: 4px; }
+/* Notes turned off, with the way to ask for them back on the same line, or under it where there's no room. */
+.wl-off > div { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+/* A page that holds focus for someone who was typing when what they were in went: it's where they are, not a control. */
+.ws-pane .wd-scroll:focus { outline: none; }
+
+/* ------------------------------------------------------------ playing a video for everyone */
+.ws-play { position: fixed; z-index: 50; left: 50%; bottom: calc(92px + var(--lift, 0px)); transition: bottom var(--duration-2) var(--ease-out); margin-left: -280px; display: flex; align-items: center; gap: 12px; width: 560px; height: 52px; padding: 0 10px 0 8px; border-radius: 16px; background: var(--stage-raised); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08), 0 18px 36px -14px rgb(0 0 0 / .7); font: 400 15px/22px var(--font-sans); }
+.ws-pb, .ws-px { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: calc(16px - 8px); color: var(--stage-ink); }
+.ws-pb { background: rgb(255 255 255 / .1); }
+.ws-px:hover, .ws-pb:hover { background: rgb(255 255 255 / .16); }
+.ws-play .m { flex: 0 1 auto; min-width: 0; max-width: 46%; }
+.ws-play .m b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 13.5px/1.2 var(--font-sans); }
+.ws-play .m small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 23px; color: var(--stage-ink-2); }
+.ws-play .bar { position: relative; flex: 1; min-width: 40px; height: 4px; border-radius: 2px; background: rgb(255 255 255 / .16); overflow: hidden; }
+.ws-play .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--sun-glow); transition: width 1s linear; }
+.ws-play .ac-time { flex: none; color: var(--stage-ink-2); font-size: 12px; }
+.ws-play .v { flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--stage-ink-2); }
+.ws-play .vb { position: relative; width: 40px; height: 4px; border-radius: 2px; background: rgb(255 255 255 / .16); }
+.ws-play .vb:has(:focus-visible) { outline: 2px solid var(--speak); outline-offset: 4px; }
+.ws-play .vb i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: var(--stage-ink); pointer-events: none; }
+.ws-play .vb input { position: absolute; left: 0; right: 0; top: -10px; width: 100%; height: 24px; margin: 0; opacity: 0; cursor: pointer; }
+.ws-play .v small { font-size: 11.5px; }
+.ws-play .bar.can-seek { overflow: visible; }
+.ws-play .bar.can-seek i { border-radius: 2px; }
+.ws-play .bar:has(:focus-visible) { outline: 2px solid var(--speak); outline-offset: 4px; }
+.ws-play .bar input { position: absolute; left: 0; right: 0; top: -10px; width: 100%; height: 24px; margin: 0; opacity: 0; cursor: pointer; }
+.ws-play .ws-ph { flex: none; margin-right: auto; }
+/* Where the one player in a call waits while no block on screen holds its picture: playing, heard, and out of sight. */
+.ws-vhold { position: fixed; left: 0; top: 0; width: 2px; height: 2px; overflow: hidden; opacity: 0; pointer-events: none; }
+
+/* ------------------------------------------------------------ outside a call */
+/*
+ * One document beside something else of the app's (the Drive's tree): no card around it, on whatever it sits on, as tall as
+ * the box it's given. Its toasts keep to the page, clear of the app's side panel.
+ */
+.ws-pane.is-beside { border-radius: 0; background: transparent; box-shadow: none; }
+.ws-pane.is-beside > .wd { background: transparent; }
+@media (min-width: 861px) { .ws-toasts.is-beside { left: calc(var(--side, 0px) + 24px); bottom: 24px; } }
+
+/* ------------------------------------------------------------ Trash */
+.wx-l { margin: 18px -8px 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.wx-r { display: flex; align-items: center; gap: 6px; min-height: 52px; padding: 4px 6px 4px 0; border-radius: 10px; transition: background-color var(--duration-1); }
+.wx-r:hover { background: color-mix(in srgb, var(--sunk) 60%, transparent); }
+.wx-o { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 4px 8px; text-align: left; color: var(--ink-3); border-radius: 9px; }
+.wx-o .m { min-width: 0; }
+.wx-o b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 14.5px/1.3 var(--font-sans); color: var(--ink); }
+.wx-o small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
+
+/* ------------------------------------------------------------ the call's live pages */
+.wl { max-width: 760px; margin: 0 auto; padding: 22px 72px 40px; }
+.wl-t { min-height: 44px; font: 450 38px/1.14 var(--font-display); letter-spacing: -.02em; font-variation-settings: 'opsz' 40; color: var(--ink); }
+.wl-s { font: 500 13.5px/1.35 var(--font-sans); color: var(--ink-3); }
+.wl-sum { font: 400 16.5px/1.55 var(--font-sans); color: var(--ink); }
+.wl .ac-notice { margin: 14px 0 12px; }
+.wl-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 24px 0 6px; }
+.wl-h .ac-eyebrow { font-size: 11.5px; color: var(--ink-2); }
+.wl-all { display: inline-flex; align-items: center; gap: 4px; font: 600 13px/1 var(--font-sans); color: var(--ink-3); }
+.wl-all:hover { color: var(--ink); }
+.wl-r { display: flex; align-items: flex-start; gap: 10px; margin: 0 -8px; padding: 7px 8px; border-radius: 9px; font: 500 15px/1.4 var(--font-sans); }
+.wl-r:hover { background: var(--sunk); }
+.wl-r .mk { flex: none; display: grid; place-items: center; width: 18px; height: 18px; margin-top: 2px; border-radius: 5px; background: var(--sun-soft); color: var(--sun-text); }
+.wl-tx { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.wl-at { flex: none; height: 22px; padding: 0 6px; border-radius: 6px; background: var(--sunk); color: var(--ink-2); font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
+.wl-at:hover { background: var(--sun-soft); color: var(--sun-text); }
+.wl-todo { display: flex; align-items: flex-start; gap: 4px; margin: 0 -8px; padding: 7px 8px; border-radius: 9px; font: 500 15px/1.4 var(--font-sans); }
+.wl-todo:hover { background: color-mix(in srgb, var(--sunk) 60%, transparent); }
+.wl-todo .wb-box { flex: none; display: grid; place-items: center; width: 18px; height: 18px; margin: 2px 8px 0 1px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--line-control); color: transparent; transition: background-color var(--duration-1), box-shadow var(--duration-1), transform var(--duration-1); }
+.wl-todo .wb-box:hover { box-shadow: inset 0 0 0 1.5px var(--ink-2); }
+.wl-todo .wb-box:active { transform: scale(.9); }
+.wl-todo .wb-box:disabled { box-shadow: inset 0 0 0 1.5px var(--line); transform: none; }
+.wl-todo .wb-box[aria-checked="true"] { background: var(--sun); color: var(--on-sun); box-shadow: none; }
+.wl-todo.is-done .wl-w { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
+.wl-todo .src { display: block; margin-top: 1px; padding: 0; font: 400 12.5px/1.3 var(--font-sans); color: var(--ink-3); text-decoration: none; }
+.wl-todo button.src:hover { color: var(--ink); text-decoration: underline; }
+.wl-todo .who { flex: 0 1 auto; min-width: 0; max-width: 40%; display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; font: 500 13px/1.5 var(--font-sans); color: var(--ink-2); }
+.wl-todo .who span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wl-due { flex: none; width: 76px; text-align: right; font: 500 12.5px/1.7 var(--font-sans); color: var(--ink-3); }
+.wl-seg { display: inline-flex; gap: 2px; margin: 14px 0 8px; padding: 3px; border-radius: 10px; background: var(--sunk); }
+.wl-seg button { height: 28px; padding: 0 10px; border-radius: 7px; color: var(--ink-2); font: 600 13px/1 var(--font-sans); }
+.wl-seg button span { margin-left: 6px; color: var(--ink-3); font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
+.wl-seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-1); }
+.wl-add { display: flex; align-items: center; gap: 9px; margin: 8px -8px 0; padding: 0 8px; height: 38px; border-radius: 9px; color: var(--ink-3); }
+.wl-add:focus-within { background: var(--sunk); }
+.wl-add input { flex: 1; min-width: 0; padding: 1px 2px; border: 0; background: none; color: var(--ink); font: 500 15px/1 var(--font-sans); outline: none; }
+.wl-add input::placeholder { color: var(--ink-3); }
+.wl-find { display: flex; align-items: center; gap: 8px; height: 38px; margin: 12px 0 10px; padding: 0 12px; border-radius: 10px; background: var(--sunk); color: var(--ink-3); }
+.wl-find input { flex: 1; min-width: 0; padding: 1px 2px; border: 0; background: none; color: var(--ink); font: 400 14.5px/1 var(--font-sans); outline: none; }
+.wl-find input::placeholder { color: var(--ink-3); }
+.wl-line { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 10px; margin: 0 -8px; padding: 8px; border-radius: 9px; }
+.wl-line:hover { background: color-mix(in srgb, var(--sunk) 60%, transparent); }
+.wl-line.is-flash { animation: ws-line-flash 1.6s var(--ease-out); }
+.wl-line .w { display: flex; align-items: baseline; gap: 8px; }
+.wl-line .w b { font: 600 14px/1.2 var(--font-sans); }
+.wl-line .ac-time { font-size: 11.5px; color: var(--ink-3); }
+.wl-line p { margin-top: 2px; overflow-wrap: anywhere; font: 400 15.5px/1.45 var(--font-sans); color: var(--ink); }
+.wl-line.is-now p { color: var(--ink-3); }
+.wl-line.is-now .ws-dots { color: var(--rec); align-self: center; }
+.ws-put { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; color: var(--ink-3); opacity: 0; transition: opacity var(--duration-1); }
+.wl-r:hover .ws-put, .wl-line:hover .ws-put, .tx-l:hover .ws-put, .ws-put:focus-visible { opacity: 1; }
+.ws-put:hover { background: var(--line); color: var(--ink); }
+
+/* A narrow document: the page gives up its margins first, then the path. */
+@container (max-width: 640px) {
+  .wd-page { padding-left: 46px; padding-right: 22px; }
+  .wd-crumbs .cw:not(.is-last) { display: none; }
+  .wd-save:not(.is-failed) { display: none; }
+  .wl { padding-left: 24px; padding-right: 22px; }
+  .wl-due { display: none; }
+}
+@container (max-width: 470px) { .wd-faces { display: none; } }
+
+/* A narrow pane: what sits beside the page floats over it instead of squeezing it. */
+@container ws-pane (max-width: 640px) {
+  .wh { position: absolute; z-index: 5; top: 0; right: 0; bottom: 0; box-shadow: var(--shadow-3); }
+}
+
+/* Nothing to hover on a touch screen, so what hovering shows stays, and there are no keys to list. */
+@media (hover: none) {
+  .wt-acts { width: auto; padding-right: 3px; overflow: visible; }
+  .ws-put { opacity: 1; }
+  .wv-keyrow { display: none; }
+  /* What someone can do is a few words at a row's end: a finger presses the whole height of the row there. */
+  .wv-pr button.role { align-self: stretch; padding: 0 8px; margin: 0 -8px; }
+}
+/* The keyboard list takes the columns it has room for. */
+@media (max-width: 960px) {
+  .wv-keys { top: 16px; max-height: calc(100vh - 32px); }
+  .ky { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 28px 24px; }
+}
+@media (max-width: 620px) { .ky { grid-template-columns: minmax(0, 1fr); } }
+
+/* ------------------------------------------------------------ the keyboard bar, and on a phone */
+.ws-kbar { position: fixed; z-index: 40; left: 0; right: 0; bottom: var(--keyboard, 0px); height: 72px; display: flex; align-items: center; gap: 2px; padding: 0 8px 12px; background: var(--surface); box-shadow: inset 0 1px 0 var(--line); color: var(--ink-2); }
+.ws-kbar button { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 12px; }
+.ws-kbar .sp { flex: 1; }
+@media (max-width: 640px) {
+  .ws-pane { border-radius: 22px 22px 0 0; }
+  .wt, .ws-pane.tree-off .wt { position: absolute; z-index: 5; inset: 0; width: 100%; margin-left: 0; border-right: 0; background: var(--surface); visibility: visible; transform: translateX(-100%); transition: transform var(--duration-2) var(--ease-out); }
+  .ws-pane.phone-tree .wt { transform: none; }
+  .wt-r { height: 44px; }
+  .wt-open { height: 44px; font-size: 15px; }
+  .wt-tw { height: 44px; }
+  .wt-foot { height: 34px; }
+  .wd-head { height: 48px; padding: 0 6px; }
+  .wd.is-bare > .wd-head { display: flex; }
+  .wd-head .ac-btn, .wd-save:not(.is-failed) { display: none; }
+  .wd-crumbs .cw:not(.is-last) { display: none; }
+  .wd-page { padding: 6px 22px 12px; }
+  .wd:has(> .wd-off, > .wd-gone, > .wd-ro) .wd-page { padding-top: 18px; }
+  .wd-title { font-size: 31px; }
+  .wl { padding: 6px 22px 12px; }
+  .wl-t { font-size: 31px; }
+  .wd-follow .w { display: none; }
+  .wd-stop { margin-left: auto; }
+  .wd-stop kbd { display: none; }
+  .wd-tpls { grid-template-columns: minmax(0, 1fr); }
+  .wh { top: auto; left: 0; width: auto; height: 46%; border-left: 0; border-top: 1px solid var(--line); }
+  .ws-pane:has(> .wh) .wd { max-height: 54%; }
+  /*
+   * A sheet on a phone, but not a role's menu: that one opens inside a sheet, against the role it changes. A sheet isn't
+   * beside what it's about, so it stays when that's scrolled out of view, where a popover beside it would hide.
+   */
+  [data-radix-popper-content-wrapper]:has(> .ws-pop):not(:has(.wm.is-role)) { inset: auto 8px calc(8px + var(--kbar, 0px)) !important; min-width: 0 !important; transform: none !important; visibility: visible !important; pointer-events: auto !important; }
+  .ws-pop:not(:has(.wm.is-role)) { border-radius: 22px; animation: ws-sheet var(--duration-2) var(--ease-out); }
+  .ws-pop > * { width: auto; }
+  /* A phone has no keys to press, and Record stands taller than a short sheet, so it steps back while one's up. */
+  [data-radix-popper-content-wrapper] > .ws-pop kbd { display: none; }
+  body:has([data-radix-popper-content-wrapper] > .ws-pop, .ws-float .ws-pop) .tab-rec { visibility: hidden; }
+  /* So does a toast, which would sit on the sheet's rows: what it says has been said by the time someone's choosing here. */
+  body:has([data-radix-popper-content-wrapper] > .ws-pop, .ws-float .ws-pop) .ac-toasts { visibility: hidden; }
+  .wm-r.is-phone { display: flex; }
+  .wv-find { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-width: none; margin: 0; }
+  .wv-find .ac-kbd, .wt-find .ac-kbd { display: none; }
+  .ws-toasts { left: 12px; right: 12px; bottom: 82px; max-width: none; }
+  .ws-play { left: 12px; right: 12px; width: auto; margin-left: 0; gap: 10px; }
+  .ws-play .m { flex: 1; min-width: 0; }
+  .ws-play .m b, .ws-play .m small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ws-play .bar { position: absolute; left: 16px; right: 16px; bottom: 0; flex: none; height: 3px; }
+  .ws-play .v small, .ws-play .vb { display: none; }
+}
+.wl-todo.is-editing { flex-direction: column; }
+.wl-todo > .ac-icon-btn { flex: none; width: 28px; height: 28px; }
+
+/* ------------------------------------------------------------ a workspace, full screen (`wf-`) */
+/*
+ * Its own side panel, dark in both themes like the app's, full height, beside a bar and the page under it. Home's evening
+ * runs up behind the bar, which is clear until the page scrolls under it. On a phone (860px and under) the side panel and
+ * the page take turns, as `data-phone` says, under the bar.
+ */
+.wf { --wf-side: 264px; --wf-bar: 52px; position: fixed; inset: 0; display: grid; grid-template-columns: var(--wf-side) minmax(0, 1fr); grid-template-rows: var(--wf-bar) minmax(0, 1fr); background: var(--ground); color: var(--ink); font: 400 15px/22px var(--font-sans); }
+.wf :where(.ac-i) { flex: none; display: block; }
+.wf-top { position: relative; z-index: 4; grid-column: 2; grid-row: 1; min-width: 0; }
+.wf-main { container: ws-pane / inline-size; position: relative; grid-column: 2; grid-row: 2; display: flex; min-width: 0; min-height: 0; transition: box-shadow var(--duration-2) var(--ease-out); }
+.wf.is-home .wf-main { grid-row: 1 / 3; }
+.wf-main.is-follow { box-shadow: inset 0 0 0 2px var(--speak); transition-duration: var(--duration-3); }
+.wf-main > .wd { background: var(--ground); }
+
+/* The side panel. Wells and hover fills lift off the frame's colour, as in the app's own panel. */
+.wf-side { --sunk: color-mix(in srgb, var(--ink) 9%, var(--frame)); grid-column: 1; grid-row: 1 / 3; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 12px 10px 12px; background: var(--frame); color: var(--ink); }
+.wf-brand { flex: none; display: flex; padding: 4px 8px 12px; }
+.wf-brand a { border-radius: var(--radius-sm); }
+.wf-brand .ac-brand { font-size: 19px; gap: 8px; }
+.wf-switch { flex: none; display: grid; grid-template-columns: 26px minmax(0, 1fr) 16px; column-gap: 10px; align-items: center; width: 100%; height: 42px; padding: 0 8px; border-radius: 11px; text-align: left; color: var(--ink-3); transition: background-color var(--duration-1); }
+.wf-switch:hover, .wf-switch[data-state="open"] { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.wf-switch b { min-width: 0; font: 600 14.5px/1.25 var(--font-sans); color: var(--ink); }
+.wf-side > .wt-space.is-edit { flex: none; height: 42px; padding: 0 8px; border-radius: 11px; }
+.wf-mark { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); font: 650 12px/1 var(--font-sans); }
+.wf-mark.is-call { color: var(--sun-text); }
+.wf-name-save { flex: none; padding: 2px 10px 0 44px; font: 500 11.5px/14px var(--font-sans); color: var(--ink-3); }
+.wf-name-save.is-failed { color: var(--caution); }
+.wf-side > .wt-off { margin: 4px 0 0; }
+.wf-search { flex: none; display: flex; align-items: center; gap: 8px; width: 100%; height: 34px; margin: 8px 0 4px; padding: 0 8px 0 10px; border-radius: 10px; background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink-3); font: 400 13.5px/1 var(--font-sans); transition: background-color var(--duration-1), color var(--duration-1); }
+.wf-search:hover { background: color-mix(in srgb, var(--ink) 11%, transparent); color: var(--ink-2); }
+.wf-search > span { flex: 1; text-align: left; }
+.wf-search .ac-kbd { background: color-mix(in srgb, var(--ink) 10%, transparent); box-shadow: none; }
+.wf-side .wt-scroll { margin: 0 -4px; padding: 4px 4px 12px; scrollbar-color: var(--line-control) transparent; }
+.wf-side .wt-sec { display: flex; align-items: center; justify-content: space-between; min-height: 28px; margin-top: 14px; padding: 0 2px 0 10px; font: 600 12px/1 var(--font-sans); }
+.wf-side .wt-sec .wt-ib { width: 26px; height: 26px; border-radius: 8px; }
+.wf-side .wt-sec .wt-ib:hover { color: var(--ink); }
+.wf-side .wt-r { height: 32px; }
+.wf-side .wt-open { height: 32px; font-size: 14px; }
+.wf-side .wt-r:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.wf-side .wt-r.is-cur { background: color-mix(in srgb, var(--ink) 11%, transparent); color: var(--ink); }
+.wf-side .wt-r.is-cur .wt-open .ac-i { color: var(--ink-2); }
+.wf-side .wt-f .ac-faces .ac-avatar { --ring: var(--frame); }
+.wt-tag { flex: none; margin-left: auto; padding-left: 6px; font: 600 12px/1 var(--font-sans); color: var(--sun-text); }
+.wt-open .wt-out { margin-left: auto; color: var(--ink-3); }
+.wt-open .wt-c + .wt-out { margin-left: 6px; }
+.wf-foot { flex: none; display: grid; gap: 4px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.wf-foot .wt-bin { padding: 0; }
+.wf-foot .wt-trash { height: 32px; font-size: 14px; color: var(--ink-2); }
+.wf-seal { display: flex; align-items: flex-start; gap: 7px; padding: 6px 10px 0; font: 500 12px/1.35 var(--font-sans); color: var(--ink-3); }
+.wf-seal .ac-i { margin-top: 1px; color: var(--sun-text); }
+
+/* The bar over the page: the way back and the path, then what's said about the page, and you at the far right. */
+.wf-bar { position: relative; display: flex; align-items: center; gap: 8px; height: 100%; padding: 0 14px 0 18px; border-bottom: 1px solid var(--line); background: var(--ground); transition: background-color var(--duration-2) var(--ease-out), border-color var(--duration-2) var(--ease-out); }
+.wf.is-home:not(.is-scrolled) .wf-bar { background: transparent; border-bottom-color: transparent; }
+.wf-path { flex: 1 1 auto; display: flex; align-items: center; gap: 4px; min-width: 0; font: 500 14px/1 var(--font-sans); color: var(--ink-2); }
+.wf-back, .wf-crumb { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 32px; padding: 0 8px; border-radius: 9px; white-space: nowrap; transition: background-color var(--duration-1), color var(--duration-1); }
+.wf-back { flex: none; }
+.wf-crumb { flex: 0 1 auto; }
+.wf-crumb > span { min-width: 0; line-height: 1.3; }
+button.wf-back:hover, button.wf-crumb:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.wf-crumb.is-last { font-weight: 600; color: var(--ink); }
+.wf-sep { color: var(--ink-3); }
+.wf-up { display: none; }
+.wf-end { flex: none; display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.wf-end .wd-save { margin-right: 2px; }
+.wf-here { display: inline-flex; align-items: center; gap: 8px; margin-right: 4px; font: 500 12.5px/1 var(--font-sans); color: var(--ink-2); white-space: nowrap; }
+.wf-faces { display: inline-flex; align-items: center; }
+.wf-face { display: inline-flex; margin-left: -6px; border-radius: 8px; }
+.wf-face:first-child { margin-left: 0; }
+.wf-face .ac-avatar { --ring: var(--ground); }
+.wf-share { height: 34px; }
+.wf-ib { width: 34px; height: 34px; color: var(--ink-2); }
+.wf-me { display: inline-flex; margin-left: 4px; }
+
+/* Home: the workspace's name on the evening, its line, its people, what was edited lately and its calls. */
+.wf-home-scroll { flex: 1; min-width: 0; min-height: 0; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: var(--line-control) transparent; }
+.wf-band { --hz: 202px; --wf-x: max(56px, calc((100% - 1000px) / 2 + 56px)); position: relative; isolation: isolate; height: 266px; overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, black 72%, transparent); mask-image: linear-gradient(to bottom, black 72%, transparent); }
+/* The evening after sunset, as it is above a page's name: no clouds and no chop, only the last of the light. */
+.wf-band .hz-puff, .wf-band .hz-chop { display: none; }
+.wf-name { position: absolute; left: var(--wf-x); right: 56px; bottom: 86px; font: 400 clamp(36px, 3.4vw, 48px)/1.08 var(--font-display); letter-spacing: -.018em; color: var(--ink); overflow-wrap: anywhere; }
+.wf-home { position: relative; max-width: 1000px; margin: -28px auto 0; padding: 0 56px 64px; }
+.wf-home > * { animation: ac-rise var(--duration-3) var(--ease-out) both; animation-delay: calc(var(--d, 0) * 55ms); }
+.wf-about { display: block; max-width: 46em; font: 400 16px/1.55 var(--font-sans); color: var(--ink-2); text-wrap: pretty; text-align: left; }
+button.wf-about { display: inline-flex; align-items: baseline; gap: 8px; margin: -2px -8px; padding: 2px 8px; border-radius: 8px; transition: background-color var(--duration-1), color var(--duration-1); }
+button.wf-about .ac-i { align-self: center; color: var(--ink-3); opacity: 0; transition: opacity var(--duration-1); }
+button.wf-about:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink); }
+button.wf-about:hover .ac-i, button.wf-about:focus-visible .ac-i { opacity: 1; }
+.wf-about.is-empty { align-items: center; color: var(--ink-3); }
+.wf-about.is-empty .ac-i { opacity: 1; }
+input.wf-about { width: 100%; height: 40px; margin: -8px -10px; padding: 0 10px; border: 0; border-radius: 10px; background: var(--sunk); color: var(--ink); box-shadow: inset 0 0 0 2px var(--focus); outline: none; }
+input.wf-about::placeholder { color: var(--ink-3); }
+.wf-who { display: flex; align-items: center; gap: 10px; margin-top: 12px; font: 500 13.5px/1.3 var(--font-sans); color: var(--ink-2); text-align: left; }
+button.wf-who { border-radius: 9px; }
+button.wf-who:hover { color: var(--ink); }
+.wf-who .ac-faces .ac-avatar { --ring: var(--ground); }
+.wf-sec { margin-top: 36px; }
+.wf-sh { margin: 0 0 12px; font: 600 15px/1.2 var(--font-sans); color: var(--ink); }
+.wf-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+/* Its calls, as Calls lists them, without a menu column: Home has nothing to do to them but open them. Hairlines between. */
+.wf-rows { display: grid; }
+.wf-rows .cs-row { grid-template-columns: 64px minmax(0, 1fr) 92px; }
+.wf-rows .cs-menu { display: none; }
+.wf-rows .cs-row + .cs-row::before { content: ""; position: absolute; left: 14px; right: 14px; top: 0; height: 1px; background: var(--line); }
+.wf-none { padding: 18px 0 6px; font-size: 14.5px; line-height: 1.5; color: var(--ink-3); }
+
+/* A page in the workspace: wider type than the list's page, on the ground, with its comments in the margin. */
+.wf-main .wd-page { max-width: 780px; padding: 54px 64px 120px; }
+.wf-main .wd-title { font: 400 46px/1.08 var(--font-display); letter-spacing: -.018em; font-variation-settings: normal; }
+.wf-dmeta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin: 14px 0 0; font: 400 13.5px/1.3 var(--font-sans); color: var(--ink-2); }
+.wf-from { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; height: 26px; padding: 0 10px 0 8px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); font: 500 12.5px/1 var(--font-sans); transition: background-color var(--duration-1); }
+button.wf-from:hover { background: color-mix(in srgb, var(--ink) 13%, transparent); }
+.wf-from .ac-i { color: var(--ink-2); }
+.wf-by { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.wf-by .n { font-weight: 500; color: var(--ink); }
+.wf-by .d { color: var(--ink-2); }
+.wf-main .wd-by-slot { margin-bottom: 30px; }
+
+@container ws-pane (max-width: 1100px) { .wf-cards { gap: 14px; } }
+@media (max-width: 1100px) { .wf-here-t { display: none; } }
+@media (max-width: 860px) {
+  .wf { grid-template-columns: minmax(0, 1fr); }
+  .wf-top, .wf-side, .wf-main { grid-column: 1; }
+  .wf-side, .wf-main { grid-row: 2; }
+  .wf.is-home .wf-main { grid-row: 1 / 3; }
+  .wf[data-phone="page"] .wf-side, .wf[data-phone="list"] .wf-main { display: none; }
+  .wf-side { padding: 6px 12px calc(12px + env(safe-area-inset-bottom, 0px)); }
+  .wf-side .wt-r, .wf-side .wt-open, .wf-side .wt-tw { height: 44px; }
+  .wf-side .wt-open { font-size: 15px; }
+  .wf-brand { display: none; }
+  .wf-bar { padding: 0 8px 0 10px; }
+  .wf-sep, .wf-crumb { display: none; }
+  .wf-bar.has-up .wf-path { display: none; }
+  .wf-up { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 40px; padding: 0 8px; margin-right: auto; border-radius: 9px; font: 600 15px/1 var(--font-sans); color: var(--ink); }
+  .wf-here, .wf-share, .wf-exit, .wf-end .wd-save:not(.is-failed):not(.is-offline) { display: none; }
+  .wf-band { --hz: 132px; --wf-x: 20px; height: 164px; }
+  .wf-name { right: 20px; bottom: 46px; font-size: 34px; }
+  .wf-home { margin-top: 0; padding: 12px 20px 40px; }
+  .wf-cards { grid-template-columns: minmax(0, 1fr); }
+  .wf-rows .cs-row { grid-template-columns: 46px minmax(0, 1fr) auto; }
+  .wf-main .wd-page { padding: 28px 22px 80px; }
+  .wf-main .wd-title { font-size: 34px; }
+}

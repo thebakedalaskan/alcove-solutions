@@ -15,13 +15,17 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { organizerFirst } from '~/features/call/rooms/Hosting';
-import { useSignedOutElsewhere } from '~/features/shell/signedOutElsewhere';
-import { arriveFromCall, useNow } from '~/lib/live';
+import { useSignedOutElsewhere } from '~/features/account/signedOutElsewhere';
+import { useNow } from '~/lib/live';
+import { arriveFromCall } from './handoff';
 import { log } from '~/lib/log';
 import { callName, listNames, sameEmail } from '~/lib/people';
-import { q, trustLine } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { callQueries } from '~/features/calls/list/queries';
+import { noteQueries } from '~/features/notes/queries';
+import { trustQuery, trustLine } from '~/lib/trust';
 import { StopWays, planStopOf, useStoppedAfter } from '~/features/call/notes/PlanStop';
-import { useFollowNotes } from './followNotes';
+import { useFollowNotes } from '../notes/followNotes';
 import { useRejoin, useRejoinKey, type RejoinAs, type RejoinMedia } from './rejoin';
 
 const olog = log.child({ component: 'call-over' });
@@ -148,9 +152,9 @@ export function CallOverPage({ left, entering, onEntered, back, onBack, onGone }
   left: Left; entering: boolean; onEntered: () => void; back: boolean; onBack: (s: CallSession) => void; onGone: () => void;
 }) {
   const navigate = useNavigate();
-  const trust = useQuery(q.trust()).data;
+  const trust = useQuery(trustQuery()).data;
   // Home is somewhere to go for anyone signed in here: a guest by name has only the call.
-  const account = useQuery(q.session()).data;
+  const account = useQuery(accountQueries.session()).data;
   // Signed out in another tab, this tab forgets what it read (the notes among it) and goes to the welcome page.
   useSignedOutElsewhere(account?.ownerId ?? null);
   useEffect(() => {
@@ -160,13 +164,13 @@ export function CallOverPage({ left, entering, onEntered, back, onBack, onGone }
   /*
    * A call you left goes on until its card says it has ended; then the page turns, once, and stays turned. Only what's read
    * from here on counts: a card kept from before could say a call that's since started again has ended. It's read at the
-   * card's own pace (q.card), which backs off when reading fails, stops when there's no such call, and keeps readers apart.
+   * card's own pace (callQueries.card), which backs off when reading fails, stops when there's no such call, and keeps readers apart.
    */
   const going = left.how.kind === 'left' || left.how.kind === 'handed';
   const [since] = useState(() => Date.now());
   const [turned, setTurned] = useState(false);
   const over = !going || turned;
-  const card = useQuery({ ...q.card(left.code), enabled: going && !turned });
+  const card = useQuery({ ...callQueries.card(left.code), enabled: going && !turned });
   const endedNow = going && card.data?.ended === true && card.dataUpdatedAt >= since;
   useEffect(() => {
     if (!endedNow) return;
@@ -184,7 +188,7 @@ export function CallOverPage({ left, entering, onEntered, back, onBack, onGone }
   const following = over && left.getsNotes && noteId !== null;
   const { progress, stuck } = useFollowNotes(noteId, following);
   const ready = progress?.ready === true;
-  const note = useQuery({ ...q.note(noteId ?? ''), enabled: ready && noteId !== null });
+  const note = useQuery({ ...noteQueries.note(noteId ?? ''), enabled: ready && noteId !== null });
   const written = note.data;
   /* Stopped by the organizer's plan, as the call said it; the organizer has the call's ways to more, none filled. */
   const stop = useStoppedAfter(!over && left.getsNotes ? left.stopped : null, left.organizer, left.organizerFirst);

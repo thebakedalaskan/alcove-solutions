@@ -12,8 +12,8 @@ import { KeyDerivationFunction } from '@livekit/rtc-ffi-bindings';
 import { SignJWT } from 'jose';
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import { createHash, randomBytes } from 'node:crypto';
-import type { Config } from '../config';
-import { apiUrl, type LiveKit } from '../livekit';
+import type { Config } from '../platform/config';
+import { apiUrl, type LiveKit } from '../providers/livekit';
 
 const RATE = 48_000;
 const FRAME = 480; // 10 ms

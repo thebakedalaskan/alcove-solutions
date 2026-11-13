@@ -9,7 +9,7 @@
 import { Avatar, Button, CheckDraw, EASE, Faces, GhostArch, Icon, Segmented, Switch, cn, useSceneLoop, type Choice } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { CAST, firstOf } from '~/features/notes/cast';
+import { CAST, firstOf } from '~/features/examples/cast';
 import { Sky } from './Sky';
 import { CLOSES, DAYS, LINE, OPENS, busyOn, clock, freeOn, type Member, type Span } from './week';
 

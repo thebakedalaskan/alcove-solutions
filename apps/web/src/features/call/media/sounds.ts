@@ -1,10 +1,10 @@
 /** Fresh attention events only. Snapshot baselines are reset on join, reconnect, generation and room changes. */
 import type { CallSession, CallState, CallCrypto, DirectMessagesState } from '@alcove/api';
 import { useEffect, useRef } from 'react';
-import { playSound, readyAudioOutput, stopSounds } from '~/lib/audio-output';
-import { unreadThreadReplies } from '../session/replyAlerts';
-import { unreadChatMentions } from '../session/attention';
-import { useSoundPreferences } from '~/lib/sound-preferences';
+import { playSound, readyAudioOutput, stopSounds } from '~/features/notifications/soundCues';
+import { unreadThreadReplies } from '../chat/replyAlerts';
+import { unreadChatMentions } from '../attention/attention';
+import { useSoundPreferences } from '~/features/notifications/soundPreferences';
 
 export function useCallSounds({ call, state, chat, direct, speakerId, connected, presenting }: { call: CallSession; state: CallState; chat: CallCrypto; direct: DirectMessagesState; speakerId: string | null; connected: boolean; presenting: boolean }) {
   const { prefs, notificationsPauseEnd, ready } = useSoundPreferences();

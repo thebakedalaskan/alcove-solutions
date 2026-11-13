@@ -207,7 +207,7 @@ class Component extends DCLogic {
     or a real call. You are Art Vandelay.
   - The demo day is Wednesday 4 November. Art's account has 10 hours of notes this month: 3 h 34 min used and 6 h 26 min
     left, as the side panel and Settings say.
-  - The canvas's demo company isn't quite the app's demo account (`apps/api/src/demo.ts`): some people sit in other teams.
+  - The canvas's demo company isn't quite the app's demo account (`apps/api/src/features/profile/demo-directory.ts`): some people sit in other teams.
     When you compare a board with the app, those differences aren't bugs.
 - **Every control does what it would do,** through state: a click sets state, and `renderVals()` draws from it.
   - Popovers, menus and modals open over the page they belong to.

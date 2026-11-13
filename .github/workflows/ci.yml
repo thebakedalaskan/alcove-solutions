@@ -75,7 +75,7 @@ jobs:
         run: |
           if [ "$EVENT" != pull_request ]; then echo "api=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           git diff --name-only HEAD^1 HEAD | tee changed.txt
-          client_flow='^apps/web/src/(lib/(queryWrites|queries)\.ts|features/workspace/(changes|actions)\.ts|router\.tsx)$'
+          client_flow='^apps/web/src/(lib/queryWrites\.ts|features/.+/(queries|queryKeys)\.ts|features/workspace/tree/(changes|actions)\.ts|router\.tsx)$'
           if grep -qE "$client_flow" changed.txt || grep -qvE '^(apps/web/|apps/storybook/|packages/ui/|docs/)|^[^/]+\.md$' changed.txt; then echo "api=true"; else echo "api=false"; fi >> "$GITHUB_OUTPUT"
 
   # The integration tests, split across ten runners by how long each file takes (scripts/ci-tests.mjs). Each runner has

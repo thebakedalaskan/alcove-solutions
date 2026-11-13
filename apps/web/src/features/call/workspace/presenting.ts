@@ -96,7 +96,7 @@ export function useWorkspacePresenting({ session, present, ended, participants, 
 
   /*
    * Someone who can't open what's presented is told who's presenting, and nothing else, and that it ended only if the call says
-   * it did because its presenter left. Everyone else hears how it ended from their stage (layout/onStage.ts). While the call's
+   * it did because its presenter left. Everyone else hears how it ended from their stage (stage/onStage.ts). While the call's
    * board is one they can't open, brought by someone here, the toast asks for it, as the board's own frame does.
    */
   const toldOf = useRef<string | null>(null);

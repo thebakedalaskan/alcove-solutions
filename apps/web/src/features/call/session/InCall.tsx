@@ -1,124 +1,113 @@
-import { useCallBrowserNotifications } from './browserNotifications';
-import { unreadThreadReplies, useReplyAlerts, type ReplyJump } from './replyAlerts';
-import { useMentionAlerts } from './mentionAlerts';
-import { ChatPanel, newChatMemory, type ChatTab } from '../layout/ChatPanel';
-import { inConversation } from '../layout/ChatView';
-import { useBreakoutRooms } from '../rooms/useBreakoutRooms';
-import { CallCaption, CaptionLanguageMenu, captionLanguageName } from '../notes/CallCaptions';
-import { useCallShortcuts } from './useCallShortcuts';
-import { useCallRoom } from '../media/useCallRoom';
-import { ReactMenu } from '../layout/ReactMenu';
-import { useBurst } from '../layout/reactions';
-import { useSpeaking, useTalkingOnMute } from '../media/useSpeaking';
-import { useWidth } from '../layout/useWidth';
-import { useNotesCapture } from '../notes/useNotesCapture';
-import { useScreenCapture } from '../notes/useScreenCapture';
-import { useCallControls } from './useCallControls';
-import { useFloatingWindow } from './floatingWindow';
-import { FloatingCallPortal } from './FloatingCallPortal';
-import { PlanBanners } from './PlanBanners';
-import { asShown, SOMEONE } from './participants';
-import { leftOf, onTheWay, type Left, type LeftHow } from './CallOver';
-import { rememberPass } from './pass';
-import {
-  BOARD_SHOT_LIMITS, CALL_LAYOUT_MAX, CAPTION_LANGUAGES, MAIN_PLACE, errorCode, errorMessage, firstName, notesAreOn, type CallAsker, type CallReaction, type CallSession, type CallState, type CaptionLanguage,
-  type CallNudgeKind, type CallStatusKind, type CallStatusMinutes, type CaptureMode, type Person, type SelfView
-} from '@alcove/api';
-import {
-  CallTimerButton, Avatar, BoardPicker, CallDock, CallMoreGrid, CallMoreTile, DockButton, DockLeave, DockSeparator, DockSplit, DockWords, Dots, EASE, Icon, IconButton, KnockCard, LeaveAsk, LeaveChoices, LinkRow, Popover, ReactPicker, ReactionBurst,
-  RingAgain, RingReply, WaitTile, cn, useRaisedToasts, useTheme, useToast, volumeTag, wsToast, type IconName, type LeaveHost, type PresentAskProps, type WsToastData
-} from '@alcove/ui';
+/*
+ * The call screen, put together: it reads the call, starts what lasts while you're in it (each lifecycle a hook of the subfeature
+ * it belongs to, in the order they start), and lays out the parts each subfeature draws: the top bar, the main area (the stage,
+ * what's open on it in frames, and your side), the dock, the windows over the call, and the floating call.
+ */
+import { MAIN_PLACE, errorMessage, notesAreOn, type CallReaction, type CallSession, type Person } from '@alcove/api';
+import { EASE, cn, useRaisedToasts, useTheme, useToast, wsToast, type WsToastData } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { stateOf } from '~/features/call/media/access';
-import { bringAndPresent, presentAskOf, presentingWhy, useBoardPicker } from '~/features/call/boards/BoardPicker';
-import type { BoardPager } from '~/features/board/CallBoard';
-import { StandingPill, roomPills, type PillKind } from '~/features/board/pills';
-import { ENCRYPTED, standingOf, useChangesSinceSaved } from '~/features/board/standing';
-import { BoardLeaf, BoardMenuRows, BoardMine, BoardMini, loadBoard } from '~/features/call/boards/BoardStage';
-import { useBoardRun, useVoteStarted } from '~/features/call/boards/boardRun';
-import { BOARD_SHOT_TOPIC, keepShot, shotHeard, shotNotice, useCallBoard, type SavedBoard } from '~/features/call/boards/callBoard';
-import { useCaptions } from '~/features/call/notes/captions';
-import { CamMenu, MicMenu } from '~/features/call/media/DevicePickers';
-import { ChooseBackground } from '~/features/call/media/backgrounds/ChooseBackground';
-import { deviceChoices, useDevices } from '~/features/call/media/devices';
-import { HostSpill, organizerFirst } from '~/features/call/rooms/Hosting';
-import { copyUrl, shownUrl, useCopyLink } from '~/features/call/session/links';
-import { useOpenWhenStarted } from '~/features/call/session/opening';
-import { AskView, MomentView } from '~/features/call/notes/CatchUp';
-import { useCatchingUp } from '~/features/call/notes/catchingUp';
-import { FromLastTime } from '~/features/call/notes/FromLastTime';
-import { OwnFoot, YoursView, useOwnInCall } from '~/features/call/notes/Yours';
-import { useShareMarkCount } from '~/features/call/screen-sharing/SharePointing';
-import { MyShareMenuRows, ShareInFrame, ShareMenuRows, ShareWindows, useFocusBack, usePointing, usePopOut, useShareLooks } from '~/features/call/screen-sharing/ShareInFrame';
-import { LocalMedia, type ShareChoice } from '~/features/call/media/media';
-import { NotesHead, NotesTabs, NotesView, PeopleView, SideBody, SideHead, TranscriptView, type HostControls, type PanelPerson } from '~/features/call/layout/Panel';
-import { type PrivateAudience } from '~/features/call/layout/PrivateChat';
-import { PanelHost, useCallArea, useFocusBounds, type HostSide } from '~/features/call/layout/PanelHost';
-import { BoardPagerFoot, Frame, FrameBox, type FrameBar } from '~/features/call/layout/frame';
-import { holding, useLandKeys } from '~/features/call/layout/landKeys';
-import { isScreen, screenOf, sharerOf, useOnStage, type Presented, type ThingId } from '~/features/call/layout/onStage';
-import { CallSettings, type SettingsTab } from '~/features/call/layout/CallSettings';
-import { SIDE_MIN_HEIGHT, STAGE_BESIDE_SIDE, sideWidth, useSide, type NotesTab, type SidePlace, type SideView } from '~/features/call/layout/side';
-import { PlayTogetherBar, useSharedVideo, useWorkspacePlaying } from '~/features/call/playback/PlayTogether';
-import { useBoardPresenting } from '~/features/call/boards/boardPresenting';
-import { useWorkspacePresenting } from '~/features/call/workspace/presenting';
-import { GAP, PHONE_W, focusRoom, peopleEdge, placeMain } from '~/features/call/layout/panels';
-import { PeopleSeam } from '~/features/call/layout/PeopleSeam';
-import { TileHint } from '~/features/call/layout/TileHint';
-import { CaptureButton, CapturePill, NotesAsks, askedTag, organizerName, useCaptureAlerts } from '~/features/call/notes/Capture';
-import { NotesStopBar, usePlanRestart, usePlanStop, useStopMarks, withRestart } from '~/features/call/notes/PlanStop';
-import { unreadChatMentions, useCallAttention } from './attention';
-import { captureHere } from '~/lib/capture';
-import { RoomsLive, RoomsSetup } from '~/features/call/rooms/Rooms';
-import { MAX_SHARES, SHARE_PROBLEMS, canShareScreen } from '~/features/call/screen-sharing/share';
-import { ShareMenu, type ShareStep, type ShareTrouble } from '~/features/call/layout/ShareMenu';
-import { aloneClosed, closeAlone, keepSeen, seenNotices } from '~/features/call/session/seen';
-import { GLIDE, Stage, useStagePlan, type StageParticipant, type StagePresented, type StageShare, type StageTogether, type StageWaiter } from '~/features/call/layout/Stage';
-import type { Box, StageFrame } from '~/features/call/layout/stageLayout';
-import { statusNow, tileStatus, useCallClock, useStatusEndsWhenYouTalk } from '~/features/call/layout/status';
-import { NUDGES } from '~/features/call/layout/nudges';
-import type { PersonMenu } from '~/features/call/layout/TileMenu';
-import { useNudgeAlerts } from '~/features/call/session/nudgeAlerts';
-import { useCallSounds } from '~/features/call/media/sounds';
-import { CallTimer } from '~/features/call/layout/CallTimer';
-import { useCallTimer } from '~/features/call/layout/useCallTimer';
-import { TopBar } from '~/features/call/layout/TopBar';
-import { FeedVideo, type Feed } from '~/features/call/media/Video';
-import { isCustom, useCallView, type ViewSnapshot } from '~/features/call/layout/view';
-import { canSetVolume, volumesFor } from '~/features/call/media/volume';
-import { useLiveCall } from '~/features/call/notes/liveCall';
-import { WorkspaceMenuRows, WorkspacePanel, inTheCall, useWorkspacePanel } from '~/features/call/workspace/WorkspacePanel';
-import { ShareSheetFor } from '~/features/workspace/Sheets';
-import { ringable, rungWords, waitingOnStage } from '~/features/calls/ringing/RingWords';
+import { motion } from 'motion/react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { accountQueries } from '~/features/account/queries';
+import type { PillKind } from '~/features/board/pills';
+import { useChangesSinceSaved } from '~/features/board/standing';
+import { ringable } from '~/features/calls/ringing/ringWords';
 import { Moved } from '~/features/move/Moved';
 import { MoveSheet } from '~/features/move/MoveSheet';
 import { useMoveOut } from '~/features/move/useMoveOut';
-import { selfIn, sessions, useClosingWithPage, useLeaveGuard, useLive, useOnline } from '~/lib/live';
+import { useCallSeries } from '~/features/notes/series/queries';
+import { teamQueries } from '~/features/team/queries';
+import { useWorkspaceName, workspaceQueries } from '~/features/workspace/queries';
+import { captureHere } from '~/lib/capture';
+import { useLeaveGuard, useLive, useOnline } from '~/lib/live';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
-import { q, qk, useCallSeries, useRenameBoard, useWorkspaceName } from '~/lib/queries';
-import { hm } from '~/lib/time';
+import { useCallAttention } from '../attention/attention';
+import { useCallBrowserNotifications } from '../attention/browserNotifications';
+import { useNudgeAlerts } from '../attention/nudgeAlerts';
+import { statusNow, useCallClock, useStatusEndsWhenYouTalk } from '../attention/status';
+import { BoardFrame, askerOf, usePresentBoard } from '../boards/BoardFrame';
+import { useBoardHere } from '../boards/boardOnStage';
+import { presentingWhy, useBoardPickers } from '../boards/BoardPicker';
+import { useBoardPresenting, useNotesGoWithPresenting } from '../boards/boardPresenting';
+import { useVoteStarted } from '../boards/boardRun';
+import { BoardMine, BoardMini, loadBoard } from '../boards/BoardStage';
+import { ChatPanel, newChatMemory } from '../chat/ChatPanel';
+import { useMentionAlerts } from '../chat/mentionAlerts';
+import { useReplyAlerts } from '../chat/replyAlerts';
+import { useUnread } from '../chat/unread';
+import { FloatingView } from '../floating/FloatingView';
+import { useFloatingFailedSaid, useFloatingWindow } from '../floating/floatingWindow';
+import { CallWindows, useCallWindows } from '../layout/CallSettings';
+import { Dock } from '../layout/Dock';
+import { holding, useLandKeys } from '../layout/landKeys';
+import { MoreMenu } from '../layout/More';
+import { PanelHost, TakingTurns, useMainArea, type HostSide } from '../layout/PanelHost';
+import { PHONE_W } from '../layout/panels';
+import { PeopleSeam } from '../layout/PeopleSeam';
+import { usePop } from '../layout/pop';
+import { useBurst } from '../layout/reactions';
+import { DockShare } from '../layout/ShareMenu';
+import { sideOpeners, useSide, useSideKept, useSidePlaces, type SidePlace, type SideView } from '../layout/side';
+import { PeopleSide, RoomsSide, SidePanel, sideLabel } from '../layout/SidePanel';
+import { TopBar } from '../layout/TopBar';
+import { useWidth } from '../layout/useWidth';
+import { useArrivals, useCallView, useYourView } from '../layout/view';
+import { useBackgroundsOf } from '../media/backgrounds/backgrounds';
+import { micName, useDevices } from '../media/devices';
+import { LocalMedia } from '../media/media';
+import { useMediaNotices } from '../media/notices';
+import { useCallSounds } from '../media/sounds';
+import { useCallRoom, useSoundUnblocked } from '../media/useCallRoom';
+import { useSpeaking, useTalkingOnMute } from '../media/useSpeaking';
+import { useVolumes } from '../media/volume';
+import { CaptionsLine } from '../notes/CallCaptions';
+import { CaptureButton, organizerName, useCaptureAlerts, whoGetsNotes } from '../notes/Capture';
+import { useCallCaptions } from '../notes/captions';
+import { useCatchingUp } from '../notes/catchingUp';
+import { useNotesWatched } from '../notes/followNotes';
+import { useLiveCall } from '../notes/liveCall';
+import { NotesSide } from '../notes/NotesSide';
+import { usePlanRestart, usePlanStop, useStopMarks, withRestart } from '../notes/PlanStop';
+import { useNotesCapture } from '../notes/useNotesCapture';
+import { useScreenCapture } from '../notes/useScreenCapture';
+import { useOwnInCall } from '../notes/Yours';
+import { PlayTogetherBar, useSharedVideo, useWorkspacePlaying } from '../playback/PlayTogether';
+import { hostControls } from '../rooms/Hosting';
+import { useBreakoutRooms, useRoomsSideGoes } from '../rooms/useBreakoutRooms';
+import { ScreenFrame } from '../screen-sharing/ScreenFrame';
+import { useShareScreen, useShares } from '../screen-sharing/share';
+import { ShareWindows, useFocusBack, usePointing, usePopOut, useShareLooks } from '../screen-sharing/ShareInFrame';
+import { useMarksGoWithPicture, useShareMarkCount } from '../screen-sharing/SharePointing';
+import { useClosing } from '../stage/closing';
+import type { FramePlace } from '../stage/frame';
+import { isScreen, screenOf, sharerOf, useCallStage, type ThingId } from '../stage/onStage';
+import { GLIDE, Stage, type StageParticipant, type StagePresented, type StageTogether } from '../stage/Stage';
+import type { Box } from '../stage/stageLayout';
+import { statusPills } from '../stage/statusBar';
+import { TileHint } from '../stage/TileHint';
+import { personMenus } from '../stage/TileMenu';
+import { presentedTiles, ringWaiters, stagePeopleOf } from '../stage/tiles';
+import { CallTimer } from '../timer/CallTimer';
+import { useCallTimer, useTimerOpen } from '../timer/useCallTimer';
+import { useWorkspacePresenting } from '../workspace/presenting';
+import { WorkspaceFrame } from '../workspace/WorkspaceFrame';
+import { useWorkspacePanel } from '../workspace/WorkspacePanel';
+import type { Left } from './CallOver';
+import { useForgetWhyLeft, useKeysLost, useOutOfTheCall, useReconnectedSaid } from './connection';
+import { sessions, useClosingWithPage } from './handoff';
+import { Knocks } from './Knocks';
+import { letGoForMove, useDeparture, useLeaveAskGoesWithFloating, useLeaving, useQuietForLeave, whenOver } from './leaving';
+import { useAloneCard, useCopyLink } from './links';
+import { useOpenWhenStarted } from './opening';
+import { SOMEONE, asShown, selfIn, useInvited } from './participants';
+import { PlanBanners } from './PlanBanners';
+import { useCallNotices } from './seen';
+import { useCallControls } from './useCallControls';
+import { useCallShortcuts } from './useCallShortcuts';
 
 const clog = log.child({ component: 'call' });
-/**
- * What's open over the call: a device's menu, the captions' language, More and what it leads to (on a phone, the board picker),
- * and Share's steps. Settings, from More, is a window of its own.
- */
-type Pop = 'mic' | 'cam' | 'cap' | 'more' | 'board' | 'react' | 'reactMore' | ShareStep | null;
-/** Time left in the rooms, as the rooms show it: 4:12. */
-const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
-/** Whether what someone starts sharing is read for the notes: now, once notes resume, or not. */
-const screenRead = (mode: CaptureMode): 'on' | 'paused' | undefined => (notesAreOn(mode) ? 'on' : mode === 'paused' ? 'paused' : undefined);
-/** Takes away the toast that said why this tab left the call: it isn't true any more once the tab joins again. */
-let leftToast: (() => void) | null = null;
-
-/** What More holds, as its button says. */
-const MORE_SAYS = 'More: captions, catch up, rooms, settings';
-/** Notes' tabs, as places your side can be. */
-const isNotesTab = (p: SidePlace): p is NotesTab => p === 'notes' || p === 'transcript' || p === 'ask' || p === 'yours';
 /** Nobody's anywhere in the workspace, as far as the people list says while it's put away. */
 const NOWHERE: Readonly<Record<string, string>> = {};
 
@@ -141,12 +130,10 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
   const callClock = useCallClock(state);
   const [media] = useState(() => sessions.media ?? new LocalMedia());
   const m = useLive(media);
-  // Only the organizer can read the meeting (who's invited); everyone else learns who's here from the call.
-  const meeting = useQuery({ ...q.byCode(state.code), enabled: state.isOrganizer }).data;
   const navigate = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
-  useEffect(() => { leftToast?.(); leftToast = null; }, []);
+  useForgetWhyLeft();
   const copy = useCopyLink();
   useRaisedToasts();
   const me = selfIn(state);
@@ -154,294 +141,95 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
   const organizer = state.isOrganizer;
   // Whoever hosts (the organizer, or someone standing in while they're away) lets people in and takes the notes.
   const hosting = state.isHost;
-  // What the call captures now, the same for everyone: notes on (unavailable while the host's browser can't
-  // capture anything), paused by the organizer, or off. The recording follows it.
+  // What the call captures now, the same for everyone; and where you are, in a breakout room, the room's, which captions,
+  // catching up and asking follow.
   const mode = state.capture.mode;
   const on = notesAreOn(mode);
-  // What's captured where you are: in a breakout room, the room's, which the organizer can pause on its own. Captions,
-  // catching up and asking follow it, and the live transcript is heard only while it says on.
   const capHere = captureHere(state.capture);
-  const hearing = capHere.transcript.mode === 'on';
+  const live = state.phase === 'in-call';
   const width = useWidth();
   // One breakpoint for the layout and the dock: under it, it's a phone.
   const phone = width < PHONE_W;
-  const [pop, setPop] = useState<Pop>(null);
-  // The picker is the dock's on a wide screen and More's on a phone: it closes when the screen flips between them.
-  useEffect(() => { setPop((p) => (p === 'react' || p === 'reactMore' ? null : p)); }, [phone]);
+  /* What's open over the call, one thing at a time; the reaction picker closes as the screen flips between phone and wide (pop.ts). */
+  const [pop, setPop] = usePop(phone);
   /** Focus: what's in the frame fills your window, and everything else tucks away (⌘⇧F, Show everything, Esc). */
   const [focus, setFocus] = useState(false);
-  /** Settings, from More: one window, open on the part you last had. */
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>('av');
-  /** Background's window, from the camera's menu or Settings › Audio and video: what it opens from closes as the window opens. */
-  const [backgroundOpen, setBackgroundOpen] = useState(false);
-  /** Share › Your screen: why the last try didn't start, if it didn't. */
-  const [shareTrouble, setShareTrouble] = useState<ShareTrouble | null>(null);
-  /** Leave's question, for whoever hosts: open over Leave, or in the floating call's own window. */
-  const [leaveOpen, setLeaveOpen] = useState(false);
-  const [leaveInFloating, setLeaveInFloating] = useState(false);
-  /** A departure on its way: ending the call (or leaving it, for anyone else), or leaving it with someone hosting. */
-  const [leavingAs, setLeavingAs] = useState<'end' | 'keep' | null>(null);
-  const leaving = leavingAs !== null;
-  const departing = useRef(false);
-  /** The call is over here: its page has taken over, and the call eases back under it. */
-  const [done, setDone] = useState(false);
-  const [cc, setCc] = useState(false);
-  const [lang, setLang] = useState<CaptionLanguage | null>(null);
-  // Your own view of the call (never sent anywhere): how you like calls, remembered for your account, and how you
-  // arranged this one, kept in this tab until you leave it.
-  const account = useQuery(q.session());
+  /** Two on your stage with no room for both take turns: the one you brought to the front. */
+  const [front, setFront] = useState<ThingId | null>(null);
+  /** The board picker is open under Board, at the top right. */
+  const [picking, setPicking] = useState(false);
+  /** Which kind of pill the board on your stage shows: while it says the rooms' time, the status bar says nothing more. */
+  const [boardPill, setBoardPill] = useState<PillKind | null>(null);
+  const windows = useCallWindows();
+  const departure = useDeparture();
+  const { leaving, done } = departure;
+  const callOver = done || leaving;
+  // Your own view of the call (never sent anywhere): how you like calls, remembered for your account, and how you arranged this
+  // one, kept in this tab until you leave it.
+  const account = useQuery(accountQueries.session());
   const owner = account.data ? account.data.ownerId : account.isPending ? undefined : null;
   const layout = useCallView(state.callId, owner);
   // Whose pictures can show behind the camera: a guest's none.
-  useEffect(() => { if (owner !== undefined) media.setAccount(owner); }, [media, owner]);
-  const forgetLayout = layout.forget;
-  const panels = layout.panels;
+  useBackgroundsOf(media, owner);
   // The call's state changes all the time; what it says about the workspace rarely does, and the workspace draws a lot. A
   // video playing tells the server's time on every read, which only its player uses, and it reads the call itself.
   const spaceKey = JSON.stringify(told.workspace, (k, v: unknown) => (k === 'nowMs' ? undefined : v));
   const space = useMemo(() => told.workspace, [spaceKey]);
+  const presentNow = space.present;
   // What's been brought to this call, as the list will show it: what's in the workspace the call uses now.
   const broughtHere = space.documents.filter((d) => d.workspaceId === space.id).length;
-  /*
-   * ---------- your side: one view at a time, at the right, and a sheet on a phone (side.ts) ----------
-   * Notes has its tabs; where your side is, to the tab, is what catching up returns to.
-   */
+  /* Your side: one view at a time, at the right, and a sheet on a phone. A reload finds it as it was (side.ts). */
   const side = useSide({ phone });
-  const [actionTarget, setActionTarget] = useState<ReplyJump>();
-  const [notesTab, setNotesTab] = useState<NotesTab>('notes');
-  const place: SidePlace | null = side.view === 'notes' ? notesTab : side.view;
-  const goTo = (p: SidePlace | null) => {
-    if (p === null) { side.close(); return; }
-    if (isNotesTab(p)) { setNotesTab(p); side.open('notes'); return; }
-    side.open(p);
-  };
-  // A reload finds your side as it was. A call you've just joined opens Notes beside the stage, on a wide screen, while notes are on.
-  const keptSide = useRef(layout.layout.side);
-  useEffect(() => {
-    if (innerWidth < PHONE_W) return;
-    const kept = keptSide.current;
-    if (kept) side.open(kept);
-    else if (kept === undefined && on && innerWidth >= 1100) side.open('notes');
-    // Once, as the call opens.
-  }, []);
-  const sideKept = side.view === 'notes' || side.view === 'chat' || side.view === 'people' ? side.view : null;
-  const sideMoved = useRef(false);
-  useEffect(() => {
-    if (sideMoved.current) layout.keepSide(sideKept);
-    sideMoved.current = true;
-    // `keepSide` writes through the layout's own updater, which never changes.
-  }, [sideKept]);
-  /* What's typed in Chat and Ask: moving your side to another view and back keeps it. */
-  const askDraft = useRef({ text: '' });
-  /* What's typed in Note to self, at the foot of Notes: kept above the side, so typing there renders only the foot. */
-  const ownDraft = useRef({ text: '' });
+  const places = useSidePlaces(side);
+  useSideKept({ side, kept: layout.layout.side, keep: layout.keepSide, notesOn: on });
   const chatMemory = useRef(newChatMemory());
-  /* Which conversation Chat shows: a tile, a row in People or a notification can choose it as well as its own tabs. */
-  const [chatTab, setChatTab] = useState<ChatTab>({ kind: 'room' });
-  const [questionTarget, setQuestionTarget] = useState<ReplyJump>();
   const devices = useDevices(m.camera);
   const speaking = useSpeaking(media, m.mic);
   /* How loud each person is for you (only your playback), kept for this call in this tab. */
-  const volumes = volumesFor(session);
-  const levels = useLive(volumes);
-  const [canVolume] = useState(canSetVolume);
-  useEffect(() => { volumes.follow(told.participants); }, [volumes, told.participants]);
-  /* Going back a page, or anywhere else in the app, is a way out too: it asks first (`requestLeave`). */
-  const guard = useLeaveGuard(() => requestLeave('elsewhere'), hosting);
+  const { volumes, levels, canVolume } = useVolumes(session, told.participants);
+  /* Going back a page, or anywhere else in the app, is a way out too: it asks first (leaving.ts). */
+  const guard = useLeaveGuard(() => leave.request('elsewhere'), hosting);
   const guardRef = useRef(guard);
   guardRef.current = guard;
-  const readChatIds = useMemo(() => new Set(state.chatRead), [state.chatRead]);
-  const unreadChat = crypto.status === 'in' ? crypto.chat.filter((m) => !m.isMe && !m.sending && !m.failed && inConversation(m) && m.place === crypto.place && !readChatIds.has(m.id)).map((m) => m.id) : [];
-  const unreadMentions = useMemo(() => unreadChatMentions(state, crypto, self), [state, crypto, self]);
-  const unreadReplies = useMemo(() => unreadThreadReplies(state, crypto, self), [state, crypto, self]);
-  const unread = new Set([...unreadChat, ...unreadMentions, ...unreadReplies]).size + direct.unread.length;
-  const [chatTarget, setChatTarget] = useState<ReplyJump>();
-  const attentionMentions = useMemo(() => [...unreadMentions, ...direct.unreadMentions], [unreadMentions, direct.unreadMentions]);
-  const attentionAllowed = useCallAttention(state, crypto, attentionMentions, !leaving && !done);
-  const readingMentions = useRef(new Set<string>());
-  const readMentions = useCallback((ids: readonly string[]) => {
-    const fresh = ids.filter((id) => !readingMentions.current.has(id));
-    for (let at = 0; at < fresh.length; at += 200) {
-      const batch = fresh.slice(at, at + 200);
-      for (const id of batch) readingMentions.current.add(id);
-      void session.readChat(batch).catch((e: unknown) => clog.warn('chat read state not saved', { code: errorCode(e) }))
-        .finally(() => { for (const id of batch) readingMentions.current.delete(id); });
-    }
-  }, [session]);
-
+  const unread = useUnread({ session, state, crypto, direct, self });
+  const attentionAllowed = useCallAttention(state, crypto, unread.attentionMentions, !leaving && !done);
   const { room, roomView, marks, reactions } = useCallRoom({ session, media, toast, guard: guardRef });
   const burst = useBurst(reactions);
   const react = (r: CallReaction) => reactions?.fire(r);
-
-  const live = state.phase === 'in-call';
-  const capture = useNotesCapture({ session, state, crypto, media, room, departing: leaving || done });
-  const { uploadError, heardProblem, pausing, discardDisplaced } = capture;
-
+  const capture = useNotesCapture({ session, state, crypto, media, room, departing: callOver });
   const myShare = roomView.people[self]?.screenSid ?? null;
-  const { screenProblem, sharingInRoom, keptMine, keptOf, startMine } = useScreenCapture({ session, state, media, screen: m.screen, departing: leaving || done });
-
+  const screen = useScreenCapture({ session, state, media, screen: m.screen, departing: callOver });
   /* The organizer's plan and the call's notes: what's said while it has stopped them, where, and notes on again once it has more. */
   const planRestart = usePlanRestart(state, session);
   const planStop = withRestart(usePlanStop(state), planRestart);
   const stopMarks = useStopMarks(state);
-
-  /* What the call says happened ("Notes are on…") arrives once, as a toast. Joining shows only the latest: the rest is history. */
-  const shown = useRef<Set<string> | null>(null);
-  const { notesBack } = planRestart;
-  useEffect(() => {
-    // Once each, in this tab: a reload doesn't say them again.
-    shown.current ??= new Set([...seenNotices(state.callId), ...state.notices.slice(0, -1).map((n) => n.id)]);
-    const seen = shown.current;
-    let fresh = false;
-    for (const n of state.notices) {
-      if (seen.has(n.id)) { session.dismissNotice(n.id); continue; }
-      seen.add(n.id);
-      fresh = true;
-      // Notes on again because the organizer's plan has more are said as what came (PlanStop.tsx).
-      const back = notesBack(n);
-      if (back) toast(back.text, back.options);
-      else toast(n.text, { icon: n.kind === 'notes' ? 'notesPen' : n.kind === 'people' ? 'people' : 'screen', ms: 3200 });
-      session.dismissNotice(n.id);
-    }
-    if (fresh) keepSeen(state.callId, seen);
-  }, [state.notices, state.callId, session, toast, notesBack]);
-
-  /*
-   * Someone asking to join: a card drops in for the organizer and stays until they're answered, wherever that happens
-   * (here, in People, or on another device), or they take it back or go. A press that still comes too late lets nobody
-   * in, and says why.
-   */
-  const [answering, setAnswering] = useState<string | null>(null);
-  const answerAsk = (w: CallAsker, decide: (id: string) => Promise<void>) => {
-    const now = session.getSnapshot();
-    if (!now.waiting.some((x) => x.id === w.id)) {
-      toast(now.participants.some((p) => p.id === w.id) ? `${w.person.name} is already in the call.` : `${w.person.name} isn’t asking to join any more.`, { icon: 'people' });
-      return;
-    }
-    setAnswering(w.id);
-    decide(w.id).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' })).finally(() => setAnswering(null));
-  };
-  /* Letting someone signed in in from the link, or ringing them, adds them to the invite: the organizer reads who's invited again when someone is here, or rung, and not on it yet. */
-  const onTheInvite = (who: { email: string }) => (meeting?.guests ?? []).some((g) => sameEmail(g, who));
-  const uninvited = organizer && (told.participants.some((p) => !p.isOrganizer && p.person.email && !onTheInvite(p.person)) || told.ringing.some((r) => !onTheInvite(r.person)));
-  useEffect(() => { if (uninvited) void qc.invalidateQueries({ queryKey: qk.byCode(state.code) }); }, [uninvited, state.code, qc]);
-
-  /* This device's keys fell out of step: joining again (a reload) puts it back in, without anyone letting it in. */
-  useEffect(() => {
-    if (crypto.status !== 'failed') return;
-    toast('This device lost the call’s encryption keys. Reload to join again.', { icon: 'x', ms: 120_000, action: { label: 'Reload', onClick: () => { guardRef.current.release(); location.reload(); } } });
-  }, [crypto.status, toast]);
-  /* The organizer muted your microphone: the dock already shows it off; say who did it. */
-  const hostMuted = useRef(0);
-  useEffect(() => {
-    if (roomView.hostMuted <= hostMuted.current) return;
-    hostMuted.current = roomView.hostMuted;
-    toast('The organizer muted your microphone. Unmute when you’re ready.', { icon: 'micOff', ms: 5000 });
-  }, [roomView.hostMuted, toast]);
-  /* A device unplugged, back, or allowed again, without anyone pressing anything: said once, as it happens. */
-  const seenChange = useRef(m.changes.at(-1)?.n ?? 0);
-  useEffect(() => {
-    for (const c of m.changes) {
-      if (c.n <= seenChange.current) continue;
-      seenChange.current = c.n;
-      toast(c.text, { icon: c.kind === 'mic' ? 'mic' : c.kind === 'cam' ? 'video' : 'speaker', ms: 6000 });
-    }
-  }, [m.changes, toast]);
-  /*
-   * The browser is holding back everyone's sound until the page is clicked (Safari with nothing captured). The status
-   * bar says so for as long as it lasts, with Play sound, and every click, tap or key tries again (iOS doesn't count
-   * every touch), until sound plays.
-   */
+  /* What the call says happened ("Notes are on…") arrives once, as a toast. Joining shows only the latest: the rest is history (seen.ts). */
+  useCallNotices({ notices: state.notices, callId: state.callId, session, toast, notesBack: planRestart.notesBack });
+  /* Who's invited, which only the organizer can read; everyone else learns who's here from the call (participants.ts). */
+  const meeting = useInvited(state.code, organizer, told);
+  useKeysLost(crypto.status, toast, guardRef);
+  useMediaNotices({ hostMuted: roomView.hostMuted, changes: m.changes, toast });
+  /* The browser holding back everyone's sound until the page is clicked: the status bar says so, with Play sound (useCallRoom.ts). */
   const playSound = () => { void room.startAudio(); };
-  useEffect(() => {
-    if (!roomView.audioBlocked) return;
-    const go = () => { void room.startAudio(); };
-    const kinds = ['click', 'touchend', 'keydown'] as const;
-    for (const k of kinds) addEventListener(k, go, { capture: true });
-    return () => { for (const k of kinds) removeEventListener(k, go, { capture: true }); };
-  }, [roomView.audioBlocked, room]);
-
-  /*
-   * Whoever hosts ended the call: it's over here too, and its page says so. Otherwise the host removed you, or the call
-   * went on from another tab or device: you're told, and go back to the call's link. The organizer is removed only by joining
-   * from another device; this screen then lets go of the call. An organizer's tab that was away long enough for someone else
-   * to host goes back to the join page, where joining takes the call back. A connection that dropped for good asks for a reload.
-   */
-  const organizerTab = session.ticket.role === 'host';
+  useSoundUnblocked(room, roomView.audioBlocked);
+  /** Your microphone and camera as you leave: Rejoin brings them back as they were. */
+  const mediaNow = () => ({ mic: media.getSnapshot().mic, cam: media.getSnapshot().cam });
+  const overHere = whenOver({ last: lastTold, organizer, meeting, guard: guardRef, toast, departure, closeMenus: () => setPop(null), onOver });
+  /* Ended, removed, or gone on elsewhere: it's over here, or you're told (connection.ts). `over`: this tab has let go of the call. */
   const outOfGroup = crypto.status === 'removed' || crypto.status === 'away';
   const over = useRef(false);
-  /* The connection dropped for good: its toast offers a reload, until the call says this tab is out of it (someone else hosts now). */
-  const dropped = useRef<(() => void) | null>(null);
-  /* The call says it has ended, or its room went with it, and not by anything this tab did: whoever hosts ended it, or Alcove did. */
-  const endedByHost = !organizerTab && ((roomView.connection === 'ended' && roomView.endReason === 'ended-by-host') || told.phase === 'ended');
-  useEffect(() => {
-    if (leaving || done || (over.current && !(dropped.current && outOfGroup))) return;
-    if (roomView.connection === 'ended' && roomView.endReason === 'error' && !outOfGroup && !endedByHost) {
-      over.current = true;
-      dropped.current = toast('The call’s connection dropped. Reload to join again.', { icon: 'x', ms: 120_000, action: { label: 'Reload', onClick: () => { guardRef.current.release(); location.reload(); } } });
-      return;
-    }
-    const gone = (roomView.connection === 'ended' && roomView.endReason === 'removed') || endedByHost;
-    if (!gone && !outOfGroup) return;
-    dropped.current?.();
-    dropped.current = null;
-    over.current = true;
-    const was = mediaNow();
-    discardDisplaced();
-    session.close();
-    void room.leave();
-    sessions.call = null;
-    forgetLayout();
-    media.stop();
-    volumes.clear();
-    sessions.media = null;
-    void qc.invalidateQueries();
-    if (endedByHost) {
-      overHere({ kind: 'ended-by' }, was);
-      return;
-    }
-    guardRef.current.release();
-    const away = crypto.status === 'away';
-    leftToast = toast(away ? 'Your connection dropped, so someone else is hosting. Join again to take the call back.'
-      : organizerTab ? 'You joined this call from another device.'
-        : roomView.endReason === 'removed' ? 'The host removed you from the call.'
-          : 'You’re no longer in this call here. You can join again.', { icon: 'leave', ...(away ? { ms: 8000 } : {}) });
-    void navigate(organizerTab && !away ? { to: '/home', replace: true } : { to: '/join/$code', params: { code: state.code }, replace: true });
-    // overHere and mediaNow read the call and your devices as they are when this runs.
-  }, [roomView.connection, roomView.endReason, endedByHost, outOfGroup, crypto.status, leaving, done, organizerTab, state.code, forgetLayout, media, volumes, navigate, toast, session, room, qc, discardDisplaced]);
-
-  /*
-   * Moving to another device. Letting go here comes first: what the notes heard so far is sent, then the microphone
-   * and camera stop and this device leaves the room. Only then is the new device let in.
-   */
-  const moving = useMoveOut(session, () => ({ mic: media.getSnapshot().mic, cam: media.getSnapshot().cam }), async () => {
-    over.current = true;
-    const departure = capture.departure('move');
-    await departure.flush();
-    departure.finish();
-    session.close();
-    await room.leave().catch((e: unknown) => clog.debug('leaving the room to move', { err: e }));
-    media.stop();
-    sessions.media = null;
-    guardRef.current.release();
+  useOutOfTheCall({
+    session, code: state.code, phase: told.phase, roomView, cryptoStatus: crypto.status, outOfGroup, organizerTab: session.ticket.role === 'host', leaving, done, over,
+    guard: guardRef, toast, navigate, qc, room, media, volumes, forgetLayout: layout.forget, discardDisplaced: capture.discardDisplaced, mediaNow, overHere
   });
+  /* Moving to another device: letting go here comes first (leaving.ts). */
+  const moving = useMoveOut(session, mediaNow, letGoForMove({ over, capture, session, room, media, guard: guardRef }));
 
-  /* ---------- who is on the stage: everyone in the call, with their media from the room ---------- */
-  // With breakout rooms open, this browser's group is its own part of the call: someone in another part is never in it.
-  const partRooms = state.breakouts.open?.rooms ?? null;
-  const partOf = (id: string) => partRooms?.find((r) => r.members.includes(id))?.id ?? MAIN_PLACE;
-  const stagePeople: StageParticipant[] = state.participants.map((p) => {
-    const r = roomView.people[p.id];
-    const video: Feed | null = p.isMe ? (m.cam && m.camera ? { stream: m.camera } : null) : r?.camSid ? { room, sid: r.camSid } : null;
-    // In this part of the call by the server's word, but not in this browser's group yet (back with fresh keys after a reload, say).
-    const connecting = !p.isMe && crypto.status === 'in' && partOf(p.id) === partOf(meId) && !crypto.members.includes(p.id);
-    return { status: tileStatus(p.status, callClock), id: p.id, seat: p.seat, person: p.person, isMe: p.isMe, hand: p.hand, mic: p.isMe ? m.mic : r?.mic ?? false, speaking: p.isMe ? speaking : r?.speaking ?? false, video, volume: p.isMe || !canVolume ? null : levels[p.id] ?? 1, connecting };
-  });
+  /* ---------- who is on the stage, and what's shared and presented there (tiles.tsx, share.ts, onStage.ts) ---------- */
+  const stagePeople = stagePeopleOf({ state, roomView, room, m, crypto, meId, speaking, clock: callClock, levels, canVolume });
   /* Who came in when, by seat, so someone coming back keeps their place on your stage. Only people the call names have a seat. */
   const seatKey = told.participants.map((p) => p.seat).join(' ');
-  const arrive = layout.arrive;
-  useEffect(() => { if (seatKey) arrive(seatKey.split(' ')); }, [seatKey, arrive]);
+  useArrivals(layout.arrive, seatKey);
   // Names seen in this call, so chat from someone who has left keeps theirs.
   const named = useRef(new Map<string, Person>());
   for (const p of told.participants) named.current.set(p.id, p.person);
@@ -449,198 +237,29 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
   const byId = new Map(stagePeople.map((p) => [p.id, p.person]));
   const others = stagePeople.filter((p) => !p.isMe);
   const invited = meeting?.guests ?? [];
-  // As the call stands: someone signed in whom the organizer let in from the link is invited now.
-  const viewerGuest = state.role === 'guest';
-  /* Who gets the notes, as far as you can tell: the organizer knows everyone invited; a guest isn't told. */
-  const getting: Person[] = organizer
-    ? [...(me ? [me.person] : []), ...invited.filter((g) => !me || !sameEmail(g, me.person))]
-    : viewerGuest ? [] : state.participants.flatMap((p) => (p.isOrganizer || p.person.email ? [p.person] : [])).filter((p, k, all) => all.findIndex((x) => x.id === p.id) === k);
-
-  const {
-    open, left, roomName, placeName, inARoom, unit, unitKey, activity, organizerPerson, message, roomsOnBoards, roomsView, roomsBoard, myRoomId,
-    candidates, mainPeople, roomChips, visit, renameRoom, moveTo, openRooms, landing, cameBack
-  } = useBreakoutRooms({ session, state, room, roomView, invited, openSide: side.open });
-
-  /*
-   * ---------- what's shared: yours, and everyone else's in your part of the call ----------
-   * Several people share at once (a share starts while fewer than MAX_SHARES are going), each viewer chooses which to
-   * see big, and anyone can mute the sound a share carries, for themselves.
-   */
-  // Pointing at a share: the organizer's switch for the call, and each presenter's own choice for others on theirs.
-  const othersPointAt = (id: string) => state.participants.find((p) => p.id === id)?.othersPoint ?? true;
-  const closedFor = (owner: string, mine: boolean): 'call' | 'presenter' | null => (!state.pointing ? 'call' : mine || othersPointAt(owner) ? null : 'presenter');
-  const shares: StageShare[] = [
-    ...(m.screen ? [{
-      id: meId, feed: { stream: m.screen }, presenter: me?.person ?? SOMEONE, mine: true, label: `You’re sharing ${m.screenLabel ?? 'your screen'}`, name: 'Your screen', sound: null, kept: keptMine,
-      point: myShare ? { sid: myShare, closed: closedFor(meId, true) } : null
-    }] : []),
-    ...others.flatMap((p): StageShare[] => {
-      const r = roomView.people[p.id];
-      const sid = r?.screenSid;
-      if (!r || !sid) return [];
-      const who = callName(p.person);
-      const on = r.screenSound === 'on';
-      const sound = r.screenSound ? {
-        muted: !on,
-        toggle: () => { room.muteShare(sid, on); toast(on ? `${who}’s share is muted for you` : `${who}’s share plays its sound again`, { icon: on ? 'speakerOff' : 'speaker' }); }
-      } : null;
-      return [{ id: p.id, feed: { room, sid }, presenter: p.person, mine: false, label: `${who} is sharing`, name: `${who}’s screen`, sound, kept: keptOf(p.id), point: { sid, closed: closedFor(p.id, false) } }];
-    })
-  ];
-  /*
-   * The marks store follows the call: the shares shown here (by their picture's track sid, with whose each is and whether
-   * others may point at it), who's in your part of the call, which part that is, and whether pointing is on at all.
-   */
-  const pointingOn = state.pointing && live && roomView.connection === 'connected';
-  const pointShares = shares.flatMap((s) => (s.point ? [{ sid: s.point.sid, owner: s.id, others: othersPointAt(s.id) }] : []));
-  const pointPeople = unit ?? stagePeople.map((p) => p.id);
-  // The part of the call is the one whose keys this browser holds (the main room, or a room by its ID): someone coming
-  // or going changes who's in it, and only their own pointer and marks go.
-  const pointKey = [pointingOn, crypto.place, pointShares.map((s) => `${s.sid}:${s.owner}:${s.others}`).join(','), [...pointPeople].sort().join(',')].join('|');
-  useEffect(() => {
-    marks?.use({ on: pointingOn, shares: new Map(pointShares.map((s) => [s.sid, { owner: s.owner, others: s.others }])), people: new Set(pointPeople), part: crypto.place });
-    // pointKey says everything this reads.
-  }, [marks, pointKey]);
+  const getting = whoGetsNotes(state, invited);
+  const rooms = useBreakoutRooms({ session, state, room, roomView, invited, openSide: side.open });
+  const { open, roomName, myRoomId } = rooms;
+  const { shares, full } = useShares({
+    state, live, meId, me: me?.person, m, myShare, keptMine: screen.keptMine, keptOf: screen.keptOf, others, people: rooms.unit ?? stagePeople.map((p) => p.id), part: crypto.place, roomView, room, marks, toast
+  });
   const connected = roomView.connection === 'connected';
-  const sharing = shares.filter((s) => !s.mine);
-  // At most MAX_SHARES going at once in your part of the call, yours counted; changing what you share is always fine.
-  const full = !m.screen && sharing.length >= MAX_SHARES;
-
-  /*
-   * Something that starts once you're settled in is told; something that stops, too. Not while the room connects or
-   * reconnects, when shares come and go with the connection.
-   */
-  const settledAt = useRef<number | null>(null);
-  // Starts again whenever the connection or your part of the call changes: shares come and go with either. A call that
-  // ends empties the call (its state, or the room's disconnect, whichever comes first) in the render that says so, as a
-  // reconnect does: `live` and `connected` cover those.
-  useEffect(() => { settledAt.current = connected ? Date.now() : null; }, [connected, unitKey]);
-  const settled = () => live && connected && settledAt.current !== null && Date.now() - settledAt.current > 4000;
   /** A toast in the workspace's words. `topic`: what it's about, so a newer one about the same thing takes its place. */
   const sayIt = useCallback((t: WsToastData, topic?: string) => toast(t.text, { icon: t.icon, person: t.person, action: t.action, ms: t.ms, topic }), [toast]);
-  /** What's said about something on your stage, or presented here, is about it: each says the latest of it. */
-  const about = (id: ThingId) => `stage:${id}`;
-
-  /*
-   * ---------- what's presented here, and what's on your stage (onStage.ts) ----------
-   * Screens, as many as four, and one board or the workspace. A presentation that starts takes the stage of everyone who
-   * isn't watching another; anything presented that isn't on your stage is a tile with the people.
-   */
-  const presentNow = space.present;
-  const presenterIn = presentNow ? state.participants.find((p) => p.seat === presentNow.by.seat) ?? null : null;
-  const presented: Presented[] = [
-    ...shares.map((s): Presented => ({ id: screenOf(s.id), key: `screen:${s.id}`, by: s.presenter, seat: null, first: s.mine ? 'You' : callName(s.presenter), mine: s.mine, name: s.name })),
-    ...(presentNow && presentNow.kind !== null ? [{
-      id: presentNow.kind === 'workspace' ? 'ws' as const : 'board' as const, key: presentNow.key, by: presenterIn?.person ?? { ...SOMEONE, name: presentNow.by.name }, seat: presentNow.by.seat,
-      first: firstName(presentNow.by.name), mine: presentNow.mine, name: presentNow.kind === 'workspace' ? space.name ?? 'the workspace' : presentNow.name ?? 'the board'
-    }] : [])
-  ];
-  /* What a toast offers (Show it) goes once it's been taken up some other way, or what it's about stops. */
-  const offers = useRef(new Map<string, () => void>());
-  /** A presentation or share you ended, yours or (as the organizer) someone else's: you've been told, so its end isn't said twice. */
-  const stoppedByMe = useRef<string | null>(null);
-  const stage = useOnStage({
-    presented, ended: space.ended, place: myRoomId ?? MAIN_PLACE, settled, kept: layout.layout.workspace.open,
-    told: {
-      started: (p, following, show) => {
-        const what = isScreen(p.id) ? 'their screen' : p.id === 'ws' ? 'the workspace' : p.name;
-        if (!following) { offers.current.get(p.key)?.(); offers.current.set(p.key, sayIt(wsToast.presentingToo(p.by, p.first, what, show), about(p.id))); return; }
-        sayIt(isScreen(p.id) ? wsToast.presentingScreen(p.first) : p.id === 'ws' ? wsToast.followingWorkspace(p.first) : wsToast.followingBoard(p.first, p.name), about(p.id));
-      },
-      ended: (p, was) => {
-        if (stoppedByMe.current === p.key) { stoppedByMe.current = null; return; }
-        const what = p.id === 'ws' ? 'the workspace' : p.name;
-        // Yours, closed for everyone, and not by you: only the organizer can, and you're told it was them, as a stopped share is.
-        if (p.mine) { if (was.closed && !isScreen(p.id)) sayIt(wsToast.closedByOrganizer(organizerFirst(state), what), about(p.id)); return; }
-        if (isScreen(p.id)) { if (was.onStage && settled()) sayIt(wsToast.stoppedSharing(p.first), about(p.id)); return; }
-        // The call said it ended, and its presenter is gone from it: they left, which is why.
-        if (was.said && !was.closed && p.seat !== null && !state.participants.some((x) => x.seat === p.seat)) { sayIt(wsToast.presenterLeft(p.first), about(p.id)); return; }
-        // In a room, the board every room shares closes for that room alone, and stays the call's.
-        const roomOnly = myRoomId !== null && (p.id === 'ws' || state.board.open !== null);
-        sayIt(was.closed && was.onStage ? wsToast.closedEverywhere(what, roomOnly) : wsToast.stoppedPresentingIt(p.id === 'ws' ? 'folderOpen' : 'presentation', p.first, what), about(p.id));
-      }
-    }
+  const { stage, settled, about, presenterIn, stoppedByMe } = useCallStage({
+    state, space, shares, place: myRoomId ?? MAIN_PLACE, inRoom: myRoomId !== null, kept: layout.layout.workspace.open, live, connected, unitKey: rooms.unitKey, say: sayIt
   });
   const { open: stageOpen, close: stageClose } = stage;
-  const tileKey = stage.tiles.map((t) => t.key).join(' ');
-  useEffect(() => {
-    for (const [key, close] of offers.current) if (!tileKey.split(' ').includes(key)) { close(); offers.current.delete(key); }
-  }, [tileKey]);
   const setWsOpen = useCallback((o: boolean) => { if (o) stageOpen('ws'); else stageClose('ws'); }, [stageOpen, stageClose]);
   const work = useWorkspacePanel(session, space, layout, { open: stage.on.includes('ws'), setOpen: setWsOpen });
-
-  /*
-   * ---------- the board: the board in your part of the call, or a saved one just for you, on your stage (callBoard.ts) ----------
-   * With none open, nothing here is drawn or loaded, and the call is as it always is.
-   */
   const { resolved: theme } = useTheme();
-  /** The board picker is open under Board, at the top right. */
-  const [picking, setPicking] = useState(false);
-  /** A saved board you opened just for you, while it's on your stage. */
-  const [saved, setSaved] = useState<SavedBoard | null>(null);
-  const savedOn = stage.on.includes('saved');
-  useEffect(() => { if (!savedOn && saved) setSaved(null); }, [savedOn, saved]);
-  // Your workspaces, to name a board's and know whether you're in it: read only once a board is open or the board picker opens,
-  // so a call that never has one never lists them.
-  const drive = useQuery({ ...q.workspaces(), enabled: state.role !== 'guest' && (state.board.open !== null || saved !== null || picking || pop === 'board' || pop === 'shareBoard') }).data;
-  const spaceName = (id: string): string | null => drive?.find((w) => w.id === id)?.name ?? (space.id === id ? space.name : null);
-  const board = useCallBoard({
-    stage: savedOn && saved ? 'saved' : stage.on.includes('board') ? 'call' : null, saved: savedOn ? saved : null,
-    place: myRoomId ?? MAIN_PLACE, cameBack, spaceName,
-    session, state, me: meId, owner: account.data?.ownerId ?? null, talking: stagePeople.flatMap((p) => (p.speaking ? [p.id] : [])),
-    say: (text, icon, action) => { toast(text, { icon, action }); }
+  /* The board in your part of the call, or a saved one just for you, on your stage (boardOnStage.ts). */
+  const { board, saved, setSaved, spaceName, run: boardRun, rename: renameBoard, item: boardItem } = useBoardHere({
+    session, state, stage, space, listing: picking || pop === 'board' || pop === 'shareBoard', place: myRoomId ?? MAIN_PLACE, cameBack: rooms.cameBack, me: meId,
+    owner: account.data?.ownerId ?? null, talking: stagePeople.flatMap((p) => (p.speaking ? [p.id] : [])), room, myShare, whoIs: personOf, toast
   });
-  /*
-   * A breakout room's board, and the board the rooms come back to, open on everyone's stage there; the board rooms share opens on
-   * the stage of whoever oversees them.
-   */
-  const boardArrived = board.arrived;
-  useEffect(() => { if (boardArrived > 0) stageOpen('board'); }, [boardArrived, stageOpen]);
-  /*
-   * Overseeing open rooms, the organizer's stage shows them, and what's open stands beside them (panels.ts). A board the rooms are
-   * worked on takes their place while it's on the organizer's stage: the one every room shares, or the board of the room they're
-   * visiting.
-   */
-  const stageRooms = roomsView && !(roomsBoard && stage.on.includes('board')) ? roomsView : null;
-  /* The board in the call, closed (and done sinking), leaves your stage. */
-  const boardGone = state.board.open === null && !board.sinking && stage.on.includes('board');
-  useEffect(() => { if (boardGone) stageClose('board'); }, [boardGone, stageClose]);
-  /*
-   * Someone else making a new board changes the board in the call, but never what's on your stage: the one you had stays open,
-   * just for you, as a saved board.
-   */
-  const callBoardDoc = state.board.open?.documentId ?? null;
-  const lastCallBoard = useRef(state.board.open);
-  useEffect(() => {
-    const was = lastCallBoard.current;
-    lastCallBoard.current = state.board.open;
-    if (!was?.documentId || !was.workspaceId || !callBoardDoc || was.documentId === callBoardDoc || !stage.on.includes('board') || state.board.open?.openedBy === meId || was.role === null) return;
-    setSaved({ workspaceId: was.workspaceId, documentId: was.documentId, name: was.name ?? 'Untitled board' });
-    stageOpen('saved');
-  }, [callBoardDoc]);
-  const boardStatus = board.status;
-  const boardRun = useBoardRun(session, state);
-  /*
-   * Your role on the open board changed, by Share in this call or anywhere else: the board's own document hears it first, so the
-   * call is read again then, and the board turns read-only, or back, in a moment rather than at the next read.
-   */
-  const docRole = boardStatus?.role ?? null;
-  useEffect(() => {
-    const said = board.open?.role ?? null;
-    if (board.savedDrawn || docRole === null || said === null || docRole === said) return;
-    session.refresh({ call: true, log: false }).catch((e: unknown) => clog.info('call not read again for a board’s role', { code: errorCode(e) }));
-  }, [docRole]);
-  const renameBoard = useRenameBoard(board.savedDrawn ? undefined : session.ticket.pass);
-  /* Who can add to it: the board's own Share, as its workspace has it, for someone in that workspace who can edit it there. */
-  const boardSpace = board.drawn?.workspaceId ?? null;
-  // The call says your place in the workspace it views; any other is in your Drive.
-  const boardMember = boardSpace !== null && ((space.id === boardSpace && space.role !== null) || (drive ?? []).some((w) => w.id === boardSpace && w.role !== null));
-  const boardItem = useQuery({ ...q.workspaceItem(boardSpace ?? '', board.drawn?.documentId ?? ''), enabled: boardMember && !!board.drawn?.documentId }).data;
-  /* Someone put a picture of your screen on the board: you're told, so nothing of your screen goes there without you knowing. */
-  useEffect(() => room.receive(BOARD_SHOT_TOPIC, (payload, from) => {
-    const share = shotHeard(payload);
-    if (share && share === myShare) toast(`${callName(personOf(from))} put a picture of your screen on the board.`, { icon: 'image' });
-  }, BOARD_SHOT_LIMITS), [room, myShare]);
+  /* Overseeing open rooms, the organizer's stage shows them, unless a board the rooms work on is on it (panels.ts). */
+  const stageRooms = rooms.roomsView && !(rooms.roomsBoard && stage.on.includes('board')) ? rooms.roomsView : null;
 
   /* ---------- actions ---------- */
   const callControls = useCallControls({
@@ -651,112 +270,22 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
     micChanged: (enabled) => callSounds.confirmMic(enabled),
     handChanged: (up) => toast(!up ? 'Your hand is lowered' : roomName && !organizer ? `Your hand is raised. The organizer sees that ${roomName} wants help.` : 'Your hand is raised. Everyone in this room can see it.', { icon: 'hand' })
   });
-  const fullText = `${MAX_SHARES} people are sharing. You can share once one of them stops.`;
-  const share = (c: ShareChoice) => {
-    setPop(null);
-    setShareTrouble(null);
-    // Others may have started while the picker was open: checked again here, at the click.
-    if (full) { toast(fullText, { icon: 'screen' }); return; }
-    // The browser's picker needs this click: nothing is awaited before it opens.
-    void media.shareScreen(c, () => sayIt(wsToast.screenOff())).then((r) => {
-      if (!r.ok) {
-        if (r.problem === 'unsupported') toast(SHARE_PROBLEMS.unsupported, { icon: 'screen', ms: 8000 });
-        else if (r.problem !== 'cancelled') reopen.current(r.problem);
-        return;
-      }
-      sayIt(wsToast.screenOn(r.surface === 'browser' ? 'tab' : r.surface === 'window' ? 'window' : 'screen'));
-      void startMine(c.notes);
-      // The sound asked for didn't come (only asked where the browser can share it): its picker's switch was off, or
-      // the computer wouldn't share it.
-      if (r.sound !== 'left-out') return;
-      toast(r.surface === 'browser' ? 'The tab’s sound isn’t shared. Change what you share and turn on Also share tab audio.' : 'Your computer’s sound isn’t shared here. A tab can share its sound.',
-        { icon: 'speakerOff', ms: 9000, action: { label: 'Change', onClick: () => reopen.current() } });
-    });
-  };
-  /** Opens Share › Your screen (saying why the last try didn't start, if it didn't), unless this browser can't share or four already are. */
-  const pickShare = (trouble: ShareTrouble | null = null) => {
-    if (!canShareScreen()) { toast(SHARE_PROBLEMS.unsupported, { icon: 'screen', ms: 8000 }); return; }
-    if (full) { toast(fullText, { icon: 'screen' }); return; }
-    setShareTrouble(trouble);
-    setPop('shareScreen');
-  };
-  // Toasts and refusals open the picker later, through what pickShare is then (who's sharing by then).
-  const reopen = useRef(pickShare);
-  reopen.current = pickShare;
-  /* A screen LiveKit wouldn't publish reaches nobody: that capture is stopped (if it's still the one shared) and said. */
-  useEffect(() => {
-    const failed = roomView.screenFailed;
-    if (!failed || media.getSnapshot().screen?.getVideoTracks()[0]?.id !== failed) return;
-    media.stopScreen();
-    toast('Your screen couldn’t reach the call, so sharing stopped.', { icon: 'stopShare', ms: 8000, action: { label: 'Try again', onClick: () => reopen.current() } });
-  }, [roomView.screenFailed, media, toast]);
-  const stopShare = () => { media.stopScreen(); sayIt(wsToast.screenOff()); };
-  /* The organizer stopped your share for everyone: this browser lets it go too, and the call's notice says who did it. */
-  const stoppedBy = roomView.shareStopped;
-  const stoppedSeen = useRef(stoppedBy);
-  useEffect(() => {
-    if (stoppedBy <= stoppedSeen.current) return;
-    stoppedSeen.current = stoppedBy;
-    if (media.getSnapshot().screen) media.stopScreen();
-  }, [stoppedBy, media]);
-  const setHand = (up: boolean) => {
-    callControls.hand(up);
-  };
+  const sharing = useShareScreen({ media, full, roomView, toast, say: sayIt, closeMenus: () => setPop(null), openPicker: () => setPop('shareScreen'), startMine: screen.startMine });
+  const setHand = (up: boolean) => { callControls.hand(up); };
   const setSpot = (id: string | null) => {
     const name = id ? (id === meId ? 'You’re' : `${callName(byId.get(id) ?? SOMEONE)} is`) : '';
     session.setSpotlight(id);
     toast(id ? `${name} spotlighted for everyone` : 'Spotlight stopped for everyone', { icon: 'spotlight' });
   };
-  /* ---------- your view: pins, where you see yourself and reset, each with a way back ---------- */
-  // Names by seat, seen in this call: so a toast can name someone you pinned after they've gone. Kept in memory only.
-  const seated = useRef(new Map<string, Person>());
-  for (const p of told.participants) seated.current.set(p.seat, p.person);
-  const seatName = (seat: string) => callName(seated.current.get(seat) ?? SOMEONE);
-  const setPin = (p: { seat: string; person: Person }) => {
-    const was = layout.layout.pins.includes(p.seat);
-    if (!layout.togglePin(p.seat, new Set(seatKey.split(' ')))) { toast(`You can pin up to ${CALL_LAYOUT_MAX.pins} people. Unpin someone first.`, { icon: 'pin' }); return; }
-    toast(was ? `${callName(p.person)} is unpinned` : `${callName(p.person)} is pinned for you. Only your view changes.`, { icon: was ? 'pinOff' : 'pin' });
-  };
-  const unpinAll = () => {
-    const was = layout.layout.pins;
-    const first = was[0];
-    if (first === undefined) return;
-    layout.setPins([]);
-    toast(was.length === 1 ? `${seatName(first)} is unpinned` : 'Everyone you pinned is unpinned', { icon: 'pinOff', action: { label: 'Undo', onClick: () => layout.setPins(was) } });
-  };
-  const undoable = (text: string, icon: 'reset', was: ViewSnapshot) => toast(text, { icon, action: { label: 'Undo', onClick: () => layout.restore(was) } });
-  const setSelf = (where: SelfView) => {
-    layout.setSelf(where);
-    toast(where === 'hidden' ? 'You’re hidden from your own view. Everyone else still sees you.' : where === 'corner' ? 'You see yourself in a corner' : 'You see yourself in the grid',
-      { icon: where === 'hidden' ? 'eyeOff' : 'eye' });
-  };
-  // You've changed the layout from the one the stage gives itself: More offers Reset layout.
-  const custom = isCustom(layout.layout, panels);
-  /** While the organizer's stage shows every room, their own view waits; in a room, it's their view as ever. */
-  const roomsHold = () => { if (stageRooms) { toast('Your view comes back in a room, or when the rooms close', { icon: 'door' }); return true; } return false; };
-  const resetView = () => { if (!roomsHold()) undoable('Your view is back to the call’s layout', 'reset', layout.reset()); };
-  const hinted = useRef(false);
-  const onCustom = () => { if (!hinted.current) { hinted.current = true; toast('Only your view changes. Reset layout, in More, puts it back.', { icon: 'eye' }); } };
-  /* Someone you pinned leaves: their pin waits, and comes back with them. */
-  const pinsHere = useRef<{ here: string[]; away: string[] } | null>(null);
-  const pinKey = layout.layout.pins.join(' ');
-  useEffect(() => {
-    const here = new Set(seatKey.split(' '));
-    const pins = pinKey ? pinKey.split(' ') : [];
-    const was = pinsHere.current;
-    pinsHere.current = { here: pins.filter((s) => here.has(s)), away: pins.filter((s) => !here.has(s)) };
-    if (!was) return;
-    for (const s of was.here) if (pins.includes(s) && !here.has(s)) toast(`${seatName(s)} left. They’re pinned again if they come back.`, { icon: 'pin' });
-    for (const s of was.away) if (pins.includes(s) && here.has(s)) toast(`${seatName(s)} is back, pinned for you`, { icon: 'pin' });
-  }, [seatKey, pinKey, toast]);
-
+  /* Your view: pins, where you see yourself and reset, each with a way back; it waits while the stage shows every room (view.ts). */
+  const yours = useYourView({ view: layout, seats: told.participants, seatKey, held: Boolean(stageRooms), toast });
   const failed = (e: unknown) => toast(errorMessage(e), { icon: 'x' });
   // A board asked for as the call started (Start a call here) opens on your stage, just for you, once the call's under way here.
   const openAsked = useCallback((b: { workspaceId: string; documentId: string; name: string }) => {
     setSaved({ workspaceId: b.workspaceId, documentId: b.documentId, name: b.name || 'Untitled board' });
     stageOpen('saved');
   }, [stageOpen]);
-  useOpenWhenStarted(state.code, state.phase === 'in-call', openAsked);
+  useOpenWhenStarted(state.code, live, openAsked);
   const controls = capture.controls({
     failed,
     notesEnabled: () => { if (!side.view && innerWidth >= 1100) side.open('notes'); },
@@ -764,116 +293,52 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
   });
   useCaptureAlerts(state, controls);
   // Whatever brings your side up gives everything back: nothing else has a place while what's open fills your window.
-  const openSide = (p: SidePlace) => { setPop(null); setFocus(false); goTo(p); };
+  const openSide = (p: SidePlace) => { setPop(null); setFocus(false); places.goTo(p); };
   const flipSide = (v: SideView) => { setPop(null); setFocus(false); side.toggle(v); };
   /** Puts your side away. Focus that was in it goes back to the button that brings it up again, or More on a phone. */
   const closeSide = () => {
     const at = document.activeElement;
     if (at instanceof HTMLElement && at.closest('.ic-side')) {
-      (document.querySelector<HTMLElement>(`.ic-top [data-side="${side.view ?? ''}"]`) ?? dockBar.current?.querySelector<HTMLElement>('[data-more]'))?.focus({ preventScroll: true });
+      (document.querySelector<HTMLElement>(`.ic-top [data-side="${side.view ?? ''}"]`) ?? area.dock.current?.querySelector<HTMLElement>('[data-more]'))?.focus({ preventScroll: true });
     }
     side.close();
   };
-
-  /* ---------- the people: your status, nudges, and whoever hosts' controls, from a tile's ⋯ or a row in People ---------- */
-  const handOf = (id: string) => state.attention.hands.find((h) => h.participantId === id)?.id ?? null;
-  /** Your own status, as everyone sees it, until it runs out. */
+  /* The people: your status, nudges, and whoever hosts' controls, from a tile's ⋯ or a row in People (TileMenu.tsx, Hosting.tsx). */
   const myStatus = statusNow(me?.status ?? null, callClock.now);
-  const setStatus = (kind: CallStatusKind | null, minutes?: CallStatusMinutes | undefined) => { session.setStatus(kind, minutes).catch(failed); };
-  /** Only they see it, and they're told who sent it while it's one person. */
-  const sendNudge = (to: { id: string; person: Person }, kind: CallNudgeKind) => {
-    session.nudge(to.id, kind).then(() => toast(`${callName(to.person)} got your nudge: ${NUDGES[kind].label}`, { icon: 'nudge' }), failed);
-  };
-  const lowerHand = (id: string, who: Person) => { session.lowerHand(id).then(() => toast(`${callName(who)}’s hand is lowered`, { icon: 'hand' }), failed); };
-  const muteFor = (who: { id: string; person: Person }) => { host?.mute(who.id).then(() => toast(`${callName(who.person)} is muted. Only they can unmute.`, { icon: 'micOff' }), failed); };
-  const removeFrom = (who: { id: string; person: Person }) => {
-    const name = callName(who.person);
-    host?.remove(who.id).then(() => toast(state.locked ? `${name} is out of the call.` : `${name} is out of the call. They can join again with the link unless the call is locked.`, { icon: 'leave' }), failed);
-  };
-  /**
-   * What someone's ⋯ offers beyond your own view, the same on their tile and on their row in People: your status on your own; on
-   * anyone else's, writing to them privately and a nudge while they're in your room's group, how loud they are for you, and
-   * whoever hosts' controls.
-   */
-  const personMenu = (p: StageParticipant): PersonMenu => {
-    if (p.isMe) return { status: { now: myStatus, set: setStatus } };
-    const handId = handOf(p.id);
-    return {
-      privateMessage: direct.peers.includes(p.id) ? () => openPrivate(p.id) : undefined,
-      nudge: attentionReady && crypto.members.includes(p.id) ? (kind) => sendNudge(p, kind) : undefined,
-      volume: p.volume === null ? undefined : { level: p.volume, set: (level) => volumes.set(p.id, level), toggle: () => volumes.toggle(p.id) },
-      host: hosting ? { lowerHand: handId ? () => lowerHand(handId, p.person) : null, mute: p.mic ? () => muteFor(p) : null, remove: () => removeFrom(p) } : undefined
-    };
-  };
-
-  /* ---------- catching up and asking: for you alone, with the moments behind each answer, and a way back to live ---------- */
-  const cu = useCatchingUp(session, { place, setPlace: (p) => { setPop(null); goTo(p); }, narrow: phone, everOn: state.notes.everOn, room: roomName, over: done });
-  const catchUp = () => { setPop(null); cu.catchUp(); };
+  const attentionReady = crypto.status === 'in' && state.attention.place === crypto.place && live;
+  const host = hosting ? hostControls({ session, state, roomView, view: layout, qc }) : undefined;
+  const menuOf = personMenus({ session, state, status: myStatus, peers: direct.peers, nudging: attentionReady, members: crypto.members, volumes, host, toast, failed, openPrivate: (id) => openers.privately(id) });
+  /* Catching up and asking, for you alone, with a way back to live; and your own notes (catchingUp.ts, Yours.tsx). */
+  const cu = useCatchingUp(session, { place: places.place, setPlace: (p) => { setPop(null); places.goTo(p); }, narrow: phone, everOn: state.notes.everOn, room: roomName, over: done });
   // Showing the notes is what keeps them up to date, for everyone in this part of the call.
-  const watchingNotes = notesAreOn(capHere.mode) && live && place === 'notes';
-  useEffect(() => (watchingNotes ? session.watchNotes() : undefined), [session, watchingNotes]);
-  /* Your own notes, a tab of Notes, with Note to self at the foot of every tab but Ask: for someone with an account in the call, and for nobody else's eyes. */
+  useNotesWatched(session, notesAreOn(capHere.mode) && live && places.place === 'notes');
   const own = useOwnInCall(session, {
-    role: state.role, noteId: state.notes.noteId, showing: place === 'notes' || place === 'transcript' || place === 'yours', line: state.transcript.at(-1)?.id, place: state.capture.room?.id ?? null,
+    role: state.role, noteId: state.notes.noteId, showing: places.place === 'notes' || places.place === 'transcript' || places.place === 'yours', line: state.transcript.at(-1)?.id, place: state.capture.room?.id ?? null,
     onOpen: () => { cu.settle(); openSide('yours'); }
   });
-  // What carries over is your account's, not the call's: a guest has none, and everyone else reads only their own.
-  // It's read while it's on screen, in the notes and Ask.
-  const carried = useCallSeries(state.code, Boolean(account.data) && (place === 'notes' || place === 'ask'));
-  const earlierNotes = carried?.notes.filter((n) => n.status === 'ready').map((n) => n.id) ?? [];
-
-  /* ---------- captions: the live transcript's newest line, in your language if you chose one ---------- */
-  const caption = useCaptions(session, state.transcript, lang, cc && live);
-  const langMenu = <CaptionLanguageMenu language={lang} modelPrivate={state.capture.modelPrivate} onPick={(code) => {
-    setLang(code); setPop(null);
-    const info = CAPTION_LANGUAGES.find((x) => x.code === code);
-    toast(code ? `Captions in ${info?.english ?? code} for you` : 'Captions as they’re spoken', { icon: 'translate' });
-  }} />;
-  const capButton = (
-    <Popover open={pop === 'cap'} onOpenChange={(o) => setPop(o ? 'cap' : null)} side="top" align="end" label="Caption language" className="ic-dmenu"
-      anchor={<button type="button" className="ic-capbtn" aria-label="Choose the caption language"><Icon name="translate" size={14} />{captionLanguageName(lang)}</button>}>{langMenu}</Popover>
-  );
-  // Captions are the lines of the part of the call you're in: what's said in one room is never shown in another. While
-  // notes are paused or off nothing new is said in them, so the last line isn't left up as if it were live.
-  const capNode = !cc ? null : <CallCaption caption={caption} language={lang} hearing={hearing} mode={capHere.mode} languageButton={capButton} />;
-
-  /* Turning on a device that isn't working opens its menu, which says what's wrong and how to fix it. */
-  const pressMic = () => callControls.mic();
-  const handLabel = me?.hand ? 'Lower your hand' : roomName && !organizer && !roomsOnBoards ? 'Ask for help' : 'Raise your hand';
-  const flipCaptions = () => {
-    const v = !cc;
-    setCc(v);
-    toast(v ? `Captions on${lang ? `, in ${CAPTION_LANGUAGES.find((x) => x.code === lang)?.english ?? lang}` : ''}` : 'Captions off. The call is still transcribed for notes.', { icon: 'captions' });
-  };
-  const pressCam = () => callControls.cam();
-
-  /* ---------- keys ---------- */
+  // What carries over is your account's, not the call's: a guest has none. It's read while it's on screen, in the notes and Ask.
+  const carried = useCallSeries(state.code, Boolean(account.data) && (places.place === 'notes' || places.place === 'ask'));
+  const captions = useCallCaptions({ session, lines: state.transcript, live, toast });
+  const handLabel = me?.hand ? 'Lower your hand' : roomName && !organizer && !rooms.roomsOnBoards ? 'Ask for help' : 'Raise your hand';
   // Escape unpins only when you can see a pin: someone pinned who's here.
   const pinnedHere = layout.layout.pins.some((seat) => seatKey.split(' ').includes(seat));
   /**
    * ⇧P, and the seam beside the people: the people beside what's open fold into a rail of arches at the window's edge, or open
    * out into their column again. In a window too narrow for a column they're already a row of arches, so it says so instead.
-   * It only ever changes your screen.
    */
   const togglePeople = () => {
-    if (roomsHold()) return;
-    if (!focusOn && shownThings.length > 0 && placed.seam === null) { toast('In a window this narrow, the people stay a row over what’s open', { icon: 'eye' }); return; }
+    if (yours.holds()) return;
+    if (!focusOn && area.shownThings.length > 0 && area.placed.seam === null) { toast('In a window this narrow, the people stay a row over what’s open', { icon: 'eye' }); return; }
     setFocus(false);
-    const hide = panels.people !== 'hidden';
+    const hide = layout.panels.people !== 'hidden';
     layout.arrange((p) => ({ ...p, people: hide ? 'hidden' : 'tiles' }));
     if (hide && !stage.on.length) toast('People stay on the stage until something is open on it', { icon: 'eye' });
-    else onCustom();
+    else yours.onCustom();
   };
-  /* `@` in the workspace: who's here and who's invited. The call changes all the time and these rarely do, and the workspace draws a lot. */
-  const spacePeopleKey = JSON.stringify(told.participants.map((p) => [p.id, p.seat, p.person, p.isMe]));
-  const spacePeople = useMemo(() => told.participants.map((p) => ({ id: p.id, seat: p.seat, person: p.person, isMe: p.isMe })), [spacePeopleKey]);
-  const spaceInvitedKey = JSON.stringify(invited);
-  const spaceInvited = useMemo(() => invited, [spaceInvitedKey]);
   // Where people are in the workspace is for the people list and their cards while it's on your stage; put away, only the
   // presented workspace's tile says where its presenter is (presenting.ts).
-  const wsShown = stage.on.includes('ws');
   const together: StageTogether = {
-    ...work.together, where: wsShown ? work.together.where : NOWHERE, lit: work.lit, onFollow: work.act.follow, onStop: work.act.stopFollowing, onGo: work.act.goTo, onTag: work.act.tagIn, canTag: work.act.canTag
+    ...work.together, where: stage.on.includes('ws') ? work.together.where : NOWHERE, lit: work.lit, onFollow: work.act.follow, onStop: work.act.stopFollowing, onGo: work.act.goTo, onTag: work.act.tagIn, canTag: work.act.canTag
   };
   /* Focus fills your window with what's on your stage: not on a phone, where it fills the screen already, nor with nothing open. */
   const focusOffered = !phone && !stageRooms && stage.on.length > 0;
@@ -882,11 +347,8 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
   latestFocus.current = focusOn;
   const toggleFocus = useCallback(() => { setFocus(!latestFocus.current); }, []);
 
-  /*
-   * ---------- presenting: the workspace (presenting.ts) and the board (boardPresenting.ts) ----------
-   * Following whoever presents is the stage's to keep (onStage.ts); these keep the workspace with them, and the board's pager.
-   */
-  /** The call's board is one you can't open, brought by someone here: a presentation you can't open asks them for it (`askBoard`). */
+  /* ---------- presenting the workspace (presenting.ts) and the board (boardPresenting.ts), and closing (closing.ts) ---------- */
+  /** The call's board is one you can't open, brought by someone here: a presentation you can't open asks them for it. */
   const boardAccess = useRef<{ who: string; onAsk: () => void } | null>(null);
   const wsPresenting = useWorkspacePresenting({
     session, present: space.present, ended: space.ended, participants: state.participants, onStage: stage.on.includes('ws') && !done && !leaving, following: stage.following('ws'), together: work.together, at: work.at,
@@ -895,70 +357,31 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
   });
   const toggleMine = useCallback(() => side.toggle('mine'), [side]);
   const boardPresenting = useBoardPresenting({
-    session, present: space.present, presenter: presenterIn?.id ?? null, board, account: (account.data?.ownerId ?? null) !== null, following: stage.following('board'), onFollow: (on) => stage.setFollow('board', on),
+    session, present: space.present, presenter: presenterIn?.id ?? null, board, account: (account.data?.ownerId ?? null) !== null, following: stage.following('board'), onFollow: (to) => stage.setFollow('board', to),
     notesOpen: side.view === 'mine', onNotes: toggleMine, failed, notesFailed: (message) => work.act.say(wsToast.failed(message))
   });
   /* Your notes beside the board go with presenting it. */
-  const presentingBoard = boardPresenting.mine;
-  useEffect(() => { if (!presentingBoard && side.view === 'mine') side.close(); }, [presentingBoard, side.view]);
-
-  /* ---------- closing: for you, or (your presentation) for you or for everyone ---------- */
-  /**
-   * Where the keys go as what's on your stage changes under them (landKeys.ts): to the tile of what you closed while someone
-   * still presents it, else to what opens it again; into a frame opened from its tile; to the pager as you present a board.
-   */
+  useNotesGoWithPresenting(boardPresenting.mine, side.view, side.close);
+  /** Where the keys go as what's on your stage changes under them (landKeys.ts). */
   const land = useLandKeys(phone);
-  /** Close's question, while you present a board or the workspace: which frame it's open on. */
-  const [asking, setAsking] = useState<ThingId | null>(null);
+  const callBoardOpen = state.board.open;
   /**
-   * Close, on a frame's bar, or the lit Board or Workspace: on your own presentation it asks, on its frame, in front, and so it
-   * does on the call's board nobody presents, for whoever may take it out of the call (`boardClosable`).
+   * Whoever opened the call's board, or the organizer, may take it out of the call while nobody presents it: Close asks them for
+   * whom. While rooms share it, only the organizer may, as someone in a room may be presenting it there.
    */
-  const closeThing = (id: ThingId) => {
-    const p = stage.presentedOf(id);
-    if ((p?.mine && !isScreen(id)) || (id === 'board' && !p && boardClosable)) { setFront(id); setAsking(id); return; }
-    closeForMe(id);
-  };
-  /** Stop sharing, on your own screen's bar: it stops for everyone. */
-  const stopMine = (id: ThingId) => { land({ to: 'opener', id }, holding()); stopShare(); };
-  /** It closes on your stage alone: a presentation, someone else's or your own screen, becomes its tile, and anything else closes. */
-  const closeForMe = (id: ThingId) => {
-    const p = stage.presentedOf(id);
-    setAsking(null);
-    if (stage.on.length <= 1) setFocus(false);
-    land(p ? { to: 'tile', id } : { to: 'opener', id }, holding());
-    stageClose(id);
-    if (p) sayIt(p.mine && isScreen(id) ? wsToast.screenAway() : wsToast.closedWhile(p.first), about(id));
-  };
-  /** The call's board leaves the call for everyone, as whoever opened it or the organizer: the board says so as it goes (callBoard.ts). */
-  const closeBoardForAll = () => {
-    setAsking(null);
-    land({ to: 'opener', id: 'board' }, holding());
-    session.closeBoard().catch(failed);
-  };
-  /** Your presentation of a board or the workspace ends, for you or for everyone: from Close's question, or Share's. */
-  const closeFor = (id: ThingId, everyone: boolean) => {
-    setAsking(null);
-    const stop = id === 'ws' ? wsPresenting.stop : boardPresenting.stop;
-    const was = stage.on;
-    stoppedByMe.current = stage.presentedOf(id)?.key ?? null;
-    stop(everyone).then(() => {
-      if (was.includes(id) && was.length <= 1) setFocus(false);
-      land({ to: 'opener', id }, holding());
-      stageClose(id);
-      if (side.view === 'mine') side.close();
-      sayIt(everyone ? wsToast.closedForAll(forRoomOnly(id)) : wsToast.closedForYou(), about(id));
-    }, () => { stoppedByMe.current = null; });
-  };
+  const boardClosable = callBoardOpen !== null && (organizer || (callBoardOpen.canClose && open?.board !== 'shared'));
+  const closing = useClosing({
+    stage, land, side, session, inRoom: myRoomId !== null, sharedBoardLeaves: open?.board === 'shared' && (organizer || callBoardOpen?.canClose === true), boardClosable,
+    stopWorkspace: wsPresenting.stop, stopBoard: boardPresenting.stop, stoppedByMe, stopShare: sharing.stop, toFront: setFront, leaveFocus: () => setFocus(false), say: sayIt, about, failed
+  });
 
   /* ---------- opening: Board's picker, Workspace, and Share's steps ---------- */
   /** You may start a board: invited, not a guest. In a room it's the room's alone, and the picker says so. */
   const canStartBoard = state.role !== 'guest' && live;
-  const boardInRoom = myRoomId !== null;
   const boardOnStage: ThingId | null = stage.on.includes('board') ? 'board' : stage.on.includes('saved') ? 'saved' : null;
   /** Board, at the top right (in More on a phone), and O: the picker, or, with a board on your stage, Close. */
   const pressBoard = () => {
-    if (boardOnStage) { setPop(null); setPicking(false); closeThing(boardOnStage); return; }
+    if (boardOnStage) { setPop(null); setPicking(false); closing.closeThing(boardOnStage); return; }
     loadBoard();
     if (phone) setPop((p) => (p === 'board' ? null : 'board'));
     else setPicking((o) => !o);
@@ -966,67 +389,17 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
   /** Workspace, at the top right (in More on a phone), and W: opens it on your stage where you left it, or Close. */
   const pressWorkspace = () => {
     setPop(null);
-    if (stage.on.includes('ws')) closeThing('ws');
+    if (stage.on.includes('ws')) closing.closeThing('ws');
     else stageOpen('ws');
   };
-  /**
-   * Someone else presents a board or the workspace where you are. There's one at a time, so neither is presented by anyone
-   * else until they stop: Present isn't offered, and Share's A board and The workspace say who's presenting.
-   */
+  /** Someone else presents a board or the workspace where you are: nobody else presents until they stop, and Share says who. */
   const othersWhy = presentNow && !presentNow.mine ? presentingWhy(presentNow) : null;
-  const someoneElse = othersWhy !== null;
-  /* Nobody makes or brings in a board while someone else presents one here (the server's rule), and a guest starts none. */
-  const boardBy = presentNow?.kind === 'board' && !presentNow.mine ? firstName(presentNow.by.name) : null;
-  const boardBlocked = state.role === 'guest' ? 'Guests can’t start a board here.' : boardBy ? `${boardBy} is presenting a board. You can start one once they stop.` : undefined;
-  const callBoardOpen = state.board.open;
-  /**
-   * Whoever opened the call's board, or the organizer, may take it out of the call while nobody presents it: Close asks them for
-   * whom. While rooms share it, only the organizer may, as someone in a room may be presenting it there, where nobody else can
-   * see, and the call would refuse.
-   */
-  const boardClosable = callBoardOpen !== null && (organizer || (callBoardOpen.canClose && open?.board !== 'shared'));
-  const callBoardRow = callBoardOpen && callBoardOpen.role !== null ? {
-    name: callBoardOpen.name ?? 'Untitled board',
-    by: presentNow?.kind === 'board' && presentNow.id === callBoardOpen.documentId ? (presentNow.mine ? 'You’re presenting it' : `${firstName(presentNow.by.name)} is presenting it`)
-      : board.opener ? `${callName(board.opener)} · brought it` : 'In this call'
-  } : null;
   const pickerOpen = picking && !phone;
-  const picked = { onOpenCall: () => stageOpen('board'), onMade: () => stageOpen('board'), onPresented: (name: string) => { stageOpen('board'); sayIt(wsToast.boardOn(name)); }, failed };
-  const openPicker = useBoardPicker({
-    session, board, mode: 'open', inRoom: boardInRoom, account: state.role !== 'guest', brought: space.documents, spaceName, showing: pickerOpen || pop === 'board', blocked: boardBlocked, inCall: callBoardRow,
-    onDone: () => { setPicking(false); setPop(null); }, ...picked
+  const pickers = useBoardPickers({
+    session, board, state, space, inRoom: myRoomId !== null, spaceName, showing: { open: pickerOpen || pop === 'board', share: pop === 'shareBoard' }, othersWhy,
+    show: () => stageOpen('board'), closeOpen: () => { setPicking(false); setPop(null); }, closeShare: () => setPop(null), say: sayIt, failed
   });
-  const sharePicker = useBoardPicker({
-    session, board, mode: 'present', inRoom: boardInRoom, account: state.role !== 'guest', brought: space.documents, spaceName, showing: pop === 'shareBoard', blocked: othersWhy ?? boardBlocked,
-    inCall: callBoardRow, onDone: () => setPop(null), ...picked
-  });
-  /**
-   * Present, on a saved board just for you: brought into the call first, for everyone here to edit when it's yours to share, so
-   * whoever joins later can too, asking first if some people here can't open it.
-   */
-  const [presentAsk, setPresentAsk] = useState<PresentAskProps | null>(null);
-  const [presentBusy, setPresentBusy] = useState(false);
-  const presentSaved = (b: SavedBoard) => {
-    setPresentBusy(true);
-    const go = (letIn: boolean, says: string | null) => {
-      setPresentAsk(null);
-      setPresentBusy(true);
-      bringAndPresent(session, board, { workspaceId: b.workspaceId, documentId: b.documentId, letIn }, says)
-        .then(() => { land({ to: 'pager' }, holding()); stageOpen('board'); sayIt(wsToast.boardOn(b.name)); }, failed).finally(() => setPresentBusy(false));
-    };
-    session.boardCheck(b.workspaceId, b.documentId).then((check) => {
-      setPresentBusy(false);
-      if (!check.cannot.length) { go(check.mayLetIn, null); return; }
-      const ask = presentAskOf(check, { name: b.name, where: spaceName(b.workspaceId) }, (letIn, says) => go(letIn, says));
-      setPresentAsk({ open: true, onOpenChange: (o) => { if (!o) setPresentAsk(null); }, ...ask, phone });
-    }, (e: unknown) => { setPresentBusy(false); failed(e); });
-  };
-  const presentBoardNow = () => {
-    if (board.savedDrawn && saved) { presentSaved(saved); return; }
-    const name = state.board.open?.name ?? 'the board';
-    setPresentBusy(true);
-    boardPresenting.start().then(() => { land({ to: 'pager' }, holding()); sayIt(wsToast.boardOn(name)); }, () => undefined).finally(() => setPresentBusy(false));
-  };
+  const presentBoard = usePresentBoard({ session, state, board, saved, presenting: boardPresenting, stage, land, spaceName, phone, say: sayIt, failed });
   /** Share › The workspace: presented straight away, once the call has said which workspace it uses. */
   const presentWorkspace = () => {
     setPop(null);
@@ -1037,487 +410,78 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
   const pressWorkspaceNow = useRef(pressWorkspace);
   pressWorkspaceNow.current = pressWorkspace;
   useCallShortcuts({
-    side: side.view !== null, pinned: pinnedHere, unpinAll, closeSide, chat: () => flipSide('chat'), pressMic, pressCam, togglePeople, canMark: own.enabled, mark: own.mark, focusOffered, focused: focusOn, leaveFocus: () => setFocus(false), pressBoard
+    side: side.view !== null, pinned: pinnedHere, unpinAll: yours.unpinAll, closeSide, chat: () => flipSide('chat'), pressMic: () => callControls.mic(), pressCam: () => callControls.cam(), togglePeople,
+    canMark: own.enabled, mark: own.mark, focusOffered, focused: focusOn, leaveFocus: () => setFocus(false), pressBoard
   }, shortcutWorkspace, toggleFocus);
 
-  /*
-   * The connection: this browser offline, or the call's media finding its way back. It's said at the top of the call while it
-   * lasts, and once it's back, in the workspace's place for what it says, so a document saying its edits are saved says so instead.
-   */
+  /* ---------- the connection, the timer, sounds, and leaving (connection.ts, useCallTimer.ts, sounds.ts, leaving.ts) ---------- */
   const online = useOnline();
   const down = !online || roomView.connection === 'reconnecting';
-  const attentionReady = crypto.status === 'in' && state.attention.place === crypto.place && live;
-  const callTimer = useCallTimer(state, callClock, attentionReady && online && roomView.connection === 'connected', m.speakerId);
+  const callTimer = useCallTimer(state, callClock, attentionReady && online && connected, m.speakerId);
   /* Timer for everyone, open over the top bar, or over the stage in focus. It closes with the timer for whoever can't start one. */
-  const [timerOpen, setTimerOpen] = useState(false);
   const timerShown = callTimer.timer !== null || hosting;
-  useEffect(() => { if (!timerShown) setTimerOpen(false); }, [timerShown]);
-  /* Nudges you got, said quietly on your side; and your status, which goes once you talk. */
-  // Unmute only ever unmutes: by the time it's pressed, the microphone may be on again from the dock.
-  useNudgeAlerts({ state, ready: attentionReady, unmute: m.mic ? null : () => { if (!media.getSnapshot().mic) pressMic(); } });
+  const [timerOpen, setTimerOpen] = useTimerOpen(timerShown);
+  /* Nudges you got, said quietly on your side (Unmute only ever unmutes); and your status, which goes once you talk. */
+  useNudgeAlerts({ state, ready: attentionReady, unmute: m.mic ? null : () => { if (!media.getSnapshot().mic) callControls.mic(); } });
   useStatusEndsWhenYouTalk(myStatus !== null && m.mic && attentionReady, () => media.level(), () => {
     session.setStatus(null).then(() => toast('You’re talking, so your status is cleared', { icon: 'check' }), failed);
   });
-  const callSounds = useCallSounds({ call: session, state, chat: crypto, direct, speakerId: m.speakerId, presenting: shares.some((s) => s.mine) || Boolean(presentNow?.mine), connected: attentionReady && online && roomView.connection === 'connected' });
-  const wasDown = useRef(false);
-  useEffect(() => {
-    if (down) { wasDown.current = true; return; }
-    if (!wasDown.current || done) return;
-    wasDown.current = false;
-    work.act.say(wsToast.reconnected());
-  }, [down, done, work.act]);
+  const callSounds = useCallSounds({ call: session, state, chat: crypto, direct, speakerId: m.speakerId, presenting: shares.some((s) => s.mine) || Boolean(presentNow?.mine), connected: attentionReady && online && connected });
+  useReconnectedSaid(down, done, work.act);
+  useQuietForLeave({ done, leaveOpen: departure.leaveOpen, act: work.act, closeWindows: windows.closeAll });
+  const leave = useLeaving({ session, state, hosting, departure, capture, room, media, volumes, forgetLayout: layout.forget, qc, over, guard: guardRef, controls: callControls, toast, mediaNow, overHere });
 
-  /* What the workspace said last, such as a switch with Back, means nothing once the call's over, and sits over Leave's question. */
-  useEffect(() => { if (done || leaveOpen) work.act.hush(); }, [done, leaveOpen, work.act]);
-  /* Settings and Background never stay open under Leave's question, or once the call's over: one window at a time. */
-  useEffect(() => { if (done || leaveOpen) { setSettingsOpen(false); setBackgroundOpen(false); } }, [done, leaveOpen]);
-
-  /* ---------- leaving: whoever hosts ends the call for everyone, or leaves it with someone else hosting; anyone else just leaves ---------- */
-  /** Your microphone and camera as you leave: Rejoin brings them back as they were. */
-  const mediaNow = () => ({ mic: media.getSnapshot().mic, cam: media.getSnapshot().cam });
-  /**
-   * The call is over here: its page takes over with what it needs to know of the call, taken now from the call as it last was
-   * (`lastTold`) and your microphone and camera as you left, and the call eases back under it. Leaving on the way somewhere, such
-   * as to a call that rang, carries on there instead, with a word of what happened.
-   */
-  const overHere = (how: LeftHow, media: { mic: boolean; cam: boolean }) => {
-    const left = leftOf({ last: lastTold.current, how, media, invited: organizer ? meeting?.guests ?? null : null });
-    if (guardRef.current.proceed()) { toast(onTheWay(left), { icon: 'leave' }); return; }
-    setDone(true);
-    setLeaveOpen(false);
-    setPop(null);
-    onOver(left);
-  };
-  /*
-   * The last audio and speech go before the call ends or this browser leaves it: the server refuses them after. That's
-   * the host's, and a breakout room scribe's for its room. The recorder is paused, not stopped, until it has: if ending
-   * fails, the same recorder carries on, so its pieces stay in order in the same segment (a new one would number its
-   * pieces from the start again, and the server keeps the first of each).
-   */
-  const end = async (hostConfirmed = false) => {
-    if (departing.current) return;
-    departing.current = true;
-    setLeavingAs('end');
-    const was = mediaNow();
-    const departure = capture.departure('leave');
-    try {
-      await departure.flush();
-      // Uploading the final audio can outlast a host change. A new host must choose before ending everyone's call.
-      if (!hostConfirmed && session.getSnapshot().isHost) {
-        departure.rollback();
-        setLeaveOpen(true);
-        return;
-      }
-      const r = await session.leave();
-      departure.finish();
-      over.current = true;
-      forgetLayout();
-      // Ending the call deletes its room, which disconnects everyone at once; anyone else leaves the room now.
-      if (!r) void room.leave();
-      media.stop();
-      volumes.clear();
-      sessions.media = null;
-      sessions.call = null;
-      // Whoever comes back to a call they left (Rejoin, or its link after a reload) isn't asked again.
-      if (!r) rememberPass(state.code, session.ticket.pass);
-      void qc.invalidateQueries();
-      overHere(r ? { kind: 'ended', elapsed: r.duration, noteId: r.pendingNoteId } : { kind: 'left' }, was);
-    } catch (e) {
-      departure.rollback();
-      clog.error('leaving the call failed', { err: e });
-      callControls.setError(errorMessage(e));
-      guard.stay();
-      // Leave's question, while it's open, says why under its choices.
-      if (!askingNow.current) toast(errorMessage(e), { icon: 'x' });
-    } finally {
-      departing.current = false;
-      setLeavingAs(null);
-    }
-  };
-  /*
-   * Leaving with someone else hosting: the last audio and speech go first, then the call is theirs, and its page says
-   * who's hosting until the organizer's back: only the organizer's Rejoin takes it back. If they can't host after all, you
-   * stay, and the paused recorder carries on in the same segment, as when ending fails.
-   */
-  const handOff = async (to: string) => {
-    if (departing.current) return;
-    departing.current = true;
-    setLeavingAs('keep');
-    const who = state.participants.find((p) => p.id === to)?.person;
-    const was = mediaNow();
-    const departure = capture.departure('hand-off');
-    try {
-      await departure.flush();
-      await session.handOff(to);
-      departure.finish(() => {
-        over.current = true;
-        forgetLayout();
-      });
-      void room.leave();
-      media.stop();
-      volumes.clear();
-      sessions.media = null;
-      sessions.call = null;
-      rememberPass(state.code, session.ticket.pass);
-      void qc.invalidateQueries();
-      overHere({ kind: 'handed', to: who ? callName(who) : 'Someone else' }, was);
-    } catch (e) {
-      departure.rollback();
-      clog.warn('handing the call on failed', { err: e });
-      callControls.setError(errorMessage(e));
-      // Back to the question, which says why under its choices.
-      setLeaveOpen(true);
-    } finally {
-      departing.current = false;
-      setLeavingAs(null);
-    }
-  };
-  /**
-   * Whoever hosts decides what happens to everyone, in Leave's question. Alone in the call, pressing Leave (in the dock, or in
-   * the floating call's own window) ends it at once, with nobody to hand it to and nothing to choose; any other way out while
-   * alone (going back a page, anywhere else in the app, a call that rang) asks first, End's line saying leaving ends the call,
-   * so nothing ends it by accident. Anyone else just leaves, through the same capture and media cleanup.
-   */
-  const onlyYou = state.participants.every((p) => p.isMe);
-  /** Leave's question is up, as a departure that fails finds it. */
-  const askingNow = useRef(false);
-  askingNow.current = hosting && leaveOpen;
-  const requestLeave = (from: 'dock' | 'floating' | 'elsewhere') => {
-    if (departing.current || done) return;
-    callControls.setError(null);
-    setLeaveInFloating(from === 'floating');
-    if (hosting && (!onlyYou || from === 'elsewhere')) setLeaveOpen(true);
-    else void end(hosting);
-  };
-  useEffect(() => {
-    if (!hosting && leaveOpen && !done) {
-      setLeaveOpen(false);
-      guardRef.current.stay();
-    }
-  }, [hosting, leaveOpen, done]);
-
-  /* ---------- the panel's people ---------- */
-  /* The microphone in use, named as its menu names it ("AirPods (Bluetooth)", not Chrome's "Default - AirPods (Bluetooth)"). */
-  const micChoices = deviceChoices(devices.mic, m.micId);
-  const micLabel = devices.mic.some((d) => d.id === m.micId) ? micChoices.rows.find((r) => r.id === micChoices.on)?.name : undefined;
-  const knownIds = new Set(told.participants.map((p) => p.id));
-  const roleOf = (p: CallState['participants'][number]) => (p.isOrganizer ? 'Organizer' : !knownIds.has(p.id) || viewerGuest ? 'In the call' : p.person.email ? 'Invited' : 'Guest');
-  const roomOf = (id: string) => open?.rooms.find((r) => r.members.includes(id))?.name;
-  /* Hands raised come first in People, in the order they went up; everyone else keeps their place. */
-  const handOrder = new Map(state.attention.hands.map((h, i) => [h.participantId, i]));
-  const raisedAt = (id: string) => handOrder.get(id) ?? Number.MAX_SAFE_INTEGER;
-  const stagedBy = new Map(stagePeople.map((x) => [x.id, x]));
-  const panelPeople: PanelPerson[] = state.participants.flatMap((p): PanelPerson[] => {
-    const sp = stagedBy.get(p.id);
-    if (!sp) return [];
-    const r = roomView.people[p.id];
-    const where = roomOf(p.id);
-    const detail = p.isMe
-      ? [organizer ? 'Organizer' : state.role === 'invited' ? 'Invited' : 'Guest', where ? `in ${where}` : '', micLabel, m.screen ? 'sharing' : '', !m.cam ? 'camera off' : '']
-      : [roleOf(p), where ? `in ${where}` : '', r?.screenSid ? 'sharing' : ''];
-    const handId = handOf(p.id);
-    return [{
-      id: p.id, person: p.person, isMe: p.isMe, organizer: p.isOrganizer, mic: sp.mic, handId, speaking: sp.speaking, volume: sp.volume,
-      detail: detail.filter(Boolean).join(' · '),
-      tags: [state.host.standIn && state.host.id === p.id ? `Hosting while ${organizerFirst(state)} is away` : '', !open && state.spotlight === p.id ? 'Spotlight · everyone' : '', layout.layout.pins.includes(p.seat) ? 'Pinned for you' : '',
-        handId ? (inARoom(p.id) ? `Asked for help in ${where ?? 'a room'}` : 'Hand raised') : '', volumeTag(sp.volume ?? 1) ?? '', askedTag(state, p.id)].filter(Boolean),
-      status: statusNow(p.status, callClock.now),
-      menu: personMenu(sp)
-    }];
-  }).sort((a, b) => raisedAt(a.id) - raisedAt(b.id));
-  /* Who could host after you, best first, as the call names them: for Leave's question. */
-  const nextHosts: LeaveHost[] = state.host.next.flatMap((id) => { const p = state.participants.find((x) => x.id === id); return p ? [{ id, person: p.person }] : []; });
-  const host: HostControls | undefined = hosting ? {
-    admit: (id) => session.admit(id),
-    deny: (id) => session.deny(id),
-    mute: (id) => { const sid = roomView.people[id]?.micSid; return sid ? session.mute(id, sid) : Promise.resolve(); },
-    remove: async (id) => {
-      const gone = state.participants.find((p) => p.id === id);
-      // Someone removed can't come back, so their pin goes with them (and nobody is told it waits for them).
-      const seat = gone?.seat;
-      if (seat && layout.layout.pins.includes(seat)) layout.setPins(layout.layout.pins.filter((s) => s !== seat));
-      await session.remove(id);
-      // Someone let in from the link comes off the invite as they go: who's invited is read again.
-      if (gone?.person.email) void qc.invalidateQueries({ queryKey: qk.byCode(state.code) });
-    },
-    locked: state.locked,
-    lock: (v) => session.lock(v),
-    pointing: state.pointing,
-    setPointing: (v) => session.setPointing(v)
-  } : undefined;
-  const privacyLine = [
-    open ? 'Each room has its own encryption keys, so video, audio and chat reach only the people in the same room.'
-      : on || mode === 'paused' ? 'Video, audio and chat are encrypted end to end.' : 'Video, audio and chat are encrypted end to end between the people here.',
-    on ? `While notes are on, ${state.capture.screen.mode === 'on' ? 'what everyone says and what anyone shares on screen go' : 'what everyone says also goes'} to the notes, ${state.capture.modelPrivate ? 'written in confidential compute' : 'written by an AI model outside a secure enclave, so Alcove can’t guarantee it stays private'}.${open ? ' What’s said in each breakout room goes into them as that room’s own section; what’s shared there doesn’t.' : ''}`
-      : mode === 'paused' ? 'Notes are paused, so nothing goes to the notes.' : ''
-  ].filter(Boolean).join(' ');
-  /* ---------- the status bar ---------- */
-  const spotlight = open ? null : state.spotlight;
-  const spotName = spotlight ? (spotlight === meId ? null : callName(byId.get(spotlight) ?? SOMEONE)) : null;
-  // Shared means the call has it: until LiveKit has published it, it's starting. "With sound" only while its sound is live.
-  const published = Boolean(roomView.people[meId]?.screenSid);
-  const withSound = Boolean(m.screen?.getAudioTracks().some((t) => t.readyState === 'live'));
-  /* Whether others may point at what you share (your choice, everyone sees it), and everyone's marks on it, to clear. */
-  const othersPoint = me?.othersPoint ?? true;
+  /* ---------- the status bar over the stage, and who's rung (statusBar.tsx, tiles.tsx) ---------- */
   const marksOnMine = useShareMarkCount(marks, myShare);
-  // Something else shared in place of what was (Change: the same share, a new picture): marks on it were about the old
-  // picture, so they go, for everyone.
-  const screenStream = m.screen;
-  const lastScreen = useRef<MediaStream | null>(null);
-  useEffect(() => {
-    const was = lastScreen.current;
-    lastScreen.current = screenStream;
-    if (was && screenStream && was !== screenStream && myShare) marks?.clear(myShare);
-  }, [screenStream, myShare, marks]);
-  const flipOthersPoint = () => {
-    const on = !othersPoint;
-    session.letOthersPoint(on).then(() => toast(on ? 'Others can point at your screen again' : 'Only you can point at your screen now', { icon: on ? 'pointer' : 'pointerOff' }),
-      (e: unknown) => toast(errorMessage(e), { icon: 'x' }));
-  };
-  /* On the way to another part of the call: nothing is heard or sent until this browser holds the new part's keys. */
-  const movingBar = crypto.status === 'moving' && (
-    <div className="ic-spill" role="status"><Dots /><span className="tx2">{roomName ? <>Moving you to <b>{roomName}</b></> : <>Moving you back to the <b>main room</b></>}</span></div>
-  );
-  /*
-   * The rooms' time on the board, in its one pill: the room you're in, or how many rooms share the main board, and how long is
-   * left. While that's the pill the board on the stage shows, it's said there, and the rooms line above says nothing more. While
-   * the board's pill says something more pressing (how it stands, a vote, following), the line says it: the board
-   * hands up which kind it shows (`BoardPills`).
-   */
-  const roomsPill = roomPills(open ? { name: roomName, rooms: open.rooms.length, shared: open.board === 'shared', left } : null);
-  const [boardPill, setBoardPill] = useState<PillKind | null>(null);
-  const pillSaysRooms = board.shown && !done && !leaving && !stageRooms && (boardPill === 'room' || boardPill === 'closing');
-  /*
-   * In a room (or the main room while rooms are open): where you are and how long for. In rooms without boards, the organizer's
-   * message to every room shows here for a moment; with boards it's a toast.
-   */
-  const roomBar = open && (!organizer || roomName !== null) && (movingBar || (message && !roomsOnBoards ? (
-    <div className="ic-banner">{organizerPerson && <Avatar person={organizerPerson} size={24} />}<span><b>{organizerPerson ? callName(organizerPerson) : 'The organizer'}</b> to all rooms: {message.text}</span></div>
-  ) : !pillSaysRooms && (
-    <div className="ic-spill"><Icon name={left <= 30 ? 'timer' : 'door'} size={15} />
-      <span className="tx2">{left <= 30 ? <>Rooms close in <b>{mmss(left)}</b>. Everyone comes back to the main room.</> : <>You’re in <b>{roomName ?? 'the main room'}</b> · everyone comes back in {mmss(left)}</>}</span>
-    </div>
-  )));
-  /*
-   * People the organizer rang: each waits on the stage while it's worth watching, and stays in People. Nobody else is
-   * rung by accident: on your own there's nobody to ring, and the link stays to hand instead.
-   */
-  const team = useQuery({ ...q.team(), enabled: organizer });
+  // Something else shared in place of what was: marks on it were about the old picture, so they go, for everyone.
+  useMarksGoWithPicture(marks, m.screen, myShare);
+  /* People the organizer rang: each waits on the stage while it's worth watching, and stays in People. */
+  const team = useQuery({ ...teamQueries.team(), enabled: organizer });
   const rung = organizer ? state.ringing : [];
   const answers = useRef(new Map<string, number>());
-  const now = Date.now();
   const ring = (p: Person) => { session.ring([p.email]).catch((e: unknown) => { clog.warn('ringing failed', { err: e }); toast(`Couldn’t ring ${callName(p)}. ${errorMessage(e)}`, { icon: 'x' }); }); };
   const stopRing = (id: string) => { session.stopRing(id).catch((e: unknown) => { clog.warn('stopping a ring failed', { err: e }); toast(`Couldn’t stop ringing. ${errorMessage(e)}`, { icon: 'x', ms: 6000 }); }); };
-  const waiting: StageWaiter[] = open ? [] : waitingOnStage(rung, answers.current, now).map((r) => {
-    const said = rungWords(r, now);
-    return {
-      id: r.id, person: r.person,
-      tile: <WaitTile person={r.person} title={said.title} detail={said.detail} ringing={r.state === 'ringing'}
-        reply={said.reply && <RingReply icon={said.reply.icon}>{said.reply.text}</RingReply>} action={said.again ? <RingAgain onClick={() => ring(r.person)} /> : undefined} />
-    };
-  });
+  const waiting = ringWaiters({ rung, answers: answers.current, now: Date.now(), rooms: !!open, ring });
   const justYou = organizer && others.length === 0 && !open && team.data !== undefined && !ringable(team.data, me?.person).length;
-  /**
-   * On your own, the link for anyone to ask to join: at the bottom left of the stage, or at the foot of the workspace's list
-   * while that's in sight, where it covers nothing (`WorkspaceCall.foot`). One element while it's the same, so the workspace
-   * doesn't draw again for it.
-   */
-  const [aloneShut, setAloneShut] = useState(() => aloneClosed(state.callId));
-  const aloneCard = useMemo(() => (justYou && !cc && !aloneShut ? (
-    <div className="rg-alone">
-      <div className="rg-alone-h">
-        <div><b>Just you so far</b><p>Anyone with the link can ask to join.</p></div>
-        <IconButton icon="x" size={16} label="Close" onClick={() => { setAloneShut(true); closeAlone(state.callId); }} />
-      </div>
-      <LinkRow link={shownUrl(state.code)} onCopy={() => copyUrl(state.code)} />
-    </div>
-  ) : null), [justYou, cc, aloneShut, state.code, state.callId]);
-  // Closed, it's gone for the rest of the call: the link is still in People.
-  const alone = others.length === 0 && !open && !justYou && !aloneShut && !waiting.length && !(organizer && team.isPending) && (
-    <div className="ic-spill"><Icon name="link" size={15} /><span className="tx2">Nobody else is here yet</span>
-      <button type="button" className="sp-btn is-strong" onClick={() => copy(state.code)}>Copy link</button>
-    </div>
-  );
-  /* Talking with your microphone muted: said at the top of the call, with Unmute, from your microphone's level here alone. */
+  const alone = useAloneCard({ justYou, captions: captions.on, callId: state.callId, code: state.code });
   const talkingOnMute = useTalkingOnMute(media, live && !m.mic && !leaving && !done);
-  const mutePill = talkingOnMute && (
-    <div className="ic-spill" role="status"><Icon name="micOff" size={15} /><span className="tx2">You’re talking on mute</span>
-      <button type="button" className="sp-btn is-strong" onClick={pressMic}>Unmute</button>
-    </div>
-  );
-  const soundPill = roomView.audioBlocked && (
-    <div className="ic-spill"><Icon name="speakerOff" size={15} /><span className="tx2">Your browser is holding back the call’s sound</span>
-      <button type="button" className="sp-btn is-strong" onClick={playSound}>Play sound</button>
-    </div>
-  );
-  // Hidden by this person's own choice, remembered in this browser: said while anyone else is here, or everyone just seems
-  // to have their camera off. On a narrow screen it's the icon and the button, the words kept for screen readers.
-  const camsPill = m.receiveVideo === 'off' && others.length > 0 && (
-    <div className="ic-spill is-cams"><Icon name="videoOff" size={15} /><span className="tx2">Cameras are hidden for you</span>
-      <button type="button" className="sp-btn is-strong" onClick={() => media.setReceiveVideo('auto')}>Show cameras</button>
-    </div>
-  );
-  /* While someone stands in for the organizer, everyone sees who; whoever it is can bring everyone back from the rooms. */
-  const hostPill = state.host.standIn && live && <HostSpill state={state} onBringBack={open && hosting ? () => { session.closeRooms(); toast('Everyone is coming back to the main room', { icon: 'door' }); } : undefined} />;
-  // Built only from what's there, so with nothing to say over the call there's no empty band above it.
-  const bar = open
-    ? (organizer ? (mutePill || soundPill || camsPill || roomBar ? <>{mutePill}{soundPill}{camsPill}{roomBar}</> : null)
-      : [mutePill, soundPill, camsPill, hostPill, roomBar].some(Boolean) ? <>{mutePill}{soundPill}{camsPill}{hostPill}{roomBar}</> : null)
-    : (spotlight || alone || mutePill || soundPill || movingBar || camsPill || hostPill) ? (
-      <>
-        {mutePill}
-        {soundPill}
-        {movingBar}
-        {camsPill}
-        {hostPill}
-        {alone}
-        {spotlight && (
-          <div className="ic-spill"><Icon name="spotlight" size={15} /><span className="tx2">{spotName ? <><b>{spotName}</b> is spotlighted for everyone</> : <><b>You’re</b> spotlighted for everyone</>}</span>
-            {hosting && <button type="button" className="sp-btn is-strong" onClick={() => setSpot(null)}>Stop spotlight</button>}
-          </div>
-        )}
-      </>
-    ) : null;
-
+  const spotlight = open ? null : state.spotlight;
+  const bar = statusPills({
+    state, organizer, hosting, live, rooms, moving: crypto.status === 'moving', pillSaysRooms: board.shown && !done && !leaving && !stageRooms && (boardPill === 'room' || boardPill === 'closing'),
+    talkingOnMute, onUnmute: () => callControls.mic(), soundBlocked: roomView.audioBlocked, onPlaySound: playSound, camerasHidden: m.receiveVideo === 'off' && others.length > 0, onShowCameras: () => media.setReceiveVideo('auto'),
+    alone: others.length === 0 && !open && !justYou && !alone.closed && !waiting.length && !(organizer && team.isPending), onCopyLink: () => copy(state.code),
+    spotlight: spotlight ? { name: spotlight === meId ? null : callName(byId.get(spotlight) ?? SOMEONE) } : null, onStopSpotlight: () => setSpot(null),
+    onBringBack: () => { session.closeRooms(); toast('Everyone is coming back to the main room', { icon: 'door' }); }
+  });
   const roomsHere = organizer && (others.length > 0 || !!open);
   /* Breakout rooms in your side go with the last person who could be sent to one. */
-  const roomsGone = !roomsHere && side.view === 'rooms';
-  const putAway = side.close;
-  useEffect(() => { if (roomsGone) putAway(); }, [roomsGone, putAway]);
+  useRoomsSideGoes(!roomsHere && side.view === 'rooms', side.close);
 
-  /*
-   * ---------- the main area (panels.ts): what's on your stage, each in its frame, and the people beside it ----------
-   * The people beside what's open keep the window's right edge, your side takes its width left of them, and the main area makes
-   * room for both; in a narrow window your side sits over the stage.
-   */
-  const callArea = useCallArea();
-  const size = callArea.size;
-  const dockBar = useRef<HTMLElement>(null);
-  const bounds = useFocusBounds(callArea.ref, dockBar, size);
-  const reduce = useReducedMotion();
-  /*
-   * Once the call is over for this tab (it ended, or you're leaving), the workspace goes at once: its streams close and it stops
-   * saying where you are, while its page says what happened.
-   */
-  const callOver = done || leaving;
-  const shownThings = callOver ? [] : stage.on;
-  /*
-   * Beside what's open the people stand at the window's right edge: a column, or made smaller a rail (panels.ts). They come from
-   * the call's whole width, so your side opening or closing never moves or resizes them.
-   */
-  const sideW = sideWidth(width);
-  /** Your side is a sheet over the call on a phone, and in a window too short for it between the bars (a phone on its side). */
-  const sideSheet = phone || (size.h > 0 && size.h < SIDE_MIN_HEIGHT);
-  /** Your side stands beside the stage, if there's room: never as a sheet over the call, nor in focus. */
-  const sideWanted = side.view !== null && !sideSheet && !focusOn;
-  const edge = peopleEdge(size.w, { frames: shownThings.length, phone, focus: focusOn, rooms: !!stageRooms, small: panels.people === 'hidden', side: sideWanted ? sideW + GAP : 0 });
-  const edgeRoom = edge ? edge.w + GAP : 0;
-  /*
-   * Your side opens between what's open and the people, and what's open makes room for it. Where that would leave the stage
-   * too narrow, it sits over the stage instead, left of the people, rather than squeeze it. While it's over what's on your
-   * stage, choosing something there (or the call showing you something there) puts it away.
-   */
-  const sideOver = !sideSheet && size.w - edgeRoom - (sideW + GAP) < STAGE_BESIDE_SIDE;
-  const sideRoom = sideWanted && !sideOver ? sideW + GAP : 0;
-  const sideCovers = side.view !== null && (sideSheet || (sideOver && !focusOn));
-  const mainW = Math.max(0, size.w - sideRoom - edgeRoom);
-  /* What your side and the people take at the window's right edge, for toasts to keep to the stage left of them (call.css). */
-  useLayoutEffect(() => {
-    const root = document.documentElement;
-    root.style.setProperty('--ic-right', `${sideW + GAP + edgeRoom}px`);
-    return () => { root.style.removeProperty('--ic-right'); };
-  }, [sideW, edgeRoom]);
-  /* What your side over the stage leaves clear, at its left: someone asking to join is answered there, never under your side. */
-  const clearW = sideOver && side.view !== null && !focusOn ? Math.max(0, mainW - (sideW + GAP)) : mainW;
-  const top = bar ? 46 : 0;
-  const bottom = capNode ? (mainW < 700 ? 150 : 124) : 0;
-  /** Two on your stage with no room for both take turns: the one you brought to the front. */
-  const [front, setFront] = useState<ThingId | null>(null);
-  const focusedRoom = focusOn ? focusRoom(size, bounds) : null;
-  // The shared timer owns a strip above the focused frame, clear of its title and controls.
-  const focusToolbarHeight = focusOn && timerShown ? 52 : 0;
-  const focusBox = focusedRoom ? { ...focusedRoom, y: focusedRoom.y + focusToolbarHeight, h: Math.max(0, focusedRoom.h - focusToolbarHeight) } : null;
-  const placed = placeMain({ w: mainW, h: size.h }, { frames: shownThings.length, phone, focus: focusBox, rooms: !!stageRooms, top, bottom, edge });
-  /** The organizer's rooms are in sight: on the whole stage, or beside what's open, rather than under it. */
-  const roomsShown = placed.rooms !== null;
-  /** The seam left of the people at the window's edge (PeopleSeam.tsx): what ⇧P does, to click or drag. Not while your side covers the stage. */
-  const peopleSmall = panels.people === 'hidden';
-  const seam = stageRooms || sideCovers ? null : placed.seam;
-  /* While rooms are open, you see the people in your own room (or the main room), and the organizer overseeing them sees every room. */
-  const onStage = unit && !roomsShown ? stagePeople.filter((p) => unit.includes(p.id)) : stagePeople;
-  const frontId = placed.turns ? (front && shownThings.includes(front) ? front : shownThings[0] ?? null) : null;
-  const boxOf = (id: ThingId): Box | null => {
-    const i = shownThings.indexOf(id);
-    if (i < 0) return null;
-    if (placed.turns) return id === frontId ? placed.frames[0] ?? null : null;
-    return placed.frames[i] ?? null;
-  };
-  const staged = useStagePlan({
-    people: onStage, waiting, tiles: stage.tiles.map((t) => t.id), spotlight, view: layout, hold: placed.frames.length > 0,
-    narrow: phone || (placed.frames.length === 0 && mainW > 0 && mainW < 760)
+  /* ---------- the main area: what's on your stage, each in its frame, and the people beside it (PanelHost.tsx) ---------- */
+  const area = useMainArea({
+    width, phone, focus: focusOn, side: side.view, timer: timerShown, bar: bar !== null, caption: captions.on, held: Boolean(stageRooms), on: stage.on, over: callOver,
+    people: stagePeople, unit: rooms.unit, waiting, tiles: stage.tiles, spotlight, view: layout, front
   });
-  // The stage's speaker is never you: it says who to make room for. The end of the transcript says who's talking.
-  const talking = onStage.find((p) => p.id === staged.speaker) ?? onStage.find((p) => p.isMe && p.speaking);
-  const { live: liveCall, put } = useLiveCall(session, talking?.person ?? null, {
+  const { live: liveCall, put } = useLiveCall(session, area.talking?.person ?? null, {
     // A list over the page goes, or it would cover what the panel opens beside.
-    notes: controls.notes, ask: controls.ask, beside: (v) => { setPop(null); work.act.setPeek(false); goTo(v); },
-    reveal: () => { work.act.reveal(); if (sideCovers) side.close(); }, covered: () => sideCovers
+    notes: controls.notes, ask: controls.ask, beside: (v) => { setPop(null); work.act.setPeek(false); places.goTo(v); },
+    reveal: () => { work.act.reveal(); if (area.sideCovers) side.close(); }, covered: () => area.sideCovers
   });
-  // Who has a place however little room there is, counting talking as the speaker does (speakers.ts): if every word did, the few places would keep changing hands.
-  const loudKey = placed.frames.length ? onStage.filter((p) => p.hand || p.id === staged.speaker).map((p) => p.id).join(' ') : '';
-  const placedKey = JSON.stringify([placed.people, placed.mode, placed.frames.length, placed.rooms]);
-  const frame = useMemo((): StageFrame => ({
-    box: placed.rooms ?? { x: 0, y: 0, w: mainW, h: size.h }, top, bottom,
-    panels: placed.frames.length && !roomsShown ? { people: placed.people, mode: placed.mode, loud: new Set(loudKey.split(' ')), small: phone } : null
-  }), [mainW, size.h, top, bottom, placedKey, loudKey, phone]);
-  /** The workspace is on your stage and in sight: what's clear starts at its left, so its list has the bottom left of it. */
-  const wsInSight = boxOf('ws') !== null;
-  /* When there isn't room for two side by side, they take turns, and the top bar says which is showing. */
-  const thingName = (id: ThingId) => (id === 'ws' ? 'Workspace' : id === 'board' || id === 'saved' ? 'Board' : shares.find((x) => screenOf(x.id) === id)?.name ?? 'Shared screen');
-  /* Where your side covers what's taking turns, choosing one puts it away. */
-  const swap = placed.turns && shownThings.length > 1 && (
-    <div className="ic-swap" role="group" aria-label="What’s showing">
-      {shownThings.map((id) => <button key={id} type="button" aria-pressed={!sideCovers && frontId === id} onClick={() => { setFront(id); if (sideCovers) side.close(); }}>{thingName(id)}</button>)}
-    </div>
-  );
-
-  /* ---------- screens on your stage: how you look at each, pointing, its own window (ShareInFrame.tsx) ---------- */
-  const screensShown = shownThings.flatMap((id) => { const sh = sharerOf(id); return sh ? [sh] : []; });
+  /* Screens on your stage: how you look at each, pointing, and its own window (ShareInFrame.tsx); and the floating call. */
+  const screensShown = area.shownThings.flatMap((id) => { const sh = sharerOf(id); return sh ? [sh] : []; });
   const looks = useShareLooks({ shares, part: crypto.place, paused: mode === 'paused', kept: screensShown });
   useFocusBack(looks);
   const pointing = usePointing(shares, (id) => screensShown.includes(id), looks.popped);
   const popOut = usePopOut(looks.looks);
   const floating = useFloatingWindow(looks.looks, live && !done && !outOfGroup && !over.current && roomView.connection !== 'ended',
     media.micTrack()?.readyState === 'live' || media.camSource()?.readyState === 'live');
-  const floatingHelp = useId();
-  const openAddressedMessage = (id: string, audience: PrivateAudience | null) => { setChatTab(audience ? { kind: 'private', audience } : { kind: 'room' }); setChatTarget((was) => ({ id, request: (was?.request ?? 0) + 1 })); returnToCall(); openSide('chat'); };
-  /** A private conversation with someone here, from their tile, their row in People or a message of theirs: Chat opens on it. */
-  const openPrivate = (identity: string) => { setChatTab({ kind: 'private', audience: { identity, place: crypto.place, generation: state.generation } }); returnToCall(); openSide('chat'); };
-  /** The room's questions, in Chat, at one of them if it says which. */
-  const openQuestions = (id?: string) => { setChatTab({ kind: 'questions' }); if (id) setQuestionTarget((was) => ({ id, request: (was?.request ?? 0) + 1 })); openSide('chat'); };
+  const returnToCall = () => { floating.owner.returnToCall(); };
+  const openers = sideOpeners({ places, openSide, returnToCall, part: crypto.place, generation: state.generation, openTimer: () => setTimerOpen(true) });
   const alertsAllowed = attentionAllowed && attentionReady && online && !leaving && !done;
-  useReplyAlerts({ session, state, crypto, direct, allowed: alertsAllowed, onOpen: openAddressedMessage });
-  useMentionAlerts({ session, state, crypto, direct, allowed: alertsAllowed, onOpen: openAddressedMessage });
-  useCallBrowserNotifications({ session, state, crypto, direct, active: attentionAllowed && attentionReady && online && roomView.connection === 'connected' && !leaving && !done,
-    foreground: floating.mainVisible,
-    onOpen: (target) => {
-      returnToCall();
-      if (target.type === 'private') {
-        setChatTab({ kind: 'private', audience: { identity: target.peer, place: crypto.place, generation: state.generation } });
-        setChatTarget((was) => ({ id: target.message, request: (was?.request ?? 0) + 1 })); openSide('chat');
-      } else if (target.type === 'thread' || target.type === 'chat') {
-        setChatTab({ kind: 'room' }); setChatTarget((was) => ({ id: target.message, request: (was?.request ?? 0) + 1 })); openSide('chat');
-      } else if (target.type === 'attention' && target.section === 'questions') openQuestions(target.id);
-      else if (target.type === 'attention') {
-        // A raised hand is at the top of People, its row in focus.
-        setActionTarget((was) => ({ id: target.id, request: (was?.request ?? 0) + 1 })); openSide('people');
-      }
-      else if (target.type === 'admission') { setActionTarget((was) => ({ id: target.identity, request: (was?.request ?? 0) + 1 })); openSide('people'); }
-      else if (target.type === 'timer') setTimerOpen(true);
-      else { setActionTarget((was) => ({ id: target.id, request: (was?.request ?? 0) + 1 })); openSide('people'); }
-    }
-  });
-  /* A vote started on the board in the call while it isn't on your stage: you're told if you can vote in it, and Vote opens it there, on the vote's frame. */
+  useReplyAlerts({ session, state, crypto, direct, allowed: alertsAllowed, onOpen: openers.addressed });
+  useMentionAlerts({ session, state, crypto, direct, allowed: alertsAllowed, onOpen: openers.addressed });
+  useCallBrowserNotifications({ session, state, crypto, direct, active: alertsAllowed && connected, foreground: floating.mainVisible, onOpen: openers.notification });
+  /* A vote started on the board in the call while it isn't on your stage: you're told if you can vote in it, and Vote opens it there. */
   useVoteStarted({
     state, me: meId, place: myRoomId ?? MAIN_PLACE, settled, onStage: stage.on.includes('board'),
     say: (text, onVote) => { toast(text, { icon: 'vote', action: { label: 'Vote', onClick: onVote }, ms: 12000, topic: 'board-vote' }); },
@@ -1527,231 +491,20 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
       if (frame && !stage.presentedOf('board')) board.showFrame(frame);
     }
   });
-  useEffect(() => { if (floating.error) toast('Floating call didn’t open. More says why.', { icon: 'pip' }); }, [floating.error, toast]);
-
-  useEffect(() => {
-    if (floating.target || !leaveInFloating) return;
-    setLeaveInFloating(false);
-    if (!leaving) { setLeaveOpen(false); guardRef.current.stay(); }
-  }, [floating.target, leaveInFloating, leaving]);
-  const returnToCall = () => { floating.owner.returnToCall(); };
-  const floatShare = (frontId ? shares.find((s) => screenOf(s.id) === frontId) : undefined)
-    ?? shares.find((s) => screensShown.includes(s.id));
-  const floatPeople = onStage.filter((p) => p.isMe || crypto.members.includes(p.id));
-  const floatPerson = floatPeople.find((p) => p.id === staged.speaker) ?? floatPeople.find((p) => !p.isMe) ?? floatPeople.find((p) => p.isMe);
-  const floatFeed = crypto.status === 'in' ? floatShare?.feed ?? floatPerson?.video ?? null : null;
-  const floatAttention = {
-    hands: attentionReady ? state.attention.hands.length : 0,
-    questions: attentionReady ? state.attention.questions.filter((q) => q.status === 'open').length : 0,
-    waiting: hosting ? state.waiting.length : 0,
-    chat: unread
-  };
-  /*
-   * Put on the board: a picture of someone else's share as this browser shows it, into the board's own files, and whoever shares
-   * it is told. It's on their share's name menu only: your own screen has none.
-   */
-  const putShot = (s: StageShare) => {
-    const open = board.open;
-    if (!open?.workspaceId || !open.documentId || open.role !== 'edit') return;
-    const { workspaceId, documentId } = open;
-    const whose = callName(s.presenter);
-    const caption = `${whose}’s screen, ${hm(new Date())}`;
-    const look = looks.looks.look(s.id);
-    keepShot({ workspaceId, documentId, pass: session.ticket.pass }, s.id, look.getSnapshot().held?.ready ? look.heldBitmap() : null, caption).then((media) => {
-      if (!media) { toast(`There’s no picture of ${whose}’s screen yet. Try again in a moment.`, { icon: 'image' }); return; }
-      if (!board.handle.current?.addShot({ media, caption })) { toast('Open the board in the call to put a picture on it.', { icon: 'image' }); return; }
-      if (s.point) room.send(BOARD_SHOT_TOPIC, shotNotice(s.point.sid), { reliable: true });
-      toast(`A picture of ${whose}’s screen is on the board. ${whose} can see that.`, { icon: 'image' });
-    }).catch(failed);
-  };
-  const roomsBody = () => (open && me && activity
-    ? <RoomsLive open={open} elapsed={state.elapsed} members={open.rooms.map((r) => r.members.flatMap((id) => { const p = byId.get(id); return p ? [p] : []; }))}
-      chips={roomChips} main={mainPeople} people={byId} activity={activity} onJoin={visit} onRename={renameRoom} onMove={moveTo} onMessage={(t) => session.messageRooms(t)} onClose={() => session.closeRooms()} />
-    : <RoomsSetup people={candidates} me={me?.person ?? SOMEONE} notes={on} boardName={state.board.open?.name ?? null} onOpen={openRooms} />);
-  /* Notes: its tabs, and Note to self at the foot of all but Ask. This browser's own problems with capture are bars on the notes and the transcript. */
-  const notesProblems = [uploadError, heardProblem, screenProblem].filter((x): x is string => !!x);
-  const notesTabBody = (t: NotesTab) => {
-    switch (t) {
-      case 'notes': return <NotesView session={session} state={state} getting={getting} problems={notesProblems} put={put} controls={controls} stops={stopMarks}
-        carried={carried && <FromLastTime s={carried} me={account.data?.user.email} open={!state.liveNotes.notes} />} onSeek={cu.open} />;
-      case 'transcript': return cu.moment
-        ? <MomentView moment={cu.moment} startedAt={state.startedAt} me={me?.person.email} onLive={cu.backToLive} />
-        : <TranscriptView state={state} me={me?.person.email} marks={own.enabled ? own.lines : undefined} put={put} controls={controls} problems={notesProblems} />;
-      case 'yours': return <YoursView own={own} state={state} me={me?.person.email} onOpen={cu.open} />;
-      case 'ask': return <AskView asks={cu.asks} modelPrivate={state.capture.modelPrivate} ready={state.notes.everOn && state.transcript.length > 0 && capHere.mode !== 'paused'} paused={capHere.mode === 'paused'} startedAt={state.startedAt} range={cu.range} window={cu.window}
-        catching={cu.catching} draft={askDraft.current} earlier={earlierNotes.length ? earlierNotes : null} scope={cu.scope} onScope={cu.setScope} onRange={cu.setRange} onWindow={cu.refreshWindow} onAsk={cu.ask}
-        onAskEarlier={(question) => cu.askEarlier(question, earlierNotes)} onCatchUp={() => cu.catchUp(cu.range)} onOpen={cu.open} onLive={cu.backToLive} keeping={own.enabled ? own : undefined} />;
-    }
-  };
-  /** Opens the workspace on these notes, on your screen, and puts your side away. */
-  const openNotesPage = () => { cu.settle(); side.close(); stageOpen('ws', { own: true }); work.act.go({ kind: 'live', page: 'notes' }); };
-  const sideClose = () => { cu.settle(); closeSide(); };
-  const sideBody = (v: SideView) => {
-    switch (v) {
-      case 'notes': return (
-        <div className="nn">
-          <NotesHead pill={<CapturePill state={state} role={session.ticket.role} getting={getting} controls={controls} pausing={pausing} phone={phone} stop={planStop} />} modelPrivate={state.capture.modelPrivate}
-            onOpen={openNotesPage} onClose={sideClose} />
-          {planStop && <NotesStopBar stop={planStop} />}
-          <NotesTabs tab={notesTab} yours={own.enabled} onTab={(t) => { cu.settle(); setNotesTab(t); }} />
-          <SideBody view={notesTab}>{notesTabBody(notesTab)}</SideBody>
-          {notesTab !== 'ask' && own.enabled && state.notes.noteId !== null && <OwnFoot own={own} draft={ownDraft.current} />}
-        </div>
-      );
-      case 'chat': return (
-        <>
-          <SideHead title="Chat" onClose={sideClose} />
-          <SideBody view="chat">
-            <ChatPanel session={session} state={state} crypto={crypto} direct={direct} memory={chatMemory.current} tab={chatTab} onTab={setChatTab} who={personOf} placeName={placeName}
-              here={open ? roomName ?? 'the main room' : null} visible={floating.mainVisible && !focusOn && !leaveOpen && !done && !moving.open && !settingsOpen && !backgroundOpen && pop === null}
-              jump={chatTarget} questionJump={questionTarget} questionsReady={attentionReady} roomUnread={unreadChat} unreadMentions={unreadMentions} onRead={readMentions} />
-          </SideBody>
-        </>
-      );
-      case 'people': return (
-        <>
-          <SideHead title="People" onClose={sideClose} />
-          <SideBody view="people">
-            <PeopleView jump={actionTarget} here={panelPeople} invited={invited} asking={hosting ? state.waiting : []} invites={organizer} ringing={rung} host={host} foot={privacyLine} together={together}
-              link={{ copy: () => copy(state.code), locked: state.locked }}
-              canRing={(p) => team.data?.members.some((x) => x.onAlcove && sameEmail(x.person, p)) ?? false} onRing={organizer && live ? ring : undefined} onStopRing={organizer && live ? stopRing : undefined}
-              notesAsks={organizer && !on && state.capture.requests.length > 0 ? <NotesAsks state={state} controls={controls} after={state.waiting.length > 0} /> : undefined}
-              rooms={roomsHere ? { open: !!open, onOpen: () => side.open('rooms') } : undefined} />
-          </SideBody>
-        </>
-      );
-      case 'rooms': return (
-        <>
-          <SideHead title={open ? 'Rooms are open' : 'Breakout rooms'} onClose={sideClose} />
-          <SideBody view="rooms">{roomsBody()}</SideBody>
-        </>
-      );
-      // Whoever presents the board has their notes beside each frame here.
-      case 'mine': return (
-        <>
-          <SideHead title="Your notes" onClose={sideClose} />
-          <SideBody view="mine">
-            <div className="ic-scroll ic-pad">
-              <BoardMine board={board} section={boardPresenting.section} notes={boardPresenting.notes} onNote={boardPresenting.setNote} theme={theme} />
-            </div>
-          </SideBody>
-        </>
-      );
-    }
-  };
-  const sideNames: Record<SideView, string> = { notes: 'Notes', chat: 'Chat', people: 'People', rooms: open ? 'Rooms are open' : 'Breakout rooms', mine: 'Your notes' };
-  const hostSide: HostSide | null = side.view === null || focusOn ? null
-    : { view: side.view, label: sideNames[side.view], width: sideW, phone: sideSheet, over: sideOver, theme, edge: edgeRoom, onClose: sideClose, children: sideBody(side.view) };
-  /* The workspace's list: beside the page where its frame has the room, and otherwise over the page for now. */
-  const wsBox = boxOf('ws');
-  const listFits = wsBox !== null && wsBox.w >= 760 && !phone;
-  const listShown = panels.list && listFits;
-  /* The list's button: a list that gave way for want of room comes over the page for now. One you put away comes back. */
-  const turnList = () => {
-    if (panels.list && !listFits) { work.act.setPeek((on) => !on); return; }
-    work.act.setPeek(false);
-    layout.arrange((p) => ({ ...p, list: !p.list }));
-    onCustom();
-  };
-  const listTurn = useRef(turnList);
-  listTurn.current = turnList;
-  const toggleList = useCallback(() => { listTurn.current(); }, []);
-  /*
-   * What needs the list, such as naming a folder, shows it and never hides it: one that gave way comes over the page, and one
-   * you put away comes back, or over the page in a frame with no room for it.
-   */
-  const showList = () => {
-    if (listShown) return;
-    if (!panels.list) { layout.arrange((p) => ({ ...p, list: true })); onCustom(); }
-    if (!listFits) work.act.setPeek(true);
-  };
-  const listShow = useRef(showList);
-  listShow.current = showList;
-  const onShowList = useCallback(() => { listShow.current(); }, []);
-
-  /* ---------- the board on your stage: the call's, or a saved one just for you ---------- */
-  const boardOpen = board.drawn;
-  const boardWhere = boardOpen?.workspaceId ? spaceName(boardOpen.workspaceId) : null;
-  const viewOnly = boardOpen?.role === 'read';
-  /** A room's own board: only the people in the room see it, until rooms close. On the board every room shares, you're on the main board. */
-  const roomsOwn = boardOpen !== null && !board.savedDrawn && roomName !== null && boardOpen.frame === null;
-  const sealed = boardOpen?.seal ?? 'Sealed';
-  /*
-   * How the board stands, in its page's words (features/board/standing.ts): its seal, what that says on hover and pressed, and
-   * Reconnecting and Couldn't save in its pill, with Try again. While all's well, the seal says what's true of it in this call.
-   */
-  const boardChanges = useChangesSinceSaved(board.doc, boardStatus);
-  const boardStanding = standingOf({
-    status: boardStatus, offline: boardStatus !== null && (boardStatus.status === 'offline' || (!online && boardStatus.status !== 'failed')), readOnly: viewOnly,
-    changes: boardChanges, tryAgain: board.tryAgain, tryNow: online ? board.tryNow : undefined, kept: boardWhere ? { icon: 'lock', text: `Saved in ${boardWhere}.` } : null,
-    sealed: {
-      seal: sealed, title: `${sealed}. Encrypted in storage.`,
-      rows: roomsOwn ? [
-        { icon: 'lock', text: `Only the people in ${roomName} can see this board.` },
-        { icon: 'door', text: 'When rooms close it comes back to the main room, and everyone in the call sees it.' },
-        ENCRYPTED
-      ] : board.savedDrawn ? [
-        { icon: 'lock', text: boardWhere ? `Only on your screen. Saved in ${boardWhere}.` : 'Only on your screen.' },
-        ENCRYPTED
-      ] : [
-        ...(boardOpen?.everyone ? [{ icon: 'lock' as const, text: boardWhere ? `Everyone in this call can add to it. Saved in ${boardWhere}.` : 'Everyone in this call can add to it.' }]
-          : boardWhere ? [{ icon: 'lock' as const, text: `Saved in ${boardWhere}.` }] : []),
-        ...(on ? [{ icon: 'notes' as const, text: 'The notes can use this board.' }] : []),
-        ENCRYPTED
-      ]
-    }
-  });
-  /** Where a board is kept: the workspace everyone's viewing comes up in the call, and any other opens in a tab of its own. */
-  const openSaved = (workspaceId: string) => {
-    if (workspaceId === space.id) { work.act.wantList(); return; }
-    window.open(`/drive/${encodeURIComponent(workspaceId)}`, '_blank', 'noopener');
-  };
-  /*
-   * Something the board links to opens as its workspace does: in the call when everyone's viewing that workspace, and in a tab of
-   * its own for an account anywhere else. A guest has nowhere else to open it.
-   */
-  const linkedIn = boardOpen?.workspaceId ?? null;
-  const linkHere = linkedIn !== null && linkedIn === space.id;
-  const linkOpens = linkedIn !== null && (linkHere || state.role !== 'guest');
-  const openLinked = useMemo(() => (linkedIn && linkOpens ? (item: string) => {
-    if (linkHere) { work.act.openAt({ kind: 'document', id: item }); return; }
-    window.open(`/drive/${encodeURIComponent(linkedIn)}/${encodeURIComponent(item)}`, '_blank', 'noopener');
-  } : undefined), [linkedIn, linkOpens, linkHere, work.act]);
-  /** The board's own address, which opens it for whoever can open it. */
-  const boardLink = linkedIn && boardOpen?.documentId ? `${location.origin}/drive/${encodeURIComponent(linkedIn)}/${encodeURIComponent(boardOpen.documentId)}` : undefined;
-  /** Rename, in the board's frame's name menu: its name becomes a field on the board's bar. */
-  const [renameAsk, setRenameAsk] = useState(0);
-  const boardRename = boardOpen?.workspaceId && boardOpen.documentId && boardOpen.role === 'edit' ? (() => {
-    const { workspaceId, documentId } = boardOpen;
-    return (name: string) => renameBoard.mutateAsync({ workspaceId, id: documentId, name }).catch((e: unknown) => { failed(e); throw e; });
-  })() : undefined;
-  /** Who can add to it: the board's own Share, as its workspace has it, in place of the name menu's rows. */
-  const boardShare = boardOpen?.workspaceId && boardOpen.documentId && boardOpen.role === 'edit' && boardItem && boardItem.id === boardOpen.documentId && boardItem.role === 'edit' && boardItem.trashedAt === null
-    ? <ShareSheetFor workspaceId={boardOpen.workspaceId} item={{ ...boardItem, name: boardOpen.name ?? boardItem.name }} say={work.act.say} pass={board.savedDrawn ? undefined : session.ticket.pass} />
-    : null;
-  const openerName = board.opener ? callName(board.opener) : null;
-  /** Asking whoever brought a board you can't open to let you in: in the call's chat, where they'll see it, as you'd ask them yourself. */
-  const askBoard = openerName && boardOpen?.openedBy !== meId ? () => {
-    session.sendChat(`${openerName}, could you let me into the board?`).then(() => toast(`Asked ${openerName} in the chat.`, { icon: 'chat' }), failed);
-  } : undefined;
-  boardAccess.current = state.board.open?.role === null && askBoard && openerName ? { who: openerName, onAsk: askBoard } : null;
-  /** What the board says to you, with its own icon: what you were typing in going, a trash can. Following says its own, with an eye. */
-  const sayBoard = (text: string, icon: IconName) => { toast(text, { icon }); };
-  /** Where whoever presents the board is, for the pager at its frame's foot. */
-  const [pager, setPager] = useState<BoardPager | null>(null);
-  /** On a board being presented, whoever presents it and everyone following them go to and follow nobody else on it until they unfollow. */
-  const boardOnFrame = boardPresenting.present !== null && (boardPresenting.present.mine || boardPresenting.present.watching);
-  const stageBoard = boardOpen && board.shown && !callOver ? {
-    find: (p: StageParticipant) => (!boardOnFrame && !p.isMe && board.onBoard.has(p.id)
-      ? { goTo: () => board.goTo(p.id), follow: { on: board.following === p.id, toggle: () => board.follow(board.following === p.id ? null : p.id) } } : undefined)
-  } : null;
-
+  useFloatingFailedSaid(floating.error, toast);
+  useLeaveAskGoesWithFloating({ target: floating.target, inFloating: departure.leaveInFloating, leaving, setInFloating: departure.setLeaveInFloating, setLeaveOpen: departure.setLeaveOpen, guard: guardRef });
+  const askingInFloating = departure.leaveInFloating && floating.target !== null;
+  const boardChanges = useChangesSinceSaved(board.doc, board.status);
+  const asker = askerOf({ board, me: meId, session, toast, failed });
+  boardAccess.current = state.board.open?.role === null && asker.ask && asker.opener ? { who: asker.opener, onAsk: asker.ask } : null;
   /* A video played for everyone: the call's one player, until the call ends here (PlayTogether.tsx). */
   const player = useSharedVideo(session, !done, work.act.failed);
   const startPlaying = useCallback((documentId: string, mediaId: string) => { session.startPlaying(documentId, mediaId, 0).catch(work.act.failed); }, [session, work.act]);
   const playing = useWorkspacePlaying(player, startPlaying);
   /** The workspace's name on its frame: a new one shows while it's being kept, until the call says it. */
   const wsName = useWorkspaceName(space.id ?? '', space.name ?? 'Workspace', state.role !== 'guest').name;
+  /* Where the workspace was last, so it stays there, out of sight, while it isn't on your stage. Kept above the moved page's early return, as every hook is. */
+  const lastWsBox = useRef<Box | null>(null);
 
   if (moving.moved) {
     const leaveFor = (to: 'join' | 'home') => {
@@ -1761,368 +514,143 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
     return <Moved to={moving.moved.to} problem={moving.moved.problem} signedIn={session.ticket.role !== 'guest'} onAgain={() => leaveFor('join')} onHome={() => leaveFor('home')} />;
   }
 
-  /* ---------- what's on your stage, each in its frame (frame.tsx) ---------- */
-  /** Everyone else in your part of the call follows what you present. */
-  const followers = Math.max(0, onStage.length - 1);
-  // Focus is on offer only where it can fill your window: not on a phone, nor while the rooms hold the stage beside it.
-  const focusFor = focusOffered ? { on: focusOn, onToggle: toggleFocus } : null;
-  /** Only one thing is on your stage: closing it gives the stage back to the people, and Close says so. */
-  const clears = stage.on.length <= 1;
-  const askFor = (id: ThingId) => ({ open: asking === id, onOpenChange: (o: boolean) => setAsking(o ? id : null), onMe: () => closeFor(id, false), onEveryone: () => closeFor(id, true), everyone: closesFor(id), phone });
-  /**
-   * What your presentation's For everyone closes: in a room, it's that room's, unless it's the board every room shares and you
-   * opened it or you're the organizer, when the board leaves the call. Anywhere else, it's everyone's in the call.
-   */
-  const forRoomOnly = (id: ThingId) => myRoomId !== null && !(id === 'board' && open?.board === 'shared' && (organizer || callBoardOpen?.canClose === true));
-  const closesFor = (id: ThingId): string | undefined => (forRoomOnly(id) ? 'It closes for everyone in this room.' : myRoomId !== null ? 'It closes for everyone in the call, every room too.' : undefined);
-  /** The call's board nobody presents, for whoever may take it out of the call: for you, it stays in the call; for everyone, it leaves it. */
-  const boardAsk = {
-    open: asking === 'board', onOpenChange: (o: boolean) => setAsking(o ? 'board' : null), onMe: () => closeForMe('board'), onEveryone: closeBoardForAll, phone,
-    me: 'It stays in the call, and Board opens it again.', everyone: boardWhere ? `It leaves the call for everyone, and stays saved in ${boardWhere}.` : 'It leaves the call for everyone, and stays saved.'
-  };
-  const byOf = (p: Presented | null) => (p ? { person: p.by, first: p.first, mine: p.mine } : null);
-  /** Another presented thing to put beside what's on your stage, while it holds one. */
-  const besideFor = (id: ThingId) => (phone || stage.on.length !== 1 ? [] : stage.tiles.filter((t) => t.id !== id).map((t) => ({ name: t.name, onPick: () => stage.beside(t.id) })));
-  /** The organizer's: anyone's share stops for everyone, and they're told who stopped it. */
-  const stopTheirShare = (s: StageShare) => {
-    const seat = state.participants.find((p) => p.id === s.id)?.seat;
-    if (!seat) return;
-    stoppedByMe.current = `screen:${s.id}`;
-    session.stopShare(seat).then(() => sayIt(wsToast.stoppedTheirShare(callName(s.presenter))), (e: unknown) => { stoppedByMe.current = null; failed(e); });
+  /* ---------- what's on your stage, each in its frame (frame.tsx), and what's presented that isn't, as tiles ---------- */
+  const place: FramePlace = {
+    focused: focusOn, focus: focusOffered ? { on: focusOn, onToggle: toggleFocus } : null, phone,
+    // Everyone else in your part of the call follows what you present; with one thing on your stage, closing it clears the stage.
+    followers: Math.max(0, area.onStage.length - 1), clears: stage.on.length <= 1
   };
   /** The organizer's, on someone else's board or workspace: it closes for everyone. */
   const closeTheirs = () => {
     stoppedByMe.current = presentNow?.key ?? null;
     session.stopPresenting(true).then(() => sayIt(wsToast.closedForAll()), (e: unknown) => { stoppedByMe.current = null; failed(e); });
   };
-  /* Your own screen, as its bar says it goes out: what kind of thing, and its sound. */
-  const surfaceWords = m.screenSurface === 'browser' ? 'a tab' : m.screenSurface === 'window' ? 'a window' : m.screenSurface === 'monitor' ? 'your whole screen' : 'your screen';
-  /** What you share is read for the notes: your bar says so, as its menu does. */
-  const myShareRead = published && keptMine;
-  const myShareMeta = published ? `You’re presenting · ${surfaceWords}${withSound ? ' with sound' : ''}${myShareRead ? ' · Read for the notes' : ''}` : 'Starting to share…';
-  const copyLinkOf = (link: string | undefined) => (link ? () => { void navigator.clipboard.writeText(link).then(() => sayIt(wsToast.linkCopied()), failed); } : undefined);
-  /** Everyone in the call, for Who's in it. */
-  const inCallNow = inTheCall(state.participants, state.role);
-  /*
-   * Who can edit the call's board, while everyone here can: everyone in a room, on a room's own board; anyone else, everyone in
-   * the call, which a guest is told as theirs while they're in it.
-   */
-  const roomBoard = myRoomId !== null && open?.board === 'each';
-  const boardEditors = !callBoardOpen?.everyone ? null : roomBoard ? 'Everyone in this room can edit' : state.role === 'guest' ? 'You can edit while you’re in the call' : 'Everyone in the call can edit';
-  const wsLink = space.id ? `${location.origin}/drive/${encodeURIComponent(space.id)}` : undefined;
   // Anyone who can open the workspace presents it, guests too: before anyone's opened it, the call hasn't said which it is yet.
   const canPresentWs = (space.id === null || space.canOpen) && live;
-  /* Where the workspace was last, so it stays there, out of sight, while it isn't on your stage. */
-  const lastWsBox = useRef<Box | null>(null);
-  const wsAt = boxOf('ws');
+  const wsAt = area.boxOf('ws');
   if (wsAt) lastWsBox.current = wsAt;
   const frames = callOver ? null : (
     <>
-      {shownThings.map((id) => {
-        const box = boxOf(id);
+      {area.shownThings.map((id) => {
+        const box = area.boxOf(id);
         if (!box) return null;
         if (isScreen(id)) {
           const s = shares.find((x) => screenOf(x.id) === id);
-          if (!s) return null;
-          const look = s.mine || !('room' in s.feed) ? null : looks.looks.look(s.id);
-          const isPopped = looks.popped === s.id;
-          const pop = !s.mine && popOut ? (isPopped ? () => looks.looks.popIn(true) : () => popOut(s)) : null;
-          const bar: FrameBar = {
-            icon: 'screen', name: s.mine ? 'Your screen' : s.name, by: { person: s.presenter, first: s.mine ? 'You' : callName(s.presenter), mine: s.mine },
-            followers, follow: null, present: null, focus: focusFor, phone, onClose: () => closeThing(id), clears, ask: null, access: null,
-            rows: (close) => (s.mine
-              ? <MyShareMenuRows read={myShareRead} othersPoint={state.pointing ? othersPoint : null} marksOn={marksOnMine} onOthersPoint={flipOthersPoint}
-                onClear={() => { if (myShare) marks?.clear(myShare); }} onChange={() => pickShare()} onDone={close} />
-              : <ShareMenuRows share={s} look={look} pointing={pointing} popped={isPopped} onPopOut={pop} onPut={board.handle.current && board.open?.role === 'edit' && !board.savedDrawn ? () => putShot(s) : undefined}
-                onBeside={besideFor(id)} onDone={close} />),
-            stop: !s.mine && organizer ? { label: 'Stop it for everyone', onPick: () => stopTheirShare(s) } : null
-          };
-          return (
-            <FrameBox key={id} id={id} box={box} shown focused={focusOn}>
-              <Frame bar={bar} meta={s.mine ? myShareMeta : s.kept ? 'Read for the notes' : undefined} onStop={s.mine ? () => stopMine(id) : undefined}>
-                <ShareInFrame share={s} look={look} looks={looks.looks} popped={isPopped} marks={marks} me={me?.person ?? SOMEONE} whoIs={personOf} pointing={pointing} onPopOut={pop} />
-              </Frame>
-            </FrameBox>
-          );
+          return s ? (
+            <ScreenFrame key={id} id={id} box={box} place={place} share={s} looks={looks} pointing={pointing} popOut={popOut} marks={marks} session={session} state={state} board={board} room={room} stage={stage}
+              closing={closing} organizer={organizer} stoppedByMe={stoppedByMe} me={me?.person ?? SOMEONE} whoIs={personOf} say={sayIt} failed={failed}
+              yours={{ published: Boolean(roomView.people[meId]?.screenSid), kept: screen.keptMine, m, othersPoint: me?.othersPoint ?? true, pointingOn: state.pointing, marksOn: marksOnMine, sid: myShare, onChange: () => sharing.pick() }} />
+          ) : null;
         }
-        if (id === 'board' || id === 'saved') {
-          const p = id === 'board' ? stage.presentedOf('board') : null;
-          const canPresent = p === null && !phone && canStartBoard && boardOpen?.role === 'edit' && !someoneElse && !board.sinking;
-          const where = boardOpen?.workspaceId && boardWhere ? { name: boardWhere, onOpen: () => openSaved(boardOpen.workspaceId ?? '') } : null;
-          /* Who can edit it, on the call's board everyone here can: what the Share sheet says, for whoever has it to open. */
-          const access = id === 'board' && boardEditors ? { label: boardEditors, opens: boardShare !== null } : null;
-          const bar: FrameBar = {
-            icon: 'presentation', name: boardOpen?.name ?? 'Board', by: byOf(p), followers, phone, focus: focusFor, clears, access,
-            follow: p && !p.mine ? { on: stage.following('board'), where: pager?.part || 'the board', onToggle: () => stage.setFollow('board', !stage.following('board')) } : null,
-            present: canPresent ? { onPress: presentBoardNow, busy: presentBusy, ask: presentAsk ?? undefined } : null,
-            onClose: () => closeThing(id), ask: p?.mine ? askFor(id) : id === 'board' && !p && boardClosable ? boardAsk : null,
-            rows: (close, start) => {
-              // What the board itself has to offer, read as the menu opens: there's none until it's drawn here. Night board changes
-              // it for everyone, so it's for whoever can change it.
-              const h = board.handle.current;
-              return (
-                <BoardMenuRows rename={boardRename ? () => setRenameAsk((n) => n + 1) : undefined} where={where} share={boardShare} link={copyLinkOf(boardLink)}
-                  image={h ? () => h.saveImage() : undefined} pdf={h ? () => h.savePdf() : undefined} night={h && boardOpen?.role === 'edit' ? { on: h.night(), onToggle: () => h.setNight(!h.night()) } : undefined}
-                  start={start} onDone={close} />
-              );
-            },
-            stop: p && !p.mine && organizer ? { label: 'Close it for everyone', onPick: closeTheirs } : null
-          };
-          const mine = p?.mine === true && pager !== null && boardPresenting.present !== null;
-          return (
-            <FrameBox key={id} id={id} box={box} shown focused={focusOn}>
-              <Frame bar={bar} foot={mine && pager ? (
-                <BoardPagerFoot pager={pager} onBack={() => boardPresenting.present?.onMove(pager.at - 2)} onNext={() => boardPresenting.present?.onMove(pager.at)}
-                  notes={boardPresenting.present?.notes ?? null} />
-              ) : undefined}>
-                <BoardLeaf board={board} seal={boardStanding} rename={boardRename} renameAsk={renameAsk} run={boardRun} theme={theme}
-                  pills={{ ...roomsPill, standing: boardStanding.pill && <StandingPill pill={boardStanding.pill} /> }} onPill={setBoardPill}
-                  phone={phone} openLinked={openLinked} link={boardLink} opener={board.drawn?.openedBy !== meId ? openerName : null} onAsk={askBoard} onSay={sayBoard} landing={landing}
-                  present={boardPresenting.present} onPager={setPager} />
-              </Frame>
-            </FrameBox>
-          );
-        }
+        if (id === 'board' || id === 'saved') return (
+          <BoardFrame key={id} id={id} box={box} place={place} session={session} state={state} me={meId} board={board} run={boardRun} theme={theme} rooms={rooms} onPill={setBoardPill} notesOn={on} online={online}
+            changes={boardChanges} presenting={boardPresenting} stage={stage} closing={closing} closable={boardClosable} mayPresent={canStartBoard && othersWhy === null} organizer={organizer} closeTheirs={closeTheirs}
+            present={presentBoard} spaceName={spaceName} spaceId={space.id} act={work.act} rename={renameBoard} item={boardItem} asker={asker} say={sayIt} failed={failed} />
+        );
         return null;
       })}
-      {work.mounted && (wsAt ?? lastWsBox.current) && (() => {
-        const p = stage.presentedOf('ws');
-        const shown = wsAt !== null;
-        const bar: FrameBar = {
-          icon: 'folderOpen', name: wsName, by: byOf(p), followers, phone, focus: focusFor, clears,
-          access: space.everyone && space.id !== null ? { label: space.role !== null ? 'Everyone in the call can edit' : 'You can edit while you’re in the call', opens: true } : null,
-          follow: p && !p.mine ? { on: stage.following('ws'), where: wsPresenting.where ?? 'the workspace', onToggle: () => stage.setFollow('ws', !stage.following('ws')) } : null,
-          present: p === null && canPresentWs && !someoneElse ? { onPress: () => { void wsPresenting.start().then(() => land({ to: 'frame', id: 'ws' }, holding()), () => undefined); }, busy: false } : null,
-          onClose: () => closeThing('ws'), ask: p?.mine ? askFor('ws') : null,
-          rows: (close, start) => (
-            <WorkspaceMenuRows workspace={space} organizer={organizer} people={inCallNow} act={work.act} start={start} onFind={() => work.act.find()} onCopy={copyLinkOf(wsLink)}
-              onRenamed={() => { session.refresh({ call: true, log: false }).catch((e: unknown) => clog.info('call not read again for a new workspace name', { code: errorCode(e) })); }} onDone={close} />
-          ),
-          stop: p && !p.mine && organizer ? { label: 'Close it for everyone', onPick: closeTheirs } : null
-        };
-        return (
-          <FrameBox key="ws" id="ws" box={wsAt ?? lastWsBox.current ?? { x: 0, y: 0, w: mainW, h: size.h }} shown={shown} focused={focusOn && shown}>
-            <Frame bar={bar}>
-              <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} showing={wsInSight} finding={work.finding} people={spacePeople} invited={spaceInvited} reach={work.reach}
-                listOff={!listShown} listPeek={work.peek} listWanted={work.listWanted} live={liveCall} act={work.act} presenter={p && !p.mine ? wsPresenting.connection : null} playing={playing}
-                foot={wsInSight ? aloneCard : null} onToggleList={toggleList} onShowList={onShowList} />
-            </Frame>
-          </FrameBox>
-        );
-      })()}
-    </>
-  );
-  /* What's presented and isn't on your stage: a tile with the people, which takes you back to it. */
-  const presentedTiles: StagePresented[] = callOver || roomsShown ? [] : stage.tiles.map((t) => {
-    const s = isScreen(t.id) ? shares.find((x) => screenOf(x.id) === t.id) : undefined;
-    return {
-      id: t.id, name: t.name, icon: isScreen(t.id) ? 'screen' : t.id === 'ws' ? 'folderOpen' : 'presentation', sub: t.mine ? 'You’re presenting' : `${t.first} is presenting`,
-      by: t.by, go: t.mine ? 'Open' : 'Join', label: `${t.mine ? 'Go back to' : 'Join'} ${t.name}`, where: t.id === 'ws' ? wsPresenting.where ?? undefined : undefined,
-      mini: s ? () => <FeedVideo feed={s.feed} className="screen" /> : t.id === 'board' && !board.savedDrawn ? (w, h) => <BoardMini board={board} width={w} height={h} theme={theme} /> : null,
-      onJoin: () => { setFocus(false); land(t.mine && t.id === 'board' ? { to: 'pager' } : { to: 'frame', id: t.id }, holding()); stageOpen(t.id); },
-      beside: !phone && stage.on.length === 1 ? () => stage.beside(t.id) : null,
-      sound: s?.sound ?? null,
-      fresh: stage.fresh(t.key)
-    };
-  });
-
-  /* ---------- the dock, Share and More: what you do in the call, and everything else ---------- */
-  const moreOpen = pop === 'more' || pop === 'board' || pop === 'reactMore';
-  /** What you present, if anything: Share says so, and its first step offers Stop sharing. */
-  const myThing = stage.presented.find((p) => p.mine) ?? null;
-  const shareStep = pop === 'share' || pop === 'shareScreen' || pop === 'shareBoard' || pop === 'shareStop' ? pop : null;
-  const moreRow = (icon: IconName, label: string, act: () => void, o: { pressed?: boolean | undefined; quiet?: boolean | undefined } = {}) => (
-    <button type="button" className={cn('mi', o.quiet && 'is-quiet')} aria-pressed={o.pressed} onClick={act}>
-      <Icon name={icon} size={17} /><span className="t">{label}</span>
-    </button>
-  );
-  /**
-   * Open floating call: More stays open while it opens, and says why if it can't, with the same row to try again; it closes once
-   * the floating window is there.
-   */
-  const floatingRow = (
-    <div className="ic-mfloat">
-      <button type="button" className="mi" disabled={!floating.supported || floating.pending || !live || done} aria-busy={floating.pending}
-        aria-describedby={!floating.supported || floating.error ? floatingHelp : undefined}
-        onClick={() => { void floating.owner.open().then(() => { if (floating.owner.getSnapshot().target) setPop(null); }); }}>
-        <Icon name="pip" size={17} /><span className="t">{floating.pending ? 'Opening floating call…' : floating.target ? 'Return to floating call' : 'Open floating call'}</span>
-      </button>
-      {!floating.supported ? <p id={floatingHelp}>Floating calls aren’t available in this browser. Keep using the call in this tab.</p>
-        : floating.error && <p id={floatingHelp} role="alert">{floating.error}</p>}
-    </div>
-  );
-  /*
-   * Leave's question, for whoever hosts: End for everyone, or leave it going with someone hosting (the best person is chosen
-   * already, and Change shows who else could). Someone standing in for the organizer sees leaving it going first; alone, End is
-   * all there is, and its line says leaving ends the call. It opens over Leave, or, from the floating call, in that window's own
-   * document.
-   */
-  const leaveTitle = `Leave ${state.title}`;
-  const leaveChoices = {
-    onEnd: () => void end(true), onKeep: (to: string) => void handOff(to), notes: state.notes.everOn, alone: onlyYou, hosts: nextHosts,
-    standingInFor: state.host.standIn && hosting ? organizerFirst(state) : null, busy: leavingAs, error: callControls.error
-  };
-  const askingInFloating = leaveInFloating && floating.target !== null;
-  /** Stay in the call: the question goes, and so does wherever you were going. Not while it's ending. */
-  const stay = () => { if (leaving) return; setLeaveOpen(false); guard.stay(); };
-
-  /** Which device it switched to, from Settings as from the dock's own menus. */
-  const switched = {
-    mic: (what: 'mic' | 'speaker', label: string) => { toast(`Switched to ${label}`, { icon: what === 'mic' ? 'mic' : 'speaker' }); },
-    cam: (label: string) => { toast(`Switched to ${label}`, { icon: 'video' }); }
-  };
-  const moreBody = pop === 'board' ? (
-    <BoardPicker {...openPicker.picker} />
-  ) : pop === 'reactMore' ? (
-    /* A phone's picker is a sheet over the foot of the call, where the burst rises: it goes as you pick, so you see yours. */
-    <ReactPicker label="Send a reaction everyone sees" onPick={(r) => { react(r); setPop(null); }} />
-  ) : (
-    <>
-      {phone && (
-        <>
-          <CallMoreGrid>
-            <CallMoreTile icon="presentation" word="Board" aria-pressed={boardOnStage !== null} onClick={pressBoard} />
-            <CallMoreTile icon="folderOpen" word="Workspace" label={!stage.on.includes('ws') && broughtHere > 0 ? `Workspace, ${broughtHere} in this call` : 'Workspace'} aria-pressed={stage.on.includes('ws')} badge={stage.on.includes('ws') ? 0 : broughtHere}
-              onClick={pressWorkspace} />
-            <CallMoreTile icon="notesPen" word="Notes" onClick={() => openSide('notes')} />
-            <CallMoreTile icon="chat" word="Chat" label={unread ? `Chat, ${unread} new` : 'Chat'} badge={unread} onClick={() => openSide('chat')} />
-            <CallMoreTile icon="react" word="React" onClick={() => setPop('reactMore')} />
-            <CallMoreTile icon="people" word="People" label={hosting && state.waiting.length ? `People in this call. ${state.waiting.length} asking to join` : 'People in this call'} badge={hosting ? state.waiting.length : 0} onClick={() => openSide('people')} />
-          </CallMoreGrid>
-          <div className="ic-msep" />
-          {moreRow('hand', handLabel, () => { setPop(null); setHand(!me?.hand); }, { pressed: !!me?.hand })}
-        </>
+      {work.mounted && (wsAt ?? lastWsBox.current) && (
+        <WorkspaceFrame key="ws" box={wsAt ?? lastWsBox.current ?? { x: 0, y: 0, w: area.mainW, h: area.size.h }} shown={wsAt !== null} place={place} session={session} state={state} participants={told.participants}
+          invited={invited} space={space} work={work} name={wsName} presenting={wsPresenting} stage={stage} closing={closing} organizer={organizer} closeTheirs={closeTheirs} mayPresent={canPresentWs && othersWhy === null}
+          land={land} live={liveCall} playing={playing} foot={alone.card} view={layout} onCustom={yours.onCustom} say={sayIt} failed={failed} />
       )}
-      {moreRow('captions', cc ? 'Turn off captions' : 'Turn on captions', () => { setPop(null); flipCaptions(); }, { pressed: cc })}
-      {own.enabled && moreRow('bookmark', 'Mark this moment', () => { setPop(null); own.mark(); })}
-      {moreRow('history', 'Catch up on what you missed', () => { setPop(null); catchUp(); })}
-      {roomsHere && moreRow('door', 'Breakout rooms', () => openSide('rooms'), { pressed: side.view === 'rooms' })}
-      <div className="ic-msep" />
-      {floatingRow}
-      {custom && moreRow('reset', 'Reset layout', () => { setPop(null); resetView(); }, { quiet: true })}
-      {moreRow('phone', 'Move to another device', () => { setPop(null); moving.show(); })}
-      {moreRow('settings', 'Settings', () => { setPop(null); setSettingsOpen(true); })}
     </>
   );
+  const presented: StagePresented[] = callOver || area.roomsShown ? [] : presentedTiles({
+    stage, shares, phone, wsWhere: wsPresenting.where, boardMini: board.savedDrawn ? null : (w, h) => <BoardMini board={board} width={w} height={h} theme={theme} />,
+    onJoin: (t) => { setFocus(false); land(t.mine && t.id === 'board' ? { to: 'pager' } : { to: 'frame', id: t.id }, holding()); stageOpen(t.id); }
+  });
+  /** On a board being presented, whoever presents it and everyone following them go to and follow nobody else on it until they unfollow. */
+  const boardOnFrame = boardPresenting.present !== null && (boardPresenting.present.mine || boardPresenting.present.watching);
+  const stageBoard = board.drawn && board.shown && !callOver ? {
+    find: (p: StageParticipant) => (!boardOnFrame && !p.isMe && board.onBoard.has(p.id)
+      ? { goTo: () => board.goTo(p.id), follow: { on: board.following === p.id, toggle: () => board.follow(board.following === p.id ? null : p.id) } } : undefined)
+  } : null;
+  /* Two on your stage with no room for both take turns: the top bar says which is showing, or a phone under the arches. */
+  const swap = area.placed.turns && area.shownThings.length > 1 && (
+    <TakingTurns things={area.shownThings} front={area.frontId} covered={area.sideCovers} shares={shares} onPick={(id) => { setFront(id); if (area.sideCovers) side.close(); }} />
+  );
+
+  /* ---------- your side (SidePanel.tsx) ---------- */
+  const sideClose = () => { cu.settle(); closeSide(); };
+  const micLabel = micName(devices.mic, m.micId);
+  const hostSide: HostSide | null = side.view === null || focusOn ? null : {
+    view: side.view, label: sideLabel(side.view, !!open), width: area.sideW, phone: area.sideSheet, over: area.sideOver, theme, edge: area.edgeRoom, onClose: sideClose,
+    children: (
+      <SidePanel view={side.view} roomsOpen={!!open} onClose={sideClose}
+        notes={<NotesSide session={session} state={state} getting={getting} controls={controls} capture={capture} screenProblem={screen.screenProblem} phone={phone} planStop={planStop} put={put} stops={stopMarks}
+          carried={carried} account={account.data?.user.email} cu={cu} own={own} places={places} onClose={sideClose}
+          onOpenPage={() => { cu.settle(); side.close(); stageOpen('ws', { own: true }); work.act.go({ kind: 'live', page: 'notes' }); }} />}
+        chat={<ChatPanel session={session} state={state} crypto={crypto} direct={direct} memory={chatMemory.current} tab={places.chatTab} onTab={places.setChatTab} who={personOf} placeName={rooms.placeName}
+          here={open ? roomName ?? 'the main room' : null} visible={floating.mainVisible && !focusOn && !departure.leaveOpen && !done && !moving.open && !windows.settingsOpen && !windows.backgroundOpen && pop === null}
+          jump={places.chatTarget} questionJump={places.questionTarget} questionsReady={attentionReady} roomUnread={unread.unreadChat} unreadMentions={unread.unreadMentions} onRead={unread.readMentions} />}
+        people={<PeopleSide state={state} named={told.participants} people={stagePeople} roomView={roomView} m={m} micLabel={micLabel} pins={layout.layout.pins} rooms={rooms} now={callClock.now} menuOf={menuOf}
+          jump={places.actionTarget} invited={invited} host={host} together={together} rung={rung} canRing={(p) => team.data?.members.some((x) => x.onAlcove && sameEmail(x.person, p)) ?? false}
+          ringing={organizer && live ? { ring, stop: stopRing } : null} copyLink={() => copy(state.code)} controls={controls} onRooms={roomsHere ? () => side.open('rooms') : null} />}
+        rooms={<RoomsSide rooms={rooms} session={session} state={state} byId={byId} me={me} notesOn={on} />}
+        mine={<BoardMine board={board} section={boardPresenting.section} notes={boardPresenting.notes} onNote={boardPresenting.setNote} theme={theme} />} />
+    )
+  };
 
   return (
     <div className="stage ac-stage" inert={done}>
       {/* Over here, the call eases back under its page; brought back by Rejoin, it comes up again. */}
-      <motion.div className={cn('ic-call', done && 'is-leaving', focusOn && 'is-focus')} initial={returning && !reduce ? { scale: 0.985 } : false} animate={{ scale: 1 }}
+      <motion.div className={cn('ic-call', done && 'is-leaving', focusOn && 'is-focus')} initial={returning && !area.reduce ? { scale: 0.985 } : false} animate={{ scale: 1 }}
         transition={{ duration: 0.56, delay: 0.1, ease: EASE.out }}>
         {focusOn && <CallTimer session={session} view={callTimer} host={hosting} connected={attentionReady && !down} open={timerOpen} onOpenChange={setTimerOpen} className="ic-timer-focus" />}
         <span className="sr-only" role="status" aria-live="polite">{callTimer.say}</span>
         <span className="sr-only" role="status" aria-live="polite">{attentionReady ? `${state.attention.hands.length === 1 ? '1 hand' : `${state.attention.hands.length} hands`} raised.${hosting ? ` ${state.waiting.length} waiting to join.` : ''}` : 'Connecting to this room.'}</span>
         <TopBar title={state.title} elapsed={state.elapsed} people={stagePeople.map((p) => p.person)} phone={phone}
           timer={<CallTimer session={session} view={callTimer} host={hosting} connected={attentionReady && !down} open={timerOpen && !focusOn} onOpenChange={setTimerOpen} phone={phone} />}
-          sign={<CaptureButton state={state} role={session.ticket.role} getting={getting} controls={controls} pausing={pausing} phone={phone} stop={planStop} notesOpen={side.view === 'notes'} onOpenNotes={() => openSide('notes')} />}
+          sign={<CaptureButton state={state} role={session.ticket.role} getting={getting} controls={controls} pausing={capture.pausing} phone={phone} stop={planStop} notesOpen={side.view === 'notes'} onOpenNotes={() => openSide('notes')} />}
           asking={hosting ? state.waiting.length : 0} reconnecting={down || (crypto.status === 'joining' && !leaving)} screens={state.capture.screen.mode !== 'off'} modelPrivate={state.capture.modelPrivate}
           swap={!phone && swap}
           board={{
             on: boardOnStage !== null || pickerOpen, onPress: pressBoard,
-            menu: { open: pickerOpen, onClose: () => { openPicker.reset(); setPicking(false); }, content: openPicker.picker, reach: () => { if (!boardInRoom && state.role !== 'guest') void qc.prefetchQuery(q.workspaces()); } }
+            menu: { open: pickerOpen, onClose: () => { pickers.open.reset(); setPicking(false); }, content: pickers.open.picker, reach: () => { if (myRoomId === null && state.role !== 'guest') void qc.prefetchQuery(workspaceQueries.workspaces()); } }
           }}
           workspace={{ on: stage.on.includes('ws'), count: broughtHere, onPress: pressWorkspace }}
-          side={{ view: side.view, toggle: flipSide, unread }} />
-        <PanelHost area={callArea.ref} size={size} side={hostSide} swap={phone && swap} frames={frames}
+          side={{ view: side.view, toggle: flipSide, unread: unread.unread }} />
+        <PanelHost area={area.ref} size={area.size} side={hostSide} swap={phone && swap} frames={frames}
           tiles={(
             <>
-              <Stage staged={staged} frame={frame} phone={phone} people={onStage} waiting={waiting} presented={presentedTiles} spotlight={spotlight} view={layout} organizer={hosting}
-                together={together} bar={bar} caption={capNode} rooms={roomsShown ? stageRooms : null} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
-                onMorePeople={() => openSide('people')} board={stageBoard} menuOf={personMenu} />
-              {seam && <PeopleSeam box={seam} small={peopleSmall} onToggle={togglePeople} />}
-              <TileHint area={callArea.ref} account={owner} />
-              <motion.div className="ic-frame" initial={false} animate={{ left: 0, top: 0, width: clearW, height: size.h }} transition={reduce ? { duration: 0 } : GLIDE}>
+              <Stage staged={area.staged} frame={area.frame} phone={phone} people={area.onStage} waiting={waiting} presented={presented} spotlight={spotlight} view={layout} organizer={hosting}
+                together={together} bar={bar} rooms={area.roomsShown ? stageRooms : null} onSpotlight={setSpot} onPin={yours.setPin} onSelf={yours.setSelf} onCustom={yours.onCustom} volumes={volumes}
+                caption={captions.on ? <CaptionsLine captions={captions} hearing={capHere.transcript.mode === 'on'} mode={capHere.mode} modelPrivate={state.capture.modelPrivate} open={pop === 'cap'} onOpenChange={(o) => setPop(o ? 'cap' : null)} /> : null}
+                onMorePeople={() => openSide('people')} board={stageBoard} menuOf={menuOf} />
+              {area.seam && <PeopleSeam box={area.seam} small={area.peopleSmall} onToggle={togglePeople} />}
+              <TileHint area={area.ref} account={owner} />
+              <motion.div className="ic-frame" initial={false} animate={{ left: 0, top: 0, width: area.clearW, height: area.size.h }} transition={area.reduce ? { duration: 0 } : GLIDE}>
                 <PlanBanners state={state} stop={planStop} notesOpen={side.view === 'notes'} />
-                {hosting && side.view !== 'people' && state.waiting.length > 0 && (
-                  <div className="rg-knocks">
-                    <AnimatePresence initial={false}>
-                      {state.waiting.slice(0, 2).map((w) => (
-                        <KnockCard key={w.id} person={w.person} title={`${w.person.name} asks to join`} busy={answering === w.id}
-                          detail={w.person.email ? <>{w.person.email}{organizer && <><br />Gets the notes once let in</>}</> : 'Guest, by name only'}
-                          onLetIn={() => answerAsk(w, (id) => session.admit(id))} onNotNow={() => answerAsk(w, (id) => session.deny(id))} />
-                      ))}
-                    </AnimatePresence>
-                    {state.waiting.length > 2 && <button type="button" className="rg-more" onClick={() => openSide('people')}><Icon name="people" size={15} />{state.waiting.length - 2} more asking</button>}
-                  </div>
-                )}
-                {!wsInSight && aloneCard}
+                <Knocks show={hosting && side.view !== 'people' && state.waiting.length > 0} waiting={state.waiting} organizer={organizer} session={session} onMore={() => openSide('people')} />
+                {!area.wsInSight && alone.card}
               </motion.div>
             </>
           )} />
         <PlayTogetherBar player={player} />
-        <footer ref={dockBar} className="ic-dockbar">
-          <ReactionBurst items={burst} />
-          <CallDock tucked={focusOn}>
-            <DockSplit className="keep">
-              <DockButton icon={m.mic ? 'mic' : 'micOff'} label={m.access.mic.problem ? stateOf('mic', m.access.mic.problem) : m.mic ? 'Mute' : 'Unmute'} off={!m.mic} alert={!!m.access.mic.problem} disabled={callControls.pending.mic || leaving || done} aria-busy={callControls.pending.mic} onClick={pressMic}
-                tip={m.access.mic.problem ? `${stateOf('mic', m.access.mic.problem)}. Press to see how to fix it` : `${m.mic ? 'Mute' : 'Unmute'}${micLabel ? ` · ${micLabel}` : ''}`} />
-              <MicMenu media={media} m={m} devices={devices} open={pop === 'mic'} onOpenChange={(o) => setPop(o ? 'mic' : null)}
-                onSwitched={(what, label) => toast(`Switched to ${label}`, { icon: what === 'mic' ? 'mic' : 'speaker' })} />
-            </DockSplit>
-            <DockSplit className="keep">
-              <DockButton icon={m.cam ? 'video' : 'videoOff'} label={m.access.cam.problem ? stateOf('cam', m.access.cam.problem) : m.cam ? 'Turn camera off' : 'Turn camera on'} off={!m.cam} alert={!!m.access.cam.problem} disabled={callControls.pending.cam || leaving || done} aria-busy={callControls.pending.cam} onClick={pressCam}
-                tip={m.access.cam.problem ? `${stateOf('cam', m.access.cam.problem)}. Press to see how to fix it` : `${m.cam ? 'Turn camera off' : 'Turn camera on'}${devices.cam.find((d) => d.id === m.camId)?.label ? ` · ${devices.cam.find((d) => d.id === m.camId)?.label ?? ''}` : ''}`} />
-              <CamMenu media={media} m={m} devices={devices} me={me?.person ?? { name: 'You' }} open={pop === 'cam'} onOpenChange={(o) => setPop(o ? 'cam' : null)}
-                onBackground={() => { setPop(null); setBackgroundOpen(true); }} onSwitched={(label) => toast(`Switched to ${label}`, { icon: 'video' })} />
-            </DockSplit>
-            {!phone && <DockSeparator />}
-            <ShareMenu step={shareStep} onStep={setPop} phone={phone}
-              presenting={myThing ? {
-                what: isScreen(myThing.id) ? 'your screen' : myThing.id === 'ws' ? 'the workspace' : myThing.name, asks: !isScreen(myThing.id), everyone: closesFor(myThing.id),
-                onStop: (everyone) => { setPop(null); if (isScreen(myThing.id)) stopShare(); else closeFor(myThing.id, everyone); }
-              } : null}
-              screen={{
-                full: full ? fullText : null, onPick: () => pickShare(), read: sharingInRoom || !state.capture.allowScreens ? null : screenRead(state.capture.mode) ?? null, trouble: shareTrouble,
-                changing: !!m.screen, onShare: share, onBack: () => { setShareTrouble(null); setPop('share'); }
-              }}
-              board={!canStartBoard ? { why: 'Guests can’t start a board here.' } : othersWhy ? { why: othersWhy } : { picker: sharePicker.picker, onPick: loadBoard }}
-              workspace={!canPresentWs ? { why: 'You can’t open this call’s workspace.' } : othersWhy ? { why: othersWhy } : { onPress: presentWorkspace }} />
-            {!phone && (
-              <DockButton icon="hand" label={handLabel} tip={me?.hand ? 'Lower your hand' : roomName && !organizer ? `Raise your hand to ask ${roomsOnBoards && organizerPerson ? callName(organizerPerson) : 'the organizer'} for help` : 'Raise your hand'}
-                on={!!me?.hand} disabled={callControls.pending.hand || !attentionReady || leaving || done} aria-busy={callControls.pending.hand} onClick={() => setHand(!me?.hand)} />
-            )}
-            {!phone && <ReactMenu open={pop === 'react'} onOpenChange={(o) => setPop(o ? 'react' : null)} onPick={react} />}
-            <Popover open={moreOpen} onOpenChange={(o) => setPop(o ? 'more' : null)} side="top" align="center" label={pop === 'board' ? 'Open a board' : pop === 'reactMore' ? 'React' : 'More'}
-              onCloseFocus={() => { const current = floating.owner.getSnapshot(); return current.pending || current.target !== null; }}
-              tip={phone ? undefined : MORE_SAYS}
-              className={cn(pop === 'board' ? 'bl' : 'ic-menu ic-morepop', phone && 'is-sheet')}
-              anchor={<DockButton icon="more" label={!phone ? MORE_SAYS : unread ? `More: ${unread} new in Chat` : 'More: react, board, workspace, notes, chat, people'} title={undefined} data-more="" on={moreOpen} badge={phone ? unread : 0} />}>
-              {moreBody}
-            </Popover>
-            {!phone && <DockSeparator />}
-            {focusOn && <DockWords icon="shrink" className="keep" onClick={toggleFocus}>Show everything</DockWords>}
-            <LeaveAsk {...leaveChoices} title={leaveTitle} phone={phone} open={hosting && leaveOpen && !askingInFloating} onOpenChange={(o) => { if (!o) stay(); }}
-              anchor={<DockLeave className="keep" disabled={leaving || done} onClick={() => requestLeave('dock')}>{leaving ? 'Leaving…' : 'Leave'}</DockLeave>} />
-          </CallDock>
-        </footer>
+        <Dock dock={area.dock} burst={burst} tucked={focusOn} phone={phone} media={media} m={m} devices={devices} me={me?.person ?? { name: 'You' }} micLabel={micLabel} controls={callControls} busy={callOver}
+          pop={pop} setPop={setPop} onBackground={() => windows.setBackgroundOpen(true)} react={react} floating={floating} unread={unread.unread} onShowEverything={toggleFocus}
+          leave={leave} asking={hosting && departure.leaveOpen && !askingInFloating}
+          hand={{
+            up: !!me?.hand, label: handLabel, ready: attentionReady, set: setHand,
+            tip: me?.hand ? 'Lower your hand' : roomName && !organizer ? `Raise your hand to ask ${rooms.roomsOnBoards && rooms.organizerPerson ? callName(rooms.organizerPerson) : 'the organizer'} for help` : 'Raise your hand'
+          }}
+          share={<DockShare pop={pop} setPop={setPop} phone={phone} presented={stage.presented} closing={closing} sharing={sharing} full={full} changing={!!m.screen} capture={state.capture} sharingInRoom={screen.sharingInRoom}
+            canStartBoard={canStartBoard} canPresentWs={canPresentWs} othersWhy={othersWhy} picker={pickers.share.picker} presentWorkspace={presentWorkspace} />}
+          more={<MoreMenu pop={pop} setPop={setPop} phone={phone} picker={pickers.open.picker} react={react} board={{ on: boardOnStage !== null, press: pressBoard }}
+            workspace={{ on: stage.on.includes('ws'), brought: broughtHere, press: pressWorkspace }} openSide={openSide} unread={unread.unread} waiting={hosting ? state.waiting.length : 0}
+            hand={{ up: !!me?.hand, label: handLabel, set: setHand }} captions={captions} mark={own.enabled ? own.mark : null} catchUp={() => { setPop(null); cu.catchUp(); }}
+            rooms={roomsHere ? { shown: side.view === 'rooms' } : null} floating={floating} live={live} done={done} resetView={yours.custom ? yours.reset : null} moveAway={moving.show}
+            openSettings={() => windows.setSettingsOpen(true)} />} />
       </motion.div>
       <ShareWindows shares={shares} looks={looks} marks={marks} me={me?.person ?? SOMEONE} whoIs={personOf} />
       <MoveSheet open={moving.open} onOpenChange={(o) => { if (!o) moving.hide(); }} move={moving.move} media={{ mic: m.mic, cam: m.cam }} account={state.role !== 'guest'}
-        sharing={!!m.screen} onStopSharing={stopShare} onMove={() => void moving.go()} onAgain={moving.again} />
-      <CallSettings open={settingsOpen} onOpenChange={setSettingsOpen} tab={settingsTab} onTab={setSettingsTab} phone={phone} media={media} m={m} devices={devices} me={me?.person ?? { name: 'You' }}
-        onSwitched={switched} host={host ?? null} organizer={organizer} onBackground={() => { setSettingsOpen(false); setBackgroundOpen(true); }}
-        backTo={() => dockBar.current?.querySelector<HTMLElement>('[data-more]') ?? null} />
-      <ChooseBackground media={media} m={m} me={me?.person ?? { name: 'You' }} open={backgroundOpen} onOpenChange={setBackgroundOpen}
-        backTo={() => [...(dockBar.current?.querySelectorAll<HTMLElement>('[data-cam-menu], [data-more]') ?? [])].find((el) => el.getClientRects().length > 0) ?? null} />
-      <FloatingCallPortal target={floating.target} view={{
-        title: state.title,
-        timer: callTimer.time ? <CallTimerButton time={callTimer.time} label={callTimer.label} tone={callTimer.tone} onClick={() => { returnToCall(); setTimerOpen(true); }} /> : null,
-        picture: floatFeed ? <FeedVideo feed={floatFeed} className={!floatShare && floatPerson?.isMe ? 'is-self' : undefined} /> : null,
-        person: floatShare?.presenter ?? floatPerson?.person ?? null,
-        label: crypto.status === 'moving' ? 'Moving between rooms…' : crypto.status !== 'in' ? 'Connecting securely…' : floatShare?.label ?? (floatPerson ? `${callName(floatPerson.person)}${floatPerson.video ? '' : ' · camera off'}` : 'Waiting for someone to join'),
-        connection: roomView.connection,
-        mic: { on: m.mic, pending: callControls.pending.mic, problem: m.access.mic.problem ? stateOf('mic', m.access.mic.problem) : null },
-        cam: { on: m.cam, pending: callControls.pending.cam, problem: m.access.cam.problem ? stateOf('cam', m.access.cam.problem) : null },
-        hand: !!me?.hand, handPending: callControls.pending.hand, busy: leaving || done,
-        // While Leave's question is in the window, what went wrong is said under its choices instead.
-        attention: floatAttention, error: crypto.status === 'failed' ? 'This device lost the call’s encryption keys. Return to the call to reload.' : hosting && leaveOpen && askingInFloating ? null : callControls.error, soundBlocked: roomView.audioBlocked, onSound: playSound,
-        onMic: () => callControls.mic('floating'), onCam: () => callControls.cam('floating'), onHand: () => callControls.hand(!me?.hand, 'floating'),
-        onLeave: () => requestLeave('floating'),
-        onReturn: returnToCall,
-        onAttention: (kind) => { returnToCall(); if (kind === 'questions') openQuestions(); else openSide(kind === 'chat' ? 'chat' : 'people'); },
-        children: hosting && leaveOpen && askingInFloating ? <LeaveChoices {...leaveChoices} title={leaveTitle} onStay={stay} /> : null
-      }} />
+        sharing={!!m.screen} onStopSharing={sharing.stop} onMove={() => void moving.go()} onAgain={moving.again} />
+      <CallWindows windows={windows} phone={phone} media={media} m={m} devices={devices} me={me?.person ?? { name: 'You' }} host={host ?? null} organizer={organizer} dock={area.dock} />
+      <FloatingView floating={floating} title={state.title} timer={callTimer} onTimer={() => setTimerOpen(true)} shares={shares} front={area.frontId} screensShown={screensShown} people={area.onStage}
+        speaker={area.staged.speaker} crypto={crypto} connection={roomView.connection} m={m} controls={callControls} hand={!!me?.hand} busy={callOver} soundBlocked={roomView.audioBlocked} onSound={playSound}
+        attention={{ hands: attentionReady ? state.attention.hands.length : 0, questions: attentionReady ? state.attention.questions.filter((q) => q.status === 'open').length : 0, waiting: hosting ? state.waiting.length : 0, chat: unread.unread }}
+        onAttention={(kind) => { if (kind === 'questions') openers.questions(); else openSide(kind === 'chat' ? 'chat' : 'people'); }} leave={leave} asking={hosting && departure.leaveOpen && askingInFloating} />
     </div>
   );
 }

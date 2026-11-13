@@ -8,17 +8,17 @@ import { Avatar, Button, Check, DURATION, EASE, Icon, IconButton, TimeChip, WsFo
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { FollowUpForm } from '~/features/notes/FollowUpForm';
-import { FollowUpReview } from '~/features/notes/FollowUpReview';
-import type { FollowUpProposal } from '~/features/notes/useFollowUpReview';
+import { FollowUpForm } from '~/features/notes/follow-ups/FollowUpForm';
+import { FollowUpReview } from '~/features/notes/follow-ups/FollowUpReview';
+import type { FollowUpProposal } from '~/features/notes/follow-ups/useFollowUpReview';
 import { NO_DATE, dueWords } from '~/features/workspace/live/dates';
-import { NO_IDS } from '~/features/workspace/ids';
+import { NO_IDS } from '~/features/workspace/sharing/ids';
 import type { LiveHost } from '~/features/workspace/live/host';
 import { clockAt, notesOnHere, personNamed } from '~/features/workspace/live/lines';
 import type { LivePut } from '~/features/workspace/live/types';
 import { useFollowUps, type FollowUpRow } from '~/features/workspace/live/useFollowUps';
 import { useLive } from '~/lib/live';
-import { q } from '~/lib/queries';
+import { callQueries } from '~/features/calls/list/queries';
 import { SuggestedFollowUps, type SuggestedFollowUp } from './SuggestedFollowUps';
 
 /** What the checklist needs from round it: the workspace, round its page; the call alone, round the Notes panel. */
@@ -40,7 +40,7 @@ function useCallFollowUps({ session, around, put, invited }: {
   session: CallSession; around: Around; put: LivePut | null | undefined; invited: readonly Person[];
 }) {
   const state = useLive(session);
-  const meeting = useQuery({ ...q.byCode(state.code), enabled: state.isOrganizer }).data;
+  const meeting = useQuery({ ...callQueries.byCode(state.code), enabled: state.isOrganizer }).data;
   const written = useLive(session.followUps);
   const { rows, tick, canAdd } = useFollowUps({ ...around, session });
   const [adding, setAdding] = useState(false);

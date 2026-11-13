@@ -13,7 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCheckout } from '~/features/plans/checkout';
 import { hoursLabel, hoursOfNotes } from '~/features/plans/words';
 import { log } from '~/lib/log';
-import { q } from '~/lib/queries';
+import { planQueries } from '~/features/plans/queries';
 import { dayFullMonth, hm, hms } from '~/lib/time';
 import { capital } from '~/lib/words';
 import { organizerName } from './Capture';
@@ -44,12 +44,12 @@ const STOPPED_READ_MS = 10_000;
 export function usePlanStop(state: CallState): PlanStop | null {
   const s = planStopOf(state.capture);
   const host = state.isOrganizer;
-  const plan = useQuery({ ...q.plan(), enabled: host && s !== null, refetchInterval: STOPPED_READ_MS }).data;
-  const offers = useQuery({ ...q.offers(), enabled: host && s !== null }).data;
+  const plan = useQuery({ ...planQueries.plan(), enabled: host && s !== null, refetchInterval: STOPPED_READ_MS }).data;
+  const offers = useQuery({ ...planQueries.offers(), enabled: host && s !== null }).data;
   /* The plan as it is once notes stop, not as it was read before: what's said, and offered, follows it. */
   const qc = useQueryClient();
   const stoppedAt = s?.at ?? null;
-  useEffect(() => { if (host && stoppedAt) void qc.invalidateQueries({ queryKey: q.plan().queryKey, exact: true }); }, [host, stoppedAt, qc]);
+  useEffect(() => { if (host && stoppedAt) void qc.invalidateQueries({ queryKey: planQueries.plan().queryKey, exact: true }); }, [host, stoppedAt, qc]);
   if (!s) return null;
   if (!host) {
     const whose = capital(organizerName(state));
@@ -83,8 +83,8 @@ function waysFor(reason: PlanStop['reason'], plan: Plan | undefined, offers: Pla
  */
 export function useStoppedAfter(reason: PlanStop['reason'] | null, organizer: boolean, whose: string): { said: string; ways: StopWay[] } | null {
   const on = organizer && reason !== null;
-  const plan = useQuery({ ...q.plan(), enabled: on }).data;
-  const offers = useQuery({ ...q.offers(), enabled: on }).data;
+  const plan = useQuery({ ...planQueries.plan(), enabled: on }).data;
+  const offers = useQuery({ ...planQueries.offers(), enabled: on }).data;
   if (!reason) return null;
   const who = organizer ? 'Your' : `${capital(whose)}’s`;
   return { said: `${who} ${reason === 'storage' ? 'storage is full' : 'notes for this period have run out'}. What was said until then is in the notes.`, ways: organizer ? waysFor(reason, plan, offers) : [] };
@@ -243,7 +243,7 @@ export interface PlanRestart {
 export function usePlanRestart(state: CallState, session: Pick<CallSession, 'setNotes'>): PlanRestart {
   const s = planStopOf(state.capture);
   const host = state.isOrganizer && state.phase === 'in-call';
-  const read = useQuery({ ...q.plan(), enabled: host && s !== null, refetchInterval: STOPPED_READ_MS });
+  const read = useQuery({ ...planQueries.plan(), enabled: host && s !== null, refetchInterval: STOPPED_READ_MS });
   const plan = read.data;
   const readAt = read.dataUpdatedAt;
   /* The plan when turning notes on was last refused, so the same plan isn't tried again. */

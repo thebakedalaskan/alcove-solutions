@@ -9,9 +9,10 @@ import { MAX_GROUPS, MAX_GROUP_NAME, MAX_GROUP_PEOPLE, NEW_GROUP, errorMessage, 
 import { Avatar, Button, GhostArch, Icon, IconButton, Notice, PickList, Popover, useToast, type PickRow } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useId, useRef, useState, type Ref } from 'react';
-import { useCallFlow } from '~/features/shell/context';
+import { useCallFlow } from '~/features/calls/flow/context';
 import { byEmail, callName, fold, isEmail, listNames, sameEmail, typedIn } from '~/lib/people';
-import { q, useGroups } from '~/lib/queries';
+import { accountQueries, useGroups } from '~/features/account/queries';
+import { teamQueries } from './queries';
 import { groupCalls, groupLine, listed, type Shown } from './data';
 import { useOpen, usePop } from './open';
 
@@ -50,7 +51,7 @@ export function Groups({ open, onOpen, notes, person, shown, draft, onDraft }: {
   onDraft: (d: Draft) => void;
 }) {
   const qc = useQueryClient();
-  const prefs = useQuery(q.prefs());
+  const prefs = useQuery(accountQueries.prefs());
   const groups = prefs.data?.groups ?? [];
   const save = useGroups();
   const toast = useToast();
@@ -76,7 +77,7 @@ export function Groups({ open, onOpen, notes, person, shown, draft, onDraft }: {
 
   /* Every change starts from the groups as they are now, changes made a moment ago included. Each has its own promise, so its answer is never dropped for a later one's. */
   const change = (how: (now: Group[]) => Group[], done?: () => void) => {
-    const now = qc.getQueryData(q.prefs().queryKey)?.groups ?? groups;
+    const now = qc.getQueryData(accountQueries.prefs().queryKey)?.groups ?? groups;
     void save.mutateAsync(how(now)).then(() => done?.(), (e: unknown) => toast(errorMessage(e), { icon: 'x' }));
   };
   const remove = (g: Group) => {
@@ -375,7 +376,7 @@ function AddList({ skip, shown, onDone }: { skip: string[]; shown: (p: Person) =
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState<PersonSuggestion[]>([]);
   const typed = typedIn(query);
-  const found = useQuery(q.people(typed)).data ?? [];
+  const found = useQuery(teamQueries.people(typed)).data ?? [];
   const inAlready = (p: { email: string }) => skip.some((e) => sameEmail({ email: e }, p));
   const has = (p: { email: string }) => picked.some((x) => sameEmail(x.person, p));
   const matches = (p: Person) => !typed || fold(p.name).includes(fold(typed)) || p.email.toLowerCase().includes(typed);

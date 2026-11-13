@@ -9,7 +9,9 @@ import { useToast } from '@alcove/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { log } from '~/lib/log';
-import { q } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { teamQueries } from '~/features/team/queries';
+import { planQueries } from './queries';
 import { usd } from '~/lib/words';
 import { useCheckout } from './checkout';
 import { offerOnce } from './teamOffer';
@@ -29,18 +31,18 @@ export function useTeamAtThirdInvite(): (count: number) => () => void {
   const toast = useToast();
   const { open } = useCheckout();
   return useCallback((count) => {
-    const before = ofYou(qc.getQueryData(q.team().queryKey));
+    const before = ofYou(qc.getQueryData(teamQueries.team().queryKey));
     const now = before + count;
     return () => {
-      const session = qc.getQueryData(q.session().queryKey);
-      if (before >= 3 || now < 3 || !session || qc.getQueryData(q.myTeam().queryKey) !== null || !offerOnce(session.ownerId)) return;
+      const session = qc.getQueryData(accountQueries.session().queryKey);
+      if (before >= 3 || now < 3 || !session || qc.getQueryData(teamQueries.myTeam().queryKey) !== null || !offerOnce(session.ownerId)) return;
       const say = (price: string | null) => {
         plog.info('offered Team at an invite', { people: now });
         toast(`That makes ${now} of you. ${price ? `Put everyone on one plan: Team, ${price}.` : 'Team puts everyone on one plan.'}`, {
           icon: 'addUser', ms: 12_000, topic: 'team-offer', action: { label: 'See Team', onClick: () => open({ plan: 'team' }, 'team') }
         });
       };
-      void qc.ensureQueryData(q.offers()).then(
+      void qc.ensureQueryData(planQueries.offers()).then(
         (o) => say(`${usd(o.team.microUsdPerLicense)} a person ${perPeriod(o.periodDays)}`),
         (e: unknown) => { plog.info('Team offered without its price', { err: e }); say(null); }
       );

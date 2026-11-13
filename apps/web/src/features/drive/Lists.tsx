@@ -5,7 +5,7 @@
 import type { WorkspaceSummary } from '@alcove/api';
 import { EmptyState, Icon } from '@alcove/ui';
 import { useState } from 'react';
-import { namesIn, peopleWords } from '~/features/workspace/List';
+import { namesIn, peopleWords } from '~/features/workspace/tree/List';
 import { noteAt } from '~/lib/time';
 import { NameField } from './Card';
 import type { DriveActions } from './actions';

@@ -7,7 +7,8 @@
 import type { Interval, Meeting } from '@alcove/api';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useMemo, useRef } from 'react';
-import { q } from '~/lib/queries';
+import { callQueries } from '~/features/calls/list/queries';
+import { calendarQueries } from './queries';
 import { daysFromToday } from '~/lib/time';
 import { AHEAD_DAYS, type Span } from './times';
 
@@ -70,9 +71,9 @@ function useSame<T>(list: readonly T[]): readonly T[] {
  * stretch's; any others are pages further on, read as the call goes there. `except` is the call being moved.
  */
 export function useBusy(emails: readonly string[], except: Meeting | undefined, ranges: readonly Range[]) {
-  const reads = useQueries({ queries: ranges.map((r) => q.busy(emails, r)) });
-  const calendars = useQueries({ queries: ranges.map((r) => q.calendarRange(r)) });
-  const calls = useQuery(q.upcoming()).data;
+  const reads = useQueries({ queries: ranges.map((r) => calendarQueries.busy(emails, r)) });
+  const calendars = useQueries({ queries: ranges.map((r) => calendarQueries.calendarRange(r)) });
+  const calls = useQuery(callQueries.upcoming()).data;
   const busy = useSame(reads.map((r) => (r.isError ? undefined : r.data)));
   const events = useSame(calendars.map((r) => r.data?.events));
   const [first] = reads;

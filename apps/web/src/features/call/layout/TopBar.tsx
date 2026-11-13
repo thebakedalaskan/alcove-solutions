@@ -10,7 +10,7 @@ import { clock, type Person } from '@alcove/api';
 import { BoardPicker, CallTopButton, CallTopGroup, CallTopRule, Dots, Faces, Icon, Popover, Tooltip, cn, type BoardPickerProps } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState, type ReactNode } from 'react';
-import { q, trustLine, unverifiedBecause, verifiedAt } from '~/lib/queries';
+import { trustQuery, trustLine, unverifiedBecause, verifiedAt } from '~/lib/trust';
 import { hm } from '~/lib/time';
 import type { SideView } from './side';
 
@@ -119,7 +119,7 @@ export function TopBar({ title, elapsed, sign, swap, people, asking, reconnectin
 
 /** The shield: hover or focus says what confidential compute covers here, and why the check didn't pass if it didn't; a click keeps it open. */
 function Shield({ screens, modelPrivate }: { screens: boolean; modelPrivate: boolean }) {
-  const trust = useQuery(q.trust()).data;
+  const trust = useQuery(trustQuery()).data;
   const [open, setOpen] = useState(false);
   const pinned = useRef(false);
   const later = useRef<ReturnType<typeof setTimeout> | null>(null);

@@ -12,7 +12,7 @@ import { listNames, sameEmail } from '~/lib/people';
 import { position } from '~/lib/time';
 import type { Correcting, FromLine, LineMarks } from './lines';
 import { TranscriptLines, type Focus, type LineKinds, type ScreensShown } from './parts';
-import { usePlayerAt, type PlayerState } from './Player';
+import { usePlayerAt, type PlayerState } from './player/Player';
 
 /** How long after someone scrolls the transcript it leaves them where they are, rather than follow the line being said. */
 const LET_BE_MS = 5000;

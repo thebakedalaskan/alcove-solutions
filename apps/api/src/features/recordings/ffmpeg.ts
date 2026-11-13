@@ -7,7 +7,7 @@
  *    duration, so they're added here: the clusters it wrote are copied behind a new header that has both. MP4 comes
  *    out fragmented, with the fragment index (mfra) ffmpeg writes at the end.
  *  - frames: decodes a video and gives back JPEGs (at most 1600 px across) at the moments asked for, each with the
- *    same frame on a 48 × 27 grey grid (screenGrid.ts), from the same pass, for telling whether the screen changed.
+ *    same frame on a 48 × 27 grey grid (screen-grid.ts), from the same pass, for telling whether the screen changed.
  *
  * The binary is ffmpeg-static's (pinned in package.json), or FFMPEG_PATH where the bundle runs without node_modules
  * (the Dockerfile copies the same binary into the image). Logs carry sizes, counts, durations and exit codes only.
@@ -16,9 +16,9 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { Readable } from 'node:stream';
 import { z } from 'zod';
-import { MediaError } from '../../errors';
-import { log } from '../../log';
-import { GRID_BYTES, GRID_H, GRID_W } from './screenGrid';
+import { MediaError } from '../../platform/errors';
+import { log } from '../../platform/log';
+import { GRID_BYTES, GRID_H, GRID_W } from './screens/screen-grid';
 
 const flog = log.child({ component: 'ffmpeg' });
 

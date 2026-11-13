@@ -8,7 +8,7 @@
 import type { BreakoutPlan, CallSession } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
-import { at, joins, line } from '../../src/api/script';
+import { at, joins, line } from '../../src/api/call/script';
 import { MORE, inCall, light, narrow, phone, plays, press, reach } from '../../src/call';
 import { pages, type PageArgs } from '../../src/page';
 import { SOON, type Play } from './plays';

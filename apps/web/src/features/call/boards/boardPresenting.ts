@@ -4,13 +4,14 @@
  * away from Share, and it's always the board in the call where you are. Whoever presents moves round it freely and steps through
  * its frames from the pager at its foot (← and → too), with their own notes beside each frame in the side (`mine`); everyone else
  * follows their view on the board, by their connection in the call (`presenter`), until anything of their own takes them off it
- * (layout/onStage.ts keeps whether they follow). features/board/CallBoard.tsx draws it.
+ * (stage/onStage.ts keeps whether they follow). features/board/CallBoard.tsx draws it.
  */
 import { errorCode, firstName, type CallPresent, type CallSession } from '@alcove/api';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BoardPresentation } from '~/features/board/CallBoard';
-import { usePresenterFrameNotes } from '~/features/workspace/presenterNotes';
+import { usePresenterFrameNotes } from '~/features/workspace/document/presenterNotes';
 import { log } from '~/lib/log';
+import type { SideView } from '../layout/side';
 import type { CallBoard } from './callBoard';
 
 const plog = log.child({ component: 'board-presenting' });
@@ -94,4 +95,9 @@ export function useBoardPresenting({ session, present, presenter, board, account
     notes: ours.mine && account ? { on: notesOpen, onToggle: onNotes } : null
   } : null), [ours?.by.name, ours?.mine, presenter, section, following, watch, move, account, notesOpen, onNotes]);
   return { present: presentation, mine, notes, setNote, section, start, stop };
+}
+
+/** Your notes beside the board go with presenting it: the side they're in (`mine`) closes once you aren't presenting it. */
+export function useNotesGoWithPresenting(presenting: boolean, side: SideView | null, close: () => void): void {
+  useEffect(() => { if (!presenting && side === 'mine') close(); }, [presenting, side]);
 }

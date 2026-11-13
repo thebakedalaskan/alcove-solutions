@@ -177,6 +177,12 @@ export function deviceChoices(list: readonly Device[], using: string | null | un
   return { rows, on, follow: def !== undefined && real.length > 0 && pinned };
 }
 
+/** The microphone in use, named as its menu names it ("AirPods (Bluetooth)", not Chrome's "Default - AirPods (Bluetooth)"): none until the browser lists it. */
+export function micName(list: readonly Device[], micId: string | null): string | undefined {
+  const choices = deviceChoices(list, micId);
+  return list.some((d) => d.id === micId) ? choices.rows.find((r) => r.id === choices.on)?.name : undefined;
+}
+
 /** The same choices for a Select: each device once, the system's saying so, then Follow your system while one is pinned. */
 export function deviceOptions(list: readonly Device[], using: string | null | undefined, icon?: IconName | undefined): { value: string | undefined; options: SelectOption<string>[] } {
   const { rows, on, follow } = deviceChoices(list, using);

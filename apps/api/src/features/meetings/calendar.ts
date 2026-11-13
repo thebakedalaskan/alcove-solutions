@@ -9,17 +9,18 @@
  */
 import { isTimeZone, type Busy, type Calendar, type CalendarEvent, type Interval, type Repeat, type RepeatRule, type Rsvp } from '@alcove/api';
 import { z } from 'zod';
-import type { Owner } from '../../context';
-import { exec, tx, type Db } from '../../db';
-import { inCompany, sampleWeek } from '../../demo';
-import { ForbiddenError, NotFoundError, UnavailableError, ValidationError } from '../../errors';
-import { isCalendarEventScope, refreshAccess, revokeRefresh, within, type Grant } from '../../google';
-import { log } from '../../log';
-import { createItem, listItems, saveRevision, type Loaded } from '../../vault';
-import { zoned } from '../../zones';
-import { profile } from '../account/account';
+import type { Owner } from '../../platform/context';
+import { exec, tx, type Db } from '../../platform/db';
+import { inCompany } from '../profile/demo-directory';
+import { sampleWeek } from './demo-week';
+import { ForbiddenError, NotFoundError, UnavailableError, ValidationError } from '../../platform/errors';
+import { isCalendarEventScope, refreshAccess, revokeRefresh, within, type Grant } from '../../providers/google';
+import { log } from '../../platform/log';
+import { createItem, listItems, saveRevision, type Loaded } from '../../keys/vault';
+import { zoned } from '../../platform/zones';
+import { profile } from '../profile/profile';
 import { isGuestAddress, type MeetingManifest } from './service';
-import { personOf } from '../account/portraits';
+import { personOf } from '../profile/portraits';
 
 const clog = log.child({ component: 'calendar' });
 const DAY = 86_400_000;

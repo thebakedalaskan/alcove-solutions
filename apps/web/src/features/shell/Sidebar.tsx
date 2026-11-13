@@ -11,18 +11,25 @@ import { ArchThumb, Dots, Icon, IconButton, Kbd, Logo, Meter, NavItemContent, Si
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { aheadShown, joinable, whenLine } from '~/features/home/day';
+import { aheadShown, joinable, whenLine } from '~/features/calls/list/ahead';
 import { useCheckout } from '~/features/plans/checkout';
 import {
   PLAN_NAMES, endsIn, licensesLeft, licensesShort, noticesNow, notesLeft, notesLow, notesOut, notesShare, paidFor, payingNow, proEnding, teamAdmin,
   waitingForLicense
-} from '~/features/plans/plan-state';
+} from '~/features/plans/planState';
 import { checkoutFor, payable, purchaseName, restToSend, settlingPurchase, tokensShort, waitingPurchase } from '~/features/plans/purchase';
-import { recordOfflineHere } from '~/lib/device';
+import { recordOfflineHere } from '~/features/account/device';
 import { log } from '~/lib/log';
 import { useNow, useOnline } from '~/lib/live';
 import { callName } from '~/lib/people';
-import { q, trustLine, unverifiedBecause, verifiedAt } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { callQueries } from '~/features/calls/list/queries';
+import { calendarQueries } from '~/features/calls/scheduling/queries';
+import { noteQueries } from '~/features/notes/queries';
+import { planQueries } from '~/features/plans/queries';
+import { teamQueries } from '~/features/team/queries';
+import { workspaceQueries } from '~/features/workspace/queries';
+import { trustQuery, trustLine, unverifiedBecause, verifiedAt } from '~/lib/trust';
 import { dayMonth, hm, shortDate } from '~/lib/time';
 import { plural } from '~/lib/words';
 import { NAV, NAV_FOOT, inWorkspace, places, useCounts, type NavPlace } from './places';
@@ -83,8 +90,8 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
 }) {
   const online = useOnline();
   const counts = useCounts();
-  const team = useQuery(q.team()).data;
-  const mine = useQuery(q.myTeam()).data;
+  const team = useQuery(teamQueries.team()).data;
+  const mine = useQuery(teamQueries.myTeam()).data;
   const path = useRouterState({ select: (s) => s.location.pathname });
   const link = (p: NavPlace) => <Link key={p.to} to={p.to} className="ac-nav-item" data-tour={p.tour}><NavItemContent icon={p.icon} label={p.label} count={p.count && counts[p.count]} /></Link>;
   return (
@@ -122,10 +129,10 @@ const NEAR_MS = 10 * 60_000;
  */
 function AboutToStart({ home }: { home: boolean }) {
   const now = useNow();
-  const me = useQuery(q.session()).data?.user.email;
-  const calls = useQuery(q.upcoming()).data;
-  const calendar = useQuery(q.calendar()).data;
-  const prefs = useQuery(q.prefs()).data;
+  const me = useQuery(accountQueries.session()).data?.user.email;
+  const calls = useQuery(callQueries.upcoming()).data;
+  const calendar = useQuery(calendarQueries.calendar()).data;
+  const prefs = useQuery(accountQueries.prefs()).data;
   const ahead = aheadShown(calls, calendar?.events, prefs?.showOtherMeetings, now);
   const next = joinable(ahead, me, now, NEAR_MS);
   if (!next || (home && joinable(ahead, me, now))) return null;
@@ -146,8 +153,8 @@ function AboutToStart({ home }: { home: boolean }) {
  * a pin, and once Pinned shows, the pin at the end of its heading opens Pin a note. A pin whose note is gone isn't shown.
  */
 function Pinned({ onPin }: { onPin: () => void }) {
-  const ids = useQuery(q.prefs()).data?.pinned;
-  const notes = useQuery(q.notes()).data;
+  const ids = useQuery(accountQueries.prefs()).data?.pinned;
+  const notes = useQuery(noteQueries.notes()).data;
   const pinned = (ids ?? []).flatMap((id) => notes?.filter((n) => n.id === id) ?? []);
   if (!pinned.length) return null;
   return (
@@ -166,8 +173,8 @@ function Pinned({ onPin }: { onPin: () => void }) {
 
 /** The check (pointing at it says when it passed, or why it didn't), then your plan (Settings' Plan). */
 function Foot({ online }: { online: boolean }) {
-  const plan = useQuery(q.plan()).data;
-  const trust = useQuery(q.trust()).data;
+  const plan = useQuery(planQueries.plan()).data;
+  const trust = useQuery(trustQuery()).data;
   const verified = verifiedAt(trust);
   const failed = unverifiedBecause(trust);
   return (
@@ -192,12 +199,12 @@ function Foot({ online }: { online: boolean }) {
  */
 function PlanFoot({ plan }: { plan: Plan }) {
   // On a team: who its admin is, and for the admin how many licenses are left.
-  const team = useQuery({ ...q.myTeam(), enabled: plan.team !== null }).data;
+  const team = useQuery({ ...teamQueries.myTeam(), enabled: plan.team !== null }).data;
   // The workspaces you're in, read only while a notice says you pay for one now: it's named from there.
-  const spaces = useQuery({ ...q.workspaces(), enabled: plan.notices.some(payingNow) }).data;
+  const spaces = useQuery({ ...workspaceQueries.workspaces(), enabled: plan.notices.some(payingNow) }).data;
   // Read again only while the foot shows a payment: every 30 s while one is on its way, every 5 minutes while one settles.
   const topUps = useQuery({
-    ...q.topUps(),
+    ...planQueries.topUps(),
     refetchInterval: (query) => (waitingPurchase(query.state.data) ? 30_000 : settlingPurchase(query.state.data) ? 300_000 : false)
   }).data;
   const checkout = useCheckout();

@@ -1,27 +1,28 @@
-import { registerLiveTimerRoutes } from './timer-routes';
-import { registerDirectMessageRoutes } from './direct-message-routes';
+import { registerLiveTimerRoutes } from './timers/timer-routes';
+import { registerDirectMessageRoutes } from './chat/direct-message-routes';
 import { AskSoFarBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, MAX_VIDEO_PIECE_BYTES, HEARD_HEADERS, CallHandOffBodySchema, CallLeaveBodySchema, DocFollowUpTickSchema, PickTimeBodySchema, SeriesAskBodySchema, PersonalEditSchema, PersonalInputSchema, ShareStartBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
-import type { Owner } from '../../context';
-import { AuthError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../errors';
-import { addLogContext } from '../../log';
-import { CALL_PASS_HEADER, readPass } from '../../callPass';
+import type { Owner } from '../../platform/context';
+import { AuthError, ConflictError, ForbiddenError, InternalError, NotFoundError, ValidationError } from '../../platform/errors';
+import { addLogContext } from '../../platform/log';
+import { CALL_PASS_HEADER, readPass } from '../../keys/call-pass';
 import * as callsParticipants from './participants';
 import * as callsLifecycle from './lifecycle';
 import * as callsJoining from './joining';
 import * as callsService from './service';
-import * as callsWorkspaceActions from './workspace-actions';
-import * as callsBoardActions from './board-actions';
-import * as callsInsights from './insights';
+import * as callsWorkspaceActions from './workspace/workspace-actions';
+import * as callsBoardActions from './boards/board-actions';
+import * as callsInsights from './notes/insights';
 import * as callsPermissions from './permissions';
-import * as callsMls from './mls';
-import * as callsRecording from './recording';
-import * as moves from './moves';
-import * as personal from '../notes/personal';
-import * as series from '../notes/series';
+import * as callsMls from './mls/mls';
+import * as callsRecording from './notes/recording';
+import * as moves from './moves/moves';
+import * as personal from '../notes/personal/personal';
+import * as series from '../notes/series/series';
 import { clientAddress, type Env } from '../../http/context';
-import { AUDIO_TYPES, ID128, agoOf, body, capped, clip, piece, speakerOf, videoPiece } from '../../http/body';
+import { AUDIO_TYPES, ID128, agoOf, body, capped, speakerOf } from '../../http/body';
+import { clip, piece, videoPiece } from '../recordings/requests';
 import { VIDEO } from '../../http/middleware';
 import type { HttpRuntime } from '../../http/runtime';
 
@@ -116,6 +117,17 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
     return c.json({ cancelled: true });
   });
 
+  /**
+   * Each request's viewer, read from its call pass by `viewerFor` before any handler runs: the call's own, so the request's
+   * shared context (http/context.ts) needn't know what a viewer is.
+   */
+  const viewers = new WeakMap<Context<Env>, callsParticipants.Viewer>();
+  const viewerIn = (c: Context<Env>): callsParticipants.Viewer => {
+    const v = viewers.get(c);
+    if (!v) throw new InternalError(undefined, { context: { why: 'no call pass read for this request' } });
+    return v;
+  };
+
   /* Everything about a live call needs that call's pass; the organizer's keys are opened for the request. */
   const viewerFor = async (c: Context<Env>, next: () => Promise<void>) => {
     const pass = readPass(d.cfg, c.req.header(CALL_PASS_HEADER));
@@ -126,7 +138,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
     let session: Promise<Owner | undefined> | undefined;
     // A presenter's last piece of their shared screen can arrive just after the call ends (callsRecording.appendScreen).
     const lastPiece = c.req.method === 'POST' && VIDEO.test(c.req.path);
-    c.set('viewer', await callsParticipants.viewerOf(d, pass, () => { session ??= optionalOwner(c); return session; }, lastPiece));
+    viewers.set(c, await callsParticipants.viewerOf(d, pass, () => { session ??= optionalOwner(c); return session; }, lastPiece));
     await next();
   };
 
@@ -154,13 +166,13 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
     : new ForbiddenError(only === 'host' ? 'Only the host can do that.' : 'Only the organizer can do that.', { context: { callId: v.pass.callId, role: v.pass.role, only } }));
 
   const organizerOnly = (c: Context<Env>) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     if (!v.isOrganizer) throw refused(v, 'organizer');
     return v;
   };
 
   const hostOnly = (c: Context<Env>) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     if (!v.isHost) throw refused(v, 'host');
     return v;
   };
@@ -168,10 +180,10 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   /** What whoever hosts may do while standing in for the organizer: keep the call running, but not change its notes or rooms' plan. */
   const HOST_ACTIONS: ReadonlySet<CallAction['type']> = new Set(['deny', 'mute', 'remove', 'lock', 'spotlight', 'rooms-close', 'unavailable', 'hand-lower', 'question-resolve', 'question-pin']);
 
-  app.get('/v1/live/calls/:id', async (c) => c.json(await callsService.state(c.get('viewer'), c.req.param('id'))));
+  app.get('/v1/live/calls/:id', async (c) => c.json(await callsService.state(viewerIn(c), c.req.param('id'))));
 
-  registerLiveTimerRoutes(app, runtime);
-  registerDirectMessageRoutes(app, runtime);
+  registerLiveTimerRoutes(app, runtime, viewerIn);
+  registerDirectMessageRoutes(app, runtime, viewerIn);
 
   /*
    * The workspace a call uses, beyond what the call's actions do: what changing it would mean, for the organizer to decide,
@@ -185,7 +197,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
 
   /* What opening a saved board would mean, for the menu to ask before anything opens. */
   app.get('/v1/live/calls/:id/boards/:workspace/:document', async (c) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     callsParticipants.requireIn(v, 'board-check');
     spaceLimiter(v.pass.person, 'workspace');
     return c.json(await callsBoardActions.boardCheck(v, c.req.param('id'), c.req.param('workspace'), c.req.param('document')));
@@ -194,14 +206,14 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   app.use('/v1/live/calls/:id/follow-ups', capped(1024));
 
   app.get('/v1/live/calls/:id/follow-ups', async (c) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     callsParticipants.requireIn(v, 'follow-ups');
     followUpsLimiter(v.pass.identity, 'follow-ups');
     return c.json(await callsInsights.followUpsIn(v, c.req.param('id')));
   });
 
   app.post('/v1/live/calls/:id/follow-ups', async (c) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     callsParticipants.requireIn(v, 'follow-ups');
     followUpLimiter(v.pass.person, 'follow-up');
     return c.json(await callsInsights.tickDocumentFollowUp(v, c.req.param('id'), await body(c, DocFollowUpTickSchema)));
@@ -212,19 +224,19 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
     // A raised hand, an ask for notes, whether others may point at your share, ticking a follow-up, what goes by what you
     // can open in the workspace and a board are anyone's in the call (calls.act says who gets what); keeping the call running
     // is whoever hosts'; the rest is the organizer's.
-    if (callsPermissions.anyone(a)) callsParticipants.requireIn(c.get('viewer'), a.type);
+    if (callsPermissions.anyone(a)) callsParticipants.requireIn(viewerIn(c), a.type);
     else if (HOST_ACTIONS.has(a.type)) hostOnly(c);
     else organizerOnly(c);
     // Each ask reaches the organizer, so nobody can keep asking.
-    if (a.type === 'request-notes') askNotesLimiter(c.get('viewer').pass.person, 'request-notes');
-    if (a.type === 'others-point') othersPointLimiter(c.get('viewer').pass.person, 'others-point');
+    if (a.type === 'request-notes') askNotesLimiter(viewerIn(c).pass.person, 'request-notes');
+    if (a.type === 'others-point') othersPointLimiter(viewerIn(c).pass.person, 'others-point');
     // A nudge reaches the person nudged, and a status every browser in the call, so nobody can keep sending either.
-    if (a.type === 'nudge') nudgeLimiter(c.get('viewer').pass.person, 'nudge');
-    if (a.type === 'status') statusLimiter(c.get('viewer').pass.person, 'status');
-    if (a.type === 'ring') ringLimiter(c.get('viewer').organizer.ownerId, 'ring');
-    if (a.type === 'follow-up' || a.type === 'follow-up-add' || a.type === 'follow-up-edit' || a.type === 'follow-up-review') followUpLimiter(c.get('viewer').pass.person, 'follow-up');
-    if (a.type.startsWith('workspace-') || a.type.startsWith('present-') || a.type.startsWith('play-') || a.type.startsWith('board-')) spaceLimiter(c.get('viewer').pass.person, 'workspace');
-    return c.json(await callsService.act(c.get('viewer'), c.req.param('id'), a));
+    if (a.type === 'nudge') nudgeLimiter(viewerIn(c).pass.person, 'nudge');
+    if (a.type === 'status') statusLimiter(viewerIn(c).pass.person, 'status');
+    if (a.type === 'ring') ringLimiter(viewerIn(c).organizer.ownerId, 'ring');
+    if (a.type === 'follow-up' || a.type === 'follow-up-add' || a.type === 'follow-up-edit' || a.type === 'follow-up-review') followUpLimiter(viewerIn(c).pass.person, 'follow-up');
+    if (a.type.startsWith('workspace-') || a.type.startsWith('present-') || a.type.startsWith('play-') || a.type.startsWith('board-')) spaceLimiter(viewerIn(c).pass.person, 'workspace');
+    return c.json(await callsService.act(viewerIn(c), c.req.param('id'), a));
   });
 
   /*
@@ -234,27 +246,27 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   app.get('/v1/live/calls/:id/mls', async (c) => {
     const after = z.coerce.number().int().nonnegative().safeParse(c.req.query('after') ?? '0');
     if (!after.success) throw new ValidationError('Ask from a position in the log.');
-    return c.json(await callsMls.mlsSync(c.get('viewer'), c.req.param('id'), after.data));
+    return c.json(await callsMls.mlsSync(viewerIn(c), c.req.param('id'), after.data));
   });
 
   app.post('/v1/live/calls/:id/mls/commits', async (c) => c.json(await callsMls.mlsCommit(hostOnly(c), c.req.param('id'), await body(c, CallCommitBodySchema))));
 
   app.post('/v1/live/calls/:id/mls/messages', async (c) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     chatLimiter(v.pass.identity, 'chat');
     return c.json(await callsMls.mlsMessage(v, c.req.param('id'), await body(c, CallMessageBodySchema)));
   });
 
   app.post('/v1/live/calls/:id/mls/keypackages', async (c) => {
-    rejoinLimiter(c.get('viewer').pass.identity, 'rejoin');
-    await callsMls.mlsKeyPackage(c.get('viewer'), c.req.param('id'), await body(c, CallKeyPackageBodySchema));
+    rejoinLimiter(viewerIn(c).pass.identity, 'rejoin');
+    await callsMls.mlsKeyPackage(viewerIn(c), c.req.param('id'), await body(c, CallKeyPackageBodySchema));
     return c.json({ sent: true });
   });
 
   /* Back in after this connection was taken out while it was away (its connection dropped, or its tab slept). */
   app.post('/v1/live/calls/:id/mls/back', async (c) => {
-    rejoinLimiter(c.get('viewer').pass.identity, 'rejoin');
-    await callsMls.mlsBack(c.get('viewer'), c.req.param('id'), await body(c, CallBackBodySchema));
+    rejoinLimiter(viewerIn(c).pass.identity, 'rejoin');
+    await callsMls.mlsBack(viewerIn(c), c.req.param('id'), await body(c, CallBackBodySchema));
     return c.json({ sent: true });
   });
 
@@ -263,18 +275,18 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
    * the role the call has for them, which can be more than their pass says (someone signed in let in from the link).
    */
   app.post('/v1/live/calls/:id/moves', async (c) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     moveLimiter(v.pass.identity, 'move');
     return c.json(await moves.start(v, c.req.param('id'), (await body(c, MoveStartBodySchema)).media, v.role === 'invited' ? await optionalOwner(c) : undefined));
   });
 
-  app.get('/v1/live/calls/:id/moves', async (c) => c.json({ move: await moves.current(c.get('viewer'), c.req.param('id')) }));
+  app.get('/v1/live/calls/:id/moves', async (c) => c.json({ move: await moves.current(viewerIn(c), c.req.param('id')) }));
 
-  app.post('/v1/live/calls/:id/moves/confirm', async (c) => { await moves.confirm(d, c.get('viewer'), c.req.param('id'), (await body(c, MoveConfirmBodySchema)).media); return c.json({ released: true }); });
+  app.post('/v1/live/calls/:id/moves/confirm', async (c) => { await moves.confirm(d, viewerIn(c), c.req.param('id'), (await body(c, MoveConfirmBodySchema)).media); return c.json({ released: true }); });
 
-  app.delete('/v1/live/calls/:id/moves', async (c) => { await moves.cancelOut(c.get('viewer'), c.req.param('id')); return c.json({ cancelled: true }); });
+  app.delete('/v1/live/calls/:id/moves', async (c) => { await moves.cancelOut(viewerIn(c), c.req.param('id')); return c.json({ cancelled: true }); });
 
-  app.get('/v1/live/calls/:id/room', async (c) => c.json(await callsMls.roomToken(c.get('viewer'), c.req.param('id'))));
+  app.get('/v1/live/calls/:id/room', async (c) => c.json(await callsMls.roomToken(viewerIn(c), c.req.param('id'))));
 
   /* The notes, from the browser of whoever hosts: the recording and the speech it hears. */
   app.post('/v1/live/calls/:id/audio', async (c) => c.json(await callsRecording.audio(hostOnly(c), c.req.param('id'), await piece(c))));
@@ -285,7 +297,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
    * from whoever hears the part of the call it was said in.
    */
   app.post('/v1/live/calls/:id/transcribe', async (c) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     if (!v.inCall || v.role === 'guest') throw refused(v, 'host');
     const speaker = speakerOf(c);
     // When the speech began, on this server's clock: measured as the request arrives, before its audio is read.
@@ -300,13 +312,13 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
    * going, their own browser sends its video in pieces. Only their own share, checked by the call.
    */
   app.post('/v1/live/calls/:id/shares', async (c) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     shareLimiter(v.pass.identity, 'share');
     return c.json(await callsRecording.startShare(v, c.req.param('id'), (await body(c, ShareStartBodySchema)).notes));
   });
 
   app.post('/v1/live/calls/:id/shares/:share/video', async (c) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     // Not only while they're in: someone who just left still sends their share's last piece, which the call checks.
     videoLimiter(v.pass.identity, 'screen-video');
     const share = c.req.param('share');
@@ -315,7 +327,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   });
 
   app.post('/v1/live/calls/:id/shares/:share/ended', async (c) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     shareLimiter(v.pass.identity, 'share-ended');
     const share = c.req.param('share');
     if (!ID128.test(share)) throw new NotFoundError('That share doesn’t exist.');
@@ -327,20 +339,20 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
    * is kept. GET says what they can catch up on; a moment of the transcript is opened with their access checked again.
    */
   app.get('/v1/live/calls/:id/catch-up', async (c) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     callsParticipants.requireIn(v, 'catch-up');
     return c.json(await callsInsights.catchUpWindow(v, c.req.param('id')));
   });
 
   app.post('/v1/live/calls/:id/catch-up', async (c) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     callsParticipants.requireIn(v, 'catch-up');
     await asking(v, 'catch-up');
     return c.json(await callsInsights.catchUp(v, c.req.param('id'), (await body(c, CatchUpBodySchema)).range));
   });
 
   app.post('/v1/live/calls/:id/ask', async (c) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     callsParticipants.requireIn(v, 'ask');
     await asking(v, 'ask');
     const { question, range } = await body(c, AskSoFarBodySchema);
@@ -349,7 +361,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
 
   /* Asking across the calls before this one, during it: from the asker's own notes, so it takes their session as well as their pass. */
   app.post('/v1/live/calls/:id/series/ask', async (c) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     callsParticipants.requireIn(v, 'ask-earlier');
     const o = await signedIn(c);
     askLimiter(o.ownerId, 'ask-earlier');
@@ -363,7 +375,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
    * of the call, and any other look at the same time answers at once.
    */
   app.post('/v1/live/calls/:id/notes/watch', async (c) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     callsParticipants.requireIn(v, 'live-notes');
     notesWatchLimiter(v.pass.identity, 'live-notes');
     return c.json({ refreshed: await callsInsights.watchNotes(v, c.req.param('id')) });
@@ -375,14 +387,14 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
    * of the call; any other look answers at once.
    */
   app.post('/v1/live/calls/:id/ideas/watch', async (c) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     callsParticipants.requireIn(v, 'board-ideas');
     ideasWatchLimiter(v.pass.identity, 'board-ideas');
     return c.json({ found: await callsInsights.watchIdeas(v, c.req.param('id')) });
   });
 
   app.get('/v1/live/calls/:id/transcript/:line', async (c) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     callsParticipants.requireIn(v, 'moment');
     momentLimiter(v.pass.identity, 'moment');
     const line = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).safeParse(c.req.param('line'));
@@ -392,7 +404,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
 
   /* Hear it, during the call: one line's recording, for anyone in it who may hear it (calls.hear says who). */
   app.get('/v1/live/calls/:id/hear/:note/:line', async (c) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     momentLimiter(v.pass.identity, 'hear');
     const ids = z.object({ note: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), line: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/) }).safeParse({ note: c.req.param('note'), line: c.req.param('line') });
     if (!ids.success) throw new ValidationError('That isn’t a moment of this call.');
@@ -411,7 +423,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   app.use('/v1/live/calls/:id/personal/*', capped(32 * 1024));
 
   const ownInCall = (c: Context<Env>) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     personalLimiter(v.pass.identity, 'personal');
     return callsInsights.personalIn(v, c.req.param('id') ?? '', () => optionalOwner(c));
   };
@@ -426,7 +438,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
 
   /* Captions in someone's own language: translated for them alone, so no receipt keeps a copy. */
   app.post('/v1/live/calls/:id/translate', async (c) => {
-    const v = c.get('viewer');
+    const v = viewerIn(c);
     const { language, lines } = await body(c, TranslateBodySchema);
     captionLimiter(v.pass.identity, 'translate');
     return c.json(await callsInsights.translate(v, c.req.param('id'), language, lines));
@@ -435,7 +447,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   /* Whoever hosts leaving ends the call for everyone, unless they hand it to someone; anyone else leaving is taken out of the call's group. */
   app.post('/v1/live/calls/:id/leave', async (c) => {
     const { end, onPurpose } = await body(c, CallLeaveBodySchema);
-    return c.json({ ended: await callsLifecycle.leave(c.get('viewer'), c.req.param('id'), end, onPurpose) });
+    return c.json({ ended: await callsLifecycle.leave(viewerIn(c), c.req.param('id'), end, onPurpose) });
   });
 
   app.post('/v1/live/calls/:id/hand-off', async (c) => {

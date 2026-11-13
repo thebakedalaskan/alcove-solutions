@@ -14,7 +14,7 @@ import { listNames } from '~/lib/people';
 import type { Correcting, FromLine, LineMarks } from './lines';
 import { TranscriptLines, roomAnchor } from './parts';
 import { Decisions, FollowUps, Questions } from './rows';
-import { NoteFollowUpReview } from './NoteFollowUps';
+import { NoteFollowUpReview } from './follow-ups/NoteFollowUps';
 
 /** What someone who has the notes does with a room's decisions, questions and follow-ups, as with the call's. */
 export interface Settling {

@@ -1,0 +1,556 @@
+/*
+ * Settings (apps/web routes/_app/settings.tsx and features/settings; SettingsGroup, SettingsPanel, SettingRow and the rest
+ * in settings/settings.tsx): change one thing and leave. The last of the light, with you in it, then seven groups.
+ * Classes start with `set-`.
+ *
+ * The rules this page keeps:
+ *   the index stays beside you as you scroll, and a small sun on it follows the group in view;
+ *   a group is a heading over one or two panels; inside a panel, hairlines and space, never a card per row;
+ *   every control sits at the panel's right edge, and Saved appears just left of whatever you pressed;
+ *   each thing that can reach you is said once, with its Alert and its Sound side by side;
+ *   what you set up once (Google Drive, an agent) opens in place, and folds back into one line;
+ *   nothing is filled at rest. When the page asks you something, the answer that loses nothing is the filled one.
+ */
+/* Registered so the sky can grow and shrink: a custom property only animates if the browser knows it's a length. */
+@property --hz { syntax: "<length>"; inherits: true; initial-value: 320px; }
+
+/* --sky is the sky at rest, from the top of the window: the page runs on under the frame. The route measures --ask, how tall the question in the sky is, and --bar, the phone's top bar. */
+.set { --sky: 136px; --ask: 0px; --bar: 66px; --idx: 176px; --col: 940px; --hz: var(--sky); transition: --hz var(--duration-3) var(--ease-out); }
+.set > .dusk-in { padding-bottom: 140px; }
+/* You're in the sky already, with the tour and Sign out beside you, so your face at the top right makes way. */
+.main:has(> .main-in > .set) .top-me { display: none; }
+
+/* The water goes still and becomes the page. */
+.set::after { content: ""; position: absolute; inset: var(--hz) 0 0; z-index: -1; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--ground) 88px); }
+
+/* ------------------------------------------------------------------ the sky: you, standing on the horizon */
+.set-band { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; height: calc(var(--hz) - 30px); }
+.set-me { position: relative; align-self: end; display: flex; align-items: flex-end; gap: 14px; min-width: 0; }
+.set-me .ac-avatar { box-shadow: 0 -10px 44px -14px color-mix(in oklch, var(--gold) 50%, transparent); }
+.set-who { min-width: 0; padding-bottom: 9px; }
+.set-name { font: 400 clamp(23px, 2vw, 28px)/1.15 var(--font-display); letter-spacing: -.008em; color: var(--ink); }
+.set-mail { margin-top: 2px; font: 400 14px/20px var(--font-sans); color: var(--ink-2); }
+.set-glow { position: absolute; left: 0; top: 100%; display: grid; justify-items: center; gap: 4px; width: 64px; padding-top: 5px; pointer-events: none; }
+.set-glow i { display: block; height: 1.5px; border-radius: 2px; background: var(--gold); }
+.set-glow i:nth-child(1) { width: 40px; opacity: .55; }
+.set-glow i:nth-child(2) { width: 24px; opacity: .32; }
+.set-glow i:nth-child(3) { width: 12px; opacity: .18; }
+
+/* The tour and Sign out stay where they are while the sky grows under them. Search sits above them (TopActions). */
+.set-acts { display: flex; align-items: flex-end; justify-content: flex-end; gap: 2px; min-width: 250px; height: calc(var(--sky) - 30px); margin-right: -12px; padding-bottom: 8px; }
+.set-acts .ac-btn { height: 34px; padding: 0 12px; font-size: 13px; }
+.set-acts .ac-btn:hover { background: color-mix(in oklch, var(--ink) 9%, transparent); }
+
+/* Sign out asks in the sky, which grows to hold it: for a moment the page is one action. */
+.set[data-out] { --hz: calc(188px + var(--ask)); }
+/* Its column already leaves room for the tour and Sign out; the question reaches further in than they do. */
+.set[data-out] .set-me { max-width: calc(100% - 310px); }
+.set-ask { position: absolute; right: 0; top: 118px; width: min(548px, 100%); animation: set-up var(--duration-3) var(--ease-out) both; }
+.set-ask b { display: block; font: 600 15.5px/22px var(--font-sans); color: var(--ink); text-wrap: pretty; }
+.set-ask p { margin-top: 4px; font: 400 14px/20px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+.set-ask-a { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+.set-ask-a .ac-btn, .set-da .ac-btn { height: 40px; }
+.ac-btn.set-sky { background: color-mix(in oklch, var(--ground) 62%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 16%, transparent); color: var(--caution); }
+.ac-btn.set-sky:hover { background: color-mix(in oklch, var(--ground) 82%, transparent); }
+@keyframes set-up { from { opacity: 0; transform: translateY(10px); } }
+
+/* ------------------------------------------------------------------ the page: the index, then the groups */
+.set-body { display: grid; grid-template-columns: var(--idx) minmax(0, var(--col)); column-gap: clamp(36px, 5.2vw, 96px); margin-top: 54px; }
+.set-idx { position: sticky; top: 24px; align-self: start; min-width: 0; margin-top: -2px; }
+.set-idx ol { position: relative; display: grid; margin: 0; padding: 0; list-style: none; }
+.set-idx ol::before { content: ""; position: absolute; left: 4px; top: 12px; bottom: 12px; width: 1px; background: var(--line-control); opacity: .6; }
+.set-ix { display: block; width: 100%; height: 36px; padding-left: 22px; border-radius: var(--radius-sm); font: 400 14.5px/36px var(--font-sans); color: var(--ink-3); text-align: left; white-space: nowrap; transition: color var(--duration-1); }
+.set-ix:hover { color: var(--ink); }
+.set-ix[aria-current="true"] { color: var(--ink); font-weight: 500; }
+/* The small sun goes with the group in view. */
+.set-mark { position: absolute; left: 0; top: 13.5px; width: 9px; height: 9px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 3px var(--ground); transform: translateY(calc(var(--i) * 36px)); transition: transform var(--duration-3) var(--ease-out); pointer-events: none; }
+
+.set-strip { display: none; }
+.set-groups { min-width: 0; }
+
+/* A group: its heading, then a panel or two. */
+.set-grp { scroll-margin-top: 30px; }
+.set-grp:focus, .set-blk:focus { outline: none; }
+.set-grp + .set-grp { margin-top: 64px; }
+.set-grh { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 30px; margin: 0 4px 14px; }
+.set-grh h2 { font: 600 20px/28px var(--font-sans); letter-spacing: -.012em; color: var(--ink); text-wrap: pretty; }
+/* What a group or panel is limited to: This browser. */
+.set-tag { display: inline-flex; align-items: center; gap: 7px; font: 500 13px/18px var(--font-sans); color: var(--ink-3); white-space: nowrap; }
+.set-tag .ac-i { flex: none; width: 15px; height: 15px; }
+.set-blk, .set-r[id] { scroll-margin-top: 30px; }
+.set-blk + .set-blk { margin-top: 26px; }
+.set-bh { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 6px 9px; }
+.set-bh h3 { font: 500 13.5px/18px var(--font-sans); letter-spacing: 0; color: var(--ink-2); }
+.set-bh .set-tag { align-self: center; }
+
+/* A panel: hairlines and space inside, never a card per row. --ctl is the column a list or a choice fills; wide rows get --ctl-wide. */
+.set-pn {
+  --ctl: 264px; --ctl-wide: 380px; --mx: 76px; --pn-x: 22px; --pn-r: 18px;
+  --set-lift: 0 1px 3px color-mix(in oklch, var(--ink) 5%, transparent), 0 10px 30px -22px color-mix(in oklch, var(--ink) 22%, transparent);
+  position: relative; isolation: isolate; container-type: inline-size; padding: 0 var(--pn-x); border-radius: var(--pn-r); background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--set-lift);
+}
+.dark .set-pn { --set-lift: 0 0 transparent; }
+/* A list that's open rises over the panels after it. */
+.set-pn:has([aria-expanded="true"]) { z-index: 6; }
+.set-pn > :not(:first-child, .is-flush, .set-del) { border-top: 1px solid var(--line); }
+/* Rows outside a panel (a call's own Settings) still stand on hairlines. */
+:not(.set-pn) > .set-r + .set-r { border-top: 1px solid var(--line); }
+
+/* A row: what it is on the left, its control at the right edge. */
+.set-r { --ctl-col: auto; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--ctl-col); column-gap: 24px; align-items: center; min-height: 60px; padding-block: 12px; }
+/* A list or a choice fills its column; three evenings, a folder or files fill a wider one. A switch, a fact or a button hugs the edge. */
+.set-r:has(> .set-c > .set-ctl > :is(.ac-seg, .ac-select, .set-vol)), .set-r.is-stack { --ctl-col: var(--ctl, 264px); }
+.set-r.is-wide { --ctl-col: minmax(0, var(--ctl-wide, 380px)); }
+/* Focus kept on a row whose control went. */
+.set-r:focus { outline: none; }
+.set-r:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-sm); }
+/*
+ * Where a link landed (Home's calendar, Record's recording in the room, a note's Google Drive, Agents): the place it named
+ * shows in the horizon's soft blue, across the panel, and fades as the eye finds it (Nav.tsx sets data-landed).
+ */
+.set-r[data-landed]::before, .set-blk[data-landed] > .set-pn::before { content: ""; position: absolute; z-index: -1; border-radius: inherit; background: var(--horizon-soft); pointer-events: none; animation: set-landed 1.8s var(--ease-in) forwards; }
+.set-r[data-landed]::before { inset: 0 calc(var(--pn-x, 0px) * -1); border-radius: 0; }
+.set-pn > .set-r[data-landed]:first-child::before { border-top-left-radius: var(--pn-r); border-top-right-radius: var(--pn-r); }
+.set-pn > .set-r[data-landed]:last-child::before { border-bottom-left-radius: var(--pn-r); border-bottom-right-radius: var(--pn-r); }
+.set-blk[data-landed] > .set-pn::before { inset: 0; }
+@keyframes set-landed { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  /* Fading isn't movement: the place still shows where a link landed, and fades as it does with motion. */
+  .set-r[data-landed]::before, .set-blk[data-landed] > .set-pn::before { animation-duration: 1.8s !important; }
+}
+/* Nested under the connection above it, its hairline too. */
+.set-r.is-sub, .set-foot.is-sub, .set-pn > .ac-drive-history { margin-left: 32px; }
+.set-l { min-width: 0; }
+.set-r.is-press .set-l { cursor: pointer; }
+.set-r.is-press .set-h { cursor: text; }
+.set-t { display: flex; align-items: center; gap: 10px; font: 400 15px/22px var(--font-sans); color: var(--ink); }
+.set-t > .ac-logo { flex: none; width: 20px; height: 20px; }
+.set-t > .ac-i { flex: none; width: 18px; height: 18px; color: var(--ink-3); }
+.set-t > .ac-crypto { flex: none; width: 24px; height: 24px; }
+.set-h { max-width: 58ch; margin-top: 2px; padding-left: var(--set-indent, 0px); font: 400 13px/18px var(--font-sans); color: var(--ink-3); text-wrap: pretty; }
+.set-h.is-no { color: var(--caution); }
+/* Time is short: under an hour of notes, a plan about to end. */
+.set-h.is-warm { color: var(--sun-text); font-weight: 500; }
+/* With a mark before the label, the help lines up under the label. */
+.set-r:has(> .set-l > .set-t > :is(.ac-logo, .ac-i):first-child) { --set-indent: 30px; }
+.set-r:has(> .set-l > .set-t > .ac-crypto:first-child) { --set-indent: 34px; }
+.set-r:has(> .set-l > .set-t > .set-tile:first-child) { --set-indent: 42px; }
+
+.set-c { display: flex; align-items: center; justify-content: flex-end; min-width: 0; }
+.set-ctl { position: relative; display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
+.set-r.is-wide .set-ctl, .set-r.is-stack .set-ctl, .set-ctl:has(> :is(.ac-seg, .ac-select, .set-vol)) { width: 100%; }
+/* Something sits under the control: the label stays level with the control itself. */
+.set-r.is-stack { align-items: start; }
+.set-r.is-stack .set-l { display: grid; align-content: center; min-height: 36px; }
+.set-r.is-stack .set-ctl { flex-direction: column; align-items: stretch; gap: 6px; }
+.set-line { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
+
+/*
+ * In a narrow panel (a narrow window, or the side panel open beside it) a wide row with help puts its control under the
+ * label, the panel's width, so the help keeps a readable measure. Theme has no help and keeps its evenings beside it.
+ */
+@container (max-width: 719px) {
+  .set-r.is-wide:has(> .set-l > .set-h) { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }
+  .set-r.is-wide:has(> .set-l > .set-h) .set-sv { right: 0; top: -26px; transform: none; animation-name: set-saved-up; }
+}
+
+/* Saved: just left of what you pressed, for a moment. */
+.set-sv { position: absolute; right: calc(100% + 14px); top: 50%; display: inline-flex; align-items: center; gap: 5px; transform: translateY(-50%); font: 500 13px/1 var(--font-sans); color: var(--ink-2); white-space: nowrap; animation: set-saved var(--duration-2) var(--ease-out) both; pointer-events: none; }
+.set-r.is-stack .set-sv { top: 18px; }
+.set-sv .ac-i { color: var(--sun-text); }
+.set-sv.is-failed { color: var(--caution); }
+@keyframes set-saved { from { opacity: 0; transform: translate(6px, -50%); } }
+@keyframes set-saved-up { from { opacity: 0; } }
+
+/* Rows waiting on the browser keep their choices, greyed out. */
+.set-r.is-off .set-t { color: var(--ink-3); }
+.set-r.is-off .set-l, .set-r.is-off .set-c { pointer-events: none; }
+.set-r.is-off .set-ctl { opacity: .42; }
+.set-r.is-off .ac-seg[aria-disabled="true"], .set-r.is-off .ac-switch:disabled { opacity: 1; }
+
+/* A connection's own mark beside its name. */
+.set-tile { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 10px; background: color-mix(in oklch, var(--ink) 7%, transparent); color: var(--ink-2); }
+
+/* What a control's place holds when there's nothing to change. */
+.set-f { display: inline-flex; align-items: center; gap: 8px; min-height: 22px; font: 400 14.5px/20px var(--font-sans); color: var(--ink-2); white-space: nowrap; }
+.set-f .ac-i { flex: none; color: var(--ink-3); }
+.set-f.is-yes .ac-i { color: var(--sun-text); }
+.set-f.is-no, .set-f.is-no .ac-i { color: var(--caution); }
+.set-go { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; min-height: 22px; border-radius: var(--radius-xs); font: 500 14px/20px var(--font-sans); color: var(--ink); white-space: nowrap; }
+.set-go .ac-i { flex: none; color: var(--ink-3); transition: transform var(--duration-1) var(--ease-out), color var(--duration-1); }
+.set-go:hover .ac-i { transform: translateX(2px); color: var(--ink-2); }
+.set-go.is-ext:hover .ac-i { transform: translate(1.5px, -1.5px); }
+.set-go .ac-logo { flex: none; width: 15px; height: 15px; }
+
+/* A button in a row is a line, not a block: nothing is filled at rest. */
+.set-c .ac-btn.is-sm { height: 34px; font-size: 13.5px; }
+.set-c .ac-btn.is-secondary { background: transparent; }
+.set-c .ac-btn.is-secondary:hover, .set-c .ac-btn.is-quiet:hover { background: color-mix(in oklch, var(--ink) 7%, transparent); }
+.set-c .ac-btn.is-quiet { padding: 0 10px; color: var(--ink); }
+.set-ctl > .ac-btn.is-quiet:last-child { margin-right: -6px; }
+
+/* Two or three choices. */
+:is(.set-pn, .set-c) .ac-seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); width: 100%; height: 36px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink) 8%, transparent); }
+:is(.set-pn, .set-c) .ac-seg button { justify-content: center; height: 30px; padding: 0 8px; border-radius: var(--radius-pill); font: 500 13.5px/1 var(--font-sans); }
+:is(.set-pn, .set-c) .ac-seg .pill { border-radius: var(--radius-pill); background: var(--surface-raised); box-shadow: 0 1px 2px color-mix(in oklch, var(--ink) 14%, transparent); }
+.dark :is(.set-pn, .set-c) .ac-seg .pill { background: color-mix(in oklch, var(--ink) 16%, transparent); box-shadow: none; }
+
+/* A list. */
+:is(.set-pn, .set-c) .ac-select { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-flow: column; grid-auto-columns: auto; column-gap: 8px; width: 100%; height: 36px; padding: 0 12px 0 15px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink) 8%, transparent); box-shadow: none; font: 500 14px/1 var(--font-sans); text-align: left; }
+:is(.set-pn, .set-c) .ac-select:hover, :is(.set-pn, .set-c) .ac-select[data-state="open"] { background: color-mix(in oklch, var(--ink) 13%, transparent); }
+:is(.set-pn, .set-c) .ac-select .v { line-height: 20px; word-break: normal; }
+:is(.set-pn, .set-c) .ac-select > .ac-i { transition: transform var(--duration-1) var(--ease-out); }
+:is(.set-pn, .set-c) .ac-select[data-state="open"] > .ac-i { transform: rotate(180deg); }
+
+/* Check the level and Play test sound sit right under what they test. Alone, they stand at the edge. */
+.set-test { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; height: 26px; margin-left: 15px; border-radius: var(--radius-xs); font: 500 13px/1 var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; transition: color var(--duration-1); }
+.set-test:hover { color: var(--ink); }
+.set-test.is-flush { align-self: flex-end; margin-left: 0; }
+.set-test.is-busy { color: var(--ink); cursor: default; }
+.set-test.is-busy .ac-i { color: var(--sun-text); }
+.set-bars { display: inline-grid; grid-auto-flow: column; align-items: center; gap: 2px; height: 14px; }
+.set-bars i { display: block; width: 2px; border-radius: 1px; background: currentColor; }
+.set-bars i:nth-child(1) { height: 5px; }
+.set-bars i:nth-child(2) { height: 10px; }
+.set-bars i:nth-child(3) { height: 14px; }
+.set-bars i:nth-child(4) { height: 8px; }
+.set-lvl { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 26px; }
+.set-lvl:has(> .set-test.is-flush) { justify-content: flex-end; }
+.set-lvl .set-test { flex: none; }
+.set-lvl.is-on { padding-left: 15px; }
+.set-lvl.is-on .set-test { margin-left: 0; }
+.set-ticks.ac-mic-level { display: grid; flex: 1; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; height: 18px; min-width: 0; }
+.set-ticks.ac-mic-level i { width: auto; height: 100%; border-radius: 2px; background: color-mix(in oklch, var(--ink) 15%, transparent); }
+.set-ticks.ac-mic-level i.on { background: var(--sun-text); }
+
+/* ------------------------------------------------------------------ notifications */
+/* How loud: silence everything, set the level, hear it. */
+.set-vol { display: grid; grid-template-columns: 34px minmax(0, 1fr) 34px; align-items: center; gap: 6px; width: 100%; }
+.set-vol .ac-icon-btn { width: 34px; height: 34px; }
+.set-vol .ac-icon-btn:hover { background: color-mix(in oklch, var(--ink) 8%, transparent); }
+.set-vol .ac-icon-btn.is-busy { color: var(--sun-text); }
+.set-range { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 24px; margin: 0; background: transparent; cursor: pointer; }
+.set-range:disabled { cursor: default; }
+.set-range:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-sm); }
+.set-range::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: linear-gradient(to right, var(--ink) var(--v), color-mix(in oklch, var(--ink) 14%, transparent) var(--v)); }
+.set-range::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border-radius: 50%; background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line-control), var(--shadow-1); }
+.set-range::-moz-range-track { height: 4px; border-radius: 4px; background: color-mix(in oklch, var(--ink) 14%, transparent); }
+.set-range::-moz-range-progress { height: 4px; border-radius: 4px; background: var(--ink); }
+.set-range::-moz-range-thumb { width: 16px; height: 16px; border: 0; border-radius: 50%; background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line-control), var(--shadow-1); }
+.set-vol.is-muted .set-range { opacity: .4; }
+
+/* What reaches you: each event once, with its Alert and its Sound side by side. */
+.set-mx-grp + .set-mx-grp, .set-mx-grp > * + * { border-top: 1px solid var(--line); }
+.set-mx-h { display: grid; grid-template-columns: minmax(0, 1fr) repeat(2, var(--mx, 76px)); align-items: end; min-height: 54px; padding: 14px 0 10px; }
+.set-mx-h .set-mx-g { padding: 0 16px 0 0; font-weight: 400; color: var(--ink-3); text-wrap: pretty; }
+.set-mx-k { display: grid; justify-items: center; gap: 5px; font: 500 12.5px/1 var(--font-sans); color: var(--ink-2); }
+.set-mx-k .ac-i { color: var(--ink-3); }
+.set-mx-k.is-off { color: var(--ink-3); }
+.set-mx-g { padding: 18px 0 6px; font: 600 13px/18px var(--font-sans); color: var(--ink-2); }
+.set-mx-r { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) repeat(2, var(--mx, 76px)); align-items: center; min-height: 48px; padding-block: 6px; }
+.set-mx-t { display: flex; align-items: center; gap: 12px; min-width: 0; font: 400 14.5px/20px var(--font-sans); color: var(--ink); }
+.set-mx-t > .ac-i { flex: none; color: var(--ink-3); }
+.set-mx-n { position: relative; display: block; min-width: 0; }
+.set-mx-q { display: block; font: 400 12.5px/17px var(--font-sans); color: var(--ink-3); }
+/* Saved takes the note's line for a moment: in its place, or under a label that has none, in the row's own space. */
+.set-mx-n > .set-sv { left: 0; right: auto; transform: none; font-size: 12.5px; animation-name: set-saved-up; }
+.set-mx-n > .set-sv .ac-i { width: 13px; height: 13px; }
+.set-mx-n > .set-sv.is-line { position: static; display: flex; height: 17px; }
+.set-mx-n > .set-sv.is-under { top: 100%; height: 14px; }
+.set-mx-c { display: grid; place-items: center; }
+.set-ck { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; box-shadow: inset 0 0 0 1.5px var(--line-control); color: transparent; transition: background-color var(--duration-1), box-shadow var(--duration-1), color var(--duration-1); }
+.set-ck:hover { box-shadow: inset 0 0 0 1.5px var(--ink-2); }
+.set-ck .ac-i { stroke-width: 2.6; }
+.set-ck[aria-checked="true"] { background: var(--ink); box-shadow: none; color: var(--surface); }
+.set-ck:disabled { opacity: .38; }
+.set-ck:disabled:hover { box-shadow: inset 0 0 0 1.5px var(--line-control); }
+.set-ck[aria-checked="true"]:disabled:hover { box-shadow: none; }
+/* On a touchscreen a tick takes a press from round it too: 44px square, as a finger needs, inside its column and row. */
+@media (pointer: coarse) { .set-ck { position: relative; } .set-ck::before { content: ""; position: absolute; inset: -11px; } }
+
+/* ------------------------------------------------------------------ what opens in place */
+/* What just happened (back from Google), or what's in the way, inside the panel it happened to. */
+.set-note { display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: 10px; align-items: start; margin: 14px 0 2px; padding: 11px 14px; border-radius: 12px; background: color-mix(in oklch, var(--horizon) 12%, transparent); font: 400 14px/20px var(--font-sans); color: var(--ink); text-wrap: pretty; }
+.set-note > .ac-i { width: 17px; height: 17px; margin-top: 1.5px; color: var(--horizon); }
+.set-note.is-caution { background: color-mix(in oklch, var(--caution) 12%, transparent); }
+.set-note.is-caution > .ac-i { color: var(--caution); }
+.set-note + .set-note { margin-top: 8px; }
+.set-note:last-child { margin-bottom: 16px; }
+/* Said until its × is pressed. */
+.set-note.has-x { grid-template-columns: 18px minmax(0, 1fr) auto; padding-right: 6px; }
+.set-note-x.ac-icon-btn { width: 30px; height: 30px; margin-block: -5px; color: var(--ink-2); }
+.set-note-x.ac-icon-btn:hover { background: color-mix(in oklch, var(--ink) 8%, transparent); color: var(--ink); }
+/* What to do about it, at the note's end, level with its words: under them on a phone (below). */
+.set-note.has-a { grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; padding-right: 10px; }
+.set-note.has-a.has-x { grid-template-columns: 18px minmax(0, 1fr) auto auto; padding-right: 6px; }
+.set-note.has-a > .ac-i { align-self: start; }
+.set-note-a { display: flex; align-items: center; gap: 8px; margin-block: -4px; }
+
+/* The foot of something open in place: what to know, and how to close it. */
+/* Something opened in place inside a panel: its title and what it is, then what to do. */
+.set-step { padding: 16px 0 4px; }
+.set-step-t { font: 600 15px/22px var(--font-sans); color: var(--ink); }
+.set-step-h { max-width: 62ch; margin-top: 3px; font: 400 13.5px/19px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+.set-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; padding: 14px 0 16px; }
+.set-foot > p { flex: 1 1 320px; max-width: 62ch; font: 400 13px/18px var(--font-sans); color: var(--ink-3); text-wrap: pretty; }
+.set-foot-a { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.set-foot-a .ac-btn { height: 34px; padding: 0 14px; font-size: 13.5px; }
+.set-foot-a .ac-btn.is-secondary { background: transparent; }
+.set-foot-a .ac-btn.is-secondary:hover, .set-foot-a .ac-btn.is-quiet:hover { background: color-mix(in oklch, var(--ink) 7%, transparent); }
+.set-foot-a .ac-btn.is-quiet { color: var(--ink); }
+
+/* ------------------------------------------------------------------ appearance: three small evenings */
+.set-eves { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; }
+.set-eve { display: grid; gap: 7px; justify-items: center; min-width: 0; border-radius: var(--radius-md); font: 500 13px/1 var(--font-sans); color: var(--ink-2); }
+.set-eve:hover, .set-eve[aria-pressed="true"] { color: var(--ink); }
+.set-eve:focus-visible { outline: none; }
+.set-eve:focus-visible .set-win { outline: 2px solid var(--focus); outline-offset: 5px; }
+.set-win { position: relative; display: block; width: 100%; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 12px; box-shadow: 0 0 0 1px var(--line); transition: box-shadow var(--duration-1); }
+.set-eve:hover .set-win { box-shadow: 0 0 0 1px var(--line-control); }
+/* The ring stands 2px off the window, on whatever the evenings sit on (`--eve-on`): a panel here, your menu's popover there. */
+.set-eve[aria-pressed="true"] .set-win { box-shadow: 0 0 0 2px var(--eve-on, var(--surface)), 0 0 0 3.5px var(--sun); }
+/* Small (`small`, your menu's Theme): the window alone, named by its tooltip. */
+.set-eve.is-small { display: block; width: 40px; height: 26px; border-radius: 8px; }
+.set-eve.is-small .set-win { height: 100%; aspect-ratio: auto; border-radius: 8px; }
+/* The evening's own colours (evening/horizon.css), here so each is drawn in its theme whatever the page's theme is. */
+.set-art {
+  --art-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.872 0.042 275) 58%, oklch(0.916 0.051 9.412) 100%);
+  --art-sea: linear-gradient(to bottom in oklch, oklch(0.872 0.042 275) 0%, oklch(0.825 0.055 252.105) 46%, oklch(0.816 0.058 251.316) 100%);
+  --art-sun: oklch(0.92 0.1 78); --art-glow: oklch(0.93 0.08 45 / 0.55); --art-rim: oklch(0.9 0.09 60); --art-near: oklch(0.86 0.1 66);
+  --art-cloud: oklch(0.86 0.04 330); --art-star: oklch(0.965 0.012 85);
+  position: absolute; inset: 0; display: block;
+}
+.set-art.is-dark {
+  --art-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.307 0.067 270.769) 58%, oklch(0.445 0.085 317.368) 100%);
+  --art-sea: linear-gradient(to bottom in oklch, oklch(0.305 0.06 268.408) 0%, oklch(0.24 0.052 258) 46%, oklch(0.205 0.046 258) 100%);
+  --art-sun: oklch(0.86 0.085 74); --art-glow: oklch(0.66 0.12 22 / 0.55); --art-rim: oklch(0.8 0.1 50); --art-near: oklch(0.84 0.09 72);
+  --art-cloud: oklch(0.343 0.07 285.385);
+}
+.set-art.is-corner { clip-path: polygon(62% 0, 100% 0, 100% 100%, 38% 100%); }
+.set-art i { position: absolute; display: block; }
+.set-art .sky { inset: 0 0 34%; background: var(--art-sky); }
+.set-art .sea { inset: 66% 0 0; background: var(--art-sea); }
+.set-art .glow { left: 50%; top: 66%; width: 130%; height: 72%; transform: translate(-50%, -50%); background: radial-gradient(closest-side, var(--art-glow), transparent); }
+.set-art .up { position: absolute; inset: 0 0 34%; display: block; overflow: hidden; }
+.set-art .sun { left: 50%; bottom: 0; width: 25%; aspect-ratio: 1; border-radius: 50%; background: var(--art-sun); transform: translate(-50%, 50%); }
+.set-art .rim { left: 0; right: 0; top: 66%; height: 1px; background: linear-gradient(to right, transparent, var(--art-rim), transparent); }
+.set-art .g { height: 1.5px; border-radius: 1px; background: var(--art-near); }
+.set-art .g1 { left: 39%; top: 71%; width: 22%; opacity: .75; }
+.set-art .g2 { left: 43%; top: 78%; width: 16%; opacity: .5; }
+.set-art .g3 { left: 37%; top: 85%; width: 18%; opacity: .32; }
+.set-art .star { width: 1.5px; height: 1.5px; border-radius: 50%; background: var(--art-star); opacity: .7; }
+.set-art .s1 { left: 18%; top: 16%; }
+.set-art .s2 { left: 72%; top: 11%; }
+.set-art .s3 { left: 84%; top: 34%; }
+.set-art .cloud { height: 1.5px; border-radius: 1px; background: var(--art-cloud); }
+.set-art .c1 { left: 12%; top: 42%; width: 40%; opacity: .7; }
+.set-art .c2 { left: 56%; top: 30%; width: 30%; opacity: .55; }
+
+/* ------------------------------------------------------------------ plan: the row's own hairline is the horizon */
+.set-r.is-left { min-height: 78px; }
+.set-left { font: 600 22px/28px var(--font-sans); letter-spacing: -.012em; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* About, before the time: it's an estimate, and the time stays the hero. */
+.set-left small { margin-right: 6px; font: 400 15px/28px var(--font-sans); letter-spacing: 0; color: var(--ink-2); }
+.set-left.is-warm, .set-left.is-warm small { color: var(--sun-text); }
+.set-left.is-out { color: var(--caution); }
+/* Over the next row, whose hairline it lies on. */
+.set-on { position: absolute; z-index: 1; left: 0; right: 0; bottom: -1px; height: 2px; pointer-events: none; }
+/* Its light lies along the row and fades before either end, so the sun can stand at the very start or the very end. */
+.set-on::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 34px; background: radial-gradient(110px 34px at var(--at) 100%, color-mix(in oklch, var(--gold) 30%, transparent), transparent); mask-image: linear-gradient(to right, transparent, black 48px, black calc(100% - 48px), transparent); }
+.dark .set-on::before { background-image: radial-gradient(110px 34px at var(--at) 100%, color-mix(in oklch, var(--sun-text) 26%, transparent), transparent); }
+.set-on .lit { position: absolute; left: 0; bottom: 0; height: 1.5px; width: var(--at); border-radius: 2px; background: linear-gradient(90deg in oklch, color-mix(in oklch, var(--rose) 60%, transparent), var(--sun-text) 72%, var(--gold)); }
+.set-on .sun { position: absolute; left: var(--at); bottom: 0; width: 30px; height: 15px; margin-left: -15px; overflow: hidden; }
+.set-on .sun::before { content: ""; position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--gold); }
+.set-on .ref { position: absolute; left: var(--at); top: 100%; display: grid; justify-items: center; gap: 3px; width: 30px; margin-left: -15px; padding-top: 3px; }
+.set-on .ref i { display: block; height: 1.5px; border-radius: 2px; background: var(--gold); }
+.set-on .ref i:nth-child(1) { width: 20px; opacity: .55; }
+.set-on .ref i:nth-child(2) { width: 11px; opacity: .3; }
+/* Run out: the sun has set, and only a little of its light is left at the start of the line. */
+.set-on.is-set .sun, .set-on.is-set .ref, .set-on.is-set .lit { display: none; }
+.set-on.is-set::before { opacity: .55; }
+/* A refusal, said in place under what was pressed. */
+.set-err { font: 500 13px/18px var(--font-sans); color: var(--caution); text-wrap: pretty; }
+
+/*
+ * Payments, at the foot of the balance's panel: what's on its way first, then what the balance took in and paid for,
+ * newest first. Each has its mark in a fixed column and what can be done with it at the panel's edge.
+ */
+.set-pays { display: grid; grid-template-columns: minmax(0, 1fr); padding-bottom: 6px; }
+.set-pays-h { padding: 14px 0 4px; font: 500 13px/18px var(--font-sans); color: var(--ink-3); }
+.set-pay { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; min-height: 54px; padding: 8px 0; border-top: 1px solid var(--line); }
+.set-pays-h + .set-pay { border-top: 0; }
+.set-pay-m { display: grid; place-items: center; width: 22px; height: 22px; color: var(--ink-3); }
+.set-pay-m > .ac-crypto { width: 22px; height: 22px; }
+.set-pay-t { min-width: 0; }
+.set-pay-t b { font: 500 14.5px/20px var(--font-sans); color: var(--ink); }
+.set-pay-t small { display: block; font: 400 13px/18px var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; text-wrap: pretty; }
+.set-pay-t small.is-wait { color: var(--horizon); }
+.set-pay-t small.is-problem { color: var(--caution); }
+.set-pay-a { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.set-pays > .ac-more { padding: 4px 0 2px; border-top: 1px solid var(--line); }
+
+
+/* ------------------------------------------------------------------ privacy: what Alcove knows beside what it can't read */
+.set-led { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; padding: 16px 0 14px; }
+.set-led-h { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; font: 600 14px/20px var(--font-sans); color: var(--ink); }
+.set-led-h .ac-i { color: var(--ink-3); }
+.set-led-c { padding: 7px 0; border-top: 1px dashed var(--line); font: 400 14.5px/20px var(--font-sans); color: var(--ink-2); }
+.set-led-c.is-cant { color: var(--ink); }
+
+/* Delete account opens where it is. */
+.ac-btn.set-caution { background: transparent; color: var(--caution); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--caution) 55%, transparent); }
+.ac-btn.set-caution:hover, .set-c .ac-btn.set-caution:hover { background: color-mix(in oklch, var(--caution) 12%, transparent); }
+.set-r[data-row="delete"] { scroll-margin-top: 140px; }
+.set-r.is-q .set-t { font: 600 17px/24px var(--font-sans); }
+.set-r.is-q.is-say .set-t { font: 500 15px/22px var(--font-sans); color: var(--caution); }
+.set-del { padding: 2px 0 18px; animation: set-up var(--duration-2) var(--ease-out) both; }
+.set-gs { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 300px); column-gap: 28px; }
+.set-gh { padding-bottom: 6px; font: 500 13px/18px var(--font-sans); color: var(--ink-3); }
+.set-gl { display: grid; margin: 0; padding: 0; list-style: none; }
+.set-gl li { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: start; padding-block: 7px; border-top: 1px solid var(--line); font: 400 14.5px/20px var(--font-sans); color: var(--ink); text-wrap: pretty; }
+.set-gl li .ac-i { margin-top: 2.5px; color: var(--caution); }
+.set-gp { padding-block: 7px; border-top: 1px solid var(--line); font: 400 14.5px/20px var(--font-sans); color: var(--ink); text-wrap: pretty; }
+.set-no { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: start; margin-top: 12px; font: 500 14px/20px var(--font-sans); color: var(--caution); }
+.set-no .ac-i { margin-top: 2px; }
+.set-da { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 18px; }
+/* aria-disabled, not disabled, while it's going: focus stays on the button pressed. */
+.set-ask-a .ac-btn[aria-disabled="true"], .set-da .ac-btn[aria-disabled="true"] { cursor: default; }
+.set-ask-a .ac-btn.is-primary[aria-disabled="true"], .set-da .ac-btn.is-primary[aria-disabled="true"] { opacity: .5; }
+/* Deleting with a payment on its way: the warning, between what goes and the buttons. */
+.set-del > .ac-notice { margin-top: 16px; }
+
+/* ------------------------------------------------------------------ wide */
+@media (min-width: 1600px) {
+  .set { --idx: 196px; --col: 1000px; }
+  .set-pn { --ctl: 300px; }
+}
+@media (max-width: 1240px) {
+  .set { --idx: 152px; }
+  .set-pn { --ctl: 240px; }
+  /* No room beside you any more, so the sky grows enough to hold the question above you. */
+  .set[data-out] { --hz: calc(240px + var(--ask)); }
+  .set[data-out] .set-me { max-width: none; }
+  .set-r, .set-gs { column-gap: 18px; }
+}
+
+/* ------------------------------------------------------------------ narrow: the index becomes a strip */
+@media (max-width: 1000px) {
+  .set { --idx: 0px; }
+  .set-body { grid-template-columns: minmax(0, 1fr); margin-top: 34px; }
+  .set-idx { display: none; }
+  .set::after { background: linear-gradient(to bottom, transparent, var(--ground) 30px); }
+  .set-grp, .set-blk, .set-r[id] { scroll-margin-top: 62px; }
+  .set-strip { position: sticky; top: 0; z-index: 12; display: flex; gap: 2px; margin-inline: calc(var(--page-x) * -1); margin-bottom: 22px; padding: 8px var(--page-x); overflow-x: auto; scrollbar-width: none; background: var(--ground); }
+  .set-strip::-webkit-scrollbar { display: none; }
+  .set-sx { flex: none; height: 34px; padding: 0 12px; border-radius: var(--radius-pill); font: 500 13.5px/34px var(--font-sans); color: var(--ink-3); white-space: nowrap; }
+  .set-sx[aria-current="true"] { background: color-mix(in oklch, var(--ink) 11%, transparent); color: var(--ink); }
+}
+
+/* ------------------------------------------------------------------ a phone */
+@media (max-width: 860px) {
+  /* The top bar sits on the sky too, which runs up under it however tall the bar is. */
+  .shell:has(.set) .ph-head { position: relative; z-index: 1; }
+  .set { --sky: calc(134px + var(--bar)); --page-x: 20px; margin-top: calc(-1 * var(--bar)); }
+  .set[data-out] { --hz: calc(144px + var(--bar) + var(--ask)); }
+  .set > .dusk-in { padding-top: var(--bar); padding-bottom: 48px; }
+  .set-band { display: block; height: calc(var(--hz) - var(--bar)); }
+  .set-me { position: absolute; left: 0; right: 0; bottom: 0; }
+  .set-acts { position: absolute; right: -12px; top: 0; height: auto; min-width: 0; margin: 0; padding: 0; }
+  .set-ask { left: 0; right: 0; top: 44px; width: auto; }
+  .set-body { margin-top: 30px; }
+  .set-grp + .set-grp { margin-top: 48px; }
+  .set-grh { margin-bottom: 12px; }
+  .set-grh h2 { font-size: 19px; }
+  .set-pn { --mx: 56px; --pn-x: 16px; --pn-r: 16px; }
+  .set-r { --ctl-col: auto; column-gap: 12px; min-height: 56px; }
+  /* A list, a choice or something wide goes under its label, the width of the panel. */
+  .set-r:has(> .set-c > .set-ctl > :is(.ac-seg, .ac-select, .set-vol)), .set-r.is-wide, .set-r.is-stack { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }
+  .set-r.is-stack .set-l { min-height: 0; }
+  /* Two buttons, or a fact and a button, go under the label, at its start, so a long help keeps its measure. */
+  .set-r.is-under { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }
+  .set-r.is-under .set-c, .set-r.is-under .set-ctl { justify-content: flex-start; }
+  .set-r.is-under .set-ctl > .ac-btn.is-quiet:first-child { margin-left: -10px; }
+  .set-r .set-ctl { max-width: 100%; }
+  .set-r.is-sub, .set-foot.is-sub, .set-pn > .ac-drive-history { margin-left: 0; }
+  .set-r .set-h { padding-left: 0; }
+  /* Saved goes under what was pressed, inside its row; over a list or a choice that has the width, at its label's end. */
+  .set-sv { right: 0; top: calc(100% + 3px); transform: none; animation-name: set-saved-up; }
+  .set-r:has(> .set-c > .set-ctl > :is(.ac-seg, .ac-select, .set-vol)) .set-sv, .set-r.is-wide .set-sv, .set-r.is-stack .set-sv { top: -26px; }
+  .set-mx-t { gap: 10px; font-size: 14px; }
+  .set-led { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 12px; }
+  .set-gs { grid-template-columns: minmax(0, 1fr); row-gap: 16px; }
+  .set-foot-a { margin-left: 0; }
+  .set-eves { gap: 12px; }
+  /* A note's action goes under its words, at their start. */
+  .set-note.has-a { grid-template-columns: 18px minmax(0, 1fr); align-items: start; padding-right: 14px; }
+  .set-note.has-a.has-x { grid-template-columns: 18px minmax(0, 1fr) auto; padding-right: 6px; }
+  .set-note-a { grid-column: 2; grid-row: 2; margin-block: 10px 0; }
+}
+
+/* ---- Add money: the sheet (topup.tsx), picking how much and how to pay, then where to send it ---- */
+.ac-sheet.set-topup { font-variant-numeric: tabular-nums; display: flex; flex-direction: column; width: min(560px, calc(100vw - 28px)); max-height: calc(100dvh - 13vh - 24px); }
+.set-topup-h { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-5) var(--space-4) 0 var(--space-6); }
+.set-topup-h h2 { flex: 1; margin: 0; font: 600 18px/24px var(--font-sans); letter-spacing: -.01em; }
+.set-topup-body { display: grid; gap: var(--space-6); min-height: 0; overflow-y: auto; padding: var(--space-2) var(--space-6) var(--space-6); }
+.set-topup-lead { font-size: 14px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty; }
+/* The status line under the form takes no room until it says something. */
+.set-topup-body > [role="status"]:empty { position: absolute; }
+/* How much: one row each, the amount and what it is on the left, what to send on the right. */
+.set-topup-amounts, .set-topup-pick { display: grid; gap: var(--space-2); margin: 0; padding: 0; border: 0; min-width: 0; }
+.set-topup-amounts legend, .set-topup-pick legend { margin-bottom: var(--space-3); padding: 0; font: 600 13.5px/1.2 var(--font-sans); color: var(--ink); }
+.set-topup-amt { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); min-height: 64px; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; transition: box-shadow var(--duration-1); }
+.set-topup-amt:hover { box-shadow: inset 0 0 0 1px var(--line-control); }
+.set-topup-amt:has(> input:checked) { box-shadow: inset 0 0 0 2px var(--ink); }
+.set-topup-amt:has(> input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.set-topup-amt > input { margin: 0; accent-color: var(--ink); }
+.set-topup-amt > input:focus-visible { outline: none; }
+.set-topup-amt .n { display: grid; gap: var(--space-1); min-width: 0; font: 600 14.5px/1.3 var(--font-sans); color: var(--ink); }
+.set-topup-amt .n small { font: 500 12.5px/1.3 var(--font-sans); color: var(--ink-3); }
+.set-topup-amt .n .ac-input { width: min(200px, 100%); height: 32px; padding: 0 var(--space-3); font: 600 14.5px/1 var(--font-sans); }
+.set-topup-amt .p { display: flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
+.set-topup-amt .p b { font: 600 14px/1.3 var(--font-sans); color: var(--ink); }
+.set-topup-amt .p .ac-chip { height: 22px; padding: 0 var(--space-2); font-size: 12px; }
+/* Pay with USDC, its mark beside it, over the network to send it on. */
+.set-topup-pick legend { display: flex; align-items: center; gap: var(--space-2); }
+.set-topup-pick legend .ac-crypto { width: 16px; height: 16px; }
+.set-topup-pick .ac-select { width: 100%; height: 44px; padding-inline: var(--space-3); }
+.set-topup-pick .ac-select .v { flex: 1; }
+/* Waiting on the server: a quiet line with dots. */
+.set-topup-wait { display: flex; align-items: center; gap: var(--space-3); font: 500 15px/1.4 var(--font-sans); color: var(--ink-2); }
+/*
+ * Paying: the payment followed with checkout's own parts (PayStatus, PayAmount, PayAddress and the rest, plans/checkout.css),
+ * in the flow they have there. On a phone it's a `ck` container, so checkout's phone rules for those parts apply: no QR code
+ * (a phone can't scan itself), Open in wallet in its place.
+ */
+.set-topup-pay { min-width: 0; }
+.set-topup-f { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-3); padding: var(--space-4) var(--space-6); border-top: 1px solid var(--line); }
+@media (max-width: 600px) {
+  .ac-sheet.set-topup { top: 12px; max-height: calc(100dvh - 24px); }
+  .set-topup-h { padding-left: var(--space-4); }
+  .set-topup-body { padding-inline: var(--space-4); }
+  .set-topup-f { padding-inline: var(--space-4); }
+  .set-topup-pay { container: ck / inline-size; }
+  .set-topup-amt { padding-inline: var(--space-3); }
+}
+
+/* ---- Google Drive's folders: choosing one (DriveFolderPicker), and a call's own folder on its note ---- */
+.set-drive-wait { display: flex; align-items: center; justify-content: center; gap: 9px; padding: 25px 12px; font: 400 14px/20px var(--font-sans); color: var(--ink-2); }
+.set-drive-picker.ac-modal { width: min(560px, calc(100vw - 32px)); padding: 0; overflow: hidden; }
+.set-drive-picker-head { display: flex; align-items: center; gap: 12px; padding: 24px 24px 18px; }
+.set-drive-picker-head > div { flex: 1; min-width: 0; }
+.set-drive-picker-head h2 { margin: 0; font: 600 18px/25px var(--font-sans); color: var(--ink); }
+.set-drive-picker-head p { margin: 4px 0 0; font: 400 13px/19px var(--font-sans); color: var(--ink-2); }
+.set-drive-picker-icon { display: grid; place-items: center; width: 44px; height: 44px; flex: none; background: var(--horizon-soft); border-radius: var(--radius-lg); color: var(--horizon); }
+.set-drive-folders { max-height: min(420px, 48vh); overflow: auto; padding: 0 24px; }
+.set-drive-folders ul { padding: 0; margin: 0; list-style: none; }
+.set-drive-folder { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 15px 2px; border: 0; border-top: 1px solid var(--line); color: var(--ink-2); background: transparent; text-align: left; cursor: pointer; }
+.set-drive-folder > .ac-drive-location { flex: 1; }
+.set-drive-folder:hover { color: var(--horizon); }
+.set-drive-folder:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: var(--radius-sm); }
+.set-drive-folder:disabled { opacity: .5; cursor: default; }
+.set-drive-picker-foot { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 24px 24px; border-top: 1px solid var(--line); }
+.set-drive-picker-foot p { margin: 0; font: 400 12px/18px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+.set-drive-picker-foot .ac-btn { flex: none; }
+.set-drive-problem { display: flex; align-items: start; gap: 7px; padding: 10px 24px; color: var(--caution); font: 400 13px/20px var(--font-sans); }
+.set-drive-problem .ac-i { flex: none; margin-top: 2px; }
+@media (max-width: 620px) { .set-drive-picker-head { padding: 20px 18px 16px; gap: 9px; } .set-drive-folders { padding-inline: 18px; } .set-drive-picker-foot { padding: 16px 18px 20px; flex-wrap: wrap; } .set-drive-picker-foot .ac-btn { width: 100%; } }

@@ -10,7 +10,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useCallback } from 'react';
 import { log } from '~/lib/log';
-import { q } from '~/lib/queries';
+import { planQueries } from './queries';
 import { roomLabel } from '~/lib/words';
 import { useCheckout } from './checkout';
 
@@ -53,8 +53,8 @@ export function useStorageRefusal(signedIn: boolean, from: 'page' | 'call'): Sto
     let pro: number | null;
     try {
       [plan, pro] = await Promise.all([
-        qc.fetchQuery({ ...q.plan(), staleTime: 0 }),
-        qc.fetchQuery(q.offers()).then((o) => o.pro.storageBytes, () => null)
+        qc.fetchQuery({ ...planQueries.plan(), staleTime: 0 }),
+        qc.fetchQuery(planQueries.offers()).then((o) => o.pro.storageBytes, () => null)
       ]);
     } catch (e) {
       slog.info('the plan wasn’t read for a storage refusal; the server’s words stand', { err: e });

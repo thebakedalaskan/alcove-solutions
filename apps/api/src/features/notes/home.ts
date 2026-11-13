@@ -6,8 +6,8 @@
  * meeting's, in the organizer's vault, read after the note's own access check (`locate`).
  */
 import type { NoteHome } from '@alcove/api';
-import type { Owner } from '../../context';
-import { NotFoundError } from '../../errors';
+import type { Owner } from '../../platform/context';
+import { NotFoundError } from '../../platform/errors';
 import { accountReader, trashOf, workspaceFor, type Workspace } from '../workspaces/access';
 
 /** The folder this run of the call made in its home, and its note goes to: one whose call is this note, and not in Trash. */

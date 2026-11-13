@@ -18,7 +18,8 @@ import { useMatches } from '@tanstack/react-router';
 import { useCallback, useEffect, useState, useSyncExternalStore, type RefObject } from 'react';
 import { overlayOpen } from '~/lib/keys';
 import { log } from '~/lib/log';
-import { q, useChosePlans } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { planQueries, useChosePlans } from './queries';
 
 const plog = log.child({ component: 'plan-choice' });
 
@@ -88,9 +89,9 @@ export const usePlanChoiceUp = (): boolean => useSyncExternalStore(subscribe, ()
 export async function planChoiceReady(qc: QueryClient): Promise<void> {
   if (!navigator.onLine) return;
   const moment = () => new Promise<undefined>((r) => setTimeout(r, 1200));
-  const plan = await Promise.race([qc.ensureQueryData(q.plan()).catch(() => undefined), moment()]);
+  const plan = await Promise.race([qc.ensureQueryData(planQueries.plan()).catch(() => undefined), moment()]);
   if (!plan?.choose) return;
-  await Promise.race([qc.ensureQueryData(q.offers()).catch(() => undefined), moment()]);
+  await Promise.race([qc.ensureQueryData(planQueries.offers()).catch(() => undefined), moment()]);
 }
 
 /**
@@ -98,13 +99,13 @@ export async function planChoiceReady(qc: QueryClient): Promise<void> {
  * (`Opening Plans`), decided as Home decides, from the plan /ready reads before the account screen goes up.
  */
 export function usePlansFirst(): boolean {
-  const owner = useQuery(q.session()).data?.ownerId ?? null;
-  const choose = useQuery(q.plan()).data?.choose;
+  const owner = useQuery(accountQueries.session()).data?.ownerId ?? null;
+  const choose = useQuery(planQueries.plan()).data?.choose;
   return owner !== null && planChoiceShows({ page: '/home', choose, doneHere: doneHere(owner) });
 }
 
 /**
- * The page being shown, as the frame has it (routes/_app.tsx): the router's location moves as soon as a navigation starts, and
+ * The page being shown, as the frame has it (features/shell/AppFrame.tsx): the router's location moves as soon as a navigation starts, and
  * an index page's path ends in a slash.
  */
 function shownPath(matches: readonly { pathname: string }[]): string {
@@ -120,9 +121,9 @@ function shownPath(matches: readonly { pathname: string }[]): string {
 export function usePlanChoice(): { up: boolean; leave: () => void } {
   const qc = useQueryClient();
   const page = useMatches({ select: shownPath });
-  const owner = useQuery(q.session()).data?.ownerId ?? null;
+  const owner = useQuery(accountQueries.session()).data?.ownerId ?? null;
   const [shown, setShown] = useState(() => owner !== null
-    && planChoiceShows({ page, choose: qc.getQueryData(q.plan().queryKey)?.choose, doneHere: doneHere(owner) }));
+    && planChoiceShows({ page, choose: qc.getQueryData(planQueries.plan().queryKey)?.choose, doneHere: doneHere(owner) }));
   /* While they're up, the tour waits. */
   useEffect(() => {
     if (!shown) return undefined;
@@ -155,7 +156,7 @@ const SEEN_MS = 700;
  * it stops watching.
  */
 export function usePlansSeen(el: RefObject<HTMLElement | null>, watching: boolean): void {
-  const owner = useQuery(q.session()).data?.ownerId ?? null;
+  const owner = useQuery(accountQueries.session()).data?.ownerId ?? null;
   const chose = useChosePlans().mutate;
   useEffect(() => {
     const node = el.current;

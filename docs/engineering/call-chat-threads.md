@@ -1,7 +1,7 @@
 # Call chat threads
 
 Room chat and private conversations use one `ChatView`, its conversation-scoped `ChatDraft`, and the stateless
-`ChatMessage`, `ChatThreadLine` and `ChatThreadHead` in the UI kit (`components/call-chat.tsx`). A reply contains one
+`ChatMessage`, `ChatThreadLine` and `ChatThreadHead` in the UI kit (`call/call-chat.tsx`). A reply contains one
 canonical original (`root`) and the message being answered (`replyTo`). Threads are flat, as Slack's are: the thread's
 composer answers its original (or, where the original is unavailable, its latest readable reply), and there is no
 "Replying to" strip. Main chat renders originals, with each thread's line (repliers' faces, count, last reply or new),

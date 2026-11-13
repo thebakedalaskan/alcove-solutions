@@ -6,10 +6,10 @@
 import { AlcoveApiError, type Busy, type Interval } from '@alcove/api';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { tx } from '../../db';
+import { tx } from '../../platform/db';
 import { updateManifest } from './service';
-import { openOwner } from '../../owners';
-import type { GoogleUser, Spoil } from '../../testing/fake-google';
+import { openOwner } from '../../keys/owners';
+import type { GoogleUser, Spoil } from '../../testing/fakes/google';
 import { connectGoogleCalendar, ORIGIN, startHarness, type Browser, type Harness } from '../../testing/harness';
 
 let h: Harness;

@@ -1,16 +1,13 @@
 import type { HttpBindings } from '@hono/node-server';
 import { type Context } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
-import type { Deps, Owner } from '../context';
-import { AuthError } from '../errors';
-import { addLogContext, type Level } from '../log';
-import { CALL_PASS_HEADER } from '../callPass';
-import { openOwner } from '../owners';
-import { ABSOLUTE_MS, cookieName, findSession } from '../sessions';
-import * as access from '../features/workspaces/access';
-import * as callsParticipants from '../features/calls/participants';
+import type { Deps, Owner } from '../platform/context';
+import { AuthError } from '../platform/errors';
+import type { Level } from '../platform/log';
+import { openOwner } from '../keys/owners';
+import { ABSOLUTE_MS, cookieName, findSession } from '../keys/sessions';
 
-export type Env = { Bindings: HttpBindings; Variables: { owner: Owner; viewer: callsParticipants.Viewer; requestId: string; receipt: string | undefined; refusedAt: Level | undefined } };
+export type Env = { Bindings: HttpBindings; Variables: { owner: Owner; requestId: string; receipt: string | undefined; refusedAt: Level | undefined } };
 
 /**
  * The client's address as the front end saw it: the last x-forwarded-for entry. Behind the edge (edge/listen.ts) that's the
@@ -42,18 +39,5 @@ export function createHttpContext(d: Deps) {
     if (!o) throw new AuthError('Sign in to see what carries over from earlier calls.');
     return o;
   };
-
-  /*
-   * A workspace, by session or call pass: a guest in a call has only their pass, so what they may reach comes before the
-   * sign-in below. All of it reads, or sets something a retry can't do twice, so none of it keeps a receipt: a title
-   * changes as it's typed, and a guest has no account to keep one under. features/workspaces/access.ts decides everything from here on.
-   */
-  const credentials = (c: Context): access.Credentials => ({ session: getCookie(c, COOKIE), pass: c.req.header(CALL_PASS_HEADER) });
-
-  const readerOf = async (c: Context): Promise<access.Reader> => {
-    const r = await access.readerOf(d, credentials(c));
-    addLogContext({ ...(r.account ? { ownerId: r.account.owner.ownerId } : {}), ...(r.seat ? { callId: r.seat.callId } : {}) });
-    return r;
-  };
-  return { secure, COOKIE, startSession, optionalOwner, signedIn, credentials, readerOf };
+  return { secure, COOKIE, startSession, optionalOwner, signedIn };
 }

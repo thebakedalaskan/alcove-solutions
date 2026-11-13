@@ -7,7 +7,7 @@ import { AlcoveApiError, type AlcoveApi, type AudioPiece, type CallSession, type
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { LIMITS } from '../../limits';
+import { LIMITS } from '../../platform/limits';
 import { maintain } from '../../maintenance';
 import { startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit, presentScreen, stopPresenting } from '../../testing/livekit';

@@ -1,7 +1,7 @@
 /** Unencrypted inference is disclosed on the note before requests leave, including work done during a live call. */
 import { type AlcoveApi, type AudioPiece, type CallSession, type TranscriptClip } from '@alcove/api';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { NOTES_MODEL, UNENCRYPTED_MODEL, speechWav } from '../../testing/fake-near';
+import { NOTES_MODEL, UNENCRYPTED_MODEL, speechWav } from '../../testing/fakes/near';
 import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
 

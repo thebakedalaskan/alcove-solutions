@@ -1,5 +1,5 @@
 /*
- * The welcome page's cove (packages/ui/src/components/cove.tsx), drawn by the same numbers: three headlands a side, rolling
+ * The welcome page's cove (packages/ui/src/evening/cove.tsx), drawn by the same numbers: three headlands a side, rolling
  * hills with pines and cypresses, cliff faces lit on one side, sea stacks by the mouth, their reflections, foam and the
  * bay's ripples. Here it stands at night, behind the page a call leaves you on. `window.COVE.draw(plan)` returns the paths;
  * `window.COVE.sky(...)` the stars and the light on the water, from the same kind of seed.

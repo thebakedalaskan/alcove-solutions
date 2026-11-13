@@ -88,8 +88,9 @@ export function Billing() {
 | `calc(30 * var(--vh, 1vh))` | `30vh` |
 
 - The canvas's page prefixes aren't the app's: `tm-` is `tp-`, `rc-` is `rec-`, `st2-` is `set-`, `nt-page` is `nt`.
-- Styles go in the page's own stylesheet in `packages/ui/src/styles/`, with its own class prefix, imported from
-  `styles.css` after `horizon.css` (or `.dusk`'s default `--hz` wins). Name it in AGENTS.md's design system list.
+- Styles go in the page's own stylesheet in its area's folder in `packages/ui/src/` (`packages/ui/AGENTS.md` maps them),
+  with its own class prefix, imported from `styles.css` after `evening/horizon.css` (or `.dusk`'s default `--hz` wins). Name
+  it in AGENTS.md's design system list.
 - Use the tokens for every colour, radius, shadow, duration and easing. There's no raw hex in the app.
 - Truncate with `ac-clamp-1` and `ac-clamp-2`. Don't set `display: block` on a clamped element: it cancels the clamp.
 - Icons come from `Icon`. Add a name to its map if one's missing.

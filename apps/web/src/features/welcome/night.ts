@@ -2,7 +2,7 @@
  * What the welcome page's night shows, all made up: what the recorder hears in a Thursday session and the notes it leaves
  * (RecordScene), and one note from a call, as you see it and as Alcove's servers hold it (SealedScene).
  */
-import type { CastId } from '~/features/notes/cast';
+import type { CastId } from '~/features/examples/cast';
 
 /** What's heard, a line at a time. It doesn't say who spoke. */
 export const HEARD = [

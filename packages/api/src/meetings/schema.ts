@@ -1,5 +1,5 @@
-import { NotesChoicesSchema, NotesSettingSchema } from '../calls/settings';
-import { CallDocumentSchema } from '../calls/workspace';
+import { NotesChoicesSchema, NotesSettingSchema } from '../calls/notes/settings';
+import { CallDocumentSchema } from '../calls/workspace/workspace';
 import { PersonSchema } from '../identity/people';
 import { IDSchema, ISODateSchema } from '../shared/ids';
 import { z } from '../shared/zod';

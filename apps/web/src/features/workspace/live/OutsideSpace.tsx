@@ -7,7 +7,7 @@ import { WsDoc, WsDocHead, WsList, WsPane, WsSection } from '@alcove/ui';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import type { WorkspaceCall, WorkspacePlace } from '../context';
 import { LiveHostContext, type LiveHost } from './host';
-import { NO_IDS } from '../ids';
+import { NO_IDS } from '../sharing/ids';
 import { LivePage } from './LivePage';
 import { LiveRows } from './LiveRows';
 import type { LiveCall } from './types';

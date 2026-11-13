@@ -9,7 +9,7 @@ import { Button, EmptyRows, EmptyState, Icon, SmallSunset, Tabs, Widget, cn } fr
 import { useQuery } from '@tanstack/react-query';
 import { useId, useState } from 'react';
 import { useNoteReader } from '~/features/notes/entries';
-import { q, usePendingActions } from '~/lib/queries';
+import { noteQueries, usePendingActions } from '~/features/notes/queries';
 import { TodoRow, useInboxFollowUps } from './FollowUps';
 import { useShowMore } from './parts';
 import { AskRow, settling, useWaiting, waitingOf } from './Waiting';
@@ -17,7 +17,7 @@ import { AskRow, settling, useWaiting, waitingOf } from './Waiting';
 type Tab = 'ask' | 'todo';
 
 export function ForYou({ notes, now }: { notes: readonly NoteSummary[]; now: number }) {
-  const inbox = useQuery(q.inbox());
+  const inbox = useQuery(noteQueries.inbox());
   const data = inbox.data;
   const waiting = useWaiting(data ? waitingOf(data, notes, now) : []);
   const followUps = useInboxFollowUps(data?.followUps.filter((a) => isAcceptedFollowUp(a) && a.takenOn), now);

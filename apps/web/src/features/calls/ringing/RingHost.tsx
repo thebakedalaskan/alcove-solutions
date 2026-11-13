@@ -2,7 +2,7 @@
  * Being rung: a card on whatever page is open, over a modal too, for anyone signed in. One stream per tab; what it says
  * is read with useLive, and a ring that runs out by itself simply leaves. On the page of the call itself there's nothing
  * to ring about, so the card stays away. Join goes through pre-join; Can't now offers three answers, and the organizer
- * sees whichever is picked. While Alcove isn't in front, each card is also a browser notification (RingAlert.ts).
+ * sees whichever is picked. While Alcove isn't in front, each card is also a browser notification (ringAlert.ts).
  */
 import { errorMessage, firstName, type AlcoveApi, type IncomingRing, type RingReply } from '@alcove/api';
 import { RingCard, RingShelf, useToast, type RingAnswer } from '@alcove/ui';
@@ -11,14 +11,15 @@ import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '~/lib/api';
-import { stopSounds } from '~/lib/audio-output';
-import { useSoundPreferences } from '~/lib/sound-preferences';
+import { stopSounds } from '~/features/notifications/soundCues';
+import { useSoundPreferences } from '~/features/notifications/soundPreferences';
 import { readPrefs } from '~/features/call/media/devices';
 import { useLive } from '~/lib/live';
 import { log } from '~/lib/log';
-import { q, useRingAnswer } from '~/lib/queries';
-import { useRingAlerts } from './RingAlert';
-import { playRing, readyRingSound } from './RingSound';
+import { accountQueries } from '~/features/account/queries';
+import { useRingAnswer } from '~/features/calls/list/queries';
+import { useRingAlerts } from './ringAlert';
+import { playRing, readyRingSound } from './ringSound';
 
 const rlog = log.child({ component: 'rings' });
 type Rings = ReturnType<AlcoveApi['rings']['live']>;
@@ -34,7 +35,7 @@ const keyOf = (r: IncomingRing) => `${r.id}:${r.expiresAt}`;
 const NIGHT = /^\/(?:call|join|move|record\/live)(?:\/|$)/;
 
 export function RingHost() {
-  const session = useQuery(q.session()).data;
+  const session = useQuery(accountQueries.session()).data;
   return session ? <Signed key={session.ownerId} /> : null;
 }
 

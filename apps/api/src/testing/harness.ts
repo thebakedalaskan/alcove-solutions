@@ -11,21 +11,23 @@ import { serve, type ServerType } from '@hono/node-server';
 import { Server } from 'node:http';
 import pg from 'pg';
 import { createApp } from '../app';
-import type { Deps } from '../context';
-import { loadConfig, loadEnv, type Config } from '../config';
-import { createPool } from '../db';
-import { createDocPool } from '../live/docPool';
+import type { Deps } from '../platform/context';
+import { loadConfig, loadEnv, type Config } from '../platform/config';
+import { createPool } from '../platform/db';
+import { createDocPool } from '../live/doc-pool';
+import { DOC_WORKER } from '../features/workspaces/documents/pool';
 import { createHub } from '../live/hub';
-import type { LimitName } from '../limits';
-import { createLiveKit } from '../livekit';
-import { configureLogging } from '../log';
+import type { LimitName } from '../platform/limits';
+import { createLiveKit } from '../providers/livekit';
+import { configureLogging } from '../platform/log';
 import { migrate } from '../migrate';
-import { createObjectStore, type ObjectStore } from '../objects';
-import { resolveKeys, type LegacyKeys } from '../serverKeys';
-import { startFakeGoogle, type FakeGoogle, type GoogleUser, type Spoil } from './fake-google';
-import { fakeKms } from './fake-kms';
-import { startFakeNear, type FakeNear } from './fake-near';
-import { startFakeOneClick, type FakeOneClick } from './fake-oneclick';
+import { createObjectStore, type ObjectStore } from '../platform/objects';
+import { opensAccounting } from '../features/billing/plans';
+import { resolveKeys, type LegacyKeys } from '../keys/server-keys';
+import { startFakeGoogle, type FakeGoogle, type GoogleUser, type Spoil } from './fakes/google';
+import { fakeKms } from './fakes/kms';
+import { startFakeNear, type FakeNear } from './fakes/near';
+import { startFakeOneClick, type FakeOneClick } from './fakes/oneclick';
 
 // An HTTPS web origin, so the API applies its production cookie rules (__Host- names, Secure) over the test transport.
 export const ORIGIN = 'https://localhost:3000';
@@ -107,7 +109,7 @@ export interface Harness {
 /** A second server's settings: the harness's own, but for these, and inside a TEE the old keys it's started with, or retiring them. */
 export type ServerSettings = Partial<Config> & { legacy?: LegacyKeys | undefined; retire?: boolean | undefined };
 
-const docPoolFor = (cfg: Config) => createDocPool({ workers: cfg.DOC_WORKERS, timeoutMs: cfg.DOC_WORK_MS, heapMb: cfg.DOC_HEAP_MB, waitingPerPerson: cfg.DOC_WAITING_PER_PERSON });
+const docPoolFor = (cfg: Config) => createDocPool({ workers: cfg.DOC_WORKERS, timeoutMs: cfg.DOC_WORK_MS, heapMb: cfg.DOC_HEAP_MB, waitingPerPerson: cfg.DOC_WAITING_PER_PERSON, worker: DOC_WORKER });
 
 async function listen(deps: Deps, stopping?: AbortSignal | undefined): Promise<{ server: ServerType; baseUrl: string }> {
   const app = createApp(deps, stopping);
@@ -197,7 +199,7 @@ export async function startHarness(): Promise<Harness> {
       const given = { ...deps.cfg, ...over };
       // Inside a TEE nothing of the harness's keys carries over: only what the stand-in Cloud KMS, the database and the old keys say.
       const settings: Config = given.TEE === 'confidential-space'
-        ? { ...given, ...(await resolveKeys(own ?? pool, { tee: 'confidential-space', wrapper: fakeKms(), legacy, retire: retire ?? false })) }
+        ? { ...given, ...(await resolveKeys(own ?? pool, { tee: 'confidential-space', wrapper: fakeKms(), legacy, retire: retire ?? false, opensAccounting })) }
         : given;
       const hub = createHub(hubUrl ?? url, { checkMs: settings.HUB_CHECK_MS, timeoutMs: settings.HUB_TIMEOUT_MS, maxStreams: settings.LIVE_STREAMS_MAX, maxPerAddress: settings.LIVE_STREAMS_PER_ADDRESS, makeRoomAfterMs: settings.LIVE_MAKE_ROOM_MS });
       // Workers take a moment to start, so instances share them, unless a test wants them to behave differently.

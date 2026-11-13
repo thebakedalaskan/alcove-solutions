@@ -1,94 +1,39 @@
 /*
- * Accounts: signing in, the profile and preferences. A sign-in identity (provider account and
- * verified email) is found by keyed hashes; the profile itself is a sealed item. Google sign-in is
- * real (../google.ts); Microsoft and single sign-on are demo identities for now (../demo.ts).
+ * An account's whole life: signing in, which makes the account the first time (its keys, its profile from the provider and
+ * its plan); its sessions; and deleting it, which reaches into every feature. A sign-in identity (provider account and
+ * verified email) is found by keyed hashes; the profile itself is features/profile/profile.ts. Google sign-in is real
+ * (providers/google.ts); Microsoft and single sign-on are demo identities for now (./demo.ts).
  */
-import { DEFAULT_NOTIFICATION_PREFERENCES, DEFAULT_SOUND_PREFERENCES, PreferencesSchema, type DemoProvider, type Patch, type Person, type Preferences, type Session, type SignInBody } from '@alcove/api';
+import { type DemoProvider, type Session, type SignInBody } from '@alcove/api';
 import { z } from 'zod';
-import type { Deps, Owner } from '../../context';
-import { blindIndex, equalBytes } from '../../crypto';
-import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
-import { demoDay, demoIdentity, isSharedDemo } from '../../demo';
-import type { GoogleIdentity, Identity } from '../../identity';
-import { ForbiddenError, GoogleEmailRequiredError, GoogleSignupInviteRequiredError, NotFoundError } from '../../errors';
-import { log } from '../../log';
-import { createOwner, indexKey, openOwner, ownerFrom } from '../../owners';
-import { closeSession, openSession } from '../../sessions';
-import { createItem, listItems, saveRevision, lockItem } from '../../vault';
+import type { Deps, Owner } from '../../platform/context';
+import { blindIndex, equalBytes } from '../../keys/crypto';
+import { bytea, exec, maybeOne, rows, timestamp, tx } from '../../platform/db';
+import { demoDay, demoIdentity, isSharedDemo } from './demo';
+import type { GoogleIdentity, Identity } from '../../providers/identity';
+import { ForbiddenError, GoogleEmailRequiredError, GoogleSignupInviteRequiredError, NotFoundError } from '../../platform/errors';
+import { log } from '../../platform/log';
+import { createOwner, indexKey, openOwner, ownerFrom } from '../../keys/owners';
+import { closeSession, openSession } from '../../keys/sessions';
+import { createItem, listItems } from '../../keys/vault';
+import { DEFAULT_PREFERENCES, Profile, changeProfile, me, profile, updateProfile } from '../profile/profile';
 import { forgetAnswers } from '../meetings/access';
 import { takeAllBack } from '../notes/additions';
-import { forgetAllMade } from '../notes/links';
-import { queueDelete } from '../recordings/audio';
+import { forgetAllMade } from '../notes/links/links';
+import { queueDelete } from '../../platform/objects';
 import { open as openPlan, tellPayers } from '../billing/plans';
-import { forgetMembership, memberChanged, refuseDeletingAdmin } from '../billing/teams';
+import { forgetMembership, memberChanged, refuseDeletingAdmin } from '../billing/teams/teams';
 import { forgetAccess, grantToRevoke, release, revokeGrant, unreachable, withdraw } from '../meetings/calendar';
 import { create as createMeeting, findUpcoming } from '../meetings/service';
-import { deleteOwnNote, heldNoteIds } from '../notes/service';
-import { photoUrl } from './photos';
-import { portraitFor } from './portraits';
-import { collect } from '../workspaces/media';
+import { deleteOwnNote } from '../notes/service';
+import { collect } from '../workspaces/uploads/media';
 import { eventsToWithdraw } from '../meetings/repeats';
-import { forget as forgetRings } from '../calls/rings';
-import { forgetEmail as forgetFeatureFlags } from '../../feature-flags';
-import { carryModel } from '../notes/carryModel';
+import { forget as forgetRings } from '../calls/ringing/rings';
+import { workspaceCalls } from '../calls/workspace/seats';
+import { forgetEmail as forgetFeatureFlags } from '../../platform/feature-flags';
 import { forgetAccount, moveAddress } from '../workspaces/service';
 
 const alog = log.child({ component: 'account' });
-
-/**
- * Preferences as a profile keeps them, and as GET and PATCH /v1/account/preferences send them. How long a summary is
- * stopped being a choice (every note gets the short summary, with the full summary under it), but the release before
- * this one opens a profile, and reads the preferences it's sent, only when they have `summaryLength`: its app may still
- * be open in a tab, or served while this one deploys. So it's still written, as it was, and still sent. This release's
- * app doesn't declare it, so its schema drops it. The next release takes it off the wire and out of the profile together.
- */
-const StoredPreferences = PreferencesSchema.extend({ summaryLength: z.enum(['short', 'detailed']).default('short') });
-type StoredPreferences = z.infer<typeof StoredPreferences>;
-
-export const Profile = z.object({
-  name: z.string(),
-  email: z.string(),
-  photoUrl: z.string().optional(),
-  /** A demo account, with a sample calendar and company directory. */
-  sample: z.boolean(),
-  preferences: z.preprocess(carryModel, StoredPreferences),
-  /** Colleagues this person has invited to Alcove. */
-  invited: z.array(z.string())
-});
-export type Profile = z.infer<typeof Profile>;
-
-const DEFAULT_PREFERENCES: StoredPreferences = {
-  notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, showSoloEvents: false, recordOffline: true,
-  notifications: DEFAULT_NOTIFICATION_PREFERENCES,
-  sounds: DEFAULT_SOUND_PREFERENCES,
-  pinned: [], groups: [], model: null, notificationsPausedUntil: null
-};
-
-async function profileItem(o: Owner, db: Db) {
-  const [p] = await listItems(o, db, 'profile', Profile);
-  if (!p) throw new NotFoundError('Your profile is missing.', { context: { ownerId: o.ownerId } });
-  return p;
-}
-/** `db`: a transaction reads on its own connection. Waiting for a second one while it holds a lock can use up the pool. */
-export const profile = async (o: Owner, db: Db = o.pool): Promise<Profile> => (await profileItem(o, db)).manifest;
-
-async function changeProfile(o: Owner, db: Db, fn: (p: Profile) => Profile): Promise<Profile> {
-  // Changes take turns: two at once, like a setting and the workspace someone just opened, are both kept.
-  await lockItem(o, db, (await profileItem(o, db)).itemId);
-  const p = await profileItem(o, db);
-  const next = fn(p.manifest);
-  await saveRevision(o, db, p.itemId, p.revisionId, next);
-  return next;
-}
-export const updateProfile = (o: Owner, fn: (p: Profile) => Profile): Promise<Profile> => tx(o.pool, (c) => changeProfile(o, c, fn));
-
-/** `db`: a transaction reads on its own connection. */
-export async function me(o: Owner, db: Db = o.pool): Promise<Person> {
-  const p = await profile(o, db);
-  // A provider photo is served through Alcove (features/account/photos.ts): browsers never fetch it from the provider.
-  const photo = photoUrl(o, p.photoUrl);
-  return { id: o.ownerId, name: p.name, email: p.email, ...(photo ? { photoUrl: photo } : {}), portrait: portraitFor(p.email) };
-}
 
 export async function sessionFor(o: Owner): Promise<Session> {
   if (!o.session) throw new NotFoundError('No session.', { context: { ownerId: o.ownerId } });
@@ -248,7 +193,7 @@ export async function deleteAccount(o: Owner): Promise<void> {
     const rings = await forgetRings(o, c, p.manifest.email);
     // Its address in feature flags' groups and grants, on the same condition as note_access.
     const featureFlags = await forgetFeatureFlags(c, indexKey(o), p.manifest.email, o.ownerId);
-    const workspaces = await forgetAccount(o, c, p.manifest.email, callIds);
+    const workspaces = await forgetAccount(o, c, p.manifest.email, callIds, workspaceCalls);
     // Its place on a team, and the team itself if it's the admin of one nobody else is on.
     const team = await forgetMembership(c, o.ownerId);
     // Every other table keyed by the account cascades from its row.
@@ -319,47 +264,4 @@ async function withdrawCalls(o: Owner): Promise<{ cancelled: number; kept: numbe
   }
   if (failure !== undefined) alog.warn('calendar events not cancelled', { ownerId: o.ownerId, cancelled: out.cancelled, notCancelled: out.notCancelled, err: failure });
   return out;
-}
-
-/**
- * Preferences as they stand, with the `summaryLength` the release before reads (StoredPreferences). Pins that point at
- * notes this person no longer has are dropped here and the cleaned list is saved.
- */
-export async function preferences(o: Owner): Promise<StoredPreferences> {
-  const prefs = (await profile(o)).preferences;
-  if (!prefs.pinned.length) return prefs;
-  const held = await heldNoteIds(o);
-  if (prefs.pinned.every((id) => held.has(id))) return prefs;
-  const next = await updateProfile(o, (p) => ({ ...p, preferences: { ...p.preferences, pinned: p.preferences.pinned.filter((id) => held.has(id)) } }));
-  alog.info('stale pins dropped', { ownerId: o.ownerId, pins: next.preferences.pinned.length });
-  return next.preferences;
-}
-/** Takes a note off this person's pins, when they delete it or remove it from their notes. */
-export async function unpin(o: Owner, noteId: string): Promise<void> {
-  if (!(await profile(o)).preferences.pinned.includes(noteId)) return;
-  await updateProfile(o, (p) => ({ ...p, preferences: { ...p.preferences, pinned: p.preferences.pinned.filter((id) => id !== noteId) } }));
-}
-/** Changes what the patch has, and answers with the preferences as they stand then, `summaryLength` included (StoredPreferences). */
-export async function updatePreferences(o: Owner, patch: Patch<Preferences>): Promise<StoredPreferences> {
-  if (patch.pinned?.length) {
-    const held = await heldNoteIds(o);
-    if (patch.pinned.some((id) => !held.has(id))) throw new NotFoundError('Those notes don’t exist.', { context: { pins: patch.pinned.length } });
-  }
-  return (await updateProfile(o, (p) => ({ ...p, preferences: {
-    notesDefault: patch.notesDefault ?? p.preferences.notesDefault,
-    notesLanguage: patch.notesLanguage ?? p.preferences.notesLanguage,
-    // Not a choice any more: kept as it was, and not changed by a tab on the release before that sends it (StoredPreferences).
-    summaryLength: p.preferences.summaryLength,
-    addToCalendar: patch.addToCalendar ?? p.preferences.addToCalendar,
-    showOtherMeetings: patch.showOtherMeetings ?? p.preferences.showOtherMeetings,
-    showSoloEvents: patch.showSoloEvents ?? p.preferences.showSoloEvents,
-    recordOffline: patch.recordOffline ?? p.preferences.recordOffline,
-    notifications: patch.notifications ?? p.preferences.notifications,
-    sounds: patch.sounds ?? p.preferences.sounds,
-    pinned: patch.pinned ?? p.preferences.pinned,
-    groups: patch.groups ?? p.preferences.groups,
-    model: patch.model === undefined ? p.preferences.model : patch.model,
-    // Null resumes; a time already past is kept as given and means nothing is paused.
-    notificationsPausedUntil: patch.notificationsPausedUntil === undefined ? p.preferences.notificationsPausedUntil : patch.notificationsPausedUntil
-  } }))).preferences;
 }

@@ -10,18 +10,18 @@ import { Button, Faces, Icon, IconButton, Notice, Switch, keptLines, useRaisedTo
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useCopyLink } from '~/features/call/session/links';
-import { JoinRefused } from '~/features/join/JoinProblem';
-import { PrejoinCapture } from '~/features/join/PrejoinCapture';
-import { PrejoinCarry } from '~/features/join/PrejoinCarry';
-import { JoinMuted, PrejoinMain, type Prejoining } from '~/features/join/PrejoinMedia';
+import { JoinRefused } from './JoinProblem';
+import { PrejoinCapture } from './PrejoinCapture';
+import { PrejoinCarry } from './PrejoinCarry';
+import { JoinMuted, PrejoinMain, type Prejoining } from './PrejoinMedia';
 import { api } from '~/lib/api';
-import { sessions } from '~/lib/live';
+import { sessions } from '~/features/call/session/handoff';
 import { log } from '~/lib/log';
 import { listNames, sameEmail, someNames } from '~/lib/people';
-import { useCancelCall, useUpdateCall } from '~/lib/queries';
+import { useCancelCall, useUpdateCall } from '~/features/calls/list/queries';
 import { daysFromToday, hm, minutesUntil, shortDay } from '~/lib/time';
 import { LobbyRing } from './LobbyRing';
-import { ringable } from '../ringing/RingWords';
+import { ringable } from '../ringing/ringWords';
 
 const llog = log.child({ component: 'lobby' });
 

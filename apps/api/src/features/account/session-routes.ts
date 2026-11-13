@@ -3,7 +3,7 @@ import { deleteCookie } from 'hono/cookie';
 import type { Env } from '../../http/context';
 import type { HttpRuntime } from '../../http/runtime';
 import * as account from './account';
-import * as photos from './photos';
+import * as photos from '../profile/photos';
 
 export function registerAccountSessionRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   const { d } = runtime;

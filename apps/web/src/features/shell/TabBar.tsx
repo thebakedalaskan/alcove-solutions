@@ -8,10 +8,10 @@ import { Icon, IconButton, Logo, Tooltip, cn } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useOpenScheduling } from '~/features/calls/scheduling/search';
-import { q } from '~/lib/queries';
+import { teamQueries } from '~/features/team/queries';
 import { Offline } from './Sidebar';
 import { TABS, places } from './places';
-import { YourFace } from './YouMenu';
+import { YourFace } from '~/features/account/YouMenu';
 
 /** The top of the page on a phone. It scrolls away with the page. */
 export function PhoneTop({ onSearch, onNew }: { onSearch: () => void; onNew: () => void }) {
@@ -44,8 +44,8 @@ export function PhoneTop({ onSearch, onNew }: { onSearch: () => void; onNew: () 
 }
 
 export function TabBar() {
-  const team = useQuery(q.team()).data;
-  const mine = useQuery(q.myTeam()).data;
+  const team = useQuery(teamQueries.team()).data;
+  const mine = useQuery(teamQueries.myTeam()).data;
   return (
     <nav className="tabbar" aria-label="Main">
       {places(TABS, team, mine).map((t) => (

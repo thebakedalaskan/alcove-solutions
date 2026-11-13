@@ -1,0 +1,63 @@
+/*
+ * Background: what shows behind someone on camera, chosen in a window of its own. A big live preview of them on the left
+ * (mirrored, as their own camera always is) with what shows named on it, the choices on the right in labelled groups, four
+ * to a row, and Done at the foot. Where the window is short the body scrolls and the preview stays in view. On a phone it's
+ * a sheet: the preview on top, the choices scrolling under it.
+ */
+.ac-modal.ac-bgm { width: min(980px, calc(100vw - 32px)); }
+.ac-bgm-h { flex: none; display: flex; align-items: center; gap: 12px; padding: 18px 18px 10px 24px; }
+.ac-bgm-h h2 { flex: 1; margin: 0; }
+.ac-bgm-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr); gap: 24px; padding: 6px 24px; overflow-y: auto; }
+.ac-bgm-look { position: sticky; top: 0; align-self: start; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.ac-bgm-look .hint { font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
+.ac-bgm-prev { position: relative; aspect-ratio: 16 / 10; border-radius: var(--radius-lg); overflow: hidden; background: var(--stage-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .06); }
+.ac-bgm-prev video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.ac-bgm-off { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; color: var(--stage-ink-2); font: 500 14px/1 var(--font-sans); }
+.ac-bgm-busy { position: absolute; inset: 0; display: grid; place-items: center; background: color-mix(in srgb, var(--stage) 45%, transparent); color: var(--stage-ink); }
+.ac-bgm-busy .ac-spin { width: 22px; height: 22px; }
+.ac-bgm-shows { position: absolute; left: 12px; top: 12px; display: inline-flex; align-items: center; gap: 6px; max-width: calc(100% - 24px); height: 28px; padding: 0 10px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--stage) 66%, transparent); color: var(--stage-ink); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; }
+.ac-bgm-shows .ac-i { flex: none; color: var(--stage-ink-2); }
+/* Room round the choices for the rings, which a scrolling sheet would otherwise cut. */
+.ac-bgm-choices { min-width: 0; min-height: 0; margin: -6px; padding: 6px; }
+.ac-bgm-f { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px 16px; padding: 16px 24px 20px; }
+.ac-bgm-note { display: flex; align-items: flex-start; gap: 7px; margin-right: auto; max-width: 52ch; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
+.ac-bgm-note .ac-i { flex: none; margin-top: 2px; }
+@media (max-width: 640px) {
+  .ac-modal.ac-bgm { left: 0; right: 0; top: auto; bottom: 0; transform: none; width: auto; max-height: 92dvh; border-radius: 28px 28px 0 0; animation: ac-bgm-up var(--duration-3) var(--ease-out) both; }
+  .ac-modal.ac-bgm[data-state="closed"] { animation: ac-fade-out 180ms var(--ease-in) forwards; }
+  .ac-bgm-h { padding: 16px 12px 8px 18px; }
+  .ac-bgm-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 14px; padding: 2px 16px 4px; overflow: hidden; }
+  .ac-bgm-look { position: static; }
+  .ac-bgm-choices { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+  .ac-bgm-f { padding: 12px 16px calc(16px + env(safe-area-inset-bottom, 0px)); }
+}
+@keyframes ac-bgm-up { from { opacity: 0; transform: translateY(24px); } }
+
+/* The choices: groups of small pictures, the one in use ringed in sun. */
+.ac-bgpick-groups { display: grid; gap: 18px; }
+.ac-bgpick-group { display: grid; gap: 8px; }
+.ac-bgpick-h { margin: 0; font: 600 13px/18px var(--font-sans); color: var(--ink); }
+.ac-bgpick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.ac-bgpick-note { font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
+.ac-bgpick-note.is-problem { color: var(--caution); }
+.ac-bgpick-cell { position: relative; min-width: 0; }
+.ac-bgpick-opt { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 100%; aspect-ratio: 16 / 10; padding: 0; border: 0; border-radius: var(--radius-sm); overflow: hidden; background: var(--sunk); color: var(--ink-2); font: 600 12px/1.1 var(--font-sans); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--duration-1) var(--ease-out), color var(--duration-1); }
+.ac-bgpick-opt:hover { color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-control); }
+.ac-bgpick-opt img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ac-bgpick-opt > :not(img, .ac-bgpick-blur, .ac-bgpick-color, input) { position: relative; }
+.ac-bgpick-opt.is-on { color: var(--ink); box-shadow: 0 0 0 2px var(--surface-raised), 0 0 0 4px var(--sun); }
+.ac-bgpick-opt:focus-visible, .ac-bgpick-opt.is-add:focus-within { outline: 2px solid var(--focus); outline-offset: 5px; }
+/* Blur, drawn: a soft glow, softer still for Strong. */
+.ac-bgpick-blur { position: absolute; inset: -20%; background: radial-gradient(circle at 30% 40%, var(--horizon-soft), transparent 55%), radial-gradient(circle at 75% 65%, var(--dusk-haze), transparent 55%), var(--sunk); filter: blur(9px); opacity: .9; }
+.ac-bgpick-blur.is-light { filter: blur(3px); }
+.ac-bgpick-color { position: absolute; inset: 0; }
+.ac-bgpick-opt.is-add { border: 1px dashed var(--line-control); box-shadow: none; background: transparent; }
+.ac-bgpick-opt.is-add:hover { border-color: var(--ink-3); }
+.ac-bgpick-opt.is-add.is-busy { cursor: progress; }
+.ac-bgpick-file { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.ac-bgpick-replace { position: absolute; top: 4px; left: 4px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: var(--radius-xs); background: var(--surface-raised); color: var(--ink-2); box-shadow: var(--shadow-1); cursor: pointer; opacity: 0; }
+.ac-bgpick-cell:hover .ac-bgpick-replace, .ac-bgpick-cell:focus-within .ac-bgpick-replace { opacity: 1; }
+.ac-bgpick-replace:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ac-bgpick-x.ac-icon-btn { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; background: var(--surface-raised); color: var(--ink-2); box-shadow: var(--shadow-1); opacity: 0; transition: opacity var(--duration-1); }
+.ac-bgpick-cell:hover .ac-bgpick-x, .ac-bgpick-cell:focus-within .ac-bgpick-x { opacity: 1; }
+@media (hover: none) { .ac-bgpick-replace, .ac-bgpick-x.ac-icon-btn { opacity: 1; } }

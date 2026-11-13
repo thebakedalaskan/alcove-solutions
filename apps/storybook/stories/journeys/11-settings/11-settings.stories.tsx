@@ -1,0 +1,594 @@
+/*
+ * Journeys in Settings (docs/product/user-flows.md › 11. Settings), from the canvas's Settings board
+ * (docs/design/canvas/data-settings.js). Google's pages can't open in Storybook, so connecting the calendar plays up to
+ * the hand-off; signing in another way is the welcome page's Microsoft or single sign-on, which the stand-in signs in.
+ */
+import { AlcoveApiError } from '@alcove/api';
+import type { Meta } from '@storybook/react-vite';
+import { screen, waitFor, within } from 'storybook/test';
+import { current } from '../../../src/api/state';
+import { receiveTopUp } from '../../../src/world/plans/payments';
+import { standIn } from '../../../src/api/standin';
+import { openBrowser, setOnline } from '../../../src/browser';
+import { session } from '../../../src/world/world';
+import { withNotesLeft } from '../../../src/world/plans/plans';
+import { notConnected } from '../../../src/world/build';
+import { busyEvents } from '../../../src/world/calls';
+import { page, pages, type PageArgs, type PageStory } from '../../../src/page';
+import { away, before, first, LATER, outage, pause, pressable, SOON, swap, unreachable } from '../play';
+
+const meta = { title: 'Journeys/11 Settings', ...pages } satisfies Meta<PageArgs>;
+export default meta;
+
+/** A row of a panel, by its label. */
+const row = (name: string | RegExp) => screen.findByRole('group', { name }, LATER);
+/** A group of the page, by its heading. */
+const group = (name: string) => screen.findByRole('region', { name }, LATER);
+/** The index beside the page (the strip, on a narrow screen). */
+const index = () => screen.findByRole('navigation', { name: 'Settings' }, LATER);
+/** Waits until `where` doesn't say `text` any more. */
+const goneFrom = (where: HTMLElement, text: string) =>
+  waitFor(() => { if (within(where).queryByText(text)) throw new Error(`“${text}” is still there.`); }, SOON);
+/** The welcome page, signed out: it offers every way in, at the top and again at the bottom. */
+const welcome = () => first(screen.findAllByRole('button', { name: 'Continue with Microsoft' }, LATER));
+/** From any page, your face at the top right opens your menu, and Settings in it opens Settings, as the menu goes. */
+const toSettings = async (click: (el: Element) => Promise<void>) => {
+  await click(await screen.findByRole('button', { name: /^Art Vandelay, your menu/ }, LATER));
+  await click(await within(await screen.findByRole('dialog', { name: 'Your menu' }, SOON)).findByRole('link', { name: 'Settings' }, SOON));
+  await screen.findByRole('heading', { name: 'Art Vandelay', level: 1 }, LATER);
+  await away('dialog', 'Your menu');
+};
+
+/** A failure on the server's side: the database connection dropping, Google not answering, the hardware check. */
+const failing = (message: string) => new AlcoveApiError('unavailable', message, { requestId: 'sb-journey' });
+const DATABASE = 'Alcove lost its connection to the database. Try again.';
+
+/** The shared demo account: in with Microsoft, a sample calendar instead of Google's. */
+const demoAccount = before((w) => {
+  w.session = session({ provider: 'microsoft', sample: true, sharedDemo: true });
+  w.calendar = { source: 'sample', needsAccess: false, events: busyEvents() };
+});
+
+/** A change to preferences that takes a moment and doesn't get through. */
+const saving = outage(() => swap(standIn.account, 'updatePreferences', () => pause(1500).then(() => Promise.reject(unreachable()))));
+/** Google taking a moment to let go of the calendar. */
+const slowGoogle = () => { const was = standIn.calendar.disconnect; return swap(standIn.calendar, 'disconnect', () => pause(1500).then(was)); };
+/** Deleting an account takes a moment: long enough to leave Settings meanwhile. */
+const slowDelete = () => { const was = standIn.account.delete; return swap(standIn.account, 'delete', () => pause(2500).then(was)); };
+/** Alcove can't take uploads just now, so what's recorded here waits here. */
+const uploadsDown = outage(() => swap(standIn.recordings, 'start', () => Promise.reject(failing(DATABASE))));
+const prefsDown = outage(() => swap(standIn.account, 'preferences', () => Promise.reject(failing(DATABASE))));
+const minutesDown = outage(() => swap(standIn.plans, 'plan', () => Promise.reject(failing(DATABASE))));
+const calendarDown = outage(() => swap(standIn.calendar, 'get', () => Promise.reject(failing('Google can’t be reached right now.'))));
+const noHardware = outage(() => swap(standIn.trust, 'attestation', () => Promise.reject(failing('This server can’t attest to itself right now.'))));
+
+export const ChangeASetting: PageStory = {
+  name: '11.1 Change a setting',
+  ...page('/settings', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Under Notes for new calls, click Off. There’s nothing to save and nothing else to press', async () => {
+      await userEvent.click(within(await row('Notes for new calls')).getByRole('button', { name: 'Off' }));
+    });
+    await step('It’s kept. Saved shows in the row', async () => {
+      await within(await row('Notes for new calls')).findByText('Saved', {}, SOON);
+    });
+    await step('Two seconds later Saved has gone, and the row just says Off', async () => {
+      await goneFrom(await row('Notes for new calls'), 'Saved');
+    });
+  }
+};
+
+export const PickFromAList: PageStory = {
+  name: '11.2 Pick from a list',
+  ...page('/settings#calls', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Click the AI model', async () => {
+      await userEvent.click(within(await row('AI model')).getByRole('button', { name: /^AI model/ }));
+    });
+    await step('The list opens under it. The current one has a tick, and a model outside a secure enclave says Unencrypted', async () => {
+      await screen.findByRole('option', { name: /^DeepSeek/, selected: true }, SOON);
+    });
+    await step('Click GLM 5.3 Flash. The list closes and the row says Saved', async () => {
+      await userEvent.click(screen.getByRole('option', { name: 'GLM 5.3 Flash' }));
+      await within(await row('AI model')).findByText('Saved', {}, SOON);
+    });
+  }
+};
+
+export const ServerRefuses: PageStory = {
+  name: '11.3 The server refuses',
+  ...page('/settings#calendar', 'busy'),
+  beforeEach: saving.begin,
+  play: async ({ userEvent, step }) => {
+    await step('Under Connections, turn off Show my other meetings on Home', async () => {
+      await userEvent.click(within(await row('Show my other meetings on Home')).getByRole('switch'));
+    });
+    await step('The switch moves straight away, while it’s being kept', async () => {
+      await screen.findByRole('switch', { name: 'Show my other meetings on Home', checked: false }, SOON);
+    });
+    await step('Refused: it goes back, and a toast says why. No Saved', async () => {
+      await within(await row('Show my other meetings on Home')).findByText('Couldn’t confirm', {}, SOON);
+      await screen.findByRole('switch', { name: 'Show my other meetings on Home', checked: true }, SOON);
+    });
+  }
+};
+
+export const DisconnectGoogleCalendar: PageStory = {
+  name: '11.4 Disconnect Google Calendar',
+  ...page('/settings#calendar', 'busy'),
+  beforeEach: slowGoogle,
+  play: async ({ userEvent, step }) => {
+    await step('Under Connections, click Disconnect beside Google Calendar', async () => {
+      await userEvent.click(within(await row('Google Calendar')).getByRole('button', { name: 'Disconnect' }));
+    });
+    await step('Alcove removes its Calendar connection', async () => {
+      await within(await row('Google Calendar')).findByRole('button', { name: 'Disconnecting' }, SOON);
+    });
+    await step('Done. Connect takes its place, and a toast says so', async () => {
+      await screen.findByText('Google Calendar is disconnected.', {}, SOON);
+      await within(await row('Google Calendar')).findByRole('link', { name: 'Connect' }, SOON);
+    });
+  }
+};
+
+export const ConnectGoogleCalendar: PageStory = {
+  name: '11.5 Connect Google Calendar',
+  ...page('/settings#calendar', 'busy'),
+  beforeEach: before((w) => { w.calendar = notConnected; }),
+  play: async ({ userEvent, step }) => {
+    await step('Under Connections, Google Calendar says what Alcove does with it: it reads your events and adds the calls you schedule', async () => {
+      await within(await row('Google Calendar')).findByText('Alcove reads your events and adds the calls you schedule.', {}, SOON);
+    });
+    await step('Click Connect. It goes straight to Google, which asks for access, then returns you to Calendar settings', async () => {
+      await userEvent.click(within(await row('Google Calendar')).getByRole('link', { name: 'Connect' }));
+    });
+  }
+};
+
+export const CalendarThatIsntGoogles: PageStory = {
+  name: '11.6 A calendar that isn’t Google’s to connect',
+  ...page('/settings#calendar', 'busy'),
+  beforeEach: demoAccount,
+  play: async ({ step }) => {
+    await step('A demo account has a sample calendar instead. There’s nothing to connect', async () => {
+      await within(await row('Sample calendar')).findByText('Demo account', {}, SOON);
+    });
+  }
+};
+
+export const CheckTheLevel: PageStory = {
+  name: '11.7 Check the level',
+  ...page('/settings#audio', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Click Check the level. Nothing opens until you do', async () => {
+      await userEvent.click(within(await row('Microphone')).getByRole('button', { name: 'Check the level' }));
+    });
+    await step('The microphone is open for eight seconds. The level moves as you speak', async () => {
+      await within(await row('Microphone')).findByText('Speak, and watch it move. Nothing is recorded.', {}, SOON);
+    });
+    await step('Click Stop, or scroll Audio and video away, and it closes sooner', async () => {
+      await userEvent.click(within(await row('Microphone')).getByRole('button', { name: /^Stop · \d+ s$/ }));
+    });
+    await step('Closed. Nothing was recorded', async () => {
+      await within(await row('Microphone')).findByRole('button', { name: 'Check the level' }, SOON);
+    });
+  }
+};
+
+export const MicrophoneNotAllowedYet: PageStory = {
+  name: '11.8 The browser hasn’t allowed the microphone',
+  ...page('/settings#audio', 'busy', { parameters: { opening: { browser: { devices: 'prompt' } } } }),
+  play: async ({ userEvent, step }) => {
+    await step('First time: click Check the level', async () => {
+      const mic = await row('Microphone');
+      await within(mic).findByText('Your browser asks first.', {}, SOON);
+      await userEvent.click(within(mic).getByRole('button', { name: 'Check the level' }));
+    });
+    await step('The browser asks first. Allow, and the level starts', async () => {
+      await within(await row('Microphone')).findByRole('button', { name: /^Stop · \d+ s$/ }, SOON);
+    });
+  }
+};
+
+export const PlayTestSound: PageStory = {
+  name: '11.9 Play test sound',
+  ...page('/settings#audio', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Click Play test sound', async () => {
+      await userEvent.click(within(await row('Speaker')).getByRole('button', { name: 'Play test sound' }));
+    });
+    await step('A short sound plays through the chosen speaker', async () => {
+      await within(await row('Speaker')).findByRole('button', { name: 'Playing' }, SOON);
+      await within(await row('Speaker')).findByRole('button', { name: 'Play test sound' }, SOON);
+    });
+  }
+};
+
+export const CameraIsAList: PageStory = {
+  name: '11.10 The camera is a list',
+  ...page('/settings#audio', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Pick a camera. It never opens here, so there’s no picture', async () => {
+      // The browser lists the cameras a moment after the page opens, and the row becomes the list.
+      await userEvent.click(await screen.findByRole('button', { name: /^Camera: / }, SOON));
+      await userEvent.click(await screen.findByRole('option', { name: 'Desk camera' }, SOON));
+    });
+    await step('Saved. You see yourself when you join a call', async () => {
+      await within(await row('Camera')).findByText('Saved', {}, SOON);
+    });
+  }
+};
+
+export const TurnOnNotifications: PageStory = {
+  name: '11.11 Turn on browser notifications',
+  ...page('/settings#notifications', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Alerts already show inside Alcove. To have them reach you in another tab, click Turn on', async () => {
+      await userEvent.click(within(await row('Browser notifications')).getByRole('button', { name: 'Turn on' }));
+    });
+    await step('The browser asks, only now. Allow', async () => {
+      await within(await row('Browser notifications')).findByRole('switch', { name: 'Browser notifications', checked: true }, SOON);
+    });
+    await step('They’re on, as a switch, and focus stays on the row. Pick how long before a call', async () => {
+      await userEvent.click(await pressable('button', '5 min'));
+    });
+    await step('Saved, like everything else', async () => {
+      // The row, which holds the choices (named the same).
+      await within(await first(screen.findAllByRole('group', { name: 'Before a call starts' }, LATER))).findByText('Saved', {}, SOON);
+    });
+  }
+};
+
+export const NotificationsBlocked: PageStory = {
+  name: '11.12 Notifications are blocked',
+  ...page('/settings#notifications', 'busy'),
+  // The browser's answer when Alcove asks: Block.
+  beforeEach: () => { openBrowser({ answer: 'denied' }); },
+  play: async ({ userEvent, step }) => {
+    await step('At the same question, Block', async () => {
+      await userEvent.click(within(await row('Browser notifications')).getByRole('button', { name: 'Turn on' }));
+    });
+    await step('The row says where to allow them. Alerts still show inside Alcove, and every tick stays as it is', async () => {
+      const notifications = await row('Browser notifications');
+      await within(notifications).findByText('Blocked', {}, SOON);
+      await within(notifications).findByText(/^Blocked in this browser/);
+    });
+  }
+};
+
+export const SignOutWithRecordings: PageStory = {
+  name: '11.13 Sign out with recordings waiting',
+  ...page('/record', 'offline'),
+  beforeEach: uploadsDown.begin,
+  play: async ({ userEvent, step }) => {
+    await step('With a recording made offline still waiting on this device, click Sign out', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: /^Start recording/ }, LATER));
+      await screen.findByText('00:06', {}, LATER);
+      await userEvent.click(screen.getByRole('button', { name: 'Finish and save' }));
+      await screen.findByText('Saved on this device. It uploads when you’re back online.', {}, LATER);
+      // Back online, Alcove isn't taking uploads just now: the recording waits here.
+      setOnline(true);
+      await toSettings((el) => userEvent.click(el));
+      await within(await row('On this device')).findByText(/^1 recording, .* waiting to upload\.$/, {}, LATER);
+      await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    });
+    await step('The sky opens under it and asks. Stay signed in has focus, and Escape is the same', async () => {
+      const asking = '1 recording on this device hasn’t uploaded. Signing out deletes it.';
+      await screen.findByText(asking, {}, SOON);
+      await screen.findByRole('button', { name: 'Stay signed in' }, SOON);
+      await userEvent.keyboard('{Escape}');
+      await waitFor(() => { if (screen.queryByText(asking)) throw new Error('It’s still asking.'); }, SOON);
+      await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+      await screen.findByText(asking, {}, SOON);
+    });
+    await step('Sign out and delete it: only this account’s recordings go', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Sign out and delete it' }));
+    });
+    await step('The welcome page, signed out', async () => {
+      await welcome();
+    });
+  }
+};
+
+export const SignOutWithNothingWaiting: PageStory = {
+  name: '11.14 Sign out with nothing waiting',
+  ...page('/settings', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Nothing waits on this device, so Recording in the room has no On this device row, and Sign out asks nothing', async () => {
+      await row('Record without a connection');
+      await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    });
+    await step('The welcome page, signed out', async () => {
+      await welcome();
+    });
+    await step('Signed in again, with no connection Sign out says so. You stay signed in, and nothing happens later by itself', async () => {
+      await userEvent.click(await welcome());
+      await toSettings((el) => userEvent.click(el));
+      setOnline(false);
+      await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+      await screen.findByText('Can’t reach Alcove. Check your connection.', {}, SOON);
+      setOnline(true);
+      await screen.findByRole('heading', { name: 'Art Vandelay', level: 1 }, SOON);
+    });
+  }
+};
+
+export const DeleteAccount: PageStory = {
+  name: '11.15 Delete account',
+  ...page('/settings#privacy', 'busy'),
+  beforeEach: slowDelete,
+  play: async ({ userEvent, step }) => {
+    await step('At the end of Privacy, in its own panel, click Delete account', async () => {
+      await userEvent.click(within(await group('Privacy')).getByRole('button', { name: 'Delete account' }));
+    });
+    await step('The panel opens in place: what goes beside what stays. Keep my account has focus', async () => {
+      await screen.findByText('What goes', {}, SOON);
+      await screen.findByText('What stays');
+      await screen.findByRole('button', { name: 'Keep my account' });
+    });
+    await step('With no connection, or if it fails, it says so here. Delete my account tries again, and nothing happens later by itself', async () => {
+      setOnline(false);
+      await userEvent.click(screen.getByRole('button', { name: 'Delete my account' }));
+      await screen.findByText(/^That didn’t work\. Can’t reach Alcove/, {}, SOON);
+      setOnline(true);
+    });
+    await step('Delete my account. It says Deleting until it’s done', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Delete my account' }));
+      await screen.findByRole('button', { name: 'Deleting' }, SOON);
+    });
+    await step('The welcome page, signed out, even if you’d left Settings meanwhile', async () => {
+      await userEvent.click(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: /^Home/ }));
+      await screen.findByText('Your account is deleted.', {}, LATER);
+      await welcome();
+    });
+  }
+};
+
+export const WhenItCantBeDeleted: PageStory = {
+  name: '11.16 When it can’t be deleted',
+  ...page('/settings#privacy', 'busy'),
+  beforeEach: demoAccount,
+  play: async ({ userEvent, step }) => {
+    await step('On the shared demo account, click Delete account', async () => {
+      await userEvent.click(within(await group('Privacy')).getByRole('button', { name: 'Delete account' }));
+    });
+    await step('The row says it can’t be deleted, and offers only Close', async () => {
+      await screen.findByText('This is the shared demo account, so it can’t be deleted.', {}, SOON);
+      await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+      await within(await group('Privacy')).findByRole('button', { name: 'Delete account' }, SOON);
+    });
+  }
+};
+
+export const GetAround: PageStory = {
+  name: '11.17 Get around',
+  ...page('/settings', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Seven groups, and the index marks the one in view. Click Notifications', async () => {
+      await within(await index()).findByRole('link', { name: 'You', current: true }, SOON);
+      await userEvent.click(within(await index()).getByRole('link', { name: 'Notifications' }));
+    });
+    await step('The page glides there, and the small sun on the index goes with it', async () => {
+      await within(await index()).findByRole('link', { name: 'Notifications', current: true }, SOON);
+    });
+    await step('Take the tour, at the top', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Take the tour' }));
+    });
+    await step('Home opens and the tour plays again, one slide at a time', async () => {
+      await screen.findByRole('dialog', { name: 'Start or schedule a call' }, LATER);
+    });
+  }
+};
+
+export const Appearance: PageStory = {
+  name: '11.18 Appearance',
+  ...page('/settings#you', 'busy'),
+  globals: { theme: 'dark' },
+  play: async ({ userEvent, step }) => {
+    await step('Under You, Appearance is kept in this browser. Each choice is a small evening in its own colours. Click Light', async () => {
+      await userEvent.click(within(await row('Theme')).getByRole('button', { name: 'Light' }));
+    });
+    await step('The whole page changes at once, and it’s kept in this browser', async () => {
+      const theme = await row('Theme');
+      await within(theme).findByText('Saved', {}, SOON);
+      await within(theme).findByRole('button', { name: 'Light', pressed: true }, SOON);
+    });
+  }
+};
+
+export const TimeOfNotesLeft: PageStory = {
+  name: '11.19 The time of notes left',
+  ...page('/settings#plan', 'busy'),
+  // Twelve minutes of notes left this period.
+  beforeEach: before((w) => { w.plan = withNotesLeft(12); }),
+  play: async ({ step }) => {
+    await step('Nearly out, the time is warm and the sun is at the start of the line', async () => {
+      await within(await row('Notes left this period')).findByText('12 min', {}, SOON);
+    });
+  }
+};
+
+export const HowYouSignedIn: PageStory = {
+  name: '11.20 How you signed in',
+  ...page('/settings', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('With Google: your name, address and photo come from there, and the link changes them', async () => {
+      await within(await row('Name and photo')).findByRole('link', { name: 'Google account' }, SOON);
+    });
+    await step('Signed in with Microsoft, the same', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+      await userEvent.click(await welcome());
+      await toSettings((el) => userEvent.click(el));
+      await within(await row('Name and photo')).findByRole('link', { name: 'Microsoft account' }, SOON);
+    });
+    await step('With single sign-on there’s nowhere to link to', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+      await welcome();
+      await userEvent.click(await first(screen.findAllByRole('button', { name: 'Use single sign-on' }, SOON)));
+      await userEvent.type(await screen.findByRole('textbox', { name: 'Work email' }, SOON), 'art@vandelay.industries');
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await toSettings((el) => userEvent.click(el));
+      await within(await row('Name and photo')).findByText('Single sign-on', {}, SOON);
+    });
+  }
+};
+
+export const WhenAPanelDoesntLoad: PageStory = {
+  name: '11.21 When a panel doesn’t load',
+  ...page('/settings', 'busy'),
+  beforeEach: [prefsDown.begin, minutesDown.begin, calendarDown.begin, noHardware.begin],
+  play: async ({ userEvent, step }) => {
+    await step('Your preferences didn’t load. Calls and notes and Notifications say so in their places; the rest of the page, and Sign out, still work', async () => {
+      await within(await group('Calls and notes')).findByText('These didn’t load', {}, SOON);
+      await within(await group('Notifications')).findByText('These didn’t load', {}, SOON);
+      await screen.findByRole('button', { name: 'Sign out' });
+      // Try again brings them back, the calendar's switches with them.
+      prefsDown.end();
+      await userEvent.click(within(await group('Calls and notes')).getByRole('button', { name: 'Try again' }));
+      await row('Language');
+    });
+    await step('Your plan didn’t load. Plan stays, and says so', async () => {
+      await within(await group('Plan')).findByText('These didn’t load', {}, SOON);
+    });
+    await step('The calendar didn’t answer. Try again, in the row', async () => {
+      const calendar = await row('Your calendar');
+      await within(calendar).findByText('Google can’t be reached right now.', {}, SOON);
+      calendarDown.end();
+      await userEvent.click(within(calendar).getByRole('button', { name: 'Try again' }));
+      await within(await row('Google Calendar')).findByText('Connected', {}, SOON);
+    });
+    await step('With no hardware answer to show, Confidential compute just says what it is', async () => {
+      await within(await row('Confidential compute')).findByText('Where your audio is opened and your notes are written.', {}, LATER);
+    });
+  }
+};
+
+export const FirstDay: PageStory = {
+  name: '11.22 First day',
+  ...page('/settings', 'first-day', { parameters: { opening: { browser: { devices: 'prompt' } } } }),
+  play: async ({ userEvent, step }) => {
+    const jump = async (to: string) => userEvent.click(within(await index()).getByRole('link', { name: to }));
+    await step('The same page. Nothing waits on this device, and nothing’s stored', async () => {
+      await row('Record without a connection');
+      await within(await row('Storage')).findByText('under 1 MB of 10 GB', {}, SOON);
+    });
+    await step('Under Connections, Connect is there when you want it, and Agents says what agents are for, with Connect an agent', async () => {
+      await jump('Connections');
+      await within(await row('Google Calendar')).findByRole('link', { name: 'Connect' }, SOON);
+      await within(await row('Agents')).findByRole('link', { name: 'Connect an agent' }, SOON);
+    });
+    await step('The browser doesn’t name your devices until they’re allowed, so there’s no list yet', async () => {
+      await jump('Audio and video');
+      await within(await row('Microphone')).findByText('Your browser asks first.', {}, SOON);
+    });
+    await step('Nothing asks the browser for anything until you press', async () => {
+      await jump('Notifications');
+      await within(await row('Browser notifications')).findByRole('button', { name: 'Turn on' }, SOON);
+    });
+    await step('All of Free’s notes, with the sun at the end of the line', async () => {
+      await jump('Plan');
+      await within(await row('Notes left this period')).findByText('5 h', {}, SOON);
+    });
+  }
+};
+
+const repeatedChoices = outage(() => {
+  const write = standIn.account.updatePreferences;
+  let n = 0;
+  return swap(standIn.account, 'updatePreferences', async (patch) => {
+    const first = ++n === 1;
+    await pause(first ? 1200 : 200);
+    if (first) throw unreachable();
+    return write(patch);
+  });
+});
+export const RapidRepeatedChoices: PageStory = {
+  name: '11.23 Repeated choices while an older change fails',
+  ...page('/settings#calls', 'busy'),
+  beforeEach: repeatedChoices.begin,
+  play: async ({ userEvent, step }) => {
+    await step('Under Notes for new calls, choose Off, On, then Off while the first write is still pending', async () => {
+      const notes = within(await row('Notes for new calls'));
+      await userEvent.click(notes.getByRole('button', { name: 'Off' }));
+      await userEvent.click(notes.getByRole('button', { name: 'On' }));
+      await userEvent.click(notes.getByRole('button', { name: 'Off' }));
+      await notes.findByText('Saving…', {}, SOON);
+    });
+    await step('The old failure leaves the last choice in place; Saved names only that last confirmed choice', async () => {
+      await within(await row('Notes for new calls')).findByText('Saved', {}, LATER);
+    });
+  }
+};
+export const RapidRepeatedChoicesPhoneNight: PageStory = { ...RapidRepeatedChoices, globals: { viewport: { value: 'phone' }, theme: 'dark' } };
+
+
+/** The provider's side is scripted; no real wallet, payment or clipboard permission is needed. */
+export const AddMoney: PageStory = {
+  name: '11.24 Add money',
+  ...page('/settings#plan', 'payments'),
+  play: async ({ userEvent, step }) => {
+    const sheet = () => screen.findByRole('dialog', { name: 'Add money' }, SOON);
+    await step('Open Add money and choose Base, under Pay with USDC', async () => {
+      await userEvent.click(within(await screen.findByRole('group', { name: 'Balance' }, LATER)).getByRole('button', { name: 'Add money' }));
+      await userEvent.click(within(await sheet()).getByRole('button', { name: /^Network:/ }));
+      const networks = await screen.findByRole('listbox', { name: 'Network' }, SOON);
+      await userEvent.click(within(networks).getByRole('option', { name: 'Base' }));
+    });
+    await step('Get an address for $20, the first amount offered. The sheet waits for the payment', async () => {
+      await userEvent.click(within(await sheet()).getByRole('button', { name: 'Get an address' }));
+      await within(await sheet()).findByText('Waiting for your payment', {}, SOON);
+    });
+    await step('The provider sees 3.5 of 20 USDC: the same address can take the rest', async () => {
+      const w = current();
+      const t = w.payments.topUps[0];
+      if (t) receiveTopUp(w, t.id, 'short');
+      await within(await sheet()).findByText('Less than asked arrived', {}, LATER);
+    });
+    await step('The rest arrives and the provider settles: the balance catches up', async () => {
+      const w = current();
+      const t = w.payments.topUps[0];
+      if (t) receiveTopUp(w, t.id, 'credited');
+      await within(await sheet()).findByText('Added to your balance', {}, LATER);
+      await userEvent.click(within(await sheet()).getByRole('button', { name: 'Done' }));
+    });
+    await step('The balance says $20, and the payment is in the list with its receipt', async () => {
+      await within(await group('Plan')).findByText('Added, 20 USDC', {}, SOON);
+    });
+  }
+};
+
+export const ChooseWhatReachesYou: PageStory = {
+  name: '11.25 Choose what reaches you',
+  ...page('/settings', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Click Notifications in the index', async () => {
+      await userEvent.click(within(await index()).getByRole('link', { name: 'Notifications' }));
+    });
+    await step('Each thing that can reach you is one row, with an Alert and a Sound. Untick Sound for People joining and leaving', async () => {
+      await userEvent.click(await screen.findByRole('checkbox', { name: 'People joining and leaving: sound' }, SOON));
+    });
+    await step('It’s kept at once, and Saved shows on the row', async () => {
+      const tick = await screen.findByRole('checkbox', { name: 'People joining and leaving: sound', checked: false }, SOON);
+      const line = tick.closest<HTMLElement>('[data-row]');
+      if (line) await within(line).findByText('Saved', {}, SOON);
+    });
+    await step('To silence everything, press the speaker beside Sounds', async () => {
+      await userEvent.click(within(await row('Sounds')).getByRole('button', { name: 'Turn sounds off' }));
+    });
+    await step('Every sound is off. The Sound column steps back, and keeps your ticks for when you turn them on', async () => {
+      await within(await row('Sounds')).findByText('Off. What each one plays is kept for when you turn them on.', {}, SOON);
+    });
+  }
+};
+
+export const CalendarAccessDenied: PageStory = {
+  name: '11.26 Return without granting Calendar access',
+  ...page('/settings?calendar=denied#calendar', 'busy'),
+  beforeEach: before((w) => { w.calendar = notConnected; }),
+  play: async ({ step }) => {
+    await step('Back from Google, under Connections, Google Calendar explains how to schedule with a link and still offers Connect', async () => {
+      await screen.findByText('Calendar access wasn’t granted. You can still schedule calls and share the link yourself.', {}, SOON);
+      await within(await row('Google Calendar')).findByRole('link', { name: 'Connect' }, SOON);
+    });
+  }
+};

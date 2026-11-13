@@ -23,7 +23,7 @@ export const GoogleSignInSearchSchema = z.object({
 
 /**
  * Where a tab goes once it's signed in, when signing in started on a page with somewhere to come back to. Google's way back
- * lands on /ready or /home, so it waits in that tab's sessionStorage (the app's lib/afterSignIn.ts), never in a URL: a
+ * lands on /ready or /home, so it waits in that tab's sessionStorage (the app's features/account/afterSignIn.ts), never in a URL: a
  * call's code and a link's or an invite's secret are secrets. One at a time, so a sign-in started somewhere else since takes
  * its place. A call's join page (`call`), an agent's request to be let in (`agent`, a pointer with no credential), a link to
  * someone's notes or an invite to a team, whose own pages take the secret (`link`, `team`), or Plans with checkout open on

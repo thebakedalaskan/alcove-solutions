@@ -3,11 +3,11 @@ import { useToast } from '@alcove/ui';
 import { useEffect, useRef, useState } from 'react';
 import type { BoardLanding } from '~/features/board/BoardSurface';
 import { captureHere } from '~/lib/capture';
-import { selfIn } from '~/lib/live';
+import { selfIn } from '~/features/call/session/participants';
 import { callName, sameEmail } from '~/lib/people';
 import type { CallRoom, RoomView } from '../media/livekit';
 import type { SideView } from '../layout/side';
-import type { StageRooms } from '../layout/Stage';
+import type { StageRooms } from '../stage/Stage';
 import type { RoomActivity, RoomCandidate, RoomChip } from './Rooms';
 
 /** How long after rooms close a returned board is still the rooms' news. */
@@ -233,4 +233,9 @@ export function useBreakoutRooms({ session, state, room, roomView, invited, open
     open, left, roomName, placeName, inARoom, unit, unitKey, activity, organizerPerson, message, roomsOnBoards, roomsView, roomsBoard, myRoomId,
     candidates, mainPeople, roomChips, visit, renameRoom, moveTo, openRooms, landing, cameBack: () => Date.now() - backFromRooms.current < CAME_BACK_MS
   };
+}
+
+/** Breakout rooms in your side go with the last person who could be sent to one (`gone`). */
+export function useRoomsSideGoes(gone: boolean, putAway: () => void): void {
+  useEffect(() => { if (gone) putAway(); }, [gone, putAway]);
 }

@@ -9,14 +9,14 @@ import type { CallWorkspaceSwitch } from '@alcove/api';
 import { WsSpacePicker, WsSwitchSheet } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { homeChoice, namesIn, peopleWords, spaceChoice } from '~/features/workspace/List';
-import { q } from '~/lib/queries';
+import { homeChoice, namesIn, peopleWords, spaceChoice } from '~/features/workspace/tree/List';
+import { workspaceQueries } from '~/features/workspace/queries';
 import type { WorkspacePanelState } from './WorkspacePanel';
 
 /** `current`: the workspace everyone views now. `home`: the call's. `onClose` puts the menu away. */
 export function SpacePicker({ current, home, act, onClose }: { current: { id: string; name: string }; home: string | null; act: WorkspacePanelState['act']; onClose: () => void }) {
   /* Read again as it opens: a workspace made since, the call's home say, is among them. */
-  const spaces = useQuery({ ...q.workspaces(), staleTime: 0 }).data ?? [];
+  const spaces = useQuery({ ...workspaceQueries.workspaces(), staleTime: 0 }).data ?? [];
   /** The workspace picked, and what moving the call there would mean, while the question's up. */
   const [asking, setAsking] = useState<{ id: string; is: CallWorkspaceSwitch } | null>(null);
   if (asking) {

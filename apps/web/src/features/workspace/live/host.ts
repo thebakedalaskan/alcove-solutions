@@ -4,7 +4,7 @@
  */
 import { createContext, useContext } from 'react';
 import type { Ws, WorkspacePlace } from '../context';
-import type { PersonIds } from '../ids';
+import type { PersonIds } from '../sharing/ids';
 import type { LiveCall, LivePut } from './types';
 
 export interface LiveHost {

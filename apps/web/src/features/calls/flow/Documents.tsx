@@ -7,7 +7,7 @@ import { Button, Dots, EmptyState, FlowBody, FlowFoot, FlowNote, Icon, Segmented
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { fold } from '~/lib/people';
-import { q } from '~/lib/queries';
+import { workspaceQueries } from '~/features/workspace/queries';
 import { agoLabel } from '~/lib/time';
 
 const KIND_ICON: Record<DocumentKind, IconName> = { doc: 'fileText', board: 'stickyNote' };
@@ -64,7 +64,7 @@ export function Documents({ picked, brought = [], back, foot }: {
   /** The foot, with what's picked: everything in the library that's ticked. */
   foot: (docs: Document[], ids: string[]) => ReactNode;
 }) {
-  const library = useQuery(q.documents());
+  const library = useQuery(workspaceQueries.documents());
   const [ids, setIds] = useState<string[]>([...picked]);
   const [term, setTerm] = useState('');
   const [chosen, setChosen] = useState<string | null>(null);

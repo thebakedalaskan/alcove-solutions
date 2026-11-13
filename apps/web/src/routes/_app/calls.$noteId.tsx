@@ -8,7 +8,7 @@ import { NoteMomentSchema, NotePlayParamSchema, NoteRoomParamSchema } from '@alc
 import { createFileRoute, type ErrorComponentProps } from '@tanstack/react-router';
 import { useCallback } from 'react';
 import { CallPage, Missing, type CallTab } from '~/features/notes/Call';
-import { q } from '~/lib/queries';
+import { noteQueries } from '~/features/notes/queries';
 
 const TABS: readonly CallTab[] = ['notes', 'transcript', 'shared', 'yours'];
 const tabOf = (v: unknown): CallTab | undefined => TABS.find((t) => t === v);
@@ -20,7 +20,7 @@ export const Route = createFileRoute('/_app/calls/$noteId')({
     const play = NotePlayParamSchema.safeParse(s['play']);
     return { at: at.success ? at.data : undefined, room: room.success ? room.data : undefined, play: play.success ? play.data : undefined, tab: tabOf(s['tab']) };
   },
-  loader: ({ context, params }) => (params.noteId === 'example' ? undefined : context.queryClient.ensureQueryData(q.note(params.noteId))),
+  loader: ({ context, params }) => (params.noteId === 'example' ? undefined : context.queryClient.ensureQueryData(noteQueries.note(params.noteId))),
   errorComponent: ({ error }: ErrorComponentProps) => <Missing error={error} />,
   component: CallRoute
 });

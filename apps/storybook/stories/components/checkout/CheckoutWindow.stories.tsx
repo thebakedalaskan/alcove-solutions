@@ -7,7 +7,7 @@ import { LENGTHS, NETWORKS, PREVIEW_BASE_ADDRESS, PRO_YEAR_SUMMARY, TEAM_FOLK } 
 /**
  * The checkout window on the kit's Modal: the step on the left, what you're buying on the right, Close at the top right; on
  * a phone the whole screen, with what you're buying as one line at the top. Each stage's content rises in, and the summary's
- * sun rises as the payment lands. The app's own window, on real data, is Pages/Checkout.
+ * sun rises as the payment lands. The app's own window, on real data, is Pages/Account/Checkout.
  */
 const meta = {
   title: 'Components/Checkout/CheckoutWindow', component: CheckoutWindow, parameters: { layout: 'fullscreen' },

@@ -6,16 +6,16 @@ import type { NoteSummary } from '@alcove/api';
 import { Dots, Icon, NoteCard, RecDot, Widget, coverFor } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { exampleNote } from '~/features/notes/example';
+import { exampleNote } from '~/features/examples/note';
 import { othersIn } from '~/features/calls/list/said';
-import { q } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
 import { callLength, pastDay } from '~/lib/time';
 import { capital } from '~/lib/words';
 
 const CARDS = 8;
 
 export function Recent({ notes, me, now }: { notes: readonly NoteSummary[]; me: string | undefined; now: number }) {
-  const session = useQuery(q.session()).data;
+  const session = useQuery(accountQueries.session()).data;
   const written = notes.some((n) => n.status === 'ready');
   const example = !written && session ? exampleNote(session.user) : undefined;
   return (

@@ -3,7 +3,7 @@
  * (`begin` in scenarios.ts); everything the stand-in answers is read from here at the moment it's asked.
  */
 import type { Person } from '@alcove/api';
-import type { Opening, World } from '../world';
+import type { Opening, World } from '../world/world';
 import { ART } from '../world/people';
 import { EMPTY_WORLD, QUIET } from './empty';
 

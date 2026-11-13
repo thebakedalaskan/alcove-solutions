@@ -1,24 +1,24 @@
-import { type CallNotificationsApi } from './notifications';
-import { type CallTimerControl } from './timers';
+import { type CallNotificationsApi } from './attention/notifications';
+import { type CallTimerControl } from './timers/timers';
 import { type FollowUpCreate, type FollowUpPatch, type FollowUpReview } from '../notes/follow-ups';
-import { type CallNudgeKind, type CallQuestionStatus, type CallStatusKind, type CallStatusMinutes } from './attention';
+import { type CallNudgeKind, type CallQuestionStatus, type CallStatusKind, type CallStatusMinutes } from './attention/attention';
 import { type PersonalApi } from '../notes/personal';
 import { type SeriesAnswerPart } from '../notes/series';
 import { type AudioPiece, type ScreenPiece, type TranscriptClip } from '../recordings/capture';
 import { IDSchema } from '../shared/ids';
 import { type LiveStore } from '../shared/live';
 import { z } from '../shared/zod';
-import { type BoardCheck, type BoardOpen, type BoardVotesEach, type BreakoutBoard } from './boards';
-import { type CaptionLanguage } from './captions';
-import { type CaptureDevicePart } from './capture';
-import { type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow } from './catchup';
-import { type CallMoveOut, type MoveMedia } from './moves';
+import { type BoardCheck, type BoardOpen, type BoardVotesEach, type BreakoutBoard } from './boards/boards';
+import { type CaptionLanguage } from './notes/captions';
+import { type CaptureDevicePart } from './notes/capture';
+import { type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow } from './notes/catchup';
+import { type CallMoveOut, type MoveMedia } from './moves/moves';
 import { type CallEndResult, type CallState, type CallTicket } from './state';
-import { type CallFollowUps, type CallWorkspaceSwitch, type DocFollowUpTick, type PresentStart } from './workspace';
-import { CallChatMentionSchema, validChatMentions, type CallChatMention } from './chat-mentions';
-import { DirectKeyAnnouncementSchema, type DirectMessagesApi } from './direct-messages';
-import { CallChatThreadSchema, type CallChatThread } from './chat-threads';
-import { CallReactionSchema, type CallChatReaction, type CallReaction } from './reactions';
+import { type CallFollowUps, type CallWorkspaceSwitch, type DocFollowUpTick, type PresentStart } from './workspace/workspace';
+import { CallChatMentionSchema, validChatMentions, type CallChatMention } from './chat/mentions';
+import { DirectKeyAnnouncementSchema, type DirectMessagesApi } from './chat/direct-messages';
+import { CallChatThreadSchema, type CallChatThread } from './chat/threads';
+import { CallReactionSchema, type CallChatReaction, type CallReaction } from './chat/reactions';
 
 /**
  * A chat message, decrypted in this browser. `from` is the sender's identity, as MLS vouches for it; `place` is the

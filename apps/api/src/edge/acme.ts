@@ -1,14 +1,14 @@
 /*
  * Ordering a certificate (docs: system-architecture › The edge): one certificate naming every TLS host, for the TLS key
- * (tlsKeys.ts), from an ACME CA (Let's Encrypt), asked for by the account whose key the master makes. Each host is proved with
+ * (tls-keys.ts), from an ACME CA (Let's Encrypt), asked for by the account whose key the master makes. Each host is proved with
  * a dns-01 challenge: its _acme-challenge TXT record goes up in Cloudflare's DNS, the CA is told once a public resolver sees
  * it, and it comes down again however the order ends. No request to the CA waits more than 30 seconds, so an order that
  * stalls ends, and with it the lock the instance ordering holds (certificates.ts).
  */
 import { Client, axios as acmeHttp, crypto as acmeCrypto } from 'acme-client';
 import { X509Certificate } from 'node:crypto';
-import { UnavailableError } from '../errors';
-import { log } from '../log';
+import { UnavailableError } from '../platform/errors';
+import { log } from '../platform/log';
 import { untilVisible, type DnsServices, type Zone } from './dns';
 
 const alog = log.child({ component: 'edge' });

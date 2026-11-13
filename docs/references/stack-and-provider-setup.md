@@ -54,7 +54,7 @@ The meeting VM runs the ordinary browser, isolated audio daemon, native recorder
 
 ### 1Click as built
 
-Top-ups call 1Click's REST API directly (`apps/api/src/features/billing/oneclick.ts`, no SDK) at `ONECLICK_BASE_URL`
+Top-ups call 1Click's REST API directly (`apps/api/src/features/billing/top-ups/oneclick.ts`, no SDK) at `ONECLICK_BASE_URL`
 (default `https://1click.chaindefuser.com`), sending `X-API-Key: ONECLICK_API_KEY` (the partner JWT from
 partners.near-intents.org) when it is set, and `User-Agent: alcove-api`, with a 15 s timeout. Top-ups are off unless
 `TREASURY_INTENTS_ACCOUNT` is set. Without the key 1Click still quotes and swaps the same way, adding its own fee

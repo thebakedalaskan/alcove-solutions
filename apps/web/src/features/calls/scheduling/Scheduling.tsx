@@ -16,12 +16,17 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useCopyLink } from '~/features/call/session/links';
 import { NoNotesLeftDoor } from '~/features/plans/notesDoors';
-import { freshCalls, movedCalls } from '~/features/shell/context';
-import { useMyModelUnencrypted } from '~/lib/aiModels';
+import { freshCalls, movedCalls } from './fresh';
+import { useMyModelUnencrypted } from '~/features/notes/models';
 import { useNow } from '~/lib/live';
 import { log } from '~/lib/log';
 import { byEmail, callName, listNames, sameEmail } from '~/lib/people';
-import { calendarConnectUrl, q, useCancelCall, useProposeTime, useScheduleCall, useUpdateCall } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { callQueries, useCancelCall, useProposeTime, useScheduleCall, useUpdateCall } from '~/features/calls/list/queries';
+import { noteQueries } from '~/features/notes/queries';
+import { teamQueries } from '~/features/team/queries';
+import { workspaceQueries } from '~/features/workspace/queries';
+import { calendarConnectUrl, calendarQueries } from './queries';
 import { hm, timeZone } from '~/lib/time';
 import { Bring } from './Bring';
 import { BIG_CALL, FIRST_LENGTH, NOT_REPEATING, guestsOf, newDraft, repeatInput, titleFor, type Draft, type Guests, type Repeating } from '../flow/draft';
@@ -74,8 +79,8 @@ export function Scheduling({ search, onClose }: { search: ScheduleSearch; onClos
 
 /** A new call, with whoever was picked before it opened: known by name and face once the people you know are read. */
 function ForPeople({ emails, at, minutes, bring, onClose }: { emails: string[]; at: Date | null; minutes: number | undefined; bring: readonly string[]; onClose: () => void }) {
-  const team = useQuery(q.team());
-  const known = useQuery({ ...q.people(''), enabled: emails.length > 0 });
+  const team = useQuery(teamQueries.team());
+  const known = useQuery({ ...teamQueries.people(''), enabled: emails.length > 0 });
   if (emails.length && (team.isPending || known.isPending)) return <Waiting kicker="New call" onClose={onClose} />;
   const who = (email: string): Person => team.data?.members.find((m) => sameEmail(m.person, { email }))?.person
     ?? known.data?.find((s) => sameEmail(s.person, { email }))?.person ?? byEmail(email);
@@ -84,7 +89,7 @@ function ForPeople({ emails, at, minutes, bring, onClose }: { emails: string[]; 
 
 /** Moving a call, or asking to: it's read first, to know whose it is and where it is now. It opens where the call is. */
 function ForCall({ id, onClose }: { id: string | undefined; onClose: () => void }) {
-  const meeting = useQuery({ ...q.meeting(id ?? ''), enabled: !!id });
+  const meeting = useQuery({ ...callQueries.meeting(id ?? ''), enabled: !!id });
   if (!id || meeting.isError) return <Missing kicker="Move a call" what="That call isn’t there any more" onClose={onClose} />;
   if (!meeting.data) return <Waiting kicker="Move a call" onClose={onClose} />;
   const m = meeting.data;
@@ -101,8 +106,8 @@ function ForCall({ id, onClose }: { id: string | undefined; onClose: () => void 
 
 /** Meeting again after a call: the same people and name. */
 function AfterCall({ id, at, onClose }: { id: string | undefined; at: Date | null; onClose: () => void }) {
-  const note = useQuery({ ...q.note(id ?? ''), enabled: !!id });
-  const me = useQuery(q.session()).data?.user.email;
+  const note = useQuery({ ...noteQueries.note(id ?? ''), enabled: !!id });
+  const me = useQuery(accountQueries.session()).data?.user.email;
   if (!id || note.isError) return <Missing kicker="New call" what="Those notes aren’t there any more" onClose={onClose} />;
   if (!note.data) return <Waiting kicker="New call" onClose={onClose} />;
   const n = note.data;
@@ -128,12 +133,12 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
   const { job } = start;
   const moving = job.kind !== 'new';
   const meeting = job.kind === 'new' ? undefined : job.meeting;
-  const session = useQuery(q.session()).data;
-  const prefs = useQuery(q.prefs()).data;
-  const team = useQuery(q.team()).data;
+  const session = useQuery(accountQueries.session()).data;
+  const prefs = useQuery(accountQueries.prefs()).data;
+  const team = useQuery(teamQueries.team()).data;
   // Connecting in another tab keeps this draft: it's read again when the page comes back to it.
-  const calendar = useQuery({ ...q.calendar(), refetchOnWindowFocus: (query) => (query.state.data?.needsAccess ? 'always' : false) }).data;
-  const library = useQuery({ ...q.documents(), enabled: start.bring.length > 0 }).data;
+  const calendar = useQuery({ ...calendarQueries.calendar(), refetchOnWindowFocus: (query) => (query.state.data?.needsAccess ? 'always' : false) }).data;
+  const library = useQuery({ ...workspaceQueries.documents(), enabled: start.bring.length > 0 }).data;
   const unencrypted = useMyModelUnencrypted();
   const me = session?.user.email;
   const [draft, setDraft] = useState<Draft>(() => ({
@@ -583,7 +588,7 @@ function repeatingOf(m: Meeting, zone: string): Repeating {
  * under it, as Switch workspace says it in a call.
  */
 function Home({ draft, change }: { draft: Draft; change: (d: Partial<Draft>) => void }) {
-  const spaces = useQuery(q.workspaces()).data ?? [];
+  const spaces = useQuery(workspaceQueries.workspaces()).data ?? [];
   const homes = spaces.flatMap((w) => (w.name !== null && (w.role === 'admin' || w.role === 'edit') ? [{ id: w.id, name: w.name, youPay: w.youPay }] : []));
   const theirs = homes.find((h) => h.id === draft.home?.id)?.youPay === false;
   return (

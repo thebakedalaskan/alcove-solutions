@@ -1,4 +1,4 @@
-import { type NotesSetting } from '../calls/settings';
+import { type NotesSetting } from '../calls/notes/settings';
 import { type Patch } from '../client';
 import { type ID, type ISODate } from '../shared/ids';
 import { type Busy, type Calendar } from './calendar';

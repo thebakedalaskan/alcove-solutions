@@ -24,7 +24,7 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/web/src/lib/queryWrites.ts",
-        "$TURBO_ROOT$/apps/web/src/features/workspace/changes.ts"
+        "$TURBO_ROOT$/apps/web/src/features/workspace/tree/changes.ts"
       ]
     },
     "@alcove/server#typecheck": {
@@ -32,7 +32,7 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/web/src/lib/queryWrites.ts",
-        "$TURBO_ROOT$/apps/web/src/features/workspace/changes.ts"
+        "$TURBO_ROOT$/apps/web/src/features/workspace/tree/changes.ts"
       ]
     },
     "dev": {

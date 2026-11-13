@@ -6,7 +6,7 @@
 import { errorMessage, type AgentConnection, type AgentScope } from '@alcove/api';
 import { AgentAsked, AgentAction, AgentPermissions, AgentPopFoot, AgentPopHead, AgentSaved, Button, useToast } from '@alcove/ui';
 import { useRef, useState } from 'react';
-import { useRevokeAgent, useUpdateAgent } from '~/lib/queries';
+import { useRevokeAgent, useUpdateAgent } from './queries';
 import { dayMonth } from '~/lib/time';
 import { iconOf, markOf } from './catalogue';
 import { CHIPS, inOrder, PERMISSIONS } from './permissions';

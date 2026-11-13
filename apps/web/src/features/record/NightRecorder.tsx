@@ -11,7 +11,8 @@ import { troubles } from '~/features/call/media/access';
 import { deviceOptions, readPrefs, rememberDevice, useDevices } from '~/features/call/media/devices';
 import { LocalMedia } from '~/features/call/media/media';
 import { overlayOpen, typing } from '~/lib/keys';
-import { sessions, useLive, useOnline } from '~/lib/live';
+import { useLive, useOnline } from '~/lib/live';
+import { sessions } from '~/features/call/session/handoff';
 import { UNNAMED } from './uploads';
 
 /** `keeps`: it records without a connection. Without one, and with that off, Start recording waits for the connection. */

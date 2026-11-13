@@ -4,14 +4,20 @@ import { getCookie } from 'hono/cookie';
 import { bodyLimit } from 'hono/body-limit';
 import { stream } from 'hono/streaming';
 import { z } from 'zod';
-import { CALL_PASS_HEADER } from '../../callPass';
-import { unb64u } from '../../crypto';
-import { TooLargeError, ValidationError } from '../../errors';
+import { CALL_PASS_HEADER } from '../../keys/call-pass';
+import { unb64u } from '../../keys/crypto';
+import { TooLargeError, ValidationError } from '../../platform/errors';
+import { addLogContext } from '../../platform/log';
 import * as access from './access';
+import type { Calls } from './calls';
 import * as drive from './drive';
-import * as media from './media';
-import * as presenterNotes from './presenter-notes';
-import * as workspaceDocuments from './documents';
+import * as media from './uploads/media';
+import * as presenterNotes from './boards/presenter-notes';
+import * as docUpdates from './documents/updates';
+import * as docVersions from './documents/versions';
+import * as docSearch from './documents/search';
+import * as docLive from './documents/live';
+import * as docAsking from './documents/asking';
 import * as mentions from './mentions';
 import * as workspaces from './service';
 import { body, capped } from '../../http/body';
@@ -20,7 +26,8 @@ import type { HttpRuntime } from '../../http/runtime';
 
 
 
-export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
+/** `calls`: what says whose seat a call pass is, and what else a workspace asks of calls (features/workspaces/calls.ts). */
+export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRuntime, calls: Calls): void {
   const { d } = runtime;
   const { liveLimiter, presenceLimiter, mentionLimiter, idsLimiter, documentLiveLimiter, updateLimiter, updateBytesLimiter, awarenessLimiter, versionLimiter, treeLimiter, presenterLimiter, askLimiter, guestAskLimiter, sortLimiter, searchLimiter, previewLimiter, pieceLimiter, mediaLimiter } = runtime.limits;
   /**
@@ -28,9 +35,20 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
    * names, as their questions in that call are (calls/routes.ts), so the two share one budget.
    */
   const guestAsking = (r: access.Reader, what: string) => {
-    if (!r.account) guestAskLimiter(r.seat ? `${r.seat.callId}:${r.seat.viewer.pass.person}` : access.limitKey(r), what);
+    if (!r.account) guestAskLimiter(r.seat ? `${r.seat.callId}:${r.seat.person}` : access.limitKey(r), what);
   };
-  const { readerOf, credentials, optionalOwner, COOKIE } = runtime.context;
+  const { optionalOwner, COOKIE } = runtime.context;
+  /*
+   * A workspace, by session or call pass: a guest in a call has only their pass, so what they may reach comes before the
+   * sign-in check. All of it reads, or sets something a retry can't do twice, so none of it keeps a receipt: a title
+   * changes as it's typed, and a guest has no account to keep one under. ./access.ts decides everything from here on.
+   */
+  const credentials = (c: Context): access.Credentials => ({ session: getCookie(c, COOKIE), pass: c.req.header(CALL_PASS_HEADER) });
+  const readerOf = async (c: Context): Promise<access.Reader> => {
+    const r = await access.readerOf(d, credentials(c), calls);
+    addLogContext({ ...(r.account ? { ownerId: r.account.owner.ownerId } : {}), ...(r.seat ? { callId: r.seat.callId } : {}) });
+    return r;
+  };
   /** What the browser calls the stream it's opening, for it to say when it closes it: none from a browser that doesn't. */
   const streamName = (c: Context<Env>): string | null => LiveStreamNameSchema.safeParse(c.req.header(LIVE_STREAM_HEADER)).data ?? null;
 
@@ -46,7 +64,7 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
   app.get('/v1/workspaces/:id/live', async (c) => {
     const r = await readerOf(c);
     liveLimiter(access.limitKey(r), 'workspace stream');
-    const run = await workspaces.open(d, credentials(c), r, c.req.param('id'), clientAddress(c), streamName(c));
+    const run = await workspaces.open(d, credentials(c), calls, r, c.req.param('id'), clientAddress(c), streamName(c));
     c.header('content-type', 'application/x-ndjson');
     c.header('cache-control', 'no-store');
     return stream(c, run);
@@ -109,7 +127,7 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
     documentLiveLimiter(access.limitKey(r), 'document stream');
     const after = z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER).safeParse(c.req.query('after') ?? '0');
     if (!after.success) throw new ValidationError('Ask from a place in the document.');
-    const run = await workspaceDocuments.open(d, credentials(c), r, c.req.param('id'), c.req.param('doc'), after.data, clientAddress(c), streamName(c));
+    const run = await docLive.open(d, credentials(c), calls, r, c.req.param('id'), c.req.param('doc'), after.data, clientAddress(c), streamName(c));
     c.header('content-type', 'application/x-ndjson');
     c.header('cache-control', 'no-store');
     return stream(c, run);
@@ -120,26 +138,26 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
     updateLimiter(access.limitKey(r), 'document update');
     const length = Number(c.req.header('content-length') ?? MAX_DOC_UPDATE_BYTES);
     updateBytesLimiter(access.limitKey(r), 'document update bytes', Math.ceil(length / 1024) || 1);
-    return c.json(await workspaceDocuments.appendUpdate(d, r, c.req.param('id'), c.req.param('doc'), length, () => c.req.arrayBuffer()));
+    return c.json(await docUpdates.appendUpdate(d, r, c.req.param('id'), c.req.param('doc'), length, () => c.req.arrayBuffer()));
   });
 
   app.post('/v1/workspaces/:id/documents/:doc/awareness', async (c) => {
     const r = await readerOf(c);
     awarenessLimiter(access.limitKey(r), 'document awareness');
-    await workspaceDocuments.awareness(d, r, c.req.param('id'), c.req.param('doc'), unb64u((await body(c, DocAwarenessBodySchema)).update));
+    await docLive.awareness(d, r, c.req.param('id'), c.req.param('doc'), unb64u((await body(c, DocAwarenessBodySchema)).update));
     return c.json({ said: true });
   });
 
   app.get('/v1/workspaces/:id/documents/:doc/versions', async (c) => {
     const r = await readerOf(c);
     versionLimiter(access.limitKey(r), 'document versions');
-    return c.json(await workspaceDocuments.versions(d, r, c.req.param('id'), c.req.param('doc')));
+    return c.json(await docVersions.versions(d, r, c.req.param('id'), c.req.param('doc')));
   });
 
   app.get('/v1/workspaces/:id/documents/:doc/versions/:version', async (c) => {
     const r = await readerOf(c);
     versionLimiter(access.limitKey(r), 'document version');
-    const run = await workspaceDocuments.version(d, r, c.req.param('id'), c.req.param('doc'), c.req.param('version'), clientAddress(c));
+    const run = await docVersions.version(d, r, c.req.param('id'), c.req.param('doc'), c.req.param('version'), clientAddress(c));
     c.header('content-type', 'application/x-ndjson');
     c.header('cache-control', 'no-store');
     return stream(c, run);
@@ -148,7 +166,7 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
   app.post('/v1/workspaces/:id/documents/:doc/versions/:version/restore', async (c) => {
     const r = await readerOf(c);
     treeLimiter(access.limitKey(r), 'workspace change');
-    await workspaceDocuments.restoreVersion(d, r, c.req.param('id'), c.req.param('doc'), c.req.param('version'));
+    await docVersions.restoreVersion(d, r, c.req.param('id'), c.req.param('doc'), c.req.param('version'));
     return c.json({ restored: true });
   });
 
@@ -172,7 +190,7 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
     const r = await readerOf(c);
     askLimiter(access.limitKey(r), 'ask-selection');
     guestAsking(r, 'guest ask-selection');
-    return c.json(await workspaceDocuments.askAlcove(d, r, c.req.param('id'), c.req.param('doc'), await body(c, DocAskBodySchema)));
+    return c.json(await docAsking.askAlcove(d, r, c.req.param('id'), c.req.param('doc'), await body(c, DocAskBodySchema)));
   });
 
   /* Sorting a board's stickies into themes: what goes to the notes model isn't kept, here or anywhere, and it answers only someone who can edit. */
@@ -182,14 +200,14 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
     const r = await readerOf(c);
     sortLimiter(access.limitKey(r), 'board-sort');
     guestAsking(r, 'guest board-sort');
-    return c.json(await workspaceDocuments.sortStickies(d, r, c.req.param('id'), c.req.param('doc'), await body(c, BoardSortBodySchema)));
+    return c.json(await docAsking.sortStickies(d, r, c.req.param('id'), c.req.param('doc'), await body(c, BoardSortBodySchema)));
   });
 
   /* The words of everything a reader can open: for searching in the browser, one document a line. */
   app.get('/v1/workspaces/:id/search', async (c) => {
     const r = await readerOf(c);
     searchLimiter(access.limitKey(r), 'workspace search');
-    const run = await workspaceDocuments.searchText(d, r, c.req.param('id'), clientAddress(c));
+    const run = await docSearch.searchText(d, r, c.req.param('id'), clientAddress(c));
     c.header('content-type', 'application/x-ndjson');
     c.header('cache-control', 'no-store');
     return stream(c, run);
@@ -214,7 +232,7 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
   app.patch('/v1/workspaces/:id/items/:item', async (c) => {
     const r = await readerOf(c);
     treeLimiter(access.limitKey(r), 'workspace change');
-    await workspaces.renameItem(d, r, c.req.param('id'), c.req.param('item'), (await body(c, ItemRenameSchema)).name);
+    await workspaces.renameItem(d, r, c.req.param('id'), c.req.param('item'), (await body(c, ItemRenameSchema)).name, calls);
     return c.json({ renamed: true });
   });
 
@@ -266,7 +284,7 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
   /*
    * Files in a workspace's documents, by session or call pass like the rest of it: a guest can read what's in a document
    * given to their seat, and add to one they can edit. Each route asks who can before it looks at what it was sent.
-   * features/workspaces/media.ts does the rest.
+   * features/workspaces/uploads/media.ts does the rest.
    */
   app.use('/v1/workspaces/:id/documents/:doc/media', capped(32 * 1024));
 
@@ -349,6 +367,6 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
       count: (who) => mediaLimiter(who, 'media'),
       closed: closed.signal,
       cut: () => { outgoing.destroy(); }
-    });
+    }, calls);
   });
 }

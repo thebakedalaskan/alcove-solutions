@@ -1,21 +1,21 @@
 /*
  * Plans (docs: Plans and usage): which plan each account is on, the USD balance it buys plans with, the months of Pro and
  * more notes bought from it, what its owner is told about them and about their team's licenses, and when upkeep next has
- * something to do for it. A team license (features/billing/teams.ts) puts its member on Team while it's live (`planNow`).
+ * something to do for it. A team license (features/billing/teams/teams.ts) puts its member on Team while it's live (`planNow`).
  * Sealed under Kservice's accounting key, never under owner keys: the row says only whose it is and when it's due. An
  * account's row is made when it signs up, or the first time it's touched after the release that brought plans (on Free,
  * with time to get within Free's limits if it's over them).
  */
 import { PlanKindSchema, PlanNoticeKindSchema, type BalanceEntry, type Plan, type PlanKind, type PlanNoticeKind, type PlanOffers, type Purchase } from '@alcove/api';
 import { z } from 'zod';
-import type { Config } from '../../config';
-import type { Deps } from '../../context';
-import { id128, openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
-import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
-import { conflict, InternalError, invalid, notFound } from '../../errors';
-import { limitsNow, type Limits } from '../../limits';
-import { log, type LogContext } from '../../log';
-import { keptPeriodOf, type KeptPeriod } from './meter-state';
+import type { Config } from '../../platform/config';
+import type { Deps } from '../../platform/context';
+import { id128, openJson, sealJson, serviceKey, toJson, unb64u } from '../../keys/crypto';
+import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../platform/db';
+import { conflict, InternalError, invalid, notFound } from '../../platform/errors';
+import { limitsNow, type Limits } from '../../platform/limits';
+import { log, type LogContext } from '../../platform/log';
+import { keptPeriodOf, type KeptPeriod } from './meter/meter-state';
 import { settlePayers, usedBytes, type PayerMove } from './storage';
 
 const plog = log.child({ component: 'plans' });
@@ -95,7 +95,7 @@ const creditsHeader = (ownerId: string) => ({ v: 1 as const, kind: 'billing', ow
 
 /**
  * Whether `kservice` opens an account's accounting as it's stored: its plan, or its credits from before plans. How the
- * KSERVICE a TEE carries over is checked before it's sealed in the server keys (serverKeys.ts), since another one would leave
+ * KSERVICE a TEE carries over is checked before it's sealed in the server keys (server-keys.ts), since another one would leave
  * every plan, balance and payment unreadable. Only whether it opens is asked: what's in it is read where it's used.
  */
 export function opensAccounting(kservice: Uint8Array, kind: 'plan-account' | 'billing', ownerId: string, stateCiphertext: Uint8Array): boolean {
@@ -184,7 +184,7 @@ const boughtFor = (a: PlanAccount, p: Pick<InForce, 'kind' | 'from'>): number =>
 
 /**
  * The plan in force at `now`, with its notes and any more bought for the period it's in: the allowance the meter keeps
- * (features/billing/meter.ts) and what a period brings as the plan shows it. `kept`: the period the account's meter keeps
+ * (features/billing/meter/meter.ts) and what a period brings as the plan shows it. `kept`: the period the account's meter keeps
  * (null: it has none yet), which Free's periods run on from.
  */
 export function inForce(a: PlanAccount, l: Limits, now: number, license: License | null, kept: KeptPeriod | null): InForce {

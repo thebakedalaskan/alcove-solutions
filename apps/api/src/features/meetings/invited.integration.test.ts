@@ -7,11 +7,11 @@ import { AlcoveApiError, OPERATION_HEADER, type CallSession, type CallState, typ
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { tx } from '../../db';
-import { openOwner } from '../../owners';
+import { tx } from '../../platform/db';
+import { openOwner } from '../../keys/owners';
 import { connectGoogleCalendar, ORIGIN, startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
-import { findItem, saveRevision } from '../../vault';
+import { findItem, saveRevision } from '../../keys/vault';
 
 // Calls go through the real LiveKit server; every wait below is bounded and says what it was waiting for.
 vi.setConfig({ testTimeout: 90_000 });

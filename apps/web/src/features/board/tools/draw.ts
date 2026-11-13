@@ -5,8 +5,8 @@
  */
 import { BOARD_LIMITS, moveObjects, type Box } from '@alcove/board';
 import type { SheetPoint } from '../camera';
-import type { Gesture } from '../gestures';
-import { stretchTo } from '../overlay';
+import type { Gesture } from '../input/gestures';
+import { stretchTo } from '../input/overlay';
 import { CLICK_SLOP, boxBetween, movable } from '../selection';
 import type { Board } from '../useBoard';
 

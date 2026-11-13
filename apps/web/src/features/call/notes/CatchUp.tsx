@@ -9,7 +9,7 @@ import { Avatar, Button, Dots, EmptyState, Icon, Notice, Popover, Scope, Segment
 import { motion, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { NotesApart, SourceLink } from '~/features/notes/parts';
-import { KeepAnswer } from '~/features/personal/parts';
+import { KeepAnswer } from '~/features/notes/personal/parts';
 import { gapLabel } from '~/lib/capture';
 import { spokenName } from '~/lib/people';
 import { hm, hms } from '~/lib/time';

@@ -9,9 +9,9 @@
 import { AlcoveApiError, type AlcoveApi, type AnswerPart, type AudioPiece, type CallSession, type CallState, type Note, type NoteProgress, type TranscriptClip, type TranscriptLine } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { speechWav } from '../../testing/fake-near';
+import { speechWav } from '../../testing/fakes/near';
 import { startHarness, type Harness } from '../../testing/harness';
-import { standing } from '../billing/meter';
+import { standing } from '../billing/meter/meter';
 
 // Letting people into a call goes through its MLS group, which a busy CI runner can be slow at; every wait says what it waited for.
 vi.setConfig({ testTimeout: 60_000 });

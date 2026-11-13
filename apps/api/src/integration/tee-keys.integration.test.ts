@@ -11,11 +11,12 @@ import { createHttpApi } from '@alcove/api-http';
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { b64u, deriveIndexKey, photoTokenKey, random, rootCheck, unb64u } from '../crypto';
-import { sealRoot } from '../owners';
-import { resolveKeys, rewrapOwners, type KeySource, type KeyWrapper, type LegacyKeys } from '../serverKeys';
-import type { GoogleUser } from '../testing/fake-google';
-import { fakeKms } from '../testing/fake-kms';
+import { b64u, deriveIndexKey, photoTokenKey, random, rootCheck, unb64u } from '../keys/crypto';
+import { sealRoot } from '../keys/owners';
+import { opensAccounting } from '../features/billing/plans';
+import { resolveKeys, rewrapOwners, type KeySource, type KeyWrapper, type LegacyKeys } from '../keys/server-keys';
+import type { GoogleUser } from '../testing/fakes/google';
+import { fakeKms } from '../testing/fakes/kms';
 import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from '../testing/harness';
 
 let h: Harness;
@@ -50,7 +51,7 @@ const envelopes = async (ownerId: string | undefined) => Envelopes.parse((await 
 const legacy = (): LegacyKeys => ({ kmaster: h.deps.cfg.KMASTER, kservice: h.deps.cfg.KSERVICE });
 /** Where key resolution takes the keys from inside the TEE: Cloud KMS's stand-in, started with the old keys or not. */
 const inside = (more: { legacy?: LegacyKeys; retire?: boolean; wrapper?: KeyWrapper } = {}): KeySource =>
-  ({ tee: 'confidential-space', wrapper: more.wrapper ?? kms, legacy: more.legacy, retire: more.retire ?? false });
+  ({ tee: 'confidential-space', wrapper: more.wrapper ?? kms, legacy: more.legacy, retire: more.retire ?? false, opensAccounting });
 /** An API inside the TEE, on the same database, its keys resolved as the server resolves them at start. */
 const inTee = (old?: LegacyKeys) => h.secondServer({ TEE: 'confidential-space', ...(old ? { legacy: old } : {}) });
 /** The harness's deps as an instance inside the TEE runs, with these keys. */

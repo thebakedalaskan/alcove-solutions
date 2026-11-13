@@ -2,7 +2,7 @@
  * The Text tool: a line of words straight on the board, with no box round it. Left blank, it goes again. A double-click on open
  * board, in no frame, puts one there too (`doubleClick` in gestures.ts).
  */
-import type { ToolPress } from '../gestures';
+import type { ToolPress } from '../input/gestures';
 import type { Board } from '../useBoard';
 
 const LINE = { w: 260, h: 34 };

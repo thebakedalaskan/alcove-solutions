@@ -8,8 +8,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { log } from '~/lib/log';
-import { q, useUpdateAction } from '~/lib/queries';
-import { dueFrom, dueLabel, dueOf, groupOf, type Due, type DueGroup } from './day';
+import { noteQueries, useUpdateAction } from '~/features/notes/queries';
+import { dueFrom, dueLabel, dueOf, groupOf, type Due, type DueGroup } from '~/features/notes/follow-ups/due';
 
 const RANK: Record<DueGroup, number> = { overdue: 0, week: 1, later: 2, none: 3 };
 
@@ -66,7 +66,7 @@ export function useInboxFollowUps(open: OpenAction[] | undefined, now: number) {
       // A lost acknowledgement may have saved the tick. Inbox omits completed work, so read its actual note before
       // deciding how this visit's retained row should look. A later press still owns the row if this read is slow.
       if (errorCode(e) !== 'not-found') try {
-        const note = await client.fetchQuery({ ...q.note(t.a.noteId), staleTime: 0 });
+        const note = await client.fetchQuery({ ...noteQueries.note(t.a.noteId), staleTime: 0 });
         const found = [...note.actions, ...note.rooms.flatMap((room) => room.actions)].find((a) => a.id === t.a.id);
         if (found && turns.current.get(t.key) === turn) setTouched((m) => new Map(m).set(t.key, { ...t.a, done: found.done }));
       } catch (readError) { log.child({ component: 'follow-ups' }).warn('couldn’t reconcile a follow-up after its write failed', { err: readError, noteId: t.a.noteId, actionId: t.a.id }); }

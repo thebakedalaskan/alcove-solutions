@@ -7,7 +7,7 @@
 import type { DocSession } from '@alcove/api';
 import type { Doc } from 'yjs';
 import { api } from '~/lib/api';
-import { canKeepEdits, keptUpdates } from './keep';
+import { canKeepEdits, keptUpdates } from './offline/keep';
 
 /** `keep` false: nothing it writes is kept on this device, for a session that only says how an upload's going. */
 export async function openDocument(workspaceId: string, documentId: string, owner: string | null, pass: string | undefined, keep = true): Promise<DocSession> {

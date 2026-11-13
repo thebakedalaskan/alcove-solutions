@@ -1,8 +1,10 @@
 import { ItemInputSchema, ItemPlaceSchema, LiveStreamEndBodySchema, MAX_DOC_BYTES, RestrictBodySchema, ShareBodySchema, TeamAccessBodySchema, TeamAccessSchema, WorkspaceAboutInputSchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema } from '@alcove/api';
 import { Hono, type Context } from 'hono';
-import { CALL_PASS_HEADER } from '../../callPass';
+import { CALL_PASS_HEADER } from '../../keys/call-pass';
 import * as access from './access';
-import * as workspaceDocuments from './documents';
+import type { Calls } from './calls';
+import * as docUpdates from './documents/updates';
+import * as docLive from './documents/live';
 import * as mentions from './mentions';
 import * as workspaces from './service';
 import { type Env } from '../../http/context';
@@ -11,7 +13,8 @@ import type { HttpRuntime } from '../../http/runtime';
 
 
 
-export function registerWorkspaceRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
+/** `calls`: what says whose seat a call pass is, and what else a workspace asks of calls (features/workspaces/calls.ts). */
+export function registerWorkspaceRoutes(app: Hono<Env>, runtime: HttpRuntime, calls: Calls): void {
   const { d } = runtime;
   const { treeLimiter, workspaceListLimiter, workspaceLimiter, updateBytesLimiter, presenceLimiter } = runtime.limits;
 
@@ -22,7 +25,7 @@ export function registerWorkspaceRoutes(app: Hono<Env>, runtime: HttpRuntime): v
   const member = async (c: Context<Env>, pass?: string | undefined): Promise<access.Reader> => {
     const o = c.get('owner');
     treeLimiter(o.ownerId, 'workspace change');
-    return access.accountReader(o, pass);
+    return access.accountReader(o, { token: pass, calls });
   };
 
   const ws = (c: Context<Env>) => c.req.param('id') ?? '';
@@ -70,7 +73,7 @@ export function registerWorkspaceRoutes(app: Hono<Env>, runtime: HttpRuntime): v
 
   app.patch('/v1/workspaces/:id/people/:person', async (c) => { await workspaces.setRole(d, await member(c), ws(c), c.req.param('person'), (await body(c, WorkspaceRolePatchSchema)).role); return c.json({ changed: true }); });
 
-  app.delete('/v1/workspaces/:id/people/:person', async (c) => { await workspaces.removePerson(d, await member(c), ws(c), c.req.param('person')); return c.json({ removed: true }); });
+  app.delete('/v1/workspaces/:id/people/:person', async (c) => { await workspaces.removePerson(d, await member(c), ws(c), c.req.param('person'), calls); return c.json({ removed: true }); });
 
   /*
    * Changing the tree, with the call's pass when it comes from a call: someone in a call that uses the workspace can, whether or
@@ -86,7 +89,7 @@ export function registerWorkspaceRoutes(app: Hono<Env>, runtime: HttpRuntime): v
     const r = await member(c);
     const length = Number(c.req.header('content-length') ?? MAX_DOC_BYTES);
     updateBytesLimiter(access.limitKey(r), 'document update bytes', Math.ceil(length / 1024) || 1);
-    return c.json(await workspaceDocuments.adoptState(d, r, c.req.param('id'), c.req.param('doc'), length, () => c.req.arrayBuffer()));
+    return c.json(await docUpdates.adoptState(d, r, c.req.param('id'), c.req.param('doc'), length, () => c.req.arrayBuffer()));
   });
 
   app.post('/v1/workspaces/:id/items/:item/move', async (c) => { await workspaces.moveItem(d, await member(c, c.req.header(CALL_PASS_HEADER)), ws(c), itemOf(c), await body(c, ItemPlaceSchema)); return c.json({ moved: true }); });
@@ -97,19 +100,19 @@ export function registerWorkspaceRoutes(app: Hono<Env>, runtime: HttpRuntime): v
 
   app.delete('/v1/workspaces/:id/items/:item', async (c) => { await workspaces.deleteItem(d, await member(c), ws(c), itemOf(c)); return c.json({ deleted: true }); });
 
-  app.get('/v1/workspaces/:id/items/:item/share', async (c) => c.json(await workspaces.shareList(d, await access.accountReader(c.get('owner'), c.req.header(CALL_PASS_HEADER)), ws(c), itemOf(c))));
+  app.get('/v1/workspaces/:id/items/:item/share', async (c) => c.json(await workspaces.shareList(d, await access.accountReader(c.get('owner'), { token: c.req.header(CALL_PASS_HEADER), calls }), ws(c), itemOf(c))));
 
   app.post('/v1/workspaces/:id/items/:item/share', async (c) => {
     const { to, role } = await body(c, ShareBodySchema);
     // A seat is someone in the sharer's own call, so sharing with one comes with their pass.
-    await workspaces.share(d, await member(c, c.req.header(CALL_PASS_HEADER)), ws(c), itemOf(c), to, role);
+    await workspaces.share(d, await member(c, c.req.header(CALL_PASS_HEADER)), ws(c), itemOf(c), to, role, calls);
     return c.json({ shared: true });
   });
 
   // From a call, with its pass, a change to who has something is told to that call at once.
-  app.delete('/v1/workspaces/:id/items/:item/share/:entry', async (c) => { await workspaces.unshare(d, await member(c, c.req.header(CALL_PASS_HEADER)), ws(c), itemOf(c), c.req.param('entry')); return c.json({ removed: true }); });
+  app.delete('/v1/workspaces/:id/items/:item/share/:entry', async (c) => { await workspaces.unshare(d, await member(c, c.req.header(CALL_PASS_HEADER)), ws(c), itemOf(c), c.req.param('entry'), calls); return c.json({ removed: true }); });
 
-  app.post('/v1/workspaces/:id/items/:item/restrict', async (c) => { await workspaces.restrict(d, await member(c, c.req.header(CALL_PASS_HEADER)), ws(c), itemOf(c), (await body(c, RestrictBodySchema)).restricted); return c.json({ changed: true }); });
+  app.post('/v1/workspaces/:id/items/:item/restrict', async (c) => { await workspaces.restrict(d, await member(c, c.req.header(CALL_PASS_HEADER)), ws(c), itemOf(c), (await body(c, RestrictBodySchema)).restricted, calls); return c.json({ changed: true }); });
 
   /*
    * A browser closed one of its streams, a workspace's or a document's, by the name it gave it: it ends here at once, as
@@ -132,7 +135,7 @@ export function registerWorkspaceRoutes(app: Hono<Env>, runtime: HttpRuntime): v
   app.post('/v1/workspaces/:id/documents/:doc/live/end', async (c) => {
     presenceLimiter(c.get('owner').ownerId, 'stream end');
     const { stream } = await body(c, LiveStreamEndBodySchema);
-    workspaceDocuments.endStream(d, await access.accountReader(c.get('owner')), stream);
+    docLive.endStream(d, await access.accountReader(c.get('owner')), stream);
     return c.json({ said: true });
   });
 }

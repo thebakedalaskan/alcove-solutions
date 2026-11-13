@@ -10,10 +10,10 @@ import { DisconnectReason, EncryptionType, TrackKind, TrackSource } from '@livek
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { openJson, sealJson, stateKey, toJson } from '../../crypto';
-import { openOwner } from '../../owners';
-import { getItem, saveRevision } from '../../vault';
-import { speechWav } from '../../testing/fake-near';
+import { openJson, sealJson, stateKey, toJson } from '../../keys/crypto';
+import { openOwner } from '../../keys/owners';
+import { getItem, saveRevision } from '../../keys/vault';
+import { speechWav } from '../../testing/fakes/near';
 import { ORIGIN, cookieFetch, startHarness, type Harness } from '../../testing/harness';
 import { connect, deleteRoomDirectly, disposeLiveKit, participantsDirectly, signWebhook, tokenDirectly, type TestParticipant } from '../../testing/livekit';
 

@@ -12,10 +12,10 @@ import { useMemo, type ReactNode } from 'react';
 import { FIRST_LENGTH } from '~/features/calls/flow/draft';
 import { useOpenScheduling } from '~/features/calls/scheduling/search';
 import { pickerName } from '~/features/calls/scheduling/words';
-import { isSolo } from '~/features/home/day';
-import { freshCalls } from '~/features/shell/context';
+import { isSolo } from './ahead';
+import { freshCalls } from '~/features/calls/scheduling/fresh';
 import { log } from '~/lib/log';
-import { q } from '~/lib/queries';
+import { calendarQueries } from '~/features/calls/scheduling/queries';
 import { daysFromToday, daysSpan, longDay, weekday } from '~/lib/time';
 import { waitingIn } from './past';
 
@@ -81,7 +81,7 @@ export function WeekView({ offset, onOffset, notes, calls, inbox, me, now, calen
   const sunday = days.at(-1) ?? monday;
   const span = daysSpan(monday, sunday);
   const range = { from: monday.toISOString(), to: new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 7).toISOString() };
-  const read = useQuery({ ...q.calendarRange(range), enabled: calendarOn });
+  const read = useQuery({ ...calendarQueries.calendarRange(range), enabled: calendarOn });
   const events = calendarOn ? read.data?.events ?? [] : [];
   const blocks = useMemo(() => blocksOf(days, notes, calls, events, inbox, me), [days, notes, calls, events, inbox, me]);
   const weekDays = useMemo<CallsWeekDay[]>(() => days.map((d) => ({

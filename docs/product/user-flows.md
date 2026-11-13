@@ -1249,7 +1249,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
 10. **History** files what was worked on under the call: **During this call** while it's on, and after it under the call's name
     for anyone who has its notes.
 
-### A board in the call
+### A board in the call (journeys 6.37–6.46)
 
 1. **Board**, at the top right, or **O**, opens the board picker under it: "Open a board" and "Only on your screen until
    you present it. Everyone in the call can edit it." **In this call**, if the call has a board, has its name and who
@@ -1813,13 +1813,13 @@ saying "From {organizer}, visible to your team". They can be read, played and as
 reads them too. Anything else on them is their organizer's: the page has no Share and no Your notes, nothing to settle,
 propose, add or correct, an answer can't be kept, and More has no way to remove them. Anything asked of them anyway is
 refused in those words: "This note is visible to your team to read and ask about. Only its organizer changes it." Storybook
-shows one as **Pages / A call › A team note**.
+shows one as **Pages / Calls / A call › A team note**.
 
 Storybook journeys **8.1–8.10** play Calls: open a call, find what was said, see the week, answer an invitation, answer
 a request to move, follow a series, connect your calendar, ask every call, the first day, and meet again (to where the
 scheduler opens).
 
-Storybook journeys (**Journeys / 8 A call**, 8.11–8.45) follow a call's page. **8.37** and **8.38** write straight into the shared notes: posting for everyone in one step, and
+Storybook journeys (**Journeys / 8 Calls / A call**, 8.11–8.45) follow a call's page. **8.37** and **8.38** write straight into the shared notes: posting for everyone in one step, and
 someone getting the notes while the box is open, which it says before posting again. **8.39** shares the notes by a
 link, then revokes it, and **8.40** opens one signed out: it asks to sign in, then asks before opening the notes as that
 account.
@@ -2390,7 +2390,7 @@ it's a sticky in the frame's colour, and **Tab** starts the next one beside it; 
 with no box round it, as **Text** puts it, for labelling a diagram. **Esc** finishes either.
 The tools are down the side: **Select** (Esc), **Sticky** (N) in six colours, **Text** (T) in three sizes, **Shape** (S; drag to size it, or click once, then type on it), **Line** (L), **Pen** (P; press
 it again for the highlighter) and **Frame** (F). **More**, the **+** under them, holds what it holds in a call ([A board in the
-call](#a-board-in-the-call), step 12): **Image**, **From your workspace**, **Table**, **Mind map**, **Comment** and **Templates**, and
+call](#a-board-in-the-call-journeys-637646), step 12): **Image**, **From your workspace**, **Table**, **Mind map**, **Comment** and **Templates**, and
 a link on the board opens its document here.
 Two people typing in one sticky both keep what they typed. The board's keys work as soon as the typing stops:
 straight after **Esc** finishes a sticky, **N** picks the next. The call's letters still sleep for a moment after typing, as

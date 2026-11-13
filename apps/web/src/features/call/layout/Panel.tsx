@@ -8,10 +8,10 @@
  */
 import { clock, errorMessage, notesAreOn, type CallAsker, type CallState, type CallStatus, type CatchUpItem, type CallSession, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
 import { Avatar, Button, Dots, EmptyState, Faces, Icon, IconButton, Tabs, TimeChip, Unencrypted, WsPutArrow, cn, useToast, type IconName } from '@alcove/ui';
-import type { StageTogether } from './Stage';
+import type { StageTogether } from '../stage/Stage';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { rungWords } from '~/features/calls/ringing/RingWords';
+import { rungWords } from '~/features/calls/ringing/ringWords';
 import type { LineMarks } from '~/features/notes/lines';
 import { lineClock } from '~/features/workspace/live/lines';
 import type { LivePut } from '~/features/workspace/live/types';
@@ -27,8 +27,8 @@ import { NotesFollowUps } from '../notes/FollowUps';
 import { StopMarks, planStopOf, type StopMark } from '../notes/PlanStop';
 import { useActionFocus, type ActionJump } from './actionFocus';
 import type { NotesTab } from './side';
-import { statusText } from './status';
-import { TileMenu, type PersonMenu } from './TileMenu';
+import { statusText } from '../attention/status';
+import { TileMenu, type PersonMenu } from '../stage/TileMenu';
 
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 

@@ -1,6 +1,6 @@
 import { errorMessage, type CallSession } from '@alcove/api';
 import { useEffect, useRef, useState } from 'react';
-import { unlockAudioOutput } from '~/lib/audio-output';
+import { unlockAudioOutput } from '~/features/notifications/soundCues';
 import { troubles } from '../media/access';
 import type { LocalMedia } from '../media/media';
 

@@ -18,11 +18,12 @@ import { readerRole } from '~/features/notes/meta';
 import { byTime, noSummary, othersIn } from '~/features/calls/list/said';
 import { decisionLine, inNote, notDecided, playIn } from '~/features/notes/parts';
 import { callName, spokenName } from '~/lib/people';
-import { q, useUpdateDecision } from '~/lib/queries';
+import { noteQueries, useUpdateDecision } from '~/features/notes/queries';
 import { callLength, noteAt, pastDay, position } from '~/lib/time';
 import { plural } from '~/lib/words';
 import { keepInView } from './keepInView';
-import { around, madeAt, together, type Counts, type Made, type Row, type Someone } from './rows';
+import { around, madeAt, together, type Counts, type Made, type Row } from './rows';
+import type { Someone } from '~/features/team/data';
 
 /** Lines of someone's that their preview shows. */
 const LATEST = 3;
@@ -151,7 +152,7 @@ function MomentPreview({ row, me, terms, onOpen, onSettled }: PreviewProps & { r
   const toast = useToast();
   const decide = useUpdateDecision();
   const readerOf = useNoteReader();
-  const note: Note | undefined = useQuery({ ...q.note(n.id), retry: unlessGone }).data;
+  const note: Note | undefined = useQuery({ ...noteQueries.note(n.id), retry: unlessGone }).data;
   /* A decision said here not to be decided stays, saying so, while this moment is lit. */
   const [kept, setKept] = useState<ReadonlySet<string>>(new Set());
   const made = note ? madeAt(note, line, kept) : undefined;
@@ -213,7 +214,7 @@ function PersonPreview({ someone, byKeys, onOpen, onPick }: PreviewProps & { som
     const t = setTimeout(() => setAsking(true), LINGER);
     return () => clearTimeout(t);
   }, [asking]);
-  const theirs = useQuery({ ...q.notes(undefined, undefined, person.email), enabled: asking, placeholderData: () => undefined }).data ?? [];
+  const theirs = useQuery({ ...noteQueries.notes(undefined, undefined, person.email), enabled: asking, placeholderData: () => undefined }).data ?? [];
   // The search lists their notes newest first, and each note's lines as they were said.
   const latest = theirs.flatMap((n) => byTime(n.said).map((l) => ({ key: `${n.id}:${l.id}`, call: n.title, time: position(l.at), text: l.text }))).slice(0, LATEST);
   return (
@@ -231,7 +232,7 @@ function PersonPreview({ someone, byKeys, onOpen, onPick }: PreviewProps & { som
 
 /** A note: when, who, its summary and what's waiting in it. `enter`: Enter opens it (not so on More, which opens the rest in place). */
 function NotePreview({ note: n, enter, me, toConfirm, onOpen }: PreviewProps & { note: NoteFound; enter: boolean }) {
-  const note = useQuery({ ...q.note(n.id), retry: unlessGone }).data;
+  const note = useQuery({ ...noteQueries.note(n.id), retry: unlessGone }).data;
   return (
     <PalettePreview actions={(
       <Link to="/calls/$noteId" params={{ noteId: n.id }} className={buttonClass({ variant: enter ? 'primary' : 'secondary', size: 'sm' })} onClick={onOpen}>

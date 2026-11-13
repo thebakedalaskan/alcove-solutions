@@ -13,9 +13,10 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
-import { q, useConnectDrive, useDisconnectDrive, useRetryDriveExport, useUpdateDrive } from '~/lib/queries';
+import { noteQueries } from '~/features/notes/queries';
+import { sharingQueries, useConnectDrive, useDisconnectDrive, useRetryDriveExport, useUpdateDrive } from '~/features/notes/sharing/queries';
 import { wentAt } from '~/lib/time';
-import { DriveFolderPicker } from './DriveFolderPicker';
+import { DriveFolderPicker } from '~/features/notes/sharing/DriveFolderPicker';
 import { Setting, useSaving } from './save';
 
 const ORDER: readonly DriveExportFormat[] = ['notes-markdown', 'transcript-text', 'recording-zip'];
@@ -43,7 +44,7 @@ function returned(result: DriveConnectResult, s: DriveSettings): string {
 }
 
 export function GoogleDrive({ result }: { result?: DriveConnectResult | undefined }) {
-  const settings = useQuery(q.drive());
+  const settings = useQuery(sharingQueries.drive());
   const data = settings.data;
   const status = data?.connection.status;
   const connected = status === 'connected';
@@ -52,8 +53,8 @@ export function GoogleDrive({ result }: { result?: DriveConnectResult | undefine
   const [said, setSaid] = useState(result !== undefined);
   const shown = open && status !== undefined && status !== 'disconnected';
   // What went lately, only while it's open to show it.
-  const jobs = useQuery({ ...q.driveJobs(), enabled: shown });
-  const notes = useQuery({ ...q.notes(), enabled: shown });
+  const jobs = useQuery({ ...sharingQueries.driveJobs(), enabled: shown });
+  const notes = useQuery({ ...noteQueries.notes(), enabled: shown });
   const connect = useConnectDrive();
   const disconnect = useDisconnectDrive();
   const update = useUpdateDrive();

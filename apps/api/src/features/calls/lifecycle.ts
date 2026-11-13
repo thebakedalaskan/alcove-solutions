@@ -1,40 +1,43 @@
 import { MAIN_PLACE, type CallEndResult, type Speaker } from '@alcove/api';
 import { z } from 'zod';
-import type { Deps, Owner } from '../../context';
-import type { LiveKitEvent } from '../../livekit';
-import { id128 } from '../../crypto';
-import { exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
-import { ConflictError } from '../../errors';
-import { openOwner } from '../../owners';
-import { limitsNow } from '../../limits';
-import { me, profile } from '../account/account';
-import { portraitFor } from '../account/portraits';
-import { CallSpace, NO_BOARDS, NO_SPACE, withOpenBoards, type WorkedDocument } from './space-state';
-import * as space from './workspace';
-import * as boards from './boards';
-import * as liveNotes from './live-notes';
-import { queueDelete, segments, setRecordingState } from '../recordings/audio';
-import * as capture from './capture';
+import type { Deps, Owner } from '../../platform/context';
+import type { LiveKitEvent } from '../../providers/livekit';
+import { id128 } from '../../keys/crypto';
+import { exec, maybeOne, rows, timestamp, tx, type Db } from '../../platform/db';
+import { ConflictError } from '../../platform/errors';
+import { openOwner } from '../../keys/owners';
+import { limitsNow } from '../../platform/limits';
+import { me, profile } from '../profile/profile';
+import { portraitFor } from '../profile/portraits';
+import { CallSpace, NO_BOARDS, NO_SPACE, withOpenBoards } from './workspace/space-state';
+import { type WorkedDocument } from '../workspaces/worked';
+import * as space from './workspace/workspace';
+import * as boards from './boards/boards';
+import * as liveNotes from './notes/live-notes';
+import { segments, setRecordingState } from '../recordings/audio';
+import { queueDelete } from '../../platform/objects';
+import * as capture from './notes/capture';
 import { dropInvites } from '../meetings/access';
 import { MeetingManifest, updateManifest } from '../meetings/service';
-import { getItem } from '../../vault';
-import { finishRecording, updateNote, type HeldRoom } from '../notes/service';
-import { storedMoments } from '../recordings/storedFrames';
+import { getItem } from '../../keys/vault';
+import { finishRecording, updateNote, type HeldRoom } from '../notes/manifest';
+import { storedMoments } from './notes/stored-frames';
 import { standIns, type HostChange } from './hosting';
 import { Joined, admissionFresh, relocate } from './places';
-import * as rings from './rings';
-import * as screens from '../recordings/screens';
+import * as rings from './ringing/rings';
+import * as screens from '../recordings/screens/screens';
 import { endSeats } from '../workspaces/service';
+import { workspaceCalls } from './workspace/seats';
 import { seatEnded } from '../workspaces/access';
-import * as writer from '../notes/writer';
-import { log } from '../../log';
+import * as writer from '../notes/writing/writer';
+import { log } from '../../platform/log';
 import { closeRooms, hostNotices, load, roomsChanged, roomsClosedBetween, save, secondsIn, settle, sharesEnd, tenthsIn, type Row, type Stored, withPerson } from './state';
-import { MlsRow, appendMls, openMls } from './mls-log';
+import { MlsRow, appendMls, openMls } from './mls/mls-log';
 import { hereIn, knownIn, knownUntil, personFor, seatKey, seatOf, speakersIn, type Viewer } from './participants';
-import { afterClosing, keepRoomBoards, landRooms, syncBoardSeats, syncRoomBoards } from './room-boards';
+import { afterClosing, keepRoomBoards, landRooms, syncBoardSeats, syncRoomBoards } from './boards/room-boards';
 import { stillHosting } from './permissions';
-import { tellRoom } from './notifications';
-import { leaveAttention } from './attention';
+import { tellRoom } from './attention/notifications';
+import { leaveAttention } from './attention/attention';
 
 const clog = log.child({ component: 'calls' });
 
@@ -201,7 +204,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
   // the main board, if there is one: there's no main room to come back to.
   await keepRoomBoards(o, callId, kept, invitedAtEnd);
   // Nor does anything shared with people's seats in it (maintenance sweeps up, should this be cut short).
-  await endSeats(o, [callId]);
+  await endSeats(o, [callId], workspaceCalls);
   if (end.pendingNoteId) writer.kick(o, o.ownerId);
   // Deleting the room disconnects everyone in it, which is how their browsers learn the call ended: an ended call is the organizer's alone to read.
   if (room) await o.livekit.deleteRoom(room).catch((e: unknown) => clog.warn('room not deleted', { callId, err: e }));

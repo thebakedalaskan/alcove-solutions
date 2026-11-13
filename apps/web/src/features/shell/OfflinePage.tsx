@@ -5,7 +5,7 @@
 import { AlcoveApiError, errorCode } from '@alcove/api';
 import { Button, EmptyState, Icon, buttonClass } from '@alcove/ui';
 import { Link, useRouter, type ErrorComponentProps } from '@tanstack/react-router';
-import { recordOfflineHere, signedInHere } from '~/lib/device';
+import { recordOfflineHere, signedInHere } from '~/features/account/device';
 
 /** Offline: what still works is said, and offered, only to someone signed in on this device who records offline. */
 export function OfflinePage() {

@@ -1,7 +1,7 @@
 /*
  * Stands in for apps/web/src/features/call/media/livekit.ts in Storybook (.storybook/main.ts points every import of it here).
  * LiveKit can't run here, so the room is scripted: the call screen drives it exactly as it drives LiveKit's room, and it
- * answers as LiveKit would from the call's script (src/api/script.ts).
+ * answers as LiveKit would from the call's script (src/api/call/script.ts).
  *
  *   - Your own microphone, camera and screen are published as LocalMedia has them, from the browser's made-up devices
  *     (src/browser.ts): mute, switch a device or share, and the room follows, a share after a moment to publish.
@@ -17,7 +17,8 @@
 import type { CallSession, LiveStore } from '@alcove/api';
 import type * as Real from '~/features/call/media/livekit';
 import type { LocalMedia } from '~/features/call/media/media';
-import { ScriptedCall, type RoomSide } from '../api/call';
+import type { RoomSide } from '../api/call/base';
+import { ScriptedCall } from '../api/call/scripted-call';
 import { pause } from '../api/live';
 import { drawnScreen, type Screen } from './screens';
 

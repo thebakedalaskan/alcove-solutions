@@ -1,9 +1,10 @@
 /*
- * What scheduling's stories share (Pages / Scheduling, and Journeys / 4 Start or schedule a call): the scheduler and the week
- * found by their names, as a person finds them, and the week pressed, pointed at, dragged and held with the pointer where a
- * person's would be. The week works out a time from where the pointer is, not from what was pressed, so every press here has
- * its place on the screen: the middle of a half hour, on whatever is on top there (a free half hour, the call, a meeting).
- * Nothing here checks anything: it waits for what the next press needs, and no longer.
+ * What scheduling's stories share (Pages / Calls / Scheduling, and Journeys / 4 Start or schedule a call): the
+ * scheduler and the week found by their names, as a person finds them, and the week pressed, pointed at, dragged and
+ * held with the pointer where a person's would be. The week works out a time from where the pointer is, not from what
+ * was pressed, so every press here has its place on the screen: the middle of a half hour, on whatever is on top there
+ * (a free half hour, the call, a meeting). Nothing here checks anything: it waits for what the next press needs, and no
+ * longer.
  *
  *   export const Clash = page('/calls?schedule=new', 'busy', {
  *     play: playing(withPriyaAndKofi, pressingAt(THURSDAY, '12:00', 'Press 12:00, when Priya is busy'))

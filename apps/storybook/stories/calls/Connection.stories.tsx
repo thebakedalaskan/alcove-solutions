@@ -4,7 +4,7 @@
  * is here too: it arrives through the room, as LiveKit's does.
  */
 import type { Meta } from '@storybook/react-vite';
-import { at, joins } from '../../src/api/script';
+import { at, joins } from '../../src/api/call/script';
 import { setOnline } from '../../src/browser';
 import { inCall, phone } from '../../src/call';
 import { pages, type PageArgs } from '../../src/page';

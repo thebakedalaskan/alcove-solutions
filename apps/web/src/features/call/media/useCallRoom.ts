@@ -2,9 +2,10 @@ import { errorMessage, type CallSession, type FeatureFlagName } from '@alcove/ap
 import type { useToast } from '@alcove/ui';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { sessions, useLive, type useLeaveGuard } from '~/lib/live';
+import { useLive, type useLeaveGuard } from '~/lib/live';
+import { sessions } from '~/features/call/session/handoff';
 import { log } from '~/lib/log';
-import { q } from '~/lib/queries';
+import { featureFlagsQuery } from '~/lib/featureFlags';
 import { ShareMarks } from '../screen-sharing/marks';
 import { CallReactions } from '../layout/reactions';
 import type { CallRoom, RoomView } from './livekit';
@@ -21,7 +22,7 @@ const FLAGS_WAIT_MS = 1500;
 function roomFlags(queries: QueryClient): Promise<readonly FeatureFlagName[]> {
   return new Promise((resolve) => {
     const late = setTimeout(() => { clog.info('feature flags not read in time: the call opens without them', { waitMs: FLAGS_WAIT_MS }); resolve([]); }, FLAGS_WAIT_MS);
-    void queries.ensureQueryData(q.featureFlags()).then((on) => { clearTimeout(late); resolve(on); }, (err: unknown) => {
+    void queries.ensureQueryData(featureFlagsQuery()).then((on) => { clearTimeout(late); resolve(on); }, (err: unknown) => {
       clearTimeout(late);
       clog.info('feature flags not read: the call opens without them', { err });
       resolve([]);
@@ -108,4 +109,19 @@ export function useCallRoom({ session, media, toast, guard: guardRef }: CallRoom
   }, [room]);
 
   return { room, roomView, marks, reactions };
+}
+
+/**
+ * The browser is holding back everyone's sound until the page is clicked (Safari with nothing captured). The status bar says so
+ * for as long as it lasts, with Play sound, and every click, tap or key tries again (iOS doesn't count every touch), until sound
+ * plays.
+ */
+export function useSoundUnblocked(room: CallRoom, blocked: boolean): void {
+  useEffect(() => {
+    if (!blocked) return;
+    const go = () => { void room.startAudio(); };
+    const kinds = ['click', 'touchend', 'keydown'] as const;
+    for (const k of kinds) addEventListener(k, go, { capture: true });
+    return () => { for (const k of kinds) removeEventListener(k, go, { capture: true }); };
+  }, [blocked, room]);
 }

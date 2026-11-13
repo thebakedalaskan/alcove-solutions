@@ -7,7 +7,7 @@
  */
 import { isAcceptedFollowUp, isPendingFollowUp } from '@alcove/api';
 import type { ActionItem, Change, Decision, NoteAction, NoteDecision, NoteEvidence, NoteEvidenceFlag, NoteEvidenceMoment, NoteQuestion, NoteRoom, ScreenMoment, TranscriptLine } from '@alcove/api';
-import type { NoteManifest } from './service';
+import { type NoteManifest } from './manifest';
 
 /** What a decision, an open question and a follow-up have in common here. `from`: a follow-up written on a board. */
 type Entry = Pick<Decision, 'at' | 'screen' | 'lines' | 'against' | 'changes'> & { disputes?: Decision['disputes']; takenOn?: boolean; from?: ActionItem['from'] };

@@ -10,7 +10,7 @@
 import type { Person } from '@alcove/api';
 import type { BlockJSON } from '~/features/workspace/editor/types';
 import type { Screen } from '../media/screens';
-import type { Page } from '.';
+import type { Page } from './world';
 import { iso } from './clock';
 import { AIKO, ART, KOFI, MAYA, PRIYA } from './people';
 

@@ -8,13 +8,13 @@
  */
 import { TopUpStateSchema, type TopUpState } from '@alcove/api';
 import { z } from 'zod';
-import type { Config } from '../../config';
-import { blindIndex, deriveIndexKey, unb64u } from '../../crypto';
-import { maybeOne, rows, tx, type Db } from '../../db';
-import { conflict, NotFoundError, ValidationError } from '../../errors';
-import { limitsNow } from '../../limits';
-import { log } from '../../log';
-import { closedBySupport } from './deposits';
+import type { Config } from '../../platform/config';
+import { blindIndex, deriveIndexKey, unb64u } from '../../keys/crypto';
+import { maybeOne, rows, tx, type Db } from '../../platform/db';
+import { conflict, NotFoundError, ValidationError } from '../../platform/errors';
+import { limitsNow } from '../../platform/limits';
+import { log } from '../../platform/log';
+import { closedBySupport } from './top-ups/deposits';
 import { credit, planNow, type Accounting } from './plans';
 
 const slog = log.child({ component: 'billing-support' });

@@ -9,8 +9,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { describe, expect, it } from 'vitest';
-import { createPool } from '../db';
-import { configureLogging } from '../log';
+import { createPool } from '../platform/db';
+import { configureLogging } from '../platform/log';
 import { migrate } from '../migrate';
 
 const MIGRATIONS = fileURLToPath(new URL('../../migrations/', import.meta.url));

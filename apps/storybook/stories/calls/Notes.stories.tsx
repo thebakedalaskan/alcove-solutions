@@ -7,13 +7,13 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
-import { at, asksForNotes, notesRunningOut, notesStop, run, says, UNENCRYPTED_MODEL, type Present } from '../../src/api/script';
+import { at, asksForNotes, notesRunningOut, notesStop, run, says, UNENCRYPTED_MODEL, type Present } from '../../src/api/call/script';
 import { current } from '../../src/api/state';
 import { MORE, clearSide, inCall, light, phone, plays, press, reach } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
-import { addToBalance, boughtFromBalance, freshEntryId } from '../../src/world/payments';
-import { notesStopped, overLimits, PLAN_OFFERS, PRO_PRICE, proPlan } from '../../src/world/plans';
-import { FOLLOW_UP_SCRIPT } from './followUps';
+import { addToBalance, boughtFromBalance, freshEntryId } from '../../src/world/plans/payments';
+import { notesStopped, overLimits, PLAN_OFFERS, PRO_PRICE, proPlan } from '../../src/world/plans/plans';
+import { FOLLOW_UP_SCRIPT } from './follow-ups';
 import { AIKO, CHECK_IN, CHECK_IN_SUMMARY, CHECK_IN_TALK, KOFI, MAYA, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK } from './talk';
 
 const meta = { title: 'Calls/Notes', ...pages } satisfies Meta<PageArgs>;

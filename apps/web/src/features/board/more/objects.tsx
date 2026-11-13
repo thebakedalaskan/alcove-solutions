@@ -6,7 +6,7 @@
 import { branchPath, branches, type BoardView, type LinkObject, type NodeObject, type TableObject } from '@alcove/board';
 import { BoardLink, BoardNode, BoardTable } from '@alcove/ui';
 import { createContext, memo, useContext, type ReactNode } from 'react';
-import { BoardTyping } from '../editing';
+import { BoardTyping } from '../input/editing';
 import type { Board } from '../useBoard';
 
 /** Something in the board's workspace, as this person knows it: what it's called and what it is. */

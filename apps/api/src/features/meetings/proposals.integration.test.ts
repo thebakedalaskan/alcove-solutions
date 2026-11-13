@@ -8,10 +8,10 @@ import { AlcoveApiError, OPERATION_HEADER, type Meeting, type MeetingInput } fro
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { tx } from '../../db';
-import { openOwner } from '../../owners';
+import { tx } from '../../platform/db';
+import { openOwner } from '../../keys/owners';
 import { connectGoogleCalendar, ORIGIN, startHarness, type Harness } from '../../testing/harness';
-import { findItem, saveRevision } from '../../vault';
+import { findItem, saveRevision } from '../../keys/vault';
 
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });

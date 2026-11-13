@@ -2,8 +2,8 @@
 """Copies the real scene's visitors (horizon.tsx, horizon.css) onto the canvas, so the canvas mirrors the app."""
 import re, sys, os
 R = sys.argv[1]; P = sys.argv[2]
-tsx = open(R + '/packages/ui/src/components/horizon.tsx', encoding='utf8').read()
-css = open(R + '/packages/ui/src/styles/horizon.css', encoding='utf8').read()
+tsx = open(R + '/packages/ui/src/evening/horizon.tsx', encoding='utf8').read()
+css = open(R + '/packages/ui/src/evening/horizon.css', encoding='utf8').read()
 
 def cut(a, b):
     i = tsx.index(a); j = tsx.index(b, i)
@@ -33,7 +33,7 @@ life = re.sub(r'\.hz\[data-moment="(\w+)"\] \.hz-sail', r'.lf[data-moment="\1"] 
 wind = re.search(r'@keyframes hz-wind \{.*?\n', css).group(0)
 puff = css[css.index('/* A cloud rests where it'):css.index('@keyframes hz-rise')]
 head = '''
-/* What passes through, as in the real scene (packages/ui/src/styles/horizon.css). */
+/* What passes through, as in the real scene (packages/ui/src/evening/horizon.css). */
 .lf { --hz-chop: var(--sc-chop); --hz-near: var(--sc-near); --hz-star: var(--sc-star); --hz-cloud: var(--sc-cloud); --hz-rim: var(--sc-rim); --hz-shape: var(--sc-shape); --hz-leaper: var(--sc-leaper); position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
 .sc .lf { z-index: auto; }
 .lf i { position: absolute; display: block; }

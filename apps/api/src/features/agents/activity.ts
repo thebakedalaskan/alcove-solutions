@@ -5,13 +5,13 @@
  */
 import { AgentActivityIdSchema, AgentActivityPageSchema, AgentToolSchema, type AgentActivity, type AgentActivityPage, type AgentTool } from '@alcove/api';
 import { z } from 'zod';
-import type { Deps, Owner } from '../../context';
-import { b64u, fromUtf8, id128, openJson, sealJson, stateKey, toJson, unb64u, utf8 } from '../../crypto';
-import { bigintText, bytea, exec, rows, timestamp } from '../../db';
-import { ValidationError, toAppError } from '../../errors';
-import { log } from '../../log';
+import type { Deps, Owner } from '../../platform/context';
+import { b64u, fromUtf8, id128, openJson, sealJson, stateKey, toJson, unb64u, utf8 } from '../../keys/crypto';
+import { bigintText, bytea, exec, rows, timestamp } from '../../platform/db';
+import { ValidationError, toAppError } from '../../platform/errors';
+import { log } from '../../platform/log';
 import * as meetings from '../meetings/service';
-import * as notes from '../notes/service';
+import * as noteAccess from '../notes/access';
 import type { AgentPrincipal } from './service';
 
 const alog = log.child({ component: 'agent-activity' });
@@ -75,9 +75,9 @@ function untitled(e: unknown, about: { noteId: string } | { meetingId: string })
  * people's by the check reading it takes, a few at a time. Only manifests, never Google, and nothing of it is kept.
  */
 async function noteTitles(o: Owner, ids: string[]): Promise<Map<string, string>> {
-  const titles = await notes.ownNoteTitles(o, ids);
+  const titles = await noteAccess.ownNoteTitles(o, ids);
   await inTurns(ids.filter((id) => !titles.has(id)), LOOKUPS_AT_ONCE, async (noteId) => {
-    try { titles.set(noteId, await notes.noteTitle(o, noteId)); } catch (e) { untitled(e, { noteId }); }
+    try { titles.set(noteId, await noteAccess.noteTitle(o, noteId)); } catch (e) { untitled(e, { noteId }); }
   });
   return titles;
 }

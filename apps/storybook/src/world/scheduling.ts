@@ -5,7 +5,7 @@
  * (`changing(withHiringSync)`), as page.tsx's `changing` does.
  */
 import type { Interval, Meeting } from '@alcove/api';
-import type { World } from '.';
+import type { World } from './world';
 import { call } from './build';
 import { iso } from './clock';
 import { AIKO, ART, INES, KOFI, MAYA, PRIYA } from './people';
@@ -48,7 +48,7 @@ function busy(day: number, from: string, to: string): Interval {
 /**
  * What the calendars of the people Art meets most say, as busy time only (the stand-in never says what's in them), on the
  * days scheduling's stories press: tomorrow to the Tuesday after, and the next standup's Wednesday. On any other day they,
- * and everyone else at Vandelay, have the stand-in's own made-up working day (src/api/standin.ts).
+ * and everyone else at Vandelay, have the stand-in's own made-up working day (src/api/meetings/api.ts).
  *
  * Tomorrow is drawn so the call follows who's added. Art is free from 09:00 (his Harbourline proposal is at 11:00 and his 1:1
  * with Maya at 15:30); with Priya, from 10:00; with Kofi, at 09:00; and the three of them together not until 14:00. At 12:00

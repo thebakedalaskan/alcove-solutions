@@ -15,10 +15,11 @@ memory for their current session/workspace. Nothing is persisted as a plaintext 
 | Settings, pins, groups | Optimistic/serial, but value equality confused A→B→A and rollback could restore a failed intermediate value. | Immutable commands own fields by identity. Saving/Saved/Couldn’t confirm refer only to the row’s latest request. Later choices remain usable (journey 11.23). |
 | Protected outcomes | Need real authorization and success. | Admission/access, agreed consent, completed deletion, shared capture/recording, attestation and completed external sends/exports stay confirmed. Physical workspace deletion keeps its row until the API succeeds. |
 
-`apps/web/src/lib/queryWrites.ts` exports the exact production mutation options consumed by `queries.ts` and real HTTP
-integration flows. Temporary confirmed baselines plus ordered patches are rendered through QueryClient. Failure removes
-only its command; success touches only its fields. Authoritative reads retain pending projections. Read generations prevent
-canceled older fetch work from changing a newer baseline. Unrelated cache fields survive settlement.
+`apps/web/src/lib/queryWrites.ts` exports the exact production mutation options consumed by the features' query modules
+(`features/<owner>/queries.ts`) and real HTTP integration flows. Temporary confirmed baselines plus ordered patches are
+rendered through QueryClient. Failure removes only its command; success touches only its fields. Authoritative reads
+retain pending projections. Read generations prevent canceled older fetch work from changing a newer baseline. Unrelated
+cache fields survive settlement.
 
 Protected note writes never publish their returned whole-note snapshots: an older decision acknowledgement can arrive after
 a newer follow-up tick. Their shared confirmation path cancels an obsolete detail read and awaits a fresh `readNote` result,
@@ -51,6 +52,7 @@ component or browser test suite is added. Storybook shows pending/failure phone/
 journeys. Hardware verification remains with its owning media feature; this change claims no new physical-device coverage.
 
 The server test/typecheck Turbo tasks explicitly include the imported web `queryWrites.ts` and workspace `changes.ts`;
-integration test caching stays disabled. CI's scope includes those owners, their `queries.ts`/workspace `actions.ts`
-composition and router mutation defaults, so changing only their web sources still runs all integration shards. Keep these
-inputs/scope paths current when a real-client integration flow starts importing another production web owner.
+integration test caching stays disabled. CI's scope includes those owners, the features' `queries.ts`/`queryKeys.ts` and
+workspace `tree/actions.ts` composition and router mutation defaults, so changing only their web sources still runs all
+integration shards. Keep these inputs/scope paths current when a real-client integration flow starts importing another
+production web owner.

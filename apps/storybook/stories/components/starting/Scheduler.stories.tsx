@@ -1,9 +1,9 @@
 /*
- * The scheduler's editor (components/scheduler.tsx): the column beside the week on Calls while a call is scheduled, moved or
+ * The scheduler's editor (calls/scheduler.tsx): the column beside the week on Calls while a call is scheduled, moved or
  * asked to move. A property list with two edges: the kicker, the title, the hairlines and the foot on the outer edge, every
  * value on the inner one, each row an icon in its column and its value, the lines that carry on a row starting on the inner
  * edge. Anything pressable keeps its text on the edge and lets its hover reach past it. Here on made-up data, with nothing
- * behind the buttons; the page itself is Pages/Scheduling.
+ * behind the buttons; the page itself is Pages/Calls/Scheduling.
  */
 import {
   Avatar, Button, Faces, GhostArch, Icon, PersonToken, SchedAsk, SchedChoice, SchedDoc, SchedField, SchedFoot, SchedGroup, SchedLine, SchedListHead, SchedListNote, SchedName,

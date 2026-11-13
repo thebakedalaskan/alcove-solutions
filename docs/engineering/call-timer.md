@@ -51,7 +51,7 @@ cascades).
 
 ## Verification
 
-`apps/api/src/features/calls/timers.integration.test.ts` drives it through the real API and client: starting, pausing,
+`apps/api/src/features/calls/timers/timers.integration.test.ts` drives it through the real API and client: starting, pausing,
 adding time, resuming and stopping, one of two concurrent presses, over time and added time, the day's limit, malformed and
 cross-site controls, permissions for waiting and admitted guests, invited people and a session that ran out, hand-off and
 the organizer's return, reconnecting, a second API process, and reading the previous release's sealed sequences.

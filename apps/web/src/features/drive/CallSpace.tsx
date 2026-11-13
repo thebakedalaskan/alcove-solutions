@@ -9,7 +9,9 @@ import { Button, Dots, EmptyState, Faces, FileCard, Icon, cn, type IconName } fr
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { callName } from '~/lib/people';
-import { q } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { noteQueries } from '~/features/notes/queries';
+import { workspaceQueries } from '~/features/workspace/queries';
 import { callLength, noteAt } from '~/lib/time';
 import { plural } from '~/lib/words';
 import { canEdit, type DriveActions } from './actions';
@@ -67,13 +69,13 @@ const callFoldersOf = (items: readonly WorkspaceItem[]): WorkspaceItem[] =>
   items.filter((i) => i.call !== null && i.trashedAt === null).sort((a, b) => (b.call?.startedAt ?? '').localeCompare(a.call?.startedAt ?? ''));
 
 export function CallSheet({ w, actions }: { w: WorkspaceSummary; actions: DriveActions }) {
-  const tree = useQuery(q.workspaceTree(w.id));
-  const people = useQuery(q.workspacePeople(w.id)).data ?? [];
-  const me = useQuery(q.session()).data?.user.email;
+  const tree = useQuery(workspaceQueries.workspaceTree(w.id));
+  const people = useQuery(workspaceQueries.workspacePeople(w.id)).data ?? [];
+  const me = useQuery(accountQueries.session()).data?.user.email;
   const items = tree.data?.items ?? [];
   const calls = callFoldersOf(items);
   const noteId = calls[0]?.call?.noteId ?? null;
-  const note = useQuery({ ...q.note(noteId ?? ''), enabled: noteId !== null });
+  const note = useQuery({ ...noteQueries.note(noteId ?? ''), enabled: noteId !== null });
   const ahead = isAhead(w);
   const title = callTitle(w);
   const when = w.call ? noteAt(w.call.at) : null;

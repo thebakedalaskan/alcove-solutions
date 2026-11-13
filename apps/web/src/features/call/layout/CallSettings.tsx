@@ -7,8 +7,9 @@
  */
 import { errorMessage } from '@alcove/api';
 import { IconButton, Modal, SettingRow, Switch, Tabs, useToast, type AvatarPerson } from '@alcove/ui';
-import { useId, useState } from 'react';
-import { CallAlertControls } from '~/features/settings/Notifications';
+import { useId, useState, type RefObject } from 'react';
+import { CallAlertControls } from '~/features/notifications/Controls';
+import { ChooseBackground } from '../media/backgrounds/ChooseBackground';
 import { CamOptions, MicOptions } from '../media/DevicePickers';
 import type { Devices } from '../media/devices';
 import type { LocalMedia, MediaSnapshot } from '../media/media';
@@ -26,6 +27,45 @@ const TABS: { value: SettingsTab; label: string }[] = [
 
 /** The call's own settings, from whoever hosts it: the same controls People's host has. */
 export type CallSettingsHost = Pick<HostControls, 'locked' | 'lock' | 'pointing' | 'setPointing'>;
+
+/**
+ * The windows over the call: Settings, from More, open on the part you last had, and Background, from the camera's menu or
+ * Settings. One at a time: what one opens from closes as it opens, and both go under Leave's question or once the call's over.
+ */
+export function useCallWindows() {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('av');
+  const [backgroundOpen, setBackgroundOpen] = useState(false);
+  return { settingsOpen, setSettingsOpen, settingsTab, setSettingsTab, backgroundOpen, setBackgroundOpen, closeAll: () => { setSettingsOpen(false); setBackgroundOpen(false); } };
+}
+export type CallWindowsState = ReturnType<typeof useCallWindows>;
+
+/** Settings and Background, each handing focus back to what opened it in the dock (`dock`) as it closes. */
+export function CallWindows({ windows, phone, media, m, devices, me, host, organizer, dock }: {
+  windows: CallWindowsState;
+  phone: boolean;
+  media: LocalMedia; m: MediaSnapshot; devices: Devices;
+  me: AvatarPerson;
+  host: CallSettingsHost | null;
+  organizer: boolean;
+  dock: RefObject<HTMLElement | null>;
+}) {
+  const toast = useToast();
+  /** Which device it switched to, from Settings as from the dock's own menus. */
+  const switched = {
+    mic: (what: 'mic' | 'speaker', label: string) => { toast(`Switched to ${label}`, { icon: what === 'mic' ? 'mic' : 'speaker' }); },
+    cam: (label: string) => { toast(`Switched to ${label}`, { icon: 'video' }); }
+  };
+  return (
+    <>
+      <CallSettings open={windows.settingsOpen} onOpenChange={windows.setSettingsOpen} tab={windows.settingsTab} onTab={windows.setSettingsTab} phone={phone} media={media} m={m} devices={devices} me={me}
+        onSwitched={switched} host={host} organizer={organizer} onBackground={() => { windows.setSettingsOpen(false); windows.setBackgroundOpen(true); }}
+        backTo={() => dock.current?.querySelector<HTMLElement>('[data-more]') ?? null} />
+      <ChooseBackground media={media} m={m} me={me} open={windows.backgroundOpen} onOpenChange={windows.setBackgroundOpen}
+        backTo={() => [...(dock.current?.querySelectorAll<HTMLElement>('[data-cam-menu], [data-more]') ?? [])].find((el) => el.getClientRects().length > 0) ?? null} />
+    </>
+  );
+}
 
 export function CallSettings({ open, onOpenChange, tab, onTab, phone, media, m, devices, me, onSwitched, onBackground, host, organizer, backTo }: {
   open: boolean; onOpenChange: (open: boolean) => void;

@@ -9,10 +9,11 @@ import { useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useCallback, useMemo, useRef } from 'react';
-import { stemOf, uploadInto } from '~/features/workspace/uploads';
+import { stemOf, uploadInto } from '~/features/workspace/uploads/uploads';
 import { withDocument } from '~/features/workspace/session';
 import { log } from '~/lib/log';
-import { q, useCreateWorkspace, useDriveItems } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { useCreateWorkspace, useDriveItems } from '~/features/workspace/queries';
 import { fileName, type DriveAt, type DriveFile } from './places';
 
 const dlog = log.child({ component: 'drive' });
@@ -31,7 +32,7 @@ export const canEdit = (role: WorkspaceRole | null | undefined): boolean => role
 export function useDriveActions() {
   const navigate = useNavigate();
   const say = useToast();
-  const owner = useQuery(q.session()).data?.ownerId ?? null;
+  const owner = useQuery(accountQueries.session()).data?.ownerId ?? null;
   const items = useDriveItems();
   const createWorkspace = useCreateWorkspace();
   /** One press, one new thing, however quick the second press. */

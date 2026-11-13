@@ -1,6 +1,6 @@
 import { CopyField } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { PREVIEW_DEPOSIT_ADDRESS } from '../../../src/world/payments';
+import { PREVIEW_DEPOSIT_ADDRESS } from '../../../src/world/plans/payments';
 
 const meta = {
   title: 'Components/Forms/CopyField', component: CopyField,

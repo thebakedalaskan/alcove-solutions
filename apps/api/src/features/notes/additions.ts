@@ -15,17 +15,17 @@
  */
 import { MAX_NOTE_ADDITIONS, type AudienceTeam, type NoteAddition, type PromoteBody, type PromotionPreview, type Person, type SharedAudience, type SharedWrite } from '@alcove/api';
 import { z } from 'zod';
-import type { Owner } from '../../context';
-import { b64u, blindIndex, equalBytes, id128, jcs, mac, openJson, sealJson, stateKey, toJson, utf8 } from '../../crypto';
-import { bytea, exec, maybeOne, rows, tx, type Db } from '../../db';
-import { ConflictError, ForbiddenError, ValidationError, notFound } from '../../errors';
-import { log } from '../../log';
-import { indexKey } from '../../owners';
-import { lockItem } from '../../vault';
-import { me, profile } from '../account/account';
-import { asRead, audienceOf, holdAccess, locate, type Audience, type Seen } from './service';
-import * as personal from './personal';
-import { personOf } from '../account/portraits';
+import type { Owner } from '../../platform/context';
+import { b64u, blindIndex, equalBytes, id128, jcs, mac, openJson, sealJson, stateKey, toJson, utf8 } from '../../keys/crypto';
+import { bytea, exec, maybeOne, rows, tx, type Db } from '../../platform/db';
+import { ConflictError, ForbiddenError, ValidationError, notFound } from '../../platform/errors';
+import { log } from '../../platform/log';
+import { indexKey } from '../../keys/owners';
+import { lockItem } from '../../keys/vault';
+import { me, profile } from '../profile/profile';
+import { asRead, audienceOf, holdAccess, locate, type Audience, type Seen } from './access';
+import * as personal from './personal/personal';
+import { personOf } from '../profile/portraits';
 
 const alog = log.child({ component: 'additions' });
 

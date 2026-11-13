@@ -9,7 +9,7 @@
 import { DEFAULT_NOTES_CHOICES, type CallSession } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
 import { screen, waitFor, within } from 'storybook/test';
-import { at, goesTo, leaves, opensPage, plays, presentsWorkspace, tagsYou, type CallScript, type Line, type Present } from '../../src/api/script';
+import { at, goesTo, leaves, opensPage, plays, presentsWorkspace, tagsYou, type CallScript, type Line, type Present } from '../../src/api/call/script';
 import { current } from '../../src/api/state';
 import { inCall, light, phone, reach, type InCall, type StoryCall } from '../../src/call';
 import { iso } from '../../src/world/clock';

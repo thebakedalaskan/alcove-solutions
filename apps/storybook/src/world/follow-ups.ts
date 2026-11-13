@@ -1,6 +1,6 @@
 /** One checklist and its AI proposals, shared by call and saved-note stories. Everyone is made up. */
 import { ACCEPTED_FOLLOW_UP, type FollowUpTarget, type LiveFollowUp } from '@alcove/api';
-import type { World } from '.';
+import type { World } from './world';
 import { writeNote } from './build';
 import { iso } from './clock';
 import { ART, KOFI, PRIYA } from './people';

@@ -1,5 +1,5 @@
 /*
- * A workspace, full screen (features/workspace/Frame.tsx). The routes under this one only say where you are: this one holds
+ * A workspace, full screen (features/workspace/full-screen/Frame.tsx). The routes under this one only say where you are: this one holds
  * the workspace, so moving between its pages keeps its side panel and its bar. `from=calls` says it was opened from a call
  * (Open its workspace), so ← and leaving full screen go back to Calls; otherwise they go back to the Drive, at this workspace,
  * beside its tree. It's kept as you move around the workspace.

@@ -12,8 +12,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ariaShortcut, overlayOpen, shortcut, withMod } from '~/lib/keys';
 import { DocumentBeside } from '~/features/workspace/Beside';
+import { workspaceQueries } from '~/features/workspace/queries';
 import { useMedia } from '~/lib/live';
-import { q } from '~/lib/queries';
 import { PHONE, canEdit, useDriveActions, type DriveActions } from './actions';
 import { CallSheet } from './CallSpace';
 import { CallsList, SpacesList } from './Lists';
@@ -106,8 +106,8 @@ function Place({ at, spaces, files, loading, failed, actions, onClear, onRetry }
 }
 
 export function Drive({ at }: { at: DriveAt }) {
-  const spaces = useQuery(q.workspaces()).data ?? [];
-  const library = useQuery(q.documents());
+  const spaces = useQuery(workspaceQueries.workspaces()).data ?? [];
+  const library = useQuery(workspaceQueries.documents());
   const actions = useDriveActions();
   const files = useMemo(() => filesIn(library.data), [library.data]);
   const shared = useMemo(() => sharedIn(files, spaces).length, [files, spaces]);

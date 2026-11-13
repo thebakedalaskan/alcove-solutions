@@ -5,7 +5,7 @@
  *   - type assertions (`x as T`, `<T>x`), except `as const`
  *   - non-null assertions (`x!`)
  *   - `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, and lint-disable comments
- *   - `console.*` outside the two loggers (AGENTS.md › Logging): use `log` from apps/api/src/log.ts or apps/web/src/lib/log.ts
+ *   - `console.*` outside the two loggers (AGENTS.md › Logging): use `log` from apps/api/src/platform/log.ts or apps/web/src/lib/log.ts
  * Uses the TypeScript 6 parser for syntax only; type checking runs on TypeScript 7 (tsc) separately.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -53,7 +53,7 @@ for (const file of DIRS.flatMap((d) => files(join(root, d)))) {
       if (!isConst) report(node.getStart(), `type assertion \`${node.getText(sf).slice(0, 60)}\` is not allowed; narrow with a type guard, parse at the boundary, or use \`satisfies\``);
     }
     if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'console' && !CONSOLE_OK.has(relative(root, file)))
-      report(node.getStart(), `\`${node.getText(sf)}\` is not allowed; use \`log\` (apps/api/src/log.ts or apps/web/src/lib/log.ts) so it has a level, context and a request ID`);
+      report(node.getStart(), `\`${node.getText(sf)}\` is not allowed; use \`log\` (apps/api/src/platform/log.ts or apps/web/src/lib/log.ts) so it has a level, context and a request ID`);
     if (ts.isNonNullExpression(node)) report(node.getStart(), `non-null assertion \`${node.getText(sf).slice(0, 60)}\` is not allowed; handle the missing case`);
     ts.forEachChild(node, visit);
   };

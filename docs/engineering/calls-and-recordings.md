@@ -137,7 +137,7 @@ The call itself stays in the API: who's let in, notes and the transcript.
   waiting ([Plans and usage › Calls](plans-and-usage.md#calls)).
 - **Let in from the link, signed in.** The commit that lets in someone who asked with an address also adds it to
   the invite: to the meeting's guests, and to the note's invited people when notes have been on
-  (`features/meetings/invites.ts`), so they get the notes when the call ends, like everyone invited by email. Only someone
+  (`features/calls/invites.ts`), so they get the notes when the call ends, like everyone invited by email. Only someone
   who asked counts (the organizer saw who it was), and an address comes with an ask only when the notes may go to
   that account: a real one (Google), or any when the organizer's own account is a demo one, since demo sign-ins
   check nobody and Microsoft's is one account everyone trying Alcove shares. Invites keep their usual rules, up
@@ -466,8 +466,8 @@ calls module makes the change), shown to everyone as `CallState.host`.
 
 ## What's captured
 
-One capture state for the whole call (`CallState.capture`, `packages/api/src/calls/capture.ts`), kept in the
-call's sealed state (`apps/api/src/features/calls/capture.ts`) and the same for everyone in it:
+One capture state for the whole call (`CallState.capture`, `packages/api/src/calls/notes/capture.ts`), kept in the
+call's sealed state (`apps/api/src/features/calls/notes/capture.ts`) and the same for everyone in it:
 
 - **Its parts.** `recording` (what the host's browser hears in the main room, mixed: its own
   microphone and everyone else's, encrypted; silent while the host is in a breakout room), `transcript`
@@ -508,7 +508,7 @@ call's sealed state (`apps/api/src/features/calls/capture.ts`) and the same for 
   after it started, with everyone told 5 minutes before, and takes at most 100 people, where asking to be let in takes no
   place ([Plans and usage](plans-and-usage.md#calls)).
 - **Pause** (`{type: "pause"}`, only while notes are on) stops every kind of capture at once. The one gate every
-  capturing path goes through, `mayCapture` in `apps/api/src/features/calls/capture.ts`, refuses audio pieces, speech
+  capturing path goes through, `mayCapture` in `apps/api/src/features/calls/notes/capture.ts`, refuses audio pieces, speech
   clips, caption translations, catch-up and questions with `409 conflict` ("Notes are paused…"), whoever sends
   them, and refreshes no live notes, so nothing new is recorded, transcribed or sent to the AI; pieces of shared screens' video are refused too. The
   organizer's browser holds everything as it sends the pause: the recorder and every voice stop, and nothing they
@@ -585,7 +585,7 @@ records the shares that do and sends the video in pieces, which the API seals as
 After the call, once the share's tail is over, each share's pieces are joined into one video the note's player can seek, and the notes read it
 where what was said points at it ([Notes and inference › Shared screens](notes-and-inference.md#shared-screens)).
 Code: `apps/web/src/features/call/screen-sharing/screenRecord.ts` (the recorder), `ShareScreenStep` in `@alcove/ui` (the question),
-`apps/api/src/features/recordings/screens.ts` (storage, video and analysis), `apps/api/src/features/recordings/ffmpeg.ts`.
+`apps/api/src/features/recordings/screens/screens.ts` (storage, video and analysis), `apps/api/src/features/recordings/ffmpeg.ts`.
 
 - **Asking the presenter.** While notes are on or paused, and the call's `allowScreens` choice (**Read shared
   screens** when it's scheduled, on by default; `CaptureState.allowScreens`) lets shares go in the notes, the share
@@ -610,7 +610,7 @@ Code: `apps/web/src/features/call/screen-sharing/screenRecord.ts` (the recorder)
   ended ones first.
 - **Calls already running at deployment.** The previous release's sealed `notes.screens` history and ended-share
   boundaries are read into `notes.frameCapture` (default `null` for other calls), so a save of a still-live call
-  preserves the frames it already captured. At call end, `recordings/storedFrames.ts` places those existing
+  preserves the frames it already captured. At call end, `calls/notes/stored-frames.ts` places those existing
   `screen_frames` on the recording timeline before the notes are queued. The writer reads those frames alongside
   any video captured after deployment; their original share-end, capture-stop and pause boundaries still apply.
   Record keys, headers and frame rows remain the same, and the removed frame-upload API stays removed.
@@ -854,7 +854,7 @@ ever sent to the presenter's computer.
 ## Moving to another device
 
 Someone in a call moves their place to another device (a laptop to a phone, say) from **More › Move to another
-device**: `apps/web/src/features/move/` and `apps/api/src/features/calls/moves.ts`.
+device**: `apps/web/src/features/move/` and `apps/api/src/features/calls/moves/moves.ts`.
 
 1. **A code.** `POST /v1/live/calls/:id/moves {media}` (by the call pass) starts a move and gives a random 128-bit
    code for the new device's link, `<web app>/move#<code>`, shown as a QR code and as the same link to copy. It
@@ -928,7 +928,7 @@ never logged). Upkeep deletes those that ran out, and a call's go when it ends.
 ## Ringing
 
 The organizer rings people into a live call, and each sees a card on whatever Alcove page they have open:
-`features/calls/rings.ts`, `packages/api-http/src/rings.ts` and, in the app, `features/calls/Ring*`. It's for reaching someone
+`features/calls/ringing/rings.ts`, `packages/api-http/src/calls/rings.ts` and, in the app, `features/calls/Ring*`. It's for reaching someone
 now, so it only works once the call is on: "Join and ring" is joining first, then `session.ring(emails)`.
 
 1. **Who can be rung.** Teammates (the people `GET /v1/team` lists) and people invited who said yes to this call (their
@@ -938,7 +938,7 @@ now, so it only works once the call is on: "Join and ring" is joining first, the
    find out whether an address is on Alcove, online, or what it said. Someone
    already in the call isn't rung, nobody is rung into a locked call (`409`), and an invite that's full refuses the
    ring rather than leave someone rung who'd have to ask.
-2. **The ring.** Everyone rung goes on the invite and the note's invited people (`features/meetings/invites.ts`), so they get
+2. **The ring.** Everyone rung goes on the invite and the note's invited people (`features/calls/invites.ts`), so they get
    the notes and come in without asking, whether or not they pick up. It's the same as for someone let in from the
    link: removing them from the call takes them off it, and the calendar event isn't changed. Each person has one
    ring per call in `call_rings`: ringing them again starts it over, with the same ID, whatever they said to it.
@@ -991,7 +991,7 @@ Rings past their time also drop by a timer in the browser, so a card doesn't out
 the server over the browser's own clock: a ring the server just sent is ringing, so a clock that's wrong can't hide it.
 
 **When Alcove isn't in front.** A tab that shows the card also raises a browser notification that names nobody, once
-browser notifications are on and allowed and rings are ticked (`features/calls/ringing/RingAlert.ts`; see
+browser notifications are on and allowed and rings are ticked (`features/calls/ringing/ringAlert.ts`; see
 [Browser notifications › Rings](browser-notifications.md#rings)): one per ring, closed when the ring ends.
 
 **What it can't do.** Reach someone with no Alcove tab open: there's no Web Push.
@@ -1014,14 +1014,14 @@ Rings are rows in `call_rings`, in the organizer's vault, found by a keyed hash 
   while that's one person; the same sender again within that minute changes nothing. Nobody else's read has it, whoever
   hosts included, and only the recipient's browser is told to read the call again. Notes go a minute after they last
   changed, when their recipient leaves on purpose or changes rooms, and once their connection has been gone for two minutes
-  without leaving. The browser says each note once, as a toast, and again with the new count (`session/nudgeAlerts.ts`);
+  without leaving. The browser says each note once, as a toast, and again with the new count (`attention/nudgeAlerts.ts`);
   its **Unmute** only ever unmutes.
 - **Statuses** (`{type: "status", status, minutes}`, `status` one of `away`, `listening` and `phone`, or null to clear
   it): anyone in the call sets their own, for everyone (`CallState.participants[].status`, with `since` and `until` on the
   server clock), until 2, 5 or 10 minutes from then, or with no `minutes` keeping a time already set. It stays through a
   reload and a room move, and goes when its time runs out, when they clear it, when they leave on purpose, or once their
   connection has been gone for two minutes without leaving. Their browser clears it once they talk with their microphone
-  on (`layout/status.ts`, with the call's one talk detector, `useTalking`). Both are sealed in the call's attention
+  on (`attention/status.ts`, with the call's one talk detector, `useTalking`). Both are sealed in the call's attention
   record ([Privacy, keys and sessions › Attention during a call](privacy-keys-and-sessions.md#attention-during-a-call)).
 - **Spotlight** (`{type: "spotlight", participantId}`) is the organizer's, and only names someone in the call;
   it puts that tile first on everyone's stage, and goes with that person to a new connection (a reload, a move).
@@ -1095,7 +1095,7 @@ Rings are rows in `call_rings`, in the organizer's vault, found by a keyed hash 
   note's audio has none of a room's talk: a room's section has its words, never its sound. Each room has its own
   capture state, which the organizer can pause ([What's captured](#whats-captured)).
 - **Captions in another language.** `POST /v1/live/calls/:id/translate {language, lines}` translates up to
-  20 live transcript lines (by ID) for the person asking (anyone let in), through `drafting.translate`, which
+  20 live transcript lines (by ID) for the person asking (anyone let in), through `translate` (`features/notes/writing/live.ts`), which
   sends them to NEAR AI's notes model, checked and sealed like every request
   ([Verified private inference](notes-and-inference.md#verified-private-inference)). Each line and language is
   translated once and kept as a sealed `transcript_translations` row, tagged with a keyed hash of the line and
@@ -1110,8 +1110,8 @@ Rings are rows in `call_rings`, in the organizer's vault, found by a keyed hash 
 A call has a home: the workspace its notes and transcript go to, in a folder of its own
 ([Data and storage › Workspaces](data-and-storage.md#workspaces)). Everyone in the call views and edits one workspace
 together, the home unless the organizer switched to another, and the call opens it to everyone let in, guests without an
-account too, for as long as they're in the call. What's done is `apps/api/src/features/calls/workspace.ts`, what the call
-keeps of it is `features/calls/space-state.ts`, and who can open what is `features/workspaces/access.ts`, on every read:
+account too, for as long as they're in the call. What's done is `apps/api/src/features/calls/workspace/workspace.ts`, what the call
+keeps of it is `features/calls/workspace/space-state.ts`, and who can open what is `features/workspaces/access.ts`, on every read:
 access is never copied into the call. Organizing a call opens nothing more.
 
 - **Its home.** The meeting's `workspaceId`, sealed in its manifest, default null: a workspace the organizer chose when
@@ -1298,7 +1298,7 @@ access is never copied into the call. Organizing a call opens nothing more.
     been deleted is found by any read. While something's showing, a browser reads the call each time it checks its keys, so it
     never waits on a change push that isn't coming.
 - **Presenting, in the browser** (`apps/web/src/features/call/workspace/presenting.ts`, with what's on each person's stage in
-  `layout/onStage.ts`: [The call screen](#the-call-screen)).
+  `stage/onStage.ts`: [The call screen](#the-call-screen)).
   - *The workspace presented* is in its frame on the stage of everyone following it, and the frame's bar says who's
     presenting it. Following takes you to the presenter's page and line, through the workspace's own Follow and presence
     (`features/workspace/follow.ts`), so nothing new goes to the server. Unfollow takes you back to where you were before
@@ -1341,7 +1341,7 @@ access is never copied into the call. Organizing a call opens nothing more.
   workspace, so a call that moved to another gets none.
 
 A live call comes first, so nothing under the call's row waits on a workspace's lock, opens a workspace, or works through its
-documents. Each action is two steps (`prepare` in `features/calls/workspace.ts`): everything that reads a workspace, and
+documents. Each action is two steps (`prepare` in `features/calls/workspace/workspace.ts`): everything that reads a workspace, and
 opening one to the call before a switch, which changes it under that workspace's row in a transaction of its own, with
 nothing of the call held; then the call's row, held only to check again what that went by, from the call's own state, and to
 save. A call that moved on in between is asked afresh, three times at most before a `409`. So a big change to a workspace,
@@ -1354,7 +1354,7 @@ call again. Following a change to who can open what, the state is right on the n
 tells the call straight away, because that's the only case that knows which call to tell.
 
 `workspaceForCall(d, call)` and `grantDocumentToCall(d, workspace, documentId, call, { role, place? })`, in
-`features/workspaces/access.ts`, are the same things for server code: the call's home, settled if it has none, with this
+`features/calls/workspace/seats.ts`, are the same things for server code: the call's home, settled if it has none, with this
 run of the call's folder in it (`folderId`), where what the server makes for the call goes, such as its board; and one
 document given to everyone in a call now, or in one part of it, as a seat each.
 
@@ -1392,7 +1392,7 @@ once it is (`StoredCall`), and nothing else.
   is never let in: the call opens the home to them, as to anyone there, while they're in the call and it uses the home.
   A chosen home's people are its own. A failure is logged, and tried again by the next change or the next call.
 - **Like any folder** otherwise: it can be renamed, moved and sent to Trash. A copy of it is a plain folder.
-- **Before the call** (`calls.ready`, `POST /v1/meetings/:id/home`, features/calls/ahead.ts), its page's Add an agenda,
+- **Before the call** (`calls.ready`, `POST /v1/meetings/:id/home`, features/calls/workspace/ahead.ts), its page's Add an agenda,
   New board and Upload settle the home the way the call does the first time anyone opens Workspace: the workspace its
   organizer chose while they can still make things there, else a new one made under the meeting's row, named after the call
   and its day (in the asker's time zone), with everyone invited let in once the row's let go and later calls of its series
@@ -1417,7 +1417,7 @@ sequences read are in [The call's timer](call-timer.md).
 A board is a workspace item of kind `board`: what's on it, who can open it and how it's deleted are the workspace's. What's the
 call's is which board is open, kept by part of the call in its sealed state (`board`: `main`, or a room's ID) with who opened
 it, by their name, address and seat, and which boards it lets everyone into. What's done is
-`apps/api/src/features/calls/boards.ts`, what's kept is `features/calls/space-state.ts`, and who can open what is
+`apps/api/src/features/calls/boards/boards.ts`, what's kept is `features/calls/workspace/space-state.ts`, and who can open what is
 `features/workspaces/access.ts`, on every read. A board in the workspace the call uses opens to everyone in the call, as
 anything there that isn't restricted does. What anyone adds to a board, or asks AI to do on it, is its workspace's payer's
 ([Plans and usage › Storage](plans-and-usage.md#storage)), so the call seats everyone on boards only in a workspace its
@@ -1458,9 +1458,9 @@ and those invited who are. The scheduler says so when such a workspace is chosen
 - **Who can open one.** Anyone invited. Guests add to what's open and don't start one: `board-open`, and `boardCheck`, answer
   them `403` in the same words whatever they asked for, logged at info, before anything is read or settled.
 - **One board per part of the call.** Opening one replaces whatever's open there for everyone, and the old one just closes;
-  a browser that had the old one on its stage keeps it there, just for that person, as a saved board (`InCall.tsx`). A
-  saved board is named as its workspace names it now, from the tree the call reads for its links (`callBoard.ts`), not as it
-  was named when it opened, and a rename in the call (`useRenameBoard`) puts the new name at once in that tree, the board
+  a browser that had the old one on its stage keeps it there, just for that person, as a saved board
+  (`features/call/boards/boardOnStage.ts`). A saved board is named as its workspace names it now, from the tree the call
+  reads for its links (`callBoard.ts`), not as it was named when it opened, and a rename in the call (`useRenameBoard`) puts the new name at once in that tree, the board
   picker's Your team's boards and the Drive's library, and reads each again, so no copy brings the old name back.
   A main board doesn't show in a breakout room, unless rooms share it ([Boards in breakout rooms](#boards-in-breakout-rooms)).
   The call's seats on it are for the whole call, so someone in a room finds it when they come back, and `boardCheck` counts
@@ -1558,7 +1558,7 @@ and those invited who are. The scheduler says so when such a workspace is chosen
   A browser with the board open to add to, while notes are on where it is, asks every 15 seconds
   (`POST /v1/live/calls/:id/ideas/watch`, 30 a minute a connection). The server looks at most once a minute for each part of
   the call, and only when something new was said: what was said there lately (`catchup.readOf`), with the board's frames by
-  their titles, goes to the notes model (`drafting.ideasFrom`), which offers up to three things worth a sticky, each from one
+  their titles, goes to the notes model (`ideasFrom`, `features/notes/writing/live.ts`), which offers up to three things worth a sticky, each from one
   line, which says who said it and when, with the words it comes from, copied from that line (the line's own words when they
   aren't in it), and the frame it fits. Only someone who may read every line of that part looks, the call's organizer pays for it,
   and nothing is held while the model reads: a run claims the look for two and a half minutes at most, and any other look
@@ -1589,7 +1589,7 @@ and those invited who are. The scheduler says so when such a workspace is chosen
 - **Sort into themes** is `POST /v1/workspaces/:id/documents/:doc/sort` with the stickies picked, by their IDs and what each
   says (each cut to 400 characters by the browser), for someone who can edit that board: on its own page, or in
   a call with the call's pass, where it's refused while notes are paused where they are, as Ask is (`maySortInCall`). The notes
-  model names up to six themes (`drafting.themesOf`): a sticky it wasn't given, or one it names twice, goes, and a theme left
+  model names up to six themes (`themesOf`, `features/workspaces/documents/asking.ts`): a sticky it wasn't given, or one it names twice, goes, and a theme left
   with none goes. A blank sticky has nothing to sort by. Fewer than two with words is `400` "Pick at least two stickies with
   words to sort.", and more than 80 "Sort up to 80 stickies at a time.", both before anything reaches the model, and a
   browser says the same before it asks (`SORT_TOO_FEW`, `SORT_TOO_MANY`). Nothing is kept. The browser writes the answer as one change of that person's (`applyThemes`), so one undo
@@ -1611,7 +1611,7 @@ and those invited who are. The scheduler says so when such a workspace is chosen
   next call in a series brings what this one brought, and the boards open for everyone in it that the organizer can still
   bring (`documents.boardsFrom`, from the note), up to 12 in all.
 
-A board is two steps too, as everything about the call's workspace is (`prepare` in `features/calls/boards.ts`). Making a
+A board is two steps too, as everything about the call's workspace is (`prepare` in `features/calls/boards/boards.ts`). Making a
 board, giving its grants and seats, and checking who may bring one are done with nothing of the call held, in the
 workspace's own transaction.
 The call's row is then held only to save what came of it, from the call as it is then. Opening never needs asking again:
@@ -1692,7 +1692,7 @@ board that isn't there, before anything about a vote is looked at.
   nobody can count votes by when the call changes. Nothing about a vote is written to the board, and nothing logged names a
   frame or a sticky.
 
-Each step is two steps as well (`prepareRun` in `features/calls/boards.ts`): whether someone can open the board, then
+Each step is two steps as well (`prepareRun` in `features/calls/boards/boards.ts`): whether someone can open the board, then
 whether they can edit it, which the workspace says, and what's on the board, with nothing of the call held; then the
 call's row, held only to save it, which asks again whatever could have changed meanwhile: that it's the same board and
 the same vote, whether another vote has started, how many votes are left, and who's in the call. So two people starting
@@ -1708,7 +1708,7 @@ straight away; what's kept, who may move and stop it, how it ends and what stops
 ([Presenting](#the-calls-workspace)). A saved board open just for you is brought into the call first (`board-open`, after
 `boardCheck` and its question), then presented. In the browser: `features/call/boards/boardPresenting.ts` turns the call's
 present state into the board's, `features/board/CallBoard.tsx` draws it, and the frame's bar and its pager are
-`layout/frame.tsx`'s. Close, while you present it, asks whom it ends for: For you (`close` false) leaves the board in the
+`stage/frame.tsx`'s. Close, while you present it, asks whom it ends for: For you (`close` false) leaves the board in the
 call, open on everyone's stage who followed, on their own; For everyone closes it.
 
 - **It's still the board.** Nothing about presenting changes how anyone's board is drawn: whoever presents and everyone
@@ -1771,7 +1771,7 @@ call, open on everyone's stage who followed, on their own; For everyone closes i
 Rooms open with what the organizer chose in the rooms panel's Board row, `BreakoutPlan.board` (`rooms-open`'s `board`):
 `{ mode: 'none' | 'each' | 'shared', template }`. Open rooms say it back (`CallState.breakouts.open.board`), and each open room
 says whether it's on a board of its own (`rooms[].board`), which is all anyone outside it is told. What's done is
-`features/calls/boards.ts` (`prepareRooms`, `roomsClosed`, `roomInStep`, `land`); `calls.ts` holds the row and says when.
+`features/calls/boards/boards.ts` (`prepareRooms`, `roomsClosed`, `roomInStep`, `land`); `calls.ts` holds the row and says when.
 
 - **In each room.** One board per room, made as rooms open, before the call's row is held: restricted, with nobody as its
   creator, named "<room> board", in the call's folder, filled from `template` before anyone arrives. Its readers are the seats of
@@ -1905,8 +1905,9 @@ person's own access where the call uses its pass, and its links open on the page
 
 ## The join page
 
-`apps/web/src/routes/join.$code.tsx` (with `apps/web/src/features/join/`) is the pre-join for everyone with the
-link: the organizer's lobby (`features/calls/lobby/Lobby.tsx`) by their account, and anyone else from the call's card.
+`apps/web/src/features/calls/lobby/JoinPage.tsx` (at `routes/join.$code.tsx`, with its parts beside it in
+`apps/web/src/features/calls/lobby/`) is the pre-join for everyone with the link: the organizer's lobby
+(`features/calls/lobby/Lobby.tsx`) by their account, and anyone else from the call's card.
 
 - **What it says before anyone joins.** The title and organizer, and what the call captures (`CaptureSummary`, the
   same for everyone), with who gets the notes said for the person looking (`PrejoinCapture`, one component for
@@ -1923,7 +1924,7 @@ link: the organizer's lobby (`features/calls/lobby/Lobby.tsx`) by their account,
   notes. Sign in to get them"); signing in opens in place of the name, with only the ways in that get the notes
   (`signInForNotes`): Google, and Microsoft and single sign-on too when the organizer's own account is a demo
   one. With Microsoft and single sign-on the page carries on signed in. Google's way back lands on Home, so the
-  call to return to waits in the tab's sessionStorage (`lib/afterSignIn.ts`, ten minutes, used once, never by a
+  call to return to waits in the tab's sessionStorage (`features/account/afterSignIn.ts`, ten minutes, used once, never by a
   preload, and dropped when the page comes back from the back-forward cache or someone signs in another way
   there) rather than in the sign-in URL; a refused Google sign-in comes back to the join page with the reason.
   Signed in, the page shows the account you join as, and the button says **Join now** when you're invited and
@@ -1947,7 +1948,7 @@ link: the organizer's lobby (`features/calls/lobby/Lobby.tsx`) by their account,
 - **Picking a time.** While a link offers times (`card.offer`) it shows `PickTime`, public and in the guest's own
   time zone, which it names. The first `calls.pick` settles it; anyone after that gets `conflict`, and the card, read
   again, says when the call is (`card.startsAt`), with its link. Add to my calendar is an `.ics` made in the browser
-  (`PickTimeCalendar.ts`), so nothing else sees the title. The organizer on their own link sees who it's waiting for.
+  (`pickTimeCalendar.ts`), so nothing else sees the title. The organizer on their own link sees who it's waiting for.
 - **When it can't go on.** A code that leads nowhere, a call that's over, or a card that can't be read each get
   their own page; a refused join (locked, ended, the organizer not there) shows under the button. Every failed
   request's reference (its request ID, `RequestRef`) is shown, finds its lines in the server's log, and says
@@ -2023,7 +2024,7 @@ and the page a call leaves you on (`session/CallOver.tsx`).
   message can't be reacted to until it has gone out (`sending`). If a reaction can't be sent it's reverted and the toast
   says "Your reaction wasn't sent. Try again." The stand-in call in Storybook folds reactions the same way (`react`).
 - **Spotlight** goes through the server and can name anyone in the call. It leads on everyone's stage.
-- **Tab attention** (`features/shell/TabAttention.tsx`) needs no OS notification permission: authorized unread document
+- **Tab attention** (`features/notifications/TabAttention.tsx`) needs no OS notification permission: authorized unread document
   and chat mentions use a horizon circle, and the current host's pending admissions use a rose square with priority.
   Counts over nine show +. The Alcove mark stays unchanged underneath. Each call publishes bounded generic counts
   to sibling tabs, without content or join tokens; a live browser lock keeps a background tab's projection valid when
@@ -2224,7 +2225,7 @@ and the page a call leaves you on (`session/CallOver.tsx`).
   (`mayRead`: their part of the call, and for a guest with the link only while they were in it, a stay that ended without a word
   ending when they were last heard from), not one said in a breakout room, and only pieces the person was there for, placed in
   the call by where they are from the line: a guest who came in or went out part way through a piece doesn't get it. What's sent
-  is a file of its own that starts at 0 (`recordings/stretchFile.ts`), so the line's place in it means the same in every browser.
+  is a file of its own that starts at 0 (`recordings/stretch-file.ts`), so the line's place in it means the same in every browser.
   MediaRecorder cuts pieces wherever its timeslice falls: in Chrome each piece after a segment's first starts with the end of
   the last block of the piece before (1,967 bytes in the test recording), and its own Cluster after that, and every Cluster
   keeps its time from the start of the segment. A run that doesn't start the segment is preceded by what the segment's first
@@ -2288,8 +2289,8 @@ and the page a call leaves you on (`session/CallOver.tsx`).
 - **Toasts in a call** sit left of the dock from 1328 px, spaced as the canvas spaces them so that someone's share is offered
   on one line. Narrower, there's no room for one line beside the dock, so they go above it, in the middle. They never cover
   your side's foot, its composer and its buttons: while it's open they keep to the middle of the stage left of it and of the
-  people at the window's edge (`--ic-right`, which InCall.tsx sets), and on a phone, with your side a sheet, they go to the
-  top. Nor do they cover the pager at the foot of a
+  people at the window's edge (`--ic-right`, which the call screen sets through `features/call/layout/PanelHost.tsx`), and on
+  a phone, with your side a sheet, they go to the top. Nor do they cover the pager at the foot of a
   board you present: they stand above it (all in `call.css`). What presenting says (who you're following, closed for you or
   for everyone, a share the organizer stopped) is built with `wsToast`, in the words the canvas's `nc.js` has. Each is about
   one thing on your stage (`topic`, `ToastOptions` in the kit's `toast.tsx`), and a newer one about the same thing takes the
@@ -2423,7 +2424,7 @@ and the page a call leaves you on (`session/CallOver.tsx`).
   after time away, or joins well after the start, is offered a catch-up once, as a toast, decided when the call
   screen first learns their window; nobody is while notes have never been on, and a guest isn't, since they can't
   read what was said then. Nothing of it is kept: it goes with the page.
-- **What carries over** (`FromLastTime.tsx`, `features/join/PrejoinCarry.tsx`) is for the person looking alone, from
+- **What carries over** (`FromLastTime.tsx`, `features/calls/lobby/PrejoinCarry.tsx`) is for the person looking alone, from
   the notes their own account has: a fold at the top of the Notes view, **From last time**, open until the call has
   notes of its own, and the same in brief under the way in at the pre-join. A guest has no account, and someone with no
   notes from the series sees neither: nothing says there's a series. It isn't in the call's state. In the Ask view,
@@ -2558,7 +2559,7 @@ and the page a call leaves you on (`session/CallOver.tsx`).
 - **Moving to another device.** **More › Move to another device** opens one dialog whose content changes in
   place (`features/move/MoveSheet.tsx`): the QR code and link, then the device that opened it, then letting go.
   Afterwards this screen says where the call went, with **Join again here** (and **Go to Home** when signed in).
-  The new device's page is `routes/move.tsx` ([Moving to another device](#moving-to-another-device)).
+  The new device's page is `features/move/MovePage.tsx`, at `/move` ([Moving to another device](#moving-to-another-device)).
 
 ## Looking closer at a share
 
@@ -2594,7 +2595,7 @@ the coordinates). Your own share has none of this: you have the original.
   Back to live.
 - **What's kept, and where.** Earlier pictures are a bounded buffer in this page's memory: at most 30 for each share and
   16 MiB, the oldest going first (never the one you're looking at). Each is a moment the picture changed, judged on the
-  48 × 27 grey grid of `screenGrid.ts`: 0.6% of it moving, or all of it
+  48 × 27 grey grid of `screen-grid.ts`: 0.6% of it moving, or all of it
   shifting a little (a new slide, a scroll or a window moved counts; a cursor moving doesn't). They're taken at most once
   a second from the video this browser already decodes to show the share, and only while that share is on your stage or
   in its own window. They're compressed (WebP, or JPEG from the first picture on where the browser can't write WebP, at
@@ -2658,7 +2659,7 @@ read receipts from the sealed call state.
 
 `POST /v1/recordings` creates a private note (`kind: room`, nobody invited) and a recording. In the app, Record
 (`/record`) takes the name and opens the stage recorder (`/record/live`), which starts it. The name is handed over
-in memory (`sessions.roomTitle` in `apps/web/src/lib/live.ts`), never in the address; the stage recorder opened
+in memory (`sessions.roomTitle` in `apps/web/src/features/call/session/handoff.ts`), never in the address; the stage recorder opened
 any other way (a reload, a link) starts with "Notes from the room". It records with or without a connection
 ([Recording without a connection](#recording-without-a-connection)). The browser records the microphone in 5-second pieces to
 `POST /v1/recordings/:id/audio` and sends clips of speech to `POST /v1/recordings/:id/transcribe` (both through

@@ -6,12 +6,12 @@
  * offer. The allowance itself, in dollars, never leaves the server.
  */
 import type { Plan, PlanOffers } from '@alcove/api';
-import type { Deps } from '../../context';
-import { limitsNow } from '../../limits';
-import { storageOf } from './held';
-import { minutesOf, standing } from './meter';
+import type { Deps } from '../../platform/context';
+import { limitsNow } from '../../platform/limits';
+import { storageOf } from './meter/held';
+import { minutesOf, standing } from './meter/meter';
 import { accountOf, freeBrings, historyOf, hoursOf, noticesOf, proBrings, proOf, teamBrings, teamYearlyOf, yearlyOf } from './plans';
-import { teamOf } from './teams';
+import { teamOf } from './teams/teams';
 
 /** How many of the balance's latest changes are shown. */
 const SHOWN = 20;

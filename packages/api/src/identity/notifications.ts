@@ -1,5 +1,5 @@
 import { NotificationPrefsInputSchema } from './preferences';
-import { CallNotificationDestinationSchema } from '../calls/notifications';
+import { CallNotificationDestinationSchema } from '../calls/attention/notifications';
 import { CallCodeSchema } from '../calls/entry';
 import { IDSchema } from '../shared/ids';
 import { z } from '../shared/zod';

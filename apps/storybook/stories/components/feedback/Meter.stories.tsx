@@ -6,7 +6,7 @@
 import { Meter } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Box } from '../../../src/component';
-import { freePlan } from '../../../src/world/plans';
+import { freePlan } from '../../../src/world/plans/plans';
 
 const { notes } = freePlan();
 

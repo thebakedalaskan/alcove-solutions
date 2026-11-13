@@ -2,7 +2,7 @@ import { GoogleSignInMessageSchema, type GoogleSignInResult } from '@alcove/api'
 import { Button, EmptyState } from '@alcove/ui';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect } from 'react';
-import { GOOGLE_REFUSED, googleSignInChannel } from '~/lib/googleSignIn';
+import { GOOGLE_REFUSED, googleSignInChannel } from '~/features/account/googleSignIn';
 import { log } from '~/lib/log';
 
 /** The popup's return page. It never shows the account or starts the opening animation here. */

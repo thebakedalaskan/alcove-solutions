@@ -7,7 +7,7 @@
 import { type AlcoveApi, type AudioPiece, type TranscriptClip } from '@alcove/api';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { speechWav } from '../../testing/fake-near';
+import { speechWav } from '../../testing/fakes/near';
 import { startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
 

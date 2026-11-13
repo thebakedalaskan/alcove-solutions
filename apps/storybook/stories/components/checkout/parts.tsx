@@ -6,7 +6,7 @@
  */
 import { Avatar, type CheckoutSummaryData, type LicensesOption, type MonthsOption, type NetworkOption } from '@alcove/ui';
 import type { ReactNode } from 'react';
-import { PREVIEW_BASE_ADDRESS } from '../../../src/world/payments';
+import { PREVIEW_BASE_ADDRESS } from '../../../src/world/plans/payments';
 import { AIKO, KOFI, PRIYA } from '../../../src/world/people';
 
 export { PREVIEW_BASE_ADDRESS };

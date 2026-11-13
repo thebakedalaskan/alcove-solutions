@@ -78,7 +78,7 @@
   the organizer takes it back by joining again, or leaves it to someone they choose; capture never changes with it,
   and only the organizer changes it ([Calls and recordings › Host hand-off](../engineering/calls-and-recordings.md#host-hand-off)).
 - Stand-ins for Microsoft and SSO sign-in, the sample calendar and the company directory
-  (`apps/api/src/demo.ts`).
+  (`apps/api/src/features/account/demo.ts`).
 - Privacy hardening: per-request key copies, keyed hashes instead of stored names and addresses, physical
   deletion with object GC, session sweeping, origin and content-type checks, rate limits.
 - Structured logging, an error hierarchy and request IDs from the browser to the server log.
@@ -111,7 +111,7 @@
 
 | # | Work | Notes |
 | --- | --- | --- |
-| 1 | Real Microsoft and SSO sign-in, with their calendars and company directories | Replaces `apps/api/src/demo.ts`; shared notes depend on verified emails |
+| 1 | Real Microsoft and SSO sign-in, with their calendars and company directories | Replaces `apps/api/src/features/account/demo.ts`; shared notes depend on verified emails |
 | 2 | Invitation emails (SMTP) | For organizers without a connected calendar, and for people notes are shared with |
 | 3 | Release acceptance in the deployed environment | [Deployment and acceptance](../engineering/deployment-and-acceptance.md); public journeys, private storage and deletion |
 | 4 | Bind requests to the attestation (an HPKE channel to a key the TEE makes, so trust doesn't rest on TLS alone) and pin the client | The API runs in Confidential Space and the app checks it; [Moving to confidential computing](../engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing) |

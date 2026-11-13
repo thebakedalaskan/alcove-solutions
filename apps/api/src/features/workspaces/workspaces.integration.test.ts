@@ -10,7 +10,7 @@ import { connect, createServer, type AddressInfo } from 'node:net';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { maintain } from '../../maintenance';
 import { openState, sealState, type WorkspaceState } from './access';
-import { findOwner } from '../../owners';
+import { findOwner } from '../../keys/owners';
 import { ORIGIN, startHarness, type Browser, type Harness } from '../../testing/harness';
 
 // Guests need real calls; every wait below is bounded and says what it was waiting for.

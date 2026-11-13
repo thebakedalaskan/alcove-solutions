@@ -9,7 +9,7 @@
 import { AgentAction, AgentAsked, AgentLink, AgentPermissions, AgentPlace, AgentPopFoot, AgentPopHead, AgentPopLine, AgentPopMore, AgentSaved, AgentWaiting, AgentWell, AgentLine, Button } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { CHIPS } from '~/features/agents/permissions';
-import { PREVIEW_AGENT_TOKEN, PREVIEW_MCP_ENDPOINT } from '../../../src/api/agents';
+import { PREVIEW_AGENT_TOKEN, PREVIEW_MCP_ENDPOINT } from '../../../src/api/agents/agents';
 import { did } from '../../../src/component';
 import { OnTheHorizon } from './frames';
 

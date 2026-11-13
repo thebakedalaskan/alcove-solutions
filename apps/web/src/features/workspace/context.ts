@@ -1,17 +1,17 @@
 /* What the list and the page of a workspace share, and what `<Workspace />` takes from whatever it's in. */
-import type { HomeOf } from './calls';
-import type { PersonIds } from './ids';
+import type { HomeOf } from './full-screen/calls';
+import type { PersonIds } from './sharing/ids';
 import type { ItemPlace, Person, WorkspaceHere, WorkspaceItem, WorkspaceTree, WorkspaceWhere } from '@alcove/api';
 import type { WsToastData } from '@alcove/ui';
 import { createContext, useContext, type ReactNode, type RefObject } from 'react';
 import type { Doc } from 'yjs';
-import type { Pictures } from './pictures';
+import type { Pictures } from './uploads/pictures';
 import type { VideoPlay } from './editor/types';
 import type { Following, StopFollowing } from './follow';
 import type { Someone } from './presence';
 import type { EditorHandle } from './editor/types';
 import type { LiveCall, LivePageId, LivePut } from './live/types';
-import type { Tree } from './tree';
+import type { Tree } from './tree/tree';
 
 /** Where in the list something was opened from, in a call: a document brought to it is in both. */
 export type WorkspaceArea = 'pins' | 'tree';
@@ -86,7 +86,7 @@ export interface WorkspaceCall {
   onFinding: () => void;
   /**
    * Whoever presents the workspace in this call, by connection, while someone does: following them is the frame's to say
-   * (features/call/layout/frame.tsx), so the page doesn't say it too, and stopping says nothing.
+   * (features/call/stage/frame.tsx), so the page doesn't say it too, and stopping says nothing.
    */
   presenter: string | null;
   /** Playing a video for everyone. */

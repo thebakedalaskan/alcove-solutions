@@ -502,17 +502,17 @@ docs/               Product, engineering and design docs
 
 | What | Where |
 | --- | --- |
-| Checking a NEAR AI model’s hardware evidence: the TDX quote with dcap-qvl, the dstack OS image’s measurements, the event log, NVIDIA’s GPU verdict, the key the attested VM signed | [`apps/api/src/evidence.ts`](apps/api/src/evidence.ts), [`dstack-images.ts`](apps/api/src/dstack-images.ts), [`roots.ts`](apps/api/src/roots.ts) |
-| Sealing requests to that key with Oblivious HTTP (RFC 9458) and HPKE; the one place anything with content goes to a model | [`apps/api/src/ohttp.ts`](apps/api/src/ohttp.ts), [`inference.ts`](apps/api/src/inference.ts) |
-| Which models count as private, and choosing one | [`apps/api/src/features/notes/models.ts`](apps/api/src/features/notes/models.ts) |
+| Checking a NEAR AI model’s hardware evidence: the TDX quote with dcap-qvl, the dstack OS image’s measurements, the event log, NVIDIA’s GPU verdict, the key the attested VM signed | [`apps/api/src/inference/evidence.ts`](apps/api/src/inference/evidence.ts), [`dstack-images.ts`](apps/api/src/tee/dstack-images.ts), [`roots.ts`](apps/api/src/inference/roots.ts) |
+| Sealing requests to that key with Oblivious HTTP (RFC 9458) and HPKE; the one place anything with content goes to a model | [`apps/api/src/inference/ohttp.ts`](apps/api/src/inference/ohttp.ts), [`inference.ts`](apps/api/src/inference/inference.ts) |
+| Which models count as private, and choosing one | [`apps/api/src/inference/models.ts`](apps/api/src/inference/models.ts) |
 | What each note records about the models that worked on it | [`packages/api/src/notes/schema.ts`](packages/api/src/notes/schema.ts), [`apps/web/src/features/notes/Evidence.tsx`](apps/web/src/features/notes/Evidence.tsx) |
-| Payments through NEAR Intents 1Click | [`apps/api/src/features/billing/oneclick.ts`](apps/api/src/features/billing/oneclick.ts), [`deposits.ts`](apps/api/src/features/billing/deposits.ts) |
-| The server in Confidential Space: its master key, attestation and TLS | [`apps/api/src/serverKeys.ts`](apps/api/src/serverKeys.ts), [`tee.ts`](apps/api/src/tee.ts), [`gcp.ts`](apps/api/src/gcp.ts), [`edge/`](apps/api/src/edge), [`infra/confidential-space/`](infra/confidential-space) |
+| Payments through NEAR Intents 1Click | [`apps/api/src/features/billing/top-ups/oneclick.ts`](apps/api/src/features/billing/top-ups/oneclick.ts), [`deposits.ts`](apps/api/src/features/billing/top-ups/deposits.ts) |
+| The server in Confidential Space: its master key, attestation and TLS | [`apps/api/src/keys/server-keys.ts`](apps/api/src/keys/server-keys.ts), [`tee.ts`](apps/api/src/tee/tee.ts), [`gcp.ts`](apps/api/src/tee/gcp.ts), [`edge/`](apps/api/src/edge), [`infra/confidential-space/`](infra/confidential-space) |
 | Your browser’s check of the server: Google’s token and the Rekor entry | [`packages/api-http/src/trust/`](packages/api-http/src/trust) |
 | End-to-end encrypted calls with MLS | [`packages/api-http/src/calls/mls.ts`](packages/api-http/src/calls/mls.ts), [`apps/web/src/features/call/media/livekit.ts`](apps/web/src/features/call/media/livekit.ts) |
-| Sealed records and per-account keys | [`apps/api/src/crypto.ts`](apps/api/src/crypto.ts), [`owners.ts`](apps/api/src/owners.ts) |
+| Sealed records and per-account keys | [`apps/api/src/keys/crypto.ts`](apps/api/src/keys/crypto.ts), [`owners.ts`](apps/api/src/keys/owners.ts) |
 | The MCP server for agents | [`apps/api/src/features/agents/mcp/`](apps/api/src/features/agents/mcp) |
-| Tests of all of it: a stand-in NEAR AI with a real HPKE receiver and 27 ways its evidence can fail, a stand-in 1Click, the TEE’s start-up and key release | [`apps/api/src/testing/fake-near.ts`](apps/api/src/testing/fake-near.ts), [`flows.integration.test.ts`](apps/api/src/integration/flows.integration.test.ts), [`topups.integration.test.ts`](apps/api/src/features/billing/topups.integration.test.ts), [`confidential-space.integration.test.ts`](apps/api/src/integration/confidential-space.integration.test.ts); run them as in [Run it yourself](#run-it-yourself) |
+| Tests of all of it: a stand-in NEAR AI with a real HPKE receiver and 27 ways its evidence can fail, a stand-in 1Click, the TEE’s start-up and key release | [`apps/api/src/testing/fakes/near.ts`](apps/api/src/testing/fakes/near.ts), [`flows.integration.test.ts`](apps/api/src/integration/flows.integration.test.ts), [`topups.integration.test.ts`](apps/api/src/features/billing/top-ups/top-ups.integration.test.ts), [`confidential-space.integration.test.ts`](apps/api/src/integration/confidential-space.integration.test.ts); run them as in [Run it yourself](#run-it-yourself) |
 
 <br>
 
@@ -576,7 +576,7 @@ and [Notes and inference › What’s left](docs/engineering/notes-and-inference
   in that stretch is never transcribed, and notes wait.
 - Someone can choose a model NEAR AI doesn’t run in an enclave (an organizer for a call’s notes, anyone for their own
   questions). Requests to it go over TLS through NEAR AI’s gateway, unsealed; the app marks it wherever it’s chosen.
-- Oblivious HTTP and HPKE are written in [`ohttp.ts`](apps/api/src/ohttp.ts) on @noble’s primitives and work against
+- Oblivious HTTP and HPKE are written in [`ohttp.ts`](apps/api/src/inference/ohttp.ts) on @noble’s primitives and work against
   NEAR AI in production and a test receiver, but aren’t yet checked against the RFCs’ test vectors.
 - Transcripts sometimes begin a clip with names or words nobody said
   ([#228](https://github.com/thebakedalaskan/alcove-solutions/issues/228)).

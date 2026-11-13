@@ -7,14 +7,14 @@
  */
 import { RsvpSchema, type GuestAnswer, type Proposal, type Rsvp, type RsvpCounts } from '@alcove/api';
 import { z } from 'zod';
-import type { Owner } from '../../context';
-import { b64u, blindIndex, fromUtf8, openRecord, sealRecord, stateKey, utf8, type RecordHeader } from '../../crypto';
-import { bytea, exec, maybeOne, rows, tx, type Db } from '../../db';
-import { ConflictError, ValidationError, notFound } from '../../errors';
-import { log } from '../../log';
-import { findOwner, indexKey } from '../../owners';
-import { findItem, findItems, lockItem, type Loaded } from '../../vault';
-import { profile } from '../account/account';
+import type { Owner } from '../../platform/context';
+import { b64u, blindIndex, fromUtf8, openRecord, sealRecord, stateKey, utf8, type RecordHeader } from '../../keys/crypto';
+import { bytea, exec, maybeOne, rows, tx, type Db } from '../../platform/db';
+import { ConflictError, ValidationError, notFound } from '../../platform/errors';
+import { log } from '../../platform/log';
+import { findOwner, indexKey } from '../../keys/owners';
+import { findItem, findItems, lockItem, type Loaded } from '../../keys/vault';
+import { profile } from '../profile/profile';
 import { MeetingManifest, isOver, unjoined } from './service';
 
 const alog = log.child({ component: 'access' });

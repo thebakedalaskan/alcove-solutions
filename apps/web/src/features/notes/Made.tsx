@@ -2,7 +2,7 @@
  * Shared and made in a call, under its stage: each screen that was shared and kept, which plays on the stage from its moment;
  * then what the call worked on that the reader can open now (`Note.workedOn`: documents, and every board open in it, a
  * breakout room's saying which room), each opening where it lives; and the way to the call's own workspace, for whoever is in
- * it (`Note.home`). A document shows its first lines as it is now, as its card in the Drive does (`q.previews`); a board is
+ * it (`Note.home`). A document shows its first lines as it is now, as its card in the Drive does (`workspaceQueries.previews`); a board is
  * drawn as it is, read once its card is on screen and never written. Nothing of either is kept here.
  */
 import { errorCode, firstName, type DocSession, type DocumentPreview, type Note, type NoteWorkedOn } from '@alcove/api';
@@ -12,14 +12,14 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { BoardPictures } from '~/features/board/BoardSurface';
 import { BoardSurface } from '~/features/board/lazy';
-import { pictureOf } from '~/features/drive/Card';
+import { pictureOf } from '~/features/workspace/document/picture';
 import { openToRead } from '~/features/workspace/session';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
-import { q } from '~/lib/queries';
+import { workspaceQueries } from '~/features/workspace/queries';
 import { position } from '~/lib/time';
-import { lengthOf } from './Line';
-import { usePlayerAt, type PlayerState } from './Player';
+import { lengthOf } from './player/Line';
+import { usePlayerAt, type PlayerState } from './player/Player';
 
 const blog = log.child({ component: 'call-made' });
 
@@ -87,7 +87,7 @@ function useDocPreviews(made: readonly NoteWorkedOn[]): Map<string, DocumentPrev
   const asks = useMemo(() => {
     const by = new Map<string, string[]>();
     for (const w of made) if (w.kind === 'document') by.set(w.workspaceId, [...(by.get(w.workspaceId) ?? []), w.id]);
-    return [...by].map(([workspaceId, ids]) => q.previews(workspaceId, [...ids].sort()));
+    return [...by].map(([workspaceId, ids]) => workspaceQueries.previews(workspaceId, [...ids].sort()));
   }, [made]);
   const found = useQueries({ queries: asks });
   return useMemo(() => new Map(found.flatMap((r) => r.data ?? []).map((p) => [p.id, p])), [found]);

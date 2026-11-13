@@ -1,17 +1,17 @@
-import { CallTimerSchema } from './timers';
+import { CallTimerSchema } from './timers/timers';
 import { PersonSchema } from '../identity/people';
 import { SignInProviderSchema } from '../identity/session';
 import { TranscriptLineSchema } from '../notes/transcript';
 import { RecordingProgressSchema } from '../recordings/capture';
 import { IDSchema, ISODateSchema } from '../shared/ids';
 import { z } from '../shared/zod';
-import { BreakoutBoardModeSchema, CallBoardSchema } from './boards';
-import { CaptureStateSchema } from './capture';
-import { LiveNotesSchema } from './catchup';
-import { RungSchema } from './rings';
-import { NotesChoicesSchema, NotesSettingSchema } from './settings';
-import { CallAttentionSchema, CallStatusSchema } from './attention';
-import { CallWorkspaceSchema } from './workspace';
+import { BreakoutBoardModeSchema, CallBoardSchema } from './boards/boards';
+import { CaptureStateSchema } from './notes/capture';
+import { LiveNotesSchema } from './notes/catchup';
+import { RungSchema } from './ringing/rings';
+import { NotesChoicesSchema, NotesSettingSchema } from './notes/settings';
+import { CallAttentionSchema, CallStatusSchema } from './attention/attention';
+import { CallWorkspaceSchema } from './workspace/workspace';
 /* ---------- group calls: who's in the call comes from the API; mic, camera and screen are LiveKit's tracks ---------- */
 
 /**

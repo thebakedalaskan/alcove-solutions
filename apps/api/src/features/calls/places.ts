@@ -6,9 +6,9 @@
  */
 import { BreakoutBoardSchema, MAIN_PLACE } from '@alcove/api';
 import { z } from 'zod';
-import type { CallBoards } from './space-state';
-import { RoomPause } from './capture';
-import { HeldRooms } from './held-rooms';
+import type { CallBoards } from './workspace/space-state';
+import { RoomPause } from './notes/capture';
+import { HeldRooms } from '../notes/held-rooms';
 
 /**
  * Everyone who has joined, by LiveKit identity, so the call can show account names and photos. Sealed: LiveKit
@@ -76,7 +76,7 @@ export type Joined = z.infer<typeof Joined>;
  */
 export const Room = HeldRooms.shape.rooms.element;
 /**
- * One stretch of a breakout room's scribe (features/calls/scribes.ts): the connection that transcribes the room, its turn
+ * One stretch of a breakout room's scribe (features/calls/notes/scribes.ts): the connection that transcribes the room, its turn
  * (from 1), and when it started and ended (ms; null while it lasts).
  */
 export const ScribeTerm = z.object({ identity: z.string(), term: z.number(), from: z.number(), until: z.number().nullable() });
@@ -177,7 +177,7 @@ export const committerOf = (s: Placing): string | null => s.host;
 /**
  * The connection whose browser transcribes the main room now, and records the call's notes: whoever hosts, the
  * organizer's connection or a stand-in's. The same connection as the committer today, but its own question: a breakout
- * room's own scribe (features/calls/scribes.ts) is never this, and never the committer.
+ * room's own scribe (features/calls/notes/scribes.ts) is never this, and never the committer.
  */
 export const mainScribeOf = (s: Placing): string | null => s.host;
 

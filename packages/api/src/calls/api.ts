@@ -1,10 +1,10 @@
 import { type Series } from '../notes/series';
 import { type ID, type ISODate } from '../shared/ids';
 import { type LiveStore } from '../shared/live';
-import { type CallAheadHome, type CallAheadMake } from './ahead';
+import { type CallAheadHome, type CallAheadMake } from './workspace/ahead';
 import { type InstantCallInput } from './entry';
-import { type CallMoveIn } from './moves';
-import { type IncomingRing, type RingReply } from './rings';
+import { type CallMoveIn } from './moves/moves';
+import { type IncomingRing, type RingReply } from './ringing/rings';
 import { type CallSession } from './session';
 import { type CallCard } from './state';
 export interface CallsApi {

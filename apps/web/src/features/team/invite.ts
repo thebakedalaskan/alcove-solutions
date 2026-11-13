@@ -11,7 +11,7 @@ import { errorCode, errorMessage, type TeamInvite } from '@alcove/api';
 import { useToast, type TeamInviteProps } from '@alcove/ui';
 import { useEffect, useState } from 'react';
 import { log } from '~/lib/log';
-import { useTeamInvite } from '~/lib/queries';
+import { useTeamInvite } from './queries';
 import { byWhen } from '~/lib/time';
 
 const ilog = log.child({ component: 'team-invite' });

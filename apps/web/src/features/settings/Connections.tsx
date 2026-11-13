@@ -9,13 +9,14 @@ import { Icon, SettingRow, SettingTile, SettingsGroup, SettingsPanel } from '@al
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { namesInLine } from '~/features/agents/line';
-import { q } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { agentQueries } from '~/features/agents/queries';
 import { joinedSome } from '~/lib/words';
 import { GoogleCalendar } from './Calendar';
 import { GoogleDrive } from './DriveExports';
 
 export function ConnectionsGroup({ calendar, drive }: { calendar?: CalendarConnectResult | undefined; drive?: DriveConnectResult | undefined }) {
-  const prefs = useQuery(q.prefs()).data;
+  const prefs = useQuery(accountQueries.prefs()).data;
   return (
     <SettingsGroup id="connections" title="Connections">
       <SettingsPanel>
@@ -41,7 +42,7 @@ const connected = (names: readonly string[]): string => `${joinedSome(names)} ${
  * says what's wrong there.
  */
 function Agents() {
-  const connections = useQuery(q.agents()).data;
+  const connections = useQuery(agentQueries.agents()).data;
   const names = connections && namesInLine(connections);
   const none = names?.length === 0;
   return (

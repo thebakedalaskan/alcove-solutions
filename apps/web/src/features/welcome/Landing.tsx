@@ -5,23 +5,25 @@
  * works in Alcove, the recorder stands on the night's horizon above what Alcove can see, the plans sit in a cove at night
  * with the last of the sun (PlansScene.tsx), and morning comes up behind the last ask, in a cove of its own. Each scene
  * plays while it's on screen; with reduced motion each shows a still. Signing in sails out of the hero's cove to Home
- * (lib/sailOut.ts, features/home/SailOut.tsx).
+ * (features/onboarding/sailOut.ts, features/onboarding/SailOutHere.tsx).
  */
-import { Button, EASE, Icon, IconButton, Logo, cn, useTheme, type IconName } from '@alcove/ui';
-import { Link } from '@tanstack/react-router';
+import { Button, EASE, Icon, IconButton, Logo, cn, useTheme, useToast, type IconName } from '@alcove/ui';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { motion, useReducedMotion } from 'motion/react';
-import { Fragment, useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import { keepSailOut } from '~/lib/sailOut';
+import { Fragment, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { takeReturnTo } from '~/features/account/afterSignIn';
+import { GOOGLE_REFUSED } from '~/features/account/googleSignIn';
+import { HERO_COVE, forgetSailOut, keepSailOut } from '~/features/onboarding/sailOut';
 import { AgentScene } from './AgentScene';
 import { CallTour } from './CallTour';
-import { CLOSE_COVE, HERO_COVE } from './coves';
+import { CLOSE_COVE } from './coves';
 import { NoteScene } from './NoteScene';
 import { PlansScene } from './PlansScene';
 import { RecordScene } from './RecordScene';
 import { SealedScene } from './SealedScene';
 import { PartHead, Sky, coveOnScreen } from './Sky';
 import { TeamScene } from './TeamScene';
-import { WaysIn, type Auth } from './WaysIn';
+import { WaysIn, useAuth, type Auth } from '~/features/account/WaysIn';
 
 /** The headline: two sentences, each its own line where there's room. */
 const HEADLINE = [['Your', 'meeting', 'superapp.'], ['Powered', 'by', 'confidential', 'AI.']] as const;
@@ -173,6 +175,33 @@ function useSailing(auth: Auth): { ways: Auth; held: boolean; sailing: boolean }
     held: lifted && auth.busy !== null,
     sailing: inView && !reduce && auth.busy !== null
   };
+}
+
+/** Why a sign-in with Google came back without signing in, as the API reports it. */
+type Refused = keyof typeof GOOGLE_REFUSED;
+
+/** Signed out: the welcome page, with the ways in at the top and the bottom. `signin`: why Google came back without signing in. */
+export function WelcomePage({ signin }: { signin: Refused | undefined }) {
+  const auth = useAuth();
+  const navigate = useNavigate();
+  const toast = useToast();
+
+  /* Back from Google without a session: say why once, then tidy the address, or go back to the call it started from. No
+     sign-in is on its way to Home, so there's no cove to sail out of. */
+  const handled = useRef<Refused | null>(null);
+  useEffect(() => {
+    // Once per refusal, however often the effect runs: the call to go back to can be taken only once.
+    if (!signin || handled.current === signin) return;
+    handled.current = signin;
+    forgetSailOut();
+    toast(GOOGLE_REFUSED[signin], { icon: 'x', ms: 5200 });
+    const agent = takeReturnTo('agent');
+    if (agent) { void navigate({ to: '/connect', search: { request: agent.requestId }, replace: true }); return; }
+    const call = takeReturnTo('call');
+    void navigate(call ? { to: '/join/$code', params: { code: call.code }, replace: true } : { to: '/welcome', search: {}, replace: true });
+  }, [signin, toast, navigate]);
+
+  return <Landing auth={auth} />;
 }
 
 export function Landing({ auth }: { auth: Auth }) {

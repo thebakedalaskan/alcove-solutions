@@ -10,7 +10,7 @@ import { errorCode, errorMessage, type CallAnswer, type CallSession, type CallSt
 import { EmptyState, Icon, IconButton, useToast } from '@alcove/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { LineMarks } from '~/features/notes/lines';
-import { OwnComposer, OwnEntries } from '~/features/personal/parts';
+import { OwnComposer, OwnEntries } from '~/features/notes/personal/parts';
 import { log } from '~/lib/log';
 import { useDraft, type Draft } from '../layout/side';
 import { Moments, callTimes } from './CatchUp';

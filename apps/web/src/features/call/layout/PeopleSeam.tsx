@@ -8,8 +8,8 @@
 import { Tooltip, cn } from '@alcove/ui';
 import { motion, useReducedMotion } from 'motion/react';
 import { useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import type { Box } from './stageLayout';
-import { GLIDE } from './Stage';
+import type { Box } from '../stage/stageLayout';
+import { GLIDE } from '../stage/Stage';
 
 /** How far the seam is dragged before the people fold or open out. */
 const PULL = 36;

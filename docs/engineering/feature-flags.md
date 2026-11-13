@@ -18,9 +18,9 @@ Making it unconditional in the code comes later, in its own pull request.
   opened profile. Deleting an account removes its address from every group and grant (unless another account signs in
   with the same address).
 
-Where it lives: the names in `packages/api/src/feature-flags/names.ts`; the server side in `apps/api/src/feature-flags.ts`; the endpoint
-`GET /v1/feature-flags` in `apps/api/src/http/system-routes.ts`; `useFeatureFlag` in `apps/web/src/lib/queries.ts`; the commands in
-`apps/api/src/featureFlagCommands.ts`, which the CLI (`apps/api/src/feature-flags-cli.ts`) and the operator route
+Where it lives: the names in `packages/api/src/feature-flags/names.ts`; the server side in `apps/api/src/platform/feature-flags.ts`; the endpoint
+`GET /v1/feature-flags` in `apps/api/src/http/system-routes.ts`; `useFeatureFlag` in `apps/web/src/lib/featureFlags.ts`; the commands in
+`apps/api/src/platform/feature-flag-commands.ts`, which the CLI (`apps/api/src/feature-flags-cli.ts`) and the operator route
 (`POST /v1/operator/feature-flags`, in `system-routes.ts`) both run; the tables in [Data and storage](data-and-storage.md).
 
 ## Building a feature behind a flag
@@ -56,7 +56,7 @@ Where it lives: the names in `packages/api/src/feature-flags/names.ts`; the serv
 4. **Show it in Storybook.** The stand-in API answers `featureFlags.on()` from the scenario's `World.featureFlags`. Give a scenario the
    flag (`featureFlags: ['board.templates']`) and add the stories that show the feature; scenarios without it are the "off" case.
 5. **Test it.** In the feature's integration suite: refused while off, allowed once granted, using the functions the CLI
-   uses (`setEveryone`, `createGroup`, `addMembers`, `grantGroup`, `grantPerson` from `apps/api/src/feature-flags.ts`).
+   uses (`setEveryone`, `createGroup`, `addMembers`, `grantGroup`, `grantPerson` from `apps/api/src/platform/feature-flags.ts`).
    `FEATURE_FLAGS_CACHE_MS` is 0 in tests, so a change is seen on the next request.
 
 ## Switching flags: the `feature-flags` CLI

@@ -1,5 +1,5 @@
 /*
- * A recording on the stage (routes/record.live.tsx): what the microphone hears in the room. It goes to Alcove as it's
+ * A recording on the stage (LiveRecordPage.tsx): what the microphone hears in the room. It goes to Alcove as it's
  * recorded and, whenever it can't, is kept on this device (offline.ts) to upload later (uploads.ts). From the start
  * it holds its lock, and its name and start are kept here, so a tab that closes leaves it to be finished as it was.
  *

@@ -7,7 +7,7 @@
 import { errorMessage, type AgentConnection } from '@alcove/api';
 import { AgentAction, AgentLink, AgentPopHead, AgentPopLine, AgentPopMore, AgentWaiting, AgentWell, Button, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
-import { q } from '~/lib/queries';
+import { agentQueries } from './queries';
 import { connecting, connectingOther, FIRST_QUESTION, iconOf, markOf, OTHER, type AgentKind } from './catalogue';
 import { useCopy } from './copy';
 
@@ -16,7 +16,7 @@ import { useCopy } from './copy';
  * the agent; `onToken` leads on to a token, for a script that can't sign in.
  */
 export function ConnectPop({ kind, onAct, onToken }: { kind: AgentKind | undefined; onAct: () => void; onToken?: (() => void) | undefined }) {
-  const endpoint = useQuery(q.agentEndpoint());
+  const endpoint = useQuery(agentQueries.agentEndpoint());
   const toast = useToast();
   const { copy, problem } = useCopy();
   const address = endpoint.data?.endpoint;

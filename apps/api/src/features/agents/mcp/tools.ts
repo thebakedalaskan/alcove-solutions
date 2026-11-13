@@ -7,18 +7,22 @@ import {
 } from '@alcove/api';
 import { McpServer, type ToolAnnotations, type StandardSchemaWithJSON } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import type { Deps, Owner } from '../../../context';
-import { toJson, type Json } from '../../../crypto';
-import { AppError, InternalError, UnavailableError } from '../../../errors';
-import { log } from '../../../log';
+import type { Deps, Owner } from '../../../platform/context';
+import { toJson, type Json } from '../../../keys/crypto';
+import { AppError, InternalError, UnavailableError } from '../../../platform/errors';
+import { log } from '../../../platform/log';
 import * as activity from '../activity';
 import { requireScope, type AgentPrincipal } from '../service';
 import * as calendar from '../../meetings/calendar';
 import * as meetings from '../../meetings/service';
 import * as notes from '../../notes/service';
-import * as people from '../../account/people';
-import * as personal from '../../notes/personal';
-import * as writer from '../../notes/writer';
+import * as noteEntries from '../../notes/entries';
+import * as noteCorrections from '../../notes/corrections';
+import * as noteSharing from '../../notes/sharing';
+import * as people from '../../meetings/people';
+import * as personal from '../../notes/personal/personal';
+import * as writer from '../../notes/writing/writer';
+import { workspaceCalls } from '../../calls/workspace/seats';
 import { created } from './operations';
 
 const mlog = log.child({ component: 'agent-tools' });
@@ -84,7 +88,7 @@ function foundForAgents(n: NoteFound) {
  * and the entry's ID only when the person asking proposed it, to change it with the update tools. A connection that can't
  * read the note gets no handle on what someone else, or the notes, wrote. Never the words.
  */
-const addedTo = (noteId: string, made: notes.Added, key: 'decisionId' | 'followUpId' | 'questionId') =>
+const addedTo = (noteId: string, made: noteEntries.Added, key: 'decisionId' | 'followUpId' | 'questionId') =>
   ({ ok: true, noteId, added: made.added, ...(made.theirs ? { [key]: made.id } : {}) });
 
 /** How long a call ran, in minutes as Alcove shows it (at least one), from its seconds: null when that isn't known. */
@@ -174,21 +178,21 @@ export function buildServer(d: Deps, principal: AgentPrincipal, pending: Set<Pro
     return { noteId: q.noteId, ...page(personalNotes.entries, q) };
   });
   register('propose_decision', 'notes:write', 'Propose a decision for a note’s Decided: something the call settled, in your own words. It starts proposed. The same words again in that part add nothing (added: false). Returns added and, for a decision you proposed, its decisionId, to change it with update_decision. Nothing else.', AgentDecisionProposalSchema, WRITE,
-    async q => addedTo(q.noteId, await notes.proposeDecision(o, q.noteId, q.proposal), 'decisionId'));
+    async q => addedTo(q.noteId, await noteEntries.proposeDecision(o, q.noteId, q.proposal), 'decisionId'));
   register('update_decision', 'notes:write', 'Change one of a note’s decisions (Decided): confirm it, say it wasn’t decided, reopen it, say it no longer holds, reword it or dispute it, within your current permissions. Confirming needs seen: its words as you read them. Returns only an acknowledgment.', AgentDecisionPatchSchema, WRITE,
-    async q => { await notes.updateDecision(o, q.noteId, q.decisionId, q.patch); return { ok: true, noteId: q.noteId }; });
+    async q => { await noteEntries.updateDecision(o, q.noteId, q.decisionId, q.patch); return { ok: true, noteId: q.noteId }; });
   register('add_follow_up', 'notes:write', 'Add a follow-up to a note’s Follow-ups: something someone will do. It’s on the checklist at once, as when you add one in Alcove. Who it’s for (owner, by email) must have the notes, and takes it on themselves; until then who and when are only suggestions. The same words again in that part add nothing (added: false). Returns added and, for a follow-up you proposed, its followUpId, to change it with update_follow_up. Nothing else.', AgentFollowUpAddSchema, WRITE,
-    async q => addedTo(q.noteId, await notes.proposeAction(o, q.noteId, q.followUp), 'followUpId'));
+    async q => addedTo(q.noteId, await noteEntries.proposeAction(o, q.noteId, q.followUp), 'followUpId'));
   register('update_follow_up', 'notes:write', 'Change one of a note’s follow-ups (Follow-ups): tick it done, reword it, date it, give it to someone who has the notes or to nobody, or take it on when it’s yours, within your current permissions. Taking it on, or giving it to yourself, needs seen: its words and due date as you read them. Returns only an acknowledgment.', AgentFollowUpPatchSchema, WRITE,
-    async q => { await notes.updateAction(o, q.noteId, q.followUpId, q.patch); return { ok: true, noteId: q.noteId }; });
+    async q => { await noteEntries.updateAction(o, q.noteId, q.followUpId, q.patch); return { ok: true, noteId: q.noteId }; });
   register('add_question', 'notes:write', 'Add an open question to a note’s Still open: something the call asked and didn’t settle. Anyone with the notes can say it was answered, with update_question. The same words again in that part add nothing (added: false). Returns added and, for a question you proposed, its questionId, to change it with update_question. Nothing else.', AgentQuestionAddSchema, WRITE,
-    async q => addedTo(q.noteId, await notes.addQuestion(o, q.noteId, q.question), 'questionId'));
+    async q => addedTo(q.noteId, await noteEntries.addQuestion(o, q.noteId, q.question), 'questionId'));
   register('update_question', 'notes:write', 'Change one of a note’s open questions (Still open): say it was answered, open it again, or reword it. Returns only an acknowledgment.', AgentQuestionPatchSchema, WRITE,
-    async q => { await notes.updateQuestion(o, q.noteId, q.questionId, q.patch); return { ok: true, noteId: q.noteId }; });
+    async q => { await noteEntries.updateQuestion(o, q.noteId, q.questionId, q.patch); return { ok: true, noteId: q.noteId }; });
   register('correct_transcript', 'notes:write', 'Correct or confirm a retained transcript line within your current permissions. Returns only an acknowledgment.', AgentTranscriptPatchSchema, WRITE,
-    async q => { await notes.correctLine(o, q.noteId, q.lineId, q.patch); return { ok: true, noteId: q.noteId }; });
+    async q => { await noteCorrections.correctLine(o, q.noteId, q.lineId, q.patch); return { ok: true, noteId: q.noteId }; });
   register('rewrite_note', 'notes:write', 'Queue the notes to be written again from their retained transcript; organizer only. Returns only an acknowledgment.', AgentNoteIdSchema, CREATE,
-    async q => { await notes.rewrite(o, q.noteId); writer.kick(d, o.ownerId); return { ok: true, noteId: q.noteId }; }, true);
+    async q => { await noteCorrections.rewrite(o, q.noteId); writer.kick(d, o.ownerId); return { ok: true, noteId: q.noteId }; }, true);
   register('add_personal_note', 'notes:write', 'Keep a private entry on a note. Use operationId to safely retry the same entry. Returns only IDs.', AgentPersonalAddSchema, CREATE, async q => {
     return created(principal, 'add_personal_note', q.operationId, q, async () => {
       return (await personal.addEntry(await personal.ofNote(o, q.noteId), q.input)).entryId;
@@ -203,7 +207,7 @@ export function buildServer(d: Deps, principal: AgentPrincipal, pending: Set<Pro
   register('remove_personal_note', 'notes:write', 'Permanently remove one of your private entries. Returns only IDs.', AgentPersonalEntrySchema, DELETE,
     async q => { await personal.remove(await personal.ofNote(o, q.noteId), q.entryId); return { ok: true, noteId: q.noteId, entryId: q.entryId }; });
   register('share_note', 'notes:share', 'Give the named people access to this note, within your current sharing rights. Returns only an acknowledgment.', AgentShareNoteSchema, WRITE,
-    async q => { await notes.share(o, q.noteId, q.share); return { ok: true, noteId: q.noteId }; });
+    async q => { await noteSharing.share(o, q.noteId, q.share); return { ok: true, noteId: q.noteId }; });
   register('delete_note', 'notes:delete', 'Permanently delete your note, or remove a shared note from your own library. Returns only an acknowledgment.', AgentNoteIdSchema, DELETE,
     async q => { await notes.remove(o, q.noteId); return { ok: true, noteId: q.noteId }; });
   register('list_meetings', 'meetings:read', 'List calls, in the view asked for. upcoming: each call as get_meeting reads it, with its Alcove join link (url). past: each as meetingId (your own call’s; null for someone else’s, which get_meeting can’t read once it’s over), noteId (null when it kept no notes), title, startsAt, minutes (how long it ran), organizer, role (organizer or invited) and guests (everyone invited besides the organizer).', AgentListMeetingsSchema, READ,
@@ -218,7 +222,7 @@ export function buildServer(d: Deps, principal: AgentPrincipal, pending: Set<Pro
   register('schedule_call', 'meetings:write', 'Schedule an Alcove call. May send real Google Calendar invitations when connected. Use operationId for retries. Returns only IDs and the join link.', AgentScheduleSchema, { ...CREATE, openWorldHint: true }, async q =>
     created(principal, 'schedule_call', q.operationId, q, async () => (await meetings.create(o, q.input)).id, async id => callResult(d, await meetings.get(o, id))));
   register('update_call', 'meetings:write', 'Update a call you organize. May update real Google Calendar invitations when connected. Returns only an acknowledgment.', AgentUpdateCallSchema, CALENDAR_WRITE,
-    async q => { await meetings.update(o, q.meetingId, q.patch, q.scope); return { ok: true, meetingId: q.meetingId }; });
+    async q => { await meetings.update(o, q.meetingId, q.patch, q.scope, workspaceCalls); return { ok: true, meetingId: q.meetingId }; });
   register('cancel_call', 'meetings:write', 'Cancel your call and its Google Calendar invitation when connected. Returns only an acknowledgment.', AgentCancelCallSchema, { ...DELETE, openWorldHint: true },
     async q => { await meetings.cancel(o, q.meetingId, q.scope); return { ok: true, meetingId: q.meetingId }; });
   register('respond_to_invite', 'meetings:write', 'Say whether you’re coming to a call someone else organized and invited you to: yes, maybe or no. It doesn’t join a call or answer one that’s ringing. Returns only an acknowledgment.', AgentInviteResponseSchema, WRITE,

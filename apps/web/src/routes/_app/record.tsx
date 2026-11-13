@@ -7,9 +7,10 @@ import { NightRecorder } from '~/features/record/NightRecorder';
 import { canKeep } from '~/features/record/offline';
 import { OnThisDevice } from '~/features/record/OnThisDevice';
 import { uploads } from '~/features/record/uploads';
-import { recordOfflineHere } from '~/lib/device';
+import { recordOfflineHere } from '~/features/account/device';
 import { useLive, useOnline } from '~/lib/live';
-import { q } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { noteQueries } from '~/features/notes/queries';
 import { callLength, pastDay } from '~/lib/time';
 
 /*
@@ -21,7 +22,7 @@ export const Route = createFileRoute('/_app/record')({
   // The page has to work without a connection, so what's recorded before only gets a moment before it opens.
   loader: async ({ context: { queryClient: qc } }) => {
     if (!navigator.onLine) return;
-    await Promise.race([qc.ensureQueryData(q.notes('room')).catch(() => undefined), new Promise((r) => setTimeout(r, 800))]);
+    await Promise.race([qc.ensureQueryData(noteQueries.notes('room')).catch(() => undefined), new Promise((r) => setTimeout(r, 800))]);
   },
   component: RecordPage
 });
@@ -30,10 +31,10 @@ export const Route = createFileRoute('/_app/record')({
 const SHOWN = 4;
 
 /** Whether recording carries on without a connection: the setting, or offline, what this browser remembers of it; and whether this browser can keep anything. */
-const useRecordsOffline = () => (useQuery(q.prefs()).data?.recordOffline ?? recordOfflineHere()) && canKeep();
+const useRecordsOffline = () => (useQuery(accountQueries.prefs()).data?.recordOffline ?? recordOfflineHere()) && canKeep();
 
 function RecordPage() {
-  const room = useQuery(q.notes('room')).data;
+  const room = useQuery(noteQueries.notes('room')).data;
   const { list: kept, read } = useLive(uploads);
   const online = useOnline();
   const keeps = useRecordsOffline();

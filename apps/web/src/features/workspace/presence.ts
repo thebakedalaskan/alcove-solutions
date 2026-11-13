@@ -1,9 +1,10 @@
 /*
  * Who's where, from the workspace's stream. A connection is a window, so someone with two open is two entries in `here`; on
  * screen they're one person, at whichever of their windows says most. What the stream sends is already what you may know:
- * a document you can't open comes as `elsewhere`, with nothing to name it by.
+ * a document you can't open comes as `elsewhere`, with nothing to name it by. And where you are, which this window tells it.
  */
-import type { CallPage, Person, WorkspaceHere } from '@alcove/api';
+import type { CallPage, Person, WorkspaceHere, WorkspaceLive, WorkspaceWhere } from '@alcove/api';
+import { useCallback, useEffect, useRef } from 'react';
 
 /** Someone else here, as one person however many windows they have open. `page`: the call's own page they're on, said only to someone in that call. */
 export interface Someone { person: Person; document: string | null; block: string | null; typing: boolean; elsewhere: boolean; callIdentity: string | null; page: CallPage | null }
@@ -30,4 +31,15 @@ export function facesIn(here: readonly WorkspaceHere[], document: string): Perso
   const seen = new Map<string, Person>();
   for (const h of here) if (!h.isMe && h.document === document) seen.set(h.person.id, h.person);
   return [...seen.values()];
+}
+
+/**
+ * Everyone can see you're in a document from the moment it's open, and that you've left once it's out of sight. The editor
+ * says which line through what this returns, which says nothing while the workspace is out of sight.
+ */
+export function usePresence(store: WorkspaceLive, document: string | null, page: CallPage | null, closed: boolean): (where: WorkspaceWhere) => void {
+  useEffect(() => { store.present({ document: closed ? null : document, block: null, typing: false, page: closed ? null : page }); }, [store, document, page, closed]);
+  const closedNow = useRef(closed);
+  closedNow.current = closed;
+  return useCallback((where: WorkspaceWhere) => { if (!closedNow.current) store.present(where); }, [store]);
 }

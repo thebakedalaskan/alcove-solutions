@@ -12,7 +12,7 @@ Not fixed. The first two are the most worth doing before release.
 
 1. **A request that runs past 5 minutes is charged twice.** A request's hold lasts `HOLD_MS` (5 minutes) from `begin`.
    When the request settles after that, `locked()` first charges the expired hold in full as lost
-   (`features/billing/meter.ts`, the `lost` sweep), and then `settle` charges what it really used. A `lost()` after a
+   (`features/billing/meter/meter.ts`, the `lost` sweep), and then `settle` charges what it really used. A `lost()` after a
    timeout charges the hold twice. This can happen: writing a call's notes allows 240 s (`drafting.ts`, `what: 'notes'`),
    plus up to about 65 s of evidence checks (`evidence.ts`: 15 s, 30 s, 20 s), plus a second attempt when the key was
    refused. That's also the biggest hold there is. Fix: in `settle`, if the hold is no longer in `m.holds`, charge
@@ -25,14 +25,14 @@ Not fixed. The first two are the most worth doing before release.
    Free's $2.50, mostly 1,200 output tokens per frame that real reads don't use. When the note is written for less and
    the reserve is released, the account stays stopped and Settings says "None". A burst of asks whose holds briefly fill
    the allowance does the same. For Pro, that's paid allowance lost. Separately, a note deleted (or a job cancelled) before
-   its notes are written never calls `close()` (`notes/writer.ts`, the `drop` and `stopped` paths), so its reserve sits
+   its notes are written never calls `close()` (`notes/writing/writer.ts`, the `drop` and `stopped` paths), so its reserve sits
    for `SOURCE_GONE_MS` (24 hours) and can trigger the stop by itself. Suggested fix: make the stop permanent only on
    `spentNano`; when holds or reserves are what's in the way, refuse the request without stopping (a live call already
    keeps its own `notes.limit.stoppedAt`, so notes don't come back mid-call). Call `close()` when a notes job is dropped
    or cancelled. The docs call the current behavior intended, so this needs a product decision.
 
 3. **Other people can still spend your plan, more slowly now.**
-   - AI on a document or board is paid by the workspace's payer, whoever asks (`workspaces/documents.ts`,
+   - AI on a document or board is paid by the workspace's payer, whoever asks (`workspaces/documents/asking.ts`,
      `workspaceMeter`). Any editor, including a guest seated in a call, gets 20 a minute (`ask-selection`, `sortLimiter`);
      a guest's comes out of their call's guests' share (below). Undecided whether to limit signed-in editors more (for
      example a per-workspace cap on asks by anyone but the payer).
@@ -72,7 +72,7 @@ Not fixed. The first two are the most worth doing before release.
    on it), but a big effect, so it was left for a follow-up. Lowering `media.account_day_bytes` for everyone was tried and
    dropped: it caps people's uploads into their own storage too.
    What the fix would look like: limit what *others* add to an account's storage, separately from what you add to your own.
-   - In `features/workspaces/media.ts`, `withinLimits` and `countDay` already know the uploader (`Uploader`) and the payer
+   - In `features/workspaces/uploads/media.ts`, `withinLimits` and `countDay` already know the uploader (`Uploader`) and the payer
      (`allowedIn`). An upload is "someone else's" when the uploader isn't the payer; a guest's always is.
    - Uploads into your own storage keep `media.account_day_bytes` as now.
    - Uploads into someone else's get a new, lower limit, for example `media.others_day_bytes` at 3 GiB, plus about 1 GiB
@@ -131,7 +131,7 @@ Fixed in the commit that added this page, with integration tests (rows B2′ and
 
 1. **Credits people already paid for disappeared.** Top-ups have been live in production since #175 (9 Nov 2026). Plans
    ignore `billing_accounts`, and `creditCarried` only re-added deposits settled in the day after the cutover, so anyone
-   who paid before the release would start at $0. Now `creditCarried` (`features/billing/deposits.ts`) adds as dollars
+   who paid before the release would start at $0. Now `creditCarried` (`features/billing/top-ups/deposits.ts`) adds as dollars
    every `credited` deposit that has no `addedMicroUsd`, whenever it was settled (since, without the day's window or
    `billing_cutover`: a previous release serving after a rollback settles top-ups too). The old query also
    had no way to move past rows it had already looked at (`LIMIT 100`, and the marker is inside the ciphertext), so with
@@ -152,7 +152,7 @@ Fixed in the commit that added this page, with integration tests (rows B2′ and
    payer backfill (now `0034_workspace_payers_backfill.sql`) gave to a maker who had already left. Upkeep only writes workspaces whose payer changes.
 
 3. **A workspace nobody paid for had no storage limit.** With `media.workspace_bytes` gone, a workspace with a null
-   payer was checked against nothing (`allowedIn` in `features/workspaces/media.ts`). `settlePayers` only picks an admin
+   payer was checked against nothing (`allowedIn` in `features/workspaces/uploads/media.ts`). `settlePayers` only picks an admin
    who has an account, and deleting an account promotes the longest-standing member, who may be an invitee who never
    signed up. So the payer stayed null for good, and the other members could upload 20 GiB a day each, counted against
    nobody. Now a workspace with no payer takes no files: `409 conflict`, "Files can't be added until one of this

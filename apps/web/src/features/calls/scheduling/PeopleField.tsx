@@ -10,7 +10,8 @@ import { Avatar, Faces, FlowNote, GhostArch, Icon, PersonToken, Popover, SchedFi
 import { useQuery } from '@tanstack/react-query';
 import { useId, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 import { byEmail, callName, fold, isEmail, sameEmail } from '~/lib/people';
-import { q } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { teamQueries } from '~/features/team/queries';
 import { readAddresses, unreadLine, type Unread } from './addresses';
 import { PLACES, placeLine } from './places';
 import { guestsOf, personFrom, reaches, withList, type Guests, type Token } from '../flow/draft';
@@ -26,8 +27,8 @@ type Offer =
 
 /** Anyone whose address we know, for groups, which hold only addresses. */
 function useDirectory(): (email: string) => Person {
-  const team = useQuery(q.team()).data;
-  const known = useQuery(q.people('')).data;
+  const team = useQuery(teamQueries.team()).data;
+  const known = useQuery(teamQueries.people('')).data;
   return useMemo(() => {
     const people = new Map<string, Person>();
     for (const s of known ?? []) people.set(s.person.email.toLowerCase(), s.person);
@@ -80,10 +81,10 @@ export function PeopleField({ value, onChange, me, where, label = 'Add people' }
   const [adding, setAdding] = useState(false);
   /* The token the first Backspace selected: the second takes it, so a pasted list can't go at one press. */
   const [held, setHeld] = useState<string | null>(null);
-  const team = useQuery(q.team()).data;
-  const groups = useQuery(q.prefs()).data?.groups;
+  const team = useQuery(teamQueries.team()).data;
+  const groups = useQuery(accountQueries.prefs()).data?.groups;
   const typed = query.trim();
-  const search = useQuery(q.people(typed));
+  const search = useQuery(teamQueries.people(typed));
   const found = search.data;
   /* The rows are still the last search's: they stay in view, but they don't answer what's typed now. */
   const stale = search.isPlaceholderData;

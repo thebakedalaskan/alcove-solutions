@@ -1,5 +1,5 @@
 /*
- * The call timer's button in the top bar (components/call-timer.tsx), in every tone: Timer for the host before one runs, then
+ * The call timer's button in the top bar (call/call-timer.tsx), in every tone: Timer for the host before one runs, then
  * the countdown, paused, near the end and over time; and compact, its icon and time alone on a phone. It opens Timer for
  * everyone (CallTimerCard). Always night: it lives on the stage.
  */

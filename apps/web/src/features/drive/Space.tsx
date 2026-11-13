@@ -10,7 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { Fragment } from 'react';
 import { callName } from '~/lib/people';
-import { q } from '~/lib/queries';
+import { workspaceQueries } from '~/features/workspace/queries';
 import { noteAt } from '~/lib/time';
 import { plural } from '~/lib/words';
 import { canEdit, type DriveActions } from './actions';
@@ -61,9 +61,9 @@ export function CallKept({ item, items }: { item: WorkspaceItem; items: readonly
 }
 
 export function SpaceSheet({ w, mark, at, actions }: { w: WorkspaceSummary; mark: string; at: DriveAt; actions: DriveActions }) {
-  const tree = useQuery(q.workspaceTree(w.id));
-  const people = useQuery({ ...q.workspacePeople(w.id), enabled: w.role !== null }).data ?? [];
-  const about = useQuery({ ...q.workspaceAbout(w.id), enabled: w.role !== null }).data ?? '';
+  const tree = useQuery(workspaceQueries.workspaceTree(w.id));
+  const people = useQuery({ ...workspaceQueries.workspacePeople(w.id), enabled: w.role !== null }).data ?? [];
+  const about = useQuery({ ...workspaceQueries.workspaceAbout(w.id), enabled: w.role !== null }).data ?? '';
   const items = tree.data?.items ?? [];
   const folder = at.folder ? items.find((i) => i.id === at.folder && i.kind === 'folder') : undefined;
   const name = w.name ?? 'Shared with you';

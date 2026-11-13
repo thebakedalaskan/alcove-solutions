@@ -1,13 +1,13 @@
 /*
  * The checkout window (docs/design/pages.md › Checkout; the canvas's Checkout and PayMotion boards): what checkout.tsx has open, drawn with the kit's CheckoutWindow and its parts, at the
- * app's root (routes/__root.tsx), so the call, Settings, Plans and any door open the same window.
+ * app's root (features/shell/AppRoot.tsx), so the call, Settings, Plans and any door open the same window.
  *
  * Choose how long (or how many hours, or how many of Team's licenses, a period at a time or for a year: a team you start is
  * named first, and made only as you pay, with you its admin). When the balance covers it, Buy with your balance takes it
  * from there at once.
  * Otherwise choose a network, and Get the address opens a top-up for what the balance is short of (raised to the
  * network's least, the rest staying in the balance) that buys it the moment it's added. From then on the window follows
- * that top-up, which q.topUp reads every 5 seconds: waiting, less arrived, seen, bought, and every way it can go wrong, with
+ * that top-up, which planQueries.topUp reads every 5 seconds: waiting, less arrived, seen, bought, and every way it can go wrong, with
  * the parts Add money follows a payment with too (paying.tsx).
  * Closing leaves the payment running, and checkout opened on the same thing again opens that payment, not another.
  * Every price and limit is the server's; a price that changed in between is refused, read again and said. Licenses
@@ -25,13 +25,15 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNow, useOnline } from '~/lib/live';
 import { callName, someNames } from '~/lib/people';
-import { q, topUpOpen, useBuy, useCancelTopUp, useCreateTeam, useLicensesBought, useStartTopUp } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { teamQueries, useCreateTeam } from '~/features/team/queries';
+import { planQueries, topUpOpen, useBuy, useCancelTopUp, useLicensesBought, useStartTopUp } from './queries';
 import { fullDate, hm, longDay, shortDate } from '~/lib/time';
 import { plural, usd, usdCents } from '~/lib/words';
 import { useInvite } from '../team/invite';
 import type { CheckoutOpen } from './checkout';
 import { PayAdded, PayNow, PayOver, PaySeen, isOver, payingOf, useSeenWhileOpen, type Paying } from './paying';
-import { renews, teamLicenses } from './plan-state';
+import { renews, teamLicenses } from './planState';
 import {
   LENGTHS, LICENSES, costOf, kindOf, lapsed, licenseRuns, licenseTerm, licenseTerms, licensesWord, microOf, proPrice,
   purchaseName, repriced, roundTokens, sameTerms, teamYearlyOff, tokens, waitingPurchase, yearlyOff
@@ -145,15 +147,15 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const forTeam = open.what.plan === 'team';
   /* Done invites a just-started team's people: the same links as Team's Invite people. */
   const invite = useInvite();
-  const plan = useQuery(q.plan());
-  const offers = useQuery(q.offers());
-  const routes = useQuery(q.topUpRoutes());
-  const list = useQuery(q.topUps());
-  const me = useQuery(q.session()).data?.user ?? null;
+  const plan = useQuery(planQueries.plan());
+  const offers = useQuery(planQueries.offers());
+  const routes = useQuery(planQueries.topUpRoutes());
+  const list = useQuery(planQueries.topUps());
+  const me = useQuery(accountQueries.session()).data?.user ?? null;
   const signedIn = me?.name ?? null;
   /* Team: the team you're on (if any), and the company the directory knows, for its name and its people. */
-  const team = useQuery({ ...q.myTeam(), enabled: forTeam });
-  const directory = useQuery({ ...q.team(), enabled: forTeam });
+  const team = useQuery({ ...teamQueries.myTeam(), enabled: forTeam });
+  const directory = useQuery({ ...teamQueries.team(), enabled: forTeam });
   const theme = useTheme().resolved;
   const online = useOnline();
   const now = useNow();
@@ -193,7 +195,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const payId = view?.step === 'pay' ? view.id : null;
   // Every 5 s while money can arrive; once a waiting address has closed (it stays waiting until it's given up on), every minute.
   const topUp = useQuery({
-    ...q.topUp(payId ?? ''),
+    ...planQueries.topUp(payId ?? ''),
     enabled: payId !== null,
     refetchInterval: (query) => {
       const d = query.state.data;

@@ -1,8 +1,10 @@
-import type { CallParticipant, CallSession, CallState, LiveStore } from '@alcove/api';
+/*
+ * Live things and the browser around them, for every feature: reading a LiveStore (`useLive`), the connection, a media query,
+ * a value that has settled, the time now, and keeping someone on a live screen (a call, a room recording) until they end it.
+ */
+import type { LiveStore } from '@alcove/api';
 import { useBlocker } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import type { LocalMedia } from '~/features/call/media/media';
-import type { StageRecording } from '~/features/record/stage';
 
 export function useLive<S>(store: LiveStore<S>): S {
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
@@ -49,48 +51,6 @@ export function useNow(every = 30_000): number {
   return now;
 }
 
-/*
- * Live sessions and local media outlive a single route (pre-join hands both to the call screen). Record hands the
- * stage recorder the name for its next recording the same way, in memory: nothing readable goes in the address. A call's
- * page leaving for Home or the notes says so the same way (`arrive`, and when, through `arriveFromCall`), once: the frame
- * takes it as it opens (`takeArrival`), and settles in.
- */
-export const sessions: { call: { code: string; session: CallSession } | null; recording: StageRecording | null; media: LocalMedia | null; roomTitle: string | null; arrive: { from: 'call'; at: number } | null } = {
-  call: null,
-  recording: null,
-  media: null,
-  roomTitle: null,
-  arrive: null
-};
-/** How soon after a call's page leaves the frame must open to arrive from it. */
-const ARRIVING_WITHIN_MS = 4000;
-/** A call's page is leaving for the frame (Home, or the notes): the frame arrives from it there. */
-export function arriveFromCall(): void {
-  sessions.arrive = { from: 'call', at: Date.now() };
-}
-/**
- * Whether the frame opening now arrives from a call's page, once: taking it uses it up. Only on the way there: one that never
- * arrived (Home sent elsewhere to sign in, say) is forgotten.
- */
-export function takeArrival(): boolean {
-  const said = sessions.arrive;
-  sessions.arrive = null;
-  return said !== null && Date.now() - said.at < ARRIVING_WITHIN_MS;
-}
-/**
- * Tells `session`'s call when this page goes away (closed, reloaded, or left for another), at once: someone asking
- * takes the ask back, and anyone else in the call drops out then rather than when LiveKit notices. A page only put
- * away to come back to (the back-forward cache) carries on where it was.
- */
-export function useClosingWithPage(session: CallSession | null) {
-  useEffect(() => {
-    if (!session) return;
-    const gone = (e: PageTransitionEvent) => { if (!e.persisted) session.closing(); };
-    window.addEventListener('pagehide', gone);
-    return () => window.removeEventListener('pagehide', gone);
-  }, [session]);
-}
-
 /**
  * Keeps someone on a live screen (a call, a room recording) until they end it. Going back, or
  * anywhere else in the app, opens the screen's own way out instead (`onAttempt`), and closing the
@@ -121,5 +81,3 @@ export function useLeaveGuard(onAttempt: () => void, confirmBeforeUnload = true)
   };
 }
 
-/** The current user's own tile in a call. */
-export const selfIn = (s: CallState): CallParticipant | undefined => s.participants.find((p) => p.isMe);

@@ -19,7 +19,7 @@ A period is 30 days from when the plan began; a month of Pro is one period, and 
 taken (a license for a year is 12 periods, one after another). A change to how long a period is applies from each
 account's next one: a period that has begun runs to its end as it began. This page says what's built now.
 
-Every number is a limit (`apps/api/src/limits.ts`, [Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)),
+Every number is a limit (`apps/api/src/platform/limits.ts`, [Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)),
 changeable without a deploy: each plan's notes, storage, files and price; Pro's lower price for a year or more, and a team
 license's for a year, with how many periods that is; the most
 months of Pro one purchase buys and how long before Pro ends its owner is told; more notes for a period, their price and
@@ -60,7 +60,7 @@ end, notes can stop while a minute or two still shows; the banner says so. It do
 first time the account is touched after the old one ends, or after its plan changes, with all of its allowance. More notes
 bought for a period ([below](#more-notes)) are part of its allowance, and end with it.
 
-**Every request to NEAR AI is paid for** (`features/billing/meter.ts`). `inference.ts`'s `transcribe`, `complete` and
+**Every request to NEAR AI is paid for** (`features/billing/meter/meter.ts`). `inference.ts`'s `transcribe`, `complete` and
 `completeJson` take a required `Meter`, so nothing reaches NEAR AI without naming who pays:
 
 1. Before it's sent, the most the request can cost is **held**: its text at a token a byte, each image at
@@ -77,7 +77,7 @@ bought for a period ([below](#more-notes)) are part of its allowance, and end wi
 
 Prices come from NEAR AI's catalog (`GET /v1/models`: `pricing.input` and `pricing.output` in USD a million tokens,
 `pricing.input_cache_read` a token), read with the list of models and kept as last listed through an outage
-(`features/notes/models.ts` `priceOf`). A request whose model has a price kept never waits on the catalog: it's charged
+(`inference/models.ts` `priceOf`). A request whose model has a price kept never waits on the catalog: it's charged
 at that, and the list is read again behind it once it's ten minutes old; only a model never priced waits for the list.
 A model the catalog has never priced both ways is charged at `ai.fallback_input_micro_usd` and
 `ai.fallback_output_micro_usd`; each time the catalog is read, the models that can be charged without a price (the
@@ -104,7 +104,7 @@ and boards) is the organizer's, and so is what the call does for a guest alone: 
 a language, so one already translated costs nothing again), and live notes of their own, which a guest who came late, or
 left and came back, gets because they can't read all of everyone's. Every guest in one call spends from one share of the
 organizer's allowance for the period, `ai.guests_call_percent` (10%), kept with the allowance by the call's ID (`Bill.guests`
-in `meter.ts`, `callMeter`'s `guests` in `calls/recording.ts`): a request that would take them past it is refused ("Guests in
+in `meter.ts`, `callMeter`'s `guests` in `calls/notes/recording.ts`): a request that would take them past it is refused ("Guests in
 this call have asked as much as the organizer’s plan allows. Sign in to ask from your own plan."; for captions and notes of
 their own, "Guests in this call have used as much of the organizer’s plan as it allows them.", and those notes say "These notes
 aren’t being updated: …" until there's room again), whichever guest asks, and the organizer's own notes keep the rest.
@@ -131,7 +131,7 @@ after notes stop too; a cheaper one always goes.
 - **About to run out:** when what's left would last `ai.warn_seconds` (5 minutes) at this call's own pace (what it has cost
   and will cost to write up, a second of it), the organizer alone is told, once (`CallState.capture.runningOut`), by
   whichever charge to the call gets there first: a transcript clip, captions, live notes or board ideas (`callMeter` in
-  `calls/recording.ts` tells the call as soon as the charge is saved).
+  `calls/notes/recording.ts` tells the call as soon as the charge is saved).
 - **Spent:** notes go off for everyone, as if the organizer had turned them off (`capture.stopped`, reason `notes`), and
   the call goes on. Notes says Stopped, and over its tabs (or in a banner while Notes is closed) the organizer reads why with
   Get Pro and more hours for this period, which open checkout over the call; everyone else, guests included, reads whose
@@ -224,7 +224,7 @@ opening one a teammate pays for would spend that teammate's allowance.
 ### What others can add
 
 Files anyone adds to a workspace count against its payer, so what others add is held apart from what the payer adds
-(`features/workspaces/media.ts › withinLimits`). "Others" is everyone but the payer and, on Team, the people licensed on the
+(`features/workspaces/uploads/media.ts › withinLimits`). "Others" is everyone but the payer and, on Team, the people licensed on the
 same team, whose pool it is as much as theirs:
 
 - **A day's allowance.** Someone signed in adds at most `media.others_day_bytes` (2 GiB) a day (UTC) to one account's
@@ -285,7 +285,7 @@ month, starts a fresh period with the whole allowance: nothing carries over, and
 bought month covers now, and Free otherwise. Free's periods count from
 when the account began, or from the end of the last month of Pro, whichever is later, so Free starts afresh when Pro ends,
 with or without upkeep. Each runs on from the one before as the AI meter keeps it (its `from` and `to`,
-`features/billing/meter-state.ts`), at the length `plan.period_seconds` has when it begins, so changing that limit never
+`features/billing/meter/meter-state.ts`), at the length `plan.period_seconds` has when it begins, so changing that limit never
 restarts a period that's running, nor gives back an allowance spent in it; an account the meter hasn't seen on Free since
 it started counts from the start. Pro's months and a team license's period are kept as they were bought or taken.
 
@@ -366,7 +366,7 @@ After it, uploads and notes stop while over Free's storage, as above. Buying Pro
 refund would add. `Plan.pro.renewal` says whether renewing will buy the next month as Pro ends, as upkeep would decide it
 now, and why not when it won't: `buys`, or `off`, `price` (a month costs more than the last did) or `short`; null with no
 month of Pro left. The app says Pro is ending by it and a `pro-ending` about the end Pro has now (`proEnding` in
-`plan-state.ts`): from the first reminder, a week out, the side panel says "Ends in 7 days · Extend" and Settings and Plans
+`planState.ts`): from the first reminder, a week out, the side panel says "Ends in 7 days · Extend" and Settings and Plans
 say when, and after a price rise they say so once the owner is told. The record keeps the months that haven't ended and
 the latest that has (the grace and Free's periods count from it).
 
@@ -409,7 +409,7 @@ so more bought on Free don't reach it, and none reach the period after the one t
 
 ## Team
 
-A team (`features/billing/teams.ts`, routes in `team-routes.ts`) is made by one account, its **admin**, who keeps its
+A team (`features/billing/teams/teams.ts`, routes in `teams/routes.ts`) is made by one account, its **admin**, who keeps its
 settings whether licensed or not. An account is on one team at most. Its people are `team_members` rows; its name and
 who's on it are sealed under the team's own key (it's an owner, as a workspace is), and what it bought under `Kservice`
 (`team-billing`). Every change locks the team's row first, then the plans it touches, so takes and purchases at once on
@@ -515,7 +515,7 @@ to make notes visible to it."); any note of theirs, from before they joined too.
 team they're on; saying it again changes nothing. It stays visible after they leave the team; they can still make it not
 visible (`visible: false`), licensed or not, but not visible again until they're licensed on a team. It goes with the note,
 with their account, and with the team. Notes find it third, after their own and those given to them
-(`notes/service.ts › locateToRead`): a live-licensed member of that team can read it (`Note`, audio, shared screens,
+(`notes/access.ts › locateToRead`): a live-licensed member of that team can read it (`Note`, audio, shared screens,
 progress), ask about it, and Ask across notes reads it. `NoteSummary.teamVisible` says whether it's visible;
 `received` is `{ role: 'team', by: the organizer, at: when it was made visible }` for someone who has it only that way.
 Everyone else who has the note and adds to its shared notes is told the team reads what they add (`PromotionPreview.team`,
@@ -626,7 +626,7 @@ is `arriving`, logged at error once with the reason, and fails at its deadline s
 ### How a top-up works
 
 1. **Routes.** `GET /v1/plan/routes` lists one route per chain on the allowlist of USDC in
-   `features/billing/oneclick.ts` that 1Click currently lists in `/v0/tokens` (cached for 10 minutes), in the allowlist's
+   `features/billing/top-ups/oneclick.ts` that 1Click currently lists in `/v0/tokens` (cached for 10 minutes), in the allowlist's
    order whatever order 1Click lists them in, with its minimum, and the presets. Add money and checkout offer the networks
    in that order. Offering another token means giving Add money its token choice back first.
 2. **Address.** `POST /v1/plan/top-ups` asks 1Click for a `FLEX_INPUT` quote for exactly that amount of the token, whose
@@ -637,7 +637,7 @@ is `arriving`, logged at error once with the reason, and fails at its deadline s
    Each route's decimals are pinned in the allowlist. The deposit's route, address, memo, expiry, the amount asked, the
    quote's `minAmountIn` and the whole signed quote are sealed in a `deposit` record; its row holds only the owner, ID,
    provider, state and when to look again.
-3. **Watching.** The watcher (`watch` in `features/billing/deposits.ts`, run every 5 s by `startWatching`) claims up to 20
+3. **Watching.** The watcher (`watch` in `features/billing/top-ups/deposits.ts`, run every 5 s by `startWatching`) claims up to 20
    due deposits with `FOR UPDATE SKIP LOCKED`, pushing their next check ahead by a lease longer than a worst-case pass, asks
    1Click's `/v0/status` about each, 4 at a time, and records the answer. `GET /v1/plan/top-ups/:id` checks the same way,
    at most every 5 s. 1Click being down leaves a deposit as it was, logged at warn. An `arriving` or `short` deposit never
@@ -841,7 +841,7 @@ a workspace either. Nothing rolls back to it past this release (above), so that 
 as credits did, so the TEE changes nothing of them: inside it, `KSERVICE` is the one in the server keys, carried over from
 the old one ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)).
 Carrying the old keys over checks the old `KSERVICE` against accounts' plans as well as their credits from before plans
-(`serverKeys.ts`, `opensAccounting` in `features/billing/plans.ts`), so it's refused on a database whose plans it doesn't
+(`server-keys.ts`, `opensAccounting` in `features/billing/plans.ts`), so it's refused on a database whose plans it doesn't
 open. Blind indexes plans make (a guest's uploads, the workspaces an address made) use the index key the server keeps, as
 everything else does. Support's billing CLI has no job in production: [Support](#support).
 

@@ -94,7 +94,7 @@ const sameSize = (a: Size, b: Size) => a.w === b.w && a.h === b.h;
 /* ---------- comparing and keeping pictures ---------- */
 
 let gridCanvas: HTMLCanvasElement | null = null;
-/** A picture on the grey grid (screenGrid.ts). The browser shrinks it first, on the GPU where it can, so only the grid is read back. */
+/** A picture on the grey grid (screen-grid.ts). The browser shrinks it first, on the GPU where it can, so only the grid is read back. */
 async function signature(src: ImageBitmap): Promise<Uint8Array | null> {
   if (!gridCanvas) { gridCanvas = document.createElement('canvas'); gridCanvas.width = GRID_W; gridCanvas.height = GRID_H; }
   const small = await createImageBitmap(src, { resizeWidth: GRID_W, resizeHeight: GRID_H, resizeQuality: 'low' });

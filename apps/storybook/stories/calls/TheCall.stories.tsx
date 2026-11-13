@@ -16,11 +16,11 @@ import { screen, waitFor, within } from 'storybook/test';
 import {
   at, chats, closesPresenting, line, movesPresenting, movesToRoom, presentsBoard, presentsWorkspace, reloads, shares, stopsPresenting, stopsShare, type CallScript, type Cue, type Line,
   type Present
-} from '../../src/api/script';
+} from '../../src/api/call/script';
 import { inCall, light, narrow, phone, plays, reach, type InCall, type StoryCall } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { iso } from '../../src/world/clock';
-import { RETRO } from './boards';
+import { RETRO } from './boards/retro';
 import {
   LATER, SOON, boardPicker, close, closeFor, frameMenu, frameOf, onTheBar, pickBoard, present, settle, shareATab, shareKind, shareMenu, sideAway, startingWith,
   tileOf, toldThat, toldThenGone, type Context, type Play

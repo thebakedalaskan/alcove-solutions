@@ -1,5 +1,5 @@
 /*
- * What the plans' stories share: what each plan brings, worded as Plans words the stand-in's offers (src/world/plans.ts:
+ * What the plans' stories share: what each plan brings, worded as Plans words the stand-in's offers (src/world/plans/plans.ts:
  * 5 hours of notes, 10 GB and 512 MB on Free; 50 hours and 100 GB on Pro; the same for each person on Team, its storage
  * shared), and the evening they stand on, as the page has it: the plans' moment, with the last sliver of the sun on its
  * horizon.

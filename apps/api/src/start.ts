@@ -2,31 +2,33 @@
  * Starting the API (docs: system-architecture): what server.ts runs, with what it reaches outside the environment made
  * explicit, so a test starts a server exactly as production does. Inside Confidential Space, the settings that are secrets,
  * the old keys and Cloud KMS come through the VM's attestation first (gcp.ts), never through the environment, which is part
- * of the attestation. Then the database, waited for until it can be reached (db.ts), and its migrations, the keys
- * (serverKeys.ts), and the listener: the edge, where TLS ends in the process (edge/), or plain HTTP behind something else's TLS.
+ * of the attestation. Then the database, waited for until it can be reached (platform/db.ts), and its migrations, the keys
+ * (keys/server-keys.ts), and the listener: the edge, where TLS ends in the process (edge/), or plain HTTP behind something else's TLS.
  */
 import { productionLog, type ReleaseLog } from '@alcove/api-http/release';
 import { serve, type ServerType } from '@hono/node-server';
 import { Server } from 'node:http';
 import { createApp } from './app';
-import { loadBoot, loadConfig, loadEnv } from './config';
-import type { Deps } from './context';
-import { createPool, waitForDatabase } from './db';
+import { loadBoot, loadConfig, loadEnv } from './platform/config';
+import type { Deps } from './platform/context';
+import { createPool, waitForDatabase } from './platform/db';
 import { CLOUDFLARE, type DnsServices } from './edge/dns';
 import { startEdge } from './edge/listen';
-import { startWatching } from './features/billing/deposits';
+import { opensAccounting } from './features/billing/plans';
+import { startWatching } from './features/billing/top-ups/deposits';
 import { startEndingOverdue } from './features/calls/lifecycle';
-import { GOOGLE_CLOUD, fromGoogleCloud, type GoogleCloud } from './gcp';
-import { inference } from './inference';
-import { createDocPool } from './live/docPool';
+import { GOOGLE_CLOUD, fromGoogleCloud, type GoogleCloud } from './tee/gcp';
+import { inference } from './inference/inference';
+import { createDocPool } from './live/doc-pool';
+import { DOC_WORKER } from './features/workspaces/documents/pool';
 import { createHub } from './live/hub';
-import { createLiveKit } from './livekit';
-import { log } from './log';
+import { createLiveKit } from './providers/livekit';
+import { log } from './platform/log';
 import { maintain } from './maintenance';
 import { migrate } from './migrate';
-import { createObjectStore } from './objects';
-import { rewrapOwners } from './serverKeys';
-import { LAUNCHER_SOCKET, createAttester } from './tee';
+import { createObjectStore } from './platform/objects';
+import { rewrapOwners } from './keys/server-keys';
+import { LAUNCHER_SOCKET, createAttester } from './tee/tee';
 
 const slog = log.child({ component: 'server' });
 
@@ -59,11 +61,11 @@ export async function startServer(env: NodeJS.ProcessEnv, outside: Outside = OUT
     const applied = await migrate(pool);
     slog.info(applied.length ? 'migrations applied' : 'database up to date', { applied });
     // The keys come after the migrations: inside a TEE, the master and the server keys are in the database.
-    const cfg = await loadConfig(e, pool, tee);
+    const cfg = await loadConfig(e, pool, tee && { wrapper: tee.wrapper, legacy: tee.legacy, opensAccounting });
     const objects = await createObjectStore(cfg);
     const hub = createHub(cfg.DATABASE_URL, { checkMs: cfg.HUB_CHECK_MS, timeoutMs: cfg.HUB_TIMEOUT_MS, maxStreams: cfg.LIVE_STREAMS_MAX, maxPerAddress: cfg.LIVE_STREAMS_PER_ADDRESS, makeRoomAfterMs: cfg.LIVE_MAKE_ROOM_MS });
     opened.push(hub);
-    const docs = createDocPool({ workers: cfg.DOC_WORKERS, timeoutMs: cfg.DOC_WORK_MS, heapMb: cfg.DOC_HEAP_MB, waitingPerPerson: cfg.DOC_WAITING_PER_PERSON });
+    const docs = createDocPool({ workers: cfg.DOC_WORKERS, timeoutMs: cfg.DOC_WORK_MS, heapMb: cfg.DOC_HEAP_MB, waitingPerPerson: cfg.DOC_WAITING_PER_PERSON, worker: DOC_WORKER });
     opened.push(docs);
     const deps: Deps = { cfg, pool, objects, livekit: createLiveKit(cfg), hub, docs };
     const stopping = new AbortController();

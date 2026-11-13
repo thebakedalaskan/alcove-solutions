@@ -10,7 +10,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { SCENARIO_NAMES, checked, type ScenarioName } from './api/scenarios';
 import { current } from './api/state';
 import { App } from './app';
-import type { World } from './world';
+import type { World } from './world/world';
 
 export interface PageArgs {
   /** Where the app opens. */

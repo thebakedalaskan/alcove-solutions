@@ -20,7 +20,7 @@ export function useSharedVideo(session: CallSession, on: boolean, failed: (e: un
   const [player] = useState(() => {
     const pass = session.ticket.pass;
     const about = (v: { workspaceId: string; documentId: string; mediaId: string }) =>
-      import('~/features/workspace/videoAbout').then(({ videoAbout }) => videoAbout(v.workspaceId, v.documentId, v.mediaId, pass));
+      import('~/features/workspace/uploads/videoAbout').then(({ videoAbout }) => videoAbout(v.workspaceId, v.documentId, v.mediaId, pass));
     return new SharedVideo(session, videoSourceFor(pass), about, (e) => said.current(e));
   });
   useEffect(() => (on ? player.start() : undefined), [player, on]);

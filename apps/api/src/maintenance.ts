@@ -23,28 +23,29 @@
  * notes being written or Drive exports going.
  */
 import { z } from 'zod';
-import type { Deps } from './context';
-import { exec, rows } from './db';
-import { log } from './log';
-import { deleteQueued } from './features/recordings/audio';
+import type { Deps } from './platform/context';
+import { exec, rows } from './platform/db';
+import { log } from './platform/log';
+import { deleteQueued } from './platform/objects';
 import { sweep as sweepAgentActivity } from './features/agents/activity';
 import { sweep as sweepAgents } from './features/agents/service';
 import { reconcile } from './features/calls/lifecycle';
-import { sweep as sweepLiveNotes } from './features/calls/live-notes';
-import { sweep as sweepAttention } from './features/calls/attention';
-import { pruneUploadDays, sweepUploads } from './features/workspaces/media';
-import { sweep as sweepMoves } from './features/calls/moves';
-import { sweep as sweepNoteLinks } from './features/notes/links';
-import { sweep as sweepRings } from './features/calls/rings';
+import { sweep as sweepLiveNotes } from './features/calls/notes/live-notes';
+import { sweep as sweepAttention } from './features/calls/attention/attention';
+import { pruneUploadDays, sweepUploads } from './features/workspaces/uploads/media';
+import { sweep as sweepMoves } from './features/calls/moves/moves';
+import { sweep as sweepNoteLinks } from './features/notes/links/links';
+import { sweep as sweepRings } from './features/calls/ringing/rings';
 import { sweepMentions } from './features/workspaces/mentions';
 import { sweepSeats, sweepTrash } from './features/workspaces/service';
-import { joinDue } from './features/recordings/screens';
-import { work } from './features/notes/writer';
-import { work as exportToDrive } from './features/notes/drive-worker';
+import { workspaceCalls } from './features/calls/workspace/seats';
+import { joinDue } from './features/recordings/screens/screens';
+import { work } from './features/notes/writing/writer';
+import { work as exportToDrive } from './features/notes/drive-exports/worker';
 import { upkeep as plansUpkeep } from './features/billing/plans';
-import { upkeep as teamsUpkeep } from './features/billing/teams';
-import { creditCarried } from './features/billing/deposits';
-import { sweepSessions } from './sessions';
+import { upkeep as teamsUpkeep } from './features/billing/teams/teams';
+import { creditCarried } from './features/billing/top-ups/deposits';
+import { sweepSessions } from './keys/sessions';
 
 const mlog = log.child({ component: 'maintenance' });
 
@@ -86,7 +87,7 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const quietly = (what: string, sweep: () => Promise<number>) => sweep().catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what, err: e }); return 0; });
   const trash = await quietly('trash', () => sweepTrash(d, opts.trashAgeMs, started));
   // Seats, and the workspaces calls were open to, counted apart: each is a row of its own kind.
-  const ended = await sweepSeats(d).catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what: 'seats', err: e }); return { seats: 0, workspaces: 0 }; });
+  const ended = await sweepSeats(d, workspaceCalls).catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what: 'seats', err: e }); return { seats: 0, workspaces: 0 }; });
   const uploads = await quietly('uploads', () => sweepUploads(d, opts.uploadAgeMs, started));
   const uploadDays = await quietly('upload days', () => pruneUploadDays(d));
   const mentions = await quietly('mentions', () => sweepMentions(d));

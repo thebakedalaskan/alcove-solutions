@@ -3,7 +3,7 @@
  * horizon, when each of them is busy (only that they are, never with what), and when everyone picked is free. The agent
  * books its call in the same week, at a time that's free here for the three of them.
  */
-import type { CastId } from '~/features/notes/cast';
+import type { CastId } from '~/features/examples/cast';
 
 const MEMBERS = ['art', 'lena', 'maya', 'priya', 'kofi', 'aiko', 'sam'] as const satisfies readonly CastId[];
 /** Someone the team can meet: everyone on the line who has joined. */

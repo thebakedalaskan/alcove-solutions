@@ -11,9 +11,9 @@ import { Button, SettingFoot, SettingNote, SettingRow, SettingStep, Switch, butt
 import { Link } from '@tanstack/react-router';
 import { useRef, useState, type ReactNode } from 'react';
 import { useCheckout } from '~/features/plans/checkout';
-import { PLAN_NAMES, licensesLeft, teamAdmin, waitingForLicense, type TeamLicenses } from '~/features/plans/plan-state';
+import { PLAN_NAMES, licensesLeft, teamAdmin, waitingForLicense, type TeamLicenses } from '~/features/plans/planState';
 import { callName } from '~/lib/people';
-import { useRefundLicenses, useSetAutoPurchase } from '~/lib/queries';
+import { useRefundLicenses, useSetAutoPurchase } from '~/features/team/queries';
 import { dayFullMonth, longDay } from '~/lib/time';
 import { plural, roomLabel, usdCents } from '~/lib/words';
 import { useSaveState, useSaving } from './save';

@@ -9,17 +9,18 @@ import { z } from 'zod';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { addObject, boardText, newId, readBoard, tableCell } from '@alcove/board';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { standing } from '../features/billing/meter';
-import { setLimit } from '../limits';
-import { loadConfig, loadEnv } from '../config';
-import { b64u, openJson, sealJson, signInAttemptKey, unb64u } from '../crypto';
-import { masterKey } from '../owners';
-import { resolveKeys } from '../serverKeys';
-import { cookieName } from '../sessions';
-import { fakeKms } from '../testing/fake-kms';
+import { standing } from '../features/billing/meter/meter';
+import { opensAccounting } from '../features/billing/plans';
+import { setLimit } from '../platform/limits';
+import { loadConfig, loadEnv } from '../platform/config';
+import { b64u, openJson, sealJson, signInAttemptKey, unb64u } from '../keys/crypto';
+import { masterKey } from '../keys/owners';
+import { resolveKeys } from '../keys/server-keys';
+import { cookieName } from '../keys/sessions';
+import { fakeKms } from '../testing/fakes/kms';
 import { acceptNoteSuggestions } from '../testing/follow-ups';
-import { PNG, type GoogleUser, type Spoil } from '../testing/fake-google';
-import { NOTES_MODEL, speechWav, startFakeNear, type Tamper } from '../testing/fake-near';
+import { PNG, type GoogleUser, type Spoil } from '../testing/fakes/google';
+import { NOTES_MODEL, speechWav, startFakeNear, type Tamper } from '../testing/fakes/near';
 import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from '../testing/harness';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { disposeLiveKit, presentScreen, stopPresenting } from '../testing/livekit';
@@ -4044,7 +4045,7 @@ describe('privacy at rest', () => {
 
     // What a TEE carries this database's accounts over with: the keys they were made under, sealed in server_keys under its
     // master, which is there wrapped by Cloud KMS.
-    const carried = await resolveKeys(h.pool, { tee: 'confidential-space', wrapper: fakeKms(), legacy: { kmaster: h.deps.cfg.KMASTER, kservice: h.deps.cfg.KSERVICE }, retire: false });
+    const carried = await resolveKeys(h.pool, { tee: 'confidential-space', wrapper: fakeKms(), legacy: { kmaster: h.deps.cfg.KMASTER, kservice: h.deps.cfg.KSERVICE }, retire: false, opensAccounting });
 
     // Every table there is, so a table added later is read here without anyone remembering to list it.
     const everyTable = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'")).rows.map((r) => r.table_name);
@@ -4153,7 +4154,7 @@ describe('confidential computing', () => {
     // Whoever can set the environment would hold keys put there, so inside a TEE they're refused.
     expect(() => loadEnv({ ...process.env, ...tee })).toThrow(/never come from the environment/);
     const withoutKeys = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'KMASTER' && k !== 'KSERVICE'));
-    const cfg = await loadConfig(loadEnv({ ...withoutKeys, ...tee, ALCOVE_COMMIT: 'abc1234' }), h.pool, { wrapper: kms, legacy });
+    const cfg = await loadConfig(loadEnv({ ...withoutKeys, ...tee, ALCOVE_COMMIT: 'abc1234' }), h.pool, { wrapper: kms, legacy, opensAccounting });
     // The master is the TEE's own, kept wrapped by Cloud KMS; the index and photo keys and KSERVICE are the database's, sealed under it, and so is the old master.
     const wrapped = z.object({ record: z.instanceof(Uint8Array) }).parse((await h.pool.query("SELECT record FROM server_keys WHERE id = 'master'")).rows[0]).record;
     expect(cfg.KMASTER).toBe(b64u(await kms.unwrap(wrapped)));

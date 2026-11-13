@@ -5,7 +5,7 @@
  */
 import type { CallTimer } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
-import { at } from '../../src/api/script';
+import { at } from '../../src/api/call/script';
 import { inCall, light, phone, plays, press } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { ART, CHECK_IN, KOFI, LAUNCH_REVIEW, PRIYA, AIKO } from './talk';

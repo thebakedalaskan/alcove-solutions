@@ -7,9 +7,9 @@ import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { b64u } from '../crypto';
-import { addMembers, createGroup, deleteGroup, flagHash, grantGroup, grantPerson, revokeGroup, setEveryone } from '../feature-flags';
-import { indexKey } from '../owners';
+import { b64u } from '../keys/crypto';
+import { addMembers, createGroup, deleteGroup, flagHash, grantGroup, grantPerson, revokeGroup, setEveryone } from '../platform/feature-flags';
+import { indexKey } from '../keys/owners';
 import { startHarness, type Harness } from '../testing/harness';
 
 let h: Harness;

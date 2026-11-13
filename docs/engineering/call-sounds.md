@@ -1,6 +1,6 @@
 # Call sounds
 
-Alcove's sounds are short original sine-tone phrases synthesized by `apps/web/src/lib/audio-output.ts`.
+Alcove's sounds are short original sine-tone phrases synthesized by `apps/web/src/features/notifications/soundCues.ts`.
 They have no downloaded samples, third-party recordings or external asset licenses. The family uses a quiet
 attack and a short falling envelope: microphone and people pairs rise for on/join and fall for off/leave;
 hands and questions have different rising pairs; admissions use three notes. The call's timer and
@@ -55,7 +55,7 @@ Settings → Notifications and the call's More → Settings → Notifications of
 which plays one cue at that volume; unavailable while sounds are off), Quiet mode, and a Sound tick per cue in What
 reaches you. Quiet mode retains only your own microphone confirmations and host admission
 requests, subject to their individual switches. Paused notifications (your menu at the top right,
-`lib/notification-pause.ts`) keep the same two while the account's pause lasts, on every device signed in.
+`features/notifications/pauseEnd.ts`) keep the same two while the account's pause lasts, on every device signed in.
 Every request carries the pause's end (`notificationsPauseEnd`, from `useSoundPreferences`), and `soundAllowed` compares
 it with the clock as the cue is asked for and again as it plays, so sounds come back by themselves when the
 time passes, with nothing to press. A ring's card still shows while paused, silently. Play's preview isn't held,

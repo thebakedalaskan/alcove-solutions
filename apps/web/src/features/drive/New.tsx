@@ -7,7 +7,7 @@
 import type { WorkspaceSummary } from '@alcove/api';
 import { Button, Icon, IconButton, WsMenu, WsPopover, cn, type IconName, type WsMenuRow } from '@alcove/ui';
 import { useRef, useState, type ReactElement, type ReactNode } from 'react';
-import { namesIn } from '~/features/workspace/List';
+import { namesIn } from '~/features/workspace/tree/List';
 import { canEdit, type DriveActions, type Making, type Target } from './actions';
 import { callOrder, callTitle, isAhead, isSpace } from './places';
 

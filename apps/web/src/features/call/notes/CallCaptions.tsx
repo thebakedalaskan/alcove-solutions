@@ -1,8 +1,8 @@
 import { CAPTION_LANGUAGES, notesAreOn, type CaptionLanguage, type CaptureMode } from '@alcove/api';
-import { Avatar, Caption, Icon } from '@alcove/ui';
+import { Avatar, Caption, Icon, Popover } from '@alcove/ui';
 import type { ReactNode } from 'react';
 import { callName } from '~/lib/people';
-import type { LiveCaption } from './captions';
+import type { CallCaptions, LiveCaption } from './captions';
 
 export const captionLanguageName = (l: CaptionLanguage | null) => (l ? CAPTION_LANGUAGES.find((x) => x.code === l)?.name ?? l : 'As spoken');
 
@@ -39,4 +39,25 @@ export function CallCaption({ caption, language: lang, hearing, mode, languageBu
       <span className="ic-cap-wait">{hearing ? 'What’s said appears here as people talk.' : notesAreOn(mode) ? 'Nothing is transcribed for captions right now: the host’s browser can’t listen.' : mode === 'paused' ? 'Notes are paused, so nothing is transcribed for captions.' : 'Notes are off, so nothing is being transcribed for captions.'}</span>
     </Caption>
   );
+}
+
+/**
+ * The captions over the stage, while they're on: the newest line of the part of the call you're in, in your language if you chose
+ * one, with the language menu at its end (`open`: it's what's open over the call). While notes are paused or off nothing new is said
+ * in them, so the last line isn't left up as if it were live (`hearing`, `mode`).
+ */
+export function CaptionsLine({ captions, hearing, mode, modelPrivate, open, onOpenChange }: {
+  captions: CallCaptions;
+  hearing: boolean;
+  mode: CaptureMode;
+  modelPrivate: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const langMenu = <CaptionLanguageMenu language={captions.language} modelPrivate={modelPrivate} onPick={(code) => { captions.pick(code); onOpenChange(false); }} />;
+  const capButton = (
+    <Popover open={open} onOpenChange={onOpenChange} side="top" align="end" label="Caption language" className="ic-dmenu"
+      anchor={<button type="button" className="ic-capbtn" aria-label="Choose the caption language"><Icon name="translate" size={14} />{captionLanguageName(captions.language)}</button>}>{langMenu}</Popover>
+  );
+  return <CallCaption caption={captions.caption} language={captions.language} hearing={hearing} mode={mode} languageButton={capButton} />;
 }

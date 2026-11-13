@@ -1,7 +1,7 @@
 /*
  * The tour, renewed, and the account being created before it. The card, the cut-out, the ring and the arrow are the
- * app's (`.ac-tour-*` in packages/ui/src/styles/kit.css, TourDialog in components/guidance.tsx); the account screen is
- * the app's (`.cr-*` in styles/onboarding.css, Arrival.tsx); the art is the old tour's (`.ta-*`), with new loops for the
+ * app's (`.ac-tour-*` in packages/ui/src/foundation/kit.css, TourDialog in onboarding/guidance.tsx); the account screen is
+ * the app's (`.cr-*` in onboarding/onboarding.css, Arrival.tsx); the art is the old tour's (`.ta-*`), with new loops for the
  * new stops. Colours are the app's own tokens, scoped to what the tour draws, so they never leak into Home's. Everything
  * that moves is timed in `--k`: 1, or 4 in slow motion.
  */

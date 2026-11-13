@@ -9,10 +9,12 @@ import { TourDialog, useToast, type TourSlide } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
-import { q } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { callQueries } from '~/features/calls/list/queries';
+import { calendarQueries } from '~/features/calls/scheduling/queries';
 import { shortcut } from '~/lib/keys';
 import { minutesUntil, untilLabel } from '~/lib/time';
-import { aheadShown, going, joinable, type Ahead } from '~/features/home/day';
+import { aheadShown, going, joinable, type Ahead } from '~/features/calls/list/ahead';
 import { usePlanChoiceUp } from '~/features/plans/choice';
 import { ArtAgents, ArtAsk, ArtCall, ArtDrive, ArtNotes, ArtRoom, ArtStart, ArtSun } from './art';
 import { arrival, rememberTour, tourSeen, useArrival } from './store';
@@ -78,10 +80,10 @@ function slidesFor(o: { join: Ahead | undefined; now: number }): TourSlide[] {
 
 export function TourHost() {
   const { tour, stage } = useArrival();
-  const session = useQuery(q.session()).data;
-  const upcoming = useQuery(q.upcoming()).data;
-  const calendar = useQuery(q.calendar()).data;
-  const prefs = useQuery(q.prefs()).data;
+  const session = useQuery(accountQueries.session()).data;
+  const upcoming = useQuery(callQueries.upcoming()).data;
+  const calendar = useQuery(calendarQueries.calendar()).data;
+  const prefs = useQuery(accountQueries.prefs()).data;
   const path = useRouterState({ select: (s) => s.location.pathname });
   // The address changes as soon as a navigation starts; Home is on the page once the router has finished.
   const settled = useRouterState({ select: (s) => s.status === 'idle' });

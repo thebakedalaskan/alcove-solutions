@@ -6,7 +6,7 @@
 import type { Series } from '@alcove/api';
 import { EmptyState, Fold, Icon } from '@alcove/ui';
 import { NotesApart } from '~/features/notes/parts';
-import { CarriedGroups, SeriesLink, carriedCount, nothingCarried, nothingYet } from '~/features/series/cards';
+import { CarriedGroups, SeriesLink, carriedCount, nothingCarried, nothingYet } from '~/features/notes/series/cards';
 
 /** At most this many of each in the panel; the series has the rest. */
 const SHOWN = 3;

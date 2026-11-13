@@ -9,9 +9,9 @@ import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { copyUrl, joinUrl, shownUrl, useCopyLink } from '~/features/call/session/links';
 import { listNames } from '~/lib/people';
-import { usePickTime } from '~/lib/queries';
+import { usePickTime } from '~/features/calls/list/queries';
 import { hm, hoursAndMinutes, shortDay, timeZone } from '~/lib/time';
-import { saveCalendarFile } from './PickTimeCalendar';
+import { saveCalendarFile } from './pickTimeCalendar';
 
 /** Where this browser is, in words: "Toronto time", or "UTC". */
 function zoneName(): string {

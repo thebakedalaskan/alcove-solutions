@@ -1,0 +1,31 @@
+/*
+ * Shared screens in a note (notes/screens.tsx): a frame at its own shape, the part something points at, and the
+ * card that sits among the transcript lines said while it was up. Frames are pictures of someone's screen, so they
+ * keep their own colours; everything around them uses the tokens.
+ */
+.ac-shot { position: relative; display: block; width: 100%; overflow: hidden; border-radius: var(--radius-sm); background: var(--sunk); }
+/* Its edge sits over the picture, so a white slide on a white card still has one. */
+.ac-shot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--line); pointer-events: none; }
+.ac-shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.ac-shot-part { position: absolute; border-radius: 4px; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--horizon) 55%, transparent); }
+/* The part meant, outlined, with the rest of the frame dimmed (night in both themes, so it always darkens). */
+.ac-shot-part.is-focus { box-shadow: 0 0 0 2px var(--horizon), 0 0 0 9999px color-mix(in srgb, var(--stage) 32%, transparent); }
+.ac-shot-part .lbl { position: absolute; left: -2px; bottom: calc(100% + 6px); max-width: 220px; padding: 3px 8px; border-radius: var(--radius-xs); background: var(--horizon); color: var(--surface); font: 600 11.5px/16px var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* No room above a part near the frame's top: the label goes under it, or inside it when it fills the frame's height. */
+.ac-shot-part .lbl.is-below { bottom: auto; top: calc(100% + 6px); }
+.ac-shot-part .lbl.is-inside { bottom: auto; top: 6px; left: 6px; max-width: calc(100% - 12px); }
+.ac-shot-part .lbl.is-end { left: auto; right: -2px; }
+.ac-shot-part .lbl.is-inside.is-end { left: auto; right: 6px; }
+
+.ac-screen { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 14px; align-items: start; width: 100%; margin: 4px 0; padding: 10px; border-radius: var(--radius-md); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); text-align: left; transition: box-shadow var(--duration-1) var(--ease-out), background var(--duration-1) var(--ease-out); }
+.ac-screen:hover { box-shadow: inset 0 0 0 1px var(--line-control); }
+.ac-screen .thumb { border-radius: 7px; }
+.ac-screen .what { display: grid; gap: 4px; min-width: 0; padding-top: 1px; }
+.ac-screen .t { display: flex; align-items: center; gap: 6px; font: 600 14.5px/20px var(--font-sans); color: var(--ink); }
+.ac-screen .t .ac-i { flex: none; color: var(--horizon); }
+.ac-screen .m { font: 400 12.5px/17px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.ac-screen .d { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 13.5px; line-height: 19px; color: var(--ink-2); text-wrap: pretty; }
+.ac-screen .ac-screen-legible { justify-self: start; margin-top: 2px; }
+@media (max-width: 560px) {
+  .ac-screen { grid-template-columns: 112px minmax(0, 1fr); gap: 12px; padding: 8px; }
+}

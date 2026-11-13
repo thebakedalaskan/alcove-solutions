@@ -9,8 +9,8 @@
 import { BOARD_LIMITS, addObject, contains, freeRoute, hasBox, isAttached, route, sides, type BoardObject, type BoardView, type Box, type Camera, type LineEnd, type LineObject, type LineStyle, type PlacedObject, type Route } from '@alcove/board';
 import type { BoardDot } from '@alcove/ui';
 import type { SheetPoint } from '../camera';
-import { STICKY } from '../editing';
-import type { Gesture, ToolPress } from '../gestures';
+import { STICKY } from '../input/editing';
+import type { Gesture, ToolPress } from '../input/gestures';
 import { CLICK_SLOP, OVER_THE_SHEET, endBox } from '../selection';
 import type { Board, BoardBallot } from '../useBoard';
 

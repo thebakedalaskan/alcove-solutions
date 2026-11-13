@@ -7,7 +7,7 @@ import {
 import { Avatar, CaptureGapMark, Icon, IconButton, ReadMore, cn } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { Fragment, createContext, useContext, useEffect, useRef, useState, type PointerEvent, type ReactNode, type RefObject } from 'react';
-import { KeepAnswer } from '~/features/personal/parts';
+import { KeepAnswer } from '~/features/notes/personal/parts';
 import { gapLabel, gapsAfter, gapsBefore } from '~/lib/capture';
 import { ariaShortcut, withMod } from '~/lib/keys';
 import { sameEmail, spokenName } from '~/lib/people';

@@ -16,7 +16,7 @@ see who's on the team. Every page is built around the one thing you came to do t
 ## One evening
 
 Every page in the frame is a moment of the same evening, drawn behind the page by `Horizon`
-(`packages/ui/src/components/horizon.tsx`): a sky, a sea, and the horizon where they meet. The sky is only as tall as the
+(`packages/ui/src/evening/horizon.tsx`): a sky, a sea, and the horizon where they meet. The sky is only as tall as the
 page is one action. A page that's mostly one action is mostly sky; a page you read or manage is mostly water.
 
 | Page | Moment | Sky, as a share of the window |
@@ -35,7 +35,7 @@ A call isn't part of the evening: it's always night, on the call stage. The page
 join page, but stands on the evening's night.
 
 Things sit on the water, under the horizon. The colours of each moment, the clouds, the stars and what passes through are in
-`packages/ui/src/styles/horizon.css`. A page sets where its horizon is (`--hz`) and, if it needs to, where its sun is.
+`packages/ui/src/evening/horizon.css`. A page sets where its horizon is (`--hz`) and, if it needs to, where its sun is.
 Record also restyles its sun, because the recorder takes its place.
 
 ## The seven principles

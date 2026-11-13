@@ -37,7 +37,7 @@ const NO_BUILD = 'The token doesn’t name the build the server reports.';
 
 /** How far this device's clock may be from Google's before a token or certificate looks dated ahead of it, or too old. */
 const SKEW_SECONDS = 5 * 60;
-/** What the API's token request says the nonces are for (apps/api/src/tee.ts), so a token asked for anything else isn't taken. */
+/** What the API's token request says the nonces are for (apps/api/src/tee/tee.ts), so a token asked for anything else isn't taken. */
 const PURPOSE = 'alcove:attestation:v1';
 
 const Header = z.object({ alg: z.string(), x5c: z.array(z.string()) });

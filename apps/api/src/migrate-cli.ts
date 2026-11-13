@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { createPool } from './db';
-import { configureLogging, flushLogs, log } from './log';
+import { createPool } from './platform/db';
+import { configureLogging, flushLogs, log } from './platform/log';
 import { migrate } from './migrate';
 
 /**

@@ -7,7 +7,8 @@ import { errorMessage, type CalendarConnectResult, type Preferences } from '@alc
 import { Button, Icon, ProviderMark, SettingFact, SettingNote, SettingRow, buttonClass, useToast, type SettingRowProps } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useRef } from 'react';
-import { calendarConnectUrl, q, useDisconnectCalendar } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { calendarConnectUrl, calendarQueries, useDisconnectCalendar } from '~/features/calls/scheduling/queries';
 import { SwitchSetting, useSave } from './save';
 
 /** What Google's way back said, as the row says it. */
@@ -23,8 +24,8 @@ const CALENDAR_RESULT = {
  * `result` is how Google sent you back, if it just did.
  */
 export function GoogleCalendar({ prefs, result }: { prefs: Preferences | undefined; result?: CalendarConnectResult | undefined }) {
-  const calendar = useQuery(q.calendar());
-  const email = useQuery(q.session()).data?.user.email;
+  const calendar = useQuery(calendarQueries.calendar());
+  const email = useQuery(accountQueries.session()).data?.user.email;
   const disconnect = useDisconnectCalendar();
   const save = useSave();
   const toast = useToast();

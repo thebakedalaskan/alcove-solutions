@@ -14,14 +14,14 @@ import { createServer as createHttpServer, type IncomingMessage, type Server as 
 import { Http2ServerRequest, createSecureServer, type Http2Session } from 'node:http2';
 import { isIPv4, isIPv6, createServer as createNetServer, type Server as NetServer, type Socket } from 'node:net';
 import type pg from 'pg';
-import type { Config, EdgeSettings } from '../config';
-import { unb64u } from '../crypto';
-import { log } from '../log';
+import type { Config, EdgeSettings } from '../platform/config';
+import { unb64u } from '../keys/crypto';
+import { log } from '../platform/log';
 import { orderCertificate } from './acme';
 import { certificates } from './certificates';
 import { cloudflareZone, type DnsServices } from './dns';
 import { loadWebApp, reply, type EdgeRequest, type EdgeResponse } from './static';
-import { acmeAccountKey, tlsKey } from './tlsKeys';
+import { acmeAccountKey, tlsKey } from './tls-keys';
 
 const elog = log.child({ component: 'edge' });
 
