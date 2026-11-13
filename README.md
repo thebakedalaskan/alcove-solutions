@@ -71,62 +71,6 @@ shows you the result, and the server checks what the AI runs on before sending i
 
 <br>
 
-## Built at NEAR HACKATHON
-
-Alcove was built during [NEAR HACKATHON](https://nearhackathon.com) in November 2026. The repository’s history starts
-on 2 November 2026 with a plan ([its first commit](https://github.com/thebakedalaskan/alcove-solutions/commit/2aa9b86a8)),
-so all of it is hackathon work, built on the open-source libraries listed in [Built with](#built-with) and the
-`package.json` files. Most of the code was written with an AI coding agent, Claude Code, and nearly every commit says so
-in a Co-Authored-By line (1,328 of the 1,361 that aren’t merges, on 13 November).
-
-**Tracks:** Privacy & Private AI (private inference on NEAR AI Cloud, and a server in a TEE), and Real-World Money (plans
-and team licenses paid in USDC through NEAR Intents).
-
-**Where NEAR fits**
-
-- **NEAR AI Cloud, for private inference.** The live transcript (Whisper large-v3) and the notes (DeepSeek V4.1 Flash
-  by default) are written by models NEAR AI runs in confidential VMs, on Intel TDX with NVIDIA confidential GPUs. Before
-  sending a model anything, Alcove’s server checks its hardware evidence itself, then seals each request to the model’s
-  attested key with Oblivious HTTP. Speech always goes this way, and so does everything else unless someone picks a model
-  NEAR AI doesn’t run in an enclave, which the app marks ([how](#ai-runs-on-verified-private-models)). This is what
-  lets Alcove’s AI work on a meeting while the meeting stays inside verified hardware.
-- **NEAR Intents 1Click, for payments.** Pro months and team licenses are paid in USDC from the network you choose (NEAR,
-  Ethereum, Solana, Base, Arbitrum, Polygon, BNB Chain, Optimism or Avalanche), to a one-off deposit address 1Click
-  opens for the payment. Whatever arrives is settled as USDC in Alcove’s treasury account on NEAR Intents, and Alcove
-  credits it once 1Click reports it there ([how](#pay-with-usdc)).
-
-**Where to look in the code:** each NEAR AI, 1Click and TEE feature, and the tests that check it, mapped to its
-files [near the end of this page](#where-to-look-in-the-code).
-
-**Try it: do this, see that**
-
-1. Open [alcove.solutions](https://alcove.solutions) and press **Continue with Google** (any Gmail or Google Workspace
-   address). Alcove makes your account on screen, then shows the plans once: press **Continue on Free**. You land on
-   Home, and a short tour starts; close it with **Skip tour** when you’ve seen enough.
-2. Look at the foot of the side panel: **Confidential compute · verified**. Your browser checked the server’s
-   attestation token and its image’s entry in Sigstore’s public log itself; point at it to see when.
-3. Press <kbd>N</kbd>, then **Start now**, allow your microphone, and press **Join** in the lobby. **Notes on** shows at
-   the top left, after the call’s name and clock: new calls take notes unless you set **Settings › Calls and notes ›
-   Notes for new calls** to Off.
-4. Talk for half a minute, with a decision and a to-do in it. Open **Notes** at the top right: your lines appear under
-   **Transcript**, labelled **You**, and the **Notes** tab fills in within about 30 seconds. Point at the shield beside
-   **Notes on**: it says what’s sealed, when the hardware was checked, and that Alcove can’t read the call.
-5. Press **Leave**: when you’re alone, it ends the call at once, and the call’s ended page opens. Within about a minute
-   the note is written; press **Read the notes** (it says **Open the notes** while they’re being written) to see the
-   summary, with any decisions and follow-ups. Under the title, press **Written in confidential compute** to see which
-   NEAR AI model did each task and when its hardware evidence was checked.
-6. Press <kbd>⌘</kbd> <kbd>K</kbd> (<kbd>Ctrl</kbd> <kbd>K</kbd> on Windows and Linux), type a question about the call
-   and press <kbd>Enter</kbd> to ask it. The answer cites the moment it came from; press it to open the call at that line.
-7. From a clone, after `pnpm install`, run the check in [Verify it yourself](#verify-it-yourself). It prints the commit
-   and the image production runs; the commit is main’s newest deployed one.
-8. Without an account or any keys, `pnpm install` then `pnpm storybook` opens every page and journey of the app on
-   made-up data, at http://localhost:6006.
-
-No Google account? Steps 7 and 8 need none, and [Run it yourself](#run-it-yourself) runs the whole app on your machine
-with a demo sign-in (steps 4 to 6 need a NEAR AI key there too).
-
-<br>
-
 ## What you can do
 
 | In the call | Between calls | Underneath |
@@ -298,6 +242,62 @@ it on.
 | **Captions** in your own language, while notes are on | **Your own notes** beside the shared ones | **Notifications** for calls, notes and follow-ups, while Alcove is open |
 | **Raise hand**, questions with votes, spotlight | **Correct the transcript**, then rewrite the notes | **Ringing** your team into a call |
 | **A timer** everyone sees, and a **floating call** (Chrome and Edge) | **Bookmarks** on a line or a shared screen | **Move a call** to another device with a QR code |
+
+<br>
+
+## Built at NEAR HACKATHON
+
+Alcove was built during [NEAR HACKATHON](https://nearhackathon.com) in November 2026. The repository’s history starts
+on 2 November 2026 with a plan ([its first commit](https://github.com/thebakedalaskan/alcove-solutions/commit/2aa9b86a8)),
+so all of it is hackathon work, built on the open-source libraries listed in [Built with](#built-with) and the
+`package.json` files. Most of the code was written with an AI coding agent, Claude Code, and nearly every commit says so
+in a Co-Authored-By line (1,328 of the 1,361 that aren’t merges, on 13 November).
+
+**Tracks:** Privacy & Private AI (private inference on NEAR AI Cloud, and a server in a TEE), and Real-World Money (plans
+and team licenses paid in USDC through NEAR Intents).
+
+**Where NEAR fits**
+
+- **NEAR AI Cloud, for private inference.** The live transcript (Whisper large-v3) and the notes (DeepSeek V4.1 Flash
+  by default) are written by models NEAR AI runs in confidential VMs, on Intel TDX with NVIDIA confidential GPUs. Before
+  sending a model anything, Alcove’s server checks its hardware evidence itself, then seals each request to the model’s
+  attested key with Oblivious HTTP. Speech always goes this way, and so does everything else unless someone picks a model
+  NEAR AI doesn’t run in an enclave, which the app marks ([how](#ai-runs-on-verified-private-models)). This is what
+  lets Alcove’s AI work on a meeting while the meeting stays inside verified hardware.
+- **NEAR Intents 1Click, for payments.** Pro months and team licenses are paid in USDC from the network you choose (NEAR,
+  Ethereum, Solana, Base, Arbitrum, Polygon, BNB Chain, Optimism or Avalanche), to a one-off deposit address 1Click
+  opens for the payment. Whatever arrives is settled as USDC in Alcove’s treasury account on NEAR Intents, and Alcove
+  credits it once 1Click reports it there ([how](#pay-with-usdc)).
+
+**Where to look in the code:** each NEAR AI, 1Click and TEE feature, and the tests that check it, mapped to its
+files [near the end of this page](#where-to-look-in-the-code).
+
+**Try it: do this, see that**
+
+1. Open [alcove.solutions](https://alcove.solutions) and press **Continue with Google** (any Gmail or Google Workspace
+   address). Alcove makes your account on screen, then shows the plans once: press **Continue on Free**. You land on
+   Home, and a short tour starts; close it with **Skip tour** when you’ve seen enough.
+2. Look at the foot of the side panel: **Confidential compute · verified**. Your browser checked the server’s
+   attestation token and its image’s entry in Sigstore’s public log itself; point at it to see when.
+3. Press <kbd>N</kbd>, then **Start now**, allow your microphone, and press **Join** in the lobby. **Notes on** shows at
+   the top left, after the call’s name and clock: new calls take notes unless you set **Settings › Calls and notes ›
+   Notes for new calls** to Off.
+4. Talk for half a minute, with a decision and a to-do in it. Open **Notes** at the top right: your lines appear under
+   **Transcript**, labelled **You**, and the **Notes** tab fills in within about 30 seconds. Point at the shield beside
+   **Notes on**: it says what’s sealed, when the hardware was checked, and that Alcove can’t read the call.
+5. Press **Leave**: when you’re alone, it ends the call at once, and the call’s ended page opens. Within about a minute
+   the note is written; press **Read the notes** (it says **Open the notes** while they’re being written) to see the
+   summary, with any decisions and follow-ups. Under the title, press **Written in confidential compute** to see which
+   NEAR AI model did each task and when its hardware evidence was checked.
+6. Press <kbd>⌘</kbd> <kbd>K</kbd> (<kbd>Ctrl</kbd> <kbd>K</kbd> on Windows and Linux), type a question about the call
+   and press <kbd>Enter</kbd> to ask it. The answer cites the moment it came from; press it to open the call at that line.
+7. From a clone, after `pnpm install`, run the check in [Verify it yourself](#verify-it-yourself). It prints the commit
+   and the image production runs; the commit is main’s newest deployed one.
+8. Without an account or any keys, `pnpm install` then `pnpm storybook` opens every page and journey of the app on
+   made-up data, at http://localhost:6006.
+
+No Google account? Steps 7 and 8 need none, and [Run it yourself](#run-it-yourself) runs the whole app on your machine
+with a demo sign-in (steps 4 to 6 need a NEAR AI key there too).
 
 <br>
 
