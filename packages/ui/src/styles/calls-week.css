@@ -1,0 +1,164 @@
+/*
+ * The week (CallsWeek, cw-): the Calls page's, Monday to Sunday, and the week a call is scheduled on, seven days from today.
+ * A box of all 24 hours that scrolls, an hour --hp tall (ten fill the box: the component measures it), the day row staying
+ * at its top. Everything on a day sits at its minutes, --s to --e; blocks that overlap stand side by side, --lane of --of.
+ * Its head (CallsWeekHead) is the days it shows. Warmth is sun-text: now, and the call being made; scheduling, everything of
+ * yours is neutral so the call is the one thing in colour. A sheet that holds a week (.cw-sheet) doesn't scroll itself: its
+ * hours do.
+ */
+.cw-sheet { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; padding: 14px 14px 10px 12px; }
+.cw-sheet > * { max-width: none; }
+
+/* ------------------------------------------------------------ the head: the days, Today, ‹ and › */
+.cw-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 38px; margin: 0 0 6px 10px; }
+.cw-head h2 { min-width: 0; overflow: hidden; font: 400 24px/1.1 var(--font-display); letter-spacing: -.01em; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
+.cw-nav { flex: none; display: inline-flex; align-items: center; gap: 2px; }
+.cw-nav .ac-icon-btn { width: 32px; height: 32px; }
+.cw-nav .cw-today { margin-right: 6px; }
+.cw-end { display: inline-flex; margin-left: 8px; }
+
+/* ------------------------------------------------------------ the week */
+.cw { --gut: 54px; --dh: 44px; --cw-hl: color-mix(in srgb, var(--ink) 6.5%, transparent); --cw-hl2: color-mix(in srgb, var(--ink) 10%, transparent); position: relative; flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.cw.is-narrow { --dh: 50px; }
+.cw-wk { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.cw-box { position: relative; flex: 1; min-height: 0; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--ink) 18%, transparent) transparent; }
+/* The days stay put as the hours scroll under them. */
+.cw-dh { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: var(--gut) repeat(var(--n), minmax(0, 1fr)); background: var(--cw-sheet, var(--surface)); box-shadow: 0 1px 0 var(--line); }
+.cw-day { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; height: var(--dh); font: 500 12.5px/1 var(--font-sans); color: var(--ink-2); white-space: nowrap; }
+.cw-day b { display: grid; place-items: center; min-width: 26px; height: 26px; padding: 0 5px; border-radius: var(--radius-pill); font: 600 14.5px/1 var(--font-sans); color: var(--ink); font-variant-numeric: tabular-nums; }
+.cw-day.is-today { color: var(--sun-text); font-weight: 600; }
+.cw-day.is-today b { background: var(--sun-text); color: var(--ground); }
+.cw-day.is-gone b { color: var(--ink-2); font-weight: 500; }
+.cw.is-narrow .cw-day { flex-direction: column; gap: 2px; font-size: 11.5px; }
+.cw-grid { position: relative; display: grid; grid-template-columns: var(--gut) minmax(0, 1fr); height: calc(24 * var(--hp)); }
+.cw-hours { position: relative; }
+.cw-hl { position: absolute; right: 10px; top: calc(var(--h) * var(--hp) + 5px); font: 500 11px/1 var(--font-sans); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.cw-hl.is-hid { visibility: hidden; }
+.cw-nowtag { position: absolute; right: 5px; z-index: 2; top: calc(var(--s) * var(--hp) / 60); transform: translateY(-50%); padding: 3px 5px; border-radius: 5px; background: var(--sun-text); color: var(--ground); font: 700 10.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
+.cw-cols { position: relative; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); background-image: repeating-linear-gradient(to bottom, color-mix(in srgb, var(--line) 85%, transparent) 0 1px, transparent 1px var(--hp)); }
+.cw-col { position: relative; min-width: 0; box-shadow: inset 1px 0 0 var(--line); touch-action: pan-y; cursor: pointer; }
+
+/* Every half hour is a button, for the keyboard and a screen reader; the pointer is the week's own. */
+.cw-slot { position: absolute; left: 0; right: 0; z-index: 1; top: calc(var(--i) * var(--hp) / 2); height: calc(var(--hp) / 2); padding: 0; border: 0; background: none; cursor: inherit; scroll-margin-top: calc(var(--dh) + 6px); scroll-margin-bottom: 6px; }
+.cw-slot[aria-disabled="true"] { cursor: default; }
+.cw-slot:focus { outline: 0; }
+.cw-slot:focus-visible { z-index: 10; border-radius: 5px; outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* Under the blocks: the hours outside the working day, other people's busy time (whose, never what), and the past. */
+.cw-z { position: absolute; left: 0; right: 0; top: calc(var(--s) * var(--hp) / 60); height: calc((var(--e) - var(--s)) * var(--hp) / 60); pointer-events: none; }
+.cw-z.is-off { background: color-mix(in srgb, var(--ink) 2.5%, transparent); }
+.cw-z.is-busy { left: 2px; right: 2px; border-radius: 6px; background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--ink) 10%, transparent) 0 1px, transparent 1px 6px); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 8%, transparent); }
+.cw-z.is-busy small { position: absolute; left: 7px; right: 4px; top: calc(var(--lt, 0) * var(--hp) / 60 + 4px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 10.5px/1.2 var(--font-sans); color: var(--ink-2); }
+.cw-z.is-past { z-index: 1; background: color-mix(in srgb, var(--cw-sheet, var(--surface)) 52%, transparent); }
+
+/* A block. Its time comes first; a name only shows when a whole line of it fits, with room left under it. */
+.cw-bk { position: absolute; z-index: 2; left: calc(2px + (100% - 4px) * var(--lane, 0) / var(--of, 1)); width: calc((100% - 4px) / var(--of, 1) - 2px); top: calc(var(--s) * var(--hp) / 60 + 1px); height: max(calc((var(--e) - var(--s)) * var(--hp) / 60 - 2px), 4px); overflow: hidden; padding: 0; border: 0; border-radius: 6px; color: var(--ink); text-align: left; }
+.cw-tx { display: flex; flex-direction: column; gap: 1px; min-width: 0; height: 100%; padding: 4px 7px; }
+.cw-tx .t { display: flex; align-items: center; gap: 4px; min-width: 0; font: 500 11px/13px var(--font-sans); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cw-tx .n { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; font: 600 12px/14px var(--font-sans); overflow-wrap: anywhere; }
+.cw-tx.is-one { flex-direction: row; align-items: center; gap: 6px; padding-block: 0; }
+.cw-tx.is-one .n { display: block; flex: 1; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
+.cw-tx.is-tight { flex-direction: row; align-items: center; padding-block: 0; }
+.cw-tx.is-tight .t { font-size: 10px; line-height: 11px; }
+.cw-bk .nb { display: inline-grid; place-items: center; flex: none; width: 15px; height: 15px; border-radius: 50%; font: 700 9.5px/1 var(--font-sans); font-style: normal; font-variant-numeric: tabular-nums; }
+
+/* Yours: filled, with a bar. Scheduling they're neutral, so the call being made is the one thing in colour. */
+.cw-bk.is-ev { --fill: color-mix(in srgb, var(--ink) 8.5%, transparent); --bar: color-mix(in srgb, var(--ink) 28%, transparent); background: linear-gradient(var(--fill), var(--fill)) var(--cw-sheet, var(--surface)); box-shadow: inset 3px 0 0 var(--bar); }
+.cw-bk.is-ev .cw-tx { padding-left: 9px; }
+.cw-bk.is-ev .t { color: var(--ink-2); }
+.cw-bk.is-ev.is-tight, .cw-bk.is-ev.is-tiny { box-shadow: none; border-radius: 4px; }
+.cw-bk.is-ev.is-tight .cw-tx { padding-left: 6px; }
+.cw-bk.is-invite { --fill: transparent; --bar: var(--rose); outline: 1px dashed color-mix(in srgb, var(--rose) 60%, transparent); outline-offset: -1px; }
+.cw-bk.is-hold { --fill: transparent; outline: 1px dashed color-mix(in srgb, var(--ink) 38%, transparent); outline-offset: -1px; }
+.cw-bk.is-gone { opacity: .5; }
+.cw.is-schedule .cw-bk.is-ev { pointer-events: none; }
+/* Browsing, the kinds keep their marks: an Alcove call has a sun edge, the calendar's meetings are outlined, a call just scheduled is lit. */
+.cw.is-browse .cw-bk.is-soon { --bar: var(--sun-text); --fill: color-mix(in srgb, var(--sun-text) 13%, transparent); }
+.cw.is-browse .cw-bk.is-cal { --fill: transparent; box-shadow: inset 3px 0 0 var(--bar), inset 0 0 0 1px var(--line-control); }
+.cw-bk.is-fresh { --fill: var(--sun-text); --bar: var(--sun-text); box-shadow: 0 6px 16px -8px rgb(0 0 0 / .5); }
+.cw-bk.is-fresh .t, .cw-bk.is-fresh .n { color: var(--ground); }
+button.cw-bk { cursor: pointer; transition: filter var(--duration-1); }
+button.cw-bk:hover { filter: brightness(1.06); }
+.dark button.cw-bk:hover { filter: brightness(1.18); }
+button.cw-bk:focus-visible { z-index: 10; outline: 2px solid var(--focus); outline-offset: 1px; }
+/* What waits on you from a call: a decision to confirm, a rose diamond; a follow-up, a blue dot. */
+.cw-bk .wait { position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 2px; transform: rotate(45deg); background: var(--rose); }
+.cw-bk .wait.is-fu { border-radius: 50%; transform: none; background: var(--horizon); }
+.cw-bk.has-wait .cw-tx { padding-right: 16px; }
+.cw-bk.has-wait.is-tight .wait, .cw-bk.has-wait.is-tiny .wait { top: 50%; margin-top: -3.5px; }
+
+/* The call being made: solid and lifted. Pressing it starts it at the half hour pressed, dragging carries it, its foot sets how long. */
+.cw-bk.is-call { z-index: 6; background: var(--sun-text); box-shadow: inset 0 1px 0 color-mix(in srgb, white 22%, transparent), 0 6px 16px -8px rgb(0 0 0 / .55); cursor: grab; transition: top .16s var(--ease-out), height .16s var(--ease-out); }
+.cw-bk.is-call .t, .cw-bk.is-call .n { color: var(--ground); }
+.cw-bk.is-call .t { font-weight: 700; }
+.cw-bk.is-call .n { opacity: .86; }
+.cw-bk.is-call.is-moving { z-index: 7; cursor: grabbing; transition: none; box-shadow: inset 0 1px 0 color-mix(in srgb, white 22%, transparent), 0 16px 30px -12px rgb(0 0 0 / .65); }
+.cw-bk.is-call.is-clash { outline: 2px solid var(--caution); outline-offset: 1px; }
+.cw-bk.is-call .nb { background: color-mix(in srgb, var(--ground) 24%, transparent); color: var(--ground); }
+.cw-bk .grip { position: absolute; left: 0; right: 0; bottom: 0; height: 8px; cursor: ns-resize; }
+.cw-bk .grip::before { content: ""; position: absolute; left: 50%; bottom: 2px; width: 16px; height: 3px; margin-left: -8px; border-radius: 2px; background: color-mix(in srgb, var(--ground) 60%, transparent); opacity: .5; transition: opacity var(--duration-1); }
+.cw-bk.is-call:hover .grip::before, .cw-bk.is-call.is-moving .grip::before { opacity: 1; }
+.cw-bk.is-tight .grip::before, .cw-bk.is-tiny .grip::before { display: none; }
+/* A time offered and not the active one: outlined in sun with its number. Left out: dashed and faint. */
+.cw-bk.is-opt { z-index: 5; background: color-mix(in srgb, var(--sun-text) 12%, var(--cw-sheet, var(--surface))); box-shadow: inset 0 0 0 1.5px var(--sun-text); cursor: pointer; }
+.cw-bk.is-opt .t { color: var(--ink); font-weight: 600; }
+.cw-bk.is-opt .nb { background: var(--sun-text); color: var(--ground); }
+.cw-bk.is-opt.is-off { background: var(--cw-sheet, var(--surface)); box-shadow: none; outline: 1.5px dashed color-mix(in srgb, var(--ink) 30%, transparent); outline-offset: -1.5px; }
+.cw-bk.is-opt.is-off .t { color: var(--ink-3); }
+.cw-bk.is-opt.is-off .nb { background: var(--cw-hl2); color: var(--ink-2); }
+/* Moving a call: where it is now, dashed. */
+.cw-bk.is-was { z-index: 3; background: var(--cw-sheet, var(--surface)); outline: 1.5px dashed color-mix(in srgb, var(--ink) 40%, transparent); outline-offset: -1.5px; pointer-events: none; }
+.cw-bk.is-was .t { color: var(--ink-2); font-weight: 600; }
+/* Where a press would put the call: a dashed outline at its length, its time, and who's free then. Dragged across, solid. */
+.cw-bk.is-ghost { z-index: 8; left: 2px; width: calc(100% - 4px); background: color-mix(in srgb, var(--sun-text) 9%, transparent); outline: 1px dashed color-mix(in srgb, var(--sun-text) 75%, transparent); outline-offset: -1px; pointer-events: none; }
+.cw-bk.is-ghost .t { color: var(--sun-text); font-weight: 600; }
+.cw-bk.is-ghost .n { color: var(--ink-2); font-weight: 500; font-size: 11.5px; }
+.cw-bk.is-ghost.is-drag { background: color-mix(in srgb, var(--sun-text) 14%, transparent); outline: 1.5px solid var(--sun-text); outline-offset: -1.5px; }
+.cw-bk.is-ghost.is-busy { background: color-mix(in srgb, var(--caution) 9%, transparent); outline-color: color-mix(in srgb, var(--caution) 75%, transparent); }
+.cw-bk.is-ghost.is-busy .t { color: var(--caution); }
+
+/* Now: the sun on a line across today, and its time in the hours. */
+.cw-now { position: absolute; left: 0; right: 0; z-index: 9; top: calc(var(--s) * var(--hp) / 60 - 1px); height: 2px; background: var(--sun-text); pointer-events: none; }
+.cw-now i { position: absolute; left: -5px; top: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--sun-text); }
+
+/* Holding the call at the edge of the days: the week before or after is coming. */
+.cw-edge { position: absolute; top: var(--dh); bottom: 0; z-index: 22; display: grid; place-items: center; width: 40px; color: var(--sun-text); pointer-events: none; animation: cw-edge .7s var(--ease-out) infinite alternate; }
+.cw-edge.is-next { right: 0; background: linear-gradient(to left, color-mix(in srgb, var(--sun-text) 26%, transparent), transparent); }
+.cw-edge.is-prev { left: var(--gut); background: linear-gradient(to right, color-mix(in srgb, var(--sun-text) 26%, transparent), transparent); }
+@keyframes cw-edge { from { opacity: .5; } to { opacity: 1; } }
+
+/* The call is above or below the hours in view: a pill says where, and takes you there. */
+.cw-pill { position: absolute; left: 50%; z-index: 24; display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px 0 9px; border: 0; border-radius: var(--radius-pill); transform: translateX(-50%); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line), 0 10px 24px -12px rgb(0 0 0 / .55); font: 600 12.5px/1 var(--font-sans); color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer; }
+.cw-pill:hover { box-shadow: 0 0 0 1px var(--line-control), 0 10px 24px -12px rgb(0 0 0 / .55); }
+.cw-pill:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cw-pill .ac-i { color: var(--sun-text); }
+.cw-pill.is-up { top: calc(var(--dh) + 10px); }
+.cw-pill.is-down { bottom: 10px; }
+.cw-pill.is-down .ac-i { transform: rotate(180deg); }
+
+/* Calls' own week: what its marks mean. */
+.cw-key { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin: 10px 8px 2px; font: 500 12px/1.2 var(--font-sans); color: var(--ink-2); }
+.cw-key > span { display: inline-flex; align-items: center; gap: 7px; }
+.cw-key .k { flex: none; width: 12px; height: 12px; border-radius: 4px; }
+.cw-key .k.is-past { background: color-mix(in srgb, var(--ink) 8.5%, transparent); box-shadow: inset 3px 0 0 color-mix(in srgb, var(--ink) 28%, transparent); opacity: .6; }
+.cw-key .k.is-soon { background: color-mix(in srgb, var(--sun-text) 13%, transparent); box-shadow: inset 3px 0 0 var(--sun-text); }
+.cw-key .k.is-cal { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--ink) 28%, transparent), inset 0 0 0 1px var(--line-control); }
+.cw-key .k.is-invite { outline: 1px dashed color-mix(in srgb, var(--rose) 75%, transparent); outline-offset: -1px; }
+.cw-key .k.is-hold { outline: 1px dashed color-mix(in srgb, var(--ink) 40%, transparent); outline-offset: -1px; }
+.cw-key .k.is-fresh { background: var(--sun-text); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cw-bk.is-call { transition: none; }
+  .cw-edge { animation: none; }
+}
+
+/* A phone: the page scrolls as one, so the week has a height of its own. */
+@media (max-width: 860px) {
+  .cw-sheet { height: auto; overflow: visible; padding: 12px 10px 14px 8px; }
+  .cw-sheet .cw { flex: none; height: min(74vh, 640px); }
+  .cw { --gut: 46px; }
+  .cw-head { margin-left: 4px; gap: 10px; }
+  .cw-head h2 { font-size: 22px; }
+  .cw-nav .ac-icon-btn { width: 30px; height: 30px; }
+  .cw-end { margin-left: 4px; }
+}

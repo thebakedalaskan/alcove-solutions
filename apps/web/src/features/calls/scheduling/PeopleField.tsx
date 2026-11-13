@@ -1,16 +1,18 @@
 /*
- * Who a call is with: one field of tokens, however they came. Typing finds people, groups and the whole company; a group
- * adds everyone in it; a pasted list is read at once and stays one token; everyone counts once. With nobody in yet, the
- * people you're often with are listed under it; after that, Add someone else brings the list back without anyone already
- * in. Someone whose calendar can't be read and who isn't at your company says where they are, once you've said.
+ * Who a call is with: one field of tokens, however they came, and pressing or typing in it opens the people under it as a
+ * popover. Typing finds people, groups and the whole company; a group adds everyone in it; a pasted list is read at once and
+ * stays one token; everyone counts once. Before anything's typed the people you're often with are listed (on your own, the
+ * people you've met); once someone's in, Add someone else, without anyone already in. Someone from outside, whose calendar
+ * can't be read, says on their token where they are, once you've said.
  */
 import { MAX_GUESTS, type Group, type Person, type PersonSuggestion, type Team } from '@alcove/api';
-import { Avatar, FlowNote, Icon, PersonToken, QuadFaces, cn } from '@alcove/ui';
+import { Avatar, Faces, FlowNote, GhostArch, Icon, PersonToken, Popover, SchedField, SchedListHead, SchedListNote, SchedNote, SchedPersonOption, SchedPop, SchedRow, SchedTimes, cn } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useId, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 import { byEmail, callName, fold, isEmail, sameEmail } from '~/lib/people';
 import { q } from '~/lib/queries';
 import { readAddresses, unreadLine, type Unread } from './addresses';
+import { PLACES, placeLine } from './places';
 import { guestsOf, personFrom, reaches, withList, type Guests, type Token } from '../flow/draft';
 
 /** Rows offered before anything is typed, and at most while typing. */
@@ -55,10 +57,18 @@ export function tokenName(t: Token): string {
   return t.kind === 'list' ? 'Pasted list' : t.name;
 }
 
-export function PeopleField({ value, onChange, me, places, label = 'Add people' }: {
+/**
+ * Where a guest from outside is, as you've said: on their token, Where? until you have. Only for showing their times
+ * ("12:30 for Jonas"); it's kept nowhere.
+ */
+export interface Whereabouts {
+  email: string; zone: string | null; at: Date;
+  open: boolean; onOpenChange: (open: boolean) => void; onPick: (zone: string) => void;
+}
+
+export function PeopleField({ value, onChange, me, where, label = 'Add people' }: {
   value: Guests; onChange: (g: Guests) => void; me: string | undefined;
-  /** What a token says beside the name, by lower-cased address: where an outside guest is ("Berlin, 1 h ahead"). */
-  places?: ReadonlyMap<string, string> | undefined;
+  where?: Whereabouts | undefined;
   label?: string | undefined;
 }) {
   const { tokens, unread } = value;
@@ -116,11 +126,13 @@ export function PeopleField({ value, onChange, me, places, label = 'Add people' 
   };
   const drop = (id: string) => { write({ tokens: tokens.filter((t) => t.id !== id) }); setHeld(null); input.current?.focus({ preventScroll: true }); };
 
-  /* With nobody in, the list is there to start from; after that it opens while you're adding someone. A pasted list ends it until someone types. */
-  const listing = (!tokens.length || adding || !!typed) && (typed || !tokens.some((t) => t.kind === 'list'));
+  /* It opens as the field's pressed into, or typed in. A pasted list ends it until someone types. */
+  const listing = (adding || !!typed) && (!!typed || !tokens.some((t) => t.kind === 'list'));
   const shown = listing ? offers : [];
   /* The row Enter takes: the one the arrows lit, or the first match for what's typed. While a search runs that's only a whole address. */
   const lit = stale && !address ? undefined : active >= 0 ? shown[active] : typed ? shown[0] : undefined;
+  const none = !offers.length ? (!typed && !tokens.length ? 'Type someone’s email address to add them.' : typed && !address ? 'Nobody by that name yet. Type their full email address to add them.' : null) : null;
+  const open = listing && (shown.length > 0 || none !== null);
 
   const keys = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.nativeEvent.isComposing) return;
@@ -159,42 +171,63 @@ export function PeopleField({ value, onChange, me, places, label = 'Add people' 
 
   return (
     <>
-      {/* Pressing anywhere in the field puts the cursor in it, as a text box would; the tokens are its content. */}
-      <div className={cn('cf-field sc-field', (adding || !tokens.length) && 'is-focus')} onClick={() => { setAdding(true); input.current?.focus(); }}>
-        {tokens.map((t) => <TokenView key={t.id} t={t} held={t.id === held} place={t.kind === 'person' ? places?.get(t.person.email.toLowerCase()) : undefined} onRemove={() => drop(t.id)} />)}
-        <input ref={input} type="text" value={query} autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} aria-label={label} enterKeyHint="next"
-          placeholder={tokens.length ? 'Add someone else' : team ? 'Add people, a group or an email' : 'Add people or an email'}
-          role="combobox" aria-expanded={shown.length > 0} aria-controls={list} aria-autocomplete="list"
-          aria-activedescendant={lit ? `${list}-${shown.indexOf(lit)}` : undefined}
-          onChange={(e) => { setQuery(e.target.value); setActive(e.target.value.trim() ? 0 : -1); setHeld(null); }} onKeyDown={keys} onPaste={paste}
-          onFocus={() => setAdding(true)} onBlur={() => { setAdding(false); setHeld(null); }} />
-      </div>
-      <p className="sr-only" role="status">{heldToken ? `${tokenName(heldToken)} selected. Press Backspace again to remove it.` : ''}</p>
-      {over && <FlowNote icon="people" className="sc-why">A call can invite {MAX_GUESTS} people at most, and this is {guests.length}. {tokens.some((t) => t.kind === 'list') ? 'Remove the pasted list and paste a shorter one to go on.' : 'Remove a group or some people to go on.'}</FlowNote>}
+      <SchedRow icon="people">
+        <SchedPop open={open} onClose={() => { setAdding(false); setActive(-1); }} label="People to add" className="is-people"
+          anchor={(
+            /* Pressing anywhere in the field puts the cursor in it, as a text box would; the tokens are its content. */
+            <SchedField open={open} onPress={() => { setAdding(true); input.current?.focus(); }}>
+              {tokens.map((t) => <TokenView key={t.id} t={t} held={t.id === held} where={t.kind === 'person' && where && sameEmail(t.person, where) ? where : undefined} onRemove={() => drop(t.id)} />)}
+              <input ref={input} type="text" value={query} autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} aria-label={label} enterKeyHint="next"
+                placeholder={tokens.length ? 'Add someone' : 'Add people'}
+                role="combobox" aria-expanded={open} aria-controls={open ? list : undefined} aria-autocomplete="list"
+                aria-activedescendant={open && lit ? `${list}-${shown.indexOf(lit)}` : undefined}
+                onChange={(e) => { setQuery(e.target.value); setActive(e.target.value.trim() ? 0 : -1); setHeld(null); }} onKeyDown={keys} onPaste={paste}
+                onFocus={() => setAdding(true)} onBlur={() => { setAdding(false); setHeld(null); }} />
+            </SchedField>
+          )}>
+          <SchedListHead>{typed ? 'People and groups' : tokens.length ? 'Add someone else' : team ? 'Often with you' : 'People you’ve met'}</SchedListHead>
+          <div id={list} role="listbox" aria-label="People to add">
+            {shown.map((o, i) => <OfferRow key={o.id} o={o} id={`${list}-${i}`} on={o === lit} team={team} onPick={() => take(o)} />)}
+          </div>
+          {none && <SchedListNote>{none}</SchedListNote>}
+        </SchedPop>
+        <p className="sr-only" role="status">{heldToken ? `${tokenName(heldToken)} selected. Press Backspace again to remove it.` : ''}</p>
+      </SchedRow>
+      {over && <SchedNote><FlowNote icon="people">A call can invite {MAX_GUESTS} people at most, and this is {guests.length}. {tokens.some((t) => t.kind === 'list') ? 'Remove the pasted list and paste a shorter one to go on.' : 'Remove a group or some people to go on.'}</FlowNote></SchedNote>}
       {flag && (
-        <FlowNote icon="mail" className="sc-why" actions={(
-          <>
-            {flag.fix && <button type="button" className="lk" onClick={() => applyFix(flag, flag.fix ?? '')}>Use it</button>}
-            <button type="button" className="lk" onClick={() => write({ unread: unread.filter((u) => u !== flag) })}>Leave out</button>
-          </>
-        )}>{unreadLine(flag)}{unread.length > 1 ? ` ${unread.length - 1} more after this.` : ''}</FlowNote>
+        <SchedNote>
+          <FlowNote icon="mail" actions={(
+            <>
+              {flag.fix && <button type="button" className="lk" onClick={() => applyFix(flag, flag.fix ?? '')}>Use it</button>}
+              <button type="button" className="lk" onClick={() => write({ unread: unread.filter((u) => u !== flag) })}>Leave out</button>
+            </>
+          )}>{unreadLine(flag)}{unread.length > 1 ? ` ${unread.length - 1} more after this.` : ''}</FlowNote>
+        </SchedNote>
       )}
-      {shown.length > 0 && !typed && <p className="sc-lab">{tokens.length ? 'Add someone else' : team ? 'Often with you' : 'People you’ve met'}</p>}
-      <div id={list} role="listbox" aria-label="People to add" className="sc-pps">
-        {/* Pressing a row keeps the field's focus, so several can be added one after another. */}
-        {shown.map((o, i) => <OfferRow key={o.id} o={o} id={`${list}-${i}`} on={o === lit} team={team} onPick={() => take(o)} />)}
-      </div>
-      {listing && !offers.length && !typed && !tokens.length && <p className="sc-lab is-plain">Type someone’s email address to add them.</p>}
-      {listing && !offers.length && typed && !address && <p className="sc-lab is-plain">Nobody by that name yet. Type their full email address to add them.</p>}
     </>
   );
 }
 
-function TokenView({ t, held, place, onRemove }: { t: Token; held: boolean; place?: string | undefined; onRemove: () => void }) {
+function TokenView({ t, held, where, onRemove }: { t: Token; held: boolean; where?: Whereabouts | undefined; onRemove: () => void }) {
   const name = tokenName(t);
   if (t.kind !== 'person') return <PersonToken people={t.people} label={name} count={t.people.length} held={held} removeLabel={`Remove ${name}`} onRemove={onRemove} />;
-  /* Someone from outside goes by their whole name, beside where they are. */
-  return <PersonToken people={[t.person]} label={place !== undefined && t.person.name !== t.person.email ? t.person.name : name} title={t.person.email} state={place} outside={place !== undefined} held={held} removeLabel={`Remove ${name}`} onRemove={onRemove} />;
+  return <PersonToken people={[t.person]} label={name} title={t.person.email} held={held} removeLabel={`Remove ${name}`} onRemove={onRemove} place={where && <Where who={callName(t.person)} where={where} />} />;
+}
+
+/** On an outside guest's token: where they are, or Where? until you've said, which lists the places. */
+function Where({ who, where }: { who: string; where: Whereabouts }) {
+  const place = PLACES.find((p) => p.zone === where.zone);
+  const label = `Where ${who} is`;
+  return (
+    <Popover open={where.open} onOpenChange={where.onOpenChange} label={label} align="start" className="sc-pop is-list"
+      anchor={(
+        <button type="button" className={cn('sc-where', !place && 'is-unsaid')} aria-label={place ? `${label}: ${place.name}` : label}
+          title={place ? placeLine(place, where.at) : undefined} onClick={(e) => e.stopPropagation()}>{place?.name ?? 'Where?'}</button>
+      )}>
+      <SchedTimes label={label} options={PLACES.map((p) => ({ value: p.zone, label: p.name }))} value={where.zone} near={PLACES[0]?.zone} autoFocus
+        onPick={(zone) => { where.onOpenChange(false); where.onPick(zone); }} />
+    </Popover>
+  );
 }
 
 /** Someone invited, as a call being moved shows them: who, and what they've said. Nothing here changes. */
@@ -202,15 +235,9 @@ export const FixedToken = ({ person, state }: { person: Person; state: string })
 
 function OfferRow({ o, id, on, team, onPick }: { o: Offer; id: string; on: boolean; team: Team | null | undefined; onPick: () => void }) {
   const face = o.kind === 'person'
-    ? <Avatar person={o.found.person} size={28} />
-    : o.kind === 'group' ? <QuadFaces people={o.people} size={14} /> : <span className="sc-tile"><Icon name="building" size={17} /></span>;
+    ? o.found.onAlcove || o.found.source !== 'new' ? <Avatar person={o.found.person} size={26} /> : <GhostArch size={24} initial={o.found.person.email} />
+    : o.kind === 'group' ? <Faces people={o.people.slice(0, 2)} size={24} max={2} /> : <span className="sc-tile"><Icon name="building" size={16} /></span>;
   const title = o.kind === 'person' ? (o.found.source === 'new' ? o.found.person.email : o.found.person.name) : o.kind === 'group' ? o.group.name : o.label;
   const sub = o.kind === 'person' ? subFor(o.found, team) : o.kind === 'group' ? `Group · ${o.people.length} ${o.people.length === 1 ? 'person' : 'people'}` : `${o.people.length} people`;
-  return (
-    <button type="button" id={id} role="option" aria-selected={on} tabIndex={-1} className={cn('sc-pp', on && 'is-on')} onMouseDown={(e) => e.preventDefault()} onClick={onPick}>
-      <span className="sc-pp-f">{face}</span>
-      <span className="min-w-0"><b className="ac-clamp-1">{title}</b><small className="ac-clamp-1">{sub}</small></span>
-      <Icon name="plus" size={16} />
-    </button>
-  );
+  return <SchedPersonOption id={id} face={face} title={title} sub={sub} lit={on} onPick={onPick} />;
 }

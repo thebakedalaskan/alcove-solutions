@@ -1,0 +1,322 @@
+/*
+ * Scheduling a call. The Calls page while a call is made: one sheet, the week (wx-) taking most of it and the call's editor
+ * (ce-) beside it on the same surface, as a calendar app has it. Colours are the kit's names: --now is the app's sun-text,
+ * --notes its rose, --focus its horizon, --press its sun, --line-strong its line-control.
+ */
+.sk { --hl: color-mix(in oklch, var(--ink) 6.5%, transparent); --hl2: color-mix(in oklch, var(--ink) 10%, transparent); }
+.sk .pg-in { padding-bottom: 16px; }
+.sk-split { position: relative; z-index: 5; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 22px; min-height: 0; margin-top: 30px; }
+.sk-split.is-calls { grid-template-columns: 248px minmax(0, 1fr); }
+.sk.is-sched .kc-q { visibility: hidden; }
+
+/* ------------------------------------------------------------ the rail, browsing Calls */
+.sk-rail { display: flex; flex-direction: column; min-height: 0; }
+
+/* ------------------------------------------------------------ one sheet: the week, and beside it the call */
+.sk-sheet { display: grid; grid-template-columns: minmax(0, 1fr); overflow: hidden; padding: 0; box-shadow: 0 30px 60px -40px rgb(0 0 0 / .6); }
+/* The sheet's edge is drawn over what's in it, so the editor's pinned top and foot can't cover it. */
+.sk-sheet::after { content: ""; position: absolute; inset: 0; z-index: 10; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--line); pointer-events: none; }
+.sk-sheet.is-sched { grid-template-columns: minmax(0, 1fr) 356px; }
+.sk-cal { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 14px 14px 10px 12px; }
+
+/* ------------------------------------------------------------ the call's editor */
+/*
+ * A property list with two edges: the outer edge (New call, the title, the hairlines, the foot) and the inner edge, where every
+ * value starts. Each row is an icon in a fixed column and its value; a row that carries on the one above has no icon.
+ * Anything pressable keeps its text on the edge and lets its hover reach 10px past it.
+ */
+.ce { position: relative; display: flex; flex-direction: column; min-height: 0; overflow: hidden auto; border-left: 1px solid var(--line); scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; animation: ce-in .32s var(--ease) both; }
+@keyframes ce-in { from { opacity: 0; transform: translateX(12px); } }
+.fl-in .ce { animation: none; }
+.ce-top { position: sticky; top: 0; z-index: 3; flex: none; display: flex; align-items: center; justify-content: space-between; height: 54px; padding: 0 12px 0 22px; background: var(--sheet); }
+.ce-kicker { font: 600 13px/1 var(--sans); color: var(--ink-2); }
+.ce-x { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: var(--ink-2); }
+.ce-x:hover { background: var(--hl); color: var(--ink); }
+.ce-x .i { width: 17px; height: 17px; }
+.ce-body { flex: none; padding: 0 20px 0 22px; }
+.ce-title { display: block; width: calc(100% + 10px); height: 44px; margin: 2px 0 14px -10px; padding: 0 10px; border: 0; border-radius: 9px; outline: 0; background: none; font: 400 24px/1.2 var(--serif); letter-spacing: -.01em; color: var(--ink); caret-color: var(--now); text-overflow: ellipsis; }
+.ce-title::placeholder { color: var(--ink-3); opacity: 1; }
+.ce-title:hover, .ce-title:focus { background: var(--hl); }
+
+.ce-grp { display: grid; gap: 4px; padding: 18px 0; border-top: 1px solid var(--line); }
+.ce-row { display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: 14px; align-items: center; min-height: 36px; }
+.ce-row.is-meta { min-height: 0; margin-top: -4px; padding: 0 0 2px; }
+.ce-row.is-top { align-items: start; }
+.ce-row.is-top > .ce-ic { margin-top: 15px; }
+.ce-ic { width: 17px; height: 17px; color: var(--ink-3); }
+.ce-ic.is-rec { color: var(--rec); }
+.ce-val { position: relative; display: flex; align-items: center; min-width: 0; }
+.ce-val.is-col { display: block; }
+.ce-val > :first-child { margin-left: -10px; }
+.ce-anchor { position: relative; display: inline-flex; }
+
+/* Values: the main ones in ink, what they mean said quietly after them. */
+.ce-btn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 10px; border-radius: 8px; font: 600 14.5px/1 var(--sans); color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ce-btn:hover, .ce-btn[aria-expanded="true"] { background: var(--hl); }
+.ce-btn .rel { font: 500 13.5px/1 var(--sans); color: var(--ink-3); }
+.ce-btn .dv { width: 14px; height: 14px; margin-left: -2px; color: var(--ink-3); }
+.ce-dash { padding: 0 1px; color: var(--ink-3); }
+.ce-len { margin-left: 4px; font: 500 13.5px/1 var(--sans); color: var(--ink-3); white-space: nowrap; }
+.ce-quiet { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 10px; border-radius: 8px; font: 500 14px/1 var(--sans); color: var(--ink-2); white-space: nowrap; }
+.ce-quiet:hover, .ce-quiet[aria-expanded="true"] { background: var(--hl); color: var(--ink); }
+.ce-quiet .dv { width: 13px; height: 13px; color: var(--ink-3); }
+.ce-switch { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; align-items: center; width: calc(100% + 10px); height: 36px; padding: 0 0 0 10px; border-radius: 8px; font: 500 14px/1.2 var(--sans); color: var(--ink); text-align: left; }
+.ce-switch:hover { background: var(--hl); }
+.ce-switch > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ce-switch.has-sub { height: auto; min-height: 36px; padding: 7px 0 8px 10px; }
+.ce-switch.has-sub > span { overflow: visible; white-space: normal; }
+.ce-switch.has-sub b { display: block; font: 500 14px/1.3 var(--sans); color: var(--ink); }
+.ce-switch.has-sub small { display: block; margin-top: 2px; font: 400 12.5px/1.4 var(--sans); color: var(--ink-2); }
+.sw { position: relative; display: block; flex: none; width: 36px; height: 21px; border-radius: 999px; background: var(--line-strong); transition: background-color .16s; }
+.sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 15px; height: 15px; border-radius: 50%; background: var(--raised); box-shadow: 0 1px 2px rgb(0 0 0 / .3); transition: transform .18s var(--ease); }
+.sw.is-on { background: var(--ink); }
+.sw.is-on::after { transform: translateX(15px); }
+.ce-meta { font: 400 12.5px/1.45 var(--sans); color: var(--ink-2); }
+.ce-status { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-height: 22px; font: 500 13px/1.35 var(--sans); color: var(--ink-2); }
+.ce-status.is-clash { color: var(--caution); }
+.ce-link { height: 24px; padding: 0 7px; border-radius: 6px; font: 600 13px/1 var(--sans); color: var(--focus); }
+.ce-link:hover { background: color-mix(in oklch, var(--focus) 12%, transparent); }
+
+/* Who: people as arches in a field that opens the people to add. */
+.ce-people { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; width: calc(100% + 10px); min-height: 36px; padding: 4px 4px 4px 10px; border-radius: 9px; cursor: text; }
+.ce-people:hover { background: var(--hl); }
+.ce-people.is-open { background: var(--hl); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.ce-tok { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 2px 0 3px; border-radius: 8px; background: var(--hl2); font: 600 13px/1 var(--sans); color: var(--ink); white-space: nowrap; }
+.ce-tok small { font: 500 11.5px/1 var(--sans); color: var(--ink-2); }
+.ce-tok button { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; color: var(--ink-3); }
+.ce-tok button:hover { color: var(--ink); background: var(--hl2); }
+.ce-tok button .i { width: 13px; height: 13px; }
+.ce-ghost { display: grid; place-items: center; flex: none; width: var(--gs, 20px); height: calc(var(--gs, 20px) * 1.08); padding-top: 2px; border-radius: 999px 999px 5px 5px; outline: 1.5px dashed color-mix(in oklch, var(--ink) 42%, transparent); outline-offset: -1.5px; font: 600 10.5px/1 var(--sans); color: var(--ink-2); }
+.ce-q { flex: 1 1 100px; min-width: 100px; height: 28px; padding: 0; border: 0; outline: 0; background: none; font: 500 14px/1 var(--sans); color: var(--ink); }
+.ce-q::placeholder { color: var(--ink-3); opacity: 1; }
+.ce-tok + .ce-q { padding-left: 6px; }
+
+/* The times a guest picks from: press one to light it (the week moves the lit one); its tick is its own button. */
+.ce-opts { display: grid; gap: 4px; }
+.ce-opt { display: grid; grid-template-columns: minmax(0, 1fr) 40px; align-items: stretch; border-radius: 10px; transition: background-color .14s, box-shadow .14s; }
+.ce-opt:hover { background: var(--hl); }
+.ce-opt.is-active { background: color-mix(in oklch, var(--now) 13%, transparent); box-shadow: inset 0 0 0 1.5px var(--now); }
+.ce-opt-main { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; column-gap: 10px; align-items: center; min-height: 46px; padding: 6px 4px 6px 10px; border-radius: 10px 0 0 10px; text-align: left; }
+.ce-opt-main .od { display: block; font: 600 13.5px/1.25 var(--sans); color: var(--ink); }
+.ce-opt-main .ot { display: block; margin-top: 1px; font: 500 12.5px/1.25 var(--sans); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.ce-opt-main small { font: 500 11.5px/1.2 var(--sans); color: var(--ink-3); font-variant-numeric: tabular-nums; text-align: right; }
+.ce-opt-main .warn { display: inline-flex; align-items: center; gap: 4px; color: var(--caution); }
+.ce-opt-main .warn .i { width: 12px; height: 12px; }
+.ce-opt.is-off .od, .ce-opt.is-off .ot, .ce-opt.is-off small { opacity: .5; }
+.ce-opt.is-off .od { text-decoration: line-through; text-decoration-color: color-mix(in oklch, var(--ink) 45%, transparent); }
+.nb { display: inline-grid; place-items: center; flex: none; width: 18px; height: 18px; border-radius: 50%; background: var(--hl2); font: 700 10.5px/1 var(--sans); font-style: normal; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.ce-opt.is-active .nb { background: var(--now); color: var(--ground); }
+.ce-tick { display: grid; place-items: center; border-radius: 0 10px 10px 0; }
+.ce-tick span { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--line-strong); color: var(--ground); transition: background-color .14s; }
+.ce-tick.is-on span { background: var(--ink); box-shadow: none; }
+.ce-tick span .i { width: 13px; height: 13px; stroke-width: 2.6; opacity: 0; }
+.ce-tick.is-on span .i { opacity: 1; }
+.ce-tick[disabled] { cursor: default; opacity: .55; }
+
+/* What opens from a button: one at a time, under what opened it. */
+.ce-pop { position: absolute; top: calc(100% + 4px); left: 0; z-index: 60; padding: 5px; border-radius: 12px; background: var(--raised); box-shadow: 0 0 0 1px var(--line), 0 22px 48px -20px rgb(0 0 0 / .62); animation: ce-pop .14s var(--ease) both; }
+@keyframes ce-pop { from { opacity: 0; transform: translateY(-3px); } }
+.fl-in .ce-pop { animation: none; }
+.ce-pop.is-list { width: 172px; max-height: 268px; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.ce-pop.is-menu { min-width: 236px; }
+.ce-pop.is-people { left: -10px; right: -10px; }
+.ce-li { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; height: 32px; padding: 0 10px; border-radius: 7px; font: 500 13.5px/1 var(--sans); color: var(--ink); font-variant-numeric: tabular-nums; text-align: left; white-space: nowrap; }
+.ce-li:hover:not([disabled]) { background: var(--hl); }
+.ce-li small { font: 500 12px/1 var(--sans); color: var(--ink-3); }
+.ce-li.is-on { background: color-mix(in oklch, var(--now) 16%, transparent); font-weight: 700; }
+.ce-li.is-on small { color: var(--ink-2); }
+.ce-li[disabled] { opacity: .32; cursor: default; }
+.ce-pp { display: grid; grid-template-columns: 40px minmax(0, 1fr) 16px; column-gap: 10px; align-items: center; width: 100%; padding: 6px 8px 6px 6px; border-radius: 9px; text-align: left; }
+.ce-pp:hover { background: var(--hl); }
+.ce-pp b { display: block; font: 600 13.5px/1.3 var(--sans); color: var(--ink); }
+.ce-pp small { display: block; margin-top: 1px; font: 400 12px/1.3 var(--sans); color: var(--ink-2); }
+.ce-pp > .i { width: 15px; height: 15px; color: var(--ink-3); }
+.ce-pp-f { display: flex; justify-content: center; }
+.ce-pp-h { padding: 6px 8px 4px; font: 600 12px/1 var(--sans); color: var(--ink-3); }
+.ce-pp-none { padding: 8px; font: 400 12.5px/1.4 var(--sans); color: var(--ink-2); }
+/* A month, Monday first. */
+.ce-pop.is-cal { width: 268px; padding: 8px 8px 6px; }
+.ce-cal-h { display: flex; align-items: center; justify-content: space-between; height: 32px; padding-left: 8px; font: 600 13.5px/1 var(--sans); color: var(--ink); }
+.ce-cal-nav { display: inline-flex; gap: 2px; }
+.ce-cal-nav button { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; color: var(--ink-2); }
+.ce-cal-nav button:hover:not([disabled]) { background: var(--hl); color: var(--ink); }
+.ce-cal-nav button[disabled] { opacity: .3; cursor: default; }
+.ce-cal-nav .i { width: 15px; height: 15px; }
+.ce-cal-g { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; margin-top: 4px; }
+.ce-cal-g .wd { display: grid; place-items: center; height: 24px; font: 600 11px/1 var(--sans); color: var(--ink-3); }
+.ce-cal-g button { height: 32px; border-radius: 8px; text-align: center; font: 500 13px/1 var(--sans); color: var(--ink); font-variant-numeric: tabular-nums; }
+.ce-cal-g button:hover:not([disabled]) { background: var(--hl); }
+.ce-cal-g button.is-today { color: var(--now); font-weight: 700; }
+.ce-cal-g button.is-on { background: var(--now); color: var(--ground); font-weight: 700; }
+.ce-cal-g button.is-blank { visibility: hidden; }
+.ce-cal-g button[disabled] { opacity: .35; cursor: default; }
+
+/* The foot: who hears, and the one filled button. */
+.ce-foot { position: sticky; bottom: 0; z-index: 2; flex: none; display: grid; gap: 14px; padding: 18px 20px 18px 22px; background: var(--sheet); }
+.ce-foot::before { content: ""; position: absolute; top: 0; left: 22px; right: 20px; border-top: 1px solid var(--line); }
+.ce-foot p { font: 400 12.5px/1.45 var(--sans); color: var(--ink-2); }
+.ce-acts { display: flex; justify-content: flex-end; gap: 6px; }
+.ce-acts .b { height: 38px; }
+.is-hot { outline: 2px solid var(--focus) !important; outline-offset: 2px; }
+
+/* ------------------------------------------------------------ the week */
+.wx-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 38px; margin: 0 0 6px 10px; }
+.wx-head h2 { font: 400 24px/1.1 var(--serif); letter-spacing: -.01em; color: var(--ink); }
+.wx-nav { display: inline-flex; align-items: center; gap: 2px; }
+.wx-today { height: 30px; margin-right: 6px; padding: 0 12px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--line-strong); font: 600 13px/1 var(--sans); color: var(--ink); }
+.wx-today:hover { background: var(--hl); }
+.wx-arrow { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: var(--ink-2); }
+.wx-arrow:hover:not([disabled]) { background: var(--hl); color: var(--ink); }
+.wx-arrow[disabled] { opacity: .3; cursor: default; }
+.wx-arrow .i { width: 18px; height: 18px; }
+
+.wx { --gut: 54px; position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.wx-box { position: relative; flex: 1; min-height: 0; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: color-mix(in oklch, var(--ink) 18%, transparent) transparent; }
+/* The days stay put as the hours scroll under them. */
+.wx-dh { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: var(--gut) var(--cols); background: var(--sheet, var(--surface)); box-shadow: 0 1px 0 var(--line); }
+.wx-day { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; height: 44px; font: 500 12.5px/1 var(--sans); color: var(--ink-2); white-space: nowrap; }
+.wx-day b { display: grid; place-items: center; min-width: 26px; height: 26px; padding: 0 5px; border-radius: 999px; font: 600 14.5px/1 var(--sans); color: var(--ink); font-variant-numeric: tabular-nums; }
+.wx-day.is-today { color: var(--now); font-weight: 600; }
+.wx-day.is-today b { background: var(--now); color: var(--ground); }
+.wx-day.is-gone b { color: var(--ink-2); font-weight: 500; }
+.wx-grid { position: relative; display: grid; grid-template-columns: var(--gut) minmax(0, 1fr); height: calc(24 * var(--hp)); }
+.wx-hours { position: relative; }
+.wx-hl { position: absolute; right: 10px; top: calc(var(--h) * var(--hp) + 5px); font: 500 11px/1 var(--sans); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.wx-hl.is-hid { visibility: hidden; }
+.wx-nowtag { position: absolute; right: 5px; z-index: 2; top: calc(var(--s) * var(--hp) / 60); transform: translateY(-50%); padding: 3px 5px; border-radius: 5px; background: var(--now); color: var(--ground); font: 700 10.5px/1 var(--sans); font-variant-numeric: tabular-nums; }
+.wx-cols { position: relative; display: grid; grid-template-columns: var(--cols); background-image: repeating-linear-gradient(to bottom, color-mix(in oklch, var(--line) 85%, transparent) 0 1px, transparent 1px var(--hp)); }
+.wx-col { position: relative; min-width: 0; box-shadow: inset 1px 0 0 var(--line); touch-action: pan-y; cursor: pointer; }
+
+/* Under the blocks: hours outside the working day, other people's busy time, and the past. */
+.wx-z { position: absolute; left: 0; right: 0; top: calc(var(--s) * var(--hp) / 60); height: calc((var(--e) - var(--s)) * var(--hp) / 60); pointer-events: none; }
+.wx-z.is-off { background: color-mix(in oklch, var(--ink) 2.5%, transparent); }
+.wx-z.is-busy { left: 2px; right: 2px; border-radius: 6px; background: repeating-linear-gradient(-45deg, color-mix(in oklch, var(--ink) 10%, transparent) 0 1px, transparent 1px 6px); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 8%, transparent); }
+.wx-z.is-busy small { position: absolute; left: 7px; right: 4px; top: calc(var(--lt, 0) * var(--hp) / 60 + 4px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 10.5px/1.2 var(--sans); color: var(--ink-2); }
+.wx-z.is-past { z-index: 1; background: color-mix(in oklch, var(--sheet, var(--surface)) 52%, transparent); }
+
+/* A block. The time comes first; a name only shows when a whole line of it fits, with room left under it. */
+.wx-bk { position: absolute; z-index: 2; left: calc(2px + (100% - 4px) * var(--lane, 0) / var(--of, 1)); width: calc((100% - 4px) / var(--of, 1) - 2px); top: calc(var(--s) * var(--hp) / 60 + 1px); height: max(calc((var(--e) - var(--s)) * var(--hp) / 60 - 2px), 4px); overflow: hidden; border-radius: 6px; color: var(--ink); text-align: left; }
+.wx-tx { display: flex; flex-direction: column; gap: 1px; min-width: 0; height: 100%; padding: 4px 7px; }
+.wx-tx .t { display: flex; align-items: center; gap: 4px; min-width: 0; font: 500 11px/13px var(--sans); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.wx-tx .n { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; font: 600 12px/14px var(--sans); overflow-wrap: anywhere; }
+.wx-tx.is-one { flex-direction: row; align-items: center; gap: 6px; padding-block: 0; }
+.wx-tx.is-one .n { display: block; flex: 1; min-width: 0; white-space: nowrap; text-overflow: ellipsis; }
+.wx-tx.is-tight { flex-direction: row; align-items: center; padding-block: 0; }
+.wx-tx.is-tight .t { font-size: 10px; line-height: 11px; }
+
+/* Yours: neutral while you schedule, so the call being made is the one thing in colour. */
+.wx-bk.is-ev { --fill: color-mix(in oklch, var(--ink) 8.5%, transparent); --bar: color-mix(in oklch, var(--ink) 28%, transparent); background: linear-gradient(var(--fill), var(--fill)) var(--sheet, var(--surface)); box-shadow: inset 3px 0 0 var(--bar); }
+.wx-bk.is-ev .wx-tx { padding-left: 9px; }
+.wx-bk.is-ev .t { color: var(--ink-2); }
+.wx-bk.is-ev.is-tight, .wx-bk.is-ev.is-tiny { box-shadow: none; border-radius: 4px; }
+.wx-bk.is-ev.is-tight .wx-tx { padding-left: 6px; }
+.wx-bk.is-invite { --fill: transparent; --bar: var(--notes); outline: 1px dashed color-mix(in oklch, var(--notes) 60%, transparent); outline-offset: -1px; }
+.wx-bk.is-hold { --fill: transparent; outline: 1px dashed color-mix(in oklch, var(--ink) 38%, transparent); outline-offset: -1px; }
+.wx-bk.is-gone { opacity: .5; }
+/* On Calls' own week, an Alcove call is warm, and a call just scheduled is solid. */
+.sk.is-calls .wx-bk.is-soon { --bar: var(--now); --fill: color-mix(in oklch, var(--now) 13%, transparent); }
+.wx-bk.is-fresh { --fill: var(--now); --bar: var(--now); box-shadow: 0 6px 16px -8px rgb(0 0 0 / .5); }
+.wx-bk.is-fresh .t, .wx-bk.is-fresh .n { color: var(--ground); }
+.wx-col:not(.is-browse) .wx-bk.is-ev { pointer-events: none; }
+
+/* The call being made: solid and lifted. Pressing it moves it to the half hour pressed; dragging moves it; its foot sets how long. */
+.wx-bk.is-call { z-index: 6; background: var(--now); box-shadow: inset 0 1px 0 color-mix(in oklch, white 22%, transparent), 0 6px 16px -8px rgb(0 0 0 / .55); cursor: grab; transition: top .16s var(--ease), height .16s var(--ease); }
+.wx-bk.is-call .t, .wx-bk.is-call .n { color: var(--ground); }
+.wx-bk.is-call .t { font-weight: 700; }
+.wx-bk.is-call .n { opacity: .86; }
+.wx-bk.is-call.is-moving { z-index: 7; cursor: grabbing; transition: none; box-shadow: inset 0 1px 0 color-mix(in oklch, white 22%, transparent), 0 16px 30px -12px rgb(0 0 0 / .65); }
+.wx-bk.is-call.is-clash { outline: 2px solid var(--caution); outline-offset: 1px; }
+.wx-bk .grip { position: absolute; left: 0; right: 0; bottom: 0; height: 8px; cursor: ns-resize; }
+.wx-bk .grip::before { content: ""; position: absolute; left: 50%; bottom: 2px; width: 16px; height: 3px; margin-left: -8px; border-radius: 2px; background: color-mix(in oklch, var(--ground) 60%, transparent); opacity: .5; transition: opacity .14s; }
+.wx-bk.is-call:hover .grip::before, .wx-bk .grip.is-hot::before { opacity: 1; }
+.wx-bk.is-tight .grip::before, .wx-bk.is-tiny .grip::before { display: none; }
+.wx-bk .grip.is-hot { outline-offset: -2px; border-radius: 0 0 6px 6px; }
+.wx-bk .nb { width: 15px; height: 15px; font-size: 9.5px; }
+/* A time offered and not lit: outlined in sun with its number. Left out: dashed and faint. */
+.wx-bk.is-opt { z-index: 5; background: color-mix(in oklch, var(--now) 12%, var(--sheet, var(--surface))); box-shadow: inset 0 0 0 1.5px var(--now); cursor: pointer; }
+.wx-bk.is-opt .t { color: var(--ink); font-weight: 600; }
+.wx-bk.is-opt .nb { background: var(--now); color: var(--ground); }
+.wx-bk.is-opt.is-off { background: var(--sheet, var(--surface)); box-shadow: none; outline: 1.5px dashed color-mix(in oklch, var(--ink) 30%, transparent); outline-offset: -1.5px; }
+.wx-bk.is-opt.is-off .t { color: var(--ink-3); }
+.wx-bk.is-opt.is-off .nb { background: var(--hl2); color: var(--ink-2); }
+.wx-bk.is-call .nb { background: color-mix(in oklch, var(--ground) 24%, transparent); color: var(--ground); }
+/* Where a press would put the call: a quiet outline at its length. */
+.wx-bk.is-ghost { z-index: 8; left: 2px; width: calc(100% - 4px); background: color-mix(in oklch, var(--now) 9%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--now) 50%, transparent); pointer-events: none; }
+.wx-bk.is-ghost .t { color: var(--now); font-weight: 600; }
+.wx-bk.is-ghost .n { color: var(--ink-2); font-weight: 500; font-size: 11.5px; }
+.wx-bk.is-ghost.is-drag { background: color-mix(in oklch, var(--now) 14%, transparent); box-shadow: inset 0 0 0 1.5px var(--now); }
+.wx-bk.is-ghost.is-busy { background: color-mix(in oklch, var(--caution) 9%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--caution) 60%, transparent); }
+.wx-bk.is-ghost.is-busy .t { color: var(--caution); }
+
+/* Now: the sun on a line across today, and its time in the hours. */
+.wx-now { position: absolute; left: 0; right: 0; z-index: 9; top: calc(var(--s) * var(--hp) / 60 - 1px); height: 2px; background: var(--now); pointer-events: none; }
+.wx-now i { position: absolute; left: -5px; top: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--now); }
+
+/* Holding the call at the week's edge: the next week is coming. */
+.wx-edge { position: absolute; top: 44px; bottom: 0; z-index: 22; display: grid; place-items: center; width: 40px; pointer-events: none; animation: sk-edge .7s var(--ease) infinite alternate; }
+.wx-edge.is-next { right: 0; background: linear-gradient(to left, color-mix(in oklch, var(--now) 26%, transparent), transparent); }
+.wx-edge.is-prev { left: var(--gut); background: linear-gradient(to right, color-mix(in oklch, var(--now) 26%, transparent), transparent); }
+.wx-edge .i { width: 22px; height: 22px; color: var(--now); }
+@keyframes sk-edge { from { opacity: .5; } to { opacity: 1; } }
+.fl-in .wx-edge { animation: none; }
+
+/* The call is above or below what's in view: a chip says where, and takes you there. */
+.wx-pill { position: absolute; left: 50%; z-index: 24; display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px 0 9px; border-radius: 999px; transform: translateX(-50%); background: var(--raised); box-shadow: 0 0 0 1px var(--line), 0 10px 24px -12px rgb(0 0 0 / .55); font: 600 12.5px/1 var(--sans); color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wx-pill:hover { box-shadow: 0 0 0 1px var(--line-strong), 0 10px 24px -12px rgb(0 0 0 / .55); }
+.wx-pill .i { width: 14px; height: 14px; color: var(--now); }
+.wx-pill.is-up { top: 54px; }
+.wx-pill.is-down { bottom: 10px; }
+
+/* Calls' own week: what its marks mean. */
+.wx-key { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin: 10px 8px 2px; font: 500 12px/1.2 var(--sans); color: var(--ink-2); }
+.wx-key > span { display: inline-flex; align-items: center; gap: 7px; }
+.wx-key .k { flex: none; width: 12px; height: 12px; border-radius: 4px; }
+.wx-key .k.is-soon { background: color-mix(in oklch, var(--now) 13%, transparent); box-shadow: inset 3px 0 0 var(--now); }
+.wx-key .k.is-cal { background: color-mix(in oklch, var(--ink) 8%, transparent); box-shadow: inset 3px 0 0 color-mix(in oklch, var(--ink) 30%, transparent); }
+.wx-key .k.is-invite { outline: 1px dashed color-mix(in oklch, var(--notes) 75%, transparent); outline-offset: -1px; }
+.wx-key .k.is-hold { outline: 1px dashed color-mix(in oklch, var(--ink) 40%, transparent); outline-offset: -1px; }
+
+/* The toast. */
+.sk-toast { position: absolute; left: 50%; bottom: 26px; z-index: 50; display: flex; align-items: center; gap: 12px; min-height: 48px; max-width: min(640px, calc(100% - 32px)); padding: 8px 8px 8px 16px; border-radius: 14px; transform: translateX(-50%); background: var(--raised); box-shadow: 0 0 0 1px var(--line), 0 18px 40px -18px rgb(0 0 0 / .55); font: 500 14px/1.35 var(--sans); color: var(--ink); animation: sk-rise .42s var(--ease) both; }
+.sk-toast > .i { width: 17px; height: 17px; color: var(--now); }
+.sk-toast .b { height: 32px; flex: none; }
+@keyframes sk-rise { from { opacity: 0; transform: translate(-50%, 10px); } }
+.fl-in .sk-toast { animation: none; }
+
+/* ------------------------------------------------------------ narrower */
+@container page (max-width: 1180px) {
+  .sk-sheet.is-sched { grid-template-columns: minmax(0, 1fr) 316px; }
+  .sk-split.is-calls { grid-template-columns: 216px minmax(0, 1fr); }
+  .wx-day { flex-direction: column; gap: 2px; font-size: 11.5px; }
+  .wx-dh .wx-day { height: 50px; }
+  .wx-edge { top: 50px; }
+}
+@container page (max-width: 860px) {
+  .sk-split, .sk-split.is-calls { grid-template-columns: minmax(0, 1fr); margin-top: 18px; }
+  .sk-rail { display: none; }
+  .sk-sheet.is-sched { grid-template-columns: minmax(0, 1fr); }
+  .sk.is-sched .sk-cal { display: none; }
+  .sk.is-sched .ce { border-left: 0; }
+  .sk-sheet { min-height: 620px; }
+}
+
+/* ------------------------------------------------------------ the Blocks board: time first, at every length */
+.ah.kb { box-sizing: border-box; width: 1440px; height: auto; min-height: 660px; overflow: visible; padding: 52px 64px 60px; background: var(--ground); color: var(--ink); --now-soft: color-mix(in oklch, var(--now) 16%, transparent); }
+.kb h1 { font: 400 36px/1.15 var(--serif); letter-spacing: -.01em; }
+.kb-lede { margin-top: 10px; max-width: 820px; font: 400 15px/1.5 var(--sans); color: var(--ink-2); }
+.kb-grid { display: grid; grid-template-columns: 96px max-content max-content; column-gap: 64px; row-gap: 20px; align-items: start; margin-top: 34px; }
+.kb-head { padding-bottom: 10px; border-bottom: 1px solid var(--line); font: 400 26px/1.1 var(--serif); color: var(--ink); }
+.kb-kinds { display: grid; grid-template-columns: repeat(3, 150px); column-gap: 18px; font: 600 12.5px/1.3 var(--sans); color: var(--ink-2); }
+.kb-len { padding-top: 6px; font: 600 14px/1.3 var(--sans); color: var(--ink); font-variant-numeric: tabular-nums; }
+.kb-cell { display: grid; grid-template-columns: repeat(3, 150px); column-gap: 18px; }
+.kb-col { position: relative; height: 100%; min-height: 24px; border-radius: 9px; background: color-mix(in oklch, var(--ink) 3%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
+.kb-old { position: absolute; left: 3px; right: 3px; top: 1px; display: grid; align-content: start; gap: 2px; padding: 5px 7px; overflow: hidden; border-radius: 8px; color: var(--ink); text-align: left; }
+.kb-old b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; min-width: 0; font: 600 12px/1.25 var(--sans); font-variant-numeric: tabular-nums; }
+.kb-old small { min-width: 0; font: 500 11px/1.2 var(--sans); }
+.kb-old.is-ev { background: var(--now-soft); box-shadow: inset 2px 0 0 var(--now); }
+.kb-old.is-ev.is-short { grid-template-columns: minmax(0, 1fr) auto; align-items: center; padding-block: 3px; }
+.kb-old.is-call { background: var(--now); color: var(--ground); }
+.kb-old.is-call.is-short { align-content: center; padding-block: 3px; }
+.kb-old.is-short small { display: none; }
+.kb-old.is-ghost { display: flex; flex-wrap: wrap; align-content: start; gap: 0 6px; background: color-mix(in oklch, var(--now) 22%, transparent); box-shadow: inset 0 0 0 1.5px var(--now); }
+.kb-old.is-ghost small { color: var(--ink-2); }

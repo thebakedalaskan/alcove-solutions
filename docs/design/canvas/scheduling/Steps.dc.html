@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scheduling, step by step</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-cd.css">
+<link rel="stylesheet" href="sched.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="sched.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="fl" style="width: 4668px">
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="7">
+<section class="fl-r">
+<h2 class="fl-h">{{r.name}}</h2>
+<div class="fl-s">
+<sc-for list="{{r.frames}}" as="f" hint-placeholder-count="4">
+<div class="fl-f">
+<p class="fl-c"><span>{{f.n}}</span>{{f.t}}</p>
+<div class="fl-box"><div class="fl-in"><dc-import name="Main" mode="dark" step="{{f.step}}" hint-size="1440px,900px"></dc-import></div></div>
+</div>
+</sc-for>
+</div>
+</section>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":4668,"height":4995}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      rows: window.AH.SK.JOURNEYS.map(function (r) {
+        return { name: r.name, frames: r.frames.map(function (f, i) { return { n: i + 1, t: f.t, step: f.step }; }) };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

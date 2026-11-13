@@ -1,0 +1,115 @@
+{
+ "v": 3,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-11-13T03:51:15Z"
+ },
+ "title": "Scheduling a call",
+ "launch": {
+  "view": "canvas",
+  "page": "design"
+ },
+ "pages": [
+  {
+   "id": "design",
+   "name": "Scheduling a call"
+  },
+  {
+   "id": "steps",
+   "name": "Step by step"
+  },
+  {
+   "id": "parts",
+   "name": "Parts"
+  }
+ ],
+ "boards": {
+  "Changes.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 940,
+   "title": "What testers said, and what changes",
+   "page": "design"
+  },
+  "Main.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 1440,
+   "h": 900,
+   "title": "Schedule a call: press Play and use it",
+   "page": "design",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "Blocks.dc.html": {
+   "x": 0,
+   "y": 1060,
+   "w": 1440,
+   "h": 660,
+   "title": "Time first, at every length",
+   "page": "design"
+  },
+  "Steps.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 4668,
+   "h": 4995,
+   "title": "Scheduling a call, every journey step by step",
+   "page": "steps"
+  },
+  "Faces.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1000,
+   "h": 820,
+   "title": "People in the arch",
+   "page": "parts"
+  },
+  "Side.dc.html": {
+   "x": 1080,
+   "y": 0,
+   "w": 256,
+   "h": 800,
+   "title": "The side panel",
+   "page": "parts"
+  },
+  "Scene.dc.html": {
+   "x": 0,
+   "y": 940,
+   "w": 1200,
+   "h": 420,
+   "title": "One evening, drawn",
+   "page": "parts"
+  },
+  "Visitors.dc.html": {
+   "x": 1280,
+   "y": 940,
+   "w": 1200,
+   "h": 420,
+   "title": "What passes through",
+   "page": "parts"
+  }
+ },
+ "order": [
+  "Faces.dc.html",
+  "Side.dc.html",
+  "Scene.dc.html",
+  "Visitors.dc.html",
+  "Changes.dc.html",
+  "Blocks.dc.html",
+  "Main.dc.html",
+  "Steps.dc.html"
+ ],
+ "notes": {
+  "top": {
+   "x": 0,
+   "y": -300,
+   "text": "Scheduling a call, rethought from testers’ feedback",
+   "kind": "title1",
+   "maxW": 2960,
+   "page": "design"
+  }
+ },
+ "designSystems": []
+}

@@ -221,11 +221,26 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `BackgroundModal` (Background's window: a big live preview of you beside the choices) with `BackgroundPicker` (what shows behind someone on camera, in groups: Blur, Pictures, Colours and Yours, with `SCENE_PICTURES`), and `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
   For starting and scheduling a call: `FlowView`, `FlowHead`, `FlowBody`, `FlowFoot`, `FlowNote`, `SwitchLine`,
   `NotesSwitches` (whether a call writes notes, and what they keep), `ScopeBar` (this call, or this and later calls),
-  `WayCard`, `PersonToken` (with `state` and `outside`), `QuadFaces`, `TimeCard` (with `box`), `Flood` and `useSmoothHeight`,
+  `WayCard`, `PersonToken` (with `state` and `outside`), `QuadFaces`, `Flood` and `useSmoothHeight`,
   with `NoNotesLeft` (no notes left this period where a call with notes starts or is scheduled: until when, in caution, the
-  ways on under it). Start a call asks Start now or Schedule for later, and scheduling happens on Calls, beside `CallsWeek` (in
-  `components/calls-week.tsx`: the week on Calls and the week a call is scheduled on, with blocks by kind, busy time
-  hatched, the suggested times glowing, the picked block with a grip, the hours off greyed, and three days on a phone).
+  ways on under it). Start a call asks Start now or Schedule for later, and scheduling happens on Calls: one sheet, the week
+  on the left and the call's editor on the right. The week is `CallsWeek` with `CallsWeekHead` (in
+  `components/calls-week.tsx`: the week on Calls and the week a call is scheduled on; its head is the days it shows, with
+  the arrows and Today; the day is a scroll box of 24 hours that opens on 08:00, blocks say their time first and stand side
+  by side, busy time is hatched and says whose, the call is a sun block to press, drag to any day and lengthen by its grip,
+  offered times are numbered, and a phone shows three days). The editor's parts are in `components/scheduler.tsx`, all
+  stateless: `SchedPanel` (the column: its pinned top with the kicker and ×, the body, and the foot after it, pinned to the
+  bottom when the body scrolls), `SchedTitle` (the call's name, large), `SchedGroup` (a section, a hairline apart),
+  `SchedName` (a call being moved, by name, with where it was struck through once it moves), `SchedRow` (an icon and its
+  value), `SchedLine` (a line that carries on the row above, in caution with its action on a clash), `SchedNote` (a note on
+  the inner edge that holds more than words), `SchedValue` (a bold value to press, with a quiet word after it and a
+  chevron), `SchedQuiet` (a quiet value that opens a menu), `SchedSwitch` (a switch row, its line inside), `SchedChoice`
+  (a choice with its line, such as where the notes go), `SchedField` with `SchedPersonOption`, `SchedListHead` and
+  `SchedListNote` (Who's field of tokens, and the people to add under it), `SchedOffer` (a time offered to a guest:
+  pressed, it's the one the week moves; its tick is its own button), `SchedTimes` (a list of times, the picked one marked
+  and in view, those gone greyed, each end with the length it makes), `SchedPop` (what opens under a field without taking
+  its focus), `SchedDoc` (a document the call brings, with ×), `SchedFoot` (what will happen, Cancel and the one filled
+  button) and `SchedAsk` (a question asked once in the foot: Cancel this call?).
   Calls' parts are in `components/calls.tsx`: `SkyBar` and `SkySearch` (the page's title, search and its one filled
   button on a short sky), `PlaceTree` with `PlaceHead`, `PlaceRow`, `PlaceFoot` and `PlaceChips` (the rail of places,
   chips on a phone), `CallsSheet` and `SheetHead`, `CallsGroup` and `CallsMore` (a day's calls, and Show N more),
@@ -298,8 +313,8 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   transcript line still `nd-l`); a file's large preview in `kit.css` (`fc-`);
   Settings in `styles/settings.css` (its classes start with `set-`); Agents in `styles/agents.css` (`ag-`, beside the
   `ac-agent-` chips and consent sheet); Plans in `styles/plans.css` (`pl-`); checkout in `styles/checkout.css` (`ck-`); the doors into checkout in `styles/plan-doors.css` (`pd-`); Team on a plan in `styles/team-plan.css` (`tq-` the page, `tj-` joining); Record in `styles/record.css` (its classes
-  start with `rec-`); starting and scheduling a call in `styles/flow.css` (its classes start with `cf-`, `cw-` the week and `sc-` the
-  scheduler); the organizer's
+  start with `rec-`); Start a call in `styles/flow.css` (`cf-`); the scheduler in `styles/scheduler.css` (`sc-`); the week,
+  on Calls and while scheduling, in `styles/calls-week.css` (`cw-`); the organizer's
   lobby, ringing and the page for picking a time in `styles/ringing.css` (`rg-`); the workspace in `styles/workspace.css`
   (`wt-` the list, `wd-` a document, `wm-` menus, `wv-` popovers, `wh-` history, `wl-` the call's live
   pages, `wf-` full screen), with a document's own look full screen in `styles/workspace-editor.css`; the board in `styles/board.css` (`bz-` the board and its rail, `bd-` the sheet and its chrome, `bf-` frames,

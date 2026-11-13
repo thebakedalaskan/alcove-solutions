@@ -2,8 +2,8 @@
  * A month to pick a day from: six weeks, Monday first, with the days of the months either side filling them in quietly,
  * today marked in the warm colour of now and the day picked filled. The arrows at its head go a month back or on. From the
  * keyboard, the arrow keys move a day (up and down a week), Home and End go to the week's ends, Page Up and Page Down a
- * month (with Shift, a year), Enter picks and Esc goes back without picking. Any day can be picked, past ones too. Days are
- * `YYYY-MM-DD`, on the reader's own calendar.
+ * month (with Shift, a year), Enter picks and Esc goes back without picking. Any day can be picked, past ones too, unless
+ * `from` says the first that can: the days before it are greyed. Days are `YYYY-MM-DD`, on the reader's own calendar.
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { cn } from '../cn';
@@ -40,11 +40,13 @@ function weeksOf(month: Date): Date[][] {
   return Array.from({ length: 6 }, (_, w) => Array.from({ length: 7 }, (__, i) => plusDays(start, w * 7 + i)));
 }
 
-export function MonthGrid({ value, today, onPick, onCancel, label = 'Pick a date', autoFocus = false }: {
+export function MonthGrid({ value, today, from, onPick, onCancel, label = 'Pick a date', autoFocus = false }: {
   /** The day picked, as YYYY-MM-DD, or null while there's none. */
   value: string | null;
   /** Today, as YYYY-MM-DD: marked, and where it opens when nothing's picked. */
   today: string;
+  /** The first day that can be picked, as YYYY-MM-DD: the days before it are greyed, and can't be. */
+  from?: string | undefined;
   onPick: (date: string) => void;
   /** Esc, from a day: put it away without picking. */
   onCancel?: (() => void) | undefined;
@@ -93,12 +95,13 @@ export function MonthGrid({ value, today, onPick, onCancel, label = 'Pick a date
               {week.map((d) => {
                 const iso = isoOf(d);
                 const out = d.getMonth() !== active.getMonth();
+                const gone = from !== undefined && iso < from;
                 return (
                   <td key={iso} aria-selected={iso === value}>
-                    <button type="button" data-day={iso} tabIndex={iso === activeIso ? 0 : -1} aria-label={spoken(d)} aria-current={iso === today ? 'date' : undefined}
+                    <button type="button" data-day={iso} tabIndex={iso === activeIso ? 0 : -1} aria-label={spoken(d)} aria-current={iso === today ? 'date' : undefined} aria-disabled={gone || undefined}
                       className={cn('ac-cal-d', out && 'is-out', iso === today && 'is-today', iso === value && 'is-on')}
                       /* A day of the month shown takes the keys when it's pressed; one either side is picked as it is, the month staying put. */
-                      onFocus={() => { if (!out && iso !== activeIso) setActive(d); }} onClick={() => onPick(iso)}>
+                      onFocus={() => { if (!out && iso !== activeIso) setActive(d); }} onClick={() => { if (!gone) onPick(iso); }}>
                       {d.getDate()}
                     </button>
                   </td>

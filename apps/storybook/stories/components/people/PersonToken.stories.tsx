@@ -5,7 +5,7 @@
  * `outside`). In an empty field the first Backspace holds the last token (`held`), and the second takes it out; so does
  * its ×. Without `onRemove` it's only read: who's on a call being moved, and what they've said.
  */
-import { PersonToken, cn } from '@alcove/ui';
+import { PersonToken, SchedField, SchedGroup, SchedRow } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import type { ReactNode } from 'react';
 import { did } from '../../../src/component';
@@ -14,13 +14,16 @@ import { AIKO, INES, JONAS, KOFI, MANY, MAYA, PRIYA } from '../../../src/world/p
 /** Who, on the scheduler: the field people are added in, or (`fixed`) who's on a call being moved. */
 function Who({ fixed = false, children }: { fixed?: boolean | undefined; children: ReactNode }) {
   return (
-    <section className="sc-sec" style={{ width: 'min(372px, 100%)' }}>
-      <h3>Who</h3>
-      <div className={cn('cf-field sc-field', fixed && 'is-fixed')}>
-        {children}
-        {!fixed && <input type="text" aria-label="Add people" placeholder="Add someone else" autoComplete="off" spellCheck={false} />}
-      </div>
-    </section>
+    <div className="sc-body" style={{ width: 'min(356px, 100%)' }}>
+      <SchedGroup label="Who">
+        <SchedRow icon="people">
+          <SchedField fixed={fixed}>
+            {children}
+            {!fixed && <input type="text" aria-label="Add people" placeholder="Add someone" autoComplete="off" spellCheck={false} />}
+          </SchedField>
+        </SchedRow>
+      </SchedGroup>
+    </div>
   );
 }
 

@@ -1,0 +1,247 @@
+/*
+ * Scheduling a call on the Calls page (sc-, components/scheduler.tsx): one sheet, the week (calls-week.css) taking most of
+ * it and the call's editor beside it on the same surface, with a hairline between, as a calendar app has it. The editor is a
+ * property list with two edges: the outer edge holds the kicker, the title, the hairlines and the foot; the inner edge is
+ * where every value starts. Each row is an icon in an 18px column, 14px from its value; anything pressable keeps its text
+ * on the edge and lets its hover reach 10px past it. On a phone there's no week: the editor is the page, its foot above the
+ * tabs.
+ */
+.sc-ed, .sc-pop {
+  --sc-hl: color-mix(in oklch, var(--ink) 6.5%, transparent);
+  --sc-hl2: color-mix(in oklch, var(--ink) 10%, transparent);
+}
+
+/* ------------------------------------------------------------ one sheet: the week, and beside it the editor */
+.sc-sheet { position: relative; z-index: 5; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 356px; min-height: 0; margin-top: 30px; overflow: clip; border-radius: var(--radius-lg); background: var(--surface); box-shadow: 0 30px 60px -40px rgb(4 10 22 / .6); }
+/* The sheet's edge is drawn over what's in it, so the editor's pinned top and foot can't cover it. */
+.sc-sheet::after { content: ""; position: absolute; inset: 0; z-index: 10; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--line); pointer-events: none; }
+.sc-sheet > .cw-sheet, .sc-blank { min-width: 0; min-height: 0; }
+
+/* ------------------------------------------------------------ the editor */
+.sc-ed { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden auto; overscroll-behavior: contain; border-left: 1px solid var(--line); scrollbar-width: thin; scrollbar-color: var(--line-control) transparent; animation: sc-in var(--duration-3) var(--ease-out) both; }
+@keyframes sc-in { from { opacity: 0; transform: translateX(12px); } }
+.sc-top { position: sticky; top: 0; z-index: 3; flex: none; display: flex; align-items: center; justify-content: space-between; height: 54px; padding: 0 12px 0 22px; background: var(--surface); }
+.sc-kicker { font: 600 13px/1 var(--font-sans); color: var(--ink-2); }
+.sc-x.ac-icon-btn { width: 32px; height: 32px; border-radius: 8px; color: var(--ink-2); }
+.sc-x.ac-icon-btn:hover { background: var(--sc-hl); color: var(--ink); }
+.sc-body { flex: none; padding: 0 20px 0 22px; }
+.sc-wait { padding: 48px 0; text-align: center; color: var(--ink-3); }
+.sc-body > .ac-empty { padding-top: 40px; }
+
+/* The name: Newsreader, to type over. */
+.sc-title { display: block; width: calc(100% + 10px); height: 44px; margin: 2px 0 14px -10px; padding: 0 10px; border: 0; border-radius: 9px; outline: 0; background: none; font: 400 24px/1.2 var(--font-display); letter-spacing: -.01em; color: var(--ink); caret-color: var(--sun-text); text-overflow: ellipsis; transition: background-color var(--duration-1); }
+.sc-title::placeholder { color: var(--ink-3); opacity: 1; }
+input.sc-title:hover, input.sc-title:focus { background: var(--sc-hl); }
+input.sc-title:focus-visible { box-shadow: inset 0 0 0 1.5px var(--focus); }
+.sc-name { margin: 2px 0 14px; }
+.sc-title.is-fixed { width: auto; height: auto; margin: 0; padding: 6px 0 4px; overflow-wrap: anywhere; }
+.sc-was { font: 500 13px/1.35 var(--font-sans); color: var(--ink-3); }
+.sc-was s { text-decoration-color: color-mix(in oklch, var(--ink) 40%, transparent); }
+
+/* Sections, 18px apart with a hairline; rows, each an icon and its value. */
+.sc-grp { display: grid; gap: 4px; padding: 18px 0; border-top: 1px solid var(--line); }
+.sc-row { display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: 14px; align-items: center; min-height: 36px; }
+.sc-row.is-line, .sc-row.is-note { min-height: 0; margin-top: -4px; padding: 0 0 2px; }
+.sc-row.is-note { margin-top: 0; padding: 2px 0 4px; }
+.sc-row.is-top { align-items: start; }
+.sc-row.is-top > .sc-ic { margin-top: 15px; }
+/* Who: when its tokens take more than a line, the icon stays with the first. */
+.sc-row:has(> .sc-val > .sc-people) { align-items: start; }
+.sc-row:has(> .sc-val > .sc-people) > .sc-ic { margin-top: 9.5px; }
+.sc-ic { color: var(--ink-3); }
+.sc-ic.is-rec { color: var(--rec); }
+.sc-val { position: relative; display: flex; flex-wrap: wrap; align-items: center; min-width: 0; }
+.sc-val > :first-child { margin-left: -10px; }
+.sc-val.is-flush > :first-child { margin-left: 0; }
+.sc-note { display: grid; gap: 8px; min-width: 0; }
+
+/* Values: the main ones in ink, what they mean said quietly after them. */
+.sc-value, .sc-quiet { display: inline-flex; align-items: center; gap: 7px; max-width: calc(100% + 10px); height: 34px; padding: 0 10px; border-radius: 8px; white-space: nowrap; transition: background-color var(--duration-1), color var(--duration-1); }
+.sc-value { font: 600 14.5px/1 var(--font-sans); color: var(--ink); font-variant-numeric: tabular-nums; }
+.sc-value small { font: 500 13.5px/1 var(--font-sans); color: var(--ink-3); }
+.sc-quiet { font: 500 14px/1 var(--font-sans); color: var(--ink-2); }
+:is(.sc-value, .sc-quiet):hover, :is(.sc-value, .sc-quiet)[aria-expanded="true"] { background: var(--sc-hl); }
+.sc-quiet:hover, .sc-quiet[aria-expanded="true"] { color: var(--ink); }
+:is(.sc-value, .sc-quiet) .sc-chev { flex: none; margin-left: -2px; color: var(--ink-3); }
+:is(.sc-value, .sc-quiet, .sc-link, .sc-in):focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+.sc-quiet > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* A time to type, or to pick from its list. */
+.sc-in { width: 62px; height: 34px; padding: 0 10px; border: 0; border-radius: 8px; outline: 0; background: none; font: 600 14.5px/1 var(--font-sans); color: var(--ink); font-variant-numeric: tabular-nums; caret-color: var(--sun-text); transition: background-color var(--duration-1); }
+.sc-in:hover, .sc-in:focus { background: var(--sc-hl); }
+.sc-dash { padding: 0 1px; color: var(--ink-3); }
+.sc-len { margin-left: 4px; font: 500 13.5px/1 var(--font-sans); color: var(--ink-3); white-space: nowrap; }
+.sc-end { padding: 0 10px; font: 600 14.5px/34px var(--font-sans); color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* A switch that's the whole row, with a line under its title inside it. */
+.sc-switch { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; align-items: center; width: calc(100% + 10px); min-height: 36px; padding: 0 0 0 10px; border-radius: 8px; font: 500 14px/1.2 var(--font-sans); color: var(--ink); text-align: left; transition: background-color var(--duration-1); }
+button.sc-switch:hover { background: var(--sc-hl); }
+button.sc-switch:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+button.sc-switch:disabled { cursor: default; opacity: .55; }
+.sc-switch > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-switch.has-line, .sc-switch.is-choice { padding-block: 7px 8px; }
+.sc-switch.has-line > span:first-child, .sc-switch.is-choice > span:first-child { overflow: visible; white-space: normal; }
+.sc-switch b { display: block; font: 500 14px/1.3 var(--font-sans); color: var(--ink); }
+.sc-switch small { display: block; margin-top: 2px; font: 400 12.5px/1.4 var(--font-sans); color: var(--ink-2); }
+.sc-switch.is-choice .ac-select { max-width: 170px; height: 34px; }
+
+/* A line that carries on the row above: a status, a clash in caution, a quiet note; its action in horizon. */
+.sc-line { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; min-height: 22px; font: 500 13px/1.35 var(--font-sans); color: var(--ink-2); overflow-wrap: anywhere; }
+.sc-line.is-caution { color: var(--caution); }
+.sc-line.is-quiet { font: 400 12.5px/1.45 var(--font-sans); }
+.sc-line .ac-i { flex: none; margin-right: 6px; color: var(--sun-text); vertical-align: -2px; }
+.sc-link { display: inline-flex; align-items: center; height: 24px; padding: 0 7px; border-radius: 6px; font: 600 13px/1 var(--font-sans); color: var(--horizon); text-decoration: none; white-space: nowrap; transition: background-color var(--duration-1); }
+.sc-link:hover { background: color-mix(in oklch, var(--horizon) 12%, transparent); }
+
+/* ------------------------------------------------------------ who */
+.sc-people { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; width: calc(100% + 10px); min-height: 36px; max-height: 196px; padding: 4px 4px 4px 10px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; border-radius: 9px; cursor: text; transition: background-color var(--duration-1), box-shadow var(--duration-1); }
+.sc-people:hover { background: var(--sc-hl); }
+.sc-people.is-open, .sc-people:focus-within { background: var(--sc-hl); box-shadow: inset 0 0 0 1px var(--line-control); }
+.sc-people.is-fixed { cursor: default; }
+.sc-people.is-fixed:hover { background: none; }
+.sc-people input { flex: 1 1 100px; min-width: 100px; height: 28px; padding: 0; border: 0; outline: 0; background: none; font: 500 14px/1 var(--font-sans); color: var(--ink); }
+.sc-people input::placeholder { color: var(--ink-3); opacity: 1; }
+.sc-people .cf-tok + input { padding-left: 6px; }
+.sc-none { font: 400 14px/28px var(--font-sans); color: var(--ink-3); }
+/* Someone in the field: their arch, their first name, and ×, smaller than in a modal. */
+.sc-people .cf-tok { gap: 6px; height: 28px; padding: 0 2px 0 3px; border-radius: 8px; background: var(--sc-hl2); font: 600 13px/1 var(--font-sans); animation: none; }
+.sc-people .cf-tok.is-fixed { padding-right: 8px; }
+.sc-people .cf-tok small { font: 500 11.5px/1 var(--font-sans); color: var(--ink-2); }
+.sc-people .cf-tok .x { width: 20px; height: 20px; }
+/* Where someone from outside is, on their token: Where? until it's said. */
+.sc-where { flex: none; height: 22px; margin: 0 -2px; padding: 0 5px; border-radius: 6px; font: 500 11.5px/1 var(--font-sans); color: var(--ink-2); white-space: nowrap; transition: background-color var(--duration-1), color var(--duration-1); }
+.sc-where.is-unsaid { text-decoration: underline dotted color-mix(in oklch, var(--ink) 45%, transparent); text-underline-offset: 3px; }
+.sc-where:hover, .sc-where[aria-expanded="true"] { background: var(--sc-hl2); color: var(--ink); }
+.sc-where:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+
+/* The people under the field. */
+.ac-pop.sc-pop.is-people { width: calc(var(--radix-popover-trigger-width, 300px) + 10px); min-width: 0; max-height: min(392px, var(--radix-popover-content-available-height, 392px)); padding: 5px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.sc-pp-h { padding: 6px 8px 4px; font: 600 12px/1 var(--font-sans); color: var(--ink-3); }
+.sc-pp { display: grid; grid-template-columns: 40px minmax(0, 1fr) 16px; column-gap: 10px; align-items: center; width: 100%; padding: 6px 8px 6px 6px; border-radius: 9px; color: var(--ink); text-align: left; cursor: pointer; transition: background-color var(--duration-1); }
+.sc-pp:hover, .sc-pp.is-lit { background: var(--sc-hl); }
+.sc-pp.is-lit { box-shadow: inset 0 0 0 1.5px var(--focus); }
+.sc-pp b { display: -webkit-box; font: 600 13.5px/1.3 var(--font-sans); color: var(--ink); }
+.sc-pp small { display: -webkit-box; margin-top: 1px; font: 400 12px/1.3 var(--font-sans); color: var(--ink-2); }
+.sc-pp > .ac-i { color: var(--ink-3); }
+.sc-pp-f { display: flex; align-items: center; justify-content: center; }
+.sc-pp-none { padding: 8px; font: 400 12.5px/1.4 var(--font-sans); color: var(--ink-2); }
+.sc-tile { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--sc-hl2); color: var(--ink-2); }
+
+/* ------------------------------------------------------------ when, letting a guest pick */
+/* Each time is a row: press its body to make it the active one (the week moves it); its tick is its own button. */
+.sc-opts { display: grid; gap: 4px; width: calc(100% + 10px); }
+.sc-opt { display: grid; grid-template-columns: minmax(0, 1fr) 40px; align-items: stretch; border-radius: 10px; transition: background-color var(--duration-1), box-shadow var(--duration-1); }
+.sc-opt:hover { background: var(--sc-hl); }
+.sc-opt.is-active { background: color-mix(in oklch, var(--sun-text) 13%, transparent); box-shadow: inset 0 0 0 1.5px var(--sun-text); }
+.sc-opt-main { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; column-gap: 10px; align-items: center; min-height: 46px; padding: 6px 4px 6px 10px; border-radius: 10px 0 0 10px; color: var(--ink); text-align: left; }
+.sc-opt-main b { display: block; font: 600 13.5px/1.25 var(--font-sans); color: var(--ink); }
+.sc-opt-main b + span { display: block; margin-top: 1px; font: 500 12.5px/1.25 var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.sc-opt-main small { font: 500 11.5px/1.2 var(--font-sans); color: var(--ink-3); font-variant-numeric: tabular-nums; text-align: right; }
+.sc-opt-main small.is-clash { display: inline-flex; align-items: center; gap: 4px; max-width: 120px; color: var(--caution); }
+.sc-opt-main small.is-clash .ac-i { flex: none; }
+.sc-opt.is-off :is(b, b + span, small) { opacity: .5; }
+.sc-opt.is-off b { text-decoration: line-through; text-decoration-color: color-mix(in oklch, var(--ink) 45%, transparent); }
+:is(.sc-opt-main, .sc-tick):focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.sc-nb { display: inline-grid; place-items: center; flex: none; width: 18px; height: 18px; border-radius: 50%; background: var(--sc-hl2); font: 700 10.5px/1 var(--font-sans); font-style: normal; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.sc-opt.is-active .sc-nb { background: var(--sun-text); color: var(--ground); }
+.sc-tick { display: grid; place-items: center; border-radius: 0 10px 10px 0; }
+.sc-tick > span { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--line-control); color: var(--ground); transition: background-color var(--duration-1); }
+.sc-tick[aria-checked="true"] > span { background: var(--ink); box-shadow: none; }
+.sc-tick .ac-i { stroke-width: 2.6; opacity: 0; }
+.sc-tick[aria-checked="true"] .ac-i { opacity: 1; }
+.sc-tick[aria-disabled="true"] { cursor: default; }
+.sc-tick[aria-disabled="true"] > span { opacity: .55; }
+/* Setting the active time without the week: only on a phone, where there's no week. */
+.sc-phone { display: none; }
+
+/* ------------------------------------------------------------ what opens */
+.ac-pop.sc-pop { padding: 5px; border-radius: 12px; }
+.ac-pop.sc-pop.is-list { width: 172px; min-width: 0; padding: 0; }
+.ac-pop.sc-pop.is-menu { min-width: 236px; max-width: min(300px, calc(100vw - 24px)); }
+.ac-pop.sc-pop.is-cal { width: 280px; min-width: 0; padding: 8px 8px 6px; }
+.sc-times { position: relative; max-height: min(268px, var(--radix-popover-content-available-height, 268px)); padding: 5px; overflow: hidden auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line-control) transparent; outline: none; }
+.sc-li { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; height: 32px; padding: 0 10px; border-radius: 7px; font: 500 13.5px/1 var(--font-sans); color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer; outline: none; scroll-margin: 6px; }
+.sc-li:hover:not([aria-disabled="true"]), .sc-li:focus { background: var(--sc-hl); }
+.sc-li:focus-visible { box-shadow: inset 0 0 0 2px var(--focus); }
+.sc-li small { font: 500 12px/1 var(--font-sans); color: var(--ink-3); }
+.sc-li.is-on { background: color-mix(in oklch, var(--sun-text) 16%, transparent); font-weight: 700; }
+.sc-li.is-on small { color: var(--ink-2); }
+.sc-li[aria-disabled="true"] { opacity: .32; cursor: default; }
+
+/* How it repeats: the choices, the days you pick in place, and how many calls once it repeats. */
+.sc-reps { display: grid; gap: 1px; }
+.sc-rep { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; padding: 4px 10px; border-radius: 7px; font: 500 13.5px/1.3 var(--font-sans); color: var(--ink); text-align: left; transition: background-color var(--duration-1); }
+.sc-rep:hover { background: var(--sc-hl); }
+.sc-rep:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.sc-rep i { flex: none; width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--line-control); transition: box-shadow var(--duration-1); }
+.sc-rep[aria-checked="true"] { font-weight: 600; }
+.sc-rep[aria-checked="true"] i { box-shadow: inset 0 0 0 5px var(--sun-text); }
+.sc-days { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 10px 6px 36px; }
+.sc-day { width: 28px; height: 28px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--line-control); font: 600 12.5px/1 var(--font-sans); color: var(--ink-2); }
+.sc-day[aria-pressed="true"] { background: var(--sun-soft); box-shadow: inset 0 0 0 1.5px var(--sun-text); color: var(--sun-text); }
+.sc-day:disabled { cursor: default; }
+.sc-day:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.sc-ends { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0 0; padding: 9px 10px 5px; border-top: 1px solid var(--line); font: 500 13.5px/1 var(--font-sans); color: var(--ink-2); }
+.sc-ends input { width: calc(2ch + 22px); height: 30px; padding: 0 8px; border: 0; border-radius: 8px; outline: 0; background: var(--sc-hl); box-shadow: inset 0 0 0 1px var(--line-control); font: 600 13.5px/1 var(--font-sans); color: var(--ink); font-variant-numeric: tabular-nums; text-align: center; caret-color: var(--sun-text); }
+.sc-ends input:focus-visible { box-shadow: inset 0 0 0 1.5px var(--focus); }
+.sc-ends small { flex: 1 1 100%; font: 400 12.5px/1.3 var(--font-sans); color: var(--ink-3); }
+
+/* ------------------------------------------------------------ details */
+.sc-keep { display: grid; gap: 4px; animation: sc-open var(--duration-2) var(--ease-out) both; }
+/* No notes left, under Notes: on the inner edge. */
+.pd-none.sc-door { margin: 0 0 4px 32px; }
+:is(.sc-value, .sc-quiet) .sc-chev { transition: transform var(--duration-2) var(--ease-out); }
+.sc-quiet[aria-expanded="true"] .sc-chev { transform: rotate(180deg); }
+@keyframes sc-open { from { opacity: 0; transform: translateY(-4px); } }
+/* What the call brings: the library to pick from, and what's picked, each with ×. */
+.sc-docs { display: grid; gap: 2px; width: 100%; }
+.sc-docs > [role="listitem"] { display: block; min-width: 0; }
+.sc-doc { display: grid; grid-template-columns: 16px minmax(0, 1fr) 24px; column-gap: 8px; align-items: center; min-height: 30px; font: 500 13.5px/1.3 var(--font-sans); color: var(--ink); }
+.sc-doc > .ac-i { color: var(--ink-3); }
+.sc-doc button { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; color: var(--ink-3); }
+.sc-doc button:hover { background: var(--sc-hl); color: var(--ink); }
+.sc-doc button:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+.ac-pop.sc-pop.is-lib { width: min(340px, calc(100vw - 32px)); padding: 8px; }
+.sc-lib-q { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; border-radius: 10px; background: var(--sunk); color: var(--ink-3); }
+.sc-lib-q input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: 400 14px/1 var(--font-sans); color: var(--ink); }
+.sc-lib-l { max-height: 300px; margin-top: 6px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.sc-lib-h { margin: 8px 8px 4px; font: 600 12px/1.3 var(--font-sans); color: var(--ink-2); }
+.sc-lib-r { display: grid; grid-template-columns: 20px 16px minmax(0, 1fr); column-gap: 10px; align-items: center; width: 100%; min-height: 38px; padding: 4px 8px; border-radius: 9px; font: 500 13.5px/1.3 var(--font-sans); color: var(--ink); text-align: left; }
+.sc-lib-r:hover { background: var(--sc-hl); }
+.sc-lib-r:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.sc-lib-r:disabled { cursor: default; opacity: .5; }
+.sc-lib-r > .ac-i { color: var(--ink-2); }
+.sc-lib-r .tick { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--line-control); color: var(--ground); }
+.sc-lib-r.is-on .tick { background: var(--ink); box-shadow: none; }
+.sc-lib-n { padding: 10px 8px; font: 400 13px/1.45 var(--font-sans); color: var(--ink-2); }
+
+/* ------------------------------------------------------------ the foot */
+/* Who hears, and the one filled button: after the content, and pinned while the editor scrolls. */
+.sc-foot { position: sticky; bottom: 0; z-index: 2; flex: none; display: grid; gap: 14px; padding: 18px 20px 18px 22px; background: var(--surface); }
+.sc-foot::before { content: ""; position: absolute; top: 0; left: 22px; right: 20px; border-top: 1px solid var(--line); }
+.sc-foot-l { font: 400 12.5px/1.45 var(--font-sans); color: var(--ink-2); }
+.sc-foot .cf-fail { margin: 0; }
+.sc-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sc-acts-e { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-left: auto; }
+.sc-acts .ac-btn { height: 40px; }
+.sc-acts .ac-btn.sc-cancel { height: 34px; margin-left: -10px; color: var(--caution); }
+.sc-acts .ac-btn.sc-cancel .ac-i { color: var(--caution); }
+.sc-ask { display: grid; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--caution-soft); font: 500 13.5px/1.4 var(--font-sans); color: var(--ink); }
+.sc-ask-a { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.sc-ask-a .ac-btn { height: 36px; }
+
+/* ------------------------------------------------------------ narrower */
+@media (max-width: 1100px) {
+  .sc-sheet { grid-template-columns: minmax(0, 1fr) 316px; }
+}
+/* A phone: no week. The editor is the page, scrolling with it, and its foot stays above the tabs. */
+@media (max-width: 860px) {
+  .sc-sheet { display: block; margin-top: 18px; overflow: visible; border-radius: 18px; }
+  .sc-sheet > .cw-sheet, .sc-blank { display: none; }
+  .sc-ed { min-height: calc(100dvh - 190px); overflow: visible; border-left: 0; animation: none; }
+  .sc-top { position: static; border-radius: 18px 18px 0 0; }
+  .sc-foot { bottom: calc(80px + env(safe-area-inset-bottom, 0px)); z-index: 30; margin-top: auto; border-radius: 0 0 18px 18px; }
+  .sc-tip { display: none; }
+  .sc-phone { display: contents; }
+  .sc-people input, .sc-in, .sc-ends input { font-size: 16px; }
+}

@@ -18,7 +18,6 @@
  * words lined up with the row's (its icon's 22px and the 12px after it).
  */
 .cf-ways ~ .pd-none.is-alone { margin: -12px 30px 30px; }
-.sc-sec > .pd-none { margin: -2px 0 10px 34px; }
 @media (max-width: 640px) { .cf-ways ~ .pd-none.is-alone { margin: -10px 18px calc(26px + env(safe-area-inset-bottom, 0px)); } }
 /* A question refused for it: in the palette, over its list; on Calls, over the sheet's calls. */
 .pal-list > .pd-none.is-alone { margin: 6px 4px 10px; }

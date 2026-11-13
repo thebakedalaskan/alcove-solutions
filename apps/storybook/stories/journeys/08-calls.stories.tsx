@@ -7,6 +7,7 @@
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { browsing, button, scrollHours } from '../../src/scheduling';
 import { callsDay } from '../../src/world/calls-page';
 import { inEveryState } from '../../src/world/states';
 import { noCalendar } from '../pages/changes';
@@ -57,16 +58,21 @@ export const SeeTheWeek: PageStory = {
   ...page('/calls?view=soon', 'busy', day),
   play: async ({ userEvent, step }) => {
     await step('Coming up, day by day. Click Week', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: /Week/ }, SOON));
+      await userEvent.click(await button(/Week/));
     });
-    await step('The week, hour by hour: what happened, with what waits on you marked, and what’s ahead. The sun is now', async () => {
-      await screen.findByRole('group', { name: 'This week' }, SOON);
+    await step('The week, hour by hour, Monday to Sunday. Its head names the days it shows, 2 – 8 Nov: what happened, with what waits on you marked, and what’s ahead. The sun is now', async () => {
+      await browsing('2 – 8 Nov');
     });
-    await step('Next week, then back to today', async () => {
-      await userEvent.click(screen.getByRole('button', { name: 'Next week' }));
-      await screen.findByRole('group', { name: 'Next week' }, SOON);
-      await userEvent.click(screen.getByRole('button', { name: 'Today' }));
-      await screen.findByRole('group', { name: 'This week' }, SOON);
+    await step('The hours open on 08:00 to 18:00. Scroll down for the evening, as far as midnight: the week never grows', async () => {
+      await scrollHours('bottom', await browsing('2 – 8 Nov'));
+    });
+    await step('The week after: 9 – 15 Nov, and Today shows beside the arrows', async () => {
+      await userEvent.click(await button('The week after'));
+      await browsing('9 – 15 Nov');
+    });
+    await step('Today comes back to this week, and goes', async () => {
+      await userEvent.click(await button('Today'));
+      await browsing('2 – 8 Nov');
     });
   }
 };
@@ -168,7 +174,7 @@ export const MeetAgain: PageStory = {
       await userEvent.click(await screen.findByRole('button', { name: 'More for Pricing sync' }, SOON));
       await userEvent.click(await screen.findByRole('menuitem', { name: 'Meet again' }, SOON));
     });
-    await step('Scheduling opens in place of the list, with the same people and name, beside the week', async () => {
+    await step('Scheduling opens on one sheet, the week beside the call’s editor, with the same people and name', async () => {
       await screen.findByRole('complementary', { name: 'Schedule a call' }, SOON);
       await screen.findByRole('textbox', { name: 'The call’s name' }, SOON);
     });

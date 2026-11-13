@@ -52,9 +52,9 @@ export const ScheduleWithSomeone: PageStory = {
       await userEvent.click(await arch('Priya Raman'));
       await userEvent.click(within(await popover('Priya Raman')).getByRole('button', { name: 'Schedule' }));
     });
-    await step('The scheduler opens on the Calls page with Priya in it: only times you’re both free, the best one picked', async () => {
+    await step('The scheduler opens on the Calls page with Priya in it, on the soonest time you’re both free', async () => {
       const scheduler = await screen.findByRole('complementary', { name: 'Schedule a call' }, SOON);
-      await within(scheduler).findByText('You and Priya are free at these times.', {}, LATER);
+      await within(scheduler).findByText(/soonest time you.re both free/, {}, LATER);
     });
     await step('Schedule. It’s on your calendar, and Google Calendar invites Priya', async () => {
       await userEvent.click(within(await screen.findByRole('complementary', { name: 'Schedule a call' }, SOON)).getByRole('button', { name: 'Schedule' }));

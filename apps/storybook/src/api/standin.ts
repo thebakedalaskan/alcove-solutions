@@ -318,6 +318,14 @@ function workday(email: string, day: Date): Interval[] {
   for (let i = 0, n = 2 + roll(2); i < n; i++) { const from = roll(14); blocks.push({ from: at(from), to: at(from + 1 + roll(2)) }); }
   return blocks;
 }
+/** What someone's calendar says on a day: the world's times for them that day, or else their made-up working day. */
+function busyOn(w: World, email: string, day: Date): Interval[] {
+  const said = w.calendars?.[email.trim().toLowerCase()];
+  const from = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
+  const to = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1).getTime();
+  const that = (said ?? []).filter((i) => Date.parse(i.from) < to && Date.parse(i.to) > from);
+  return said && that.length ? that : workday(email, day);
+}
 function busyFor(w: World, emails: string[], range: { from: string; to: string }): Busy {
   const days: Date[] = [];
   for (let d = new Date(range.from); d.getTime() <= Date.parse(range.to); d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) if (d.getDay() !== 0 && d.getDay() !== 6) days.push(d);
@@ -331,7 +339,7 @@ function busyFor(w: World, emails: string[], range: { from: string; to: string }
   return {
     source: 'sample',
     you: mine.filter(inside),
-    people: emails.map((email) => ({ email, busy: email.endsWith(`@${domain}`) ? days.flatMap((d) => workday(email, d)).filter(inside) : null }))
+    people: emails.map((email) => ({ email, busy: email.endsWith(`@${domain}`) ? days.flatMap((d) => busyOn(w, email, d)).filter(inside) : null }))
   };
 }
 function cardOf(w: World, code: string): CallCard {

@@ -8,6 +8,7 @@ import type { Meta } from '@storybook/react-vite';
 import { phone } from '../../src/call';
 import { searched } from '../../src/api/trouble';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { browsing, pressing, scrollHours } from '../../src/scheduling';
 import { callsDay } from '../../src/world/calls-page';
 import { SERIES, inEveryState } from '../../src/world/states';
 import { noCalendar, noRoomNotes, troubled } from './changes';
@@ -35,10 +36,25 @@ export const ACallAboutToStartNight = page('/calls', 'call-soon', night);
 export const ComingUp = page('/calls?view=soon', 'busy', day);
 export const ComingUpNight = page('/calls?view=soon', 'busy', { ...day, ...night });
 export const ComingUpPhone = phone(ComingUp);
-/** The week, hour by hour: what happened with what waits on you, what's ahead, the calendar's meetings and the times held for Jonas. */
+/**
+ * The week, hour by hour, Monday to Sunday, every day as wide as the others: what happened with what waits on you, what's
+ * ahead, the calendar's meetings and the times held for Jonas, each block its time first. Its head names the days it shows,
+ * 2 – 8 Nov, with no Today while it's this week; the hours open on 08:00 to 18:00 and scroll.
+ */
 export const Week = page('/calls?view=week', 'busy', day);
 export const WeekNight = page('/calls?view=week', 'busy', { ...day, ...night });
+/** On a phone: today and the next two days. */
 export const WeekPhone = phone(Week);
+/** The week after: 9 – 15 Nov, and Today beside the arrows, to come back. */
+export const WeekAfter = page('/calls?view=week', 'busy', { ...day, play: pressing('The week after', 'Press the week after') });
+export const WeekAfterNight = page('/calls?view=week', 'busy', { ...day, ...night, play: pressing('The week after', 'Press the week after') });
+/** The hours scrolled down to midnight: the Harbourline weekly at 18:00, and Art's focus time on Thursday evening. The week never grows. */
+export const WeekEvening = page('/calls?view=week', 'busy', {
+  ...day,
+  play: async ({ step }) => {
+    await step('Scroll the week down as far as it goes', async () => { await scrollHours('bottom', await browsing('2 – 8 Nov')); });
+  }
+});
 export const Past = page('/calls?view=past', 'busy', day);
 export const InTheRoom = page('/calls?view=room', 'busy', day);
 export const NothingInTheRoom = page('/calls?view=room', 'busy', { beforeEach: changing(callsDay, noRoomNotes) });

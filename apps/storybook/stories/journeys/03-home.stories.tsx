@@ -49,8 +49,8 @@ export const ScheduleACall: PageStory = {
       await userEvent.click(await screen.findByRole('option', { name: /Priya Raman/ }, SOON));
       await userEvent.keyboard('{Escape}');
     });
-    await step('Only times you’re both free, glowing on the week. The best one is picked already', async () => {
-      await screen.findByText('You and Priya are free at these times.', {}, LATER);
+    await step('The call moves to the soonest time you’re both free, on the week beside it', async () => {
+      await screen.findByText(/soonest time you.re both free/, {}, LATER);
     });
     await step('Schedule. It’s on your calendar, which is where you’ll join it, and Google Calendar invites Priya', async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Schedule' }));

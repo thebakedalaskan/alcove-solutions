@@ -88,8 +88,6 @@
 .cs-view.ac-seg { padding: 3px; border-radius: 11px; background: color-mix(in oklch, var(--ink) 7%, transparent); }
 .cs-view.ac-seg button { height: 30px; padding: 0 12px; border-radius: 8px; font-weight: 500; }
 .cs-view.ac-seg .pill { border-radius: 8px; background: var(--surface-raised); box-shadow: 0 1px 2px rgb(4 10 22 / .2); }
-.cs-wnav { display: inline-flex; align-items: center; gap: 2px; margin-right: 4px; }
-.cs-wnav .ac-icon-btn { width: 32px; height: 32px; }
 
 /* ------------------------------------------------------------ the groups */
 .cs-g + .cs-g { margin-top: 10px; }
@@ -263,9 +261,6 @@
   .cs-mh h2 { font-size: 24px; }
   .cs-mh p { display: none; }
   .cs-mh-a { gap: 4px; }
-  .cs-wnav { gap: 0; margin-right: 2px; }
-  .cs-wnav .ac-icon-btn { width: 28px; height: 28px; }
-  .cs-wnav .ac-btn.is-xs { padding: 0 7px; }
   .cs-view .cs-vl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .cs-view.ac-seg button { padding: 0 9px; }
   .cs-row { grid-template-columns: 56px minmax(0, 1fr) auto 26px; column-gap: 10px; margin-inline: -6px; padding: 12px 6px; }
