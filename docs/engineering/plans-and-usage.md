@@ -625,7 +625,13 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   it opens a team's note or workspace only for people who have it otherwise, and its workspaces aren't a team's. A notice in a
   `plan-account` record from before has no `count`: it reads as null (`.default`), and its `until` stays as it was. The
   previous release can't open a plan record holding a team's notice (a kind it doesn't know), which only an account on a
-  team, made by this release, has while both serve.
+  team, made by this release, has while both serve. `0031_teams.sql` lost `team_members.email_index` before it shipped (a
+  keyed hash of each member's address that nothing read, and that kept an address they'd left): a member's name and address
+  are only in their sealed `team-member` record, which their sign-in keeps as their account has them. So a local database
+  that ran `0031` before is refused for that file (`migrate.ts`: it changed after it was applied). Drop the column and set
+  that row's checksum to the file's SHA-256 (`ALTER TABLE team_members DROP COLUMN email_index;` then `UPDATE
+  schema_migrations SET checksum = '<sha256sum of apps/api/migrations/0031_teams.sql>' WHERE name = '0031_teams.sql';`), or
+  start the database over (`pnpm db:reset`). Neither main nor production has run it.
 - Pro needs no migration. A `plan-account` record from before has no `pro`, `renew`, `notices`, `reminded` or `ended`:
   each has a `.default` (none bought, renewing off, no notices), and the record is written in the new shape the next
   time it's saved. The previous release reads a record this one wrote (zod ignores the new fields), so an account that

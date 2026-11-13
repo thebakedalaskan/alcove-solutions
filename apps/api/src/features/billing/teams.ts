@@ -14,12 +14,12 @@
 import type { MyTeam, Person, Purchase, TeamInvite, TeamInvitePeek, TeamLicense, TeamMember } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../../context';
-import { b64u, blindIndex, id128, openJson, random, sealJson, serviceKey, sha, stateKey, toJson, unb64u, utf8 } from '../../crypto';
+import { b64u, id128, openJson, random, sealJson, serviceKey, sha, stateKey, toJson, unb64u, utf8 } from '../../crypto';
 import { bigintText, bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { ConflictError, ForbiddenError, NotFoundError, conflict } from '../../errors';
 import { limitsNow, type Limits } from '../../limits';
 import { log } from '../../log';
-import { createOwner, lockOwner, masterKey, openRoot } from '../../owners';
+import { createOwner, lockOwner, openRoot } from '../../owners';
 import { publish } from '../../live/hub';
 import { personOf } from '../account/portraits';
 import { TREE_NOTICE } from '../workspaces/access';
@@ -238,13 +238,35 @@ export async function visit(d: Service, ownerId: string): Promise<void> {
 
 /* ---------- making, joining and leaving ---------- */
 
-/** Someone on a team, sealed under its key: their name and address. */
-async function addMember(d: Service, c: Db, team: TeamKey, teamId: string, accountId: string, who: { name: string; email: string }, role: 'admin' | 'member'): Promise<string> {
+/** Someone on a team as its key seals them: their name and address, as their account has them. */
+const sealedWho = (team: TeamKey, teamId: string, memberId: string, who: { name: string; email: string }) =>
+  sealJson(team.key, memberHeader(team, teamId, memberId), toJson({ name: who.name, email: who.email }));
+
+/** Someone on a team, sealed under its key: their name and address, and nothing in the clear but IDs and their role. */
+async function addMember(c: Db, team: TeamKey, teamId: string, accountId: string, who: { name: string; email: string }, role: 'admin' | 'member'): Promise<string> {
   const memberId = id128();
-  await exec(c, 'INSERT INTO team_members (member_id, team_id, account_owner_id, email_index, role, person_ciphertext) VALUES ($1,$2,$3,$4,$5,$6)', [
-    memberId, teamId, accountId, blindIndex(masterKey(d), 'email', who.email), role, sealJson(team.key, memberHeader(team, teamId, memberId), toJson({ name: who.name, email: who.email }))
+  await exec(c, 'INSERT INTO team_members (member_id, team_id, account_owner_id, role, person_ciphertext) VALUES ($1,$2,$3,$4,$5)', [
+    memberId, teamId, accountId, role, sealedWho(team, teamId, memberId, who)
   ]);
   return memberId;
+}
+
+/**
+ * Someone signed in with a name or address their provider changed: what their team shows of them follows it, in the sign-in's
+ * transaction, so nobody on the team, nor anyone shown its admin on an invite, sees an address they've left. Nothing for
+ * someone on no team, or whose team has them as they are.
+ */
+export async function memberChanged(d: Service, c: Db, ownerId: string, who: { name: string; email: string }): Promise<void> {
+  const m = await membership(c, ownerId);
+  const t = m && await teamRow(c, m.team_id);
+  if (!m || !t) return;
+  const team = await teamKeyOf(d, t);
+  try {
+    const was = whoIn(team, m);
+    if (was.name === who.name && was.email === who.email) return;
+    await exec(c, 'UPDATE team_members SET person_ciphertext = $2 WHERE member_id = $1', [m.member_id, sealedWho(team, m.team_id, m.member_id, who)]);
+  } finally { close(team); }
+  tlog.info('team member’s name or address changed', { teamId: m.team_id, memberId: m.member_id });
 }
 
 /** Makes a team with its maker as the admin. Refused while they're on one. */
@@ -261,7 +283,7 @@ export async function create(o: Owner, me: Pick<Person, 'name' | 'email'>, name:
       await exec(c, 'INSERT INTO teams (team_id, owner_id, admin_owner_id, name_ciphertext, billing_ciphertext) VALUES ($1,$2,$3,$4,$5)', [
         teamId, ownerId, o.ownerId, sealJson(team.key, nameHeader(team, teamId), toJson({ name })), sealBilling(o, { owner_id: ownerId, team_id: teamId }, fresh())
       ]);
-      await addMember(o, c, team, teamId, o.ownerId, me, 'admin');
+      await addMember(c, team, teamId, o.ownerId, me, 'admin');
     } finally { close(team); }
   });
   tlog.info('team created', { ownerId: o.ownerId, teamId });
@@ -308,7 +330,7 @@ export async function join(o: Owner, me: Pick<Person, 'name' | 'email'>, secret:
     const t = await teamRow(c, i.team_id);
     if (!t) throw gone({ ownerId: o.ownerId, why: 'team-gone' });
     const team = await teamKeyOf(o, t);
-    try { await addMember(o, c, team, t.team_id, o.ownerId, me, 'member'); } finally { close(team); }
+    try { await addMember(c, team, t.team_id, o.ownerId, me, 'member'); } finally { close(team); }
     return t.team_id;
   });
   tlog.info('team joined', { ownerId: o.ownerId, teamId });

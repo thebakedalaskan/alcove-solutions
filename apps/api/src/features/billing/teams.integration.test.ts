@@ -10,7 +10,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import type { LimitName } from '../../limits';
 import { maintain } from '../../maintenance';
 import { speechWav } from '../../testing/fake-near';
-import { startHarness, type Harness } from '../../testing/harness';
+import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
 import { standing } from './meter';
 import { creditBySupport } from './support';
@@ -35,6 +35,19 @@ async function account(email = unique()) {
   return { ...b, session: r.session, email };
 }
 type Account = Awaited<ReturnType<typeof account>>;
+/** Signs in through the stand-in Google, which is how an account comes to have a new address: the same `sub`, another address. */
+async function withGoogle(email: string, sub: string, name: string): Promise<Account> {
+  const b = h.browser();
+  h.google.next({ sub, email, name });
+  let url = new URL(`${h.baseUrl}/v1/auth/google`);
+  for (let hop = 0; hop < 10 && url.origin !== new URL(ORIGIN).origin; hop++) {
+    const res = url.origin === h.google.issuer ? await fetch(url, { redirect: 'manual' }) : await b.fetch(url, { redirect: 'manual' });
+    url = new URL(res.headers.get('location') ?? '', url);
+  }
+  const session = await b.api.auth.getSession();
+  if (!session) throw new Error('not signed in with Google');
+  return { ...b, session, email: session.user.email };
+}
 const setLimit = (name: LimitName, value: number) => h.pool.query('INSERT INTO service_limits (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = excluded.value, updated_at = now()', [name, value]);
 const fileOf = (n: number) => { const out = new Uint8Array(new ArrayBuffer(n)); out.set(randomBytes(n)); return new File([out], 'harbour.png', { type: 'image/png' }); };
 const speech = (words: string, atMs: number): TranscriptClip => ({ data: new Blob([speechWav(words, 6000)], { type: 'audio/wav' }), segment: 0, at: atMs / 1000, durationMs: 6000 });
@@ -665,6 +678,29 @@ describe('nobody reaches another team', () => {
     // An invite joins only the team it was made for.
     expect(await joined(cy, eve)).toMatchObject({ name: 'Theirs' });
     expect((await ann.api.teams.mine())?.members).toHaveLength(2);
+  });
+});
+
+describe('a new address from the provider', () => {
+  it('I6: shows a member, and an invite’s admin, by the name and address they sign in with now, and keeps no hash of any address', async () => {
+    const sub = `sub-${seq++}`;
+    const old = unique('old');
+    const fresh = unique('fresh');
+    const ann = await withGoogle(old, sub, 'Ann Before');
+    const bob = await account();
+    await team(ann, 1);
+    await joined(ann, bob);
+    const { link } = await ann.api.teams.invite();
+    expect((await bob.api.teams.peek(secretOf(link))).admin).toMatchObject({ email: old, name: 'Ann Before' });
+    // Ann's provider gives her a new address and name: her next sign-in is the same account, and her team shows her as she is.
+    const again = await withGoogle(fresh, sub, 'Ann After');
+    expect(again.session.ownerId).toBe(ann.session.ownerId);
+    expect((await bob.api.teams.mine())?.members.map((m) => [m.role, m.person.email, m.person.name])).toEqual([['admin', fresh, 'Ann After'], ['member', bob.email, bob.session.user.name]]);
+    expect((await again.api.teams.mine())?.members.find((m) => m.you)?.person).toMatchObject({ email: fresh, name: 'Ann After' });
+    expect((await bob.api.teams.peek(secretOf(link))).admin).toMatchObject({ email: fresh, name: 'Ann After' });
+    // Nothing of a member is in the clear but IDs, times and their role: no keyed hash of an address, the old one or the new.
+    const columns = (await h.pool.query<{ name: string }>("SELECT column_name AS name FROM information_schema.columns WHERE table_name = 'team_members' AND table_schema = current_schema() ORDER BY ordinal_position")).rows.map((r) => r.name);
+    expect(columns).toEqual(['member_id', 'team_id', 'account_owner_id', 'role', 'person_ciphertext', 'licensed_from', 'licensed_until', 'wanted_at', 'created_at']);
   });
 });
 

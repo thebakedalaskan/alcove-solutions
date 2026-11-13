@@ -119,7 +119,7 @@ piece of a file is sealed on the one core every call runs on. A `media-piece` is
 | `billing` | accounting key | owner (the credits account of before plans: no longer read) |
 | `plan-account` | accounting key | owner (the plan, the balance in dollars and its history, any grace, the months of Pro bought, renewing, the notices about Pro and the owner's team's licenses, and more notes bought for a period) |
 | `team-name` | state key `team` under the team's own owner | team (its name) |
-| `team-member` | state key `team` under the team's own owner | team, member (their name and address) |
+| `team-member` | state key `team` under the team's own owner | team, member (their name and address, as their account has them: a sign-in that brings new ones seals them again) |
 | `team-billing` | accounting key | team's owner, team (its unconsumed licenses and what each cost, auto-purchase, the alerts its admin has had, its pool as last reckoned and its grace), opened without anyone signed in so upkeep can reckon the pool |
 | `ai-meter` | accounting key | owner (the period's AI allowance in dollars, what's been spent by kind, what requests in flight and live calls hold, and when it ran out) |
 | `deposit` | accounting key | owner, deposit (a top-up's route, address, amounts and the provider's quote, and what it was opened to buy and how that went), opened without anyone signed in so the watcher can add it |
@@ -185,7 +185,8 @@ The hash is deterministic, so equal values show the same person across rows and 
    index: the `owners` row with a fresh `ownerId`, `Kowner`, root envelope and root check; the `identities`
    row; the sealed profile (name, email, photo URL, notes default `on`); and its plan account (`plan_accounts`, sealed under
    `Kservice`), on Free with a balance of nothing. Later sign-ins with the same subject open the same account and bring the profile's name,
-   email and photo, and the identity's email index, up to date with the provider. After every sign-in a
+   email and photo, the identity's email index, and the name and address their team shows (`teams.ts › memberChanged`)
+   up to date with the provider. After every sign-in a
    session opens; for a demo identity with nothing upcoming, the sample calendar is placed too: five sealed
    meetings, the first about 12 minutes later. A new account lands on `/ready`, which plays the account-creation screen over Home; anyone else lands on `/home`.
    Signed in from the welcome page, Home opens by sailing out of the welcome page's cove: as a way in is pressed, where the
