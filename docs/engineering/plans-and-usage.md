@@ -86,7 +86,8 @@ and `ai.fallback_output_micro_usd`, logged at warn.
 | AI on a document or board (shorter, checklist, what was said, sort into themes) | Whoever the workspace counts against; a guest's in a call, out of the guests' share |
 
 Spend is kept by kind (`transcript`, `notes`, `live-notes`, `ideas`, `captions`, `catch-up`, `ask`, `series`,
-`documents`) with the allowance, so it can be explained, and logged when a period closes.
+`documents`) with the allowance, so it can be explained, and logged when a period closes. Every change is made under the
+meter's row lock (`ai_meters`), so requests at once on any instance can't spend the same money twice.
 
 **Guests' share.** A guest has no plan, so what they ask for in a call (questions, catch-ups, and AI on the call's documents
 and boards) is the organizer's. Every guest in one call spends from one share of the organizer's allowance for the period,
@@ -97,8 +98,7 @@ from your own plan."), whichever guest asks, and the organizer's own notes keep 
 questions and catch-ups a minute, counted by the call and the person their pass names, so coming back on a new connection
 doesn't start again (`http/limits.ts › guestAskLimiter`, `calls/routes.ts`). Someone signed in asks from their own plan,
 and isn't counted in it. A request that carries no session is a guest's, so a signed-in invitee who leaves theirs off asks
-as a guest, within the same share. Every change is made under the
-meter's row lock (`ai_meters`), so requests at once on any instance can't spend the same money twice.
+as a guest, within the same share.
 
 ### Running out in a call
 
