@@ -35,9 +35,10 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
     12.5px line in ink-2, and a chevron, with no box and no glow. The line says what matters most: "Ends in N days ·
     Extend" in sun-text 600 with the sun half set (it opens checkout), "No notes left until 1 Dec" in caution, for a team's
     admin while its licenses run short "2 licenses left · Buy" in sun-text 600 (it opens checkout on Team), "About 40 min
-    of notes left" in sun-text, or "Until 4 Nov 2027" on Pro and the team's name on Team. On a team without a license,
-    "No team license yet" in caution takes the line's place (under the meter's place on Free), and the row opens Team,
-    which says who has been told. A payment for a plan on its way takes the row's place: dots and "Waiting for N USDC" in
+    of notes left" in sun-text, or "Until 4 Nov 2027" on Pro and the team's name on Team. On a team without a license
+    you're on your own plan, told so over it: "No team license yet" in caution, and under it who has been told ("Priya has
+    been told"), or for an admin "Buy licenses, and one is yours"; on Free the notes left and the meter follow, then Free's
+    row with Team. A payment for a plan on its way takes the row's place: dots and "Waiting for N USDC" in
     horizon ("Payment seen, adding licenses" for a team's), and the payment's row with Open. Anything else said (Pro renewed
     or ended, Team replacing Pro, a team's licenses while notes have stopped, a workspace you pay for now, by its name and
     held to two lines) is one short line above the row, and only
