@@ -72,19 +72,21 @@ const HereNotice = z.object({
    * again before anyone's shown it. A notice from an instance a release behind has none, and is settled again too.
    */
   version: z.number().nullable().default(null),
+  /** Who they're following, by what the workspace knows them by, while they're in a call. A notice from an instance a release behind has none. */
+  following: z.string().nullable().default(null),
   gone: z.boolean()
 });
 type HereNotice = z.infer<typeof HereNotice>;
-interface Here { who: Who; member: boolean; person: Person; connection: string; callId: string | null; callIdentity: string | null; document: string | null; block: string | null; typing: boolean; page: CallPage | null; until: number }
+interface Here { who: Who; member: boolean; person: Person; connection: string; callId: string | null; callIdentity: string | null; document: string | null; block: string | null; typing: boolean; page: CallPage | null; following: string | null; until: number }
 
 const hereHeader = (o: Owner, workspaceId: string): RecordHeader => ({ v: 1, kind: 'workspace-presence', ownerId: o.ownerId, workspaceId });
 
 /** Tells every instance where this reader's connection is, or that it's gone. Nothing of it is kept anywhere that lasts. */
 export async function announce(w: { owner: Owner; workspaceId: string; role: Standing['role']; version: number }, reader: Reader, person: Person, connection: string, where: WorkspaceWhere | 'gone'): Promise<void> {
-  const place: WorkspaceWhere = where === 'gone' ? { document: null, block: null, typing: false, page: null } : where;
+  const place: WorkspaceWhere = where === 'gone' ? { document: null, block: null, typing: false, page: null, following: null } : where;
   const notice: HereNotice = {
     person, email: reader.email ?? null, principals: reader.principals.map(b64u), calls: reader.calls.map(b64u), member: w.role !== null, connection, callId: reader.seat?.callId ?? null, callIdentity: reader.seat?.viewer.pass.identity ?? null,
-    ...place, page: reader.seat ? place.page : null, version: w.version, gone: where === 'gone'
+    ...place, page: reader.seat ? place.page : null, following: reader.seat ? place.following : null, version: w.version, gone: where === 'gone'
   };
   await publish(w.owner.pool, w.workspaceId, `${PRESENCE}${fromUtf8(sealJson(workspaceKey(w.owner), hereHeader(w.owner, w.workspaceId), toJson(notice)))}`);
 }
@@ -278,11 +280,13 @@ export class Room {
    * Who's here, as one reader may know it. They're told where someone is if they can open it, and otherwise only that it's
    * somewhere else. Someone they have no business knowing about isn't mentioned: a person who isn't in the workspace with
    * them, in a call with them, or in something they can open. An address goes only between people in the workspace, and a
-   * connection to a call only between people in it.
+   * connection to a call only between people in it. Whom someone follows is said only to whoever they follow, in that call.
    */
   seenBy(viewer: Viewer): WorkspaceHere[] {
     const s = this.latest;
     if (!s) return [];
+    /** What the workspace knows this reader by, from wherever they're here. */
+    const yours = new Set([...this.here.values()].flatMap((e) => (samePerson(e.who, viewer.who) ? [e.person.id] : [])));
     return [...this.here.values()].flatMap((e) => {
       const isMe = samePerson(e.who, viewer.who);
       const item = e.document === null ? undefined : s.state.items[e.document];
@@ -294,7 +298,8 @@ export class Room {
         // A face comes from an address, so whoever isn't told the address gets one from the keyed ID, which tells them nothing.
         person: isMe || colleagues ? e.person : { ...e.person, email: '', portrait: portraitFor(e.person.id) }, connection: e.connection, callIdentity: inCall ? e.callIdentity : null,
         document: opens ? e.document : null, block: opens ? e.block : null, typing: opens && e.typing, page: inCall ? e.page : null,
-        elsewhere: (e.document !== null && !opens) || (e.page !== null && !inCall), isMe
+        elsewhere: (e.document !== null && !opens) || (e.page !== null && !inCall),
+        followsYou: inCall && !isMe && e.following !== null && yours.has(e.following), isMe
       }];
     });
   }

@@ -1,10 +1,12 @@
 /*
  * Presenting the workspace, as this browser has it (docs: Calls and recordings › Presenting). The call says what's presented in
  * the part of it you're in (`CallWorkspace.present`), the same for everyone who can open it; where its presenter is comes from
- * the workspace's presence, so nothing new goes to the server. Everyone who has it on their stage follows the presenter with
- * the workspace's own Follow (features/workspace/follow.ts): to their page and their line. Unfollow, or a click, a scroll or a
- * key in it, and you work on your own (onStage.ts `own`); Follow brings you back. Unfollowing takes you back to where you were
- * before you followed.
+ * the workspace's presence, and so does who follows them, which each follower says and only the presenter is told. Everyone
+ * who has it on their stage follows the presenter with the workspace's own Follow (features/workspace/follow.ts): to their page
+ * and their line, from the moment they're somewhere to follow. Unfollow, following someone else, or going anywhere, a click, a
+ * scroll or a key in it, and you work on your own (onStage.ts `own`), whether or not they'd been anywhere yet; Follow brings
+ * you back. Unfollowing takes you back to where you were before you followed. Their going quiet for a moment, as a reload does,
+ * isn't you going your own way: you follow on when they're back.
  *
  * Someone who can't open the workspace is told who's presenting, and nothing else.
  */
@@ -27,6 +29,8 @@ export interface WorkspacePresentation {
   start: () => Promise<void>;
   /** Ends it: for you (everyone following keeps it open, on their own), or for everyone. */
   stop: (close: boolean) => Promise<void>;
+  /** You went your own way in the workspace (`WorkspaceCall.onOwn`): while you follow whoever presents it, you're on your own now. */
+  ownWay: () => void;
 }
 
 export function useWorkspacePresenting({ session, present, ended, participants, onStage, following, together, at, act, say, failed, onOwn, access }: {
@@ -46,7 +50,7 @@ export function useWorkspacePresenting({ session, present, ended, participants, 
   act: { follow: (connection: string) => void; stopFollowing: (how?: StopFollowing) => void; go: (to: WorkspacePlace) => void };
   say: (toast: WsToastData) => void;
   failed: (e: unknown) => void;
-  /** You stopped following it from inside the workspace: a click, a scroll, a key or Escape. */
+  /** You work on your own in it from now: the stage stops following its presenter (onStage.ts `own`). */
   onOwn: () => void;
   /** The call's board is one you can't open, brought by someone here you can ask for it, as its frame asks: read as it's presented. */
   access: () => { who: string; onAsk: () => void } | null;
@@ -59,27 +63,31 @@ export function useWorkspacePresenting({ session, present, ended, participants, 
   const watching = ws !== null && !mine && onStage;
 
   /*
-   * Following: the workspace follows the presenter through presence. It's asked once the workspace knows they're there, and
-   * once it's following, its stopping (a click, a scroll, a key, Escape) is you working on your own.
+   * Following: the workspace follows the presenter through presence, asked whenever they're somewhere to follow and it isn't
+   * already. Anything of your own (`ownWay`), or following someone else, is you working on your own where you are, rather
+   * than going back to where you were.
    */
   const want = watching && following && connection !== null;
-  const engaged = useRef(false);
   const followable = connection !== null && together.followable.includes(connection);
   const followingThem = connection !== null && together.following === connection;
-  const latest = useRef({ act, onOwn, access });
-  latest.current = { act, onOwn, access };
-  useEffect(() => {
-    if (!want || !connection) { engaged.current = false; return; }
-    if (followingThem) { engaged.current = true; return; }
-    // A click, a scroll, a key or Escape in it: you work on your own where you are, rather than go back to where you were.
-    if (engaged.current) { engaged.current = false; before.current = null; latest.current.onOwn(); return; }
-    if (followable) latest.current.act.follow(connection);
-  }, [want, connection, followable, followingThem]);
-
+  const followingOther = together.following !== null && !followingThem;
   /* Where you were before following, so Unfollow takes you back there. */
   const before = useRef<WorkspacePlace | null>(null);
   const atNow = useRef(at);
   atNow.current = at;
+  const latest = useRef({ act, onOwn, access, want });
+  latest.current = { act, onOwn, access, want };
+  const ownWay = useCallback(() => {
+    if (!latest.current.want) return;
+    before.current = null;
+    latest.current.onOwn();
+  }, []);
+  useEffect(() => {
+    if (!want || !connection) return;
+    if (followingOther) ownWay();
+    else if (!followingThem && followable) latest.current.act.follow(connection);
+  }, [want, connection, followable, followingThem, followingOther, ownWay]);
+
   const wasWant = useRef(want);
   useEffect(() => {
     const was = wasWant.current;
@@ -134,5 +142,5 @@ export function useWorkspacePresenting({ session, present, ended, participants, 
     }
   }, [session, failed]);
   const where = connection ? together.where[connection] ?? null : null;
-  return useMemo(() => ({ connection, where, start, stop }), [connection, where, start, stop]);
+  return useMemo(() => ({ connection, where, start, stop, ownWay }), [connection, where, start, stop, ownWay]);
 }

@@ -60,7 +60,7 @@ const tidy = (n: number): number => Math.round(n * 10) / 10;
 const samePoint = (a: BoardPresence['at'], b: BoardPresence['at']): boolean => a?.x === b?.x && a?.y === b?.y;
 
 const samePresence = (a: BoardPresence, b: BoardPresence): boolean =>
-  samePoint(a.at, b.at) && samePoint(a.view, b.view) && a.view?.z === b.view?.z && a.view?.h === b.view?.h && a.edit === b.edit && a.typing === b.typing && sameIds(a.sel, b.sel);
+  samePoint(a.at, b.at) && samePoint(a.view, b.view) && a.view?.z === b.view?.z && a.view?.h === b.view?.h && a.edit === b.edit && a.typing === b.typing && a.withPresenter === b.withPresenter && sameIds(a.sel, b.sel);
 
 const samePointers = (a: readonly BoardPeer[], b: readonly BoardPeer[]): boolean => a.length === b.length && a.every((p, i) => {
   const q = b[i];
@@ -99,6 +99,7 @@ export class BoardPresenceStore {
   private waiting: ReturnType<typeof setTimeout> | undefined;
   private sel: readonly string[] = [];
   private edit: string | null = null;
+  private watching = false;
 
   constructor(board: Board, awareness: Awareness) {
     this.board = board;
@@ -189,10 +190,12 @@ export class BoardPresenceStore {
   };
 
   private boardChanged = (): void => {
-    const { sel, edit } = this.board.getSnapshot();
-    if (sel === this.sel && edit === this.edit) return;
+    const { sel, edit, following, watching } = this.board.getSnapshot();
+    const withPresenter = watching && following !== null;
+    if (sel === this.sel && edit === this.edit && withPresenter === this.watching) return;
     this.sel = sel;
     this.edit = edit;
+    this.watching = withPresenter;
     this.changed();
   };
 
@@ -235,7 +238,8 @@ export class BoardPresenceStore {
       view: view && { x: tidy(view.x), y: tidy(view.y), z: Number(view.z.toPrecision(4)), ...(view.h === undefined ? {} : { h: Number(view.h.toPrecision(4)) }) },
       sel: [...sel],
       edit,
-      typing: this.typing && edit !== null
+      typing: this.typing && edit !== null,
+      withPresenter: this.watching
     };
   }
 

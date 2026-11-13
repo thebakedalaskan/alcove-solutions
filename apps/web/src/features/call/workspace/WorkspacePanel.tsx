@@ -27,7 +27,7 @@ import type { CallView } from '../layout/view';
 
 const wlog = log.child({ component: 'call-workspace' });
 
-const NOBODY_TOGETHER: CallTogether = { followable: [], following: null, writing: [], where: {}, reachable: [] };
+const NOBODY_TOGETHER: CallTogether = { followable: [], following: null, writing: [], where: {}, reachable: [], followers: [] };
 /** How long someone's tile stays lit for being tagged. */
 const LIT_MS = 2600;
 /** How often someone who hasn't opened the workspace in this call looks for tags: once it's open, its stream says. */
@@ -228,7 +228,7 @@ function editing(t: EventTarget | null): boolean {
 const LIVE_ROWS = <LiveRows />;
 
 /** The workspace in its frame, in a call. The call's screen renders far more often than this changes, so nothing here is drawn again unless it has to be. */
-export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, showing, finding, listOff, listPeek, listWanted, live, act, reach, people, invited, presenter, playing, foot, onToggleList, onShowList }: {
+export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, showing, finding, listOff, listPeek, listWanted, live, act, reach, people, invited, presenter, playing, foot, onToggleList, onShowList, onOwn }: {
   workspace: CallWorkspace;
   /** What the call puts at the foot of the list (`WorkspaceCall.foot`). Keep it the same element while it's the same, or the panel draws again. */
   foot: ReactNode;
@@ -257,13 +257,15 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   onToggleList: () => void;
   /** Shows the list, and never hides it. */
   onShowList: () => void;
+  /** You went your own way in it (`WorkspaceCall.onOwn`): presenting.ts hears it. Keep it the same function, or the panel draws again. */
+  onOwn: () => void;
 }) {
   const documents = useMemo(() => workspace.documents.filter((d) => d.workspaceId === workspace.id).map((d) => d.id), [workspace.documents, workspace.id]);
   const call = useMemo((): WorkspaceCall => ({
     top: LIVE_ROWS, foot, live, documents, onBring: act.bring, say: act.say, closed: !showing, people, invited, onTogether: act.setTogether, onTagged: act.tagged, together: reach, finding, onFinding: act.found,
     list: { off: listOff, peek: listPeek, onToggle: onToggleList, onShow: onShowList, wanted: listWanted },
-    presenter, playing
-  }), [ foot, workspace.id, live, documents, act, reach, people, invited, showing, finding, listOff, listPeek, listWanted, onToggleList, onShowList, presenter, playing ]);
+    presenter, playing, onOwn
+  }), [ foot, workspace.id, live, documents, act, reach, people, invited, showing, finding, listOff, listPeek, listWanted, onToggleList, onShowList, presenter, playing, onOwn ]);
   /* In a call the picker says what happens, and nothing else goes to another workspace. */
   const switchNowhere = useCallback(() => undefined, []);
   /*

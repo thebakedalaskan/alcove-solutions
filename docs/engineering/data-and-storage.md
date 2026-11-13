@@ -736,8 +736,12 @@ and this way it runs through the same auth, origin check and tests as everything
   on (Notes, Follow-ups or the Transcript), which anyone else hears of only as `elsewhere`. Only a browser in a call can be on
   its pages: a `page` from anyone else is dropped. Streams work out who's here at most five times a second.
   Whoever moved last comes last, so of someone's windows the one in use can be told from one left open. Following someone
-  is all in the browser, from this: nobody is told, and a document you can't open reaches you only as `elsewhere`, so nothing
-  in the app has its name to show.
+  is the browser's own, from this: a document you can't open reaches you only as `elsewhere`, so nothing in the app has its
+  name to show. A browser says whom it follows beside where it is (`following`, by `person.id`, kept only for a browser in a
+  call), and each reader is told only `followsYou`: true for someone following them, in a call they're both in, and false to
+  everyone else, so nobody learns who follows whom but the person followed. That's what a presenter's bar counts. A notice
+  from an instance a release behind has no `following`, and counts as following nobody. On a board, a browser says only
+  `withPresenter` on its awareness (`@alcove/board`'s `BoardPresence`): whether it follows whoever presents, never whom else.
 - **Who's reading is checked again** at every ping, on the clock, however busy the workspace is, from the session and pass
   the stream came with. For a session it's one indexed read and nothing of the workspace; a pass takes the call's state,
   and only people in a call have one. A session or pass that ended ends it within 25 seconds at most. A notice about the

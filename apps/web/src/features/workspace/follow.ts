@@ -1,8 +1,9 @@
 /*
- * Following someone: going where they go, to the same line, until you choose to stop. It's all in this browser, from who's
- * here: nobody is told, nobody is pulled along, and the person followed does nothing. Somewhere you can't open you stay put,
- * and the stream says only that it's elsewhere, so nothing here can name it. Pressing, scrolling, typing, Esc in the
- * workspace or going somewhere yourself stops it, and a toast picks it back up.
+ * Following someone: going where they go, to the same line, until you choose to stop. It's this browser that goes, from who's
+ * here: nobody is pulled along, and the person followed does nothing. In a call they're told you follow them, and nobody
+ * else is (Workspace.tsx says so with where you are), so whoever presents knows who's still with them. Somewhere you can't
+ * open you stay put, and the stream says only that it's elsewhere, so nothing here can name it. Pressing, scrolling, typing,
+ * Esc in the workspace or going somewhere yourself stops it, and a toast picks it back up.
  */
 import { firstName, type Person } from '@alcove/api';
 import { wsToast, type WsToastData } from '@alcove/ui';
@@ -32,14 +33,17 @@ interface FollowInput {
   say: (toast: WsToastData) => void;
   /** The workspace itself: Esc stops following only from inside it, so a call round it keeps its own Esc (focus, your side). */
   pane: RefObject<HTMLElement | null>;
+  /** You went your own way: any stop you asked for, following anyone or not yet, which a call hears (`WorkspaceCall.onOwn`). */
+  onOwn?: (() => void) | undefined;
 }
 
-export function useFollow({ others, presenter, tree, at, goWith, say, pane }: FollowInput) {
+export function useFollow({ others, presenter, tree, at, goWith, say, pane, onOwn }: FollowInput) {
   const [id, setId] = useState<string | null>(null);
-  /** Their face, for after they've gone. */
-  const known = useRef<Person | null>(null);
+  /** Their face and their connection to the call, for while they're gone: a reload, say. Only ever whoever you follow now. */
+  const known = useRef<{ id: string; person: Person; callIdentity: string | null } | null>(null);
   const someone = id === null ? undefined : others.find((o) => o.person.id === id);
-  if (someone) known.current = someone.person;
+  if (someone) known.current = { id: someone.person.id, person: someone.person, callIdentity: someone.callIdentity };
+  const last = id !== null && known.current?.id === id ? known.current : null;
   const item = someone?.document ? tree.all.get(someone.document) : undefined;
   const target = item && item.kind !== 'folder' ? item.id : null;
   /* Where they are and where you are, each as one key: a document by its ID, or one of the call's own pages. */
@@ -48,12 +52,13 @@ export function useFollow({ others, presenter, tree, at, goWith, say, pane }: Fo
   const here = at.kind === 'document' ? at.id : at.kind === 'live' ? `$${at.page}` : null;
 
   const follow = useCallback((person: string) => setId(person), []);
-  const quiet = someone !== undefined && presenter !== null && someone.callIdentity === presenter;
-  const latest = useRef({ id, say, quiet });
-  latest.current = { id, say, quiet };
+  const quiet = last !== null && presenter !== null && last.callIdentity === presenter;
+  const latest = useRef({ id, say, quiet, onOwn });
+  latest.current = { id, say, quiet, onOwn };
   const stop = useCallback((how: StopFollowing = 'asked') => {
-    const { id: was, say: tell, quiet: hush } = latest.current;
-    const person = known.current;
+    const { id: was, say: tell, quiet: hush, onOwn: own } = latest.current;
+    const person = known.current?.id === was ? known.current.person : null;
+    if (how === 'asked') own?.();
     if (was === null) return;
     setId(null);
     if (how === 'asked' && person && !hush) tell(wsToast.stoppedFollowing(firstName(person.name), () => setId(was)));
@@ -84,7 +89,7 @@ export function useFollow({ others, presenter, tree, at, goWith, say, pane }: Fo
     return () => removeEventListener('keydown', keys, true);
   }, [id, stop, pane]);
 
-  const person = someone?.person ?? known.current;
+  const person = last?.person ?? null;
   const lost = someone?.elsewhere === true;
   const following: Following | null = id === null || !person ? null : {
     person, name: firstName(person.name), lost,

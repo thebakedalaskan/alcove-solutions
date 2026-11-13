@@ -34,7 +34,7 @@ import { ScriptedDirectMessages } from './direct-messages';
 import { ScriptedNotifications } from './notifications';
 import { captureOf, defaultScript, linkState, modelIsPrivate, part, scriptFor, type Beat, type CallScript, type HeardIdea, type Line, type Present, type RoomPlan } from './script';
 import { current, me as you, nextId } from './state';
-import { boardDoc, createItem, hereIn, moveItem, onTheBoard, peopleIn, removeWorkspace, restrict, tagYou, trashItem, treeOf } from './workspaces';
+import { boardDoc, createItem, hereIn, moveItem, onTheBoard, onYourMoves, peopleIn, removeWorkspace, restrict, tagYou, trashItem, treeOf, yourPlaceIn, type OnTheBoard } from './workspaces';
 
 /** A connection's identity in a call: `p_` and 22 characters, as LiveKit's are. */
 const identity = (seed: string) => `p_${seed.replace(/[^A-Za-z0-9]/g, '').padEnd(22, 'x').slice(-22)}`;
@@ -322,6 +322,8 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       case 'host-back': this.hostBack(); return;
       case 'goes-to': {
         const p = this.find(b.who);
+        // Going somewhere while you present the workspace is going their own way: they don't follow you any more.
+        if (p && this.youPresentTheWorkspace()) this.ownWay.add(p.id);
         if (p) { this.where.set(p.id, { document: b.document, typing: b.typing ?? false, page: b.page ?? null }); this.sayWhere(); }
         return;
       }
@@ -682,6 +684,9 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   private startsHere(place: string, p: Presented): void {
     this.presented.set(place, p);
     this.ended.delete(place);
+    if (p.kind === 'workspace' && this.isMine(p)) this.ownWay.clear();
+    this.sayWhere();
+    this.sayWhoIsOn();
   }
   /**
    * What's presented in a part of the call ends for good, said there at once, as the server says it (`ended`): for whoever
@@ -691,7 +696,11 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   private endIt(place: string, p: Presented, close: boolean): void {
     this.presented.delete(place);
     this.ended.set(place, { key: p.key, close, by: p.by });
+    this.sayWhere();
+    this.sayWhoIsOn();
   }
+  /** You present the workspace now. */
+  private youPresentTheWorkspace(): boolean { return [...this.presented.values()].some((p) => p.kind === 'workspace' && this.isMine(p)); }
   /**
    * What's presented in a part of the call ends as `by` ends it, its presenter or the organizer: for whoever presented it, which
    * only they choose, or for everyone (`close`). So a presenter whose presentation closed for everyone without them knows it was
@@ -752,11 +761,16 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     const at = this.hereAt();
     if (!at) return;
     const shown = this.presentersView(at);
-    onTheBoard(at.documentId, this.getSnapshot().participants.flatMap((p) => {
+    // While you present the board, everyone else on it follows you, and says so.
+    const now = this.presented.get(this.crypto.getSnapshot().place);
+    const withYou = now?.kind === 'board' && this.isMine(now);
+    const place = this.whereIs(this.getSnapshot().participants.find((p) => p.isMe)?.id ?? '');
+    onTheBoard(at.documentId, this.getSnapshot().participants.flatMap((p, i): OnTheBoard[] => {
       if (p.isMe) return [];
       if (shown && p.seat === shown.seat) return [{ callIdentity: p.id, person: p.person, at: shown.at, view: shown.view }];
-      const point = this.onIt.get(p.id);
-      return point ? [{ callIdentity: p.id, person: p.person, at: point }] : [];
+      // Following you, they're on it whether or not they've pointed at anything yet: their pointers rest along its foot.
+      const point = this.onIt.get(p.id) ?? (withYou && this.whereIs(p.id) === place ? { x: 160 + i * 140, y: 620 } : undefined);
+      return point ? [{ callIdentity: p.id, person: p.person, at: point, withPresenter: withYou }] : [];
     }));
   }
   /**
@@ -1146,6 +1160,10 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
 
   /** Where everyone else is in the call's workspace, by their connection: what its stream says of them, the call's own pages included. */
   private where = new Map<string, { document: string | null; typing: boolean; page: CallPage | null }>();
+  /** Who went their own way while you present the workspace. */
+  private readonly ownWay = new Set<string>();
+  /** You moved in the workspace you present: whoever follows you goes with you. */
+  private readonly stopYourMoves = onYourMoves((id) => { if (id === this.getSnapshot().workspace.id && this.youPresentTheWorkspace()) this.sayWhere(); });
   /** The call's home, once it's settled. */
   private homeId: string | null = null;
   private followWatchers = 0;
@@ -1227,10 +1245,16 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   private sayWhere(): void {
     const id = this.getSnapshot().workspace.id;
     if (id === null) return;
+    // While you present it, everyone else in your part of the call is where you are, following you, until they go their own way.
+    const presenting = this.youPresentTheWorkspace();
+    const yours = presenting ? yourPlaceIn(id) : null;
+    const mine = this.whereIs(this.getSnapshot().participants.find((p) => p.isMe)?.id ?? '');
     const here = this.getSnapshot().participants.flatMap((p): WorkspaceHere[] => {
-      const at = this.where.get(p.id);
-      if (p.isMe || !at) return [];
-      return [{ person: p.person, connection: `c_${p.id}`, callIdentity: p.id, document: at.document, block: null, typing: at.typing, page: at.page, elsewhere: false, isMe: false }];
+      if (p.isMe) return [];
+      const withYou = presenting && !this.ownWay.has(p.id) && this.whereIs(p.id) === mine;
+      const at = withYou ? { document: yours?.document ?? null, typing: false, page: yours?.page ?? null } : this.where.get(p.id);
+      if (!at) return [];
+      return [{ person: p.person, connection: `c_${p.id}`, callIdentity: p.id, document: at.document, block: null, typing: at.typing, page: at.page, elsewhere: false, followsYou: withYou, isMe: false }];
     });
     hereIn(id, here);
   }
@@ -1967,6 +1991,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     return Promise.resolve();
   }
   close(): void {
+    this.stopYourMoves();
     this.notifications.close();
     this.direct.close();
     this.halt();

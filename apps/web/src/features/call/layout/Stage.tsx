@@ -512,7 +512,13 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
                       )}
                     </div>
                   )}
-                  {following && !mode && <span className="ic-ton"><Icon name="navigate" size={12} />Following</span>}
+                  {following && !mode && (
+                    <Tooltip label={`Stop following ${callName(p.person)}`}>
+                      <button type="button" className="ic-ton" aria-label={`Stop following ${callName(p.person)}`} onClick={() => together.onStop()}>
+                        <Icon name="navigate" size={12} /><span>Following</span><Icon name="x" size={12} className="tx" />
+                      </button>
+                    </Tooltip>
+                  )}
                   {!following && !mode && !corner && together.followable.includes(p.id) && (
                     <button type="button" className="ic-tfl" tabIndex={-1} aria-label={`Follow ${callName(p.person)}`} onClick={() => together.onFollow(p.id)}><Icon name="navigate" size={13} /><span>Follow</span></button>
                   )}

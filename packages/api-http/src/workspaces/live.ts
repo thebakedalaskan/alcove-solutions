@@ -19,7 +19,7 @@ const PRESENCE_WAIT_MS = 100;
 /** In Node (tests), timers mustn't keep the process alive. */
 export const unref = (t: unknown) => { if (t && typeof t === 'object' && 'unref' in t && typeof t.unref === 'function') t.unref(); };
 
-const NOWHERE: WorkspaceWhere = { document: null, block: null, typing: false, page: null };
+const NOWHERE: WorkspaceWhere = { document: null, block: null, typing: false, page: null, following: null };
 
 /** A name this browser makes up, for its connection in `here` or for a stream: 22 characters of base64url. */
 export const newName = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -135,12 +135,12 @@ export class HttpWorkspaceLive implements WorkspaceLive {
     this.saying = undefined;
     clearInterval(this.beat);
   }
-  /** Best effort: the next beat says it again. Somewhere this reader can't open now, they're simply here. */
+  /** Best effort: the next beat says it again. Somewhere this reader can't open now, they're simply here, following whoever they were. */
   private say() {
     const where = this.where;
     this.said = true;
     this.tell({ connection: this.name, ...where }, false).catch((e: unknown) => {
-      if (errorCode(e) === 'not-found' && where.document !== null && this.where === where) this.present(NOWHERE);
+      if (errorCode(e) === 'not-found' && where.document !== null && this.where === where) this.present({ ...NOWHERE, following: where.following });
     });
   }
 

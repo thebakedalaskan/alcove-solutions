@@ -14,7 +14,7 @@
 import type { Meta } from '@storybook/react-vite';
 import { screen, waitFor, within } from 'storybook/test';
 import {
-  at, chats, closesPresenting, line, movesPresenting, movesToRoom, presentsBoard, presentsWorkspace, reloads, shares, stopsPresenting, stopsShare, type CallScript, type Cue, type Line,
+  at, chats, closesPresenting, goesTo, line, movesPresenting, movesToRoom, presentsBoard, presentsWorkspace, reloads, shares, stopsPresenting, stopsShare, type CallScript, type Cue, type Line,
   type Present
 } from '../../src/api/script';
 import { inCall, light, narrow, phone, plays, reach, type InCall, type StoryCall } from '../../src/call';
@@ -25,7 +25,7 @@ import {
   LATER, SOON, boardPicker, close, closeFor, frameMenu, frameOf, onTheBar, pickBoard, present, settle, shareATab, shareKind, shareMenu, sideAway, startingWith,
   tileOf, toldThat, toldThenGone, type Context, type Play
 } from './plays';
-import { AIKO, ART, CHECKLIST, EMPTY_STATES, KOFI, LAUNCH_REVIEW, PLAN, PRIYA, SAM } from './talk';
+import { AIKO, ART, CHECKLIST, CHECKLIST_DOC, EMPTY_STATES, KOFI, LAUNCH_REVIEW, PLAN, PRIYA, SAM } from './talk';
 
 const meta = { title: 'Calls/The call, rethought', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -125,6 +125,13 @@ export const WorkspaceOpenJustForYouPhone: PageStory = { ...phone(WorkspaceOpenJ
 export const WorkspaceOnLaunchPlan: PageStory = { ...moment(yours(), openWorkspace, toThePlan), name: 'Workspace open on Launch plan' };
 /** Present: everyone follows you, live, and anyone can unfollow to write alongside you. */
 export const YouPresentTheWorkspace: PageStory = { ...moment(yours(), openWorkspace, toThePlan, presentWorkspace, followsYou), name: 'You present the workspace' };
+/** Kofi goes off to the launch checklist on his own: your bar counts only who's still following you. */
+export const KofiGoesHisOwnWay: PageStory = {
+  ...moment(yours({ cues: at(24, goesTo(KOFI, CHECKLIST_DOC)) }), openWorkspace, toThePlan, presentWorkspace,
+    step('All three follow you', () => toldThat('You’re presenting · 3 following')),
+    step('Kofi opens the launch checklist himself: he’s on his own, and your bar says so', () => toldThat('You’re presenting · 2 following'))),
+  name: 'Someone goes their own way while you present'
+};
 /** On a phone, Present is on its bar too. */
 export const YouPresentTheWorkspacePhone: PageStory = {
   ...moment(yours(), openWorkspace, presentWorkspace, followsYou), name: 'You present the workspace, on a phone', globals: PHONE
@@ -283,6 +290,12 @@ const unfollow = step('Press Unfollow on its bar, then Launch checklist: you wor
   const [row] = await within(await frameOf(WS)).findAllByRole('button', { name: /^Launch checklist/ }, SOON);
   if (row) await c.userEvent.click(row);
 });
+/** Pressing another document yourself, with no Unfollow first, is working on your own all the same. */
+const ownWay = step('Press Launch checklist in the list: you’re on your own, and its bar offers Follow Priya', async (c) => {
+  const [row] = await within(await frameOf(WS)).findAllByRole('button', { name: /^Launch checklist/ }, LATER);
+  if (row) await c.userEvent.click(row);
+  await within(await frameOf(WS)).findByRole('button', { name: /^Follow Priya/ }, SOON);
+});
 const followAgain = step('Press Follow Priya, on its bar: you’re back where she is', async (c) => {
   await c.userEvent.click(await within(await frameOf(WS)).findByRole('button', { name: /^Follow Priya/ }, SOON));
 });
@@ -295,6 +308,8 @@ export const PriyaPresentsTheWorkspace: PageStory = { ...moment(priyaWs, followi
 export const PriyaPresentsTheWorkspacePhone: PageStory = { ...phone(PriyaPresentsTheWorkspace), name: 'Priya presents the workspace, on a phone' };
 /** Unfollow: you're on your own in the same workspace, in another document. Follow Priya says where she is. */
 export const UnfollowPriya: PageStory = { ...moment(priyaWs, followingPriya, unfollow), name: 'Unfollow Priya' };
+/** Going your own way, without Unfollow: its bar says you're on your own, with Follow Priya. */
+export const YourOwnWayWhilePriyaPresents: PageStory = { ...moment(priyaWs, followingPriya, ownWay), name: 'Your own way, while Priya presents' };
 /** Follow Priya: you're back where she is. */
 export const FollowPriyaAgain: PageStory = { ...moment(priyaWs, followingPriya, unfollow, followAgain), name: 'Follow Priya again' };
 /** Close: it's closed for you, and while Priya presents it, it has a tile with the people. */

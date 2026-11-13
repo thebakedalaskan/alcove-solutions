@@ -681,6 +681,8 @@ time, slides in on the right.
     workspace, where you were before you followed; on a board, as you left it. A click, scroll or keystroke in the
     workspace, or a scroll, drag or pinch on a board, works on your own too, from where you are. The bar then says where
     they are ("Priya is in Launch plan") with **Follow Priya**, which takes you back. A screen can't be unfollowed.
+    Following someone from their tile says **Following ×** there, and pressing it stops: "Stopped following Priya", with
+    **Follow again**. The line round the workspace that says you're following sits inside its edge, all the way round.
   - **Close is for you.** On something open just for you, **Close** closes it. On someone else's presentation, it closes
     it for you: "Closed for you. While Priya presents, its tile takes you back." While you present a board or the
     workspace, Close asks first: **For you** ("You stop presenting. Everyone else keeps it open, on their own.", and
@@ -1210,11 +1212,12 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    workspace (Share says "Priya is presenting. You can present once they stop."). Everyone in your part of the call who
    isn't watching another presentation follows you, live, to the page and the line you're on, through the same Follow as
    working together, and you're told "Everyone follows you in the workspace. They can unfollow to work alongside you." The
-   bar says how many follow ("You’re presenting · 3 following").
+   bar says how many follow you now ("You’re presenting · 3 following"), as each of them says: anyone who unfollows or goes
+   their own way drops out of it at once, and with nobody left it says "You’re presenting · nobody following".
    - **Everyone else** finds it on their stage, unless they're watching another presentation, when it comes in as a tile
      with **Show it**. The bar says "Priya is presenting" and "Following Priya". **Unfollow** gives them their own place
-     back, where they were before they followed, and a click, scroll or keystroke in it leaves them where they are, on their
-     own: to open another document and write alongside Priya, with her face showing where she is. **Follow Priya** ("Priya
+     back, where they were before they followed, and a click, scroll or keystroke in it, on a document or the call's own
+     pages, or following someone else, leaves them where they are, on their own, even before Priya has opened anything: to open another document and write alongside Priya, with her face showing where she is. **Follow Priya** ("Priya
      is in Launch plan") takes them back to her page and line. **Close** closes it for them: while Priya presents it's a
      tile among the people, saying where she is, and **Join** takes them back in, following.
    - **Ending it.** While you present, **Close** (or the lit **Workspace**, or **W**) asks: **For you** ("You stop
@@ -1359,7 +1362,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    here. The frame's bar has no Present on a phone, where **Share › A board** presents one. A saved board comes into the call
    first (step 3).
    - **Whoever presents** is told "Everyone follows you on Launch retro. They can add to it as you go.", and the bar says
-     "You’re presenting · 3 following". The board glides to its first frame as it starts, and from there it's yours to move
+     "You’re presenting · 3 following", counting only whoever's still following. The board glides to its first frame as it starts, and from there it's yours to move
      round: drag, scroll, zoom and **Show the whole board** as ever, add to it, start a vote (step 8), and everyone following
      sees all of what you see, whatever's outside the frames and the lines between them included, whatever the shape of their
      screen: a wider or taller one shows more round it, never less of it. At its foot, for you alone, the pager steps through

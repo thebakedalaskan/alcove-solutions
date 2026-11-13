@@ -15,7 +15,7 @@ import {
   AlcoveApiError, DOC_SEED, randomClient, servedType, type DocSession, type DocSize, type DocStatus, type DocUnsentCopy, type DocVersion, type DocVersionSummary,
   type DocumentRole, type DocumentShare, type ItemInput, type ItemPlace, type MediaPictureOptions, type MediaUploadOptions, type MentionBody, type MentionNotice, type Person,
   type SearchDoc, type ShareEntry, type ShareTarget, type WorkspaceItem, type WorkspaceLive, type WorkspaceMedia, type WorkspaceMention, type WorkspacePerson,
-  type WorkspaceHere, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type WorkspaceView, type WorkspaceReadOptions, type WorkspaceWhere
+  type CallPage, type WorkspaceHere, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type WorkspaceView, type WorkspaceReadOptions, type WorkspaceWhere
 } from '@alcove/api';
 import { itemsOnPage, newBlockId } from '@alcove/api/retire';
 import { NO_PRESENCE } from '@alcove/board';
@@ -213,15 +213,25 @@ export function hereIn(id: string, here: WorkspaceHere[]): void {
 }
 
 const watching = new Set<LiveWorkspace>();
+
+/** Where you are in each workspace, as this browser last said: whoever follows you in a call (src/api/call.ts) is there too. */
+const yours = new Map<string, { document: string | null; page: CallPage | null }>();
+const yourMoves = new Set<(id: string) => void>();
+export const yourPlaceIn = (id: string): { document: string | null; page: CallPage | null } | null => yours.get(id) ?? null;
+/** Hears you go somewhere else in a workspace. Returns how to stop. */
+export function onYourMoves(heard: (id: string) => void): () => void {
+  yourMoves.add(heard);
+  return () => { yourMoves.delete(heard); };
+}
 /**
  * Who's in a workspace now, as the server tells it: you, whoever the world has on its boards, each on one connection with the
  * board they have open, and whoever a call says is here.
  */
 function hereNow(id: string): WorkspaceHere[] {
-  const you: WorkspaceHere = { person: me(), connection: 'standin-you', callIdentity: null, document: null, block: null, typing: false, page: null, elsewhere: false, isMe: true };
+  const you: WorkspaceHere = { person: me(), connection: 'standin-you', callIdentity: null, document: null, block: null, typing: false, page: null, elsewhere: false, followsYou: false, isMe: true };
   const open = treeOf(id).items.filter((i) => i.kind !== 'folder' && i.trashedAt === null);
   const on = (i: WorkspaceItem, who: Person, typing: boolean): WorkspaceHere => ({
-    person: who, connection: `standin-${i.id}-${who.id}`, callIdentity: null, document: i.id, block: null, typing, page: null, elsewhere: false, isMe: false
+    person: who, connection: `standin-${i.id}-${who.id}`, callIdentity: null, document: i.id, block: null, typing, page: null, elsewhere: false, followsYou: false, isMe: false
   });
   return [you, ...open.flatMap((i) => [...(current().boards[i.id]?.here ?? []).map(({ who }) => on(i, who, false)), ...(current().pages[i.id]?.here ?? []).map(({ who }) => on(i, who, true))]), ...(presence.get(id) ?? [])];
 }
@@ -244,7 +254,13 @@ class LiveWorkspace extends Pushed<WorkspaceView> implements WorkspaceLive {
   /** Shown again: nothing here is ever under way, so a stream that's down is only waiting, and tries now, as Try now does. */
   wake = (): void => { this.retry(); };
   refresh(id: string): void { if (id === this.id) this.update((v) => ({ ...v, tree: structuredClone(treeFor(id)), here: hereNow(id), mentions: mentionsIn(id) })); }
-  present(_where: WorkspaceWhere): void { /* Nobody else is here to see where you are. */ }
+  /** Only where you are counts here: a line or whom you follow changes nothing anyone in the stand-in does. */
+  present(where: WorkspaceWhere): void {
+    const was = yours.get(this.id);
+    if (was && was.document === where.document && was.page === where.page) return;
+    yours.set(this.id, { document: where.document, page: where.page });
+    for (const heard of yourMoves) heard(this.id);
+  }
   async seen(mentionId: string): Promise<void> {
     await pause(60);
     seeMention(mentionId);
@@ -444,7 +460,7 @@ function statusOf(item: WorkspaceItem): DocStatus {
 
 /** Someone else on a board in a call: their connection to the call, who they are, where their pointer is, and whether they're typing. */
 /** Someone on a board in a call: their pointer, and their view where it isn't round their pointer, as whoever presents it has. */
-export interface OnTheBoard { callIdentity: string; person: Person; at: { x: number; y: number }; typing?: boolean | undefined; view?: { x: number; y: number; z: number; h?: number | undefined } | undefined }
+export interface OnTheBoard { callIdentity: string; person: Person; at: { x: number; y: number }; typing?: boolean | undefined; view?: { x: number; y: number; z: number; h?: number | undefined } | undefined; withPresenter?: boolean | undefined }
 /** Who's on each board, by its ID, as the call that has it open puts them there. */
 const onBoards = new Map<string, readonly OnTheBoard[]>();
 /** Each open session of a board, told when that changes. */
@@ -467,9 +483,9 @@ const DRIFT_MS = 3_500;
  */
 function othersOn(item: WorkspaceItem, awareness: Awareness): () => void {
   const documentId = item.id;
-  const placed = (current().boards[documentId]?.here ?? []).map(({ who, x, y }) => ({ key: `world:${who.id}`, user: { id: who.id, name: who.name }, at: { x, y }, typing: false, view: null }));
+  const placed = (current().boards[documentId]?.here ?? []).map(({ who, x, y }) => ({ key: `world:${who.id}`, user: { id: who.id, name: who.name }, at: { x, y }, typing: false, view: null, withPresenter: false }));
   const inCall = (people: readonly OnTheBoard[]) => people.map((p) => ({
-    key: p.callIdentity, user: { id: p.person.id, name: p.person.name, callIdentity: p.callIdentity }, at: p.at, typing: p.typing ?? false, view: p.view ?? null
+    key: p.callIdentity, user: { id: p.person.id, name: p.person.name, callIdentity: p.callIdentity }, at: p.at, typing: p.typing ?? false, view: p.view ?? null, withPresenter: p.withPresenter ?? false
   }));
   let everyone = [...placed, ...inCall(onBoards.get(documentId) ?? [])];
   const theirs = new Map<string, Awareness>();
@@ -487,7 +503,7 @@ function othersOn(item: WorkspaceItem, awareness: Awareness): () => void {
       theirs.set(p.key, a);
       const d = ((beat + i) % 3) * 6;
       const at = { x: p.at.x + d, y: p.at.y + d / 2 };
-      a.setLocalState({ ...NO_PRESENCE, at, view: p.view ?? { x: at.x, y: at.y, z: 1 }, typing: p.typing, user: p.user });
+      a.setLocalState({ ...NO_PRESENCE, at, view: p.view ?? { x: at.x, y: at.y, z: 1 }, typing: p.typing, withPresenter: p.withPresenter, user: p.user });
       applyAwarenessUpdate(awareness, encodeAwarenessUpdate(a, [a.clientID]), 'standin');
     });
     beat += 1;

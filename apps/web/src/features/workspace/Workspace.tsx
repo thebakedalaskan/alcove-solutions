@@ -3,7 +3,7 @@
  * call and a panel inside one, the same in both: it takes where it is and says where to go, and whatever holds it keeps the
  * address. See WorkspaceProps in context.ts.
  */
-import { errorMessage, firstName, type WorkspaceLive, type WorkspaceMention, type WorkspaceTree, type WorkspaceWhere } from '@alcove/api';
+import { errorMessage, firstName, type WorkspaceLive, type WorkspaceMention, type WorkspaceTree } from '@alcove/api';
 import { Button, WsCantOpen, WsDoc, WsDragGhost, WsEmpty, WsFrame, WsOfflineEmpty, WsPane, WsPickDocument, WsToasts, useToast, wsToast, type WsToastData } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
@@ -18,7 +18,7 @@ import { announceMentionsRead } from '~/features/shell/attentionChannel';
 import { useTreeActions } from './actions';
 import { BoardPane } from './BoardPane';
 import { useLaidOver } from './changes';
-import { WsContext, type FolderDraft, type OpenPage, type Ws, type WorkspacePlace, type WorkspaceProps } from './context';
+import { WsContext, type FolderDraft, type OpenPage, type SaidPlace, type Ws, type WorkspacePlace, type WorkspaceProps } from './context';
 import { DocumentPane } from './DocumentPane';
 import { keptDocuments } from './keep';
 import { KeptHere } from './Rescue';
@@ -224,7 +224,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, onExpand,
   const others = useMemo(() => othersIn(view.here), [view.here]);
   const goWith = useCallback((to: WorkspacePlace) => { setPhoneList(false); onGo(to, { replace: true }); }, [onGo]);
   const pane = useRef<HTMLElement>(null);
-  const { following, follow, stopFollowing } = useFollow({ others, presenter: call?.presenter ?? null, tree, at, goWith, say, pane });
+  const { following, follow, stopFollowing } = useFollow({ others, presenter: call?.presenter ?? null, tree, at, goWith, say, pane, onOwn: call?.onOwn });
   /*
    * Going anywhere puts a phone's list away, even to what's already open behind it, and going yourself stops following. Full
    * screen, a workspace's Home is a page like any other, so going there puts the list away too.
@@ -321,10 +321,15 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, onExpand,
   placedNow.current = placed;
   const where = JSON.stringify(placed);
   const reachable = closed ? '' : others.flatMap((o) => (o.callIdentity !== null && o.document !== null && tree.all.has(o.document) ? [o.callIdentity] : [])).join(' ');
+  /* Who follows you, as each says from any of their windows: whoever presents counts them. */
+  const followers = [...new Set(view.here.flatMap((h) => (h.followsYou && !h.isMe && h.callIdentity !== null ? [h.callIdentity] : [])))].join(' ');
   const tellTiles = call?.onTogether;
   useEffect(() => {
-    tellTiles?.({ followable: followable ? followable.split(' ') : [], following: followingIn, writing: writing ? writing.split(' ') : [], where: Object.fromEntries(placedNow.current), reachable: reachable ? reachable.split(' ') : [] });
-  }, [tellTiles, followable, followingIn, writing, where, reachable]);
+    tellTiles?.({
+      followable: followable ? followable.split(' ') : [], following: followingIn, writing: writing ? writing.split(' ') : [], where: Object.fromEntries(placedNow.current),
+      reachable: reachable ? reachable.split(' ') : [], followers: followers ? followers.split(' ') : []
+    });
+  }, [tellTiles, followable, followingIn, writing, where, reachable, followers]);
   const othersNow = useRef(others);
   othersNow.current = others;
   const treeNow = useRef(tree);
@@ -351,12 +356,27 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, onExpand,
   const leaving = call?.leaving ?? false;
   useEffect(() => { if (closed) stopFollowing(leaving ? 'moved' : 'quiet'); }, [closed, leaving, stopFollowing]);
 
-  /* Everyone can see you're in a document from the moment it's open, and that you've left once it's out of sight. The editor says which line. */
+  /*
+   * Everyone can see you're in a document from the moment it's open, and that you've left once it's out of sight. The editor
+   * says which line. Whom you follow goes with it, so they know you're with them; saying so again keeps the line last said.
+   */
   const livePage = at.kind === 'live' ? at.page : null;
-  useEffect(() => { store.present({ document: closed ? null : documentId, block: null, typing: false, page: closed ? null : livePage }); }, [store, documentId, livePage, closed]);
+  const followingId = closed ? null : following?.person.id ?? null;
+  const followingNow = useRef(followingId);
+  followingNow.current = followingId;
+  const saidPlace = useRef<SaidPlace>({ document: null, block: null, typing: false, page: null });
+  useEffect(() => {
+    saidPlace.current = { document: closed ? null : documentId, block: null, typing: false, page: closed ? null : livePage };
+    store.present({ ...saidPlace.current, following: followingNow.current });
+  }, [store, documentId, livePage, closed]);
+  useEffect(() => { store.present({ ...saidPlace.current, following: followingId }); }, [store, followingId]);
   const closedNow = useRef(closed);
   closedNow.current = closed;
-  const present = useCallback((where: WorkspaceWhere) => { if (!closedNow.current) store.present(where); }, [store]);
+  const present = useCallback((where: SaidPlace) => {
+    if (closedNow.current) return;
+    saidPlace.current = where;
+    store.present({ ...where, following: followingNow.current });
+  }, [store]);
 
   /* A document just made is only opening while it's the one open. */
   useEffect(() => { if (justMade.current !== null && justMade.current !== documentId) justMade.current = null; }, [documentId]);
