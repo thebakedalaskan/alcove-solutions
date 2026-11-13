@@ -69,7 +69,7 @@ export function peopleOn(a: Ahead, me: string | undefined): Person[] {
 
 /**
  * A calendar event with nobody else on it: your own time, not a call. Upcoming counts these at its foot and lists them,
- * quieter, only when you ask (Show events with only me on Home).
+ * quieter, only when you ask (Show my own events on Home); Calls' list and week leave them out.
  */
 export const isSolo = (a: Ahead, me: string | undefined) => a.kind === 'event' && peopleOn(a, me).length === 0;
 

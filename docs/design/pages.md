@@ -136,8 +136,9 @@ Home is for starting a call and for what's yours. It's nearly all sky.
       `ink-3`, the hatch, the title in `ink-2`, no faces and nothing at the end. Eight rows come before Show N more then.
     - **Nothing to list** says why, over the small drawing of a week: a week of hatched blocks, "No meetings with other
       people in the next 7 days", how many events with only you aren't shown, and Show them; days with nothing in
-      them, "Nothing on your calendar in the next 7 days" and "Calls you schedule show up here."; or, with no calendar
-      to read, "No calls in the next 7 days".
+      them, "No calls or meetings in the next 7 days" and "Calls you schedule show up here." (not "nothing on your
+      calendar": all-day events, and Google's focus time and out of office, aren't read as meetings); or, with no
+      calendar to read, "No calls in the next 7 days".
     - **Not connected** and with nothing to show, the body is a small drawing of a week (three days, tinted blocks), See
       what's coming up and one line, Connect Google Calendar (a line button with the calendar mark), and under it, small
       in `ink-3`, what Alcove does with the calendar. With calls to show, the connect is a row at the widget's foot
@@ -536,8 +537,9 @@ The last of the light, with you in it, then seven groups. Change one thing and l
   tick (inside Alcove, and from the browser when Alcove is in another tab) and a Sound tick, empty where that way doesn't
   apply. With sounds off, the Sound column steps back and keeps its ticks. The call's own Settings shows the same pieces
   with the In a call rows.
-- **What you set up once folds away.** Connections holds Google Calendar (its two switches nested under it) and Google
-  Drive in one panel, and Agents in its own. Drive is one line that says where notes go until Manage opens its folder,
+- **What you set up once folds away.** Connections holds Google Calendar (its switches nested under it, Show my own events
+  on Home only while Show my other meetings on Home is on) and Google Drive in one panel, and Agents in its own. Drive is
+  one line that says where notes go until Manage opens its folder,
   files, recent exports and Disconnect in place. Agents is one row, since agents are connected and changed on a page of
   their own: the agent tile, who's connected (or what agents are for, while none is), and Open Agents →, or Connect an
   agent → while none is. On a phone it's the way to Agents.

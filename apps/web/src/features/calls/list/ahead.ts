@@ -5,7 +5,7 @@
  * each, and how the people invited have answered.
  */
 import type { CalendarEvent, Meeting, Person, Rsvp } from '@alcove/api';
-import { aheadOf, isOffered, peopleOn, seriesIdOf, type Ahead } from '~/features/home/day';
+import { aheadOf, isOffered, isSolo, peopleOn, seriesIdOf, type Ahead } from '~/features/home/day';
 import { repeatLineHere } from '~/features/calls/scheduling/words';
 import { byEmail, callName, sameEmail } from '~/lib/people';
 import { daysFromToday, hm, hoursAndMinutes, shortDay, weekday } from '~/lib/time';
@@ -15,7 +15,7 @@ export type { Ahead };
 
 /** What Calls lists ahead: every Alcove call, and the calendar's meetings with someone else on them. */
 export const listedAhead = (calls: readonly Meeting[], events: readonly CalendarEvent[], me: string | undefined, now: number): Ahead[] =>
-  aheadOf(calls, events, now).filter((a) => a.kind === 'call' || peopleOn(a, me).length > 0);
+  aheadOf(calls, events, now).filter((a) => !isSolo(a, me));
 
 /** A call offering a guest times: it waits for them to pick one, and has no day yet. */
 export const waitsForTime = (a: Ahead): a is Extract<Ahead, { kind: 'call' }> => isOffered(a);

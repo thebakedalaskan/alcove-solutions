@@ -1,6 +1,6 @@
 /*
- * Google Calendar, first in Connections: the connection on one row, and, once there's a calendar, its two switches nested
- * under it. Connect goes straight to Google, which asks for access; Google sends you back here with `?calendar=` saying
+ * Google Calendar, first in Connections: the connection on one row, and, once there's a calendar, its switches nested under
+ * it (Show my own events on Home only while Show my other meetings on Home is on). Connect goes straight to Google, which asks for access; Google sends you back here with `?calendar=` saying
  * how it went, which the row says under it.
  */
 import { errorMessage, type CalendarConnectResult, type Preferences } from '@alcove/api';
@@ -69,7 +69,7 @@ export function GoogleCalendar({ prefs, result }: { prefs: Preferences | undefin
           <SwitchSetting sub label="Show my other meetings on Home" checked={prefs.showOtherMeetings} onChange={(on) => save('Show my other meetings on Home', { showOtherMeetings: on })} />
           {/* Upcoming's own count does the same: these are among the other meetings, so they come and go with them. */}
           {prefs.showOtherMeetings && (
-            <SwitchSetting sub label="Show my own events on Home" help="Events with nobody else on them, such as a focus block."
+            <SwitchSetting sub label="Show my own events on Home" help="Events with nobody else on them, in their days under your calls and meetings."
               checked={prefs.showSoloEvents} onChange={(on) => save('Show my own events on Home', { showSoloEvents: on })} />
           )}
         </>

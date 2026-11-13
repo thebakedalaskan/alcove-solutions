@@ -157,7 +157,7 @@ export const OnlyOwnEventsPhone = phone(OnlyOwnEvents);
 /** That week, shown: Art's own time in its days, quietly, then Show 4 more, and the count at the foot to hide it again. */
 export const OnlyOwnEventsShown = page('/home', 'busy', { beforeEach: changing(onlyOwnEvents, ownEventsShown) });
 export const OnlyOwnEventsShownNight = { ...OnlyOwnEventsShown, globals: NIGHT };
-/** No calls ahead and nothing on the calendar in the next 7 days: Upcoming says the calendar is clear. */
+/** No calls ahead and nothing on the calendar in the next 7 days: Upcoming says there are no calls or meetings. */
 export const NothingOnTheCalendar = page('/home', 'busy', { beforeEach: changing(clearWeek) });
 export const NothingOnTheCalendarNight = { ...NothingOnTheCalendar, globals: NIGHT };
 

@@ -1,7 +1,7 @@
 /*
  * Art's calls and calendar on the demo day, as the canvas's Home and Team boards tell them: the afternoon of a busy
- * Wednesday (a design sync at 17:30 with Priya and Kofi), the same morning a few minutes before the design review, and his
- * calendar on his first day, once it's connected. All made up.
+ * Wednesday (a design sync at 17:30 with Priya and Kofi), the same morning a few minutes before the design review, his
+ * calendar on his first day, once it's connected, and a week with nobody but him on anything. All made up.
  */
 import type { CalendarEvent, Meeting } from '@alcove/api';
 import { iso } from './clock';
@@ -19,7 +19,10 @@ export function busyCalls(): Meeting[] {
     call({ id: 'm-standup', title: 'Team standup', startsAt: iso(7, 9, 0), minutes: 20, code: 'std-upwk-art', guests: [PRIYA, KOFI, MAYA], rsvps: { yes: 2, maybe: 1 }, seriesId: 's-standup', repeat: weekly })
   ];
 }
-/** The rest of the calendar: a meeting someone else runs on Google Meet, and Art's own focus blocks, which Home leaves out. */
+/**
+ * The rest of the calendar: a meeting someone else runs on Google Meet, and Art's own focus blocks, with nobody else on them,
+ * which Home's Upcoming counts at its foot and lists only when asked.
+ */
 export function busyEvents(): CalendarEvent[] {
   return [
     calendarEvent({ id: 'e-focus-thu', title: 'Focus time', startsAt: iso(1, 18, 15), minutes: 240 }),

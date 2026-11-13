@@ -5,8 +5,8 @@
  * for an invitation, Use Alcove on a meeting you organized. An Alcove call opens its card, and a calendar meeting its menu.
  * Events with only you on them aren't calls: Upcoming counts them at its foot, and lists them, one slim hatched line each, when
  * you ask (the `showSoloEvents` preference). With nothing to list, it says why: nothing with other people (and how many events
- * it isn't showing), a calendar with nothing on it, or no calls. Until the calendar is connected, Upcoming is the way to
- * connect it: straight to Google, and back to Home.
+ * it isn't showing), no calls or meetings, or no calls. Until the calendar is connected, Upcoming is the way to connect it:
+ * straight to Google, and back to Home.
  */
 import { errorMessage, type CalendarConnectResult, type CalendarEvent, type Meeting } from '@alcove/api';
 import { Button, EmptyState, EmptyWeek, Faces, Hatch, Icon, Popover, Widget, buttonClass, cn, useToast } from '@alcove/ui';
@@ -110,9 +110,34 @@ export function Upcoming({ ahead, me, now, result }: { ahead: readonly Ahead[]; 
   /* Meetings just connected rise in, one after another. */
   const fresh = result === 'connected';
   const turn = new Map(rows.slice(0, show.shown).filter((a) => a.kind === 'event' && !isSolo(a, me)).map((a, i) => [a.id, i]));
+  /*
+   * When the control pressed goes with what it changed (Show them, as the list takes the empty state's place, or the count,
+   * when hiding them leaves nothing listed), focus goes where the change is: the first event shown, or the heading.
+   */
+  const refocus = useRef<{ shown: boolean; to: 'list' | 'heading' } | null>(null);
+  useEffect(() => {
+    const r = refocus.current;
+    if (!r || r.shown !== showSolo) return;
+    refocus.current = null;
+    if (r.to === 'heading') heading.current?.focus();
+    else show.list.current?.querySelector<HTMLElement>('[data-row] a[href], [data-row] button:not(:disabled)')?.focus();
+  });
   /* Shows or hides the events with only you on them: a preference, so it's the same wherever you're signed in, shown at once. */
-  const toggleSolo = () => save.mutate({ showSoloEvents: !showSolo }, { onError: (e) => toast(`Couldn’t save that. ${errorMessage(e)}`, { icon: 'x' }) });
-  /* While anything else is listed, the foot's end says how many events have only you on them; pressed while they show. */
+  const toggleSolo = () => {
+    const next = !showSolo;
+    if (!rows.length) refocus.current = { shown: next, to: 'list' };
+    else if (!next && rows.every((a) => isSolo(a, me))) refocus.current = { shown: next, to: 'heading' };
+    save.mutate({ showSoloEvents: next }, {
+      onError: (e) => {
+        refocus.current = null;
+        toast(`Couldn’t ${next ? 'show' : 'hide'} your own events. ${errorMessage(e)}`, { icon: 'x' });
+      }
+    });
+  };
+  /*
+   * Whenever Upcoming has a list rather than its empty state (which says the count itself), the foot's end says how many
+   * events have only you on them, pressed while they show.
+   */
   const soloToggle = solo.length > 0 && rows.length > 0 ? (
     <button type="button" className="hm-solo" aria-pressed={showSolo} onClick={toggleSolo}
       title={showSolo ? 'Hide the events with only you on them' : 'Show the events with only you on them'}>
@@ -132,7 +157,10 @@ export function Upcoming({ ahead, me, now, result }: { ahead: readonly Ahead[]; 
   const connect = calendarConnectUrl({ back: '/home' });
   const warn = <span className="hm-warn"><Icon name="alert" size={20} /></span>;
   const retry = () => void calendar.refetch();
-  /* The calendar was read for this list: what's on it would show here. Otherwise only calls do. */
+  /*
+   * The calendar was read for this list, so its meetings would show here; otherwise only calls do. It isn't said to be empty:
+   * all-day events, and Google's focus time and out of office, aren't read as meetings.
+   */
   const read = others && cal !== undefined && !cal.needsAccess && cal.source !== 'none';
 
   let body: ReactNode;
@@ -158,7 +186,7 @@ export function Upcoming({ ahead, me, now, result }: { ahead: readonly Ahead[]; 
         {solo.length === 1 ? 'One event with only you on it isn’t shown.' : `${solo.length} events with only you on them aren’t shown.`}
       </EmptyState>
     ) : read ? (
-      <EmptyState className="hm-empty" art={<EmptyWeek blocks="none" />} title="Nothing on your calendar in the next 7 days">
+      <EmptyState className="hm-empty" art={<EmptyWeek blocks="none" />} title="No calls or meetings in the next 7 days">
         Calls you schedule show up here.
       </EmptyState>
     ) : <EmptyState className="hm-empty" art={<EmptyWeek blocks="none" />} title="No calls in the next 7 days" />;

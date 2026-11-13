@@ -258,8 +258,9 @@ visitors: a boat far out, stars after dark and now and then a shooting star. Wit
   - Connected, with only events of your own: **No meetings with other people in the next 7 days**, "12 events with only
     you on them aren't shown." and **Show them**, over a week of hatched blocks. **Show them** lists them, as the count
     at the foot does.
-  - Connected, with nothing at all: **Nothing on your calendar in the next 7 days** ("Calls you schedule show up
-    here."), over a week with empty days.
+  - Connected, with nothing to list: **No calls or meetings in the next 7 days** ("Calls you schedule show up here."),
+    over a week with empty days. It doesn't say the calendar is empty: all-day events, and Google's focus time and out
+    of office, aren't read as meetings.
   - Without a calendar to read, or with **Show my other meetings on Home** off: **No calls in the next 7 days**.
 - While the calendar is on its way, the Alcove calls ahead show, with "Your calendar is on its way" at the foot until it
   comes (with none, a placeholder). If it doesn't load, **Upcoming** says **Your calendar didn't load** with **Try
@@ -1943,7 +1944,7 @@ notes on new calls while the oldest request fails.
   sign-in. A calendar that doesn't answer says why, with **Try again**. Under it, **Put calls I schedule on my calendar**
   (when Google Calendar is connected, Google sends the invitations; a sample calendar stands in for it) and **Show my
   other meetings on Home** (both on by default), and while that's on, **Show my own events on Home** ("Events with
-  nobody else on them, such as a focus block."; off by default), which Upcoming's count of them changes too. Then
+  nobody else on them, in their days under your calls and meetings."; off by default), which Upcoming's count of them changes too. Then
   **Google Drive**, one line that says where notes go until
   **Manage** opens it in place, where **Connect** and **Reconnect** first say what Google shares and what Alcove uploads
   (flow 15). Then **Agents**, one row: who's connected ("Claude, Cursor and Weekly digest are connected.", and past three

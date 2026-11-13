@@ -13,8 +13,10 @@ why it's empty, and counts those events instead of leaving them out without a wo
   in its day, then hides them again.
 - **A week with only your own events** says "No meetings with other people in the next 7 days", how many events it isn't
   showing, and Show them, over a week of hatched blocks.
-- **A week with nothing at all** says "Nothing on your calendar in the next 7 days", so a calendar that was read and is
-  clear can't be mistaken for one that didn't load.
+- **A week with nothing at all** says "Nothing on your calendar in the next 7 days" on these boards, so a calendar that
+  was read and is clear can't be mistaken for one that didn't load. As built, it says "No calls or meetings in the next 7
+  days": all-day events, and Google's focus time and out of office, aren't read as meetings, so the calendar may not be
+  empty.
 
 The hatch is the hatching scheduling's week gives the time you're busy: your own time.
 
