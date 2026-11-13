@@ -303,8 +303,10 @@ export async function apply(d: Deps, ownerId: string, depositId: string, check: 
     const rec = record(d, ownerId, r);
     const provider = rec.route.provider;
     const late = r.state === 'failed' || r.state === 'expired';
-    const save = (state: TopUpState, next: DepositRecord) => exec(c, 'UPDATE deposits SET state = $3, checked_at = now(), record_ciphertext = $4 WHERE owner_id = $1 AND deposit_id = $2',
-      [ownerId, depositId, state, sealJson(key(d), header(ownerId, depositId), toJson(next))]);
+    // Added or held, it's never looked at again, by the watcher or by creditCarried, which carries only what a release
+    // before plans added.
+    const save = (state: TopUpState, next: DepositRecord) => exec(c, `UPDATE deposits SET state = $3, checked_at = now(), record_ciphertext = $4${FINAL.includes(state) ? ", check_after = 'infinity'" : ''}
+      WHERE owner_id = $1 AND deposit_id = $2`, [ownerId, depositId, state, sealJson(key(d), header(ownerId, depositId), toJson(next))]);
     const touch = () => exec(c, 'UPDATE deposits SET checked_at = now() WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId]);
     const doubted = async (reason: DoubtReason): Promise<TopUpState> => {
       const state: TopUpState = late ? 'failed' : 'arriving';
@@ -591,27 +593,18 @@ export async function list(d: Deps, ownerId: string): Promise<TopUp[]> {
   return found.map((r) => open(d, ownerId, r));
 }
 
-/** Whether every deposit a release before plans settled has been looked at, as far as this process knows. */
-let carriedAll = false;
 /**
  * Adds to the balance what every deposit a release before plans settled came to: those releases added credits, which no
- * longer count, so money paid before this release, or while it deployed, is added again as dollars (billing_cutover says
- * when this release's migration ran, and the previous release runs only for a while after it). Each settled deposit is
- * looked at once, then never again (`check_after` infinity), under its row's lock, by the same rules as any other; one
- * whose record can't be opened is logged at error, once, for support to add by hand, and holds up none after it. Once a
- * pass a day after the cutover finds nothing, nothing can come again: this process stops looking. Says how many it added.
+ * longer count, so money paid before this release, or settled by the previous one whenever it serves (while this one
+ * deploys, or after a rollback, however long), is added again as dollars. Every deposit this release adds is never looked
+ * at again (`apply`), so a `credited` one still looked at is one a release before plans added: it has no `addedMicroUsd`.
+ * Each is looked at once, then never again (`check_after` infinity), under its row's lock, by the same rules as any other,
+ * so passes at once on any instance add it once; one whose record can't be opened is logged at error, once, for support to
+ * add by hand, and holds up none after it. Says how many it added.
  */
 export async function creditCarried(d: Deps): Promise<number> {
-  if (carriedAll) return 0;
   const due = await rows(d.pool, z.object({ owner_id: z.string(), deposit_id: z.string() }), `
-    SELECT owner_id, deposit_id FROM deposits d, billing_cutover b
-    WHERE d.state = 'credited' AND d.checked_at < b.at + interval '1 day' AND d.check_after < 'infinity'
-    ORDER BY d.checked_at LIMIT 100`);
-  if (!due.length) {
-    const over = await maybeOne(d.pool, z.object({ over: z.boolean() }), "SELECT now() >= at + interval '1 day' AS over FROM billing_cutover");
-    carriedAll = over?.over === true;
-    return 0;
-  }
+    SELECT owner_id, deposit_id FROM deposits WHERE state = 'credited' AND check_after < 'infinity' ORDER BY checked_at LIMIT 100`);
   let carried = 0;
   for (const x of due) {
     const where = [x.owner_id, x.deposit_id];

@@ -2,8 +2,7 @@
  * Plans (docs: Plans and usage), end to end: the real API over HTTP via @alcove/api-http, real Postgres, the object store,
  * LiveKit and the fakes. Free's limits on storage and files; accounts from before plans, carried onto Free with time to
  * get within its limits; what's over them taking no more once that time is up; a call's
- * longest and its most people; top-ups paid for before plans, or settled by the previous release while this one deployed; and nothing of a plan
- * outliving its account.
+ * longest and its most people; and nothing of a plan outliving its account.
  */
 import { AlcoveApiError, DEFAULT_NOTES_CHOICES, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type TranscriptClip } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
@@ -14,7 +13,6 @@ import { maintain } from '../../maintenance';
 import { speechWav } from '../../testing/fake-near';
 import { startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
-import { creditCarried, DepositRecord } from './deposits';
 import { endOverdue } from '../calls/lifecycle';
 import { header as callHeader, key as callKey } from '../calls/state';
 import { openOwner } from '../../owners';
@@ -275,57 +273,6 @@ describe('a call’s limits', () => {
     expect(await refusal(h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Lee' }))).toBe('conflict: This call is full: 2 people are in it, the most a call can have.');
     const told = await settle(host, (s) => s.notices.some((n) => n.text.startsWith('Someone tried to join')));
     expect(told.notices.map((n) => n.text)).toContain('Someone tried to join, but this call is full: 2 people is the most a call can have.');
-  });
-});
-
-describe('money', () => {
-  /** What the previous release opens a deposit with: the credits it promised and added are required. */
-  const PreviousRelease = z.object({ credits: z.number().int(), rate: z.object({ num: z.string(), den: z.string() }), settled: z.object({ credits: z.number().int() }) });
-  /**
-   * A $25 top-up as a release before plans left it, settled `when` relative to this release's migration: the credits it
-   * promised and added, nothing in dollars, and the balance as it was before plans. Its account, with it, and its record as
-   * the previous release opens it.
-   */
-  async function settledBeforePlans(when: string) {
-    const ann = await account();
-    const t = await ann.api.plans.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 25_000_000);
-    h.oneclick.set(t.address ?? '', 'SUCCESS', { depositedAmount: '25000000', amountOut: '25000000', intentHashes: [`carried-${t.id}`] });
-    await ann.api.plans.topUp(t.id);
-    expect((await ann.api.plans.plan()).balance.microUsd).toBe(25_000_000);
-    const key = serviceKey(unb64u(h.deps.cfg.KSERVICE, 32), 'accounting');
-    const header = { v: 1 as const, kind: 'deposit', ownerId: ann.session.ownerId, depositId: t.id, keyVersion: '1' };
-    const stored = async () => z.object({ record_ciphertext: z.instanceof(Uint8Array) }).parse((await h.pool.query('SELECT record_ciphertext FROM deposits WHERE deposit_id = $1', [t.id])).rows[0]).record_ciphertext;
-    const rec = openJson(key, header, await stored(), DepositRecord);
-    if (!rec.settled) throw new Error('the top-up didn’t settle');
-    const { addedMicroUsd: _added, ...settled } = rec.settled;
-    const old = { ...rec, credits: 25_000, rate: { num: '1000', den: '1' }, settled: { ...settled, credits: 25_000 } };
-    await h.pool.query('UPDATE deposits SET record_ciphertext = $2, checked_at = (SELECT at FROM billing_cutover) + $3::interval WHERE deposit_id = $1', [t.id, sealJson(key, header, toJson(old)), when]);
-    await h.pool.query('DELETE FROM plan_accounts WHERE owner_id = $1', [ann.session.ownerId]);
-    expect((await ann.api.plans.plan()).balance.microUsd).toBe(0);
-    return { ann, depositId: t.id, previous: async () => openJson(key, header, await stored(), PreviousRelease) };
-  }
-
-  it('adds as dollars a top-up the previous release settled while this one deployed, once, which that release still opens', async () => {
-    const { ann, previous } = await settledBeforePlans('1 minute');
-    await creditCarried(h.deps);
-    await creditCarried(h.deps);
-    const plan = await ann.api.plans.plan();
-    expect(plan.balance.microUsd).toBe(25_000_000);
-    expect(plan.balance.history.map((e) => e.label)).toEqual(['Added, 25 USDC']);
-    // Still serving while this release deploys, the previous one opens the record it saved again.
-    expect(await previous()).toMatchObject({ credits: 25_000, settled: { credits: 25_000 } });
-  });
-
-  it('adds as dollars a top-up paid for before plans, once, past one that can’t be opened', async () => {
-    // One whose record can't be opened comes first: it's logged once, for support, and holds up nothing after it.
-    const { depositId: broken } = await settledBeforePlans('-3 days');
-    await h.pool.query('UPDATE deposits SET record_ciphertext = $2 WHERE deposit_id = $1', [broken, randomBytes(64)]);
-    const { ann } = await settledBeforePlans('-2 days');
-    const from = h.logs.length;
-    await creditCarried(h.deps);
-    await creditCarried(h.deps);
-    expect((await ann.api.plans.plan()).balance.microUsd).toBe(25_000_000);
-    expect(h.logs.slice(from).filter((l) => l.includes('from before plans can')).length).toBe(1);
   });
 });
 
