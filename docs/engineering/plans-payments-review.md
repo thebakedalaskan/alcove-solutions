@@ -36,8 +36,11 @@ Not fixed. The first two are the most worth doing before release.
      `workspaceMeter`). Any editor, including a guest seated in a call, gets 20 a minute (`ask-selection`, `sortLimiter`).
      Undecided whether to limit it more (for example a per-workspace cap on asks by anyone but the payer).
    - Files anyone adds to a workspace count against its payer (item 4).
-   - Guests' questions are capped per guest (below), in each API process. A guest who leaves and joins again starts
-     over with a new identity: that's deliberate, since the cap is there to slow one person down, not to limit a call.
+   - Guests' questions are capped per guest (below), in each API process, counted by the call and the person their pass
+     names, so a guest who comes back on a new connection with their earlier pass doesn't start over. Every guest in one
+     call spends from one share of the organizer's allowance, `ai.guests_call_percent` (10% of the period's), questions,
+     catch-ups and AI on the call's documents and boards together ([Plans and usage › Guests' share](plans-and-usage.md)),
+     so one call's guests can't spend the organizer's notes.
    - Main's #275 ("everyone in the call can open and edit its workspace and boards, guests too") widened the first two.
      With main merged, a call opens its workspace to everyone in it only while the organizer edits there and pays for it
      (`access.ts › holdersOf`), so that way is closed. Boards are still open: a board the call makes (the main board and
@@ -143,5 +146,6 @@ Fixed in the commit that added this page, with integration tests (rows B2′ and
 
 4. **Guests could spend an organizer's notes at 20 questions a minute each.** Now a guest's questions and catch-ups in
    a call are limited to 6 a minute per guest (`guestAskLimiter` in `http/limits.ts`, applied in
-   `features/calls/routes.ts`). Someone signed in pays for their own and keeps 20 a minute. There's deliberately no cap
-   for a whole call: a 100-person call asks a lot, and that's normal.
+   `features/calls/routes.ts`), counted by the call and the person their pass names. Someone signed in pays for their own
+   and keeps 20 a minute. What all the guests in one call spend between them is capped at a share of the organizer's
+   allowance (`ai.guests_call_percent`, 10%), so even a 100-person call's guests can't stop the organizer's notes.

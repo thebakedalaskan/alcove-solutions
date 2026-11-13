@@ -118,6 +118,8 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   unless what answered it says it's an ordinary refusal.
 - Whatever a plan's limits refuse is an ordinary refusal at info, `402 plan-limit` with its `reason` in the context
   (`notes`: the AI allowance is spent; `storage`: the account's storage is full), with IDs, sizes and kinds as its context, never an allowance, a balance or a title ([Plans and usage](plans-and-usage.md)).
+  Guests in a call who have spent their share of its organizer's allowance are refused the same way, with `why: 'guests'`,
+  after `guests in a call asked as much as its share allows` at info with the organizer's owner and the call's ID.
 - A purchase refused as it's asked for (`409 conflict`: a price that changed, a balance short of it; `400 invalid`: more
   than one purchase buys) is an ordinary refusal at info, with the owner, what it buys and `why`. Its words say what it
   costs, never the balance, since a refusal's message is its log line's.

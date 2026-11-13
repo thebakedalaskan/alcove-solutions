@@ -22,7 +22,7 @@ Every number is a limit (`apps/api/src/limits.ts`, [Deployment › Changing a li
 changeable without a deploy: each plan's notes, storage, files and price; Pro's lower price for a year or more; the most
 months of Pro one purchase buys and how long before Pro ends its owner is told; more notes for a period, their price and
 the most bought at once; the most workspaces one account makes; what an hour of notes is reckoned at; when AI stops and
-when an organizer is told it's close; how long a period and a grace last; a call's longest and its most people.
+when an organizer is told it's close; how much of an organizer's allowance guests in one call spend; how long a period and a grace last; a call's longest and its most people.
 
 ## Status
 
@@ -81,12 +81,23 @@ and `ai.fallback_output_micro_usd`, logged at warn.
 | The live transcript, live notes, board ideas and captions in a call, for everyone | The call's organizer |
 | Writing a call's notes, reading its shared screens, comparing it with its series | The organizer |
 | A room recording's transcript and notes | Whoever records |
-| A question or a catch-up in a call | Whoever asks, from their own plan; a guest's, the organizer (6 a minute for each guest) |
+| A question or a catch-up in a call | Whoever asks, from their own plan; a guest's, the organizer, out of the guests' share (below), 6 a minute for each guest |
 | Asking a note, or every note; asking a series; an agent's questions (MCP) | Whoever asks |
-| AI on a document or board (shorter, checklist, what was said, sort into themes) | Whoever the workspace counts against |
+| AI on a document or board (shorter, checklist, what was said, sort into themes) | Whoever the workspace counts against; a guest's in a call, out of the guests' share |
 
 Spend is kept by kind (`transcript`, `notes`, `live-notes`, `ideas`, `captions`, `catch-up`, `ask`, `series`,
-`documents`) with the allowance, so it can be explained, and logged when a period closes. Every change is made under the
+`documents`) with the allowance, so it can be explained, and logged when a period closes.
+
+**Guests' share.** A guest has no plan, so what they ask for in a call (questions, catch-ups, and AI on the call's documents
+and boards) is the organizer's. Every guest in one call spends from one share of the organizer's allowance for the period,
+`ai.guests_call_percent` (10%), kept with the allowance by the call's ID (`Bill.guests` in `meter.ts`): a request that
+would take them past it is refused ("Guests in this call have asked as much as the organizer’s plan allows. Sign in to ask
+from your own plan."), whichever guest asks, and the organizer's own notes keep the rest. On Free that's $0.25 a call, about
+30 minutes of notes, which is dozens of questions about a long call at the default model; a guest is also held to 6
+questions and catch-ups a minute, counted by the call and the person their pass names, so coming back on a new connection
+doesn't start again (`http/limits.ts › guestAskLimiter`, `calls/routes.ts`). Someone signed in asks from their own plan,
+and isn't counted in it. A request that carries no session is a guest's, so a signed-in invitee who leaves theirs off asks
+as a guest, within the same share. Every change is made under the
 meter's row lock (`ai_meters`), so requests at once on any instance can't spend the same money twice.
 
 ### Running out in a call
@@ -525,6 +536,8 @@ The server never holds a key that can move treasury money. By hand, in near.com,
 - A deposit record from before keeps its `credits` and `rate` (ignored now); one settled by a release before plans has no
   `addedMicroUsd` and is added again as dollars once (above).
 - A live call's state from before has no `notes.limit`, and reads as not stopped (`.default`).
+- The guests' share needs no migration: an `ai-meter` record kept without it has no shares and holds for no call's guests,
+  and reads as none spent (`.default`); it's written with them the next time it's saved.
 - Team is migration `0031_teams.sql`: `teams`, `team_members`, `team_invites`, `team_notes`, and `team_id` and
   `team_access` on `workspaces` (null on every workspace there is). The previous release ignores them: while both serve,
   it opens a team's note or workspace only for people who have it otherwise, and its workspaces aren't a team's. A notice in a

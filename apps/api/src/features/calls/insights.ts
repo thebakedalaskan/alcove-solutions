@@ -37,9 +37,13 @@ const clog = log.child({ component: 'calls' });
 
 /** What the call does for everyone (its captions, live notes and board ideas): the organizer pays, as part of this call. */
 const callMeter = (o: Owner, recordingId: string, spend: Spend) => meterFor(o, { payer: o.ownerId, spend, source: { kind: 'call', id: recordingId } });
-/** Someone's own question or catch-up in the call: from their own plan, signed in, or a guest's from the organizer's. */
+/**
+ * Someone's own question or catch-up in the call: from their own plan, signed in, or a guest's from the organizer's, out of
+ * the share every guest in this call spends from (billing/meter.ts).
+ */
 async function askerMeter(v: Viewer, spend: Spend) {
-  return meterFor(v.organizer, { payer: (await v.session())?.ownerId ?? v.organizer.ownerId, spend });
+  const asker = await v.session();
+  return meterFor(v.organizer, asker ? { payer: asker.ownerId, spend } : { payer: v.organizer.ownerId, spend, guests: v.pass.callId });
 }
 
 /** The call's follow-ups as this person may read them: the live notes' where they are, and the documents' they can open. */
