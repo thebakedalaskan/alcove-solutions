@@ -10,7 +10,7 @@
  * (PlanChoice.tsx): a head of its own, and the plan you're on leads straight on. Here or there, once the plans have been on
  * screen while the server says they haven't been shown, it's told (choice.ts).
  */
-import { errorCode, errorMessage, type CheckoutParam, type MyTeam, type Person, type Plan, type PlanAllowance, type PlanOffers } from '@alcove/api';
+import { errorCode, errorMessage, type CheckoutParam, type MyTeam, type Person, type Plan, type PlanBrings, type PlanOffers } from '@alcove/api';
 import { Button, EmptyState, Evening, EveryPlan, Faces, PayingLine, PlanCard, PlanCards, PlanCycle, PlanHere, PlanSunset, cn, type IconName, type PlanCycleChoice, type PlanFact } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -48,7 +48,7 @@ const TEAM = { name: 'Team', sub: 'For a company' } as const;
 const aboutHours = (minutes: number): string => `About ${periodHours(minutes)}`;
 
 /** What a plan brings, one line each: notes (and, on Free, when they come back), storage, and the largest file. */
-function factsOf(a: PlanAllowance, periodDays: number, back: boolean): PlanFact[] {
+function factsOf(a: PlanBrings, periodDays: number, back: boolean): PlanFact[] {
   return [
     { icon: 'notes', text: `${aboutHours(a.notesMinutes)} of notes ${perPeriod(periodDays)}`, sub: back ? `Back to ${hoursOfNotes(a.notesMinutes)} on the 1st of each period` : undefined },
     { icon: 'hardDrive', text: `${roomLabel(a.storageBytes)} of storage` },
@@ -60,7 +60,7 @@ function factsOf(a: PlanAllowance, periodDays: number, back: boolean): PlanFact[
  * What a license brings its person, one line each: their notes, their share of the team's storage, the largest file, and
  * what the team shares.
  */
-function teamFactsOf(a: PlanAllowance): PlanFact[] {
+function teamFactsOf(a: PlanBrings): PlanFact[] {
   return [
     { icon: 'notes', text: `${aboutHours(a.notesMinutes)} of notes each` },
     { icon: 'hardDrive', text: `${roomLabel(a.storageBytes)} each, shared by the team` },
@@ -216,7 +216,7 @@ function Offered({ offers: o, plan: p, yearly, now, team, people, go, onBuy, onT
   const onFree = p.kind === 'free';
   const onPro = p.kind === 'pro';
   const onTeamPlan = p.kind === 'team';
-  const ending = proEnding(p, o, now);
+  const ending = proEnding(p, now);
   const offered = o.pro.yearly;
   const perMonth = yearly ? yearly.microUsdPerMonth : o.pro.microUsdPerMonth;
   const save = yearly

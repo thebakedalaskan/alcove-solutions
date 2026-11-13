@@ -187,7 +187,6 @@ function Foot({ online }: { online: boolean }) {
  * payment's, is the place you're on, shaded; Free's is the minutes left, and isn't.
  */
 function PlanFoot({ plan }: { plan: Plan }) {
-  const offers = useQuery(q.offers()).data;
   // On a team: who its admin is, and for the admin how many licenses are left.
   const team = useQuery({ ...q.myTeam(), enabled: plan.team !== null }).data;
   // Read again only while the foot shows a payment: every 30 s while one is on its way, every 5 minutes while one settles.
@@ -228,7 +227,7 @@ function PlanFoot({ plan }: { plan: Plan }) {
   const said = notices.find((n) => n !== short);
   const notice = said && <Link to="/settings" hash="plan" className="sb-said"><Said notice={said} plan={plan} team={team} /></Link>;
   if (plan.kind === 'free') return <>{notice}<NotesLeft plan={plan} waiting={waiting} /></>;
-  const ending = proEnding(plan, offers, now);
+  const ending = proEnding(plan, now);
   const until = plan.pro.until;
   return (
     <>

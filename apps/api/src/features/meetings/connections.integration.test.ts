@@ -10,7 +10,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { z } from 'zod';
 import { createPool, tx } from '../../db';
 import { maintain } from '../../maintenance';
-import { HANDOFF_MS, reconcile } from '../calls/lifecycle';
+import { HANDOFF_MS, endOverdue, reconcile } from '../calls/lifecycle';
 import { openOwner } from '../../owners';
 import { speechWav } from '../../testing/fake-near';
 import { ORIGIN, cookieFetch, startHarness, type Harness } from '../../testing/harness';
@@ -150,6 +150,36 @@ describe('a server with one connection to the database', () => {
     });
     await maintain({ ...h.deps, pool: one });
     expect(await org.api.notes.get(noteId)).toMatchObject({ status: 'ready', decisions: [{ text: 'We agreed to ship on Monday.' }] });
+  });
+
+  it('reads the limits inside a transaction on its own connection, never waiting on a read through the pool', async () => {
+    const ann = await account();
+    const notRead = 'service limits not read; keeping what was in force';
+    const said = (from: number) => h.logs.slice(from).flatMap((l) => { const r = z.object({ msg: z.string() }).safeParse(JSON.parse(l)); return r.success ? [r.data.msg] : []; });
+    // A second connection holds Ann's plan, so turning renewing on waits for it inside its transaction, on the one connection.
+    const holder = new pg.Client({ connectionString: h.deps.cfg.DATABASE_URL });
+    await holder.connect();
+    try {
+      await holder.query('BEGIN');
+      expect((await holder.query('SELECT 1 FROM plan_accounts WHERE owner_id = $1 FOR UPDATE', [ann.session.ownerId])).rowCount).toBe(1);
+      const renewing = ann.api.plans.setRenew(true);
+      await waitFor(async () => z.array(z.unknown()).parse((await h.deps.pool.query(
+        "SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%FROM plan_accounts%'")).rows).length === 1, 'turning renewing on to wait for the plan');
+      // Upkeep, ending calls at their longest, reads the limits through the pool: that read waits for the connection.
+      const ending = endOverdue({ ...h.deps, pool: one });
+      await waitFor(() => one.waitingCount > 0, 'the limits read to wait for the connection');
+      const mark = h.logs.length;
+      const t0 = Date.now();
+      await holder.query('COMMIT');
+      // Let go, it reads the limits where it is and finishes, then the read through the pool has the connection.
+      expect((await renewing).pro.renew).toBe(true);
+      expect(Date.now() - t0).toBeLessThan(3000);
+      expect(await ending).toBe(0);
+      expect(said(mark)).not.toContain(notRead);
+    } finally {
+      await holder.query('ROLLBACK').catch(() => undefined);
+      await holder.end();
+    }
   });
 });
 

@@ -29,8 +29,8 @@ import { QUIET } from './empty';
 import { forgetKeptHere } from './kept';
 import { drawnPicture, forgetAudio } from './media';
 import { stopLive } from './standin';
-import { buyingWith, paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, PRO_YEAR, purchaseTopUp, TEAM_SIX, topUpOf, withPayments, type PaymentPlay } from '../world/payments';
-import { carriedOver, freePlan, inGrace, newPlan, notesStopped, overLimits, proEnded, proEnding, proExtended, proPlan, proRenewed, PRO_YEARLY_PRICE, withBalance, withNotesLeft } from '../world/plans';
+import { buyingWith, paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, PRO_YEAR, purchaseTopUp, raisePrices, TEAM_SIX, topUpOf, withPayments, type PaymentPlay } from '../world/payments';
+import { carriedOver, freePlan, inGrace, newPlan, notesStopped, overLimits, proEnded, proEnding, proEndingPriceRose, proExtended, proPlan, proRenewed, PRO_YEARLY_PRICE, withBalance, withNotesLeft } from '../world/plans';
 import { disconnectedDrive, withDriveExports } from '../world/drive-exports';
 import { homesOn } from '../world/call-page';
 import { withAgentConnections, withAgentEnding, withClaudeJustConnected } from './agents';
@@ -39,7 +39,7 @@ import { serve } from './state';
 import { forgetDocuments } from './workspaces';
 
 export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'agents-ending' | 'agents-just-connected' | 'drive-connected' | 'payments'
-  | 'plan-low' | 'plan-stopped' | 'plan-grace' | 'plan-over' | 'plan-balance' | 'plan-pro' | 'plan-pro-ending' | 'plan-pro-renewed' | 'plan-pro-ended'
+  | 'plan-low' | 'plan-stopped' | 'plan-grace' | 'plan-over' | 'plan-balance' | 'plan-pro' | 'plan-pro-ending' | 'plan-pro-ending-price' | 'plan-pro-renewed' | 'plan-pro-ended'
   | 'plan-buying-pro' | 'plan-pro-extended'
   | 'plan-waiting' | 'payment-short' | 'payment-over' | 'payment-refused' | 'payment-expired' | 'payment-failed'
   | 'team-admin' | 'team-admin-low' | 'team-admin-none' | 'team-member' | 'team-member-unlicensed' | 'team-join' | 'no-team'
@@ -501,6 +501,10 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
   'plan-pro-ending': {
     title: 'Pro ending', about: 'Art’s Pro ends in 3 days and won’t renew: renewing is off and $5 doesn’t buy a month. Art is told so.',
     make: () => { const world = busy(); withPayments(world); world.plan = proEnding(); return { world, opening: {} }; }
+  },
+  'plan-pro-ending-price': {
+    title: 'Pro ending, at a higher price', about: 'Art’s Pro ends in 3 days and won’t renew, though renewing is on and $60 is in the balance: a month of Pro costs $24 now, more than the $20 the last did, and renewing never pays a higher price without Art. Art is told Pro is ending.',
+    make: () => { const world = busy(); withPayments(world); raisePrices(world); world.plan = proEndingPriceRose(); return { world, opening: {} }; }
   },
   'plan-pro-renewed': {
     title: 'Pro renewed', about: 'Renewing is on, so 3 days before Pro ended a month was bought from the balance, and Art is told it runs a month further.',

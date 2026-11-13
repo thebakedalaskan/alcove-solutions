@@ -23,7 +23,8 @@ export type ProMonth = z.infer<typeof ProMonthSchema>;
 /**
  * Something about the plan its owner is told, in the app and, if they've turned it on, from the browser
  * (`NotificationPrefs.plan`), until they dismiss it:
- * - `pro-ending`: Pro ends at `until`, a few days from now, and won't renew (renewing is off, or the balance is short).
+ * - `pro-ending`: Pro ends at `until`, a few days from now, and won't renew: renewing is off, the balance is short, or a month
+ *   costs more now than when the last was bought, which renewing never pays without its owner buying at it first.
  * - `pro-renewed`: a month was bought from the balance, so Pro now runs to `until`.
  * - `pro-ended`: Pro ended at `until`; the account is on Free.
  * - `licenses-low` (a team's admin): `count` licenses are left unconsumed, fewer than the team's low mark.
@@ -79,8 +80,18 @@ export const PlanSchema = z.object({
     months: z.array(ProMonthSchema),
     /** When the last month bought ends (null: no Pro bought that hasn't ended). */
     until: ISODateSchema.nullable(),
-    /** Whether a month is bought from the balance as Pro is about to end, while the balance has enough. */
+    /**
+     * Whether renewing is on: a month is bought from the balance as Pro is about to end, while the balance has enough and a
+     * month costs no more than when the last was bought.
+     */
     renew: z.boolean(),
+    /**
+     * Whether renewing will buy the next month as Pro ends, as the server would decide now, and why not when it won't:
+     * `buys`; `off`, renewing is off; `price`, a month costs more now than it did when the last was bought, which renewing
+     * never pays without its owner buying at the new price first; `short`, the balance is short of a month. Null while no
+     * month of Pro is left to renew.
+     */
+    renewal: z.enum(['buys', 'off', 'price', 'short']).nullable(),
     /** What refunding the months that haven't started would add back to the balance (0: none to refund). */
     refundableMicroUsd: MicroUsdSchema
   }),
@@ -92,18 +103,18 @@ export const PlanSchema = z.object({
 export type Plan = z.infer<typeof PlanSchema>;
 
 /** What a plan brings, from the limits: notes as minutes a period, storage and the largest file. */
-export const PlanAllowanceSchema = z.object({
+export const PlanBringsSchema = z.object({
   notesMinutes: z.number().int().nonnegative(),
   storageBytes: z.number().int().nonnegative(),
   fileBytes: z.number().int().nonnegative()
 });
-export type PlanAllowance = z.infer<typeof PlanAllowanceSchema>;
+export type PlanBrings = z.infer<typeof PlanBringsSchema>;
 /** The plans on offer and what each costs now. Buying sends the price seen here, so a change in between is refused. */
 export const PlanOffersSchema = z.object({
   /** How long a period, and a month of Pro, is. */
   periodDays: z.number().nonnegative(),
-  free: PlanAllowanceSchema,
-  pro: PlanAllowanceSchema.extend({
+  free: PlanBringsSchema,
+  pro: PlanBringsSchema.extend({
     microUsdPerMonth: MicroUsdSchema,
     /** The most months one purchase can buy. */
     maxMonths: z.number().int().positive(),
@@ -113,7 +124,7 @@ export const PlanOffersSchema = z.object({
   /** More notes for this period, bought from the balance in packs of `minutes` at `microUsd` each, or null when not offered. */
   hours: z.object({ minutes: z.number().int().positive(), microUsd: MicroUsdSchema, maxPacks: z.number().int().positive() }).nullable(),
   /** Team: what each licensed person gets (storage is pooled: this much for each live license). */
-  team: PlanAllowanceSchema.extend({
+  team: PlanBringsSchema.extend({
     microUsdPerLicense: MicroUsdSchema,
     /** The most licenses one purchase can buy. */
     maxLicenses: z.number().int().positive()
