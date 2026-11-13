@@ -474,7 +474,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     make: () => { const world = busy(); world.plan = withNotesLeft(20); return { world, opening: {} }; }
   },
   'plan-stopped': {
-    title: 'Notes stopped', about: 'Art is on Free and the period’s notes have run out: they stop until it renews, and calls go on without them.',
+    title: 'Notes stopped', about: 'Art is on Free and the period’s notes have run out: they stop until it renews, calls go on without them, and questions about the notes are refused.',
     make: () => { const world = busy(); world.plan = notesStopped(); return { world, opening: {} }; }
   },
   'plan-grace': {

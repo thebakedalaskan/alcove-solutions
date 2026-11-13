@@ -107,7 +107,7 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `payment-expired` | A payment opened to buy something: nothing arrives before its address closes |
 | `payment-failed` | A payment opened to buy something is seen, then 1Click fails it |
 | `plan-low` | Art is on Free with about 20 minutes of the period's notes left |
-| `plan-stopped` | The period's notes have run out: Settings says None, the side panel says no notes left until the period renews |
+| `plan-stopped` | The period's notes have run out: Settings says None, the side panel says no notes left until the period renews, and a question about your notes (Ask in the palette or on Calls, a note's or a series') is refused with `plan-limit`, as the server refuses it |
 | `plan-grace` | Over Free's storage in grace: 14.2 GB of 10, everything works as before for nine more days |
 | `plan-over` | The grace is over: uploads have stopped |
 | `plan-balance` | $60 in the balance, with a $20 top-up waiting for its payment and a $40 one already added |
