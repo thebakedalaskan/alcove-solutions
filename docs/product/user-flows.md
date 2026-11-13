@@ -222,10 +222,16 @@ visitors: a boat far out, stars after dark and now and then a shooting star. Wit
   or **No follow-ups** ("What you take on shows up here, with when it's due.").
 - **Upcoming**: every Alcove call ahead and, with Google Calendar connected, the meetings with someone else on them, by
   day: today, then the next six days by weekday, then later days by date. A call waiting for a guest to pick a time
-  comes last, under **Soon**. Time blocked out on a calendar with nobody else on it isn't listed. Other people's calls
-  are listed for the next 90 days. A series shows its next call only, and a calendar event that's a copy of a listed
-  call isn't listed twice. With **Show my other meetings on Home** off (Settings), only Alcove calls count. The first
-  five show, then **Show N more**. The button at the right of its heading opens Settings at **Google Calendar**.
+  comes last, under **Soon**. Other people's calls are listed for the next 90 days. A series shows its next call only,
+  and a calendar event that's a copy of a listed call isn't listed twice. With **Show my other meetings on Home** off
+  (Settings), only Alcove calls count. The first five show, then **Show N more**. The button at the right of its heading
+  opens Settings at **Google Calendar**.
+- An event with nobody else on it isn't a call, so it isn't listed: the end of **Upcoming**'s foot counts them, with a
+  small square of hatching ("2 with only you"). Pressing it shows them, in their days among the calls: one slim, quieter
+  line each, the time, then the title after the hatch (the hatching scheduling's week gives the time you're busy), and no
+  faces. A row opens the event in Google Calendar, in a new tab. While they show, eight rows come before **Show N more**,
+  and the count stays pressed; pressing it again hides them. It's a preference, **Show my own events on Home** (Settings,
+  under **Show my other meetings on Home**, and only while that's on), so it's the same wherever you're signed in.
 - Each row has the time, the title and up to three faces, and a meeting from your calendar is marked as one. A call
   waiting for a guest says **Jamie is picking a time** (someone invited reads **A time is being picked**). At the right,
   only what needs saying: **In 4 min** in a call's last few minutes and **Now** while it's going (the call on offer
@@ -248,7 +254,14 @@ visitors: a boat far out, stars after dark and now and then a shooting star. Wit
   account you signed in with**, or **Google Calendar couldn't be connected**), with "Calls still work without it." and
   **Try again**. Either way, Home then takes the result out of its address.
 - Without a Google account there's nothing to connect, and **Upcoming** lists Alcove calls only. A demo account's sample
-  calendar shows as a calendar. Connected, with nothing to list, it says **Nothing in the next 7 days**.
+  calendar shows as a calendar. With nothing to list, **Upcoming** says why, over a small drawing of a week:
+  - Connected, with only events of your own: **No meetings with other people in the next 7 days**, "12 events with only
+    you on them aren't shown." and **Show them**, over a week of hatched blocks. **Show them** lists them, as the count
+    at the foot does.
+  - Connected, with nothing to list: **No calls or meetings in the next 7 days** ("Calls you schedule show up here."),
+    over a week with empty days. It doesn't say the calendar is empty: all-day events, and Google's focus time and out
+    of office, aren't read as meetings.
+  - Without a calendar to read, or with **Show my other meetings on Home** off: **No calls in the next 7 days**.
 - While the calendar is on its way, the Alcove calls ahead show, with "Your calendar is on its way" at the foot until it
   comes (with none, a placeholder). If it doesn't load, **Upcoming** says **Your calendar didn't load** with **Try
   again**: in place of the list when there's nothing else to list ("Calls still work without it."), otherwise in a row at
@@ -269,8 +282,8 @@ note's card, marked **Example**, which opens the example note, then a dashed car
 Inviting your team is on the Team page (flow 10).
 
 Storybook's journeys use these numbers: **3.1 Start a call now**, **3.2 Schedule a call**, **3.3 A call is about to
-start**, **3.4 Move a meeting to Alcove**, **3.5 Clear what’s waiting**, **3.6 Tick off a follow-up** and **3.7 Your
-first day**.
+start**, **3.4 Move a meeting to Alcove**, **3.5 Clear what’s waiting**, **3.6 Tick off a follow-up**, **3.7 Your
+first day**, **3.8 See your own events** and **3.9 A week of only your own events**.
 
 ## 4. Start or schedule a call
 
@@ -1930,7 +1943,9 @@ notes on new calls while the oldest request fails.
   sample calendar. Other accounts show **Not connected**: Google Calendar connects from an Alcove account that uses Google
   sign-in. A calendar that doesn't answer says why, with **Try again**. Under it, **Put calls I schedule on my calendar**
   (when Google Calendar is connected, Google sends the invitations; a sample calendar stands in for it) and **Show my
-  other meetings on Home** (both on by default). Then **Google Drive**, one line that says where notes go until
+  other meetings on Home** (both on by default), and while that's on, **Show my own events on Home** ("Events with
+  nobody else on them, in their days under your calls and meetings."; off by default), which Upcoming's count of them changes too. Then
+  **Google Drive**, one line that says where notes go until
   **Manage** opens it in place, where **Connect** and **Reconnect** first say what Google shares and what Alcove uploads
   (flow 15). Then **Agents**, one row: who's connected ("Claude, Cursor and Weekly digest are connected.", and past three
   names how many more), or what agents are for while none is, with **Open Agents**, or **Connect an agent** while none

@@ -11,7 +11,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { useMemo, type ReactNode } from 'react';
 import { useOpenScheduling } from '~/features/calls/scheduling/search';
 import { pickerName } from '~/features/calls/scheduling/words';
-import { peopleOn } from '~/features/home/day';
+import { isSolo } from '~/features/home/day';
 import { freshCalls } from '~/features/shell/context';
 import { log } from '~/lib/log';
 import { q } from '~/lib/queries';
@@ -74,7 +74,7 @@ function blocksOf(days: readonly Date[], notes: readonly NoteSummary[], calls: r
   for (const e of events) {
     // A copy of an Alcove call in your own calendar is the call; time blocked out with nobody else on it isn't a call.
     if (e.alcoveCode && codes.has(e.alcoveCode)) continue;
-    if (!peopleOn({ kind: 'event', id: e.id, title: e.title, startsAt: e.startsAt, endsAt: e.endsAt, event: e }, me).length) continue;
+    if (isSolo({ kind: 'event', id: e.id, title: e.title, startsAt: e.startsAt, endsAt: e.endsAt, event: e }, me)) continue;
     place(`event:${e.id}`, e.title, new Date(e.startsAt), new Date(e.endsAt), 'cal');
   }
   return out;

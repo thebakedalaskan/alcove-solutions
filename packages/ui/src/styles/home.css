@@ -44,7 +44,7 @@
  */
 .ac-empty.hm-empty { align-content: center; gap: 4px; height: 100%; min-height: 220px; padding: 24px 20px; }
 .ac-empty.hm-empty > :first-child:not(b) { margin-bottom: 10px; }
-.ac-empty.hm-empty b { font: 600 15px/1.3 var(--font-sans); letter-spacing: 0; color: var(--ink); }
+.ac-empty.hm-empty b { font: 600 15px/1.3 var(--font-sans); letter-spacing: 0; color: var(--ink); text-wrap: balance; }
 .ac-empty.hm-empty p { max-width: 30em; font: 400 13.5px/19px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
 .ac-empty.hm-empty .ac-empty-act { margin-top: 10px; }
 .ac-empty.hm-empty .ac-btn { height: 40px; }
@@ -164,6 +164,18 @@
 .hm-ev-x { display: flex; align-items: center; padding-right: 8px; }
 .hm-ev-x .ac-btn.is-xs { padding: 0 12px; font-size: 12.5px; }
 .ac-pop.hm-ev-menu { width: min(290px, calc(100vw - 24px)); }
+/* An event with only you on it, when Upcoming shows them: one slim, quiet line, its hatch before the title, no faces. */
+.hm-ev.is-solo { min-height: 34px; }
+.hm-ev.is-solo .hm-ev-b { grid-template-columns: 44px minmax(0, 1fr); min-height: 34px; padding-block: 3px; }
+.hm-ev.is-solo .hm-ev-tm { color: var(--ink-3); }
+.hm-ev-own { display: flex; align-items: center; gap: 9px; min-width: 0; font: 400 14px/20px var(--font-sans); color: var(--ink-2); }
+.hm-ev-own > .ac-clamp-1 { min-width: 0; }
+.hm-ev.is-solo:hover .hm-ev-own { color: var(--ink); }
+/* How many events have only you on them, at the end of Upcoming's foot: pressed while they show. */
+.hm-solo { display: inline-flex; align-items: center; gap: 8px; height: 30px; margin-left: auto; margin-right: -4px; padding: 0 12px 0 10px; border-radius: var(--radius-pill); font: 500 13px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-2); white-space: nowrap; transition: background-color var(--duration-1), color var(--duration-1); }
+.hm-solo:hover { background: color-mix(in oklch, var(--ink) 7%, transparent); color: var(--ink); }
+.hm-solo[aria-pressed="true"] { background: color-mix(in oklch, var(--ink) 11%, transparent); color: var(--ink); }
+.hm-solo:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* With calls ahead, the calendar's part is a row at the widget's foot: what's missing, or that it's on its way. */
 .hm-miss { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; min-height: 56px; padding: 6px 12px 6px 18px; border-top: 1px solid var(--line); }
 .hm-miss-i { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; border: 1.4px dashed color-mix(in oklch, var(--ink) 38%, transparent); color: var(--ink-2); }

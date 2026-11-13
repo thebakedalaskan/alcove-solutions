@@ -13,7 +13,7 @@ import type { Troubles } from '../../src/api/trouble';
 import { keepHere, type KeptSpec } from '../../src/api/kept';
 import type { World } from '../../src/world';
 import { calendarEvent, changer, connected, notConnected, writeNote } from '../../src/world/build';
-import { firstDayEvents } from '../../src/world/calls';
+import { firstDayEvents, ownWeekEvents } from '../../src/world/calls';
 import { pricingFollowUp, pricingFollowUpWritten } from '../../src/world/notes';
 import { iso } from '../../src/world/clock';
 import { INVITATIONS, MOVING } from '../../src/world/invitations';
@@ -65,6 +65,18 @@ export const noCalendar = (w: World): void => { w.calendar = notConnected; };
 
 /** Show my other meetings on Home is off (Settings, Google Calendar): Upcoming lists Alcove calls only. */
 export const otherMeetingsOff = (w: World): void => { w.prefs = { ...w.prefs, showOtherMeetings: false }; };
+
+/** Show my own events on Home is on (Settings, Google Calendar, or Upcoming's count): events with only Art on them are listed. */
+export const ownEventsShown = (w: World): void => { w.prefs = { ...w.prefs, showSoloEvents: true }; };
+
+/** No calls ahead, whatever the calendar holds. */
+export const noCallsAhead = (w: World): void => { w.meetings = []; };
+
+/** No calls ahead, and nobody else on anything on the calendar this week: only Art's own time. */
+export const onlyOwnEvents = (w: World): void => { w.meetings = []; w.calendar = connected(ownWeekEvents()); };
+
+/** No calls ahead, and nothing on the calendar in the next 7 days. */
+export const clearWeek = (w: World): void => { w.meetings = []; w.calendar = connected([]); };
 
 /** Back from Google on the first day, the calendar just connected: the week's meetings with other people on them. */
 export const calendarJustConnected = (w: World): void => { w.calendar = connected(firstDayEvents()); };
