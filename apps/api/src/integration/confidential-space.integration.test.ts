@@ -6,14 +6,15 @@
  * master is wrapped by Cloud KMS, it carries the accounts made before it, it hands out one attestation token naming its TLS
  * key and build with its release from the log, which a browser checks (`verifyServer`) without asking anyone, and it serves
  * the web app and the API over its own TLS, behind the load balancer's PROXY protocol. Browsers reach it as they would:
- * through that TLS, over HTTP/2.
+ * through that TLS, over HTTP/2. It reaches its database through a stand-in for the Cloud SQL Auth Proxy when a test needs
+ * the way there to be slow or gone, as a new VM's was.
  */
 import { AlcoveApiError, type Attestation, type ReleaseEntry } from '@alcove/api';
 import { createHttpApi, verifyServer, type VerifyOptions } from '@alcove/api-http';
 import { compactVerify, decodeJwt, decodeProtectedHeader } from 'jose';
 import { X509Certificate, createPublicKey, randomBytes } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:net';
+import { connect, createServer, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { brotliDecompressSync } from 'node:zlib';
@@ -21,7 +22,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { unb64u } from '../crypto';
 import { acmeAccountKey, tlsKey } from '../edge/tlsKeys';
-import { KeyError } from '../errors';
+import { DatabaseError, KeyError, UnavailableError } from '../errors';
 import { startServer, type Outside, type Running } from '../start';
 import { edgeFetch, edgeHttp1, edgeSession, plainRequest, presented, rawConnection, withoutProxyLine, type EdgeTarget } from '../testing/edge-client';
 import { startFakeAcme, type FakeAcme } from '../testing/fake-acme';
@@ -47,6 +48,8 @@ const SECRET_NAMES = {
 };
 
 let h: Harness;
+/** What the stand-in Secret Manager holds, by secret: a test adds what it starts a server with. */
+const secrets: Record<string, string> = {};
 let gcp: FakeGcp;
 let acme: FakeAcme;
 let rekor: FakeRekor;
@@ -85,6 +88,48 @@ const env = (more: Record<string, string> = {}): NodeJS.ProcessEnv => ({
   DEMO_AUTH_ENABLED: 'false', LIMITS_CACHE_MS: '0', FEATURE_FLAGS_CACHE_MS: '0', DOC_WORKERS: '1', CLOUDFLARE_ZONE: acme.zone, ACME_DIRECTORY: acme.directory,
   ...more
 });
+/** SECRETS as env() gives it, but with the database's URL read from `secret`. */
+const withDatabase = (secret: string) => Object.entries({ ...SECRET_NAMES, DATABASE_URL: secret }).map(([setting, name]) => `${setting}=${name}`).join(',');
+/** What the stand-in Cloud SQL Auth Proxy does with a connection: holds it unanswered, hangs up, or carries it to the database. */
+type ProxyAnswer = 'hold' | 'hang-up' | 'through';
+/**
+ * The Cloud SQL Auth Proxy beside the API, standing in for production's between the API and the test database (`database`):
+ * `answer` says what it does with its nth connection. Production's held new VMs' first connections unanswered past pg's
+ * 10 s (2026-11-13), and hangs up on one when it can't reach the database.
+ */
+async function startSqlProxy(database: URL, answer: (n: number) => ProxyAnswer) {
+  const open = new Set<Socket>();
+  const track = (s: Socket) => { open.add(s); s.on('close', () => open.delete(s)); };
+  let connections = 0;
+  const server = createServer((client) => {
+    track(client);
+    const what = answer(++connections);
+    // Hung up on once pg has said what it wants, as the proxy does when it can't reach the database: pg reads the end.
+    if (what === 'hang-up') client.once('data', () => client.destroy());
+    if (what !== 'through') return;
+    const db = connect(Number(database.port || 5432), database.hostname);
+    track(db);
+    client.pipe(db).pipe(client);
+    client.on('error', () => db.destroy()).on('close', () => db.destroy());
+    db.on('error', () => client.destroy()).on('close', () => client.destroy());
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const at = server.address();
+  const url = new URL(database.href);
+  url.hostname = '127.0.0.1';
+  url.port = String(typeof at === 'object' && at ? at.port : 0);
+  return {
+    url: url.href,
+    connections: () => connections,
+    close: () => new Promise<void>((resolve) => { for (const s of open) s.destroy(); server.close(() => resolve()); })
+  };
+}
+/** The lines the API logged since `from` with the message `msg`, parsed by `schema`. */
+const logged = <S extends z.ZodType>(from: number, msg: string, schema: S): z.infer<S>[] =>
+  z.array(schema).parse(h.logs.slice(from).filter((l) => l.includes(`"msg":${JSON.stringify(msg)}`)).map((l) => JSON.parse(l)));
+const Waited = z.object({ level: z.number(), component: z.string(), attempt: z.number(), code: z.string(), tookMs: z.number(), retryInMs: z.number() });
+const NOT_YET = 'database not reachable yet; trying again';
+
 /** What the server reaches here in place of production's: the stand-ins. */
 const outside = (): Outside => ({ google: gcp.google, launcher: gcp.launcher, dns: acme.dns, log: rekor.log });
 const start = async (more: Record<string, string> = {}) => {
@@ -145,17 +190,15 @@ beforeAll(async () => {
   rekor = await startFakeRekor();
   web = await webApp();
   const url = process.env['TEST_DATABASE_URL'] ?? '';
-  gcp = await startFakeGcp({
-    project: PROJECT, provider: PROVIDER, key: KEY, releaseKeySpki: rekor.releaseKeySpki,
-    secrets: {
-      // As a secret made with echo has it, with a line end that's no part of it.
-      [SECRET_NAMES.DATABASE_URL]: `${url}\n`, [SECRET_NAMES.OBJECTS_ACCESS_KEY]: h.deps.cfg.OBJECTS_ACCESS_KEY, [SECRET_NAMES.OBJECTS_SECRET_KEY]: h.deps.cfg.OBJECTS_SECRET_KEY,
-      [SECRET_NAMES.LIVEKIT_API_KEY]: LIVEKIT_KEY, [SECRET_NAMES.LIVEKIT_API_SECRET]: LIVEKIT_SECRET,
-      [SECRET_NAMES.GOOGLE_CLIENT_ID]: h.google.clientId, [SECRET_NAMES.GOOGLE_CLIENT_SECRET]: h.google.clientSecret, [SECRET_NAMES.CLOUDFLARE_API_TOKEN]: acme.token,
-      // The keys the database's accounts were made under, until the old master is retired.
-      'alcove-kmaster': h.deps.cfg.KMASTER, 'alcove-kservice': h.deps.cfg.KSERVICE
-    }
+  Object.assign(secrets, {
+    // As a secret made with echo has it, with a line end that's no part of it.
+    [SECRET_NAMES.DATABASE_URL]: `${url}\n`, [SECRET_NAMES.OBJECTS_ACCESS_KEY]: h.deps.cfg.OBJECTS_ACCESS_KEY, [SECRET_NAMES.OBJECTS_SECRET_KEY]: h.deps.cfg.OBJECTS_SECRET_KEY,
+    [SECRET_NAMES.LIVEKIT_API_KEY]: LIVEKIT_KEY, [SECRET_NAMES.LIVEKIT_API_SECRET]: LIVEKIT_SECRET,
+    [SECRET_NAMES.GOOGLE_CLIENT_ID]: h.google.clientId, [SECRET_NAMES.GOOGLE_CLIENT_SECRET]: h.google.clientSecret, [SECRET_NAMES.CLOUDFLARE_API_TOKEN]: acme.token,
+    // The keys the database's accounts were made under, until the old master is retired.
+    'alcove-kmaster': h.deps.cfg.KMASTER, 'alcove-kservice': h.deps.cfg.KSERVICE
   });
+  gcp = await startFakeGcp({ project: PROJECT, provider: PROVIDER, key: KEY, releaseKeySpki: rekor.releaseKeySpki, secrets });
   // CI signed the image the VM runs, from COMMIT, and cosign logged it.
   rekor.release(PRODUCTION_IMAGE, gcp.digest, COMMIT);
   h.google.register(`${API}/v1/auth/google/callback`);
@@ -624,6 +667,63 @@ describe('confidential space', () => {
       expect(h.logs.some((l) => l.includes('"msg":"release not found in the public log"'))).toBe(true);
     } finally {
       rekor.down = false;
+    }
+  });
+
+  it('waits at start for a database it can’t reach yet, as a new VM’s first connection through the Cloud SQL Auth Proxy, and refuses, saying why, once it has waited long enough', async () => {
+    const database = new URL(process.env['TEST_DATABASE_URL'] ?? '');
+    // The first connection held unanswered until pg gives up on it, as on five new VMs on 2026-11-13; then the database.
+    const slow = await startSqlProxy(database, (n) => (n === 1 ? 'hold' : 'through'));
+    // Every connection hung up on, as the proxy does when it can't reach the database.
+    const down = await startSqlProxy(database, () => 'hang-up');
+    // A database that answers, but has nothing for this server.
+    const elsewhere = new URL(database.href);
+    elsewhere.pathname = `/alcove_no_such_database_${randomBytes(4).toString('hex')}`;
+    Object.assign(secrets, { 'alcove-database-url-slow': slow.url, 'alcove-database-url-down': down.url, 'alcove-database-url-elsewhere': elsewhere.href });
+    const started: Running[] = [];
+    const starting = h.logs.length;
+    try {
+      // The first try is cut at pg's 10 s, said at warn, and the next, a second later, reaches the database: it starts and serves.
+      let from = h.logs.length;
+      const r = await startServer(env({ SECRETS: withDatabase('alcove-database-url-slow') }), outside());
+      started.push(r);
+      expect(logged(from, NOT_YET, Waited)).toEqual([{ level: 40, component: 'db', attempt: 1, code: 'connect-timeout', tookMs: expect.any(Number), retryInMs: 1_000 }]);
+      expect(logged(from, 'database reached', z.object({ attempts: z.number() }))).toEqual([{ attempts: 2 }]);
+      expect((await plainRequest(ports(r).http, 'api.alcove.test', '/health')).status).toBe(200);
+
+      // A database it never reaches: it tries until DATABASE_WAIT_MS has gone, each wait twice the last, then refuses,
+      // saying how many tries, with the last one's failure as the cause. Six seconds leaves the first two waits whole
+      // however slowly the tries go, short of three seconds of delay.
+      from = h.logs.length;
+      const refused = await startServer(env({ SECRETS: withDatabase('alcove-database-url-down'), DATABASE_WAIT_MS: '6000' }), outside())
+        .then((x) => { started.push(x); return undefined; }, (e: unknown) => e);
+      const tries = logged(from, NOT_YET, Waited);
+      expect(tries.length).toBeGreaterThanOrEqual(2);
+      expect(tries.map((t) => [t.attempt, t.code])).toEqual(tries.map((_, i) => [i + 1, 'connection-ended']));
+      expect(tries.slice(0, 2).map((t) => t.retryInMs)).toEqual([1_000, 2_000]);
+      expect(refused).toBeInstanceOf(UnavailableError);
+      expect(refused instanceof UnavailableError ? refused.message : '').toMatch(new RegExp(`^The database couldn’t be reached: ${tries.length + 1} tries in \\d+ s\\.$`));
+      const why = z.object({ attempts: z.number(), code: z.string(), ms: z.number() }).parse(refused instanceof UnavailableError ? refused.context : {});
+      expect(why).toEqual({ attempts: tries.length + 1, code: 'connection-ended', ms: expect.any(Number) });
+      // Not before the time it had was gone.
+      expect(why.ms).toBeGreaterThanOrEqual(6_000);
+      expect(down.connections()).toBe(tries.length + 1);
+
+      // A database that answers that it won't take this connection is refused at once: asking again won't change it.
+      from = h.logs.length;
+      const answered = await startServer(env({ SECRETS: withDatabase('alcove-database-url-elsewhere') }), outside())
+        .then((x) => { started.push(x); return undefined; }, (e: unknown) => e);
+      expect(answered).toBeInstanceOf(DatabaseError);
+      expect(answered instanceof DatabaseError ? answered.context : {}).toEqual({ attempts: 1, code: '3D000', ms: expect.any(Number) });
+      expect(logged(from, NOT_YET, Waited)).toEqual([]);
+
+      // Nothing said where the database is, or how to get in.
+      const said = h.logs.slice(starting).join('');
+      for (const url of [slow.url, down.url, elsewhere.href, database.href]) expect(said.includes(url)).toBe(false);
+    } finally {
+      for (const r of started) await r.close();
+      await slow.close();
+      await down.close();
     }
   });
 });

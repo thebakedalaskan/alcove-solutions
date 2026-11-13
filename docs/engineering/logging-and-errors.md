@@ -168,6 +168,12 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   one account, a top-up still watched, an amount that isn't one) logs `billing refused` at warn with its `code` or `why`, and
   anything else `billing failed` at error. Never an amount, and never what was typed, which may be an address
   ([Plans and usage › Support](plans-and-usage.md#support)).
+- Start-up waits for the database (`component: 'db'`). Each try that fails is `database not reachable yet; trying again`
+  at warn, with `attempt`, `code` (Postgres's or the system's, `connect-timeout` when pg gave up on it after 10 s, or
+  `connection-ended`), `tookMs` and `retryInMs`, and once a later try gets through, `database reached` at info with
+  `attempts` and `ms`. Running out of `DATABASE_WAIT_MS` (three minutes) is an `UnavailableError`, and Postgres refusing
+  the connection outright (a wrong password, no such database) a `DatabaseError` at once, each `refused to start` with
+  `attempts`, `code` and `ms`; never the database's address.
 - Inside a TEE, start-up logs `secrets read` with the names of the settings read from Secret Manager (`component: 'gcp'`),
   never a value, `attestation exchanged for an access token` with how long it lasts, and `clock offset` with how many
   seconds the VM's clock is behind Google's (`behindGoogleS`, by Google's Date header), at warn past 30: checks of other

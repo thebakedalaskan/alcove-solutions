@@ -411,8 +411,9 @@ health_check() {
 # /health on the plain port is the edge's own answer, never redirected: 200 once it serves TLS, 503 before. It doesn't
 # reach the database, so an outage there doesn't take the VM out of the load balancer or have it replaced.
 health_check "$CS_HC_LB" --check-interval=5s --timeout=5s --healthy-threshold=2 --unhealthy-threshold=2
-# Autohealing is slower to judge, since it replaces a VM: four failures thirty seconds apart.
-health_check "$CS_HC_HEAL" --check-interval=30s --timeout=10s --healthy-threshold=1 --unhealthy-threshold=4
+# Autohealing is slower to judge, since it replaces a VM: two minutes of failures, twelve ten seconds apart. A rollout
+# waits on it too before it takes the old VM out, so it asks every ten seconds rather than thirty.
+health_check "$CS_HC_HEAL" --check-interval=10s --timeout=10s --healthy-threshold=1 --unhealthy-threshold=12
 backend_service() {
   local name="$1" port_name="$2" affinity="$3"
   local settings=(--region="$CS_REGION" --health-checks="$CS_HC_LB" --health-checks-region="$CS_REGION"

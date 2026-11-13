@@ -2,8 +2,8 @@
  * Starting the API (docs: system-architecture): what server.ts runs, with what it reaches outside the environment made
  * explicit, so a test starts a server exactly as production does. Inside Confidential Space, the settings that are secrets,
  * the old keys and Cloud KMS come through the VM's attestation first (gcp.ts), never through the environment, which is part
- * of the attestation. Then the database and its migrations, the keys (serverKeys.ts), and the listener: the edge, where TLS
- * ends in the process (edge/), or plain HTTP behind something else's TLS.
+ * of the attestation. Then the database, waited for until it can be reached (db.ts), and its migrations, the keys
+ * (serverKeys.ts), and the listener: the edge, where TLS ends in the process (edge/), or plain HTTP behind something else's TLS.
  */
 import { productionLog, type ReleaseLog } from '@alcove/api-http/release';
 import { serve, type ServerType } from '@hono/node-server';
@@ -11,7 +11,7 @@ import { Server } from 'node:http';
 import { createApp } from './app';
 import { loadBoot, loadConfig, loadEnv } from './config';
 import type { Deps } from './context';
-import { createPool } from './db';
+import { createPool, waitForDatabase } from './db';
 import { CLOUDFLARE, type DnsServices } from './edge/dns';
 import { startEdge } from './edge/listen';
 import { startWatching } from './features/billing/deposits';
@@ -54,6 +54,8 @@ export async function startServer(env: NodeJS.ProcessEnv, outside: Outside = OUT
   const pool = createPool(e.DATABASE_URL);
   const opened: { close(): Promise<void> }[] = [];
   try {
+    // A new VM's first connection can take longer than any later one may: it's tried until DATABASE_WAIT_MS has gone.
+    await waitForDatabase(pool, e.DATABASE_WAIT_MS);
     const applied = await migrate(pool);
     slog.info(applied.length ? 'migrations applied' : 'database up to date', { applied });
     // The keys come after the migrations: inside a TEE, the master and the server keys are in the database.

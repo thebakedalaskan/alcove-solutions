@@ -52,9 +52,11 @@ the setup, deploys, rollbacks, staging, certificates and release verification.
    Sigstore's public log, Rekor, which the app reads to check the server). Sign it
    with cosign and the Cloud KMS key `alcove-image-signing`, which records it, with its commit, in Sigstore's public log.
    Execute the migration job, which gets only `DATABASE_URL`, and wait. Roll the group onto the image, a new VM first
-   (refused up front when the region's C3 quota can't hold it), and, in a job with no Google credentials, check it
-   through the load balancer's address: the attestation the app checks, that the TLS key is the attested
-   one, `/health`, and the commit and image. The migration job applies only the migrations
+   (refused up front when the region's C3 quota can't hold it), until the new VM is in service and the old one out of it,
+   which then drains and goes in the background, about eight minutes, before the next rollout starts
+   ([Confidential Space runbook › How long a rollout takes](../../infra/confidential-space/README.md#how-long-a-rollout-takes)).
+   Then, in a job with no Google credentials, check it through the load balancer's address: the attestation the app
+   checks, that the TLS key is the attested one, `/health`, and the commit and image. The migration job applies only the migrations
    the database hasn't had, and refuses one whose applied migrations were since edited or removed, so such a
    deploy stops before the new API starts and the previous release keeps serving (migrations only move
    forward: restore the file and put the change in a new one). The API refuses the same at start, so a rollback can't
@@ -356,6 +358,7 @@ live transcript and written notes.
 | Feature flags: off by default; on for everyone, signed in or not, for the members of groups and for people granted directly, all at once; an address matched however it's typed, and granted before its owner signs up; a deleted group taking its members and grants; a name the code doesn't know ignored; a change in force within the cache window with no restart, and what was in force kept when they can't be read; a deleted account's address gone from groups and grants; the CLI and the logs never repeating an address or its hash | API integration tests. After the first deploy in Confidential Space, send `["list"]` to the operator route once: it lists the flags, which shows the route is on and reaches the database |
 | A failed request's ID leads to its log lines; browser reports reach the server log | API integration tests |
 | More calls ending at once than there are database connections; a call from start to end, a hand-off and the notes on one connection; a request with no connection to be had fails in 10 seconds | API integration tests |
+| The API starting before its database can be reached, as a new VM's first connection through the Cloud SQL Auth Proxy wasn't: it tries again for up to three minutes, saying each try, then refuses; a database that answers that it won't take the connection is refused at once | API integration tests |
 | Sign in with Google: identity-only scopes, PKCE, state, nonce, signature, audience, expiry, verified email, refusals | API integration tests against a local OpenID provider; verify the real Google round trip on each release |
 | Google Calendar: explicit consent with the signed-in Google account, existing connections across sign-in, the coming week's meetings, scheduled calls placed, changed and cancelled with Google's invitations, an organizer's own event made an Alcove call, when people are busy (a private calendar and a missing scope reading as unknown), expired and withdrawn access | API integration tests against a local Calendar stand-in; verify with a real calendar on each release, a Gmail guest's private calendar included |
 | Calls that repeat on Google Calendar: one recurring event and one invitation, a series across a change of the clocks, one call changed or cancelled, this and later calls from the first call and from a later one, a call made to repeat, and cancelling the whole series | API integration tests against a local Calendar stand-in, which expands rules as its authors understand Google to. Verify with a real calendar on each release that touches them: the stand-in can't show that Google accepts a single event turned recurring by `PATCH`, or a recurring event ended early with `recurrence` alone |
