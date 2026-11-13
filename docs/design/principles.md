@@ -219,6 +219,12 @@ Everything comes from the tokens in `styles.css`. Don't invent values.
 | Easing | `ease-out` for things arriving, `ease-in-out` for things moving, `ease-in` for things leaving; `ease-expo` and `ease-soft` for a page taking another's place |
 | Buttons | 44px tall, 52px `lg`, 36px `sm`, 30px `xs`; icon buttons 36px. The focus ring is a 2px outline in `focus` |
 
+Corners nest. A rounded shape near the corner of another, such as a button in the dock or a row's highlight in a menu, takes
+the outer radius less the gap between them (`calc(var(--radius-lg) - 6px)` in a popover padded by 6px), so the two curves
+stay the same distance apart all the way round. Write it as that `calc()` rather than a number, so it follows the container.
+A shape flush with its container's edge takes the container's radius, or the container clips it. A split control (a button
+and its chevron) is one shape: it fills as one, and never shows half of itself with two square corners.
+
 ## Motion
 
 - Anything that loops animates only `transform` and `opacity`, on plain elements, so the browser runs it off the main
@@ -303,6 +309,7 @@ These came up in design reviews. They're the fastest way to see what "right" mea
 | "This is a great start but we can't have it looking exactly like [a reference]" | Keep it; change a few visible details. Don't throw out what was liked |
 | "Subtle but alive" | The scene moves a little; visitors are rare and one at a time |
 | Gusts on the water, birds that didn't flap, a balloon that stayed too long | Removed gusts; gulls beat their wings in three poses; the balloon stays in the corner for about 40 seconds |
+| A muted microphone with two round corners and two square ones; 12px buttons in a 22px dock | Corners nest: inside a rounded shape, the radius is the outer one less the gap (Scales, above) |
 
 ## Before you show anything
 
@@ -311,6 +318,7 @@ These came up in design reviews. They're the fastest way to see what "right" mea
 - The first-day empty state, and every other real state: loading, offline, errors, nothing yet, a lot.
 - Every menu, popover and modal opened from where it's used, over the screen it belongs to.
 - No overlap, no stacking bugs, no horizontal scroll, no console errors.
+- Corners nest: every button, row highlight and inner panel follows the curve of the shape it sits in, hovered and pressed too.
 - Keyboard focus visible and in order; reduced motion shows a still picture, but a spinner still turns, at half speed, and
   dots fade slowly in and out.
 - One filled button per view, each fact once, no green.
