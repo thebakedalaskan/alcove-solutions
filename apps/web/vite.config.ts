@@ -46,6 +46,15 @@ export default defineConfig({
       '/.well-known': { target: `http://127.0.0.1:${apiPort}` }
     }
   },
+  /*
+   * The build prerenders its pages by fetching them from a preview server in the same process. On `localhost` the
+   * server listens on one address (::1 on Linux and macOS), while a fetch tries each address `localhost` has, giving
+   * each 250 ms. Rendering a page keeps that process busy for longer on a slow runner (the first loads the server
+   * bundle), so a fetch that was connecting gives up on ::1, finds nothing on 127.0.0.1, and the build fails: connect
+   * ETIMEDOUT ::1, connect ECONNREFUSED 127.0.0.1. On an IP address there's nothing to look up and one address to try,
+   * with no timer.
+   */
+  preview: { host: '127.0.0.1' },
   resolve: { alias: { '~': fileURLToPath(new URL('./src', import.meta.url)) } },
   plugins: [
     mediapipe(),

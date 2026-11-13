@@ -105,8 +105,12 @@ change, in production or locally (`pnpm db:reset` is only for starting your own 
   checks nothing.
 - Test files are named `*.integration.test.ts` and run in Node with Vitest.
 - `scripts/check-tests.mjs` enforces this and runs first in `pnpm test`. Don't weaken or bypass it.
-- CI splits the integration tests across ten runners (`scripts/ci-tests.mjs`) and fails unless every test ran once.
-  Keep test files independent of each other: each runs on whichever runner its timing puts it on.
+- CI splits the integration tests across ten runners, three files at once on each (`scripts/ci-tests.mjs`), and fails
+  unless every test ran once. Keep test files independent of each other, and the tests of a long `describe` block too
+  (it can be split between runners): each runs wherever its timing puts it, beside other files that each have their own
+  database and bucket. What a test reads of Postgres's shared views, such as `pg_stat_activity`, it scopes to its own
+  database (`datname = current_database()`). The nightly Flake finder (`.github/workflows/flakes.yml`) runs the suite
+  three times over and lists what failed in one run and passed in another.
 - When you add a feature, extend its colocated `apps/api/src/features/<owner>/*.integration.test.ts`
   (or `apps/api/src/integration/flows.integration.test.ts` for a cross-feature flow). Tests sign in through the real API
   (`api.auth.signIn` on a `h.browser()` from `apps/api/src/testing/harness.ts`); never stub out

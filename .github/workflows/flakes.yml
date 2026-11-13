@@ -1,0 +1,53 @@
+name: Flake finder
+
+# Runs the integration tests three times over, nightly on main (or on demand, on any branch), exactly as CI runs them,
+# and lists in its summary every test that failed in one run and passed in another, and any that failed in all of them
+# (scripts/ci-tests.mjs flakes). It needs no secrets and files nothing: the run's summary is the report, and the run
+# fails when it has something to say.
+on:
+  schedule:
+    - cron: '30 7 * * *'
+  workflow_dispatch:
+
+# A run asked for while another is going waits for it rather than ending it.
+concurrency:
+  group: flake-finder-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  shard:
+    name: Run ${{ matrix.run }}, shard ${{ matrix.shard }}/10
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      # Ten runners at a time, so CI on pull requests and main keeps the rest of the account's.
+      max-parallel: 10
+      matrix:
+        run: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/integration-setup
+      - name: This runner's share of the tests
+        run: node scripts/ci-tests.mjs run ${{ matrix.shard }} 10
+        env: { REPORTS: '${{ runner.temp }}/reports' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: 'flakes-${{ matrix.run }}-${{ matrix.shard }}', path: '${{ runner.temp }}/reports', retention-days: 14, if-no-files-found: ignore }
+
+  report:
+    name: Flaky tests
+    needs: shard
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        # One folder per runner of each run, named flakes-<run>-<shard>.
+        with: { pattern: 'flakes-*', path: runs }
+      - name: What failed in one run and passed in another
+        run: node scripts/ci-tests.mjs flakes runs
