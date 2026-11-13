@@ -510,7 +510,8 @@ reading and cancelling top-ups; receipt changes come from the story's made-up pr
 Pro, Extend, Add 10 hours, a waiting payment's Open), in every stage: choosing (a year at 20% off, a month, another length,
 a network's least above what's needed, part of it from the balance, the balance covering it, payments off, a price that
 changed, offline, extending, more notes), then paying (waiting, Cancel payment asking first, less arrived, seen, done, more
-arrived, refused, expired, cancelled, failed, the receipt), in both themes and on a phone. Team has the same: Start a team
+arrived, refused, expired, cancelled, failed, the receipt), and closed from Done, with the toast that says what was bought
+(**Bought And Closed**), in both themes and on a phone. Team has the same: Start a team
 (its name, how many licenses, from the balance or a payment, unnamed, a changed price, payments off, offline), its first
 licenses' payment (`team-buying`) waiting, seen, bought, refused and expired, and its admin's Buy licenses (`team-admin-*`:
 who's waiting, from the balance, bought, with a payment), a member, and an admin who stopped being one (before buying, or while their payment was on its way), with nothing to buy and no steps. The stand-in plays

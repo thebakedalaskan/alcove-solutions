@@ -2523,7 +2523,7 @@ loses a payment on its way: the side panel and Settings show it, and opening it 
 ### 16.1 See the plans
 
 **Plans** (`/plans`) is what each plan brings and what it costs: Free, Pro and Team side by side, on the last of the sunset.
-It's reached from Settings › Plan's **See plans**, checkout's **Compare plans**, and the welcome page's **Get Pro** and
+It's reached from the side panel's **Free plan · See plans** (16.7), Settings › Plan's **See plans**, checkout's **Compare plans**, and the welcome page's **Get Pro** and
 **Start a team** (16.13), which open it with checkout open on Pro (`/plans?checkout=pro`) or on Team (`?checkout=team`;
 `?checkout=hours` opens it on more notes); the address forgets it once checkout is open.
 
@@ -2559,6 +2559,10 @@ instead, once (16.20).
 4. **Done.** The sun clears the horizon and a tick draws in: "You're on Pro", until when, the receipt row with **Receipt**, a
    receipt to print, "Nothing renews by itself. Alcove reminds you before it ends.", and **Done**. Pro starts at once with a
    fresh period and all of Pro's notes.
+5. **Closed.** However the window is closed from Done, the page under it says once what was bought, in the server's dates:
+   "You're on Pro until 4 Nov 2027." (extending, "Pro runs to 10 Nov 2027."; more notes, "10 hours of notes added."; a team,
+   "Vandelay Industries is on Team." or "6 licenses added to Vandelay Industries."). Over a call, notes coming on again say
+   it instead (16.9).
 
 What you send is what the balance is short of the total: money already in the balance counts ("Your balance — −$5"). A
 network's minimum above that raises the amount, and the summary says the rest stays in your balance. The payment adds the
@@ -2598,6 +2602,13 @@ notes; they don't carry into the next period. Done says "10 more hours of notes"
 7. **Payments off.** Choose says paying isn't available right now; a balance that covers it can still buy.
 
 ### 16.7 Your plan in the side panel
+
+Your plan is at the side panel's foot, under the confidential-compute check. On Free, about how much of the period's notes is
+left sits over a meter (warm under an hour, in caution once out) and opens Settings at your plan; under it, Free's row is the
+panel's way into Plans: **Free plan · See plans** opens Plans (16.1), **Free plan · Get Pro** opens checkout on Pro once notes
+are low or out, and on a team without a license **Free plan · Team** opens Team (16.19). On Pro or Team, the plan's own row
+(its small sun, and until when, the team's name, or ending with **Extend**, 16.14) opens Settings at your plan. On Plans,
+whichever row it is is the place you're on.
 
 A payment for a year of Pro is on its way: the foot says "Waiting for 192 USDC", and **Pro, 12 months · Open** reopens it in
 checkout. When it arrives, Pro is bought from it in the same go, and within half a minute the foot becomes Pro's own row: its
@@ -2722,9 +2733,10 @@ left; and **Refund** gives back the licenses nobody has taken, asked in place.
 
 ### 16.19 On a team without a license
 
-When none was left for you, you stay on your own plan, and the team's admin is told. The side panel says it in caution, "No team
-license yet", under your notes left in place of the meter (on Pro, as the row's second line), and the row opens Team, which says
-who has been told. Settings › Plan says it once at the top, over your plan. The next time you open Alcove after the admin buys
+When none was left for you, you stay on your own plan, and the team's admin is told. The side panel says it over your own plan:
+"No team license yet" in caution, and under it who has been told ("Priya has been told"), or for the team's admin "Buy
+licenses, and one is yours". On Free your notes left and the meter stay under it, and Free's row is **Free plan · Team**, which
+opens Team. Settings › Plan says it once at the top, over your plan. The next time you open Alcove after the admin buys
 more, one is yours: your plan is Team, your license runs a period, and the side panel's foot is Team's row, over the team's name.
 
 ### 16.20 Choose a plan

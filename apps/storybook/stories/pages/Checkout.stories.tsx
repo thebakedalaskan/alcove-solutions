@@ -165,6 +165,16 @@ const press = (name: string): NonNullable<CheckoutStory['play']> => async ({ use
 };
 
 /**
+ * Three months bought from the balance, then Done: the window closes, and the page under it says once what was bought, in
+ * the server's date (the canvas's toast, "You’re on Pro until …"). More hours and licenses say theirs the same way.
+ */
+export const BoughtAndClosed: CheckoutStory = {
+  ...BoughtWithTheBalance,
+  play: async (c) => { await press('Buy with your balance')(c); await press('Done')(c); }
+};
+export const BoughtAndClosedNight: CheckoutStory = { ...BoughtAndClosed, globals: DARK };
+
+/**
  * Start a team, from Team's card on Plans, on nothing in the balance: its name is the company's, six licenses for the six
  * people at Vandelay on Alcove, the networks, none chosen. The team is made only as Art pays, with Art its admin.
  */
