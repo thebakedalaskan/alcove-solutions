@@ -11,6 +11,7 @@ import {
   type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole, MyTeamSchema, type PlanNotice
 } from '@alcove/api';
 import { tileHintKey } from '~/features/call/layout/view';
+import { returnTo } from '~/lib/afterSignIn';
 import { sessions } from '~/lib/live';
 import { openBrowser } from '../browser';
 import { busyCalls, busyEvents, soonCalls } from '../world/calls';
@@ -410,7 +411,7 @@ export const withTeamInvite = (expired = false) => (w: World): void => {
   const team = vandelayTeam();
   team.members = team.members.filter((m) => m.person !== ART).map((m) => (m.person === PRIYA ? { ...m, role: 'admin' } : m));
   w.teamInvites = [{ secret: TEAM_INVITE_SECRET, expiresAt: new Date(Date.now() + (expired ? -60_000 : 4 * 3_600_000)).toISOString(), team, admin: PRIYA }];
-  try { sessionStorage.setItem('alcove.team-after-sign-in', JSON.stringify({ secret: TEAM_INVITE_SECRET, until: Date.now() + 600_000 })); } catch { /* without storage there's no link to open */ }
+  returnTo({ to: 'team', secret: TEAM_INVITE_SECRET });
 };
 const teamNotice = (id: string, kind: PlanNotice['kind'], count: number | null, at = iso(0, 11, 20)): PlanNotice => ({ id, kind, at, until: null, count });
 

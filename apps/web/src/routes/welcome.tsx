@@ -5,7 +5,7 @@ import { useEffect, useRef } from 'react';
 import { Landing } from '~/features/welcome/Landing';
 import { GoogleComplete } from '~/features/welcome/GoogleComplete';
 import { useAuth } from '~/features/welcome/WaysIn';
-import { takeAgentReturn, takeReturn } from '~/lib/afterSignIn';
+import { takeReturnTo } from '~/lib/afterSignIn';
 import { signedInHere } from '~/lib/device';
 import { sessionOrOffline } from '~/lib/guards';
 import { GOOGLE_REFUSED } from '~/lib/googleSignIn';
@@ -48,10 +48,10 @@ function Welcome() {
     handled.current = signin;
     forgetSailOut();
     toast(GOOGLE_REFUSED[signin], { icon: 'x', ms: 5200 });
-    const agent = takeAgentReturn();
-    if (agent) { void navigate({ to: '/connect', search: { request: agent }, replace: true }); return; }
-    const call = takeReturn();
-    void navigate(call ? { to: '/join/$code', params: { code: call }, replace: true } : { to: '/welcome', search: {}, replace: true });
+    const agent = takeReturnTo('agent');
+    if (agent) { void navigate({ to: '/connect', search: { request: agent.requestId }, replace: true }); return; }
+    const call = takeReturnTo('call');
+    void navigate(call ? { to: '/join/$code', params: { code: call.code }, replace: true } : { to: '/welcome', search: {}, replace: true });
   }, [signin, toast, navigate]);
 
   return <Landing auth={auth} />;

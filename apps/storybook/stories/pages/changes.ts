@@ -5,6 +5,7 @@
  * licenses. All made up, in the demo world.
  */
 import { NOTE_LINK_DAYS, type PersonalEntry } from '@alcove/api';
+import { returnTo } from '~/lib/afterSignIn';
 import { UNENCRYPTED_MODEL } from '../../src/api/script';
 import { standIn } from '../../src/api/standin';
 import type { Troubles } from '../../src/api/trouble';
@@ -207,7 +208,7 @@ export const linkToReadout = (expired = false) => (w: World): void => {
   const art = w.session?.user ?? ART;
   const recipients = [...n.recipients.filter((r) => r.person.email !== art.email), { person: art, role: 'shared' as const, by: PRIYA, link: true as const, at }];
   w.noteLinks = [{ link: { id: 'link-readout', by: PRIYA, at, expiresAt, revocable: false }, noteId: 'n9', secret: READOUT_SECRET, note: { ...n, recipients, received: { role: 'shared', by: PRIYA, link: true, at } } }];
-  try { sessionStorage.setItem('alcove.link-after-sign-in', JSON.stringify({ secret: READOUT_SECRET, until: Date.now() + 600_000 })); } catch { /* without storage there's no link to open */ }
+  returnTo({ to: 'link', secret: READOUT_SECRET });
 };
 
 /** Art has Priya's research readout from her link, and Theo has it from Art's: the note says so, and so does who has it. */
