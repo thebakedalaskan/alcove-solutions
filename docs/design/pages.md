@@ -620,6 +620,9 @@ you're buying on the right, under its own small evening (`PlanWindow`) whose sun
   cancels only a payment nothing has reached yet (`deposits.ts` › `cancel`; docs/engineering/plans-and-usage.md, Cancelling
   a top-up), and refuses the rest. What arrived is added to the balance when the payment settles, whether or not the rest
   comes, so there's nothing to cancel: the address waits for the rest until it closes.
+- **Closing from Done**, however it's closed, says once in a toast on the page under it what was bought, in the server's
+  dates: "You’re on Pro until 4 Nov 2027.", "Pro runs to 10 Nov 2027.", "10 hours of notes added.", "Vandelay Industries is
+  on Team.", "6 licenses added to Vandelay Industries.". Not over a call, where notes coming on again say it.
 - **Motion** is one move a stage, transform and opacity only: waiting, the sun on its horizon and its glow breathing; seen,
   the sun lifts and the amount counts up; done, it clears the horizon and the sky warms. With reduced motion every stage
   shows at once and only the dots and glints fade.

@@ -2559,6 +2559,10 @@ instead, once (16.20).
 4. **Done.** The sun clears the horizon and a tick draws in: "You're on Pro", until when, the receipt row with **Receipt**, a
    receipt to print, "Nothing renews by itself. Alcove reminds you before it ends.", and **Done**. Pro starts at once with a
    fresh period and all of Pro's notes.
+5. **Closed.** However the window is closed from Done, the page under it says once what was bought, in the server's dates:
+   "You're on Pro until 4 Nov 2027." (extending, "Pro runs to 10 Nov 2027."; more notes, "10 hours of notes added."; a team,
+   "Vandelay Industries is on Team." or "6 licenses added to Vandelay Industries."). Over a call, notes coming on again say
+   it instead (16.9).
 
 What you send is what the balance is short of the total: money already in the balance counts ("Your balance — −$5"). A
 network's minimum above that raises the amount, and the summary says the rest stays in your balance. The payment adds the
