@@ -32,7 +32,7 @@ Source placement, composition entry points and the enforced rules for new files 
 
 | ID | Provider | Role | Status |
 | --- | --- | --- | --- |
-| `C01` | Confidential compute (Phala TDX or a GCP confidential VM) | Runs the API as the trusted plaintext endpoint | Required before production. The API is ready (`TEE=dstack`: keys from dstack's key service, `/v1/attestation`); not deployed |
+| `C01` | Confidential compute (Google Cloud Confidential Space, Intel TDX) | Runs the API, and serves the web app, as the trusted plaintext endpoint | Working with `TEE=confidential-space`, deployed by `infra/confidential-space`: the master is made in the TEE and released by Cloud KMS only to attested images signed into Sigstore's public log, TLS ends inside it, and `/v1/attestation` hands out Google's token with the release's log entry, which the app checks ([Moving to confidential computing](engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing)) |
 | `I01` | NEAR AI Cloud | The live transcript (Whisper), writing notes and answering questions (the organizer can choose another model, some unencrypted) | Working when `NEAR_AI_API_KEY` is set. Each model's evidence is checked first (Intel TDX, a published dstack OS image measured exactly, NVIDIA confidential GPUs), then everything goes by Oblivious HTTP sealed to its attested key ([Verified private inference](engineering/notes-and-inference.md#verified-private-inference)). The model code inside isn't pinned yet |
 | — | Google | Sign-in (OpenID Connect) and Google Calendar | Working; Microsoft and SSO are still demo stand-ins |
 | `P01` | NEAR Intents 1Click | USDC credit purchases | Not connected |

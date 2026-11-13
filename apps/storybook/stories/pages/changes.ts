@@ -6,6 +6,7 @@
  */
 import { NOTE_LINK_DAYS, type PersonalEntry } from '@alcove/api';
 import { UNENCRYPTED_MODEL } from '../../src/api/script';
+import { attested, type Broken } from '../../src/api/attestation';
 import { standIn } from '../../src/api/standin';
 import type { Troubles } from '../../src/api/trouble';
 import { keepHere, type KeptSpec } from '../../src/api/kept';
@@ -42,10 +43,19 @@ export const standupTwice = (w: World): void => {
 };
 
 /**
- * The server answers that it doesn't run in confidential compute, as the public beta on Cloud Run does: a story's
- * `beforeEach`, put back when the next story opens. Everywhere still says Confidential compute, with nothing verified.
+ * The server answers that it doesn't run in confidential compute, as a server run locally does: a story's `beforeEach`,
+ * put back when the next story opens. Everywhere still says Confidential compute, with nothing verified.
  */
-export const notAttested = (): (() => void) => swap(standIn.trust, 'attestation', async (nonce) => ({ tee: 'none', nonce, build: { commit: 'storybook' } }));
+export const notAttested = (): (() => void) => swap(standIn.trust, 'attestation', async () => ({ tee: 'none' as const, build: { commit: 'storybook' } }));
+
+/**
+ * The server is in Confidential Space, but this browser's check of it doesn't pass, one way of each kind: its token is
+ * signed under a root that isn't Google's (`another-root`), it's too old (`too-old`), the server could be debugged
+ * (`debuggable`), the token names another build than the server reports (`another-build`), or the image isn't in the
+ * public log (`unreleased`). Nothing is blocked: everywhere says Confidential compute without · verified, and where the
+ * check's details are (Settings › Privacy, the call's shield, pointing at the side panel's check) it says why.
+ */
+export const checkFails = (why: Broken) => (): (() => void) => swap(standIn.trust, 'attestation', () => attested(why));
 
 /** Signed in with Google without sharing the calendar. */
 export const noCalendar = (w: World): void => { w.calendar = notConnected; };

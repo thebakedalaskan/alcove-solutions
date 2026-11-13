@@ -1,0 +1,102 @@
+name: Refresh Confidential Space
+
+# Moves production onto the newest Confidential Space image, monthly and on demand: the same API image, by digest, with
+# the environment it was deployed with, in a new instance template, rolled out as a deploy is. Google attests only recent
+# images (security bulletin GCP-2026-071) and STABLE support lasts about six months, so a group left alone would, at some
+# restart, no longer unwrap its master.
+on:
+  schedule:
+    - cron: '23 9 3 * *'
+  workflow_dispatch:
+
+# A group of its own: in deploy.yml's, a refresh waiting behind a deploy would cancel the next deploy waiting there. It
+# skips instead while a deploy is queued or running (the first job), and deploy.sh refuses to refresh a group that's
+# mid-rollout. A deploy that starts while a refresh rolls takes its place: the group ends on the deploy's template, also
+# on the newest Confidential Space image, and the refresh fails with nothing left to do.
+concurrency:
+  group: refresh-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploys:
+    name: Skip while a deploy is queued or running
+    if: vars.DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    outputs:
+      busy: ${{ steps.runs.outputs.busy }}
+    steps:
+      - id: runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          busy=0
+          for status in queued in_progress waiting pending requested; do
+            count="$(curl --fail --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/$REPOSITORY/actions/workflows/deploy.yml/runs?status=$status&per_page=1" |
+              jq -er '.total_count')"
+            busy=$((busy + count))
+          done
+          if [ "$busy" -gt 0 ]; then
+            echo 'busy=true' >> "$GITHUB_OUTPUT"
+            echo "::notice title=Refresh skipped::$busy Deploy run(s) queued or running; that deploy moves the group onto the newest Confidential Space image itself."
+          else
+            echo 'busy=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  refresh:
+    name: Production → the newest Confidential Space image
+    needs: deploys
+    if: needs.deploys.outputs.busy == 'false'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write # Workload Identity Federation: no long-lived GCP keys in GitHub.
+    # Only our scripts run with this identity; the check is the next job, with no Google credentials.
+    outputs:
+      image: ${{ steps.deploy.outputs.image }}
+      address: ${{ steps.deploy.outputs.address }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Roll the group onto the newest image
+        id: deploy
+        # deploy.sh writes only its key=value lines to stdout; gcloud's own output goes to stderr.
+        run: infra/confidential-space/deploy.sh --refresh production >> "$GITHUB_OUTPUT"
+
+  verify:
+    name: Check the server as the app does, and its TLS key
+    needs: refresh
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # No Google credentials and no OIDC token: it only reads the public endpoint.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile --filter @alcove/confidential-space...
+      - name: Through the load balancer's own address, whatever DNS says
+        env:
+          ADDRESS: ${{ needs.refresh.outputs.address }}
+          IMAGE: ${{ needs.refresh.outputs.image }}
+        run: |
+          pnpm --filter @alcove/confidential-space exec tsx verify-server.ts https://api.alcove.solutions \
+            --web https://alcove.solutions --connect "$ADDRESS" --digest "${IMAGE#*@}"

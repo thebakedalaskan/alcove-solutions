@@ -2,17 +2,24 @@
  * Certificates and revocation lists for the stand-in attestation services: test roots, intermediates
  * and leaves made at the start of a run, in DER exactly as the verifiers parse it. They play Intel's and
  * NVIDIA's roles in tests; the API is pointed at these roots and checks them the same way as the real ones.
+ * They play Google's Confidential Space root (RSA) and an ACME CA too, which certifies a key it's given.
  */
 import { AsnConvert, OctetString } from '@peculiar/asn1-schema';
 import {
   AlgorithmIdentifier, AttributeTypeAndValue, AttributeValue, BasicConstraints, CRLDistributionPoints, Certificate, CertificateList, DistributionPoint,
-  DistributionPointName, Extension, Extensions, GeneralName, KeyUsage, KeyUsageFlags, Name, RelativeDistinguishedName, SubjectPublicKeyInfo, TBSCertList,
-  TBSCertificate, Time, Validity, Version, id_ce_basicConstraints, id_ce_cRLDistributionPoints, id_ce_keyUsage
+  DistributionPointName, Extension, Extensions, GeneralName, KeyUsage, KeyUsageFlags, Name, RelativeDistinguishedName, SubjectAlternativeName, SubjectPublicKeyInfo,
+  TBSCertList, TBSCertificate, Time, Validity, Version, id_ce_basicConstraints, id_ce_cRLDistributionPoints, id_ce_keyUsage, id_ce_subjectAltName
 } from '@peculiar/asn1-x509';
 import { generateKeyPairSync, randomBytes, sign, type KeyObject } from 'node:crypto';
 
-export type Curve = 'P-256' | 'P-384';
-const ALG = { 'P-256': { oid: '1.2.840.10045.4.3.2', hash: 'sha256' }, 'P-384': { oid: '1.2.840.10045.4.3.3', hash: 'sha384' } } as const;
+/** The key a certificate is for: an EC curve, or RSA (2048 bits, signing with SHA-256, as Google's Confidential Space chain does). */
+export type Curve = 'P-256' | 'P-384' | 'RSA';
+const ALG = {
+  'P-256': { oid: '1.2.840.10045.4.3.2', hash: 'sha256' }, 'P-384': { oid: '1.2.840.10045.4.3.3', hash: 'sha384' }, RSA: { oid: '1.2.840.113549.1.1.11', hash: 'sha256' }
+} as const;
+/** How a certificate says what signed it: RSA's algorithm takes a NULL parameter, ECDSA's none. */
+const algorithm = (curve: Curve) => new AlgorithmIdentifier(curve === 'RSA' ? { algorithm: ALG.RSA.oid, parameters: null } : { algorithm: ALG[curve].oid });
+const keyPair = (curve: Curve) => (curve === 'RSA' ? generateKeyPairSync('rsa', { modulusLength: 2048 }) : generateKeyPairSync('ec', { namedCurve: curve === 'P-256' ? 'prime256v1' : 'secp384r1' }));
 
 /** A certificate this run issued, with its private key. */
 export interface Issued { der: Buffer; pem: string; name: Name; key: KeyObject; publicKey: KeyObject; curve: Curve }
@@ -37,9 +44,25 @@ export function issue(o: {
   commonName: string; organization: string; curve: Curve; issuer?: Issued | undefined; ca: boolean;
   notBefore?: Date | undefined; notAfter?: Date | undefined; crl?: string | undefined; extensions?: { oid: string; der: Uint8Array }[] | undefined;
 }): Issued {
-  const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: o.curve === 'P-256' ? 'prime256v1' : 'secp384r1' });
+  const { privateKey, publicKey } = keyPair(o.curve);
   const name = nameOf(o.commonName, o.organization);
-  const signer = o.issuer ?? { name, key: privateKey, curve: o.curve };
+  const der = certificate({ ...o, name, publicKey, signer: o.issuer ?? { name, key: privateKey, curve: o.curve } });
+  return { der, pem: pemOf(der), name, key: privateKey, publicKey, curve: o.curve };
+}
+
+/** A leaf for a key someone else holds (as a CA certifies the key in a request), naming `hosts`, signed by `issuer`. */
+export function certify(publicKey: KeyObject, o: { hosts: string[]; issuer: Issued; notBefore?: Date | undefined; notAfter?: Date | undefined }): { der: Buffer; pem: string } {
+  const [first = 'localhost'] = o.hosts;
+  const san = AsnConvert.serialize(new SubjectAlternativeName(o.hosts.map((dNSName) => new GeneralName({ dNSName }))));
+  const der = certificate({ ...o, name: nameOf(first, 'Alcove Tests'), publicKey, signer: o.issuer, ca: false, extensions: [{ oid: id_ce_subjectAltName, der: new Uint8Array(san) }] });
+  return { der, pem: pemOf(der) };
+}
+
+function certificate(o: {
+  name: Name; publicKey: KeyObject; signer: { name: Name; key: KeyObject; curve: Curve }; ca: boolean;
+  notBefore?: Date | undefined; notAfter?: Date | undefined; crl?: string | undefined; extensions?: { oid: string; der: Uint8Array }[] | undefined;
+}): Buffer {
+  const { name, publicKey, signer } = o;
   const alg = ALG[signer.curve];
   const extensions = [
     ...(o.ca ? [
@@ -55,7 +78,7 @@ export function issue(o: {
     version: Version.v3,
     // A positive serial: a leading 0x01, then random bytes.
     serialNumber: ab(new Uint8Array([1, ...randomBytes(15)])),
-    signature: new AlgorithmIdentifier({ algorithm: alg.oid }),
+    signature: algorithm(signer.curve),
     issuer: signer.name,
     validity: new Validity({ notBefore: seconds(o.notBefore ?? new Date(Date.now() - DAY)), notAfter: seconds(o.notAfter ?? new Date(Date.now() + 365 * DAY)) }),
     subject: name,
@@ -63,19 +86,18 @@ export function issue(o: {
     extensions: new Extensions(extensions)
   });
   const signature = sign(alg.hash, Buffer.from(AsnConvert.serialize(tbs)), signer.key);
-  const der = Buffer.from(AsnConvert.serialize(new Certificate({ tbsCertificate: tbs, signatureAlgorithm: new AlgorithmIdentifier({ algorithm: alg.oid }), signatureValue: ab(signature) })));
-  return { der, pem: pemOf(der), name, key: privateKey, publicKey, curve: o.curve };
+  return Buffer.from(AsnConvert.serialize(new Certificate({ tbsCertificate: tbs, signatureAlgorithm: algorithm(signer.curve), signatureValue: ab(signature) })));
 }
 
 /** An empty revocation list from `issuer`, current from `thisUpdate` to `nextUpdate`. */
 export function crl(issuer: Issued, o: { thisUpdate?: Date; nextUpdate?: Date } = {}): Buffer {
   const alg = ALG[issuer.curve];
   const tbs = new TBSCertList({
-    version: Version.v2, signature: new AlgorithmIdentifier({ algorithm: alg.oid }), issuer: issuer.name,
+    version: Version.v2, signature: algorithm(issuer.curve), issuer: issuer.name,
     thisUpdate: new Time(seconds(o.thisUpdate ?? new Date(Date.now() - DAY))), nextUpdate: new Time(seconds(o.nextUpdate ?? new Date(Date.now() + 30 * DAY)))
   });
   const signature = sign(alg.hash, Buffer.from(AsnConvert.serialize(tbs)), issuer.key);
-  return Buffer.from(AsnConvert.serialize(new CertificateList({ tbsCertList: tbs, signatureAlgorithm: new AlgorithmIdentifier({ algorithm: alg.oid }), signature: ab(signature) })));
+  return Buffer.from(AsnConvert.serialize(new CertificateList({ tbsCertList: tbs, signatureAlgorithm: algorithm(issuer.curve), signature: ab(signature) })));
 }
 
 /** An ECDSA signature as Intel's quotes and collateral carry it: r and s, 32 bytes each. */

@@ -15,7 +15,8 @@ import { join, relative } from 'node:path';
 const require = createRequire(import.meta.url);
 const ts = require('typescript-parser');
 const root = new URL('..', import.meta.url).pathname;
-const DIRS = ['apps', 'packages'];
+// infra holds the deploy's own TypeScript (infra/confidential-space/verify-server.ts), held to the same rules.
+const DIRS = ['apps', 'packages', 'infra'];
 const SKIP = new Set(['node_modules', 'dist', '.output', '.turbo', '.tanstack', '.nitro']);
 const GENERATED = /routeTree\.gen\.ts$/;
 const problems = [];

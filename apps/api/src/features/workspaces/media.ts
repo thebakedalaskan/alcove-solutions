@@ -22,7 +22,7 @@ import { bigintText, bytea, exec, maybeOne, rows, timestamp, tx, type Db } from 
 import { ConflictError, ForbiddenError, IntegrityError, InternalError, NotFoundError, UnavailableError, invalid, notFound, toAppError } from '../../errors';
 import { limitsNow, shown, type Limits } from '../../limits';
 import { currentLogContext, log, withLogContext } from '../../log';
-import { masterKey } from '../../owners';
+import { indexKey } from '../../owners';
 import { issueMediaToken, readMediaToken, type MediaToken } from '../../mediaToken';
 import { deleteQueued, queueDelete } from '../recordings/audio';
 import { jpegSize } from '../recordings/screens';
@@ -34,8 +34,8 @@ const mlog = log.child({ component: 'media' });
 const UPLOAD_MS = 24 * 60 * 60_000;
 /**
  * The most pieces one answer to a range sends. A browser asks again for the rest, so who's asking is asked about again as
- * it plays, and no answer that says its length passes 32 MiB, which Cloud Run refuses over HTTP/1. A file read without a
- * range, past this size, is streamed without a length instead, and asked about again every so many pieces.
+ * it plays, and no answer that says its length passes 32 MiB, a limit kept from Cloud Run, which refused more over HTTP/1. A
+ * file read without a range, past this size, is streamed without a length instead, and asked about again every so many pieces.
  */
 const PIECES_PER_ANSWER = 4;
 const MOST_SENT_WITH_A_LENGTH = PIECES_PER_ANSWER * MEDIA_PIECE_BYTES;
@@ -238,7 +238,7 @@ const wire = (id: string, info: Info, createdAt: Date, documents: string[]): Wor
 /** Who an upload counts against: an account, or a guest, by a blind index of the person their pass names. */
 type Uploader = { account: string } | { guest: Uint8Array; callId: string | undefined };
 const uploaderOf = (d: Deps, r: Reader): Uploader =>
-  (r.account ? { account: r.account.owner.ownerId } : { guest: blindIndex(masterKey(d), 'upload-guest', limitKey(r)), callId: r.seat?.callId });
+  (r.account ? { account: r.account.owner.ownerId } : { guest: blindIndex(indexKey(d), 'upload-guest', limitKey(r)), callId: r.seat?.callId });
 /** What each limit allows, the same for everyone. */
 interface Allowed { file: number; workspace: number; day: number }
 const allowedBy = (limits: Limits): Allowed => ({ file: limits.get('media.file_bytes'), workspace: limits.get('media.workspace_bytes'), day: limits.get('media.account_day_bytes') });

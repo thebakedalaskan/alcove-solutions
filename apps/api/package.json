@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@alcove/api": "workspace:*",
+    "@alcove/api-http": "workspace:*",
     "@alcove/board": "workspace:*",
     "@aws-sdk/client-s3": "^3.1161.0",
     "@hono/node-server": "^2.1.6",
@@ -24,6 +25,7 @@
     "@noble/curves": "^2.4.0",
     "@noble/hashes": "^2.4.0",
     "@phala/dcap-qvl": "0.7.0",
+    "acme-client": "5.4.0",
     "ffmpeg-static": "5.3.0",
     "hono": "^4.13.16",
     "jose": "^6.2.15",
@@ -36,7 +38,6 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@alcove/api-http": "workspace:*",
     "@livekit/rtc-ffi-bindings": "0.13.1",
     "@livekit/rtc-node": "^1.2.1",
     "@modelcontextprotocol/client": "2.4.0",

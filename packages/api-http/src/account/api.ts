@@ -1,8 +1,8 @@
 import { type HttpTransport } from '../transport/http';
-import { type AlcoveApi, AttestationSchema, CreditBalanceSchema, FeatureFlagsSchema, PersonSuggestionSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema } from '@alcove/api';
+import { type AlcoveApi, CreditBalanceSchema, FeatureFlagsSchema, PersonSuggestionSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema } from '@alcove/api';
 import { z } from 'zod';
 
-export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'credits' | 'trust' | 'featureFlags'> {
+export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'credits' | 'featureFlags'> {
   const { base, req } = t;
   return {
     auth: {
@@ -34,9 +34,6 @@ export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'ac
       topUp: (id) => req(TopUpSchema, 'GET', `/credits/top-ups/${encodeURIComponent(id)}`),
       cancelTopUp: (id) => req(TopUpSchema, 'POST', `/credits/top-ups/${encodeURIComponent(id)}/cancel`),
       topUps: () => req(z.array(TopUpSchema), 'GET', '/credits/top-ups')
-    },
-    trust: {
-      attestation: (nonce) => req(AttestationSchema, 'GET', `/attestation?nonce=${encodeURIComponent(nonce)}`)
     },
     featureFlags: {
       on: async () => (await req(FeatureFlagsSchema, 'GET', '/feature-flags')).on

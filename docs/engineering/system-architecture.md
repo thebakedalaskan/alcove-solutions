@@ -22,6 +22,7 @@ flowchart TB
         UI --> Media
     end
     subgraph API[apps/api: one Node process]
+        Edge[Edge: TLS ends here, HTTP/2, the web app's files, certificates]
         Account[Account: Google sign-in, demo stand-ins, sessions, profile]
         Keys[Owner keys: opened per request under KMASTER]
         Vault[Vault: encrypted items and revisions]
@@ -31,7 +32,9 @@ flowchart TB
         Billing[Billing: Kservice-sealed]
         Inference[NEAR AI adapter: verifies each model, then encrypts to it]
     end
-    UI -->|HTTPS /v1, cookie session| Account
+    UI -->|HTTPS through the load balancer, cookie session| Edge
+    Edge -->|api. hosts: /v1| Account
+    Edge -->|certificates, dns-01| ACME[Let's Encrypt, Cloudflare DNS]
     Media -->|5-second audio pieces, speech clips| Calls
     Keys --> Vault
     Account -->|sessions, keyed hashes| DB[(Postgres: D01)]
@@ -82,13 +85,63 @@ place that runs Yjs on the server, so what's in one can't stop the event loop. A
 ([Who can open a workspace](privacy-keys-and-sessions.md#who-can-open-a-workspace)). What a document holds is a Yjs document,
 which browsers edit together through the API ([Data and storage › Documents](data-and-storage.md#documents)).
 
+### The edge
+
+With `TLS_HOSTS` set, as in Confidential Space, TLS ends in the API process itself (`apps/api/src/edge/`), inside the TEE,
+so nothing between a browser and the API (the load balancer, Google's network, Cloudflare) can read what they say. The load
+balancer passes TCP through, and the process runs unprivileged, so it listens on two high ports:
+
+- **`HTTPS_PORT`** (8443, where the load balancer sends 443). Every connection starts with a PROXY protocol v1 line, which
+  the load balancer adds, saying whose it is; one without it is closed. The edge then sets `x-forwarded-for` to exactly
+  that address, whatever the client sent, so `clientAddress()` and every per-address rate limit go by the address the load
+  balancer saw. Then TLS, with HTTP/2 and HTTP/1.1 for clients without it, routed by host: `api.` hosts are the API, `www.`
+  ones are sent on (301) to the host without it, and the rest are the web app. Streams (NDJSON) and uploads work as they
+  did over HTTP/1.1; a connection can carry up to 1 MiB in flight for each request it's sending, 4 MiB in all, and 256
+  requests at once. Nothing in front times anything out (the load balancer passes TCP through, idle for up to an hour), so
+  the edge does: a connection has 10 seconds for its PROXY line, an HTTP/1.1 request 60 seconds for its headers and 5
+  minutes in all, and a connection with nothing sent either way for 2 minutes is closed (live streams say something every
+  25 seconds).
+- **`HTTP_PORT`** (8080, where the load balancer sends 80, and its health checks). No PROXY line. `/health` answers 200
+  `{ ok, tee, commit }` once TLS is being served (503 before, while the certificate is got, and once the process is
+  stopping), for any host and with no redirect. It says only that TLS is served: it never asks the database, so the
+  load balancer and autohealing judge an instance by its TLS alone. Everything else for a TLS host is sent to https (301),
+  and anything for another host is 404.
+
+**The web app** comes from the image's `WEB_DIR` (`/app/web`, apps/web's `dist/client`), served as Cloudflare Pages served
+it (`edge/static.ts`): the file asked for, else `{path}/index.html`, else `{path}.html`, else `/index.html` with 200, since
+the app routes in the browser. Headers come from its `_headers`, in Pages' format, the CSP that `csp.mjs` writes included: each
+rule that matches the whole path, whatever characters it holds, applies in order, a header set twice is joined, and
+`! Name` takes one away (so `/assets/*`, whose names change with what's in them, are kept a year,
+`public, max-age=31536000, immutable`, and `/people/*` have no `Cache-Control`). A path with a control character in it is
+refused (400). `_headers`, `_redirects` and dot files are never served, and only files found at start are. Text is
+compressed (Brotli, or gzip) the first time it's asked for, and every file has an ETag a browser revalidates with. A file
+goes out 64 KiB at a time, each once the last has gone, so a big one (MediaPipe's 16 MB model) never sits whole in a
+connection's memory, where over HTTP/2 it would hold up the connection's other requests, the call's own among them.
+
+**The TLS key** is a P-256 key derived from the TEE's master (`edge/tlsKeys.ts`), so it's the same on every instance and
+across deploys, and the attestation can name it ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)).
+**Its certificate** is one for every TLS host, from Let's Encrypt (`ACME_DIRECTORY`) over ACME dns-01 (`edge/acme.ts`):
+each host's `_acme-challenge` TXT record goes up in the Cloudflare zone (`CLOUDFLARE_ZONE`, with `CLOUDFLARE_API_TOKEN` from
+Secret Manager), the CA is told once a public resolver gives it, and it comes down however the order ends. The account it's
+asked for with has a key derived from the master too, and its URI is logged (`acme account`), for a CAA record that lets only
+that account issue for these hosts. The certificate is kept in Postgres (`tls_certificates`, `edge/certificates.ts`), so
+every instance serves the same one and none orders its own. Until one is stored an instance can't serve HTTPS, so it gets
+one before it listens there: whichever instance holds an advisory lock orders it, on a connection of its own rather than
+one of the pool's, and the others wait for it to be stored. An order that fails takes its challenge records down and is
+tried again 30 seconds later, then twice as long each time, up to 30 minutes, while `/health` says the instance isn't
+ready; no request to the CA waits more than 30 seconds. Every 12 hours each instance looks again: one renews a certificate
+with fewer than 30 days left, and each serves the newest stored, swapped in without a restart.
+
 ## Request lifecycle
 
-1. The browser sends `GET/POST/PATCH/DELETE /v1/...` with the HttpOnly session cookie. The first
+1. The browser sends `GET/POST/PATCH/DELETE /v1/...` with the HttpOnly session cookie, through the load balancer to
+   [the edge](#the-edge) in production, which ends TLS and passes the request on with the client's address. The first
    middleware assigns a request ID (or keeps a well-formed `x-request-id`), returns it as a header, and
    binds it to every log line for the request ([Logging and errors](logging-and-errors.md)).
 2. CORS answers only `WEB_ORIGIN`. A state-changing request must come from `WEB_ORIGIN` with a JSON or
-   audio body, or on its own route, a shared-screen frame or a piece of a file.
+   audio body, or on its own route, a shared-screen frame or a piece of a file. The one exception is under
+   `/v1/operator/` (feature flags, for operators with curl and a bearer token, never a cookie): no Origin is needed there,
+   and the body must still be JSON.
 3. Public routes come first: `GET /health` and `/healthz`, `GET /v1/session`, `POST /v1/auth/sign-in`
    (the demo providers), `GET /v1/auth/google` and `GET /v1/auth/google/callback`, `GET /v1/attestation`
    ([what's running](privacy-keys-and-sessions.md#moving-to-confidential-computing)) and `POST /v1/telemetry`.
@@ -117,7 +170,7 @@ which browsers edit together through the API ([Data and storage › Documents](d
 | --- | --- |
 | Session | 14 days idle, 30 days absolute; several per account; kept in Postgres, so they survive restarts |
 | Sign-in | 30 attempts a minute per client address, demo and Google together (browser reports: 60 a minute) |
-| Attestation | 30 requests a minute per client address |
+| Attestation | 30 requests a minute per client address; inside a TEE, one token for every caller, asked for again once it's 5 minutes old and never handed out at 15, with its release looked up in Sigstore's public log; after the launcher fails, 30 seconds before it's asked again, doubling to 5 minutes |
 | Google sign-in attempt | 10 minutes from leaving for Google to coming back |
 | Audio piece | At most 2 MiB (a larger `content-length` is refused before the body is read); WebM, MP4 or Ogg audio; 5-second timeslices |
 | Transcript clip | 16 kHz mono 16-bit WAV, at most 30 seconds (960,044 bytes); 240 a minute per account, 40 for each voice in a call |
@@ -153,7 +206,7 @@ which browsers edit together through the API ([Data and storage › Documents](d
 | Master key | `KMASTER` from `.env` | Released only to the attested VM, never to operators or the deploy pipeline |
 | Sign-in | Google OpenID Connect when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set; stand-ins for Microsoft and SSO in `apps/api/src/demo.ts` | Google, Microsoft OAuth and OIDC single sign-on, all verified |
 | Calendar and directory | An optional Google Calendar connection for Google accounts, a sample day and week of busy times for demo accounts, and a demo directory for `vandelay.industries` | Every provider's calendar and the company's own directory |
-| Transport | HTTP on localhost behind the Vite proxy | TLS, plus an attested end-to-end channel (HPKE) so the edge sees only ciphertext |
+| Transport | HTTP on localhost behind the Vite proxy | TLS ending inside the TEE ([the edge](#the-edge)), plus an attested end-to-end channel (HPKE) so even a certificate someone else got for these hosts sees only ciphertext |
 | Call media | LiveKit in Docker (`infra/livekit/dev.yaml`); LiveKit Cloud in production. End-to-end encrypted: MLS keys made in browsers, frames encrypted before they leave ([Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption)) | The same |
 | Invitations | Sent by Google Calendar when the organizer's calendar is connected; otherwise none | Email (SMTP) as well |
 | Object store | RustFS in Docker | Cloudflare R2 |

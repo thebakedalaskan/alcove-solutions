@@ -13,7 +13,7 @@ import { aheadShown, joinable, whenLine } from '~/features/home/day';
 import { recordOfflineHere } from '~/lib/device';
 import { log } from '~/lib/log';
 import { useNow, useOnline } from '~/lib/live';
-import { q, trustLine, verifiedAt } from '~/lib/queries';
+import { q, trustLine, unverifiedBecause, verifiedAt } from '~/lib/queries';
 import { hm, hoursAndMinutes } from '~/lib/time';
 import { NAV, NAV_FOOT, inWorkspace, places, useCounts, type NavPlace } from './places';
 
@@ -153,14 +153,16 @@ function Pinned({ onPin }: { onPin: () => void }) {
   );
 }
 
-/** The check, and the minutes of notes left (Settings' minutes). */
+/** The check (pointing at it says when it passed, or why it didn't), and the minutes of notes left (Settings' minutes). */
 function Foot({ online }: { online: boolean }) {
   const credits = useQuery(q.balance()).data;
   const trust = useQuery(q.trust()).data;
   const verified = verifiedAt(trust);
+  const failed = unverifiedBecause(trust);
   return (
     <div className="sb-foot">
-      {online && <p className="sb-seal" title={verified === null ? undefined : `Hardware checked at ${hm(new Date(verified))}`}><Icon name="sealed" size={15} />{trustLine(trust)}</p>}
+      {/* A check that didn't pass says why beside a shield without its tick, never a ticked one. */}
+      {online && <p className="sb-seal" title={verified === null ? failed ?? undefined : `Hardware checked at ${hm(new Date(verified))}`}><Icon name={failed === null ? 'sealed' : 'shieldOff'} size={15} />{trustLine(trust)}</p>}
       {credits && (
         <Link to="/settings" hash="plan" activeOptions={{ includeHash: true }} className="sb-credits">
           <span><b>{hoursAndMinutes(credits.balance / credits.perMinute)}</b> of notes left</span>

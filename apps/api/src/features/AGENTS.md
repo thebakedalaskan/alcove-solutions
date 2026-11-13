@@ -14,7 +14,8 @@ and `docs/engineering/logging-and-errors.md`.
 - Colocate complete API/client integration flows here as `*.integration.test.ts`. Cross-feature/service-wide
   suites belong in `src/integration`; reusable fixtures belong in `src/testing`. Preserve assertions, real
   Postgres/object-store usage and CI timing keys when moving a suite.
-- Shared database, crypto, ownership/session, object store, logging, inference/attestation and worker machinery
+- Shared database, crypto, server keys, Google Cloud (`gcp.ts`), ownership/session, object store, logging,
+  inference/attestation, start-up (`start.ts`), the edge (`edge/`: TLS, certificates, the web app's files) and worker machinery
   keep deliberate shared homes. Do not duplicate them per feature or hide them in an undifferentiated utils folder.
 - Moving source never changes SQL scope, persisted headers/key labels, schema defaults, migrations, physical
   deletion, safe logging/error contexts, authorization or receipt behavior. Re-read the privacy rules for any change

@@ -48,6 +48,22 @@ type Service = Pick<Deps, 'cfg' | 'pool'>;
 const key = (d: Pick<Deps, 'cfg'>) => serviceKey(unb64u(d.cfg.KSERVICE, 32), 'accounting');
 const header = (ownerId: string) => ({ v: 1 as const, kind: 'billing', ownerId, keyVersion: '1' });
 
+/**
+ * Whether `kservice` opens an account's billing state as it's stored: how the KSERVICE a TEE carries over is checked before
+ * it's sealed in the server keys (serverKeys.ts), since another one would leave every balance unreadable.
+ */
+export function opensBilling(kservice: Uint8Array, ownerId: string, stateCiphertext: Uint8Array): boolean {
+  const accounting = serviceKey(kservice, 'accounting');
+  try {
+    openJson(accounting, header(ownerId), stateCiphertext, State);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    accounting.fill(0);
+  }
+}
+
 export async function openAccount(d: Pick<Deps, 'cfg'>, db: Db, ownerId: string): Promise<void> {
   const state = { balance: WELCOME_CREDITS, history: [{ id: id128(), at: new Date().toISOString(), label: 'Welcome credits', amount: WELCOME_CREDITS }] };
   await exec(db, 'INSERT INTO billing_accounts (owner_id, state_ciphertext, version) VALUES ($1,$2,0)', [ownerId, sealJson(key(d), header(ownerId), toJson(state))]);

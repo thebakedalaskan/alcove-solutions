@@ -22,7 +22,7 @@ import { documentText, documentTodos } from './document-text';
 import { sealUpdate } from './document-work';
 import { keepVersion, readDocument, writeDocument, type Held } from './documents';
 import { personOf } from '../account/portraits';
-import { findOwner, masterKey } from '../../owners';
+import { findOwner, indexKey } from '../../owners';
 import { ORIGIN, startHarness, type Browser, type Harness } from '../../testing/harness';
 
 vi.setConfig({ testTimeout: 90_000 });
@@ -72,7 +72,7 @@ async function rewrite(workspaceId: string, change: (s: WorkspaceState) => Works
   await h.pool.query('UPDATE workspaces SET state_ciphertext = $2 WHERE owner_id = $1', [ownerId, sealState(owner, workspaceId, change(openState(owner, workspaceId, row.state_ciphertext)))]);
 }
 /** A workspace as a person with this address has it, for the helpers other modules call. */
-const heldBy = (who: Account, workspaceId: string) => workspaceFor(h.deps, { email: who.email, principals: [blindIndex(masterKey(h.deps), 'email', who.email)], calls: [] }, workspaceId);
+const heldBy = (who: Account, workspaceId: string) => workspaceFor(h.deps, { email: who.email, principals: [blindIndex(indexKey(h.deps), 'email', who.email)], calls: [] }, workspaceId);
 
 /* ---------- a Yjs document, as an editor would change one ---------- */
 
@@ -2325,7 +2325,7 @@ describe('what’s kept', () => {
     // The same person, as two clients, and as one client in two documents: nothing in common, so no row says anything about another.
     expect(tags.every((t) => t.length > 0)).toBe(true);
     expect(new Set(tags).size).toBe(3);
-    expect(tags.some((t) => t.includes(Buffer.from(blindIndex(masterKey(h.deps), 'email', ann.email)).toString('hex')))).toBe(false);
+    expect(tags.some((t) => t.includes(Buffer.from(blindIndex(indexKey(h.deps), 'email', ann.email)).toString('hex')))).toBe(false);
     // What the server wrote belongs to nobody, so nobody can write as it.
     expect(await row(doc, 1)).toBe('');
   });
@@ -3848,7 +3848,7 @@ describe('a new address', () => {
     const ownerId = await ownerOf(id);
     const owner = await findOwner(h.deps, ownerId, undefined);
     if (!owner) throw new Error('no such workspace');
-    const asAddress = mac(stateKey(owner.root, ownerId, `document-clients:${doc}`), Buffer.concat([Buffer.from(`${client}:`), blindIndex(masterKey(h.deps), 'email', moved.email)]));
+    const asAddress = mac(stateKey(owner.root, ownerId, `document-clients:${doc}`), Buffer.concat([Buffer.from(`${client}:`), blindIndex(indexKey(h.deps), 'email', moved.email)]));
     await h.pool.query('UPDATE document_clients SET people = $3 WHERE document_id = $1 AND client_id = $2', [doc, client, Buffer.from(asAddress)]);
     expect((await sendUpdate(moved, id, doc, block(client, 1, [item({ root: 'scratch' })]))).status).toBe(200);
     await withGoogle(fresh, sub);

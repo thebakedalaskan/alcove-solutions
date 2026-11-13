@@ -6,7 +6,8 @@
  *   KeyEnvelope       = {v,ownerId,scopeId,keyVersion,nonce,ciphertext}, header as associated data
  *   Record            = {header,nonce,ciphertext} with XChaCha20-Poly1305 and AD = JCS(header)
  *   Binary record     = uint32(length of JCS(header)) || JCS(header) || nonce || ciphertext: the same seal, for what's too big for text
- *   Blind index       = HMAC(HKDF(Kmaster, "alcove/index/v1"), purpose || 0x00 || value): finds people without storing who they are
+ *   Kindex            = HKDF(Kmaster, "alcove/index/v1"), of the master the database's first accounts were made under: carried over since
+ *   Blind index       = HMAC(Kindex, purpose || 0x00 || value): finds people without storing who they are
  */
 import { hchacha, xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
@@ -106,27 +107,47 @@ export const callPassKey = (kmaster: Uint8Array): Uint8Array => derive(live(kmas
 export const mediaTokenKey = (kmaster: Uint8Array): Uint8Array => derive(live(kmaster), new Uint8Array(0), 'alcove/media-token/v1');
 export const mac = (key: Uint8Array, data: Uint8Array): Uint8Array => hmac(sha256, key, data);
 /**
+ * The key the blind indexes are keyed by, from a master. The server keeps the one its database's indexes were made with
+ * (serverKeys.ts): a master that changes, as it does moving into the TEE, doesn't change the index key.
+ */
+export const deriveIndexKey = (kmaster: Uint8Array): Uint8Array => derive(live(kmaster), new Uint8Array(0), 'alcove/index/v1');
+/** Seals the server's keys (serverKeys.ts) under the TEE's master, so only a VM the TEE gives that master can open them. */
+export const serverKeysKey = (kmaster: Uint8Array): Uint8Array => derive(live(kmaster), new Uint8Array(0), 'alcove/server-keys/v1');
+/**
+ * What a P-256 key of the edge's is made from (edge/tlsKeys.ts): its TLS key, so it's the same on every instance and every
+ * deploy and only the master can make it, and its ACME account key, so only the master can ask for a certificate. 48 bytes,
+ * so the key they're reduced to has no bias worth the name.
+ */
+export const edgeKeySeed = (kmaster: Uint8Array, purpose: 'tls' | 'acme-account'): Uint8Array => hkdf(sha256, live(kmaster), new Uint8Array(0), utf8(`alcove/${purpose}/v1`), 48);
+/**
  * A keyed hash that lets the server find a person (by sign-in account or email) without storing
  * who they are. Emails are compared trimmed and lower-cased.
  */
-export function blindIndex(kmaster: Uint8Array, purpose: 'subject' | 'email' | 'invite' | 'ring' | 'call-code' | 'call-seat' | 'call-workspace' | 'addition-author' | 'note-link-maker' | 'upload-guest', value: string): Uint8Array {
-  const v = purpose === 'email' || purpose === 'invite' || purpose === 'ring' ? value.trim().toLowerCase() : value;
-  return hmac(sha256, derive(live(kmaster), new Uint8Array(0), 'alcove/index/v1'), concat(utf8(purpose), new Uint8Array([0]), utf8(v)));
+export function blindIndex(indexKey: Uint8Array, purpose: 'subject' | 'email' | 'invite' | 'ring' | 'flag-email' | 'call-code' | 'call-seat' | 'call-workspace' | 'addition-author' | 'note-link-maker' | 'upload-guest', value: string): Uint8Array {
+  const v = purpose === 'email' || purpose === 'invite' || purpose === 'ring' || purpose === 'flag-email' ? value.trim().toLowerCase() : value;
+  return hmac(sha256, live(indexKey), concat(utf8(purpose), new Uint8Array([0]), utf8(v)));
 }
 
 /* ---------- key envelopes ---------- */
-const EnvelopeSchema = z.object({ v: z.literal(1), ownerId: z.string(), scopeId: z.string(), keyVersion: z.literal('1'), nonce: z.string(), ciphertext: z.string() });
+/**
+ * Which master a key envelope is under, bound into its header so an envelope of one version never opens as the other: `2`
+ * for a root key under the TEE's master (owners.root_envelope_v2); `1` for everything else, a root key under the master from
+ * before the TEE (owners.root_envelope) and every revision and recording key.
+ */
+export type KeyVersion = '1' | '2';
+const EnvelopeSchema = z.object({ v: z.literal(1), ownerId: z.string(), scopeId: z.string(), keyVersion: z.enum(['1', '2']), nonce: z.string(), ciphertext: z.string() });
 
-export function sealKey(wrapKey: Uint8Array, ownerId: string, scopeId: string, key: Uint8Array): Uint8Array {
-  const header = { v: 1, ownerId, scopeId, keyVersion: '1' };
+export function sealKey(wrapKey: Uint8Array, ownerId: string, scopeId: string, key: Uint8Array, keyVersion: KeyVersion): Uint8Array {
+  const header = { v: 1, ownerId, scopeId, keyVersion };
   const nonce = random(24);
   const ct = xchacha20poly1305(live(wrapKey), nonce, utf8(jcs(header))).encrypt(key);
   return utf8(jcs({ ...header, nonce: b64u(nonce), ciphertext: b64u(ct) }));
 }
-export function openKey(wrapKey: Uint8Array, ownerId: string, scopeId: string, envelope: Uint8Array): Uint8Array {
+export function openKey(wrapKey: Uint8Array, ownerId: string, scopeId: string, envelope: Uint8Array, keyVersion: KeyVersion): Uint8Array {
   const e = EnvelopeSchema.parse(JSON.parse(fromUtf8(envelope)));
   if (e.ownerId !== ownerId || e.scopeId !== scopeId) throw new IntegrityError('Key envelope belongs to another scope.', { context: { scopeId } });
-  const header = { v: 1, ownerId, scopeId, keyVersion: '1' };
+  if (e.keyVersion !== keyVersion) throw new IntegrityError('Key envelope is of another version.', { context: { scopeId, keyVersion: e.keyVersion, expected: keyVersion } });
+  const header = { v: 1, ownerId, scopeId, keyVersion };
   try {
     return xchacha20poly1305(live(wrapKey), unb64u(e.nonce, 24), utf8(jcs(header))).decrypt(unb64u(e.ciphertext));
   } catch (err) {

@@ -4,8 +4,9 @@
 
 Alcove provides end-to-end encrypted live video calls with built-in transcripts and notes. No bot joins
 the meeting. By default, NEAR AI’s confidential models transcribe and write notes after Alcove checks
-their hardware evidence. The public beta runs on Cloud Run. The API can decrypt stored content to
-provide the service and does not run in an attested confidential environment.
+their hardware evidence. The API and the web app run in Google Cloud Confidential Space on Intel TDX: the API
+decrypts stored content to provide the service only there, with a master key Cloud KMS releases to attested images
+signed into Sigstore's public log, and TLS ends inside it.
 
 ## The problem
 
@@ -59,4 +60,4 @@ Alcove's thesis: confidential transcription and notes belong inside a privacy-fi
 | Workspace and the Drive | A home for each call, made for it or chosen when scheduling, with its folder and the people invited; the Drive, a tree of places beside a sheet of large previews, with one Trash. Working in the app and in a call: the list, documents written by several people at once, with photos, films and files in them, starting points, Trash, sharing, people and roles, writing offline, faces, following, tags and comments, Find, History and Ask on a selection; in a call, a call's notes, follow-ups and transcript as pages in its folder, on your side and as blocks in a document, presenting the workspace, playing a film in a document for everyone, the organizer switching what everyone views, the workspace open to everyone in the call while they're in it, and what was worked on in the note afterwards. Without export |
 | Browser notifications | Working while Alcove is open in a tab, shown through the app's service worker. Nothing is pushed when no tab is open |
 | Credits and payments | Notes are charged 25 credits a minute when they're written; nothing checks the balance first. Credits are bought with USDC through NEAR Intents 1Click: choose how many (with volume discounts), send exactly their price to a one-off address, and they're added when it arrives |
-| Confidential compute (TEE, attestation, master key release) | The Cloud Run beta does not have attested hosting or key release. See the requirements for a [confidential production deployment](../engineering/privacy-keys-and-sessions.md#production-requirements). |
+| Confidential compute (TEE, attestation, master key release) | Working: the API and the web app run in Confidential Space on Intel TDX. The master is made there and Cloud KMS releases it only to attested images signed with Alcove's key, each recorded in Sigstore's public log; secrets are read the same way, and TLS ends inside the TEE. The app checks Google's attestation token and the release in the log, and shows the result. Accounts made before the move keep their root keys, so whoever held the old master could still open those ([Moving to confidential computing](../engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing)). Left: an HPKE channel bound to the attestation ([requirements](../engineering/privacy-keys-and-sessions.md#production-requirements)). |

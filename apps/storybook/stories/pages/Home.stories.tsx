@@ -9,7 +9,7 @@ import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import { on } from '../../src/world/clock';
 import { STATES, withNotes } from '../../src/world/states';
-import { calendarJustConnected, caughtUp, firstNotesWriting, givenByMaya, invited, noCalendar, notAttested, nothingToAnswer, otherMeetingsOff, takenOn, troubled, yourMeeting } from './changes';
+import { calendarJustConnected, caughtUp, checkFails, firstNotesWriting, givenByMaya, invited, noCalendar, notAttested, nothingToAnswer, otherMeetingsOff, takenOn, troubled, yourMeeting } from './changes';
 
 const meta = { title: 'Pages/Home', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -201,6 +201,11 @@ export const HostingNotAttestedPhone = phone(page('/home', 'busy', { beforeEach:
 /** The same on a laptop: the side panel's check, at its foot, says Confidential compute without · verified. */
 export const HostingNotAttested = page('/home', 'busy', { beforeEach: notAttested, globals: LAPTOP });
 export const HostingNotAttestedNight = { ...HostingNotAttested, globals: { ...LAPTOP, ...NIGHT } };
+/**
+ * This browser's check of the server didn't pass (here, the server could be debugged): the side panel's check says
+ * Confidential compute without · verified, and pointing at it says why. Nothing is blocked.
+ */
+export const HostingCheckFailed = page('/home', 'busy', { beforeEach: checkFails('debuggable'), globals: LAPTOP });
 /** The side panel hidden: the page has the room, and Home shows the confidential-compute check itself. A wide screen's: a phone has no side panel. */
 export const PanelHidden = page('/home', 'busy', {
   globals: LAPTOP,

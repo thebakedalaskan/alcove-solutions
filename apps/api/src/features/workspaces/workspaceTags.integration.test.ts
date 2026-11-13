@@ -15,7 +15,7 @@ import { maintain } from '../../maintenance';
 import { documentText } from './document-text';
 import { workspaceFor } from './access';
 import { readDocument } from './documents';
-import { masterKey } from '../../owners';
+import { indexKey } from '../../owners';
 import { startHarness, type Browser, type Harness } from '../../testing/harness';
 
 vi.setConfig({ testTimeout: 90_000 });
@@ -409,7 +409,7 @@ describe('a tag in a photo’s caption', () => {
   }
   /** What the server reads the document as saying, as search and the notes read it. */
   async function said(who: Account, id: string, doc: string) {
-    const w = await workspaceFor(h.deps, { email: who.email, principals: [blindIndex(masterKey(h.deps), 'email', who.email)], calls: [] }, id);
+    const w = await workspaceFor(h.deps, { email: who.email, principals: [blindIndex(indexKey(h.deps), 'email', who.email)], calls: [] }, id);
     const read = new Y.Doc();
     Y.applyUpdate(read, await readDocument(w, doc, 'state', {}));
     return { blocks: documentText(read, 'document').blocks, gallery: read.getXmlFragment('content').toArray().find((el): el is Y.XmlElement => el instanceof Y.XmlElement && el.getAttribute('id') === 'ga') };

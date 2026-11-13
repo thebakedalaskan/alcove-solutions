@@ -12,7 +12,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 
 | Table | Clear columns | Ciphertext or keyed hash |
 | --- | --- | --- |
-| `owners` | `owner_id`, `stored_bytes`, `version`, `created_at`, `series_turn_until` (set only while a change to one of the account's series goes through, so changes take turns; [below](#writes-reads-and-deletes)) | `root_envelope` (`Kowner` under `KMASTER`), `root_check` (HMAC). An account or a [workspace](#workspaces) |
+| `owners` | `owner_id`, `stored_bytes`, `version`, `created_at`, `series_turn_until` (set only while a change to one of the account's series goes through, so changes take turns; [below](#writes-reads-and-deletes)) | `root_envelope_v2` (`Kowner` under `KMASTER`; null on rows from before the TEE until they're wrapped again, migration `0029_tee_keys.sql`), `root_envelope` (`Kowner` under the old master, while one is held; null on accounts made after it's retired), `root_check` (HMAC). An account or a [workspace](#workspaces) ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)) |
 | `identities` | owner, created and last used | `subject_index` (primary key), `email_index` (the provider's current email, updated at each sign-in) |
 | `sessions` | owner, provider (`google`, `microsoft`, `sso`), created, last seen, expiry | `session_hash` (SHA-256 of the cookie's ID) |
 | `items` | owner, item ID, `kind` (`profile`, `meeting`, `note`, `connection`, `series`), current revision, `deleted_at`, `version` | — |
@@ -63,10 +63,12 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `service_limits` | `name`, `value`, `updated_at`: a limit changed while the service runs, which overrides its default ([Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)). Numbers only | — |
 | `feature_flags_everyone` | `name`, `updated_at`: a feature flag switched on for everyone ([Feature flags](feature-flags.md)) | — |
 | `feature_flag_groups` | `name`, created: a hand-picked group for feature flags, an operator's label such as `staff` | — |
-| `feature_flag_group_members` | group, `email_index`, created: who's in a group | `email_index`, the blind index of their address |
+| `feature_flag_group_members` | group, `email_index`, created: who's in a group | `email_index`, the blind index of their address, with flags' own purpose (`flag-email`), so it joins to no other table |
 | `feature_flag_group_grants` | `feature_flag`, group, created: a feature flag switched on for a group's members | — |
-| `feature_flag_person_grants` | `feature_flag`, `email_index`, created: a feature flag switched on for one person | `email_index`, the blind index of their address |
+| `feature_flag_person_grants` | `feature_flag`, `email_index`, created: a feature flag switched on for one person | `email_index`, the blind index of their address, with flags' own purpose (`flag-email`) |
 | `object_gc` | object ID, owner, queued time, attempts, last error | — |
+| `server_keys` | `id` (`master` or `bundle`: two rows at most), created, updated | `record`: for `master`, the TEE's master as Cloud KMS wrapped it; for `bundle`, the server keys the TEE runs with (the index and photo token keys, `KSERVICE` and the old master until it's retired), sealed under that master as a record of kind `server-keys` ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing), migration `0029_tee_keys.sql`) |
+| `tls_certificates` | `id` (`current`: one row at most), `chain_pem` (the certificate the edge serves, chain and all, as the ACME CA issued it: it names the TLS hosts and the TLS key's public half), `not_after`, updated. A certificate is public, and Certificate Transparency logs publish it anyway, so it's kept in the clear ([System architecture › The edge](system-architecture.md#the-edge), migration `0030_tls_certificates.sql`) | — |
 
 The migration runner adds `schema_migrations`, which records each applied file by name.
 
@@ -554,7 +556,7 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   lost) asks for the rest with it (`If-Range`), and a download's range is answered as far as it asked, past four pieces
   without a length, so it picks up where it was; against anything but that `ETag` the range doesn't count, and the whole
   file comes again. Read without a
-  range, a file over 16 MiB streams without a length, because Cloud Run refuses an HTTP/1 response that says it's over 32
+  range, a file over 16 MiB streams without a length, a limit kept from Cloud Run, which refused an HTTP/1 response that said it was over 32
   MiB, and asks again every four pieces. The first piece is read before anything is sent, so its failure is an ordinary
   answer; a later one breaks the connection, so a file that couldn't be read is never taken for whole.
 - **Pictures.** A board or a document shows a picture through `api.workspaces.media.picture`, which reads it into an object
@@ -610,7 +612,7 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
 - **A read that stops.** While someone's in line, a read that has taken nothing for 5 seconds gives way to them, the longest
   stopped first, and someone at their own limit gets one of their own back. Being cut costs a paused video nothing: it asks
   again from where it got to when it plays. With nobody in line a stopped read is left alone. Every read ends at 280 seconds
-  (`MEDIA_READ_MS`) whatever it's doing, under Cloud Run's timeout, so nothing holds a place for good.
+  (`MEDIA_READ_MS`) whatever it's doing, well inside the load balancer's idle timeout, so nothing holds a place for good.
 - **The core.** Reading and writing share one budget, however many people are doing it. 4 pieces are in hand at once, and
   their sealing, opening and hashing take turns, one at a time, each followed by a pause of seven times what it took: an eighth
   of the core, and about a third of what a piece costs the process, so a call keeps more than half of it. A piece's cost is
@@ -648,9 +650,9 @@ and this way it runs through the same auth, origin check and tests as everything
   accounts are free, which is about 32 people behind one office's address with a workspace and a document open, and everyone's together at 500 an instance (`LIVE_STREAMS_MAX`), because each holds one of the requests
   an instance can take at once, and rings and calls need them too. Past the address or the instance's limit, the next is
   refused with `503 unavailable`, decided before anything is read, and the browser tries again by itself.
-- **A stream the browser closed.** On Cloud Run the API never hears that a browser closed a stream: it's reached over
-  HTTP/1, which doesn't pass a client's disconnect on to the container, and a ping every 25 seconds never backs up a front
-  end that keeps reading. So a closed stream would hold its place for its 280 seconds, and someone opening pages one after
+- **A stream the browser closed.** On Cloud Run the API never heard that a browser closed a stream: it was reached over
+  HTTP/1, which didn't pass a client's disconnect on to the container, and a ping every 25 seconds never backed up a front
+  end that kept reading. The edge in the TEE sees a disconnect, but a load balancer can still hold a connection open. So a closed stream would hold its place for its 280 seconds, and someone opening pages one after
   another filled their eight within minutes (115 refusals in one call on 11 Nov). Now the browser says so: it names each
   stream it opens, 22 characters of base64url it makes up, in `x-alcove-stream` (`LIVE_STREAM_HEADER`, never in a URL),
   and when it stops reading one for any reason but the API ending it or turning it away (it closed the page or the board,
@@ -721,8 +723,8 @@ and this way it runs through the same auth, origin check and tests as everything
   at a ping; whatever someone in it is here as forgets it, and the next read settles who that leaves here. A stream that
   finds nothing left for its reader first asks who they are now, because a new address from their provider moves what they
   have to another hash.
-- **Letting go.** A stream ends without `closed` when the API lets go (after 280 seconds, inside Cloud Run's 300-second
-  request timeout, so it's never cut), its browser says it closed it, its person needs its place, or its instance shuts
+- **Letting go.** A stream ends without `closed` when the API lets go (after 280 seconds, well inside the load balancer's
+  idle timeout, so it's never cut), its browser says it closed it, its person needs its place, or its instance shuts
   down. The browser opens it again: quietly when it just ended, showing `reconnecting` when it failed, keeping what it last
   showed either way. A line that can't be written within a ping ends a stream too, which is how one whose browser went as it
   opened is let go of. A browser that hears nothing for a minute takes the connection for dead, and says it closed it.
