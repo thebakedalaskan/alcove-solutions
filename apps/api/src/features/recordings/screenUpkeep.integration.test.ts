@@ -9,6 +9,7 @@ import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { joinDue, purgeVideo } from './screens';
+import { work } from '../notes/writer';
 import { openOwner } from '../../owners';
 import { queueDelete } from './audio';
 import { webmDuration } from './ffmpeg';
@@ -77,6 +78,18 @@ const count = async (table: 'screen_pieces' | 'screen_videos', ownerId: string) 
   z.object({ n: z.coerce.number() }).parse((await h.pool.query(`SELECT count(*) AS n FROM ${table} WHERE owner_id = $1`, [ownerId])).rows[0]).n;
 const logged = (msg: string, recordingId: string) => h.logs.filter((l) => l.includes(`"msg":"${msg}`) && l.includes(recordingId)).length;
 const noteOf = async (call: CallSession) => { const end = await call.leave(); if (!end?.pendingNoteId) throw new Error('the call left no note'); return end.pendingNoteId; };
+/**
+ * A call's shares' tails over at once, and its notes written now rather than when their job next looks: its recording
+ * stopped 30 seconds earlier, so no last piece can still come (SHARE_TAIL_MS), and the job, which looked as the call
+ * ended and waits that out without using an attempt, is due as soon as it has decided whether it waits.
+ */
+async function tailOver(ownerId: string): Promise<void> {
+  await h.pool.query(`UPDATE recordings SET ended_at = ended_at - interval '30 seconds' WHERE owner_id = $1`, [ownerId]);
+  const deciding = async () => (await h.pool.query<{ state: string }>(`SELECT state FROM content_jobs WHERE owner_id = $1 AND kind = 'notes'`, [ownerId])).rows.some((j) => j.state === 'writing');
+  for (let i = 0; i < 400 && (await deciding()); i++) await sleep(25);
+  await h.pool.query(`UPDATE content_jobs SET lease_until = now() - interval '1 second' WHERE owner_id = $1 AND kind = 'notes' AND state = 'queued'`, [ownerId]);
+  await work(h.deps, { ownerId });
+}
 
 async function held(org: Account, choices: Partial<typeof DEFAULT_NOTES_CHOICES>) {
   const meeting = await org.api.meetings.create({
@@ -308,6 +321,7 @@ describe('shared screens around the notes', () => {
     await call.shareEnded(share);
     await call.transcribe(speech(SAID, segment), call.ticket.identity);
     const noteId = await noteOf(call);
+    await tailOver(ownerId);
     await written(org.api, noteId);
 
     const note = await org.api.notes.get(noteId);
