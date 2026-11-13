@@ -13,7 +13,7 @@
  * what's picked is presented, nothing is picked while someone else presents a board or the workspace here.
  */
 import { AlcoveApiError, errorCode, firstName, type BoardCheck, type BoardOpen, type CallBrought, type CallPresent, type CallSession } from '@alcove/api';
-import { Icon, type BoardPickerAccess, type BoardPickerRecent, type BoardPickerInCall, type BoardPickerProps, type BoardTemplate, type PresentAskProps } from '@alcove/ui';
+import { type BoardPickerAccess, type BoardPickerRecent, type BoardPickerInCall, type BoardPickerProps, type BoardTemplate, type PresentAskProps } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { log } from '~/lib/log';
@@ -154,10 +154,10 @@ export function useBoardPicker({ session, board, mode, inRoom, account, brought,
       setAccess({ names: check.cannot, board: b.name, letIn: check.mayLetIn, onOpen: () => go(check.mayLetIn), onNotNow: () => setAccess(null) } satisfies BoardPickerAccess);
     }, (e: unknown) => { setBusy(false); mlog.info('a board couldn’t be checked before it opened', { workspaceId: b.workspaceId, documentId: b.id, code: errorCode(e) }); failed(e); });
   };
-  // Your team's boards, each saying whose it is and which workspace it's in.
+  // Your team's boards, each saying whose it is and which workspace it's in, with the picker's own board mark.
   const recents = rows.length ? {
     workspace: '',
-    boards: rows.map((r): BoardPickerRecent => ({ id: r.id, name: r.name, by: !r.where || r.where === r.by ? r.by : `${r.by} · ${r.where}`, when: r.when, thumb: <Icon name="presentation" size={17} /> }))
+    boards: rows.map((r): BoardPickerRecent => ({ id: r.id, name: r.name, by: !r.where || r.where === r.by ? r.by : `${r.by} · ${r.where}`, when: r.when }))
   } : undefined;
   const callRow: BoardPickerInCall | undefined = inCall ? {
     name: inCall.name, by: inCall.by,
