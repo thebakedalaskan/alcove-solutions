@@ -145,7 +145,8 @@ button.cd-mk:focus-visible { box-shadow: 0 0 0 2px var(--focus); }
 .cd-kept { display: flex; align-items: center; gap: 8px; margin: 2px 0 0; font: 400 14px/1.4 var(--font-sans); color: var(--ink-2); }
 .cd-kept .ac-i { color: var(--ink-3); }
 /* Full screen: the stage fills it, night, with the line along its foot. */
-.cd-player.is-full { justify-content: center; gap: 4px; padding: 24px 28px 18px; background: var(--stage); }
+/* The page's hover tint is worked out from its own ink, so the night player works it out again from night's. */
+.cd-player.is-full { --cd-hl: color-mix(in oklch, var(--ink) 6%, transparent); justify-content: center; gap: 4px; padding: 24px 28px 18px; background: var(--stage); }
 .cd-player.is-full .cd-stage { flex: 1; aspect-ratio: auto; max-height: none; border-radius: 14px; }
 .cd-player.is-full .cd-sun { box-shadow: 0 0 0 3px var(--stage), 0 0 16px 3px color-mix(in oklch, var(--sun-glow) 45%, transparent); }
 

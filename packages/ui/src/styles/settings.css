@@ -114,6 +114,10 @@
 .set-pn > .set-r[data-landed]:last-child::before { border-bottom-left-radius: var(--pn-r); border-bottom-right-radius: var(--pn-r); }
 .set-blk[data-landed] > .set-pn::before { inset: 0; }
 @keyframes set-landed { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  /* Fading isn't movement: the place still shows where a link landed, and fades as it does with motion. */
+  .set-r[data-landed]::before, .set-blk[data-landed] > .set-pn::before { animation-duration: 1.8s !important; }
+}
 /* Nested under the connection above it, its hairline too. */
 .set-r.is-sub, .set-foot.is-sub, .set-pn > .ac-drive-history { margin-left: 32px; }
 .set-l { min-width: 0; }

@@ -85,7 +85,7 @@ export interface SelectOption<T extends string> {
  * without changing anything; typing jumps to the option whose name starts with what was typed. Focus
  * goes back to the button. `label` names the choice for screen readers ("Language"). `stage` is for
  * the night recorder and the call. `container` is where the list opens when that isn't the page: the
- * element filling the screen, which hides everything outside it.
+ * element filling the screen, which hides everything outside it. An open list closes when it changes.
  */
 export function Select<T extends string>({ value, onChange, options, label, icon, placeholder, align = 'start', stage = false, disabled = false, container, className }: {
   value: T | undefined; onChange: (value: T) => void; options: SelectOption<T>[]; label: string;
@@ -97,6 +97,12 @@ export function Select<T extends string>({ value, onChange, options, label, icon
   container?: Element | null | undefined; className?: string | undefined;
 }) {
   const [open, setOpen] = useState(false);
+  /* The list doesn't follow its button out of where it opened (full screen ending as Escape is pressed): it closes. */
+  const [openIn, setOpenIn] = useState(container);
+  if (openIn !== container) {
+    setOpenIn(container);
+    setOpen(false);
+  }
   const scoped = useContext(Scoped);
   const list = useRef<HTMLDivElement>(null);
   /** The option to focus when the list opens, when it isn't the chosen one. */
