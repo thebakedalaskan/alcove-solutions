@@ -10,7 +10,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { speechWav } from '../../testing/fake-near';
 import { acceptNoteSuggestions } from '../../testing/follow-ups';
 import { startHarness, type Harness } from '../../testing/harness';
-import { disposeLiveKit } from '../../testing/livekit';
+import { connect, disposeLiveKit, type TestParticipant } from '../../testing/livekit';
 
 // Calls set up MLS groups and LiveKit rooms, which a busy runner can be slow to do: every wait says what it waited for.
 vi.setConfig({ testTimeout: 90_000 });
@@ -18,7 +18,9 @@ vi.setConfig({ testTimeout: 90_000 });
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
 afterAll(async () => { await h?.close(); await disposeLiveKit(); });
-afterEach(() => { h.closeCalls(); });
+/** Organizers' browsers in their calls' rooms, gone after each test. */
+const open: TestParticipant[] = [];
+afterEach(async () => { await Promise.all(open.splice(0).map((p) => p.disconnect().catch(() => undefined))); h.closeCalls(); });
 
 let seq = 0;
 const tag = () => `${Date.now().toString(36)}${(seq++).toString(36)}`;
@@ -233,6 +235,9 @@ describe('asking across the series during a call', () => {
     const now = await scheduleNext(org.api, two.meetingId);
     const host = await org.api.calls.join(now.code, { mic: true, cam: false });
     await inGroup(host);
+    // The organizer's browser is in the room, as it is in a real call. Otherwise, 25 seconds after they joined, upkeep
+    // finds them gone, and with nobody here in the room to host instead, ends the call: what a slow runner reaches.
+    open.push(await connect(await host.room(), { sending: host.crypto }));
     const inBea = await bea.api.calls.join(now.code, { mic: true, cam: false });
     await inGroup(inBea);
     const inCal = await cal.api.calls.join(now.code, { mic: true, cam: false });
