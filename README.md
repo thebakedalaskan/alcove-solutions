@@ -217,11 +217,11 @@ cites the moments it came from; press one and the call opens at that line.
 
 ### Find a time
 
-<img src="docs/readme/schedule.gif" alt="Scheduling a call: people are added, the week shades their busy time and lights up the free times, a time is picked and the call is scheduled." width="100%">
+<img src="docs/readme/schedule.gif" alt="Scheduling a call: Calls opens beside the week, Priya and Kofi are added, their busy time is hatched in and the call moves to the soonest time they're all free, then it's scheduled for tomorrow at 14:00." width="100%">
 
-Press <kbd>N</kbd> anywhere to start a call now or schedule one. Add people and the week shades when they’re busy and
-lights up the times that work for everyone; pick one and Google Calendar sends the invitations. Calls that repeat form a
-series, and what one call decided and left open is waiting in the next.
+Press <kbd>N</kbd> anywhere to start a call now or schedule one. Scheduling opens on Calls, beside your week: add people
+and their busy time is hatched in, and the call moves to the soonest time you’re all free. Schedule, and Google Calendar
+sends the invitations. Calls that repeat form a series, and what one call decided and left open is waiting in the next.
 
 > **How it works.** Busy times come from Google Calendar when you connect it; Alcove keeps the call’s title, guests and
 > times as sealed records, and the event on your calendar is what invites people. Notes are set when a call is scheduled, so
