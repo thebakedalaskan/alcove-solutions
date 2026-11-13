@@ -659,6 +659,12 @@ describe('AI in a workspace', () => {
     // Bob's own in the call goes to the call's model, from his own plan.
     await answer(bob.api.workspaces.ask(id, plan, shorter, { pass: host.ticket.pass }));
     expect(h.near.chats.at(-1)?.model).toBe(UNENCRYPTED_MODEL);
+    // A guest's comes out of the share every guest in the call spends from, as their questions do: with none, it's refused,
+    // and Bob's own isn't.
+    await h.setLimit('ai.guests_call_percent', 0);
+    expect(await refusal(answer(g.api.workspaces.ask(id, plan, shorter, pass)))).toBe('plan-limit: Guests in this call have asked as much as the organizer’s plan allows. Sign in to ask from your own plan.');
+    expect((await answer(bob.api.workspaces.ask(id, plan, shorter))).length).toBeGreaterThan(0);
+    await h.resetLimits();
     // A guest asks a few times a minute, as their questions in a call; Bob, paying for his own, more.
     const guests = await Promise.all(Array.from({ length: 7 }, () => answer(g.api.workspaces.ask(id, plan, shorter, pass)).then(() => 'answered', code)));
     expect(guests).toContain('unavailable');
