@@ -18,7 +18,7 @@ import { creditCarried, DepositRecord } from './deposits';
 import { endOverdue } from '../calls/lifecycle';
 import { header as callHeader, key as callKey } from '../calls/state';
 import { openOwner } from '../../owners';
-import { creditByEmail, standingOf } from './support';
+import { creditBySupport } from './support';
 import { createHttpApi } from '@alcove/api-http';
 
 vi.setConfig({ testTimeout: 90_000 });
@@ -344,7 +344,7 @@ async function deposit(who: Account, microUsd: number): Promise<void> {
   await who.api.plans.topUp(t.id);
 }
 /** Money in for a test that isn't about adding it: as support adds it (`pnpm billing credit`). */
-const give = (who: Account, microUsd: number) => creditByEmail(h.deps, who.email, microUsd);
+const give = (who: Account, microUsd: number) => creditBySupport(h.deps, who.email, microUsd);
 /** Upkeep at `at`, with the account due. */
 async function upkeepAt(who: Account, at: number): Promise<void> {
   vi.useFakeTimers({ toFake: ['Date'], now: at });
@@ -856,18 +856,6 @@ describe('more notes', () => {
     await give(sam, HOURS);
     expect((await sam.api.plans.buyHours(1, HOURS, PACK)).notes).toMatchObject({ minutesPerPeriod: 601, stopped: false });
     expect(await refusal(hers.setNotes(true))).toBe('plan-limit: Your storage is full, so notes can’t be kept. Delete something, or move to a plan with more room.');
-  });
-});
-
-describe('support', () => {
-  it('finds an account by its address, adds dollars as support, and says where its plan stands', async () => {
-    const ann = await account();
-    await creditByEmail(h.deps, ann.email.toUpperCase(), 4_500_000);
-    expect(await labels(ann)).toEqual(['Added by support']);
-    const lines = await standingOf(h.deps, ann.session.ownerId);
-    expect(lines).toContain('Balance: $4.50');
-    expect(lines.join('\n')).not.toContain(ann.email);
-    await expect(creditByEmail(h.deps, unique('nobody'), 1)).rejects.toThrow('No account has signed in with that address.');
   });
 });
 

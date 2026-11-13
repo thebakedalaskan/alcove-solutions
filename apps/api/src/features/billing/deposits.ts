@@ -571,6 +571,25 @@ export async function cancel(d: Deps, ownerId: string, depositId: string): Promi
   });
 }
 
+/**
+ * Support adds a top-up's money by hand (support.ts, docs: Plans and usage › Treasury runbook), in the caller's transaction,
+ * with the deposit's row locked first, as `apply` locks it. One Alcove still watches for a payment (open, or cancelled while its
+ * address takes one, before `give_up_at`) is refused: what reaches it is added by itself. Any other that isn't added or held
+ * (failed, expired, or given up on with no answer) is never asked about again, so a payment 1Click settles for it later can't
+ * add it a second time. One added or held is as it was: what support adds is a stray payment to its address. Says its state.
+ */
+export async function closedBySupport(c: Db, ownerId: string, depositId: string): Promise<TopUpState> {
+  const r = await maybeOne(c, z.object({ state: TopUpStateSchema, given_up: z.boolean() }),
+    'SELECT state, give_up_at <= now() AS given_up FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE', [ownerId, depositId]);
+  if (!r) throw notFound('That top-up');
+  if (isPending(r.state) && !r.given_up) {
+    throw conflict('Alcove is still watching this top-up, and adds what reaches it by itself. Add it by hand once it has failed or expired.', { depositId, state: r.state });
+  }
+  if (!FINAL.includes(r.state)) await exec(c, "UPDATE deposits SET check_after = 'infinity', checked_at = now() WHERE owner_id = $1 AND deposit_id = $2", [ownerId, depositId]);
+  dlog.info('top-up added by support', { depositId, state: r.state });
+  return r.state;
+}
+
 /** Top-ups still open, and the last 10 finished, newest first. */
 export async function list(d: Deps, ownerId: string): Promise<TopUp[]> {
   providers(d); // off here: unavailable, even with top-ups opened before

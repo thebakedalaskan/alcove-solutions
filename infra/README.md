@@ -243,7 +243,9 @@ Each deployment:
 3. Deploys `alcove-api`: gen2, port 8080, one CPU, 2 GiB, 300-second request timeout, 1,000 requests at once,
    min/max one instance, session affinity, and CPU between requests for key expiry and object cleanup.
 4. Deploys the job `alcove-feature-flags` on the same image, with only `DATABASE_URL` and `KMASTER`, for switching feature flags
-   ([Feature flags](../docs/engineering/feature-flags.md)). The deploy never runs it.
+   ([Feature flags](../docs/engineering/feature-flags.md)), and the job `alcove-billing`, with only `DATABASE_URL` and
+   `KSERVICE` and no retries, for support to add to a balance ([Plans and usage › Support](../docs/engineering/plans-and-usage.md#support)).
+   The deploy runs neither.
 5. Checks `/health` at the deployed service's `run.app` URL, allowing the first deployment to finish
    before custom-domain provisioning, and requires `livekit: reachable`.
 6. Builds the web app against `API_ORIGIN`, writes the CSP for that origin and the LiveKit host with

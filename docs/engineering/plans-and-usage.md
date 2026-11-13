@@ -387,16 +387,29 @@ falls back to the workspace's payer. Elsewhere the workspace's payer pays, as be
 ## Support
 
 `pnpm --filter @alcove/server billing` (`apps/api/src/billing-cli.ts`, `dist/billing-cli.js` in the image) is support's
-way into an account's plan, in whichever database `DATABASE_URL` names. It needs `KMASTER`, to find the account by the
-address it signs in with as sign-in does (its blind index), and `KSERVICE`, to open and seal the plan: in production run
-it as a one-off job on the API's image with the API's settings bound, so neither key reaches a laptop.
+way into an account's plan, in whichever database `DATABASE_URL` names. It opens and seals plans with `KSERVICE` and reads
+none of the API's other settings (`DATABASE_URL`, `KSERVICE`, `LIMITS_CACHE_MS` and `LOG_*`). In production it's the
+Cloud Run job `alcove-billing`, which each deploy keeps on the current image with only the database and `KSERVICE` bound,
+so the key never reaches a laptop ([Deployment › Support's billing job](deployment-and-acceptance.md#supports-billing-job)).
 
-- `billing show <email>`: the plan, its period, notes and storage, the balance and its latest changes, the months of Pro
-  and the notices. Nothing else about the person; the address isn't repeated.
-- `billing credit <email> <usd>`: adds dollars (`20`, `4.50`, at most $10,000) to the balance, as "Added by support",
-  logged `balance added by support` with the owner and amount. Locally it's the fake money for buying Pro without 1Click.
+`<who>` names the account: a top-up's reference (its deposit ID, which the person gives support), or the account's ID. A
+job's arguments are kept with its execution and in Cloud Audit Logs, which Alcove can't delete, so an address is never one:
+only where `KMASTER` is set too, which is locally, does an address name an account, found as sign-in finds it (its blind
+index). An address signed in to more than one account (through different providers) is refused, and nothing is done.
 
-An address signed in to more than one account (through different providers) is refused, and nothing is done.
+- `billing show <who>`: the account, the top-up it was named by and its state, its plan and whether Pro renews, how many
+  months of Pro aren't over, whether the balance covers a month of Pro at its price now, how many changes to the balance are
+  kept, how many notices wait and how many top-ups it has in each state. What the job prints is kept in Cloud Logging, so
+  that's all it says: what a log may hold, never an amount, a history, a date or an address.
+- `billing credit <who> <usd>`: adds dollars (`20`, `4.50`, at most $10,000) to the balance, as "Added by support", logged
+  `balance added by support` with the owner and the top-up, never the amount. Named by a top-up's reference, that top-up
+  is never asked about again, so a payment 1Click settles for it later can't add it a second time, and one Alcove still
+  watches (open, or cancelled while its address takes a payment) is refused, since what reaches it is added by itself. One
+  that was added already is left as it was: what support adds then is a stray payment of its own. Locally, with an
+  address, it's the fake money for buying Pro without 1Click.
+
+Every refusal (an amount that isn't one, nobody found, more than one account, a top-up still watched) exits 1 and logs
+`billing refused` at warn, with its code or why, never what was typed: it may be an address put in the wrong place.
 
 ## Adding money
 
@@ -507,10 +520,12 @@ The server never holds a key that can move treasury money. By hand, in near.com,
 - **A stray payment** (a second payment to a used address, or one after it expired) reaches the treasury as a 1Click
   refund and isn't added. The person gives support the top-up's reference (its deposit ID). Support opens that deposit's
   sealed record (`deposits`, under `Kservice`'s accounting key) to find its address, confirms the payment in 1Click's
-  status for it, and adds what reached the treasury to their balance with `billing credit` ([Support](#support)).
+  status for it, and adds what reached the treasury to their balance with `billing credit <reference> <usd>` ([Support](#support)).
 - **A failed top-up** (logged at error with its deposit ID and a reason) is one 1Click reported money for that wasn't
-  added. Support opens its record and 1Click's status as above, and adds only what 1Click shows reached the treasury (`billing credit`). If
-  1Click settles it cleanly within 30 days, it's added by itself.
+  added. Support opens its record and 1Click's status as above, and adds only what 1Click shows reached the treasury
+  (`billing credit <reference> <usd>`). Until then, if 1Click settles it cleanly within 30 days, it's added by itself; once
+  support has added it, it never is, so its money is never added twice. It still reads as failed in the person's list of
+  top-ups, and their balance's history says "Added by support".
 - **A depeg (accepted risk).** Every amount sent is valued at face (1 token = 1 USD). When a stablecoin depegs, turn
   top-ups off (take `TREASURY_INTENTS_ACCOUNT` out of the API's settings in `deploy.yml` and redeploy) until it recovers.
 
@@ -559,8 +574,8 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   (`.default(null)`), and the record is written in the new shape the next time it's saved. While the deploy runs, the
   previous release reads a record this one wrote without them (zod ignores the field), so it doesn't count them, and one
   it saves then (a top-up it adds, its upkeep, a purchase made there) is saved without them: notes bought in those minutes
-  are lost, the money stays spent. The window is the deploy's few minutes; support sees the purchase in the balance's
-  history (`billing show`) and can give its price back (`billing credit`).
+  are lost, the money stays spent. The window is the deploy's few minutes; the person sees the purchase in their balance's
+  history, and support can give its price back (`billing credit`).
 - Payments that buy need no migration. A `deposit` record from before has no `purchase`: it reads as `null`
   (`.default(null)`), a top-up that only adds money, and `TopUp.purchase` says so. A purchase of more notes keeps the
   pack's minutes it was shown at (`minutesPerPack`); one kept without them reads as a pack of the default size

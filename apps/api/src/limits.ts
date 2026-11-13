@@ -9,6 +9,7 @@
 import { MAX_MEDIA_BYTES } from '@alcove/api';
 import pg from 'pg';
 import { z } from 'zod';
+import type { Config } from './config';
 import type { Deps } from './context';
 import { exec, maybeOne, rows, timestamp, type Db } from './db';
 import { log } from './log';
@@ -196,7 +197,7 @@ async function refresh(db: Db, copy: Copy): Promise<void> {
  * pass its connection: read through the pool there, a busy process's transactions would each hold one connection and
  * wait for another to read the limits, and none would come free.
  */
-export async function limitsNow(d: Pick<Deps, 'pool' | 'cfg'>, db: Db = d.pool): Promise<Limits> {
+export async function limitsNow(d: Pick<Deps, 'pool'> & { cfg: Pick<Config, 'LIMITS_CACHE_MS'> }, db: Db = d.pool): Promise<Limits> {
   let copy = copies.get(d.pool);
   if (!copy) {
     copy = { at: -Infinity, values: readRows([]).values, noted: new Set(), reading: undefined };

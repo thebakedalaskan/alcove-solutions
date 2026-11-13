@@ -8,6 +8,7 @@
  */
 import { PlanKindSchema, PlanNoticeKindSchema, type BalanceEntry, type PlanKind, type PlanNoticeKind, type PlanOffers, type Purchase } from '@alcove/api';
 import { z } from 'zod';
+import type { Config } from '../../config';
 import type { Deps } from '../../context';
 import { id128, openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
@@ -68,10 +69,15 @@ export const PlanAccount = z.object({
 });
 export type PlanAccount = z.infer<typeof PlanAccount>;
 
-type Service = Pick<Deps, 'cfg' | 'pool'>;
-const key = (d: Pick<Deps, 'cfg'>) => serviceKey(unb64u(d.cfg.KSERVICE, 32), 'accounting');
+/**
+ * What plans read of the service: the database, Kservice's key and how long a copy of the limits is kept, and none of the
+ * API's other settings, so support's job (billing-cli.ts) runs with only those bound.
+ */
+export type Accounting = Pick<Deps, 'pool'> & { cfg: Pick<Config, 'KSERVICE' | 'LIMITS_CACHE_MS'> };
+type Service = Accounting;
+const key = (d: Pick<Accounting, 'cfg'>) => serviceKey(unb64u(d.cfg.KSERVICE, 32), 'accounting');
 const header = (ownerId: string) => ({ v: 1 as const, kind: 'plan-account', ownerId, keyVersion: '1' });
-const seal = (d: Pick<Deps, 'cfg'>, ownerId: string, a: PlanAccount) => sealJson(key(d), header(ownerId), toJson(a));
+const seal = (d: Pick<Accounting, 'cfg'>, ownerId: string, a: PlanAccount) => sealJson(key(d), header(ownerId), toJson(a));
 const Row = z.object({ state_ciphertext: bytea });
 
 /** An account's plan as it starts: Free from `freeFrom`, nothing bought. */
@@ -196,7 +202,7 @@ function dueAt(a: PlanAccount, l: Limits): Date | null {
 }
 
 /** A new account's plan, in the sign-up transaction: Free from now, with the plans to pick from shown first. */
-export async function open(d: Pick<Deps, 'cfg'>, db: Db, ownerId: string): Promise<void> {
+export async function open(d: Pick<Accounting, 'cfg'>, db: Db, ownerId: string): Promise<void> {
   await exec(db, 'INSERT INTO plan_accounts (owner_id, state_ciphertext, due_at) VALUES ($1,$2,NULL)', [ownerId, seal(d, ownerId, fresh(new Date().toISOString(), null))]);
 }
 

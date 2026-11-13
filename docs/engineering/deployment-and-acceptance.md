@@ -285,6 +285,16 @@ Cloud Run job `alcove-feature-flags`, which each deploy keeps on the current ima
 again every 30 seconds (`FEATURE_FLAGS_CACHE_MS`). Everything else, building behind a flag, every command and retiring a flag, is in
 [Feature flags](feature-flags.md).
 
+## Support's billing job
+
+Support adds dollars to an account's balance, and says where its plan stands, with `billing` ([Plans and usage ›
+Support](plans-and-usage.md#support)). Locally, `pnpm --filter @alcove/server billing …` with `DATABASE_URL`, `KSERVICE` and
+`KMASTER` from `.env`; in production, the Cloud Run job `alcove-billing`, which each deploy keeps on the current image with only
+`DATABASE_URL` and `KSERVICE` bound, never `KMASTER`, and no retries, so a `credit` is never run twice:
+`gcloud run jobs execute alcove-billing --region "$GCP_REGION" --wait --args=credit,<reference>,<usd>` (or `show,<reference>`). The
+account is named by a top-up's reference or its ID, never an address: what's typed is kept with the execution and in Cloud
+Audit Logs, which Alcove can't delete, and what it prints is kept in Cloud Logging, so it prints no amount, history or address.
+
 ## Acceptance
 
 These journeys describe existing coverage and release checks still required. Passing local integration

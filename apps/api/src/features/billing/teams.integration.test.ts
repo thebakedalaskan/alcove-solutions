@@ -13,7 +13,7 @@ import { speechWav } from '../../testing/fake-near';
 import { startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
 import { standing } from './meter';
-import { creditByEmail } from './support';
+import { creditBySupport } from './support';
 
 vi.setConfig({ testTimeout: 90_000 });
 
@@ -54,7 +54,7 @@ async function deposit(who: Account, microUsd: number): Promise<void> {
   await who.api.plans.topUp(t.id);
 }
 /** Money in for a test that isn't about adding it: as support adds it. */
-const give = (who: Account, microUsd: number) => creditByEmail(h.deps, who.email, microUsd);
+const give = (who: Account, microUsd: number) => creditBySupport(h.deps, who.email, microUsd);
 const labels = async (who: Account) => (await who.api.plans.plan()).balance.history.map((e) => e.label);
 const kinds = async (who: Account) => (await who.api.plans.plan()).notices.map((n) => n.kind);
 /** A team with `who` as its admin and `licenses` bought (the admin hasn't taken one). */

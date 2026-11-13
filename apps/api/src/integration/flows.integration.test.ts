@@ -10,7 +10,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { addObject, boardText, newId, readBoard, tableCell } from '@alcove/board';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { standing } from '../features/billing/meter';
-import { creditByEmail } from '../features/billing/support';
+import { creditBySupport } from '../features/billing/support';
 import { setLimit } from '../limits';
 import { loadConfig, loadEnv } from '../config';
 import { b64u, openJson, sealJson, signInAttemptKey, unb64u } from '../crypto';
@@ -3956,7 +3956,7 @@ describe('privacy at rest', () => {
 
     // A team: its name and who's on it sealed under its own key, what it bought (`team-billing`) under the service's, and
     // an invite's secret only as a hash, in rows and nowhere in the logs.
-    await creditByEmail(h.deps, 'canary-person@canary.example', 40_000_000);
+    await creditBySupport(h.deps, 'canary-person@canary.example', 40_000_000);
     await c.api.teams.create('CANARY-TEAM name of the merger crew');
     await c.api.teams.buyLicenses(1, 40_000_000);
     await c.api.teams.setAutoPurchase(true);

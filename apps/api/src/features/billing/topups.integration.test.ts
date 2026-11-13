@@ -9,7 +9,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
 import { DepositRecord, watch } from './deposits';
-import { creditByEmail } from './support';
+import { creditBySupport } from './support';
 import { NOT_ALLOWLISTED } from '../../testing/fake-oneclick';
 import { ORIGIN, cookieFetch, startHarness, type Harness } from '../../testing/harness';
 
@@ -1196,7 +1196,7 @@ describe('top-ups that buy', () => {
   async function withBalance(microUsd: number) {
     const email = unique();
     const who = await account(email);
-    await creditByEmail(h.deps, email, microUsd);
+    await creditBySupport(h.deps, email, microUsd);
     return who;
   }
 
@@ -1361,7 +1361,7 @@ describe('top-ups that buy', () => {
     const one = await account(email);
     const two = await account(email);
     // Money for more, so a second purchase would go through if one were made.
-    await creditByEmail(h.deps, email, 5 * PRICE);
+    await creditBySupport(h.deps, email, 5 * PRICE);
     const t = await one.api.plans.startTopUp(BASE_USDC, PRICE, pro(1));
     h.oneclick.set(addr(t), 'SUCCESS', { depositedAmount: String(PRICE), amountOut: String(PRICE), intentHashes: [`race-${t.id}`] });
     await dueOnly(t.id);

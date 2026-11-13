@@ -126,6 +126,18 @@ jobs:
             --tasks 1 --parallelism 1 --max-retries 0 --task-timeout 120s --cpu 1 --memory 512Mi \
             --set-env-vars "LOG_FORMAT=json,LOG_LEVEL=info" \
             --set-secrets 'DATABASE_URL=alcove-database-url:latest,KMASTER=alcove-kmaster:latest' --quiet
+      - name: Deploy the billing job
+        # Support adds to a balance from this job, never from a laptop (docs: engineering/plans-and-usage.md › Support): it opens
+        # and seals plans with KSERVICE, and gets that and the database only, never KMASTER, so it finds no account by its
+        # address. No retries, so a credit is never run twice by itself. Nothing runs it here; an operator does,
+        # naming the account by a top-up's reference or its ID: gcloud run jobs execute alcove-billing --args=credit,<reference>,<usd>
+        run: |
+          gcloud --project="$GCP_PROJECT_ID" run jobs deploy alcove-billing --image "$IMAGE" --region "$GCP_REGION" \
+            --command node,dist/billing-cli.js \
+            --service-account "$RUNTIME_SERVICE_ACCOUNT" --set-cloudsql-instances "$CLOUDSQL_INSTANCE" \
+            --tasks 1 --parallelism 1 --max-retries 0 --task-timeout 120s --cpu 1 --memory 512Mi \
+            --set-env-vars "LOG_FORMAT=json,LOG_LEVEL=info" \
+            --set-secrets 'DATABASE_URL=alcove-database-url:latest,KSERVICE=alcove-kservice:latest' --quiet
       - name: Health check
         run: |
           SERVICE_URL="$(gcloud --project="$GCP_PROJECT_ID" run services describe alcove-api --region "$GCP_REGION" --format='value(status.url)')"
