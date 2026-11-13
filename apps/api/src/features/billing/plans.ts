@@ -6,7 +6,7 @@
  * account's row is made when it signs up, or the first time it's touched after the release that brought plans (on Free,
  * with time to get within Free's limits if it's over them).
  */
-import { PlanKindSchema, PlanNoticeKindSchema, type BalanceEntry, type PlanKind, type PlanNoticeKind, type PlanOffers, type Purchase } from '@alcove/api';
+import { PlanKindSchema, PlanNoticeKindSchema, type BalanceEntry, type Plan, type PlanKind, type PlanNoticeKind, type PlanOffers, type Purchase } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps } from '../../context';
 import { id128, openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
@@ -345,13 +345,17 @@ function refundOf(a: PlanAccount, l: Limits, now: number): { months: Month[]; mi
   return { months, microUsd };
 }
 
-/** Months of Pro as their owner sees them: those that haven't ended, oldest first, when the last ends, and what a refund gives back. */
-export function proOf(a: PlanAccount, l: Limits, now = Date.now()) {
+/**
+ * Months of Pro as their owner sees them: those that haven't ended, oldest first, when the last ends, whether renewing is on
+ * and whether it will buy the next month as upkeep would decide now (`notRenewed`), and what a refund gives back.
+ */
+export function proOf(a: PlanAccount, l: Limits, now = Date.now()): Plan['pro'] {
   const months = a.pro.filter((m) => Date.parse(m.to) > now);
   return {
     months: months.map((m) => ({ from: m.from, to: m.to, microUsd: m.microUsd })),
     until: months.at(-1)?.to ?? null,
     renew: a.renew,
+    renewal: months.length ? (notRenewed(a, l.get('plan.pro.price_micro_usd')) ?? 'buys') : null,
     refundableMicroUsd: refundOf(a, l, now).microUsd
   };
 }

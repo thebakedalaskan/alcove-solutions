@@ -85,6 +85,13 @@ export const PlanSchema = z.object({
      * month costs no more than when the last was bought.
      */
     renew: z.boolean(),
+    /**
+     * Whether renewing will buy the next month as Pro ends, as the server would decide now, and why not when it won't:
+     * `buys`; `off`, renewing is off; `price`, a month costs more now than it did when the last was bought, which renewing
+     * never pays without its owner buying at the new price first; `short`, the balance is short of a month. Null while no
+     * month of Pro is left to renew.
+     */
+    renewal: z.enum(['buys', 'off', 'price', 'short']).nullable(),
     /** What refunding the months that haven't started would add back to the balance (0: none to refund). */
     refundableMicroUsd: MicroUsdSchema
   }),

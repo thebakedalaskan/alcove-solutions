@@ -685,6 +685,23 @@ describe('Pro', () => {
     expect(await bob.api.plans.plan()).toMatchObject({ kind: 'pro', balance: { microUsd: 0 }, notices: [{ kind: 'pro-renewed' }, { kind: 'pro-ended' }, { kind: 'pro-ending' }] });
   });
 
+  it('says with the plan whether renewing will buy the next month, and why not: off, a higher price, or a short balance', async () => {
+    const ann = await account();
+    expect((await ann.api.plans.plan()).pro.renewal).toBeNull();
+    await give(ann, 2 * PRICE);
+    expect((await ann.api.plans.buyPro(1, PRICE)).pro.renewal).toBe('off');
+    expect((await ann.api.plans.setRenew(true)).pro.renewal).toBe('buys');
+    // A month costs more now than the $20 the last did: renewing won't pay it, though the balance has it.
+    await h.setLimit('plan.pro.price_micro_usd', 25_000_000);
+    expect((await ann.api.plans.plan()).pro).toMatchObject({ renew: true, renewal: 'price' });
+    await h.setLimit('plan.pro.price_micro_usd', PRICE);
+    expect((await ann.api.plans.plan()).pro.renewal).toBe('buys');
+    // A month more bought from the balance leaves it short of the next.
+    expect((await ann.api.plans.buyPro(1, PRICE)).pro.renewal).toBe('short');
+    // Refunded, renewing is off.
+    expect((await ann.api.plans.refundPro()).pro).toMatchObject({ renew: false, renewal: 'off' });
+  });
+
   it('renews at the end from when upkeep comes, so a late pass buys one month that has yet to run, never months already over', async () => {
     await h.setLimit('plan.period_seconds', 3600);
     await h.setLimit('plan.pro.remind_seconds', 600);

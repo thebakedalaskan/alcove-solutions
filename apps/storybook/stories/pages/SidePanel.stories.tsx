@@ -45,6 +45,8 @@ export const ProExtended = foot('/home', 'plan-pro-extended');
 /** Pro ending in 3 days and not renewing: the sun half set, and Extend, which opens checkout. */
 export const ProEnding = foot('/home', 'plan-pro-ending');
 export const ProEndingNight = night(ProEnding);
+/** Pro ending after its price went up, though renewing is on with the money: the same, since it won't renew at the new price by itself. */
+export const ProEndingPriceRose = foot('/home', 'plan-pro-ending-price');
 /** Pro renewed from the balance: one short line above the row, until it's dismissed in Settings. */
 export const ProRenewed = foot('/home', 'plan-pro-renewed');
 export const ProRenewedNight = night(ProRenewed);

@@ -240,7 +240,10 @@ nothing runs for it, so it ends on time without upkeep. `Plan.grace` shows it wh
 After it, uploads and notes stop while over Free's storage, as above. Buying Pro again lifts that at once.
 
 `Plan.pro` gives the months running and bought (oldest first), when the last ends, whether renewing is on and what a
-refund would add. The record keeps the months that haven't ended and the latest that has (the grace and Free's periods
+refund would add. `Plan.pro.renewal` says whether renewing will buy the next month as Pro ends, as upkeep would decide it
+now, and why not when it won't: `buys`, or `off`, `price` (a month costs more than the last did) or `short`; null with no
+month of Pro left. The app says Pro is ending by it, so after a price rise Settings and the side panel say so once the
+owner is told. The record keeps the months that haven't ended and the latest that has (the grace and Free's periods
 count from it).
 
 ## More notes

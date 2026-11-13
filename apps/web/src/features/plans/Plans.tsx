@@ -216,7 +216,7 @@ function Offered({ offers: o, plan: p, yearly, now, team, people, go, onBuy, onT
   const onFree = p.kind === 'free';
   const onPro = p.kind === 'pro';
   const onTeamPlan = p.kind === 'team';
-  const ending = proEnding(p, o, now);
+  const ending = proEnding(p, now);
   const offered = o.pro.yearly;
   const perMonth = yearly ? yearly.microUsdPerMonth : o.pro.microUsdPerMonth;
   const save = yearly
