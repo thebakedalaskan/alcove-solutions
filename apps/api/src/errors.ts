@@ -15,7 +15,7 @@
  *   │   └─ ClientTakenError                                a change from the server was worked out as a Yjs client someone wrote as first
  *   ├─ TooLargeError        too-large        413    info   more than something can hold
  *   ├─ PlanLimitError       plan-limit       402    info   the plan's notes or storage have run out for whoever pays
- *   ├─ UnavailableError    unavailable      503    warn   not connected yet / rate limited
+ *   ├─ UnavailableError     unavailable      503    warn   not connected yet / rate limited
  *   │   └─ UnverifiedError                          warn   a model's attestation didn't check out (or couldn't be checked), so it was sent nothing
  *   └─ InternalError        unknown          500    error  our bug or a dependency failure
  *       ├─ DatabaseError                                   a Postgres query failed
@@ -72,7 +72,7 @@ export class ClientTakenError extends ConflictError { constructor(m = 'This docu
 export class TooLargeError extends AppError { constructor(m: string, o?: ErrorOptions) { super('too-large', m, o); } }
 /**
  * What a plan brings has run out for whoever pays (features/billing): its notes, so no AI request goes out for them, or
- * or its storage, so nothing more is stored. `reason` says which.
+ * its storage, so nothing more is stored. `reason` says which.
  */
 export class PlanLimitError extends AppError {
   constructor(m: string, readonly reason: 'notes' | 'storage', o?: ErrorOptions) { super('plan-limit', m, { ...o, context: { ...o?.context, reason } }); }
