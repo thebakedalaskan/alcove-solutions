@@ -87,12 +87,13 @@ const runs = () => h.near.instructions.filter((s) => s.startsWith('You help some
 /** What each of those requests sent the notes model, from the `from`th on. */
 const sentSince = (from: number) => h.near.prompts.filter((_, i) => h.near.instructions[i]?.startsWith('You help someone catch up')).slice(from);
 /**
- * Does `act` once the next refresh of live notes reaches the notes model, which answers it only after `act`. Anything
- * else it's asked meanwhile (another call's notes, still being written in the background) goes by.
+ * Does `act` once a refresh of live notes that reads `said` reaches the notes model, which answers it only after `act`.
+ * Anything else it's asked meanwhile goes by: another call's notes, still being written in the background, or the
+ * refresh of another call's notes that was on its way when an earlier test stopped.
  */
-function whileRefreshing(act: () => Promise<void>): void {
+function whileRefreshing(said: string, act: () => Promise<void>): void {
   const hold = async (): Promise<void> => {
-    if (!h.near.instructions.at(-1)?.startsWith('You help someone catch up')) { h.near.holdNext(hold); return; }
+    if (!h.near.instructions.at(-1)?.startsWith('You help someone catch up') || !h.near.prompts.at(-1)?.includes(said)) { h.near.holdNext(hold); return; }
     await act();
   };
   h.near.holdNext(hold);
@@ -154,7 +155,7 @@ describe('one set of live notes for the call', () => {
     const before = runs();
     // The model answers only once the other browser has seen the run on its way, so both are looking while it is.
     let meanwhile: CallState | undefined;
-    whileRefreshing(async () => { meanwhile = await settle(kofi, (s) => s.liveNotes.writing); });
+    whileRefreshing(C, async () => { meanwhile = await settle(kofi, (s) => s.liveNotes.writing); });
     const stop = [host.watchNotes(), kofi.watchNotes()];
     await waitFor(() => runs() > before, 'the notes model to be asked');
     const seen = await notesOf(host);
@@ -1806,10 +1807,11 @@ describe('what stays', () => {
 
     // A refresh still on its way when the call ends finds nothing to save into, and nothing comes back.
     const late = await twoInCall();
-    await say(late.host, A);
+    const LATE = 'We agreed to close the books late.';
+    await say(late.host, LATE);
     // The call ends while the notes model has the refresh, before it answers.
     let left: unknown = 'not asked';
-    whileRefreshing(async () => { left = await late.host.leave().then(() => 'ended', (e: unknown) => e); });
+    whileRefreshing(LATE, async () => { left = await late.host.leave().then(() => 'ended', (e: unknown) => e); });
     const before = runs();
     expect((await look(h.baseUrl, late.kofi)).body).toEqual({ refreshed: false });
     expect(left).toBe('ended');

@@ -564,7 +564,7 @@ describe('what later calls did to what earlier ones left', () => {
     let answer = () => {};
     const answered = new Promise<void>((r) => { answer = () => r(); });
     const hold = async (): Promise<void> => {
-      if (!h.near.instructions.at(-1)?.startsWith('You compare one meeting')) { h.near.holdNext(hold); return; }
+      if (!h.near.instructions.at(-1)?.startsWith('You compare one meeting') || !h.near.prompts.at(-1)?.includes('end annual pricing instead')) { h.near.holdNext(hold); return; }
       await answered;
     };
     h.near.holdNext(hold);
