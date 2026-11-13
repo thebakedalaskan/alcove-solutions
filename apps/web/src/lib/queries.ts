@@ -607,9 +607,10 @@ async function licensesBought(qc: QueryClient): Promise<Plan | null> {
 
 /**
  * Buys a purchase from the balance at the price (and, for more notes, the size) shown: Pro's months, packs of more notes for
- * this period, or licenses for the team you run (then it's a visit too, which takes yours if you have none). Refused when the
- * price changed (409, with the server's words), the balance is short, or you don't run the team; either way the plan, offers
- * and team are read again, so what's shown is what's true now. Null when it was bought but the plan couldn't be read again.
+ * this period, or licenses for the team you run, a period at a time or for a year (then it's a visit too, which takes yours
+ * if you have none). Refused when the price changed (409, with the server's words), the balance is short, or you don't run
+ * the team; either way the plan, offers and team are read again, so what's shown is what's true now. Null when it was
+ * bought but the plan couldn't be read again.
  */
 export function useBuy() {
   const qc = useQueryClient();
@@ -617,7 +618,7 @@ export function useBuy() {
     mutationFn: async (b: Purchase): Promise<Plan | null> => {
       if (b.kind === 'pro') return api.plans.buyPro(b.months, b.microUsdPerMonth);
       if (b.kind === 'hours') return api.plans.buyHours(b.packs, b.microUsdPerPack, b.minutesPerPack);
-      await api.teams.buyLicenses(b.count, b.microUsdPerLicense);
+      await api.teams.buyLicenses(b.count, b.microUsdPerLicense, b.periods);
       return licensesBought(qc);
     },
     // What's open on the plan (the side panel, Settings, a call's notes) follows at once.

@@ -1,10 +1,10 @@
 /*
  * Plans (docs/design/pages.md › Plans): the last of the sunset, with the
- * plans on the water under it. On the sky, Monthly or Yearly when a year or more costs less, with the last sliver of the sun
- * on the horizon under it; on the water, Free, Pro and Team side by side, their rows lined up; then what every plan has and
- * how paying works. Every number is the server's: the offers, the plan you're on, and the team you're on. Get Pro and
- * Extend open checkout over the page, on a year when Yearly is chosen; Start a team and Buy licenses open it on Team, whose
- * licenses are a period at a time whichever way the prices are shown. While a team license is yours, Pro waits: the server
+ * plans on the water under it. On the sky, Monthly or Yearly when a year costs less (Pro's, or a team license's), with the
+ * last sliver of the sun on the horizon under it; on the water, Free, Pro and Team side by side, their rows lined up; then
+ * what every plan has and how paying works. Every number is the server's: the offers, the plan you're on, and the team
+ * you're on. Get Pro and Extend open checkout over the page, on a year when Yearly is chosen; Start a team and Buy licenses
+ * open it on Team, on licenses for a year when Yearly is chosen too. While a team license is yours, Pro waits: the server
  * doesn't sell it then. Reached from the side panel's foot, Settings › Plan, checkout's Compare plans, and the welcome page's
  * Get Pro, which opens checkout as the page opens. Opened by itself once, in Home's place, it's the plan choice
  * (PlanChoice.tsx): a head of its own, and the plan you're on leads straight on. Here or there, once the plans have been on
@@ -22,7 +22,7 @@ import { plural, roomLabel, usd } from '~/lib/words';
 import { useCheckout } from './checkout';
 import { usePlansSeen } from './choice';
 import { PLAN_NAMES, endsIn, proEnding } from './plan-state';
-import { yearlyOff } from './purchase';
+import { teamYearlyOff, yearlyOff } from './purchase';
 import { hoursOfNotes, perPeriod, periodHours } from './words';
 
 /** The last of the sun, on the sky behind whatever passes through: one element, so the scene isn't drawn again with the page. */
@@ -80,10 +80,22 @@ function moreNotes(hours: PlanOffers['hours']): string | undefined {
 
 /** "a year or more", "6 months or more": where the lower price starts. */
 const fromWords = (months: number): string => (months === 12 ? 'a year or more' : `${months} months or more`);
-/** "20% off", worked out from the two prices: nothing when it rounds to nothing. */
+/** "a year", "6 months": how long a team license bought for a year runs. */
+const yearWords = (periods: number): string => (periods === 12 ? 'a year' : `${periods} months`);
+/**
+ * "20% off", worked out from each plan's two prices (Pro's a month, a team license's a period): nothing when it rounds to
+ * nothing, and "Up to 25% off" should Pro's and a license's ever differ.
+ */
 function offWords(o: PlanOffers): string | undefined {
-  const off = yearlyOff(o);
-  return off !== null && off >= 1 ? `${off}% off` : undefined;
+  const offs = [yearlyOff(o), teamYearlyOff(o)].filter((x): x is number => x !== null && x >= 1);
+  if (!offs.length) return undefined;
+  const most = Math.max(...offs);
+  return offs.every((x) => x === most) ? `${most}% off` : `Up to ${most}% off`;
+}
+/** What the switch calls a year: Yearly, or the months the lower price starts at (Pro's, else a team license's). */
+function yearLabel(o: PlanOffers): string {
+  const months = o.pro.yearly?.fromMonths ?? o.team.yearly?.periods ?? 12;
+  return months === 12 ? 'Yearly' : `${months} months`;
 }
 
 /** "for 1 to 12 months at a time": as many as one purchase buys. */
@@ -141,6 +153,7 @@ export function Plans({ opening, onOpened, first, evening }: {
   const o = offers.data;
   const p = plan.data;
   const yearly = o?.pro.yearly ?? null;
+  const teamYearly = o?.team.yearly ?? null;
   const error = offers.error ?? plan.error;
   const trouble = o && p ? null : !online || errorCode(error) === 'network' ? 'offline' : offers.isError || plan.isError ? 'failed' : null;
   /* Whatever comes back stands where Try again was, so focus goes to the water rather than falling back to the page. */
@@ -154,10 +167,7 @@ export function Plans({ opening, onOpened, first, evening }: {
 
   const sky = (
     <div className="pl-sky" style={first ? undefined : { '--d': 1 }}>
-      {o && yearly && (
-        <PlanCycle value={cycle} onChange={setCycle} off={offWords(o)}
-          year={yearly.fromMonths === 12 ? 'Yearly' : `${yearly.fromMonths} months`} />
-      )}
+      {o && (yearly || teamYearly) && <PlanCycle value={cycle} onChange={setCycle} off={offWords(o)} year={yearLabel(o)} />}
     </div>
   );
   return (
@@ -176,9 +186,10 @@ export function Plans({ opening, onOpened, first, evening }: {
       )}
       <div ref={water} tabIndex={-1} className="pl-water" style={{ '--d': 2 }}>
         {o && p
-          ? <Offered offers={o} plan={p} yearly={cycle === 'year' ? yearly : null} now={now}
+          ? <Offered offers={o} plan={p} yearly={cycle === 'year' ? yearly : null} teamYearly={cycle === 'year' ? teamYearly : null} now={now}
               team={p.team ? team.data ?? null : null} people={onTeam.length ? onTeam : atWork} go={go}
-              onBuy={(months) => open({ plan: 'pro', months }, 'plans')} onTeam={() => open({ plan: 'team' }, 'plans')} />
+              onBuy={(months) => open({ plan: 'pro', months }, 'plans')}
+              onTeam={() => open({ plan: 'team', yearly: cycle === 'year' && teamYearly !== null }, 'plans')} />
           : trouble === 'offline'
             ? <EmptyState className="pl-none" title="You’re offline" action={go}>The plans show here when you’re back online.</EmptyState>
             : trouble === 'failed'
@@ -201,15 +212,17 @@ export function Plans({ opening, onOpened, first, evening }: {
 }
 
 /**
- * The plans as they're offered, and what's under them. `yearly`: the lower price for a year or more, when it's the one
- * shown. Free's button area says it's your plan; on another plan, that Free is where you're back to. Pro's button is the
- * page's one filled button on Free, and on Pro only while it's ending; on a team license it isn't sold, and says so. Team is
- * licenses, a period at a time whichever way the prices are shown, its people at the end of its name's row (`people`): off a
- * team, Start a team; its admin buys them; a member is told who does, and it's their plan while they're licensed. `go`: the
- * plan choice's way on, on the plan you're on, in place of what it would have.
+ * The plans as they're offered, and what's under them. `yearly`: Pro's lower price for a year or more, and `teamYearly`, a
+ * team license's for a year, when they're the ones shown. Free's button area says it's your plan; on another plan, that
+ * Free is where you're back to. Pro's button is the page's one filled button on Free, and on Pro only while it's ending; on
+ * a team license it isn't sold, and says so. Team is licenses, a price a person a period, or a year's at its lower price,
+ * its people at the end of its name's row (`people`): off a team, Start a team; its admin buys them; a member is told who
+ * does, and it's their plan while they're licensed. `go`: the plan choice's way on, on the plan you're on, in place of what
+ * it would have.
  */
-function Offered({ offers: o, plan: p, yearly, now, team, people, go, onBuy, onTeam }: {
-  offers: PlanOffers; plan: Plan; yearly: NonNullable<PlanOffers['pro']['yearly']> | null; now: number;
+function Offered({ offers: o, plan: p, yearly, teamYearly, now, team, people, go, onBuy, onTeam }: {
+  offers: PlanOffers; plan: Plan; yearly: NonNullable<PlanOffers['pro']['yearly']> | null;
+  teamYearly: NonNullable<PlanOffers['team']['yearly']> | null; now: number;
   /** The team you're on, as you see it, once it's read (null off a team, or until then). */
   team: MyTeam | null; people: Person[];
   go: ReactNode;
@@ -224,6 +237,15 @@ function Offered({ offers: o, plan: p, yearly, now, team, people, go, onBuy, onT
   const save = yearly
     ? `You save ${usd((o.pro.microUsdPerMonth - yearly.microUsdPerMonth) * yearly.fromMonths)}.`
     : offered ? `Or ${usd(offered.microUsdPerMonth)} for ${fromWords(offered.fromMonths)}.` : undefined;
+  /* Team, as Pro is said: a year's price a period with what it bills and saves, or a period's with what a year costs instead. */
+  const perLicense = teamYearly ? teamYearly.microUsdPerLicense : o.team.microUsdPerLicense;
+  const teamOffered = o.team.yearly;
+  const teamBill = teamYearly
+    ? `${usd(perLicense * teamYearly.periods)} a person for ${teamYearly.periods} months.`
+    : `Each license is one person for ${plural(o.periodDays, 'day')}.`;
+  const teamSave = teamYearly
+    ? `You save ${usd((o.team.microUsdPerLicense - teamYearly.microUsdPerLicense) * teamYearly.periods)}.`
+    : teamOffered ? `Or ${usd(teamOffered.microUsdPerLicense)} ${perPeriod(o.periodDays)} for ${yearWords(teamOffered.periods)}.` : undefined;
   const admin = team?.members.find((m) => m.role === 'admin');
   const proAction = onTeamPlan
     ? <PlanHere quiet>Not while you’re on your team’s plan</PlanHere>
@@ -249,8 +271,7 @@ function Offered({ offers: o, plan: p, yearly, now, team, people, go, onBuy, onT
           facts={factsOf(o.pro, o.periodDays, false)} />
         <PlanCard kind="team" {...TEAM} people={people.length ? <Faces people={people.slice(0, 4)} size={22} max={4} /> : undefined}
           chip={onTeamPlan ? 'Your plan' : undefined}
-          price={usd(o.team.microUsdPerLicense)} per={`a person ${perPeriod(o.periodDays)}`}
-          bill={`Each license is one person for ${plural(o.periodDays, 'day')}.`}
+          price={usd(perLicense)} per={`a person ${perPeriod(o.periodDays)}`} bill={teamBill} save={teamSave}
           action={onTeamPlan ? go ?? teamAction : teamAction}
           facts={teamFactsOf(o.team)} more="A license is taken when someone next opens Alcove. Ones nobody takes can be refunded." />
       </PlanCards>

@@ -9,8 +9,11 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from 're
 
 /** What checkout opens on: Pro (to start, or to extend when on Pro), with the months to begin on; or more notes for this period. */
 export type CheckoutFor = { plan: 'pro'; months?: number | undefined } | { plan: 'hours'; packs?: number | undefined }
-  /** Team: starting one (its name, then its first licenses) when you're on none, or its admin buying more. */
-  | { plan: 'team'; licenses?: number | undefined };
+  /**
+   * Team: starting one (its name, then its first licenses) when you're on none, or its admin buying more. `yearly`: licenses
+   * for a year to begin on, as Plans' Yearly opens it; otherwise a period at a time.
+   */
+  | { plan: 'team'; licenses?: number | undefined; yearly?: boolean | undefined };
 /** Where it was opened from: Done says "Back to the call" from a call, and Compare plans shows away from Plans. */
 export type CheckoutFrom = 'plans' | 'settings' | 'side' | 'call' | 'door' | 'welcome' | 'team';
 /** What's open: a fresh checkout, or one on a payment already on its way (`topUpId`), reopened from its row. */

@@ -2,8 +2,9 @@
  * The checkout window (docs/design/pages.md › Checkout; the canvas's Checkout and PayMotion boards): what checkout.tsx has open, drawn with the kit's CheckoutWindow and its parts, at the
  * app's root (routes/__root.tsx), so the call, Settings, Plans and any door open the same window.
  *
- * Choose how long (or how many hours, or how many of Team's licenses: a team you start is named first, and made only as
- * you pay, with you its admin). When the balance covers it, Buy with your balance takes it from there at once.
+ * Choose how long (or how many hours, or how many of Team's licenses, a period at a time or for a year: a team you start is
+ * named first, and made only as you pay, with you its admin). When the balance covers it, Buy with your balance takes it
+ * from there at once.
  * Otherwise choose a network, and Get the address opens a top-up for what the balance is short of (raised to the
  * network's least, the rest staying in the balance) that buys it the moment it's added. From then on the window follows
  * that top-up, which q.topUp reads every 5 seconds: waiting, less arrived, seen, bought, and every way it can go wrong, with
@@ -32,10 +33,10 @@ import type { CheckoutOpen } from './checkout';
 import { PayAdded, PayNow, PayOver, PaySeen, isOver, payingOf, useSeenWhileOpen, type Paying } from './paying';
 import { renews, teamLicenses } from './plan-state';
 import {
-  LENGTHS, LICENSES, costOf, kindOf, lapsed, microOf, proPrice, purchaseName, repriced, roundTokens, sameTerms, tokens,
-  waitingPurchase, yearlyOff
+  LENGTHS, LICENSES, costOf, kindOf, lapsed, licenseRuns, licenseTerm, licenseTerms, licensesWord, microOf, proPrice, purchaseName, repriced,
+  roundTokens, sameTerms, teamYearlyOff, tokens, waitingPurchase, yearlyOff
 } from './purchase';
-import { hoursOfNotes, moreHoursOfNotes } from './words';
+import { hoursOfNotes, moreHoursOfNotes, perPeriod } from './words';
 
 const DAY = 86_400_000;
 /** The networks in the canvas's order; any other the server offers comes after them, in its order. */
@@ -63,12 +64,13 @@ const starts = (t: MyTeam | null): boolean =>
   t === null || (t.role === 'admin' && (t.licenses?.unconsumed ?? 0) === 0 && t.members.every((m) => m.license.state === 'none'));
 const isAre = (n: number) => (n === 1 ? 'is' : 'are');
 
-/** What Done says of the licenses a team was started with: whose they are, and when each is taken. */
-function startedWith(count: number, yoursTaken: boolean): string {
-  if (count === 1) return yoursTaken ? '1 license, and it’s yours, taken now. Buy more for the people you invite.' : '1 license: it’s taken when you or someone you invite next opens Alcove.';
+/** What Done says of the licenses a team was started with (for a year, when they're for more than a period): whose they are, and when each is taken. */
+function startedWith(count: number, periods: number, yoursTaken: boolean): string {
+  const bought = licensesWord(count, periods);
+  if (count === 1) return yoursTaken ? `${bought}, and it’s yours, taken now. Buy more for the people you invite.` : `${bought}: it’s taken when you or someone you invite next opens Alcove.`;
   return yoursTaken
-    ? `${count} licenses, for you and the people you invite. Yours is taken now, and each of theirs when they next open Alcove.`
-    : `${count} licenses, for you and the people you invite. Each is taken when its person next opens Alcove.`;
+    ? `${bought}, for you and the people you invite. Yours is taken now, and each of theirs when they next open Alcove.`
+    : `${bought}, for you and the people you invite. Each is taken when its person next opens Alcove.`;
 }
 /** What Done says once more licenses are bought: how many are left now, and whether the people waiting each get one. */
 function leftNow(t: MyTeam | null): string | null {
@@ -112,7 +114,16 @@ function described(buys: Purchase, offers: PlanOffers): { name: string; brief: s
       : [{ label: `${plural(buys.months, 'month')} at ${usd(buys.microUsdPerMonth)}`, value: usd(costOf(buys)) }];
     return { name: 'Pro', brief: `${plural(buys.months, 'month')}${pct ? ` · ${pct}% off` : ''}`, lines };
   }
-  if (buys.kind === 'licenses') return { name: 'Team', brief: plural(buys.count, 'license'), lines: [{ label: `${plural(buys.count, 'license')} at ${usd(buys.microUsdPerLicense)}`, value: usd(costOf(buys)) }] };
+  if (buys.kind === 'licenses') {
+    // For a year, each at the lower price a period: "6 licenses for a year at $32 a month", and what it saves on the phone's line.
+    const bought = licensesWord(buys.count, buys.periods);
+    if (buys.periods <= 1) return { name: 'Team', brief: bought, lines: [{ label: `${bought} at ${usd(buys.microUsdPerLicense)}`, value: usd(costOf(buys)) }] };
+    const pct = buys.microUsdPerLicense < offers.team.microUsdPerLicense ? teamYearlyOff(offers) : null;
+    return {
+      name: 'Team', brief: `${bought}${pct ? ` · ${pct}% off` : ''}`,
+      lines: [{ label: `${bought} at ${usd(buys.microUsdPerLicense)} ${perPeriod(offers.periodDays)}`, value: usd(costOf(buys)) }]
+    };
+  }
   const hours = hoursOfNotes(buys.packs * buys.minutesPerPack);
   const perHour = Math.round((buys.microUsdPerPack * 60) / buys.minutesPerPack);
   return { name: `${hours} of notes`, brief: 'For this period', lines: [{ label: `${hours} at ${usd(perHour)} an hour`, value: usd(costOf(buys)) }] };
@@ -209,6 +220,8 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const [months, setMonths] = useState<number | null>(open.what.plan === 'pro' ? open.what.months ?? null : null);
   const [packs, setPacks] = useState<number>(open.what.plan === 'hours' ? open.what.packs ?? 1 : 1);
   const [licenses, setLicenses] = useState<number | null>(open.what.plan === 'team' ? open.what.licenses ?? null : null);
+  /* Team's licenses for a year, as the door opened it (Plans' Yearly), else a period at a time. */
+  const [yearlyLicenses, setYearlyLicenses] = useState(open.what.plan === 'team' && open.what.yearly === true);
   const [other, setOther] = useState(false);
   const [routeId, setRouteId] = useState<string | null>(null);
   /**
@@ -219,12 +232,12 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const [asking, setAsking] = useState(false);
   const [receipt, setReceipt] = useState(false);
 
-  /** Back to choosing what a payment was for, as it was: the same length, hours or licenses, on the same network. */
+  /** Back to choosing what a payment was for, as it was: the same length, hours or licenses (for as long), on the same network. */
   const chooseAgain = (old: TopUp) => {
     const b = old.purchase?.buys;
     if (b?.kind === 'pro') { setMonths(b.months); setOther(!LENGTHS.some((m) => m === b.months)); }
     else if (b?.kind === 'hours') setPacks(b.packs);
-    else if (b?.kind === 'licenses') { setLicenses(b.count); setOther(!LICENSES.some((n) => n === b.count)); }
+    else if (b?.kind === 'licenses') { setLicenses(b.count); setYearlyLicenses(b.periods > 1); setOther(!LICENSES.some((n) => n === b.count)); }
     setRouteId(old.route.id);
     setAsking(false);
     setView({ step: 'choose' });
@@ -267,6 +280,11 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const left = counts?.left ?? 0;
   const known = 1 + (directory.data?.members.filter((m) => m.onAlcove).length ?? 0);
   const maxLicenses = o?.team.maxLicenses ?? 1;
+  /* For a year only while one is offered: a license's price a period, and the periods each runs. */
+  const forYear = yearlyLicenses && !!o?.team.yearly;
+  const terms = o ? licenseTerms(o, forYear) : null;
+  /** What one license costs, for all its periods. */
+  const each = terms ? terms.microUsdPerLicense * terms.periods : 0;
   const licenseCards = LICENSES.filter((n) => n <= maxLicenses);
   const enough = starting === false ? wanting.length - left : known;
   const firstCount = enough <= (licenseCards[0] ?? 1) ? licenseCards[0] ?? 1 : licenseCards.find((n) => n >= enough) ?? Math.min(enough, maxLicenses);
@@ -282,7 +300,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
 
   const buys: Purchase | null = !o ? null
     : kind === 'pro' ? { kind: 'pro', months: chosenMonths, microUsdPerMonth: proPrice(o, chosenMonths) }
-    : kind === 'licenses' ? { kind: 'licenses', count: chosenLicenses, microUsdPerLicense: o.team.microUsdPerLicense }
+    : kind === 'licenses' ? { kind: 'licenses', count: chosenLicenses, ...licenseTerms(o, forYear) }
     : hoursOffer ? { kind: 'hours', packs: chosenPacks, microUsdPerPack: hoursOffer.microUsd, minutesPerPack: hoursOffer.minutes } : null;
   const cost = buys ? costOf(buys) : 0;
   const fromBalance = Math.min(balance, cost);
@@ -390,8 +408,8 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
     } else if (b.kind === 'licenses') {
       // Said from the team and the plan as they are after the visit buying them made: whether yours was taken, what's left.
       until = null;
-      heading = starting !== false ? `${named || 'Your team'} is on Team` : `${b.count} more ${b.count === 1 ? 'license' : 'licenses'}`;
-      const line = starting !== false ? startedWith(b.count, fresh?.team?.licensed === true || teamNow?.licensed === true) : leftNow(teamNow);
+      heading = starting !== false ? `${named || 'Your team'} is on Team` : `${b.count} more ${b.count === 1 ? 'license' : 'licenses'}${licenseTerm(b.periods)}`;
+      const line = starting !== false ? startedWith(b.count, b.periods, fresh?.team?.licensed === true || teamNow?.licensed === true) : leftNow(teamNow);
       if (line) lines.push(line);
     } else {
       until = periodEnd;
@@ -406,7 +424,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
     return {
       title: heading, lines,
       invite: b.kind === 'licenses' && starting !== false,
-      // Licenses run a period from when each is taken, and aren't renewed: there's nothing to remind. Pro renews only when
+      // Licenses run from when each is taken (a period, or a year's), and aren't renewed: there's nothing to remind. Pro renews only when
       // renewing will buy the next month (on, a month's price in the balance, no rise in price), as the server says.
       reminder: b.kind !== 'pro' ? null : fresh && renews(fresh) ? 'Renews from your balance.' : 'Nothing renews by itself. Alcove reminds you before it ends.',
       row: {
@@ -449,7 +467,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
     const isDone = view?.step === 'bought' || paying === 'bought';
     const until = shown.kind === 'pro'
       ? { lead: 'Pro until', day: fullDate(isDone ? boughtUntil(shown.months, view?.step === 'bought' ? view.plan : p) : proUntil(shown.months)) }
-      : shown.kind === 'licenses' ? { lead: shown.count === 1 ? 'It runs' : 'Each runs', day: `${plural(o.periodDays, 'day')} from when it’s taken` }
+      : shown.kind === 'licenses' ? { lead: shown.count === 1 ? 'It runs' : 'Each runs', day: `${licenseRuns(shown.periods, o.periodDays)} from when it’s taken` }
       : periodEnd ? { lead: 'Until', day: fullDate(periodEnd) } : null;
     summary = { ...summary, name: d.name, brief: d.brief, lines: d.lines, until };
     if (t) {
@@ -571,7 +589,6 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   } else {
     // Choosing.
     const offLabel = pct !== null ? `${pct}% off` : null;
-    const each = o.team.microUsdPerLicense;
     /** What a number of licenses is for, as its card says: beside the people the app knows of, or beside who's waiting. */
     const licensesFor = (n: number): string => {
       if (starting !== false) return n === known ? `For the ${known} of you` : n > known ? `Room for ${n - known} more` : 'To start with';
@@ -584,7 +601,8 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
       if (named1) return spare ? `${spare} spare after ${named1}’s` : `For ${named1}`;
       return spare ? `${wanting.length} waiting, ${spare} spare` : `For the ${wanting.length} waiting`;
     };
-    const runs = `Each runs ${plural(o.periodDays, 'day')} from when it’s taken.`;
+    const runs = `Each runs ${licenseRuns(terms?.periods ?? 1, o.periodDays)} from when it’s taken.`;
+    const teamOff = teamYearlyOff(o);
     const yours = starting !== false ? (
       <TeamName value={teamNow?.name ?? teamName ?? ''} onChange={setTeamName} disabled={teamNow !== null} placeholder="Your company or team"
         autoFocus={teamNow === null && !teamName} />
@@ -599,7 +617,8 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
         {kind === 'licenses' ? (
           <>
             {yours}
-            <LicensesPicker autoFocus={teamNow !== null || !!teamName} hint={`${usd(each)} each, one person for ${plural(o.periodDays, 'day')}`} value={chosenLicenses}
+            <LicensesPicker autoFocus={teamNow !== null || !!teamName} hint={`${usd(each)} each, one person for ${licenseRuns(terms?.periods ?? 1, o.periodDays)}`} value={chosenLicenses}
+              term={o.team.yearly ? { value: forYear ? 'year' : 'month', onChange: (v) => setYearlyLicenses(v === 'year'), off: teamOff !== null && teamOff >= 1 ? `${teamOff}% off` : null } : undefined}
               options={licenseCards.map((n): LicensesOption => ({ count: n, total: usd(n * each), sub: licensesFor(n) }))}
               onChange={(n) => { setLicenses(n); setOther(false); }}
               other={{
