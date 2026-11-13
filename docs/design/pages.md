@@ -533,11 +533,14 @@ The last of the light, with you in it, then seven groups. Change one thing and l
   `SettingNote` says until when everything works as before. Pro renewed and Pro ended are `SettingNote`s with × at the top
   until dismissed; ending is said once, in warm, in the plan row. The second panel: Balance with Add money (a sheet that
   follows the payment with checkout's own parts and words, `features/plans/paying.tsx`: the deposit address with its QR code
-  and bold ends, never a window over the page), Renew from balance and Refund on Pro (asked in place), and
-  Payments (`SettingPayments`, `PaymentRow`): first what's on its way or needs a person, then the balance's latest changes,
-  each with Receipt opening `PaymentReceipt`, paper in both themes and alone on the page when printed. Buying is
-  checkout's, never this page's. Controls drop under their words on a phone. The code is `features/settings/Plan.tsx`,
-  with `features/plans/plan-state.ts`, which the side panel's foot and Plans share.
+  and bold ends, never a window over the page), then on Pro Renew from balance and Refund. Renew says, in caution, why it
+  won't renew when it won't, as the server decides it (`pro.renewal`): the balance short of a month, or a month costing more
+  than the last did ("A month of Pro costs $24.00 now, more than your last did, so it won't renew by itself. Extend to keep it
+  at that price."). Refund asks in place: what goes back, that renewing turns off (while it's on), and that Pro ends with
+  the month running now. Then Payments (`SettingPayments`, `PaymentRow`): first what's on its way or needs a person, then
+  the balance's latest changes, each with Receipt opening `PaymentReceipt`, paper in both themes and alone on the page when
+  printed. Buying is checkout's, never this page's. Controls drop under their words on a phone. The code is
+  `features/settings/Plan.tsx`, with `features/plans/plan-state.ts`, which the side panel's foot and Plans share.
 - **Sign out** signs you out at once. Only when recordings haven't uploaded does it ask first: the sky grows to hold the
   question, it says they'll be deleted, and Stay signed in is the filled answer. Signing out (from here or your menu), the
   page holds until the welcome page replaces it in one step, rather than blanking or emptying first.

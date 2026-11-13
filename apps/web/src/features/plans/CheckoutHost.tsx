@@ -30,7 +30,7 @@ import { plural, usd, usdCents } from '~/lib/words';
 import { useInvite } from '../team/invite';
 import type { CheckoutOpen } from './checkout';
 import { PayAdded, PayNow, PayOver, PaySeen, isOver, payingOf, useSeenWhileOpen, type Paying } from './paying';
-import { teamLicenses } from './plan-state';
+import { renews, teamLicenses } from './plan-state';
 import {
   LENGTHS, LICENSES, costOf, kindOf, lapsed, microOf, proPrice, purchaseName, repriced, roundTokens, sameTerms, tokens,
   waitingPurchase, yearlyOff
@@ -403,8 +403,9 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
     return {
       title: heading, lines,
       invite: b.kind === 'licenses' && starting !== false,
-      // Licenses run a period from when each is taken, and aren't renewed: there's nothing to remind.
-      reminder: b.kind !== 'pro' ? null : fresh?.pro.renew ? 'Renews from your balance.' : 'Nothing renews by itself. Alcove reminds you before it ends.',
+      // Licenses run a period from when each is taken, and aren't renewed: there's nothing to remind. Pro renews only when
+      // renewing will buy the next month (on, a month's price in the balance, no rise in price), as the server says.
+      reminder: b.kind !== 'pro' ? null : fresh && renews(fresh) ? 'Renews from your balance.' : 'Nothing renews by itself. Alcove reminds you before it ends.',
       row: {
         title: paid ? `${tokens(added)} USDC on ${paid.route.chainName}` : `${usd(c)} from your balance`,
         sub: `${shortDate(at)} · ${bought}`, reference: reference ? shortRef(reference) : null
