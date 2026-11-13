@@ -320,9 +320,14 @@ describe('asking across the series during a call', () => {
     const { org, bea, one, now, host, inBea } = await third();
     const gone = ['conflict', 'Notes from one of these calls were deleted or removed from yours while the answer was being written, so it isn’t shown. Ask again.'];
     const sent = h.near.prompts.length;
-    // The note goes once the question has reached the notes model, which answers only after it.
+    // The note goes once the question has reached the notes model, which answers only after it. Anything else it's
+    // asked meanwhile (a call compared with earlier ones after its notes, which nothing waits for) goes by.
     let deleted: unknown = 'the question never reached the notes model';
-    h.near.holdNext(async () => { deleted = await org.api.notes.delete(one.noteId).then(() => 'deleted', (e: unknown) => e); });
+    const hold = async (): Promise<void> => {
+      if (!h.near.instructions.at(-1)?.startsWith('You answer a question about a series')) { h.near.holdNext(hold); return; }
+      deleted = await org.api.notes.delete(one.noteId).then(() => 'deleted', (e: unknown) => e);
+    };
+    h.near.holdNext(hold);
     expect(refusal(await inBea.askEarlier('Why did we drop the tablet?', ZONE).catch((e: unknown) => e))).toEqual(gone);
     expect(deleted).toBe('deleted');
     expect(h.near.prompts.length).toBeGreaterThan(sent);

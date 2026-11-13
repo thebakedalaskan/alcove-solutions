@@ -386,11 +386,18 @@ describe('memory across a series', () => {
     await hold(org.api, next.code, 'We decided to hire two engineers.');
     expect((await asked(bea.api, seriesId, 'Who tells the board?'))[0]).toEqual({ type: 'text', text: 'From meeting 2: Bea will tell the board by Friday.' });
 
-    /** Asks, and does `meanwhile` once the question has reached the notes model, which answers only after it. */
+    /**
+     * Asks, and does `meanwhile` once the question has reached the notes model, which answers only after it. Anything
+     * else it's asked meanwhile (a call compared with earlier ones after its notes, which nothing waits for) goes by.
+     */
     const whileAnswering = async (api: AlcoveApi, meanwhile: () => Promise<void>): Promise<unknown> => {
       const sent = h.near.prompts.length;
       let done: unknown = 'the question never reached the notes model';
-      h.near.holdNext(async () => { done = await meanwhile().then(() => 'done', (e: unknown) => e); });
+      const hold = async (): Promise<void> => {
+        if (!h.near.instructions.at(-1)?.startsWith('You answer a question about a series')) { h.near.holdNext(hold); return; }
+        done = await meanwhile().then(() => 'done', (e: unknown) => e);
+      };
+      h.near.holdNext(hold);
       const answer = await asked(api, seriesId, 'Who tells the board?').catch((e: unknown) => e);
       expect(done).toBe('done');
       expect(h.near.prompts.length).toBeGreaterThan(sent);

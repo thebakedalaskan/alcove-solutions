@@ -449,11 +449,18 @@ describe('catching up during a call', () => {
     await inGroup(kofi);
     await host.appendAudio(piece(audioBytes('recheck'), 0, 0));
     await host.transcribe(speech('We agreed to sell the old van.', 0, 5000), host.ticket.identity);
-    /** Asks, and does `meanwhile` once the question has reached the notes model, which answers only after it. */
+    /**
+     * Asks, and does `meanwhile` once the question has reached the notes model, which answers only after it. Anything
+     * else it's asked meanwhile (the last test's notes, still being written in the background) goes by.
+     */
     const whileAnswering = async (ask: () => Promise<unknown>, meanwhile: () => Promise<void>): Promise<unknown> => {
       const sent = h.near.prompts.length;
       let done: unknown = 'the question never reached the notes model';
-      h.near.holdNext(async () => { done = await meanwhile().then(() => 'done', (e: unknown) => e); });
+      const hold = async (): Promise<void> => {
+        if (!/^You (help someone catch up|answer a question about a meeting that is still going on)/.test(h.near.instructions.at(-1) ?? '')) { h.near.holdNext(hold); return; }
+        done = await meanwhile().then(() => 'done', (e: unknown) => e);
+      };
+      h.near.holdNext(hold);
       const answer = await ask().catch((e: unknown) => e);
       expect(done).toBe('done');
       expect(h.near.prompts.length).toBeGreaterThan(sent);

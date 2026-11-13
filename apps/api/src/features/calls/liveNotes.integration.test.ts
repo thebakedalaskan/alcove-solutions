@@ -86,6 +86,17 @@ const sayNow = (host: CallSession, words: string, atMs: number) => host.transcri
 const runs = () => h.near.instructions.filter((s) => s.startsWith('You help someone catch up')).length;
 /** What each of those requests sent the notes model, from the `from`th on. */
 const sentSince = (from: number) => h.near.prompts.filter((_, i) => h.near.instructions[i]?.startsWith('You help someone catch up')).slice(from);
+/**
+ * Does `act` once the next refresh of live notes reaches the notes model, which answers it only after `act`. Anything
+ * else it's asked meanwhile (another call's notes, still being written in the background) goes by.
+ */
+function whileRefreshing(act: () => Promise<void>): void {
+  const hold = async (): Promise<void> => {
+    if (!h.near.instructions.at(-1)?.startsWith('You help someone catch up')) { h.near.holdNext(hold); return; }
+    await act();
+  };
+  h.near.holdNext(hold);
+}
 /** The notes as this browser reads them once they exist and aren't being written, and `pred` holds. */
 async function notesOf(call: CallSession, pred: (n: NonNullable<LiveNotes['notes']>) => boolean = () => true) {
   const s = await settle(call, (x) => { const n = x.liveNotes.notes; return n !== null && !x.liveNotes.writing && pred(n); });
@@ -143,7 +154,7 @@ describe('one set of live notes for the call', () => {
     const before = runs();
     // The model answers only once the other browser has seen the run on its way, so both are looking while it is.
     let meanwhile: CallState | undefined;
-    h.near.holdNext(async () => { meanwhile = await settle(kofi, (s) => s.liveNotes.writing); });
+    whileRefreshing(async () => { meanwhile = await settle(kofi, (s) => s.liveNotes.writing); });
     const stop = [host.watchNotes(), kofi.watchNotes()];
     await waitFor(() => runs() > before, 'the notes model to be asked');
     const seen = await notesOf(host);
@@ -1798,7 +1809,7 @@ describe('what stays', () => {
     await say(late.host, A);
     // The call ends while the notes model has the refresh, before it answers.
     let left: unknown = 'not asked';
-    h.near.holdNext(async () => { left = await late.host.leave().then(() => 'ended', (e: unknown) => e); });
+    whileRefreshing(async () => { left = await late.host.leave().then(() => 'ended', (e: unknown) => e); });
     const before = runs();
     expect((await look(h.baseUrl, late.kofi)).body).toEqual({ refreshed: false });
     expect(left).toBe('ended');
