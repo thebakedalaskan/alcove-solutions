@@ -658,8 +658,11 @@ The server never holds a key that can move treasury money. By hand, in near.com,
 
 - Migration `0029_plans.sql` adds `plan_accounts` (record kind `plan-account`) and `ai_meters` (`ai-meter`).
   `0030_workspace_payers.sql` adds nullable `payer_owner_id`, `payer_grace_until` and `payer_grace_bytes` to `workspaces`,
-  and the index on who pays: columns and an index only, so its lock on `workspaces` (and the foreign key's on `owners`)
-  lasts as long as those take, whatever the number of workspaces. `0032_workspace_payers_backfill.sql` then gives every
+  and the index on who pays. Its foreign-key column, like `0031_teams.sql`'s `team_id`, is `text`, not a domain: a new
+  column of a domain with a CHECK makes Postgres rewrite the whole table under its lock (1–3 s for 50,000 workspaces), and
+  `scripts/check-migrations.mjs` refuses one. Neither file rewrites `workspaces`, but each reads it twice under its lock,
+  to check a new column's CHECK and to build an index, so that lock (and the foreign key's on `owners`) grows with the
+  table: under 35 ms a file for 50,000 workspaces, measured from cache. `0032_workspace_payers_backfill.sql` then gives every
   workspace its longest-standing admin with an account as its payer, in a transaction of its own that holds only the rows
   it writes: the previous release keeps reading workspaces, and counting what's stored, while it runs. That's who `makeHome`
   and `createIn` name now, and what upkeep's `settlePayers` gives a workspace nobody pays for, so the backfill, upkeep and

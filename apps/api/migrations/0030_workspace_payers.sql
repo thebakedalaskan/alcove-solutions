@@ -6,8 +6,11 @@
 -- When a workspace's payment moves to one of its admins because whoever paid for it isn't in it any more, its files don't
 -- count against them until `payer_grace_until`: the bytes it held then (`payer_grace_bytes`, at most what it holds now)
 -- are on top of their storage until that ends.
+--
+-- `payer_owner_id` is `text`, not `alcove_owner_id`: a new column of a domain with a CHECK makes Postgres rewrite the whole
+-- table, TOAST and indexes included, under this lock. The foreign key already holds it to an owner's ID.
 ALTER TABLE workspaces
-  ADD COLUMN payer_owner_id alcove_owner_id REFERENCES owners(owner_id) ON DELETE SET NULL,
+  ADD COLUMN payer_owner_id text REFERENCES owners(owner_id) ON DELETE SET NULL,
   ADD COLUMN payer_grace_until timestamptz,
   ADD COLUMN payer_grace_bytes bigint CHECK (payer_grace_bytes >= 0),
   ADD CONSTRAINT workspaces_payer_grace CHECK ((payer_grace_until IS NULL) = (payer_grace_bytes IS NULL));
