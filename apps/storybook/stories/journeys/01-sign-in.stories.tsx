@@ -35,7 +35,7 @@ export const FirstTime: PageStory = {
       await screen.findByRole('heading', { name: 'Choose a plan', level: 1 }, LATER);
       await away('dialog', /^You’re in/, LATER);
     });
-    await step('Continue on Free, on Free’s card. Home opens on his first day', async () => {
+    await step('Continue on Free, on Free’s card. Home opens on Art’s first day', async () => {
       await userEvent.click(await pressable('button', 'Continue on Free', LATER));
       await screen.findByRole('region', { name: 'Start your first call' }, LATER);
     });
