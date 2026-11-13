@@ -118,6 +118,20 @@ jobs:
             --set-env-vars "LOG_FORMAT=json,LOG_LEVEL=info" \
             --set-secrets "$SECRET_BINDINGS" --quiet
           gcloud --project="$GCP_PROJECT_ID" run jobs execute alcove-migrate --region "$GCP_REGION" --wait --quiet
+      - name: Still main's newest commit
+        # Re-running a run's failed jobs reuses prepare's answer from its first attempt, so an old run re-run later would
+        # roll production back (13 Nov 2026). Ask again right before rolling out.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          CURRENT_SHA="$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$REPOSITORY/git/ref/heads/main" | jq -er '.object.sha')"
+          if [ "$DEPLOY_SHA" != "$CURRENT_SHA" ]; then
+            echo "::error::$DEPLOY_SHA is no longer main's newest commit ($CURRENT_SHA); not rolling it out."
+            exit 1
+          fi
       - name: Roll it out
         id: deploy
         env:

@@ -108,32 +108,22 @@ fi
 unset DB_PASSWORD DB_URL NORMALIZED_DB_URL ALCOVE_DB_PASSWORD
 
 echo "› Secrets (values you add once)"
-for s in alcove-kmaster alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret alcove-google-signup-testers alcove-livekit-api-key alcove-livekit-api-secret; do
+for s in alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret alcove-google-signup-testers alcove-livekit-api-key alcove-livekit-api-secret; do
   ensure_secret "$s"
 done
 # The Cloudflare token the API in Confidential Space orders its certificates with, and dns.sh changes records with.
 # Only the attested production VMs read it (infra/confidential-space/setup.sh), never the Cloud Run runtime account.
 ensure_secret alcove-cloudflare-dns-token
-# The two server keys are generated here once and never rotated by this script: KMASTER wraps every
-# account's root key, KSERVICE seals billing state. Losing KMASTER makes every account unreadable.
-for key in alcove-kmaster alcove-kservice; do
-  KEY_VERSION="$(latest_secret_version "$key")"
-  if [[ -z "$KEY_VERSION" ]]; then
-    openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n' | gcp secrets versions add "$key" --data-file=-
-  elif [[ "$(gcp secrets versions describe "$KEY_VERSION" --secret="$key" --format='value(state)')" != ENABLED ]]; then
-    echo "The latest $key version is not enabled. Restore that version explicitly; no key was changed." >&2
-    exit 1
-  fi
-done
+# No server keys here: the API in Confidential Space makes its own master and keeps it wrapped by Cloud KMS
+# (infra/confidential-space/README.md). The KMASTER and KSERVICE from before it were retired on 2026-11-13.
 
 echo "› Service accounts"
 gcp iam service-accounts describe "alcove-api@$PROJECT_ID.iam.gserviceaccount.com" >/dev/null 2>&1 || gcp iam service-accounts create alcove-api --display-name "Alcove API runtime"
 gcp iam service-accounts describe "alcove-deploy@$PROJECT_ID.iam.gserviceaccount.com" >/dev/null 2>&1 || gcp iam service-accounts create alcove-deploy --display-name "Alcove GitHub deploys"
 RUNTIME="alcove-api@$PROJECT_ID.iam.gserviceaccount.com"; DEPLOY="alcove-deploy@$PROJECT_ID.iam.gserviceaccount.com"
 gcp_iam projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$RUNTIME" --role roles/cloudsql.client --condition None >/dev/null
-for s in alcove-database-url alcove-kmaster alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret alcove-google-signup-testers alcove-livekit-api-key alcove-livekit-api-secret; do
-  gcp_iam secrets add-iam-policy-binding "$s" --member "serviceAccount:$RUNTIME" --role roles/secretmanager.secretAccessor --condition None >/dev/null
-done
+# The runtime account only runs the keyless migration job now, which reads the database URL and nothing else.
+gcp_iam secrets add-iam-policy-binding alcove-database-url --member "serviceAccount:$RUNTIME" --role roles/secretmanager.secretAccessor --condition None >/dev/null
 # The migration job (Cloud Run). The API itself runs in Confidential Space, whose grants infra/confidential-space/setup.sh makes.
 gcp_iam projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$DEPLOY" --role roles/run.developer --condition None >/dev/null
 gcp_iam artifacts repositories add-iam-policy-binding alcove --location "$REGION" --member "serviceAccount:$DEPLOY" --role roles/artifactregistry.writer --condition None >/dev/null
