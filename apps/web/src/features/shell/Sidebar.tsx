@@ -2,24 +2,27 @@
  * The side panel, beside every page and dark in both themes, in two groups. At the top, your work: Start a call, then
  * Home, Calls, Drive and Record, and what you've pinned under them. At the foot, who works with you (Team and Agents),
  * then a call that's about to start, with Join, the confidential-compute check and your plan: one row, with a short line
- * above it only while there's something to say. A count means something waits on you. Someone on their own has no Team
- * page. It can be hidden. At 860px and narrower the phone's top bar and tab bar (TabBar.tsx) take its place, and the plan
+ * above it only while there's something to say. A count means something waits on you. Someone on their own, with no
+ * company and no team, has no Team page. It can be hidden. At 860px and narrower the phone's top bar and tab bar (TabBar.tsx) take its place, and the plan
  * is said in Settings.
  */
-import type { Plan } from '@alcove/api';
+import type { MyTeam, Plan, PlanNotice } from '@alcove/api';
 import { ArchThumb, Dots, Icon, IconButton, Kbd, Logo, Meter, NavItemContent, SidebarNav, SunMark, buttonClass, cn, coverFor } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { aheadShown, joinable, whenLine } from '~/features/home/day';
 import { useCheckout } from '~/features/plans/checkout';
-import { PLAN_NAMES, endsIn, noticesNow, notesLeft, notesLow, notesOut, notesShare, proEnding } from '~/features/plans/plan-state';
+import {
+  PLAN_NAMES, endsIn, licensesLeft, licensesShort, noticesNow, notesLeft, notesLow, notesOut, notesShare, proEnding, waitingForLicense
+} from '~/features/plans/plan-state';
 import { checkoutFor, payable, purchaseName, restToSend, settlingPurchase, tokensShort, waitingPurchase } from '~/features/plans/purchase';
 import { recordOfflineHere } from '~/lib/device';
 import { log } from '~/lib/log';
 import { useNow, useOnline } from '~/lib/live';
 import { q, trustLine, verifiedAt } from '~/lib/queries';
 import { dayMonth, hm, shortDate } from '~/lib/time';
+import { plural } from '~/lib/words';
 import { NAV, NAV_FOOT, inWorkspace, places, useCounts, type NavPlace } from './places';
 
 const KEY = 'alcove-side-panel';
@@ -79,6 +82,7 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
   const online = useOnline();
   const counts = useCounts();
   const team = useQuery(q.team()).data;
+  const mine = useQuery(q.myTeam()).data;
   const path = useRouterState({ select: (s) => s.location.pathname });
   const link = (p: NavPlace) => <Link key={p.to} to={p.to} className="ac-nav-item" data-tour={p.tour}><NavItemContent icon={p.icon} label={p.label} count={p.count && counts[p.count]} /></Link>;
   return (
@@ -97,7 +101,7 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
         <div className="sb-mid">
           <Pinned onPin={onPin} />
         </div>
-        <SidebarNav label="Team and agents" className="sb-low">{places(NAV_FOOT, team).map(link)}</SidebarNav>
+        <SidebarNav label="Team and agents" className="sb-low">{places(NAV_FOOT, team, mine).map(link)}</SidebarNav>
         {online && <AboutToStart home={path === '/home'} />}
         <Foot online={online} />
       </div>
@@ -175,12 +179,17 @@ function Foot({ online }: { online: boolean }) {
  * Your plan, as one row where the minutes of notes left were. On Free, about how much of the period's notes is left over a
  * meter, warm under an hour, and until when once they've stopped. On Pro or Team, the plan with its own small sun in the
  * icon column, and under its name what matters most: that it's ending (its sun half set, opening checkout to extend), that
- * notes have stopped or are low, or until when it runs. A payment for a plan on its way takes the row's place, saying what
- * it's waiting for, and opens it again. Pro renewed or ended is one short line above it, until it's dismissed in Settings.
- * On Plans, a paid plan's row, or a payment's, is the place you're on, shaded; Free's is the minutes left, and isn't.
+ * notes have stopped, that a team's licenses run short (for its admin: how many are left and Buy, opening checkout on Team),
+ * that notes are low, or until when Pro runs, or the team's name. On a team without a license, the row's second line says
+ * so in caution, and the row goes to Team, which says who has been told. A payment for a plan on its way takes the row's
+ * place, saying what it's waiting for, and opens it again. Anything else said (Pro renewed or ended, Team replacing Pro, a
+ * team's licenses) is one short line above it, until it's dismissed in Settings. On Plans, a paid plan's row, or a
+ * payment's, is the place you're on, shaded; Free's is the minutes left, and isn't.
  */
 function PlanFoot({ plan }: { plan: Plan }) {
   const offers = useQuery(q.offers()).data;
+  // On a team: who its admin is, and for the admin how many licenses are left.
+  const team = useQuery({ ...q.myTeam(), enabled: plan.team !== null }).data;
   // Read again only while the foot shows a payment: every 30 s while one is on its way, every 5 minutes while one settles.
   const topUps = useQuery({
     ...q.topUps(),
@@ -202,7 +211,7 @@ function PlanFoot({ plan }: { plan: Plan }) {
           {settling ? `Address closed, settling ${tokensShort(buying.received?.amount ?? '0')} ${route.token}`
             : short ? `Send ${tokensShort(restToSend(buying))} ${route.token} more`
             : state === 'waiting' ? `Waiting for ${tokensShort(asked.amount)} ${route.token}`
-            : purchase.buys.kind === 'pro' ? 'Payment seen, starting Pro' : 'Payment seen, adding notes'}
+            : purchase.buys.kind === 'pro' ? 'Payment seen, starting Pro' : purchase.buys.kind === 'licenses' ? 'Payment seen, adding licenses' : 'Payment seen, adding notes'}
         </p>
         <button type="button" className={cn('sb-plan', on && 'is-on')} onClick={() => checkout.reopen(buying.id, checkoutFor(purchase.buys), 'side')}>
           <span className="ac-clamp-1">{purchaseName(purchase.buys)}</span><span className="go">Open<Icon name="chevron" size={15} /></span>
@@ -210,21 +219,34 @@ function PlanFoot({ plan }: { plan: Plan }) {
       </>
     );
   }
-  const said = noticesNow(plan)[0];
-  const notice = said && (
-    <Link to="/settings" hash="plan" className="sb-said">
-      {said.kind === 'pro-renewed' ? <><b>Pro renewed</b> from your balance</> : <><b>Pro ended.</b> Nothing was deleted.</>}
-    </Link>
-  );
-  if (plan.kind === 'free') return <>{notice}<NotesLeft plan={plan} /></>;
-  const ending = proEnding(plan, offers, now);
-  const until = plan.pro.until;
   const out = notesOut(plan);
   const low = notesLow(plan);
+  const waiting = waitingForLicense(plan);
+  const notices = noticesNow(plan, team);
+  // A team's licenses running short are said by its row, unless notes have stopped, which come first there: then above it.
+  const short = plan.kind === 'team' && !out ? notices.find(licensesShort) : undefined;
+  const said = notices.find((n) => n !== short);
+  const notice = said && <Link to="/settings" hash="plan" className="sb-said"><Said notice={said} plan={plan} team={team} /></Link>;
+  if (plan.kind === 'free') return <>{notice}<NotesLeft plan={plan} waiting={waiting} /></>;
+  const ending = proEnding(plan, offers, now);
+  const until = plan.pro.until;
   return (
     <>
       {notice}
-      {ending ? (
+      {waiting ? (
+        // On a team without a license, over Pro: Team says why, and who has been told.
+        <Link to="/team" className={cn('sb-pro', on && 'is-on')}>
+          <SunMark />
+          <span className="min-w-0"><b>{PLAN_NAMES[plan.kind]}</b><small className="is-out">No team license yet</small></span>
+          <Icon name="chevron" size={15} />
+        </Link>
+      ) : short ? (
+        <button type="button" className={cn('sb-pro', on && 'is-on')} onClick={() => checkout.open({ plan: 'team' }, 'side')}>
+          <SunMark />
+          <span className="min-w-0"><b>{PLAN_NAMES.team}</b><small className="is-warm">{licensesLeftWords(licensesLeft(short, team))} · Buy</small></span>
+          <Icon name="chevron" size={15} />
+        </button>
+      ) : ending ? (
         <button type="button" className={cn('sb-pro', on && 'is-on')} onClick={() => checkout.open({ plan: 'pro' }, 'side')}>
           <SunMark state="setting" />
           <span className="min-w-0"><b>{PLAN_NAMES[plan.kind]}</b><small className="is-warm">{endsIn(ending.days)} · Extend</small></span>
@@ -237,7 +259,8 @@ function PlanFoot({ plan }: { plan: Plan }) {
             <b>{PLAN_NAMES[plan.kind]}</b>
             {out ? <small className="is-out">No notes left until {dayMonth(new Date(plan.period.to))}</small>
               : low ? <small className="is-warm">About {notesLeft(plan)} of notes left</small>
-                : until !== null && <small>Until {shortDate(new Date(until))}</small>}
+                : plan.kind === 'team' ? plan.team && <small>{plan.team.name}</small>
+                  : until !== null && <small>Until {shortDate(new Date(until))}</small>}
           </span>
           <Icon name="chevron" size={15} />
         </Link>
@@ -246,12 +269,35 @@ function PlanFoot({ plan }: { plan: Plan }) {
   );
 }
 
-/** About how much of the period's notes is left, over a meter: warm under an hour, and once they've stopped, until when. */
-function NotesLeft({ plan }: { plan: Plan }) {
+/** How many licenses a team has left to take, as its row and its notice say it. */
+const licensesLeftWords = (left: number): string => (left === 0 ? 'No licenses left' : `${plural(left, 'license')} left`);
+
+/** A notice in one short line, its news in bold: Pro renewed or ended, a team license replacing Pro, a team's licenses. */
+function Said({ notice, plan, team }: { notice: PlanNotice; plan: Plan; team: MyTeam | null | undefined }) {
+  const on = plan.team ? ` on ${plan.team.name}` : '';
+  switch (notice.kind) {
+    case 'pro-renewed': return <><b>Pro renewed</b> from your balance</>;
+    case 'license-replaced-pro': return notice.count ? <><b>Team replaced Pro.</b> {plural(notice.count, 'month')} refunded</> : <><b>Team replaced Pro</b></>;
+    case 'licenses-low': case 'licenses-none': return <><b>{licensesLeftWords(licensesLeft(notice, team))}</b>{on}</>;
+    case 'pro-ended': return <><b>Pro ended.</b> Nothing was deleted.</>;
+    // Said elsewhere: Pro ending by its own row, and waiting for a license by the row's second line.
+    case 'pro-ending': case 'license-needed': return null;
+  }
+}
+
+/**
+ * About how much of the period's notes is left, over a meter: warm under an hour, and once they've stopped, until when. On a
+ * team without a license (`waiting`), that's said in caution where the meter was, and the row goes to Team, which says who
+ * has been told.
+ */
+function NotesLeft({ plan, waiting }: { plan: Plan; waiting: boolean }) {
   const out = notesOut(plan);
+  const className = cn('sb-left', out ? 'is-out' : notesLow(plan) && 'is-warm');
+  const left = out ? <span>No notes left until {dayMonth(new Date(plan.period.to))}</span> : <span><b>About {notesLeft(plan)}</b> of notes left</span>;
+  if (waiting) return <Link to="/team" className={className}>{left}<small className="sb-nolic">No team license yet</small></Link>;
   return (
-    <Link to="/settings" hash="plan" activeOptions={{ includeHash: true }} className={cn('sb-left', out ? 'is-out' : notesLow(plan) && 'is-warm')}>
-      {out ? <span>No notes left until {dayMonth(new Date(plan.period.to))}</span> : <span><b>About {notesLeft(plan)}</b> of notes left</span>}
+    <Link to="/settings" hash="plan" activeOptions={{ includeHash: true }} className={className}>
+      {left}
       <Meter value={out ? 0 : notesShare(plan)} className="sb-meter" />
     </Link>
   );

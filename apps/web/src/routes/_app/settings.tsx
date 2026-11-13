@@ -33,7 +33,9 @@ export const Route = createFileRoute('/_app/settings')({
   // moment, so the page doesn't move under the reader, and no longer.
   loader: async ({ context: { queryClient: qc } }) => {
     const calendar = qc.ensureQueryData(q.calendar()).catch(() => undefined);
-    await Promise.allSettled([qc.ensureQueryData(q.prefs()), qc.ensureQueryData(q.plan()), qc.ensureQueryData(q.team()), Promise.race([calendar, new Promise((r) => setTimeout(r, 1200))])]);
+    // On a team, Plan says whose and (to its admin) the licenses: the team comes with the plan.
+    const plan = qc.ensureQueryData(q.plan()).then((p) => (p.team ? qc.ensureQueryData(q.myTeam()) : null));
+    await Promise.allSettled([qc.ensureQueryData(q.prefs()), plan, qc.ensureQueryData(q.team()), Promise.race([calendar, new Promise((r) => setTimeout(r, 1200))])]);
   },
   component: Settings
 });

@@ -13,6 +13,7 @@ import { q } from '~/lib/queries';
 import { shortcut } from '~/lib/keys';
 import { minutesUntil, untilLabel } from '~/lib/time';
 import { aheadShown, going, joinable, type Ahead } from '~/features/home/day';
+import { usePlanChoiceUp } from '~/features/plans/choice';
 import { ArtAgents, ArtAsk, ArtCall, ArtDrive, ArtNotes, ArtRoom, ArtStart, ArtSun } from './art';
 import { arrival, rememberTour, tourSeen, useArrival } from './store';
 
@@ -87,9 +88,11 @@ export function TourHost() {
   const navigate = useNavigate();
   const toast = useToast();
   const [slides, setSlides] = useState<TourSlide[] | null>(null);
+  // The plans come first when they're up in Home's place (features/plans/choice.ts): the tour waits for Home.
+  const choosing = usePlanChoiceUp();
 
   useEffect(() => {
-    if (!tour || !session || stage !== 'none') return;
+    if (!tour || !session || stage !== 'none' || choosing) return;
     if (tour.auto && tourSeen(session.ownerId)) { arrival.tourTaken(); return; }
     if (path !== '/home') { void navigate({ to: '/home' }); return; }
     if (!settled) return;
@@ -102,7 +105,7 @@ export function TourHost() {
       if (s.length) setSlides(s);
     }, tour.auto ? 350 : 250);
     return () => clearTimeout(t);
-  }, [tour, session, stage, path, settled, navigate, upcoming, calendar, prefs]);
+  }, [tour, session, stage, choosing, path, settled, navigate, upcoming, calendar, prefs]);
 
   if (!slides || !session) return null;
   return (

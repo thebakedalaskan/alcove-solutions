@@ -10,7 +10,6 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { addObject, boardText, newId, readBoard, tableCell } from '@alcove/board';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { standing } from '../features/billing/meter';
-import { creditByEmail } from '../features/billing/support';
 import { setLimit } from '../limits';
 import { loadConfig, loadEnv } from '../config';
 import { b64u, openJson, sealJson, signInAttemptKey, unb64u } from '../crypto';
@@ -3955,10 +3954,13 @@ describe('privacy at rest', () => {
     expect((await c.api.plans.plan()).balance.history.map((e) => e.label)).toEqual(['10 more hours of notes', 'Added, 25 USDC']);
 
     // A team: its name and who's on it sealed under its own key, what it bought (`team-billing`) under the service's, and
-    // an invite's secret only as a hash, in rows and nowhere in the logs.
-    await creditByEmail(h.deps, 'canary-person@canary.example', 40_000_000);
+    // an invite's secret only as a hash, in rows and nowhere in the logs. Its license is bought with a payment, so what the
+    // payment buys (the `deposit` record's purchase) and the balance's line for it stay sealed too.
     await c.api.teams.create('CANARY-TEAM name of the merger crew');
-    await c.api.teams.buyLicenses(1, 40_000_000);
+    const licensed = await c.api.plans.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 40_000_000, { kind: 'licenses', count: 1, microUsdPerLicense: 40_000_000 });
+    h.oneclick.set(licensed.address ?? '', 'SUCCESS', { depositedAmount: '40000000', amountOut: '40000000', intentHashes: ['canary-intent-hash-license'] });
+    expect(await c.api.plans.topUp(licensed.id)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
+    expect((await c.api.plans.plan()).balance.history.map((e) => e.label).slice(0, 2)).toEqual(['Team, 1 license', 'Added, 40 USDC']);
     await c.api.teams.setAutoPurchase(true);
     await c.api.auth.visit();
     const joining = await c.api.teams.invite();
@@ -4015,7 +4017,7 @@ describe('privacy at rest', () => {
       'CANARY-NOTEDFRAME', 'CANARY-FRAMENOTE', 'thank the support team', notedFrame,
       'CANARY-CUE', 'as you can see the chart', 'CANARY-VIDEO', 'Person’s screen', 'CANARY-LIVEQUESTION', 'private launch',
       'canary-deposit-address', 'Credits added', 'canary-intent-hash', 'more hours of notes', 'microUsdPerPack', 'minutesPerPack',
-      'CANARY-TEAM', 'merger crew', 'Team, 1 license', '"autoPurchase"', '"pool"', 'CANARY-AGENT',
+      'CANARY-TEAM', 'merger crew', 'Team, 1 license', '"autoPurchase"', '"pool"', 'microUsdPerLicense', 'CANARY-AGENT',
       proposedTime, 'CANARY-HOLD', 'canary-hold-guest', ...holdIds
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);

@@ -1,12 +1,13 @@
 /*
  * What the checkout's component stories share: what Art is buying in the demo world, a year of Pro at $16 a month (20% off
- * $20), or ten hours of notes at $15, as the app's checkout says it (apps/web/src/features/plans/CheckoutHost.tsx), and a
- * frame of the window's own surface for the parts that only show inside it. Every address here is a made-up preview that
- * no wallet takes.
+ * $20), ten hours of notes at $15, or Team's licenses at $40 for Vandelay's team, as the app's checkout says it
+ * (apps/web/src/features/plans/CheckoutHost.tsx), and a frame of the window's own surface for the parts that only show
+ * inside it. Every address here is a made-up preview that no wallet takes.
  */
-import type { CheckoutSummaryData, MonthsOption, NetworkOption } from '@alcove/ui';
+import { Avatar, type CheckoutSummaryData, type LicensesOption, type MonthsOption, type NetworkOption } from '@alcove/ui';
 import type { ReactNode } from 'react';
 import { PREVIEW_BASE_ADDRESS } from '../../../src/world/payments';
+import { AIKO, KOFI, PRIYA } from '../../../src/world/people';
 
 export { PREVIEW_BASE_ADDRESS };
 
@@ -37,6 +38,31 @@ export const HOURS_SUMMARY: CheckoutSummaryData = {
   extra: 'Ethereum takes at least 20 USDC, so 5.00 of it stays in your balance.',
   until: { lead: 'Until', day: 'Saturday 21 November 2026' }, foot: 'Priced in US dollars. 1 USDC is 1 dollar, so you send exactly the total.'
 };
+
+/** Who stands on Team's horizon: three of the people at Vandelay on Alcove. */
+export const TEAM_FOLK = <><Avatar person={PRIYA} size={18} /><Avatar person={KOFI} size={20} /><Avatar person={AIKO} size={17} /></>;
+/** Starting Vandelay's team with six licenses, on Free with nothing in the balance: 240 USDC to send. */
+export const TEAM_SUMMARY: CheckoutSummaryData = {
+  art: 'team', people: TEAM_FOLK, name: 'Team', sub: 'For Vandelay Industries, with you its admin', brief: '6 licenses',
+  lines: [{ label: '6 licenses at $40', value: '$240' }], total: { value: '240.00', unit: 'USDC' },
+  until: { lead: 'Each runs', day: '30 days from when it’s taken' }, foot: 'Priced in US dollars. 1 USDC is 1 dollar, so you send exactly the total.'
+};
+/** Three more licenses for the team Art runs, from a balance of $180. */
+export const MORE_LICENSES_SUMMARY: CheckoutSummaryData = {
+  ...TEAM_SUMMARY, sub: 'For Vandelay Industries, none left now', brief: '3 licenses',
+  lines: [{ label: '3 licenses at $40', value: '$120' }], total: { value: '$120' }, foot: 'Paid from your balance: $180 now, $60 after.'
+};
+
+/** The numbers of licenses starting a team offers, beside the six people at Vandelay on Alcove. */
+export const START_LICENSES: LicensesOption[] = [
+  { count: 3, total: '$120', sub: 'To start with' }, { count: 6, total: '$240', sub: 'For the 6 of you' },
+  { count: 10, total: '$400', sub: 'Room for 4 more' }, { count: 25, total: '$1,000', sub: 'Room for 19 more' }
+];
+/** The same numbers as its admin buys more, with all five taken and Maya waiting for one. */
+export const MORE_LICENSES: LicensesOption[] = [
+  { count: 3, total: '$120', sub: '2 spare after Maya’s' }, { count: 6, total: '$240', sub: '5 spare after Maya’s' },
+  { count: 10, total: '$400', sub: '9 spare after Maya’s' }, { count: 25, total: '$1,000', sub: '24 spare after Maya’s' }
+];
 
 /** Pro's lengths up to 12 months, a year at 20% off. */
 export const LENGTHS: MonthsOption[] = [

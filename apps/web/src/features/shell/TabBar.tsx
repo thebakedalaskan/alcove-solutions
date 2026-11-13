@@ -45,9 +45,10 @@ export function PhoneTop({ onSearch, onNew }: { onSearch: () => void; onNew: () 
 
 export function TabBar() {
   const team = useQuery(q.team()).data;
+  const mine = useQuery(q.myTeam()).data;
   return (
     <nav className="tabbar" aria-label="Main">
-      {places(TABS, team).map((t) => (
+      {places(TABS, team, mine).map((t) => (
         <Link key={t.to} to={t.to} className={cn('tab', t.raised && 'is-raised')} data-tour={t.tour}>
           {/* Record's light is the recorder's own: night, so the rec colour is the night one in either theme. */}
           {t.raised ? <span className="tab-rec" aria-hidden="true"><i className="dark" /></span> : <Icon name={t.icon} size={22} />}

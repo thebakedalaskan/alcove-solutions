@@ -11,6 +11,11 @@ import { hoursOfNotes } from './words';
 
 /** The lengths of Pro offered as cards, up to the most one purchase buys. */
 export const LENGTHS = [1, 3, 6, 12, 24] as const;
+/** The numbers of Team's licenses offered as cards, up to the most one purchase buys. */
+export const LICENSES = [3, 6, 10, 25] as const;
+
+/** What checkout opened on, as the kind of purchase it makes: Team buys licenses. */
+export const kindOf = (plan: CheckoutFor['plan']): Purchase['kind'] => (plan === 'team' ? 'licenses' : plan);
 
 
 /** Pro's price a month for buying `months` at once: the yearly price from the yearly offer's length on. */

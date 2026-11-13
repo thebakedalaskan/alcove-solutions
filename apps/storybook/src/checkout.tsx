@@ -71,6 +71,7 @@ export const checkouts = {
     plan: { control: 'inline-radio', options: ['pro', 'hours', 'team'], description: 'What checkout opens on' },
     months: { control: 'number', description: 'The months of Pro it starts on' },
     packs: { control: 'number', description: 'The packs of notes it starts on' },
+    licenses: { control: 'number', description: 'Team’s licenses it starts on' },
     from: { control: 'select', options: FROM, description: 'Where it was opened from' },
     topUpId: { control: 'text', description: 'A payment on its way, to open on' }
   }

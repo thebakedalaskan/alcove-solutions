@@ -90,7 +90,7 @@ Product, then the follow-ups from the retro board's Actions frame.
 | Name | What it is |
 |---|---|
 | `busy` | Wednesday afternoon at Vandelay Industries: a day of notes, things waiting on you, a design sync at 17:30, and two photos and a file in the Product workspace's Launch plan |
-| `first-day` | Art has just signed in: no notes or calls, a team not on Alcove yet, no calendar access |
+| `first-day` | Art has just signed in and carried on with Free: no notes or calls, a team not on Alcove yet, no calendar access |
 | `on-their-own` | Art at a personal address: no team, no groups, recordings and calls with people he meets |
 | `offline` | The busy afternoon opened with no connection, signed in on this browser: Record works, the rest says offline |
 | `writing` | Just after the pricing follow-up: its notes are written over a few seconds; a walkthrough records elsewhere |
@@ -123,10 +123,13 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `team-member` | Art on Priya's team with a live license: the team's notes (`tn-roadmap`, `tn-onboarding`) and his standup visible to it |
 | `team-member-unlicensed` | Art's license ended with none to take: on Free, with a `license-needed` notice |
 | `team-join` | Art isn't on a team and has Priya's link to join (stories add it to the tab with `withTeamInvite()`) |
-| `no-team` | The busy afternoon with $60 and payments: Start a team on Team and on Team's card in Settings › Plan |
+| `no-team` | The busy afternoon with $60 and payments: Start a team on Team |
+| `team-buying` | Art started Vandelay's team from Plans and opened a payment of 240 USDC on Base for its first six licenses, then closed checkout: the team is his with nothing bought yet, and the payment waits, in the side panel and in checkout |
 | `agents-connected` | Art has Claude signed in (it booked the onboarding review 4 minutes ago) and Cursor signed in to read, and a Weekly digest personal token, with three weeks of what they did |
 | `agents-ending` | The same three agents, with Cursor's access ending tomorrow |
-| `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, his first day, and Home's tour |
+| `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, the plans to choose from, his first day, and Home's tour |
+| `plan-choice` | Art's account was made a few minutes ago and the plans haven't been shown to him (`Plan.choose`): Home opens on them once. Payments are taken |
+| `plan-choice-before` | Art has used Alcove for weeks, from before plans, and was put on Free two days ago: the busy afternoon, and Home opens on the plans once. Payments are taken |
 
 ## Add a component story
 
@@ -501,12 +504,22 @@ reading and cancelling top-ups; receipt changes come from the story's made-up pr
 Pro, Extend, Add 10 hours, a waiting payment's Open), in every stage: choosing (a year at 20% off, a month, another length,
 a network's least above what's needed, part of it from the balance, the balance covering it, payments off, a price that
 changed, offline, extending, more notes), then paying (waiting, Cancel payment asking first, less arrived, seen, done, more
-arrived, refused, expired, cancelled, failed, the receipt), in both themes and on a phone. The stand-in plays a payment
-opened to buy something by itself (`src/api/payments.ts`): seen, then added and bought, a step every 5 seconds from when it
-was opened, or as the `payment-*` scenarios say; nothing runs on a timer, so nothing carries into the next story.
-`purchaseAt()` and `playsOut()` put one where a story needs it. Every address is a made-up preview no wallet takes.
+arrived, refused, expired, cancelled, failed, the receipt), in both themes and on a phone. Team has the same: Start a team
+(its name, how many licenses, from the balance or a payment, unnamed, a changed price, payments off, offline), its first
+licenses' payment (`team-buying`) waiting, seen, bought, refused and expired, and its admin's Buy licenses (`team-admin-*`:
+who's waiting, from the balance, bought, with a payment), a member, and an admin who stopped being one. The stand-in plays
+a payment opened to buy something by itself (`src/api/payments.ts`): seen, then added and bought, a step every 5 seconds
+from when it was opened, or as the `payment-*` scenarios say; nothing runs on a timer, so nothing carries into the next
+story. `purchaseAt()` and `playsOut()` put one where a story needs it. Every address is a made-up preview no wallet takes.
 **Components / Checkout** has each part of the kit's window, and **Paying, in motion**, the canvas's player, with Slow
 motion and Play again. Section 16's journeys are **Journeys / 16 Plans and paying** (16.1, from the side panel to Plans),
-**16 Checkout** (16.2 to 16.6), **16 Your plan** (16.7, 16.8 and 16.14, in the side panel and Settings) and **16 Where
-checkout shows** (16.9 to 16.13, the doors).
+**16 Checkout** (16.2 to 16.6), **16 Your plan** (16.7, 16.8 and 16.14, in the side panel and Settings), **16 Where
+checkout shows** (16.9 to 16.13, the doors), **16 Team** (16.15, starting a team from Plans) and **16 The plan choice** (16.20:
+a new account's arrival onto the plans, Continue on Free, then Home and its tour; and Get Pro from them, paid, then Home).
+
+**Pages / Plans / Plan Choice…** is the plan choice, Plans in Home's place once while `Plan.choose` is true (the `plan-choice`
+and `plan-choice-before` scenarios): a new account, an account from before plans and one over Free's storage, on a team (where
+Pro says not while you're on your team's plan, as **Team Admin** and **Team Member** show on Plans), Pro bought from it, payments
+off, telling Alcove the plans were seen failing (they aren't shown again in that tab), and the prices loading, not loaded and
+offline, in both themes and on a phone. The first sign-in's journeys (1.1, 1.2) pass through it too.
 

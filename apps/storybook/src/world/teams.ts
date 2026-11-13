@@ -47,6 +47,12 @@ export const INVITE_MS = 86_400_000;
 export const isLive = (m: TeamMemberWorld, now = Date.now()): boolean => m.license !== null && Date.parse(m.license.until) > now;
 export const meOn = (t: TeamWorld, email: string): TeamMemberWorld | undefined => t.members.find((m) => m.person.email === email);
 export const adminOf = (t: TeamWorld): TeamMemberWorld | undefined => t.members.find((m) => m.role === 'admin');
+
+/** `count` licenses bought for the team at `microUsd` each, from its admin's balance or by a payment: nobody's taken them yet. */
+export function addLicenses(t: TeamWorld, count: number, microUsd: number): void {
+  t.unconsumed = [...t.unconsumed, ...Array.from({ length: count }, () => microUsd)];
+  if (t.unconsumed.length >= LOW_LICENSES) t.lowSaid = false;
+}
 /** The team's storage: 100 GB for each live license. */
 export const poolOf = (t: TeamWorld, now = Date.now()): number => t.members.filter((m) => isLive(m, now)).length * TEAM.storage;
 
@@ -159,6 +165,17 @@ export function vandelayTeam(): TeamWorld {
     ],
     unconsumed: [LICENSE_PRICE, LICENSE_PRICE, LICENSE_PRICE], autoPurchase: false, lowSaid: true,
     notes: teamNotes(), usedBytes: Math.round(210 * GiB)
+  };
+}
+
+/**
+ * Vandelay's team as Art has just started it, from checkout's Start a team: him alone as its admin, made today, with nothing
+ * bought for it yet and nobody licensed. `usedBytes`: what he stores, which counts against the team's storage once he's licensed.
+ */
+export function startedTeam(usedBytes = 0): TeamWorld {
+  return {
+    id: 'team-vandelay', name: COMPANY.name, members: [member('art', ART, 'admin', null, 0)],
+    unconsumed: [], autoPurchase: false, lowSaid: false, notes: [], usedBytes
   };
 }
 

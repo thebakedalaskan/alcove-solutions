@@ -61,6 +61,22 @@ export const newPlan = (): Plan => ({
   choose: true
 });
 
+/**
+ * An account from before plans, as the release that brought them carried it over two days ago: on Free from then, with all of
+ * the period's notes, and the plans not shown yet (Art hasn't opened Alcove since).
+ */
+export const carriedOver = (): Plan => ({
+  ...freePlan(),
+  period: { from: iso(-2, 9, 0), to: iso(28, 9, 0) },
+  notes: { minutesLeft: FREE.minutes, minutesPerPeriod: FREE.minutes, stopped: false },
+  choose: true
+});
+/** The same, over Free's storage as it was carried over: 14.2 GB of 10 GB, and everything works as before for 13 more days. */
+export const carriedOverInGrace = (): Plan => {
+  const plan = carriedOver();
+  return { ...plan, storage: { ...plan.storage, usedBytes: Math.round(14.2 * GiB) }, grace: { until: iso(13, 9, 0), storage: true } };
+};
+
 /** Free with `minutes` of notes left. */
 export const withNotesLeft = (minutes: number): Plan => {
   const plan = freePlan();
