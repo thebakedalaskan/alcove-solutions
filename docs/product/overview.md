@@ -8,7 +8,8 @@ isn't a note taker added to someone else's call: no bot joins the meeting, becau
 default, NEAR AI's confidential models transcribe and write notes after Alcove checks their hardware evidence. The API
 and the web app run in Google Cloud Confidential Space on Intel TDX: the API decrypts stored content to provide the
 service only there, with a master key Cloud KMS releases only to attested images signed with Alcove's key, and TLS ends
-inside it. What that doesn't cover yet is in the README's [Known limits](../../README.md#known-limits).
+inside it. What that doesn't cover yet is in the [Confidential Space runbook's Known limits](../../infra/confidential-space/README.md#known-limits)
+and [Privacy › Production requirements](../engineering/privacy-keys-and-sessions.md#production-requirements).
 
 ## The problem
 
