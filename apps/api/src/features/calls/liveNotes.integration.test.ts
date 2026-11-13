@@ -577,6 +577,9 @@ describe('who reads what of them', () => {
     const { code: c } = await org.api.calls.startNow({ notes: 'on' });
     const host = await org.api.calls.join(c, { mic: true, cam: false });
     await inGroup(host);
+    // The organizer's browser is in the room, as it is in a real call. Otherwise, 25 seconds after they joined, upkeep
+    // finds them gone, and with nobody here who can host (a guest can't), ends the call: what a slow runner reaches.
+    open.push(await connect(await host.room(), { sending: host.crypto }));
     await host.appendAudio(piece(audioBytes('away'), 0, 0));
     const browser = guestBrowser();
     const sam = await browser.calls.join(c, { mic: true, cam: false, name: 'Sam' });
