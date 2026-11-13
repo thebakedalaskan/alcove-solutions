@@ -558,6 +558,9 @@ The last of the sunset, with the plans on the water: a page you compare on, so m
   plan you're on (never Free, whose button area says it) or "Ends in N days".
 - **One filled button:** Get Pro on Free, Extend only while Pro is ending. Both open checkout over the page. On a team
   license Pro isn't sold: its card says "Not while you’re on your team’s plan", quietly, where the button would be.
+- **Team's card:** licenses at $40 a person for 30 days (from the offers), its people at the end of its name's row, its facts
+  and its last line. The Yearly switch doesn't change it. Its button is secondary: Start a team, or Buy licenses for its
+  admin; a member gets a quiet line saying who buys them. While the prices wait, three waiting cards.
 - **Under them:** On every plan, as chips, and the paying line with its wallet.
 - **States:** waiting cards, failed with Try again, offline. On a phone the cards stand one under another.
 - On Pro or Team, or with a payment on its way, the side panel's plan row is the place you're on while you're here.
@@ -591,6 +594,12 @@ you're buying on the right, under its own small evening (`PlanWindow`) whose sun
 - **Motion** is one move a stage, transform and opacity only: waiting, the sun on its horizon and its glow breathing; seen,
   the sun lifts and the amount counts up; done, it clears the horizon and the sky warms. With reduced motion every stage
   shows at once and only the dots and glints fade.
+- **Team:** Start a team names it first (`TeamName`, the company's name to start with); Buy licenses shows the team's
+  people and who's waiting (`LicensesLeft`). Both choose with `LicensesPicker` (3, 6, 10 or 25, each saying what it's for,
+  and Another number). The summary is Team's window with people on its horizon, and each license runs 30 days from when
+  it's taken. The team is made only as you pay, and the app tells Alcove you're here as soon as the licenses are bought, so
+  the admin's own license is taken at once. Done has inviting under the receipt (`CheckoutDone`'s `invite`, a bare
+  `TeamInvite`) and no renewal reminder.
 - **On a phone** it fills the screen, with what you're buying in one line at the top.
 
 ## Connecting an agent

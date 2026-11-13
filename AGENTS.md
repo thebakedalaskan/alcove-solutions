@@ -236,11 +236,18 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   line on another plan), `PlanCycle` (Monthly / Yearly · 20% off on the sky), `PlanSunset` (the last sliver of the sun,
   drawn through `Evening`'s and `Horizon`'s `sky`), `EveryPlan` and `PayingLine`. Checkout, one window over any page, is in
   `components/checkout.tsx`: `CheckoutWindow` (on `Modal`, in your theme over a call; `receipt` for the receipt alone) with
-  `CheckoutPanel`, `CheckoutSteps`, `MonthsPicker`, `HoursPicker`, `NetworkPicker`, `PlanWindow` (what you're buying under its
-  own small evening, whose sun rises with the payment), `CheckoutSummary`, `PayStatus`, `PayAmount`, `PayAddress` (the QR code
-  with the USDC mark, the address with its ends in bold), `PayArrived`, `PayTrack`, `CheckoutDone`, `CheckoutAsk`,
+  `CheckoutPanel`, `CheckoutSteps`, `MonthsPicker`, `HoursPicker`, `NetworkPicker`, `TeamName` (a team being started, its name
+  in a box with its label inside), `LicensesPicker` (how many of Team's licenses, Another number up to the most one purchase
+  buys), `LicensesLeft` (the team's people, how many licenses are left and who's waiting), `PlanWindow` (what you're buying
+  under its own small evening, whose sun rises with the payment), `CheckoutSummary`, `PayStatus`, `PayAmount`, `PayAddress`
+  (the QR code with the USDC mark, the address with its ends in bold), `PayArrived`, `PayTrack`, `CheckoutDone` (`invite` for
+  a team just started), `CheckoutAsk`,
   `CheckoutNote`, `CheckoutBig`, `CheckoutLine`, `PaymentReceipt` (one payment as paper, alone on the page when printed) and
   `ReceiptWindow` (a receipt over Settings).
+  Team on a plan and joining a team by its link are in `components/team-plan.tsx`: `TeamLine` (the team on the horizon, each
+  under their license), `TeamSection`, `TeamRows`, `TeamPersonRow`, `TeamAsk` (Remove, Leave or Delete asked in place),
+  `TeamFoot`, `TeamNotesList` (what's visible to the team), `LicensesCard`, `TeamInvite` (a one-time link with Copy; `bare` for
+  under checkout Done's heading), `TeamStartRow` (a quiet Start a team on a company's page), `JoinCard` and `JoinEvening`.
   The workspace kit is in `components/workspace/`, every part stateless, taking plain data and handlers: `WsPane` holds
   `WsList` (`WsListHead`, or `WsListTools` in a call, where the frame's bar names the workspace; `WsSection` with `add`,
   `WsRow` with the kinds `place` and `call` and their `tag` and `out`, `WsRenameRow`, `WsDropLine`, `WsTrashRow`; the rows
@@ -286,7 +293,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `styles/team.css` (its classes start with `tp-`); Calls in `styles/calls.css` (`cs-`); the Drive in `styles/drive.css` (`dv-`); a call's page in `styles/note.css` (`cd-`, with the
   transcript line still `nd-l`); a file's large preview in `kit.css` (`fc-`);
   Settings in `styles/settings.css` (its classes start with `set-`); Agents in `styles/agents.css` (`ag-`, beside the
-  `ac-agent-` chips and consent sheet); Plans in `styles/plans.css` (`pl-`); checkout in `styles/checkout.css` (`ck-`); the doors into checkout in `styles/plan-doors.css` (`pd-`); Record in `styles/record.css` (its classes
+  `ac-agent-` chips and consent sheet); Plans in `styles/plans.css` (`pl-`); checkout in `styles/checkout.css` (`ck-`); the doors into checkout in `styles/plan-doors.css` (`pd-`); Team on a plan in `styles/team-plan.css` (`tq-` the page, `tj-` joining); Record in `styles/record.css` (its classes
   start with `rec-`); starting and scheduling a call in `styles/flow.css` (its classes start with `cf-`, `cw-` the week and `sc-` the
   scheduler); the organizer's
   lobby, ringing and the page for picking a time in `styles/ringing.css` (`rg-`); the workspace in `styles/workspace.css`
