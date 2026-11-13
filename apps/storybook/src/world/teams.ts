@@ -114,7 +114,7 @@ export function proReplaced(plan: Plan, now = Date.now()): Plan {
   const history = later.length
     ? [{ id: `sb-entry-replaced-${now}`, at, label: `Refund: ${later.length} ${later.length === 1 ? 'month' : 'months'} of Pro, for a team license`, microUsd: back }, ...plan.balance.history]
     : plan.balance.history;
-  const said: PlanNotice = { id: `sb-notice-replaced-${now}`, kind: 'license-replaced-pro', at, until: null, count: later.length };
+  const said: PlanNotice = { id: `sb-notice-replaced-${now}`, kind: 'license-replaced-pro', at, until: null, count: later.length, workspaceId: null };
   return { ...plan, pro: NO_PRO, balance: { microUsd: plan.balance.microUsd + back, history }, notices: [said, ...plan.notices] };
 }
 

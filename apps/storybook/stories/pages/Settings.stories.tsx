@@ -10,7 +10,7 @@ import { changing, page, pages, type PageArgs, type PageStory } from '../../src/
 import { withTopUp } from '../../src/world/payments';
 import { withDriveJustConnected, withDriveReconnect } from '../../src/world/drive-exports';
 import type { World } from '../../src/world';
-import { adminWithoutLicense, keptHere, mayaWaits, noCalendar, notAttested, replacedPro, sharedDemo, troubled, unencryptedDefault } from './changes';
+import { adminWithoutLicense, keptHere, mayaWaits, noCalendar, notAttested, paysForLaunch, replacedPro, sharedDemo, troubled, unencryptedDefault } from './changes';
 
 const meta = { title: 'Pages/Settings', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -354,6 +354,13 @@ export const ProRenewedNight = night(ProRenewed);
 export const ProEnded = page('/settings#plan', 'plan-pro-ended');
 export const ProEndedNight = night(ProEnded);
 export const ProEndedPhone = phone(ProEnded);
+/**
+ * Whoever paid for Launch left it, so Art, its admin, pays for it now: said at the top by its name, with the day its files
+ * start to count against his storage, until it's dismissed.
+ */
+export const PayingForAWorkspace = page('/settings#plan', 'busy', { beforeEach: changing(paysForLaunch) });
+export const PayingForAWorkspaceNight = night(PayingForAWorkspace);
+export const PayingForAWorkspacePhone = phone(PayingForAWorkspace);
 /** Dismissing a notice: it goes, here and from the side panel. */
 export const DismissANotice = page('/settings#plan', 'plan-pro-renewed', { play: pressing('Dismiss this notice', 'Dismiss the notice that Pro renewed') });
 /* Team: licenses, bought by the team's admin and taken as each person next opens Alcove (user-flows 16.18, 16.19) */

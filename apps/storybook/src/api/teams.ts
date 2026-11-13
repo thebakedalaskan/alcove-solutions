@@ -36,7 +36,7 @@ function settled(w: World): MyTeam {
 }
 function tell(w: World, kind: PlanNotice['kind'], count: number | null): void {
   const at = new Date().toISOString();
-  w.plan = { ...w.plan, notices: [{ id: nextId('sb-notice'), kind, at, until: null, count }, ...w.plan.notices.filter((n) => n.kind !== kind)] };
+  w.plan = { ...w.plan, notices: [{ id: nextId('sb-notice'), kind, at, until: null, count, workspaceId: null }, ...w.plan.notices.filter((n) => n.kind !== kind)] };
 }
 /** The admin's balance pays for a license: Art's own, when he's the admin. Someone else's is taken to cover it. */
 function adminPays(w: World, t: TeamWorld, microUsd: number, label: string): boolean {

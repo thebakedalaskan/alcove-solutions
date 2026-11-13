@@ -8,8 +8,8 @@ models as NEAR AI's catalog does) and the fake 1Click (the "fake money"). Limits
 a minute of notes, an hour's period, a few kilobytes of storage. Rows for later phases say which; rows marked
 "frontend" are the backend additions the plans frontend needs (a year for less, more notes, payments that buy).
 
-Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.ts`), `billing/plans`, `billing/teams`, `billing/topups`,
-`calls/liveNotes`, `calls/callWorkspace`, `recordings/transcripts`, `workspaces/media`, `integration/flows`.
+Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.ts`), `billing/plans`, `billing/storage`, `billing/teams`,
+`billing/topups`, `calls/liveNotes`, `calls/callWorkspace`, `recordings/transcripts`, `workspaces/media`, `integration/flows`.
 
 | ID | Scenario | Where | Phase | Status |
 | --- | --- | --- | --- | --- |
@@ -23,8 +23,9 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | A6 | Delete the account and sign in again: a fresh Free account | flows › deleting an account | 1 | Passes |
 | **B: money** |  |  |  |  |
 | B1 | Every 1Click outcome adds dollars at face value: exact, over, within the band, below it, refunded, part refunded, doubtful, late | billing/topups (53 tests) | 1 | Passes |
-| B2 | A deposit the previous release settled during the deploy is added as dollars, once | billing/plans › money | 1 | Passes |
-| B2′ | A deposit paid for before plans (its credits ignored now) is added as dollars, once | billing/plans › money › adds as dollars a top-up paid for before plans… | 1 | Passes |
+| B2 | A deposit a release before plans settled is added as dollars, once, which that release still opens; one it settled days after this release's migration too (a rollback serving), whenever it was | billing/topups › top-ups a release before plans added › adds one as dollars, once…; … adds one the previous release settled days after… | 1 | Passes |
+| B2′ | A deposit paid for before plans (its credits ignored now) is added as dollars, once, past one that can't be opened | billing/topups › top-ups a release before plans added › adds one paid for before plans, once, past one that can’t be opened | 1 | Passes |
+| B2″ | Carried once: one this release added is never looked at again, and adds nothing when it is; two passes racing on one carried, its row held until both wait on it, add it once | billing/topups › top-ups a release before plans added › never adds again one this release added…; … adds one once when passes on two instances race on it | 1 | Passes |
 | B3 | Cancelling, the 15 waiting, 30 a day and 10 a minute, races between instances | billing/topups | 1 | Passes |
 | B4 | Buying with too little balance is refused, nothing changes | billing/plans › Pro › refuses a buy the balance is short for… | 2 | Passes |
 | B5 | Buying at a price that changed is refused, nothing charged | billing/plans › Pro › refuses a buy at a price that has changed… | 2 | Passes |
@@ -32,10 +33,10 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | **C: Free** |  |  |  |  |
 | C1 | 300 minutes a period; renews from when it began; nothing carries over | billing/plans › renews its notes… | 1 | Passes |
 | C2 | Free makes as many shared workspaces as it likes, and every one works | billing/plans › makes as many shared workspaces…; workspaces (limits) for `workspaces.max_made` | 1 | Passes |
-| C3 | A file over the plan's size is refused; storage fills and refuses, counted against whoever made the workspace | billing/plans › takes files…; workspaces/media (limits); by hand | 1 | Passes |
+| C3 | A file over the plan's size is refused; storage fills and refuses, counted against whoever made the workspace; each refusal logs the plan's limit by name (`plan.free.file_bytes`, `plan.free.storage_bytes`) with the sizes | billing/plans › takes files…; billing/storage › a refusal for room…; workspaces/media (limits); by hand | 1 | Passes |
 | C4 | Call recordings count; full storage stops notes for everyone (reason storage), and notes need 1 MiB to come back | billing/plans › counts call recordings… | 1 | Passes |
-| C5 | A payer who leaves a workspace, or is taken out, stops paying for it; it counts against the admin in charge now | billing/plans › stops counting a workspace against whoever leaves it… | 1 | Passes |
-| C6 | A workspace none of whose admins has an account counts against nobody and takes no files, after upkeep too | billing/plans › takes no files in a workspace none of whose admins… | 1 | Passes |
+| C5 | A payer who leaves a workspace, is taken out or deletes their account stops paying for it: it moves to its longest-standing admin with an account, who's told (`workspace-payer`, by its ID alone), and whose storage takes what it held only once a grace ends (`workspaces.payer_grace_seconds`); a grace still running goes on as it was when payment moves again | billing/storage › who pays for a workspace › moves to its longest-standing admin…; … passes a grace that’s running on as it was…; … moves one whose payer deletes their account… | 1 (D1) | Passes |
+| C6 | A payer's leaving is refused while none of the other admins has an account; deleting an account isn't, and leaves such a workspace to nobody: it takes no files, after upkeep too, until an admin signs in | billing/storage › who pays for a workspace › refuses its payer’s leaving…; … moves one whose payer deletes their account… | 1 (D1) | Passes |
 | C7 | A guest asks or catches up 6 times a minute; someone signed in, paying for their own, 20 | calls/catchup › lets a guest, whose questions the organizer pays for… | 1 | Passes |
 | **D: metering** |  |  |  |  |
 | D1 | Each request charges the right payer: organizer (transcript, captions, live notes, notes), asker (ask, catch-up, ask a note, ask all), organizer for a guest, workspace's maker for document AI | billing/meter › who pays; calls/liveNotes; calls/callWorkspace; recordings/transcripts; flows | 1 | Passes |
@@ -121,20 +122,22 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | K4 | Refused once the money arrived, the money staying in the balance, with why in words: the price changed, one purchase buys fewer now, notes not offered any more, a pack brings other hours; for more notes, their price changed, or one purchase buys fewer packs | billing/topups › top-ups that buy › says why it didn’t buy when what it was for changed…; … says why it didn’t buy more notes when their price or the most packs changed… | frontend | Passes |
 | K5 | Refused for too little: less arrived than it costs, or all arrived but the balance it counted on was spent meanwhile | billing/topups › top-ups that buy › says why it didn’t buy when less arrived… | frontend | Passes |
 | K6 | Two watchers and two app checks at once, with money for a second purchase: bought once | billing/topups › top-ups that buy › buys once, however many checks race on it | frontend | Passes |
-| K7 | A payment settled after its top-up was cancelled, or had expired, still buys, once | billing/topups › top-ups that buy › still buys what it was for… | frontend | Passes |
+| K7 | A payment buys only while it's live: one settled after its top-up was cancelled, or had expired, is added to the balance and its purchase refused ("Your payment arrived after its address closed, so nothing was bought. It’s in your balance.", logged `late`), so a payment made again for the same thing buys it once | billing/topups › top-ups that buy › buys only while its payment is live… | frontend (D5) | Passes |
+| K7′ | A payment that buys and a buy from the balance at once, with money for one, each way round: the one that takes the plan's lock first buys, the other is refused as short, and the balance and history agree | billing/topups › top-ups that buy › a payment that buys and a buy from the balance at once… | frontend | Passes |
+| K7″ | More notes go to the period the payment lands in: opened in one hour-long period and settled in the next, they're the next one's | billing/topups › top-ups that buy › buys more notes for the period the payment lands in, not the one it was opened in | frontend | Passes |
 | K8 | A `deposit` record from before purchases (no `purchase`) reads as one that only adds money, and is added as before | billing/topups › top-ups that buy › reads a top-up the previous release stored… | frontend | Passes |
 | K9 | Logs of a purchase by a top-up carry its ID, what it buys and why not, never an amount | billing/topups › top-ups that buy › buys what it was opened for…; … says why it didn’t buy when what it was for changed… | frontend | Passes |
 | K10 | A payment for licenses buys them for the team its owner is the admin of once it's added, with what the balance has: unconsumed, "Team, 3 licenses" or "Team, 1 license" in the history, bought once when asked again, logged with IDs and the count, never an amount | billing/topups › top-ups that buy › buys licenses for the team its owner is the admin of… | frontend | Passes |
 | K11 | Opening a payment for licenses by anyone but a team's admin (a member, someone on no team), past the most, at a price that changed, or for none or part of one, is refused before anything is quoted | billing/topups › top-ups that buy › refuses to open a payment for licenses but by a team’s admin… | frontend | Passes |
 | K12 | Licenses refused once the money arrived, the money staying in the balance, with why in words: a license's price changed, one purchase buys fewer, the team was deleted (no longer an admin), less arrived, or the balance it counted on was spent | billing/topups › top-ups that buy › says why it didn’t buy licenses when their price…; … when less arrived than they cost… | frontend | Passes |
-| K13 | Licenses bought once however many checks race, and once by a payment settled after its top-up was cancelled or expired; the team's row is locked before the plan's: while it's held, the payment waits without the plan (a purchase of notes goes through) and a buy of licenses from the balance waits too, then both are paid, nothing twice and no error | billing/topups › top-ups that buy › buys licenses once…; … takes the team’s lock before the plan’s…; … still buys licenses, once… | frontend | Passes |
+| K13 | Licenses bought once however many checks race, and none by a payment settled after its top-up was cancelled or expired; the team's row is locked before the plan's: while it's held, the payment waits without the plan (a purchase of notes goes through) and a buy of licenses from the balance waits too, then both are paid, nothing twice and no error | billing/topups › top-ups that buy › buys licenses once…; … takes the team’s lock before the plan’s…; … buys licenses only while its payment is live… | frontend | Passes |
 
 ## Workspaces (changed 12 Nov 2026, with main's homes)
 
 Every call has a home again, made when it's needed, and the call opens the workspace it uses to everyone in it
 ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)). What plans add: the organizer
 pays for a home whoever's action made it, and a call opens a workspace to everyone in it only while its organizer can edit
-there and pays for it. Migration `0030_workspace_payers.sql`'s backfill and upkeep's `settlePayers` give a home the payer
+there and pays for it. Migration `0032_workspace_payers_backfill.sql` and upkeep's `settlePayers` give a home the payer
 `makeHome` does, its first admin, the organizer; no test reaches the backfill, since tests start from an empty database.
 
 | ID | Scenario | Where | Phase | Status |

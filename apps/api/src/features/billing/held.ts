@@ -10,26 +10,31 @@ import { PlanLimitError } from '../../errors';
 import { limitsNow, type LimitName } from '../../limits';
 import type { LogContext } from '../../log';
 import { graceUntil, heldTo, planNow, type InForce } from './plans';
-import { usedBytes } from './storage';
+import { takenOver, usedBytes } from './storage';
 import { poolOf } from './teams';
 
 type Service = Pick<Deps, 'cfg' | 'pool'>;
 
 /**
  * Where an account's storage stands at `now`: what it's counted as storing (its own, or its team's pool), what its plan
- * gives (`planBytes`), what it's held to now (`heldBytes`: a grace's, if one runs and gives more; null: no limit), and
- * when the grace running ends.
+ * gives (`planBytes`), what it's held to now (`heldBytes`: a grace's, if one runs and gives more, with what workspaces
+ * whose payment moved to it held then on top while theirs run; null: no limit), and when the soonest grace running ends.
  */
 export interface StorageNow { p: InForce; usedBytes: number; planBytes: number; heldBytes: number | null; graceUntil: number | null }
 export async function storageOf(d: Service, db: Db, ownerId: string, now = Date.now()): Promise<StorageNow> {
   const { a, p, license } = await planNow(d, db, ownerId, now);
   if (p.kind === 'team' && license) {
     const pool = await poolOf(d, db, license.teamId, now);
-    return { p, usedBytes: pool.usedBytes, planBytes: pool.bytes, heldBytes: pool.heldBytes, graceUntil: pool.graceUntil };
+    const taken = await takenOver(db, { teamId: license.teamId }, now);
+    return { p, usedBytes: pool.usedBytes, planBytes: pool.bytes, heldBytes: pool.heldBytes + taken.bytes, graceUntil: soonest(pool.graceUntil, taken.until) };
   }
   const l = await limitsNow(d, db);
-  return { p, usedBytes: await usedBytes(db, ownerId), planBytes: p.storageBytes, heldBytes: heldTo(a, p, l, now).storageBytes, graceUntil: graceUntil(a, p, l, now) };
+  const taken = await takenOver(db, { ownerId }, now);
+  const held = heldTo(a, p, l, now).storageBytes;
+  return { p, usedBytes: await usedBytes(db, ownerId), planBytes: p.storageBytes, heldBytes: held === null ? null : held + taken.bytes, graceUntil: soonest(graceUntil(a, p, l, now), taken.until) };
 }
+/** The sooner of two ends, either of which may not be running (null). */
+const soonest = (x: number | null, y: number | null): number | null => (x === null ? y : y === null ? x : Math.min(x, y));
 
 /** Each plan's storage limit and largest file by their names in the limits table, as refusals log them. */
 const STORAGE_LIMIT = { free: 'plan.free.storage_bytes', pro: 'plan.pro.storage_bytes', team: 'plan.team.storage_bytes' } as const satisfies Record<PlanKind, LimitName>;

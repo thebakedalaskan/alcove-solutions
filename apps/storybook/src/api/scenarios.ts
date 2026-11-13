@@ -412,7 +412,7 @@ export const withTeamInvite = (expired = false) => (w: World): void => {
   w.teamInvites = [{ secret: TEAM_INVITE_SECRET, expiresAt: new Date(Date.now() + (expired ? -60_000 : 4 * 3_600_000)).toISOString(), team, admin: PRIYA }];
   try { sessionStorage.setItem('alcove.team-after-sign-in', JSON.stringify({ secret: TEAM_INVITE_SECRET, until: Date.now() + 600_000 })); } catch { /* without storage there's no link to open */ }
 };
-const teamNotice = (id: string, kind: PlanNotice['kind'], count: number | null, at = iso(0, 11, 20)): PlanNotice => ({ id, kind, at, until: null, count });
+const teamNotice = (id: string, kind: PlanNotice['kind'], count: number | null, at = iso(0, 11, 20)): PlanNotice => ({ id, kind, at, until: null, count, workspaceId: null });
 
 /* ---------- the scenarios ---------- */
 

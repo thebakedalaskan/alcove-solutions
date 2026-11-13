@@ -2618,6 +2618,12 @@ An upload refused for storage says "Your storage is full. Pro has 100 GB." with 
 Drive); in someone else's workspace it says the workspace can't take more files. A file over the plan's largest says its
 limit, and offers nothing.
 
+Whoever paid for a workspace leaves it, is taken out or deletes their account: its longest-standing admin with an account
+pays for it now. Settings › Plan says so at the top, by its name, with the day its files start to count against their
+storage, a fortnight on: nothing of theirs stops before then. The side panel says it in one line over the plan until it's
+dismissed. Leaving a workspace you pay for while none of its other admins has an Alcove account is refused, and says to make
+someone who has one an admin first.
+
 ### 16.12 An hour left
 
 Once a period, when notes left drop under an hour: "Less than an hour of notes left this period", with **Get Pro**, never in

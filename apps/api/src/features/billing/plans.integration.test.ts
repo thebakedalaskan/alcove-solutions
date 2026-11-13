@@ -127,51 +127,6 @@ describe('Free', () => {
     expect(await upload(bob, ours, MiB)).toBe(FULL);
   });
 
-  it('stops counting a workspace against whoever leaves it or is taken out, and counts it against the admin in charge now', async () => {
-    const ann = await account();
-    const bob = await account();
-    const cy = await account();
-    const used = async (who: Account) => (await who.api.plans.plan()).storage.usedBytes;
-    const memberOf = async (asking: Account, id: string, who: Account) => (await asking.api.workspaces.people(id)).find((p) => p.person.email === who.email)?.id ?? 'nobody';
-    // Bob, an admin, takes Ann out of the workspace she made: its files are his to pay for now, not hers.
-    const taken = await workspace(ann, 'Taken');
-    await ann.api.workspaces.addPerson(taken.id, bob.email, 'admin');
-    expect(await upload(ann, taken, MiB)).toBe('succeeded');
-    expect(await used(ann)).toBeGreaterThan(MiB);
-    await bob.api.workspaces.removePerson(taken.id, await memberOf(bob, taken.id, ann));
-    expect(await used(ann)).toBe(0);
-    expect(await used(bob)).toBeGreaterThan(MiB);
-    // Ann leaves one she made: the same.
-    const left = await workspace(ann, 'Left');
-    await ann.api.workspaces.addPerson(left.id, cy.email, 'admin');
-    expect(await upload(ann, left, MiB)).toBe('succeeded');
-    await ann.api.workspaces.removePerson(left.id, await memberOf(ann, left.id, ann));
-    expect(await used(ann)).toBe(0);
-    expect(await used(cy)).toBeGreaterThan(MiB);
-  });
-
-  it('takes no files in a workspace none of whose admins has an account, until one signs in and it counts against them', async () => {
-    const ann = await account();
-    const bob = await account();
-    const ours = await workspace(ann, 'Ours', [bob]);
-    const later = unique('signs-in-later');
-    await ann.api.workspaces.addPerson(ours.id, later, 'admin');
-    expect(await upload(bob, ours, 1024)).toBe('succeeded');
-    const me = (await ann.api.workspaces.people(ours.id)).find((p) => p.isMe)?.id ?? 'nobody';
-    await ann.api.workspaces.removePerson(ours.id, me);
-    expect((await ann.api.plans.plan()).storage.usedBytes).toBe(0);
-    const NOBODY = 'conflict: Files can’t be added until one of this workspace’s admins signs in to Alcove.';
-    expect(await upload(bob, ours, 1024)).toBe(NOBODY);
-    // Upkeep finds nobody to pay for it either.
-    await maintain(h.deps);
-    expect(await upload(bob, ours, 1024)).toBe(NOBODY);
-    // The admin signs in: from upkeep's next pass, files are taken again, and count against them.
-    const admin = await account(later);
-    await maintain(h.deps);
-    expect(await upload(bob, ours, 1024)).toBe('succeeded');
-    expect((await admin.api.plans.plan()).storage.usedBytes).toBeGreaterThan(1024);
-  });
-
   it('counts call recordings against the organizer, and stops notes for everyone when they fill it', async () => {
     const org = await account();
     const meeting = await org.api.meetings.create({ title: 'Review', startsAt: new Date(Date.now() + 3_600_000).toISOString(), durationMinutes: 30, guests: [], notes: 'on', choices: DEFAULT_NOTES_CHOICES });
@@ -543,7 +498,7 @@ describe('Pro', () => {
     const renewed = await ann.api.plans.plan();
     expect(renewed).toMatchObject({ kind: 'pro', balance: { microUsd: 0 }, pro: { until: new Date(end + 3_600_000).toISOString(), renew: true } });
     expect(renewed.pro.months.map((m) => m.from)).toEqual([new Date(end - 3_600_000).toISOString(), new Date(end).toISOString()]);
-    expect(renewed.notices).toEqual([{ id: expect.any(String), kind: 'pro-renewed', at: expect.any(String), until: new Date(end + 3_600_000).toISOString(), count: null }]);
+    expect(renewed.notices).toEqual([{ id: expect.any(String), kind: 'pro-renewed', at: expect.any(String), until: new Date(end + 3_600_000).toISOString(), count: null, workspaceId: null }]);
     expect(renewed.balance.history[0]).toMatchObject({ label: 'Pro, renewed for a month', microUsd: -PRICE });
     // Once: upkeep again changes nothing, and past the old end the new month is a fresh period.
     await upkeepAt(ann, end - 200_000);

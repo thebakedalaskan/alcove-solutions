@@ -86,7 +86,8 @@ export const LIMITS = {
   'team.low_licenses': { default: 5, floor: 0, ceiling: 100_000, unit: 'count', measures: 'Unconsumed licenses below which a team’s admin is told they’re running low.' },
   'team.invite_seconds': { default: DAY, floor: MINUTE, ceiling: 30 * DAY, unit: 'seconds', measures: 'How long a link to join a team works, once.' },
   'workspaces.max_made': { default: 1_000, floor: 1, ceiling: 100_000, unit: 'count', measures: 'The most workspaces one account makes, to stop one from making them without end.' },
-  'media.account_day_bytes': { default: 20 * GiB, floor: 0, ceiling: 200 * GiB, unit: 'bytes', measures: 'What one person uploads in a day (UTC), in every workspace.' }
+  'media.account_day_bytes': { default: 20 * GiB, floor: 0, ceiling: 200 * GiB, unit: 'bytes', measures: 'What one person uploads in a day (UTC), in every workspace.' },
+  'workspaces.payer_grace_seconds': { default: 15 * DAY, floor: 0, ceiling: 90 * DAY, unit: 'seconds', measures: 'When payment for a workspace moves to one of its admins because whoever paid for it left: how long until the files it held then count against their storage. As long as plan.grace_seconds, so every storage grace is the same time to sort things out.' }
 } as const satisfies Record<string, LimitSpec>;
 export type LimitName = keyof typeof LIMITS;
 export const isLimitName = (name: string): name is LimitName => Object.hasOwn(LIMITS, name);

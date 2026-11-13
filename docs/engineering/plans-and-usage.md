@@ -117,15 +117,41 @@ The allowance runs down with the call, and notes stop before it's spent rather t
 ## Storage
 
 What an account stores is its own row's `stored_bytes` (its calls' audio and shared screens, its room recordings) and
-every workspace it pays for (`workspaces.payer_owner_id`): the shared ones it made, and its calls' homes, whose files count
-against the organizer whoever adds them, guests included (`features/billing/storage.ts`). A home's payer is the call's
-organizer whoever's action made it: their scheduling choice, getting the call ready before it starts (`calls.ready`), the
-first time anyone opens Workspace in it, or its end with notes (`makeHome`).
-Only someone in a workspace pays for it: when its payer leaves it or is taken out, it counts against whoever made
-it if they're still in it, else its first admin with an account, at once. Upkeep settles any it missed every 5 minutes,
-whatever made a payer stop being in a workspace. A workspace none of whose admins has an account counts against nobody,
-and takes no files ("Files can't be added until one of this workspace's admins signs in to Alcove."), until upkeep's
-next pass after an admin signs in.
+every workspace it pays for (`workspaces.payer_owner_id`): the shared ones it made, its calls' homes, whose files count
+against the organizer whoever adds them, guests included, and any whose payment moved to it (`features/billing/storage.ts`).
+A workspace is paid for by its longest-standing admin with an account: for a new one, whoever made it. A home's payer is
+the call's organizer whoever's action made it: their scheduling choice, getting the call ready before it starts
+(`calls.ready`), the first time anyone opens Workspace in it, or its end with notes (`makeHome`).
+
+### When whoever pays leaves
+
+Only someone in a workspace pays for it. When its payer leaves it, is taken out of it or deletes their account, its payment
+moves at once to its longest-standing admin with an account (`settlePayer`, run for that workspace by the change itself, in
+its transaction; upkeep's `settlePayers` settles any it missed every 5 minutes, each in a transaction of its own, whatever made
+a payer stop being in a workspace). An admin whose account is being deleted at that very moment is passed over, not waited
+for.
+
+- **A grace.** For `workspaces.payer_grace_seconds` (15 days) what the workspace held as it moved is on top of the new
+  payer's storage (`workspaces.payer_grace_until` and `payer_grace_bytes`, counted at most at what it holds now; on Team, on
+  top of the pool): the move refuses none of their uploads and stops none of their notes until then. What's added to it
+  meanwhile counts as anything else does. 15 days is `plan.grace_seconds`, so every storage grace gives the same time to
+  sort things out (look through its files, delete or move what isn't needed, get Pro, or hand the workspace to someone
+  else), and it's a limit of its own so it can change by itself. A grace still running when payment moves again goes on as
+  it was, to the same end and over the same bytes, so passing a workspace back and forth makes no more room than moving it
+  once. Once it ends, the workspace's files count like any others, with no second grace.
+- **Told.** The new payer is told once the move has committed: a `workspace-payer` notice in `Plan.notices`, with the
+  workspace's ID and when its files start to count (`until`; null with no grace). The plan never keeps the workspace's name:
+  Settings › Plan and the side panel name it from the workspaces they're in ("You now pay for Harbour launch, since whoever
+  paid for it isn’t in it any more. Its files count against your storage from Friday 27 November."), and the browser's
+  notification says only that the plan changed.
+- **Refused.** A payer's leaving, or being taken out, while none of the other admins has an account is refused (`conflict`,
+  "You pay for this workspace’s storage, and none of its other admins has an Alcove account to take that on. Make someone
+  who has one an admin, then leave."), and nothing changes. Deleting an account is never refused for it: a workspace it paid
+  for with no other admin who has an account counts against nobody, and takes no files ("Files can't be added until one of
+  this workspace's admins signs in to Alcove."), until upkeep's next pass after one signs in. It counts against them from
+  then, with no grace or notice: nothing moved from anyone.
+- Logged `workspace payer moved` (the workspace, who from, who to and when its grace ends), `workspace left with nobody to
+  pay for it`, and the refusal at info with `why: 'nobody to pay'`.
 
 A call opens the workspace it uses to everyone in it, guests included, so whatever they add there counts against its payer,
 and AI they ask for there is paid by it. So it does that only while the organizer pays for it: its payer is the account the
@@ -141,6 +167,8 @@ opening one a teammate pays for would spend that teammate's allowance.
   shared screens too: then notes stop for everyone, as when the allowance is spent, with reason `storage`. Notes don't come
   on again without 1 MiB free.
 - `media.account_day_bytes` still caps what one person uploads in a day, everywhere.
+- Each refusal logs the plan's limit by its name (`plan.free.file_bytes`, `plan.free.storage_bytes`, …) with what's stored,
+  what was being added and what the storage is held to (`held.ts › roomOf`, `roomContext`).
 - Workspaces aren't counted against a plan: an account makes as many as it likes, and storage is the only limit. One
   account can make at most `workspaces.max_made` (1,000), an abuse guard that a plan doesn't change.
 - An account warns, once, at 80% of its storage (logged with IDs and sizes).
@@ -152,7 +180,8 @@ An account over its plan's storage gets `plan.grace_seconds` (15 days) with ever
 then; upkeep ends it). Then uploads stop everywhere the account pays for, and notes stop for everyone, as above. Making
 room, or buying Pro, lifts it; nothing is ever deleted for being over, and every workspace stays readable and editable.
 While both graces run the larger holds, and the plan shows the later end (`Plan.grace`). Buying Pro ends either at once:
-only Pro's limits apply on Pro.
+only Pro's limits apply on Pro. A workspace whose payment moved to the account adds its own grace on top, whatever the plan
+([above](#when-whoever-pays-leaves)); while one runs, `Plan.grace` shows the soonest end there is.
 
 ## Calls
 
@@ -542,14 +571,16 @@ The server never holds a key that can move treasury money. By hand, in near.com,
 
 ## How it upgrades
 
-- Migration `0029_plans.sql` adds `plan_accounts` (record kind `plan-account`), `ai_meters` (`ai-meter`), and
-  `billing_cutover` with the time it ran. `0030_workspace_payers.sql` adds a nullable `payer_owner_id` to
-  `workspaces` and backfills who pays from `workspace_authors` and the first admin: a shared workspace's maker
-  (`made_workspace`), and a call's home's first admin, its organizer, since a home is made with `made_workspace` false.
-  That's who `makeHome` and `createIn` name now, and what upkeep's `settlePayers` gives a workspace nobody pays for, so the
-  backfill, upkeep and new homes agree. The previous release ignores all of it while the deploy migrates. These three
-  migrations follow main's `0026_workspace_calls.sql`, `0027_agent_activity.sql` and `0028_meeting_proposals.sql`, and
-  nothing in them depends on those. No shared database ran them under the numbers they had on the plans branches
+- Migration `0029_plans.sql` adds `plan_accounts` (record kind `plan-account`) and `ai_meters` (`ai-meter`).
+  `0030_workspace_payers.sql` adds nullable `payer_owner_id`, `payer_grace_until` and `payer_grace_bytes` to `workspaces`,
+  and the index on who pays: columns and an index only, so its lock on `workspaces` (and the foreign key's on `owners`)
+  lasts as long as those take, whatever the number of workspaces. `0032_workspace_payers_backfill.sql` then gives every
+  workspace its longest-standing admin with an account as its payer, in a transaction of its own that holds only the rows
+  it writes: the previous release keeps reading workspaces, and counting what's stored, while it runs. That's who `makeHome`
+  and `createIn` name now, and what upkeep's `settlePayers` gives a workspace nobody pays for, so the backfill, upkeep and
+  new workspaces agree. The previous release ignores all of it while the deploy migrates. These migrations follow main's
+  `0026_workspace_calls.sql`, `0027_agent_activity.sql` and `0028_meeting_proposals.sql`, and nothing in them depends on
+  those. No shared database ran them under the numbers they had on the plans branches
   (`0026_plans.sql`, `0027_workspace_payers.sql`, `0028_teams.sql`); a local one that did is refused by `migrate.ts`
   until those three rows of `schema_migrations` are renamed to the new names (the files' contents, so their checksums,
   are unchanged).
@@ -557,8 +588,10 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   added again as dollars, at face value (above): welcome credits aren't, and what credits were spent on notes isn't taken
   off. `billing_accounts` is no longer read, and goes in a later release.
 - An account's plan row is made the first time it's touched, or by upkeep. One already over Free's limits gets the grace
-  first. Workspaces the previous release makes while this one deploys, those whose payer deletes their account, and those
-  whose payer had left them before this release (the backfill counts them against whoever made them) are settled by upkeep.
+  first. Workspaces the previous release makes while this one deploys are settled by upkeep, as its first payer: nobody is
+  told, and no grace runs. The backfill names nobody who isn't an admin, so a workspace's payer is in it from the start.
+- A notice in a `plan-account` record from before has no `workspaceId`: it reads as null (`.default`), and the record is
+  written with it the next time it's saved.
 - A deposit record from before keeps its `credits` and `rate` (ignored now); one settled by a release before plans has no
   `addedMicroUsd` and is added again as dollars once (above).
 - A live call's state from before has no `notes.limit`, and reads as not stopped (`.default`).
