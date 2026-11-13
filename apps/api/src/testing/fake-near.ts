@@ -105,6 +105,8 @@ export interface FakeNear {
   rotate(task: Task): void;
   /** How long NVIDIA's verdicts hold, in seconds. */
   verdictLifetime(seconds: number): void;
+  /** How far NVIDIA's clock is ahead of the API's, in seconds, as an API whose clock runs behind sees it. */
+  nvidiaAhead(seconds: number): void;
   /**
    * The next `n` chat replies fail: the service is down, the model answers in prose instead of JSON, with the shape and
    * nothing in it, with an empty object, with an object that has a summary and nothing else that's any use, with every
@@ -865,6 +867,7 @@ export async function startFakeNear(): Promise<FakeNear> {
       models[task] = { ...machine(m.name, m.image, m.compose, ohttpIds++), appId: m.appId };
     },
     verdictLifetime(seconds) { n.lifetime = seconds; },
+    nvidiaAhead(seconds) { n.ahead = seconds; },
     failNext(count, how, only) { failing = count; failure = how; failingOnly = only; },
     withoutUsageNext(n) { unsaid = n; },
     holdCatalogNext(then) { catalogHold = then; },

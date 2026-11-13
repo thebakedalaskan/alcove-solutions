@@ -149,6 +149,11 @@ export interface FakeNvidia {
   verdict: 'pass' | 'fail';
   /** How long a verdict holds, in seconds (NRAS gives an hour). */
   lifetime: number;
+  /**
+   * How far NVIDIA's clock is ahead of the API's, in seconds: a verdict holds from the moment NVIDIA issues it, which an API
+   * whose clock runs behind sees as still to come (Confidential Space's VMs ran 7–9.5 s behind on 2026-11-13).
+   */
+  ahead: number;
   signer: NrasSigner;
   /** When set, the verdict is for another nonce than the evidence's, as a replayed one would be. */
   stale: boolean;
@@ -176,8 +181,9 @@ export function fakeNvidia(origin: string): FakeNvidia {
   };
   const sign = (claims: Record<string, unknown>, lifetime: number) => {
     const s = signers[self.signer];
+    const issued = Math.floor(Date.now() / 1000) + self.ahead;
     return new SignJWT(claims).setProtectedHeader({ alg: 'ES384', kid: s.kid }).setIssuer(base.replace(/\/nvidia$/, ''))
-      .setIssuedAt().setNotBefore('0s').setExpirationTime(`${lifetime}s`).setJti(randomUUID()).sign(s.leaf.key);
+      .setIssuedAt(issued).setNotBefore(issued).setExpirationTime(issued + lifetime).setJti(randomUUID()).sign(s.leaf.key);
   };
   const Payload = (v: unknown): { nonce: string; arch: string; evidence_list: { nonce?: string }[] } | null => {
     if (typeof v !== 'object' || v === null || !('nonce' in v) || !('arch' in v) || !('evidence_list' in v)) return null;
@@ -185,7 +191,7 @@ export function fakeNvidia(origin: string): FakeNvidia {
     return typeof nonce === 'string' && typeof arch === 'string' && Array.isArray(list) ? { nonce, arch, evidence_list: list.map((e: unknown) => (typeof e === 'object' && e !== null && 'nonce' in e && typeof e.nonce === 'string' ? { nonce: e.nonce } : {})) } : null;
   };
   const self: FakeNvidia = {
-    rootPem: root.pem, nrasUrl: base, verdict: 'pass', lifetime: 3600, signer: 'nvidia', stale: false, down: 'no',
+    rootPem: root.pem, nrasUrl: base, verdict: 'pass', lifetime: 3600, ahead: 0, signer: 'nvidia', stale: false, down: 'no',
     payload: (nonce) => JSON.stringify({
       nonce, arch: 'HOPPER',
       evidence_list: Array.from({ length: 8 }, () => ({ arch: 'HOPPER', certificate: randomBytes(48).toString('base64'), evidence: randomBytes(96).toString('base64'), nonce }))

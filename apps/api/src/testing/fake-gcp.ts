@@ -63,6 +63,8 @@ export interface FakeGcp {
   backdateMs: number;
   delayMs: number;
   fail: boolean;
+  /** How far Google's clock is ahead of the API's: the Security Token Service's answers say it in their Date header. */
+  clockAheadMs: number;
   /** Writes a fresh token to the token file, as the launcher does before the last one runs out. */
   refresh(): Promise<string>;
   close(): Promise<void>;
@@ -184,6 +186,7 @@ export async function startFakeGcp(o: { project: string; provider: string; key: 
         const access = `ya29.federated-${randomBytes(24).toString('base64url')}`;
         stsIssued.add(access);
         self.accessTokens.push(access);
+        res.setHeader('date', new Date(Date.now() + self.clockAheadMs).toUTCString());
         return json(res, 200, { access_token: access, issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600 });
       }
       // Only the attested identity, never the VM's or anyone else's.
@@ -233,7 +236,7 @@ export async function startFakeGcp(o: { project: string; provider: string; key: 
     google: { sts: `${origin}/sts`, secretManager: `${origin}/secretmanager`, kms: `${origin}/kms`, tokenFile },
     launcher: socket, rootPem: root.pem, image: `${PRODUCTION_IMAGE}@${digest}`, digest, projectNumber: PROJECT_NUMBER,
     mint: (audience, nonces, spoil) => token(audience, nonces, true, spoil),
-    wrapped: [], refuse: false, exchanged: [], accessTokens: [], read: [], tokens: [], asked: 0, backdateMs: 0, delayMs: 0, fail: false,
+    wrapped: [], refuse: false, exchanged: [], accessTokens: [], read: [], tokens: [], asked: 0, backdateMs: 0, delayMs: 0, fail: false, clockAheadMs: 0,
     async refresh() {
       const t = await token(STS_AUDIENCE, undefined, false);
       defaultTokens.add(t);
