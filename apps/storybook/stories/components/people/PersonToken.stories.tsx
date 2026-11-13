@@ -1,9 +1,9 @@
 /*
  * PersonToken: someone, a group or a pasted list in Who, on the scheduler: one token, however many people it stands for.
  * A person shows their arch; a group or a list a small square of arches and how many (`count`). Someone from outside,
- * whose calendar can't be read, goes by their whole name beside where they are, once that's been said (`state`,
- * `outside`). In an empty field the first Backspace holds the last token (`held`), and the second takes it out; so does
- * its ×. Without `onRemove` it's only read: who's on a call being moved, and what they've said.
+ * whose calendar can't be read, says on their token where they are (`place`): Where? until it's been said, which lists the
+ * places. In an empty field the first Backspace holds the last token (`held`), and the second takes it out; so does its ×.
+ * Without `onRemove` it's only read: who's on a call being moved, and what they've said (`state`).
  */
 import { PersonToken, SchedField, SchedGroup, SchedRow } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -30,10 +30,10 @@ function Who({ fixed = false, children }: { fixed?: boolean | undefined; childre
 const meta = {
   title: 'Components/People/PersonToken',
   component: PersonToken,
-  args: { people: [PRIYA], label: 'Priya', title: PRIYA.email, held: false, outside: false, onRemove: did('onRemove'), removeLabel: `Remove ${PRIYA.name}` },
+  args: { people: [PRIYA], label: 'Priya', title: PRIYA.email, held: false, onRemove: did('onRemove'), removeLabel: `Remove ${PRIYA.name}` },
   argTypes: {
     label: { control: 'text' }, count: { control: { type: 'number', min: 0, step: 1 } }, title: { control: 'text' }, state: { control: 'text' },
-    outside: { control: 'boolean' }, held: { control: 'boolean' }, removeLabel: { control: 'text' }, people: { control: false }, onRemove: { control: false }
+    held: { control: 'boolean' }, removeLabel: { control: 'text' }, people: { control: false }, place: { control: false }, onRemove: { control: false }
   },
   render: (args) => <Who><PersonToken {...args} /></Who>
 } satisfies Meta<typeof PersonToken>;
@@ -48,10 +48,21 @@ export const Group: Story = { args: { people: [PRIYA, KOFI, AIKO, MAYA], label: 
 export const PastedList: Story = { name: 'A pasted list', args: { people: MANY.slice(0, 12).map((c) => c.person), label: 'Pasted list', count: 12, title: undefined, removeLabel: 'Remove Pasted list' } };
 /** Held by the first Backspace: one more takes it out. */
 export const Held: Story = { args: { held: true } };
-/** Someone from outside the company, once you've said where they are: their whole name, and how far their clock is from yours. */
+/** Someone from outside the company: where they are sits on their token, Where? until it's been said. */
 export const FromOutside: Story = {
   name: 'From outside',
-  args: { people: [JONAS], label: JONAS.name, title: JONAS.email, state: 'Berlin, 1 h ahead', outside: true, removeLabel: `Remove ${JONAS.name}` }
+  args: {
+    people: [JONAS], label: 'Jonas', title: JONAS.email, removeLabel: `Remove ${JONAS.name}`,
+    place: <button type="button" className="sc-where is-unsaid" aria-label="Where Jonas is">Where?</button>
+  }
+};
+/** Once you've said where they are: the place, which their times then go by ("12:30 for Jonas"). */
+export const FromOutsideSaid: Story = {
+  name: 'From outside, where they are said',
+  args: {
+    people: [JONAS], label: 'Jonas', title: JONAS.email, removeLabel: `Remove ${JONAS.name}`,
+    place: <button type="button" className="sc-where" aria-label="Where Jonas is: Berlin">Berlin</button>
+  }
 };
 /** Several in the field, the last one held. */
 export const Several: Story = {

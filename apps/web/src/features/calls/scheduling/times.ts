@@ -3,7 +3,7 @@
  * a call that stops at midnight, and every call of a repeat at the same clock time where the organizer is, whatever the
  * clocks do in between. No screen in here: this is arithmetic.
  */
-import { MAX_SERIES_CALLS, type Interval, type RepeatRule } from '@alcove/api';
+import { MAX_SERIES_CALLS, type RepeatRule } from '@alcove/api';
 
 const DAY = 86_400_000;
 const MINUTE = 60_000;
@@ -167,21 +167,11 @@ export function retime(at: Date, minutes: number, which: 'start' | 'end', typed:
   return { ok: true, at, minutes: length };
 }
 
-/* ---------- the week ---------- */
+/* ---------- the working day ---------- */
 
 /** The working day, in local hours: the soonest time keeps inside it, and the week greys what's outside it. */
 export const WORK_FROM = 9;
 export const WORK_TO = 17;
-
-/** The Monday a week starts on, for the week `at` falls in, where you are. */
-const mondayOf = (at: Date) => new Date(at.getFullYear(), at.getMonth(), at.getDate() - ((at.getDay() + 6) % 7));
-/** The seven days of a week, Monday to Sunday: the week `from` falls in, `weeks` on. */
-export function weekDays(from: Date, weeks: number): Date[] {
-  const monday = mondayOf(from);
-  return Array.from({ length: 7 }, (_, i) => new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 7 * weeks + i));
-}
-/** How many weeks on from the week `from` falls in is the week `at` falls in. */
-export const weeksTo = (from: Date, at: Date): number => Math.round((mondayOf(at).getTime() - mondayOf(from).getTime()) / (7 * DAY));
 
 /* ---------- when people are free ---------- */
 
@@ -190,13 +180,20 @@ export const AHEAD_DAYS = 15;
 /** A time picked for you leaves at least this long to get ready. */
 const NOTICE = 10 * MINUTE;
 
-/** Who's busy, of the stretches each calendar gives: those that overlap a call at `at` for `minutes`. */
-export function busyAt<T extends Interval>(list: readonly T[], at: Date, minutes: number): T[] {
+/** A stretch of time someone is busy, in milliseconds, read once from what the calendars say. */
+export interface Span { from: number; to: number }
+
+/** Who's busy, of the stretches a calendar gives: those that overlap a call at `at` for `minutes`. */
+export function busyAt<T extends Span>(list: readonly T[], at: Date, minutes: number): T[] {
   const from = at.getTime();
   const to = from + lengthAt(at, minutes) * MINUTE;
-  return list.filter((i) => Date.parse(i.from) < to && Date.parse(i.to) > from);
+  return list.filter((i) => i.from < to && i.to > from);
 }
-const freeAt = (calendars: readonly (readonly Interval[])[], at: Date, minutes: number) => calendars.every((c) => !busyAt(c, at, minutes).length);
+const freeAt = (calendars: readonly (readonly Span[])[], at: Date, minutes: number) => {
+  const from = at.getTime();
+  const to = from + lengthAt(at, minutes) * MINUTE;
+  return calendars.every((c) => !c.some((i) => i.from < to && i.to > from));
+};
 
 /** The first time on the hour or half hour at `at` or after it, where you are. */
 function halfHourFrom(at: number): Date {
@@ -208,13 +205,12 @@ function halfHourFrom(at: number): Date {
 export const nextHalfHour = (now: Date): Date => halfHourFrom(now.getTime() + NOTICE);
 
 /**
- * The working half hours from `from` (and at least 10 minutes from now) for `days` days: on weekdays, from 09:00 with the
+ * The working half hours from `from` (and at least 10 minutes from now) until `until`: on weekdays, from 09:00 with the
  * call over by 17:00, where you are.
  */
-function workingHalfHours(from: Date, now: Date, minutes: number, days = AHEAD_DAYS): Date[] {
+function workingHalfHours(from: Date, now: Date, minutes: number, until: number): Date[] {
   const out: Date[] = [];
   const start = halfHourFrom(Math.max(from.getTime(), now.getTime() + NOTICE));
-  const until = new Date(start.getFullYear(), start.getMonth(), start.getDate() + days).getTime();
   for (let t = start; t.getTime() < until; t = new Date(t.getFullYear(), t.getMonth(), t.getDate(), t.getHours(), t.getMinutes() + 30)) {
     const clock = t.getHours() * 60 + t.getMinutes();
     if (t.getDay() !== 0 && t.getDay() !== 6 && clock >= WORK_FROM * 60 && clock + minutes <= WORK_TO * 60) out.push(t);
@@ -222,19 +218,22 @@ function workingHalfHours(from: Date, now: Date, minutes: number, days = AHEAD_D
   return out;
 }
 
+/** Who's busy when, as far as it's been read: you, everyone whose calendar can be read, and until when that's known. */
+export interface Calendars { you: readonly Span[]; people: readonly (readonly Span[])[]; until: number }
+
 /**
  * The soonest free half hour: the first time on the hour or half hour, at least 10 minutes from now, on a weekday, from
  * 09:00 with the call over by 17:00, when you and everyone whose calendar can be read are free. If nothing in the days
  * read suits everyone, the soonest you're free; failing that, the next working half hour.
  */
-export function soonestFree({ now, minutes, you, people }: { now: Date; minutes: number; you: readonly Interval[]; people: readonly (readonly Interval[])[] }): Date {
-  const all = workingHalfHours(now, now, minutes);
+export function soonestFree({ now, minutes, you, people, until }: Calendars & { now: Date; minutes: number }): Date {
+  const all = workingHalfHours(now, now, minutes, until);
   return all.find((t) => freeAt([you, ...people], t, minutes)) ?? all.find((t) => freeAt([you], t, minutes)) ?? all[0] ?? nextHalfHour(now);
 }
 
-/** On a clash: the soonest free half hour from the clashing time on, for you and everyone whose calendar can be read. */
-export function nextFree({ from, now, minutes, you, people }: { from: Date; now: Date; minutes: number; you: readonly Interval[]; people: readonly (readonly Interval[])[] }): Date | null {
-  return workingHalfHours(from, now, minutes).find((t) => freeAt([you, ...people], t, minutes)) ?? null;
+/** On a clash: the soonest free half hour from the clashing time on, for you and everyone whose calendar can be read, as far as it's been read. */
+export function nextFree({ from, now, minutes, you, people, until }: Calendars & { from: Date; now: Date; minutes: number }): Date | null {
+  return workingHalfHours(from, now, minutes, until).find((t) => freeAt([you, ...people], t, minutes)) ?? null;
 }
 
 /** Whether a call at `at` for `minutes` is outside the working day: before 09:00, past 17:00, or at the weekend. */
@@ -247,7 +246,7 @@ export function outsideWork(at: Date, minutes: number): boolean {
  * The times a guest is offered when they pick: `at`, then the same time on each of the next two weekdays you're free
  * then, or the soonest you're free on that day. Never random: each says why it's there.
  */
-export function offerTimes({ at, now, minutes, you }: { at: Date; now: Date; minutes: number; you: readonly Interval[] }): Date[] {
+export function offerTimes({ at, now, minutes, you }: { at: Date; now: Date; minutes: number; you: readonly Span[] }): Date[] {
   const out = [at];
   const clock = at.getHours() * 60 + at.getMinutes();
   for (let k = 1; out.length < 3 && k < 40; k++) {
@@ -255,7 +254,7 @@ export function offerTimes({ at, now, minutes, you }: { at: Date; now: Date; min
     if (day.getDay() === 0 || day.getDay() === 6) continue;
     const same = new Date(day.getFullYear(), day.getMonth(), day.getDate(), Math.floor(clock / 60), clock % 60);
     if (clock >= WORK_FROM * 60 && clock + minutes <= WORK_TO * 60 && freeAt([you], same, minutes)) { out.push(same); continue; }
-    const soon = workingHalfHours(day, now, minutes, 1).find((t) => freeAt([you], t, minutes));
+    const soon = workingHalfHours(day, now, minutes, new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1).getTime()).find((t) => freeAt([you], t, minutes));
     if (soon) out.push(soon);
   }
   return out;

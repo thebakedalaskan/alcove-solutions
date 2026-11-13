@@ -44,8 +44,6 @@
 .cf-field input::placeholder { color: var(--ink-3); }
 .cf-tok { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; height: 32px; padding: 0 4px 0 6px; border-radius: 10px; background: color-mix(in oklch, var(--ink) 8%, transparent); font: 600 13.5px/1 var(--font-sans); color: var(--ink); animation: cf-pop var(--duration-2) var(--ease-out) both; }
 .cf-tok.is-held { background: var(--horizon-soft); box-shadow: inset 0 0 0 2px var(--focus); }
-/* Someone whose calendar can't be read, from outside: a ring that says so. */
-.cf-tok.is-out { box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--caution) 55%, transparent); }
 .cf-tok.is-fixed { padding-right: 10px; }
 .cf-tok .t { min-width: 0; line-height: 1.3; }
 .cf-tok small { flex: none; font: 500 12px/1 var(--font-sans); color: var(--ink-2); }

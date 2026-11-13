@@ -6,7 +6,7 @@
  */
 import { MAX_SERIES_CALLS } from '@alcove/api';
 import { MonthGrid, Popover, SchedLine, SchedPop, SchedQuiet, SchedRow, SchedTimes, SchedValue, type SchedTime } from '@alcove/ui';
-import { useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useId, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { hm, longDay, shortDay, timeZone } from '~/lib/time';
 import { repeatInput, ruleOf, type RepeatKind, type Repeating } from '../flow/draft';
 import { LONGEST_CALL, SHORTEST_CALL, TYPED_STEP, dayEnd, lengthAt, localWeekday, monthlyRule, retime } from './times';
@@ -26,23 +26,26 @@ const isoOf = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.
 /** "09:15" for minutes from midnight. */
 const clockOf = (m: number) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
 
-/** Opening and closing one of When's menus. */
-export interface WhenOpen { menu: WhenMenu | null; onMenu: (m: WhenMenu | null) => void }
+/**
+ * Opening and closing one of When's menus. Closing closes only that one: pressing another while it's open opens the other,
+ * whichever of the two hears the press first.
+ */
+export interface WhenOpen { menu: WhenMenu | null; onMenu: (m: WhenMenu) => void; onShut: (m: WhenMenu) => void }
 
 /**
  * The day: "Thu 12 Nov", with Today or Tomorrow quietly after it, opening a month. Days gone are greyed; a day picked keeps
  * the clock time (the scheduler moves it on when that time has gone there).
  */
-export function DayRow({ at, now, menu, onMenu, onPick }: WhenOpen & { at: Date; now: Date; onPick: (day: Date) => void }) {
+export function DayRow({ at, now, menu, onMenu, onShut, onPick }: WhenOpen & { at: Date; now: Date; onPick: (day: Date) => void }) {
   const rel = dayWord(at, now);
   return (
     <SchedRow icon="cal">
-      <Popover open={menu === 'day'} onOpenChange={(o) => onMenu(o ? 'day' : null)} label="Pick a day" align="start" className="sc-pop is-cal"
+      <Popover open={menu === 'day'} onOpenChange={(o) => (o ? onMenu('day') : onShut('day'))} label="Pick a day" align="start" className="sc-pop is-cal"
         anchor={<SchedValue chevron quiet={rel === 'Today' || rel === 'Tomorrow' ? rel : undefined} aria-label={`Day, ${longDay(at)}. Pick another`}>{shortDay(at)}</SchedValue>}>
-        <MonthGrid value={isoOf(at)} today={isoOf(now)} from={isoOf(now)} label="Pick a day" autoFocus onCancel={() => onMenu(null)}
+        <MonthGrid value={isoOf(at)} today={isoOf(now)} from={isoOf(now)} label="Pick a day" autoFocus onCancel={() => onShut('day')}
           onPick={(iso) => {
             const [y, m, d] = iso.split('-').map(Number);
-            onMenu(null);
+            onShut('day');
             onPick(new Date(y ?? at.getFullYear(), (m ?? at.getMonth() + 1) - 1, d ?? at.getDate()));
           }} />
       </Popover>
@@ -56,9 +59,9 @@ export function DayRow({ at, now, menu, onMenu, onPick }: WhenOpen & { at: Date;
  * its length; an end sets it, and can't pass midnight. What's typed counts once it's finished, on leaving the field or with
  * Enter; one that can't be read or used says why, and what was there stays. The up and down arrows move one 5 minutes;
  * Alt with ↓ (or F4) goes into its list. `fixedEnd` shows the end without changing it: asking to move someone else's call
- * asks for a start.
+ * asks for a start. `startRef` is the start's field, for the keyboard to go to when what it was on goes.
  */
-export function TimeRow({ at, minutes, now, menu, onMenu, onStart, onEnd, fixedEnd = false }: WhenOpen & {
+export function TimeRow({ at, minutes, now, menu, onMenu, onShut, onStart, onEnd, fixedEnd = false, startRef }: WhenOpen & {
   at: Date;
   /** How long it's meant to be: past midnight, it stops there. */
   minutes: number;
@@ -66,6 +69,7 @@ export function TimeRow({ at, minutes, now, menu, onMenu, onStart, onEnd, fixedE
   onStart: (at: Date) => void;
   onEnd: (minutes: number) => void;
   fixedEnd?: boolean | undefined;
+  startRef?: RefObject<HTMLInputElement | null> | undefined;
 }) {
   const length = lengthAt(at, minutes);
   const [typed, setTyped] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
@@ -100,10 +104,10 @@ export function TimeRow({ at, minutes, now, menu, onMenu, onStart, onEnd, fixedE
   const close = (which: 'start' | 'end') => {
     if (lists[which].current?.contains(document.activeElement)) fields[which].current?.focus({ preventScroll: true });
     setKeyed(false);
-    onMenu(null);
+    onShut(which);
   };
   const keys = (which: 'start' | 'end', e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') { e.preventDefault(); commit(which); onMenu(null); return; }
+    if (e.key === 'Enter') { e.preventDefault(); commit(which); onShut(which); return; }
     if ((e.key === 'ArrowDown' && e.altKey) || e.key === 'F4') { e.preventDefault(); setKeyed(true); onMenu(which); return; }
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
     e.preventDefault();
@@ -137,7 +141,7 @@ export function TimeRow({ at, minutes, now, menu, onMenu, onStart, onEnd, fixedE
     return (
       <SchedPop open={open} onClose={() => close(which)} label={label} className="is-list"
         anchor={(
-          <input ref={fields[which]} className="sc-in" type="text" inputMode="numeric" autoComplete="off" spellCheck={false} maxLength={5} aria-label={label}
+          <input ref={(el) => { fields[which].current = el; if (which === 'start' && startRef) startRef.current = el; }} className="sc-in" type="text" inputMode="numeric" autoComplete="off" spellCheck={false} maxLength={5} aria-label={label}
             aria-haspopup="listbox" aria-controls={open ? ids[which] : undefined} value={typed[which] ?? shown}
             onChange={(e) => type(which, e.target.value)} onFocus={(e) => e.currentTarget.select()} onBlur={() => commit(which)}
             onPointerDown={() => { if (!open) { setKeyed(false); onMenu(which); } }} onKeyDown={(e) => keys(which, e)} />
@@ -167,13 +171,13 @@ export function TimeRow({ at, minutes, now, menu, onMenu, onStart, onEnd, fixedE
 }
 
 /** Letting a guest pick, how long each time offered is: one length for all of them. */
-export function LengthRow({ minutes, menu, onMenu, onChange }: WhenOpen & { minutes: number; onChange: (minutes: number) => void }) {
+export function LengthRow({ minutes, menu, onMenu, onShut, onChange }: WhenOpen & { minutes: number; onChange: (minutes: number) => void }) {
   const options = [...new Set<number>([...LENGTHS, minutes])].sort((a, b) => a - b).map((m) => ({ value: String(m), label: lengthLabel(m) }));
   return (
     <SchedRow icon="clock">
-      <Popover open={menu === 'length'} onOpenChange={(o) => onMenu(o ? 'length' : null)} label="How long" align="start" className="sc-pop is-list"
+      <Popover open={menu === 'length'} onOpenChange={(o) => (o ? onMenu('length') : onShut('length'))} label="How long" align="start" className="sc-pop is-list"
         anchor={<SchedQuiet chevron>{lengthLabel(minutes)} each</SchedQuiet>}>
-        <SchedTimes label="How long" options={options} value={String(minutes)} autoFocus onPick={(v) => { onMenu(null); onChange(Number(v)); }} />
+        <SchedTimes label="How long" options={options} value={String(minutes)} autoFocus onPick={(v) => { onShut('length'); onChange(Number(v)); }} />
       </Popover>
     </SchedRow>
   );
@@ -194,7 +198,7 @@ function choiceLabel(kind: RepeatKind, at: Date, zone: string): string {
  * Thursday, Every month on the first Thursday and Days you pick (the days, in place), and Ends after 4 calls once it repeats.
  * `keep` is a series already, which stays one.
  */
-export function RepeatRow({ repeat, at, zone = timeZone(), keep = false, menu, onMenu, onChange }: WhenOpen & {
+export function RepeatRow({ repeat, at, zone = timeZone(), keep = false, menu, onMenu, onShut, onChange }: WhenOpen & {
   repeat: Repeating; at: Date;
   /** Where the organizer is: the calls keep their clock time there. */
   zone?: string | undefined;
@@ -215,7 +219,7 @@ export function RepeatRow({ repeat, at, zone = timeZone(), keep = false, menu, o
   const toggle = (day: number) => onChange({ ...repeat, days: repeat.days.includes(day) ? repeat.days.filter((d) => d !== day) : [...repeat.days, day] });
   return (
     <SchedRow icon="repeat">
-      <Popover open={menu === 'repeat'} onOpenChange={(o) => onMenu(o ? 'repeat' : null)} label="How it repeats" align="start" className="sc-pop is-menu"
+      <Popover open={menu === 'repeat'} onOpenChange={(o) => (o ? onMenu('repeat') : onShut('repeat'))} label="How it repeats" align="start" className="sc-pop is-menu"
         anchor={<SchedQuiet chevron><span>{repeatWords(rule, count)}</span></SchedQuiet>}>
         <div className="sc-reps" role="radiogroup" aria-label="How it repeats">
           {kinds.map((k) => (

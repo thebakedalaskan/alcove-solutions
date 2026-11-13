@@ -68,11 +68,15 @@
 .cw-bk.is-ev .t { color: var(--ink-2); }
 .cw-bk.is-ev.is-tight, .cw-bk.is-ev.is-tiny { box-shadow: none; border-radius: 4px; }
 .cw-bk.is-ev.is-tight .cw-tx { padding-left: 6px; }
-.cw-bk.is-invite { --fill: transparent; --bar: var(--rose); outline: 1px dashed color-mix(in srgb, var(--rose) 60%, transparent); outline-offset: -1px; }
+
 .cw-bk.is-hold { --fill: transparent; outline: 1px dashed color-mix(in srgb, var(--ink) 38%, transparent); outline-offset: -1px; }
 .cw-bk.is-gone { opacity: .5; }
 .cw.is-schedule .cw-bk.is-ev { pointer-events: none; }
-/* Browsing, the kinds keep their marks: an Alcove call has a sun edge, the calendar's meetings are outlined, a call just scheduled is lit. */
+/*
+ * Browsing, the kinds keep their marks: an Alcove call has a sun edge, the calendar's meetings are outlined, an invitation
+ * waiting for your answer is dashed in rose, a call just scheduled is lit.
+ */
+.cw.is-browse .cw-bk.is-invite { --fill: transparent; --bar: var(--rose); outline: 1px dashed color-mix(in srgb, var(--rose) 60%, transparent); outline-offset: -1px; }
 .cw.is-browse .cw-bk.is-soon { --bar: var(--sun-text); --fill: color-mix(in srgb, var(--sun-text) 13%, transparent); }
 .cw.is-browse .cw-bk.is-cal { --fill: transparent; box-shadow: inset 3px 0 0 var(--bar), inset 0 0 0 1px var(--line-control); }
 .cw-bk.is-fresh { --fill: var(--sun-text); --bar: var(--sun-text); box-shadow: 0 6px 16px -8px rgb(0 0 0 / .5); }

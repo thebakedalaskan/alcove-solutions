@@ -97,8 +97,10 @@ export interface CallsWeekProps {
   calls?: readonly CallsWeekCall[] | undefined;
   /** Moving a call: where it is now, dashed, with what it says ("Now 10:00"). */
   was?: (CallsWeekSpan & { label: string }) | null | undefined;
-  /** How long the outline under the pointer is, in minutes: the active call's length unless it says. */
+  /** Browsing: how long the outline under the pointer is, in minutes, as long as a call starts. Scheduling, it's the active call's. */
   length?: number | undefined;
+  /** The longest the call can be, in minutes: the grip, Shift with ↑ or ↓, and free time dragged across stop there. */
+  longest?: number | undefined;
   /** Scheduling: who's free at a time. */
   free?: ((day: number, start: number, end: number) => CallsWeekFree) | undefined;
   /** Scheduling: the call can be carried into the week before (not before today's). */
@@ -132,7 +134,7 @@ const TURN = 650;
 const HEAD = 44;
 const HEAD_NARROW = 50;
 const NARROW_DAY = 76;
-/** With less than this for the days, only Monday to Friday; browsing on a phone, three days. */
+/** Scheduling, with less than this for the days, only Monday to Friday; browsing on a phone, three days. */
 const FIVE = 392;
 const PHONE = '(max-width: 860px)';
 /** Dragging this close to the top or bottom of the hours (px) scrolls them, up to this fast (px a frame). */
@@ -321,13 +323,15 @@ export function CallsWeekHead({ title, onBefore, onAfter, onToday, canGoBack = t
   end?: ReactNode;
   className?: string | undefined;
 }) {
+  /* Today goes once it's pressed: the keyboard goes on to The week after, which stays. */
+  const after = useRef<HTMLButtonElement>(null);
   return (
     <div className={cn('cw-head', className)}>
       <h2>{title}</h2>
       <div className="cw-nav">
-        {onToday && <Button variant="secondary" size="xs" className="cw-today" onClick={onToday}>Today</Button>}
+        {onToday && <Button variant="secondary" size="xs" className="cw-today" onClick={() => { after.current?.focus(); onToday(); }}>Today</Button>}
         <IconButton icon="chevronLeft" label="The week before" disabled={!canGoBack} onClick={onBefore} />
-        <IconButton icon="chevron" label="The week after" onClick={onAfter} />
+        <IconButton ref={after} icon="chevron" label="The week after" onClick={onAfter} />
         {end && <span className="cw-end">{end}</span>}
       </div>
     </div>
@@ -370,7 +374,7 @@ const roleOf = (t: EventTarget | null): { role: Role | ''; i: number } => {
 const onGrip = (t: EventTarget | null) => t instanceof Element && !!t.closest('[data-role="grip"]');
 
 export function CallsWeek({
-  days, blocks, now = null, mode = 'browse', label, legend, work, busy = NO_BUSY, calls = NO_CALLS, was = null, length, free,
+  days, blocks, now = null, mode = 'browse', label, legend, work, busy = NO_BUSY, calls = NO_CALLS, was = null, length = 45, longest = DAY, free,
   canGoBack = true, onBlock, onPick, onRange, onResize, onSelect, onTurn, className
 }: CallsWeekProps) {
   const scheduling = mode === 'schedule';
@@ -391,7 +395,7 @@ export function CallsWeek({
     return () => ro.disconnect();
   }, []);
 
-  /* Which days fit: all seven; only Monday to Friday when the days have less than about 392px; browsing on a phone, today and the next two. */
+  /* Which days fit: all seven; scheduling, only Monday to Friday when the days have less than about 392px; browsing on a phone, today and the next two. */
   const todayAt = now ? now.day : -1;
   const shown = useMemo(() => {
     const all = days.map((_, i) => i);
@@ -399,7 +403,7 @@ export function CallsWeek({
       const from = Math.max(0, Math.min(todayAt < 0 ? 0 : todayAt, days.length - 3));
       return all.slice(from, from + 3);
     }
-    return size.w && size.w < FIVE ? all.filter((i) => !days[i]?.weekend) : all;
+    return scheduling && size.w && size.w < FIVE ? all.filter((i) => !days[i]?.weekend) : all;
   }, [days, scheduling, size.w, phone, todayAt]);
   const colW = (size.w || 640) / Math.max(1, shown.length);
   const narrow = colW < NARROW_DAY;
@@ -409,7 +413,7 @@ export function CallsWeek({
 
   const activeIndex = calls.findIndex((c) => c.active);
   const active = calls[activeIndex];
-  const ghostLength = length ?? (scheduling && active ? active.end - active.start : 45);
+  const ghostLength = scheduling && active ? active.end - active.start : length;
 
   /* A gesture under way, and what it draws: the call moved or stretched, or the free time dragged across. */
   const gesture = useRef<Gesture | null>(null);
@@ -444,7 +448,7 @@ export function CallsWeek({
 
   /* What the handlers read: the latest of everything, without being made again on every render. */
   const latest = {
-    days, shown, now, scheduling, hp, head, calls, active, activeIndex, canGoBack, free,
+    days, shown, now, scheduling, hp, head, calls, active, activeIndex, canGoBack, free, longest,
     onBlock, onPick, onRange, onResize, onSelect, onTurn
   };
   const live = useRef(latest);
@@ -559,6 +563,8 @@ export function CallsWeek({
       const n = L.now;
       let a = Math.max(0, quarter(Math.min(g.m0, m)), n && g.day === n.day ? Math.ceil(n.minute / QUARTER) * QUARTER : 0);
       let b = quarter(Math.max(g.m0, m));
+      /* No longer than a call can be: the end where it was pressed stays, and the other stops. */
+      if (b - a > L.longest) { if (m >= g.m0) b = a + L.longest; else a = b - L.longest; }
       if (b - a < QUARTER) b = a + QUARTER;
       b = Math.min(b, DAY);
       if (b - a < QUARTER) a = b - QUARTER;
@@ -585,8 +591,9 @@ export function CallsWeek({
     if (g.kind === 'resize') {
       const a = L.active;
       if (!a) return;
-      const end = Math.min(DAY, Math.max(a.start + QUARTER, quarter(m)));
-      const bottom = Math.min(DAY, Math.max(a.start + QUARTER, m));
+      const most = Math.min(DAY, a.start + L.longest);
+      const end = Math.min(most, Math.max(a.start + QUARTER, quarter(m)));
+      const bottom = Math.min(most, Math.max(a.start + QUARTER, m));
       const mv = movingRef.current;
       if (!mv || mv.bottom !== bottom) setMoving({ day: a.day, start: a.start, end, top: a.start, bottom });
     }
@@ -768,7 +775,7 @@ export function CallsWeek({
     const a = L.active;
     if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && L.scheduling && a && a.day === day && Math.floor(a.start / 30) === slot && L.onResize) {
       e.preventDefault();
-      const to = Math.min(DAY, Math.max(a.start + QUARTER, a.end + (e.key === 'ArrowDown' ? QUARTER : -QUARTER)));
+      const to = Math.min(DAY, a.start + L.longest, Math.max(a.start + QUARTER, a.end + (e.key === 'ArrowDown' ? QUARTER : -QUARTER)));
       if (to !== a.end) { L.onResize(to); say(`Ends ${clock(to)}`); }
       return;
     }
@@ -796,22 +803,29 @@ export function CallsWeek({
     setCursor((c) => (c.day === day && c.slot === slot ? c : { day, slot }));
   }, []);
 
-  /* What each half hour says: the day and the time, and scheduling, who's free then, or the call or time that starts in it. */
+  /*
+   * What each half hour says: the day and the time, and scheduling, who's free then, or the call or time that starts in it.
+   * Who's free is worked out once for the week and the call's length; the few half hours a call starts in are said over it,
+   * so typing the call's name or moving it doesn't ask who's free all over again.
+   */
+  const freeLabels = useMemo(() => days.map((d, day) => Array.from({ length: SLOTS }, (_, slot) => {
+    const start = slot * 30;
+    const note = scheduling ? free?.(day, start, Math.min(DAY, start + ghostLength)) : undefined;
+    return `${d.label}, ${clock(start)}${note ? `, ${note.text}` : ''}`;
+  })), [days, scheduling, free, ghostLength]);
   const callsKey = calls.map((c) => `${c.day}.${c.start}.${c.end}.${c.n ?? ''}.${c.active ? 1 : 0}.${c.title ?? ''}`).join('|');
   const canResize = !!onResize;
-  const labels = useMemo(() => days.map((d, day) => Array.from({ length: SLOTS }, (_, slot) => {
-    const start = slot * 30;
-    if (scheduling) {
-      const c = calls.find((x) => x.day === day && Math.floor(x.start / 30) === slot);
-      if (c) {
-        const what = c.n === undefined ? c.title || 'the call' : `time ${c.n}${c.active ? ', the one the week moves' : ''}`;
-        return `${d.label}, ${clock(c.start)} to ${clock(c.end)}, ${what}${c.active && canResize ? '. Shift and the up or down arrow change when it ends' : ''}`;
-      }
-      const note = free?.(day, start, Math.min(DAY, start + ghostLength));
-      return `${d.label}, ${clock(start)}${note ? `, ${note.text}` : ''}`;
-    }
-    return `${d.label}, ${clock(start)}`;
-  })), [days, scheduling, callsKey, free, ghostLength, canResize]);
+  const labels = useMemo(() => (!scheduling ? freeLabels : freeLabels.map((row, day) => {
+    const starting = calls.filter((c) => c.day === day);
+    if (!starting.length) return row;
+    const d = days[day];
+    return row.map((said, slot) => {
+      const c = starting.find((x) => Math.floor(x.start / 30) === slot);
+      if (!c || !d) return said;
+      const what = c.n === undefined ? c.title || 'the call' : `time ${c.n}${c.active ? ', the one the week moves' : ''}`;
+      return `${d.label}, ${clock(c.start)} to ${clock(c.end)}, ${what}${c.active && canResize ? '. Shift and the up or down arrow change when it ends' : ''}`;
+    });
+  })), [freeLabels, days, scheduling, callsKey, canResize]);
 
   /* ---- scrolling: open on 08:00, keep the same hour at the top as the hours change height, and follow the call ---- */
   const onScreen = active && shown.includes(active.day) ? active : undefined;

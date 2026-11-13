@@ -127,17 +127,16 @@ export function QuadFaces({ people, size = 18 }: { people: AvatarPerson[]; size?
 
 /**
  * Someone, a group or a list in the Who field: one token, however many people it stands for (`count`), in their arch.
- * `state` says something beside the name: what someone answered ("Going"). `place` is what sits after the name for someone
- * from outside: where they are, a button that says so (Where? until it's said). `outside` rings someone whose calendar
- * can't be read. `held` shows it's selected, one press from going. Without `onRemove` it's only read: someone on a call being
- * moved.
+ * `state` says what someone answered, beside the name ("Going"). `place` is what sits after the name for someone from
+ * outside: where they are, a button that says so (Where? until it's said). `held` shows it's selected, one press from going.
+ * Without `onRemove` it's only read: someone on a call being moved.
  */
-export function PersonToken({ people, label, count, title, state, place, outside = false, held = false, onRemove, removeLabel }: {
+export function PersonToken({ people, label, count, title, state, place, held = false, onRemove, removeLabel }: {
   people: AvatarPerson[]; label: string; count?: number | undefined; title?: string | undefined; state?: string | undefined; place?: ReactNode;
-  outside?: boolean | undefined; held?: boolean | undefined; onRemove?: (() => void) | undefined; removeLabel?: string | undefined;
+  held?: boolean | undefined; onRemove?: (() => void) | undefined; removeLabel?: string | undefined;
 }) {
   return (
-    <span className={cn('cf-tok', held && 'is-held', outside && 'is-out', !onRemove && 'is-fixed')} title={title}>
+    <span className={cn('cf-tok', held && 'is-held', !onRemove && 'is-fixed')} title={title}>
       <span className="cf-face">{count === undefined ? <Faces people={people} size={20} max={1} /> : <QuadFaces people={people} size={10} />}</span>
       <span className="t ac-clamp-1">{label}</span>
       {count !== undefined && <small>{count}</small>}
