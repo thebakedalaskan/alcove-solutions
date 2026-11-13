@@ -953,18 +953,18 @@ sealed records, the contract and the limits.
 - `PurchaseSchema`'s licenses and `POST /v1/team/licenses` take `periods`, 1 when it's left out, so a tab opened before the
   deploy buys licenses for a period, from the balance or by payment, as before. It ignores `PlanOffers.team.yearly`.
 - The new limits, `plan.team.yearly_periods` (12) and `plan.team.yearly_price_micro_usd`, have defaults: no row is
-  needed. The yearly price ships at 0, so this release offers no license for a year; the next release sets its default to
-  $32, once this one serves alone.
+  needed. The yearly price shipped at 0, so the release that brought licenses for a year sold none while the one
+  before it still served; the release after it set the default to $32, once it served alone.
 - **While both serve,** the previous release reads a license for a year as a license for one period: a visit it serves
   takes it for one period, a refund it makes gives back one period's price ($32, not $384), and anything it saves of that
   team's record (a visit, a purchase, a refund, auto-purchase, upkeep reckoning the pool) drops every license's `periods`,
   leaving each a license for one period at the lower price. For a member already on one, its plan's period is the whole
   license, and a meter it touches keeps that as one period, which this release then runs to its end: a year's notes in one
-  allowance. So none is sold while the previous release still serves, licenses for a year ship switched off
-  (`plan.team.yearly_price_micro_usd` defaults to 0 in this release, and the new one offers no license for a year at 0); the
-  release after it, deployed once this one serves alone, turns them on by setting that default to $32. No row is needed.
+  allowance. So none was sold while the previous release still served, licenses for a year shipped switched off
+  (`plan.team.yearly_price_micro_usd` defaulted to 0), and the release after it, deployed once that one served alone, turned
+  them on by setting the default to $32. No row is needed.
 
-**Confidential top-ups** (after `main` at `5f0c70e74`, the previous release for them) need no migration, and no stored
+**Confidential top-ups** (after `main` at `84f16d8ab`, the previous release for them) need no migration, and no stored
 shape changes. Which of the treasury's balances a deposit pays is in its own kept quote, which 1Click repeats the request
 in: one opened before has `recipientType: 'INTENTS'` and is asked about exactly as then, without the treasury's token, and
 settles as before; one opened now has `CONFIDENTIAL_INTENTS` and is asked about signed in as the treasury. The previous

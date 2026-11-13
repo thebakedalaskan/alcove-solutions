@@ -93,8 +93,9 @@ describe('billing on the command line', () => {
       `Account ${ann.session.ownerId}`, 'Plan: free; renewing Pro off', 'Months of Pro not over: 0', 'Balance: covers a month of Pro',
       'Changes to the balance kept: 2', 'Notices not dismissed: 0', 'Top-ups: none'
     ]);
-    // Nothing it says is an amount: not the balance, not what was added.
-    expect(show.out + credit.out).not.toMatch(/\$|4\.5|24\.5|4500000|24500000/);
+    // Nothing it says is an amount: not the balance, not what was added. A log line's time is left out, since one such as
+    // 18:24:54.512Z holds "4.5".
+    expect((show.out + credit.out).replace(/"time":"[^"]*"/g, '')).not.toMatch(/\$|4\.5|24\.5|4500000|24500000/);
     // An account by its ID, as production's job finds one: adding to it, and one short of a month of Pro.
     const bob = await account();
     expect(await billing(['credit', bob.session.ownerId, '7'], false)).toMatchObject({ code: 0, out: expect.stringContaining(ADDED(bob.session.ownerId)) });
