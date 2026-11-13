@@ -484,7 +484,8 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   /* ---------- the step ---------- */
   const close = <Button variant="secondary" onClick={onClose}>Close</Button>;
   const finish = <Button variant="primary" onClick={onClose}>{open.from === 'call' ? 'Back to the call' : 'Done'}</Button>;
-  const offline = !online && <p className="hint">You’re offline. Everything catches up when you’re back.</p>;
+  // Why the button waits, said on a phone too (its own class, which the phone's foot doesn't hide as it does a hint).
+  const offline = !online && <p className="ck-offline" role="status">You’re offline. Everything catches up when you’re back.</p>;
   const note = said && <CheckoutNote>{said.text}{said.ref && <><br /><RequestRef id={said.ref} /></>}</CheckoutNote>;
   const waiting = (words: string) => <p className="ck-wait" role="status"><Dots />{words}</p>;
   let step: 1 | 2 | 3 = 1;
