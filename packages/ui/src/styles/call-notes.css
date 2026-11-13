@@ -31,6 +31,8 @@
 .nn-pill.is-caution { color: var(--caution); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--caution) 45%, transparent); }
 .nn-pill.is-caution:hover, .nn-pill.is-caution[aria-expanded="true"] { background: var(--caution-soft); }
 .nn-pill.is-changing > .ac-i { animation: ac-capture-changing var(--duration-4) var(--ease-in-out) infinite alternate; }
+/* Stopped by the organizer's plan: the hollow ring, in caution. */
+.nn-pill.is-caution .ring { box-shadow: inset 0 0 0 1.5px currentColor; }
 
 /* Four tabs, words with a line under the one you're on. */
 .nn-tabs.ac-tabs { flex: none; gap: 22px; padding: 0 20px; }
@@ -49,6 +51,17 @@
 .nn-bar.is-caution { background: var(--caution-soft); color: var(--ink); }
 .nn-bar.is-caution > .ac-i { color: var(--caution); }
 
+/*
+ * The organizer's plan stopped notes: said between the head and the tabs, for every tab, in caution, with the ways to more
+ * for whoever organizes under the words (PlanStop.tsx). Nothing under the tabs says it again.
+ */
+.nn-stop { flex: none; display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: 10px; row-gap: 12px; padding: 14px 20px 16px; background: color-mix(in oklch, var(--caution) 11%, var(--surface)); box-shadow: inset 0 -1px 0 var(--line); }
+.nn-stop > .ac-i { margin-top: 1px; color: var(--caution); }
+.nn-stop-t { min-width: 0; }
+.nn-stop-t b { display: block; font: 600 14px/20px var(--font-sans); color: var(--ink); }
+.nn-stop-t p { margin: 2px 0 0; font: 400 13.5px/19px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+.nn-stop-a { grid-column: 2; display: flex; flex-wrap: wrap; gap: 8px; }
+
 /* What's in it. */
 .nn-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 18px 20px 24px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 .nn-body > .ic-carry { margin: 0 0 22px; }
@@ -61,6 +74,13 @@
 .nn-sec.is-dec > .nn-sh h3 { color: var(--rose); }
 .nn-sec.is-fol > .nn-sh h3 { color: var(--horizon); }
 .nn-quiet { margin: 0; color: var(--ink-3); font: 400 13.5px/1.45 var(--font-sans); }
+/* Where the organizer's plan stopped notes, in caution, and where they came on again, in notes' own colour, between hairlines. */
+.nn-cuts { display: grid; gap: 12px; margin-top: 24px; }
+.nn-cuts > div { display: grid; gap: 12px; }
+.nn-cut { display: flex; align-items: center; gap: 10px; margin: 0; font: 600 12.5px/1 var(--font-sans); color: var(--caution); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.nn-cut::before, .nn-cut::after { content: ""; flex: 1; height: 1px; background: color-mix(in oklch, var(--caution) 40%, transparent); }
+.nn-cut.is-on { color: var(--rec); }
+.nn-cut.is-on::before, .nn-cut.is-on::after { background: color-mix(in oklch, var(--rec) 40%, transparent); }
 .nn-guest { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; color: var(--ink-3); font: 500 12.5px/1.4 var(--font-sans); }
 
 /* The summary first: a few lines, its freshness at the right of its heading. */

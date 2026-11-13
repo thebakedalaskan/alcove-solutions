@@ -1,6 +1,6 @@
 # Notes and inference
 
-[Docs home](../README.md) · [Calls and recordings](calls-and-recordings.md) · [Payments and usage](payments-and-usage.md)
+[Docs home](../README.md) · [Calls and recordings](calls-and-recordings.md) · [Plans and usage](plans-and-usage.md)
 
 ## Status
 
@@ -26,7 +26,8 @@ proposed until people say so, each entry shows what was said behind it, and a fo
 
 `apps/api/src/inference.ts` and `apps/api/src/evidence.ts` are the only code that uses `NEAR_AI_API_KEY` or
 talks to NEAR AI besides `apps/api/src/features/notes/models.ts`, which only reads its public lists of models, and
-`inference.ts` is the only one that sends it anything with content. Without a key the
+`inference.ts` is the only one that sends it anything with content. Each request it sends names who pays for it, and is
+charged to their AI allowance, in dollars, as NEAR AI answers it ([Plans and usage](plans-and-usage.md)). Without a key the
 server still records: the transcribe endpoints answer `503 unavailable`,
 recordings are kept and play back, notes stay `pending` ("Waiting for the notes service to be connected"),
 and `/health` reports `inference: missing`. Once a key is configured, maintenance picks up the waiting jobs;
@@ -232,7 +233,7 @@ sequenceDiagram
    then the WAV header is checked (RIFF/WAVE, PCM, one channel, 16,000 Hz, 16 bits). Anything else is
    `400 invalid`. Each account may send 240 clips a minute, calls and room recordings together, and in a call
    each voice 40; past that the answer is `503 unavailable` ("Too many attempts"). In a call a clip counts only
-   once the call has taken it as the sender's to send (step 3), so clips it refuses use up nobody's allowance.
+   once the call has taken it as the sender's to send (step 3), so clips it refuses count toward nobody's limit.
 3. **When a clip is taken.** For a call, only while it is live, notes are on (not paused) and the clip's
    segment is the current one; the capture gate, `mayCapture` in `apps/api/src/features/calls/capture.ts`, decides.
    Then only where the call can place it: in the part of the call its speaker was in when it began (`placeAt`,
@@ -421,12 +422,12 @@ account.
   then each breakout room's section
   with lines, one request each, three at a time, the job's lease renewed before every request (the call's
   too), so a call with many rooms stays this worker's ([Breakout rooms](#breakout-rooms)). A note without transcript lines is
-  then finished, with its screens and rooms, and charged only when a room's notes were written. Otherwise `draft` in
+  then finished, with its screens and rooms, and charged only for what was asked of the model: a room's notes, when any were written. Otherwise `draft` in
   `apps/api/src/features/notes/drafting.ts` asks the notes model, then asks it for the full summary
   ([The full summary](#the-full-summary)), and one transaction writes the note `ready`
   with what it wrote, when it read the transcript (`writtenAt`: the worker reads the note holding its row, as a
   correction does, so a correction made after it is later) and the model's verification (once, by
-  `verificationKey`: a verification already listed isn't listed again), deletes the job and charges the account. The call's breakout rooms join the chapters
+  `verificationKey`: a verification already listed isn't listed again), deletes the job and lets go of what the call kept back for writing them (each request was charged as it was answered). The call's breakout rooms join the chapters
   in that transaction (one chapter per time rooms were open: who was in which room, and for how long); the
   rooms stay in the note so they do every time it's written. Only then, with the notes out and the job gone, is a
   call in a series compared with what earlier ones left standing: one more request, saved in a transaction of its
@@ -460,8 +461,11 @@ account.
   NVIDIA or NEAR AI unreachable, a platform out of date, anything in [What is checked](#what-is-checked)),
   nothing was sent. The job goes to `waiting` without using up the attempt, and is tried again five minutes
   later, for as long as it takes, so an outage or a TCB recovery doesn't lose notes. The same goes when the
-  notes model doesn't answer (`UnansweredError`: no answer within four minutes, unreachable, `429` or `5xx`):
-  nothing about the note is wrong, so it waits rather than using its attempts up. A draft can take the model
+  notes model can't be reached or is busy (`UnansweredError`: unreachable, `429` or `5xx`): nothing was charged and
+  nothing about the note is wrong, so it waits rather than using its attempts up. A request that gets no answer within
+  its time once it was sent (`timedOut`) was charged what it held (Charging, below), so it uses up an attempt like a
+  failure: notes that keep timing out are finished without a summary after three, and notes written again stay as they
+  were, instead of being charged again every five minutes without end. A draft can take the model
   well over a minute (about 24 tokens a second at its slowest, up to 4,000 of them, which is 167 seconds), so it gets
   four minutes, and the job's lease five.
 - **Retries.** A failed attempt (NEAR AI refusing the request, a reply that won't open, or one that isn't the
@@ -469,14 +473,19 @@ account.
   after the second, with a timer that starts the worker again then. An attempt after a failed one asks the model for
   about half as much (`brief` in `NotesStyle`), since a reply cut off at `max_tokens` would only be cut off the same way
   again, and a breakout room's does the same. The third failure finishes the note `ready`
-  without notes: its transcript stays, whatever the call was set to keep, and so does any audio it kept, and
-  nothing is charged. A job found with all three attempts used (its last worker died) is finished the same way.
-- **Charging.** 25 credits a minute recorded (the seconds of encrypted audio across every segment, as the note
-  saved them when the recording stopped, rounded up to whole minutes, at least one), taken in the same transaction
-  as the note and labelled "Notes, N min". A note stopped before those seconds were saved counts its pieces.
-  Time in a call with notes off isn't charged. Notes are charged the first time they're written: writing them
-  again isn't, and notes that couldn't be written are charged when the organizer has them written after all. Nothing checks the balance first, so a charge can take it below
-  zero ([Payments and usage](payments-and-usage.md)).
+  without notes: its transcript stays, whatever the call was set to keep, and so does any audio it kept; what the model's answers used was charged as each came (below). A job found with all three attempts used (its last worker died) is finished the same way.
+- **Charging.** Every request to NEAR AI is charged to an AI allowance in dollars as it's answered, not by the minute
+  recorded: `transcribe`, `complete` and `completeJson` in `inference.ts` take a required `Meter` naming who pays, so
+  nothing is sent without one. The most a request can cost is held before it's sent, and it's refused (`plan-limit`)
+  when what's left can't cover that; once NEAR AI answers, it's charged what NEAR AI says it used, even when the reply
+  can't be used, so a note that fails all three attempts, and notes written again, still cost what the model did. A
+  request NEAR AI turned away, or that never went because its evidence didn't check out, costs nothing. Who pays: a
+  call's notes, its shared screens and its comparison with its series are the organizer's, and a room recording's is
+  whoever records. Time in a call with notes off costs nothing, since nothing is sent. Writing a call's notes the first
+  time is never refused: when the organizer's allowance has run out they're written from what was transcribed before
+  notes stopped, and may cost more than what was left. Writing them again is refused like anything else, and the notes
+  stay as they were. Notes that couldn't be written are paid for when the organizer has them written after all
+  ([Plans and usage](plans-and-usage.md)).
 
 ## Breakout rooms
 
@@ -650,7 +659,7 @@ transcribed reads no screens: there's nothing to tie one to.
 - **Logged.** `screen moments picked` (`shares`, `picked`, `cued`, `starts`, `befores`, `kept`, `requests`,
   `unusable`, `ms`), `shared screens read` (`taken`, `frames`, `compared`, `keyFrames`, `supporting`, `unrelated`, `model`,
   `ms`) and, on `notes written`, `screens` and `attached`: counts and model IDs, never cues, text or readings.
-  Writing the notes costs the same whichever model reads the screens.
+  What reading the screens costs depends on the model that reads them, at its price in NEAR AI's catalog, and on how many frames it reads (each image is held at `ai.image_tokens` before NEAR AI says what it used).
 
 ## The full summary
 
@@ -675,7 +684,7 @@ the same way when it is an unencrypted one.
   characters. `max_tokens` is 2,500 and the timeout 180 s ([Models and requests](#models-and-requests)).
 - **If it fails** for any reason (the model not answering, its evidence not checking out, a reply in the wrong shape),
   the notes are saved as they are with an empty full summary, and a warning is logged. It is not tried again, doesn't
-  use an attempt and doesn't make the job wait. It costs nothing extra: the notes are charged by the minute recorded.
+  use an attempt and doesn't make the job wait. It's charged like any request: what NEAR AI says it used, and nothing when NEAR AI turned it away.
 - **Where it shows.** Under the short summary on the note page, behind a "Full summary" button, closed until pressed; a
   note with none shows no button. A note written before it existed has none until its notes are written again, which
   writes it afresh each time and replaces the old one (or, if that request fails, leaves none). A breakout room's
@@ -751,7 +760,7 @@ into its recording the app can play from (the time of the line the model pointed
 on (a `ScreenMoment`'s ID and second). Once the transcript is gone the model reads what the notes say instead, with
 the moments they give: their summary, decisions, open questions, follow-ups and chapters. Questions and answers go to
 the person asking alone. They aren't stored unless that person keeps one in [their own notes](#your-own-notes), keep no
-operation receipt, and cost no credits. Writing an answer can take up to a minute, so once it's written the asker's access is checked
+operation receipt, and are paid for by whoever asks, from their own plan. Writing an answer can take up to a minute, so once it's written the asker's access is checked
 again: if the note was deleted or removed from their notes meanwhile, the answer, which may quote it, isn't
 sent (`409 conflict`).
 
@@ -762,7 +771,7 @@ person asking has: their own, and other people's they reach through a `note_acce
 ([Privacy › Who can read a note](privacy-keys-and-sessions.md#who-can-read-a-note)). The request names no
 note, so nothing of anyone else's can be reached through it. It shares the 20-a-minute limit with asking
 about one note, goes the same verified, sealed way to the notes model, and, like it, is stored nowhere,
-keeps no receipt and costs nothing (`notes.askAll` in `apps/api/src/features/notes/service.ts`, the selection and
+keeps no receipt and is paid for by whoever asks (`notes.askAll` in `apps/api/src/features/notes/service.ts`, the selection and
 prompt in `answerFromNotes` in `drafting.ts`).
 
 - **Which notes count.** `ready` notes with notes written, or with transcript lines the asker may read. With none, the answer is a single
@@ -951,7 +960,7 @@ in `packages/api`, `correctLine` in `apps/api/src/features/notes/service.ts`):
   series read it as before; the progress stream follows the job, as for the first time. While a job is queued
   or being written, asking again changes nothing (the job is looked for holding the note, so two asks at once
   queue one). Writing them can wait as long as the notes model can't be verified or doesn't answer, and the
-  notes stay readable all the while. It isn't charged, so it shares the 20-a-minute limit with questions. It's
+  notes stay readable all the while. It's paid for from the organizer's allowance like the first time, and refused, with the notes as they were, once that's spent. It shares the 20-a-minute limit with questions. It's
   never automatic: other people may be confirming decisions meanwhile, and Otter and Fireflies both leave
   regenerating the summary to a person. The app offers it as "Write the notes again" once lines were corrected since, and as
   "Try writing them again" when the notes couldn't be written; while they're written it says so above the notes
@@ -1114,12 +1123,15 @@ once the notes are written. During a call the people who'll get the notes aren't
 joins the invite), so a preview couldn't say who reads it.
 
 - **Preview.** `POST /v1/notes/:id/personal/:entryId/preview` sends nothing. It says the words that would go, the moments
-  with them, where (**Shared notes** on that note) and everyone who has the notes now, and it gives a seal: a keyed
-  hash, under the author's keys, of the entry, its moments and those people.
+  with them, where (**Shared notes** on that note), everyone who has the notes now, and the team its organizer made it
+  visible to, if they did (`team`: its name and how many people live-licensed on it aren't among them, since every one of
+  them reads the note and what's added to it, [Plans and usage › Team](plans-and-usage.md#team)), and it gives a seal: a
+  keyed hash, under the author's keys, of the entry, its moments, those people and that team.
 - **Add.** `POST /v1/notes/:id/personal/:entryId/add` takes the words as they stand in the preview, cut down or changed by
   the person, and the seal. Everything is read again holding the note's lock, and the seal has to match: if anyone
-  got the notes since, or the moments changed, it's `409 conflict` and the app shows the preview again, so nothing
-  reaches more people than the person saw.
+  got the notes since, the note was made visible to a team or stopped being, or the moments changed, it's `409 conflict`
+  and the app shows the preview again, so nothing reaches more people than the person saw. Making a note visible to the
+  team, or not, takes the same lock (`setTeamVisible`), so it lands before an add or after it, never in between.
 - **What goes.** Only that entry, and only the words left in the box: never the rest of their notes. An answer's
   question doesn't go, nor does the fact that there was one: an addition says who added it, not where it came from. An
   answer goes only if it has moments and every one of them is in this note, so everyone reading it can check it against
@@ -1148,12 +1160,12 @@ Beside a written note, **Shared notes** has a box of its own, so something meant
 Your notes first (`write` in `additions.ts`). It's an addition like any other, with no private entry behind it.
 
 - **Who reads it, first.** `GET /v1/notes/:id/additions/audience` sends nothing. It says everyone who has the notes now,
-  organizer first, and gives a seal: a keyed hash, under the writer's keys (`promotion:<noteId>`), of those people. Its
-  shape differs from a preview's (no entry, no moments), so neither seal stands in for the other. The box shows them
-  before anything is typed.
+  organizer first, and the team they're visible to, if they are (`team`, as a preview says it), and gives a seal: a keyed
+  hash, under the writer's keys (`promotion:<noteId>`), of those people and that team. Its shape differs from a preview's
+  (no entry, no moments), so neither seal stands in for the other. The box shows them before anything is typed.
 - **Posting.** `POST /v1/notes/:id/additions` with the words (1 to 8,000 characters) and the seal. Holding the note's
-  lock, who has the notes is read again and the seal has to match: if anyone got the notes since, it's `409 conflict`,
-  and the box says who got them since and keeps the words. It's only once the notes are written (`409 conflict` before),
+  lock, who reads it is read again and the seal has to match: if anyone got the notes since, or a team could read them
+  since or no longer can, it's `409 conflict`, and the box says who got them since and keeps the words. It's only once the notes are written (`409 conflict` before),
   for the same reason as adding from your own notes, under the same `MAX_NOTE_ADDITIONS`. During a call the shared place
   to write is the call's workspace pages.
 - **Stored** exactly as an addition from someone's own notes is (`note_additions`, sealed under the organizer's keys, with
@@ -1256,11 +1268,15 @@ the notes worker. Accepted tasks, pending suggestions and review decisions are h
   caution, "Not updated since 16:12", or, before there are any notes, that the first couldn't be written yet; on the
   workspace's live Notes page, a caution notice), whatever went wrong, to whoever reads those notes, only while notes are
   on (the causes are worded for someone who can press something, and here nobody has to, so why is in the log line) and
-  the next look at least 30 seconds
-  later tries again. A reply that isn't what was asked for counts: without words in its summary and all four lists, each
-  item as asked down to the lines it cites, it's a failed refresh, never blank notes.
-- **What it costs.** Nothing. As for catching up and asking, nobody's credits pay for a refresh, whoever is watching and
-  whoever's call it is: only the notes written at the end charge the organizer ([The notes worker](#the-notes-worker)).
+  the next look at least 30 seconds later tries again. A reply that isn't what was asked for counts: without words in its
+  summary and all four lists, each item as asked down to the lines it cites, it's a failed refresh, never blank notes.
+- **What it costs.** The call's organizer pays for it, whoever is watching: each refresh is a request to NEAR AI, charged to
+  their AI allowance with the transcript, captions and the notes written at the end ([The notes worker](#the-notes-worker)).
+  When that's spent, refreshes stop with everything else the organizer pays for ([Plans and usage](plans-and-usage.md)). A view
+  of its own refreshed for a guest's look is for that guest alone, so it comes out of the share every guest in the call spends
+  from (`ai.guests_call_percent`, [Plans and usage › Guests' share](plans-and-usage.md#notes-the-ai-allowance)): past it nothing
+  is sent, and those notes say "These notes aren’t being updated: guests in this call have used as much of the organizer’s plan
+  as it allows them." until there's room, while everyone's go on. Catching up and asking are paid for by whoever asks.
 
 ### Follow-ups keep their IDs
 
@@ -1317,7 +1333,9 @@ tags out of the selection couldn't promise that. What comes back is for the pers
 document: nothing is written to it from here, nothing is kept, and it has no receipt.
 
 It works as catching up does. It's one answer in one response, which `@alcove/api-http` hands over as parts (an
-`AsyncIterable`, as `notes.ask`); nobody's credits pay for it; and it has the same limit, 20 a minute per person. Asked from
+`AsyncIterable`, as `notes.ask`); whoever asks pays for it from their own plan, and a guest's ask goes to the default model
+and is paid by whoever the workspace counts against ([Plans and usage › Who pays](plans-and-usage.md)); and it has the same
+limit, 20 a minute per person, 6 for a guest. Asked from
 inside a call, it needs what catching up needs: the call is live, nothing's paused where this person is, and its notes have
 been on, so a call with notes off sends the AI nothing. Outside a call there's no call to rest on, so it needs an account that
 can edit the document. A demo account has the same limit as any other account.
@@ -1335,14 +1353,15 @@ their titles (`F1 Went well`), and what's on offer already, so nothing is offere
 `{ideas: [{text, said, line, frame}]}`: up to three, each a sticky's few words, the words it comes from, the one line it was
 said in, and the frame it fits, or null. An idea that points at no line it was sent is the model's word alone, and goes; words
 that aren't in the line it names give way to the line's own, so the tray never quotes anyone saying what they didn't; a frame it
-names that isn't there is none. Nobody's credits pay for it, as for the live notes, and a reply in the wrong shape is logged and
+names that isn't there is none. The call's organizer pays for it, as for the live notes, and a reply in the wrong shape is logged and
 offers nothing.
 
 **Sort into themes** (`drafting.themesOf`). The stickies picked, each `S4 words`, fenced between `<stickies-…>` and
 `</stickies-…>` with a random mark, as a selection is, so nothing on a sticky can end the list early or be read as an
 instruction. Back comes `{themes: [{name, stickies}]}`: up to six themes of one to three words, every sticky in one. A label it
 wasn't given is nothing, one it uses twice stays where it was first, and a theme left with no stickies goes. It's one answer in
-one response, 20 a minute per person, and nobody's credits pay for it. In a call it needs the call to be live and nothing paused
+one response, 20 a minute per person (6 for a guest), and whoever asks pays for it, a guest's whoever the workspace counts
+against. In a call it needs the call to be live and nothing paused
 where this person is; with notes off it still works, as someone asked, about what people wrote. Outside a call it needs an
 account that can edit the board. Nothing is kept, and it has no receipt.
 
@@ -1394,8 +1413,9 @@ it. The follow-ups from the main room's boards come next; a room's are in its se
 asking. Lines already translated into that language come from their sealed `transcript_translations` row;
 the rest go to the notes model in one request, sealed to its verified key like every request, and are kept
 the same way, until the recording stops. Line IDs
-that aren't in this call's live transcript, or that the person asking may not read, are left out. 90 requests a minute per account; nothing is
-charged, and no operation receipt is kept. Refused while notes are paused, when nothing goes to the AI.
+that aren't in this call's live transcript, or that the person asking may not read, are left out. 90 requests a minute per account; the call's organizer pays for it,
+a guest's out of the share every guest in the call spends from (lines already translated cost nothing), and no operation receipt
+is kept. Refused while notes are paused, when nothing goes to the AI.
 
 ## Series
 
@@ -1560,7 +1580,7 @@ Calendar event moved to Alcove, and a call scheduled as the next one.
   deleted or removed from theirs meanwhile, the whole answer is dropped, since it may quote it, and the
   asker is told to ask again (`409 conflict`). It needs a written note in the series (`409 conflict`
   otherwise), shares the 20-a-minute limit with asking about notes, keeps no operation receipt, stores
-  nothing and costs no credits.
+  nothing, and is paid for by whoever asks.
 - **In the app.** A call in a series has **What carries over** on its card, which opens the series page:
   confirmed decisions, questions still open and follow-ups someone took on, with counts of the rest, and what
   stopped holding or was answered since the latest call. The pre-join shows the same in brief, and the call's Notes
@@ -1756,7 +1776,8 @@ registry of the endpoints of the models it runs itself (`NEAR_AI_ENDPOINTS_URL`,
 `https://completions.near.ai/endpoints`, `{"endpoints": [{"domain", "models"}]}`). A model is offered when it
 takes text and images, isn't `is_ready: false`, has a price and its `pricing.input` is at most
 `NEAR_AI_MAX_INPUT_PRICE` (US dollars per million input tokens, 1 by default). The list is kept ten minutes, a
-failure to fetch it 30 seconds. `GET /v1/models` (signed in) returns `{ default, models }`, each
+failure to fetch it 30 seconds. Every metered request asks it for its model's price (`priceOf`): a price it has is used at
+once, the list read again behind it once it's old, so no transcript clip or question waits on the catalog. `GET /v1/models` (signed in) returns `{ default, models }`, each
 `{ id, name, private }`, the default first and the private ones before the unencrypted, each by name. The app
 shows the default as "<name> (default)".
 
@@ -1928,7 +1949,7 @@ many of the words before as fit; kept by a short clip and dropped for a long one
 another language stopping both; every note starting from nothing), a short reply that says back what was
 just said kept, lines that only repeat the prompt or themselves dropped, subtitle credits and closing
 lines in several languages dropped while sentences about subtitles are kept, the clip format and access checks, a
-server without a key, writing and charging, asking and catching up (also by someone invited; with each point's
+server without a key, writing and paying for the notes, asking and catching up (also by someone invited; with each point's
 moments: only lines that were read, the model's invented decision and its pointers at lines that aren't there
 dropped; a stretch picked by its seconds; opening a moment), an answer
 dropped because its note was deleted or removed while it was written, retries up to the third failure, and
@@ -1943,7 +1964,7 @@ refused from anyone but the room's scribe and for a room its speaker isn't in; a
 the room on with nothing lost or doubled, and a room left without one; a paused room taking nothing, its gaps in
 its section; a room where nothing was said keeping its section; a room's decision confirmed, and its follow-ups
 among the open ones; and a room's line corrected by whoever said it (nobody else), the rooms' sections written
-again from it without a second charge, keeping the confirmed decision, and a note whose only talk was in rooms
+again from it, keeping the confirmed decision, and a note whose only talk was in rooms
 written again. `in the call: hands, spotlight, breakout rooms and captions` covers translating
 captions (once per line and language, sealed to the verified notes model, cross-account, gone when the call
 ends) and breakout rooms ending up in the notes' chapters.
@@ -1993,8 +2014,8 @@ still recording; questions answering from the corrected words; the corrected wor
 writing the notes again (organizer only, one job however often it's asked, the note readable, asked about,
 confirmed and corrected meanwhile, the settled decision listed in the prompt, a decision the model lists again in
 other words, or one confirmed while they were written, kept once, the rest written from the corrected words, a
-correction made after the notes read the transcript offered again, not charged again, the verification not listed
-twice); and notes that couldn't be written, written on request and charged then.
+correction made after the notes read the transcript offered again, the verification not listed
+twice); and notes that couldn't be written, written on request, the organizer having paid for every answer the model gave.
 
 `apps/api/src/features/calls/capture.integration.test.ts` covers what a call captures: only the organizer pausing, resuming
 and turning notes on or off (everyone else refused); everyone seeing the same state with who changed it;
@@ -2031,7 +2052,7 @@ note, and the notes standing without it when it can't be written) is covered by 
 reading the same notes; watchers racing across two API instances; the 30-second limit from both sides of it, nothing
 asked with nothing new or nobody watching, and what was said meanwhile taken up at the next look; the room told to read
 the call again, and told when they're being written, a refresh that failed saying so and being tried again with the notes as they were, and replies
-that aren't what was asked for counting as failed; nobody charged, and the notes at the end charged as ever; Catch up and
+that aren't what was asked for counting as failed; the organizer paying for them, whoever is watching, as for the notes at the end; Catch up and
 Ask unchanged; a guest's notes written from what they may read alone, in what reaches the notes model too, read-only, and
 not showing what's ticked in everyone's; guests who can't read the same lines shared one run, and one who can't read
 other lines another; someone back from time away not reading notes that read what was said meanwhile, reading their own
@@ -2283,8 +2304,11 @@ What goes with each choice:
   like an accented speaker, and Whisper may write their words in it.
 - **Names of people who weren't invited.** The prompt names the organizer and everyone invited, not
   people who joined by link.
-- **Admission.** Nothing checks credits before recording or transcribing, and a charge can take the
-  balance below zero ([Payments and usage](payments-and-usage.md)).
+- **Admission.** Once the organizer's allowance is spent, turning notes on or starting a room recording is refused ("Your
+  notes for this period have run out. They start again when your plan renews."), and a call scheduled with notes starts
+  without them and says why. While a call is live each transcript clip also holds what writing its notes will cost at most,
+  so notes stop before the allowance is spent, not after, and the last note, written from what was transcribed before they
+  stopped, is the only way past it ([Plans and usage](plans-and-usage.md)).
 - **Lost lines stay lost.** Notes are written from the live transcript only. Speech that wasn't
   transcribed during the recording (NEAR AI down, a clip lost) isn't transcribed again from the stored
   audio afterwards.

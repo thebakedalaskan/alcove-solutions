@@ -46,3 +46,13 @@ export const FromTheTeamPage = page('/team', 'busy', {
 });
 /** The call couldn't be made: the modal stays, and says why. */
 export const StartFailed = page('/home', 'busy', { beforeEach: changing(troubled({ 'calls.startNow': 'failed' })), play: playing(open, press(/^Start now/, 'Start now')) });
+
+/*
+ * No notes left this period (docs/product/user-flows.md 16.10): starting or scheduling a call with notes on says so in caution, until
+ * the period renews, with Get Pro, and on Start now a way on without notes. A call scheduled after the period renews has notes
+ * again, so nothing is said there.
+ */
+/** Under the ways to start: No notes left until 20 November, with Get Pro and Start without notes. */
+export const NoNotesLeft = page('/home', 'plan-stopped', { play: playing(open) });
+export const NoNotesLeftPhone = phone(NoNotesLeft);
+/* Scheduling for this period says the same under its Notes row, on Calls: Pages/Scheduling, No notes left. */

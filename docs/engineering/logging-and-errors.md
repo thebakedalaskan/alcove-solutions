@@ -79,6 +79,7 @@ and optional `context` (logged, never sent) and `cause` (logged with its stack).
 | `NotFoundError` | `not-found` | 404 | info |
 | `ConflictError` (`ClientTakenError`) | `conflict` | 409 | info |
 | `TooLargeError` | `too-large` | 413 | info |
+| `PlanLimitError` | `plan-limit` | 402 | info |
 | `UnavailableError` (`LostConnectionError`, `DatabaseBusyError`) | `unavailable` | 503 | warn |
 | `InternalError` (`DatabaseError`, `ObjectStoreError`) | `unknown` | 500 | error |
 
@@ -111,6 +112,7 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
 - Rate limits answer `503 unavailable` ("Too many attempts. Wait a minute and try again.") and log the
   limit's name: `sign-in` (30 a minute) and `telemetry` (60 a minute) per client address, `transcribe`
   (240 a minute, calls and room recordings together; 40 for each voice in a call), `ask` (20 a minute, writing a note's notes again included) and `carry-over` (60 a minute) per account, and
+  `guest ask` and `guest catch-up` (6 a minute per guest: the organizer pays for them),
   `request-notes` (10 a minute), `others-point` (20 a minute), `screen-video` (60 a minute), and `share` and `share-ended`
   (30 a minute together) per person in a call, and `ring` (20 a minute) per organizer, `ring answer` and `rings` (30 a minute each) per
   account, `calls` (30 a minute) per account on everything that makes one, and `open rings` when a process holds all
@@ -137,9 +139,20 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   someone's waiting, or its time ran out. A piece that stopped arriving, or a read whose browser went while it
   waited, is an ordinary `503` at info, and so is its request's own line, `request refused`: a 5xx is `request failed` at error
   unless what answered it says it's an ordinary refusal.
-- An upload refused by a storage limit is an ordinary refusal at info: `409 conflict` for a full workspace or a day used up,
-  `400 invalid` for a file too big, with the limit's name, the sizes and the limit in its context. A piece that takes a workspace past 80% of its
-  limit logs `a workspace is past 80% of its storage` at warn, and one that takes someone's day past 80% logs `someone is past
+- Whatever a plan's limits refuse is an ordinary refusal at info, `402 plan-limit` with its `reason` in the context
+  (`notes`: the AI allowance is spent; `storage`: the account's storage is full), with IDs, sizes and kinds as its context, never an allowance, a balance or a title ([Plans and usage](plans-and-usage.md)).
+  Guests in a call who have spent their share of its organizer's allowance are refused the same way, with `why: 'guests'`,
+  after `guests in a call asked as much as its share allows` at info with the organizer's owner and the call's ID.
+- A purchase refused as it's asked for (`409 conflict`: a price that changed, a balance short of it; `400 invalid`: more
+  than one purchase buys) is an ordinary refusal at info, with the owner, what it buys and `why`. Its words say what it
+  costs, never the balance, since a refusal's message is its log line's.
+- An upload refused by a storage limit is an ordinary refusal at info: `402 plan-limit` for an account's storage that's full,
+  or, for someone other than whoever pays, for the room kept for the payer's notes (`why: 'kept for notes'`, with
+  `reserveBytes`); `409 conflict` for a day used up, theirs or what they can add to someone else's storage
+  (`media.others_day_bytes`, `media.guests_day_bytes`); `400 invalid` for a file too big, with the limit's name
+  (`plan.free.file_bytes`, `plan.free.storage_bytes`, …), the sizes (`usedBytes`, `addingBytes`) and the limit (`limitBytes`)
+  in its context. A recording that can't start for storage logs the same, for the room it would need.
+  A piece that takes an account past 80% of its storage logs `an account is past 80% of its storage` at warn, and one that takes someone's day past 80% logs `someone is past
   80% of what they can upload today`, once each time it's crossed, with IDs and sizes. Every instance logs `service limit
   changed` at info when it reads a new value, with `limit`, `old` and `new`, and `service limit ignored` or `service limit
   clamped` at warn, once, for a row it can't use or had to hold to its bounds, and `service limits not read; keeping what was in
@@ -150,6 +163,11 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   a flag; `feature flags not read; keeping what was in force` at warn. Each `feature-flags` command logs what it changed with the flag,
   group and counts, and `feature flags refused` at warn for a refusal. A flagged endpoint refusing logs at info with its `featureFlag`. No
   address or hash is ever logged.
+- Support's `billing` command (`service: 'alcove-billing'`) logs `balance added by support` at info with the owner and the
+  top-up it was named by, and `top-up added by support` with that top-up's ID and state; a refusal (nobody found, more than
+  one account, a top-up still watched, an amount that isn't one) logs `billing refused` at warn with its `code` or `why`, and
+  anything else `billing failed` at error. Never an amount, and never what was typed, which may be an address
+  ([Plans and usage › Support](plans-and-usage.md#support)).
 - Inside a TEE, start-up logs `secrets read` with the names of the settings read from Secret Manager (`component: 'gcp'`),
   never a value, and `attestation exchanged for an access token` with how long it lasts. Whatever stops it starting (a secret
   Secret Manager won't give, an attestation the Security Token Service refuses, or Cloud KMS refusing the master, each a

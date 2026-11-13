@@ -13,7 +13,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { WaysIn, type Auth, type Busy } from '~/features/welcome/WaysIn';
-import { returnToLink, takeLinkReturn } from '~/lib/afterSignIn';
+import { clearReturn, returnTo, takeReturnTo } from '~/lib/afterSignIn';
 import { sessionOrOffline } from '~/lib/guards';
 import { log } from '~/lib/log';
 import { q, useClaimNoteLink, useGoogleSignIn, useSignIn } from '~/lib/queries';
@@ -31,7 +31,7 @@ function takeSecret(): string | null {
     taken = r.success ? r.data : null;
     return taken;
   }
-  taken ??= takeLinkReturn();
+  taken ??= takeReturnTo('link')?.secret ?? null;
   return taken;
 }
 
@@ -94,14 +94,14 @@ export function NoteLinkPage() {
     google: () => {
       if (!secret) return;
       // In case Google takes the whole tab: the way back comes here again, to ask.
-      returnToLink(secret);
+      returnTo({ to: 'link', secret });
       setBusy('google');
       void googleSignIn.start().then(async (r) => {
         if (r === 'redirecting') return;
-        takeLinkReturn();
+        clearReturn();
         setBusy(null);
         if (r && 'session' in r) await ask();
-      }).catch((e: unknown) => { takeLinkReturn(); toast(errorMessage(e), { icon: 'x' }); setBusy(null); });
+      }).catch((e: unknown) => { clearReturn(); toast(errorMessage(e), { icon: 'x' }); setBusy(null); });
     },
     cancelGoogle: googleSignIn.cancel,
     go: async (provider: DemoProvider, email?: string) => {

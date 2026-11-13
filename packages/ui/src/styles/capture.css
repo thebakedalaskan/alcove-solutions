@@ -10,6 +10,10 @@
 .ac-capture-sign.is-stage.is-paused { background: rgb(255 255 255 / 0.1); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18); }
 .ac-capture-sign.is-unavailable { background: var(--caution-soft); color: var(--caution); }
 .ac-capture-sign.is-stage.is-unavailable { background: rgb(243 184 90 / 0.14); color: #F3B85A; box-shadow: inset 0 0 0 1px rgb(243 184 90 / 0.28); }
+/* Stopped by the organizer's plan: caution, with an empty ring where notes' dot would be. */
+.ac-capture-sign.is-stopped { gap: 8px; background: var(--caution-soft); color: var(--caution); }
+.ac-capture-sign.is-stopped .ring { flex: none; width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px currentColor; }
+.ac-capture-sign.is-stage.is-stopped { background: rgb(243 184 90 / 0.1); color: #F3B85A; box-shadow: none; }
 /* The organizer's own pause on its way: the mark breathes until the server answers. */
 .ac-capture-sign.is-changing .ac-i { animation: ac-capture-changing var(--duration-4) var(--ease-in-out) infinite alternate; }
 @keyframes ac-capture-changing { to { opacity: 0.35; } }

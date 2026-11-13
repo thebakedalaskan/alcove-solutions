@@ -2,7 +2,8 @@
  * CallOver: the page a call leaves you on, on the call's own night in both themes (Horizon moment `after`, the welcome page's
  * cove as its land). Who was in the call, or who's still in it, the title, one line, the notes and the buttons, the first one
  * filled; it never moves on by itself (docs/design/pages.md › After the call). A story per row of user-flows 7's table
- * (docs/product/user-flows.md › 7), with the notes as you left a call that goes on (on, paused or off), then the notes
+ * (docs/product/user-flows.md › 7), with the notes as you left a call that goes on (on, paused, off, or stopped by the
+ * organizer's plan), then the notes
  * turning and the page turning while you're on it, arriving from the call, a phone and the light theme. The app shows it in
  * place of the call, in Calls › Leaving and Journeys › 7.
  */
@@ -73,6 +74,26 @@ export const LeftItGoesOn: Story = {
 export const LeftNotesPaused: Story = { ...LeftItGoesOn, name: 'You left, notes paused', args: { ...LeftItGoesOn.args, notes: { kind: 'going', mode: 'paused' } } };
 /** Notes were on earlier and off as you left: you get what was written when it ends. */
 export const LeftNotesOff: Story = { ...LeftItGoesOn, name: 'You left, notes off', args: { ...LeftItGoesOn.args, notes: { kind: 'going', mode: 'off' } } };
+/**
+ * Your plan stopped the notes, and you left it going: it says so in caution, not that they're off, with the call's ways to more
+ * (docs/product/user-flows.md 16.9), Get Pro and 10 more hours for this period while they're offered, none filled, since
+ * Rejoin is the page's.
+ */
+const moreNotes = (
+  <>
+    <Button variant="secondary" size="sm" onClick={did('Get Pro')}>Get Pro</Button>
+    <Button variant="secondary" size="sm" onClick={did('Add 10 hours · $15')}>Add 10 hours · $15</Button>
+  </>
+);
+export const LeftNotesStopped: Story = {
+  ...LeftItGoesOn, name: 'You left, your plan stopped the notes',
+  args: { ...LeftItGoesOn.args, notes: { kind: 'going', mode: 'off', stopped: { said: 'Your notes for this period have run out. What was said until then is in the notes.', ways: moreNotes } } }
+};
+/** Someone else's call, stopped by its organizer's plan: whose notes ran out, and nothing to buy. */
+export const LeftTheirNotesStopped: Story = {
+  ...LeftItGoesOn, name: 'You left, the organizer’s plan stopped the notes',
+  args: { ...LeftItGoesOn.args, notes: { kind: 'going', mode: 'off', stopped: { said: 'Priya’s notes for this period have run out. What was said until then is in the notes.' } } }
+};
 /** You hosted, and left it with Kofi: he hosts until you're back. */
 export const LeftWithSomeone: Story = {
   name: 'You hosted, and left it with someone',

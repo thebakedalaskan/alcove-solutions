@@ -1,6 +1,6 @@
 /*
- * The app's building blocks: cards and widgets, navigation, the palette's line, fields, notes and transcript lines, note
- * cards, Read more, the mic level, and what a transcript isn't sure of.
+ * The app's building blocks: cards and widgets, navigation and a paid plan's small sun, the palette's line, fields, notes
+ * and transcript lines, note cards, Read more, the mic level, and what a transcript isn't sure of.
  */
 import { forwardRef, useEffect, useId, useRef, useState, type CSSProperties, type HTMLAttributes, type InputHTMLAttributes, type MouseEvent, type ReactNode, type Ref } from 'react';
 import { cn } from '../cn';
@@ -79,6 +79,18 @@ export function SidebarNav({ label = 'Main', children, className }: { label?: st
 /** What goes inside a nav link: the icon, the label and an optional count. */
 export function NavItemContent({ icon, label, count }: { icon: IconName; label: string; count?: number | undefined }) {
   return <><Icon name={icon} /><span>{label}</span>{count ? <span className="count">{count}</span> : null}</>;
+}
+
+/**
+ * A paid plan's own small sun, in the side panel's icon column: a 12px half sun on a 16px hairline, with a glint under
+ * it. `setting` sinks it to half of that, for a plan about to end. Drawn, so it never stands for anything you press.
+ */
+export function SunMark({ state = 'up', className }: { state?: 'up' | 'setting' | undefined; className?: string | undefined }) {
+  return (
+    <span className={cn('sb-sun', state === 'setting' && 'is-setting', className)} aria-hidden="true">
+      <span className="sky"><i className="sun" /></span><i className="line" /><i className="g" />
+    </span>
+  );
 }
 
 /** A labelled text input, for the rare places that need one. A dialog asks one thing at a time: several questions are steps of one modal, not a stack of fields. */
@@ -162,6 +174,17 @@ export function TranscriptLine({ time, person, name, tools, children, className,
       <span className="nd-la">{person && <Avatar person={person} size={24} />}</span>
       <div className="nd-lb">{name && <p className="nd-ln">{name}</p>}<p className="nd-lp">{children}</p></div>
       <div className="nd-lx">{tools}</div>
+    </div>
+  );
+}
+
+/** Show N more under a list, and Show fewer once it's all shown: a quiet text button, centred under the rows. */
+export function ShowMore({ all, more, onToggle, className }: { all: boolean; more: number; onToggle: () => void; className?: string | undefined }) {
+  return (
+    <div className={cn('ac-more', className)}>
+      <button type="button" className="lk" aria-expanded={all} onClick={onToggle}>
+        {all ? 'Show fewer' : `Show ${more} more`}<Icon name={all ? 'up' : 'down'} size={15} />
+      </button>
     </div>
   );
 }

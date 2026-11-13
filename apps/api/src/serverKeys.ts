@@ -22,7 +22,7 @@ import type { Deps } from './context';
 import { b64u, deriveIndexKey, equalBytes, fromUtf8, openRecord, photoTokenKey, random, sealJson, serverKeysKey, unb64u } from './crypto';
 import { bytea, exec, maybeOne, rows, tx, type Db } from './db';
 import { ConflictError, IntegrityError, InternalError, KeyError } from './errors';
-import { opensBilling } from './features/billing/service';
+import { opensAccounting } from './features/billing/plans';
 import { log } from './log';
 import { legacyMasterKey, masterKey, openRoot, sealRoot } from './owners';
 
@@ -132,7 +132,7 @@ const stored = async (db: Db, master: Uint8Array): Promise<Bundle | undefined> =
 
 /**
  * The old keys open what the database has under them, else carrying them over would lock everyone out: the old master
- * opens accounts' root keys, root checks and all, and KSERVICE their billing.
+ * opens accounts' root keys, root checks and all, and KSERVICE their billing: their plans, and their credits from before plans.
  */
 async function believe(db: Db, legacy: LegacyKeys): Promise<void> {
   const owners = await rows(db, z.object({ owner_id: z.string(), root_envelope: bytea, root_check: bytea }),
@@ -144,13 +144,17 @@ async function believe(db: Db, legacy: LegacyKeys): Promise<void> {
   }
   kmaster.fill(0);
   if (failed) throw new KeyError('The old KMASTER doesn’t open this database’s accounts.', { context: { checked: owners.length, failed } });
-  const bills = await rows(db, z.object({ owner_id: z.string(), state_ciphertext: bytea }),
-    'SELECT owner_id, state_ciphertext FROM billing_accounts ORDER BY owner_id LIMIT $1', [CHECKED]);
+  // Accounts' plans, and their credits from before plans, which are still stored.
+  const Sealed = z.object({ owner_id: z.string(), state_ciphertext: bytea });
+  const plans = await rows(db, Sealed, 'SELECT owner_id, state_ciphertext FROM plan_accounts ORDER BY owner_id LIMIT $1', [CHECKED]);
+  const credits = await rows(db, Sealed, 'SELECT owner_id, state_ciphertext FROM billing_accounts ORDER BY owner_id LIMIT $1', [CHECKED]);
   const kservice = unb64u(legacy.kservice, 32);
-  const unread = bills.filter((b) => !opensBilling(kservice, b.owner_id, b.state_ciphertext)).length;
+  const unread = plans.filter((b) => !opensAccounting(kservice, 'plan-account', b.owner_id, b.state_ciphertext)).length
+    + credits.filter((b) => !opensAccounting(kservice, 'billing', b.owner_id, b.state_ciphertext)).length;
   kservice.fill(0);
-  if (unread) throw new KeyError('The old KSERVICE doesn’t open this database’s billing.', { context: { checked: bills.length, failed: unread } });
-  klog.info('old keys open the accounts', { checked: owners.length, billing: bills.length });
+  const billing = plans.length + credits.length;
+  if (unread) throw new KeyError('The old KSERVICE doesn’t open this database’s billing.', { context: { checked: billing, failed: unread } });
+  klog.info('old keys open the accounts', { checked: owners.length, billing });
 }
 
 /**

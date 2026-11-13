@@ -25,6 +25,7 @@ import { log } from '../../log';
 import { findItem, listItems, type Loaded } from '../../vault';
 import { me, profile } from '../account/account';
 import { resolveModel } from './models';
+import { meterFor } from '../billing/meter';
 import { DOUBT, fenced, lineFor, oneLine, type Standing } from './drafting';
 import { entriesOf } from './backing';
 import { MeetingManifest, all as allMeetings, toMeeting } from '../meetings/service';
@@ -314,7 +315,7 @@ export async function ask(o: Owner, seriesId: string, question: string, timeZone
   // The asker's own choice of model.
   const via = await resolveModel(o.cfg, (await profile(o)).preferences.model);
   for (const source of read) await recordUnencryptedUse(source.owner, source.note.itemId, via);
-  const reply = Reply.safeParse(await completeJson(o.cfg, [
+  const reply = Reply.safeParse(await completeJson(o.cfg, meterFor(o, { payer: o.ownerId, spend: 'series', whose: 'yours' }), [
     { role: 'system', content: ASK_PROMPT },
     { role: 'user', content: `Series: ${read[0]?.note.manifest.title ?? ''}\nMeetings, newest first:\n\n${calls.join('\n\n')}\n\nAsked by: ${called(asker)}\nQuestion: ${question}` }
   ], { what: 'ask-series', maxTokens: 1200, timeoutMs: 60_000, via }));

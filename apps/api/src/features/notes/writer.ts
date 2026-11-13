@@ -19,14 +19,14 @@ import { z } from 'zod';
 import type { Deps, Owner } from '../../context';
 import { id128, openJson, sealJson, toJson } from '../../crypto';
 import { bytea, exec, maybeOne, tx } from '../../db';
-import { NotFoundError, UnansweredError, UnverifiedError } from '../../errors';
-import { inference, type ChatModel } from '../../inference';
+import { NotFoundError, PlanLimitError, UnansweredError, UnverifiedError } from '../../errors';
+import { inference, lostOnceSent, type ChatModel, type Meter } from '../../inference';
 import { log } from '../../log';
 import { openOwner } from '../../owners';
 import { getItem, lockItem, pruneRevisions } from '../../vault';
 import { me, profile } from '../account/account';
-import { purgeAudio, queueDelete, segments } from '../recordings/audio';
-import * as billing from '../billing/service';
+import { purgeAudio, queueDelete } from '../recordings/audio';
+import { close, meterFor, type Source } from '../billing/meter';
 import * as models from './models';
 import { attachments, briefOf, draft, revisited, roomBriefOf, writeDetails, type BriefBoard, type NotesStyle, type PickWhy, type Settled, type Written } from './drafting';
 import { doneInNotes } from '../calls/live-notes';
@@ -127,17 +127,17 @@ const boardsIn = (read: readonly BoardRead[]) => (place: string): BriefBoard[] =
  * and only then does the room go without. A room where nothing was said while notes were on keeps its section with no
  * notes, and nothing is sent for it.
  */
-async function writeRooms(o: Owner, m: NoteManifest, organizer: Person, style: NotesStyle, boards: (place: string) => BriefBoard[], via: ChatModel, renew: () => Promise<void>, ctx: Record<string, string | number>): Promise<RoomsWritten> {
+async function writeRooms(o: Owner, meter: Meter, m: NoteManifest, organizer: Person, style: NotesStyle, boards: (place: string) => BriefBoard[], via: ChatModel, renew: () => Promise<void>, ctx: Record<string, string | number>): Promise<RoomsWritten> {
   const said = m.rooms.flatMap((r, i) => (r.transcript.length ? [{ r, i }] : []));
   const rooms = await inTurns(said, ROOMS_AT_ONCE, async ({ r, i }): Promise<RoomWritten> => {
     for (let tried = 1; ; tried++) {
       // Each request is a fresh lease on the job, so another worker doesn't take it while rooms are written.
       await renew();
       try {
-        return { id: r.id, notes: await draft(o.cfg, { ...roomBriefOf(m, r, organizer), ticks: m.ticked.filter((t) => t.room === r.id), boards: boards(r.id), via }, tried > 1 ? { ...style, brief: true } : style) };
+        return { id: r.id, notes: await draft(o.cfg, meter, { ...roomBriefOf(m, r, organizer), ticks: m.ticked.filter((t) => t.room === r.id), boards: boards(r.id), via }, tried > 1 ? { ...style, brief: true } : style) };
       } catch (e) {
         // Waiting for the notes model, or a note deleted meanwhile, is the whole job's; anything else is this room's alone.
-        if (e instanceof UnverifiedError || e instanceof UnansweredError || e instanceof NotFoundError) throw e;
+        if (e instanceof UnverifiedError || e instanceof UnansweredError || e instanceof NotFoundError || e instanceof PlanLimitError) throw e;
         if (tried < ATTEMPTS) { wlog.info('a breakout room’s notes came back unusable; asking again', { ...ctx, room: i, tried, err: e }); continue; }
         wlog.warn('a breakout room’s notes could not be written; the rest are written without them', { ...ctx, room: i, tried, err: e });
         return { id: r.id, failed: true };
@@ -181,11 +181,11 @@ function keepPointedAt(was: NoteManifest, next: NoteManifest): NoteManifest {
 
 /**
  * Writes the notes into the note, each breakout room's too (or finishes it without them, with its shared screens read
- * when they were), charges for them and closes the job, together. The charge is for the minutes recorded, not the
- * length of the call: time with notes off is free. Whenever they're written, what people already added, confirmed or
- * changed stays, in the call's notes and each room's, even if the first try never wrote anything; notes written again
- * (the organizer asked, after correcting the transcript) aren't charged again, and when they can't be written, the notes
- * stay as they were. `writtenAt` says when the notes read the transcript, so a correction made since is offered for
+ * when they were), and closes the job, together. What writing them cost was charged to the organizer's AI allowance as
+ * each request was answered (features/billing/meter.ts), and what the call held for them is let go once they're saved.
+ * Whenever they're written, what people already added, confirmed or changed stays, in the call's notes and each room's,
+ * even if the first try never wrote anything; when notes written again (the organizer asked, after correcting the
+ * transcript) can't be written, they stay as they were. `writtenAt` says when the notes read the transcript, so a correction made since is offered for
  * writing them again. Follow-ups ticked during the call are done in whichever part of the notes is written, and wait for
  * the ones that aren't.
  *
@@ -206,15 +206,14 @@ function keepPointedAt(was: NoteManifest, next: NoteManifest): NoteManifest {
 async function settle(o: Owner, jobId: string, noteId: string, was: NotesJob['was'], wrote: Wrote | undefined, shown?: ScreenMoment[] | undefined, left: string[] = []): Promise<boolean> {
   const any = Boolean(wrote?.notes) || Boolean(wrote?.rooms.written);
   let call = false;
+  let source: Source | null = null;
   const leftover = await tx(o.pool, async (c) => {
     // Holding the note, as stopping the job does: a job that's gone saves nothing.
     await lockItem(o, c, noteId);
     if (!(await exec(c, 'SELECT 1 FROM content_jobs WHERE owner_id = $1 AND job_id = $2 FOR UPDATE', [o.ownerId, jobId]))) return null;
-    let first = true;
     // Breakout rooms join the chapters the notes wrote, in order: the call's note covers the rooms too.
     // The notes model's verifications join the ones the transcript went to.
     const write = (m: NoteManifest): NoteManifest => {
-      first = m.writtenAt === null;
       const rooms = roomChapters(m.breakouts);
       const chapters = [...(wrote?.notes?.chapters ?? m.chapters), ...rooms]
         .filter((x, i, all) => all.findIndex((y) => y.at === x.at && y.title === x.title && y.summary === x.summary) === i)
@@ -256,12 +255,8 @@ async function settle(o: Owner, jobId: string, noteId: string, was: NotesJob['wa
     };
     const next = await updateNote(o, c, noteId, saved);
     call = next.kind === 'call';
+    source = sourceOf(next);
     await exec(c, 'DELETE FROM content_jobs WHERE owner_id = $1 AND job_id = $2', [o.ownerId, jobId]);
-    if (any && first) {
-      const recorded = next.recorded ?? (await segments(o, next.recordingId, c)).reduce((n, s) => n + s.seconds, 0);
-      const minutes = Math.max(1, Math.ceil(recorded / 60));
-      await billing.charge({ cfg: o.cfg }, c, o.ownerId, { amount: minutes * billing.PER_MINUTE, label: `Notes, ${minutes} min` });
-    }
     if (any && !next.keep.transcript) {
       const revisions = await pruneRevisions(o, c, noteId);
       await exec(c, 'DELETE FROM operations WHERE owner_id = $1', [o.ownerId]);
@@ -272,11 +267,16 @@ async function settle(o: Owner, jobId: string, noteId: string, was: NotesJob['wa
     return [...unkept, ...await screens.dropUnused(o, c, noteId, left, new Set(next.screens.map((m) => m.id)))];
   });
   if (!leftover) return false;
+  // Written: what the call or recording held of the organizer's allowance for its notes goes.
+  if (source) await close(o, o.ownerId, source);
   // Final now: whoever has these notes and exports calls to Google Drive sends them at once, not at the next upkeep.
   if (call) noteFinal(o, o.ownerId, noteId);
   await queueDelete(o, leftover);
   return true;
 }
+
+/** What a note's charges belong to, for the AI allowance: its call's recording, or its room recording. */
+const sourceOf = (m: Pick<NoteManifest, 'kind' | 'recordingId'>): Source => ({ kind: m.kind === 'call' ? 'call' : 'recording', id: m.recordingId });
 
 /** An unencrypted model's work on a note, which no evidence records: nothing for a private one. */
 const usesOf = (via: ChatModel, tasks: UnencryptedUse['task'][]): UnencryptedUse[] => (via.private ? [] : tasks.map((task) => ({ model: via.model, task, at: new Date().toISOString() })));
@@ -305,7 +305,7 @@ function revisitsAfter(was: Revisit[], fresh: Revisit[], decisions: Decision[]):
  * model that found them joins the note's verifications, as the notes' does. What was said is as the notes read it,
  * `read`: a call set not to keep its transcript has just lost it, and it goes no further than this request.
  */
-async function compareWithEarlier(o: Owner, noteId: string, read: NoteManifest, organizer: Person, via: ChatModel, ctx: Record<string, string | number>): Promise<void> {
+async function compareWithEarlier(o: Owner, meter: Meter, noteId: string, read: NoteManifest, organizer: Person, via: ChatModel, ctx: Record<string, string | number>): Promise<void> {
   try {
     const { manifest: written } = await getItem(o, o.pool, 'note', noteId, NoteManifest, 'Those notes');
     const m: NoteManifest = { ...written, transcript: read.transcript, rooms: written.rooms.map((r) => ({ ...r, transcript: read.rooms.find((x) => x.id === r.id)?.transcript ?? r.transcript })) };
@@ -320,7 +320,7 @@ async function compareWithEarlier(o: Owner, noteId: string, read: NoteManifest, 
       return;
     }
     const t0 = performance.now();
-    const { found, evidence } = await revisited(o.cfg, { ...briefOf(m, organizer, m.invited.map((e) => personOf(e))), via }, decisions, earlier);
+    const { found, evidence } = await revisited(o.cfg, meter, { ...briefOf(m, organizer, m.invited.map((e) => personOf(e))), via }, decisions, earlier);
     const fresh = found.map((r): Revisit => ({ ...r, id: id128(), dismissed: null }));
     await tx(o.pool, (c) => updateNote(o, c, noteId, (n) => (!fresh.length && !n.revisits.length ? n : {
       ...n, revisits: revisitsAfter(n.revisits, fresh, decisionsOf(n)),
@@ -354,6 +354,9 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
     });
     const lines = note.manifest.transcript?.length ?? 0;
     const at = { ...ctx, noteId, recordingId, lines, seconds: note.manifest.duration };
+    // The organizer pays, or whoever recorded the room. Writing the notes the first time is never refused: it's what was
+    // transcribed before notes stopped, and the one way past their allowance. Writing them again is as anything else is.
+    const meter = meterFor(o, { payer: o.ownerId, spend: 'notes', whose: 'yours', source: sourceOf(note.manifest), final: was === null });
     // A presenter's last piece can still come in for a little while after the call (screens.SHARE_TAIL_MS): the job
     // waits for it, without using an attempt.
     const tail = await screens.tailEndsAt(o, recordingId, note.manifest.duration);
@@ -435,14 +438,14 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
           await exec(d.pool, 'UPDATE content_jobs SET job_ciphertext = $3 WHERE owner_id = $1 AND job_id = $2', [job.owner_id, job.job_id, sealJson(jobKey(o, noteId), jobHeader(o, noteId), toJson(next))]);
         };
         const done = await screens.analyze(o, noteId, recordingId, {
-          lines: note.manifest.transcript ?? [], shares, via, progress: stored.screens ?? { picks: null, skip: [], evidence: [] }, save, renew
+          lines: note.manifest.transcript ?? [], shares, via, meter, progress: stored.screens ?? { picks: null, skip: [], evidence: [] }, save, renew
         });
         analysed = { shown: done.shown, grids: done.grids, why: done.why, left: done.left };
         ({ shown, grids, why, left } = done);
         screenEvidence = done.evidence;
       }
       if (note.manifest.screens.length) {
-        const frames = await screens.readAll(o, noteId, recordingId);
+        const frames = await screens.readAll(o, meter, noteId, recordingId);
         // A call may span the deployment: retain its earlier frames beside the new video's analysis. Frames already
         // present in that analysis keep its current judgement; nothing judged the stored-only captures before.
         const current = new Set(shown.map((m) => m.id));
@@ -462,17 +465,17 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
       // everyone the note went to can open, because one summary goes to them all, the people it was shared with since included.
       const boards = boardsIn(await boardsToRead(o, note.manifest.workedOn, everyoneWith(note.manifest, organizer.email), at));
       // Each breakout room's notes, from what was said there alone.
-      const rooms = await writeRooms(o, note.manifest, organizer, style, boards, via, renew, at);
+      const rooms = await writeRooms(o, meter, note.manifest, organizer, style, boards, via, renew, at);
       if (!lines) {
         if (!(await settle(o, job.job_id, noteId, was, { rooms, readAt, screens: screenEvidence }, shown, analysed?.left))) { await stopped('saving'); return; }
         wlog.info(rooms.written ? 'only breakout rooms were transcribed; their notes written' : 'nothing was transcribed; note finished without notes',
           { ...at, screens: shown.length, rooms: note.manifest.rooms.length, roomsWritten: rooms.written });
-        await compareWithEarlier(o, noteId, note.manifest, organizer, via, at);
+        await compareWithEarlier(o, meter, noteId, note.manifest, organizer, via, at);
         return;
       }
       await renew();
       const brief = { ...briefOf(note.manifest, organizer, note.manifest.invited.map((e) => personOf(e))), screens: shown, grids, why, ticks: note.manifest.ticked.filter((t) => t.room === null), boards: boards(MAIN_PLACE), via };
-      const notes = await draft(o.cfg, brief, style);
+      const notes = await draft(o.cfg, meter, brief, style);
       // The full summary, from the notes just written: without it, the notes stand as they are.
       await renew();
       const t1 = performance.now();
@@ -480,7 +483,7 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
       try {
         // Each breakout room by what its notes just said.
         const sections = note.manifest.rooms.map((r) => { const w = rooms.rooms.find((x) => x.id === r.id); return w && 'notes' in w ? { ...r, summary: w.notes.summary } : r; });
-        ({ details: notes.details, evidence: details } = await writeDetails(o.cfg, { ...brief, rooms: sections }, notes, style));
+        ({ details: notes.details, evidence: details } = await writeDetails(o.cfg, meter, { ...brief, rooms: sections }, notes, style));
         wlog.info('full summary written', { ...at, chars: notes.details.length, model: via.model, encrypted: via.private, ms: Math.round(performance.now() - t1) });
       } catch (e) {
         wlog.warn('full summary not written; the notes stand without it', { ...at, model: via.model, err: e });
@@ -491,17 +494,25 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
         screenRefs: [...notes.decisions, ...notes.questions, ...notes.actions, ...notes.chapters].filter((x) => x.screen).length,
         rooms: note.manifest.rooms.length, roomsWritten: rooms.written, model: via.model, encrypted: via.private, ms: Math.round(performance.now() - t0)
       });
-      await compareWithEarlier(o, noteId, note.manifest, organizer, via, at);
+      await compareWithEarlier(o, meter, noteId, note.manifest, organizer, via, at);
     } catch (e) {
       if (e instanceof Cancelled) { await stopped('writing'); return; }
       if (e instanceof NotFoundError) { await drop('note deleted while its notes were written'); return; }
-      if (e instanceof UnverifiedError || e instanceof UnansweredError) {
-        // Unverified: nothing was sent (an outage at Intel or NVIDIA, or NEAR AI out of date). Unanswered: NEAR AI
-        // timed out, couldn't be reached or was busy. Neither is the note's fault, so neither uses the attempts up.
+      if (e instanceof UnverifiedError || (e instanceof UnansweredError && !lostOnceSent(e))) {
+        // Unverified: nothing was sent (an outage at Intel or NVIDIA, or NEAR AI out of date). Unanswered: NEAR AI couldn't
+        // be reached or was busy, and nothing was charged. Neither is the note's fault, so neither uses the attempts up. A
+        // request that timed out once it was sent was charged what it held, so it does (below): notes that keep timing out
+        // are finished without a summary after ATTEMPTS, or written again stay as they were, never charged without end.
         wlog.warn(e instanceof UnverifiedError ? 'notes waiting for the notes model to check out' : 'notes waiting for the notes model to answer', { ...at, retryInS: VERIFY_AGAIN_SECONDS, err: e });
         await exec(d.pool, `UPDATE content_jobs SET state = 'waiting', attempt = $3, lease_until = now() + make_interval(secs => $4) WHERE owner_id = $1 AND job_id = $2`,
           [job.owner_id, job.job_id, job.tried, VERIFY_AGAIN_SECONDS]);
         setTimeout(() => kick(d, job.owner_id), VERIFY_AGAIN_SECONDS * 1000 + 250).unref();
+        return;
+      }
+      if (e instanceof PlanLimitError) {
+        // Written again once the organizer's notes ran out: they stay as they were, and trying again won't change that.
+        wlog.info('notes not written again: the organizer’s notes have run out', at);
+        if (!(await settle(o, job.job_id, noteId, was, undefined, await readSoFar(), analysed?.left))) await stopped('finishing');
         return;
       }
       if (job.attempt >= ATTEMPTS) {

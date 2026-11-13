@@ -48,6 +48,8 @@ export const WRAPPED_UP_S = 40;
 export const UNENCRYPTED_MODEL = 'acme/vision-elsewhere';
 /** A model that takes text and images, unencrypted, and costs more than a model on offer may. */
 export const PRICEY_MODEL = 'acme/vision-pricey';
+/** A model that takes text and images, unencrypted, whose price the catalog gives for input alone: offered, and charged at the fallback. */
+export const HALF_PRICED_MODEL = 'acme/vision-half-priced';
 /** A model the catalog lists as reading images, with its own endpoint, whose evidence never checks out: NEAR AI sends no report for it. */
 export const UNVERIFIED_VISION_MODEL = 'acme/vision-unverified';
 
@@ -111,6 +113,14 @@ export interface FakeNear {
    * request, whatever it holds, so what reads a screen goes on working.
    */
   failNext(n: number, how: Failure, only?: string | undefined): void;
+  /** The next `n` chat replies don't say what they used, as a provider sometimes doesn't. */
+  withoutUsageNext(n: number): void;
+  /** The next read of the catalog waits for this before it's answered, as a slow or stuck catalog does. */
+  holdCatalogNext(then: () => Promise<void>): void;
+  /** The next chat reply says this many of its prompt's tokens were cached (at most all of them), as NEAR AI does for a prompt it has seen. */
+  cachedNext(tokens: number): void;
+  /** The next transcription says what it used, as NEAR AI may: tokens in and out. */
+  speechUsageNext(usage: { input: number; output: number }): void;
   /** The next request for a call's full summary comes back in the wrong shape (the notes are written as usual). */
   failDetailsNext(): void;
   /** The next chat reply takes this long, as a busy model does. */
@@ -181,7 +191,7 @@ function speechIn(wav: Buffer): { words: string; language: string; sure: boolean
 }
 
 /** Whisper's answer to a multipart transcription request. */
-async function transcription(contentType: string, body: Uint8Array, calls: FakeNear['calls'], heard: FakeNear['transcriptions'], path: string, encryption: 'ohttp' | 'none', key: string | null): Promise<{ status: number; body: unknown }> {
+async function transcription(contentType: string, body: Uint8Array, calls: FakeNear['calls'], heard: FakeNear['transcriptions'], path: string, encryption: 'ohttp' | 'none', key: string | null, usage: { input: number; output: number } | null): Promise<{ status: number; body: unknown }> {
   const form = await new Request('http://fake', { method: 'POST', headers: { 'content-type': contentType }, body: new Uint8Array(body) }).formData();
   const file = form.get('file');
   const model = str(form.get('model'));
@@ -202,7 +212,13 @@ async function transcription(contentType: string, body: Uint8Array, calls: FakeN
     avg_logprob: x.unclear ? -0.8 : speech?.sure === false ? -0.45 : -0.2, compression_ratio: 1.1, no_speech_prob: null
   }));
   // The language it was told, or the one it hears.
-  return { status: 200, body: { text: said.map((x) => x.text).join(''), duration: String(seconds), language: asked.language ?? speech?.language ?? 'en', segments, id: `trans-${randomUUID()}` } };
+  return {
+    status: 200,
+    body: {
+      text: said.map((x) => x.text).join(''), duration: String(seconds), language: asked.language ?? speech?.language ?? 'en', segments, id: `trans-${randomUUID()}`,
+      ...(usage ? { usage: { input_tokens: usage.input, output_tokens: usage.output } } : {})
+    }
+  };
 }
 
 interface Shown { n: number; at: number; title: string; parts: number }
@@ -582,6 +598,14 @@ export async function startFakeNear(): Promise<FakeNear> {
   const chats: FakeNear['chats'] = [];
   const transcriptions: FakeNear['transcriptions'] = [];
   let failing = 0;
+  /** How many of the next chat replies leave out what they used. */
+  let unsaid = 0;
+  let catalogHold: (() => Promise<void>) | null = null;
+  /** How many of the next chat reply's prompt tokens it says were cached. */
+  let cached = 0;
+  /** What the next transcription says it used. */
+  let speechUsage: { input: number; output: number } | null = null;
+  const takeSpeechUsage = () => { const u = speechUsage; speechUsage = null; return u; };
   let failure: Failure = 'down';
   let failingOnly: string | undefined;
   let detailsFailing = false;
@@ -701,11 +725,16 @@ export async function startFakeNear(): Promise<FakeNear> {
       if (detailsFailing && system.startsWith('You write the full summary')) { detailsFailing = false; content = JSON.stringify({ details: '' }); }
       else content = JSON.stringify(notesReply(model, system, user, sent, memory));
     }
+    // What it used, as NEAR AI says, unless it was told to leave that out: cached tokens too, when told to say some were.
+    const promptTokens = Math.round(user.length / 4);
+    const hit = Math.min(cached, promptTokens);
+    cached = 0;
+    const said = unsaid > 0 ? (unsaid--, {}) : { usage: { prompt_tokens: promptTokens, completion_tokens: 200, ...(hit > 0 ? { prompt_tokens_details: { cached_tokens: hit } } : {}) } };
     return {
       status: 200,
       body: {
         id: `chatcmpl-${randomUUID().replace(/-/g, '')}`, object: 'chat.completion', model, created: Math.floor(Date.now() / 1000),
-        choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: finish }], usage: { prompt_tokens: Math.round(user.length / 4), completion_tokens: 200 }
+        choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: finish }], ...said
       }
     };
   }
@@ -728,7 +757,7 @@ export async function startFakeNear(): Promise<FakeNear> {
       // model's attested key signed opens a request, so what opens was sealed to that attested key.
       if (req.method === 'POST' && url.pathname === '/direct/whisper/ohttp') {
         return direct(res, req, body, 'transcript', async (inner) => (inner.method === 'POST' && inner.path === '/v1/audio/transcriptions'
-          ? transcription(inner.headers.get('content-type') ?? '', inner.body, calls, transcriptions, inner.path, 'ohttp', hex(models.transcript.key)) : { status: 404, body: { error: { message: 'Not found' } } }));
+          ? transcription(inner.headers.get('content-type') ?? '', inner.body, calls, transcriptions, inner.path, 'ohttp', hex(models.transcript.key), takeSpeechUsage()) : { status: 404, body: { error: { message: 'Not found' } } }));
       }
       if (req.method === 'POST' && url.pathname === '/direct/glm/ohttp') {
         return direct(res, req, body, 'notes', async (inner) => (inner.method === 'POST' && inner.path === '/v1/chat/completions'
@@ -747,14 +776,16 @@ export async function startFakeNear(): Promise<FakeNear> {
       // The catalog, as NEAR AI's lists it: what each model takes. Only the ones that take images and have their own
       // endpoint can read shared screens; one entry is broken, as a list from elsewhere can be.
       if (req.method === 'GET' && url.pathname === '/v1/models') {
+        if (catalogHold) { const then = catalogHold; catalogHold = null; await then(); }
         const entry = (id: string, name: string, input: string[], extra: Record<string, unknown> = {}) =>
-          ({ id, object: 'model', name, owned_by: id.split('/')[0], input_modalities: input, output_modalities: ['text'], architecture: { inputModalities: input, outputModalities: ['text'] }, pricing: { input: 1 }, supported_sampling_parameters: ['temperature', 'max_tokens'], supported_features: ['json_mode'], ...extra });
+          ({ id, object: 'model', name, owned_by: id.split('/')[0], input_modalities: input, output_modalities: ['text'], architecture: { inputModalities: input, outputModalities: ['text'] }, supported_sampling_parameters: ['temperature', 'max_tokens'], supported_features: ['json_mode'], pricing: { input: 1, output: 4 }, ...extra });
         return send(res, 200, { object: 'list', data: [
-          entry(NOTES_MODEL, 'DeepSeek V4.1 Flash 1017', ['text', 'image'], { is_ready: true, pricing: { input: 0.3 } }),
-          entry(PRICEY_MODEL, 'Vision Pricey', ['text', 'image'], { pricing: { input: 3 } }), entry('acme/vision-unpriced', 'Vision Unpriced', ['text', 'image'], { pricing: null }),
-          entry('acme/images-only', 'Images Only', ['image'], { pricing: { input: 0.1 } }), entry(VISION_MODEL, 'Qwen3 VL Test', ['text', 'image'], { is_ready: true }), entry(UNVERIFIED_VISION_MODEL, 'Vision Unverified', ['text', 'image'], { is_ready: true }),
-          entry('acme/text-only', 'Text Only', ['text']), entry(UNENCRYPTED_MODEL, 'Vision Elsewhere', ['text', 'image'], { pricing: { input: 0.5 }, supported_sampling_parameters: ['max_tokens'] }), entry('acme/bad-host', 'Bad Host', ['text', 'image']),
-          entry('acme/not-ready', 'Not Ready', ['text', 'image'], { is_ready: false }), entry(STT_MODEL, 'Whisper Large v3', ['audio']), { id: 7, name: null }
+          entry(NOTES_MODEL, 'DeepSeek V4.1 Flash 1017', ['text', 'image'], { is_ready: true, pricing: { input: 0.3, output: 1.2, input_cache_read: '0.000000006' } }),
+          entry(PRICEY_MODEL, 'Vision Pricey', ['text', 'image'], { pricing: { input: 3, output: 12 } }), entry('acme/vision-unpriced', 'Vision Unpriced', ['text', 'image'], { pricing: null }),
+          entry(HALF_PRICED_MODEL, 'Vision Half Priced', ['text', 'image'], { pricing: { input: 0.5 } }),
+          entry('acme/images-only', 'Images Only', ['image'], { pricing: { input: 0.1, output: 0.4 } }), entry(VISION_MODEL, 'Qwen3 VL Test', ['text', 'image'], { is_ready: true }), entry(UNVERIFIED_VISION_MODEL, 'Vision Unverified', ['text', 'image'], { is_ready: true }),
+          entry('acme/text-only', 'Text Only', ['text']), entry(UNENCRYPTED_MODEL, 'Vision Elsewhere', ['text', 'image'], { pricing: { input: 0.5, output: 2 }, supported_sampling_parameters: ['max_tokens'] }), entry('acme/bad-host', 'Bad Host', ['text', 'image']),
+          entry('acme/not-ready', 'Not Ready', ['text', 'image'], { is_ready: false }), entry(STT_MODEL, 'Whisper Large v3', ['audio'], { pricing: { input: 0.01, output: 0.01 } }), { id: 7, name: null }
         ] });
       }
       if (req.method === 'GET' && url.pathname === '/v1/attestation/report') {
@@ -778,7 +809,7 @@ export async function startFakeNear(): Promise<FakeNear> {
       // What real NEAR AI's gateway also takes, in plaintext. Alcove sends speech nowhere but the model's own endpoint, and
       // chat here only for a model an organizer chose that isn't private (no endpoint of its own).
       if (req.method === 'POST' && url.pathname === '/v1/audio/transcriptions') {
-        const t = await transcription(req.headers['content-type'] ?? '', body, calls, transcriptions, url.pathname, 'none', null);
+        const t = await transcription(req.headers['content-type'] ?? '', body, calls, transcriptions, url.pathname, 'none', null, takeSpeechUsage());
         return send(res, t.status, t.body);
       }
       if (req.method === 'POST' && url.pathname === '/v1/chat/completions') {
@@ -835,6 +866,10 @@ export async function startFakeNear(): Promise<FakeNear> {
     },
     verdictLifetime(seconds) { n.lifetime = seconds; },
     failNext(count, how, only) { failing = count; failure = how; failingOnly = only; },
+    withoutUsageNext(n) { unsaid = n; },
+    holdCatalogNext(then) { catalogHold = then; },
+    cachedNext(tokens) { cached = tokens; },
+    speechUsageNext(usage) { speechUsage = usage; },
     failDetailsNext() { detailsFailing = true; },
     slowNext(ms, only) { slow = ms; slowOnly = only; },
     holdNext(then) { holding = then; },

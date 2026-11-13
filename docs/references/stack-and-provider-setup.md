@@ -24,7 +24,7 @@ This is the concrete implementation register for the MVP. Engineering pages use 
 
 `I01` selects **NEAR AI Cloud**, `@nearai/inference-sdk` **0.2.1**, source commit `8c66d8e2fdea4e99b277201a9ea5e05ea8295ff1`. Initial `I01M` model candidate: `z-ai/glm-5.3-flash` (the app's default is now `deepseek-ai/DeepSeek-V4.1-Flash-1017`). Use the stock prepared E2EE helper, a buffered response and an in-memory response-decryption closure. Actual supported model/parameters/pricing and encrypted response route must be checked at build. See [Source evidence](source-evidence.md) for the exact public exports, API contracts and proof limits.
 
-`C01` selects **Phala Cloud Intel TDX / dstack** for the confidential API and a separate confidential meeting VM. `P01` selects **NEAR Intents 1Click** for credit top-ups ([1Click as built](#1click-as-built)). These are accepted provider trust boundaries. Their supported interfaces still need correct implementation and actual integration evidence.
+`C01` selects **Phala Cloud Intel TDX / dstack** for the confidential API and a separate confidential meeting VM. `P01` selects **NEAR Intents 1Click** for top-ups of the balance ([1Click as built](#1click-as-built)). These are accepted provider trust boundaries. Their supported interfaces still need correct implementation and actual integration evidence.
 
 ## Meeting and speech stack
 
@@ -54,7 +54,7 @@ The meeting VM runs the ordinary browser, isolated audio daemon, native recorder
 
 ### 1Click as built
 
-Credit top-ups call 1Click's REST API directly (`apps/api/src/features/billing/oneclick.ts`, no SDK) at `ONECLICK_BASE_URL`
+Top-ups call 1Click's REST API directly (`apps/api/src/features/billing/oneclick.ts`, no SDK) at `ONECLICK_BASE_URL`
 (default `https://1click.chaindefuser.com`), sending `X-API-Key: ONECLICK_API_KEY` (the partner JWT from
 partners.near-intents.org) when it is set, and `User-Agent: alcove-api`, with a 15 s timeout. Top-ups are off unless
 `TREASURY_INTENTS_ACCOUNT` is set. Without the key 1Click still quotes and swaps the same way, adding its own fee
@@ -65,7 +65,7 @@ refused (401), which makes top-ups unavailable.
   5 November 2026 and again 6 November: 18 for BNB Chain's USDC, 6 for the rest), cached for 10 minutes; a
   route listed with other decimals isn't offered and is logged at error. A failure is remembered for 30 s.
 - `POST /v0/quote`: `swapType: FLEX_INPUT` (any deposit from the quote's `minAmountIn` up is swapped in full),
-  `depositType: ORIGIN_CHAIN`, `originAsset` the route's asset, `amount` the price of the credits chosen in the
+  `depositType: ORIGIN_CHAIN`, `originAsset` the route's asset, `amount` the dollars chosen (a token is a dollar), in the
   token's smallest unit (the response's `amountIn` must equal it and its `minAmountIn` be within 1.5% below it, its
   `quoteRequest` must repeat what was asked, and its `deadline` be between 1 hour and 7 days away, or the top-up is
   refused as unavailable and logged at error; `amountIn` and `minAmountIn` are kept),
@@ -75,11 +75,11 @@ refused (401), which makes top-ups unavailable.
   response's `deadline` is the one used), `dry: false`. The whole response, signature included, is kept sealed for disputes.
 - `GET /v0/status?depositAddress=…` (and `depositMemo`): the status; while open, `swapDetails.depositedAmount` when
   it's there (what arrived so far, shown on a `short` deposit); on `SUCCESS` or `REFUNDED` the `swapDetails`
-  (`depositedAmount`, `amountOut`, `refundedAmount`, `intentHashes`) that are credited.
+  (`depositedAmount`, `amountOut`, `refundedAmount`, `intentHashes`) that are added.
   `depositedAmount` and `refundedAmount` are read in the token's pinned decimals and `amountOut` in USDC's 6; each
   must equal 1Click's own `…Formatted` value when it gives one (`depositedAmountFormatted`, `amountOutFormatted`,
   `refundedAmountFormatted`). `amountOut` plus `refundedAmount` must be at least 98.5% of `depositedAmount`, which
-  must be above 0 and at most 8,000 USD. If any of this fails nothing is credited, it's logged at error once, and
+  must be above 0 and at most 8,000 USD. If any of this fails nothing is added, it's logged at error once, and
   the deposit stays `arriving` until it fails at the deadline and reaches support. A status Alcove doesn't know
   keeps the deposit as it is until the deadline, where it fails.
 - **No webhook.** Alcove polls: every 10 s for a deposit's first 15 minutes, every minute until 2 hours, then every
@@ -87,12 +87,12 @@ refused (401), which makes top-ups unavailable.
   last time (and hourly after that until it does, if it can't answer then); a minute after an
   error. Past the deadline the checks thin out (hourly for a day, every 6 hours for a week, then daily), open deposits
   are checked before that long tail, and a failed, expired or cancelled deposit is asked about until 30 days after its address expired, and is
-  credited if 1Click settles it then. A `SUCCESS` or `REFUNDED` whose `swapDetails` don't read counts as still
+  added if 1Click settles it then. A `SUCCESS` or `REFUNDED` whose `swapDetails` don't read counts as still
   arriving. A quote's `depositMemo` may be missing, null or empty: all mean no memo.
 - **Fees** (checked against live quotes, 5 November 2026): 0.01% on stablecoin pairs with a partner key (without one
-  1Click adds 0.25%), taken out of what reaches the treasury; Alcove absorbs it, crediting by what was sent. Withdrawing from the Intents balance costs
+  1Click adds 0.25%), taken out of what reaches the treasury; Alcove absorbs it, adding by what was sent ([Plans and usage › Adding money](../engineering/plans-and-usage.md#adding-money)). Withdrawing from the Intents balance costs
   a flat 0.004615 USDC each time, so the treasury withdraws in batches
-  ([Payments and usage › Treasury runbook](../engineering/payments-and-usage.md#treasury-runbook)).
+  ([Plans and usage › Treasury runbook](../engineering/plans-and-usage.md#treasury-runbook)).
 
 ## Setup order and required configuration
 
@@ -105,11 +105,11 @@ refused (401), which makes top-ups unavailable.
 | 5. C01 deployment | API and meeting application IDs, accepted OS/node/instance configuration, measurements, verified channel/key binding, distinct service-seal paths | Actual attestation and permitted secret bootstrap; invalid evidence rejected |
 | 6. Sign-in and keys | Google and Microsoft OAuth clients and the OIDC SSO configuration; `KMASTER` released only to the attested API VM | Verified sign-in, session expiry, cross-owner and ciphertext tests |
 | 7. I01 route | Canonical model ID, approved endpoint, SDK/source integrity, request/receipt handling, supplier funding and deadlines | Actual protected request, cited usable answer and truthful expense/verification state |
-| 8. P01 top-ups | `TREASURY_INTENTS_ACCOUNT` (and `ONECLICK_API_KEY` for the lower fee); the allowlisted routes still listed in `/v0/tokens` | Real supported SUCCESS outcome linked to its top-up; once-only credit and retry checks |
+| 8. P01 top-ups | `TREASURY_INTENTS_ACCOUNT` (and `ONECLICK_API_KEY` for the lower fee); the allowlisted routes still listed in `/v0/tokens` | Real supported SUCCESS outcome linked to its top-up; once-only adding and retry checks |
 | 9. Meet route | Guest-enabled meeting permission, visible attendee name, actual browser/media egress, frozen source selectors and local speech image | Host-admitted actual remote audio, stop/leave, timed encrypted transcript and import |
 | 10. Release rehearsal | The linked engineering acceptance checklist and MVP task dependencies | Real purchase → documents → paid chat → actual meeting → cross-source answer → private receipt/storage inspection |
 
-Credits are bought at the tiers in [Payments and usage › Pricing](../engineering/payments-and-usage.md#pricing): 10 USDC buys 10,000 credits. Retail credits remain separate from supplier funding.
+Top-ups are added to the balance at face value ([Plans and usage › Adding money](../engineering/plans-and-usage.md#adding-money)): 10 USDC adds $10. The retail balance remains separate from supplier funding.
 
 Secrets belong in native protected storage or the verified confidential bootstrap/service seal. Never paste provider credentials, wallet material, content or private accounting into Notion, build arguments, ordinary environment files or logs. Exact deployment, native cryptography, media build and provider recipes are in [Source evidence](source-evidence.md).
 

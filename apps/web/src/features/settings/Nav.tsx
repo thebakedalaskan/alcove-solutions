@@ -14,7 +14,7 @@ export const GROUPS = [
   { id: 'audio', label: 'Audio and video' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'connections', label: 'Connections' },
-  { id: 'plan', label: 'Plan and credits' },
+  { id: 'plan', label: 'Plan' },
   { id: 'privacy', label: 'Privacy' }
 ] as const;
 export type Group = (typeof GROUPS)[number];

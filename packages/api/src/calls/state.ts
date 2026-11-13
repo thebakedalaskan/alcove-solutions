@@ -8,7 +8,6 @@ import { z } from '../shared/zod';
 import { BreakoutBoardModeSchema, CallBoardSchema } from './boards';
 import { CaptureStateSchema } from './capture';
 import { LiveNotesSchema } from './catchup';
-import { CallCodeSchema } from './entry';
 import { RungSchema } from './rings';
 import { NotesChoicesSchema, NotesSettingSchema } from './settings';
 import { CallAttentionSchema, CallStatusSchema } from './attention';
@@ -87,13 +86,6 @@ export const CALL_PASS_HEADER = 'x-alcove-call' as const;
 
 /** A call pass as a browser keeps it (sessionStorage) for coming back after a reload: parsed before it's sent anywhere. */
 export const CallPassStoredSchema = z.string().min(20).max(2000).regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
-
-
-/**
- * The call a browser goes back to after signing in with Google from its join page (sessionStorage, in that tab only):
- * its code, as a link has it, and until when (ms).
- */
-export const CallReturnStoredSchema = z.object({ code: CallCodeSchema, until: z.number() });
 
 
 /** A LiveKit join token, for someone who's been let in. It only lasts until the browser connects; it carries no name. */
@@ -234,6 +226,12 @@ export type CallNotice = z.infer<typeof CallNoticeSchema>;
 /** Notices a tab has shown for a call, as it keeps them (sessionStorage), so a reload doesn't show them again. */
 export const CallNoticesSeenSchema = z.array(IDSchema.max(64)).max(50);
 
+/**
+ * When the organizer's plan stopped a call's notes, as a tab saw it (sessionStorage), and when they came on again (null
+ * while they're still stopped): the marks in the notes, through a reload. Only times.
+ */
+export const CallStopsSeenSchema = z.array(z.object({ at: ISODateSchema, back: ISODateSchema.nullable() })).max(20);
+
 
 /** One breakout room: its name, the invited people sent to it, and anyone else sent to it. */
 export const BreakoutRoomSchema = z.object({
@@ -312,6 +310,8 @@ export const CallStateSchema = z.object({
   startedAt: ISODateSchema,
   /** Seconds since the call started. */
   elapsed: z.number(),
+  /** When the call ends by itself, at the longest a call runs (docs: Plans and usage): everyone is told 5 minutes before. */
+  endsAt: ISODateSchema,
   phase: z.enum(['in-call', 'ended']),
   participants: z.array(CallParticipantSchema),
   locked: z.boolean(),

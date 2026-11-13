@@ -277,18 +277,22 @@ export function Tooltip({ label, children, side = 'top' }: { label: ReactNode; c
  * Closing it puts focus back where it was when it opened, since a shortcut can open it from anywhere;
  * `onCloseFocus` puts it somewhere else instead, when what it came from has gone (return true once it has).
  * Focus starts on the first thing to press, or with `focusSelf` on the modal, for one that's mostly to read, or with
- * `focusOn` on what that selector finds in it (a choice already made), where there is one.
+ * `focusOn` on what that selector finds in it (a choice already made), where there is one. Opened inside a `ThemeScope`,
+ * it takes that theme, as a popover does: checkout over a call opens in your own theme while the call stays night.
  */
 export const Modal = forwardRef<HTMLDivElement, {
   open: boolean; onOpenChange: (open: boolean) => void; label: string; children: ReactNode; className?: string | undefined;
   onCloseFocus?: (() => boolean) | undefined; focusSelf?: boolean | undefined; focusOn?: string | undefined;
 }>(function Modal({ open, onOpenChange, label, children, className, onCloseFocus, focusSelf = false, focusOn }, ref) {
   const focusBack = useFocusBack(open);
+  // A theme the modal names itself (a receipt is paper in both) wins over the one it opened in.
+  const named = /(^|\s)(light|dark)(\s|$)/.test(className ?? '');
+  const scoped = useContext(Scoped);
   return (
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
         <RDialog.Overlay className="ac-scrim" />
-        <RDialog.Content ref={ref} aria-describedby={undefined} className={cn('ac-modal', className)}
+        <RDialog.Content ref={ref} aria-describedby={undefined} className={cn('ac-modal', named ? null : scoped, className)}
           onOpenAutoFocus={focusSelf || focusOn ? (e) => {
             if (!(e.currentTarget instanceof HTMLElement)) return;
             const first = focusSelf ? e.currentTarget : focusOn ? e.currentTarget.querySelector<HTMLElement>(focusOn) : null;

@@ -18,8 +18,8 @@
 | Chat | I01 supported protected inference with bounded retrieval, current owner/source checks and useful citations |
 | Meetings | Owner-pasted link, explicit approval, visible guest participant and host admission on one qualified route |
 | Speech | S02 measured local speech engine inside C01; recordings/transcripts stay in the protected application pipeline |
-| Payment | P01 private route for one fixed credit pack, exact wallet approval, trusted supported completion, credit once and capped usage |
-| Supplier capacity | Service-owned funded inference account, separate from retail service credit; supported manual funding is acceptable |
+| Payment | P01 private route for adding a chosen amount to a dollar balance, exact wallet approval, trusted supported completion, added once and capped usage |
+| Supplier capacity | Service-owned funded inference account, separate from the retail balance; supported manual funding is acceptable |
 | State correctness | Durable transactions, idempotent operations, conservative unknown states and bounded jobs |
 
 ## Accepted provider assumptions
@@ -37,7 +37,7 @@ Ordinary database/object durability and transaction semantics are assumed for th
 | Client/runtime channel | Actual reference client verifies the approved runtime and rejects substituted/invalid channel evidence before releasing content keys |
 | File/retrieval path | Save/reopen supported native/uploaded content; no ordinary plaintext copies; allowed sources produce correct locators |
 | I01 route | Actual supported protected model call, correct request/response handling, truthful verification state and no fallback |
-| P01 route | Real configured private purchase tied to the original owner/invoice and credited once; preserve pending/failed/ambiguous outcomes |
+| P01 route | Real configured private purchase tied to the original owner/invoice and added once; preserve pending/failed/ambiguous outcomes |
 | Cost bounds | Concurrent paid work respects prepaid holds and caps; unknown dispatch/cost does not become a free retry or zero cost |
 | Meet route | Visible participant admitted to the selected permitted call; actual audio, correct stop/leave and timed private transcript |
 | Deployment | Actual accepted images/secrets/config; ciphertext database/objects; no content in logs, traces, temporary files or crash outputs |

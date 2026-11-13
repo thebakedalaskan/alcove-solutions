@@ -22,7 +22,14 @@ import type { HttpRuntime } from '../../http/runtime';
 
 export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   const { d } = runtime;
-  const { liveLimiter, presenceLimiter, mentionLimiter, idsLimiter, documentLiveLimiter, updateLimiter, updateBytesLimiter, awarenessLimiter, versionLimiter, treeLimiter, presenterLimiter, askLimiter, sortLimiter, searchLimiter, previewLimiter, pieceLimiter, mediaLimiter } = runtime.limits;
+  const { liveLimiter, presenceLimiter, mentionLimiter, idsLimiter, documentLiveLimiter, updateLimiter, updateBytesLimiter, awarenessLimiter, versionLimiter, treeLimiter, presenterLimiter, askLimiter, guestAskLimiter, sortLimiter, searchLimiter, previewLimiter, pieceLimiter, mediaLimiter } = runtime.limits;
+  /**
+   * AI a guest asks for in a workspace, which its payer pays for: a guest's few a minute, by the call and the person their pass
+   * names, as their questions in that call are (calls/routes.ts), so the two share one budget.
+   */
+  const guestAsking = (r: access.Reader, what: string) => {
+    if (!r.account) guestAskLimiter(r.seat ? `${r.seat.callId}:${r.seat.viewer.pass.person}` : access.limitKey(r), what);
+  };
   const { readerOf, credentials, optionalOwner, COOKIE } = runtime.context;
   /** What the browser calls the stream it's opening, for it to say when it closes it: none from a browser that doesn't. */
   const streamName = (c: Context<Env>): string | null => LiveStreamNameSchema.safeParse(c.req.header(LIVE_STREAM_HEADER)).data ?? null;
@@ -164,6 +171,7 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
   app.post('/v1/workspaces/:id/documents/:doc/ask', async (c) => {
     const r = await readerOf(c);
     askLimiter(access.limitKey(r), 'ask-selection');
+    guestAsking(r, 'guest ask-selection');
     return c.json(await workspaceDocuments.askAlcove(d, r, c.req.param('id'), c.req.param('doc'), await body(c, DocAskBodySchema)));
   });
 
@@ -173,6 +181,7 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
   app.post('/v1/workspaces/:id/documents/:doc/sort', async (c) => {
     const r = await readerOf(c);
     sortLimiter(access.limitKey(r), 'board-sort');
+    guestAsking(r, 'guest board-sort');
     return c.json(await workspaceDocuments.sortStickies(d, r, c.req.param('id'), c.req.param('doc'), await body(c, BoardSortBodySchema)));
   });
 

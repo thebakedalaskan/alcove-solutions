@@ -24,7 +24,7 @@ const homesOfInvited = new WeakMap<World, Map<string, string>>();
 function homeFor(w: World, m: Meeting): string {
   const id = `ws-${m.id}`;
   const day = new Date(m.startsAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-  w.workspaces.push({ id, name: `${m.title} · ${day}`, role: m.isOrganizer ? 'admin' : 'edit', inCall: false, people: m.guestCount + 1, items: [], createdAt: new Date().toISOString(), call: { title: m.title, at: m.startsAt } });
+  w.workspaces.push({ id, name: `${m.title} · ${day}`, role: m.isOrganizer ? 'admin' : 'edit', inCall: false, people: m.guestCount + 1, teamAccess: null, items: [], createdAt: new Date().toISOString(), call: { title: m.title, at: m.startsAt } });
   return id;
 }
 

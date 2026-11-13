@@ -21,6 +21,7 @@ import { peopleOn } from '~/features/home/day';
 import { Scheduling } from '~/features/calls/scheduling/Scheduling';
 import { useOpenScheduling } from '~/features/calls/scheduling/search';
 import { useAnswer } from '~/features/notes/answer';
+import { NoNotesLeftDoor, useAskRanOut } from '~/features/plans/notesDoors';
 import { peopleOf } from '~/features/shell/palette/rows';
 import { api } from '~/lib/api';
 import { isUnencrypted } from '~/lib/aiModels';
@@ -106,16 +107,20 @@ export function CallsPage({ search }: { search: CallsSearch }) {
 
   /* A question across every call. One a call it read went from while it was written isn't shown: Ask again. */
   const [lost, setLost] = useState<string | null>(null);
+  /* Asking with no notes left this period: the door to more, over the sheet. */
+  const ranOut = useAskRanOut();
+  const outOfNotes = ranOut.refused;
   const refused = useCallback((e: unknown, question: string) => {
+    if (outOfNotes(e)) return true;
     if (errorCode(e) !== 'conflict') return false;
     setLost(question);
     return true;
-  }, []);
+  }, [outOfNotes]);
   const { answer, ask, reset } = useAnswer(askAll, refused);
   const asked = !!answer && answer.q === text.trim();
-  const run = () => { if (!text.trim() || asked) return; setLost(null); void ask(text); };
-  const putAway = () => { reset(); setLost(null); };
-  const change = (typed: string) => { setText(typed); setLost(null); if (answer) reset(); };
+  const run = () => { if (!text.trim() || asked) return; setLost(null); ranOut.clear(); void ask(text); };
+  const putAway = () => { reset(); setLost(null); ranOut.clear(); };
+  const change = (typed: string) => { setText(typed); setLost(null); ranOut.clear(); if (answer) reset(); };
   const clear = () => change('');
 
   /* A search looks at as much of what's typed as the server takes, once typing pauses. */
@@ -324,6 +329,7 @@ export function CallsPage({ search }: { search: CallsSearch }) {
             calendar={google ? 'google' : calendar?.source === 'sample' ? 'sample' : null} now={now} onGo={() => { if (text) clear(); else if (answer || lost) putAway(); }} />
           <CallsSheet ref={sheet} label="Your calls">
             <Chips lit={lit} onGo={() => { if (text) clear(); }} />
+            {ranOut.out && !answer && <NoNotesLeftDoor alone className="cs-door" />}
             {body}
           </CallsSheet>
         </div>

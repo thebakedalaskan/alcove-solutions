@@ -13,12 +13,13 @@
  * ask opens in styles/palette.css (`pal-`); the evening behind each page in
  * styles/horizon.css; the cove the welcome page looks out of, and signing in
  * sailing out of it, in styles/cove.css (`cv-`); Home in styles/home.css; the Team page in styles/team.css (`tp-`);
- * Calls in styles/calls.css (`cs-`); a call's page in styles/note.css (`cd-`); Settings in styles/settings.css (`set-`); Record in styles/record.css
- * (`rec-`); starting and scheduling a call in styles/flow.css (`cf-`); the organizer's lobby, ringing and the page for
- * picking a time in styles/ringing.css (`rg-`); the workspace, in a call and in the app, in styles/workspace.css (`wt-`,
- * `wd-`, `wm-`, `wv-`, `wp-`, `wh-`, `wl-`); the board in styles/board.css; the welcome page in styles/welcome.css and its scenes'
- * welcome-*.css (`lp-`); the page a call leaves you on in styles/call-over.css (`co-`); the other screens in
- * styles/{app,call}.css.
+ * Calls in styles/calls.css (`cs-`); a call's page in styles/note.css (`cd-`); Settings in styles/settings.css (`set-`); Plans
+ * in styles/plans.css (`pl-`); Record in styles/record.css (`rec-`); starting and scheduling a call in styles/flow.css (`cf-`);
+ * the organizer's lobby, ringing and the page for picking a time in styles/ringing.css (`rg-`); the workspace, in a call and
+ * in the app, in styles/workspace.css (`wt-`, `wd-`, `wm-`, `wv-`, `wp-`, `wh-`, `wl-`); the board in styles/board.css; the
+ * welcome page in styles/welcome.css and its scenes' welcome-*.css (`lp-`); the page a call leaves you on in
+ * styles/call-over.css (`co-`); checkout, one window over any page, in styles/checkout.css (`ck-`), and the doors into it in
+ * styles/plan-doors.css (`pd-`); the other screens in styles/{app,call}.css.
  */
 @import "./fonts.css";
 @import "./styles/kit.css";
@@ -27,6 +28,7 @@
 @import "./styles/welcome-call.css";
 @import "./styles/welcome-team.css";
 @import "./styles/welcome-night.css";
+@import "./styles/welcome-plans.css";
 @import "./styles/shell.css";
 @import "./styles/you.css";
 @import "./styles/palette.css";
@@ -35,6 +37,7 @@
 @import "./styles/cove.css";
 @import "./styles/home.css";
 @import "./styles/team.css";
+@import "./styles/team-plan.css";
 @import "./styles/record.css";
 @import "./styles/call.css";
 @import "./styles/call-over.css";
@@ -54,9 +57,12 @@
 @import "./styles/settings.css";
 @import "./styles/agents.css";
 @import "./styles/flow.css";
+@import "./styles/plan-doors.css";
 @import "./styles/workspace.css";
 @import "./styles/workspace-editor.css";
 @import "./styles/board.css";
+@import "./styles/plans.css";
+@import "./styles/checkout.css";
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* `.light` and `.dark` also scope a theme to part of a page, whatever the page's own theme is. */
@@ -97,6 +103,12 @@
   /* Problems, explained calmly */
   --caution: #8A5300;
   --caution-soft: #FFF0D6;
+  /* Caution as small text out on the scene (the sky and the sea), where caution falls short of 4.5:1 by day. */
+  --caution-text: #6E410D;
+  /* Someone with no portrait: their arch, and the initial in it. Pale in both themes, as portraits are, so at night they
+     read as a person among the others, never as a gap in a row of faces. */
+  --arch-fill: var(--sunk);
+  --arch-ink: var(--ink-2);
   --gold: #FFB547;
   /* What's highlighted or commented on in a document */
   --hl: rgb(255 181 71 / .28);
@@ -226,6 +238,9 @@
   --rec-soft: #3D1621;
   --caution: #F3B85A;
   --caution-soft: #3A2A0E;
+  --caution-text: #F3B85A;
+  --arch-fill: #C2CDDB;
+  --arch-ink: #22324C;
   --gold: #FFC774;
   --hl: rgb(255 199 116 / .2);
   --code-keyword: #C4AEFF;
@@ -315,7 +330,7 @@
   --color-horizon: var(--horizon); --color-horizon-soft: var(--horizon-soft);
   --color-rose: var(--rose); --color-rose-soft: var(--rose-soft); --color-frame: var(--frame);
   --color-rec: var(--rec); --color-rec-soft: var(--rec-soft);
-  --color-caution: var(--caution); --color-caution-soft: var(--caution-soft); --color-gold: var(--gold);
+  --color-caution: var(--caution); --color-caution-soft: var(--caution-soft); --color-caution-text: var(--caution-text); --color-gold: var(--gold);
   --color-stage: var(--stage); --color-stage-tile: var(--stage-tile); --color-stage-raised: var(--stage-raised);
   --color-stage-ink: var(--stage-ink); --color-stage-ink-2: var(--stage-ink-2); --color-speak: var(--speak);
   --color-dawn-1: var(--dawn-1); --color-dawn-2: var(--dawn-2); --color-dawn-3: var(--dawn-3); --color-dawn-4: var(--dawn-4); --color-focus: var(--focus);

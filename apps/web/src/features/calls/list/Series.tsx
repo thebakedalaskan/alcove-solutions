@@ -12,6 +12,7 @@ import { useState, type ReactNode } from 'react';
 import { useOpenScheduling } from '~/features/calls/scheduling/search';
 import { repeatLineHere } from '~/features/calls/scheduling/words';
 import { useNoteReader } from '~/features/notes/entries';
+import { readerRole } from '~/features/notes/meta';
 import { AskBar, decisionLine, inNote, notDecided } from '~/features/notes/parts';
 import { NextOnCalendar, useScheduleNextCall } from '~/features/series/carried';
 import { api } from '~/lib/api';
@@ -142,7 +143,7 @@ function Carried({ s, me }: { s: Series; me: string | undefined }) {
   const failed = (e: unknown) => toast(errorMessage(e), { icon: 'x' });
   const from = new Map(s.notes.map((n) => [n.id, n]));
   /** Who the reader is to the call something came from: each call's notes reached people their own way. */
-  const reader = (x: { noteId: string }) => readerAs(s.isOrganizer ? 'organizer' : from.get(x.noteId)?.received?.role ?? 'shared');
+  const reader = (x: { noteId: string }) => readerAs(s.isOrganizer ? 'organizer' : readerRole(from.get(x.noteId)?.received));
   const change = (d: CarriedDecision, patch: DecisionPatch) => decision.mutate({ noteId: d.noteId, decisionId: d.id, patch }, { onError: failed });
   const decide = (d: CarriedDecision, state: CarriedDecision['state']) => change(d, state === 'confirmed' ? { state, seen: { text: d.text } } : { state });
   const answer = (x: CarriedQuestion) => question.mutate({ noteId: x.noteId, questionId: x.id, patch: { state: 'answered' } }, { onSuccess: () => toast('Marked answered', { ms: 2200 }), onError: failed });

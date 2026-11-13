@@ -27,6 +27,52 @@ import { decodeResponse, encapsulate, encodeRequest, type KeyConfig } from './oh
 
 const ilog = log.child({ component: 'inference' });
 
+/** Tokens a request used, as NEAR AI said, or, where it didn't, as reckoned here. `cached`: those of `input` NEAR AI had cached. */
+export interface Usage { input: number; cached: number; output: number }
+/** The most a request can use, before it's sent: its text's tokens at most, its images, and the output it asks for at most. */
+export interface Most { input: number; images: number; output: number }
+/**
+ * Who pays for a request (features/billing/meter.ts): every request to NEAR AI takes one, so none goes out without a
+ * payer. Before anything is sent, `begin` holds the most the request can cost, and refuses (PlanLimitError) if whoever
+ * pays can't afford it. Once it's answered it's charged what it used, even when what came back couldn't be read; one that
+ * was never answered is charged nothing, and one that timed out after it was sent is charged what was held.
+ */
+export interface Meter { begin(model: string, most: Most): Promise<Metered> }
+/** A request held for: charged what it used, nothing (never sent, or refused), or what was held (lost once sent). */
+export interface Metered { used(u: Usage, reckoned: boolean): Promise<void>; unsent(): Promise<void>; lost(): Promise<void> }
+
+/** A request's text, in tokens at most: no tokenizer takes fewer than one byte of UTF-8 a token. */
+const tokensAtMost = (text: string) => utf8(text).length;
+/** A text's tokens, reckoned as a tokenizer for English roughly counts them, for an answer that didn't say. */
+const tokensAbout = (text: string) => Math.ceil(text.length / 4);
+
+/**
+ * Whether a request that failed with `e` timed out once it was sent: the model may have done the work, so it was charged
+ * the most it could have cost (`paidFor`), and trying it again costs that again.
+ */
+export const lostOnceSent = (e: unknown): boolean => e instanceof UnansweredError && e.context['timedOut'] === true;
+
+/**
+ * Runs a request that `meter` pays for. `run` calls `answered` with what it used once a 200 comes back: charged then,
+ * whatever happens after. A request that never got a 200 is charged nothing, unless it timed out once sent, when the
+ * model may have done the work: then it's charged the most it could have cost.
+ */
+async function paidFor<T>(meter: Meter, model: string, most: Most, run: (answered: (u: Usage, reckoned: boolean) => void) => Promise<T>): Promise<T> {
+  const held = await meter.begin(model, most);
+  const reply: { used?: { u: Usage; reckoned: boolean } } = {};
+  let result: T;
+  try {
+    result = await run((u, reckoned) => { reply.used = { u, reckoned }; });
+  } catch (e) {
+    const sent = reply.used;
+    const charge = sent ? held.used(sent.u, sent.reckoned) : lostOnceSent(e) ? held.lost() : held.unsent();
+    await charge.catch((m: unknown) => ilog.error('request not charged', { model, err: m }));
+    throw e;
+  }
+  await (reply.used ? held.used(reply.used.u, reply.used.reckoned) : held.unsent());
+  return result;
+}
+
 export interface Inference { configured: boolean; baseUrl: string }
 export const inference = (cfg: Config): Inference => ({ configured: !!cfg.NEAR_AI_API_KEY, baseUrl: cfg.NEAR_AI_BASE_URL });
 
@@ -202,7 +248,18 @@ const Segment = z.object({
   start: z.number(), end: z.number(), text: z.string(),
   avg_logprob: z.number().nullish(), compression_ratio: z.number().nullish(), no_speech_prob: z.number().nullish()
 });
-const Transcription = z.object({ text: z.string().default(''), language: z.string().nullish(), segments: z.array(Segment).nullish() });
+/** What a transcription used, where NEAR AI says: OpenAI's newer names, or the chat names. */
+const SpeechUsage = z.object({
+  input_tokens: z.number().int().nonnegative(), output_tokens: z.number().int().nonnegative(), prompt_tokens: z.number().int().nonnegative(), completion_tokens: z.number().int().nonnegative()
+}).partial();
+const Transcription = z.object({ text: z.string().default(''), language: z.string().nullish(), segments: z.array(Segment).nullish(), usage: SpeechUsage.nullish().catch(null) });
+/**
+ * Whisper hears audio 30 seconds at a time: each window is 1,500 tokens in, and it writes at most 448 tokens of it. What
+ * a clip uses is reckoned from these where NEAR AI doesn't say.
+ */
+const WINDOW_MS = 30_000;
+const WINDOW_TOKENS = 1_500;
+const WINDOW_OUTPUT = 448;
 
 /**
  * What Whisper is known to "hear" in silence and noise: closing lines from the videos it was trained on,
@@ -319,9 +376,9 @@ function keepSpeech(segments: z.infer<typeof Segment>[], prompt: SpeechPrompt | 
 /**
  * Transcribes one clip of 16 kHz mono WAV, sealed to the speech model's verified key, and says which
  * verification it went to. `language` is the language Whisper picked for the clip itself (none was sent),
- * when there was enough confident speech in it to go by; otherwise null.
+ * when there was enough confident speech in it to go by; otherwise null. `meter` pays for it.
  */
-export async function transcribe(cfg: Config, wav: Uint8Array, durationMs: number, context: SpeechContext = {}): Promise<{ heard: Heard[]; language: string | null; evidence: InferenceEvidence }> {
+export async function transcribe(cfg: Config, meter: Meter, wav: Uint8Array, durationMs: number, context: SpeechContext = {}): Promise<{ heard: Heard[]; language: string | null; evidence: InferenceEvidence }> {
   if (!ready(cfg)) throw notConnected('transcribe');
   const language = context.language && LANGUAGE_CODE.test(context.language) ? context.language : undefined;
   const prompt = context.prompt?.text.trim() ? { ...context.prompt, text: endWithin(context.prompt.text.trim(), PROMPT_BYTES) } : undefined;
@@ -335,11 +392,20 @@ export async function transcribe(cfg: Config, wav: Uint8Array, durationMs: numbe
   const multipart = new Request(new URL('/v1/audio/transcriptions', cfg.NEAR_AI_STT_URL), { method: 'POST', body: form });
   const body = new Uint8Array(await multipart.arrayBuffer());
   const t0 = performance.now();
-  return withVerified(cfg, cfg.NEAR_AI_STT_MODEL, 'transcript', async (v) => {
+  const windows = Math.max(1, Math.ceil(durationMs / WINDOW_MS));
+  const told = prompt ? tokensAtMost(prompt.text) : 0;
+  return paidFor(meter, cfg.NEAR_AI_STT_MODEL, { input: windows * WINDOW_TOKENS + told, images: 0, output: windows * WINDOW_OUTPUT }, (answered) => withVerified(cfg, cfg.NEAR_AI_STT_MODEL, 'transcript', async (v) => {
     const reply = await sealed(cfg, v, cfg.NEAR_AI_STT_URL, { path: '/v1/audio/transcriptions', type: multipart.headers.get('content-type') ?? 'multipart/form-data', body, timeoutMs: 20_000, what: 'transcribe' });
     const ms = Math.round(performance.now() - t0);
     if (reply.status !== 200) throw statusError(reply.status, { what: 'transcribe', ms });
     const r = Transcription.safeParse(parsed(reply.body));
+    const said = r.success ? r.data.usage ?? null : null;
+    const input = said?.input_tokens ?? said?.prompt_tokens;
+    const output = said?.output_tokens ?? said?.completion_tokens;
+    answered({
+      input: input ?? windows * WINDOW_TOKENS + (prompt ? tokensAbout(prompt.text) : 0), cached: 0,
+      output: output ?? (r.success ? tokensAbout(r.data.segments?.map((s) => s.text).join(' ') ?? r.data.text) : 0)
+    }, input === undefined || output === undefined);
     if (!r.success) throw new UnavailableError('The notes service sent back something unexpected.', { context: { what: 'transcribe', reply: 'unparseable' } });
     const segments = r.data.segments ?? (r.data.text.trim() ? [{ start: 0, end: durationMs / 1000, text: r.data.text }] : []);
     const { heard, namesTrimmed } = keepSpeech(segments, prompt);
@@ -354,7 +420,7 @@ export async function transcribe(cfg: Config, wav: Uint8Array, durationMs: numbe
       languageSent: Boolean(language), languageFound: detected !== null, promptBytes: prompt ? utf8(prompt.text).length : 0, namesTrimmed
     });
     return { heard, language: detected, evidence: v.evidence };
-  });
+  }));
 }
 
 /* ---------- the notes model ---------- */
@@ -368,9 +434,14 @@ export interface Message { role: 'system' | 'user'; content: string | ContentPar
 /** A JPEG as a message part. */
 export const jpegPart = (jpeg: Uint8Array): ContentPart => ({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${Buffer.from(jpeg).toString('base64')}` } });
 const imagesIn = (messages: Message[]) => messages.reduce((n, m) => n + (typeof m.content === 'string' ? 0 : m.content.filter((p) => p.type === 'image_url').length), 0);
+/** What the messages say in words, images left out. */
+const textOf = (messages: Message[]) => messages.map((m) => (typeof m.content === 'string' ? m.content : m.content.map((p) => (p.type === 'text' ? p.text : '')).join('\n'))).join('\n');
 const Chat = z.object({
   choices: z.array(z.object({ message: z.object({ content: z.string().nullable() }), finish_reason: z.string().nullable().optional() })).min(1),
-  usage: z.object({ prompt_tokens: z.number(), completion_tokens: z.number() }).partial().optional()
+  usage: z.object({
+    prompt_tokens: z.number().int().nonnegative(), completion_tokens: z.number().int().nonnegative(),
+    prompt_tokens_details: z.object({ cached_tokens: z.number().int().nonnegative().nullish() }).nullish().catch(null)
+  }).partial().optional()
 });
 
 /** The JSON object inside a reply, tolerating code fences or a sentence around it. */
@@ -408,45 +479,56 @@ async function plainly(cfg: Ready, body: Uint8Array, o: { what: string; timeoutM
 
 /**
  * Asks a chat model (the default, or `o.via`) for one JSON object and returns it unparsed for the caller's schema,
- * with the verification it went to: null for an unencrypted model, which nothing verified.
+ * with the verification it went to: null for an unencrypted model, which nothing verified. `meter` pays for it.
  */
-export async function complete(cfg: Config, messages: Message[], o: { what: string; maxTokens: number; timeoutMs?: number; via?: ChatModel | undefined }): Promise<{ json: unknown; evidence: InferenceEvidence | null }> {
+export async function complete(cfg: Config, meter: Meter, messages: Message[], o: { what: string; maxTokens: number; timeoutMs?: number; via?: ChatModel | undefined }): Promise<{ json: unknown; evidence: InferenceEvidence | null }> {
   if (!ready(cfg)) throw notConnected(o.what);
   const via = o.via ?? defaultModel(cfg);
   const model = via.model;
   const timeoutMs = o.timeoutMs ?? 90_000;
-  const answer = (reply: { status: number; body: Uint8Array }, t0: number, requestBytes: number): unknown => {
+  const text = textOf(messages);
+  const images = imagesIn(messages);
+  const answer = (reply: { status: number; body: Uint8Array }, t0: number, requestBytes: number, answered: (u: Usage, reckoned: boolean) => void): unknown => {
     const ms = Math.round(performance.now() - t0);
     if (reply.status !== 200) throw statusError(reply.status, { what: o.what, ms });
     const r = Chat.safeParse(parsed(reply.body));
     const choice = r.success ? r.data.choices[0] : undefined;
-    const context = { what: o.what, model, encrypted: via.private, ms, finish: choice?.finish_reason ?? null, promptTokens: r.success ? r.data.usage?.prompt_tokens ?? null : null, outputTokens: r.success ? r.data.usage?.completion_tokens ?? null : null };
+    const usage = r.success ? r.data.usage : undefined;
+    // What it used is charged whatever came back: the model did the work. What it didn't say is reckoned.
+    answered({
+      input: usage?.prompt_tokens ?? tokensAbout(text), cached: usage?.prompt_tokens_details?.cached_tokens ?? 0,
+      output: usage?.completion_tokens ?? tokensAbout(choice?.message.content ?? '')
+    }, usage?.prompt_tokens === undefined || usage.completion_tokens === undefined);
+    const context = { what: o.what, model, encrypted: via.private, ms, finish: choice?.finish_reason ?? null, promptTokens: usage?.prompt_tokens ?? null, outputTokens: usage?.completion_tokens ?? null };
     const json = jsonIn(choice?.message.content ?? '');
     if (json === null) throw new UnavailableError('The notes service sent back something unexpected.', { context: { ...context, reply: r.success ? 'no-json' : 'unparseable' } });
-    ilog.debug('notes model answered', { ...context, requestBytes, images: imagesIn(messages) });
+    ilog.debug('notes model answered', { ...context, requestBytes, images });
     return json;
   };
+  const most: Most = { input: tokensAtMost(text), images, output: o.maxTokens };
   if (!via.private) {
     // Only what the provider takes: some refuse a temperature, and some don't do JSON mode (the reply is read either way).
     const body = utf8(JSON.stringify({
       model, messages, max_tokens: o.maxTokens, ...(via.temperature ? { temperature: 0.2 } : {}), ...(via.json ? { response_format: { type: 'json_object' } } : {}), stream: false
     }));
-    const t0 = performance.now();
-    return { json: answer(await plainly(cfg, body, { what: o.what, timeoutMs }), t0, body.length), evidence: null };
+    return paidFor(meter, model, most, async (answered) => {
+      const t0 = performance.now();
+      return { json: answer(await plainly(cfg, body, { what: o.what, timeoutMs }), t0, body.length, answered), evidence: null };
+    });
   }
   const endpoint = via.url;
   // Thinking out loud first takes the model a minute on a long call and isn't needed for notes.
   const body = utf8(JSON.stringify({
     model, messages, temperature: 0.2, max_tokens: o.maxTokens, response_format: { type: 'json_object' }, chat_template_kwargs: { enable_thinking: false }, stream: false
   }));
-  return withVerified(cfg, model, 'notes', async (v) => {
+  return paidFor(meter, model, most, (answered) => withVerified(cfg, model, 'notes', async (v) => {
     const t0 = performance.now();
     const reply = await sealed(cfg, v, endpoint, { path: '/v1/chat/completions', type: 'application/json', body, timeoutMs, what: o.what });
-    return { json: answer(reply, t0, body.length), evidence: v.evidence };
-  });
+    return { json: answer(reply, t0, body.length, answered), evidence: v.evidence };
+  }));
 }
 
 /** Asks a chat model for one JSON object, as `complete` does, for answers nothing keeps (questions, catching up). */
-export async function completeJson(cfg: Config, messages: Message[], o: { what: string; maxTokens: number; timeoutMs?: number; via?: ChatModel | undefined }): Promise<unknown> {
-  return (await complete(cfg, messages, o)).json;
+export async function completeJson(cfg: Config, meter: Meter, messages: Message[], o: { what: string; maxTokens: number; timeoutMs?: number; via?: ChatModel | undefined }): Promise<unknown> {
+  return (await complete(cfg, meter, messages, o)).json;
 }

@@ -11,6 +11,7 @@ import { receiveTopUp } from '../../src/world/payments';
 import { standIn } from '../../src/api/standin';
 import { openBrowser, setOnline } from '../../src/browser';
 import { session } from '../../src/world';
+import { withNotesLeft } from '../../src/world/plans';
 import { notConnected } from '../../src/world/build';
 import { busyEvents } from '../../src/world/calls';
 import { page, pages, type PageArgs, type PageStory } from '../../src/page';
@@ -57,7 +58,7 @@ const slowDelete = () => { const was = standIn.account.delete; return swap(stand
 /** Alcove can't take uploads just now, so what's recorded here waits here. */
 const uploadsDown = outage(() => swap(standIn.recordings, 'start', () => Promise.reject(failing(DATABASE))));
 const prefsDown = outage(() => swap(standIn.account, 'preferences', () => Promise.reject(failing(DATABASE))));
-const minutesDown = outage(() => swap(standIn.credits, 'balance', () => Promise.reject(failing(DATABASE))));
+const minutesDown = outage(() => swap(standIn.plans, 'plan', () => Promise.reject(failing(DATABASE))));
 const calendarDown = outage(() => swap(standIn.calendar, 'get', () => Promise.reject(failing('Google can’t be reached right now.'))));
 const noHardware = outage(() => swap(standIn.trust, 'attestation', () => Promise.reject(failing('This server can’t attest to itself right now.'))));
 
@@ -398,11 +399,11 @@ export const Appearance: PageStory = {
 export const TimeOfNotesLeft: PageStory = {
   name: '11.19 The time of notes left',
   ...page('/settings#plan', 'busy'),
-  // Twelve minutes of notes left this month.
-  beforeEach: before((w) => { w.credits = { balance: 300, granted: 10000, usedThisMonth: 9700, perMinute: 25 }; }),
+  // Twelve minutes of notes left this period.
+  beforeEach: before((w) => { w.plan = withNotesLeft(12); }),
   play: async ({ step }) => {
-    await step('Nearly out, the sun is at the start of the line', async () => {
-      await within(await row('Notes left')).findByText('12 min', {}, SOON);
+    await step('Nearly out, the time is warm and the sun is at the start of the line', async () => {
+      await within(await row('Notes left this period')).findByText('12 min', {}, SOON);
     });
   }
 };
@@ -446,8 +447,8 @@ export const WhenAPanelDoesntLoad: PageStory = {
       await userEvent.click(within(await group('Calls and notes')).getByRole('button', { name: 'Try again' }));
       await row('Language');
     });
-    await step('Your minutes didn’t load. Plan and credits stays, and says so', async () => {
-      await within(await group('Plan and credits')).findByText('These didn’t load', {}, SOON);
+    await step('Your plan didn’t load. Plan stays, and says so', async () => {
+      await within(await group('Plan')).findByText('These didn’t load', {}, SOON);
     });
     await step('The calendar didn’t answer. Try again, in the row', async () => {
       const calendar = await row('Your calendar');
@@ -467,9 +468,9 @@ export const FirstDay: PageStory = {
   ...page('/settings', 'first-day', { parameters: { opening: { browser: { devices: 'prompt' } } } }),
   play: async ({ userEvent, step }) => {
     const jump = async (to: string) => userEvent.click(within(await index()).getByRole('link', { name: to }));
-    await step('The same page. Nothing waits on this device, and nothing’s used', async () => {
+    await step('The same page. Nothing waits on this device, and nothing’s stored', async () => {
       await row('Record without a connection');
-      await within(await row('Used this month')).findByText('None yet', {}, SOON);
+      await within(await row('Storage')).findByText('under 1 MB of 10 GB', {}, SOON);
     });
     await step('Under Connections, Connect is there when you want it, and Agents says what agents are for, with Connect an agent', async () => {
       await jump('Connections');
@@ -484,9 +485,9 @@ export const FirstDay: PageStory = {
       await jump('Notifications');
       await within(await row('Browser notifications')).findByRole('button', { name: 'Turn on' }, SOON);
     });
-    await step('All of your minutes, with the sun at the end of the line', async () => {
-      await jump('Plan and credits');
-      await within(await row('Notes left')).findByText('6 h 40 min', {}, SOON);
+    await step('All of Free’s notes, with the sun at the end of the line', async () => {
+      await jump('Plan');
+      await within(await row('Notes left this period')).findByText('5 h', {}, SOON);
     });
   }
 };
@@ -522,22 +523,22 @@ export const RapidRepeatedChoicesPhoneNight: PageStory = { ...RapidRepeatedChoic
 
 
 /** The provider's side is scripted; no real wallet, payment or clipboard permission is needed. */
-export const AddCredits: PageStory = {
-  name: '11.24 Add credits',
+export const AddMoney: PageStory = {
+  name: '11.24 Add money',
   ...page('/settings#plan', 'payments'),
   play: async ({ userEvent, step }) => {
-    const sheet = () => screen.findByRole('dialog', { name: 'Add credits' }, SOON);
-    await step('Open Add credits and choose USDC on Base', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Add credits' }, LATER));
+    const sheet = () => screen.findByRole('dialog', { name: 'Add money' }, SOON);
+    await step('Open Add money and choose Base, under Pay with USDC', async () => {
+      await userEvent.click(within(await screen.findByRole('group', { name: 'Balance' }, LATER)).getByRole('button', { name: 'Add money' }));
       await userEvent.click(within(await sheet()).getByRole('button', { name: /^Network:/ }));
       const networks = await screen.findByRole('listbox', { name: 'Network' }, SOON);
       await userEvent.click(within(networks).getByRole('option', { name: 'Base' }));
     });
-    await step('Get an address for 10,000 credits. The sheet waits for the payment', async () => {
+    await step('Get an address for $20, the first amount offered. The sheet waits for the payment', async () => {
       await userEvent.click(within(await sheet()).getByRole('button', { name: 'Get an address' }));
-      await within(await sheet()).findByText('Waiting for payment', {}, SOON);
+      await within(await sheet()).findByText('Waiting for your payment', {}, SOON);
     });
-    await step('The provider sees 3.5 of 10 USDC: the same address can take the rest', async () => {
+    await step('The provider sees 3.5 of 20 USDC: the same address can take the rest', async () => {
       const w = current();
       const t = w.payments.topUps[0];
       if (t) receiveTopUp(w, t.id, 'short');
@@ -547,12 +548,11 @@ export const AddCredits: PageStory = {
       const w = current();
       const t = w.payments.topUps[0];
       if (t) receiveTopUp(w, t.id, 'credited');
-      await within(await sheet()).findByText('Credits added', {}, LATER);
+      await within(await sheet()).findByText('Added to your balance', {}, LATER);
       await userEvent.click(within(await sheet()).getByRole('button', { name: 'Done' }));
     });
-    await step('Reopen the completed payment from its row', async () => {
-      await userEvent.click(within(await group('Plan and credits')).getByRole('button', { name: 'Open' }));
-      await within(await sheet()).findByText('Credits added', {}, SOON);
+    await step('The balance says $20, and the payment is in the list with its receipt', async () => {
+      await within(await group('Plan')).findByText('Added, 20 USDC', {}, SOON);
     });
   }
 };

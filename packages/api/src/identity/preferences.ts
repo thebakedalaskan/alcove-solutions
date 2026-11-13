@@ -50,7 +50,9 @@ const NotificationFields = z.object({
   notesRequested: z.boolean(),
   followUpDue: z.boolean(),
   /** Someone tagged you in a document. On for anyone who hasn't said. */
-  tagged: z.boolean().default(true)
+  tagged: z.boolean().default(true),
+  /** Your plan: Pro about to end, renewed or ended. On for anyone who hasn't said. */
+  plan: z.boolean().default(true)
 });
 
 /** As stored, in a profile or a guest's browser: older records fold their call alerts in as they're read. */
@@ -74,12 +76,13 @@ export const NotificationPrefsInputSchema = z.object({
   sharedWithYou: NotificationFields.shape.sharedWithYou,
   notesRequested: NotificationFields.shape.notesRequested,
   followUpDue: NotificationFields.shape.followUpDue,
+  plan: NotificationFields.shape.plan.removeDefault(),
 } satisfies { [K in keyof NotificationPrefs]: z.ZodType<NotificationPrefs[K]> });
 
 /** New accounts and guests: the browser is opt-in; everything else reaches them but new questions and follow-ups. */
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPrefs = {
   enabled: false, privateMessages: true, replies: true, chatMentions: true, hands: true, questions: false, admissions: true, timers: true, ringing: true,
-  beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true
+  beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true, plan: true
 };
 
 

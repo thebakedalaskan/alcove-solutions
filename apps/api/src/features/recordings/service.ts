@@ -9,12 +9,15 @@ import { z } from 'zod';
 import type { Owner } from '../../context';
 import { unb64u } from '../../crypto';
 import { exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../errors';
+import { ConflictError, ForbiddenError, NotFoundError, PlanLimitError, ValidationError } from '../../errors';
 import { getItem } from '../../vault';
 import { appendPiece, createRecording, progress, setRecordingState, type Piece } from './audio';
 import { NoteManifest, blankNote, createNoteWithRecording, finishRecording, remove, updateNote } from '../notes/service';
 import * as transcripts from './transcripts';
 import * as writer from '../notes/writer';
+import { writingAtMost } from '../notes/drafting';
+import { meterFor, notesBlocked, NOTES_ROOM } from '../billing/meter';
+import { requireRoom, roomContext, roomOf } from '../billing/held';
 import { log } from '../../log';
 
 const rlog = log.child({ component: 'recordings' });
@@ -62,6 +65,14 @@ export async function start(o: Owner, input: RoomRecordingInput): Promise<RoomRe
       await exec(c, 'SELECT pg_advisory_xact_lock($1, $2)', [START_LOCK, Buffer.from(unb64u(o.ownerId, 32)).readInt32BE(0)]);
       const same = await roomRecordingFrom(o, c, own);
       if (same) return { recordingId: same, again: true };
+    }
+    // A new recording only while the plan has notes and room for them: one carrying on keeps what it was let start with.
+    const blocked = await notesBlocked(o, c, o.ownerId);
+    if (blocked === 'notes') throw new PlanLimitError('Your notes for this period have run out. They start again when your plan renews.', 'notes', { context: { secondsAgo } });
+    if (blocked === 'storage') {
+      throw new PlanLimitError('Your storage is full, so a recording can’t be kept. Delete something, or move to a plan with more room.', 'storage', { context: { secondsAgo, ...roomContext(await roomOf(o, c, o.ownerId), NOTES_ROOM) } });
+    }
+    if (own) {
       if (secondsAgo > MAX_RECORDING_AGE_DAYS * 86_400) throw new ValidationError(`Recordings can be uploaded for up to ${MAX_RECORDING_AGE_DAYS} days after they start. This one started earlier.`, { context: { secondsAgo } });
       if (secondsAgo < -CLOCK_SKEW_SECONDS) throw new ValidationError('This recording starts in the future. Check the clock on this device.', { context: { secondsAgo } });
     }
@@ -99,17 +110,26 @@ export async function act(o: Owner, recordingId: string, a: RecordingAction): Pr
 
 export async function audio(o: Owner, recordingId: string, piece: Piece): Promise<RoomRecordingState> {
   if (piece.segment !== 0) throw new ValidationError('Room recordings have one segment.', { context: { recordingId, segment: piece.segment } });
+  await requireRoom(o, o.pool, o.ownerId, piece.bytes.length, { recordingId, seq: piece.seq });
   await appendPiece(o, recordingId, piece);
   return view(o, recordingId);
 }
 
-/** Transcribes a few seconds of speech into the live transcript, while recording. */
+/**
+ * Transcribes a few seconds of speech into the live transcript, while recording, paid for by whoever records, who also
+ * holds what writing the note will cost so far. Once their notes have run out it's refused (plan-limit).
+ */
 export async function transcribe(o: Owner, recordingId: string, clip: transcripts.Clip): Promise<RoomRecordingState> {
   const r = await row(o, recordingId);
   const ctx = { recordingId, segment: clip.segment, atMs: clip.atMs, state: r.state };
   if (clip.segment !== 0) throw new ValidationError('Room recordings have one segment.', { context: ctx });
   if (r.state !== 'recording') throw new ConflictError(r.state === 'paused' ? 'Recording is paused.' : 'This recording has stopped.', { context: ctx });
-  await transcripts.hear(o, { recordingId, noteId: r.note_item_id }, clip);
+  const { seconds } = await progress(o, recordingId, 0);
+  const meter = meterFor(o, {
+    payer: o.ownerId, spend: 'transcript', whose: 'yours', source: { kind: 'recording', id: recordingId },
+    reserve: { model: o.cfg.NEAR_AI_NOTES_MODEL, most: writingAtMost({ seconds, rooms: 0, shareSeconds: 0 }) }
+  });
+  await transcripts.hear(o, meter, { recordingId, noteId: r.note_item_id }, clip);
   return view(o, recordingId);
 }
 

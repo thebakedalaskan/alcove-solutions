@@ -22,9 +22,10 @@
   }
  },
  "src/features/billing/topups.integration.test.ts": {
-  "seconds": 6.8,
+  "seconds": 6.9,
   "groups": {
-   "top-ups": 6.8
+   "top-ups": 6.8,
+   "top-ups a release before plans added": 0.1
   }
  },
  "src/features/calls/attention-delivery.integration.test.ts": {
@@ -553,13 +554,13 @@
    "pinned notes": 0.7,
    "who has the notes": 3.1,
    "room recordings": 3,
-   "credits": 1.1,
    "deleting an account": 17.1,
    "the shared demo account": 0.2,
    "privacy at rest": 31.5,
    "confidential computing": 0,
    "maintenance": 2.3,
-   "logging and errors": 0.5
+   "logging and errors": 0.5,
+   "plans": 1.1
   }
  },
  "src/integration/migrations.integration.test.ts": {
@@ -580,10 +581,85 @@
    "immediate query actions through the real API": 7.4
   }
  },
+ "src/features/billing/meter.integration.test.ts": {
+  "seconds": 22,
+  "groups": {
+   "who pays": 7.7,
+   "running out": 14.3
+  }
+ },
+ "src/features/billing/plans.integration.test.ts": {
+  "seconds": 6.3,
+  "groups": {
+   "Free": 2.6,
+   "accounts from before plans": 0.8,
+   "a call’s limits": 1.8,
+   "deleting an account": 1.2
+  }
+ },
+ "src/features/billing/teams.integration.test.ts": {
+  "seconds": 20.5,
+  "groups": {
+   "making a team and its licenses": 3,
+   "licenses": 4.5,
+   "the pool and the people in it": 2.5,
+   "team notes, Ask and team workspaces": 8.5,
+   "nobody reaches another team": 1,
+   "deleting an account": 1
+  }
+ },
  "src/integration/tee-keys.integration.test.ts": {
   "seconds": 3.4,
   "groups": {
    "server keys": 3.4
+  }
+ },
+ "src/features/billing/storage.integration.test.ts": {
+  "seconds": 2.6,
+  "groups": {
+   "a refusal for room": 0.2,
+   "who pays for a workspace": 0.9,
+   "what others can add": 1.2,
+   "a storage that’s full": 0.3
+  }
+ },
+ "src/features/billing/support.integration.test.ts": {
+  "seconds": 12.6,
+  "groups": {
+   "billing on the command line": 12.6
+  }
+ },
+ "src/features/calls/ahead.integration.test.ts": {
+  "seconds": 0.7,
+  "groups": {
+   "a call before it starts": 0.7
+  }
+ },
+ "src/features/meetings/proposals.integration.test.ts": {
+  "seconds": 0.9,
+  "groups": {
+   "what each person invited answered": 0.2,
+   "asking to move a call": 0.7
+  }
+ },
+ "src/features/notes/home.integration.test.ts": {
+  "seconds": 1,
+  "groups": {
+   "where a call’s things are, on its note": 0.7,
+   "the series a call is in, on its note and in the list": 0.3
+  }
+ },
+ "src/features/workspaces/drive.integration.test.ts": {
+  "seconds": 3.2,
+  "groups": {
+   "previews": 2.9,
+   "one Trash": 0.2
+  }
+ },
+ "src/features/workspaces/workspaceAbout.integration.test.ts": {
+  "seconds": 0.5,
+  "groups": {
+   "what a workspace is for": 0.5
   }
  }
 }

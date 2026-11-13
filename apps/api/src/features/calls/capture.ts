@@ -45,6 +45,15 @@ export type OfflineStretch = z.infer<typeof OfflineStretch>;
 export const ScreenChange = z.object({ at: z.number(), on: z.boolean(), segment: z.number().int() });
 export type ScreenChange = z.infer<typeof ScreenChange>;
 
+/**
+ * Where the organizer's plan stands in a call (features/billing): when they were told their notes are about to run out
+ * at the call's pace, and the stop, if their notes or storage ran out: when (ms on the server's clock) and which, one value
+ * as the wire has it (`CaptureState.stopped`).
+ */
+export const NotesLimit = z.object({ warnedAt: z.number().nullable(), stopped: z.object({ at: z.number(), reason: z.enum(['notes', 'storage']) }).nullable() });
+export type NotesLimit = z.infer<typeof NotesLimit>;
+export const NO_LIMIT: NotesLimit = { warnedAt: null, stopped: null };
+
 /** The paths that capture something, or send what was captured to the AI. */
 export type CapturePath = 'audio' | 'speech' | 'screen' | 'captions' | 'catch-up' | 'ask' | 'live-notes' | 'ideas' | 'sort';
 /**
@@ -170,6 +179,8 @@ export function stateFor(c: {
   status: CaptureStatus; history: CaptureChange[]; startedAt: Date; organizer: string | null; unavailable: CaptureDevicePart[]; away: boolean;
   screens: { live: boolean; history: ScreenChange[] }; model: string | null; modelPrivate: boolean; allowScreens: boolean;
   gaps: CaptureGap[]; requests: NotesRequest[]; asked: CaptureState['asked'];
+  /** The organizer's plan in the call; `organizerSees`: whether this is for the organizer, who alone is told notes are running out. */
+  limit: NotesLimit; organizerSees: boolean;
 }): CaptureState {
   const when = (at: number) => new Date(c.startedAt.getTime() + at * 1000).toISOString();
   const actor = (by: CaptureChange['by']) => actorOf(by, c.organizer);
@@ -191,7 +202,9 @@ export function stateFor(c: {
   return {
     mode: cant.has('recording') && cant.has('transcript') ? 'unavailable' : c.status,
     recording: part('recording'), transcript: part('transcript'), ai: part('ai'), screen: screenPart(c, when, actor),
-    gaps: c.gaps, requests: c.requests, asked: c.asked, room: null, away: c.away, model: c.model, modelPrivate: c.modelPrivate, allowScreens: c.allowScreens
+    gaps: c.gaps, requests: c.requests, asked: c.asked, room: null, away: c.away, model: c.model, modelPrivate: c.modelPrivate, allowScreens: c.allowScreens,
+    stopped: c.limit.stopped ? { reason: c.limit.stopped.reason, at: new Date(c.limit.stopped.at).toISOString() } : null,
+    runningOut: c.organizerSees && c.limit.warnedAt !== null && c.limit.stopped === null ? { at: new Date(c.limit.warnedAt).toISOString() } : null
   };
 }
 

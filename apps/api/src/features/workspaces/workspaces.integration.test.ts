@@ -19,7 +19,7 @@ vi.setConfig({ testTimeout: 90_000 });
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
 afterAll(async () => { await h?.close(); });
-afterEach(() => h.closeCalls());
+afterEach(async () => { h.closeCalls(); await h.resetLimits(); });
 
 let seq = 0;
 const unique = (who = 'person') => `${who}.${Date.now().toString(36)}${(seq++).toString(36)}@tests.example`;
@@ -141,8 +141,9 @@ describe('a workspace', () => {
     const ann = await account();
     const { id } = await ann.api.workspaces.create('  Launch \n plan ');
     expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect(await ann.api.workspaces.list()).toEqual([{ id, name: 'Launch plan', role: 'admin', people: 1, createdAt: expect.any(String), call: null }]);
-    expect(await ann.api.workspaces.get(id)).toEqual({ id, name: 'Launch plan', role: 'admin', inCall: false, people: 1, items: [] });
+    // Ann made it, so she pays for it: its files count against her storage, and a call she organizes there opens it to everyone.
+    expect(await ann.api.workspaces.list()).toEqual([{ id, name: 'Launch plan', role: 'admin', people: 1, teamAccess: null, createdAt: expect.any(String), call: null, youPay: true }]);
+    expect(await ann.api.workspaces.get(id)).toEqual({ id, name: 'Launch plan', role: 'admin', inCall: false, people: 1, teamAccess: null, items: [] });
     await ann.api.workspaces.rename(id, 'Launch');
     expect((await ann.api.workspaces.get(id)).name).toBe('Launch');
     expect(await code(ann.api.workspaces.rename(id, '   '))).toBe('invalid');
@@ -161,6 +162,28 @@ describe('a workspace', () => {
     expect(await code(ann.api.workspaces.remove(id))).toBe('not-found');
   });
 
+  it('is deleted by an admin alone: someone who edits or reads in it is refused, and nothing of it goes', async () => {
+    const ann = await account();
+    const theo = await account();
+    const rita = await account();
+    const id = await workspace(ann, 'Ours', [[theo, 'edit'], [rita, 'read']]);
+    const doc = await make(ann, id, 'document', 'Plan');
+    const owner = await ownerOf(id);
+    const before = await itemsOf(ann.api, id);
+    for (const who of [theo, rita]) expect(await refusal(who.api.workspaces.remove(id))).toMatchObject({ code: 'forbidden', status: 403 });
+    // It's all there still, for everyone in it.
+    expect(await itemsOf(ann.api, id)).toEqual(before);
+    expect(item(await itemsOf(theo.api, id), doc)?.role).toBe('edit');
+    expect(item(await itemsOf(rita.api, id), doc)?.role).toBe('read');
+    expect((await ann.api.workspaces.people(id)).map((p) => p.role)).toEqual(['admin', 'edit', 'read']);
+    for (const t of ['owners', 'workspaces', 'documents']) expect(await count(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [owner]), t).toBe(1);
+    // Made an admin, Theo can.
+    await ann.api.workspaces.setRole(id, (await ann.api.workspaces.people(id)).find((p) => p.person.email === theo.email)?.id ?? '', 'admin');
+    await theo.api.workspaces.remove(id);
+    expect(await code(ann.api.workspaces.get(id))).toBe('not-found');
+    expect(await count('SELECT count(*)::int AS n FROM owners WHERE owner_id = $1', [owner])).toBe(0);
+  });
+
   it('is an owner with its own keys and no way to sign in, and nothing that lists accounts mistakes it for one', async () => {
     const ann = await account();
     const id = await workspace(ann, 'Ours');
@@ -170,11 +193,24 @@ describe('a workspace', () => {
     // Its own root key, under its own envelope.
     const keys = (await h.pool.query<{ root_envelope: Buffer }>('SELECT root_envelope FROM owners WHERE owner_id = ANY($1)', [[owner, ann.ownerId]])).rows.map((r) => r.root_envelope.toString('hex'));
     expect(new Set(keys).size).toBe(2);
-    // No sign-in, session, profile, credits or receipts: an account's tables know nothing of it.
-    for (const t of ['identities', 'sessions', 'items', 'billing_accounts', 'operations']) expect(await count(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [owner]), t).toBe(0);
-    // Upkeep goes past it, however often it runs, and it's still there and still opens.
+    // A file in it and AI asked for in it, so its storage and its AI have been counted around it.
+    const doc = await make(ann, id, 'document', 'Plan');
+    await ann.api.workspaces.media.upload(id, doc, new File([new Uint8Array(randomBytes(4096))], 'harbour.png', { type: 'image/png' }));
+    const said: unknown[] = [];
+    for await (const part of ann.api.workspaces.ask(id, doc, { action: 'shorter', text: 'A long way of saying it' })) said.push(part);
+    expect(said).toEqual([{ type: 'text', text: 'Shorter: A long way of saying it' }]);
+    // No sign-in, session, profile, plan, AI allowance or receipts: an account's tables know nothing of it.
+    const accountTables = ['identities', 'sessions', 'items', 'plan_accounts', 'ai_meters', 'operations'];
+    const none = async () => { for (const t of accountTables) expect(await count(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [owner]), t).toBe(0); };
+    await none();
+    // What it stores and its AI are its payer's, Ann's.
+    expect(await count('SELECT count(*)::int AS n FROM plan_accounts WHERE owner_id = $1', [ann.ownerId])).toBe(1);
+    expect(await count('SELECT count(*)::int AS n FROM ai_meters WHERE owner_id = $1', [ann.ownerId])).toBe(1);
+    expect((await ann.api.plans.plan()).storage.usedBytes).toBeGreaterThan(4096);
+    // Upkeep goes past it, however often it runs, gives it no plan, and it's still there and still opens.
     await maintain(h.deps);
     await maintain(h.deps);
+    await none();
     expect((await ann.api.workspaces.get(id)).name).toBe('Ours');
     expect(await count('SELECT count(*)::int AS n FROM owners WHERE owner_id = $1', [owner])).toBe(1);
   });
@@ -227,7 +263,7 @@ describe('people in a workspace', () => {
     expect(people.map((p) => [p.person.email, p.role, p.isMe])).toEqual([[ann.email, 'admin', true], [theo.email, 'edit', false], [later, 'read', false]]);
     expect(people[0]?.person.name).toBe(ann.name);
     expect(await ann.api.workspaces.list()).toEqual([expect.objectContaining({ id, people: 3 })]);
-    expect(await theo.api.workspaces.list()).toEqual([{ id, name: 'Ours', role: 'edit', people: 3, createdAt: expect.any(String), call: null }]);
+    expect(await theo.api.workspaces.list()).toEqual([{ id, name: 'Ours', role: 'edit', people: 3, teamAccess: null, createdAt: expect.any(String), call: null, youPay: false }]);
     expect((await theo.api.workspaces.people(id)).find((p) => p.isMe)?.person.email).toBe(theo.email);
 
     // Adding someone who's in it sets their role: the same person, not a second one.
@@ -768,7 +804,7 @@ describe('who can open what', () => {
     expect(await w.list()).toEqual([]);
     await ann.api.workspaces.share.set(id, given, [{ email: sam.email }], 'read');
 
-    expect(await w.list()).toEqual([{ id, name: null, role: null, people: null, createdAt: null, call: null }]);
+    expect(await w.list()).toEqual([{ id, name: null, role: null, people: null, teamAccess: null, createdAt: null, call: null, youPay: false }]);
     const tree = await w.get(id);
     expect(tree).toMatchObject({ id, name: null, role: null, people: null });
     expect(tree.items.map((i) => [i.id, i.parent, i.role])).toEqual([[given, null, 'read']]);
@@ -1143,7 +1179,7 @@ describe('deleting an account', () => {
 });
 
 describe('limits', () => {
-  /** As if an account had made this many workspaces: making a hundred the real way is more than a minute's allowance. */
+  /** As if an account had made this many workspaces: making a thousand the real way is more than a minute's allowance. */
   async function madeAlready(who: Account, n: number) {
     const index = (await h.pool.query<{ email_index: Buffer }>('SELECT email_index FROM identities WHERE owner_id = $1', [who.ownerId])).rows[0]?.email_index;
     const owners = Array.from({ length: n }, () => randomBytes(32).toString('base64url'));
@@ -1155,7 +1191,8 @@ describe('limits', () => {
     return () => h.pool.query('DELETE FROM owners WHERE owner_id = ANY($1)', [owners]);
   }
 
-  it('lets an account make a hundred workspaces, and tells it plainly when that’s all', async () => {
+  it('lets an account make as many workspaces as workspaces.max_made says, and tells it plainly when that’s all', async () => {
+    await h.pool.query("INSERT INTO service_limits (name, value) VALUES ('workspaces.max_made', 100)");
     const ann = await account();
     const clear = await madeAlready(ann, 99);
     const last = await ann.api.workspaces.create('The hundredth');
@@ -1284,7 +1321,8 @@ describe('a new address from the provider', () => {
     const sub = `sub-${seq++}`;
     const org = await withGoogle(old, sub);
     const ann = await account();
-    const id = await workspace(ann, 'Ours', [[org, 'edit']]);
+    // The organizer made it, so it's their storage it counts against, and Ann runs it with them.
+    const id = await workspace(org, 'Ours', [[ann, 'admin']]);
     await make(ann, id, 'document', 'Doc');
     const { code: c, host } = await hostedBy(org);
     await host.setWorkspace(id);
@@ -1397,7 +1435,7 @@ describe('the live stream', () => {
     expect(s.lines[1]).toEqual({ type: 'mentions', mentions: [] });
     const [first] = s.lines;
     if (first?.type !== 'tree') throw new Error('the first line isn’t the tree');
-    expect(first.tree).toEqual({ id, name: 'Ours', role: 'read', inCall: false, people: 2, items: [] });
+    expect(first.tree).toEqual({ id, name: 'Ours', role: 'read', inCall: false, people: 2, teamAccess: null, items: [] });
 
     const me = (await ann.api.workspaces.people(id)).find((p) => p.person.email === theo.email)?.id ?? '';
     await ann.api.workspaces.setRole(id, me, 'edit');

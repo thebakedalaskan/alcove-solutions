@@ -58,7 +58,7 @@ apps/api/src/
     notes/           saved notes, additions, personal notes, series and writing
     recordings/      audio, screen frames, transcripts and room recordings
     workspaces/      tree, access, documents, media and mentions
-    billing/         service accounting
+    billing/         plans, the AI allowance, storage and top-ups
   http/              shared request infrastructure
   edge/              TLS inside the process, certificates, the web app's files
   integration/       cross-feature and infrastructure suites
@@ -68,7 +68,7 @@ packages/api/src/
   client.ts          aggregate interface
   errors.ts          shared client errors
   identity/ agents/ meetings/ calls/ notes/ recordings/ workspaces/
-  trust/ credits/ telemetry/ feature-flags/ shared/
+  trust/ plans/ teams/ telemetry/ feature-flags/ shared/
 packages/api-http/src/
   index.ts           public exports and client composition
   transport/         request, parse, stream and client options
@@ -77,7 +77,10 @@ packages/api-http/src/
                      server hands over; and findRelease, which the API looks its own up with (@alcove/api-http/release)
 ```
 
-Exact filenames follow the responsibility they implement; this map is not a request to fill every directory with scaffolding. Existing shared API infrastructure (`db`, `crypto`, `owners`, `sessions`, `objects`, configuration, logging, inference, attestation, maintenance and feature flags, with the commands the feature-flags CLI and the operator route both run, `featureFlagCommands.ts`) keeps its deliberately stable location. So do the server's keys (`serverKeys.ts`: the sealed server keys a TEE runs with, and carrying a database's accounts over to them), which configuration resolves at start beside `crypto`, `owners` and `tee`, and which belong to no one feature; Google Cloud as the TEE reaches it (`gcp.ts`: the attested identity, Secret Manager and Cloud KMS), which start-up reads before configuration; and starting the server (`start.ts`: what `server.ts` runs, with what it reaches outside the environment explicit, so integration tests start one as production does). The edge (`edge/`) is its own home rather than part of `http/`: it sits in front of the app, terminating TLS and serving files, and nothing in it handles an API request. Server, migration, limits CLI, feature-flags CLI and document-worker entry paths stay stable.
+Exact filenames follow the responsibility they implement; this map is not a request to fill every directory with scaffolding. Existing shared API infrastructure (`db`, `crypto`, `owners`, `sessions`, `objects`, configuration, logging, inference, attestation, maintenance and feature flags, with the commands the feature-flags CLI and the operator route both run, `featureFlagCommands.ts`) keeps its deliberately stable location. So do the server's keys (`serverKeys.ts`: the sealed server keys a TEE runs with, and carrying a database's accounts over to them), which configuration resolves at start beside `crypto`, `owners` and `tee`, and which belong to no one feature; Google Cloud as the TEE reaches it (`gcp.ts`: the attested identity, Secret Manager and Cloud KMS), which start-up reads before configuration; and starting the server (`start.ts`: what `server.ts` runs, with what it reaches outside the environment explicit, so integration tests start one as production does). The edge (`edge/`) is its own home rather than part of `http/`: it sits in front of the app, terminating TLS and serving files, and nothing in it handles an API request. Server, migration, limits CLI, feature-flags CLI, billing CLI and document-worker entry paths stay stable. The billing CLI
+(`apps/api/src/billing-cli.ts`) is one because it's built into the image as `dist/billing-cli.js` beside the other CLIs and run
+where `KSERVICE` is at hand ([Plans and usage › Support](plans-and-usage.md#support)): like them, it parses the few settings
+it reads and composes a feature's behaviour (`features/billing/support.ts`), holding none of its own.
 
 ## Rules for every change
 

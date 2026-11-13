@@ -2,9 +2,10 @@
  * The welcome page: what Alcove is, before sign-in, told as one evening on the app's own scene. The hero looks out of a cove
  * at Home's sunset, the ways in on the sky with the sun under them, setting as the page scrolls on. The note and the call
  * sit on its water, the call a night window of its own. Then the team stands on the horizon with the sun low, your agent
- * works in Alcove, the recorder stands on the night's horizon above what Alcove can see, and morning comes up behind the
- * last ask, in a cove of its own. Each scene plays while it's on screen; with reduced motion each shows a still. Signing in
- * sails out of the hero's cove to Home (lib/sailOut.ts, features/home/SailOut.tsx).
+ * works in Alcove, the recorder stands on the night's horizon above what Alcove can see, the plans sit in a cove at night
+ * with the last of the sun (PlansScene.tsx), and morning comes up behind the last ask, in a cove of its own. Each scene
+ * plays while it's on screen; with reduced motion each shows a still. Signing in sails out of the hero's cove to Home
+ * (lib/sailOut.ts, features/home/SailOut.tsx).
  */
 import { Button, EASE, Icon, IconButton, Logo, cn, useTheme, type IconName } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
@@ -15,6 +16,7 @@ import { AgentScene } from './AgentScene';
 import { CallTour } from './CallTour';
 import { CLOSE_COVE, HERO_COVE } from './coves';
 import { NoteScene } from './NoteScene';
+import { PlansScene } from './PlansScene';
 import { RecordScene } from './RecordScene';
 import { SealedScene } from './SealedScene';
 import { PartHead, Sky, coveOnScreen } from './Sky';
@@ -27,7 +29,7 @@ const HEADLINE = [['Your', 'meeting', 'superapp.'], ['Powered', 'by', 'confident
 const TINT: Partial<Record<(typeof HEADLINE)[number][number], 'lp-cool' | 'lp-warm'>> = {
   meeting: 'lp-cool', 'superapp.': 'lp-cool', confidential: 'lp-warm', 'AI.': 'lp-warm'
 };
-const PARTS = [['notes', 'Notes'], ['call', 'In the call'], ['time', 'Find a time'], ['agents', 'Agents'], ['offline', 'Offline'], ['privacy', 'Privacy']] as const;
+const PARTS = [['notes', 'Notes'], ['call', 'In the call'], ['time', 'Find a time'], ['agents', 'Agents'], ['offline', 'Offline'], ['privacy', 'Privacy'], ['plans', 'Plans']] as const;
 const TOOLS = [
   ['list_notes', 'Find what was said, across your calls'],
   ['get_note', 'Open one call’s notes, with its moments'],
@@ -136,7 +138,7 @@ function Hero({ auth }: { auth: Auth }) {
       <motion.p className="lp-lede" {...rise(0)}>
         Video calls with the note taker built in. Get a transcript, a summary and follow-ups, with recordings and notes encrypted in storage.
       </motion.p>
-      <motion.div {...rise(1)}><WaysIn auth={auth} layout="hero" note="Free to start, with 400 minutes of notes." /></motion.div>
+      <motion.div {...rise(1)}><WaysIn auth={auth} layout="hero" note="Free to start, with about 5 hours of notes a month." /></motion.div>
     </div>
   );
 }
@@ -218,6 +220,8 @@ export function Landing({ auth }: { auth: Auth }) {
           </RecordScene>
           <div className="lp-gap" />
         </TeamScene>
+
+        <PlansScene auth={ways} />
 
         <Sky moment="home" className="lp-close" id="start" sun="rise" cove={CLOSE_COVE} sky={<Close auth={ways} />}>
           <div className="lp-wrap lp-close-water">

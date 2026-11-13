@@ -43,10 +43,15 @@ export function treeOf(id: string): Space {
 /** Its tree, as the API sends it: what the Drive says of it besides stays out. */
 const treeOnly = ({ createdAt: _made, call: _call, ...tree }: Space): WorkspaceTree => tree;
 export const treeFor = (id: string): WorkspaceTree => treeOnly(treeOf(id));
-const summaryOf = ({ items: _items, inCall: _inCall, ...rest }: Space): WorkspaceSummary => rest;
+/**
+ * A workspace in `you`'s Drive, as the API sends it. They pay for it when the world says they do (`paidBy`), or, where it says
+ * nobody, when they're its admin, as whoever makes one is.
+ */
+export const summaryOf = ({ items: _items, inCall: _inCall, paidBy, ...rest }: Space, you: Person): WorkspaceSummary =>
+  ({ ...rest, youPay: rest.role !== null && (paidBy ? paidBy.email.toLowerCase() === you.email.toLowerCase() : rest.role === 'admin') });
 /** Your Drive: every workspace you're in, the newest first, then each one you only have documents in. */
 const drive = (a: WorkspaceSummary, b: WorkspaceSummary) => Number(a.role === null) - Number(b.role === null) || (b.createdAt ?? '').localeCompare(a.createdAt ?? '');
-export const workspaceList = (): WorkspaceSummary[] => current().workspaces.map(summaryOf).sort(drive);
+export const workspaceList = (): WorkspaceSummary[] => current().workspaces.map((w) => summaryOf(w, me())).sort(drive);
 
 const authorOf = () => { const p = me(); return p.portrait ? { name: p.name, portrait: p.portrait } : null; };
 
@@ -277,6 +282,11 @@ function fileIn(id: string, documentId: string, mediaId: string) {
 export async function upload(id: string, documentId: string, file: File, o: MediaUploadOptions = {}): Promise<WorkspaceMedia> {
   editable(id, documentId);
   if (file.size > MOST_BYTES) throw new AlcoveApiError('invalid', 'This file is bigger than 512 MiB, the most a file can be.');
+  // As the server's limits on a file (features/workspaces/media.ts › withinLimits): one that would take whoever pays past their
+  // storage is refused, before any of it is kept. Art is who pays here, so it's the world's plan: over it in `plan-over`, with
+  // room on the busy afternoon. What someone else can add to his storage isn't played here.
+  const { storage, over } = current().plan;
+  if (over.storage || storage.usedBytes + file.size > storage.limitBytes) throw new AlcoveApiError('plan-limit', 'Your storage is full. Delete something, or move to a plan with more room.');
   const stopped = () => new AlcoveApiError('network', 'That upload was stopped.');
   for (let piece = 1; piece <= UPLOAD_PIECES; piece++) {
     await pause(PIECE_MS);

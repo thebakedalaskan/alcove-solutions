@@ -9,6 +9,7 @@ import { openOwner } from '../../owners';
 import { findSession, stillOpen } from '../../sessions';
 import * as account from './account';
 import * as calendar from '../meetings/calendar';
+import { visit } from '../billing/teams';
 import { clientAddress, type Env } from '../../http/context';
 import { body } from '../../http/body';
 import type { HttpRuntime } from '../../http/runtime';
@@ -29,6 +30,8 @@ export function registerAuthRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   /* Calendar consent goes back with how it went: to Home when it was started there, otherwise to Calendar settings. */
   const backToCalendar = (result: CalendarConnectResult, back: google.CalendarBack | undefined) =>
     back ? `${d.cfg.WEB_ORIGIN}${back}?calendar=${result}` : `${d.cfg.WEB_ORIGIN}/settings?calendar=${result}#calendar`;
+  /** Signing in is a visit: a team member without a live license takes one. A failure there never stops the sign-in. */
+  const visited = (ownerId: string) => visit(d, ownerId).catch((e: unknown) => rlog.warn('team license not taken at sign-in', { ownerId, err: e }));
 
   /* ---------- public: the session and signing in ---------- */
   app.get('/v1/session', async (c) => {
@@ -43,6 +46,7 @@ export function registerAuthRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
     const r = await account.demoSignIn(d, await body(c, SignInBodySchema));
     deleteCookie(c, ATTEMPT, { path: '/', secure });
     startSession(c, r.sessionId);
+    await visited(r.owner.ownerId);
     return c.json({ session: await account.sessionFor(r.owner), isNew: r.isNew });
   });
 
@@ -110,6 +114,7 @@ export function registerAuthRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
       }
       const s = await account.signIn(d, { provider: 'google', who: r.identity });
       startSession(c, s.sessionId);
+      await visited(s.owner.ownerId);
       const next = attempt?.next ?? (s.isNew ? '/ready' : '/home');
       return c.redirect(popup ? `${d.cfg.WEB_ORIGIN}/welcome?${new URLSearchParams({ popup, next })}` : `${d.cfg.WEB_ORIGIN}${next}`, 302);
     } catch (e) {

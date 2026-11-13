@@ -5,7 +5,7 @@
  * this module does what access allows. What a document or board holds isn't here: to the tree they're rows of a kind.
  */
 import {
-  type DocumentRole, type DocumentShare, type ItemCall, type ItemKind, type ItemPlace, type Person, type PresenceBody, type ShareEntry, type ShareTarget, type WorkspaceHere, type WorkspaceItem, type WorkspaceLiveEvent, type WorkspacePerson,
+  TeamAccessSchema, type DocumentRole, type DocumentShare, type ItemCall, type TeamAccess, type ItemKind, type ItemPlace, type Person, type PresenceBody, type ShareEntry, type ShareTarget, type WorkspaceHere, type WorkspaceItem, type WorkspaceLiveEvent, type WorkspacePerson,
   type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree
 } from '@alcove/api';
 import type { StreamingApi } from 'hono/utils/stream';
@@ -13,14 +13,15 @@ import { z } from 'zod';
 import type { Deps, Owner } from '../../context';
 import { b64u, blindIndex, id128, openJson, sealJson, sha, toJson, utf8, type RecordHeader } from '../../crypto';
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
-import { AppError, ConflictError, invalid, notFound } from '../../errors';
+import { AppError, ConflictError, ForbiddenError, invalid, notFound } from '../../errors';
+import { limitsNow } from '../../limits';
 import { publish, type StreamPlace } from '../../live/hub';
 import { announce, roomFor, type Room, type Snapshot } from '../../live/room';
 import { LiveStream, type Line, type Step } from '../../live/stream';
 import { log } from '../../log';
 import { createOwner, findOwner, indexKey, lockOwner, ownerFrom } from '../../owners';
 import {
-  TREE_NOTICE, canOpen, change, emailIndex, entriesOn, grant, grantsFor, limitKey, openSharedPerson, openState, personIn, personKey, placeableIn, requireEditable, requireItem, requireRole, requireSharing, roleOf, saveState, sealSharedPerson, sealState, seatEnded, seatIndex,
+  TREE_NOTICE, canOpen, change, emailIndex, entriesOn, givenByCall, grant, grantsFor, limitKey, openSharedPerson, openState, personIn, personKey, placeableIn, requireEditable, requireItem, requireRole, requireSharing, roleOf, saveState, sealSharedPerson, sealState, seatEnded, seatIndex,
   serverWorkspace, standingIn, trashOf, workspaceFor, workspaceKey, type Credentials, type Grant, type MadeFor, type Maker, type Reader, type Standing, type StoredCall, type StoredItem, type Who, type Workspace, type WorkspaceState
 } from './access';
 import { profile } from '../account/account';
@@ -29,8 +30,11 @@ import { tellCall } from '../calls/notifications';
 import { roomsOfCalls } from '../calls/room-boards';
 import { collect, copyUses, releaseDocuments, releaseWorkspace } from './media';
 import { personOf, portraitFor } from '../account/portraits';
+import { settlePayer, type PayerMove } from '../billing/storage';
 import { copyContent, kindOf, moveClientTags, startContent } from './documents';
 import { waitingFor } from './mentions';
+import { tellPayers } from '../billing/plans';
+import { licensedBy, licensedOn } from '../billing/teams';
 
 const wlog = log.child({ component: 'workspaces' });
 
@@ -39,8 +43,6 @@ const MAX_ITEMS = 5000;
 const MAX_NAME = 200;
 /** How many folders deep a tree can go. A stored tree can be deeper than this, so nothing that walks one recurses. */
 const MAX_DEPTH = 32;
-/** How many workspaces one address can have made and not deleted, in or out of them. */
-const MAX_MADE = 100;
 const MAX_PEOPLE = 1000;
 /** How long something stays in Trash. */
 export const TRASH_MS = 30 * 24 * 60 * 60_000;
@@ -194,9 +196,10 @@ function wireItem(id: string, item: StoredItem, role: DocumentRole, outside: boo
 type Seen = Standing & { workspaceId: string; state: WorkspaceState; people: number };
 /**
  * The workspace as one reader sees it: everything they can open, in order, with parents first, and each call's folder as `calls`
- * says they may read it. Someone in a call that uses it sees it as its people do, folders and name, but not how many they are.
+ * says they may read it. Someone in a call that uses it sees it as its people do, folders and name, but not how many they are,
+ * nor whose team it is.
  */
-function treeFor(who: Who, w: Seen, calls: ReadonlyMap<string, ItemCall>): WorkspaceTree {
+function treeFor(who: Who, w: Seen, calls: ReadonlyMap<string, ItemCall>, teamAccess: TeamAccess | null): WorkspaceTree {
   const outside = w.role === null && !w.call;
   const items: WorkspaceItem[] = [];
   const kids = childrenIn(w.state);
@@ -210,11 +213,14 @@ function treeFor(who: Who, w: Seen, calls: ReadonlyMap<string, ItemCall>): Works
     if (role) items.push(wireItem(id, item, role, outside, trash, calls.get(id) ?? null));
     stack.push(...next(id, trash));
   }
-  return { id: w.workspaceId, name: outside ? null : w.state.name, role: w.role, inCall: w.call, people: w.role === null ? null : w.people, items };
+  return { id: w.workspaceId, name: outside ? null : w.state.name, role: w.role, inCall: w.call, people: w.role === null ? null : w.people, teamAccess: w.role === null ? null : teamAccess, items };
 }
+/** Who's in a team's workspace (the whole team, or only the people added); null on any other. */
+const teamAccessOf = async (db: Db, workspaceId: string): Promise<TeamAccess | null> =>
+  (await maybeOne(db, z.object({ team_access: TeamAccessSchema.nullable() }), 'SELECT team_access FROM workspaces WHERE workspace_id = $1', [workspaceId]))?.team_access ?? null;
 export async function tree(d: Deps, reader: Reader, workspaceId: string): Promise<WorkspaceTree> {
   const w = await workspaceFor(d, reader, workspaceId);
-  return treeFor(reader, w, await callsIn(d.pool, reader, reader.seat?.callId ?? null, w.state));
+  return treeFor(reader, w, await callsIn(d.pool, reader, reader.seat?.callId ?? null, w.state), await teamAccessOf(d.pool, workspaceId));
 }
 export async function item(d: Deps, reader: Reader, workspaceId: string, itemId: string): Promise<WorkspaceItem> {
   const w = await workspaceFor(d, reader, workspaceId);
@@ -223,28 +229,35 @@ export async function item(d: Deps, reader: Reader, workspaceId: string, itemId:
   return wireItem(itemId, found.item, found.role, w.role === null && !w.call, trashOf(w.state, itemId), calls.get(itemId) ?? null);
 }
 
-const ListedRow = z.object({ owner_id: z.string(), workspace_id: z.string(), state_ciphertext: bytea, role: z.enum(['admin', 'edit', 'read']).nullable(), people: z.number(), created_at: timestamp });
+const ListedRow = z.object({
+  owner_id: z.string(), workspace_id: z.string(), state_ciphertext: bytea, role: z.enum(['admin', 'edit', 'read']).nullable(), people: z.number(), team_access: TeamAccessSchema.nullable(),
+  created_at: timestamp, you_pay: z.boolean()
+});
 /**
- * The Drive: every workspace someone's in, newest first, a call's home with the call it was made for; then each one they only
- * have documents in, which says nothing about itself, not even when it was made.
+ * The Drive: every workspace someone's in, newest first, a call's home with the call it was made for, and whether they pay for
+ * it; then each one they only have documents in, which says nothing about itself, not even when it was made.
  */
 export async function list(reader: Reader): Promise<WorkspaceSummary[]> {
   const o = reader.account?.owner;
   if (!o) return [];
-  const found = await rows(o.pool, ListedRow, `SELECT w.owner_id, w.workspace_id, w.state_ciphertext, m.role, w.created_at,
-      (SELECT count(*)::int FROM workspace_members x WHERE x.owner_id = w.owner_id) AS people
+  // A team's workspace for the whole team is in the Drive of everyone live-licensed on it, who edits it (access.ts › standingIn).
+  const teams = [...new Set((await licensedBy(o.pool, reader.principals)).map((l) => l.teamId))];
+  const found = await rows(o.pool, ListedRow, `SELECT w.owner_id, w.workspace_id, w.state_ciphertext, w.team_access, w.created_at,
+      CASE WHEN w.team_access = 'team' AND w.team_id = ANY($2::text[]) AND (m.role IS NULL OR m.role = 'read') THEN 'edit' ELSE m.role END AS role,
+      (SELECT count(*)::int FROM workspace_members x WHERE x.owner_id = w.owner_id) AS people, w.payer_owner_id IS NOT DISTINCT FROM $3 AS you_pay
     FROM workspaces w LEFT JOIN workspace_members m ON m.owner_id = w.owner_id AND m.email_index = ANY($1::bytea[])
-    WHERE m.role IS NOT NULL OR EXISTS (SELECT 1 FROM document_access a WHERE a.owner_id = w.owner_id AND a.principal_index = ANY($1::bytea[]))
-    ORDER BY w.created_at DESC, w.workspace_id`, [reader.principals]);
+    WHERE m.role IS NOT NULL OR (w.team_access = 'team' AND w.team_id = ANY($2::text[]))
+      OR EXISTS (SELECT 1 FROM document_access a WHERE a.owner_id = w.owner_id AND a.principal_index = ANY($1::bytea[]))
+    ORDER BY w.created_at DESC, w.workspace_id`, [reader.principals, teams, o.ownerId]);
   const mine: WorkspaceSummary[] = [];
   const given: WorkspaceSummary[] = [];
   for (const r of found) {
-    if (r.role === null) { given.push({ id: r.workspace_id, name: null, role: null, people: null, createdAt: null, call: null }); continue; }
+    if (r.role === null) { given.push({ id: r.workspace_id, name: null, role: null, people: null, teamAccess: null, createdAt: null, call: null, youPay: false }); continue; }
     const owner = await findOwner(o, r.owner_id, undefined);
     // Deleted since its row was read: nobody has it any more.
     if (!owner) continue;
     const state = openState(owner, r.workspace_id, r.state_ciphertext);
-    mine.push({ id: r.workspace_id, name: state.name, role: r.role, people: r.people, createdAt: r.created_at.toISOString(), call: state.madeFor && { title: state.madeFor.title, at: state.madeFor.at } });
+    mine.push({ id: r.workspace_id, name: state.name, role: r.role, people: r.people, teamAccess: r.team_access, createdAt: r.created_at.toISOString(), call: state.madeFor && { title: state.madeFor.title, at: state.madeFor.at }, youPay: r.you_pay });
   }
   return [...mine, ...given];
 }
@@ -276,25 +289,52 @@ function landing(reader: Reader, w: Workspace, parent: string | null): string | 
 }
 
 /**
- * A workspace someone makes, with them as its admin, in the caller's transaction. `madeFor`: the call it's made in, as a home
- * is (`MadeFor`), so who's in it follows that call's invite (`followInvite`).
+ * A workspace someone makes, with them as its admin, in the caller's transaction: they pay for it (docs: Plans and usage ›
+ * Storage). `madeFor`: the call it's made in, as a home is (`MadeFor`), so who's in it follows that call's invite
+ * (`followInvite`). Made by someone live-licensed on a team, it's the team's (docs: Plans and usage › Team), with `access`
+ * saying who's in it: only the people added (`added`, the default, as for a call's, so a call's notes never reach the whole
+ * team without someone choosing that), or the whole team (`team`). Either way its maker pays for it, from the pool.
  */
-export async function createIn(o: Owner, c: Db, name: string, madeFor: Omit<MadeFor, 'out'> | null = null): Promise<{ id: string }> {
+export async function createIn(o: Owner, c: Db, name: string, madeFor: Omit<MadeFor, 'out'> | null = null, access: TeamAccess = 'added'): Promise<{ id: string }> {
   const me = await profile(o, c);
   const id = id128();
-  // One at a time for an account, so two at once can't both be the hundredth.
+  // One at a time for an account, so two at once can't both be the last one.
   await lockOwner(o, c);
   const made = await maybeOne(c, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM workspace_authors WHERE email_index = $1 AND made_workspace', [blindIndex(indexKey(o), 'email', me.email)]);
-  if ((made?.n ?? 0) >= MAX_MADE) throw new ConflictError('You’ve made as many workspaces as you can. Delete one first.', { context: { ownerId: o.ownerId, made: made?.n } });
+  // How many one address can have made and not deleted, in or out of them (`workspaces.max_made`).
+  const max = (await limitsNow(o, c)).get('workspaces.max_made');
+  if ((made?.n ?? 0) >= max) throw new ConflictError('You’ve made as many workspaces as you can. Delete one first.', { context: { ownerId: o.ownerId, made: made?.n, limit: max } });
   const { ownerId, root } = await createOwner(o, c);
   const owner = ownerFrom(o, ownerId, root, undefined);
-  await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext) VALUES ($1,$2,$3)', [ownerId, id, sealState(owner, id, { name, items: {}, madeFor: madeFor && { ...madeFor, out: [] }, about: '' })]);
+  const team = await licensedOn(c, o.ownerId);
+  await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext, payer_owner_id, team_id, team_access) VALUES ($1,$2,$3,$4,$5,$6)', [
+    ownerId, id, sealState(owner, id, { name, items: {}, madeFor: madeFor && { ...madeFor, out: [] }, about: '' }), o.ownerId, team?.teamId ?? null, team ? access : null
+  ]);
   await addMember(owner, c, id, me.email, 'admin', me.name);
   await noteAuthor({ owner }, c, me.email, true);
-  wlog.info('workspace created', { workspaceId: id });
+  wlog.info('workspace created', { workspaceId: id, forCall: madeFor !== null, teamAccess: team ? access : 'none' });
   return { id };
 }
-export const create = (o: Owner, name: string): Promise<{ id: string }> => tx(o.pool, (c) => createIn(o, c, name));
+/** New workspace in the Drive: on a team, the whole team's unless `access` says only the people added. */
+export const create = (o: Owner, name: string, access: TeamAccess = 'team'): Promise<{ id: string }> => tx(o.pool, (c) => createIn(o, c, name, null, access));
+
+/**
+ * Admins only, on a team's workspace: who's in it, the whole team or only the people added. Opening it to the whole team takes
+ * an admin who's live-licensed on that team; closing it to the people added, any admin. Every stream looks again.
+ */
+export async function setTeamAccess(d: Deps, reader: Reader, workspaceId: string, access: TeamAccess): Promise<void> {
+  await change(d, reader, workspaceId, async (w, c) => {
+    requireRole(w, 'admin');
+    const row = await maybeOne(c, z.object({ team_id: z.string().nullable(), team_access: TeamAccessSchema.nullable() }), 'SELECT team_id, team_access FROM workspaces WHERE owner_id = $1', [w.owner.ownerId]);
+    const context = { workspaceId, access };
+    if (!row?.team_id) throw new ConflictError('This workspace isn’t a team’s, so there’s no team to open it to.', { context });
+    if (row.team_access === access) return;
+    const mine = reader.account && await licensedOn(c, reader.account.owner.ownerId);
+    if (access === 'team' && mine?.teamId !== row.team_id) throw new ForbiddenError('Only someone with a license on its team can open this workspace to the whole team.', { context });
+    await exec(c, 'UPDATE workspaces SET team_access = $2 WHERE owner_id = $1', [w.owner.ownerId, access]);
+    wlog.info('workspace team access changed', context);
+  });
+}
 
 /* ---------- a call's home ---------- */
 
@@ -308,10 +348,12 @@ const inviteesOf = (invited: string[], organizer: string): string[] => [...new S
 
 /**
  * A call's new home, in the caller's transaction, which holds the call's row (or, before the call, its meeting's): nobody else
- * can reach it yet, so nothing waits on it. The organizer is its admin and the call's folder is at the top; a home made before
- * the call has none until the call starts and makes its own. Everyone invited, the same people who get the notes, is let in to
- * edit once that row is let go (`followInvite`), so a big invite never holds the call up. It's the call's, so it doesn't count
- * towards the workspaces someone can make (`MAX_MADE`).
+ * can reach it yet, so nothing waits on it. The organizer (`o`) is its admin, and pays for it whoever's action made it (docs:
+ * Plans and usage › Storage); the call's folder is at the top, and a home made before the call has none until the call starts
+ * and makes its own. Made for an organizer live-licensed on a team, it's the team's, for the people added only, as a workspace
+ * made in a call is (`createIn`). Everyone invited, the same people who get the notes, is let in to edit once that row is let go
+ * (`followInvite`), so a big invite never holds the call up. It's the call's, so it doesn't count towards the workspaces someone
+ * can make (`workspaces.max_made`).
  */
 export async function makeHome(o: Owner, c: Db, home: { name: string; madeFor: Omit<MadeFor, 'out'>; folder?: CallFolder | undefined }): Promise<{ id: string }> {
   const me = await profile(o, c);
@@ -320,10 +362,13 @@ export async function makeHome(o: Owner, c: Db, home: { name: string; madeFor: O
   const owner = ownerFrom(o, ownerId, root, undefined);
   const items = home.folder ? { [home.folder.id]: folderOf(home.folder, FIRST, new Date().toISOString()) } : {};
   const state: WorkspaceState = { name: home.name, items, madeFor: { ...home.madeFor, out: [] }, about: '' };
-  await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext) VALUES ($1,$2,$3)', [ownerId, id, sealState(owner, id, state)]);
+  const team = await licensedOn(c, o.ownerId);
+  await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext, payer_owner_id, team_id, team_access) VALUES ($1,$2,$3,$4,$5,$6)', [
+    ownerId, id, sealState(owner, id, state), o.ownerId, team?.teamId ?? null, team ? 'added' : null
+  ]);
   await addMember(owner, c, id, me.email, 'admin', me.name);
   await noteAuthor({ owner }, c, me.email);
-  wlog.info('call home made', { workspaceId: id });
+  wlog.info('call home made', { workspaceId: id, teamAccess: team ? 'added' : 'none' });
   return { id };
 }
 
@@ -494,34 +539,48 @@ export async function setRole(d: Deps, reader: Reader, workspaceId: string, memb
   });
 }
 export async function removePerson(d: Deps, reader: Reader, workspaceId: string, memberId: string): Promise<void> {
-  await change(d, reader, workspaceId, async (w, c) => {
+  const moves = await change(d, reader, workspaceId, async (w, c) => {
     requireRole(w, 'in');
     const m = await memberBy(w, c, memberId);
     const leaving = m !== undefined && reader.principals.some((p) => Buffer.compare(p, m.email_index) === 0);
     if (!leaving) requireRole(w, 'admin');
     if (!m) throw noOne(w, memberId);
     if (m.role === 'admin' && (await admins(w, c)) <= 1) throw onlyAdmin(w);
-    const stranded = await dropMember(w, c, m, leaving ? 'left' : 'taken');
+    const dropped = await dropMember(w, c, m, leaving ? 'left' : 'taken');
     // A call's invite never puts back someone taken out by hand, or who left. The newest are kept, as many as can be in it.
     const made = w.state.madeFor;
     const { email } = personOfMember(w, m);
     if (made && !made.out.includes(email)) w.state = { ...w.state, madeFor: { ...made, out: [...made.out, email].slice(-MAX_PEOPLE) } };
-    wlog.info('person removed', { workspaceId, memberId, leaving, stranded });
+    wlog.info('person removed', { workspaceId, memberId, leaving, stranded: dropped.stranded, payerMoved: dropped.moves.length > 0 });
+    return dropped.moves;
   });
+  // Whoever pays for it now is told, once that's so.
+  await tellPayers(d, moves);
 }
+/** Refused: the one leaving, or being taken out, pays for the workspace, and none of the admins left has an account to. */
+const nobodyToPay = (w: Pick<Workspace, 'workspaceId'>, memberId: string, why: 'taken' | 'left') => new ConflictError(why === 'left'
+  ? 'You pay for this workspace’s storage, and none of its other admins has an Alcove account to take that on. Make someone who has one an admin, then leave.'
+  : 'They pay for this workspace’s storage, and none of its other admins has an Alcove account to take that on. Make someone who has one an admin first.',
+{ context: { workspaceId: w.workspaceId, memberId, why: 'nobody to pay' } });
 /**
  * Takes someone out, in the caller's transaction, which holds the workspace's row; the caller saves the state. What they had
  * by restricting something goes with them, so coming back gives them only what they're given. What only they could reach:
  * taken out (`taken`, by an admin or by a call's invite), it goes to the workspace's admins (`handStranded`), so nobody's
  * words are lost to a change nobody made of that document; leaving (`left`), it's still theirs, in Trash, for 30 days, should
- * they come back (`trashStranded`), and nobody else's to read. How much did.
+ * they come back (`trashStranded`), and nobody else's to read. Whoever the workspace counted against, if that was them,
+ * stops paying for it: it counts against its longest-standing admin with an account now, with a grace before its files do
+ * (`settlePayer`), and when none of the admins left has an account, they can't go: refused, with nothing changed. How much
+ * went to its admins or Trash, and whose payment moved, for the caller to tell (plans.ts `tellPayers`) once it's committed.
  */
-async function dropMember(w: HeldWorkspace, c: Db, m: z.infer<typeof Member>, why: 'taken' | 'left'): Promise<number> {
+async function dropMember(w: HeldWorkspace, c: Db, m: z.infer<typeof Member>, why: 'taken' | 'left'): Promise<{ stranded: number; moves: PayerMove[] }> {
+  const paying = await maybeOne(c, z.object({ n: z.number() }), 'SELECT 1 AS n FROM workspaces w JOIN identities i ON i.owner_id = w.payer_owner_id WHERE w.owner_id = $1 AND i.email_index = $2 LIMIT 1', [w.owner.ownerId, m.email_index]);
   await exec(c, 'DELETE FROM workspace_members WHERE owner_id = $1 AND member_id = $2', [w.owner.ownerId, m.member_id]);
   await exec(c, 'DELETE FROM workspace_mentions WHERE owner_id = $1 AND principal_index = $2', [w.owner.ownerId, m.email_index]);
+  const moved = await settlePayer(w.owner, c, w.owner.ownerId);
+  if (paying && moved?.to === null) throw nobodyToPay(w, m.member_id, why);
   const { email } = personOfMember(w, m);
   w.state = { ...w.state, items: Object.fromEntries(Object.entries(w.state.items).map(([id, x]) => [id, x.restrictedBy === email ? { ...x, restrictedBy: null } : x])) };
-  return why === 'taken' ? handStranded(w, c) : trashStranded(w, c);
+  return { stranded: why === 'taken' ? await handStranded(w, c) : await trashStranded(w, c), moves: moved ? [moved] : [] };
 }
 
 /* ---------- the tree ---------- */
@@ -858,9 +917,10 @@ async function liveCalls(db: Db, calls: TreeCall[]): Promise<Set<string>> {
 }
 /**
  * A breakout room's board whose call is over without having kept it, as a release before this one ended its calls: kept now
- * for everyone the call invited, by address at `edit`, as its end would have, unless they have an entry on it already, and from
- * then on a restricted board like any other. One whose call, or its organizer, is gone is one already. In the caller's
- * transaction, which holds the workspace's row and saves its state.
+ * for everyone the call invited, by address at `edit`, as its end would have, unless they have an entry on it already, and in
+ * a workspace the call's organizer doesn't pay for only those who are its own people (`givenByCall`); from then on a restricted
+ * board like any other. One whose call, or its organizer, is gone is one already. In the caller's transaction, which holds the
+ * workspace's row and saves its state.
  */
 async function keepRoomsOfEndedCalls(w: HeldWorkspace, db: Db): Promise<void> {
   const marked = Object.entries(w.state.items).flatMap(([id, item]) => (item.room ? [{ id, item, room: item.room }] : []));
@@ -873,7 +933,7 @@ async function keepRoomsOfEndedCalls(w: HeldWorkspace, db: Db): Promise<void> {
   let kept = 0;
   for (const m of over) {
     const call = said.get(callKey(m.room));
-    const invited = call && !call.live ? call.invited : [];
+    const invited = call && !call.live ? await givenByCall(w.owner, db, w.owner.ownerId, m.room.ownerId, call.invited) : [];
     try {
       const has = await entriesOn(w, db, m.id, invited.map((e) => emailIndex(w.owner, e)));
       const giving = invited.filter((e) => has(emailIndex(w.owner, e)) === undefined);
@@ -1061,11 +1121,13 @@ export async function sweepSeats(d: Deps): Promise<SeatsEnded> {
  * address; and what its calls (`callIds`) gave people's seats ends either way. A workspace left with nobody in it is
  * deleted; one left with no admin gets its longest-standing person as its admin; a restricted document only it could open
  * goes, and anything else left with nobody to open it goes to Trash; and what it made keeps its name and no longer its
- * address. Every row is touched under its workspace's lock, the order every change takes, and locks go in order of owner,
- * so two accounts leaving together never deadlock. `owners` are the workspaces it touched, for the caller to collect their
- * files' objects once the transaction commits.
+ * address. One it paid for counts against its longest-standing admin with an account now, with a grace before its files do,
+ * as when a payer leaves (`settlePayer`), or against nobody when none has one: deleting an account is never refused for
+ * it. Every row is touched under its workspace's lock, the order every change takes, and locks go in order of owner, so
+ * two accounts leaving together never deadlock. `owners` are the workspaces it touched, for the caller to collect their
+ * files' objects once the transaction commits, and `moves` whose payment moved, for it to tell (plans.ts `tellPayers`).
  */
-export async function forgetAccount(o: Owner, db: Db, email: string, callIds: string[]): Promise<{ workspaces: number; deleted: number; owners: string[] }> {
+export async function forgetAccount(o: Owner, db: Db, email: string, callIds: string[]): Promise<{ workspaces: number; deleted: number; owners: string[]; moves: PayerMove[] }> {
   const address = email.trim().toLowerCase();
   const index = blindIndex(indexKey(o), 'email', address);
   const elsewhere = await maybeOne(db, z.object({ n: z.number() }), 'SELECT 1 AS n FROM identities WHERE email_index = $1 AND owner_id <> $2 LIMIT 1', [index, o.ownerId]);
@@ -1075,6 +1137,7 @@ export async function forgetAccount(o: Owner, db: Db, email: string, callIds: st
     UNION SELECT owner_id FROM workspace_authors WHERE email_index = $1 AND $3
     UNION SELECT owner_id FROM document_access WHERE principal_index = $1 AND $3 ORDER BY owner_id`, [index, callIds, !elsewhere]);
   let deleted = 0;
+  const moves: PayerMove[] = [];
   if (!elsewhere) await exec(db, 'DELETE FROM workspace_mentions WHERE principal_index = $1', [index]);
   for (const { owner_id: ownerId } of found) {
     const w = await held(o, db, ownerId);
@@ -1090,6 +1153,8 @@ export async function forgetAccount(o: Owner, db: Db, email: string, callIds: st
       const first = left[0];
       if (!first) { await deleteOwner(db, ownerId); deleted++; continue; }
       if (!left.some((m) => m.role === 'admin')) await exec(db, "UPDATE workspace_members SET role = 'admin' WHERE owner_id = $1 AND member_id = $2", [ownerId, first.member_id]);
+      const moved = await settlePayer(o, db, ownerId);
+      if (moved) moves.push(moved);
       const theirs = (x: StoredItem | undefined) => x?.by?.email === address || x?.restrictedBy === address;
       const lost = (await strandedIn(w, db)).filter((id) => theirs(w.state.items[id]));
       await removeDocuments(w.owner, db, lost);
@@ -1099,7 +1164,7 @@ export async function forgetAccount(o: Owner, db: Db, email: string, callIds: st
     await trashStranded(w, db);
     await saveState(w, db);
   }
-  return { workspaces: found.length, deleted, owners: found.map((f) => f.owner_id) };
+  return { workspaces: found.length, deleted, owners: found.map((f) => f.owner_id), moves };
 }
 
 const RANK: Record<WorkspaceRole, number> = { read: 0, edit: 1, admin: 2 };
@@ -1238,7 +1303,7 @@ class TreeStream extends LiveStream<WorkspaceLiveEvent> {
       this.role = standing.role;
       await line({ type: 'access', role: standing.role });
     }
-    const tree = treeFor(this.who, { ...s, ...standing }, await callsIn(this.d.pool, this.who, this.callId, s.state));
+    const tree = treeFor(this.who, { ...s, ...standing }, await callsIn(this.d.pool, this.who, this.callId, s.state), await teamAccessOf(this.d.pool, s.workspaceId));
     const text = JSON.stringify(tree);
     const hash = shortHash(text);
     if (hash !== this.shown) {
@@ -1282,8 +1347,10 @@ export async function open(d: Deps, credentials: Credentials, reader: Reader, wo
   try {
     const known = await workspaceFor(d, reader, workspaceId);
     const callId = reader.seat?.callId ?? null;
+    const first = treeFor(reader, known, await callsIn(d.pool, reader, callId, known.state), await teamAccessOf(d.pool, workspaceId));
+    // Nothing is awaited between making the room and joining it: a room still empty when the hub says it's listening lets go at once.
     const room = roomFor(d, workspaceId);
-    const stream = new TreeStream(d, room, credentials, { email: reader.email, principals: reader.principals, calls: reader.calls }, treeFor(reader, known, await callsIn(d.pool, reader, callId, known.state)), { role: known.role, grants: known.grants, lasting: known.lasting, call: known.call }, known.version, place, callId);
+    const stream = new TreeStream(d, room, credentials, { email: reader.email, principals: reader.principals, calls: reader.calls }, first, { role: known.role, grants: known.grants, lasting: known.lasting, call: known.call }, known.version, place, callId);
     room.join(stream);
     try {
       await room.ready;

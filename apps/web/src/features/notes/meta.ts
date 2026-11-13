@@ -1,4 +1,4 @@
-import { isAcceptedFollowUp, firstName, type ActionItem, type Note, type NoteSummary, type Person, type Received, type Recipient } from '@alcove/api';
+import { isAcceptedFollowUp, firstName, type ActionItem, type Note, type NoteSummary, type Person, type Received, type Recipient, type RecipientRole } from '@alcove/api';
 import { sameEmail, someNames } from '~/lib/people';
 import { noteDay, noteWhen } from '~/lib/time';
 
@@ -6,9 +6,19 @@ import { noteDay, noteWhen } from '~/lib/time';
 export const noteLine = (n: NoteSummary): string =>
   [noteDay(n.startedAt), ...(n.received ? [receivedLine(n.received)] : n.kind === 'room' ? ['In the room'] : [])].join(' · ');
 
-/** How you came to have someone else's note: "Shared by Theo with Leads", "Shared by Priya", "From Lena’s link", or "From Kofi’s call". */
-export function receivedLine(r: Received): string {
+/**
+ * Who you are to a note, for what you may do in it: its organizer when it's yours, otherwise as you got it. A team's note
+ * is read like one shared with you: it can only be read and asked about.
+ */
+export const readerRole = (r: Received | undefined): RecipientRole => (!r ? 'organizer' : r.role === 'team' ? 'shared' : r.role);
+
+/**
+ * How you came to have someone else's note: "Shared by Theo with Leads", "Shared by Priya", "From Lena’s link", "From
+ * Kofi’s call", or "From Priya, visible to Vandelay Industries" (`team`, the team's name, when it's known).
+ */
+export function receivedLine(r: Received, team?: string | undefined): string {
   const by = firstName(r.by.name);
+  if (r.role === 'team') return `From ${by}, visible to ${team ?? 'your team'}`;
   if (r.role === 'invited') return `From ${by}’s call`;
   if (r.link) return `From ${by}’s link`;
   return r.group ? `Shared by ${by} with ${r.group}` : `Shared by ${by}`;

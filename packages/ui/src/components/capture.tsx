@@ -14,12 +14,14 @@ import { NotesSign, Unencrypted } from './primitives';
  * pause mark, unavailable (notes on, but the browser taking the notes can't capture anything) the caution mark, and off is
  * quiet, or says "Notes requested" while someone in the call has asked for them (`requested`; a pause says so
  * first). `pausing` is the organizer's own, while their pause is on its way: their browser has already stopped
- * capturing. `stage` is for the night call stage.
+ * capturing. `stopped`: notes are off because the organizer's plan ran out of notes or storage, a problem, so it's caution
+ * with an empty ring where the dot would be. `stage` is for the night call stage.
  */
-export function CaptureSign({ mode, requested = false, pausing = false, stage = false, className }: {
-  mode: CaptureMode; requested?: boolean; pausing?: boolean; stage?: boolean; className?: string | undefined;
+export function CaptureSign({ mode, requested = false, pausing = false, stopped = false, stage = false, className }: {
+  mode: CaptureMode; requested?: boolean; pausing?: boolean; stopped?: boolean | undefined; stage?: boolean; className?: string | undefined;
 }) {
   if (pausing) return <span className={cn('ac-capture-sign is-paused is-changing', stage && 'is-stage', className)} aria-busy="true"><Icon name="pause" size={13} />Pausing…</span>;
+  if (stopped && mode === 'off') return <span className={cn('ac-capture-sign is-stopped', stage && 'is-stage', className)}><span className="ring" aria-hidden="true" />Notes stopped</span>;
   if (mode === 'on') return <NotesSign stage={stage} className={className}>Notes on</NotesSign>;
   if (mode === 'off' && requested) return <NotesSign requested stage={stage} className={className}>Notes requested</NotesSign>;
   const [icon, text]: [IconName, string] = mode === 'paused' ? ['pause', 'Notes paused'] : mode === 'unavailable' ? ['alert', 'Notes unavailable'] : ['notesPen', 'Notes off'];

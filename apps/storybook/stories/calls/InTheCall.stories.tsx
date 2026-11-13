@@ -33,6 +33,16 @@ export const JustYouPhone = phone(JustYou);
 export const JustYouClosed = { ...JustYou, name: 'Just you so far, closed', play: press('Close') };
 export const JustYouClosedPhone = { ...phone(JustYouClosed), name: 'Just you so far, closed, on a phone' };
 
+/**
+ * A call ends by itself after 10 hours, and everyone is told 5 minutes before. This one has gone 9 hours 56 minutes, so the banner
+ * says when it ends as the call opens.
+ */
+export const EndsSoon = inCall({
+  scenario: 'call-soon', call: REVIEW,
+  script: { here: REVIEWERS, since: 10 * 3600 - 4 * 60, talk: { lines: REVIEW_TALK, every: 6 }, summary: REVIEW_SUMMARY }
+});
+export const EndsSoonPhone = phone(EndsSoon);
+
 /** A 1:1: Priya comes in a moment after you, and you talk it through. */
 export const TwoOfYou = inCall({
   scenario: 'busy', call: ONE_ON_ONE,

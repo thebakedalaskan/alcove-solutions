@@ -5,7 +5,9 @@
  * once it has ended, Rejoin while it goes on, or Home. All it says of the call is taken as you leave (`Left`): once you're out,
  * the call tells this tab nothing more. What it follows after that is the note being written (followNotes.ts) and the note once
  * it is, and, while the call goes on without you, the call's card, read at the card's own pace, which turns the page when it
- * ends. It never moves on by itself; signing out in another tab takes it to the welcome page, as it takes the frame.
+ * ends. It never moves on by itself; signing out in another tab takes it to the welcome page, as it takes the frame. Notes
+ * the organizer's plan stopped are said as that while the call goes on, not as off, with the call's ways to more for the
+ * organizer (PlanStop.tsx).
  */
 import { clock, minutesLabel, notesAreOn, type CallSession, type CallState, type Note, type NoteProgress, type Person } from '@alcove/api';
 import { Button, CallOver, type CallOverNotes } from '@alcove/ui';
@@ -18,6 +20,7 @@ import { arriveFromCall, useNow } from '~/lib/live';
 import { log } from '~/lib/log';
 import { callName, listNames, sameEmail } from '~/lib/people';
 import { q, trustLine } from '~/lib/queries';
+import { StopWays, planStopOf, useStoppedAfter } from '~/features/call/notes/PlanStop';
 import { useFollowNotes } from './followNotes';
 import { useRejoin, useRejoinKey, type RejoinAs, type RejoinMedia } from './rejoin';
 
@@ -49,6 +52,8 @@ export interface Left {
   noteId: string | null;
   /** How notes were as you left: on, paused, or off (with a note, turned off after being on). */
   notesAsLeft: 'on' | 'paused' | 'off';
+  /** Off because the organizer's plan stopped them: their notes ran out, or their storage is full. */
+  stopped: 'notes' | 'storage' | null;
   modelPrivate: boolean;
   /** You organized it; the organizer's first name, whoever you are. */
   organizer: boolean;
@@ -85,6 +90,7 @@ export function leftOf(o: { last: CallState; how: LeftHow; media: RejoinMedia; i
   return {
     code: last.code, title: last.title, how, you, others, elapsed: ran.elapsed, at: Date.now(), noteId: ran.noteId,
     notesAsLeft: notesAreOn(mode) ? 'on' : mode === 'paused' ? 'paused' : 'off', modelPrivate: last.capture.modelPrivate,
+    stopped: planStopOf(last.capture)?.reason ?? null,
     organizer: last.isOrganizer, organizerFirst: first, guest, getsNotes: !guest && ran.noteId !== null,
     getting: named
       ? { who: named.length ? `${named.map(callName).join(', ')} and you get them.` : 'You get them.', faces: [...named, you] }
@@ -180,7 +186,10 @@ export function CallOverPage({ left, entering, onEntered, back, onBack, onGone }
   const ready = progress?.ready === true;
   const note = useQuery({ ...q.note(noteId ?? ''), enabled: ready && noteId !== null });
   const written = note.data;
-  const notes: CallOverNotes | undefined = !over ? (left.getsNotes ? { kind: 'going', mode: left.notesAsLeft } : undefined)
+  /* Stopped by the organizer's plan, as the call said it; the organizer has the call's ways to more, none filled. */
+  const stop = useStoppedAfter(!over && left.getsNotes ? left.stopped : null, left.organizer, left.organizerFirst);
+  const stopped = stop ? { said: stop.said, ways: stop.ways.length ? <StopWays ways={stop.ways} lead={false} /> : undefined } : undefined;
+  const notes: CallOverNotes | undefined = !over ? (left.getsNotes ? { kind: 'going', mode: left.notesAsLeft, stopped } : undefined)
     : following ? (ready && written ? { kind: 'ready', summary: written.summary, decided: decidedIn(written), followUps: followUpsIn(written) }
       : ready && note.isError ? { kind: 'ready', summary: '', decided: 0, followUps: 0 }
         : stuck && !ready ? { kind: 'slow' }

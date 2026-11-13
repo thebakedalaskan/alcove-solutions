@@ -1,6 +1,7 @@
 import { LIVE_TRANSCRIPT_LINES, MAIN_PLACE, type Breakouts, type CallHost, type CallState, type Person, type CallWorkspace } from '@alcove/api';
 import { z } from 'zod';
 import { type Db } from '../../db';
+import { limitsNow } from '../../limits';
 import { me } from '../account/account';
 import * as space from './workspace';
 import * as boards from './boards';
@@ -63,7 +64,8 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
   const end = row.ended_at ?? new Date();
   const base = {
     revision: row.version, callId, meetingId: row.meeting_item_id, code: meeting.manifest.code, title: meeting.manifest.title, startedAt: row.started_at.toISOString(),
-    elapsed: Math.max(0, Math.round((end.getTime() - row.started_at.getTime()) / 1000)), phase: row.state === 'live' ? 'in-call' as const : 'ended' as const,
+    elapsed: Math.max(0, Math.round((end.getTime() - row.started_at.getTime()) / 1000)), endsAt: new Date(row.started_at.getTime() + (await limitsNow(o, db)).get('call.max_seconds') * 1000).toISOString(),
+    phase: row.state === 'live' ? 'in-call' as const : 'ended' as const,
     locked: row.locked, pointing: s.pointing, generation: row.mls_generation, isOrganizer: v.isOrganizer, isHost: v.isHost && s.host === v.pass.identity, role: v.role,
     chatRead: chatReadFor(v, s)
   };
@@ -117,7 +119,8 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
           const j = here.findLast((p) => p.person === a.person);
           return a.state === 'asking' && j ? [{ id: a.id, participantId: j.identity, at: new Date(a.at).toISOString() }] : [];
         }),
-        asked: mine ? { state: mine.state, at: new Date(mine.at).toISOString() } : null
+        asked: mine ? { state: mine.state, at: new Date(mine.at).toISOString() } : null,
+        limit: s.notes.limit, organizerSees: v.isOrganizer
       }),
       // In a breakout room, what's captured there as well: the call's capture, held while the organizer has paused the room.
       room: open && roomHere ? capture.roomStateFor({
@@ -158,8 +161,9 @@ function hostOf(s: Stored, v: Viewer, organizer: Person, live: boolean): CallHos
 
 /**
  * What's captured, for someone who isn't in the call (asking to join, or reading the call's card): no names, no gaps, no
- * asks, and not which model, only whether it's private, so they know before they come in.
+ * asks, not which model, only whether it's private, so they know before they come in. Not that the organizer's plan
+ * stopped notes, either: only the people in the call are told that.
  */
 export function anonymousCapture(s: Stored, row: Pick<Row, 'started_at' | 'state' | 'host_identity' | 'host_left_at'>, modelPrivate: boolean) {
-  return capture.stateFor({ status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: null, unavailable: s.notes.unavailable, away: hostAway(row), screens: screensOf(s), model: null, modelPrivate, allowScreens: false, gaps: [], requests: [], asked: null });
+  return capture.stateFor({ status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: null, unavailable: s.notes.unavailable, away: hostAway(row), screens: screensOf(s), model: null, modelPrivate, allowScreens: false, gaps: [], requests: [], asked: null, limit: capture.NO_LIMIT, organizerSees: false });
 }

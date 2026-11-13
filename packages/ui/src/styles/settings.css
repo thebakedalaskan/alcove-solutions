@@ -115,6 +115,8 @@
 .set-t > .ac-crypto { flex: none; width: 24px; height: 24px; }
 .set-h { max-width: 58ch; margin-top: 2px; padding-left: var(--set-indent, 0px); font: 400 13px/18px var(--font-sans); color: var(--ink-3); text-wrap: pretty; }
 .set-h.is-no { color: var(--caution); }
+/* Time is short: under an hour of notes, a plan about to end. */
+.set-h.is-warm { color: var(--sun-text); font-weight: 500; }
 /* With a mark before the label, the help lines up under the label. */
 .set-r:has(> .set-l > .set-t > :is(.ac-logo, .ac-i):first-child) { --set-indent: 30px; }
 .set-r:has(> .set-l > .set-t > .ac-crypto:first-child) { --set-indent: 34px; }
@@ -258,8 +260,21 @@
 .set-note.is-caution > .ac-i { color: var(--caution); }
 .set-note + .set-note { margin-top: 8px; }
 .set-note:last-child { margin-bottom: 16px; }
+/* Said until its × is pressed. */
+.set-note.has-x { grid-template-columns: 18px minmax(0, 1fr) auto; padding-right: 6px; }
+.set-note-x.ac-icon-btn { width: 30px; height: 30px; margin-block: -5px; color: var(--ink-2); }
+.set-note-x.ac-icon-btn:hover { background: color-mix(in oklch, var(--ink) 8%, transparent); color: var(--ink); }
+/* What to do about it, at the note's end, level with its words: under them on a phone (below). */
+.set-note.has-a { grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; padding-right: 10px; }
+.set-note.has-a.has-x { grid-template-columns: 18px minmax(0, 1fr) auto auto; padding-right: 6px; }
+.set-note.has-a > .ac-i { align-self: start; }
+.set-note-a { display: flex; align-items: center; gap: 8px; margin-block: -4px; }
 
 /* The foot of something open in place: what to know, and how to close it. */
+/* Something opened in place inside a panel: its title and what it is, then what to do. */
+.set-step { padding: 16px 0 4px; }
+.set-step-t { font: 600 15px/22px var(--font-sans); color: var(--ink); }
+.set-step-h { max-width: 62ch; margin-top: 3px; font: 400 13.5px/19px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
 .set-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; padding: 14px 0 16px; }
 .set-foot > p { flex: 1 1 320px; max-width: 62ch; font: 400 13px/18px var(--font-sans); color: var(--ink-3); text-wrap: pretty; }
 .set-foot-a { display: flex; align-items: center; gap: 6px; margin-left: auto; }
@@ -318,6 +333,10 @@
 /* ------------------------------------------------------------------ plan: the row's own hairline is the horizon */
 .set-r.is-left { min-height: 78px; }
 .set-left { font: 600 22px/28px var(--font-sans); letter-spacing: -.012em; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* About, before the time: it's an estimate, and the time stays the hero. */
+.set-left small { margin-right: 6px; font: 400 15px/28px var(--font-sans); letter-spacing: 0; color: var(--ink-2); }
+.set-left.is-warm, .set-left.is-warm small { color: var(--sun-text); }
+.set-left.is-out { color: var(--caution); }
 /* Over the next row, whose hairline it lies on. */
 .set-on { position: absolute; z-index: 1; left: 0; right: 0; bottom: -1px; height: 2px; pointer-events: none; }
 /* Its light lies along the row and fades before either end, so the sun can stand at the very start or the very end. */
@@ -333,8 +352,27 @@
 /* Run out: the sun has set, and only a little of its light is left at the start of the line. */
 .set-on.is-set .sun, .set-on.is-set .ref, .set-on.is-set .lit { display: none; }
 .set-on.is-set::before { opacity: .55; }
-/* A top-up on its way, its mark beside it, Open and (while nothing has reached it) cancel. */
-.set-topup-acts { display: flex; align-items: center; justify-content: flex-end; gap: 4px; width: 100%; }
+/* A refusal, said in place under what was pressed. */
+.set-err { font: 500 13px/18px var(--font-sans); color: var(--caution); text-wrap: pretty; }
+
+/*
+ * Payments, at the foot of the balance's panel: what's on its way first, then what the balance took in and paid for,
+ * newest first. Each has its mark in a fixed column and what can be done with it at the panel's edge.
+ */
+.set-pays { display: grid; grid-template-columns: minmax(0, 1fr); padding-bottom: 6px; }
+.set-pays-h { padding: 14px 0 4px; font: 500 13px/18px var(--font-sans); color: var(--ink-3); }
+.set-pay { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; min-height: 54px; padding: 8px 0; border-top: 1px solid var(--line); }
+.set-pays-h + .set-pay { border-top: 0; }
+.set-pay-m { display: grid; place-items: center; width: 22px; height: 22px; color: var(--ink-3); }
+.set-pay-m > .ac-crypto { width: 22px; height: 22px; }
+.set-pay-t { min-width: 0; }
+.set-pay-t b { font: 500 14.5px/20px var(--font-sans); color: var(--ink); }
+.set-pay-t small { display: block; font: 400 13px/18px var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; text-wrap: pretty; }
+.set-pay-t small.is-wait { color: var(--horizon); }
+.set-pay-t small.is-problem { color: var(--caution); }
+.set-pay-a { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.set-pays > .ac-more { padding: 4px 0 2px; border-top: 1px solid var(--line); }
+
 
 /* ------------------------------------------------------------------ privacy: what Alcove knows beside what it can't read */
 .set-led { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; padding: 16px 0 14px; }
@@ -412,6 +450,10 @@
   /* A list, a choice or something wide goes under its label, the width of the panel. */
   .set-r:has(> .set-c > .set-ctl > :is(.ac-seg, .ac-select, .set-vol)), .set-r.is-wide, .set-r.is-stack { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }
   .set-r.is-stack .set-l { min-height: 0; }
+  /* Two buttons, or a fact and a button, go under the label, at its start, so a long help keeps its measure. */
+  .set-r.is-under { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }
+  .set-r.is-under .set-c, .set-r.is-under .set-ctl { justify-content: flex-start; }
+  .set-r.is-under .set-ctl > .ac-btn.is-quiet:first-child { margin-left: -10px; }
   .set-r .set-ctl { max-width: 100%; }
   .set-r.is-sub, .set-foot.is-sub, .set-pn > .ac-drive-history { margin-left: 0; }
   .set-r .set-h { padding-left: 0; }
@@ -423,9 +465,13 @@
   .set-gs { grid-template-columns: minmax(0, 1fr); row-gap: 16px; }
   .set-foot-a { margin-left: 0; }
   .set-eves { gap: 12px; }
+  /* A note's action goes under its words, at their start. */
+  .set-note.has-a { grid-template-columns: 18px minmax(0, 1fr); align-items: start; padding-right: 14px; }
+  .set-note.has-a.has-x { grid-template-columns: 18px minmax(0, 1fr) auto; padding-right: 6px; }
+  .set-note-a { grid-column: 2; grid-row: 2; margin-block: 10px 0; }
 }
 
-/* ---- Add credits: the sheet (topup.tsx), picking how to pay, then where to send it ---- */
+/* ---- Add money: the sheet (topup.tsx), picking how much and how to pay, then where to send it ---- */
 .ac-sheet.set-topup { font-variant-numeric: tabular-nums; display: flex; flex-direction: column; width: min(560px, calc(100vw - 28px)); max-height: calc(100dvh - 13vh - 24px); }
 .set-topup-h { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-5) var(--space-4) 0 var(--space-6); }
 .set-topup-h h2 { flex: 1; margin: 0; font: 600 18px/24px var(--font-sans); letter-spacing: -.01em; }
@@ -433,7 +479,7 @@
 .set-topup-lead { font-size: 14px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty; }
 /* The status line under the form takes no room until it says something. */
 .set-topup-body > [role="status"]:empty { position: absolute; }
-/* How many credits: one row each, the credits and their notes time on the left, the price on the right. */
+/* How much: one row each, the amount and what it is on the left, what to send on the right. */
 .set-topup-amounts, .set-topup-pick { display: grid; gap: var(--space-2); margin: 0; padding: 0; border: 0; min-width: 0; }
 .set-topup-amounts legend, .set-topup-pick legend { margin-bottom: var(--space-3); padding: 0; font: 600 13.5px/1.2 var(--font-sans); color: var(--ink); }
 .set-topup-amt { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); min-height: 64px; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; transition: box-shadow var(--duration-1); }
@@ -455,41 +501,19 @@
 .set-topup-pick .ac-select .v { flex: 1; }
 /* Waiting on the server: a quiet line with dots. */
 .set-topup-wait { display: flex; align-items: center; gap: var(--space-3); font: 500 15px/1.4 var(--font-sans); color: var(--ink-2); }
-/* Paying: what's sent and what it buys, then where to send it. */
-.set-topup-sum { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-4); padding-bottom: var(--space-5); border-bottom: 1px solid var(--line); }
-.set-topup-sum > div { display: grid; align-content: start; gap: var(--space-1); min-width: 0; }
-.set-topup-sum .get { justify-items: end; text-align: right; }
-.set-topup-sum .amt { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); font: 500 16px/1.2 var(--font-sans); color: var(--ink-2); }
-.set-topup-sum .amt b { font: 600 32px/1.1 var(--font-sans); letter-spacing: -.02em; color: var(--ink); font-variant-numeric: tabular-nums; }
-/* What arrived so far on a short top-up, under the chain, in the secondary ink. */
-.set-topup-sum .so-far { font-size: 13.5px; line-height: 1.4; color: var(--ink-2); }
-.set-topup-sum .on { display: flex; align-items: center; gap: var(--space-2); font-size: 13.5px; color: var(--ink-2); }
-.set-topup-sum .on .ac-crypto { width: 16px; height: 16px; }
-.set-topup-sum .credits { font: 600 17px/1.3 var(--font-sans); color: var(--ink); }
-.set-topup-sum .credits b { font-weight: inherit; color: var(--ink); }
-.set-topup-sum .hrs { font: 500 12.5px/1.3 var(--font-sans); color: var(--ink-3); }
-/* An expired top-up: a line through each number at its digits' middle (16px down the 32px amount, 10px down the
-   17px credits), and the words beside them greyed. */
-.set-topup-sum.is-void .amt, .set-topup-sum.is-void .credits { color: var(--ink-3); }
-.set-topup-sum.is-void .amt b, .set-topup-sum.is-void .credits b { position: relative; }
-.set-topup-sum.is-void .amt b::after, .set-topup-sum.is-void .credits b::after { content: ""; position: absolute; left: -2px; right: -2px; top: 16px; height: 2px; border-radius: 1px; background: var(--ink-3); }
-.set-topup-sum.is-void .credits b::after { top: 10px; }
-.set-topup-scan { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-5); }
-.set-topup-scan .how, .set-topup-how { display: grid; justify-items: start; gap: var(--space-3); min-width: 0; }
-.set-topup-scan .how p, .set-topup-how p { font-size: 14px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty; }
-.set-topup-scan .how .exp { display: flex; align-items: center; gap: var(--space-2); font: 500 12.5px/1.3 var(--font-sans); color: var(--ink-3); }
-.set-topup-dest { display: grid; gap: var(--space-2); }
-.set-topup-dest .h { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); font: 600 13.5px/1.2 var(--font-sans); color: var(--ink); }
-.set-topup-dest .h .ac-chip { height: 24px; font-size: 12px; }
-.set-topup-dest .ac-copy-field { padding-block: var(--space-2); }
+/*
+ * Paying: the payment followed with checkout's own parts (PayStatus, PayAmount, PayAddress and the rest, styles/checkout.css),
+ * in the flow they have there. On a phone it's a `ck` container, so checkout's phone rules for those parts apply: no QR code
+ * (a phone can't scan itself), Open in wallet in its place.
+ */
+.set-topup-pay { min-width: 0; }
 .set-topup-f { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-3); padding: var(--space-4) var(--space-6); border-top: 1px solid var(--line); }
 @media (max-width: 600px) {
   .ac-sheet.set-topup { top: 12px; max-height: calc(100dvh - 24px); }
   .set-topup-h { padding-left: var(--space-4); }
   .set-topup-body { padding-inline: var(--space-4); }
   .set-topup-f { padding-inline: var(--space-4); }
-  .set-topup-scan { grid-template-columns: minmax(0, 1fr); justify-items: center; }
-  .set-topup-scan .how { width: 100%; }
+  .set-topup-pay { container: ck / inline-size; }
   .set-topup-amt { padding-inline: var(--space-3); }
 }
 

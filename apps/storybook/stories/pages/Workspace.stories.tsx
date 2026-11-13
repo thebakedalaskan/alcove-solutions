@@ -9,6 +9,7 @@ import { drawnPicture } from '../../src/api/media';
 import { itemId } from '../../src/api/scenarios';
 import { caretAtEnd, changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import type { World } from '../../src/world';
+import { iso } from '../../src/world/clock';
 import { HIRING_SYNC, LAUNCH, spaceItem, withWorkspaces } from '../../src/world/workspaces';
 import { troubled } from './changes';
 
@@ -97,6 +98,29 @@ const share: PageStory['play'] = async ({ canvas, userEvent }) => {
   await userEvent.click(await canvas.findByRole('button', { name: 'Share' }));
 };
 
+/** Launch, a team workspace the whole team is in, made last week, which Art runs (`admin`) or edits in. */
+const withTeamSpace = (role: 'admin' | 'edit') => (w: World): void => {
+  w.workspaces = [...w.workspaces, { id: 'ws-launch', name: 'Launch', role, inCall: false, people: 5, teamAccess: 'team', createdAt: iso(-6, 11, 0), call: null, items: [] }];
+};
+/** Opens People from the workspace's name at the top of its list. */
+const teamPeople: PageStory['play'] = async ({ canvas, userEvent, step }) => {
+  await step('Press Launch at the top of its list, then People', async () => {
+    const named = await canvas.findAllByRole('button', { name: /^Launch/ }, { timeout: 8000 });
+    const top = named.find((b) => b.closest('.wt-head') !== null);
+    if (top) await userEvent.click(top);
+    const people = await screen.findByRole('menuitem', { name: /^People/ }, { timeout: 5000 });
+    // A menu takes no press until its rows have been still for a moment (WsMenu).
+    await beat(800);
+    await userEvent.click(people);
+  });
+};
+/** A team's workspace, as its admin: who's in it, Whole team or Only people I add, above its people. */
+export const TeamWorkspacePeople = page(at('ws-launch'), 'team-member', { beforeEach: changing(withTeamSpace('admin')), play: teamPeople });
+export const TeamWorkspacePeopleNight = page(at('ws-launch'), 'team-member', { beforeEach: changing(withTeamSpace('admin')), play: teamPeople, globals: { theme: 'dark' } });
+export const TeamWorkspacePeoplePhone = page(at('ws-launch'), 'team-member', { beforeEach: changing(withTeamSpace('admin')), play: teamPeople, globals: PHONE });
+/** As someone who edits in it: which it is, said, not chosen. */
+export const TeamWorkspacePeopleNotAdmin = page(at('ws-launch'), 'team-member', { beforeEach: changing(withTeamSpace('edit')), play: teamPeople });
+
 /** Product, which Art runs: the launch plan open beside the list. */
 export const ADocument = page(PLAN, 'busy');
 const renameWorkspace: NonNullable<PageStory['play']> = async ({ canvas, userEvent, step }) => {
@@ -131,7 +155,6 @@ export const TrashEmpty = page(`${at('ws-design')}/trash`, 'busy');
 export const InTrash = page(at('ws-product', 'Old roadmap'), 'busy');
 /** The company handbook, which Art can only read: the bar says who to ask, and nothing on the page changes anything. */
 export const ReadOnly = page(at('ws-handbook', 'Holidays'), 'busy');
-
 /** In the standup's home: people tagged on its lines, words with comments on them, and the toast for Kofi's tag. */
 export const TagsAndComments = page(FIXES, 'busy');
 export const TagsAndCommentsNight = page(FIXES, 'busy', { globals: { theme: 'dark' } });
@@ -412,3 +435,13 @@ export const WritingStylesPhone = page(PLAN, 'busy', {
 /** On a phone the list and the page take turns: the list, until something's open. */
 export const PhoneList = page(at('ws-product'), 'busy', { globals: PHONE });
 export const PhoneCouldntSave = page(at('ws-product', 'Pricing page copy'), 'unsaved', { globals: { ...PHONE, theme: 'dark' } });
+
+/*
+ * Storage full (docs/product/user-flows.md 16.11): past Free's storage, with the grace over, a file added to a document is refused
+ * before any of it is kept, and the toast says so as the doors do, with Get Pro and how much room Pro has. The block stays,
+ * saying it didn't upload, with Try again.
+ */
+const STORAGE_FULL = fileFrom(aPdf, 'Choose a PDF. Your storage is full, so it isn’t kept: Pro has 100 GB, and Get Pro is a press away');
+export const StorageFull = page(PLAN, 'plan-over', { play: STORAGE_FULL });
+export const StorageFullNight = page(PLAN, 'plan-over', { globals: { theme: 'dark' }, play: STORAGE_FULL });
+export const StorageFullPhone = page(PLAN, 'plan-over', { globals: PHONE, play: STORAGE_FULL });

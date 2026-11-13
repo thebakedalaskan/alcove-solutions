@@ -115,7 +115,18 @@ export const CaptureStateSchema = z.object({
    * The host's browser is out of the call right now: its connection dropped, or it's reloading or moving to
    * another device. While notes are on, recording and the transcript are unavailable until it's back, in every part.
    */
-  away: z.boolean()
+  away: z.boolean(),
+  /**
+   * Notes stopped because what the organizer's plan brings ran out (docs: Plans and usage): their notes for this period,
+   * or their storage. What was captured until then still goes into the notes. Everyone in the call is shown it until they
+   * close it. Null while notes haven't stopped for that.
+   */
+  stopped: z.object({ reason: z.enum(['notes', 'storage']), at: ISODateSchema }).nullable(),
+  /**
+   * For the organizer alone: their notes are about to run out, at this call's pace, since `at`. Null for everyone else, and
+   * once notes have stopped.
+   */
+  runningOut: z.object({ at: ISODateSchema }).nullable()
 });
 
 export type CaptureState = z.infer<typeof CaptureStateSchema>;

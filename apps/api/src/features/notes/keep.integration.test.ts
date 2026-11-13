@@ -199,7 +199,6 @@ describe('keeping the transcript', () => {
     const { meeting, call } = await held(org, { keepTranscript: false }, { guests: [invitedEmail] });
     await call.appendAudio(piece('kept', 0, 0, 90_000));
     await call.transcribe(speech(SAID, 0, 0), call.ticket.identity);
-    const before = (await org.api.credits.balance()).balance;
     h.near.failNext(3, 'prose');
     const noteId = await noteOf(call);
     await waitFor(async () => (await job(org.session.ownerId))?.state === 'queued' && (await job(org.session.ownerId))?.attempt === 1, 'the first attempt to fail');
@@ -207,11 +206,10 @@ describe('keeping the transcript', () => {
     await retryNow(org.session.ownerId);
     expect(await job(org.session.ownerId)).toBeUndefined();
 
-    // Finished without notes, and nothing was charged: the organizer still reads what was said, so the note can say why.
+    // Finished without notes: the organizer still reads what was said, so the note can say why.
     const unwritten = await org.api.notes.get(noteId);
     expect(unwritten).toMatchObject({ status: 'ready', summary: '', writtenAt: null, kept: { transcript: false, recording: true } });
     expect(unwritten.transcript).toHaveLength(3);
-    expect((await org.api.credits.balance()).balance).toBe(before);
     expect((await revisionsOf(org.session.ownerId, noteId)).some((r) => r.text.includes(CANARY))).toBe(true);
 
     // Everyone else gets the notes, not the transcript they'd be written from, whichever way they ask for it.
@@ -237,12 +235,11 @@ describe('keeping the transcript', () => {
     await org.api.notes.correctLine(noteId, line?.id ?? '', { text: `The supplier is ${CANARY} from now on.` });
     expect((await asked(org.api, noteId, 'Who is the supplier?'))[0]).toMatchObject({ type: 'text', text: expect.stringContaining(CANARY) });
 
-    // Asked to, it writes them, charges for the audio that was kept, and the transcript goes.
+    // Asked to, it writes them, and the transcript goes.
     expect(await org.api.notes.rewrite(noteId)).toMatchObject({ writingAgain: true });
     await written(org.api, noteId);
     const note = await org.api.notes.get(noteId);
     expect(note).toMatchObject({ status: 'ready', transcript: [], writtenAt: expect.any(String), decisions: [{ text: DECIDED }] });
-    expect((await org.api.credits.balance()).balance).toBe(before - 50);
     const revisions = await revisionsOf(org.session.ownerId, noteId);
     expect(revisions.map((r) => r.parent)).toEqual([null]);
     expect(revisions.some((r) => r.text.includes(CANARY))).toBe(false);
@@ -250,7 +247,7 @@ describe('keeping the transcript', () => {
 });
 
 describe('keeping the recording', () => {
-  it('deletes the audio when the call ends, while what was worked out from it stays: where lines fall, gaps and the bill', async () => {
+  it('deletes the audio when the call ends, while what was worked out from it stays: where lines fall and gaps', async () => {
     const org = await account(unique('organizer'));
     const { call } = await held(org, { keepRecording: false });
     // A minute, a pause, then half a minute more: lines are placed in the recording by the audio before them.
@@ -265,7 +262,6 @@ describe('keeping the recording', () => {
     expect(ids).toHaveLength(2);
     for (const id of ids) expect(await inBucket(id)).toBe(true);
     expect(await storedBytes(org.session.ownerId)).toBeGreaterThan(0);
-    const before = (await org.api.credits.balance()).balance;
     h.near.slowNext(1000);
     const noteId = await noteOf(call);
 
@@ -281,8 +277,6 @@ describe('keeping the recording', () => {
     expect(note).toMatchObject({ status: 'ready', audio: [], gaps: [{ kind: 'paused', at: 60 }], kept: { transcript: true, recording: false } });
     expect(note.transcript?.map((l) => [l.at, l.text])).toEqual([[1, 'Before the pause.'], [61, 'After the pause.']]);
     expect(await audioStatus(org, noteId, 0)).toBe(404);
-    // A minute and a half of audio is two minutes, however little of it is left.
-    expect((await org.api.credits.balance()).balance).toBe(before - 50);
     // The recording's row stays, stopped: its key seals the shared screens.
     expect(await count(`FROM recordings WHERE owner_id = $1 AND note_item_id = $2 AND state = 'stopped'`, [org.session.ownerId, noteId])).toBe(1);
   });
@@ -299,11 +293,9 @@ describe('keeping the recording', () => {
       expect(await job(org.session.ownerId)).toMatchObject({ state: 'queued' });
       expect(await piecesOf(org.session.ownerId)).toEqual([]);
       expect(await inBucket(gone?.object_id ?? '')).toBe(false);
-      const before = (await org.api.credits.balance()).balance;
-      // And once there is one, the notes are billed from what the note saved.
+      // And once there is one, the notes are written from what the note saved.
       await retryNow(org.session.ownerId);
       expect(await org.api.notes.get(noteId)).toMatchObject({ status: 'ready', decisions: [{ text: DECIDED }] });
-      expect((await org.api.credits.balance()).balance).toBe(before - 50);
     } finally {
       await plain.close();
     }
@@ -529,7 +521,6 @@ describe('a call with breakout rooms', () => {
     const { ownerId } = org.session;
     await host.appendAudio(piece('kept', 0, 0, 90_000));
     await talked(host, kofi, lena);
-    const before = (await org.api.credits.balance()).balance;
     h.near.failNext(3, 'prose', 'the breakout room “Design”');
     const noteId = await noteOf(host);
     const steps = await written(org.api, noteId);
@@ -543,7 +534,6 @@ describe('a call with breakout rooms', () => {
     expect(await anyHolds(ownerId, noteId, CANARY)).toBe(false);
     expect(await anyHolds(ownerId, noteId, SUPPORT_CANARY)).toBe(false);
     expect(await anyHolds(ownerId, noteId, DESIGN_CANARY)).toBe(true);
-    expect((await org.api.credits.balance()).balance).toBe(before - 50);
 
     // Nobody else reads it, whichever way they ask.
     const theirs = await kofi.browser.api.notes.get(noteId);
@@ -559,15 +549,14 @@ describe('a call with breakout rooms', () => {
     await asked(org.api, noteId, 'Who is the printer?');
     expect(h.near.prompts.at(-1)).toContain(`The printer is ${DESIGN_CANARY} from now on.`);
 
-    // Written again, only what's left to write from is written: Design gets its notes, what's written already stays,
-    // nothing more is charged, and the last transcript goes, from every revision.
+    // Written again, only what’s left to write from is written: Design gets its notes, what’s written already stays,
+    // and the last transcript goes, from every revision.
     expect(await org.api.notes.rewrite(noteId)).toMatchObject({ writingAgain: true });
     await written(org.api, noteId);
     const note = await org.api.notes.get(noteId);
     expect(note).toMatchObject({ transcript: [], decisions: [{ text: DECIDED }], writingAgain: false });
     expect(note.summary).toBe(part.summary);
     expect(note.rooms.map((r) => [r.name, r.transcript, r.decisions.map((d) => d.text)])).toEqual([['Design', [], [BLUE]], ['Support', [], [QUEUE]]]);
-    expect((await org.api.credits.balance()).balance).toBe(before - 50);
     expect((await revisionsOf(ownerId, noteId)).map((r) => r.parent)).toEqual([null]);
     expect(await anyHolds(ownerId, noteId, DESIGN_CANARY)).toBe(false);
     expect(await fails(org.api.notes.rewrite(noteId))).toEqual(['conflict', 'The transcript was deleted once the notes were written, so they can’t be written again.']);
@@ -742,7 +731,7 @@ describe('what a call keeps unless it’s told otherwise', () => {
     expect((await org.api.notes.get(pendingNoteId)).transcript).toHaveLength(3);
   });
 
-  it('reads a note stopped by the previous release as keeping everything, and bills it from its audio', async () => {
+  it('reads a note stopped by the previous release as keeping everything, and writes it from its audio', async () => {
     const org = await account(unique('organizer'));
     const { call } = await held(org, {});
     await call.appendAudio(piece('kept', 0, 0, 90_000));
@@ -759,12 +748,10 @@ describe('what a call keeps unless it’s told otherwise', () => {
       });
       expect((await revisionsOf(org.session.ownerId, noteId)).some((r) => r.text.includes('"recorded"'))).toBe(true);
       expect(await org.api.notes.get(noteId)).toMatchObject({ rooms: [], kept: { transcript: true, recording: true } });
-      const before = (await org.api.credits.balance()).balance;
       await retryNow(org.session.ownerId);
       const note = await org.api.notes.get(noteId);
       expect(note).toMatchObject({ status: 'ready', rooms: [], kept: { transcript: true, recording: true }, audio: [{ index: 0 }], decisions: [{ text: DECIDED }] });
       expect(note.transcript).toHaveLength(3);
-      expect((await org.api.credits.balance()).balance).toBe(before - 50);
     } finally {
       await plain.close();
     }

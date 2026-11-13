@@ -139,7 +139,7 @@ const NEXT_PLANNING: Meeting = {
 function launch(): Space {
   const press = { parent: spaceItem('Press') };
   return {
-    id: LAUNCH, name: 'Launch', role: 'admin', inCall: false, people: 4, createdAt: iso(-40, 10, 0), call: null, members: [PRIYA, KOFI, INES],
+    id: LAUNCH, name: 'Launch', role: 'admin', inCall: false, people: 4, teamAccess: null, createdAt: iso(-40, 10, 0), call: null, members: [PRIYA, KOFI, INES],
     about: 'Everything for the launch on Wednesday 18 November: the plan, the press list, and the planning call every other Tuesday.',
     items: [
       folderOfCall('Launch planning', '27 Oct', PLANNING_27, 'n-launch-27'),
@@ -159,7 +159,7 @@ function launch(): Space {
 
 function hiringSync(): Space {
   return {
-    id: HIRING_SYNC, name: 'Hiring sync · 5 Nov', role: 'admin', inCall: false, people: 3, createdAt: iso(0, 16, 5), call: { title: 'Hiring sync', at: HIRING }, members: [INES, AIKO],
+    id: HIRING_SYNC, name: 'Hiring sync · 5 Nov', role: 'admin', inCall: false, people: 3, teamAccess: null, createdAt: iso(0, 16, 5), call: { title: 'Hiring sync', at: HIRING }, members: [INES, AIKO],
     items: [item('Agenda', 'document', iso(0, 16, 10), iso(0, 16, 11), { by: ART })]
   };
 }

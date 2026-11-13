@@ -5,18 +5,20 @@
  * of these reach.
  */
 import {
-  TopUpSchema, TopUpRoutesSchema, ISODateSchema, DriveExportChoiceSchema, DriveExportJobSchema, DriveFolderSchema, DriveSettingsSchema, FILE_TYPE, CalendarSchema, CreditBalanceSchema, DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PreferencesSchema,
-  MentionNoticeSchema, SessionSchema, ShareEntrySchema, TeamSchema, WorkspaceMediaSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, type DocumentLibrary, type DocumentRole,
-  type Group, type ItemCall, type MentionNotice, type NoteRoom, type NoteWorkedOn, type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole
+  TopUpSchema, TopUpRoutesSchema, PlanOffersSchema, ISODateSchema, DriveExportChoiceSchema, DriveExportJobSchema, DriveFolderSchema, DriveSettingsSchema, FILE_TYPE, CalendarSchema,
+  DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PlanSchema, PreferencesSchema, MentionNoticeSchema, SessionSchema, ShareEntrySchema, TeamSchema,
+  WorkspaceMediaSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, type DocumentLibrary, type DocumentRole, type Group, type ItemCall, type MentionNotice, type NoteRoom, type NoteWorkedOn,
+  type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole, MyTeamSchema, type PlanNotice
 } from '@alcove/api';
 import { tileHintKey } from '~/features/call/layout/view';
+import { returnTo } from '~/lib/afterSignIn';
 import { sessions } from '~/lib/live';
 import { openBrowser } from '../browser';
 import { busyCalls, busyEvents, soonCalls } from '../world/calls';
 import { connected, notConnected, writeNote, type NoteSpec } from '../world/build';
 import { iso, on, setClock } from '../world/clock';
 import { clipOf, stillOf } from '../media/screens';
-import { CREDITS, PREFS, WELCOME_CREDITS, session, type BoardSpec, type Kept, type Opening, type Page, type Refused, type Space, type World } from '../world';
+import { PREFS, session, type BoardSpec, type Kept, type Opening, type Page, type Refused, type Space, type World } from '../world';
 import { FLOW, RETRO, roomBoard } from '../world/boards';
 import {
   COMPETITORS, EMPTY_STATES, EXPENSES, FIRST_DRAFT, HOLIDAYS, INTERVIEWS, LAUNCH_CHECKLIST, LAUNCH_PLAN, MEDIA, OLD_ROADMAP, ONBOARDING_FIXES, PRICING_COPY,
@@ -28,14 +30,21 @@ import { QUIET } from './empty';
 import { forgetKeptHere } from './kept';
 import { drawnPicture, forgetAudio } from './media';
 import { stopLive } from './standin';
-import { paymentsOff, withPayments } from '../world/payments';
+import { buyingWith, paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, PRO_YEAR, purchaseTopUp, raisePrices, TEAM_SIX, topUpOf, withPayments, type PaymentPlay } from '../world/payments';
+import { carriedOver, freePlan, inGrace, newPlan, notesStopped, overLimits, proEnded, proEnding, proEndingPriceRose, proExtended, proPlan, proRenewed, PRO_YEARLY_PRICE, withBalance, withNotesLeft } from '../world/plans';
 import { disconnectedDrive, withDriveExports } from '../world/drive-exports';
 import { homesOn } from '../world/call-page';
 import { withAgentConnections, withAgentEnding, withClaudeJustConnected } from './agents';
+import { planWithTeam, priyasTeam, startedTeam, teamView, vandelayTeam, type TeamWorld } from '../world/teams';
 import { serve } from './state';
-import { forgetDocuments } from './workspaces';
+import { forgetDocuments, summaryOf } from './workspaces';
 
-export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'agents-ending' | 'agents-just-connected' | 'drive-connected' | 'payments';
+export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'agents-ending' | 'agents-just-connected' | 'drive-connected' | 'payments'
+  | 'plan-low' | 'plan-stopped' | 'plan-grace' | 'plan-over' | 'plan-balance' | 'plan-pro' | 'plan-pro-ending' | 'plan-pro-ending-price' | 'plan-pro-renewed' | 'plan-pro-ended'
+  | 'plan-buying-pro' | 'plan-pro-extended'
+  | 'plan-waiting' | 'payment-short' | 'payment-over' | 'payment-refused' | 'payment-expired' | 'payment-failed'
+  | 'team-admin' | 'team-admin-low' | 'team-admin-none' | 'team-member' | 'team-member-unlicensed' | 'team-join' | 'no-team'
+  | 'team-buying' | 'plan-choice' | 'plan-choice-before';
 
 interface Scenario { title: string; about: string; make: () => { world: World; opening: Partial<Opening> } }
 
@@ -70,11 +79,15 @@ const homeName = (title: string, at: string): string => `${title} · ${new Intl.
 function home(id: string, title: string, at: string, organizer: Person, role: WorkspaceRole, people: number, noteId: string, items: WorkspaceItem[]): Space {
   const name = homeName(title, at);
   const hours = (Date.parse(iso(0, 16, 12)) - Date.parse(at)) / 3_600_000;
-  return { id, name, role, inCall: false, people, createdAt: at, call: { title, at }, items: [item(name, 'folder', organizer, hours, { call: { startedAt: at, on: false, here: false, noteId } }), ...items] };
+  return {
+    id, name, role, inCall: false, people, teamAccess: null, createdAt: at, call: { title, at }, items: [item(name, 'folder', organizer, hours, { call: { startedAt: at, on: false, here: false, noteId } }), ...items],
+    // A call's home is on its organizer's plan.
+    paidBy: organizer
+  };
 }
 /**
- * The workspaces: the homes of the day's calls, the standup's newest; Product, which Art runs; Design, where he edits; and
- * the company handbook, which he can only read.
+ * The workspaces: the homes of the day's calls, the standup's newest; Product, which Art runs; Design, where Art edits and Aiko
+ * pays; and the company handbook, which Art can only read.
  */
 function workspaces(): Space[] {
   const research = { parent: itemId('Research') };
@@ -86,7 +99,7 @@ function workspaces(): Space[] {
       item('Sidebar screenshots', 'document', KOFI, 28.3), item('Review uploads', 'document', AIKO, 28.9), item('Review checklist', 'document', ART, 28.6)
     ]),
     {
-      id: 'ws-product', name: 'Product', role: 'admin', inCall: false, people: 6, createdAt: iso(-120, 10, 0), call: null,
+      id: 'ws-product', name: 'Product', role: 'admin', inCall: false, people: 6, teamAccess: null, createdAt: iso(-120, 10, 0), call: null,
       items: [
         item('Launch plan', 'document', PRIYA, 2, { made: 76 }), item('Launch checklist', 'document', MAYA, 5), item('Research', 'folder', LENA, 300),
         item('Interview notes', 'document', LENA, 120, research), item('Competitor notes', 'document', LENA, 170, research),
@@ -96,11 +109,11 @@ function workspaces(): Space[] {
       ]
     },
     {
-      id: 'ws-design', name: 'Design', role: 'edit', inCall: false, people: 4, createdAt: iso(-90, 14, 0), call: null,
+      id: 'ws-design', name: 'Design', role: 'edit', inCall: false, people: 4, teamAccess: null, createdAt: iso(-90, 14, 0), call: null, paidBy: AIKO,
       items: [item('Onboarding flow', 'board', AIKO, 50), item('Empty states', 'document', KOFI, 8)]
     },
     {
-      id: 'ws-handbook', name: 'Company handbook', role: 'read', inCall: false, people: 38, createdAt: iso(-400, 9, 0), call: null,
+      id: 'ws-handbook', name: 'Company handbook', role: 'read', inCall: false, people: 38, teamAccess: null, createdAt: iso(-400, 9, 0), call: null,
       items: [item('Holidays', 'document', NADIA, 700, reading), item('Expenses', 'document', NADIA, 1300, reading), item('Working from home', 'document', NADIA, 2100, reading)]
     }
   ];
@@ -288,7 +301,7 @@ function busy(): World {
   homesOn(notes, spaces);
   return {
     drive: disconnectedDrive(), payments: paymentsOff(), session: session(), prefs: { ...PREFS, pinned: ['n4', 'n6'], groups: GROUPS }, team: teamOf(DIRECTORY), notes, personal: { n2: standupOwn() },
-    meetings: busyCalls(), calendar: connected(busyEvents()), credits: CREDITS, documents: library(), workspaces: spaces, pages: pages(), shares: shares(), boards: boards(),
+    meetings: busyCalls(), calendar: connected(busyEvents()), plan: freePlan(), documents: library(), workspaces: spaces, pages: pages(), shares: shares(), boards: boards(),
     mentions: structuredClone(TAGGED), media: files(), rings: [], writing: null,
     // The bandwidth flag is on here and off in every other scenario, so both answers are served.
     featureFlags: ['call.bandwidth_reduction']
@@ -332,7 +345,7 @@ function lots(): World {
   return w;
 }
 
-/** Someone on their own: Art at a personal address, so no team and no groups, with recordings and calls with people he meets. */
+/** Someone on their own: Art at a personal address, so no team and no groups, with recordings and calls with people Art meets. */
 function onTheirOwn(): World {
   const solo: Person = { ...ART, id: 'o-art-personal', email: 'art@personal.example' };
   const specs: NoteSpec[] = [
@@ -356,18 +369,183 @@ function onTheirOwn(): World {
   ];
   return {
     drive: disconnectedDrive(), payments: paymentsOff(), session: session({ user: solo, ownerId: solo.id }), prefs: PREFS, team: null, notes: specs.map((s) => writeNote(s, solo)), personal: {},
-    meetings: [], calendar: connected([]), credits: CREDITS, documents: { workspaces: [{ id: 'own', name: 'Your documents', documents: [] }] },
+    meetings: [], calendar: connected([]), plan: freePlan(), documents: { workspaces: [{ id: 'own', name: 'Your documents', documents: [] }] },
     workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null
   };
 }
 
+/* ---------- a team ---------- */
+
+/** The secret of the invite `team-join` opens. Made up: it joins nothing outside Storybook. */
+export const TEAM_INVITE_SECRET = 'VandelayInviteStorybook0001';
+/**
+ * The busy afternoon on Vandelay's team (src/world/teams.ts): `team` as it stands, `admin` whether Art runs it, `change`
+ * anything else, and the plan as the team makes it, with $180 in the balance.
+ */
+function onTeam(team: TeamWorld, change: (t: TeamWorld, w: World) => void = () => {}): World {
+  const w = busy();
+  withPayments(w);
+  // The licenses are the admin's to buy: a member's balance never paid for any.
+  const admin = team.members.some((m) => m.person === ART && m.role === 'admin');
+  w.plan = {
+    ...freePlan(),
+    balance: {
+      microUsd: 180_000_000,
+      history: admin
+        ? [{ id: 'sb-entry-1', at: iso(-12, 9, 0), label: 'Added, 300 USDC', microUsd: 300_000_000 }, { id: 'sb-entry-team', at: iso(-12, 9, 5), label: 'Team, 3 licenses', microUsd: -120_000_000 }]
+        : [{ id: 'sb-entry-1', at: iso(-12, 9, 0), label: 'Added, 180 USDC', microUsd: 180_000_000 }]
+    }
+  };
+  w.myTeam = team;
+  change(team, w);
+  // A team note of Art's own: the standup, visible to the team.
+  w.notes = w.notes.map((n) => (n.id === 'n2' ? { ...n, teamVisible: true } : n));
+  w.plan = { ...planWithTeam(w.plan, team, ART.email, on(0, 16, 12).getTime()), notes: { minutesLeft: 2380, minutesPerPeriod: 3000, stopped: false } };
+  return w;
+}
+/**
+ * Priya's link to join Vandelay's team (which has licenses left, and Art isn't on) in the world, waiting in this tab as it
+ * does while signing in from it: Storybook can't put a secret in the page's address. `expired`: it ran out a minute ago.
+ */
+export const withTeamInvite = (expired = false) => (w: World): void => {
+  const team = vandelayTeam();
+  team.members = team.members.filter((m) => m.person !== ART).map((m) => (m.person === PRIYA ? { ...m, role: 'admin' } : m));
+  w.teamInvites = [{ secret: TEAM_INVITE_SECRET, expiresAt: new Date(Date.now() + (expired ? -60_000 : 4 * 3_600_000)).toISOString(), team, admin: PRIYA }];
+  returnTo({ to: 'team', secret: TEAM_INVITE_SECRET });
+};
+const teamNotice = (id: string, kind: PlanNotice['kind'], count: number | null, at = iso(0, 11, 20)): PlanNotice => ({ id, kind, at, until: null, count, workspaceId: null });
+
 /* ---------- the scenarios ---------- */
 
+/** The busy afternoon with payments taken, where a payment opened to buy something goes as `play` says. */
+const paymentGoes = (title: string, about: string, play: PaymentPlay): Scenario => ({
+  title, about, make: () => { const world = busy(); withPayments(world, play); return { world, opening: {} }; }
+});
+
 export const SCENARIOS: Record<ScenarioName, Scenario> = {
+  'team-admin': {
+    title: 'A team, as its admin', about: 'Art runs Vandelay’s team: six people, Maya’s license ran out last week, three licenses left, auto-purchase off, $180 in the balance.',
+    make: () => ({ world: onTeam(vandelayTeam()), opening: {} })
+  },
+  'team-admin-low': {
+    title: 'Team licenses running low', about: 'Two licenses are left on Art’s team, and Art is told so.',
+    make: () => {
+      const world = onTeam(vandelayTeam(), (t) => { t.unconsumed = t.unconsumed.slice(1); });
+      world.plan = { ...world.plan, notices: [teamNotice('sb-notice-low', 'licenses-low', 2)] };
+      return { world, opening: {} };
+    }
+  },
+  'team-admin-none': {
+    title: 'No team licenses left', about: 'Maya came back this morning and needed a license, but none was left: Maya waits, and Art is told.',
+    make: () => {
+      const world = onTeam(vandelayTeam(), (t) => {
+        t.unconsumed = [];
+        t.members = t.members.map((m) => (m.person === MAYA ? { ...m, wanted: iso(0, 11, 20) } : m));
+      });
+      world.plan = { ...world.plan, notices: [teamNotice('sb-notice-none', 'licenses-none', null)] };
+      return { world, opening: {} };
+    }
+  },
+  'team-member': {
+    title: 'On a team, licensed', about: 'Art is on Priya’s team with a live license: the team’s notes and workspaces are open to Art.',
+    make: () => ({ world: onTeam(priyasTeam()), opening: {} })
+  },
+  'team-member-unlicensed': {
+    title: 'On a team, without a license', about: 'Art’s license ran out and there was none to take: Art is on Free, and told to ask Priya.',
+    make: () => {
+      const world = onTeam(priyasTeam(), (t) => {
+        t.unconsumed = [];
+        t.members = t.members.map((m) => (m.person === ART ? { ...m, license: { from: iso(-32, 9, 0), until: iso(-2, 9, 0) }, wanted: iso(0, 9, 5) } : m));
+      });
+      world.plan = { ...freePlan(), balance: world.plan.balance, team: world.plan.team, notices: [teamNotice('sb-notice-needed', 'license-needed', null, iso(0, 9, 5))] };
+      return { world, opening: {} };
+    }
+  },
+  'team-join': {
+    title: 'An invite to a team', about: 'Art isn’t on a team, and has Priya’s link to join Vandelay’s, which has licenses left.',
+    make: () => { const world = busy(); withTeamInvite()(world); return { world, opening: {} }; }
+  },
+  'no-team': {
+    title: 'Not on a team', about: 'The busy afternoon: Vandelay’s directory, and Start a team on the Team page.',
+    make: () => { const world = busy(); withPayments(world); world.plan = withBalance(); return { world, opening: {} }; }
+  },
+  'plan-low': {
+    title: 'Notes nearly out', about: 'Art is on Free with about 20 minutes of the period’s notes left, and the sun near the start of the line.',
+    make: () => { const world = busy(); world.plan = withNotesLeft(20); return { world, opening: {} }; }
+  },
+  'plan-stopped': {
+    title: 'Notes stopped', about: 'Art is on Free and the period’s notes have run out: they stop until it renews, calls go on without them, and questions about the notes are refused.',
+    make: () => { const world = busy(); world.plan = notesStopped(); return { world, opening: {} }; }
+  },
+  'plan-grace': {
+    title: 'Over Free’s storage, in grace', about: 'Art stores 14.2 GB of Free’s 10: everything works as before for nine more days.',
+    make: () => { const world = busy(); world.plan = inGrace(); return { world, opening: {} }; }
+  },
+  'plan-over': {
+    title: 'Over Free’s storage, past the grace', about: 'The grace is over: uploads have stopped.',
+    make: () => { const world = busy(); world.plan = overLimits(); return { world, opening: {} }; }
+  },
+  'plan-balance': {
+    title: 'A balance', about: 'Art has $60 in their balance, with a $20 top-up waiting for its payment and a $40 one already added.',
+    make: () => {
+      const world = busy();
+      withPayments(world);
+      world.plan = withBalance();
+      world.payments.topUps = [topUpOf(PREVIEW_TOP_UP, 'waiting', 20), topUpOf(PREVIEW_PAID_TOP_UP, 'credited', 40, true)];
+      return { world, opening: {} };
+    }
+  },
+  'plan-pro': {
+    title: 'On Pro', about: 'Art bought three months of Pro ten days ago: the month running and two after it, renewing off, with $35 left in the balance.',
+    make: () => { const world = busy(); withPayments(world); world.plan = proPlan(); return { world, opening: {} }; }
+  },
+  'plan-pro-ending': {
+    title: 'Pro ending', about: 'Art’s Pro ends in 3 days and won’t renew: renewing is off and $5 doesn’t buy a month. Art is told so.',
+    make: () => { const world = busy(); withPayments(world); world.plan = proEnding(); return { world, opening: {} }; }
+  },
+  'plan-pro-ending-price': {
+    title: 'Pro ending, at a higher price', about: 'Art’s Pro ends in 3 days and won’t renew, though renewing is on and $60 is in the balance: a month of Pro costs $24 now, more than the $20 the last did, and renewing never pays a higher price without Art. Art is told Pro is ending.',
+    make: () => { const world = busy(); withPayments(world); raisePrices(world); world.plan = proEndingPriceRose(); return { world, opening: {} }; }
+  },
+  'plan-pro-renewed': {
+    title: 'Pro renewed', about: 'Renewing is on, so 3 days before Pro ended a month was bought from the balance, and Art is told it runs a month further.',
+    make: () => { const world = busy(); withPayments(world); world.plan = proRenewed(); return { world, opening: {} }; }
+  },
+  'plan-pro-ended': {
+    title: 'Pro ended', about: 'Pro ended two days ago: Art is on Free, over its storage with 14.2 GB, and everything works as before for 13 more days.',
+    make: () => { const world = busy(); withPayments(world); world.plan = proEnded(); return { world, opening: {} }; }
+  },
+  'plan-buying-pro': {
+    title: 'Paying for Pro', about: 'Art is on Free and has opened a payment of 192 USDC on Base for a year of Pro at the yearly price, and closed checkout: it waits for the payment.',
+    make: () => {
+      const world = busy();
+      withPayments(world);
+      world.payments.topUps = [buyingWith(PREVIEW_TOP_UP, { kind: 'pro', months: 12, microUsdPerMonth: PRO_YEARLY_PRICE }, 192)];
+      return { world, opening: {} };
+    }
+  },
+  'plan-pro-extended': {
+    title: 'Pro, extended', about: 'Art extended Pro by a year yesterday, paid with 192 USDC on Base at the yearly price: the month running and twelve after it, $5 left.',
+    make: () => { const world = busy(); withPayments(world); world.plan = proExtended(); return { world, opening: {} }; }
+  },
   payments: {
-    title: 'Credit top-ups', about: 'Art can add credits with a stablecoin; every payment address is an invalid Storybook preview.',
+    title: 'Adding money', about: 'Art can add money to their balance with a stablecoin; every payment address is an invalid Storybook preview. A payment opened to buy something is seen, added and bought a few seconds apart.',
     make: () => { const world = busy(); withPayments(world); return { world, opening: {} }; }
   },
+  'plan-waiting': {
+    title: 'A payment on its way', about: 'Art is on Free with a payment of 192 USDC on Base on its way, opened to buy 12 months of Pro: nothing has been sent to its address yet.',
+    make: () => {
+      const world = busy();
+      withPayments(world, 'waits');
+      world.payments.topUps = [purchaseTopUp(PREVIEW_TOP_UP, PRO_YEAR, 192, iso(1, 16, 12))];
+      return { world, opening: {} };
+    }
+  },
+  'payment-short': paymentGoes('Less than asked arrives', 'A payment opened to buy something: two thirds of it arrive, and the same address waits for the rest.', 'short'),
+  'payment-over': paymentGoes('More than asked arrives', 'A payment opened to buy something: 6 USDC more than asked arrives. It’s bought, and the rest stays in the balance.', 'over'),
+  'payment-refused': paymentGoes('Bought, refused', 'A payment opened to buy something arrives after the prices went up: it’s added to the balance, and what it was for isn’t bought at the old price.', 'refused'),
+  'payment-expired': paymentGoes('Nothing arrives', 'A payment opened to buy something: nothing arrives before its address closes, and nothing is charged.', 'expires'),
+  'payment-failed': paymentGoes('A payment fails', 'A payment opened to buy something is seen, then 1Click fails it: it needs support, with its reference.', 'fails'),
   'drive-connected': {
     title: 'Google Drive exports', about: 'Art sends finalized call files to a chosen folder, with completed, uploading, pending and failed exports.',
     make: () => { const world = busy(); withDriveExports(world); return { world, opening: {} }; }
@@ -386,16 +564,30 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
   },
   busy: { title: 'A busy team', about: 'Wednesday afternoon at Vandelay Industries: a day of notes, things waiting on you, a design sync at 17:30.', make: () => ({ world: busy(), opening: {} }) },
   'first-day': {
-    title: 'A first day', about: 'Art has just signed in for the first time: no notes, no calls, a team that isn’t on Alcove yet, and no calendar access.',
+    title: 'A first day', about: 'Art has just signed in for the first time and carried on with Free: no notes, no calls, a team that isn’t on Alcove yet, and no calendar access.',
     make: () => ({
       world: {
         drive: disconnectedDrive(), payments: paymentsOff(), session: session({ createdAt: iso(0, 16, 5) }), prefs: PREFS, team: teamOf(DIRECTORY.filter((c) => c.person !== INES && c.person !== AIKO).map((c): Colleague => ({ ...c, onAlcove: false, invited: false }))),
-        notes: [], personal: {}, meetings: [], calendar: notConnected, credits: WELCOME_CREDITS, documents: library(), workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null
+        // Past the plans, which a new account sees first (`plan-choice`), so Home is Home.
+        notes: [], personal: {}, meetings: [], calendar: notConnected, plan: { ...newPlan(), choose: false }, documents: library(), workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null
       },
       opening: { tourSeen: false }
     })
   },
-  'on-their-own': { title: 'Someone on their own', about: 'Art at a personal address: no team, no groups, recordings and calls with people he meets.', make: () => ({ world: onTheirOwn(), opening: {} }) },
+  'plan-choice': {
+    title: 'Choosing a plan', about: 'Art’s account was made a few minutes ago, and the plans haven’t been shown yet: Home opens on them, once. Payments are taken.',
+    make: () => {
+      const { world, opening } = SCENARIOS['first-day'].make();
+      world.plan = newPlan();
+      withPayments(world);
+      return { world, opening };
+    }
+  },
+  'plan-choice-before': {
+    title: 'Plans, new to an account from before them', about: 'Art has used Alcove for weeks, and the release that brought plans put the account on Free two days ago: the busy afternoon, and Home opens on the plans, once. Payments are taken.',
+    make: () => { const world = busy(); withPayments(world); world.plan = carriedOver(); return { world, opening: {} }; }
+  },
+  'on-their-own': { title: 'Someone on their own', about: 'Art at a personal address: no team, no groups, recordings and calls with people Art meets.', make: () => ({ world: onTheirOwn(), opening: {} }) },
   offline: {
     title: 'Offline', about: 'The busy afternoon, opened with no connection by someone signed in on this browser: Record works, every other page says it’s offline.',
     make: () => ({ world: busy(), opening: { browser: { online: false }, signedInHere: true } })
@@ -425,7 +617,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
   },
   unsaved: {
     title: 'Edits that didn’t save',
-    about: 'The busy afternoon, after Alcove wouldn’t take some of what Art wrote: his last edits to the pricing copy, more interview notes than one document holds, and a line in the handbook, which he can only read now.',
+    about: 'The busy afternoon, after Alcove wouldn’t take some of what Art wrote: the last edits to the pricing copy, more interview notes than one document holds, and a line in the handbook, which Art can only read now.',
     make: () => {
       const w = busy();
       const refuse = (name: string, why: Refused['why'], words: string[]) => {
@@ -440,8 +632,19 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     }
   },
   'first-sign-in': {
-    title: 'Signing in for the first time', about: 'Nobody is signed in, and Art has no account yet: signing in makes it on screen, opens on his first day, and the tour of Home follows.',
-    make: () => ({ world: { ...SCENARIOS['first-day'].make().world, session: null }, opening: { tourSeen: false } })
+    title: 'Signing in for the first time', about: 'Nobody is signed in, and Art has no account yet: signing in makes it on screen and opens on the plans to choose from, then Art’s first day, and the tour of Home follows.',
+    make: () => ({ world: { ...SCENARIOS['first-day'].make().world, session: null, plan: newPlan() }, opening: { tourSeen: false } })
+  },
+  'team-buying': {
+    title: 'Starting a team, paying', about: 'Art started Vandelay’s team from Plans and opened a payment of 240 USDC on Base for its first six licenses, then closed checkout: the team is Art’s, with nothing bought yet, and the payment waits.',
+    make: () => {
+      const world = busy();
+      withPayments(world, 'waits');
+      world.myTeam = startedTeam(world.plan.storage.usedBytes);
+      world.plan = planWithTeam(world.plan, world.myTeam, ART.email, on(0, 16, 12).getTime());
+      world.payments.topUps = [purchaseTopUp(PREVIEW_TOP_UP, TEAM_SIX, 240, iso(1, 16, 12))];
+      return { world, opening: {} };
+    }
   }
 };
 export const SCENARIO_NAMES = Object.keys(SCENARIOS).filter((k): k is ScenarioName => k in SCENARIOS);
@@ -455,11 +658,13 @@ export function checked(w: World): World {
     ['session', SessionSchema.nullable().safeParse(w.session)], ['prefs', PreferencesSchema.safeParse(w.prefs)], ['team', TeamSchema.nullable().safeParse(w.team)],
     ['notes', NoteSchema.array().safeParse(w.notes)], ['meetings', MeetingSchema.array().safeParse(w.meetings)], ['calendar', CalendarSchema.safeParse(w.calendar)],
     ['payment routes', TopUpRoutesSchema.nullable().safeParse(w.payments.routes)], ['top-ups', TopUpSchema.array().safeParse(w.payments.topUps)],
-    ['credits', CreditBalanceSchema.safeParse(w.credits)], ['documents', DocumentLibrarySchema.safeParse(w.documents)], ['workspaces', WorkspaceTreeSchema.array().safeParse(w.workspaces)],
+    ['offers', PlanOffersSchema.safeParse(w.payments.offers)],
+    ['plan', PlanSchema.safeParse(w.plan)], ['documents', DocumentLibrarySchema.safeParse(w.documents)], ['workspaces', WorkspaceTreeSchema.array().safeParse(w.workspaces)],
     ['rings', IncomingRingSchema.array().safeParse(w.rings)], ['personal', PersonalEntrySchema.array().safeParse(Object.values(w.personal).flat())],
     ['shares', ShareEntrySchema.array().safeParse(Object.values(w.shares).flat())],
-    ['drive', WorkspaceSummarySchema.array().safeParse(w.workspaces)], ['mentions', MentionNoticeSchema.array().safeParse(w.mentions)],
-    ['media', WorkspaceMediaSchema.array().safeParse(w.media.map((m) => m.media))]
+    ['drive', WorkspaceSummarySchema.array().safeParse(w.workspaces.map((x) => summaryOf(x, w.session?.user ?? ART)))], ['mentions', MentionNoticeSchema.array().safeParse(w.mentions)],
+    ['media', WorkspaceMediaSchema.array().safeParse(w.media.map((m) => m.media))],
+    ['team', MyTeamSchema.nullable().safeParse(w.myTeam ? teamView(w.myTeam, w.session?.user.email ?? ART.email) : null)]
   ] as const;
   const bad = checks.flatMap(([what, r]) => (r.success ? [] : [`${what}: ${r.error.issues.slice(0, 3).map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`]));
   if (bad.length) throw new Error(`The demo world doesn’t fit the contract. ${bad.join(' · ')}`);

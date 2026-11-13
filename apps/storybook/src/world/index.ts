@@ -5,10 +5,11 @@ import { DEFAULT_NOTIFICATION_PREFERENCES, DEFAULT_SOUND_PREFERENCES } from '@al
  * every page reads it from here again.
  */
 import type {
-  Calendar, CreditBalance, DocRefusal, DocumentLibrary, FeatureFlagName, IncomingRing, Meeting, MentionNotice, MoveIn, MoveMedia, Note, NoteLink, Person, PersonalEntry, Preferences, Session, ShareEntry, Team,
+  Calendar, DocRefusal, DocumentLibrary, FeatureFlagName, IncomingRing, Meeting, MentionNotice, MoveIn, MoveMedia, Note, NoteLink, Person, PersonalEntry, Plan, Preferences, Session, ShareEntry, Team,
   WorkspaceMedia, WorkspaceSummary, WorkspaceTree
 } from '@alcove/api';
 import type { PaymentsWorld } from './payments';
+import type { TeamInviteWorld, TeamWorld } from './teams';
 import type { DriveWorld } from './drive-exports';
 import type * as Y from 'yjs';
 import type { BlockJSON } from '~/features/workspace/editor/types';
@@ -56,9 +57,11 @@ export interface BoardSpec {
 }
 /**
  * A workspace as the world keeps it: its tree, and what the Drive says of it besides (when it was made, and its call), who's in
- * it besides you (`members`, or else everyone on the team who's on Alcove), and the line on what it's for (`about`).
+ * it besides you (`members`, or else everyone on the team who's on Alcove), the line on what it's for (`about`), and who pays
+ * for it, where a story says (`paidBy`): its files count against their storage, so a call someone else organizes opens it only
+ * to its own people. Without it, whoever organizes the call it's in is taken to pay, as for a call's home.
  */
-export type Space = WorkspaceTree & Pick<WorkspaceSummary, 'createdAt' | 'call'> & { members?: Person[] | undefined; about?: string | undefined };
+export type Space = WorkspaceTree & Pick<WorkspaceSummary, 'createdAt' | 'call'> & { members?: Person[] | undefined; about?: string | undefined; paidBy?: Person | undefined };
 /**
  * A file in a workspace: what the API says of it, and its bytes, made when they're first read (a picture is drawn). A photo
  * uploaded here keeps the small preview its browser made, as the API does; one the story starts with has none, as a photo
@@ -101,7 +104,8 @@ export interface World {
   /** Every Alcove call: the ones to come, and the ones that happened. */
   meetings: Meeting[];
   calendar: Calendar;
-  credits: CreditBalance;
+  /** The plan Art is on, and what's left of it (src/world/plans.ts). */
+  plan: Plan;
   documents: DocumentLibrary;
   /** The workspaces you're in, each with everything in it you can open, and what your Drive says of it. */
   workspaces: Space[];
@@ -123,6 +127,10 @@ export interface World {
   trouble?: Troubles | undefined;
   /** A call being moved to this device, which this browser holds the claim to (/move). */
   move?: MoveSpec | undefined;
+  /** The team you're on (src/world/teams.ts), if any: not `team`, which is your company's directory. */
+  myTeam?: TeamWorld | null | undefined;
+  /** Links to join a team that still work, by their secret. */
+  teamInvites?: TeamInviteWorld[] | undefined;
   /** The feature flags on for whoever's here. None unless a scenario switches one on. */
   featureFlags?: FeatureFlagName[] | undefined;
   /** Links to notes that still work, with their secrets: none unless a story makes one. */
@@ -163,8 +171,3 @@ export const PREFS: Preferences = {
   notifications: { ...DEFAULT_NOTIFICATION_PREFERENCES, enabled: true, beforeCall: 1, followUpDue: true },
   pinned: [], groups: [], model: null, notificationsPausedUntil: null
 };
-
-/** Ten hours of notes this month: 3 h 34 min used, 6 h 26 min left, as the side panel and Settings say on the canvas. */
-export const CREDITS: CreditBalance = { balance: 9650, granted: 15000, usedThisMonth: 5350, perMinute: 25 };
-/** A new account's 10,000 credits, none used. */
-export const WELCOME_CREDITS: CreditBalance = { balance: 10000, granted: 10000, usedThisMonth: 0, perMinute: 25 };

@@ -42,6 +42,8 @@ import { mayAskInCall, maySortInCall } from '../calls/insights';
 import { profile } from '../account/account';
 import { editSelection, themesOf } from '../notes/drafting';
 import { resolveModel } from '../notes/models';
+import { meterFor, type Spend } from '../billing/meter';
+import { payerOf } from '../billing/storage';
 import { MAX_NESTING, SERVER_CAPS, bringsNew, browserCaps, clientsOf, inspect, isTooMuch, refusalGiven, type Block, type Inspected, type KnownClient } from './document-firewall';
 import { docEdits, docReads, type ArgsOf, type OpTable, type ResultOf } from './document-ops';
 import type { ContentKind } from './document-text';
@@ -947,17 +949,36 @@ export async function searchText(d: Deps, reader: Reader, workspaceId: string, a
 }
 
 /**
+ * What AI in a workspace is paid from (docs: Plans and usage › Who pays): whoever pressed it, signed in, from their own
+ * plan, in any workspace, as their questions in a call are. A guest, there by a seat in a call with no account, falls back
+ * to whoever the workspace counts against (its maker or, for a call's home, the organizer), on the default model
+ * (`mayAskInCall`), within a guest's limit (reader-routes.ts) and out of the share every guest in their call spends from
+ * (billing/meter.ts), as their questions in the call do, so nobody else's choice of model is spent from a plan that didn't
+ * make it. A workspace nobody pays for has no AI for a guest.
+ */
+async function workspaceMeter(d: Deps, reader: Reader, w: Workspace, spend: Spend) {
+  const asker = reader.account?.owner.ownerId;
+  if (asker) return meterFor(d, { payer: asker, spend, whose: 'yours' });
+  const payer = await payerOf(d.pool, w.owner.ownerId);
+  if (!payer) throw new ConflictError('AI isn’t available in this workspace right now.', { context: { workspaceId: w.workspaceId, why: 'no payer' } });
+  return meterFor(d, { payer, spend, whose: 'workspace', ...(reader.seat ? { guests: reader.seat.callId } : {}) });
+}
+
+/**
  * The format bar's Make this shorter and Turn this into a checklist. What's selected goes to the chosen model and nowhere
- * else, like catching up: nothing is kept, and nobody's credits pay for it. In a call it waits while notes are paused, as
- * everything that reaches the AI does. Whoever lost the document while the model wrote isn't sent what came back.
+ * else, like catching up: nothing is kept, and whoever asks pays for it, a guest's the workspace's payer (`workspaceMeter`).
+ * In a call it waits while notes are paused, as everything that reaches the AI does. Whoever lost the document while the
+ * model wrote isn't sent what came back.
  */
 export async function askAlcove(d: Deps, reader: Reader, workspaceId: string, documentId: string, body: DocAskBody): Promise<DocAskPart[]> {
-  requireDocument(reader, await workspaceFor(d, reader, workspaceId), documentId, 'edit');
-  // In a call, the model chosen for it; otherwise the asker's own choice, or the default for a guest.
-  const via = reader.seat ? await mayAskInCall(reader.seat.viewer)
+  const w = await workspaceFor(d, reader, workspaceId);
+  requireDocument(reader, w, documentId, 'edit');
+  // In a call, the model chosen for it, but the default for a guest, whose ask the workspace's payer pays for; otherwise the
+  // asker's own choice.
+  const via = reader.seat ? await mayAskInCall(reader.seat.viewer, reader.account ? 'call' : 'default')
     : await resolveModel(d.cfg, reader.account ? (await profile(reader.account.owner)).preferences.model : null);
   const t0 = performance.now();
-  const parts = await editSelection(d.cfg, body.action, body.text, via);
+  const parts = await editSelection(d.cfg, await workspaceMeter(d, reader, w, 'documents'), body.action, body.text, via);
   requireDocument(reader, await workspaceFor(d, reader, workspaceId), documentId, 'edit');
   dlog.info('selection edited', { workspaceId, documentId, action: body.action, chars: body.text.length, parts: parts.length, ms: Math.round(performance.now() - t0) });
   return parts;
@@ -970,7 +991,8 @@ export async function askAlcove(d: Deps, reader: Reader, workspaceId: string, do
  * reaches the AI is.
  */
 export async function sortStickies(d: Deps, reader: Reader, workspaceId: string, documentId: string, body: BoardSortBody): Promise<BoardThemes> {
-  const { item } = requireDocument(reader, await workspaceFor(d, reader, workspaceId), documentId, 'edit');
+  const w = await workspaceFor(d, reader, workspaceId);
+  const { item } = requireDocument(reader, w, documentId, 'edit');
   if (item.kind !== 'board') throw notFound('That board', { workspaceId, documentId });
   if (reader.seat) await maySortInCall(reader.seat.viewer);
   // A blank sticky has nothing to sort by, and the notes model takes so many at once: either is said as it is.
@@ -978,7 +1000,7 @@ export async function sortStickies(d: Deps, reader: Reader, workspaceId: string,
   if (picked.length < 2) throw new ValidationError(SORT_TOO_FEW, { context: { workspaceId, documentId, stickies: picked.length } });
   if (picked.length > MAX_SORT_STICKIES) throw new ValidationError(SORT_TOO_MANY, { context: { workspaceId, documentId, stickies: picked.length } });
   const t0 = performance.now();
-  const themes = await themesOf(d.cfg, picked);
+  const themes = await themesOf(d.cfg, await workspaceMeter(d, reader, w, 'documents'), picked);
   requireDocument(reader, await workspaceFor(d, reader, workspaceId), documentId, 'edit');
   dlog.info('stickies sorted into themes', { workspaceId, documentId, stickies: picked.length, themes: themes.length, ms: Math.round(performance.now() - t0) });
   return { themes };

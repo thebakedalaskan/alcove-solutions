@@ -7,7 +7,7 @@
  */
 import {
   Avatar, Button, Icon, WsCaptionField, WsCommentCompose, WsCommentThread, WsDoc, WsFind, WsMentionPrompt, WsNameSheet, WsPage, WsPane, WsPersonCard, WsPopover,
-  WsScroll, WsShareSheet, WsSwitchSheet, WsToasts, WsUploadPicker, wsToast, type WsComment, type WsFindHit, type WsShareRow
+  WsScroll, WsShareSheet, WsSwitchSheet, WsToasts, WsUploadPicker, wsToast, type WsComment, type WsFindHit, type WsShareRow, type WsTeamAccess
 } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useRef, useState, type ComponentProps } from 'react';
@@ -87,6 +87,19 @@ export const WhosInItForAGuest: Story = {
 type NameStory = StoryObj<typeof WsNameSheet>;
 /** Rename, in the workspace's menu in a call: its name, selected, in place of the rows. Enter keeps it, Esc leaves it. */
 export const Rename: NameStory = { name: 'Rename: in place of the menu', args: { name: 'Product', onCommit: did('onCommit') }, render: (args) => <PopSurface ws><WsNameSheet {...args} /></PopSurface> };
+
+/* ---------- a team's workspace ---------- */
+
+const TEAM_ROWS = [ART, PRIYA, KOFI].map((p, i) => ({ id: p.id, people: [p], name: i === 0 ? `${p.name} (you)` : p.name, sub: p.email, role: { label: i === 0 ? 'Admin' : 'Can edit' } }));
+/** Who's in a team's workspace, chosen by its admins: the whole team, or only the people added. Pressing one changes it. */
+function TeamChoice({ admin }: { admin: boolean }) {
+  const [access, setAccess] = useState<WsTeamAccess>('team');
+  return <PopSurface ws><WsShareSheet title="People in Launch" rows={TEAM_ROWS} team={{ access, ...(admin ? { onChange: (a: WsTeamAccess) => { setAccess(a); did('onChange')(a); } } : {}) }} /></PopSurface>;
+}
+/** A team's workspace, for its admins: Whole team or Only people I add, above the people in it. */
+export const PeopleTeamAdmin: Story = { name: 'People sheet: a team’s workspace, as its admin', args: SHARE, parameters: { controls: { disable: true } }, render: () => <TeamChoice admin /> };
+/** Anyone else reads which it is. */
+export const PeopleTeamMember: Story = { name: 'People sheet: a team’s workspace, as someone in it', args: SHARE, parameters: { controls: { disable: true } }, render: () => <TeamChoice admin={false} /> };
 
 /* ---------- someone's card ---------- */
 
@@ -274,6 +287,8 @@ export const SwitchEveryone: SwitchStory = { name: 'Switch sheet: everyone is in
 export const SwitchOne: SwitchStory = { name: 'Switch sheet: one person isn’t in it', args: { ...SWITCH, cantOpen: ['Maya'], home: 'Product' }, render: switching };
 /** Nobody else is in a workspace that's only yours. */
 export const SwitchSeveral: SwitchStory = { name: 'Switch sheet: several aren’t in it', args: { ...SWITCH, name: 'Art’s workspace', cantOpen: ['Priya', 'Kofi', 'Aiko', 'Maya'], home: 'Product' }, render: switching };
+/** Someone else pays for Design: the call opens it only to its own people, so Maya can't open it, and the question says why. */
+export const SwitchNotYours: SwitchStory = { name: 'Switch sheet: someone else pays for it', args: { ...SWITCH, cantOpen: ['Maya'], home: 'Product', everyone: false }, render: switching };
 
 /* ---------- find ---------- */
 

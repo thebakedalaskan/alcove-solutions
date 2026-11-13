@@ -150,6 +150,7 @@ export function writeNote(s: NoteSpec, me: Person = ART): Note {
     ...(received ? { received } : {}),
     groupShares: (s.shared ?? []).flatMap((x) => (x.group ? [{ by: x.by, group: x.group, at: x.at }] : [])).filter((g, i, all) => all.findIndex((o) => o.by.email === g.by.email && o.group === g.group) === i),
     recipients,
+    teamVisible: false,
     workedOn: [],
     summary: status === 'ready' ? s.summary ?? s.excerpt : '',
     details: status === 'ready' && s.summary ? s.details ?? '' : '',
@@ -182,7 +183,7 @@ export function summaryOf(n: Note): NoteSummary {
   return {
     id: n.id, kind: n.kind, status: n.status, title: n.title, startedAt: n.startedAt, duration: n.duration, people: n.people, sharedWith: n.sharedWith,
     excerpt: n.excerpt, openActions: n.openActions, totalActions: n.totalActions, ...(n.meetingId ? { meetingId: n.meetingId } : {}),
-    ...(n.received ? { received: n.received } : {}), ...(n.seriesId ? { seriesId: n.seriesId } : {}), groupShares: n.groupShares
+    ...(n.received ? { received: n.received } : {}), ...(n.seriesId ? { seriesId: n.seriesId } : {}), groupShares: n.groupShares, teamVisible: n.teamVisible
   };
 }
 export const foundOf = (n: Note): NoteFound => ({ ...summaryOf(n), said: [], saidCount: 0 });

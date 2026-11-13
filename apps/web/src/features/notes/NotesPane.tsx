@@ -95,20 +95,22 @@ export interface NotesPaneProps {
   at: number | undefined;
   writing: boolean;
   tryAgain: ReactNode;
+  /** A note your team can see, from someone else: to read, and nothing in it to change, add to or settle. */
+  locked?: boolean | undefined;
 }
 
-export function NotesPane({ note, me, reader, onSeek, shown, act, settled, notices, decisionForm, actionForm, settle, shared, room, at, writing, tryAgain }: NotesPaneProps) {
+export function NotesPane({ note, me, reader, onSeek, shown, act, settled, notices, decisionForm, actionForm, settle, shared, room, at, writing, tryAgain, locked = false }: NotesPaneProps) {
   const people = note.recipients.map((r) => r.person);
-  const waiting = waitingOn(note, me, reader);
+  const waiting = locked ? { decisions: [], actions: [] } : waitingOn(note, me, reader);
   const forYou = new Set([...waiting.decisions.map((d) => d.id), ...waiting.actions.map((a) => a.id)]);
   const decided = note.decisions.filter((d) => !forYou.has(d.id));
   const said = note.actions.filter((a) => a.from === null && !forYou.has(a.id));
   const fromBoards = note.actions.filter((a) => a.from === 'board');
   const yours = note.actions.filter((a) => isMine(a, me) && !a.done && isAcceptedFollowUp(a)).length;
-  const onDecision = (d: Decision, patch: DecisionPatch) => void act.decision(d, patch).catch(ignore);
-  const onQuestion = (x: Question, patch: QuestionPatch) => void act.question(x, patch).catch(ignore);
-  const onToggle = (a: ActionItem, done: boolean) => void act.toggle(a, done).catch(ignore);
-  const onAction = (a: ActionItem, patch: ActionPatch) => void act.action(a, patch).catch(ignore);
+  const onDecision = locked ? undefined : (d: Decision, patch: DecisionPatch) => void act.decision(d, patch).catch(ignore);
+  const onQuestion = locked ? undefined : (x: Question, patch: QuestionPatch) => void act.question(x, patch).catch(ignore);
+  const onToggle = locked ? undefined : (a: ActionItem, done: boolean) => void act.toggle(a, done).catch(ignore);
+  const onAction = locked ? undefined : (a: ActionItem, patch: ActionPatch) => void act.action(a, patch).catch(ignore);
   const written = note.summary.trim() !== '';
   const chapters = note.chapters;
   // Each breakout room sits under the chapter it was open in; any no chapter covers, after them.
@@ -122,19 +124,19 @@ export function NotesPane({ note, me, reader, onSeek, shown, act, settled, notic
     <div className="cd-notes">
       {notices}
       {settled && written && <Summary summary={note.summary} details={note.details} />}
-      {settled && written && <ForYou note={note} me={me} reader={reader} onSeek={onSeek} shown={shown} act={act} />}
+      {settled && written && !locked && <ForYou note={note} me={me} reader={reader} onSeek={onSeek} shown={shown} act={act} />}
       {settled && written && (
         <Section title="Decided" kind="decide" id="decided" count={counted(decided.length)}>
           {decided.length > 0 ? <Decisions items={decided} me={me} reader={reader} onChange={onDecision} onSeek={onSeek} shown={shown} /> : !forYou.size && <p className="cd-quiet">The notes didn’t hear anything decided.</p>}
-          {decisionForm()}
+          {!locked && decisionForm()}
         </Section>
       )}
       {(settled || note.actions.length > 0) && (
         <Section title="Follow-ups" kind="follow" id="follow-ups" count={counted(said.filter(isAcceptedFollowUp).length, yours ? `${yours} yours` : undefined)}>
           {said.some(isAcceptedFollowUp) ? <FollowUps actions={said} me={me} reader={settled ? reader : undefined} people={people} onToggle={onToggle} onChange={settled ? onAction : undefined} onSeek={onSeek} shown={shown} />
             : settled && !waiting.actions.length && <p className="cd-quiet">The notes didn’t hear anything to follow up.</p>}
-          <NoteFollowUpReview noteId={note.id} suggestions={note.suggestions} actions={note.actions} people={people} reader={reader} me={me} onSeek={onSeek} shown={shown} />
-          {settled && actionForm()}
+          {!locked && <NoteFollowUpReview noteId={note.id} suggestions={note.suggestions} actions={note.actions} people={people} reader={reader} me={me} onSeek={onSeek} shown={shown} />}
+          {settled && !locked && actionForm()}
         </Section>
       )}
       {settled && written && fromBoards.length > 0 && (

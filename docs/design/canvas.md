@@ -73,6 +73,7 @@ is right. It holds:
 | `you-menu/` | Your menu, at the top right: what your face opens (you on a small evening, Pause notifications, Theme, Settings, the tour, Sign out asking in place), drawn over `home/`'s Home with its own model (`account.js`), the menu as a part, every state, six journeys and a phone row; its [README](canvas/you-menu/README.md) says what each board is |
 | `side-panel/` | The side panel, calmer: today's panel beside three directions (A just tidy, B two groups, C a rail) at their real size, B on Home with every control working, B in every state and its journeys, with its own model (`nav.js`, beside Home's canvas files); its [README](canvas/side-panel/README.md) says what each board is |
 | `onboarding/` | The tour, renewed: the account created on screen, the arch opening into Home and the tour over it, every control working (the card, cut-out, arrow and art loops as before, pointed at Start now and Schedule, the call about to start, the example note or Calls, Search or ask, the Drive, Record and Agents), on a phone, and every stop before and now, with its own model (`tour.js`) and art (`tour-art.js`); its [README](canvas/onboarding/README.md) says what each board is |
+| `plans/` | Plans and checkout: the Plans page, the checkout window and paying in motion, Settings › Plan, the side panel's foot, the call when notes run out and every other place checkout opens from, on a copy of the kit with a `plans` moment; its [README](canvas/plans/README.md) says what each board is |
 
 `window.AH` has, among others:
 

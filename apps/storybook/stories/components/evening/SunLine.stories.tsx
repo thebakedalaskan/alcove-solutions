@@ -1,17 +1,16 @@
 /*
- * SunLine: how much of your minutes of notes is left, drawn on a row's own hairline as a sun a `share` of the way along
- * it (0 to 1), with the line lit behind it. Settings' Plan and credits puts it on the Notes left row of its panel, so the
- * hairline under that row is the horizon. At nothing, the sun has set, and a little of its light is left at the start of the line.
+ * SunLine: how much of a plan's notes (or storage) is left, drawn on a row's own hairline as a sun a `share` of the way along
+ * it (0 to 1), with the line lit behind it. Settings' Plan puts it on the Notes left this period row, so the hairline under
+ * it is the horizon. At nothing, the sun has set, and a little of its light is left at the start of the line.
  */
-import { Button, SettingFact, SettingRow, SettingsGroup, SettingsPanel, SunLine } from '@alcove/ui';
+import { SettingFact, SettingRow, SettingsGroup, SettingsPanel, SunLine } from '@alcove/ui';
 import type { Decorator, Meta, StoryObj } from '@storybook/react-vite';
-import { did } from '../../../src/component';
 
 /** Settings' column, as the page lays it out. */
 const sheet: Decorator = (Story) => <div className="set-groups" style={{ maxWidth: 940, margin: '0 auto' }}><Story /></div>;
 
-/** The minutes of notes the month started with. */
-const GRANTED = 400;
+/** The minutes of notes a period brings on Free. */
+const GRANTED = 300;
 /** "2 h 40 min", as the page says it. */
 function hoursAndMinutes(minutes: number): string {
   const m = Math.max(0, Math.floor(minutes));
@@ -29,13 +28,13 @@ const meta = {
   render: (args) => {
     const share = clamp(args.share);
     return (
-      <SettingsGroup id="plan" title="Plan and credits">
+      <SettingsGroup id="plan" title="Plan">
         <SettingsPanel>
-          <SettingRow className="is-left" label="Notes left" help="Calls without notes are free." control={<span className="set-left">{hoursAndMinutes(GRANTED * share)}</span>}>
+          <SettingRow className="is-left" label="Notes left this period" help={share > 0 ? 'Back to 5 hours on 20 November. Calls without notes are free.' : 'Calls go on without notes until 20 November.'} problem={share === 0}
+            control={<span className={share > 0 ? 'set-left' : 'set-left is-out'}>{share > 0 ? <><small>About</small>{hoursAndMinutes(GRANTED * share)}</> : 'None'}</span>}>
             <SunLine {...args} />
           </SettingRow>
-          <SettingRow label="Used this month" control={<SettingFact title="Since 00:00 UTC on the 1st">{share < 1 ? hoursAndMinutes(GRANTED * (1 - share)) : 'None yet'}</SettingFact>} />
-          <SettingRow label="Add credits" help="Pay with USDC from any wallet or exchange." control={<Button size="sm" icon="plus" onClick={did('onAdd')}>Add credits</Button>} />
+          <SettingRow label="Storage" help="Uploads and call recordings. Files up to 512 MB." control={<SettingFact icon="hardDrive">2.1 GB of 10 GB</SettingFact>} />
         </SettingsPanel>
       </SettingsGroup>
     );

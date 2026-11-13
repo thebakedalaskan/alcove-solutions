@@ -20,12 +20,14 @@ import { Route as ReadyRouteImport } from './routes/ready'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as AppAgentsRouteImport } from './routes/_app/agents'
 import { Route as AppHomeRouteImport } from './routes/_app/home'
+import { Route as AppPlansRouteImport } from './routes/_app/plans'
 import { Route as AppRecordRouteImport } from './routes/_app/record'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppTeamRouteImport } from './routes/_app/team'
 import { Route as CallCodeRouteImport } from './routes/call.$code'
 import { Route as JoinCodeRouteImport } from './routes/join.$code'
 import { Route as RecordLiveRouteImport } from './routes/record.live'
+import { Route as TeamJoinRouteImport } from './routes/team.join'
 import { Route as AppCallsIndexRouteImport } from './routes/_app/calls.index'
 import { Route as AppCallsNoteIdRouteImport } from './routes/_app/calls.$noteId'
 import { Route as AppDriveIndexRouteImport } from './routes/_app/drive.index'
@@ -89,6 +91,11 @@ const AppHomeRoute = AppHomeRouteImport.update({
   path: '/home',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPlansRoute = AppPlansRouteImport.update({
+  id: '/plans',
+  path: '/plans',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppRecordRoute = AppRecordRouteImport.update({
   id: '/record',
   path: '/record',
@@ -117,6 +124,11 @@ const JoinCodeRoute = JoinCodeRouteImport.update({
 const RecordLiveRoute = RecordLiveRouteImport.update({
   id: '/record/live',
   path: '/record/live',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TeamJoinRoute = TeamJoinRouteImport.update({
+  id: '/team/join',
+  path: '/team/join',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppCallsIndexRoute = AppCallsIndexRouteImport.update({
@@ -175,12 +187,14 @@ export interface FileRoutesByFullPath {
   '/welcome': typeof WelcomeRoute
   '/agents': typeof AppAgentsRoute
   '/home': typeof AppHomeRoute
+  '/plans': typeof AppPlansRoute
   '/record': typeof AppRecordRoute
   '/settings': typeof AppSettingsRoute
   '/team': typeof AppTeamRoute
   '/call/$code': typeof CallCodeRoute
   '/join/$code': typeof JoinCodeRoute
   '/record/live': typeof RecordLiveRoute
+  '/team/join': typeof TeamJoinRoute
   '/calls/$noteId': typeof AppCallsNoteIdRoute
   '/drive/$workspaceId': typeof AppDriveWorkspaceIdRouteWithChildren
   '/calls/': typeof AppCallsIndexRoute
@@ -201,12 +215,14 @@ export interface FileRoutesByTo {
   '/welcome': typeof WelcomeRoute
   '/agents': typeof AppAgentsRoute
   '/home': typeof AppHomeRoute
+  '/plans': typeof AppPlansRoute
   '/record': typeof AppRecordRoute
   '/settings': typeof AppSettingsRoute
   '/team': typeof AppTeamRoute
   '/call/$code': typeof CallCodeRoute
   '/join/$code': typeof JoinCodeRoute
   '/record/live': typeof RecordLiveRoute
+  '/team/join': typeof TeamJoinRoute
   '/calls/$noteId': typeof AppCallsNoteIdRoute
   '/calls': typeof AppCallsIndexRoute
   '/drive': typeof AppDriveIndexRoute
@@ -228,12 +244,14 @@ export interface FileRoutesById {
   '/welcome': typeof WelcomeRoute
   '/_app/agents': typeof AppAgentsRoute
   '/_app/home': typeof AppHomeRoute
+  '/_app/plans': typeof AppPlansRoute
   '/_app/record': typeof AppRecordRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/team': typeof AppTeamRoute
   '/call/$code': typeof CallCodeRoute
   '/join/$code': typeof JoinCodeRoute
   '/record/live': typeof RecordLiveRoute
+  '/team/join': typeof TeamJoinRoute
   '/_app/calls/$noteId': typeof AppCallsNoteIdRoute
   '/_app/drive/$workspaceId': typeof AppDriveWorkspaceIdRouteWithChildren
   '/_app/calls/': typeof AppCallsIndexRoute
@@ -256,12 +274,14 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/agents'
     | '/home'
+    | '/plans'
     | '/record'
     | '/settings'
     | '/team'
     | '/call/$code'
     | '/join/$code'
     | '/record/live'
+    | '/team/join'
     | '/calls/$noteId'
     | '/drive/$workspaceId'
     | '/calls/'
@@ -282,12 +302,14 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/agents'
     | '/home'
+    | '/plans'
     | '/record'
     | '/settings'
     | '/team'
     | '/call/$code'
     | '/join/$code'
     | '/record/live'
+    | '/team/join'
     | '/calls/$noteId'
     | '/calls'
     | '/drive'
@@ -308,12 +330,14 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/_app/agents'
     | '/_app/home'
+    | '/_app/plans'
     | '/_app/record'
     | '/_app/settings'
     | '/_app/team'
     | '/call/$code'
     | '/join/$code'
     | '/record/live'
+    | '/team/join'
     | '/_app/calls/$noteId'
     | '/_app/drive/$workspaceId'
     | '/_app/calls/'
@@ -337,6 +361,7 @@ export interface RootRouteChildren {
   CallCodeRoute: typeof CallCodeRoute
   JoinCodeRoute: typeof JoinCodeRoute
   RecordLiveRoute: typeof RecordLiveRoute
+  TeamJoinRoute: typeof TeamJoinRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -418,6 +443,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppHomeRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/plans': {
+      id: '/_app/plans'
+      path: '/plans'
+      fullPath: '/plans'
+      preLoaderRoute: typeof AppPlansRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/record': {
       id: '/_app/record'
       path: '/record'
@@ -458,6 +490,13 @@ declare module '@tanstack/react-router' {
       path: '/record/live'
       fullPath: '/record/live'
       preLoaderRoute: typeof RecordLiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/team/join': {
+      id: '/team/join'
+      path: '/team/join'
+      fullPath: '/team/join'
+      preLoaderRoute: typeof TeamJoinRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/calls/': {
@@ -537,6 +576,7 @@ const AppDriveWorkspaceIdRouteWithChildren =
 interface AppRouteChildren {
   AppAgentsRoute: typeof AppAgentsRoute
   AppHomeRoute: typeof AppHomeRoute
+  AppPlansRoute: typeof AppPlansRoute
   AppRecordRoute: typeof AppRecordRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppTeamRoute: typeof AppTeamRoute
@@ -550,6 +590,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppAgentsRoute: AppAgentsRoute,
   AppHomeRoute: AppHomeRoute,
+  AppPlansRoute: AppPlansRoute,
   AppRecordRoute: AppRecordRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppTeamRoute: AppTeamRoute,
@@ -575,6 +616,7 @@ const rootRouteChildren: RootRouteChildren = {
   CallCodeRoute: CallCodeRoute,
   JoinCodeRoute: JoinCodeRoute,
   RecordLiveRoute: RecordLiveRoute,
+  TeamJoinRoute: TeamJoinRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

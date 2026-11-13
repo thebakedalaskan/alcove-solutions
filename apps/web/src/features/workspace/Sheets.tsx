@@ -4,12 +4,12 @@
  * whoever else is in the call; and for someone in the call who isn't in the workspace, who can't read its people, the people
  * in the call.
  */
-import { errorCode, errorMessage, firstName, type DocumentRole, type Person, type PersonSuggestion, type WorkspaceItem, type WorkspacePerson, type WorkspaceRole } from '@alcove/api';
+import { errorCode, errorMessage, firstName, type DocumentRole, type Person, type PersonSuggestion, type TeamAccess, type WorkspaceItem, type WorkspacePerson, type WorkspaceRole } from '@alcove/api';
 import { WsShareSheet, wsToast, type WsShareMatch, type WsShareRole, type WsShareRow, type WsToastData } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useSettled } from '~/lib/live';
-import { q, useDocumentShare, useWorkspacePeople } from '~/lib/queries';
+import { q, useDocumentShare, useSetTeamAccess, useWorkspacePeople } from '~/lib/queries';
 import { useWs } from './context';
 import { nameOf } from './tree';
 
@@ -117,7 +117,7 @@ function roleFor(p: WorkspacePerson, admin: boolean, setRole: (role: WorkspaceRo
 /** Who's in the workspace open here and what they can do, in the same sheet as Share. */
 export function PeopleSheet() {
   const ws = useWs();
-  return <PeopleSheetFor workspaceId={ws.workspaceId} name={ws.spaceName} admin={ws.sent.role === 'admin'} say={ws.say} />;
+  return <PeopleSheetFor workspaceId={ws.workspaceId} name={ws.spaceName} admin={ws.sent.role === 'admin'} say={ws.say} teamAccess={ws.sent.teamAccess} />;
 }
 
 /** Someone in a call, as Who's in it lists them, as you may know them: `guest`, they came in with the link, by name alone. */
@@ -138,14 +138,20 @@ const youIn = (p: InTheCall) => (p.isMe ? `${p.person.name} (you)` : p.person.na
 /**
  * Who's in a workspace and what they can do, wherever it's asked: an admin changes anyone, and anyone else can leave. In a call
  * that opens it to everyone in it, `call` has who's in the call, and whoever of them isn't in the workspace is under its people:
- * they can edit it while they're in the call.
+ * they can edit it while they're in the call. On a team's workspace (`teamAccess`), who's in it too: the whole team, or only the
+ * people added, which its admins change.
  */
-export function PeopleSheetFor({ workspaceId, name, admin, say, call }: {
-  workspaceId: string; name: string; admin: boolean; say: (toast: WsToastData) => void; call?: readonly InTheCall[] | undefined;
+export function PeopleSheetFor({ workspaceId, name, admin, say, call, teamAccess = null }: {
+  workspaceId: string; name: string; admin: boolean; say: (toast: WsToastData) => void; call?: readonly InTheCall[] | undefined; teamAccess?: TeamAccess | null | undefined;
 }) {
   const read = useQuery(q.workspacePeople(workspaceId)).data;
   const people = read ?? [];
   const changes = useWorkspacePeople(workspaceId);
+  const access = useSetTeamAccess(workspaceId);
+  // What was just chosen shows at once, until the workspace says so itself.
+  const shown = access.isPending ? access.variables : teamAccess;
+  const choose = (to: TeamAccess) => { access.mutateAsync(to).catch((e: unknown) => { say(wsToast.failed(errorMessage(e))); }); };
+  const team = shown === null ? null : { access: shown, ...(admin ? { onChange: choose } : {}) };
   const refused = (e: unknown) => { say(wsToast.failed(errorCode(e) === 'conflict' ? 'A workspace always keeps an admin.' : errorMessage(e))); };
   const adding = useAdding(
     (p) => people.some((w) => w.person.email === p.email),
@@ -160,7 +166,7 @@ export function PeopleSheetFor({ workspaceId, name, admin, say, call }: {
   const also = read && call ? onceEach(call).filter((c) => !c.person.email || !members.has(c.person.email.toLowerCase())).map((c): WsShareRow => ({
     id: `call:${c.person.id}`, people: [c.person], name: youIn(c), sub: 'Can edit while they’re in the call', tag: c.guest ? 'Guest' : undefined
   })) : [];
-  return <WsShareSheet title={`People in ${name}`} rows={rows} inCall={also} {...(admin ? { query: adding.query, onQuery: adding.setQuery, onAdd: adding.onAdd, matches: adding.matches } : {})} />;
+  return <WsShareSheet title={`People in ${name}`} rows={rows} team={team} inCall={also} {...(admin ? { query: adding.query, onQuery: adding.setQuery, onAdd: adding.onAdd, matches: adding.matches } : {})} />;
 }
 
 /**

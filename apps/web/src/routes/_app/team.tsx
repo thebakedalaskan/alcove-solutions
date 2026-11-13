@@ -3,7 +3,8 @@
  * low sun behind them to the left, and each opens a popover with everything about them. Under the water: your groups,
  * the people not on Alcove yet (the directory where there is one, otherwise the people at your work address you meet
  * with), and notes shared with groups. Nobody else here yet, it asks you to bring them. Someone on their own has no team,
- * so no Team page: nothing links here, and its address goes Home.
+ * so no Team page: nothing links here, and its address goes Home. On a team the page is the team's (features/team/OnTeam.tsx),
+ * with your groups still on its water; on none, a quiet row starts one (features/team/StartTeam.tsx).
  */
 import { GroupParamSchema, NEW_GROUP, errorCode, errorMessage, type NoteSummary, type Team } from '@alcove/api';
 import { Button, Evening, Icon, cn } from '@alcove/ui';
@@ -17,6 +18,8 @@ import { blanks, inLine, lineOf, sunOf, you } from '~/features/team/line';
 import { OpenHost, personPop, useOpen } from '~/features/team/open';
 import { InvitePeople, NotOnAlcove, PeopleYouMeet, useCopyInvite } from '~/features/team/People';
 import { SharedWithGroups } from '~/features/team/Shared';
+import { OnTeam } from '~/features/team/OnTeam';
+import { StartTeam } from '~/features/team/StartTeam';
 import { useNow, useOnline } from '~/lib/live';
 import { sameEmail } from '~/lib/people';
 import { q } from '~/lib/queries';
@@ -35,7 +38,7 @@ export const Route = createFileRoute('/_app/team')({
   loader: async ({ context: { queryClient: qc } }) => {
     if (!navigator.onLine) return;
     await Promise.race([
-      Promise.allSettled([qc.ensureQueryData(q.team()), qc.ensureQueryData(q.prefs()), qc.ensureQueryData(q.notes())]),
+      Promise.allSettled([qc.ensureQueryData(q.team()), qc.ensureQueryData(q.myTeam()), qc.ensureQueryData(q.prefs()), qc.ensureQueryData(q.notes())]),
       new Promise((r) => setTimeout(r, 1200))
     ]);
   },
@@ -61,6 +64,8 @@ function TeamPage() {
   const session = useQuery(q.session()).data;
   /* The loader has tried it; a team that didn't load waits for Try again. */
   const team = useQuery({ ...q.team(), retryOnMount: false });
+  /* The team you're on, if you're on one: then the page is the team's. */
+  const mine = useQuery(q.myTeam()).data;
   const prefs = useQuery(q.prefs()).data;
   const notes = useQuery(q.notes()).data ?? NO_NOTES;
   const calls = useQuery(q.upcoming()).data ?? [];
@@ -73,10 +78,10 @@ function TeamPage() {
   const [forward, setForward] = useState<string | undefined>(undefined);
   const asked = useAskedBefore(team.data);
   if (!session) return null;
-  if (team.data === null) return <Navigate to="/home" replace />;
+  if (team.data === null && mine === null) return <Navigate to="/home" replace />;
 
   const me = session.user;
-  const here = team.data;
+  const here = team.data ?? undefined;
   const events = prefs?.showOtherMeetings === false ? [] : calendar?.events ?? [];
   const meets = meetings(notes, calls, events, me.email, now);
   const person = knownPeople(here, notes, calls, events);
@@ -102,6 +107,7 @@ function TeamPage() {
 
   const groups = <Groups open={group} onOpen={openGroup} notes={notes} person={person} shown={shown} draft={draft} onDraft={setDraft} />;
   const shared = <SharedWithGroups notes={notes} me={me} now={now} />;
+  if (mine) return <OnTeam team={mine} me={me} between={between} now={now} groups={groups} shared={shared} />;
 
   return (
     <Evening moment="team" className="tp" data-line={line.arches.length <= 3 ? 'short' : 'long'}
@@ -128,6 +134,7 @@ function TeamPage() {
         {groups}
         {off.length > 0 && !first && <NotOnAlcove people={off} meets={meets} now={now} />}
         {shared}
+        {mine === null && here && <StartTeam />}
       </div>
     </Evening>
   );

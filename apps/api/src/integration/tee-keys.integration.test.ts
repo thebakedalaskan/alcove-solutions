@@ -32,10 +32,12 @@ beforeEach(async () => {
 const kms = fakeKms();
 let seq = 0;
 const person = (name: string, picture?: string): GoogleUser => { const n = seq++; return { sub: `tee-${name}-${n}-${Date.now()}`, email: `${name}.${n}@vandelay.test`, name: `${name} Example`, ...(picture ? { picture } : {}) }; };
-/** An account made on the release before, signed in with single sign-on, so the database has accounts. */
+/** An account made on the release before, signed in with single sign-on, so the database has accounts, and its plan read, so it has billing sealed under KSERVICE. */
 async function someone() {
   const email = `someone.${seq++}@vandelay.test`;
-  const r = await h.browser().api.auth.signIn('sso', { email });
+  const b = h.browser();
+  const r = await b.api.auth.signIn('sso', { email });
+  await b.api.plans.plan();
   return { email, ownerId: r.session.ownerId };
 }
 const count = async (sql: string, params: unknown[] = []) => z.object({ n: z.number() }).parse((await h.pool.query(sql, params)).rows[0]).n;
@@ -122,7 +124,7 @@ describe('server keys', () => {
   });
 
   it('carries accounts made before the TEE into it', async () => {
-    // Someone on the release before: signed in with Google, with a photo, a call scheduled with a guest, credits to spend.
+    // Someone on the release before: signed in with Google, with a photo, a call scheduled with a guest, a plan and its balance.
     const ann = person('ann', `${h.google.issuer}/photo/ann-1`);
     const before = browserAt(() => h.baseUrl);
     expect(await viaGoogle(before, ann)).toBe('/ready');
@@ -134,7 +136,7 @@ describe('server keys', () => {
     const photoToken = photo.slice(photo.lastIndexOf('/') + 1);
     expect(photo.startsWith(`${h.baseUrl}/v1/photos/`)).toBe(true);
     const m = await before.api.meetings.create({ title: 'Quarterly with Theo', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: ['guest@vandelay.test'], notes: 'on' });
-    const balance = await before.api.credits.balance();
+    const balance = (await before.api.plans.plan()).balance;
     // As that release leaves the database: only the old envelopes, and no server keys.
     expect(await envelopes(ownerId)).toEqual({ old: true, now: false });
 
@@ -148,7 +150,7 @@ describe('server keys', () => {
       expect((await there.api.meetings.get(m.id)).guests.map((g) => g.email)).toEqual(['guest@vandelay.test']);
       expect((await there.api.meetings.upcoming()).map((x) => x.id)).toContain(m.id);
       expect((await there.api.meetings.byCode(m.code))?.id).toBe(m.id);
-      expect(await there.api.credits.balance()).toEqual(balance);
+      expect((await there.api.plans.plan()).balance).toEqual(balance);
       // Her photo's URL from before still opens, and is the one the TEE makes for it now: the photo key is carried.
       expect((await there.api.auth.getSession())?.user.photoUrl?.endsWith(`/v1/photos/${photoToken}`)).toBe(true);
       const shown = await there.fetch(`${first.baseUrl}/v1/photos/${photoToken}`);
@@ -186,7 +188,7 @@ describe('server keys', () => {
       expect(await viaGoogle(again, ann)).toBe('/home');
       expect((await again.api.auth.getSession())?.ownerId).toBe(ownerId);
       expect((await again.api.meetings.get(m.id)).title).toBe('Quarterly with Theo');
-      expect(await again.api.credits.balance()).toEqual(balance);
+      expect((await again.api.plans.plan()).balance).toEqual(balance);
     } finally {
       await second.close();
     }

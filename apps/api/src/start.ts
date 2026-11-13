@@ -15,6 +15,7 @@ import { createPool } from './db';
 import { CLOUDFLARE, type DnsServices } from './edge/dns';
 import { startEdge } from './edge/listen';
 import { startWatching } from './features/billing/deposits';
+import { startEndingOverdue } from './features/calls/lifecycle';
 import { GOOGLE_CLOUD, fromGoogleCloud, type GoogleCloud } from './gcp';
 import { inference } from './inference';
 import { createDocPool } from './live/docPool';
@@ -101,12 +102,15 @@ export async function startServer(env: NodeJS.ProcessEnv, outside: Outside = OUT
     const timer = setInterval(upkeep, 5 * 60_000);
     timer.unref();
     const stopWatchingDeposits = startWatching(deps);
+    // A call ends by itself at its longest (docs: Plans and usage).
+    const stopEndingOverdue = startEndingOverdue(deps);
 
     return {
       deps, ports,
       async close() {
         clearInterval(timer);
         stopWatchingDeposits();
+        stopEndingOverdue();
         stopping.abort();
         // Live streams go first: they'd hold the server open, and their browsers open them again on another instance.
         await Promise.all([hub.close(), docs.close()]);

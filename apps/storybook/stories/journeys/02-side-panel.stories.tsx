@@ -153,9 +153,9 @@ export const TheFoot: PageStory = {
       await userEvent.click(within((await panel()).getByRole('navigation', { name: 'Team and agents' })).getByRole('link', { name: 'Team' }));
       await screen.findByRole('heading', { name: 'Team', level: 1 }, SOON);
     });
-    await step('The time of notes left opens Settings at your minutes', async () => {
+    await step('On Free, the foot says about how much of the period’s notes is left, over a meter, in the row the plan has. It opens Settings at your plan', async () => {
       await userEvent.click((await panel()).getByRole('link', { name: /of notes left$/ }));
-      await screen.findByRole('region', { name: 'Plan and credits' }, SOON);
+      await screen.findByRole('region', { name: 'Plan' }, SOON);
     });
   }
 };

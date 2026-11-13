@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Where checkout shows</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="page-plans.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="appdata.js"></script>
+<script src="marks.js"></script>
+<script src="data-plans.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="dr">
+<header class="dr-h">
+<div>
+<h1>Where checkout shows</h1>
+<p>Everyone starts on Free, with every feature, so nobody meets a price before their first call. Checkout shows up where someone needs more: it says what ran out and fixes it in one step, then gets out of the way.</p>
+</div>
+<ol class="dr-rules">
+<li class="dr-rule"><span class="k">1</span><span><b>Never before the first call</b>Signing in goes straight to Home. The prices are on the welcome page for anyone who looks.</span></li>
+<li class="dr-rule"><span class="k">2</span><span><b>At the moment of need</b>Out of notes, a file too big, a second workspace, a third person: one step to more. Nothing nags before then.</span></li>
+<li class="dr-rule"><span class="k">3</span><span><b>Only to whoever pays</b>A call’s notes are on its organizer’s plan. Invitees never see a price.</span></li>
+</ol>
+</header>
+
+<div class="dr-line" aria-label="When, through someone’s time with Alcove">
+<div class="dr-ph"><b>Before signing in</b><p>The welcome page shows the three plans. Start free is the main way in.</p></div>
+<div class="dr-ph"><b>The first calls</b><p>Free has every feature. No prices, no prompts.</p></div>
+<div class="dr-ph is-warm"><b>Getting close</b><p>The side panel shows what’s left this month. One toast at 1 hour left.</p></div>
+<div class="dr-ph is-warm"><b>Out of something</b><p>Checkout opens where you are, with the plan that fixes it already chosen.</p></div>
+<div class="dr-ph"><b>Before it ends</b><p>Nothing renews by itself. Reminders at 7 days and 1 day, then back to Free.</p></div>
+</div>
+
+<div class="dr-grid">
+
+<figure class="dr-f">
+<figcaption class="dr-c"><span class="n">1</span><span><b>On the welcome page</b><p>Get Pro signs you in, then opens checkout with Pro chosen. Start free goes to Home.</p><span class="to"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg>Sign in, then checkout</span></span></figcaption>
+<div class="dr-v is-cove" data-mode="dark" style="{{dark}}">
+<div class="dq-cove">
+<p class="dq-ttl">Plans</p>
+<div class="dq-hz" aria-hidden="true"><i class="glow"></i><i class="sun"></i></div>
+<div class="dq-cols"><sc-for list="{{mini}}" as="m" hint-placeholder-count="3"><div class="dq-mc{{m.cls}}"><b>{{m.name}}</b><small>{{m.price}}</small><i></i><i></i><i></i></div></sc-for></div>
+<div class="dq-row"><button type="button" class="b b-line b-sm">Start free</button><button type="button" class="b b-press b-sm is-hot">Get Pro</button></div>
+</div>
+</div>
+</figure>
+
+<figure class="dr-f">
+<figcaption class="dr-c"><span class="n">2</span><span><b>In the side panel, always</b><p>On Free, what’s left this month sits under the places. On Pro, a small evening of its own, with the date it runs to.</p><span class="to"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg>Plans</span></span></figcaption>
+<div class="dr-v is-frame" data-mode="dark" style="{{dark}}">
+<div class="dq-side">
+<p class="dq-place"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.notes}}"></path></svg>Notes</p>
+<p class="dq-place"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.people}}"></path></svg>Team</p>
+<div class="sd-foot dq-foot">
+<p class="sd-seal"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg>Confidential compute</p>
+<p class="sd-min"><b>1 h 26 min</b> of notes left</p>
+<span class="sd-meter"><i style="width: 29%"></i></span>
+<button type="button" class="sd-plan is-hot"><span>Free plan</span><span class="go">See plans<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6"></path></svg></span></button>
+</div>
+<div class="sd-foot dq-foot is-pro">
+<p class="sd-seal"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg>Confidential compute</p>
+<button type="button" class="sd-pro"><span class="mark" aria-hidden="true"><span class="sky"><i class="sun"></i></span><i class="line"></i><i class="g"></i></span><span class="tx"><b>Pro</b><small>Until 4 Nov 2027</small></span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6"></path></svg></button>
+</div>
+</div>
+</div>
+</figure>
+
+<figure class="dr-f">
+<figcaption class="dr-c"><span class="n">3</span><span><b>With an hour left</b><p>One toast, once, at 1 hour left. The side panel’s number turns warm. No banners.</p><span class="to"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg>Checkout, Pro chosen</span></span></figcaption>
+<div class="dr-v" data-mode="dark" style="{{dark}}">
+<div class="dq-page"><i></i><i></i><i></i><i class="s"></i></div>
+<div class="toast dq-toast" role="status"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.clock}}"></path></svg>1 hour of notes left this month<button type="button" class="dq-tb is-hot">Get Pro</button></div>
+</div>
+</figure>
+
+<figure class="dr-f">
+<figcaption class="dr-c"><span class="n">4</span><span><b>When notes run out in a call</b><p>Notes stop at the limit and the call carries on. Only the organizer sees a way to more.</p><span class="to"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg>Checkout over the call</span></span></figcaption>
+<div class="dr-v is-night" data-mode="dark" style="{{dark}}">
+<div class="dq-tiles"><dc-import name="Faces" who="maya" size="58" hint-size="58px,63px"></dc-import><dc-import name="Faces" who="lena" size="58" hint-size="58px,63px"></dc-import></div>
+<div class="oc-side dq-notes">
+<div class="oc-head"><h2>Notes</h2><span class="oc-pill is-caution"><i class="ring"></i>Stopped</span></div>
+<div class="oc-bar"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.alert}}"></path></svg><div><b>Notes stopped at this month’s 5 hours</b><p>The call carries on.</p></div><div class="acts"><button type="button" class="b b-press is-hot">Get Pro</button><button type="button" class="b b-line">Add 10 hours · $15</button></div></div>
+</div>
+</div>
+</figure>
+
+<figure class="dr-f">
+<figcaption class="dr-c"><span class="n">5</span><span><b>Starting a call with none left</b><p>Starting or scheduling a call with notes on, once this month’s are used.</p><span class="to"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg>Checkout, Pro chosen</span></span></figcaption>
+<div class="dr-v" data-mode="dark" style="{{dark}}">
+<div class="dq-modal">
+<p class="dq-mh">Start a call</p>
+<div class="dq-sw-row"><span><b>Notes</b><small class="is-no">None left until 1 December</small></span><span class="dq-sw is-on" aria-hidden="true"><i></i></span></div>
+<div class="dq-mf"><button type="button" class="b b-line b-sm is-hot">Get Pro</button><button type="button" class="b b-quiet b-sm">Start without notes</button></div>
+</div>
+</div>
+</figure>
+
+<figure class="dr-f">
+<figcaption class="dr-c"><span class="n">6</span><span><b>A file bigger than Free takes</b><p>Said where you dropped it, before anything uploads.</p><span class="to"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg>Checkout, Pro chosen</span></span></figcaption>
+<div class="dr-v" data-mode="dark" style="{{dark}}">
+<div class="dq-page"><i></i><i></i><i class="s"></i></div>
+<div class="dq-pop">
+<p class="dq-ph"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.file}}"></path></svg><span><b>site-walkthrough.mov is 1.4 GB</b><small>Free takes files up to 512 MB. Pro takes up to 2 GB.</small></span></p>
+<div class="dq-mf"><button type="button" class="b b-line b-sm is-hot">Get Pro</button><button type="button" class="b b-quiet b-sm">Cancel</button></div>
+</div>
+</div>
+</figure>
+
+<figure class="dr-f">
+<figcaption class="dr-c"><span class="n">7</span><span><b>A second shared workspace</b><p>Every call’s own workspace is free. The limit is on the ones you keep across calls.</p><span class="to"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg>Checkout, Pro chosen</span></span></figcaption>
+<div class="dr-v" data-mode="dark" style="{{dark}}">
+<div class="dq-tree"><p class="dq-tr"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.folder}}"></path></svg>Launch</p><p class="dq-tr is-hot"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg>New workspace</p></div>
+<div class="dq-pop is-side">
+<p class="dq-ph"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.folder}}"></path></svg><span><b>Free has one shared workspace</b><small>Pro has as many as you like.</small></span></p>
+<div class="dq-mf"><button type="button" class="b b-line b-sm is-hot">Get Pro</button></div>
+</div>
+</div>
+</figure>
+
+<figure class="dr-f">
+<figcaption class="dr-c"><span class="n">8</span><span><b>Inviting the third person</b><p>The invite always goes. Team is offered once, beside it.</p><span class="to"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg>Checkout, Team chosen</span></span></figcaption>
+<div class="dr-v" data-mode="dark" style="{{dark}}">
+<div class="dq-shore"><dc-import name="Faces" who="art" size="40" hint-size="40px,44px"></dc-import><dc-import name="Faces" who="priya" size="40" hint-size="40px,44px"></dc-import><span class="dq-ghost" aria-hidden="true"></span></div>
+<div class="dq-pop is-low">
+<p class="dq-ph"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.invite}}"></path></svg><span><b>Diego is invited. That makes 3 of you.</b><small>Put everyone on one plan: Team, $16 a person a month.</small></span></p>
+<div class="dq-mf"><button type="button" class="b b-line b-sm is-hot">See Team</button><button type="button" class="b b-quiet b-sm">Not now</button></div>
+</div>
+</div>
+</figure>
+
+<figure class="dr-f">
+<figcaption class="dr-c"><span class="n">9</span><span><b>A week before a plan ends</b><p>Nothing renews by itself, so Alcove says so at 7 days and 1 day, here, in Settings and by email.</p><span class="to"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg>Checkout, from the end date</span></span></figcaption>
+<div class="dr-v is-frame" data-mode="dark" style="{{dark}}">
+<div class="dq-side">
+<div class="sd-foot dq-foot">
+<p class="sd-seal"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg>Confidential compute</p>
+<button type="button" class="sd-pro is-ending is-hot"><span class="mark" aria-hidden="true"><span class="sky"><i class="sun"></i></span><i class="line"></i><i class="g"></i></span><span class="tx"><b>Pro</b><small class="is-warm">Ends in 7 days · Extend</small></span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6"></path></svg></button>
+</div>
+</div>
+<div class="dq-mail"><p class="dq-ph"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.mail}}"></path></svg><span><b>Your Pro ends on Wednesday 11 November</b><small>Extend it from 11 November, so no days are lost. If you don’t, you’re back on Free; nothing is deleted.</small></span></p></div>
+</div>
+</figure>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1640}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var AH = window.AH, PL = AH.PL;
+    return {
+      I: PL.I,
+      dark: AH.rootStyle('blue-hour', 'dark', 16.2) + '; --frame: ' + AH.ok(AH.PALS['blue-hour'].dark.well),
+      mini: [{ name: 'Free', price: '$0', cls: '' }, { name: 'Pro', price: '$12 a month', cls: ' is-pro' }, { name: 'Team', price: '$16 a person', cls: '' }]
+    };
+  }
+}
+</script>
+</body>
+</html>

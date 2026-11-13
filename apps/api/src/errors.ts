@@ -14,6 +14,7 @@
  *   ├─ ConflictError        conflict         409    info   state changed / wrong state
  *   │   └─ ClientTakenError                                a change from the server was worked out as a Yjs client someone wrote as first
  *   ├─ TooLargeError        too-large        413    info   more than something can hold
+ *   ├─ PlanLimitError       plan-limit       402    info   the plan's notes or storage have run out for whoever pays
  *   ├─ UnavailableError     unavailable      503    warn   not connected yet / rate limited
  *   │   └─ UnverifiedError                          warn   a model's attestation didn't check out (or couldn't be checked), so it was sent nothing
  *   └─ InternalError        unknown          500    error  our bug or a dependency failure
@@ -30,7 +31,7 @@ type Status = 400 | 401 | 402 | 403 | 404 | 409 | 413 | 500 | 502 | 503;
 const DEFAULTS: Record<AlcoveErrorCode, { status: Status; level: Level }> = {
   invalid: { status: 400, level: 'info' }, unauthenticated: { status: 401, level: 'info' },
   forbidden: { status: 403, level: 'warn' }, 'key-unavailable': { status: 403, level: 'warn' }, 'not-found': { status: 404, level: 'info' },
-  conflict: { status: 409, level: 'info' }, 'too-large': { status: 413, level: 'info' }, 'insufficient-credits': { status: 402, level: 'info' }, unavailable: { status: 503, level: 'warn' },
+  conflict: { status: 409, level: 'info' }, 'too-large': { status: 413, level: 'info' }, 'plan-limit': { status: 402, level: 'info' }, unavailable: { status: 503, level: 'warn' },
   network: { status: 502, level: 'error' }, unknown: { status: 500, level: 'error' }
 };
 export interface ErrorOptions { cause?: unknown; context?: LogContext; level?: Level }
@@ -69,6 +70,13 @@ export class ConflictError extends AppError { constructor(m: string, o?: ErrorOp
  */
 export class ClientTakenError extends ConflictError { constructor(m = 'This document is changing too fast to change from here. Try again.', o?: ErrorOptions) { super(m, o); } }
 export class TooLargeError extends AppError { constructor(m: string, o?: ErrorOptions) { super('too-large', m, o); } }
+/**
+ * What a plan brings has run out for whoever pays (features/billing): its notes, so no AI request goes out for them, or
+ * its storage, so nothing more is stored. `reason` says which.
+ */
+export class PlanLimitError extends AppError {
+  constructor(m: string, readonly reason: 'notes' | 'storage', o?: ErrorOptions) { super('plan-limit', m, { ...o, context: { ...o?.context, reason } }); }
+}
 export class UnavailableError extends AppError { constructor(m: string, o?: ErrorOptions) { super('unavailable', m, o); } }
 /**
  * NEAR AI's evidence for a model didn't check out, or couldn't be checked, so nothing with content was sent
@@ -77,7 +85,8 @@ export class UnavailableError extends AppError { constructor(m: string, o?: Erro
 export class UnverifiedError extends UnavailableError {}
 /**
  * NEAR AI didn't answer: it timed out, couldn't be reached, or was busy. Nothing about the request was wrong,
- * so the notes worker waits and tries again instead of counting this as a failed attempt.
+ * so the notes worker waits and tries again instead of counting this as a failed attempt, unless it timed out once
+ * sent (`context.timedOut`): that one was charged what it held, so it counts.
  */
 export class UnansweredError extends UnavailableError {}
 /**

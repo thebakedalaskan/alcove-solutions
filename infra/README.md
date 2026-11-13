@@ -245,6 +245,9 @@ Each deployment ([.github/workflows/deploy.yml](../.github/workflows/deploy.yml)
 5. In a job of its own with no Google credentials, checks the result through the load balancer's own address
    (`confidential-space/verify-server.ts`): the attestation the web app checks, that the TLS key the server presents is
    the attested one, that `/health` reaches LiveKit, and that it runs that commit and image.
+6. Nothing else is deployed. Support's billing CLI (`dist/billing-cli.js`, [Plans and usage › Support](../docs/engineering/plans-and-usage.md#support))
+   has no job: it needs `KSERVICE`, which the API keeps sealed in its server keys inside the TEE. The old `alcove-kservice`
+   secret is read only while the old keys are carried, and goes when they're retired.
 
 The deploy's check does not establish that public domains work. Before recording a release as
 live, verify DNS, the HTTPS certificate on all three names, API health at the custom domain, CORS for the

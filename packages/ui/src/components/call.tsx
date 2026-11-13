@@ -15,6 +15,29 @@ import { Popover, Tooltip } from './overlay';
 import { andList, Avatar, PortraitArt, type AvatarPerson } from './people';
 import { Button, IconButton, Notice, RecDot, Slider, Spinner, Segmented, Switch } from './primitives';
 
+/**
+ * Something about the whole call that stays until it's closed: notes stopped because the organizer's plan ran out, the
+ * organizer's notes about to run out, the call about to reach its longest. It drops from the top of the stage, centred,
+ * and goes only when × is pressed. `tone`: caution for what has stopped, info for what's coming. `actions`: the ways on,
+ * in a row under the words, such as Get Pro and more hours for an organizer whose notes ran out.
+ */
+export function CallBanner({ icon, tone = 'info', title, children, actions, onClose }: {
+  icon: IconName; tone?: 'info' | 'caution' | undefined; title: ReactNode; children?: ReactNode; actions?: ReactNode; onClose: () => void;
+}) {
+  const reduce = useReducedMotion() ?? false;
+  return (
+    <motion.div className={cn('ic-limit', tone === 'caution' && 'is-caution')} role={tone === 'caution' ? 'alert' : 'status'}
+      initial={reduce ? { opacity: 1 } : { opacity: 0, y: -24 }} animate={{ opacity: 1, y: 0 }}
+      exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, y: -16, transition: { duration: 0.24, ease: EASE.out } }}
+      transition={reduce ? { duration: 0 } : { duration: 0.42, ease: EASE.out }}>
+      <span className="ic-limit-i"><Icon name={icon} size={18} /></span>
+      <span className="ic-limit-t"><b>{title}</b>{children !== undefined && <small>{children}</small>}</span>
+      <IconButton icon="x" label="Close" className="ic-limit-x" onClick={onClose} />
+      {actions !== undefined && actions !== null && <span className="ic-limit-a">{actions}</span>}
+    </motion.div>
+  );
+}
+
 /** "#RRGGBB" at an alpha, for the person's colour as room light. */
 function withAlpha(hex: string, a: number): string {
   const n = Number.parseInt(hex.slice(1), 16);

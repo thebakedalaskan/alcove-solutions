@@ -28,6 +28,7 @@ src/api/script.ts         what a call's script says: who's here, what's said and
 src/api/trouble.ts        a part of Alcove that fails, can't be reached or keeps a page waiting, as the story's world says
 src/api/kept.ts           recordings kept on this device that haven't uploaded, through the app's own way of keeping them
 src/api/move.ts           a call being moved to this device, as /move sees it
+src/api/payments.ts       payments opened to buy something, played out by 1Click's side and the server's as the scenario says
 src/api/attestation.ts    what the stand-in's server runs on: Confidential Space, attested with anchors Storybook makes at
                           first use (a test root, a token, the release in a log of its own), and the app's check with them
 src/world/                the demo world, in the contract's types: people, notes, calls, the demo clock
@@ -39,6 +40,7 @@ src/media/film.ts         a video for a document, drawn and recorded in the brow
 src/browser.ts            the browser as a story finds it: connection, devices, notifications, a page that goes
 src/app.tsx               the app's own router at an address, in memory
 src/page.tsx              what page stories share: `pages` and `page()`
+src/checkout.tsx          checkout over the real app, opened as a door opens it: `checkouts` and `checkout()`
 src/component.tsx         what component stories share: `onStage`, `PopSurface`, `ModalFrame`, `Box`, `Row`, `did()`
 src/call.ts               what call stories share: `inCall()`, `atTheDoor()`, `rung()`, `phone()`, `light()`, `press()`, `reach()`,
                           `settings()`
@@ -76,7 +78,7 @@ Art Vandelay, and everyone is made up. Never write a real person's name. It's wr
 the builders in `src/world/build.ts`, and checked against the contract's schemas whenever a scenario starts. Its Drive holds
 the homes of the day's calls (the standup's, the pricing sync's and the design review's, each with the call's folder at its
 top, opening the call's note), then Product (Art runs it: a folder, a document closed to the workspace, the launch retro
-board, two things in Trash), Design (he edits; the onboarding flow board) and the company handbook (he can only read). What
+board, two things in Trash), Design (Art edits there; the onboarding flow board) and the company handbook (Art can only read it). What
 each document says is in `src/world/documents.ts`, in the editor's own blocks: tags name people by address and the
 stand-in writes in their IDs, comment threads are written as the app writes them, and photos, a video and a file are drawn
 and recorded here (`src/media/screens.ts`) and kept in the world's `media`. Who a document's shared with is in `shares`, a
@@ -93,19 +95,47 @@ Product, then the follow-ups from the retro board's Actions frame.
 | Name | What it is |
 |---|---|
 | `busy` | Wednesday afternoon at Vandelay Industries: a day of notes, things waiting on you, a design sync at 17:30, and two photos and a file in the Product workspace's Launch plan |
-| `first-day` | Art has just signed in: no notes or calls, a team not on Alcove yet, no calendar access |
-| `on-their-own` | Art at a personal address: no team, no groups, recordings and calls with people he meets |
+| `first-day` | Art has just signed in and carried on with Free: no notes or calls, a team not on Alcove yet, no calendar access |
+| `on-their-own` | Art at a personal address: no team, no groups, recordings and calls with people Art meets |
 | `offline` | The busy afternoon opened with no connection, signed in on this browser: Record works, the rest says offline |
 | `writing` | Just after the pricing follow-up: its notes are written over a few seconds; a walkthrough records elsewhere |
 | `call-soon` | Wednesday at 10:26: the design review starts in four minutes |
 | `lots` | Thirty people on Alcove, three months of notes, eight pins, a dozen groups, long names |
 | `signed-out` | Nobody signed in on this browser: the welcome page; Microsoft or single sign-on signs Art in to the busy afternoon |
-| `unsaved` | The busy afternoon after Alcove wouldn't take some of Art's edits: the pricing copy's last edits, more interview notes than a document holds, and a line in the handbook he can only read now |
+| `unsaved` | The busy afternoon after Alcove wouldn't take some of Art's edits: the pricing copy's last edits, more interview notes than a document holds, and a line in the handbook Art can only read now |
 | `drive-connected` | Art has a separate Google Drive connection, authorized personal and shared-drive folders, and exports in pending, uploading, uploaded and failed states |
-| `payments` | Credit top-ups are available, with token/network choices; every deposit address is a made-up invalid preview |
+| `payments` | Adding money is available, with networks under Pay with USDC; every deposit address is a made-up invalid preview. A payment opened to buy something (checkout) is seen, added and bought a few seconds apart |
+| `plan-waiting` | Art is on Free with a payment of 192 USDC on Base on its way, opened to buy 12 months of Pro; nothing has been sent yet |
+| `payment-short` | A payment opened to buy something: two thirds of it arrive, and the same address waits for the rest |
+| `payment-over` | A payment opened to buy something: 6 USDC more than asked arrives; it's bought, and the rest stays in the balance |
+| `payment-refused` | A payment opened to buy something arrives after the prices went up: it's added to the balance, and the purchase is refused |
+| `payment-expired` | A payment opened to buy something: nothing arrives before its address closes |
+| `payment-failed` | A payment opened to buy something is seen, then 1Click fails it |
+| `plan-low` | Art is on Free with about 20 minutes of the period's notes left |
+| `plan-stopped` | The period's notes have run out: Settings says None, the side panel says no notes left until the period renews, and a question about your notes (Ask in the palette or on Calls, a note's or a series') is refused with `plan-limit`, as the server refuses it |
+| `plan-grace` | Over Free's storage in grace: 14.2 GB of 10, everything works as before for nine more days |
+| `plan-over` | The grace is over: uploads have stopped |
+| `plan-balance` | $60 in the balance, with a $20 top-up waiting for its payment and a $40 one already added |
+| `plan-pro` | Art on Pro: the month running and two bought after it, renewing off, $35 left in the balance |
+| `plan-pro-ending` | Pro ends in 3 days and won't renew (renewing off, $5 doesn't buy a month): a `pro-ending` notice |
+| `plan-pro-ending-price` | Pro ends in 3 days and won't renew though renewing is on with $60: Pro costs $24 now, more than the $20 the last month did (`renewal: price`), with a `pro-ending` notice |
+| `plan-pro-renewed` | Renewing is on and a month was bought from the balance 3 days before Pro ended: a `pro-renewed` notice |
+| `plan-pro-ended` | Pro ended two days ago: back on Free, over its storage with 14.2 GB, in the grace, with a `pro-ended` notice |
+| `plan-buying-pro` | Art is on Free and has opened a payment of 192 USDC on Base for a year of Pro at the yearly price, then closed checkout: it waits for the payment, in the side panel and in Settings › Plan |
+| `plan-pro-extended` | Pro extended by a year yesterday, paid with 192 USDC on Base at the yearly price: the month running, twelve after it to refund, $5 left |
+| `team-admin` | Art runs Vandelay's team: six people, Maya's license ended last week, three licenses left, auto-purchase off, $180 in the balance |
+| `team-admin-low` | The same with two licenses left: a `licenses-low` notice |
+| `team-admin-none` | None left, and Maya waiting for one: a `licenses-none` notice |
+| `team-member` | Art on Priya's team with a live license: the team's notes (`tn-roadmap`, `tn-onboarding`) and Art's standup visible to it |
+| `team-member-unlicensed` | Art's license ended with none to take: on Free, with a `license-needed` notice |
+| `team-join` | Art isn't on a team and has Priya's link to join (stories add it to the tab with `withTeamInvite()`) |
+| `no-team` | The busy afternoon with $60 and payments: Start a team on Team |
+| `team-buying` | Art started Vandelay's team from Plans and opened a payment of 240 USDC on Base for its first six licenses, then closed checkout: the team is Art's with nothing bought yet, and the payment waits, in the side panel and in checkout |
 | `agents-connected` | Art has Claude signed in (it booked the onboarding review 4 minutes ago) and Cursor signed in to read, and a Weekly digest personal token, with three weeks of what they did |
 | `agents-ending` | The same three agents, with Cursor's access ending tomorrow |
-| `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, his first day, and Home's tour |
+| `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, the plans to choose from, Art's first day, and Home's tour |
+| `plan-choice` | Art's account was made a few minutes ago and the plans haven't been shown yet (`Plan.choose`): Home opens on them once. Payments are taken |
+| `plan-choice-before` | Art has used Alcove for weeks, from before plans, and was put on Free two days ago: the busy afternoon, and Home opens on the plans once. Payments are taken |
 
 ## Add a component story
 
@@ -285,7 +315,9 @@ and `plays()` runs plays one after another.
 A call is one of the scenario's (its link's code) or a `StoryCall` the story puts in the world (`stories/calls/talk.ts`
 has the calls, conversations and shares the call stories share). Times are seconds from joining; the door's, from the
 story opening. A beat (`joins`, `says`, `shares`, `knocks`, `raisesHand`, `nudges` (you, as only you see it), `setsStatus`, `{ do: 'host-drops' }`, `{ do: 'reconnect' }`,
-`{ do: 'end' }`...) is anything someone else, the server or LiveKit could do; `run()` is anything else, such as `ringYou()`
+`{ do: 'end' }`...) is anything someone else, the server or LiveKit could do (the plan's side of a call too: `notesRunningOut()` is
+the organizer's notes about to run out, which only they are told, and `notesStop('notes')` is their notes (or `'storage'`) running out, which
+turns notes off for everyone, who are told why; a call within 5 minutes of its longest, 10 hours, is one with a `since` of 9 h 55 min or more); `run()` is anything else, such as `ringYou()`
 from another call. Rooms the organizer opens (`{ do: 'rooms' }`) can have a board each, or one they share (`board`), and each
 room's people can put stickies on theirs (`work`): the scripted call makes, fills and lands the boards as the server does, in
 the world's first workspace. Someone else can make the board in the call (`{ do: 'open-board' }`, with what `draw` puts on
@@ -335,7 +367,7 @@ its documents are there to link, and `6.21 On a phone` in the board's journeys a
 vote, at a phone's size.
 
 ```tsx
-/** Priya opens the launch retro a second in, the others fill it as they talk, and she starts a vote on Could improve. */
+/** Priya opens the launch retro a second in, the others fill it as they talk, and Priya starts a vote on Could improve. */
 export const Voting = inCall({
   scenario: 'call-soon', call: REVIEW,
   script: { here: REVIEWERS, board: RETRO, cues: [...at(1, opensBoard(PRIYA, 'retro')), ...at(12, startsVote(PRIYA, 'Could improve', 3))] }
@@ -461,11 +493,41 @@ Browser notifications (#88): Calls/Browser notifications shows explicit opt-in, 
 Native two tabs is the explicit browser-receipt scene: open it twice, enable once and background both before20seconds. It preserves opaque browser state and shares one demo-clock anchor, like real tabs share a wall clock. Stable event IDs demonstrate cross-tab/reload deduplication; reopening the same scene does not replay those IDs. Native browser uses a new call ID for a fresh delivery demonstration. The report can start/stop the exact application service worker on this development origin; Stop unregisters it and closes its test alerts. Open delivered alert invokes the native notification's actual click callback for routing checks; this is distinct from an OS notification-centre click.
 
 
-Credit top-ups live under **Pages / Settings / Payments**, **Add credits picker** and **Payment…**: waiting, arriving,
-short, short after the address expired, credited, held, failed, cancelled and expired, plus the deletion warnings.
+The plan lives under **Pages / Settings / Plan**, **Notes nearly out**, **No notes left**, **Over Free's limits (in
+grace)**, **Over Pro's storage** (Make room filled, as the way out) and **A balance**. Top-ups live under **Payments**, **Add money picker** and **Payment…**: waiting, arriving,
+short, short after the address expired, added, held, failed, cancelled and expired, plus the deletion warnings.
 Phone and night variants show the picker and waiting address, and the expired-short phone at night. The default scenarios
-keep payments unavailable. **Journeys / 11 Settings / 11.24 Add credits** chooses a token and network, opens a top-up,
+keep payments unavailable. **Journeys / 11 Settings / 11.24 Add money** chooses an amount, a token and network, opens a top-up,
 receives a scripted short payment, completes it and reopens the completed payment. The stand-in supports starting,
 reading and cancelling top-ups; receipt changes come from the story's made-up provider side. These scenes send no money.
 **Components / Icons and marks / CryptoMark**, **Forms / CopyField**, and **Forms / Select / Network marks** and
 **Token marks** show the shared controls.
+
+
+## Checkout
+
+**Pages / Checkout** is the app's own checkout window over the app (`src/checkout.tsx`, which opens it as a door does: Get
+Pro, Extend, Add 10 hours, a waiting payment's Open), in every stage: choosing (a year at 20% off, a month, another length,
+a network's least above what's needed, part of it from the balance, the balance covering it, payments off, a price that
+changed, offline, extending, more notes), then paying (waiting, Cancel payment asking first, less arrived, seen, done, more
+arrived, refused, expired, cancelled, failed, the receipt), in both themes and on a phone. Team has the same: Start a team
+(its name, how many licenses, from the balance or a payment, unnamed, a changed price, payments off, offline), its first
+licenses' payment (`team-buying`) waiting, seen, bought, refused and expired, and its admin's Buy licenses (`team-admin-*`:
+who's waiting, from the balance, bought, with a payment), a member, and an admin who stopped being one (before buying, or while their payment was on its way), with nothing to buy and no steps. The stand-in plays
+a payment opened to buy something by itself (`src/api/payments.ts`): seen, then added and bought, a step every 5 seconds
+from when it was opened, or as the `payment-*` scenarios say; nothing runs on a timer, so nothing carries into the next
+story. `purchaseAt()` and `playsOut()` put one where a story needs it. Every address is a made-up preview no wallet takes.
+**Components / Checkout** has each part of the kit's window, and **Paying, in motion**, the canvas's player, with Slow
+motion and Play again. Section 16's journeys are **Journeys / 16 Plans and paying** (16.1, from the side panel to Plans),
+**16 Checkout** (16.2 to 16.6), **16 Your plan** (16.7, 16.8 and 16.14, in the side panel and Settings), **16 Where
+checkout shows** (16.9 to 16.13, the doors), **16 Team** (16.15, starting a team from Plans) and **16 The plan choice** (16.20:
+a new account's arrival onto the plans, saying "Opening Plans", Continue on Free, then Home and its tour; Get Pro from them, paid,
+then Home; and signing in from the welcome page, sailing out of its cove onto them).
+
+**Pages / Plans / Plan Choice…** is the plan choice, Plans in Home's place once while `Plan.choose` is true (the `plan-choice`
+and `plan-choice-before` scenarios): a new account, an account from before plans and one over Free's storage, on a team (where
+Pro says not while you're on your team's plan, as **Team Admin** and **Team Member** show on Plans), Pro bought from it, payments
+off, telling Alcove the plans were seen failing (they aren't shown again in that tab), and the prices loading, not loaded and
+offline, in both themes and on a phone. The first sign-in's journeys (1.1, 1.2) pass through it too. **Components / The evening /
+SailOut / Onto the plans** sails out of the cove onto a stand-in for it, the sun easing down to the plans' last sliver.
+

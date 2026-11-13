@@ -131,8 +131,10 @@ The call itself stays in the API: who's let in, notes and the transcript.
   typed, or their account's). Nobody joins before the organizer is there (`409 conflict`), while the call is
   locked (`403 forbidden`; a lock keeps new people out, not someone coming back to their place) or once it has ended (`409`, "This call has ended."); someone removed asks again. An
   ask taken back stays turned away, so its identity can't ask again as someone else. Someone waiting learns only
-  what the call captures, as the card does: nobody's name, no asks, and nothing that's been said. There's no
-  participant limit.
+  what the call captures, as the card does: nobody's name, no asks, and nothing that's been said. At most
+  `call.max_people` people are in a call: someone invited is turned away once the people in it fill it, an ask takes no
+  place, and someone who asked is let in only while there's room; one network has at most `call.asks_per_address` asks
+  waiting ([Plans and usage › Calls](plans-and-usage.md#calls)).
 - **Let in from the link, signed in.** The commit that lets in someone who asked with an address also adds it to
   the invite: to the meeting's guests, and to the note's invited people when notes have been on
   (`features/meetings/invites.ts`), so they get the notes when the call ends, like everyone invited by email. Only someone
@@ -245,7 +247,9 @@ order, and nothing a message carries can stop it: anything unreadable is skipped
   generation, this part). The host's browser adds only people the API lists as pending for that group
   (`CallMls.groups[].pending`), checks each key package (well formed, this suite, signed by its own key, naming
   the identity it came with; one that isn't is turned away), adds at most 50 at a time, and waits a little
-  longer after each refused commit, so a refusal can't become a loop. When nobody comes or goes it moves each
+  longer after each refused commit, so a refusal can't become a loop. A commit that would let in more people who asked
+  than the call has room for is refused (`409`, "This call is full: …"), and **Let in** says so in those words while they
+  go on asking. When nobody comes or goes it moves each
   group's keys on anyway every 10 minutes (an empty commit), so one set of keys never covers a whole call.
 - **Who commits.** The connection that hosts (the call's sealed `host`, mirrored in `calls.host_identity` for
   webhooks and upkeep), for every group: the organizer's while they're in the call, a stand-in's while they're away.
@@ -496,6 +500,13 @@ call's sealed state (`apps/api/src/features/calls/capture.ts`) and the same for 
 - **Who sees it.** Everyone in the call, and anyone reconnecting, gets it with the call. People asking to join
   and anyone reading the card get it without names: `by` says only "the organizer", and there are no gaps or
   asks. Every change sends the room a change push, so browsers fetch the call again.
+- **Running out** (`capture.runningOut`, `capture.stopped`). Notes are paid for from the organizer's AI allowance and
+  storage, so when what's left would last `ai.warn_seconds` (5 minutes) at this call's pace the organizer alone is told, once
+  (`runningOut`), and when either is spent notes go off for everyone as if the organizer had turned them off (`stopped`,
+  with its reason, `notes` or `storage`): the organizer is told why with the ways to more, everyone else whose notes ran
+  out, and the organizer's app turns notes on again once they've bought more (user-flows 16.9). The call goes on, and what was captured until then still goes into the notes. A call also ends at `CallState.endsAt`, 10 hours
+  after it started, with everyone told 5 minutes before, and takes at most 100 people, where asking to be let in takes no
+  place ([Plans and usage](plans-and-usage.md#calls)).
 - **Pause** (`{type: "pause"}`, only while notes are on) stops every kind of capture at once. The one gate every
   capturing path goes through, `mayCapture` in `apps/api/src/features/calls/capture.ts`, refuses audio pieces, speech
   clips, caption translations, catch-up and questions with `409 conflict` ("Notes are paused…"), whoever sends
@@ -1107,6 +1118,9 @@ access is never copied into the call. Organizing a call opens nothing more.
   scheduling, which they can edit in, or the one its series has. With none, a new workspace is made for the call, named
   after it and the day it started (`Launch check-in · 5 Nov`, where the browser opening Workspace is, else the series'
   zone, else UTC), with the organizer as its admin and everyone invited in it to edit, the same people who get the notes.
+  The organizer pays for it too, whoever's action made it (`payer_owner_id`: its files count against their storage and AI
+  there is paid from their plan, [Plans and usage › Storage](plans-and-usage.md#storage)); made for an organizer
+  live-licensed on a team, it's that team's, for the people added only, as a workspace made in a call is.
   It's settled the first time anyone opens Workspace (`workspace-open`, anyone let in), or server code asks
   (`workspaceForCall`), or, for a call that had notes and never did either, as it ends, so its notes land somewhere. A call
   with notes off that nobody opened Workspace in makes none. It's the organizer's whoever settles it: a guest's click can
@@ -1114,7 +1128,7 @@ access is never copied into the call. Organizing a call opens nothing more.
   people opening it at once get one. A chosen home the organizer can no longer make things in, one deleted since, or one with
   no room for the call's folder (a full tree), isn't theirs to use: the call gets a new one, and the meeting names it. A home
   counts as having the call's folder only once the folder's there. A home made for a call doesn't count towards the
-  workspaces someone can make by hand (`MAX_MADE`). The home doesn't change during the call, whichever workspace is viewed.
+  workspaces someone can make by hand (`workspaces.max_made`). The home doesn't change during the call, whichever workspace is viewed.
 - **In a series.** The next call scheduled takes `workspaceId` with it, and every call of a series scheduled to repeat
   starts with it. A call that settles a new home takes the later calls that had none, or had the one it replaced, along,
   once the call's row is let go, so a series shares one home with a folder for each call. A later call someone gave a
@@ -1125,7 +1139,13 @@ access is never copied into the call. Organizing a call opens nothing more.
   ([Privacy › Who can open a workspace](privacy-keys-and-sessions.md#who-can-open-a-workspace)). Each person carries the
   `call-workspace` index of the call and the workspace it uses now (`Viewer.workspace`: the home, unless the organizer
   switched), worked out from the call's state on every request, and the workspace keeps a row in `workspace_calls` under
-  that index, which counts only while the organizer can edit there. It's what the call opens to them and never who they
+  that index, which counts only while the organizer can edit there and pays for it: the workspace's payer
+  (`payer_owner_id`) is the account the call is kept in. What anyone adds to a workspace, or asks AI to do there, is its
+  payer's, so a call never opens to everyone in it, guests included, a workspace someone else pays for: that one opens only
+  for its own people (`everyone` false). Both are asked on every request (`holdersOf`), so the call stops opening it the
+  moment either stops holding, whenever the payer or the organizer's role changes. A team's pool doesn't count as the
+  organizer's here: AI a guest asks for in a team's workspace is paid by the workspace's payer, so a workspace a teammate
+  pays for would spend that teammate's allowance. It's what the call opens to them and never who they
   are: it's the same for everyone in the call, so presence, carets and whose a Yjs client is go by their address or seat
   alone. Opening Workspace writes the row for the workspace in use (`openWorkspace`, then `openForCall`, in that
   workspace's own transaction with nothing of the call held): the answer to whoever opened it already says it's open, and
@@ -1144,8 +1164,10 @@ access is never copied into the call. Organizing a call opens nothing more.
   `edit`: a role of `read` is `403`, and one they can't reach is the same `404` as one that doesn't exist. It's the
   call's sealed `workspace.viewing` (null: the home), and it ends with the call: the meeting, its home and the series'
   later calls don't change, and the notes and transcript still go to the home. `GET /v1/live/calls/:id/workspace/:id`
-  says what it would mean, for the question that comes first: the workspace's name, and the first names of people in the
-  call who aren't in it (`cantOpen`), who'd open and edit it through the call alone. It goes by membership alone, which
+  says what it would mean, for the question that comes first: the workspace's name, the first names of people in the
+  call who aren't in it (`cantOpen`), who'd open and edit it through the call alone, and whether the call would open it to
+  everyone at all (`everyone`: false for one the organizer doesn't pay for, and the question says so: "Its files don’t count
+  against your storage, so it opens only for its own people."). It goes by membership alone, which
   the organizer can see from the workspace's people: someone with one document there is still named, because saying
   otherwise would tell the organizer about something they can't see. The workspace is opened to the call before the
   switch applies, and the switch moves nothing in `workspace_calls`: what each person carries names the workspace the
@@ -1164,7 +1186,7 @@ access is never copied into the call. Organizing a call opens nothing more.
   empty and `no`: nobody asks for the workspace any more, and they're sent only because the previous release's tabs can't
   read a call without them, until the next release. `home` is the home's ID for someone who can open something in it,
   else null. `everyone` says the call opens what's viewed to everyone in it, which stops once its organizer can't edit
-  there, and `name` goes to everyone it opens for; `role` is null for anyone who isn't in the workspace, whatever the call
+  there or doesn't pay for it, and `name` goes to everyone it opens for; `role` is null for anyone who isn't in the workspace, whatever the call
   gives them. Someone who can open nothing gets `id` and `name` null: private, and nothing that names anything, `present`
   and `ended` aside (below), which for what's viewed happens only once its organizer can't edit there, or it's gone.
   Someone with one document has the `id` to open it with and no name.
@@ -1374,7 +1396,7 @@ once it is (`StoredCall`), and nothing else.
   New board and Upload settle the home the way the call does the first time anyone opens Workspace: the workspace its
   organizer chose while they can still make things there, else a new one made under the meeting's row, named after the call
   and its day (in the asker's time zone), with everyone invited let in once the row's let go and later calls of its series
-  following it. Its organizer or anyone invited can ask, while the call is still scheduled (after that, its workspace is the
+  following it. Whoever asks, the organizer pays for a home made this way, as for one made in the call. Its organizer or anyone invited can ask, while the call is still scheduled (after that, its workspace is the
   call's to open: Conflict). What's asked for is made at the top of the home as the person asking, who has to be able to
   change it (in a home the organizer chose that they aren't in, or only read, it's Forbidden): an Agenda document (titled,
   and the call's agenda unless it has one), a Board, or a document for files to upload into, named after the file. It's
@@ -1397,13 +1419,25 @@ call's is which board is open, kept by part of the call in its sealed state (`bo
 it, by their name, address and seat, and which boards it lets everyone into. What's done is
 `apps/api/src/features/calls/boards.ts`, what's kept is `features/calls/space-state.ts`, and who can open what is
 `features/workspaces/access.ts`, on every read. A board in the workspace the call uses opens to everyone in the call, as
-anything there that isn't restricted does.
+anything there that isn't restricted does. What anyone adds to a board, or asks AI to do on it, is its workspace's payer's
+([Plans and usage › Storage](plans-and-usage.md#storage)), so the call seats everyone on boards only in a workspace its
+organizer pays for (`organizerPays`), as it opens a workspace to everyone only then, and a seat opens what it's given for
+anyone only while that holds, asked on every read (`holdersOf`, `Holders.shares.opens`). In a workspace someone else pays
+for, such as one chosen as the call's home when it was scheduled, the call seats nobody on the boards it makes there, rooms'
+boards included, nobody new is seated, and nobody can let everyone in on a saved board there (`boardCheck` says
+`mayLetIn` false, and `board-open` with `letIn` is `409`: "Its files don’t count against the organizer’s storage, so it
+opens only for its own people."); a seat given there opens only for the workspace's own people. And what the call gives
+by address there goes only to its own people (`access.ts › givenByCall`: its members, and on a team's workspace for the whole
+team, whoever is live-licensed on it): a board it makes goes to those invited who are, and nobody else invited; someone let in
+from the link keeps nothing of it as the call ends unless they are; and a room's board, as rooms close, goes to the organizer
+and those invited who are. The scheduler says so when such a workspace is chosen for a call's notes.
 
 - **`CallState.board.open`** is per viewer, for the part of the call they're in: `workspaceId`, `documentId`, `name` (what it's
   called now), `openedBy` (the connection whoever opened it is on now, or null when they aren't in the call), `canClose`,
   `everyone` (everyone in the call can edit it, anyone let in later too, which is what the board's seal, a blank board and
   the call's toasts say: the call made it and it's still the call's to give, until it's restricted or the organizer can't
-  edit in its workspace; or it's a saved board someone who may share it let everyone into, while they still may
+  edit in its workspace; or it's a saved board someone who may share it let everyone into, while they still may; either only
+  while the organizer pays for its workspace
   (`letsEveryoneIn`). False for a saved board nobody let everyone into, even one everyone here can edit because it's in the
   workspace the call uses, and for anyone who can't open it; a room's own board is everyone in the room's),
   `role`, `seal` (`Sealed`, or `Sealed to this room` on a room's own board), and `frame`: on the one board every room shares,
@@ -1526,7 +1560,7 @@ anything there that isn't restricted does.
   the call, and only when something new was said: what was said there lately (`catchup.readOf`), with the board's frames by
   their titles, goes to the notes model (`drafting.ideasFrom`), which offers up to three things worth a sticky, each from one
   line, which says who said it and when, with the words it comes from, copied from that line (the line's own words when they
-  aren't in it), and the frame it fits. Only someone who may read every line of that part looks, nobody's credits pay for it,
+  aren't in it), and the frame it fits. Only someone who may read every line of that part looks, the call's organizer pays for it,
   and nothing is held while the model reads: a run claims the look for two and a half minutes at most, and any other look
   meanwhile answers at once. A pause stops it as it stops any capture (`capture.mayCapture`, `'ideas'`). Adding one writes a
   sticky in the browser (`addStickies` in `@alcove/board`), as a change of that person's own whatever they have under way, on a
@@ -1817,7 +1851,8 @@ says whether it's on a board of its own (`rooms[].board`), which is all anyone o
   of something on it.
 - **After rooms close** room seats go, and each room's board is everyone invited's by email at `edit`, the organizer and everyone
   on the invite who wasn't taken out, as the people its room's notes go to: then it's kept, a restricted board like any other,
-  and workspace members who weren't invited never see it. Someone taken off the invite loses it with the room's notes.
+  and workspace members who weren't invited never see it. In a workspace the organizer doesn't pay for, only those of them who
+  are its own people get it (`givenByCall`). Someone taken off the invite loses it with the room's notes.
 - **Limits.** A call makes 64 boards for its rooms in all.
 ### More, and a board on a phone
 
@@ -2357,7 +2392,8 @@ and the page a call leaves you on (`session/CallOver.tsx`).
   them when LiveKit says they've gone.
 - **Shared screens in the notes.** While notes are on or paused, the share steps ask **Include this share in the
   notes?**, on **No** until the presenter says **Yes** (their last answer in this call after that), without holding Share up. A kept share shows **Read for the notes** to everyone. The organizer chooses the model
-  that writes the notes (**Notes written by**) under what's captured. A piece of video that can't reach the notes says so
+  that writes the notes (**Notes written by**) under what's captured; a dearer one is refused while their plan's notes
+  can't hold what writing this call's notes would cost with it ([Plans and usage › Running out in a call](plans-and-usage.md#running-out-in-a-call)). A piece of video that can't reach the notes says so
   in the Notes panel ([Shared screens](#shared-screens)).
 - **Captions** show the newest live transcript line the viewer may read (said in their part of the call while
   they were there), under whoever said it, translated for each viewer who picks a language. They show in
@@ -2490,7 +2526,8 @@ and the page a call leaves you on (`session/CallOver.tsx`).
 - **The page a call leaves you on** (`session/CallOver.tsx`) takes the call's place at the same address:
   `session/CallPage.tsx` holds the call, then its page, then the call again if Rejoin brings it back. The page starts
   from a snapshot taken as you leave (the title, who was in it, when it started, the note's ID, how notes were
-  (`capture.mode`), whether you get the notes, your role, your microphone and camera, the host's name), follows the
+  (`capture.mode`, and `capture.stopped` when the organizer's plan stopped them), whether you get the notes, your role,
+  your microphone and camera, the host's name), follows the
   note's progress (`api.notes.progress`) and then shows the written note's first lines and counts. Everyone invited has
   the note by then ([When the recording stops](notes-and-inference.md#when-the-recording-stops)). An end it didn't make
   names nobody: the room going and `phase: 'ended'` look the same whether whoever hosts ended the call, upkeep did (a
@@ -2499,7 +2536,11 @@ and the page a call leaves you on (`session/CallOver.tsx`).
   apart while someone hosts, each browser a little apart from the rest, 20 seconds or more after a refusal or a failed
   read, and not again once the code leads nowhere. It turns within about 15 seconds of the end, and only a card read
   after you left counts. Signing out, or deleting the account, in another tab (`onSignedOutElsewhere`) takes it to the
-  welcome page, as it takes the frame, forgetting the note it read. Nothing on the wire changes for any of it.
+  welcome page, as it takes the frame, forgetting the note it read. While the call goes on without you and the organizer's
+  plan has stopped its notes, the page says that in the call's own words (`PlanStop.tsx`: whose notes or storage ran out,
+  or to the organizer what ran out and that notes start again once they have more), not that notes are off, and the
+  organizer gets the same ways to more as the call (Get Pro, more hours for this period, Make room), opening checkout over
+  the page. Nothing on the wire changes for any of it.
 - **Rejoin** (`session/rejoin.ts`) joins again with the last pass (`api.calls.join` with `previous`) and the microphone
   and camera as they were (a fresh `LocalMedia`, as moving devices does), and waits to be let in if it has to. J on the
   page (on its own, not with Shift, ⌘, Ctrl or Alt) rejoins with both off instead, so a stray key never puts someone's

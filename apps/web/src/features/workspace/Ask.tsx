@@ -6,12 +6,11 @@
  */
 import { MAX_DOC_ASK, errorMessage, type AnswerPart, type CallSession, type DocAskAction, type WorkspaceItem } from '@alcove/api';
 import { WsAskAnswer, WsAskMenu, WsPopover, wsToast } from '@alcove/ui';
-import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AnswerView, useAnswer } from '~/features/notes/answer';
+import { useAskableNotes } from '~/features/notes/askable';
 import { api } from '~/lib/api';
 import { sessions } from '~/lib/live';
-import { q } from '~/lib/queries';
 import type { Ws } from './context';
 import type { AskDraft, EditorProps } from './editor/types';
 import { Sources } from './Sources';
@@ -35,13 +34,14 @@ function Said({ ws, question, onGone }: { ws: Ws; question: string; onGone: () =
   const ask = useMemo(() => (call ? askCall(call) : (text: string) => api.notes.askAll(text)), [call]);
   const refused = useCallback((e: unknown) => { ws.say(wsToast.failed(errorMessage(e))); onGone(); return true; }, [ws.say, onGone]);
   const { answer, ask: run } = useAnswer(ask, refused);
-  const notes = useQuery({ ...q.notes(), enabled: !call }).data;
+  // What an answer cites can be any note you can ask about, your team's included.
+  const notes = useAskableNotes();
   useEffect(() => { void run(question); }, [run, question]);
   if (!answer) return null;
   return (
     <WsAskAnswer>
       <AnswerView answer={answer} waiting={call ? 'Reading this call' : 'Reading your notes'}>
-        {!call && <Sources cites={answer.cites} notes={notes ?? []} onPick={onGone} />}
+        {!call && <Sources cites={answer.cites} notes={notes} onPick={onGone} />}
       </AnswerView>
     </WsAskAnswer>
   );

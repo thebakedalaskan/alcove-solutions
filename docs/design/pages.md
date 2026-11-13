@@ -26,7 +26,22 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
     "Starts in 4 min" or "Happening now" in `sun-text`, and Join, never filled. On Home it makes way while Home's own
     line offers the call (its last few minutes, and while it's going), so there's one Join at a time. The rest of the
     day is Home's Upcoming. It comes in under Agents, so the places at the top never move
-  - the confidential-compute check and the minutes of notes left
+  - the confidential-compute check, then your plan, in one row where the minutes of notes left were, so the foot is no
+    taller than it was. On Free, notes left over a thin meter that runs from rose to the sun's warmth ("About 1 h 26 min of
+    notes left", warm under an hour, caution once out), which opens Settings at Plan. On Pro or Team, one calm row:
+    `SunMark` (a 12px half sun on a 16px hairline, in the icon column under the shield), the plan in Newsreader 18px over a
+    12.5px line in ink-2, and a chevron, with no box and no glow. The line says what matters most: "Ends in N days ·
+    Extend" in sun-text 600 with the sun half set (it opens checkout), "No notes left until 1 Dec" in caution, for a team's
+    admin while its licenses run short "2 licenses left · Buy" in sun-text 600 (it opens checkout on Team), "About 40 min
+    of notes left" in sun-text, or "Until 4 Nov 2027" on Pro and the team's name on Team. On a team without a license,
+    "No team license yet" in caution takes the line's place (under the meter's place on Free), and the row opens Team,
+    which says who has been told. A payment for a plan on its way takes the row's place: dots and "Waiting for N USDC" in
+    horizon ("Payment seen, adding licenses" for a team's), and the payment's row with Open. Anything else said (Pro renewed
+    or ended, Team replacing Pro, a team's licenses while notes have stopped, a workspace you pay for now, by its name and
+    held to two lines) is one short line above the row, and only
+    while it shows (until it's dismissed in Settings). On Plans, Pro's or Team's row, or a payment's, is shaded as the place
+    you're on, so there's still one shaded row; Free's notes left isn't shaded. Plans is reached from Settings › Plan's See
+    plans and wherever a limit is met
 - **The page** scrolls under a rounded edge. Search ("Search or ask", ⌘K opens the palette) and you (your arch, which opens
   your menu) sit at its top right on every page, outside the page itself, so moving between pages leaves them alone. A page's
   title sits at its top left, in the same place on every page, and keeps clear of them with `--top-room`.
@@ -57,7 +72,9 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
     The one filled button in view is the preview's own action (Open at 3:15).
   - From 1100px the lit result shows beside the list: a moment in its transcript, with what was made there; a person; a
     note; or what Ask will do. Narrower, the list is alone; on a phone it takes the screen.
-  - While an answer is written, the question waits in the preview's place, so the window keeps its width.
+  - While an answer is written, the question waits in the preview's place, so the window keeps its width. Asked with no
+    notes left this period, the answer's place says "No notes left until 1 December" in caution, with Get Pro or more
+    hours (`NoNotesLeft`), which closes the palette and opens checkout; typing again puts it away.
   - The foot says what's private (sealed in `sun-text` while Ask is lit) and the keys, only those that do something now.
     It never opens over another window.
   - Nothing to list is the kit's `EmptyState` with a dashed arch around an icon (`pal-none`): nothing matches; someone in
@@ -188,7 +205,9 @@ The page doesn't scroll; the rail and the sheet each do.
   each moment (`MomentChip`). A name lists the calls with that person, coming up first; from the Team page or the palette
   they're a token in the line. The words and the person never go in the address.
 - **Asking** (Enter, or Ask): read in confidential compute, the answer lands at the top of the sheet (`CallsAnswer`) with a
-  chip for each moment it comes from, then the calls it read. × or typing puts it away.
+  chip for each moment it comes from, then the calls it read. × or typing puts it away. Asked with no notes left this
+  period, the top of the sheet says "No notes left until 1 December" in caution, with Get Pro or more hours
+  (`NoNotesLeft`).
 - **Empty states**, each its own: No calls yet on the first day, with Connect Google Calendar and Start a call now; nothing
   coming up, past, recorded in the room, shared with you or repeating; no calls with someone; nothing matches; a search
   that didn't go through. Without a calendar, one line at the top of All calls and Coming up offers Connect.
@@ -376,7 +395,26 @@ The sun is low and to the left, behind the people.
   - **Not on Alcove yet** lists each person with their title and meetings coming up, and Invite, or Invited with Remind.
     "Invite all N" sits on the heading when more than one is left.
   - **Shared with groups** lists the notes shared with a group, who shared them and when.
-- Every number on the page is real: a group's calls are calls everyone in it was on. Someone on their own has no Team page.
+- **On a team** (`features/team/OnTeam.tsx`, the kit's `components/team-plan.tsx` and `styles/team-plan.css`): the team's
+  name in the sky over how many are on it, and its people on the horizon, up to ten, each under their license, opening
+  their popover as on a company's line (`PersonPop`). On the water, its people as rows (role and license on each:
+  "Licensed until 12 Dec", "License ended", "Waiting for a license"), with Remove for the admin, asked in place under the
+  row, and at their foot Leave team for a member or Delete team for the admin once nobody else is on it; then the notes
+  made visible to the team, and the company page's groups and what's shared with them, which stay. Beside them, for the
+  admin: Licenses (how many are left and who's waiting, Buy licenses, filled while someone waits, which opens checkout on
+  Team, and buying one whenever it's needed) and invite links (Make an invite link, then Copy, and Make another). A member
+  without a live license is told first, at the top of the water. Not on a team, a quiet Start a team row on a company's
+  water opens checkout on Team (`features/team/StartTeam.tsx`).
+  - The water is at most 1120px and centred under the team, though other pages run to `--page-max`: the TeamPlan board
+    has it so, and it reads as one block under the line, while the page's title, search and you keep the page's width.
+  - Where the admin's cards would squeeze the people (the page under 1000px, as at 1024 with the side panel open), they
+    fold under the people, side by side, before the notes. On a phone they stand one under another there.
+  - On a phone the line wraps, as the board's does, and never slides: its first row stands on the horizon and the rest
+    on the water under it, the sun set off to the left.
+- **Joining** (`/team/join#…`, `features/team/Join.tsx`) is one card on the team's evening: whose team it is and what
+  joining gives you, Join (filled) and Not now; signed out, the ways in first, while the invite waits in the tab.
+- Every number on the page is real: a group's calls are calls everyone in it was on. Someone on their own, with no
+  company and no team, has no Team page: its address goes Home.
 - The first day, loading, a failed load and offline each have their own look.
 
 ## Agents
@@ -476,7 +514,7 @@ The last of the light, with you in it, then seven groups. Change one thing and l
 - **The band.** You stand on the horizon in your arch, with your name (Newsreader) and address. Take the tour and Sign out
   sit at the right.
 - **The index.** It stays beside the page as you scroll, and a small sun on it follows the group in view: You, Calls and
-  notes, Audio and video, Notifications, Connections, Plan and credits, Privacy. At 1000px and narrower it becomes a strip
+  notes, Audio and video, Notifications, Connections, Plan, Privacy. At 1000px and narrower it becomes a strip
   that stays at the top. A group is found by what it's for, so a setting has one obvious home.
 - **Groups of panels.** Each group is a heading over one or two panels (`SettingsGroup`, `SettingsPanel`): `surface`, a
   hairline edge, rows separated by hairlines inside, never a card per row. A panel is a set of things you'd change
@@ -493,11 +531,105 @@ The last of the light, with you in it, then seven groups. Change one thing and l
   files, recent exports and Disconnect in place. Agents is one row, since agents are connected and changed on a page of
   their own: the agent tile, who's connected (or what agents are for, while none is), and Open Agents →, or Connect an
   agent → while none is. On a phone it's the way to Agents.
+- **Plan says what you have, then what you pay with.** The first panel: the plan row (Free or Pro with its help, See plans
+  quiet and Get Pro or Extend secondary, filled only when notes have stopped (run out, or over Free's storage) or Pro is
+  ending), Notes left this period with
+  a `SunLine` on the row's own hairline (the sun at the end in a fresh period and moving back as it's used), Storage saying
+  what's used of the limit ("2.1 GB of 10 GB", in caution once it's over), and More notes on Free (or on any plan once notes
+  are low or out). The AI allowance is kept in dollars and never
+  shown: notes left is said as time, as an estimate, with a small "About" before the number. Over the plan's storage, one
+  `SettingNote` says until when everything works as before, or that uploads and notes have stopped, with Make room at its end
+  (its `action`, under its words on a phone), which opens the Drive. Once they've stopped, the way out is the filled button:
+  Get Pro on Free, beside which Make room is secondary, and Make room on Pro or a team, unless Extend (Pro ending) or Buy
+  licenses (someone waiting) already is. Pro renewed and Pro ended are `SettingNote`s with × at the top until dismissed, and
+  so is a workspace whose payment moved to you because whoever paid left it: by the name you see it by (read from your
+  workspaces, never kept with the plan), and the day its files start to count against your storage; ending is said once, in
+  warm, in the plan row. The second panel: Balance with Add money, then on Pro
+  Renew from balance and Refund. Add money opens a window over Settings (`features/settings/topup.tsx`, the kit's `Sheet`:
+  560px, centred over the veiled page, and the width of a phone from its top), a small checkout of its own that shares
+  checkout's paying flow: how much and the network, Get an address, then the payment followed with checkout's own parts and
+  words (`features/plans/paying.tsx`: the status, the amount to send, the deposit address with its QR code and bold ends,
+  the track), with Cancel payment while nothing has arrived, and Done; a payment's Open in Payments opens it again on that
+  payment. Renew says, in caution, why it won't renew when it won't, as the server decides it (`pro.renewal`): the balance
+  short of a month, or a month costing more than the last did ("A month of Pro costs $24.00 now, more than your last did, so
+  it won't renew by itself. Extend to keep it at that price."). Refund asks in place: what goes back, that renewing turns off
+  (while it's on), and that Pro ends with the month running now, with Keep them filled (the answer that loses nothing), as a
+  team's Refund of its licenses asks. Then Payments (`SettingPayments`, `PaymentRow`): first what's on its way or needs a person, then
+  the balance's latest changes, each with Receipt opening `PaymentReceipt`, paper in both themes and alone on the page when
+  printed. Buying is checkout's, never this page's. Controls drop under their words on a phone. The code is
+  `features/settings/Plan.tsx`, with `features/plans/plan-state.ts`, which the side panel's foot and Plans share.
 - **Sign out** signs you out at once. Only when recordings haven't uploaded does it ask first: the sky grows to hold the
   question, it says they'll be deleted, and Stay signed in is the filled answer. Signing out (from here or your menu), the
   page holds until the welcome page replaces it in one step, rather than blanking or emptying first.
 - **Delete account** sits apart, in its own panel at the end, and opens in place, with what goes beside what stays. The
   shared demo account can't be deleted, and says so.
+
+## Plans
+
+`routes/_app/plans.tsx`, `features/plans/Plans.tsx`, `components/plans.tsx`, `styles/plans.css` (`pl-`). Moment: `plans`.
+Board: `plans/Plans.dc.html`.
+
+The last of the sunset, with the plans on the water: a page you compare on, so mostly water.
+- **The sky.** Plans at the top left, search and you at the right. In the middle, Monthly / Yearly · 20% off, Yearly to
+  start, only while a year costs less. Under it, the last sliver of the sun, which the page draws on the evening
+  (`PlanSunset`, through `Evening`'s `sky`) behind whatever passes through. The horizon is 8px + 262px; on a phone it's
+  300px and the sky runs up behind the top bar.
+- **The plans** (`PlanCards`, `PlanCard`): light cards whose parts share rows through subgrid, so the names, prices, bill
+  lines, buttons and facts line up. Each is at most a third of 1120px, so Free and Pro stand together in the middle, and a
+  third card joins when Team is offered. Pro is lifted: raised, a firmer edge, a 2px warm edge on top. A warm chip marks the
+  plan you're on (never Free, whose button area says it) or "Ends in N days".
+- **One filled button:** Get Pro on Free, Extend only while Pro is ending. Both open checkout over the page. On a team
+  license Pro isn't sold: its card says "Not while you’re on your team’s plan", quietly, where the button would be.
+- **Team's card:** licenses at $40 a person for 30 days (from the offers), its people at the end of its name's row, its facts
+  and its last line. The Yearly switch doesn't change it. Its button is secondary: Start a team, or Buy licenses for its
+  admin; a member gets a quiet line saying who buys them. While the prices wait, three waiting cards.
+- **Under them:** On every plan, as chips, and the paying line with its wallet.
+- **States:** waiting cards, failed with Try again, offline. On a phone the cards stand one under another.
+- On Pro or Team, or with a payment on its way, the side panel's plan row is the place you're on while you're here.
+- **The first time** (the plan choice, `features/plans/PlanChoice.tsx`): Home opens on Plans once, in its place, while the
+  server says the plans haven't been shown (`Plan.choose`): every new account, after its arrival, and once every account from
+  before plans. Its head is a short title in the page's own type (`dusk-title`) with one line under it (`pl-lede`), in place
+  of Plans: "Choose a plan" and how the plans differ for someone with no notes yet, "Alcove has plans now" and which one
+  they're on for someone who has used Alcove. The head and the sky are one block down to the horizon (`pl-lead`), so the
+  switch keeps its place over the sun however long the line. The plan you're on leads straight on, quiet, on its card
+  (Continue on Free, there even while the prices wait, and beside Try again or offline); Get Pro stays the one filled button,
+  and checkout opens over it as it does on Plans. Home follows once something bought is yours and checkout has closed.
+  Where it shows is decided in one place, `features/plans/choice.ts`: Home only, never over a deep link, and never twice in a
+  tab. Once the plans have been on screen there, or on Plans, the server is told. The tour of Home waits for Home. A new
+  account's arrival says "Opening Plans" and opens onto it; signing in from the welcome page sails out of the cove onto it, the
+  sun easing down to the plans' last sliver (`PlanSunset` marks its sun `data-sun`, which the sail lands on).
+
+## Checkout
+
+`features/plans/checkout.tsx` (who opens it, and with what), `features/plans/CheckoutHost.tsx` (the window, from choosing to
+bought), `features/plans/purchase.ts`, `components/checkout.tsx`, `styles/checkout.css` (`ck-`). Boards:
+`plans/Checkout.dc.html`, `plans/PayMotion.dc.html`.
+
+One window over any page, a call included, where it opens in your own theme: at most 944×672, the step on the left and what
+you're buying on the right, under its own small evening (`PlanWindow`) whose sun rises as the payment lands.
+- **Steps:** Choose, Pay, Done (`CheckoutSteps`). Choose is the lengths (`MonthsPicker`, with its 20% off bracket) or the
+  hours (`HoursPicker`), then the network (`NetworkPicker`) only when money is needed; Pay is the status, the amount to send,
+  the address with its QR code and the track (`PayStatus`, `PayAmount`, `PayAddress`, `PayTrack`); Done draws its tick
+  (`CheckoutDone`), with the receipt (`PaymentReceipt`) in the same window, as paper.
+- **One filled button per view:** Get the address, or Buy with your balance; on a phone while paying, Open in wallet.
+  Cancel payment asks in the foot (`CheckoutAsk`), with Keep waiting filled, while nothing has arrived. Once part of the
+  payment has (Less than asked arrived), the foot has Close alone, though the board's has Cancel payment beside it: the server
+  cancels only a payment nothing has reached yet (`deposits.ts` › `cancel`; docs/engineering/plans-and-usage.md, Cancelling
+  a top-up), and refuses the rest. What arrived is added to the balance when the payment settles, whether or not the rest
+  comes, so there's nothing to cancel: the address waits for the rest until it closes.
+- **Motion** is one move a stage, transform and opacity only: waiting, the sun on its horizon and its glow breathing; seen,
+  the sun lifts and the amount counts up; done, it clears the horizon and the sky warms. With reduced motion every stage
+  shows at once and only the dots and glints fade.
+- **Team:** Start a team names it first (`TeamName`, the company's name to start with); Buy licenses shows the team's
+  people and who's waiting (`LicensesLeft`). Both choose with `LicensesPicker` (3, 6, 10 or 25, each saying what it's for,
+  and Another number). The summary is Team's window with people on its horizon, and each license runs 30 days from when
+  it's taken. The team is made only as you pay, and the app tells Alcove you're here as soon as the licenses are bought, so
+  the admin's own license is taken at once. Done has inviting under the receipt (`CheckoutDone`'s `invite`, a bare
+  `TeamInvite`) and no renewal reminder. Someone on another's team (a member, or an admin who stopped being one) has nothing
+  to buy here: the window has no steps (`CheckoutPanel`'s `step` is null) and says it once, in one note, who buys the
+  licenses, after what became of a payment that couldn't buy them (its money is in the balance), with Close.
+- **On a phone** it fills the screen, with what you're buying in one line at the top. Its foot keeps only the buttons, but
+  offline, why the button waits ("You're offline…") is said on a line over them, as it is beside them on a wider screen.
 
 ## Connecting an agent
 
@@ -518,6 +650,10 @@ failing to, use the same sheet. Storybook records its states under **Pages / Con
 
 Start a call is one small modal with one question, and a sheet on a phone.
 - It opens on Start now (↵) or Schedule for later (S). Starting floods the screen into the night of the call.
+- With no notes left this period and notes on, a caution note sits under the ways ("No notes left until 20 November", Get
+  Pro, Start without notes). Get Pro opens checkout in the modal's place, since no window opens over another, and the modal
+  comes back as it was, with its people, documents and board, once checkout closes. In the scheduler a line under the Notes
+  switch says the same, with Get Pro or more hours, for a call that starts before they come back (`NoNotesLeft`).
 - Ringing someone puts a card on their screen on any page, over a modal if one is open.
 
 Scheduling isn't in a window. It takes the Calls page's rail, and the sheet becomes the week.
@@ -566,8 +702,10 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   Ask and Yours), Chat, People, Your notes beside a presented board, and the rooms. It takes your theme, as a board's sheet
   does unless it's a night board; the stage, the dock, the workspace and screens stay night.
 - **Notes** has its head (Notes, a pill, Open as an icon, ×), then its tabs, words with a line under the one you're on.
-  The pill says the state once, in a word: Live with a `rec` dot, Paused, Off, Unavailable in caution, or the
-  organizer's 2 asked in rose. It opens the card the sign at the top left opens, what's captured: one sentence, the asks,
+  The pill says the state once, in a word: Live with a `rec` dot, Paused, Off, Unavailable or Stopped in caution, or the
+  organizer's 2 asked in rose. Stopped by the organizer's plan, a caution bar between the head and the tabs says so, with
+  the organizer's ways to more (Get Pro filled, Add 10 hours) and nothing to buy for anyone else; the notes mark where they
+  stopped and came back on, in `rec`. It opens the card the sign at the top left opens, what's captured: one sentence, the asks,
   what's yours to press, then how the notes are written and who gets them. A bar under the tabs shows only while capture
   isn't simply live, saying what it means with the one thing to do; a hiccup that fixes itself is only the summary's
   time, in caution. Nothing hides behind ⋯, and nothing is said twice, so there's no line about writing and no footer.
@@ -670,7 +808,10 @@ top right, but no Home link, since Go to Home is one of its buttons.
 - **The notes** are a panel: being written (the step they're at, and who gets them, with their faces), then the summary's
   first lines with what was decided (rose) and the follow-ups (horizon), or, when they take long, that they'll be in
   Notes. While a call you left goes on, one line says how notes were as you left: on with the `rec` dot, paused with the
-  pause sign, or off, and that the notes, or what was written, come when it ends. Without notes, it says none were taken.
+  pause sign, or off, and that the notes, or what was written, come when it ends. Stopped by the organizer's plan, the line
+  says so in caution instead of off ("Your notes for this period have run out. What was said until then is in the
+  notes.", or whose, or storage full), and the organizer has the call's ways to more under it (Get Pro, more hours, Make
+  room), none filled, from `PlanStop.tsx`. Without notes, it says none were taken.
 - **One filled button,** the first: Open the notes (Read the notes once they're written), Rejoin (J) while the call goes
   on, or Go to Home when there's nothing else. J rejoins with the microphone and camera off; the button brings them back
   as they were. While Rejoin says Rejoining…, Go to Home can still be pressed: it's the way out while you wait to be let
@@ -752,11 +893,17 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
 - **Your agent** (`AgentScene`) books a call over MCP, beside the tools it can use.
 - **Recording in the room** is Record's night, inset on the water (`RecordScene`): the recorder stands on the horizon,
   records offline and sets, then the session notes rise. **What Alcove can see** (`SealedScene`) sits on its water.
+- **Plans** looks out of a cove of its own (seed 8) on the plans moment, the last of the sun on its horizon: Free and Pro as small
+  cards on the water, Pro raised with a warm edge, then Start free and Get Pro, which signs in and opens Plans with checkout
+  on Pro. Both are secondary, though the Doors board fills Get Pro: the page's one filled button is its way in, and the last
+  ask's Continue with Google comes into view with them as the page scrolls on. Its prices are kept beside it, since the
+  server's offers need a session.
 - **The last ask** is morning on the same sea, in a cove of its own (seed 11): the sun comes up as the page reaches it.
   The footer sits on the water.
 - **Signing in sails out of the cove to Home.** Every way in on the page keeps where the hero's cove stands on screen as
   it's pressed (`lib/sailOut.ts`), across the trip to Google and back, and Home plays it once as it opens (`SailOut`,
-  `features/home/SailOut.tsx`), in about three and a half seconds:
+  `features/home/SailOut.tsx`), in about three and a half seconds (onto the plans instead while they're up in Home's place,
+  whose sun is the last sliver, so the sun eases down to it):
   1. the cove comes in where it was, its sun where it was, lifted or setting
   2. the headlands go by on either side, nearest first, and the bay's ripples slide away
   3. the horizon comes up to Home's and the sun eases to Home's size, its middle only ever rising

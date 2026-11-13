@@ -1,4 +1,4 @@
-import { ItemInputSchema, ItemPlaceSchema, LiveStreamEndBodySchema, MAX_DOC_BYTES, RestrictBodySchema, ShareBodySchema, WorkspaceAboutInputSchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema } from '@alcove/api';
+import { ItemInputSchema, ItemPlaceSchema, LiveStreamEndBodySchema, MAX_DOC_BYTES, RestrictBodySchema, ShareBodySchema, TeamAccessBodySchema, TeamAccessSchema, WorkspaceAboutInputSchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { CALL_PASS_HEADER } from '../../callPass';
 import * as access from './access';
@@ -39,10 +39,14 @@ export function registerWorkspaceRoutes(app: Hono<Env>, runtime: HttpRuntime): v
     return c.json(await workspaces.list(await access.accountReader(c.get('owner'))));
   });
 
+  // On a team, `access` says who's in it: the whole team (the default there) or only the people added. Elsewhere it's ignored.
   app.post('/v1/workspaces', async (c) => {
     workspaceLimiter(c.get('owner').ownerId, 'workspace');
-    return c.json(await workspaces.create(c.get('owner'), (await body(c, WorkspaceInputSchema)).name));
+    const { name, access } = await body(c, WorkspaceInputSchema.extend({ access: TeamAccessSchema.optional() }));
+    return c.json(await workspaces.create(c.get('owner'), name, access));
   });
+
+  app.put('/v1/workspaces/:id/team-access', async (c) => { await workspaces.setTeamAccess(d, await member(c), ws(c), (await body(c, TeamAccessBodySchema)).access); return c.json({ changed: true }); });
 
   app.patch('/v1/workspaces/:id', async (c) => { await workspaces.rename(d, await member(c), ws(c), (await body(c, WorkspaceInputSchema)).name); return c.json({ renamed: true }); });
 

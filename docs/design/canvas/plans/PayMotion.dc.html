@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Paying, in motion</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="page-plans.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="appdata.js"></script>
+<script src="marks.js"></script>
+<script src="data-plans.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="pm">
+<header class="pm-h">
+<div class="pm-tt"><h1>Paying, in motion</h1><p>{{cap}}</p></div>
+<ol class="pm-at" aria-label="Where the payment is"><sc-for list="{{marks}}" as="m" hint-placeholder-count="3"><li class="{{m.cls}}">{{m.t}}</li></sc-for></ol>
+<div class="pm-ctl">
+<button type="button" class="pm-b" aria-pressed="{{slowA}}" onClick="{{toggleSlow}}">Slow motion</button>
+<button type="button" class="pm-b" onClick="{{replay}}">Play again</button>
+</div>
+</header>
+<div class="pm-stage{{resetCls}}" data-mode="{{mode}}">
+<dc-import name="Checkout" at="{{at}}" mode="{{mode}}" from="plans" pm="{{pm}}" on-close="{{noop}}" on-done="{{noop}}" hint-size="1100px,760px"></dc-import>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1180,"height":944}}'>
+class Component extends DCLogic {
+  componentDidMount() { this.play(); }
+  componentWillUnmount() { clearTimeout(this.__t); clearTimeout(this.__r); }
+  /* Waiting, then the payment lands, then Pro is on, on a loop. Each loop starts still, so the sun doesn't set backwards. */
+  play() {
+    var self = this, seq = [['coSend', 2800], ['coSeen', 2800], ['coDone', 3800]], i = 0;
+    clearTimeout(this.__t);
+    var step = function () {
+      var s = seq[i % seq.length], slow = !!(self.state && self.state.slow);
+      if (i % seq.length === 0) {
+        self.setState({ reset: true, at: s[0] });
+        clearTimeout(self.__r);
+        self.__r = setTimeout(function () { self.setState({ reset: false }); }, 80);
+      } else self.setState({ at: s[0] });
+      i++;
+      self.__t = setTimeout(step, s[1] * (slow ? 4 : 1));
+    };
+    step();
+  }
+  renderVals() {
+    var AH = window.AH, hs = AH.hash(), self = this, st = AH.assign({ at: 'coSend', slow: false, reset: false }, this.state || {});
+    var caps = {
+      coSend: 'Waiting for the payment. The address is open, the QR code listens, and the sun sits on the horizon.',
+      coSeen: 'The payment lands. Its amount counts up, the sun lifts, and the line shows what’s left.',
+      coDone: 'Pro is on. The sun clears the horizon, the sky warms and the check draws in.'
+    };
+    var order = ['coSend', 'coSeen', 'coDone'], names = ['Waiting', 'Payment seen', 'Pro is on'];
+    return {
+      at: st.at, mode: hs.mode || this.props.mode || 'dark', pm: st.slow ? 4 : 1,
+      cap: caps[st.at] || caps.coSend, slowA: st.slow ? 'true' : 'false', resetCls: st.reset ? ' is-reset' : '',
+      marks: order.map(function (k, i) { return { t: names[i], cls: k === st.at ? 'is-on' : '' }; }),
+      toggleSlow: function () { self.setState({ slow: !st.slow }); setTimeout(function () { self.play(); }, 0); },
+      replay: function () { self.play(); },
+      noop: function () {}
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -21,7 +21,7 @@ import { z } from 'zod';
 import type { Owner } from '../../context';
 import { b64u, id128, mac, openJson, sealJson, stateKey, toJson, utf8 } from '../../crypto';
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
-import { speechPrompt, transcribe, type SpeechContext } from '../../inference';
+import { speechPrompt, transcribe, type Meter, type SpeechContext } from '../../inference';
 import { log } from '../../log';
 import { findItem } from '../../vault';
 import { profile } from '../account/account';
@@ -100,11 +100,11 @@ const header = (o: Owner, noteId: string, tag: Uint8Array) => ({ v: 1 as const, 
  */
 export interface Heard { speaker: string; room?: string | undefined; readers?: string[] | undefined; began: number; atMs?: number | undefined }
 /**
- * Transcribes one clip into a note's live transcript. A clip heard before is skipped; one that comes back after the
+ * Transcribes one clip into a note’s live transcript, paid for by `meter`. A clip heard before is skipped; one that comes back after the
  * recording stopped is dropped: its note is finished. A breakout room's clip that comes back after the room closed is
  * kept: it was said while the room was open, and goes into the room's section of the notes.
  */
-export async function hear(o: Owner, t: Target, clip: Clip, by?: Heard | undefined): Promise<void> {
+export async function hear(o: Owner, meter: Meter, t: Target, clip: Clip, by?: Heard | undefined): Promise<void> {
   const tag = tagOf(o, t.noteId, clip.segment, clip.atMs, by?.speaker ?? '');
   const ctx = { noteId: t.noteId, recordingId: t.recordingId, segment: clip.segment, atMs: clip.atMs, durationMs: clip.durationMs, bytes: clip.wav.length, room: Boolean(by?.room) };
   const seen = await maybeOne(o.pool, z.object({ n: z.number() }), 'SELECT 1 AS n FROM transcript_clips WHERE owner_id = $1 AND note_item_id = $2 AND clip_tag = $3', [o.ownerId, t.noteId, tag]);
@@ -119,7 +119,7 @@ export async function hear(o: Owner, t: Target, clip: Clip, by?: Heard | undefin
   // the same part of the call, as the server placed this clip: a breakout room's words go to Whisper only with that
   // room's clips, and back.
   const context: SpeechContext = callIn ? { language: callIn, prompt: speechPrompt(await peopleIn(o, t.noteId), wordsBefore(recent, { segment: clip.segment, at }, by?.room)) } : {};
-  const { heard, language, evidence } = await transcribe(o.cfg, clip.wav, clip.durationMs, context);
+  const { heard, language, evidence } = await transcribe(o.cfg, meter, clip.wav, clip.durationMs, context);
   const lines: Line[] = heard.map((x) => ({
     id: id128(), at: Math.round((at + x.start) * 10) / 10, end: Math.round((at + x.end) * 10) / 10, text: x.text,
     ...(by ? { speaker: by.speaker, ...(by.room ? { room: by.room } : {}), ...(by.readers ? { readers: by.readers } : {}), when: Math.round(by.began + x.start * 1000) } : {}),

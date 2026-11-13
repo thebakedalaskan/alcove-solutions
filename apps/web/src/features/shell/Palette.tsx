@@ -18,6 +18,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { useAnswer, type Cite } from '~/features/notes/answer';
 import { inNote } from '~/features/notes/parts';
+import { NoNotesLeftDoor, useAskRanOut } from '~/features/plans/notesDoors';
 import { api } from '~/lib/api';
 import { isUnencrypted } from '~/lib/aiModels';
 import { useMedia, useOnline, useSettled } from '~/lib/live';
@@ -96,7 +97,9 @@ function Find({ onClose, back }: { onClose: () => void; back: RefObject<Escape |
   const [chosen, setChosen] = useState<{ key: string; byKeys: boolean } | null>(null);
   /** The keys moved the lit row, so the list keeps it in view; the pointer lights only what's in view already. */
   const keyed = useRef(false);
-  const { answer, ask: run, reset } = useAnswer(askAll);
+  /* Asking with no notes left this period: the door to more, in the answer's place. */
+  const ranOut = useAskRanOut();
+  const { answer, ask: run, reset } = useAnswer(askAll, ranOut.refused);
   const online = useOnline();
   const wide = useMedia(WIDE);
   const phone = useMedia(PHONE);
@@ -151,10 +154,11 @@ function Find({ onClose, back }: { onClose: () => void; back: RefObject<Escape |
 
   /** A different list: the lit row is its own first choice again, and every call shows its first moments. */
   const fresh = () => { setChosen(null); setOpened(new Set()); };
-  const toResults = useCallback(() => { reset(); setChosen(null); }, [reset]);
+  const toResults = useCallback(() => { reset(); ranOut.clear(); setChosen(null); }, [reset, ranOut.clear]);
   const ask = () => {
     if (!typed || !online) return;
     setChosen(null);
+    ranOut.clear();
     void run(typed);
   };
   const pick = (person: Person) => {
@@ -256,9 +260,10 @@ function Find({ onClose, back }: { onClose: () => void; back: RefObject<Escape |
         <input ref={line} className="pal-in" value={text} placeholder={placeholder(token, phone)}
           aria-label="Search or ask your notes, for you alone" role="combobox" aria-expanded={rows.length > 0} aria-controls={rows.length ? list : undefined}
           aria-autocomplete="list" aria-activedescendant={litId} autoComplete="off" spellCheck={false} enterKeyHint="search" maxLength={MAX_QUESTION}
-          onChange={(e) => { setText(e.target.value); fresh(); if (answering) reset(); }} onKeyDown={keys} />
+          onChange={(e) => { setText(e.target.value); fresh(); ranOut.clear(); if (answering) reset(); }} onKeyDown={keys} />
       </PaletteLine>
       <PaletteBody preview={preview}>
+        {ranOut.out && !answer && <NoNotesLeftDoor alone beforeCheckout={onClose} className="pal-door" />}
         {answer && cited
           ? <Answered answer={answer} cited={cited} listId={list} onBack={toResults} terms={cited.terms} words={NO_WORDS} {...rowProps} />
           : <Results listed={listed} listId={list} stale={kept} typed={text} token={token} notes={notes?.length ?? 0} onPick={pick} onRetry={() => void search.refetch()}

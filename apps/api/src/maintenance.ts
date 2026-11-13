@@ -11,6 +11,10 @@
  *  - deletes for good what's been in a workspace's Trash for 30 days, ends seats whose call is over and closes what such a
  *    call opened to everyone in it, and lets go of tags nobody came back for in 30 days;
  *  - deletes live notes a call left behind when a release from before them ended it;
+ *  - settles who pays for workspaces nobody does, gives accounts from before plans their plan, ends graces that are
+ *    over, renews Pro from the balance or tells its owner Pro is ending or has ended, and adds as dollars, once each, the
+ *    top-ups a release before plans settled, paid before this one or while it deployed;
+ *  - deletes team invites that expired, and reckons the storage pool of each team whose license ended or whose grace did;
  *  - takes away what an upload left when its browser went, a day on, and forgets uploads counted before yesterday;
  *  - deletes agent connections and credentials that ran out, and what agents did after 30 days or past each connection's
  *    newest 1,000.
@@ -37,6 +41,9 @@ import { sweepSeats, sweepTrash } from './features/workspaces/service';
 import { joinDue } from './features/recordings/screens';
 import { work } from './features/notes/writer';
 import { work as exportToDrive } from './features/notes/drive-worker';
+import { upkeep as plansUpkeep } from './features/billing/plans';
+import { upkeep as teamsUpkeep } from './features/billing/teams';
+import { creditCarried } from './features/billing/deposits';
 import { sweepSessions } from './sessions';
 
 const mlog = log.child({ component: 'maintenance' });
@@ -70,6 +77,11 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const rings = await step('rings', () => sweepRings(d), 0);
   const liveNotes = await step('live notes', () => sweepLiveNotes(d), 0);
   const attention = await step('attention', () => sweepAttention(d), 0);
+  // Plans: who pays for each workspace, every account's plan, graces that ended, Pro renewed, ending or ended, and top-ups paid for before plans.
+  const plans = await step('plans', () => plansUpkeep(d).then((r) => r.settled + r.carried + r.due), 0);
+  const carried = await step('carried top-ups', () => creditCarried(d), 0);
+  // Teams: invites that expired, and pools that shrank as a license ended, or whose grace ended.
+  const teams = await step('teams', () => teamsUpkeep(d).then((r) => r.invites + r.teams), 0);
   // Neither stops the other, or what comes next time: each logs what went wrong and says it did nothing.
   const quietly = (what: string, sweep: () => Promise<number>) => sweep().catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what, err: e }); return 0; });
   const trash = await quietly('trash', () => sweepTrash(d, opts.trashAgeMs, started));
@@ -78,7 +90,7 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const uploads = await quietly('uploads', () => sweepUploads(d, opts.uploadAgeMs, started));
   const uploadDays = await quietly('upload days', () => pruneUploadDays(d));
   const mentions = await quietly('mentions', () => sweepMentions(d));
-  return { driveExports, sessions, agents, agentActivity, receipts, retried, orphans, videos, notes, calls, moves, noteLinks, rings, liveNotes, attention, trash, seats: ended.seats, callWorkspaces: ended.workspaces, uploads, uploadDays, mentions };
+  return { driveExports, sessions, agents, agentActivity, receipts, retried, orphans, videos, notes, calls, moves, noteLinks, rings, liveNotes, attention, plans, carried, teams, trash, seats: ended.seats, callWorkspaces: ended.workspaces, uploads, uploadDays, mentions };
 }
 
 /** Deletes objects older than `cutoff` (ms) that no row points at: writes whose SQL commit failed. */

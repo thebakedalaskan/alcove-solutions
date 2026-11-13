@@ -68,9 +68,6 @@ export type AgentDecisionInput = z.infer<typeof AgentDecisionInputSchema>;
 export const AgentDecisionResultSchema = z.object({ redirectUrl: z.url() });
 export type AgentDecisionResult = z.infer<typeof AgentDecisionResultSchema>;
 
-/** A short-lived consent pointer for this tab's sign-in round trip. It carries no credential. */
-export const AgentReturnStoredSchema = z.object({ requestId: AgentAuthorizationIdSchema, until: z.number() });
-
 /** Changing a connection after it's made: what it can do, another 30 days, or both. */
 export const AgentUpdateInputSchema = z.object({
   scopes: AgentScopesSchema.optional(),

@@ -1,7 +1,7 @@
 import { errorCode, type Session } from '@alcove/api';
 import type { QueryClient } from '@tanstack/react-query';
 import { redirect } from '@tanstack/react-router';
-import { linkWaiting, takeAgentReturn, takeReturn } from './afterSignIn';
+import { clearReturn, keptReturn } from './afterSignIn';
 import { signedInHere } from './device';
 import { q } from './queries';
 import { signedOut } from './signedOut';
@@ -31,10 +31,11 @@ export async function sessionOrOffline(qc: QueryClient): Promise<Session | null 
 }
 
 /**
- * The signed-in account, or off to the welcome screen to sign in. Someone who signed in with Google from a call's join
- * page goes back to it, wherever Google's way back landed them, and someone who signed in to let an agent in goes to
- * Agents, where it asks; a preload (a link hovered) never uses that up. Without a connection, someone signed in on this
- * device carries on offline.
+ * The signed-in account, or off to the welcome screen to sign in. Signing in that started on a page with somewhere to come
+ * back to goes there, wherever Google's way back landed (lib/afterSignIn.ts): a call's join page, Agents for an agent's
+ * request, where it asks, Plans with checkout open for Get Pro on the welcome page, or the page of a link to someone's notes
+ * or of an invite to a team, which asks before anything opens. A preload (a link hovered) never uses one up. Without a
+ * connection, someone signed in on this device carries on offline.
  */
 export async function requireAccount(qc: QueryClient, preload = false): Promise<{ account: Account }> {
   const s = await sessionOrOffline(qc);
@@ -44,12 +45,14 @@ export async function requireAccount(qc: QueryClient, preload = false): Promise<
     return { account: { offline: true, ownerId: here.ownerId } };
   }
   if (!s) throw redirect({ to: '/welcome' });
-  const agent = preload ? null : takeAgentReturn();
-  if (agent) throw redirect({ to: '/agents', search: { request: agent }, replace: true });
-  const back = preload ? null : takeReturn();
-  if (back) throw redirect({ to: '/join/$code', params: { code: back }, replace: true });
-  // Signed in from a link to someone's notes, Google's way back lands here: back to the link, which asks before opening them.
-  if (!preload && linkWaiting()) throw redirect({ to: '/link', replace: true });
+  const back = preload ? null : keptReturn();
+  // A link's page and an invite's take their own secret, which never goes in a URL; the rest are used up here.
+  if (back?.to === 'link') throw redirect({ to: '/link', replace: true });
+  if (back?.to === 'team') throw redirect({ to: '/team/join', replace: true });
+  if (back) clearReturn();
+  if (back?.to === 'call') throw redirect({ to: '/join/$code', params: { code: back.code }, replace: true });
+  if (back?.to === 'agent') throw redirect({ to: '/agents', search: { request: back.requestId }, replace: true });
+  if (back?.to === 'plans') throw redirect({ to: '/plans', search: { checkout: back.checkout }, replace: true });
   return { account: { offline: false, session: s } };
 }
 

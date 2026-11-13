@@ -76,6 +76,13 @@
 .co-chip.is-horizon { background: var(--horizon-soft); color: var(--horizon); }
 .co-line { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 9px; margin-top: 22px; color: var(--stage-ink-2); font: 500 14px/1.4 var(--font-sans); }
 .co-rec { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--rec); }
+/* Notes the organizer's plan stopped, while the call goes on: said in caution, the ways to more under it for the organizer. */
+.co-stopped { display: grid; justify-items: center; }
+.co-line.is-stopped { color: var(--caution); text-wrap: balance; }
+.co-line.is-stopped .ac-i { flex: none; }
+.co-ways { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 14px; }
+.co-ways .ac-btn.is-secondary { background: transparent; color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18); }
+.co-ways .ac-btn.is-secondary:hover { background: rgb(255 255 255 / .06); }
 
 /* The next step: the first button is the filled one, the others drawn in a line on the night. */
 .co-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 32px; }

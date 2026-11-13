@@ -1,9 +1,10 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
 import type { AgentDecisionInput, AgentTokenInput, AgentUpdateInput, Attestation, Calendar, DriveExportInput, FollowUpReview, Trust } from '@alcove/api';
-import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Series, type SharedWrite, type ShareTarget, type DocumentLibrary, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree } from '@alcove/api';
+import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Plan, type PromoteBody, type Purchase, type QuestionPatch, type TopUp, type RingReply, type Series, type SharedWrite, type ShareTarget, type DocumentLibrary, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type MyTeam, type TeamAccess } from '@alcove/api';
 import { infiniteQueryOptions, queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import { forgetAccount } from '~/features/record/offline';
+import { forgetHourLeft } from '~/features/plans/hourLeft';
 import { forgetNotified } from '~/features/shell/notified';
 import { announceMentionsRead } from '~/features/shell/attentionChannel';
 import { forgetEdits } from '~/features/workspace/keep';
@@ -32,6 +33,10 @@ export const qk = {
   session: ['session'] as const,
   prefs: ['prefs'] as const,
   team: ['team'] as const,
+  /** The team you're on (`teams.mine`), apart from `team`, the company directory. */
+  myTeam: ['my-team'] as const,
+  teamNotes: ['my-team', 'notes'] as const,
+  teamInvite: (secret: string) => ['team-invite', secret] as const,
   workspaces: ['workspaces'] as const,
   people: (query: string) => ['people', query] as const,
   meetings: ['meetings'] as const,
@@ -56,7 +61,8 @@ export const qk = {
   allSeries: ['series'] as const,
   series: (id: string) => ['series', id] as const,
   callSeries: (code: string) => ['series', 'call', code] as const,
-  balance: ['credits'] as const,
+  plan: ['plan'] as const,
+  offers: ['plan', 'offers'] as const,
   topUpRoutes: ['top-ups', 'routes'] as const,
   topUps: ['top-ups', 'list'] as const,
   topUp: (id: string) => ['top-ups', 'one', id] as const,
@@ -161,7 +167,7 @@ const newest = (): string | null => null;
 export const topUpOpen = (t: TopUp): boolean => t.state === 'waiting' || t.state === 'arriving' || t.state === 'short';
 
 /** The top-ups list's key, carrying its type, for reading what it held before. */
-const topUpsKey = queryOptions({ queryKey: qk.topUps, queryFn: (): Promise<TopUp[]> => api.credits.topUps() }).queryKey;
+const topUpsKey = queryOptions({ queryKey: qk.topUps, queryFn: (): Promise<TopUp[]> => api.plans.topUps() }).queryKey;
 
 export const q = {
   drive: () => queryOptions({ queryKey: qk.drive, queryFn: () => api.drive.get(), retry: false }),
@@ -190,6 +196,12 @@ export const q = {
   session: () => queryOptions({ queryKey: qk.session, queryFn: () => readSessionWithPictureAccess(() => api.auth.getSession()), staleTime: 60_000 }),
   prefs: () => queryOptions({ queryKey: qk.prefs, queryFn: ({ client }) => readPreferences(api, client), refetchInterval: 30_000, refetchIntervalInBackground: true }),
   team: () => queryOptions({ queryKey: qk.team, queryFn: () => api.people.team(), staleTime: 5 * 60_000 }),
+  /** The team you're on, or null: its members and their licenses, and for its admin the licenses left. */
+  myTeam: () => queryOptions({ queryKey: qk.myTeam, queryFn: () => api.teams.mine(), staleTime: 60_000 }),
+  /** The notes made visible to your team that you can open (a live license needed). */
+  teamNotes: () => queryOptions({ queryKey: qk.teamNotes, queryFn: () => api.teams.notes(), staleTime: 60_000 }),
+  /** Whose team an invite's link joins, before joining. Asked once: a link that leads nowhere stays that way. */
+  teamInvite: (secret: string) => queryOptions({ queryKey: qk.teamInvite(secret), queryFn: () => api.teams.peek(secret), retry: false, staleTime: Infinity }),
   workspaces: () => queryOptions({ queryKey: qk.workspaces, queryFn: ({ client }) => readWorkspaces(api, client) }),
   people: (query: string) => queryOptions({ queryKey: qk.people(query), queryFn: () => api.people.search(query), staleTime: 30_000, placeholderData: (prev) => prev }),
   upcoming: () => queryOptions({ queryKey: qk.upcoming, queryFn: () => api.meetings.upcoming(), refetchInterval: 60_000 }),
@@ -244,24 +256,27 @@ export const q = {
     queryFn: () => api.calls.series(code).catch((e: unknown) => { if (errorCode(e) === 'unauthenticated') return null; throw e; }),
     retry: false, staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true
   }),
-  balance: () => queryOptions({ queryKey: qk.balance, queryFn: () => api.credits.balance() }),
+  /** The plan: notes left, storage and the balance. Read again every minute, so notes left follows calls. */
+  plan: () => queryOptions({ queryKey: qk.plan, queryFn: () => api.plans.plan(), refetchInterval: 60_000 }),
+  /** The plans on offer: what each brings, and what Pro costs now (buying sends this price back). */
+  offers: () => queryOptions({ queryKey: qk.offers, queryFn: () => api.plans.offers(), staleTime: 5 * 60_000 }),
   /**
-   * The ways to pay for credits. A server that can't take payments answers unavailable: nothing says so, the way to
-   * add credits just isn't there, and it isn't asked again for a while.
+   * The ways to add money. A server that can't take payments answers unavailable: nothing says so, the way to
+   * add money just isn't there, and it isn't asked again for a while.
    */
-  topUpRoutes: () => queryOptions({ queryKey: qk.topUpRoutes, queryFn: () => api.credits.routes(), staleTime: 10 * 60_000, retry: false }),
+  topUpRoutes: () => queryOptions({ queryKey: qk.topUpRoutes, queryFn: () => api.plans.routes(), staleTime: 10 * 60_000, retry: false }),
   /**
    * Top-ups still open, and the last few finished; read again every 30 seconds while one is open, so a payment that
-   * settles with the sheet closed shows on Plan and credits. A server that can't take payments answers unavailable:
+   * settles with the sheet closed shows on Plan. A server that can't take payments answers unavailable:
    * there's nothing to show.
    */
   topUps: () => queryOptions({
     queryKey: qk.topUps,
     queryFn: async ({ client }) => {
       const was = client.getQueryData(topUpsKey)?.filter(topUpOpen) ?? [];
-      const list = await api.credits.topUps();
-      // One that was on its way has been credited since: the balance catches up.
-      if (list.some((t) => t.state === 'credited' && was.some((w) => w.id === t.id))) void client.invalidateQueries({ queryKey: qk.balance });
+      const list = await api.plans.topUps();
+      // One that was on its way has been added since: the balance catches up.
+      if (list.some((t) => t.state === 'credited' && was.some((w) => w.id === t.id))) void client.invalidateQueries({ queryKey: qk.plan });
       return list;
     },
     refetchInterval: (query) => (query.state.data?.some(topUpOpen) ? 30_000 : false),
@@ -269,14 +284,14 @@ export const q = {
   }),
   /**
    * One top-up, read again every 5 seconds while money can still arrive. Once it has finished, the list catches up,
-   * and the balance too when credits were added.
+   * and the balance too when money was added.
    */
   topUp: (id: string) => queryOptions({
     queryKey: qk.topUp(id),
     queryFn: async ({ client }) => {
-      const t = await api.credits.topUp(id);
+      const t = await api.plans.topUp(id);
       if (!topUpOpen(t)) void client.invalidateQueries({ queryKey: qk.topUps });
-      if (t.state === 'credited') void client.invalidateQueries({ queryKey: qk.balance });
+      if (t.state === 'credited') void client.invalidateQueries({ queryKey: qk.plan });
       return t;
     },
     refetchInterval: (query) => (query.state.data && topUpOpen(query.state.data) ? 5000 : false)
@@ -454,6 +469,7 @@ async function forgetHere(owner: string | undefined, deleted: boolean) {
   if (owner) {
     announceSignOut(owner, deleted);
     forgetPlaces(owner);
+    forgetHourLeft(owner);
   }
   await forgetNotified();
   if (!owner) return;
@@ -565,28 +581,233 @@ export function useInviteTeam() {
   return useMutation({ mutationFn: (emails: string[]) => api.people.inviteToTeam(emails), onSuccess: (t) => qc.setQueryData(qk.team, t) });
 }
 
-/* ---------- credits ---------- */
+/* ---------- buying Pro, more notes and Team's licenses ---------- */
 
-/** Opens a top-up on a route: the address to pay to. It joins the open ones on Plan and credits. */
-export function useStartTopUp() {
+const plog = log.child({ component: 'plans' });
+
+/**
+ * Licenses were just bought for the team you run (from the balance, or by a payment that bought them). You're using Alcove,
+ * so it's a visit, which takes one of them for you when you have no live license (docs: Plans and usage › Team); then the
+ * plan and the team are read again, so what's said next is what's true. A visit that isn't taken is logged and leaves yours
+ * for your next one. Null when the plan couldn't be read again: it's read again as soon as anything asks.
+ */
+async function licensesBought(qc: QueryClient): Promise<Plan | null> {
+  try {
+    await api.auth.visit();
+  } catch (e) {
+    plog.info('a visit after buying licenses wasn’t taken', { code: errorCode(e) });
+  }
+  void qc.invalidateQueries({ queryKey: qk.teamNotes });
+  const [plan, team] = await Promise.allSettled([api.plans.plan(), api.teams.mine()]);
+  if (team.status === 'fulfilled') qc.setQueryData(qk.myTeam, team.value); else void qc.invalidateQueries({ queryKey: qk.myTeam });
+  if (plan.status === 'fulfilled') return plan.value;
+  plog.info('the plan wasn’t read again after buying licenses', { code: errorCode(plan.reason) });
+  return null;
+}
+
+/**
+ * Buys a purchase from the balance at the price (and, for more notes, the size) shown: Pro's months, packs of more notes for
+ * this period, or licenses for the team you run (then it's a visit too, which takes yours if you have none). Refused when the
+ * price changed (409, with the server's words), the balance is short, or you don't run the team; either way the plan, offers
+ * and team are read again, so what's shown is what's true now. Null when it was bought but the plan couldn't be read again.
+ */
+export function useBuy() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ routeId, credits }: { routeId: string; credits: number }) => api.credits.startTopUp(routeId, credits),
-    onSuccess: (t) => { qc.setQueryData(q.topUp(t.id).queryKey, t); void qc.invalidateQueries({ queryKey: qk.topUps }); }
+    mutationFn: async (b: Purchase): Promise<Plan | null> => {
+      if (b.kind === 'pro') return api.plans.buyPro(b.months, b.microUsdPerMonth);
+      if (b.kind === 'hours') return api.plans.buyHours(b.packs, b.microUsdPerPack, b.minutesPerPack);
+      await api.teams.buyLicenses(b.count, b.microUsdPerLicense);
+      return licensesBought(qc);
+    },
+    // What's open on the plan (the side panel, Settings, a call's notes) follows at once.
+    onSuccess: (p) => {
+      if (p) qc.setQueryData(qk.plan, p); else void qc.invalidateQueries({ queryKey: qk.plan, exact: true });
+      void qc.invalidateQueries({ queryKey: qk.topUps });
+    },
+    // `plan` is the offers' prefix: both are read again, and the team with them when it was licenses.
+    onError: (_e, b) => {
+      void qc.invalidateQueries({ queryKey: qk.plan });
+      if (b.kind === 'licenses') void qc.invalidateQueries({ queryKey: qk.myTeam });
+    }
   });
 }
 
-/** Cancels a top-up nothing has reached: it leaves the open ones on Plan and credits. */
+/** A payment bought licenses for the team you run: the visit and the reads buying them from the balance makes. */
+export function useLicensesBought() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => licensesBought(qc),
+    onSuccess: (p) => { if (p) qc.setQueryData(qk.plan, p); else void qc.invalidateQueries({ queryKey: qk.plan, exact: true }); }
+  });
+}
+
+/** Refunds the months of Pro that haven't started to the balance. */
+export function useRefundPro() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.plans.refundPro(),
+    onSuccess: (p) => { qc.setQueryData(qk.plan, p); },
+    onError: () => { void qc.invalidateQueries({ queryKey: qk.plan, exact: true }); }
+  });
+}
+
+/** Turns buying a month from the balance as Pro is about to end on or off. */
+export function useSetRenew() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (renew: boolean) => api.plans.setRenew(renew),
+    onSuccess: (p) => { qc.setQueryData(qk.plan, p); },
+    onError: () => { void qc.invalidateQueries({ queryKey: qk.plan, exact: true }); }
+  });
+}
+
+/** Stops showing one of the plan's notices, here and in the side panel. */
+export function useDismissPlanNotice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.plans.dismissNotice(id),
+    onSuccess: (p) => { qc.setQueryData(qk.plan, p); },
+    onError: () => { void qc.invalidateQueries({ queryKey: qk.plan, exact: true }); }
+  });
+}
+
+/**
+ * Says the plans were shown (`Plan.choose` is false from then; saying it again changes nothing), once the plan choice or Plans
+ * itself has been on screen (features/plans/choice.ts). Nobody waits on it, so it's quiet: tried again a few times, and
+ * held while there's no connection, and a failure is logged and never shows the plans again in this tab. They show once
+ * more on a later visit, since the server still says they haven't been. It keeps going if the page that asked goes.
+ */
+export function useChosePlans() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationKey: ['plan', 'chosen'],
+    mutationFn: () => api.plans.chose(),
+    networkMode: 'online',
+    retry: 4,
+    retryDelay: (n) => Math.min(30_000, 2000 * 2 ** n),
+    onSuccess: (p) => { qc.setQueryData(qk.plan, p); plog.debug('the plans are marked shown', { choose: p.choose }); },
+    onError: (e) => { plog.warn('the plans weren’t marked shown; they show again on a later visit', { code: errorCode(e) }); }
+  });
+}
+
+/* ---------- a team ---------- */
+
+/** What a team's change touches: the team, its notes, and the plan (a license decides it). */
+function teamChanged(qc: QueryClient) {
+  for (const queryKey of [qk.myTeam, qk.plan]) void qc.invalidateQueries({ queryKey });
+}
+/** A change that answers with the team as it is now: kept, and the plan read again. A refusal reads both again. */
+function teamWrite<V>(qc: QueryClient, write: (v: V) => Promise<MyTeam>) {
+  return {
+    mutationFn: write,
+    onSuccess: (t: MyTeam) => { qc.setQueryData(qk.myTeam, t); void qc.invalidateQueries({ queryKey: qk.plan, exact: true }); },
+    onError: () => teamChanged(qc)
+  };
+}
+/**
+ * Says you're using Alcove: when the app opens signed in, and when a tab comes back after a long while away. On a team it
+ * can take a license, so the plan, the team and what a license opens are read again after.
+ */
+export function useVisit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.auth.visit(),
+    onSuccess: () => {
+      teamChanged(qc);
+      void qc.invalidateQueries({ queryKey: qk.teamNotes });
+    }
+  });
+}
+export function useCreateTeam() {
+  const qc = useQueryClient();
+  return useMutation(teamWrite(qc, (name: string) => api.teams.create(name)));
+}
+/** A new one-time link to join the team. Shown once: it isn't kept anywhere. */
+export function useTeamInvite() {
+  return useMutation({ gcTime: 0, mutationFn: () => api.teams.invite() });
+}
+/** Joins the team an invite's link is for: the team, the plan, and everything a license opens are read again. */
+export function useJoinTeam() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (secret: string) => api.teams.join(secret),
+    onSuccess: (t) => {
+      qc.setQueryData(qk.myTeam, t);
+      for (const queryKey of [qk.plan, qk.teamNotes, qk.notes, qk.workspaces]) void qc.invalidateQueries({ queryKey });
+    },
+    onError: () => teamChanged(qc)
+  });
+}
+export function useRemoveTeamMember() {
+  const qc = useQueryClient();
+  return useMutation(teamWrite(qc, (memberId: string) => api.teams.remove(memberId)));
+}
+/** Leaving, or deleting the team: there's no team after, so everything it opened is read again. */
+function teamGone(qc: QueryClient) {
+  qc.setQueryData(qk.myTeam, null);
+  qc.removeQueries({ queryKey: qk.teamNotes });
+  for (const queryKey of [qk.plan, qk.notes, qk.workspaces]) void qc.invalidateQueries({ queryKey });
+}
+export function useLeaveTeam() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: () => api.teams.leave(), onSuccess: () => teamGone(qc), onError: () => teamChanged(qc) });
+}
+export function useDeleteTeam() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: () => api.teams.delete(), onSuccess: () => teamGone(qc), onError: () => teamChanged(qc) });
+}
+/** Buys licenses from the balance at the price shown. A refusal (a changed price, a short balance) reads the offers again too. */
+export function useBuyLicenses() {
+  const qc = useQueryClient();
+  return useMutation({
+    ...teamWrite(qc, ({ count, microUsdPerLicense }: { count: number; microUsdPerLicense: number }) => api.teams.buyLicenses(count, microUsdPerLicense)),
+    onError: () => { void qc.invalidateQueries({ queryKey: qk.myTeam }); void qc.invalidateQueries({ queryKey: qk.plan }); }
+  });
+}
+export function useRefundLicenses() {
+  const qc = useQueryClient();
+  return useMutation(teamWrite(qc, () => api.teams.refundLicenses()));
+}
+export function useSetAutoPurchase() {
+  const qc = useQueryClient();
+  return useMutation(teamWrite(qc, (on: boolean) => api.teams.setAutoPurchase(on)));
+}
+/** Makes a note you organized visible to your team, or stops it being: the note and the team's notes are read again. */
+export function useSetTeamVisible(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (visible: boolean) => api.notes.setTeamVisible(noteId, visible),
+    onSettled: () => { for (const queryKey of [qk.note(noteId), ['notes', 'list'], qk.teamNotes]) void qc.invalidateQueries({ queryKey }); }
+  });
+}
+
+/* ---------- adding money ---------- */
+
+/**
+ * Opens a top-up on a route: the address to pay to. It joins the open ones on Plan. With `buys`, what it's for is bought
+ * the moment it's added; a refusal (a changed price) reads the plan and the offers again, as buying does.
+ */
+export function useStartTopUp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ routeId, microUsd, buys = null }: { routeId: string; microUsd: number; buys?: Purchase | null | undefined }) => api.plans.startTopUp(routeId, microUsd, buys),
+    onSuccess: (t) => { qc.setQueryData(q.topUp(t.id).queryKey, t); void qc.invalidateQueries({ queryKey: qk.topUps }); },
+    onError: (_e, { buys }) => { if (buys) void qc.invalidateQueries({ queryKey: qk.plan }); }
+  });
+}
+
+/** Cancels a top-up nothing has reached: it leaves the open ones on Plan. */
 export function useCancelTopUp() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.credits.cancelTopUp(id),
+    mutationFn: (id: string) => api.plans.cancelTopUp(id),
     onSuccess: (t) => {
       qc.setQueryData(q.topUp(t.id).queryKey, t);
       // It leaves the open ones at once, before the list is read again.
       qc.setQueryData(topUpsKey, (list) => list?.map((x) => (x.id === t.id ? t : x)));
       void qc.invalidateQueries({ queryKey: qk.topUps });
-      void qc.invalidateQueries({ queryKey: qk.balance });
+      void qc.invalidateQueries({ queryKey: qk.plan });
     },
     // Refused because a payment just reached it, say: read it again, so the address goes now.
     onError: (_e, id) => { void qc.invalidateQueries({ queryKey: qk.topUp(id) }); void qc.invalidateQueries({ queryKey: qk.topUps }); }
@@ -909,9 +1130,25 @@ export function usePickTime(code: string) {
 
 /* ---------- workspaces ---------- */
 
+/** Makes a workspace. On a team, while licensed, `access` says who's in it: the whole team, or only the people added. */
 export function useCreateWorkspace() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (name: string) => api.workspaces.create(name), onSuccess: () => qc.invalidateQueries({ queryKey: qk.workspaces, exact: true }) });
+  return useMutation({
+    mutationFn: ({ name, access }: { name: string; access?: TeamAccess | undefined }) => api.workspaces.create(name, { access }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.workspaces, exact: true })
+  });
+}
+/** Admins of a team's workspace: who's in it, the whole team or only the people added. */
+export function useSetTeamAccess(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (access: TeamAccess) => api.workspaces.setTeamAccess(workspaceId, access),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: qk.workspaceTree(workspaceId) });
+      void qc.invalidateQueries({ queryKey: qk.workspacePeople(workspaceId) });
+      void qc.invalidateQueries({ queryKey: qk.workspaces, exact: true });
+    }
+  });
 }
 export function useRenameWorkspace() {
   const qc = useQueryClient();

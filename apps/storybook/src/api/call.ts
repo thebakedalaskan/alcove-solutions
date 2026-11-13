@@ -69,6 +69,8 @@ function timerAfter(was: CallTimer | null, input: CallTimerControl, now: number)
 }
 /** Nudges of one kind within a minute of the first are one note, and a note stays a minute, as the server keeps them. */
 const NUDGE_WINDOW = 60_000;
+/** The longest a call runs: it ends by itself then, everyone told 5 minutes before (docs: Plans and usage). */
+const LONGEST_CALL_MS = 10 * 3_600_000;
 /** A status whose time has run out. */
 const ranOut = (status: CallParticipant['status']) => status !== null && status.until !== null && Date.parse(status.until) <= Date.now();
 
@@ -165,7 +167,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     const mode = script.notes ?? meeting.notes;
     super({
       revision: 0, timer: script.timer ? { ...script.timer, startedAt: script.timer.status === 'running' ? Date.now() : null } : null, attention: { place: 'main', hands: [], questions: [], nudges: [], cues: [], latest: 0, serverNow: new Date().toISOString() },
-      callId, meetingId: meeting.id, code: meeting.code, title: meeting.title, startedAt, elapsed: since, phase: 'in-call', participants: organizes ? [me] : [], locked: false, pointing: true,
+      callId, meetingId: meeting.id, code: meeting.code, title: meeting.title, startedAt, elapsed: since, endsAt: new Date(Date.parse(startedAt) + LONGEST_CALL_MS).toISOString(), phase: 'in-call', participants: organizes ? [me] : [], locked: false, pointing: true,
       spotlight: null, breakouts: { open: null, held: [] }, capture: back?.capture ?? captureOf(mode, mode === 'off' ? null : startedAt, meeting.organizer.name, script.model ?? null),
       notes: back?.notes ?? { everOn: mode !== 'off', noteId: mode !== 'off' ? noteId : null, segmentStartedAt: mode !== 'off' ? startedAt : null, recording: { segment: 0, pieces: 0, seconds: mode === 'on' ? since : 0 }, keepsRecording: meeting.choices.keepRecording }, waiting: [], ringing: [], leaving: [], chatRead: [],
       host: { id: organizes ? me.id : null, standIn: false, organizer: meeting.organizer, next: [] }, generation: 1, transcript: back?.transcript ?? [],
@@ -295,6 +297,12 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
         return;
       }
       case 'notes': this.capture(b.mode); return;
+      case 'notes-running-out': {
+        // Only the organizer is told their notes are running out.
+        if (this.getSnapshot().isOrganizer) this.change((s) => ({ ...s, capture: { ...s.capture, runningOut: { at: new Date().toISOString() } } }));
+        return;
+      }
+      case 'notes-stop': this.capture('off', b.reason); return;
       case 'host-cant-hear': this.cantHear(b.records); return;
       case 'not-now': this.change((s) => ({ ...s, capture: { ...s.capture, requests: s.capture.requests.filter((r) => r.participantId !== this.me.id), asked: s.capture.asked ? { state: 'declined', at: new Date().toISOString() } : null } })); return;
       case 'rooms': this.opensRooms(b.rooms, b.minutes, b.board); return;
@@ -574,7 +582,8 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.push({ ...s, capture: { ...s.capture, mode: records ? s.capture.mode : 'unavailable', transcript: part('unavailable', at, by), recording: records ? s.capture.recording : part('unavailable', at, by) } });
   }
 
-  private capture(mode: 'on' | 'off' | 'paused'): void {
+  /** `limit`: notes went off because the organizer's notes or storage ran out, not because they turned them off. */
+  private capture(mode: 'on' | 'off' | 'paused', limit?: 'notes' | 'storage'): void {
     const at = new Date().toISOString();
     const s = this.getSnapshot();
     const by = { kind: 'organizer' as const, name: s.host.organizer.name };
@@ -587,11 +596,13 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.push({
       ...s,
       capture: {
-        ...s.capture, mode, recording: part(mode, at, by), transcript: part(mode, at, by), ai: part(mode === 'off' && !s.notes.everOn ? 'off' : mode === 'off' ? 'on' : mode, at, by),
+        // Notes on again end a stop for the plan, as the server's limit is reset when they come on.
+        ...s.capture, ...(limit ? { stopped: { reason: limit, at }, runningOut: null } : mode === 'on' ? { stopped: null, runningOut: null } : {}), mode, recording: part(mode, at, by), transcript: part(mode, at, by), ai: part(mode === 'off' && !s.notes.everOn ? 'off' : mode === 'off' ? 'on' : mode, at, by),
         screen: mode === 'off' ? part('off', at, by) : s.capture.screen, gaps, requests: mode === 'on' ? [] : s.capture.requests, asked
       },
       notes: { ...s.notes, segmentStartedAt: mode === 'on' && was !== 'on' ? at : s.notes.segmentStartedAt, everOn: s.notes.everOn || mode === 'on', noteId: s.notes.noteId ?? (mode === 'on' ? this.noteId : null), recording: mode === 'on' && was !== 'on' ? { ...s.notes.recording, segment: s.notes.recording.segment + (s.notes.everOn ? 1 : 0) } : s.notes.recording },
-      notices: [...s.notices, { id: nextId('notice'), text, kind: 'notes' }]
+      // The banner over the call says why notes stopped, so no notice does.
+      notices: limit ? s.notices : [...s.notices, { id: nextId('notice'), text, kind: 'notes' }]
     });
     linkState(this.meeting.code, (l) => ({ hostHere: true, standIn: null, locked: false, ended: false, ...l, capture: this.getSnapshot().capture }));
   }
@@ -1175,7 +1186,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       chosen.items = [folder, ...chosen.items];
       home = chosen;
     } else {
-      home = { id: nextId('home'), name, role: s.isOrganizer ? 'admin' : s.role === 'guest' ? null : 'edit', inCall: false, people: this.meeting.guests.length + 1, items: [folder], createdAt: now, call: { title: this.meeting.title, at: s.startedAt } };
+      home = { id: nextId('home'), name, role: s.isOrganizer ? 'admin' : s.role === 'guest' ? null : 'edit', inCall: false, people: this.meeting.guests.length + 1, teamAccess: null, items: [folder], createdAt: now, call: { title: this.meeting.title, at: s.startedAt } };
       w.workspaces.push(home);
     }
     this.homeId = home.id;
@@ -1193,18 +1204,22 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   /**
    * Everyone views `id`: what was presented, a board or the workspace, ends for good in every part of the call, said there at
    * once; what was played stops; and everyone else is on its list until they open something there. It opens to everyone in the
-   * call, to edit what isn't restricted, while they're in it, and the one it used before closes to whoever isn't in it.
+   * call, to edit what isn't restricted, while they're in it, and the one it used before closes to whoever isn't in it. One
+   * someone else pays for opens only to its own people: a guest has nothing of it.
    */
   private view(id: string): void {
     const was = this.getSnapshot().workspace.id;
-    const tree = this.openedToCall(id);
+    const everyone = this.paysFor(id);
+    const tree = everyone ? this.openedToCall(id) : treeOf(id);
     if (was !== null && was !== id) {
       treeOf(was).inCall = false;
       hereIn(was, []);
       for (const [k, v] of this.where) this.where.set(k, { ...v, document: v.document !== null && this.itemIn(id, v.document) ? v.document : null });
       for (const [place, p] of [...this.presented]) this.endIt(place, p, false);
     }
-    this.space((w) => ({ ...w, id, home: this.homeId, name: tree.name, canOpen: true, role: tree.role, everyone: true, play: null }));
+    const shut = !everyone && this.getSnapshot().role === 'guest';
+    this.space((w) => (shut ? { ...w, id: null, home: this.homeId, name: null, canOpen: false, role: null, everyone: false, play: null }
+      : { ...w, id, home: this.homeId, name: tree.name, canOpen: true, role: tree.role, everyone, play: null }));
     this.showBoard();
     this.sayWhere();
   }
@@ -1269,11 +1284,19 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   }
   previewWorkspace(workspaceId: string): Promise<CallWorkspaceSwitch> {
     const no = this.organizerOnly();
-    if (no) return no.then(() => ({ name: '', cantOpen: [] }));
+    if (no) return no.then(() => ({ name: '', cantOpen: [], everyone: false }));
     const tree = treeOf(workspaceId);
     const members = new Set(peopleIn(workspaceId).map((p) => p.person.email.toLowerCase()));
     const cantOpen = this.getSnapshot().participants.filter((p) => !p.isMe && (this.guests.has(p.id) || !members.has(p.person.email.toLowerCase()))).map((p) => firstOf(p.person));
-    return Promise.resolve({ name: tree.name ?? '', cantOpen });
+    return Promise.resolve({ name: tree.name ?? '', cantOpen, everyone: this.paysFor(workspaceId) });
+  }
+  /**
+   * Whether the call's organizer pays for a workspace, as the call opens one to everyone in it only then. One the world says
+   * someone pays for (`paidBy`) is theirs; any other is taken to be the organizer's, as a call's home is.
+   */
+  private paysFor(workspaceId: string): boolean {
+    const payer = treeOf(workspaceId).paidBy;
+    return !payer || payer.email.toLowerCase() === this.meeting.organizer.email.toLowerCase();
   }
   setWorkspace(workspaceId: string): Promise<void> {
     const no = this.organizerOnly();
@@ -1287,7 +1310,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     const id = nextId('ws');
     // Made for the call, as its home is: the organizer and everyone invited, and no guest.
     current().workspaces.push({
-      id, name: name?.trim() || this.meeting.title, role: 'admin', inCall: false, people: this.meeting.guests.length + 1, items: [], createdAt: new Date().toISOString(),
+      id, name: name?.trim() || this.meeting.title, role: 'admin', inCall: false, people: this.meeting.guests.length + 1, teamAccess: null, items: [], createdAt: new Date().toISOString(),
       call: { title: this.meeting.title, at: this.getSnapshot().startedAt }
     });
     this.view(id);
@@ -1622,7 +1645,17 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.change((s) => ({ ...s, ringing: s.ringing.map((x) => (x.id === id ? next : x)) }));
     if (reply === 'join') this.after(2500, () => { this.change((s) => ({ ...s, ringing: s.ringing.filter((x) => x.id !== id) })); this.join(r.person); this.hosting(); });
   }
-  setNotes(on: boolean): Promise<void> { this.capture(on ? 'on' : 'off'); return Promise.resolve(); }
+  /**
+   * As the server does (calls/recording.ts › changeCapture): notes come on again only while the organizer's plan has notes and
+   * room for them, and once they do, the stop is over. The organizer is you in the stand-in, so it's the world's plan.
+   */
+  setNotes(on: boolean): Promise<void> {
+    const plan = current().plan;
+    if (on && (plan.notes.stopped || plan.notes.minutesLeft <= 0)) return Promise.reject(new AlcoveApiError('plan-limit', 'Your notes for this period have run out. They start again when your plan renews.'));
+    if (on && plan.over.storage) return Promise.reject(new AlcoveApiError('plan-limit', 'Your storage is full, so notes can’t be kept. Delete something, or move to a plan with more room.'));
+    this.capture(on ? 'on' : 'off');
+    return Promise.resolve();
+  }
   pause(): Promise<void> { this.capture('paused'); return Promise.resolve(); }
   resume(): Promise<void> { this.capture('on'); return Promise.resolve(); }
   requestNotes(up: boolean): Promise<void> {

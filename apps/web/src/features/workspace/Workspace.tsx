@@ -3,7 +3,7 @@
  * call and a panel inside one, the same in both: it takes where it is and says where to go, and whatever holds it keeps the
  * address. See WorkspaceProps in context.ts.
  */
-import { firstName, type WorkspaceLive, type WorkspaceMention, type WorkspaceTree, type WorkspaceWhere } from '@alcove/api';
+import { errorMessage, firstName, type WorkspaceLive, type WorkspaceMention, type WorkspaceTree, type WorkspaceWhere } from '@alcove/api';
 import { Button, WsCantOpen, WsDoc, WsDragGhost, WsEmpty, WsFrame, WsOfflineEmpty, WsPane, WsPickDocument, WsToasts, useToast, wsToast, type WsToastData } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
@@ -13,6 +13,7 @@ import { overlayOpen, typing, withMod } from '~/lib/keys';
 import { useLive, useMedia, useOnline } from '~/lib/live';
 import { log } from '~/lib/log';
 import { q, qk, useWorkspaceName } from '~/lib/queries';
+import { useStorageRefusal } from '~/features/plans/storageFull';
 import { announceMentionsRead } from '~/features/shell/attentionChannel';
 import { useTreeActions } from './actions';
 import { BoardPane } from './BoardPane';
@@ -212,7 +213,11 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, onExpand,
   /* Its pictures, read for whatever shows them and let go of with it; an upload that outlives the page says how it went here. */
   const pictures = useMemo(() => new Pictures(workspaceId, pass), [workspaceId, pass]);
   useEffect(() => () => pictures.close(), [pictures]);
-  useEffect(() => talkThrough(workspaceId, say), [workspaceId, say]);
+  /* Storage full is said as the doors say it, with what helps; anything else in the server's own words. */
+  const refused = useStorageRefusal(owner !== null, call ? 'call' : 'page');
+  useEffect(() => talkThrough(workspaceId, (e, bytes) => {
+    void refused(e, bytes).then((r) => say(wsToast.failed(r?.text ?? errorMessage(e), r?.action ?? undefined)));
+  }), [workspaceId, say, refused]);
   const qc = useQueryClient();
   useEffect(() => onStored((id) => { if (id === workspaceId) void qc.invalidateQueries({ queryKey: qk.workspaceMedia(id) }); }), [qc, workspaceId]);
   const { name: spaceName, state: spaceSave } = useWorkspaceName(workspaceId, view.tree?.name ?? 'Shared with you', owner !== null);

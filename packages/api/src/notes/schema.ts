@@ -55,10 +55,13 @@ export const RecipientSchema = z.object({
 export type Recipient = z.infer<typeof RecipientSchema>;
 
 
-/** How you got someone else's note: invited to its call, or shared with you afterwards ("Priya shared it with Product"). */
+/**
+ * How you got someone else's note: invited to its call, shared with you afterwards ("Priya shared it with Product"), or
+ * made visible to your team by its organizer (`team`: you can read it and ask about it, nothing more).
+ */
 export const ReceivedSchema = z.object({
-  role: z.enum(['invited', 'shared']),
-  /** The organizer, for a call you were invited to; otherwise whoever shared the notes with you. */
+  role: z.enum(['invited', 'shared', 'team']),
+  /** The organizer, for a call you were invited to or a team's note; otherwise whoever shared the notes with you. */
   by: PersonSchema,
   /** You opened a link `by` made, rather than being given the notes by your address. */
   link: z.literal(true).optional(),
@@ -116,6 +119,8 @@ export const NoteSummarySchema = z.object({
   excerpt: z.string(), openActions: z.number(), totalActions: z.number(), meetingId: IDSchema.optional(),
   /** How you got the note, when it's someone else's. Absent on your own. */
   received: ReceivedSchema.optional(),
+  /** Whether its organizer made it visible to their team. */
+  teamVisible: z.boolean(),
   /** The series its call is in, when it's in one: see series.get. Worked out on each read, from the call in its organizer's vault. */
   seriesId: IDSchema.optional(),
   /**

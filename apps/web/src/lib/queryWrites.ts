@@ -225,7 +225,7 @@ function withFields(p: Preferences, from: PreferenceChange, fields: PreferenceCh
     showOtherMeetings: f('showOtherMeetings'), recordOffline: f('recordOffline'), pinned: f('pinned'), groups: f('groups'), model: f('model'),
     notificationsPausedUntil: f('notificationsPausedUntil'),
     sounds: { enabled: sound('enabled'), volume: sound('volume'), quiet: sound('quiet'), mic: sound('mic'), people: sound('people'), hands: sound('hands'), questions: sound('questions'), messages: sound('messages'), replies: sound('replies'), mentions: sound('mentions'), admissions: sound('admissions'), timers: sound('timers'), ringing: sound('ringing') },
-    notifications: { enabled: notify('enabled'), privateMessages: notify('privateMessages'), replies: notify('replies'), chatMentions: notify('chatMentions'), hands: notify('hands'), questions: notify('questions'), admissions: notify('admissions'), timers: notify('timers'), ringing: notify('ringing'), beforeCall: notify('beforeCall'), notesReady: notify('notesReady'), sharedWithYou: notify('sharedWithYou'), notesRequested: notify('notesRequested'), followUpDue: notify('followUpDue'), tagged: notify('tagged') }
+    notifications: { enabled: notify('enabled'), privateMessages: notify('privateMessages'), replies: notify('replies'), chatMentions: notify('chatMentions'), hands: notify('hands'), questions: notify('questions'), admissions: notify('admissions'), timers: notify('timers'), ringing: notify('ringing'), beforeCall: notify('beforeCall'), notesReady: notify('notesReady'), sharedWithYou: notify('sharedWithYou'), notesRequested: notify('notesRequested'), followUpDue: notify('followUpDue'), tagged: notify('tagged'), plan: notify('plan') }
   };
 }
 export const withPreferenceChange = (current: Preferences, change: PreferenceChange): Preferences => withFields(current, change, change);
@@ -366,7 +366,7 @@ export function updateActionOptions(api: AlcoveApi, client: QueryClient, keys: A
         const mine = answer.owner?.person?.email === client.getQueryData<Session | null>(keys.session)?.user.email;
         const existing = inbox.followUps.some((a) => a.id === answer.id && a.noteId === note.id);
         const followUps = inbox.followUps.flatMap((a) => a.id !== answer.id || a.noteId !== note.id ? [a] : mine && !answer.done ? [confirmedAction(a, answer, ctx.input.patch)] : []);
-        if (mine && !answer.done && !existing) followUps.push({ ...answer, noteId: note.id, noteTitle: note.title, noteStartedAt: note.startedAt, role: note.received?.role ?? 'organizer' });
+        if (mine && !answer.done && !existing) followUps.push({ ...answer, noteId: note.id, noteTitle: note.title, noteStartedAt: note.startedAt, role: !note.received ? 'organizer' : note.received.role === 'team' ? 'shared' : note.received.role });
         return { ...inbox, followUps };
       });
     } },

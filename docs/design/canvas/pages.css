@@ -98,7 +98,7 @@
 .hz-wake.is-2 { left: calc(var(--cw) * .3); top: 16px; width: calc(var(--cw) * .42); opacity: .22; }
 .hz-wake.is-3 { left: calc(var(--cw) * .4); top: 22px; width: calc(var(--cw) * .22); opacity: .13; }
 /* Far out, on the pages with a short sky. */
-.lf[data-moment="notes"] .hz-sail, .lf[data-moment="settings"] .hz-sail { --small: .62; }
+.lf[data-moment="notes"] .hz-sail, .lf[data-moment="plans"] .hz-sail, .lf[data-moment="settings"] .hz-sail { --small: .62; }
 .hz-sail:not(.is-left) .hz-craft { scale: var(--small, 1); }
 .hz-sail.is-left .hz-craft { scale: calc(-1 * var(--small, 1)) var(--small, 1); }
 @keyframes hz-bob { 0%, 100% { transform: rotate(0); } 7% { transform: rotate(-1.4deg); } 19% { transform: rotate(1.2deg); } 31% { transform: rotate(-1deg); } 44% { transform: rotate(1.5deg); } 58% { transform: rotate(-1.3deg); } 71% { transform: rotate(1deg); } 86% { transform: rotate(-1.1deg); } }

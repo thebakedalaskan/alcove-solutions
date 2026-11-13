@@ -74,7 +74,7 @@ export function useDriveActions() {
   /** A new workspace, named: it opens on the sheet, empty, ready for something to go in it. `then`: make that in it straight away. */
   const newWorkspace = useCallback(async (name: string, then?: { kind: Making; files: readonly File[] } | undefined) => {
     try {
-      const { id } = await createWorkspace.mutateAsync(name);
+      const { id } = await createWorkspace.mutateAsync({ name });
       if (then) await make(then.kind, { workspaceId: id, folder: null }, then.files);
       else go({ ws: id });
     } catch (e) {

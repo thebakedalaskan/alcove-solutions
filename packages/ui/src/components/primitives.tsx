@@ -137,11 +137,16 @@ export function Checklist({ items, label, className }: { items: Checked[]; label
 }
 
 /** A calm sentence with a way forward. Caution for problems (there is no alarm red), info for information. */
-export function Notice({ tone = 'info', icon, children, className }: { tone?: 'info' | 'caution'; icon?: IconName | undefined; children: ReactNode; className?: string | undefined }) {
+export function Notice({ tone = 'info', icon, children, className, onDismiss, dismissLabel = 'Dismiss' }: {
+  tone?: 'info' | 'caution'; icon?: IconName | undefined; children: ReactNode; className?: string | undefined;
+  /** Something said until it's dismissed: an × at its end, named by `dismissLabel`. */
+  onDismiss?: (() => void) | undefined; dismissLabel?: string | undefined;
+}) {
   return (
-    <div className={cn('ac-notice', `is-${tone}`, className)} role={tone === 'caution' ? 'status' : undefined}>
+    <div className={cn('ac-notice', `is-${tone}`, onDismiss && 'has-x', className)} role={tone === 'caution' ? 'status' : undefined}>
       <Icon name={icon ?? (tone === 'caution' ? 'clock' : 'lock')} size={18} />
       <div>{children}</div>
+      {onDismiss && <IconButton icon="x" size={16} label={dismissLabel} className="ac-notice-x" onClick={onDismiss} />}
     </div>
   );
 }

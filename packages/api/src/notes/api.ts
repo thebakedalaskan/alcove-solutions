@@ -77,10 +77,16 @@ export interface NotesApi {
   /** Answers a question about one written note from its transcript, or from the notes once that's deleted, citing moments in it and the shared screens it read. */
   ask(noteId: ID, question: string): AsyncIterable<AnswerPart>;
   /**
-   * Answers a question from every note you have, your own and ones shared with you, citing the notes
-   * and moments it comes from. With no written notes to go on, it says so and asks no model.
+   * Answers a question from every note you have, your own, ones shared with you and your team's visible ones, citing
+   * the notes and moments it comes from. `refs` (up to 5, @-referenced in the question) are always read first; one you
+   * can't open is refused. With no written notes to go on, it says so and asks no model.
    */
-  askAll(question: string): AsyncIterable<AnswerPart>;
+  askAll(question: string, refs?: ID[]): AsyncIterable<AnswerPart>;
+  /**
+   * The organizer, while licensed on a team: makes a note visible to the team (read and ask only), or stops it being.
+   * It stays visible after they leave the team.
+   */
+  setTeamVisible(noteId: ID, visible: boolean): Promise<void>;
   /**
    * Shares the notes with more people, by email. For one of your groups, send its addresses and its
    * name: everyone it reaches sees who shared the notes and with which group. They find them in
@@ -105,13 +111,17 @@ export interface NotesApi {
   personal(id: ID): PersonalApi;
   /** What adding one of your own entries to the shared notes would do: exactly what goes, where, and who gets it. Sends nothing. */
   previewAddition(id: ID, entryId: ID): Promise<PromotionPreview>;
-  /** Adds it, as previewed, for everyone with the notes. Refused if the people or the moments changed since the preview. */
+  /**
+   * Adds it, as previewed, for everyone with the notes and the team they're visible to. Refused if the people, the team or the
+   * moments changed since the preview.
+   */
   addToShared(id: ID, entryId: ID, body: PromoteBody): Promise<Note>;
   /** Who'd read something written straight into the shared notes now, once they're written, and the seal that holds writing to them. Sends nothing. */
   sharedAudience(id: ID): Promise<SharedAudience>;
   /**
    * Writes straight into the shared notes, under your name, for everyone with the notes, once they're written. Refused
-   * (`conflict`) if anyone got the notes since `sharedAudience`. Like an addition, it can be taken back, not changed.
+   * (`conflict`) if anyone got the notes, or a team could read them, or no longer can, since `sharedAudience`. Like an
+   * addition, it can be taken back, not changed.
    */
   writeShared(id: ID, body: SharedWrite): Promise<Note>;
   /** Takes something added to the shared notes out of them, for good: your own addition, or any on your own notes. */

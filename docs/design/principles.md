@@ -27,6 +27,7 @@ page is one action. A page that's mostly one action is mostly sky; a page you re
 | Team | The sun low and to the left, behind the people standing on the horizon. | 40% |
 | Agents | Team's the other way round: the sun low and to the right, just past the end of the line of agents. | About 41% (49% on the first day, about 75% while an agent asks, and 56% once it's answered) |
 | Calls | Just after sunset. The sun has gone and only its glow is left; stars come out after dark. | A short band (13%, 112 to 128px) |
+| Plans | The last of the sunset: a long low glow, and only a sliver of the sun, which the page draws under its Monthly / Yearly switch. No clouds. | 270px (300px on a phone) |
 | A call's page | A slim band over the title and its line; the call plays on its own night stage, on the water. | 158px (196px on a phone) |
 | Settings | The last of the light. | 136px |
 
@@ -125,13 +126,17 @@ page. Blue Hour takes the page and the pressable colour from the logo's own sky 
 | Text | `ink`, `ink-2`, `ink-3` |
 | The one thing you press | `sun`, `on-sun` |
 | Warmth and highlights | `sun-text`, `sun-soft`, `sun-glow` |
-| Meaning | `rose`, `horizon`, `rec`, `caution`, each with a `-soft` |
+| Meaning | `rose`, `horizon`, `rec`, `caution`, each with a `-soft`; `caution-text` for small caution text out on the scene |
+| Someone with no portrait: their arch and its initial, pale in both themes as portraits are, never a gap at night | `arch-fill`, `arch-ink` |
 | The call stage, always night | `stage`, `stage-tile`, `stage-raised`, `stage-ink`, `stage-ink-2`, `speak`, `stage-point` (pointers on a shared screen) |
 | Drawing on the evening | `dusk-sun`, `dusk-haze` |
 | Illustration, tour art and covers only | `dawn-1` to `dawn-4`, `gold`, the `cover-*` gradients |
 | A highlight or comment in a document | `hl` |
 | Code in a document, by what each word is: its own palette, no green | `code-keyword`, `code-string`, `code-number`, `code-name`, `code-comment` |
 
+- One named exception, from the approved plans canvas ([canvas/plans](canvas/plans/README.md)): the side panel's
+  notes-left meter runs from `rose` through `sun-text` to `gold`, the walk of the logo's own sky. It says how much of the
+  period's notes is left and nothing more: not a decision waiting, and not illustration. It turns `sun-text` under an hour.
 - Every screen works in light and dark. Design both, and don't simply invert: check contrast (4.5:1 for text) in each.
 - The side panel is dark in both themes. The call is night in both, but for your side in it and a board on its stage,
   which take your theme. Record and the page a call leaves you on are night in both.
@@ -155,8 +160,15 @@ When a page's hero is a number that stays put, such as the minutes of notes left
 number that changes while you look, such as a timer or a count, takes Hanken Grotesk with `tabular-nums`, so its digits
 don't jump.
 
+Four places take Newsreader without being a page's title or hero. They're named exceptions, because they're the approved
+plans canvas's look ([canvas/plans](canvas/plans/README.md)): the plan's name in the side panel's foot (Pro, Team),
+checkout's headlines (`CheckoutBig`: "You're on Pro", "Nothing arrived in 24 hours", which Add money's payment says with
+the same parts), a receipt's title (`PaymentReceipt`), and the plans' prices, on Plans and on the welcome page. Nothing
+else does: a new place for Newsreader is a design decision, not a style.
+
 In the light theme, `ink-3` doesn't reach 4.5:1 out on the sky or the sea. Meta text on the scene uses `ink-2`; `ink-3` is
-for text on `surface` and `ground`. Warm `sun-text` on the light sky is kept large or put on an icon.
+for text on `surface` and `ground`. Warm `sun-text` on the light sky is kept large or put on an icon. Small caution text out
+on the scene (Waiting for a license on Team's water) takes `caution-text`, which by day is deep enough to read there.
 
 Truncate with `ac-clamp-1` or `ac-clamp-2` rather than `nowrap`, so long text can't widen a column. Don't also set
 `display: block` on it: that cancels the clamp.
@@ -187,6 +199,8 @@ Truncate with `ac-clamp-1` or `ac-clamp-2` rather than `nowrap`, so long text ca
   - 1320px: Home's widgets stack
   - 1241px: narrower than this, Calls' rows tighten their columns
   - 1240px and 1000px: Settings tightens, then its index becomes a strip
+  - a page under 1000px wide (a window under about 1256px with the side panel open): Team's admin cards fold under its
+    people
   - 1180px: the welcome page's top bar drops its links
   - 1100px: the top search becomes an icon, and Calls' rail narrows, its counts stepping back
   - 860px: the side panel becomes a top bar and a tab bar, with Record standing up out of it
@@ -226,6 +240,7 @@ Everything comes from the tokens in `styles.css`. Don't invent values.
   | Team | Gulls, a fish, a shoal, a flying fish, dolphins | Five kinds of boat and ship |
   | Agents | The same as Team: gulls, a fish, a shoal, a flying fish, dolphins | Five kinds of boat and ship |
   | Calls | Gulls, a shooting star, a fish, a shoal | A sailing boat, a fishing boat, a freighter |
+  | Plans | Gulls, a shooting star, a fish, a shoal | A sailing boat, a fishing boat, a freighter |
   | A note | A shooting star, only in the dark | Nothing |
   | Settings | Nothing | A sailing boat, a freighter |
   | Record | A shooting star, a fish, a whale's tail | A sailing boat, a tall ship, a fishing boat |

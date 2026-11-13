@@ -19,7 +19,8 @@ import { forgetAnswers } from '../meetings/access';
 import { takeAllBack } from '../notes/additions';
 import { forgetAllMade } from '../notes/links';
 import { queueDelete } from '../recordings/audio';
-import { openAccount } from '../billing/service';
+import { open as openPlan, tellPayers } from '../billing/plans';
+import { forgetMembership, memberChanged, refuseDeletingAdmin } from '../billing/teams';
 import { forgetAccess, grantToRevoke, release, revokeGrant, unreachable, withdraw } from '../meetings/calendar';
 import { create as createMeeting, findUpcoming } from '../meetings/service';
 import { deleteOwnNote, heldNoteIds } from '../notes/service';
@@ -110,7 +111,7 @@ type SignIn = { provider: 'google'; who: GoogleIdentity } | { provider: DemoProv
 
 /**
  * Signs a verified identity in and opens a session. The first sign-in creates the account: its keys,
- * its profile from the provider, and its credits; a demo identity also gets the sample calendar.
+ * its profile from the provider, and its plan (Free); a demo identity also gets the sample calendar.
  */
 export async function signIn(d: Deps, { provider, who }: SignIn): Promise<{ owner: Owner; sessionId: string; isNew: boolean }> {
   const subject = blindIndex(indexKey(d), 'subject', who.subject);
@@ -133,6 +134,8 @@ export async function signIn(d: Deps, { provider, who }: SignIn): Promise<{ owne
         await changeProfile(await openOwner(d, existing.owner_id, undefined, c), c, (p) => ({ ...p, email: who.email }));
         await moveAddress(d, c, existing.owner_id, existing.email_index, who.email);
       }
+      // Their team shows them as their provider has them now, name and address, from this sign-in on.
+      await memberChanged(d, c, existing.owner_id, { name: who.name, email: who.email });
       return { ownerId: existing.owner_id, isNew: false };
     }
     if (provider === 'google' && d.cfg.GOOGLE_SIGNUP_MODE === 'testers' && !d.cfg.GOOGLE_SIGNUP_TESTERS.includes(who.email)) {
@@ -143,7 +146,7 @@ export async function signIn(d: Deps, { provider, who }: SignIn): Promise<{ owne
     const o = ownerFrom(d, ownerId, root, undefined);
     const p: Profile = { name: who.name, email: who.email, ...(who.photoUrl ? { photoUrl: who.photoUrl } : {}), sample: who.sample, preferences: DEFAULT_PREFERENCES, invited: [] };
     await createItem(o, c, 'profile', p);
-    await openAccount(d, c, ownerId);
+    await openPlan(d, c, ownerId);
     return { ownerId, isNew: true };
   });
 
@@ -192,7 +195,8 @@ const REVOKE_MS = 3_000;
  * opened); its access to the notes other people gave its address and what it answered on their calls (unless another
  * account signs in with that address too); its place in every workspace and on every document given to that
  * address, and in feature flags' groups and grants, on the same condition, and what its calls gave people's seats in workspaces; and the account's row, which takes its own notes on anyone's notes, sign-in identity, sessions, profile (pins and groups with it),
- * Google connection, receipts, notes jobs and credits with it. Then the LiveKit rooms of its calls still
+ * Google connection, receipts, notes jobs, plan and AI allowance with it; its place on a team, and the team it's the admin
+ * of once nobody else is on it (refused until then). Then the LiveKit rooms of its calls still
  * going are closed, which takes everyone in them out, as ending a call does; the audio and shared-screen
  * objects, and those of any file that went from a workspace, are deleted, and any the store refuses wait in object_gc
  * for maintenance. Notes it shared on
@@ -204,6 +208,8 @@ export async function deleteAccount(o: Owner): Promise<void> {
   // Another deletion committed after this request was signed in: there's nothing left to delete.
   if (!existing) { alog.info('account already deleted', { ownerId: o.ownerId }); return; }
   if (isSharedDemo(existing.manifest)) throw new ForbiddenError('This is the shared demo account, so it can’t be deleted.', { context: { ownerId: o.ownerId } });
+  // A team's admin goes once nobody else is on it: asked first, before anything is cancelled, and again as it's deleted.
+  await refuseDeletingAdmin(o.pool, o.ownerId);
   let refreshToken: string | undefined;
   try {
     refreshToken = await grantToRevoke(o);
@@ -243,13 +249,15 @@ export async function deleteAccount(o: Owner): Promise<void> {
     // Its address in feature flags' groups and grants, on the same condition as note_access.
     const featureFlags = await forgetFeatureFlags(c, indexKey(o), p.manifest.email, o.ownerId);
     const workspaces = await forgetAccount(o, c, p.manifest.email, callIds);
+    // Its place on a team, and the team itself if it's the admin of one nobody else is on.
+    const team = await forgetMembership(c, o.ownerId);
     // Every other table keyed by the account cascades from its row.
     await exec(c, 'DELETE FROM owners WHERE owner_id = $1', [o.ownerId]);
     // After its row: taking its own notes with it waits for anything being added, which is here by now, or fails from now on.
     const added = await takeAllBack(o, c);
     // And every link it made to anyone's notes: they hand on only what their maker has.
     const links = await forgetAllMade(o, c);
-    return { meetings, notes: notes.length, objects, frames, received, answers, rings, featureFlags, added, links, rooms, workspaces };
+    return { meetings, notes: notes.length, objects, frames, received, answers, rings, featureFlags, added, links, rooms, workspaces, team };
   });
   if (!gone) { alog.info('account already deleted', { ownerId: o.ownerId }); return; }
   forgetAccess(o.ownerId);
@@ -258,11 +266,13 @@ export async function deleteAccount(o: Owner): Promise<void> {
   // The audio, screens and workspaces' files first: a slow Google mustn't hold them up.
   await queueDelete(o, gone.objects);
   await collect(o, gone.workspaces.owners);
+  // Whoever pays for a workspace it paid for now is told, once that's so.
+  await tellPayers(o, gone.workspaces.moves);
   await revokeGrant(o, refreshToken, AbortSignal.timeout(REVOKE_MS));
   alog.info('account deleted', {
     ownerId: o.ownerId, calendarCancelled: calendar.cancelled, calendarKept: calendar.kept, calendarNotCancelled: calendar.notCancelled,
     meetings: gone.meetings, notes: gone.notes, received: gone.received, answers: gone.answers, rings: gone.rings, featureFlags: gone.featureFlags, added: gone.added, links: gone.links, objects: gone.objects.length, frames: gone.frames, rooms: gone.rooms.length,
-    workspaces: gone.workspaces.workspaces, workspacesDeleted: gone.workspaces.deleted, ms: Math.round(performance.now() - t0)
+    workspaces: gone.workspaces.workspaces, workspacesDeleted: gone.workspaces.deleted, leftTeam: gone.team.left, teamDeleted: gone.team.teamDeleted, ms: Math.round(performance.now() - t0)
   });
 }
 

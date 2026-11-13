@@ -14,6 +14,7 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useNoteReader } from '~/features/notes/entries';
 import { marked } from '~/features/notes/highlight';
+import { readerRole } from '~/features/notes/meta';
 import { byTime, noSummary, othersIn } from '~/features/calls/list/said';
 import { decisionLine, inNote, notDecided, playIn } from '~/features/notes/parts';
 import { callName, spokenName } from '~/lib/people';
@@ -184,7 +185,7 @@ function MomentPreview({ row, me, terms, onOpen, onSettled }: PreviewProps & { r
       </>
     )}>
       <PalettePreviewHead title={n.title} meta={line.room ? `${when(n)} · ${line.room.name}` : when(n)} people={othersIn(n.people, me)} />
-      {made && note && <MadeTile made={made} me={me} reader={readerOf(note.received?.role ?? 'organizer')} busy={decide.isPending} onChange={(d, patch) => void change(d, patch)} />}
+      {made && note && <MadeTile made={made} me={me} reader={readerOf(readerRole(note.received))} busy={decide.isPending} onChange={(d, patch) => void change(d, patch)} />}
       <div ref={excerpt}>
         <PaletteExcerpt>
           {lines.map((l) => (

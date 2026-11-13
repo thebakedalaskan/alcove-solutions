@@ -7,8 +7,10 @@
  *
  * A method nothing renders yet answers with something sensible and empty. When the contract grows, this grows with it.
  */
-import { StartTopUpBodySchema, type TopUp, AgentUpdateInputSchema } from '@alcove/api';
-import { PREVIEW_DEPOSIT_ADDRESS } from '../world/payments';
+import { StartTopUpBodySchema, type Plan, type Purchase, type TopUp, AgentUpdateInputSchema } from '@alcove/api';
+import { boughtFromBalance, freshEntryId, PREVIEW_BASE_ADDRESS, PREVIEW_DEPOSIT_ADDRESS } from '../world/payments';
+import { withProMonths, withRenewal } from '../world/plans';
+import { playPayment, refusalOf, settlePayments, shortOf } from './payments';
 import { DriveExportInputSchema, NOTE_LINK_DAYS, type DriveAutomatic, type DriveCallExports, type DriveExportFormat, type DriveExportInput, type DriveExportJob, type NewNoteLink, type NoteLink, type NoteLinkClaimed } from '@alcove/api';
 import { disconnectedDrive } from '../world/drive-exports';
 import type { BoardSortBody, DocAskBody, DocAskPart, WorkspaceReadOptions } from '@alcove/api';
@@ -16,8 +18,8 @@ import {
   ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpReview, type FollowUpTarget, type NoteAction, AgentAuthorizationIdSchema, AgentConnectionIdSchema, AgentDecisionInputSchema, AgentTokenInputSchema, DEFAULT_NOTES_CHOICES, searchOf, termsIn, termsSaid, type ActionPatch, type ActionProposal, type AlcoveApi, type AgentConnection, type AnswerPart, type Busy, type CallCard,
   type CallDocument, type CallSession, type Change, type ChangeScope, type DecisionPatch, type DecisionProposal, type ID, type Inbox, type IncomingRing,
   type InstantCallInput, type Interval, type LinePatch, type Meeting, type MeetingInput, type Note, type NoteFound, type NoteKind, type NoteProgress, type NoteSaid,
-  type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series, type SharedAudience, type SharedWrite,
-  type SeriesAnswerPart, type SeriesNote, type SignInResult, type DemoProvider, type RoomRecordingInput, type RoomRecording, type CallMoveIn, type TranscriptLine, type Attestation
+  type AudienceTeam, type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series, type SharedAudience, type SharedWrite,
+  type SeriesAnswerPart, type SeriesNote, type SignInResult, type DemoProvider, type RoomRecordingInput, type RoomRecording, type CallMoveIn, type TeamAccess, type TranscriptLine, type Attestation
 } from '@alcove/api';
 import { isOnline } from '../browser';
 import { canvasTheme } from '../world/boards';
@@ -34,6 +36,8 @@ import { AI_MODELS, atTheDoor } from './script';
 import { current, me, nextId, openedAs } from './state';
 import { activityOf, agentRequest, agentsFor, answer as answerRequest, answered, connectionAllowed, EXPIRED_AGENT_REQUEST, forgetAgents, PREVIEW_AGENT_TOKEN, PREVIEW_MCP_ENDPOINT } from './agents';
 import * as spaces from './workspaces';
+import { licensed, licensedCount, teamNoteIn, teamNotesFor, teamsApi, visit } from './teams';
+import { isLive } from '../world/teams';
 import type { CallAheadMake, ProposalAnswer } from '@alcove/api';
 import { readyIn } from '../world/call-page';
 import { previewsIn, trashIn } from './drive';
@@ -50,7 +54,31 @@ const paymentIn = (w: World, id: string): TopUp => {
   if (!t) throw refused('not-found', 'That top-up isn’t there any more.');
   return t;
 };
+/** Refuses a purchase as the server does before anything is bought or a payment opened for it (api/payments.ts has the terms). */
+function checkPurchase(w: World, buys: Purchase): void {
+  const r = refusalOf(w, buys);
+  if (r) throw refused(r.code, r.asked);
+}
+/** The plan as the server answers with it: saying whether renewing will buy the next month, at the prices in force now. */
+const planOf = (w: World): Plan => withRenewal(w.plan, w.payments.offers.pro.microUsdPerMonth, w.payments.proMonthly);
+/** Buys from the balance once the purchase checks out, refused with nothing charged when the balance is short. */
+function buyNow(w: World, buys: Purchase) {
+  checkPurchase(w, buys);
+  const short = shortOf(w, buys);
+  if (short) throw refused('conflict', short);
+  boughtFromBalance(w, buys, freshEntryId(w));
+  return planOf(w);
+}
 const offline = () => new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.');
+/**
+ * A question about your notes is paid from your own notes (apps/api/src/features/billing/meter.ts): once this period's have
+ * run out, the server refuses it before anything is written, in its own words.
+ */
+function mayAsk(w: World): void {
+  if (w.plan.notes.stopped || w.plan.notes.minutesLeft <= 0) {
+    throw new AlcoveApiError('plan-limit', 'Your notes for this period have run out. They start again when your plan renews.', { requestId: nextId('sb-req') });
+  }
+}
 /** With a call's pass, anyone in the call asks, a guest too, as the API reads it with the pass; without one, an account. */
 const asWho = (o?: WorkspaceReadOptions | undefined): 'anyone' | 'signed-in' => (o?.pass ? 'anyone' : 'signed-in');
 /**
@@ -116,8 +144,17 @@ function driveChoice(w: World, input: DriveExportInput) {
 /** The links to a note that still work, newest first. */
 const linksTo = (w: World, noteId: string): NoteLink[] => (w.noteLinks ?? []).filter((x) => x.noteId === noteId && Date.parse(x.link.expiresAt) > Date.now()).map((x) => x.link).reverse();
 
-/** What holds a box for writing into the shared notes to who had the notes when it opened: if anyone gets them since, it's refused. */
-const audienceSeal = (n: Note) => `shared:${n.people.map((p) => p.email.toLowerCase()).sort().join(' ')}`;
+/**
+ * The team a note is visible to, as whoever adds to it is shown: Art's own notes are visible to Art's team when he says so, and
+ * everyone live-licensed on it reads them, `people` of them not on the note already.
+ */
+const teamReading = (w: World, n: Note): AudienceTeam | null => {
+  const t = w.myTeam;
+  return n.teamVisible && t ? { name: t.name, people: t.members.filter((m) => isLive(m) && !n.people.some((p) => sameAddress(p.email, m.person.email))).length } : null;
+};
+const sameAddress = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+/** What holds a box for writing into the shared notes to who had the notes when it opened, and the team they were visible to: if either changes, it's refused. */
+const audienceSeal = (n: Note) => `shared:${n.people.map((p) => p.email.toLowerCase()).sort().join(' ')}${n.teamVisible ? ':team' : ''}`;
 
 /** Whether automatic exports cover a call, as the server's rule has it: on, and the call ended after they were turned on. */
 function automaticFor(w: World, n: Note): DriveAutomatic {
@@ -392,7 +429,8 @@ export const standIn: AlcoveApi = {
       w.session = s;
       return { session: s, isNew: w.notes.length === 0 };
     }, 'anyone'),
-    signOut: () => answer((w) => { w.session = null; })
+    signOut: () => answer((w) => { w.session = null; }),
+    visit: () => answer(visit)
   },
   account: {
     preferences: () => answer((w) => w.prefs),
@@ -630,7 +668,8 @@ export const standIn: AlcoveApi = {
   },
   notes: {
     list: (query) => answer((w) => found(w, query?.kind, query?.text, query?.by)),
-    get: (id: ID) => answer((w) => noteIn(w, id)),
+    // A note of the team's opens for a licensed member: to read and ask about.
+    get: (id: ID) => answer((w) => teamNoteIn(w, id) ?? noteIn(w, id)),
     progress: (id: ID): AsyncIterable<NoteProgress> => progressOf(id),
     audioUrl: (id: ID, segment: number) => {
       const seconds = current().notes.find((n) => n.id === id)?.audio.find((a) => a.index === segment)?.seconds ?? 60;
@@ -744,8 +783,31 @@ export const standIn: AlcoveApi = {
       if (w.writing?.id === noteId) w.writing = null;
       return { ...n, writingAgain: false };
     }),
-    ask: (noteId: ID, question: string) => stream((w) => asWritten(answerAbout(noteIn(w, noteId), question))),
-    askAll: (question: string) => stream((w) => asWritten(answerAcross(w, question))),
+    ask: (noteId: ID, question: string) => stream((w) => {
+      const n = teamNoteIn(w, noteId) ?? noteIn(w, noteId);
+      mayAsk(w);
+      return asWritten(answerAbout(n, question));
+    }),
+    // Your notes, the ones shared with you and your team's; the ones @-referenced first, and one you can't open refused.
+    // With written notes to answer from and none of your notes left this period, it's refused before anything is written.
+    askAll: (question: string, refs?: ID[]) => stream((w) => {
+      const team = teamNotesFor(w).filter((n) => n.received?.role === 'team');
+      const all = [...w.notes, ...team];
+      const named = (refs ?? []).slice(0, 5).map((id) => {
+        const n = all.find((x) => x.id === id);
+        if (!n) throw refused('not-found', 'One of the notes you referred to isn’t there, or you can’t open it.');
+        return n;
+      });
+      if (all.some((n) => n.status === 'ready')) mayAsk(w);
+      const about = named.filter((n) => n.status === 'ready').flatMap((n) => answerAbout(n, question));
+      return asWritten([...about, ...(about.length ? [] : answerAcross({ ...w, notes: all }, question))]);
+    }),
+    setTeamVisible: (id: ID, visible: boolean) => answer((w) => {
+      const n = noteIn(w, id);
+      if (n.received) throw refused('forbidden', 'Only the note’s organizer can make it visible to their team.');
+      if (visible && !licensed(w)) throw refused('forbidden', 'You need a team license to make a note visible to your team.');
+      w.notes = w.notes.map((x) => (x.id === id ? { ...x, teamVisible: visible } : x));
+    }),
     share: (id: ID, to: { emails: string[]; group?: string | undefined }) => changeNote(id, (n) => {
       const at = new Date().toISOString();
       const fresh = to.emails.map(personAt).filter((p) => !n.people.some((x) => x.email === p.email));
@@ -762,7 +824,7 @@ export const standIn: AlcoveApi = {
       if (!e) throw refused('not-found', 'That isn’t in your notes any more.');
       const text = e.kind === 'note' ? e.text : e.kind === 'bookmark' ? e.label : e.answer;
       const moments = e.kind === 'bookmark' ? (e.moment ? [e.moment] : []) : e.kind === 'answer' ? e.moments : [];
-      return { entryId, text, moments, destination: { noteId: id, title: n.title }, audience: n.people, seal: `seal-${entryId}` };
+      return { entryId, text, moments, destination: { noteId: id, title: n.title }, audience: n.people, team: teamReading(w, n), seal: `seal-${entryId}` };
     }),
     addToShared: (id: ID, entryId: ID, body: PromoteBody) => changeNote(id, (n, w) => {
       const e = (w.personal[id] ?? []).find((x) => x.id === entryId);
@@ -798,7 +860,7 @@ export const standIn: AlcoveApi = {
     sharedAudience: (id: ID) => answer((w): SharedAudience => {
       const n = noteIn(w, id);
       if (n.status !== 'ready') throw refused('conflict', 'These notes are still being written. You can add this once they are.');
-      return { audience: n.people, seal: audienceSeal(n) };
+      return { audience: n.people, team: teamReading(w, n), seal: audienceSeal(n) };
     }),
     writeShared: (id: ID, body: SharedWrite) => changeNote(id, (n) => {
       if (n.status !== 'ready') throw refused('conflict', 'These notes are still being written. You can add this once they are.');
@@ -822,6 +884,7 @@ export const standIn: AlcoveApi = {
     get: (id: ID) => answer((w) => seriesIn(w, id)),
     ask: (id: ID, question: string): AsyncIterable<SeriesAnswerPart> => stream((w) => {
       const s = seriesIn(w, id);
+      mayAsk(w);
       const parts = answerAcross({ ...w, notes: w.notes.filter((n) => n.seriesId === id) }, question);
       return parts.flatMap((p): SeriesAnswerPart[] => {
         if (p.type === 'text') return [p];
@@ -834,10 +897,19 @@ export const standIn: AlcoveApi = {
   },
   workspaces: {
     list: () => answer(spaces.workspaceList),
-    create: (name: string) => answer((w) => {
+    // On a team, while licensed, it's the team's: the whole team's unless only the people added are asked for.
+    create: (name: string, opts?: { access?: TeamAccess | undefined }) => answer((w) => {
       const id = nextId('ws');
-      w.workspaces.push({ id, name, role: 'admin', inCall: false, people: 1, items: [], createdAt: new Date().toISOString(), call: null });
+      const teamAccess = licensed(w) ? opts?.access ?? 'team' : null;
+      w.workspaces.push({ id, name, role: 'admin', inCall: false, people: teamAccess === 'team' ? licensedCount(w) : 1, teamAccess, items: [], createdAt: new Date().toISOString(), call: null });
       return { id };
+    }),
+    setTeamAccess: (id: ID, access: TeamAccess) => answer((w) => {
+      const space = spaces.treeOf(id);
+      if (space.role !== 'admin') throw refused('forbidden', 'Only an admin can do that.');
+      if (space.teamAccess === null) throw refused('conflict', 'This workspace isn’t a team’s, so there’s no team to open it to.');
+      space.teamAccess = access;
+      space.people = access === 'team' ? Math.max(space.people ?? 1, licensedCount(w)) : space.people;
     }),
     get: (id: ID, o) => answer(() => spaces.treeFor(id), asWho(o)),
     presenterNotes: {
@@ -919,34 +991,81 @@ export const standIn: AlcoveApi = {
       if (space) space.about = about.replace(/\s+/g, ' ').trim();
     }),
   },
-  credits: {
-    balance: () => answer((w) => w.credits),
+  plans: {
+    // The payments playing out catch up with the clock whenever the plan or a payment is read (api/payments.ts).
+    plan: () => answer((w) => { settlePayments(w); return planOf(w); }),
+    offers: () => answer((w) => w.payments.offers),
+    buyPro: (months, microUsdPerMonth) => answer((w) => buyNow(w, { kind: 'pro', months, microUsdPerMonth })),
+    refundPro: () => answer((w) => {
+      const now = Date.now();
+      const later = w.plan.pro.months.filter((m) => Date.parse(m.from) > now);
+      if (!later.length) throw refused('conflict', 'There’s no month of Pro to refund that hasn’t started. A month that has started isn’t refunded.');
+      const back = later.reduce((sum, m) => sum + m.microUsd, 0);
+      const { balance } = w.plan;
+      const entry = { id: freshEntryId(w), at: new Date(now).toISOString(), label: `Pro refunded, ${later.length} ${later.length === 1 ? 'month' : 'months'}`, microUsd: back };
+      // As the server does: renewing goes off, so what was refunded isn't bought back, and a notice that Pro was renewed
+      // into a month refunded goes.
+      const ends = new Set(later.map((m) => m.to));
+      const refunded = {
+        ...w.plan, balance: { microUsd: balance.microUsd + back, history: [entry, ...balance.history] }, pro: { ...w.plan.pro, renew: false },
+        notices: w.plan.notices.filter((n) => !(n.kind === 'pro-renewed' && n.until !== null && ends.has(n.until)))
+      };
+      w.plan = withProMonths(refunded, w.plan.pro.months.filter((m) => Date.parse(m.from) <= now), now);
+      return planOf(w);
+    }),
+    setRenew: (renew) => answer((w) => { w.plan = { ...w.plan, pro: { ...w.plan.pro, renew } }; return planOf(w); }),
+    chose: () => answer((w) => { w.plan = { ...w.plan, choose: false }; return planOf(w); }),
+    dismissNotice: (id) => answer((w) => {
+      if (!w.plan.notices.some((n) => n.id === id)) throw refused('not-found', 'That notice doesn’t exist, or you don’t have access to it.');
+      w.plan = { ...w.plan, notices: w.plan.notices.filter((n) => n.id !== id) };
+      return planOf(w);
+    }),
     routes: () => answer(paymentRoutes),
-    startTopUp: (routeId, credits) => answer((w) => {
+    buyHours: (packs, microUsdPerPack, minutesPerPack) => answer((w) => buyNow(w, { kind: 'hours', packs, microUsdPerPack, minutesPerPack })),
+    startTopUp: (routeId, microUsd, buys) => answer((w) => {
       const choices = paymentRoutes(w);
-      StartTopUpBodySchema.parse({ routeId, credits });
+      StartTopUpBodySchema.parse({ routeId, microUsd, buys: buys ?? null });
       const route = choices.routes.find((r) => r.id === routeId);
       if (!route) throw refused('invalid', 'That way to pay isn’t offered.');
-      if (credits < route.minimumCredits) throw refused('invalid', `Choose at least ${route.minimumCredits.toLocaleString('en-GB')} credits on ${route.chainName}.`);
-      const rate = choices.tiers.reduce((best, t) => credits >= t.fromCredits ? t.creditsPerUsd : best, 1000);
-      const amount = String(Math.ceil(credits * 1_000_000 / rate - 1e-6) / 1_000_000);
+      if (microUsd < Number(route.minimum) * 1_000_000) throw refused('invalid', `The least you can add with ${route.token} on ${route.chainName} is $${route.minimum}.`);
+      // What it's for is checked first, as a purchase from the balance is, but for the balance: a refusal opens nothing.
+      if (buys) checkPurchase(w, buys);
+      // A token is added as a dollar. A payment to buy something is open for a day, as the server's are.
+      const amount = String(microUsd / 1_000_000);
       const t: TopUp = {
-        id: nextId('sb-top-up'), route, address: PREVIEW_DEPOSIT_ADDRESS, memo: null,
-        expiresAt: new Date(Date.now() + 3_600_000).toISOString(), state: 'waiting',
-        asked: { amount, credits }, received: null
+        id: nextId('sb-top-up'), route, address: buys ? PREVIEW_BASE_ADDRESS : PREVIEW_DEPOSIT_ADDRESS, memo: null,
+        expiresAt: new Date(Date.now() + (buys ? 86_400_000 : 3_600_000)).toISOString(), state: 'waiting',
+        asked: { amount }, received: null,
+        purchase: buys ? { buys, outcome: 'waiting', why: null } : null
       };
       w.payments.topUps.unshift(t);
+      playPayment(w, t);
       return t;
     }),
-    topUp: (id) => answer((w) => paymentIn(w, id)),
+    topUp: (id) => answer((w) => { settlePayments(w); return paymentIn(w, id); }),
     cancelTopUp: (id) => answer((w) => {
+      settlePayments(w);
       const t = paymentIn(w, id);
       if (t.state !== 'waiting') throw refused('conflict', 'This top-up can’t be cancelled any more: a payment has already reached it.');
       const cancelled: TopUp = { ...t, state: 'cancelled', address: null, memo: null };
       w.payments.topUps = w.payments.topUps.map((x) => x.id === id ? cancelled : x);
       return cancelled;
     }),
-    topUps: () => answer((w) => { paymentRoutes(w); return w.payments.topUps; })
+    topUps: () => answer((w) => { paymentRoutes(w); settlePayments(w); return w.payments.topUps; })
+  },
+  teams: {
+    mine: () => answer(teamsApi.mine),
+    create: (name: string) => answer((w) => teamsApi.create(w, name)),
+    invite: () => answer(teamsApi.invite),
+    peek: (secret: string) => answer((w) => teamsApi.peek(w, secret)),
+    join: (secret: string) => answer((w) => teamsApi.join(w, secret)),
+    remove: (memberId: ID) => answer((w) => teamsApi.remove(w, memberId)),
+    leave: () => answer(teamsApi.leave),
+    delete: () => answer(teamsApi.delete),
+    buyLicenses: (count: number, microUsdPerLicense: number) => answer((w) => teamsApi.buyLicenses(w, count, microUsdPerLicense)),
+    refundLicenses: () => answer(teamsApi.refundLicenses),
+    setAutoPurchase: (on: boolean) => answer((w) => teamsApi.setAutoPurchase(w, on)),
+    notes: () => answer(teamsApi.notes)
   },
   models: { list: () => answer(() => AI_MODELS) },
   trust: { attestation: attest },

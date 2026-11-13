@@ -31,6 +31,7 @@ import { zoneOf } from '../meetings/repeats';
 import { NO_HOLDERS, TREE_NOTICE, canOpen, emailIndex, holdersOf, openForCall, openToCall, organizerEdits, readerInCall, requireDocument, requireRole, roleOf, saveState, serverWorkspace, standingIn, trashOf, whoInCall, workspaceAt, workspaceFor, type HeldWorkspace, type MadeFor, type Reader, type Standing, type StoredItem, type Who, type Workspace } from '../workspaces/access';
 import { documentsAt, editorOf, keepVersion, kindOf, readDocument, writeDocument } from '../workspaces/documents';
 import { addBeside, addCallFolder, createIn, followInvite, makeHome, type CallFolder, type InviteChange } from '../workspaces/service';
+import { payerOf } from '../billing/storage';
 
 const wlog = log.child({ component: 'call-workspace' });
 
@@ -545,7 +546,8 @@ export async function followInvites(o: Owner, before: Map<string, string[]>): Pr
 /**
  * What viewing another workspace would mean: refused as switching is. Who in the call isn't in it, who'd open it through the
  * call alone. It goes only by who's in the workspace, which the organizer can see: what's been given to anyone beyond that
- * isn't theirs to know.
+ * isn't theirs to know. And whether the call opens it to them at all: only while the organizer pays for it, as access.ts's
+ * `holdersOf` has it, so that's what they're told.
  */
 export async function preview(v: Viewer, reader: Reader, people: Joined[], workspaceId: string): Promise<CallWorkspaceSwitch> {
   const o = v.organizer;
@@ -554,7 +556,11 @@ export async function preview(v: Viewer, reader: Reader, people: Joined[], works
   const inCall = people.filter((j) => j.status === 'in' && j.role !== 'host');
   const who = inCall.map((j): { j: Joined; who: Who } => ({ j, who: j.email ? accountWho(o, j.email) : { email: undefined, principals: [], calls: [] } }));
   const holders = await holdersOf(o.pool, w.owner.ownerId, { principals: who.flatMap((x) => x.who.principals), calls: [] });
-  return { name: w.state.name, cantOpen: who.filter((x) => standingIn({ ...NO_HOLDERS, members: holders.members }, x.who).role === null).map((x) => firstName(x.j.name)) };
+  return {
+    name: w.state.name,
+    cantOpen: who.filter((x) => standingIn({ ...NO_HOLDERS, members: holders.members }, x.who).role === null).map((x) => firstName(x.j.name)),
+    everyone: (await payerOf(o.pool, w.owner.ownerId)) === o.ownerId
+  };
 }
 
 /** Later calls in a series that had the home `from` follow it to `to`, once a call of theirs settles one: they're the same meetings, so it can only be said here. */

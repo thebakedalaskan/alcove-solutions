@@ -20,7 +20,7 @@ export function exampleNote(me: Person): Note {
     id: 'example', kind: 'call', status: 'ready', title: 'Weekly product call', startedAt: started.toISOString(), duration: 24 * 60,
     people: [me, theo, priya, kofi], sharedWith: [], excerpt: 'Sign-ups are back up, and the launch moves to the 18th.', openActions: 1, totalActions: 1,
     recipients: [{ person: me, role: 'organizer' }, { person: theo, role: 'invited' }, { person: priya, role: 'invited' }, { person: kofi, role: 'invited' }],
-    groupShares: [],
+    groupShares: [], teamVisible: false,
     summary: 'Sign-ups are back up since Tuesday’s fix, so the launch moves to the 18th. Kofi sends the new screens by Wednesday.',
     details: [
       'The call opened with sign-ups, which dropped last week after the pricing change and have recovered since Tuesday’s fix. Theo walked through the numbers: daily sign-ups are back to where they were before the drop, and nothing in the funnel looks different from the weeks before it.',

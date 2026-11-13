@@ -9,6 +9,8 @@ import { z } from 'zod';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { addObject, boardText, newId, readBoard, tableCell } from '@alcove/board';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { standing } from '../features/billing/meter';
+import { setLimit } from '../limits';
 import { loadConfig, loadEnv } from '../config';
 import { b64u, openJson, sealJson, signInAttemptKey, unb64u } from '../crypto';
 import { masterKey } from '../owners';
@@ -174,7 +176,8 @@ describe('signing in', () => {
     expect(inMinutes).toBeLessThanOrEqual(17);
     expect(day[0]).toMatchObject({ isOrganizer: true, organizer: { name: 'Art Vandelay', id: r.session.ownerId }, status: 'scheduled' });
     expect(day[2]?.guests.map((g) => g.name)).toEqual(['Priya Raman', 'Inès Moreau', 'Kofi Asante', 'Sam Ortiz']);
-    expect(await first.api.credits.balance()).toEqual({ balance: 10_000, granted: 10_000, usedThisMonth: 0, perMinute: 25 });
+    // A new account is on Free, with all of a period's notes, nothing in its balance, and the plans to pick from first.
+    expect(await first.api.plans.plan()).toMatchObject({ kind: 'free', notes: { minutesLeft: 300, minutesPerPeriod: 300, stopped: false }, balance: { microUsd: 0 }, choose: true });
 
     // Another browser is the same person: both sessions stay open, and the calendar isn't placed twice.
     const second = h.browser();
@@ -1589,11 +1592,10 @@ describe('live transcript and written notes', () => {
     expect(prompt).not.toContain(guestEmail);
     expect(prompt).not.toContain(org.session.user.email);
 
-    // The live transcript moved into the note, the job is done, and the minutes recorded (not the call's length) were charged.
+    // The live transcript moved into the note, the job is done, and the organizer paid for what the transcript and the notes took.
     expect((await h.pool.query('SELECT count(*)::int AS n FROM transcript_clips WHERE note_item_id = $1', [noteId])).rows[0]?.n).toBe(0);
     expect((await h.pool.query('SELECT count(*)::int AS n FROM content_jobs WHERE owner_id = $1', [org.session.ownerId])).rows[0]?.n).toBe(0);
-    const credits = await org.api.credits.balance();
-    expect(credits.balance).toBe(credits.granted - Math.max(1, Math.ceil(note.audio.reduce((n, a) => n + a.seconds, 0) / 60)) * credits.perMinute);
+    expect((await standing(h.deps, h.pool, org.session.ownerId)).byKind).toMatchObject({ transcript: expect.any(Number), notes: expect.any(Number) });
 
     // Anyone with the notes can ask about the call, and hear where the answer comes from.
     expect(await asked(org.api, noteId, 'When is the launch now?')).toEqual([{ type: 'text', text: 'From the call: We agreed to move the launch to the 18th.' }, { type: 'cite', noteId, at: 0 }]);
@@ -1955,9 +1957,8 @@ describe('live transcript and written notes', () => {
     await retryNow();
     expect((await api.notes.get(pendingNoteId)).decisions.map((d) => d.text)).toEqual(['We agreed to ship on Monday.']);
 
-    // Never a usable answer: after three attempts the note is finished without a summary, keeps its transcript, and
-    // costs nothing. (A model that doesn't answer at all makes the note wait instead: see below.)
-    const before = (await api.credits.balance()).balance;
+    // Never a usable answer: after three attempts the note is finished without a summary, and keeps its transcript.
+    // (A model that doesn’t answer at all makes the note wait instead: see below.)
     h.near.failNext(3, 'prose');
     rec = await api.recordings.start({ title: 'Never' });
     await rec.transcribe(speech('Nobody will read this summary.', 0, 0));
@@ -1970,7 +1971,6 @@ describe('live transcript and written notes', () => {
     const note = await api.notes.get(pendingNoteId);
     expect(note).toMatchObject({ status: 'ready', summary: '', decisions: [], actions: [], chapters: [] });
     expect(note.transcript?.map((l) => l.text)).toEqual(['Nobody will read this summary.']);
-    expect((await api.credits.balance()).balance).toBe(before);
   });
 });
 
@@ -3198,33 +3198,28 @@ describe('room recordings', () => {
   });
 });
 
-describe('credits', () => {
-  it('the balance says how much was used this month', async () => {
+describe('plans', () => {
+  it('a room recording is paid for from its recorder’s notes, and what’s left is said as time', async () => {
     const { api, session } = await account();
-    expect(await api.credits.balance()).toEqual({ balance: 10_000, granted: 10_000, usedThisMonth: 0, perMinute: 25 });
+    expect((await api.plans.plan()).notes).toEqual({ minutesLeft: 300, minutesPerPeriod: 300, stopped: false });
 
-    // Notes written now are charged now: 25 credits a minute recorded, rounded up.
+    // Its speech and its notes are paid for as NEAR AI answers them, from the recorder's allowance.
     const rec = await api.recordings.start({ title: 'Usage' });
     await rec.appendAudio(piece(audioBytes('usage'), 0, 0));
     await rec.transcribe(speech('We agreed to ship on Monday.', 0, 0));
     await written(api, (await rec.stop()).pendingNoteId);
-    expect(await api.credits.balance()).toEqual({ balance: 9_975, granted: 10_000, usedThisMonth: 25, perMinute: 25 });
+    expect((await standing(h.deps, h.pool, session.ownerId)).byKind).toMatchObject({ transcript: expect.any(Number), notes: expect.any(Number) });
 
-    // The month starts at 00:00 UTC on the 1st. A charge made the moment before counts against the balance
-    // but not against this month; one made at that moment counts against both. The history is sealed under
-    // the service key, so these are charged the way the notes worker charges, with the clock set to then.
-    const { charge } = await import('../features/billing/service');
-    const now = new Date();
-    const month = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+    // Said as time at what an hour of notes is reckoned at: at a thousandth of a dollar a minute, what it took shows.
+    await setLimit(h.pool, 'ai.hour_micro_usd', 60_000);
     try {
-      vi.useFakeTimers({ toFake: ['Date'], now: month - 1 });
-      await charge(h.deps, h.pool, session.ownerId, { amount: 100, label: 'Notes, 4 min' });
-      vi.setSystemTime(month);
-      await charge(h.deps, h.pool, session.ownerId, { amount: 50, label: 'Notes, 2 min' });
+      const { notes } = await api.plans.plan();
+      expect(notes.minutesPerPeriod).toBe(300);
+      expect(notes.minutesLeft).toBeLessThan(300);
+      expect(notes.minutesLeft).toBeGreaterThan(0);
     } finally {
-      vi.useRealTimers();
+      await h.pool.query("DELETE FROM service_limits WHERE name = 'ai.hour_micro_usd'");
     }
-    expect(await api.credits.balance()).toEqual({ balance: 9_825, granted: 10_000, usedThisMonth: 75, perMinute: 25 });
   });
 });
 
@@ -3255,7 +3250,8 @@ describe('deleting an account', () => {
     await guest.api.account.updatePreferences({ pinned: [callNote] });
     await b.api.meetings.create({ title: 'Next week', startsAt: new Date(Date.now() + 7 * 86_400_000).toISOString(), durationMinutes: 30, guests: [guest.session.user.email], notes: 'on' });
     await b.api.account.updatePreferences({ pinned: [callNote], groups: [{ id: 'crew', name: 'Crew', emails: [guest.session.user.email] }] });
-    // A file she put in a workspace Ann keeps: it stays there, and what she uploaded today counts under her account.
+    // A file she put in a workspace Ann keeps: it stays there, and what she uploaded today counts under her account, and
+    // as hers among what others add to Ann's storage.
     const shared = (await ann.api.workspaces.create('Shared')).id;
     await ann.api.workspaces.addPerson(shared, lena.email, 'edit');
     const annPlan = (await ann.api.workspaces.items.create(shared, { kind: 'document', name: 'Plan', parent: null })).id;
@@ -3297,10 +3293,10 @@ describe('deleting an account', () => {
     const sharedWith = await noteFrom(ann);
     await ann.api.notes.share(sharedWith, { emails: [lena.email] });
     await b.api.notes.share(sharedWith, { emails: [kofi.session.user.email] });
-    // She opened a top-up to add credits.
-    const [route] = (await b.api.credits.routes()).routes;
+    // She opened a top-up to add money.
+    const [route] = (await b.api.plans.routes()).routes;
     if (!route) throw new Error('1Click offers no way to pay');
-    await b.api.credits.startTopUp(route.id, route.minimumCredits);
+    await b.api.plans.startTopUp(route.id, Math.round(Number(route.minimum) * 1_000_000));
 
     // Her own notes, on Ann's note and on hers, and something she added from them to her note's shared notes.
     await b.api.notes.personal(invitedTo).add({ kind: 'note', text: 'On Ann’s note.' });
@@ -3343,14 +3339,16 @@ describe('deleting an account', () => {
     await b.api.notes.createLink(callNote);
     // A timer preset as the previous release can still write one while a deploy is under way: nothing in this release does.
     await h.pool.query('INSERT INTO timer_presets (owner_id, preset_id, ciphertext) VALUES ($1, $2, $3)', [ownerId, randomBytes(16).toString('base64url'), randomBytes(64)]);
+    // So can its credits row, which nothing in this release reads or writes.
+    await h.pool.query('INSERT INTO billing_accounts (owner_id, state_ciphertext, version) VALUES ($1, $2, 0)', [ownerId, randomBytes(64)]);
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'agent_activity', 'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes',
+      'agent_activity', 'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'ai_meters', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes',
       'call_private_messages', 'call_rings', 'calls', 'content_jobs', 'deposits', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts',
-      'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'items', 'media_upload_days', 'meeting_access',
-      'note_access', 'note_additions', 'note_links', 'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings',
-      'revisions', 'screen_frames', 'screen_pieces', 'screen_shares', 'screen_videos', 'sessions', 'timer_presets', 'transcript_clips', 'transcript_translations',
+      'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'items', 'media_others_days', 'media_upload_days', 'meeting_access',
+      'note_access', 'note_additions', 'note_links', 'object_gc', 'operations', 'owners', 'personal_notes', 'plan_accounts', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings',
+      'revisions', 'screen_frames', 'screen_pieces', 'screen_shares', 'screen_videos', 'sessions', 'team_notes', 'teams', 'timer_presets', 'transcript_clips', 'transcript_translations',
       'workspace_authors', 'workspace_calls', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions',
       'workspaces'
     ]);
@@ -3359,7 +3357,8 @@ describe('deleting an account', () => {
     // Frames and joined video come from a real video once the notes are written: deleting them with a note is in screens.integration.test.ts.
     // A workspace is an owner of its own, so an account has no rows there under its own ID: workspaces.integration.test.ts deletes those, and media.integration.test.ts what's in them.
     // OAuth codes and retry receipts have account-deletion coverage in the agents and MCP flows.
-    const notAnAccounts = new Set(['agent_codes', 'agent_operations', 'object_gc', 'screen_frames', 'screen_videos', 'workspaces', 'workspace_members', 'workspace_authors', 'workspace_calls', 'workspace_mentions', 'documents', 'document_access', 'document_clients', 'document_updates', 'document_snapshots', 'document_version_parts', 'document_versions', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses']);
+    // A team is an owner of its own, like a workspace, and a note made visible to a team goes with the note: teams.integration.test.ts deletes both.
+    const notAnAccounts = new Set(['agent_codes', 'agent_operations', 'object_gc', 'screen_frames', 'screen_videos', 'teams', 'team_notes', 'workspaces', 'workspace_members', 'workspace_authors', 'workspace_calls', 'workspace_mentions', 'documents', 'document_access', 'document_clients', 'document_updates', 'document_snapshots', 'document_version_parts', 'document_versions', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses']);
     for (const t of tables) if (!notAnAccounts.has(t)) expect(before[t], t).toBeGreaterThan(0);
     expect((await h.pool.query<{ kind: string }>('SELECT DISTINCT kind FROM items WHERE owner_id = $1 ORDER BY kind', [ownerId])).rows.map((r) => r.kind)).toEqual(['connection', 'meeting', 'note', 'profile']);
     const [identity] = (await h.pool.query<{ email_index: Buffer }>('SELECT email_index FROM identities WHERE owner_id = $1', [ownerId])).rows;
@@ -3426,11 +3425,11 @@ describe('deleting an account', () => {
     expect((await ann.api.notes.get(sharedWith)).recipients.map((r) => [r.person.email, r.role])).toEqual([[ann.session.user.email, 'organizer'], [kofi.session.user.email, 'shared']]);
     expect((await kofi.api.notes.get(sharedWith)).received).toMatchObject({ role: 'shared', by: { name: 'Lena Leaving' } });
 
-    // Signing in again with the same Google account starts a new, empty account with the welcome credits.
+    // Signing in again with the same Google account starts a new, empty account, on Free.
     const fresh = h.browser();
     expect(landed(await viaGoogle(fresh, lena))).toBe('/ready');
     expect((await fresh.api.auth.getSession())?.ownerId).not.toBe(ownerId);
-    expect(await fresh.api.credits.balance()).toEqual({ balance: 10_000, granted: 10_000, usedThisMonth: 0, perMinute: 25 });
+    expect(await fresh.api.plans.plan()).toMatchObject({ kind: 'free', balance: { microUsd: 0, history: [] }, choose: true });
     expect(await fresh.api.notes.list()).toEqual([]);
     expect(await fresh.api.meetings.upcoming()).toEqual([]);
     expect(await fresh.api.account.preferences()).toMatchObject({ pinned: [], groups: [] });
@@ -3564,9 +3563,9 @@ describe('deleting an account', () => {
     const blocks = async (pid: number) => ((await h.pool.query<{ n: number }>('SELECT count(*)::int AS n FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))', [pid])).rows[0]?.n ?? 0) > 0;
     const outcome = (p: Promise<void>) => p.then(() => 'deleted', (e: unknown) => code(e));
     try {
-      // The first deletion is held just before it commits, on the account's billing row, which goes with the account.
+      // The first deletion is held just before it commits, on the account's plan row, which goes with the account.
       await hold.query('BEGIN');
-      await hold.query('SELECT 1 FROM billing_accounts WHERE owner_id = $1 FOR UPDATE', [ownerId]);
+      await hold.query('SELECT 1 FROM plan_accounts WHERE owner_id = $1 FOR UPDATE', [ownerId]);
       const first = outcome(racer.api.account.delete());
       await until(async () => blocks(await pidOf(hold)), 'the first deletion to wait');
       // The second arrives signed in, as the account is still there, and reaches the account's profile only once
@@ -3948,11 +3947,32 @@ describe('privacy at rest', () => {
     const refusals: [string, string][] = [['canary-theirs-event', 'forbidden'], ['canary-allday-event', 'not-found'], ['canary-missing-event', 'not-found']];
     for (const [id, refusal] of refusals) expect(code(await g.api.calendar.adopt(id).catch((e: unknown) => e))).toBe(refusal);
 
-    // A top-up paid and credited: its deposit address, the settlement's hash and the history label stay sealed.
-    const topUp = await c.api.credits.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 25_000);
+    // A top-up paid and credited, which bought more notes once it was: its deposit address, the settlement's hash, what it
+    // bought and the history's labels stay sealed.
+    const topUp = await c.api.plans.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 25_000_000, { kind: 'hours', packs: 1, microUsdPerPack: 15_000_000, minutesPerPack: 600 });
     expect(topUp.address).toContain('canary-deposit-address');
     h.oneclick.set(topUp.address ?? '', 'SUCCESS', { depositedAmount: '25000000', amountOut: '25000000', intentHashes: ['canary-intent-hash'] });
-    expect((await c.api.credits.topUp(topUp.id)).state).toBe('credited');
+    expect(await c.api.plans.topUp(topUp.id)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
+    expect((await c.api.plans.plan()).balance.history.map((e) => e.label)).toEqual(['10 more hours of notes', 'Added, 25 USDC']);
+
+    // A team: its name and who's on it sealed under its own key, what it bought (`team-billing`) under the service's, and
+    // an invite's secret only as a hash, in rows and nowhere in the logs. Its license is bought with a payment, so what the
+    // payment buys (the `deposit` record's purchase) and the balance's line for it stay sealed too.
+    await c.api.teams.create('CANARY-TEAM name of the merger crew');
+    const licensed = await c.api.plans.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 40_000_000, { kind: 'licenses', count: 1, microUsdPerLicense: 40_000_000 });
+    h.oneclick.set(licensed.address ?? '', 'SUCCESS', { depositedAmount: '40000000', amountOut: '40000000', intentHashes: ['canary-intent-hash-license'] });
+    expect(await c.api.plans.topUp(licensed.id)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
+    expect((await c.api.plans.plan()).balance.history.map((e) => e.label).slice(0, 2)).toEqual(['Team, 1 license', 'Added, 40 USDC']);
+    await c.api.teams.setAutoPurchase(true);
+    await c.api.auth.visit();
+    const joining = await c.api.teams.invite();
+    await invitee.api.teams.join(joining.link.slice(joining.link.indexOf('#') + 1));
+    const teamInvite = await c.api.teams.invite();
+    const teamSecret = teamInvite.link.slice(teamInvite.link.indexOf('#') + 1);
+    expect(await invitee.api.teams.peek(teamSecret)).toMatchObject({ name: 'CANARY-TEAM name of the merger crew', admin: { email: 'canary-person@canary.example' } });
+    expect((await c.api.teams.mine())?.members.map((m) => m.person.email)).toEqual(['canary-person@canary.example', scribeEmail]);
+    const teamRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM teams x`)).rows[0]?.all ?? '');
+    expect(teamRows).toContain('billing_ciphertext');
 
     // A live question stays present for the sweep: ending a call physically deletes its attention record.
     const attentionCall = await c.api.calls.join((await c.api.calls.startNow({ notes: 'off' })).code, { mic: false, cam: false });
@@ -3989,7 +4009,7 @@ describe('privacy at rest', () => {
     const canaries = [
       'CANARY-PRIVATE-MESSAGE', 'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
       'CANARY-BREAKOUT', 'CANARY-BROADCAST', 'CANARY-GROUP', 'canary-member', 'CANARY-ASKED', 'canary-rung', 'CANARY-ROOMTALK', 'merger moves', 'canary-scribe', 'CANARY-LIVENOTE',
-      'Welcome credits', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
+      'Added, 25 USDC', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo', 'CANARY-GCAL', 'canary-gcal',
       'CANARY-QUESTION', 'CANARY-SERIES-ASK', 'CANARY-ASKED', 'canary-recurring-id', 'canary-theirs-event', 'canary-allday-event', 'canary-missing-event',
       'CANARY-SERIES-TITLE', 'CANARY-SERIES-RENAMED', 'canary-series-guest', 'Pacific/Apia', series.seriesCode ?? 'no series link',
@@ -4002,7 +4022,8 @@ describe('privacy at rest', () => {
       'CANARY-BOARDACTION', 'order the doors', 'CANARY-ROOMNAME', 'CANARY-ROOMSTICKY', 'owns the merger', 'canary-roomie', 'CANARY-VOTEFRAME', 'CANARY-VOTESTICKY', voteFrame, voteSticky,
       'CANARY-NOTEDFRAME', 'CANARY-FRAMENOTE', 'thank the support team', notedFrame,
       'CANARY-CUE', 'as you can see the chart', 'CANARY-VIDEO', 'Person’s screen', 'CANARY-LIVEQUESTION', 'private launch',
-      'canary-deposit-address', 'Credits added', 'canary-intent-hash', 'CANARY-AGENT',
+      'canary-deposit-address', 'Credits added', 'canary-intent-hash', 'more hours of notes', 'microUsdPerPack', 'minutesPerPack',
+      'CANARY-TEAM', 'merger crew', 'Team, 1 license', '"autoPurchase"', '"pool"', 'microUsdPerLicense', 'CANARY-AGENT',
       proposedTime, 'CANARY-HOLD', 'canary-hold-guest', ...holdIds
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
@@ -4054,6 +4075,7 @@ describe('privacy at rest', () => {
     }
     for (const enc of encodings(moveCode)) expect(rowsText.includes(enc), 'a move code in rows').toBe(false);
     for (const enc of encodings(noteLink.secret)) expect(rowsText.includes(enc), 'a note link’s secret in rows').toBe(false);
+    for (const enc of encodings(teamSecret)) expect(rowsText.includes(enc) || logText.includes(enc), 'a team invite’s secret in rows or logs').toBe(false);
     // Logs are built to leave the confidential VM: no email address of anyone, ever, and no client address.
     expect(logText.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g) ?? []).toEqual([]);
     expect(logText.match(/\b10\.1\.\d{1,3}\.\d{1,3}\b/g) ?? []).toEqual([]);

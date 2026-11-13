@@ -6,7 +6,7 @@ import { cn } from '../../cn';
 import { Icon, type IconName } from '../icon';
 import { andList, Avatar, Faces, type AvatarPerson } from '../people';
 import { Dots } from '../motion';
-import { Button, Kbd } from '../primitives';
+import { Button, Kbd, Segmented, type Choice } from '../primitives';
 import { WsMenu, WsPopover, type WsMenuRow } from './popover';
 import { canTakeFocus, firstName, focusedNow, useMove } from './shared';
 
@@ -257,14 +257,24 @@ function ShareRow({ row }: { row: WsShareRow }) {
   );
 }
 
+/** Who's in a team's workspace: everyone licensed on the team, or only the people added. */
+export type WsTeamAccess = 'team' | 'added';
+const TEAM_ACCESS: Choice<WsTeamAccess>[] = [{ value: 'team', label: 'Whole team', icon: 'people' }, { value: 'added', label: 'Only people I add', icon: 'lock' }];
+const TEAM_ACCESS_SAYS: Record<WsTeamAccess, string> = {
+  team: 'Everyone licensed on the team can open and edit it.',
+  added: 'Only the people here can open it.'
+};
+
 /**
  * Share, at the top of a document, and the same sheet for who's in a workspace. `title` is its heading, and `about` a line
  * under it. `rows`: who has it. `inCall`: people in the call who aren't among them, who can edit it while they're in the
  * call, under the rows. `matches`: who the field found, as you type. Someone who can't add people has no field: leave
  * `onQuery` out.
  */
-export function WsShareSheet({ title, about, query = '', onQuery, onAdd, matches = [], rows, inCall = [] }: {
+export function WsShareSheet({ title, about, query = '', onQuery, onAdd, matches = [], rows, inCall = [], team }: {
   title: string; about?: string | undefined; query?: string | undefined; onQuery?: ((q: string) => void) | undefined;
+  /** On a team's workspace: who's in it, which its admins change (`onChange`) and everyone else reads. */
+  team?: { access: WsTeamAccess; onChange?: ((access: WsTeamAccess) => void) | undefined } | null | undefined;
   /** Enter in the field, with an email address or a name. */
   onAdd?: (() => void) | undefined;
   matches?: WsShareMatch[] | undefined; rows: WsShareRow[];
@@ -273,6 +283,14 @@ export function WsShareSheet({ title, about, query = '', onQuery, onAdd, matches
   return (
     <div className="wv-share">
       <div className="wv-h"><b>{title}</b>{about && <p>{about}</p>}</div>
+      {team && (
+        <div className="wv-team">
+          {team.onChange
+            ? <Segmented label="Who’s in it" value={team.access} onChange={team.onChange} options={TEAM_ACCESS} />
+            : <b><Icon name={team.access === 'team' ? 'people' : 'lock'} size={15} />{team.access === 'team' ? 'Whole team' : 'Only people added'}</b>}
+          <small>{TEAM_ACCESS_SAYS[team.access]}</small>
+        </div>
+      )}
       {onQuery && (
         <label className="wv-f">
           <Icon name="search" size={15} />
@@ -297,10 +315,12 @@ export function WsShareSheet({ title, about, query = '', onQuery, onAdd, matches
 /**
  * One question, in place of the menu, before everyone in a call views another workspace. `name`: that workspace. `home`: the
  * call's home, where its notes go, when that isn't `name`. `cantOpen`: the first names of people in the call who aren't in it,
- * so can't open it but through the call: once everyone views it, they can open and edit everything in it while they're in the call.
+ * so can't open it but through the call: once everyone views it, they can open and edit everything in it while they're in the
+ * call. Unless `everyone` is false: a call opens a workspace to everyone in it only while its files count against the
+ * organizer's storage, so one they don't pay for opens only for its own people, and the question says so.
  */
-export function WsSwitchSheet({ name, home, cantOpen = [], onSwitch, onKeep }: {
-  name: string; home?: string | undefined; cantOpen?: readonly string[] | undefined; onSwitch: () => void; onKeep: () => void;
+export function WsSwitchSheet({ name, home, cantOpen = [], everyone = true, onSwitch, onKeep }: {
+  name: string; home?: string | undefined; cantOpen?: readonly string[] | undefined; everyone?: boolean | undefined; onSwitch: () => void; onKeep: () => void;
 }) {
   /* It takes the menu's place, and focus with it: on the question, so a stray key or Enter switches nobody. Tab reaches the answers. */
   const box = useRef<HTMLDivElement>(null);
@@ -309,7 +329,9 @@ export function WsSwitchSheet({ name, home, cantOpen = [], onSwitch, onKeep }: {
   return (
     <div ref={box} className="wv-switch" tabIndex={-1} role="group" aria-labelledby={question}>
       <b id={question}>Switch everyone to {name}?</b>
-      {cantOpen.length > 0 && <p>{andList(cantOpen)} {cantOpen.length === 1 ? 'isn’t' : 'aren’t'} in it. While they’re in the call, they can open and edit everything in it.</p>}
+      {everyone
+        ? cantOpen.length > 0 && <p>{andList(cantOpen)} {cantOpen.length === 1 ? 'isn’t' : 'aren’t'} in it. While they’re in the call, they can open and edit everything in it.</p>
+        : <p>{cantOpen.length > 0 ? `${andList(cantOpen)} ${cantOpen.length === 1 ? 'isn’t' : 'aren’t'} in it, so they can’t open it. ` : ''}Its files don’t count against your storage, so it opens only for its own people.</p>}
       <p className="m">Anything closed to some people stays closed.{home ? ` The notes still go to ${home}.` : ''}</p>
       <div className="ac">
         <Button variant="primary" size="sm" onClick={onSwitch}>Switch</Button>

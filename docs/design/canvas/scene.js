@@ -32,6 +32,8 @@
     settings: { sky: [0.18, 0.32], lightSky: [0.26, 0.42], sun: null, glitter: 0, stars: 0, glowW: 620, glowH: 70 },
     /* Agents: Team's moment the other way round. The sun is low and to the right, just past the end of the line of agents. */
     agents: { sky: [0.35, 0.6], lightSky: [0.43, 0.72], sun: { r: 36, x: 470 }, glitter: 70, stars: 3 },
+    /* Plans: just after sunset, with a long low glow. The page draws its own sun, over Pro's column. */
+    plans: { sky: [0.32, 0.58], lightSky: [0.42, 0.72], sun: null, glitter: 0, stars: 0, glowW: 1500, glowH: 230 },
     record: { night: true, sky: [0.08, 0.26], lightSky: [0.08, 0.26], sun: { r: 58, x: 0, rec: true }, glitter: 150, stars: 22 }
   };
 
@@ -93,7 +95,7 @@
    * and Agents. Start a call is a row like them, its camera in a warm circle. Agents counts the agents connected, as Team
    * counts people. The phone's tab bar keeps the app's five, so Agents is reached from Settings there.
    */
-  var IDS = { home: 'Home', notes: 'Notes', record: 'Record', team: 'Team', note: 'Notes', settings: '', agents: 'Agents', drive: 'Drive' };
+  var IDS = { home: 'Home', notes: 'Notes', record: 'Record', team: 'Team', note: 'Notes', settings: '', plans: '', agents: 'Agents', drive: 'Drive' };
   var PLACE_ICON = {
     folder: 'M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2',
     bot: 'M12 8V4H8M6 8h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zM2 14h2M20 14h2M15 13v2M9 13v2'

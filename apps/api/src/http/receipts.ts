@@ -24,7 +24,10 @@ import type { HttpRuntime } from './runtime';
  * would say an account was rung for a day after the ring had gone. Saying a browser closed one of its live streams ends it,
  * which a retry can't do twice, and a receipt would be a row for every page someone closed. Making an agent's token keeps
  * none, as its answer is the token. Changing what an agent can do sets it outright, and its answer names the agent, which a
- * receipt would keep for a day after it was disconnected; disconnecting it keeps none either. What a guest can reach of a
+ * receipt would keep for a day after it was disconnected; disconnecting it keeps none either. A team's invite, and looking at
+ * or using one, keep none: their answer or body holds the link's secret, which is kept nowhere but as a hash, and using it
+ * twice is refused anyway. Saying the app is in use (a visit) keeps none either: it takes a license at most once, and a
+ * receipt would be a row for every time someone opened Alcove. What a guest can reach of a
  * workspace comes before receipts altogether, so it isn't listed here: see the routes.
  */
 const NO_RECEIPT = [
@@ -35,7 +38,8 @@ const NO_RECEIPT = [
   /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/, /^\/v1\/live\/calls\/[^/]+\/shares\/[^/]+\/video$/,
   /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines|links)(?:\/[^/]+)?|revisits\/[^/]+|share|rewrite)$/, /^\/v1\/note-links\/claim$/, /^\/v1\/meetings\/[^/]+\/(?:answer|propose)$/, /^\/v1\/account$/, /^\/v1\/rings\/[^/]+\/answer$/,
   /^\/v1\/notes\/[^/]+\/(?:personal(?:\/[^/]+(?:\/(?:preview|add))?)?|additions(?:\/[^/]+)?)$/,
-  /^\/v1\/workspaces\/[^/]+\/(?:documents\/[^/]+\/)?live\/end$/
+  /^\/v1\/workspaces\/[^/]+\/(?:documents\/[^/]+\/)?live\/end$/,
+  /^\/v1\/team\/(?:invite|peek|join)$/, /^\/v1\/session\/visit$/
 ];
 
 const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));

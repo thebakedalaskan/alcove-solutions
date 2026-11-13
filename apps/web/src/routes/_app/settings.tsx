@@ -3,8 +3,8 @@ import { CalendarConnectResultSchema, DriveConnectResultSchema, type CalendarCon
  * Settings: change one thing and leave. You stand on the horizon, in the last of the light, with the tour and Sign out
  * beside you. Under the water the page is seven groups of panels with an index beside them, which on a narrow screen is a
  * strip that stays at the top. Every control saves as it changes. Your menu opens it, from your face at the top right of
- * every page (and in the phone's top bar), which makes way here since you're in the sky; the minutes in the side panel open
- * Plan and credits, and other pages link to the places in a group they need (Nav.tsx).
+ * every page (and in the phone's top bar), which makes way here since you're in the sky; your plan in the side panel opens
+ * Plan, and other pages link to the places in a group they need (Nav.tsx).
  */
 import { Avatar, Button, Evening, SettingRow, SettingsGroup, SettingsPanel } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
@@ -33,7 +33,9 @@ export const Route = createFileRoute('/_app/settings')({
   // moment, so the page doesn't move under the reader, and no longer.
   loader: async ({ context: { queryClient: qc } }) => {
     const calendar = qc.ensureQueryData(q.calendar()).catch(() => undefined);
-    await Promise.allSettled([qc.ensureQueryData(q.prefs()), qc.ensureQueryData(q.balance()), qc.ensureQueryData(q.team()), Promise.race([calendar, new Promise((r) => setTimeout(r, 1200))])]);
+    // On a team, Plan says whose and (to its admin) the licenses: the team comes with the plan.
+    const plan = qc.ensureQueryData(q.plan()).then((p) => (p.team ? qc.ensureQueryData(q.myTeam()) : null));
+    await Promise.allSettled([qc.ensureQueryData(q.prefs()), plan, qc.ensureQueryData(q.team()), Promise.race([calendar, new Promise((r) => setTimeout(r, 1200))])]);
   },
   component: Settings
 });
@@ -72,12 +74,12 @@ function Settings() {
   const hash = useRouterState({ select: (s) => s.location.hash });
   const session = useQuery(q.session()).data;
   const prefs = useQuery(q.prefs());
-  const credits = useQuery(q.balance());
+  const plan = useQuery(q.plan());
   const signOut = useSignOutStep();
   // A group waiting on what it shows comes in once that's here, or once it's failed and says so.
   const hasPrefs = Boolean(prefs.data) || prefs.isError;
-  const hasCredits = Boolean(credits.data) || credits.isError;
-  const shown = useMemo(() => GROUPS.filter((g) => (g.id === 'calls' || g.id === 'notifications' ? hasPrefs : g.id === 'plan' ? hasCredits : true)), [hasPrefs, hasCredits]);
+  const hasPlan = Boolean(plan.data) || plan.isError;
+  const shown = useMemo(() => GROUPS.filter((g) => (g.id === 'calls' || g.id === 'notifications' ? hasPrefs : g.id === 'plan' ? hasPlan : true)), [hasPrefs, hasPlan]);
   const ids = useMemo(() => shown.map((g) => g.id), [shown]);
   const column = useRef<HTMLDivElement>(null);
   // Google's way back lands on what it connected: Drive, or the calendar.
@@ -93,7 +95,7 @@ function Settings() {
       case 'audio': return <AudioGroup />;
       case 'notifications': return prefs.data ? <NotificationsGroup /> : <Unloaded group={g} busy={prefs.isFetching} onRetry={() => readAgain(prefs.refetch, g.id)} />;
       case 'connections': return <ConnectionsGroup calendar={calendar} drive={drive} />;
-      case 'plan': return credits.data ? <PlanGroup credits={credits.data} /> : <Unloaded group={g} busy={credits.isFetching} onRetry={() => readAgain(credits.refetch, g.id)} />;
+      case 'plan': return plan.data ? <PlanGroup plan={plan.data} /> : <Unloaded group={g} busy={plan.isFetching} onRetry={() => readAgain(plan.refetch, g.id)} />;
       case 'privacy': return <PrivacyGroup session={session} />;
     }
   };

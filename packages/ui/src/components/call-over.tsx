@@ -33,14 +33,21 @@ import { Unencrypted } from './primitives';
 /**
  * The notes, as the page shows them: being written (the step they're on, who gets them and their faces), written (the
  * summary's first lines and what was decided and is to follow up), still being written after a long while, while the call
- * goes on without you (on, paused or off as you left it: you get them when it ends), or none taken.
+ * goes on without you (on, paused or off as you left it: you get them when it ends), or none taken. While it goes on, notes
+ * the organizer's plan stopped (`stopped`) are said as that, in caution, not as off.
  */
 export type CallOverNotes =
   | { kind: 'writing'; step: string; who: string; faces: AvatarPerson[] }
   | { kind: 'ready'; summary: string; decided: number; followUps: number }
   | { kind: 'slow' }
-  | { kind: 'going'; mode: 'on' | 'paused' | 'off' }
+  | { kind: 'going'; mode: 'on' | 'paused' | 'off'; stopped?: CallOverStopped | undefined }
   | { kind: 'none' };
+
+/**
+ * Notes the organizer's plan stopped: whose notes ran out or whose storage is full, and that what was said until then is in
+ * the notes (`said`); for the organizer, the ways to more (`ways`, the app's buttons, none filled: the page's first is).
+ */
+export interface CallOverStopped { said: string; ways?: ReactNode }
 
 export interface CallOverProps {
   /** "Team standup has ended", "You left Team standup". */
@@ -301,6 +308,14 @@ function Said({ notes, modelPrivate }: { notes: CallOverNotes; modelPrivate: boo
         </section>
       );
     case 'going':
+      if (notes.stopped) {
+        return (
+          <div className="co-stopped" role="status">
+            <p className="co-line is-stopped"><Icon name="alert" size={15} />{notes.stopped.said}</p>
+            {notes.stopped.ways && <div className="co-ways">{notes.stopped.ways}</div>}
+          </div>
+        );
+      }
       return (
         <p className="co-line">
           {notes.mode === 'on' ? <i className="co-rec" aria-hidden="true" /> : notes.mode === 'paused' ? <Icon name="pause" size={15} /> : null}

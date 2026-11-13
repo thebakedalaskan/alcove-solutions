@@ -2,7 +2,8 @@
  * Switch workspace, in the workspace's name menu, for the call's organizer: their workspaces, with the call's home marked, and
  * a new one. Picking another asks once, in place of the menu, and says who in the call isn't in it: the workspace the call uses
  * opens to everyone in it, so once everyone views it they can open and edit it while they're in the call, all but what's
- * closed to some people. Everyone views it at once, nothing is moved or copied, and the notes and transcript still go to the home.
+ * closed to some people. Unless someone else pays for it: then it opens only for its own people, and the question says why.
+ * Everyone views it at once, nothing is moved or copied, and the notes and transcript still go to the home.
  */
 import type { CallWorkspaceSwitch } from '@alcove/api';
 import { WsSpacePicker, WsSwitchSheet } from '@alcove/ui';
@@ -20,7 +21,7 @@ export function SpacePicker({ current, home, act, onClose }: { current: { id: st
   const [asking, setAsking] = useState<{ id: string; is: CallWorkspaceSwitch } | null>(null);
   if (asking) {
     return (
-      <WsSwitchSheet name={asking.is.name} home={asking.id === home ? undefined : home === current.id ? current.name : spaces.find((w) => w.id === home)?.name ?? undefined} cantOpen={asking.is.cantOpen}
+      <WsSwitchSheet name={asking.is.name} home={asking.id === home ? undefined : home === current.id ? current.name : spaces.find((w) => w.id === home)?.name ?? undefined} cantOpen={asking.is.cantOpen} everyone={asking.is.everyone}
         onSwitch={() => { onClose(); act.switchTo(asking.id); }} onKeep={onClose} />
     );
   }

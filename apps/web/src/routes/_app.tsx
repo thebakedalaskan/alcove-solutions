@@ -5,6 +5,7 @@ import { CallFlowHost, useCallFlowHost } from '~/features/calls/flow/CallFlow';
 import { useKeptUploads } from '~/features/record/uploads';
 import { useKeptEdits } from '~/features/workspace/sendKept';
 import { useArrival } from '~/features/onboarding/store';
+import { HourLeft } from '~/features/plans/notesDoors';
 import { TourHost } from '~/features/onboarding/Tour';
 import { Palette } from '~/features/shell/Palette';
 import { OfflinePage } from '~/features/shell/OfflinePage';
@@ -13,6 +14,7 @@ import { useSignedOutElsewhere } from '~/features/shell/signedOutElsewhere';
 import { Offline, Sidebar, useSidePanel } from '~/features/shell/Sidebar';
 import { PhoneTop, TabBar } from '~/features/shell/TabBar';
 import { TopActions } from '~/features/shell/TopActions';
+import { useVisits } from '~/features/shell/visits';
 import { CallFlowContext, type PaletteStart } from '~/features/shell/context';
 import { ownerOf, requireAccount } from '~/lib/guards';
 import { takeArrival } from '~/lib/live';
@@ -56,6 +58,7 @@ function Shell() {
   useKeptUploads(ownerOf(account));
   useKeptEdits(ownerOf(account));
   useSignedOutElsewhere(ownerOf(account));
+  useVisits(ownerOf(account), account.offline);
   useEffect(() => {
     if (!account.offline) return;
     const back = () => { void router.invalidate(); };
@@ -131,9 +134,10 @@ function Shell() {
             <TabBar />
           </div>
         )}
-        <CallFlowHost opened={calls.opened} open={calls.open} close={calls.close} />
+        <CallFlowHost opened={calls.opened} open={calls.open} close={calls.close} back={calls.back} />
         <Palette open={palette} onOpenChange={setPalette} start={start} />
         <TourHost />
+        {!account.offline && <HourLeft ownerId={ownerOf(account)} />}
     </CallFlowContext.Provider>
   );
 }

@@ -131,8 +131,10 @@ export type CallWorkspace = z.infer<typeof CallWorkspaceSchema>;
 /**
  * What viewing another workspace in the call would mean. `cantOpen`: the first names of people in the call who aren't in that
  * workspace, so can't open it but through the call: once everyone views it, they can open and edit it while they're in the call.
+ * `everyone`: whether the call opens it to them at all. It does only while its files count against the organizer's storage, so
+ * nobody in a call fills another account's storage or spends its AI: one someone else pays for opens only for its own people.
  */
-export const CallWorkspaceSwitchSchema = z.object({ name: z.string(), cantOpen: z.array(z.string()) });
+export const CallWorkspaceSwitchSchema = z.object({ name: z.string(), cantOpen: z.array(z.string()), everyone: z.boolean() });
 
 export type CallWorkspaceSwitch = z.infer<typeof CallWorkspaceSwitchSchema>;
 

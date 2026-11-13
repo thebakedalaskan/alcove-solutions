@@ -9,13 +9,13 @@
 - API with encrypted vault, account keys wrapped under `KMASTER` and opened per request, sessions in Postgres,
   meetings, single-participant calls with real camera, mic and screen sharing, chat, encrypted notes
   recordings in calls and in the room, playback, notes for everyone invited, sharing by email, people search
-  and credits display.
+  and how much of the plan's notes is left.
 - Real Google sign-in (OpenID Connect with PKCE, verified emails only) and optional Google Calendar access: meetings with other
   people in Home's Upcoming, scheduled calls on the organizer's calendar with Google's invitations,
   changes and cancellations kept in step, and an organizer's own event made an Alcove call.
 - Live transcript and written notes with NEAR AI Cloud: Whisper transcribes speech while notes are on; when
   the recording stops, a notes worker writes the summary, decisions, open questions, follow-ups, chapters and
-  suggested questions, retries a failed attempt twice, and charges 25 credits a minute; anyone with the note
+  suggested questions, retries a failed attempt twice, and pays for each request from the organizer's AI allowance; anyone with the note
   can ask about the call ([Notes and inference](../engineering/notes-and-inference.md)).
 - Verified private inference: before anything with content goes to NEAR AI, each model's Intel TDX quote,
   OS image (a published dstack image, measured exactly), measurements and NVIDIA GPU verdict are checked
@@ -105,7 +105,7 @@
 | 3 | Release acceptance in the deployed environment | [Deployment and acceptance](../engineering/deployment-and-acceptance.md); public journeys, private storage and deletion |
 | 4 | Bind requests to the attestation (an HPKE channel to a key the TEE makes, so trust doesn't rest on TLS alone) and pin the client | The API runs in Confidential Space and the app checks it; [Moving to confidential computing](../engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing) |
 | 5 | An attested notes participant | A member of the call's MLS group in a TEE that browsers verify before adding it, so no browser sends audio to the API; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
-| 6 | Credit purchases (1Click) and admission before recording | [Payments and usage](../engineering/payments-and-usage.md) |
+| 6 | Paid plans: buying Pro, renewing and refunds, Team, and picking a plan at first sign-in | Free, the metered AI allowance, per-account storage, call limits and the dollar balance filled by top-ups (1Click) are built; [Plans and usage](../engineering/plans-and-usage.md) |
 | 7 | Pin the model code NEAR AI runs | Check what its compose manager starts against deployments with published provenance; bind the GPU evidence and the model's name to the VM; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
 | 8 | Speaker diarization for room recordings | Room transcripts name nobody today |
 | 9 | Remaining review items | Strict JSON parsing, rollback detection (version-bound associated data, encrypted piece manifest), billing account IDs, key rotation, deletion across backups |

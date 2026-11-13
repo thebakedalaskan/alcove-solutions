@@ -24,6 +24,7 @@ import { AskForNotes, askerOf, notesBrowser, organizerName, roomScribe, useNotNo
 import { callTimes, type CallTimes } from '../notes/CatchUp';
 import { CallLines } from '../notes/LiveLines';
 import { NotesFollowUps } from '../notes/FollowUps';
+import { StopMarks, planStopOf, type StopMark } from '../notes/PlanStop';
 import { useActionFocus, type ActionJump } from './actionFocus';
 import type { NotesTab } from './side';
 import { statusText } from './status';
@@ -116,7 +117,8 @@ interface Bar { key: string; tone?: 'ask' | 'caution' | undefined; icon?: IconNa
 /**
  * The bars under Notes' tabs, on the notes and the transcript: this browser's own problems, then what capture means where
  * you are, only when it isn't simply live, with the one thing to do about it. `capture`: say capture's state too. The notes
- * say it in their empty state instead while there's nothing in them.
+ * say it in their empty state instead while there's nothing in them. While the organizer's plan has stopped notes, the bar
+ * over the tabs says that, with what to do (PlanStop.tsx), so nothing here says it again.
  */
 export function NotesBars({ state, controls, problems, capture }: { state: CallState; controls: CaptureControls; problems: string[]; capture: boolean }) {
   const { notNow, busy } = useNotNow(state, controls);
@@ -133,7 +135,7 @@ export function NotesBars({ state, controls, problems, capture }: { state: CallS
   if (here.mode === 'on' && here.transcript.mode === 'unavailable' && !(state.isHost && problems.length > 0)) {
     bars.push({ key: 'unheard', tone: 'caution', icon: 'alert', text: `${notesBrowser(state)} can’t listen right now, so nothing new is transcribed. Notes pick up as soon as it can.` });
   }
-  if (capture) {
+  if (capture && !planStopOf(c)) {
     const since = c.recording.since ? ` at ${hm(c.recording.since)}` : '';
     if (here.mode === 'unavailable') {
       bars.push({ key: 'unavailable', tone: 'caution', icon: 'alert', text: c.room ? ROOM_UNHEARD : c.away
@@ -149,7 +151,8 @@ export function NotesBars({ state, controls, problems, capture }: { state: CallS
         acts: <><Button size="sm" variant="quiet" disabled={busy} onClick={notNow}>Not now</Button><Button size="sm" variant="primary" onClick={() => controls.notes(true)}>Turn on</Button></> });
     } else if (c.mode === 'off') {
       const ever = state.notes.everOn;
-      bars.push({ key: 'off', icon: 'notesPen', text: !ever ? 'Notes are off, so nothing is being transcribed.' : host ? 'Notes are off. What was written is kept.' : `${organizer} turned notes off. What was written is kept.`,
+      bars.push({ key: 'off', icon: 'notesPen',
+        text: !ever ? 'Notes are off, so nothing is being transcribed.' : host ? 'Notes are off. What was written is kept.' : `${organizer} turned notes off. What was written is kept.`,
         acts: host ? <Button size="sm" variant="primary" onClick={() => controls.notes(true)}>Turn on</Button> : <AskForNotes state={state} controls={controls} label="Ask for notes" /> });
     }
   }
@@ -206,9 +209,11 @@ function Summary({ text, fresh }: { text: string; fresh: ReactNode }) {
   );
 }
 
-export function NotesView({ session, state, getting, problems, controls, carried, put, onSeek }: {
+export function NotesView({ session, state, getting, problems, controls, carried, put, stops, onSeek }: {
   session: CallSession;
   state: CallState;
+  /** Where the organizer's plan stopped notes in this call, and where they came on again (PlanStop.tsx): marked after the notes. */
+  stops: readonly StopMark[];
   /** Who gets the notes, as far as you can tell: everyone invited, for the organizer. */
   getting: Person[];
   /** This browser's own problems with capture: each is a bar. */
@@ -267,7 +272,10 @@ export function NotesView({ session, state, getting, problems, controls, carried
       </EmptyState>
     );
   } else if (c.mode === 'off' && !any) {
-    empty = host && askers.length > 0 ? (
+    // The organizer's plan stopped them: the bar over the tabs says why, and what to do; here, only that nothing's written yet.
+    empty = planStopOf(c) ? (
+      <EmptyState title="Nothing written yet">Notes start here the moment they’re on again.</EmptyState>
+    ) : host && askers.length > 0 ? (
       <EmptyState art={<Faces people={askers} size={40} max={3} />} title={`${listNames(askers)} asked for notes`}
         action={<><Button variant="quiet" size="sm" disabled={busy} onClick={notNow}>Not now</Button><Button variant="primary" size="sm" onClick={() => controls.notes(true)}>Turn on notes</Button></>}>
         Nothing from this call is written down yet. Notes start from the moment you turn them on.
@@ -313,6 +321,7 @@ export function NotesView({ session, state, getting, problems, controls, carried
               {n?.decided.length ? <DecidedRows items={n.decided} times={times} onSeek={onSeek} put={put} /> : <p className="nn-quiet">Nothing decided yet.</p>}
             </section>
             <NotesFollowUps key={state.capture.room?.id ?? 'main'} session={session} put={put} onSeek={onSeek} people={getting} />
+            <StopMarks marks={stops} />
             {held.length > 0 && (
               <section className="nn-sec nn-rooms" aria-label="From the rooms">
                 <div className="nn-sh"><h3>From the rooms</h3><span className="n">{held.reduce((k, h) => k + h.rooms.length, 0)}</span></div>

@@ -234,6 +234,11 @@
 .wv-pr button.role { border-radius: 6px; }
 .wv-pr button.role:hover { color: var(--ink); }
 .wv-sep { height: 1px; background: var(--line); }
+/* On a team's workspace: who's in it, under the sheet's title. */
+.wv-team { display: grid; gap: 6px; padding-bottom: 4px; }
+.wv-team > b { display: inline-flex; align-items: center; gap: 6px; font: 600 13.5px/1.2 var(--font-sans); color: var(--ink); }
+.wv-team > b .ac-i { color: var(--ink-2); }
+.wv-team > small { font-size: 12.5px; line-height: 1.35; color: var(--ink-3); }
 .wv-share .ac-eyebrow { font-size: 11px; color: var(--ink-3); }
 .wv-foot { display: flex; align-items: center; gap: 7px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
 .wv-foot .ac-i { color: var(--sun-text); }

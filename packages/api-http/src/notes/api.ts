@@ -51,10 +51,11 @@ export function createNotesApi(t: HttpTransport): Pick<AlcoveApi, 'notes' | 'ser
         yield* parts;
       },
       // The question goes in the body, as every question does, so it never appears in URLs or access logs.
-      askAll: async function*(question) {
-        const parts = await req(z.array(AnswerPartSchema), 'POST', '/notes/ask', { question });
+      askAll: async function*(question, refs) {
+        const parts = await req(z.array(AnswerPartSchema), 'POST', '/notes/ask', { question, ...(refs?.length ? { refs } : {}) });
         yield* parts;
       },
+      setTeamVisible: async (noteId, visible) => { await req(z.unknown(), 'PUT', `/notes/${encodeURIComponent(noteId)}/team`, { visible }); },
       share: (id, to) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(id)}/share`, { emails: to.emails, ...(to.group !== undefined ? { group: to.group } : {}) }),
       links: (id) => req(z.array(NoteLinkSchema), 'GET', `/notes/${encodeURIComponent(id)}/links`),
       createLink: (id) => req(NewNoteLinkSchema, 'POST', `/notes/${encodeURIComponent(id)}/links`),

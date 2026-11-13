@@ -52,7 +52,9 @@ export interface MoreActs {
  * More: pinning, copying the notes, meeting again, Google Drive and writing them again, then deleting them, or taking them out
  * of yours. Going through with that asks in the same popover, and says what goes.
  */
-export function CallMore({ acts, mine, inCall, ask, busy, gone, onDelete }: { acts: MoreActs; mine: boolean; inCall: boolean; ask: string; busy: boolean; gone: boolean; onDelete: () => void }) {
+export function CallMore({ acts, mine, removable = true, inCall, ask, busy, gone, onDelete }: {
+  acts: MoreActs; mine: boolean; removable?: boolean | undefined; inCall: boolean; ask: string; busy: boolean; gone: boolean; onDelete: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [sure, setSure] = useState(false);
   const opened = (o: boolean) => { setOpen(o); if (!o) setSure(false); };
@@ -78,10 +80,13 @@ export function CallMore({ acts, mine, inCall, ask, busy, gone, onDelete }: { ac
           {acts.again && item('repeat', 'Meet again', 'With the same people, at a time that works.', acts.again)}
           {acts.drive && item('cloudUpload', 'Google Drive', 'Where this call’s files go.', acts.drive)}
           {acts.rewrite && item('pen', 'Write the notes again', 'From the transcript, with the AI model you choose.', acts.rewrite)}
-          <div className="ac-pop-sep" />
-          <button type="button" className="ac-pop-item" disabled={inCall} onClick={() => setSure(true)}>
-            <Icon name="trash" size={18} /><span><b>{mine ? 'Delete notes' : 'Remove from your notes'}</b><small>{inCall ? 'Once the call ends.' : mine ? 'For everyone. Can’t be undone.' : 'Everyone else keeps them.'}</small></span>
-          </button>
+          {/* A note your team can see isn't yours to remove: it goes when its organizer stops showing it to the team. */}
+          {removable && <>
+            <div className="ac-pop-sep" />
+            <button type="button" className="ac-pop-item" disabled={inCall} onClick={() => setSure(true)}>
+              <Icon name="trash" size={18} /><span><b>{mine ? 'Delete notes' : 'Remove from your notes'}</b><small>{inCall ? 'Once the call ends.' : mine ? 'For everyone. Can’t be undone.' : 'Everyone else keeps them.'}</small></span>
+            </button>
+          </>}
         </>
       )}
     </Popover>

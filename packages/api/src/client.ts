@@ -1,6 +1,7 @@
 import type { AgentsApi } from './agents/api';
 import { type CallsApi, type RingsApi } from './calls/api';
-import { type CreditsApi } from './credits/api';
+import { type PlansApi } from './plans/api';
+import { type TeamsApi } from './teams/api';
 import { type FeatureFlagsApi } from './feature-flags/api';
 import { type AccountApi, type AuthApi, type PeopleApi } from './identity/api';
 import { type CalendarApi, type MeetingsApi } from './meetings/api';
@@ -28,7 +29,8 @@ export interface AlcoveApi {
   drive: DriveApi;
   series: SeriesApi;
   workspaces: WorkspacesApi;
-  credits: CreditsApi;
+  plans: PlansApi;
+  teams: TeamsApi;
   models: ModelsApi;
   trust: TrustApi;
   featureFlags: FeatureFlagsApi;

@@ -1,9 +1,11 @@
 import { ThemeProvider, ToastProvider, TooltipProvider, themeBootScript } from '@alcove/ui';
 import { type QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from '@tanstack/react-router';
+import { HeadContent, Outlet, Scripts, createRootRouteWithContext, useRouter } from '@tanstack/react-router';
 import { type ReactNode, useEffect } from 'react';
 import { RingHost } from '~/features/calls/ringing/RingHost';
 import { Arrival } from '~/features/onboarding/Arrival';
+import { CheckoutProvider } from '~/features/plans/checkout';
+import { CheckoutHost } from '~/features/plans/CheckoutHost';
 import { useNotifications } from '~/features/shell/notify';
 import { TabAttention } from '~/features/shell/TabAttention';
 import { registerServiceWorker } from '~/lib/serviceWorker';
@@ -38,6 +40,7 @@ function Document({ children }: { children: ReactNode }) {
 
 function Root() {
   const { queryClient } = Route.useRouteContext();
+  const router = useRouter();
   // Keeps this build in the browser, so Alcove opens without a connection.
   useEffect(registerServiceWorker, []);
   return (
@@ -45,11 +48,14 @@ function Root() {
       <ThemeProvider>
         <TooltipProvider>
           <ToastProvider>
-            <Outlet />
-            <Arrival />
-            <RingHost />
-            <Notifications />
-            <TabAttention />
+            {/* Checkout, over whatever page is open: Compare plans leaves it for Plans. */}
+            <CheckoutProvider window={(open, close, leave) => <CheckoutHost open={open} onClose={close} onCompare={() => { leave(); void router.navigate({ to: '/plans' }); }} />}>
+              <Outlet />
+              <Arrival />
+              <RingHost />
+              <Notifications />
+              <TabAttention />
+            </CheckoutProvider>
           </ToastProvider>
         </TooltipProvider>
       </ThemeProvider>

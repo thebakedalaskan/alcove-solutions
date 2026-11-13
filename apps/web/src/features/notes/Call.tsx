@@ -34,7 +34,7 @@ import { CallHead, CallMore, GonePage, WhoHas } from './Head';
 import { CallLine, marksOf } from './Line';
 import { correctedSince, speakersOf, type Correcting } from './lines';
 import { Made } from './Made';
-import { noteAsText, receivedLine } from './meta';
+import { noteAsText, readerRole, receivedLine } from './meta';
 import { NewFollowUp } from './NoteFollowUps';
 import { NotesPane, type Acting } from './NotesPane';
 import { AskBar, type Focus, type LineKinds, type ScreenRefShown, type ScreensShown } from './parts';
@@ -226,7 +226,9 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
   const paneEnd = useRef<HTMLDivElement>(null);
   const received = note.received;
   const mine = !received;
-  const reader = useNoteReader()(received?.role ?? 'organizer');
+  // A note visible to your team, from someone else: to read and ask about. Only its organizer changes it (the server's rule too).
+  const teamNote = received?.role === 'team';
+  const reader = useNoteReader()(readerRole(received));
   const organizer = note.recipients.find((r) => r.role === 'organizer')?.person;
   const ready = note.status === 'ready';
   const lines = useMemo(() => note.transcript ?? [], [note.transcript]);
@@ -283,20 +285,20 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
   const decisionForm = (r?: string | undefined) => <Propose label="Propose a decision" placeholder="What was decided" hint="Everyone with the notes sees it, as proposed by you, until someone else confirms it." busy={proposeDecision.isPending} seed={seedFor('decision', r)} onAdd={addDecision(r)} onDone={() => setSeed(null)} />;
   const actionForm = (r?: string | undefined) => <NewFollowUp noteId={note.id} room={r} people={note.recipients.map((recipient) => recipient.person)} seed={seedFor('follow-up', r)} onDone={() => setSeed(null)} />;
   // The organizer corrects any line; anyone else who has the notes, the words of their own lines (the server's rule too).
-  const correct: Correcting | undefined = ready ? {
+  const correct: Correcting | undefined = ready && !teamNote ? {
     can: (l) => mine || (!!me && !!l.speaker?.person?.email && sameEmail(l.speaker.person, { email: me })),
     people: mine && note.kind === 'call' ? speakersOf(note) : null,
     organizer: mine,
     onCorrect: (l, patch) => correctLine.mutate({ noteId: note.id, lineId: l.id, patch }, { onError: failed })
   } : undefined;
-  const fromLine = settled ? proposing : undefined;
+  const fromLine = settled && !teamNote ? proposing : undefined;
   const corrected = correctedSince([...lines, ...note.rooms.flatMap((r) => r.transcript)], note.writtenAt);
   const step = note.writingAgain && progress && !progress.ready ? progress.steps.at(-1)?.label : undefined;
   const writeAgain = () => rewrite.mutate({ noteId: note.id, model }, { onSuccess: () => setChoosing(false), onError: failed });
   const pickModel = mine ? <ModelPick value={model} onChange={setModel} /> : null;
   const stop = mine ? <Button variant="quiet" size="sm" loading={cancel.isPending} onClick={() => cancel.mutate(note.id, { onSuccess: () => toast('Stopped. The notes are as they were.'), onError: failed })}>Cancel</Button> : null;
   const tryAgain = mine ? <div className="cd-again-f">{pickModel}<Button size="sm" loading={rewrite.isPending} onClick={writeAgain}>Try writing them again</Button></div> : null;
-  const settle = ready ? {
+  const settle = ready && !teamNote ? {
     reader, people: note.recipients.map((r) => r.person),
     onDecision: (d: Decision, patch: DecisionPatch) => void act.decision(d, patch).catch(() => undefined),
     onQuestion: (x: Question, patch: QuestionPatch) => void act.question(x, patch).catch(() => undefined),
@@ -353,9 +355,10 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
     : sayPeople(stage);
   const series = useQuery({ ...q.series(note.seriesId ?? ''), enabled: !!note.seriesId }).data;
   const tabs: { value: CallTab; label: string }[] = [
-    { value: 'notes', label: 'Notes' }, { value: 'transcript', label: 'Transcript' }, ...(one ? [{ value: 'shared' as const, label: 'Shared' }] : []), { value: 'yours', label: 'Your notes' }
+    { value: 'notes', label: 'Notes' }, { value: 'transcript', label: 'Transcript' }, ...(one ? [{ value: 'shared' as const, label: 'Shared' }] : []),
+    ...(teamNote ? [] : [{ value: 'yours' as const, label: 'Your notes' }])
   ];
-  const shownTab: CallTab = tab === 'shared' && !one ? 'notes' : tab;
+  const shownTab: CallTab = (tab === 'shared' && !one) || (tab === 'yours' && teamNote) ? 'notes' : tab;
   const askable = ready && (lines.length > 0 || roomsSaid || roomNotes || (written && deleted)) && !going;
   const people = useMemo(() => stage.map((p) => p.person), [stage]);
 
@@ -363,13 +366,13 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
     <Evening ref={page} moment="note" className={cn('cd', going && 'is-going', one && 'is-one')} data-view={view}>
       <CallHead title={note.title} acts={(
         <>
-          <ShareNote note={note} size="sm" onShared={(emails) => setSharedTo(new Set(emails))} />
+          {!teamNote && <ShareNote note={note} size="sm" onShared={(emails) => setSharedTo(new Set(emails))} />}
           <DownloadMenu note={note} />
-          <CallMore mine={mine} inCall={inCall} ask={delAsk} busy={del.isPending} gone={going} onDelete={() => void remove()} acts={{
+          <CallMore mine={mine} removable={!teamNote} inCall={inCall} ask={delAsk} busy={del.isPending} gone={going} onDelete={() => void remove()} acts={{
             pin,
             ...(ready ? { copy: () => void navigator.clipboard?.writeText(noteAsText(note)).then(() => toast('Copied as text')) } : {}),
             ...(note.kind === 'call' ? { again: () => schedule({ schedule: 'again', note: note.id }, note.recipients.filter((r) => r.role !== 'shared' && !(me && sameEmail(r.person, { email: me }))).map((r) => r.person.email)) } : {}),
-            ...(note.kind === 'call' ? { drive: () => setDrive(true) } : {}),
+            ...(note.kind === 'call' && !teamNote ? { drive: () => setDrive(true) } : {}),
             ...(mine && ready && !note.writingAgain && (lines.length > 0 || roomsSaid) ? { rewrite: () => setChoosing(true) } : {})
           }} />
         </>
@@ -401,8 +404,8 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
           <div ref={pane} id="cd-pane" role="tabpanel" aria-labelledby={`cd-tab-${shownTab}`} className="cd-pane" tabIndex={-1}>
             {shownTab === 'notes' && (
               <NotesPane note={note} me={me} reader={reader} onSeek={seek} shown={onScreen} act={act} settled={settled} notices={notices} decisionForm={decisionForm} actionForm={actionForm}
-                settle={settle} room={room} at={at} writing={!ready || note.writingAgain} tryAgain={tryAgain}
-                shared={!going && <SharedNotes note={note} me={me} mine={mine} shown={onScreen} onSeek={seek} />} />
+                settle={settle} room={room} at={at} writing={!ready || note.writingAgain} tryAgain={tryAgain} locked={teamNote}
+                shared={!going && !teamNote && <SharedNotes note={note} me={me} mine={mine} shown={onScreen} onSeek={seek} />} />
             )}
             {shownTab === 'transcript' && (
               <TranscriptPane note={note} me={me} player={player} here={here} onSeek={canGo ? go : undefined} focus={focus} pane={pane} screens={screens} correct={correct} fromLine={fromLine}
@@ -412,12 +415,12 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
             {shownTab === 'yours' && <OwnNotesCard note={note} me={me} entries={yours.entries} own={yours.own} shown={onScreen} onSeek={seek} />}
             <div ref={paneEnd} className="cd-end-mark" aria-hidden="true" />
           </div>
-          {askable && <AskBar suggestions={note.suggestedQuestions} ask={(question) => api.notes.ask(note.id, question)} onSeek={seek} shown={onScreen} onKeep={keep} end={paneEnd} />}
+          {askable && <AskBar suggestions={note.suggestedQuestions} ask={(question) => api.notes.ask(note.id, question)} onSeek={seek} shown={onScreen} onKeep={teamNote ? undefined : keep} end={paneEnd} />}
         </aside>
       </div>
       <ScreenViewer noteId={note.id} screens={moments} open={viewer.open} me={me} onOpen={viewer.show} onClose={viewer.close} onPlay={canGo ? playMoment : undefined} marks={yours.screens} />
       <WriteAgain open={mine && choosing && !note.writingAgain} model={model} busy={rewrite.isPending} onModel={setModel} onCancel={() => setChoosing(false)} onWrite={writeAgain} />
-      {note.kind === 'call' && <DriveExportsModal open={drive} onClose={() => setDrive(false)} noteId={note.id} recordingAllowed={mine && note.kept.recording} recordingKept={note.kept.recording} />}
+      {note.kind === 'call' && !teamNote && <DriveExportsModal open={drive} onClose={() => setDrive(false)} noteId={note.id} recordingAllowed={mine && note.kept.recording} recordingKept={note.kept.recording} />}
     </Evening>
   );
 }

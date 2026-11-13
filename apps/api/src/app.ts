@@ -20,6 +20,7 @@ import { registerRecordingRoutes } from './features/recordings/routes';
 import { registerNoteRoutes } from './features/notes/routes';
 import { registerWorkspaceRoutes } from './features/workspaces/routes';
 import { registerBillingRoutes } from './features/billing/routes';
+import { registerTeamRoutes } from './features/billing/team-routes';
 import { createAttester, type Attester } from './tee';
 
 /**
@@ -50,6 +51,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined, attester:
   registerDriveRoutes(app, runtime);
   registerWorkspaceRoutes(app, runtime);
   registerBillingRoutes(app, runtime);
+  registerTeamRoutes(app, runtime);
 
   return app;
 }

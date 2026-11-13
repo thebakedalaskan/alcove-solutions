@@ -34,7 +34,7 @@ afterAll(async () => {
   await h?.close();
 });
 // A limit a test set is gone before the next starts: tests read the limits afresh on every request (LIMITS_CACHE_MS is 0 here).
-afterEach(async () => { h.closeCalls(); vi.restoreAllMocks(); await h.pool.query('DELETE FROM service_limits'); });
+afterEach(async () => { h.closeCalls(); vi.restoreAllMocks(); await h.resetLimits(); });
 
 const PIECE = MEDIA_PIECE_BYTES;
 let seq = 0;
@@ -48,13 +48,11 @@ async function account(o: { email?: string | undefined; fetch?: typeof fetch | u
 }
 const MiB = 1024 * 1024;
 const GiB = 1024 * MiB;
-/** A limit, set as someone at the database's console would. */
-const setLimit = (name: string, value: number) => h.pool.query('INSERT INTO service_limits (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = excluded.value, updated_at = now()', [name, value]);
 /** What each storage limit refuses with, as a browser hears it: a file says how big one can be, and a limit of zero that nothing can be uploaded. */
-const tooBig = (most: string) => ({ code: 'invalid', message: `This file is bigger than ${most}, the most a file can be.`, status: 400 });
+const tooBig = (most: string) => ({ code: 'invalid', message: `This file is bigger than ${most}, the most a file can be here.`, status: 400 });
 const NO_FILES = { code: 'invalid', message: 'Files can’t be uploaded right now.', status: 400 };
 const NO_UPLOADS = { code: 'conflict', message: 'Files can’t be uploaded right now.', status: 409 };
-const FULL = { code: 'conflict', message: 'This workspace is full, so it can’t take more files.', status: 409 };
+const FULL = { code: 'plan-limit', message: 'Your storage is full. Delete something, or move to a plan with more room.', status: 402 };
 const TODAYS = { code: 'conflict', message: 'That’s all you can upload today. You can upload more tomorrow.', status: 409 };
 const SEAT_ONLY = { code: 'forbidden', message: 'You can work on this in the call, but you can’t delete its files for good.', status: 403 };
 const LogLine = z.object({ level: z.number(), msg: z.string() }).passthrough();
@@ -427,7 +425,7 @@ describe('a file in a document', () => {
     const doc = await make(ann, id, 'document', 'Plan');
     const at = place(id, doc);
     const owner = await ownerOf(id);
-    const limit = LIMITS['media.file_bytes'].default;
+    const limit = LIMITS['plan.free.file_bytes'].default;
     for (const body of [{ name: 'big.mp4', type: 'video/mp4', size: MAX_MEDIA_BYTES + 1 }, { name: 'over.mp4', type: 'video/mp4', size: limit + 1 }, { name: 'none.png', type: 'image/png', size: 0 }, { name: '   ', type: 'image/png', size: 4 }, { name: 'x'.repeat(256), type: 'image/png', size: 4 }, { name: 'half.png', type: 'image/png', size: 1.5 }, { name: 'tall.png', type: 'image/png', size: 4, width: 0 }]) {
       expect([body.name.slice(0, 8), (await json(ann, at, body)).status]).toEqual([body.name.slice(0, 8), 400]);
     }
@@ -1372,7 +1370,7 @@ describe('guests in a call', () => {
     const days = async () => (await h.pool.query<{ day: string; bytes: string }>("SELECT to_char(day, 'YYYY-MM-DD') AS day, bytes::text AS bytes FROM media_guest_upload_days WHERE guest_index = $1 ORDER BY day", [index])).rows.map((r) => [r.day, Number(r.bytes)]);
     const ago = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
     const send = (api: AlcoveApi, bytes: number) => api.workspaces.media.upload(id, agenda, fileOf(bytesOf(bytes)), { pass: sam.pass });
-    await setLimit('media.account_day_bytes', 3 * MiB);
+    await h.setLimit('media.account_day_bytes', 3 * MiB);
     await send(sam.api, 2 * MiB);
     expect(await days()).toEqual([[ago(0), 2 * MiB]]);
     // Another process, as after a restart, counts what this one did, because it reads it from the database every time.
@@ -1468,13 +1466,14 @@ describe('guests in a call', () => {
     await org.api.workspaces.share.set(id, agenda, [{ seat: sam.seat }, { seat: jo.seat }], 'edit', { pass: host.ticket.pass });
     const send = (g: { api: AlcoveApi; pass: string }, bytes: number) => g.api.workspaces.media.upload(id, agenda, fileOf(bytesOf(bytes)), { pass: g.pass });
     // Each guest's day is their own, counted by the person their pass names.
-    await setLimit('media.account_day_bytes', 2 * MiB);
+    await h.setLimit('media.account_day_bytes', 2 * MiB);
     await send(sam, MiB);
     expect(await refusal(send(sam, MiB + MiB / 2))).toEqual(TODAYS);
     await send(jo, MiB + MiB / 2);
-    // And a workspace holds what it holds, whoever's adding to it.
-    await setLimit('media.workspace_bytes', 2 * MiB);
-    expect(await refusal(send(jo, 16))).toEqual(FULL);
+    // And the storage of whoever the workspace counts against holds what it holds, whoever’s adding to it: a guest hears that
+    // the workspace can't take more, never whose storage it is.
+    await h.setLimit('plan.free.storage_bytes', 2 * MiB);
+    expect(await refusal(send(jo, 16))).toEqual({ code: 'plan-limit', message: 'This workspace can’t take more files: the storage it counts against is full.', status: 402 });
   });
 });
 
@@ -2105,18 +2104,20 @@ describe('storage limits', () => {
     const starting = async (at: { id: string; doc: string }, size: number) => said(await json(ann, place(at.id, at.doc), { name: 'a.png', type: 'image/png', size }));
     // A file over the limit in force hears how big one can be, which only the server knows: one past the most there can ever be too.
     expect(await starting({ id, doc }, MAX_MEDIA_BYTES + 1)).toEqual(tooBig('512 MiB'));
-    await setLimit('media.file_bytes', MiB);
+    await h.setLimit('plan.free.file_bytes', MiB);
     expect(await refusal(send(ann, id, doc, MiB + 1))).toEqual(tooBig('1 MiB'));
     expect(await starting({ id, doc }, MiB + 1)).toEqual(tooBig('1 MiB'));
     await send(ann, id, doc, MiB);
-    // A workspace that holds what it's allowed: what's stored there, and what's coming.
-    await setLimit('media.workspace_bytes', 2 * MiB);
+    // Storage that holds what its plan allows: what's stored, and what's coming.
+    await h.setLimit('plan.free.storage_bytes', 2 * MiB);
     expect(await refusal(send(ann, id, doc, MiB))).toEqual(FULL);
     expect(await starting({ id, doc }, MiB)).toEqual(FULL);
     await send(ann, id, doc, MiB / 2);
-    // What someone can upload in a day, in every workspace together.
+    // What someone can upload in a day, in every workspace together. Storage is the account's, in every workspace it
+    // pays for: with room again, only the day is in the way.
     const elsewhere = await planIn(ann);
-    await setLimit('media.account_day_bytes', 2 * MiB);
+    await h.setLimit('plan.free.storage_bytes', 10 * MiB);
+    await h.setLimit('media.account_day_bytes', 2 * MiB);
     expect(await refusal(send(ann, elsewhere.id, elsewhere.doc, MiB))).toEqual(TODAYS);
     expect(await starting(elsewhere, MiB)).toEqual(TODAYS);
     await send(ann, elsewhere.id, elsewhere.doc, MiB / 2);
@@ -2124,14 +2125,14 @@ describe('storage limits', () => {
     // Each was refused as it started: nothing of them was kept.
     expect(await count('SELECT count(*)::int AS n FROM workspace_media WHERE owner_id = $1', [owner])).toBe(2);
     // A limit of zero isn't someone having used theirs up: nothing can be uploaded, whoever's asking.
-    await h.pool.query('DELETE FROM service_limits');
-    await setLimit('media.file_bytes', 0);
+    await h.resetLimits();
+    await h.setLimit('plan.free.file_bytes', 0);
     expect(await refusal(send(ann, id, doc, 1))).toEqual(NO_FILES);
-    await h.pool.query('DELETE FROM service_limits');
-    await setLimit('media.workspace_bytes', 0);
-    expect(await refusal(send(ann, id, doc, 1))).toEqual(NO_UPLOADS);
-    await h.pool.query('DELETE FROM service_limits');
-    await setLimit('media.account_day_bytes', 0);
+    await h.resetLimits();
+    await h.setLimit('plan.free.storage_bytes', 0);
+    expect(await refusal(send(ann, id, doc, 1))).toEqual(FULL);
+    await h.resetLimits();
+    await h.setLimit('media.account_day_bytes', 0);
     expect(await refusal(send(ann, id, doc, 1))).toEqual(NO_UPLOADS);
   });
 
@@ -2141,15 +2142,15 @@ describe('storage limits', () => {
     const m = await started(ann, id, doc, 3 * PIECE);
     const at = (n: number) => `${place(id, doc)}/${m}/pieces/${n}`;
     expect((await sendPiece(ann, at(0), bytesOf(PIECE))).status).toBe(200);
-    await setLimit('media.account_day_bytes', PIECE + 1);
+    await h.setLimit('media.account_day_bytes', PIECE + 1);
     expect(await said(await sendPiece(ann, at(1), bytesOf(PIECE)))).toEqual(TODAYS);
-    await setLimit('media.account_day_bytes', 3 * PIECE);
-    await setLimit('media.workspace_bytes', 2 * PIECE);
+    await h.setLimit('media.account_day_bytes', 3 * PIECE);
+    await h.setLimit('plan.free.storage_bytes', 2 * PIECE);
     expect(await said(await sendPiece(ann, at(1), bytesOf(PIECE)))).toEqual(FULL);
-    await setLimit('media.workspace_bytes', 4 * PIECE);
-    await setLimit('media.file_bytes', 2 * PIECE);
+    await h.setLimit('plan.free.storage_bytes', 4 * PIECE);
+    await h.setLimit('plan.free.file_bytes', 2 * PIECE);
     expect(await said(await sendPiece(ann, at(1), bytesOf(PIECE)))).toEqual(tooBig('8 MiB'));
-    await h.pool.query('DELETE FROM service_limits');
+    await h.resetLimits();
     expect((await sendPiece(ann, at(1), bytesOf(PIECE))).status).toBe(200);
     expect((await sendPiece(ann, at(2), bytesOf(PIECE))).status).toBe(200);
     expect((await json(ann, `${place(id, doc)}/${m}/finish`, {})).status).toBe(200);
@@ -2159,7 +2160,7 @@ describe('storage limits', () => {
     const ann = await withCookie();
     const { id, doc } = await planIn(ann);
     const m = await started(ann, id, doc, 2 * PIECE);
-    await setLimit('media.account_day_bytes', 1);
+    await h.setLimit('media.account_day_bytes', 1);
     // A browser that has sent all of a piece sends its next request down the same connection once it has its answer.
     const { hostname, port, host } = new URL(h.baseUrl);
     const socket = connect({ host: hostname, port: Number(port) });
@@ -2189,10 +2190,10 @@ describe('storage limits', () => {
     const objects = await objectsOf(owner);
     const before = await storedBytes(owner);
     // Below what's already there.
-    await setLimit('media.workspace_bytes', 1);
-    await setLimit('media.account_day_bytes', 1);
+    await h.setLimit('plan.free.storage_bytes', 1);
+    await h.setLimit('media.account_day_bytes', 1);
     expect(await refusal(send(ann, id, doc, 1))).toEqual(FULL);
-    await setLimit('media.file_bytes', 0);
+    await h.setLimit('plan.free.file_bytes', 0);
     expect(await refusal(send(ann, id, doc, 1))).toEqual(NO_FILES);
     await maintain(h.deps, { uploadAgeMs: ALREADY });
     // Everything already there stays, and reads back as it went in.
@@ -2212,7 +2213,7 @@ describe('storage limits', () => {
     const from = h.logs.length;
     h.deps.cfg = { ...cfg, LIMITS_CACHE_MS: 3000 };
     try {
-      await setLimit('media.account_day_bytes', 1);
+      await h.setLimit('media.account_day_bytes', 1);
       // Until the window ends, what was read holds...
       await send(ann, id, doc, 16);
       await pause(3100);
@@ -2226,7 +2227,7 @@ describe('storage limits', () => {
   it('keeps what was in force when the limits can’t be read, and reads them again next time', async () => {
     const ann = await account();
     const { id, doc } = await planIn(ann);
-    await setLimit('media.account_day_bytes', 1);
+    await h.setLimit('media.account_day_bytes', 1);
     expect(await refusal(send(ann, id, doc, 16))).toEqual(TODAYS);
     const from = h.logs.length;
     await h.pool.query('ALTER TABLE service_limits RENAME TO service_limits_away');
@@ -2236,7 +2237,7 @@ describe('storage limits', () => {
       expect(logsSince(from).filter((l) => l.msg === 'service limits not read; keeping what was in force').map((l) => l.level)).toContain(40);
     } finally { await h.pool.query('ALTER TABLE service_limits_away RENAME TO service_limits'); }
     // Once they can be read, the next request does.
-    await h.pool.query('DELETE FROM service_limits');
+    await h.resetLimits();
     await send(ann, id, doc, 16);
   });
 
@@ -2267,29 +2268,30 @@ describe('storage limits', () => {
     const { id, doc } = await planIn(ann);
     const owner = await ownerOf(id);
     const from = h.logs.length;
-    await setLimit('media.file_byte', 1);
-    await setLimit('media.account_day_bytes', -1);
+    // A row no limit has, as a typo at the database's console makes it, and a value below a limit's floor.
+    await h.pool.query('INSERT INTO service_limits (name, value) VALUES ($1, $2)', ['media.file_byte', 1]);
+    await h.setLimit('media.account_day_bytes', -1);
     // Neither stops anything: each limit they meant is its default.
     await send(ann, id, doc, MiB);
     await send(ann, id, doc, MiB);
     const ignored = logsSince(from).filter((l) => l.msg === 'service limit ignored').map((l) => [l.level, l['limit'], l['value']]);
     expect(ignored.sort()).toEqual([[40, 'media.account_day_bytes', -1], [40, 'media.file_byte', 1]]);
     // Zero is a value like any other: none.
-    await setLimit('media.account_day_bytes', 0);
+    await h.setLimit('media.account_day_bytes', 0);
     expect(await refusal(send(ann, id, doc, 1))).toEqual(NO_UPLOADS);
-    await h.pool.query('DELETE FROM service_limits');
+    await h.resetLimits();
     // Past its ceiling, a value is the ceiling: a workspace holding more than that is full, whatever the row says.
-    const { ceiling } = LIMITS['media.workspace_bytes'];
+    const { ceiling } = LIMITS['plan.free.storage_bytes'];
     const before = await storedBytes(owner);
     await h.pool.query('UPDATE owners SET stored_bytes = $2 WHERE owner_id = $1', [owner, ceiling + GiB]);
     try {
-      await setLimit('media.workspace_bytes', 1e15);
+      await h.setLimit('plan.free.storage_bytes', 1e15);
       expect(await refusal(send(ann, id, doc, 1))).toEqual(FULL);
     } finally { await h.pool.query('UPDATE owners SET stored_bytes = $2 WHERE owner_id = $1', [owner, before]); }
-    expect(logsSince(from).filter((l) => l.msg === 'service limit clamped')).toEqual([expect.objectContaining({ level: 40, limit: 'media.workspace_bytes', value: 1e15, used: ceiling })]);
+    expect(logsSince(from).filter((l) => l.msg === 'service limit clamped')).toEqual([expect.objectContaining({ level: 40, limit: 'plan.free.storage_bytes', value: 1e15, used: ceiling })]);
   });
 
-  it('is set from the command line, against any database, saying what it was and what it is now', async () => {
+  it('is set from the command line, against any database, in bytes, dollars or time as it lists them, saying what it was and what it is now', async () => {
     const cli = (...args: string[]) => new Promise<{ code: number | null; out: string }>((resolve, reject) => {
       const run = spawn(process.execPath, ['--import', 'tsx', 'src/limits-cli.ts', ...args], {
         env: { ...process.env, DATABASE_URL: process.env['TEST_DATABASE_URL'], LOG_FORMAT: 'json', LOG_LEVEL: 'info' }, stdio: ['ignore', 'pipe', 'pipe']
@@ -2310,10 +2312,10 @@ describe('storage limits', () => {
     const again = await cli('set', 'media.account_day_bytes', '2MiB');
     expect(loggedBy(again.out).filter((l) => l.msg === 'service limit set')).toEqual([expect.objectContaining({ limit: 'media.account_day_bytes', old: MiB, new: 2 * MiB })]);
     // A value as `limits list` writes it is one it takes.
-    const room = await cli('set', 'media.workspace_bytes', '5 GiB');
+    const room = await cli('set', 'plan.free.storage_bytes', '5 GiB');
     expect(room.code).toBe(0);
-    expect(loggedBy(room.out).filter((l) => l.msg === 'service limit set')).toEqual([expect.objectContaining({ limit: 'media.workspace_bytes', old: 100 * GiB, new: 5 * GiB })]);
-    expect(await stored()).toEqual([['media.account_day_bytes', 2 * MiB], ['media.workspace_bytes', 5 * GiB]]);
+    expect(loggedBy(room.out).filter((l) => l.msg === 'service limit set')).toEqual([expect.objectContaining({ limit: 'plan.free.storage_bytes', old: 10 * GiB, new: 5 * GiB })]);
+    expect(await stored()).toEqual([['media.account_day_bytes', 2 * MiB], ['plan.free.storage_bytes', 5 * GiB]]);
     // The API holds to it on the next request it reads limits for.
     const ann = await account();
     const { id, doc } = await planIn(ann);
@@ -2321,20 +2323,36 @@ describe('storage limits', () => {
     // What's in force, for someone deciding what to change.
     const listed = await cli('list');
     expect(listed.code).toBe(0);
-    for (const line of ['media.account_day_bytes', '2 MiB', 'media.file_bytes', '512 MiB']) expect(listed.out).toContain(line);
+    for (const line of ['media.account_day_bytes', '2 MiB', 'plan.free.file_bytes', '512 MiB']) expect(listed.out).toContain(line);
     // Anything it can't set is refused, and nothing is stored: a typo is an ordinary refusal, said at warn.
-    for (const args of [['set', 'media.file_byte', '1'], ['set', 'media.file_bytes', '99GiB'], ['set', 'media.file_bytes', '-5'], ['set', 'media.file_bytes'], ['unset']]) {
+    for (const args of [['set', 'media.file_byte', '1'], ['set', 'plan.free.file_bytes', '99GiB'], ['set', 'plan.free.file_bytes', '-5'], ['set', 'plan.free.file_bytes'], ['unset']]) {
       const refused = await cli(...args);
       expect([args.join(' '), refused.code, loggedBy(refused.out).filter((l) => l.level >= 50)]).toEqual([args.join(' '), 1, []]);
     }
-    expect(await stored()).toEqual([['media.account_day_bytes', 2 * MiB], ['media.workspace_bytes', 5 * GiB]]);
+    expect(await stored()).toEqual([['media.account_day_bytes', 2 * MiB], ['plan.free.storage_bytes', 5 * GiB]]);
+
+    // Money in dollars and time with a unit, as `limits list` shows them, which `set` takes back unchanged.
+    const setTo = async (name: string, typed: string) => loggedBy((await cli('set', name, typed)).out).filter((l) => l.msg === 'service limit set');
+    expect(await setTo('ai.hour_micro_usd', '$0.60')).toEqual([expect.objectContaining({ limit: 'ai.hour_micro_usd', old: 500_000, new: 600_000 })]);
+    expect(await setTo('plan.period_seconds', '7d')).toEqual([expect.objectContaining({ limit: 'plan.period_seconds', old: 30 * 86_400, new: 7 * 86_400 })]);
+    const listing = (await cli('list')).out;
+    expect(listing).toMatch(/^ai\.hour_micro_usd +\$0\.60 /m);
+    expect(listing).toMatch(/^plan\.period_seconds +7 d /m);
+    expect(await setTo('ai.hour_micro_usd', '$0.60')).toEqual([expect.objectContaining({ old: 600_000, new: 600_000 })]);
+    expect(await setTo('plan.period_seconds', '7 d')).toEqual([expect.objectContaining({ old: 7 * 86_400, new: 7 * 86_400 })]);
+    // A unit of the wrong kind, and money past six places, are refused, and nothing changes.
+    for (const args of [['set', 'plan.free.file_bytes', '$5'], ['set', 'plan.period_seconds', '5MiB'], ['set', 'plan.free.notes_minutes', '300m'], ['set', 'call.max_people', '$5'], ['set', 'ai.hour_micro_usd', '$0.1234567']]) {
+      const refused = await cli(...args);
+      expect([args.join(' '), refused.code, loggedBy(refused.out).filter((l) => l.level >= 50).length, loggedBy(refused.out).some((l) => l.msg === 'limit not set')]).toEqual([args.join(' '), 1, 0, true]);
+    }
+    expect(await stored()).toEqual([['ai.hour_micro_usd', 600_000], ['media.account_day_bytes', 2 * MiB], ['plan.free.storage_bytes', 5 * GiB], ['plan.period_seconds', 7 * 86_400]]);
   });
 
-  it('warns once each time a workspace or someone’s day passes 80% of its limit', async () => {
+  it('warns once each time someone’s storage or their day passes 80% of its limit', async () => {
     const ann = await account();
     const { id, doc } = await planIn(ann);
-    await setLimit('media.workspace_bytes', 10 * MiB);
-    await setLimit('media.account_day_bytes', 12 * MiB);
+    await h.setLimit('plan.free.storage_bytes', 10 * MiB);
+    await h.setLimit('media.account_day_bytes', 12 * MiB);
     const from = h.logs.length;
     const warned = () => logsSince(from).filter((l) => l.level === 40 && /past 80%/.test(l.msg));
     const files = [];
@@ -2346,9 +2364,9 @@ describe('storage limits', () => {
     await send(ann, id, doc, 2 * MiB);
     await send(ann, id, doc, MiB / 4);
     const lines = warned();
-    // The workspace passed it twice, once more after a file went; the day once, because what's uploaded stays uploaded.
-    expect(lines.map((l) => l.msg)).toEqual(['a workspace is past 80% of its storage', 'a workspace is past 80% of its storage', 'someone is past 80% of what they can upload today']);
-    expect(lines[0]).toEqual(expect.objectContaining({ workspaceId: id, limitBytes: 10 * MiB }));
+    // The account's storage passed it twice, once more after a file went; the day once, because what's uploaded stays uploaded.
+    expect(lines.map((l) => l.msg)).toEqual(['an account is past 80% of its storage', 'an account is past 80% of its storage', 'someone is past 80% of what they can upload today']);
+    expect(lines[0]).toEqual(expect.objectContaining({ workspaceId: id, ownerId: ann.ownerId, limitBytes: 10 * MiB }));
     expect(lines[2]).toEqual(expect.objectContaining({ ownerId: ann.ownerId, uploadedBytes: 11.5 * MiB, limitBytes: 12 * MiB }));
     // Sizes and IDs, and nothing anyone wrote.
     for (const l of lines) expect(Object.keys(l).filter((k) => !['level', 'severity', 'time', 'service', 'msg', 'component', 'requestId', 'method', 'path', 'ownerId', 'workspaceId', 'storedBytes', 'uploadedBytes', 'limitBytes'].includes(k))).toEqual([]);
@@ -2357,7 +2375,7 @@ describe('storage limits', () => {
   it('keeps a day’s count through a restart, forgets it after two days, and deletes it with the account', async () => {
     const ann = await account();
     const { id, doc } = await planIn(ann);
-    await setLimit('media.account_day_bytes', 3 * MiB);
+    await h.setLimit('media.account_day_bytes', 3 * MiB);
     await send(ann, id, doc, 2 * MiB);
     const days = async () => (await h.pool.query<{ day: string; bytes: string }>("SELECT to_char(day, 'YYYY-MM-DD') AS day, bytes::text AS bytes FROM media_upload_days WHERE owner_id = $1 ORDER BY day", [ann.ownerId])).rows.map((r) => [r.day, Number(r.bytes)]);
     const ago = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);

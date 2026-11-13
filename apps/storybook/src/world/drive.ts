@@ -40,7 +40,7 @@ const callFolder = (name: string, startedAt: string, noteId: string | null) => i
 
 /** A workspace: who's in it besides Art (`members`), and the line on what it's for (`about`), when it says. */
 function space(id: string, name: string, role: WorkspaceRole, members: Person[], createdAt: string, items: WorkspaceItem[], call: WorkspaceSummary['call'] = null, about = ''): Space {
-  return { id, name, role, inCall: false, people: members.length + 1, createdAt, call, items, members, about };
+  return { id, name, role, inCall: false, people: members.length + 1, teamAccess: null, createdAt, call, items, members, about };
 }
 
 /* ---------- when ---------- */
@@ -114,7 +114,7 @@ function calls(): Space[] {
 
 /** Ines's board prep, which she shared one document of: someone outside a workspace sees no name, no folders and no head count. */
 function sharedByInes(): Space {
-  return { id: 'dv-boardprep', name: null, role: null, inCall: false, people: null, createdAt: null, call: null, items: [doc('Board deck outline', INES, iso(-9, 9, 30))] };
+  return { id: 'dv-boardprep', name: null, role: null, inCall: false, people: null, teamAccess: null, createdAt: null, call: null, items: [doc('Board deck outline', INES, iso(-9, 9, 30))] };
 }
 
 /* ---------- what the documents say ---------- */

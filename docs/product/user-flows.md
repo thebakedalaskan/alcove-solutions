@@ -29,12 +29,15 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    team at** the company, with its size and faces, when it has people in it and has arrived by then (the screen
    doesn't wait for it), with who already uses Alcove, or **Invite them from Team** while nobody does. **Notes are
    written in confidential compute**, and only the people invited to a call get its notes. Then
-   "You’re in" and the arch opens into Home. **Skip**, **Escape** or **Enter** opens it straight away; with
+   "You’re in" and the arch opens into Home, where the plans to choose from come first, once (16.20): the screen says
+   "Opening Plans" then, and "Opening Home" when Home is next. **Skip**,
+   **Escape** or **Enter** opens it straight away; with
    reduced motion the finished screen shows for a moment and Home follows. After that, signing in goes
    straight to Home. From the welcome page it sails out of the cove: the headlands go by, the horizon comes up to
    Home's, the side panel and the page's frame form round the sea, and Home rises in, in about three and a half
-   seconds (a press, a key or the wheel ends it at once; with reduced motion Home just opens).
-4. On first arriving in Home, a tour goes through it, one stop at a time: a card with a short animation on the dawn sky,
+   seconds (a press, a key or the wheel ends it at once; with reduced motion Home just opens). While the plans haven't
+   been shown, it sails onto them in Home's place instead, the sun sinking to their last sliver (16.20).
+4. On first arriving in Home (past the plans), a tour goes through it, one stop at a time: a card with a short animation on the dawn sky,
    and the page dimmed around the real thing the stop is about, with a ring round it and an arrow to it. **Start or
    schedule a call** (Start now and Schedule, on Home's sky); **Join a call** (the line on Home that offers an Alcove
    call, only while it does, from its last few minutes); **Notes for your calls** (the example note's card in Recent
@@ -50,7 +53,7 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    account; **Take the tour** in your menu (flow 2) or in Settings (flow 11) plays it again.
 
 The first sign-in creates the account: its keys, a profile with the name, email and photo from the sign-in,
-the notes default (on) and 10,000 credits. Later sign-ins bring the name, email and photo up to date. In local
+the notes default (on) and the Free plan, with all of its notes for the period. Later sign-ins bring the name, email and photo up to date. In local
 development and Storybook, Microsoft signs in Art Vandelay (art@vandelay.industries), and SSO signs in
 whoever's email was typed, with a name made from the address, as long as it's an address no real person can
 have (at example.com or another domain reserved for examples, or at vandelay.industries). These demo accounts get a sample day of
@@ -80,9 +83,17 @@ Beside every page, dark in both themes, in two groups: your work at the top, and
   line offers the call (from 5 minutes before, and while it's going), so there's one **Join** at a time.
 - At the bottom: the confidential-compute check (**Confidential compute · verified** when this browser's check of the
   server passed: its attestation token, and its release in Sigstore's public log, which the server hands over with it;
-  pointing at it says when, or why the check didn't pass, beside a shield without its tick), and the time of notes left,
-  which opens Settings at your minutes. A check that doesn't pass blocks nothing, and a server that can't be asked
-  isn't verified: what an earlier check said doesn't stay.
+  pointing at it says when, or why the check didn't pass, beside a shield without its tick; a check that doesn't pass
+  blocks nothing, and a server that can't be asked isn't verified: what an earlier check said doesn't stay), then your
+  plan (16.7), in one row. On Free, about how much of the
+  period's notes is left, "About 1 h 26 min of notes left" over a meter (warm under an hour, "No notes left until 1 Dec" in
+  caution once they've stopped), which opens Settings at your plan. On Pro or Team, a row like the places: the plan's small
+  sun, **Pro** and "Until 4 Nov 2027", opening Settings at your plan; once notes are low or out it says that instead ("About
+  40 min of notes left", "No notes left until 1 Dec"). While Pro is about to end without renewing, its sun is half set and it
+  says "Ends in 3 days · Extend", which opens checkout. A payment for a plan on its way takes the row's place: "Waiting for
+  192 USDC", and **Pro, 12 months · Open**, which opens it again in checkout. "Pro renewed from your balance" or "Pro ended.
+  Nothing was deleted." is one line above the row until it's dismissed in Settings. On Plans, Pro's or Team's row, or a
+  payment's, is the place you're on.
 - Offline, a notice at the top says recording still works and everything else catches up when you're back
   (with **Record without a connection** off, that recording waits for the connection too). The call about to start and
   the check wait until the connection returns. Alcove also opens offline for someone signed in on this browser:
@@ -325,8 +336,9 @@ send to anyone".
 7. **Details** shows once someone's in or a time is picked. **Notes** is a switch ("Everyone invited gets them", or
    "Nothing is recorded"), and **What the notes keep** opens under it: **Keep the transcript** (without it, it's used to
    write the notes and then deleted), **Keep the recording**, **Read shared screens** (whoever shares is asked whether
-   theirs goes in the notes), and **Where they go** (a new workspace, or one of yours). Past 25 people, **Everyone joins
-   muted** is on. **Bring** adds an agenda, documents and boards you can open, as chips, up to 12; anyone who can't open
+   theirs goes in the notes), and **Where they go** (a new workspace, or one of yours). One someone else pays for says so
+   once under it: "Its files don’t count against your storage, so its boards and files open only for its own people." Past
+   25 people, **Everyone joins muted** is on. **Bring** adds an agenda, documents and boards you can open, as chips, up to 12; anyone who can't open
    one is told whose it is, without seeing its name, so they can ask for it.
 8. **The foot** says what will happen beside the one button: "Google Calendar invites Priya and Kofi." and
    **Schedule** (**Schedule 6 calls** for a repeat). With nobody and no time the button waits and the line says "Add who
@@ -852,6 +864,28 @@ time, slides in on the right.
   another app), everyone sees the recording as unavailable, and the transcript carries on for everyone else.
   When the browser can neither record nor listen, the sign says **Notes unavailable**, for everyone and on the
   join page, until it can again.
+- **When the organizer's notes or storage run out** (16.9). The organizer alone is told, once, when what's left would
+  last about 5 minutes at this call's pace (a limit, `ai.warn_seconds`, so the words name no time): "Notes are about to
+  run out". Notes then stop for everyone and the call carries on: Notes' pill says **Stopped** and the top bar **Notes
+  stopped**. Over Notes' tabs, or in a banner while Notes is closed, the organizer reads "Notes stopped at this period's
+  5 hours. The call carries on. Notes start again the moment you have more." with **Get Pro** and **Add 10 hours · $15**
+  (on Pro, the hours only), which open checkout over the call; a
+  stop for storage says storage, with **Make room**. Everyone else, guests included, reads whose notes ran out ("Priya's
+  notes for this period are used up, and the call carries on. What was written before stays.") with nothing to buy. What
+  was said until then is in the notes, which are written when the call ends, even when writing them goes past what was
+  left. Once the organizer has bought more, wherever the payment lands, notes come on again by themselves: "You're on
+  Pro. Notes are on again." (or "Notes are on again."), and the notes mark **Notes stopped** and **Notes on again** at
+  their times, in that tab. When the plan has notes again without a purchase (a new period), nothing turns on by itself:
+  the organizer is asked, "Your plan has notes again", with **Turn notes on**. While they're stopped, turning notes on or starting a room recording says "Your notes for this
+  period have run out. They start again when your plan renews."
+- **How long a call runs.** A call ends at 10 hours, and everyone is told 5 minutes before ("This call ends at
+  14:30"); its notes are written as when anyone ends it. At most 100 people are in a call. Asking to be let in takes no
+  place, so however many ask, someone invited still gets in while there's room; once the people in it fill it, someone
+  invited is told "This call is full: 100 people are in it, the most a call can have", and whoever hosts is told someone
+  tried. Anyone can still ask then, and **Let in** says the same until someone leaves. One network can have 10 asks waiting
+  at once ("Too many people on your network are already asking to join this call. Try again once the host has answered
+  them."), so nobody can fill the host's list. An ask whose browser closed stops counting once it's gone from the host's
+  list, and someone who reloads while asking asks again in place of their earlier ask.
 - **Asking for notes.** While notes are off or paused, anyone can ask for them: **Ask for notes** in what's captured,
   or in Notes, whose bar says **Ask to resume** while they're paused. Everyone sees who asked. The organizer gets a toast
   and sees the ask in People, and while notes are off, Notes says how many asked in its pill, in rose, with **Not now**
@@ -1030,9 +1064,11 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    workspaces they can edit in, with who's in each, the call's home marked **This call's home**, and **New workspace**.
    Picking one asks once, in place: it names who in the call isn't in that workspace, and says that while they're in the
    call they can open and edit everything in it, that anything closed to some people stays closed, and that the notes
-   still go to the home. **Switch to …** opens it to everyone in the call and changes the list for everyone at once, a
-   toast says where the notes still go (in two lines at most), and **Back** on it changes it back; it goes when the call
-   ends, or when Leave asks its question. The question takes focus as it opens, and **Tab** reaches its answers. Someone
+   still go to the home. A workspace whose files don't count against the organizer's storage asks differently: those people
+   can't open it, "Its files don’t count against your storage, so it opens only for its own people."
+   **Switch** changes the list for everyone at once and opens it to everyone in the call (only to its own people when
+   someone else pays for it), a toast says where the notes still go (in two lines at most), and **Back** on it changes it
+   back; it goes when the call ends, or when Leave asks its question. The question takes focus as it opens, and **Tab** reaches its answers. Someone
    following someone stops, and is told the call's workspace changed. The call's Notes, Follow-ups and Transcript stay at
    the top of the list while another workspace is viewed. Nobody is interrupted and nothing is moved or copied: sound and
    video carry on, and the workspace the call was using closes to anyone who had it only through the call. What was
@@ -1042,12 +1078,13 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    The home doesn't change: the next call in the series still has it. Everyone else sees the name, and that the organizer
    chooses.
 3. **Everyone in the call can open it and edit it**, a guest or anyone else outside the workspace too, for as long as they're
-   in the call: its folders, documents and boards, and its name, as its people see them. They work in it as anyone who can
+   in the call and what's added counts against the organizer's storage: its folders, documents and boards, and its name,
+   as its people see them. They work in it as anyone who can
    edit there does: make, rename, move and duplicate things, send them to Trash and bring them back, and write. A member
    who can only read can edit too while they're in the call. What someone closed to some people stays closed to them, and
    changing who's in it, sharing, deleting for good and renaming the workspace stay with its people. Leaving the call, or
-   the call ending, closes it for them, and what they wrote stays. If the organizer can't edit there any more, it opens
-   only to its own people: anyone else is told it's private, and nothing else, no names, no folders, nobody's whereabouts,
+   the call ending, closes it for them, and what they wrote stays. If the organizer can't edit there any more, or its
+   files count against someone else's storage, it opens only to its own people: anyone else is told it's private, and nothing else, no names, no folders, nobody's whereabouts,
    and carries on with the call.
 4. **Notes, Follow-ups and Transcript** are This call's first rows, in the call's folder in its home, and stay at the top of
    the list wherever else, for everyone in the call, whether or not they can open the workspace, and the count is what's
@@ -1339,7 +1376,8 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    more (whoever brought it can't edit it now): it opens in its place, and the call says "The rooms' boards came back on a new
    board. The one that was open can't take them." When the call's workspace can't take a new board, they stay where they are:
    "The rooms' boards didn't come back: this call's home can't take a new board any more. Each one is still saved there."
-   Afterwards a room's board is a saved board like any other, everyone invited's, and nothing to a teammate who wasn't invited.
+   Afterwards a room's board is a saved board like any other, everyone invited's, and nothing to a teammate who wasn't invited;
+   in a workspace someone else pays for, it's only for those invited who are in that workspace, as the call's own board is.
    **Present** then makes each room's frame a stop on the pager, in the order they sit: the room reports back, and the
    organizer moves on.
 6. **One board for every room.** With Shared, the board comes onto the organizer's stage as the rooms open, and they watch
@@ -1404,7 +1442,9 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
    whoever hosts ended it or it ended by itself (the host's connection gone, with nobody to stand in), so the page names
    nobody. A guest is told who can share the notes whenever the call had them. While a call you left goes on, whoever
    gets the notes is told how notes were as they left: on, paused, or off after being on. Paused or off, what was
-   written comes to them when the call ends.
+   written comes to them when the call ends. Notes the organizer's plan stopped aren't said as off: "Your notes for this
+   period have run out. What was said until then is in the notes." (or whose, or that storage is full), with the
+   organizer's ways to more (16.9).
 
    **Rejoin** goes straight back in, with the microphone and camera as they were: no join page and no camera preview.
    It says **Rejoining…** meanwhile, waits to be let in when it has to, and says on the page if it's refused; the call
@@ -1534,14 +1574,17 @@ another call while in one; 7.7 the call ends while they're on its page; 7.8 alon
   shared and made as a **Shared** tab, and the page scrolls as one.
 - **Add to the shared notes** on anything in Your notes shows, in place of the box you write in, exactly what goes:
   the words, which you can cut down, the moment they point at, **Shared notes** on this note, and everyone who
-  has the notes. Nothing goes until **Add for 3 people**; only what's in the box goes, and never a question you asked.
-  If someone got the notes since, it says so and shows them. An answer goes only if the moments behind it are in the
+  has the notes, with "everyone on Vandelay Industries" when the organizer made them visible to their team, whose
+  licensed people read them too. Nothing goes until **Add for 3 people** (the team's people counted in); only what's in the
+  box goes, and never a question you asked. If someone got the notes since, or the notes were made visible to the team, it
+  says so and shows them. An answer goes only if the moments behind it are in the
   notes. Once the notes are written is when this can be done: until then the people who'll get them aren't settled.
 - **Shared notes** (**Everyone with the notes**) shows what people wrote there or added from their own notes, with who
   and when, for everyone with the notes, and once the notes are written, a box of its own: before anything is typed it
-  says who reads it (their faces and names, "and anyone they share the notes with"), and Enter posts it for all of them
-  in one step. If someone got the notes after the box showed, posting is refused, the words stay in the box, and it says
-  who got them since; Enter again posts it for them too. What's posted can't be changed. **Take back** removes yours for
+  says who reads it (their faces and names, "everyone on Vandelay Industries" when the notes are visible to the team, "and
+  anyone they share the notes with"), and Enter posts it for all of them in one step. If someone got the notes after the box
+  showed, or the team can read them since, posting is refused, the words stay in the box, and it says who got them since;
+  Enter again posts it for them too. What's posted can't be changed. **Take back** removes yours for
   everyone, once you say so in the row; something added from Your notes stays there. The organizer can **Remove** any
   of them the same way. During a call the shared place to write is the call's workspace pages.
 - A call's page (`/calls/<note ID>`) is a slim band of sky over its head: the way back (**Calls**), **Share**, **Download**
@@ -1669,6 +1712,17 @@ another call while in one; 7.7 the call ends while they're on its page; 7.8 alon
   one in a series, copy the link, cancel it (asking first, with **Undo** for a single call), or for someone invited,
   propose another time.
 
+### 8.46 Notes visible to a team
+
+While you're licensed on a team, Share on a call's notes you organized has **Visible to team** ("Everyone licensed on
+{team} can read it and ask about it."). It works on notes from before you joined, and they stay visible after you leave
+the team. A licensed member finds notes someone else made visible on the Team page, and they open on their call's page,
+saying "From {organizer}, visible to your team". They can be read, played and asked about, and asking across your notes
+reads them too. Anything else on them is their organizer's: the page has no Share and no Your notes, nothing to settle,
+propose, add or correct, an answer can't be kept, and More has no way to remove them. Anything asked of them anyway is
+refused in those words: "This note is visible to your team to read and ask about. Only its organizer changes it." Storybook
+shows one as **Pages / A call › A team note**.
+
 Storybook journeys **8.1–8.10** play Calls: open a call, find what was said, see the week, answer an invitation, answer
 a request to move, follow a series, connect your calendar, ask every call, the first day, and meet again (to where the
 scheduler opens).
@@ -1748,8 +1802,9 @@ a piece that reaches Alcove late, or twice, still lands where it was recorded, o
 
 **Team** is your company, standing on the horizon: the company directory where there is one (the demo directory
 today), otherwise the people at your work email domain you have calls or calendar meetings with. A personal address
-(gmail.com, outlook.com, icloud.com and the like) has no team, so it has no Team page: nothing links to it, and its
-address goes to Home.
+(gmail.com, outlook.com, icloud.com and the like) has no company, so someone there has no Team page until they're on a
+team: nothing links to it, and its address goes Home. On a team, the page is the team's instead (16.17), and a company's
+page has a quiet **Start a team** while you're on none (16.15).
 
 - **The line**: the company's name in the middle of the sky, and everyone on the horizon in their arch. You stand in
   the middle, whoever you met most recently beside you, one to each side, and people not on Alcove yet at the ends,
@@ -1859,8 +1914,8 @@ notes on new calls while the oldest request fails.
   doesn't apply. In a call: private messages, mentions, replies to you, requests to join (when you host), raised hands
   and new questions (when you host or present), the timer running out, people joining and leaving (sound only) and your
   microphone on and off (sound only). Outside a call: someone ringing you, your notes being ready, notes shared with you,
-  someone asking for notes (calls you organize), a follow-up being due (at 9:00 that day) and mentions in documents
-  (alert only). An Alert shows inside Alcove (replies and mentions as a brief alert in the call), and from the browser
+  someone asking for notes (calls you organize), a follow-up being due (at 9:00 that day), mentions in documents and your plan (Pro about to end,
+  renewed or ended), the last two alert only. A plan alert says only "Your Alcove plan", never an amount or a date, and opens Settings at Plan. An Alert shows inside Alcove (replies and mentions as a brief alert in the call), and from the browser
   when Alcove is in another tab, once browser notifications are on. With sounds off the Sound column steps back and keeps
   its ticks. **More → Settings → Notifications** in a call offers the same, with the In a call rows; guests keep their
   choices in this browser.
@@ -1880,9 +1935,24 @@ notes on new calls while the oldest request fails.
   (flow 15). Then **Agents**, one row: who's connected ("Claude, Cursor and Weekly digest are connected.", and past three
   names how many more), or what agents are for while none is, with **Open Agents**, or **Connect an agent** while none
   is, which opens Agents (flow 14). On a phone this row is the way to Agents.
-- **Plan and credits**: the time of notes left, with a sun on the line under it: at the end of the line on a new
-  account, back along it as notes are written, and set once there's none left. Calls without notes are free. Then the
-  minutes of notes used this month (since 00:00 UTC on the 1st), and **Add credits** (11.24).
+- **Plan** (16.7, 16.8, 16.14), in two panels. What you have: **Free** ("Every feature, with about 5 hours of notes and
+  10 GB of storage.") or **Pro** ("Until Thursday 4 November 2027. Nothing renews by itself: Alcove reminds you before it
+  ends.", or "It renews from your balance before it ends."), with **See plans** (Plans) and **Get Pro** or **Extend**
+  (checkout). Ending is said in warm ("Ends in 3 days, on Saturday 7 November. Then you're back on Free, and nothing is
+  deleted."), and **Extend** is the page's one filled button then, as **Get Pro** is once notes have run out. **Notes left
+  this period** ("About 1 h 26 min", "Back to 5 hours on 1 December. Calls without notes are free.") has a sun on its line,
+  at the end of the line on a new period and back along it as notes are written: warm under an hour, "None" with "Calls go
+  on without notes until 1 December." once out. **Storage** ("2.1 GB of 10 GB", files up to 512 MB): over the plan's
+  storage, a note says until when everything works as before, then that uploads and notes have stopped until you make
+  room. **More notes** ("10 hours for $15, for this period.", **Add 10 hours**, which opens checkout) shows on Free, and on
+  any plan once notes are low or out. At the top until dismissed with ×: "Pro renewed from your balance, for another month."
+  or "Pro ended on … Nothing was deleted: you're back on Free." (with **Get Pro again**). What you pay with: **Balance**, in
+  dollars, with **Add money** (11.24); on Pro, **Renew from balance** (off by default; it says when the balance is short of
+  a month) and, while months bought after this one haven't started, **Refund**, asked in place. Then **Payments**: first
+  what's on its way or needs a person, each opening checkout (a payment for a plan) or the add-money sheet, with a cancel
+  while nothing has reached it; then the balance's latest changes, each with **Receipt**, a receipt to print. Without a
+  server that takes payments the balance has no **Add money**. On a team, the plan row says whose team it is and until when
+  your license runs, with **Open Team**, and Storage is the team's pool; its admin has the licenses too (16.18).
 - **Privacy**: what account and call information Alcove processes, then confidential compute: the time the hardware
   was verified when this browser could check it, **Not verified** and why when its check of the server didn't pass, or
   where your audio is opened and your notes are written. The **Privacy policy** explains how Alcove uses account and service
@@ -1890,7 +1960,7 @@ notes on new calls while the oldest request fails.
 
 **Delete account** opens one step where it is (never a window over the page): the row becomes the question, **Delete
 your account for good?**, and what goes sits beside what stays. What goes: the notes you made, with their audio, for
-everyone who has them; the calls you scheduled, for everyone invited; the minutes of notes left; your own notes on every
+everyone who has them; the calls you scheduled, for everyone invited; your plan, and your balance when there is one; your own notes on every
 call, and anything you added from them to other people's notes; your groups and pins; workspaces only you are in, and
 documents only you can open; your Google Calendar connection, where Alcove also asks Google to cancel your calls and end
 its access; and your sign-in on every browser. What stays: the notes other people gave you stay with them, without you,
@@ -1910,7 +1980,23 @@ The shared demo account can't be deleted: as soon as **Delete account** is press
 row says to reload the page. Any other failure, having no connection included, is said in the step, **Delete my account**
 tries again, and nothing happens later by itself. Once it's deleted you land on the welcome page, signed out, even
 if you left Settings meanwhile, and this browser forgets the tour and call view it kept for the account.
-Signing in again starts a new, empty account with 10,000 credits.
+Signing in again starts a new, empty account on Free.
+
+### 11.24 Add money
+
+Open **Settings → Plan → Add money** beside **Balance**, choose **$20**, **$60**, **$120** or your own amount in dollars,
+then the network to send it on, under **Pay with USDC**. A USDC is a dollar, so $20 is 20 USDC. **Get an address** follows
+the payment as checkout's Pay step does (16.2), with the same parts and words: "Waiting for your payment" and until when
+the address is open, **Send exactly** the amount with Copy, the QR code and the address made for this one payment, its
+first six and last four characters in bold (on a phone, **Open in wallet** in place of the code), and "Only send USDC on
+Base". A short payment says "Less than asked arrived", with **Send the rest** to the same address before it closes; after
+that it asks for no more money, and what arrived goes into the balance once the payment settles. Seen, the amount that
+arrived counts up and the line runs to "Added to your balance"; then the tick, and how much is in the balance now. A
+payment on its way stays under the balance in **Payments** with **Open**, as do failed and held payments with their support
+reference; once it's added it shows as "Added, 20 USDC" with **Receipt**. **Cancel payment** stops a waiting one; a payment
+already sent still counts. Over, **Start a new payment** starts again. Deleting an account warns when one of its payment
+addresses could still receive money. Buying Pro or more notes is checkout's (16.2–16.5), which adds the money and buys with
+it in one go.
 
 ### 11.25 Choose what reaches you
 
@@ -1998,7 +2084,7 @@ home instead, so its notes go there, beside the calls before it.
 
 **First day.** The Drive's tree is Recent, Shared with you, **New workspace** (named in place, then open on the sheet) and
 Trash, and its sheet says **Nothing here yet**, with **New document**, **New board** and **Upload files**, each asking for a
-workspace to put it in. An empty workspace says **Nothing here yet** with **New document** and **New folder**.
+workspace to put it in. Free can make as many workspaces as it likes: storage is the only limit. An empty workspace says **Nothing here yet** with **New document** and **New folder**.
 **New document** opens an empty page with the caret in the title and a few ways to start under it: **Agenda**, **Decision
 log**, **Retro** and **Project brief**. They're only blocks: picking one fills the page, names an untitled document after
 it, and anything in it can change or go. Two people can have the same new document open: they get one title and one first
@@ -2025,8 +2111,8 @@ saves the original, each photo as a file of its own, and the page stays as it is
 pictures sharpen when it's done; a caption starts as the file's name and is one click to change. A photo the browser can't read
 says which file, with **Add as a file** and **Delete**; chosen with **File**, a picture Alcove can't show (a phone's HEIC photo,
 say) goes in as a file straight away. One Alcove refuses says which file and why ("This file is bigger than
-512 MiB, the most a file can be.", "This workspace is full, so it can't take more files.", "That's all you can upload today. You
-can upload more tomorrow."), with **Try again** and **Delete**, and nothing else in the document changes. A block that's
+512 MiB, the most a file can be here.", "Your storage is full. Delete something, or move to a plan with more room.", "That's all you
+can upload today. You can upload more tomorrow."), with **Try again** and **Delete**, and nothing else in the document changes. A block that's
 uploading can be cut and pasted in its document, or undone and done again, and the upload goes on into it. Leaving the page doesn't stop
 an upload, and closing the tab asks first, until everything about it has reached Alcove; a browser that goes mid-upload leaves
 its block saying it couldn't, for everyone. A block's **Delete** takes it out and keeps
@@ -2143,6 +2229,9 @@ into a field: type, then **Enter**. A workspace always keeps an admin.
   in this browser and save when you sign in again (a document that finds out first says so in its bar). Signing out on
   purpose asks first (flow 11), and every other tab goes to the welcome page at once.
 - Someone who can only read gets no buttons that change anything: a bar says who to ask, and the list has no **+**.
+- A workspace whose payer is over their storage (and the 15 days after that went by) takes no more uploads: they're refused
+  with "Your storage is full. Delete something, or move to a plan with more room." Everything else works, and nothing is
+  deleted for being over.
 
 **Nothing written is trapped.** What you write stays in this browser until Alcove has it or you let it go, however the
 document ends up. Wherever it may not get there by itself (the document refuses it, you can only read it now, or it's
@@ -2162,6 +2251,19 @@ workspace's name brings them back; in a call, the list, and the button at the to
 touch screen: **Move to…** does that. While you write, a bar rides on the keyboard with a block (as **/** does), the text's
 style, **@**, photos, a checklist and Done; sheets open above it. Holding a finger on a block opens its menu, the one its
 handle opens on a laptop, with **Download** on a photo or a video, and **Delete for good** on a photo, video or file. Someone's card and a comment are sheets too, and faces are on the list's rows. A bar's buttons go under its words.
+
+### Team workspaces
+
+While you're licensed on a team, New workspace in the Drive asks who's in it under its name: **Whole team** (as it
+starts), so everyone licensed on the team can open and edit it, or **Only people I add**, so only you are in it until you
+add people. Either way it counts against the team's storage. A call's home made for you, and a workspace made in a call,
+is only for the people invited, so a call's notes never reach the whole team unless someone chooses that. A team
+workspace's row in the Drive says Whole team. In its People sheet (its name at the top of the list, then People), its
+admins can switch between Whole team and Only people I add. Anyone else in it reads which it is. In a call, a team
+workspace opens to everyone in it only when the organizer pays for it, as for a call's home made for them; one a teammate
+made opens only for its own people (flow 6, The call's workspace, step 3). A team workspace is the team's only while whoever
+pays for it is on the team: when they leave it, are taken off it, or delete their account, it stays theirs, with the people
+in it, and the rest of the team is out of it (it no longer says Whole team, and nobody can open it to the team again).
 
 ## 13. Boards
 
@@ -2410,11 +2512,246 @@ happened, leaving the existing settings in place after cancellation or failure.
 Storybook’s journeys use **15.1–15.8** above. The account, folders and file links in the preview are made-up; real Google
 consent and the provider’s own folder-selection page require manual verification with a supported Google account.
 
-### 11.24 Add credits
+## 16. Plans and paying
 
-Open **Settings → Plan and credits → Add credits**, choose an amount of credits, then the network to send USDC on.
-**Get an address** opens the amount to send, its QR code and one payment address. Send only USDC on that network. A short payment shows what arrived and how much remains; send the remainder before the address expires.
-After expiry it asks for no more money and waits for the payment or refund to settle. Credits appear in the balance
-once settlement is confirmed. Open and recent top-ups stay in Settings with **Open**, including cancelled, failed and
-held payments and their support reference. A waiting payment can be cancelled; a payment already sent still counts
-when it settles. Deleting an account warns when one of its payment addresses could still receive money.
+Plans differ only in notes and storage: every feature is on every plan, and invitees get a call's notes on its organizer's
+plan. Pro is paid in USDC from any wallet or exchange, for months at a time, and nothing renews by itself unless **Renew from
+balance** is on (16.8); when a plan ends you're back on Free with nothing lost. Checkout is one window that opens over
+wherever you are (Plans, Settings, the side panel, a call or a door), in your own theme even over a call. Closing it never
+loses a payment on its way: the side panel and Settings show it, and opening it again opens that payment, not a new one.
+
+### 16.1 See the plans
+
+**Plans** (`/plans`) is what each plan brings and what it costs: Free and Pro side by side (Team joins when it's offered), on
+the last of the sunset. It's reached from Settings › Plan's **See plans**, checkout's
+**Compare plans**, and the welcome page's **Get Pro** (16.13), which opens it with checkout open on Pro (`/plans?checkout=pro`;
+`?checkout=hours` opens it on more notes); the address forgets it once checkout is open.
+
+1. On Free, Settings › Plan's **See plans** opens Plans priced for a year: Pro is $16 a month, "$192 for 12 months. You save $48.", and **Get
+   Pro** is the one filled button. Free's button area says **Your plan** with a tick.
+2. **Monthly** shows $20 a month, "For as many months as you choose. Or $16 for a year or more."; **Yearly · 20% off** goes
+   back. The switch shows only while a year or more costs less, and the saving is worked out from the two prices.
+3. Every number is the server's: about how many hours of notes a period brings (Free: "Back to 5 hours on the 1st of each
+   period"), the storage and the largest file. Free's last line says what more notes cost this period while they're offered.
+   Under the plans, **On every plan**, then how paying works: "for 1 to 12 months at a time. Nothing renews by itself…".
+4. **Get Pro** opens checkout over Plans (16.2), on 12 months with Yearly chosen and 1 with Monthly.
+
+On Pro, Pro says **Your plan**, **Extend** is a second choice, and Free says "Where you’re back to if a plan ends". While Pro is
+ending it says "Ends in 3 days" and **Extend** is filled. On a team license Pro isn't sold, and its card says "Not while you’re on
+your team’s plan" where its button would be. While the prices load, the cards wait in place; if they don't load, the page says
+why with **Try again**, and offline they show once you're back. The first time Home opens for an account, it opens on Plans
+instead, once (16.20).
+
+### 16.2 Get Pro, paying with USDC
+
+1. **Choose.** Checkout's left side is the step and its right side is what you're buying: Pro's small arched window, "For"
+   your name, the lines ("12 months at $20 — $240", "A year or more: 20% off — −$48"), **Total** in USDC and "Pro until" the
+   day it runs to. Lengths are 1, 3, 6 and 12 months, each with its total; "20% off" marks a year or more, and **Another
+   length** steps from 1 to 12. Then **Pay with USDC on**: Base, Solana, Ethereum and the rest, each with its mark ("From 20"
+   where a network's minimum is higher). **Get the address** is the one filled button.
+2. **Pay.** "Waiting for your payment", open for 24 hours. **Send exactly** the total, with Copy; the QR code with the USDC
+   mark in its middle; the address made for this payment, its first six and last four characters in bold, with **Copy
+   address**; "Only send USDC on Base. Anything else may be lost." On a phone, **Open in wallet** instead of the code where
+   the network has a wallet link, else **Copy address**. The summary's sun waits on its horizon. You can close this: Pro
+   starts as soon as the payment arrives.
+3. **Seen.** The payment arrives: "Payment seen", the amount counts up, "Starting Pro. This takes a minute or two.", and the
+   line Sent → Seen on Base → Pro starts. The sun lifts. There's nothing to press.
+4. **Done.** The sun clears the horizon and a tick draws in: "You're on Pro", until when, the receipt row with **Receipt**, a
+   receipt to print, "Nothing renews by itself. Alcove reminds you before it ends.", and **Done**. Pro starts at once with a
+   fresh period and all of Pro's notes.
+
+What you send is what the balance is short of the total: money already in the balance counts ("Your balance — −$5"). A
+network's minimum above that raises the amount, and the summary says the rest stays in your balance. The payment adds the
+money and buys Pro with it in one go.
+
+### 16.3 Get Pro with your balance
+
+With a balance that covers the total, Choose has no networks and the button is **Buy with your balance**: it goes straight to
+Done.
+
+### 16.4 Extend Pro
+
+On Pro, **Extend** (Plans, Settings, or the side panel's ending row) opens **Extend Pro**: the summary says "Added to the 6
+days you have left", and the months start after the last one, so no day is lost. Done says "Pro runs to …".
+
+### 16.5 More notes for this period
+
+On any plan, **Add 10 hours** (Settings › Plan's **More notes**, or a call whose notes have run out) opens **More notes**: 10,
+20 or 50 hours at $15 for each 10, paid the same way. They add to this period's notes and lift a stop that ran out of
+notes; they don't carry into the next period. Done says "10 more hours of notes".
+
+### 16.6 When a payment isn't right
+
+1. **Less arrived.** "Less than asked arrived": **Send the rest** to the same address. If you don't, what arrived stays in
+   your balance.
+2. **More arrived.** Done says how much more you sent: it's in your balance.
+3. **It couldn't buy.** The price changed before the payment arrived, or less arrived than the months cost: the money is in
+   your balance and checkout says why, with **Buy with your balance** at today's price, or fewer months.
+4. **Nothing arrived in 24 hours.** The address closes and nothing was charged; **Get a new address** starts again. A payment
+   that arrives after all is added to your balance and buys nothing, so a new address never buys the same thing twice:
+   checkout and your payments say "Your payment arrived after its address closed, so nothing was bought. It's in your
+   balance.", with **Buy with your balance**.
+5. **Cancel.** While nothing has arrived, **Cancel payment** in the foot asks first: a payment sent to that address anyway
+   still counts when it arrives, added to your balance as in 4. Once part of it has arrived it can't be cancelled: what
+   arrived goes into your balance when the payment settles, and the address waits for the rest until it closes (1).
+6. **Something went wrong.** Checkout says so, with the reference to give support.
+7. **Payments off.** Choose says paying isn't available right now; a balance that covers it can still buy.
+
+### 16.7 Your plan in the side panel
+
+A payment for a year of Pro is on its way: the foot says "Waiting for 192 USDC", and **Pro, 12 months · Open** reopens it in
+checkout. When it arrives, Pro is bought from it in the same go, and within half a minute the foot becomes Pro's own row: its
+sun up, "Until …". Pressing it opens Settings at your plan, with the payment and its receipt. On Plans, that row is the
+place you're on.
+
+### 16.8 Renew, refund and your payments
+
+On Pro, Settings › Plan says until when, with **Extend**. Turn on **Renew from balance**: it's kept and **Saved** shows. **Refund
+($40.00)** asks in place: what goes back to the balance, that renewing from it turns off (while it's on), and that Pro ends
+when the month running now does. **Refund $40.00** returns the months that haven't started to the balance, and the toast says
+what came back; "Pro refunded, 2 months" is first in the payments. A refund turns **Renew from balance** off, so the months
+given back aren't bought again. **Receipt** opens a payment's receipt over the page as paper, with **Print**.
+
+### 16.9 Notes run out in a call
+
+Notes stop for everyone and the call carries on. Over Notes' tabs, or in the banner while Notes is closed: "Notes stopped at
+this period's 5 hours. The call carries on. Notes start again the moment you have more." The organizer has **Get Pro** and
+**Add 10 hours · $15** (on Pro, the hours only), which open checkout over the call, whose **Back to the call** closes it; a stop
+for storage says storage, with **Make room**. Everyone else reads whose notes ran out, with nothing to buy. Once the
+organizer has bought more, wherever the payment lands (in checkout, after closing it, or in another tab), notes come on
+again by themselves: "You're on Pro. Notes are on again.", and the notes mark **Notes stopped** and **Notes on again**. When
+the plan has notes again without a purchase (a new period), the organizer is asked instead, with **Turn notes on**. Leaving
+while notes are still stopped, the call's page says so in caution rather than "Notes are off": "Your notes for this period
+have run out. What was said until then is in the notes." (anyone else reads whose), and the organizer has the same ways to
+more there, none of them filled, since **Rejoin** is the page's filled button.
+
+### 16.10 Start a call with no notes left
+
+With none left this period and notes on by default, **Start a call** says "No notes left until 20 November" under the ways,
+with **Get Pro** (on a paid plan, **Add 10 hours · $15** while more are offered), which opens checkout in the window's place,
+and **Start without notes**. Once checkout closes, bought or not, **Start a call** opens again as it was, with whoever and
+whatever it was opened with. Scheduling a call with notes on for a time before the period renews says "None left
+until 20 November" under the Notes switch, with the same way to more, opening checkout over the Calls page, so the call
+being scheduled stays. A question asked across your calls (the palette's **Ask**, or the Calls page's) with none left says
+"No notes left until 20 November" in the answer's place, with the same way to more; typing again or putting the answer away
+puts it away.
+
+### 16.11 Storage full
+
+An upload refused for storage says "Your storage is full. Pro has 100 GB." with **Get Pro** on Free, or **Make room** (the
+Drive); in someone else's workspace it says the workspace can't take more files: the storage it counts against is full, or
+the rest of it is kept for notes and recordings. Someone adding to another's storage past what they can add in a day hears
+they can add more tomorrow. A file over the plan's largest says its limit, and offers nothing.
+
+Whoever paid for a workspace leaves it, is taken out or deletes their account: its longest-standing admin with an account
+pays for it now. Settings › Plan says so at the top, by its name, with the day its files start to count against their
+storage, a fortnight on: nothing of theirs stops before then. The side panel says it in one line over the plan until it's
+dismissed. Leaving a workspace you pay for while none of its other admins has an Alcove account is refused, and says to make
+someone who has one an admin first.
+
+### 16.12 An hour left
+
+Once a period, when notes left drop under an hour: "Less than an hour of notes left this period", with **Get Pro**, never in
+a call. The side panel's number turns warm.
+
+### 16.13 Plans before signing in
+
+The welcome page's **Plans**: Free and Pro in a cove at the last of the sun, with what they cost, their notes and storage,
+**Start free**, and **Get Pro**, which signs in and then opens Plans with checkout open on Pro.
+
+### 16.14 Pro ending, renewed, ended
+
+Three days before Pro ends without renewing, the foot's sun is half set ("Ends in 3 days · Extend"), and Plan says when in
+warm, with **Extend** filled; with browser notifications on and **Your plan** ticked (11.25), the browser says so too. With
+renewing on and less than a month's price in the balance, Plan says Pro won't renew; once **Add money** brings the balance to
+a month's price, it says it renews and the sun is up again. At the month's end a month is bought: "Pro renewed…" shows at the
+top and in the foot until dismissed. When Pro ends without renewing you're back on Free with nothing deleted, said at the
+top, with **Get Pro again**, and in the foot. Over Free's storage, everything works as before for a grace, then uploads and
+notes stop until you make room or get Pro again, which lifts it at once.
+
+### 16.15 Start a team
+
+A team is one admin (whoever starts it) and as many people as it has licenses for, and you're on one team at most. Team's card
+on Plans says what a license is (a price for each person, for a period: $40 for 30 days unless the limits say otherwise), and
+**Start a team** on it opens checkout on Team over the page; a company's Team page has the same as a quiet row while you're on
+none.
+
+1. The team's name, the company's to start with, with you its admin, and how many licenses: one for each person, you included.
+2. Pay from the balance, or with USDC on a network (16.2): the summary says exactly what to send. Getting the address makes the
+   team at once, with you its admin, and opens the payment for its licenses; the side panel waits for it as for Pro's.
+3. Once the payment is added, so are the licenses, with nothing to press: "{team} is on Team". Your license is taken then, and
+   each of the others when the person it's for next opens Alcove.
+4. **Done** has the way to invite them: a link for one person (16.17). Team is your plan on Plans from then, with **Buy
+   licenses** on its card. A license replaces Pro at once: the month running ends, and the months that haven't started go back
+   to the balance, which you're told.
+
+### 16.16 Join a team by its link
+
+An invite is a page of its own (`/team/join#…`), one card on the team's evening. Its secret is after the `#`, so no server sees
+it, and it leaves the address bar at once. Signed out, it asks you to sign in first, there (Google's way back comes back to it),
+while the invite waits in the tab. Then it says whose team it is and what joining gives you (notes of your own, what the team
+shares, its storage), with **Join** and **Not now**: nothing happens until Join. Join takes one of the team's licenses for a
+period if one is left, and **Open Alcove** opens the team's page, with you on it under your license. A used or expired link, or
+being on a team already, is refused in Alcove's words.
+
+### 16.17 Your team: people, licenses and invites
+
+On a team, Team is the team's page: its name in the sky over how many are on it, and its people on the horizon, each under
+their license, opening their popover as on a company's line. On the water, everyone as a row with their role and license
+("Licensed until 12 Dec", "License ended", "Waiting for a license"); the admin's **Remove** asks in place, under the row (their
+license isn't refunded, they go back to Free, and notes they made visible to the team stay visible). At the foot, **Leave team**
+for a member, asked the same way, or for the admin **Delete team** once nobody else is on it, which refunds the licenses nobody
+took. Then the notes made visible to the team, each opening its call's page (8.46), and your groups and what's shared with them,
+as ever. Beside them, for the admin: **Licenses**, how many are left and who's waiting for one, with **Buy licenses** (filled
+while someone waits), which opens checkout on Team, and buying one from the balance whenever it's needed; and **Invite
+people**: **Make an invite link** makes a link that lets one person join, for a day, shown with **Copy**; each press of **Make
+another** makes a new one. A member without a live license is told first, at the top of the water, why the team's notes and
+workspaces aren't open to them.
+
+### 16.18 Licenses running low
+
+A license is taken when someone without a live one uses Alcove: when the app opens signed in, when a tab comes back after 30
+minutes or more away, or when they join. Nothing that reads in the background takes one. It runs a period from then, and an
+ended one is replaced only by the next visit. With fewer than five left, the team's admin is told: the side panel's Team row
+says how many, in warm, with **Buy** ("2 licenses left · Buy"), which opens checkout on Team over the page you're on, and
+Settings › Plan says it at the top ("2 licenses left on Vandelay Industries. Buy more so nobody is left without one.") until
+it's dismissed, when the row says the team's name again. In Settings, **Licenses** says how many are left of how many, with
+**Buy licenses**; **Buy one when it’s needed** buys a license from the admin's balance whenever someone needs one and none is
+left; and **Refund** gives back the licenses nobody has taken, asked in place.
+
+### 16.19 On a team without a license
+
+When none was left for you, you stay on your own plan, and the team's admin is told. The side panel says it in caution, "No team
+license yet", under your notes left in place of the meter (on Pro, as the row's second line), and the row opens Team, which says
+who has been told. Settings › Plan says it once at the top, over your plan. The next time you open Alcove after the admin buys
+more, one is yours: your plan is Team, your license runs a period, and the side panel's foot is Team's row, over the team's name.
+
+### 16.20 Choose a plan
+
+The first time Home opens for an account, it opens on the plans instead, once: the plan choice, Plans in Home's place with a
+head of its own. That's every new account, after its arrival (1), and every account from before plans, the first time it opens
+Alcove normally after plans came.
+
+1. Someone with no notes yet reads **Choose a plan**: "Every plan has calls, workspaces and confidential compute. They differ in
+   hours of notes and storage." Someone who has used Alcove reads **Alcove has plans now** and which plan they're on, in the
+   server's numbers: "You’re on Free: about 5 hours of notes a month and 10 GB of storage." Over Free's storage, it says until
+   when everything works as before instead.
+2. Under the head, Plans as ever: Monthly / Yearly, then Free, Pro and Team. The plan you're on leads straight on: **Continue on
+   Free**, quiet, on Free's card (on Pro or Team, **Continue on Pro** or **Continue on Team** on theirs), goes to Home.
+3. **Get Pro** is the one filled button and opens checkout over the plans (16.2), as **Start a team** opens Team's (16.15). Once
+   what was bought is yours and checkout has closed, Home follows, with nothing more to choose. Closing checkout without buying
+   leaves the plans as they were.
+4. A new account's tour of Home (1, step 4) starts once Home is there, never over the plans.
+5. Only Home opens on them. A link to a call, a call's page, a join link, an agent's consent page, a public page or a team
+   invite is never interrupted, and nor is signing in from a call's link or for an agent: the plans wait for the next time Home
+   is reached. Signing in from the welcome page sails out of its cove onto them, as it would onto Home (1, step 3), the sun
+   sinking to their last sliver; a new account's arrival says "Opening Plans" and its arch opens onto them.
+6. Once the plans have been on screen for a moment (the tab showing, nothing open over them), Alcove is told, and they aren't
+   shown again. Plans itself counts too. If telling Alcove fails, it's tried again quietly, and this tab doesn't show them again;
+   a later visit does. Left before their prices came (still loading, offline, or not loaded), they show again on a later visit.
+
+While the prices load, the cards wait in place and **Continue on Free** is already on Free's; offline it says the plans show once
+you're back, and when they don't load it says why, each with **Continue on Free** to go on.
+
+Storybook's journeys use **16.1–16.20** above. The addresses, payments and networks in it are made up; a real
+payment through 1Click needs a hand check with a wallet.

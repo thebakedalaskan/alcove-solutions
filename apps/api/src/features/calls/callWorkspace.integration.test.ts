@@ -28,6 +28,7 @@ import { grantDocumentToCall, saveState, serverWorkspace, workspaceForCall, type
 import { openOwner } from '../../owners';
 import { speechWav } from '../../testing/fake-near';
 import { startHarness, type Browser, type Harness } from '../../testing/harness';
+import { standing } from '../billing/meter';
 import { connect, disposeLiveKit, type TestParticipant } from '../../testing/livekit';
 import { getItem, listItems, saveRevision } from '../../vault';
 
@@ -101,6 +102,8 @@ async function workspace(who: Account, name: string, people: [Account, Workspace
   return id;
 }
 const doc = async (who: Account, id: string, name: string, parent: string | null = null) => (await who.api.workspaces.items.create(id, { kind: 'document', name, parent })).id;
+/** A picture of `n` bytes, to upload. */
+const fileOf = (n: number) => { const out = new Uint8Array(new ArrayBuffer(n)); out.set(randomBytes(n)); return new File([out], 'harbour.png', { type: 'image/png' }); };
 
 const audioBytes = (marker: string) => { const src = Buffer.concat([Buffer.from(marker), randomBytes(2048)]); const out = new Uint8Array(new ArrayBuffer(src.length)); out.set(src); return out; };
 const piece = (bytes: Uint8Array<ArrayBuffer>, segment: number, s: number): AudioPiece => ({ data: new Blob([bytes]), segment, seq: s, at: s * 5, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
@@ -356,7 +359,8 @@ describe('which workspace a call uses', () => {
     expect((await space(p)).id).toBe(product);
 
     // Asking first changes nothing, and says who isn't in it by first name. Theo has something in it, and Art doesn't know that.
-    expect(await host.previewWorkspace(design)).toEqual({ name: 'Design', cantOpen: expect.arrayContaining([theo.name.split(' ')[0], 'Jamie']) });
+    // Art pays for Design, so the call opens it to everyone in it.
+    expect(await host.previewWorkspace(design)).toEqual({ name: 'Design', cantOpen: expect.arrayContaining([theo.name.split(' ')[0], 'Jamie']), everyone: true });
     expect((await host.previewWorkspace(design)).cantOpen).toHaveLength(2);
     expect((await space(p)).id).toBe(product);
     // Someone in it isn't named.
@@ -666,7 +670,8 @@ describe('everyone in the call', () => {
     const lena = await account();
     const art = await account();
     const priya = await account();
-    const id = await workspace(lena, 'CANARY-SPACE Lena’s', [[art, 'edit'], [priya, 'edit']]);
+    // Art made it, so it's Art's storage it counts against, and Lena runs it with him.
+    const id = await workspace(art, 'CANARY-SPACE Art’s', [[lena, 'admin'], [priya, 'edit']]);
     const plan = await doc(lena, id, 'CANARY-DOC Plan');
     const { host, code: c } = await callBy(art, { guests: [priya.email] });
     const p = await invited(host, c, priya);
@@ -694,8 +699,56 @@ describe('everyone in the call', () => {
 
     // Art can edit there again: it's open to the call again, without anyone asking.
     await lena.api.workspaces.setRole(id, artIn, 'edit');
-    expect(await space(jamie.call)).toMatchObject({ id, name: 'CANARY-SPACE Lena’s', canOpen: true, everyone: true });
+    expect(await space(jamie.call)).toMatchObject({ id, name: 'CANARY-SPACE Art’s', canOpen: true, everyone: true });
     expect(await code(jamie.api.workspaces.get(id, pass))).toBe('allowed');
+    await host.leave();
+  });
+
+  it('opens only while its organizer pays for it: one someone else pays for is closed to a guest, for files and AI too, and the organizer is told why', async () => {
+    const lena = await account();
+    const art = await account();
+    // Lena made it, so its files count against her storage and its AI against her plan. Art can edit there.
+    const id = await workspace(lena, 'Lena’s', [[art, 'edit']]);
+    const plan = await doc(lena, id, 'Plan');
+    const { host, code: c } = await callBy(art, { notes: 'on' });
+    const jamie = await guest(host, c);
+    const pass = { pass: jamie.call.ticket.pass };
+    // Before it's chosen, Art is told it won't open to Jamie.
+    expect(await host.previewWorkspace(id)).toEqual({ name: 'Lena’s', cantOpen: ['Jamie'], everyone: false });
+    await host.setWorkspace(id);
+    expect(await space(host)).toMatchObject({ id, canOpen: true, role: 'edit', everyone: false });
+    expect(await space(jamie.call)).toMatchObject({ id: null, canOpen: false, role: null, everyone: false });
+    // Jamie can't open it, put a file in it at Lena's cost, or ask its AI on her plan: each refused as what was never there.
+    const nothing = await refusal(jamie.api.workspaces.get(madeUp(), pass));
+    expect(await refusal(jamie.api.workspaces.get(id, pass))).toEqual(nothing);
+    const stored = (await lena.api.plans.plan()).storage.usedBytes;
+    expect(await code(jamie.api.workspaces.media.upload(id, plan, fileOf(4096), pass))).toBe('not-found');
+    expect(await code(jamie.api.workspaces.items.create(id, { kind: 'document', name: 'Mine', parent: null }, pass))).toBe('not-found');
+    const asked = h.near.prompts.length;
+    expect(await code(collect(jamie.api.workspaces.ask(id, plan, { action: 'shorter', text: 'From a guest' }, pass)))).toBe('not-found');
+    expect(h.near.prompts.length).toBe(asked);
+    expect((await lena.api.plans.plan()).storage.usedBytes).toBe(stored);
+    // One Art pays for opens to Jamie as soon as it's chosen.
+    const mine = await workspace(art, 'Art’s');
+    expect(await host.previewWorkspace(mine)).toEqual({ name: 'Art’s', cantOpen: ['Jamie'], everyone: true });
+    await host.setWorkspace(mine);
+    expect(await space(jamie.call)).toMatchObject({ id: mine, canOpen: true, everyone: true });
+    expect(await code(jamie.api.workspaces.get(mine, pass))).toBe('allowed');
+    await host.leave();
+  });
+
+  it('opens the organizer’s own home to a guest, and what the guest adds there counts against the organizer’s storage', async () => {
+    const art = await account();
+    const { host, code: c } = await callBy(art);
+    await host.openWorkspace();
+    const home = (await space(host)).home ?? '';
+    const jamie = await guest(host, c);
+    const pass = { pass: jamie.call.ticket.pass };
+    expect(await space(jamie.call)).toMatchObject({ id: home, canOpen: true, everyone: true });
+    const page = (await jamie.api.workspaces.items.create(home, { kind: 'document', name: 'From Jamie', parent: null }, pass)).id;
+    const before = (await art.api.plans.plan()).storage.usedBytes;
+    expect(await code(jamie.api.workspaces.media.upload(home, page, fileOf(64 * 1024), pass))).toBe('allowed');
+    expect((await art.api.plans.plan()).storage.usedBytes).toBeGreaterThanOrEqual(before + 64 * 1024);
     await host.leave();
   });
 
@@ -994,7 +1047,8 @@ describe('everyone in the call', () => {
     const art = await account();
     const theo = await account();
     const kofi = await account();
-    const id = await workspace(lena, 'Lena’s', [[art, 'edit'], [kofi, 'read']]);
+    // Art made it, so it counts against Art's storage, and Lena runs it with him.
+    const id = await workspace(art, 'Art’s', [[lena, 'admin'], [kofi, 'read']]);
     const folder = (await lena.api.workspaces.items.create(id, { kind: 'folder', name: 'Launch', parent: null })).id;
     const plan = await doc(lena, id, 'Plan');
     const { host, code: c } = await callBy(art, { guests: [theo.email, kofi.email] });
@@ -1698,7 +1752,8 @@ describe('presenting the workspace', () => {
     const lena = await account(unique('lena'));
     const art = await account(unique('art'));
     const kofi = await account(unique('kofi'));
-    const id = await workspace(lena, 'Product', [[art, 'edit'], [kofi, 'read']]);
+    // Art made it, so it counts against Art's storage, and Lena runs it with him.
+    const id = await workspace(art, 'Product', [[lena, 'admin'], [kofi, 'read']]);
     const { host, code: c } = await callBy(art, { guests: [kofi.email] });
     const k = await invited(host, c, kofi);
     await host.setWorkspace(id);
@@ -2245,18 +2300,20 @@ describe('the next call’s agenda', () => {
 });
 
 describe('asking Alcove about a selection', () => {
-  it('needs edit, goes sealed to the notes model, keeps nothing, and costs nobody credits', async () => {
+  it('needs edit, goes sealed to the notes model, keeps nothing, and is paid for by whoever the workspace counts against', async () => {
     const art = await account();
     const theo = await account();
     const id = await workspace(art, 'Product', [[theo, 'read']]);
     const plan = await doc(art, id, 'Plan');
-    const credits = await art.api.credits.balance();
+    const spent = async (a: Account) => (await standing(h.deps, h.pool, a.ownerId)).byKind['documents'] ?? 0;
     const from = h.near.prompts.length;
     expect(await collect(art.api.workspaces.ask(id, plan, { action: 'shorter', text: 'CANARY-SELECTION a long way of saying it' }))).toEqual([{ type: 'text', text: 'Shorter: CANARY-SELECTION a long way of saying it' }]);
     expect(await collect(art.api.workspaces.ask(id, plan, { action: 'checklist', text: 'Book the room; send the brief' }))).toEqual([{ type: 'todo', text: 'Book the room' }, { type: 'todo', text: 'send the brief' }]);
     expect(h.near.prompts.slice(from).join(' ')).toContain('CANARY-SELECTION');
     expect(Buffer.concat(h.near.received.map((r) => r.body)).includes(Buffer.from('CANARY-SELECTION'))).toBe(false);
-    expect(await art.api.credits.balance()).toEqual(credits);
+    // Art made the workspace, so Art's plan pays.
+    expect(await spent(art)).toBeGreaterThan(0);
+    expect(await spent(theo)).toBe(0);
     // Reading isn't enough, and what's elsewhere isn't there. Nothing refused reaches the model.
     const asked = h.near.prompts.length;
     expect(await code(collect(theo.api.workspaces.ask(id, plan, { action: 'shorter', text: 'Words' })))).toBe('forbidden');
@@ -2565,6 +2622,12 @@ describe('reading the call', () => {
   }
   /** How many times a read opened a workspace's tree. */
   const opensTree = (sql: string[]) => sql.filter((q) => q.includes('state_ciphertext FROM workspaces')).length;
+  /**
+   * A read's statements but the service limits' (limits.ts): every read of a call asks for them, and a request that asks while
+   * another's read of them is on its way waits for that one, which is logged under the request that started it. So whether a
+   * read logs it is timing alone, the same whatever is presented or played.
+   */
+  const ownStatements = (sql: string[]) => sql.filter((q) => !q.includes('service_limits'));
 
   it('opens a workspace once a version for everyone in it, and never for someone who can open nothing', async () => {
     const lena = await account();
@@ -2611,7 +2674,7 @@ describe('reading the call', () => {
     expect((await read(jamie.call)).workspace).toMatchObject({ present: { id: null }, play: null });
     const busy = await statementsOf(jamie, jamie.call);
     expect(opensTree(quiet)).toBe(0);
-    expect(busy).toEqual(quiet);
+    expect(ownStatements(busy)).toEqual(ownStatements(quiet));
     await host.leave();
   });
 });

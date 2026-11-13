@@ -84,14 +84,21 @@ const whoCanEdit = (frame: string, label: RegExp): Play => async (c) => {
  */
 const settle = () => new Promise<void>((done) => { setTimeout(done, 500); });
 /** Picks Design in the picker: it asks first. */
-const pickDesign = (home: string): Play => async (c) => {
+/** Picks another workspace in Switch workspace: the question takes the menu's place. */
+const pickSpace = (home: string, name: RegExp, says: string): Play => async (c) => {
   await openPicker(home)(c);
-  await c.step('Pick Design. The question says who isn’t in it, that they can open and edit it while they’re in the call, and that the notes still go to the home', async () => {
-    const design = await screen.findByRole('menuitemradio', { name: /^Design(?! review)/ }, { timeout: 5000 });
+  await c.step(says, async () => {
+    const it = await screen.findByRole('menuitemradio', { name }, { timeout: 5000 });
     await settle();
-    await c.userEvent.click(design);
+    await c.userEvent.click(it);
   });
 };
+/** Product, which Art runs and pays for: the call opens it to everyone in it. */
+const pickProduct = (home: string): Play => pickSpace(home, /^Product/,
+  'Pick Product. The question says who isn’t in it, that they can open and edit it while they’re in the call, and that the notes still go to the home');
+/** Design, where Art edits and Aiko pays: the call doesn't open it to anyone who isn't in it. */
+const pickDesign = (home: string): Play => pickSpace(home, /^Design(?! review)/,
+  'Pick Design. The question says who isn’t in it can’t open it, because its files don’t count against Art’s storage');
 
 /* ---------- the call's home ---------- */
 
@@ -156,18 +163,28 @@ export const JustYouPhone = phone(JustYou);
 export const ThePicker = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, { play: openPicker('Design review · 4 Nov') });
 export const ThePickerPhone = phone(ThePicker);
 
-/** Switching asks once: Sam came in with the link and isn't in Design, so can open and edit it while in the call, and the notes still go to the home. */
+/** Switching asks once: Sam came in with the link and isn't in Product, so can open and edit it while in the call, and the notes still go to the home. */
 export const SwitchQuestion = inCall(
   { scenario: 'call-soon', call: REVIEW, script: { here: [...REVIEWERS, { who: SAM, guest: true }] } },
-  { play: pickDesign('Design review · 4 Nov') }
+  { play: pickProduct('Design review · 4 Nov') }
 );
 export const SwitchQuestionPhone = phone(SwitchQuestion);
 
-/** Switched: everyone views Design, and the toast says the notes still go to the home, with Back. */
+/**
+ * A workspace someone else pays for: Aiko pays for Design, so the call opens it only to its own people. The question says Sam
+ * can't open it, and why, so nobody in the call fills Aiko's storage or spends Aiko's AI.
+ */
+export const SwitchQuestionNotYours = inCall(
+  { scenario: 'call-soon', call: REVIEW, script: { here: [...REVIEWERS, { who: SAM, guest: true }] } },
+  { play: pickDesign('Design review · 4 Nov'), name: 'Switch question, someone else pays for it' }
+);
+export const SwitchQuestionNotYoursPhone = phone(SwitchQuestionNotYours);
+
+/** Switched: everyone views Product, and the toast says the notes still go to the home, with Back. */
 export const Switched = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: [...REVIEWERS, { who: SAM, guest: true }] } }, {
   play: async (c) => {
-    await pickDesign('Design review · 4 Nov')(c);
-    await c.step('Press Switch. Everyone views Design at once', async () => {
+    await pickProduct('Design review · 4 Nov')(c);
+    await c.step('Press Switch. Everyone views Product at once', async () => {
       await c.userEvent.click(await screen.findByRole('button', { name: 'Switch' }, { timeout: 5000 }));
     });
   }
@@ -537,7 +554,7 @@ export const NewWorkspacePhone = phone(NewWorkspace);
 function earlierReview(): void {
   const at = iso(0, 9, 0);
   const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(at));
-  current().workspaces.push({ id: 'ws-review-early', name: `Design review · ${day}`, role: 'admin', inCall: false, people: 4, items: [], createdAt: at, call: { title: 'Design review', at } });
+  current().workspaces.push({ id: 'ws-review-early', name: `Design review · ${day}`, role: 'admin', inCall: false, people: 4, teamAccess: null, items: [], createdAt: at, call: { title: 'Design review', at } });
 }
 /** The picker when this call's home and an earlier one share a name: each says when its call started. */
 export const ThePickerSameNameTwice = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS }, then: earlierReview }, { play: openPicker('Design review · 4 Nov') });

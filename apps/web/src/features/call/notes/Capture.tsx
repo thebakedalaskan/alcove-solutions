@@ -17,6 +17,7 @@ import { modelOf, modelOptions, modelValue } from '~/lib/aiModels';
 import { callName, listNames } from '~/lib/people';
 import { hm } from '~/lib/time';
 import { capital } from '~/lib/words';
+import type { PlanStop } from './PlanStop';
 
 /** What the screen does when someone changes what's captured: the organizer's controls, and anyone else's ask. */
 export interface CaptureControls {
@@ -47,6 +48,8 @@ interface CaptureProps {
   pausing: boolean;
   /** The call is on a phone (its one breakpoint, InCall's): what's captured comes up as a sheet from the foot. */
   phone: boolean;
+  /** The organizer's plan has stopped notes (PlanStop.tsx): what's said about it, the same everywhere. */
+  stop: PlanStop | null;
 }
 
 /** What's captured, opened from `anchor`; `onOpenNotes` is the way on to the notes at its foot, when there's one. */
@@ -68,19 +71,20 @@ export function CaptureButton({ notesOpen, onOpenNotes, ...props }: CaptureProps
   const c = captureHere(props.state.capture);
   const changing = props.pausing && c.mode !== 'paused';
   const requested = !notesAreOn(c.mode) && c.requests.length > 0;
-  const label = changing ? 'Pausing notes' : c.mode === 'on' ? 'Notes on' : c.mode === 'unavailable' ? 'Notes unavailable' : c.mode === 'paused' ? 'Notes paused' : requested ? 'Notes requested' : 'Notes off';
+  const stopped = props.stop !== null && c.mode === 'off';
+  const label = changing ? 'Pausing notes' : c.mode === 'on' ? 'Notes on' : c.mode === 'unavailable' ? 'Notes unavailable' : c.mode === 'paused' ? 'Notes paused' : stopped ? 'Notes stopped' : requested ? 'Notes requested' : 'Notes off';
   return <CaptureOpener {...props} onOpenNotes={notesOpen ? null : onOpenNotes}
-    anchor={<button type="button" className="ic-sign" aria-label={`${label}. What’s captured`}><CaptureSign mode={c.mode} requested={requested} pausing={changing} stage /></button>} />;
+    anchor={<button type="button" className="ic-sign" aria-label={`${label}. What’s captured`}><CaptureSign mode={c.mode} requested={requested} pausing={changing} stopped={stopped} stage /></button>} />;
 }
 
 /**
  * Notes' state in a word, beside Notes at the head of your side, where you are (a breakout room's own): Live while notes
  * are taken, Pausing… while the organizer's pause is on its way, Paused, Unavailable while the browser taking them can't
- * capture, "2 asked" for the organizer while notes are off and people have asked, and Off. It opens what's captured, in
- * your side's theme.
+ * capture, Stopped in caution while the organizer's plan has stopped them, "2 asked" for the organizer while notes are off
+ * and people have asked, and Off. It opens what's captured, in your side's theme.
  */
 export function CapturePill(props: CaptureProps) {
-  const p = pillOf(props.state, captureHere(props.state.capture), props.pausing);
+  const p = pillOf(props.state, captureHere(props.state.capture), props.pausing, props.stop !== null);
   return <CaptureOpener {...props} onOpenNotes={null} anchor={(
     <button type="button" className={cn('nn-pill', p.tone)} aria-label={`${p.name}. What’s captured`} aria-busy={p.tone === 'is-changing' || undefined}>
       {p.mark}{p.word}<span className="nn-chev"><Icon name="down" size={13} /></span>
@@ -92,12 +96,13 @@ export function CapturePill(props: CaptureProps) {
  * The pill's word for what's captured where you are (`c`), its mark, its tone, and its name for a screen reader, which
  * follows Notes beside it, so it never says what the sign at the top of the call says.
  */
-function pillOf(state: CallState, c: CaptureState, pausing: boolean): { word: string; name: string; tone: string | null; mark: ReactNode } {
+function pillOf(state: CallState, c: CaptureState, pausing: boolean, stopped: boolean): { word: string; name: string; tone: string | null; mark: ReactNode } {
   const dot = <RecDot />;
   if (pausing && c.mode !== 'paused') return { word: 'Pausing…', name: 'Pausing', tone: 'is-changing', mark: <Icon name="pause" size={13} /> };
   if (c.mode === 'on') return { word: 'Live', name: 'Live', tone: null, mark: dot };
   if (c.mode === 'paused') return { word: 'Paused', name: 'Paused', tone: null, mark: <Icon name="pause" size={13} /> };
   if (c.mode === 'unavailable') return { word: 'Unavailable', name: 'Unavailable', tone: 'is-caution', mark: <Icon name="alert" size={13} /> };
+  if (stopped) return { word: 'Stopped', name: 'Stopped', tone: 'is-caution', mark: <span className="ring" aria-hidden="true" /> };
   // A decision waiting on the organizer, so only theirs says it.
   const asked = state.isOrganizer ? c.requests.length : 0;
   if (asked > 0) return { word: `${asked} asked`, name: `${asked} asked for notes`, tone: 'is-ask', mark: dot };
@@ -106,11 +111,12 @@ function pillOf(state: CallState, c: CaptureState, pausing: boolean): { word: st
 
 /**
  * What's captured, the card the sign and the pill open, with what's yours to press: the sign and when it changed; one
- * sentence on what's captured now, and for anyone else while notes are on, who may change it; asks for notes; the
+ * sentence on what's captured now (or why the organizer's plan stopped it), and for anyone else while notes are on, who
+ * may change it; asks for notes; the
  * organizer's controls, or anyone else's ask; then a row for each fact. `onOpenNotes` is the way on to the notes at its
  * foot, when the sign opened it and Notes isn't open on your side.
  */
-function CaptureCard({ state, role, getting, controls, pausing, done, onOpenNotes }: Omit<CaptureProps, 'phone'> & {
+function CaptureCard({ state, role, getting, controls, pausing, stop, done, onOpenNotes }: Omit<CaptureProps, 'phone'> & {
   done: () => void; onOpenNotes: (() => void) | null;
 }) {
   const call = state.capture;
@@ -138,7 +144,7 @@ function CaptureCard({ state, role, getting, controls, pausing, done, onOpenNote
         <CaptureSign mode={c.mode} requested={!notesAreOn(c.mode) && c.requests.length > 0} pausing={changing} />
         {when && <span className="when">{when}</span>}
       </div>
-      <p className="nk-said">{saidFor(state, c, name)}{!host && notesAreOn(c.mode) && ` Only ${name} can pause or turn them off.`}</p>
+      <p className="nk-said">{stop && !call.room ? (host ? `${stop.title}. ${stop.line}` : stop.line) : saidFor(state, c, name)}{!host && notesAreOn(c.mode) && ` Only ${name} can pause or turn them off.`}</p>
       {host && askers.length > 0 && !on && (
         <div className="nk-ask"><Faces people={askers} size={22} max={3} /><span className="t">{listNames(askers)} asked for notes.</span></div>
       )}
@@ -146,7 +152,7 @@ function CaptureCard({ state, role, getting, controls, pausing, done, onOpenNote
       {mine?.state === 'declined' && !on && (
         <div className="nk-ask is-mine"><Icon name="clock" size={16} /><span className="t">{capital(name)} said not now at {hm(mine.at)}.</span></div>
       )}
-      {(host || asking || !on) && (
+      {!stop && (host || asking || !on) && (
         <div className="nk-acts">
           {host && on && call.room && !roomHeld && <Button size="sm" icon="pause" onClick={run(() => controls.room(true))}>Pause notes here</Button>}
           {host && roomHeld && <Button size="sm" variant="primary" icon="play" onClick={run(() => controls.room(false))}>Resume notes here</Button>}

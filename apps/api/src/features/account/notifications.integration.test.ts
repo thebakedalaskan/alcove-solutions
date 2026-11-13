@@ -52,7 +52,7 @@ describe('browser notification preferences', () => {
     await saveRevision(owner, h.pool, item.itemId, item.revisionId, { ...item.manifest, preferences: { ...item.manifest.preferences, notifications: choices } });
     const prefs = await browser.api.account.preferences();
     // Its reply and mention alerts were on (they had no switch yet), so their Alert ticks are; rings reach it too.
-    expect(prefs.notifications).toEqual({ ...choices, enabled: true, privateMessages: false, replies: true, chatMentions: true, hands: false, questions: false, admissions: false, timers: false, ringing: true });
+    expect(prefs.notifications).toEqual({ ...choices, enabled: true, privateMessages: false, replies: true, chatMentions: true, hands: false, questions: false, admissions: false, timers: false, ringing: true, plan: true });
     const saved = await browser.api.account.updatePreferences({ notifications: { ...prefs.notifications, enabled: false } });
     expect(saved.notifications).toMatchObject({ ...choices, enabled: false });
     expect((await browser.api.account.preferences()).notifications).toEqual(saved.notifications);
@@ -97,7 +97,7 @@ describe('browser notification preferences', () => {
     await saveRevision(owner, h.pool, item.itemId, item.revisionId, { ...item.manifest, preferences: { ...item.manifest.preferences, notifications: choices } });
     const prefs = await browser.api.account.preferences();
     expect(prefs.notifications).toEqual({ enabled: true, privateMessages: false, replies: true, chatMentions: false, hands: true, questions: false, admissions: false,
-      timers: true, ringing: true, beforeCall: 1, notesReady: false, sharedWithYou: true, notesRequested: true, followUpDue: true, tagged: false });
+      timers: true, ringing: true, beforeCall: 1, notesReady: false, sharedWithYou: true, notesRequested: true, followUpDue: true, tagged: false, plan: true });
     // Reading alone doesn't write: the sealed record keeps the previous release's shape until something is saved.
     expect((await listItems(owner, h.pool, 'profile', stored))[0]?.manifest.preferences.notifications).toMatchObject({ replyAlerts: true, mentionAlerts: false });
     await browser.api.account.updatePreferences({ notesLanguage: 'fr' });
@@ -122,7 +122,7 @@ describe('browser notification preferences', () => {
     // From before the browser's categories: both call alerts turned off, and no replies or chatMentions at all.
     await seal({ ...kept, replyAlerts: false, mentionAlerts: false });
     expect((await browser.api.account.preferences()).notifications).toEqual({ ...kept, enabled: true, privateMessages: false, replies: false, chatMentions: false,
-      hands: false, questions: false, admissions: false, timers: false, ringing: true });
+      hands: false, questions: false, admissions: false, timers: false, ringing: true, plan: true });
     // The browser's replies and mentions on, the call's alerts for them off: the Alert ticks stay on.
     await seal({ ...kept, enabled: true, privateMessages: false, replies: true, replyAlerts: false, chatMentions: true, mentionAlerts: false, hands: false, questions: false, admissions: false, timers: false });
     expect((await browser.api.account.preferences()).notifications).toMatchObject({ replies: true, chatMentions: true });
@@ -134,7 +134,7 @@ describe('browser notification preferences', () => {
     const initial = await browser.api.account.preferences();
     expect(initial.notifications).toEqual({
       enabled: false, privateMessages: true, replies: true, chatMentions: true, hands: true, questions: false, admissions: true, timers: true, ringing: true,
-      beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true
+      beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true, plan: true
     });
     const notifications = { ...initial.notifications, enabled: true, privateMessages: false, questions: true, ringing: false };
     await browser.api.account.updatePreferences({ notifications });

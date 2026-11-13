@@ -41,7 +41,8 @@ const OUTSIDE_A_CALL: Reaches = { title: 'Outside a call', rows: [
   { id: 'shared', label: 'Notes shared with you', icon: 'shareNodes', alert: 'sharedWithYou', sound: null },
   { id: 'notes-asked', label: 'Someone asks for notes', note: 'Calls you organize', icon: 'handHelping', alert: 'notesRequested', sound: null },
   { id: 'follow-up', label: 'A follow-up is due', note: 'At 9:00 that day', icon: 'todo', alert: 'followUpDue', sound: null },
-  { id: 'tagged', label: 'Mentions in documents', icon: 'filePen', alert: 'tagged', sound: null }
+  { id: 'tagged', label: 'Mentions in documents', icon: 'filePen', alert: 'tagged', sound: null },
+  { id: 'plan', label: 'Your plan', note: 'Pro about to end, renewed or ended', icon: 'coins', alert: 'plan', sound: null }
 ] };
 
 const alertPatch = (key: AlertKey, on: boolean): Partial<NotificationPrefs> => { const patch: Partial<NotificationPrefs> = {}; patch[key] = on; return patch; };

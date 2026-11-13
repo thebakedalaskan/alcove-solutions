@@ -101,18 +101,26 @@ export async function openOwner(d: Deps, ownerId: string, session: Session | und
 /**
  * Opens an account's keys, or nothing once the account has been deleted. For reaching someone else's
  * vault, where their account being gone isn't the caller's sign-in ending.
+ */
+export async function findOwner(d: Deps, ownerId: string, session: Session | undefined, db: Db = d.pool): Promise<Owner | undefined> {
+  const root = await openRootKey(d, ownerId, db);
+  return root && ownerFrom(d, ownerId, root, session);
+}
+/**
+ * An owner's root key alone, opened and checked against its root check, or nothing once it's been deleted: for work that
+ * needs only a key derived from it (a team's, features/billing/teams.ts), even where there's no request. The caller zeroes it.
  *
  * Inside a TEE, the new envelope under the master; when there's none, or it doesn't open (wrapped under a master that isn't
  * this one), the old envelope under the old master while it's held, which is then wrapped again under the master.
  */
-export async function findOwner(d: Deps, ownerId: string, session: Session | undefined, db: Db = d.pool): Promise<Owner | undefined> {
+export async function openRootKey(d: Pick<Deps, 'cfg' | 'pool'>, ownerId: string, db: Db = d.pool): Promise<Uint8Array | undefined> {
   const r = await maybeOne(db, KeyRow, 'SELECT root_envelope_v2, root_envelope, root_check FROM owners WHERE owner_id = $1', [ownerId]);
   if (!r) return undefined;
   const now = teeMaster(d);
   const old = legacyMasterKey(d);
   if (now && r.root_envelope_v2) {
     try {
-      return ownerFrom(d, ownerId, openRoot(now, ownerId, r.root_envelope_v2, '2', r.root_check), session);
+      return openRoot(now, ownerId, r.root_envelope_v2, '2', r.root_check);
     } catch (e) {
       if (!old || !r.root_envelope) throw e;
       // Wrapped under another master, as a master made again over accounts leaves them: the old envelope still opens.
@@ -121,6 +129,7 @@ export async function findOwner(d: Deps, ownerId: string, session: Session | und
   }
   if (!r.root_envelope || !old) throw new IntegrityError('This account’s key can’t be opened here.', { context: { ownerId, oldEnvelope: !!r.root_envelope, oldMaster: !!old } });
   const root = openRoot(old, ownerId, r.root_envelope, '1', r.root_check);
+  // Sealed again under the master now before this returns, so the caller zeroing the root later changes nothing of it.
   if (now) rewrapLater(d, now, ownerId, root, r.root_envelope_v2);
-  return ownerFrom(d, ownerId, root, session);
+  return root;
 }

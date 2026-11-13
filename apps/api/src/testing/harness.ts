@@ -1,7 +1,7 @@
 /*
  * Boots the real API against a clean test database and bucket, with a stand-in Google to sign in
  * through, a stand-in NEAR AI Cloud to transcribe and write notes (with stand-ins for the Intel and
- * NVIDIA services that vouch for it, under test roots) and a stand-in 1Click to pay for credits with,
+ * NVIDIA services that vouch for it, under test roots) and a stand-in 1Click to add money with,
  * and gives tests "browsers":
  * each with its own cookie jar, sending the web app's Origin, talking through @alcove/api-http.
  */
@@ -16,6 +16,7 @@ import { loadConfig, loadEnv, type Config } from '../config';
 import { createPool } from '../db';
 import { createDocPool } from '../live/docPool';
 import { createHub } from '../live/hub';
+import type { LimitName } from '../limits';
 import { createLiveKit } from '../livekit';
 import { configureLogging } from '../log';
 import { migrate } from '../migrate';
@@ -85,6 +86,13 @@ export interface Harness {
   browser(o?: { fetch?: typeof fetch | undefined; onEvent?: ((e: ClientEvent) => void) | undefined; callPollMs?: number | undefined; callNotesMs?: number | undefined; callRekeyMs?: number | undefined; ringSilenceMs?: number | undefined }): Browser;
   /** Stops every call session, workspace stream and document this harness's browsers opened from keeping up (nobody leaves). */
   closeCalls(): void;
+  /** Puts the limits back to what tests start with: the defaults. */
+  resetLimits(): Promise<void>;
+  /**
+   * Sets a limit as someone at the database's console would: in force on the next request (LIMITS_CACHE_MS is 0 here), and
+   * never checked against its bounds, so a test can set one past them.
+   */
+  setLimit(name: LimitName, value: number): Promise<void>;
   /**
    * Another API process on the same database and bucket, with its own hub, as after a restart, on a second instance, or
    * with other settings. `stopping`: says it's shutting down. `pool`: its own connections to the database. `hubUrl`: the
@@ -103,7 +111,9 @@ const docPoolFor = (cfg: Config) => createDocPool({ workers: cfg.DOC_WORKERS, ti
 
 async function listen(deps: Deps, stopping?: AbortSignal | undefined): Promise<{ server: ServerType; baseUrl: string }> {
   const app = createApp(deps, stopping);
-  const server: ServerType = await new Promise((resolve) => { const s = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' }, () => resolve(s)); });
+  // The browsers share this process's event loop: a test that holds it for seconds (scanning every log line for
+  // canaries) mustn't leave them a kept-alive socket the server is closing as they reuse it.
+  const server: ServerType = await new Promise((resolve) => { const s = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1', serverOptions: { keepAliveTimeout: 60_000 } }, () => resolve(s)); });
   const addr = server.address();
   const port = typeof addr === 'object' && addr ? addr.port : 0;
   return { server, baseUrl: `http://127.0.0.1:${port}` };
@@ -153,6 +163,10 @@ export async function startHarness(): Promise<Harness> {
     // Likewise a feature flag switched on or off.
     FEATURE_FLAGS_CACHE_MS: '0'
   }), pool, undefined);
+  const resetLimits = async () => { await pool.query('DELETE FROM service_limits'); };
+  const setLimit = async (name: LimitName, value: number) => {
+    await pool.query('INSERT INTO service_limits (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = excluded.value, updated_at = now()', [name, value]);
+  };
   const objects = await createObjectStore(cfg);
   const deps: Deps = { cfg, pool, objects, livekit: createLiveKit(cfg), hub: createHub(url, { checkMs: cfg.HUB_CHECK_MS, timeoutMs: cfg.HUB_TIMEOUT_MS, maxStreams: cfg.LIVE_STREAMS_MAX, maxPerAddress: cfg.LIVE_STREAMS_PER_ADDRESS, makeRoomAfterMs: cfg.LIVE_MAKE_ROOM_MS }), docs: docPoolFor(cfg) };
   const { server, baseUrl } = await listen(deps);
@@ -176,6 +190,8 @@ export async function startHarness(): Promise<Harness> {
       return { api: { ...api, calls: { ...api.calls, join }, workspaces: { ...api.workspaces, live, document } }, fetch: f };
     },
     closeCalls,
+    resetLimits,
+    setLimit,
     async secondServer(more = {}, stopping = undefined, own = undefined, hubUrl = undefined) {
       const { legacy, retire, ...over } = more;
       const given = { ...deps.cfg, ...over };

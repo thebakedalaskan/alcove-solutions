@@ -1,3 +1,4 @@
+import { type TeamAccess } from '../teams/schema';
 import { type ID } from '../shared/ids';
 import { type BoardSortBody, type BoardThemes, type DocAskBody, type DocAskPart, type DocSession, type DocSessionOptions, type DocVersion, type DocVersionSummary, type PresenterFrameNotes, type SearchDoc } from './documents';
 import { type DocumentLibrary, type DocumentPreview, type Trashed } from './library';
@@ -11,8 +12,13 @@ export interface DocumentsApi {
 export interface WorkspacesApi {
   /** Every workspace you're in, then each one you only have documents in. */
   list(): Promise<WorkspaceSummary[]>;
-  /** Makes a workspace with you as its admin. */
-  create(name: string): Promise<{ id: ID }>;
+  /**
+   * Makes a workspace with you as its admin. On a team, while licensed, it's the team's: `access` says who's in it, the
+   * whole team (`team`, the default there) or only the people added (`added`). Elsewhere `access` is ignored.
+   */
+  create(name: string, opts?: { access?: TeamAccess | undefined }): Promise<{ id: ID }>;
+  /** Admins only, on a team's workspace: who's in it, the whole team or only the people added. */
+  setTeamAccess(id: ID, access: TeamAccess): Promise<void>;
   /** A workspace as you see it. Anyone who can't open it gets the same `not-found` as for a workspace that doesn't exist. */
   get(id: ID, opts?: WorkspaceReadOptions): Promise<WorkspaceTree>;
   /** Admins only. */

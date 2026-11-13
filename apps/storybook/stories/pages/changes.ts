@@ -1,10 +1,11 @@
 /*
  * What page stories change about their scenario's world as they open (`changing()` in src/page.tsx): a part of Alcove
  * that fails or keeps the page waiting, recordings kept on this device, the calendar, the shared demo account, a call on
- * its way here, the calls other people asked Art to, nothing waiting on him, and notes in every state. All made up, in the
- * demo world.
+ * its way here, the calls other people asked Art to, nothing waiting on Art, notes in every state, and a team's
+ * licenses. All made up, in the demo world.
  */
 import { NOTE_LINK_DAYS, type PersonalEntry } from '@alcove/api';
+import { returnTo } from '~/lib/afterSignIn';
 import { UNENCRYPTED_MODEL } from '../../src/api/script';
 import { attested, type Broken } from '../../src/api/attestation';
 import { standIn } from '../../src/api/standin';
@@ -18,6 +19,8 @@ import { iso } from '../../src/world/clock';
 import { INVITATIONS, MOVING } from '../../src/world/invitations';
 import { withDriveExports } from '../../src/world/drive-exports';
 import { AIKO, ART, DIEGO, ELENA, LENA, MAYA, ME_ID, NADIA, OMAR, PRIYA, SAM, THEO } from '../../src/world/people';
+import { planWithTeam } from '../../src/world/teams';
+import { LAUNCH } from '../../src/world/workspaces';
 import { swap } from '../journeys/play';
 
 /** These parts of Alcove go wrong while the story is open (src/api/trouble.ts). */
@@ -216,7 +219,7 @@ export const linkToReadout = (expired = false) => (w: World): void => {
   const art = w.session?.user ?? ART;
   const recipients = [...n.recipients.filter((r) => r.person.email !== art.email), { person: art, role: 'shared' as const, by: PRIYA, link: true as const, at }];
   w.noteLinks = [{ link: { id: 'link-readout', by: PRIYA, at, expiresAt, revocable: false }, noteId: 'n9', secret: READOUT_SECRET, note: { ...n, recipients, received: { role: 'shared', by: PRIYA, link: true, at } } }];
-  try { sessionStorage.setItem('alcove.link-after-sign-in', JSON.stringify({ secret: READOUT_SECRET, until: Date.now() + 600_000 })); } catch { /* without storage there's no link to open */ }
+  returnTo({ to: 'link', secret: READOUT_SECRET });
 };
 
 /** Art has Priya's research readout from her link, and Theo has it from Art's: the note says so, and so does who has it. */
@@ -231,4 +234,41 @@ export const fromALink = (w: World): void => {
     { person: THEO, role: 'shared', by: ART, link: true, at: iso(0, 11, 0) }
   ];
   if (!n.people.some((p) => p.email === THEO.email)) n.people.push(THEO);
+};
+
+/* ---------- a team (src/world/teams.ts) ---------- */
+
+/** Maya needed a license this morning when none was left, and is waiting for one. */
+export const mayaWaits = (w: World): void => {
+  if (w.myTeam) w.myTeam.members = w.myTeam.members.map((m) => (m.person === MAYA ? { ...m, wanted: iso(0, 11, 20) } : m));
+};
+/**
+ * Art, the team's admin, whose own license ran out two days ago with none left to take: on Free, waiting with the rest, and
+ * told none were left.
+ */
+export const adminWithoutLicense = (w: World): void => {
+  const t = w.myTeam;
+  if (!t) return;
+  t.unconsumed = [];
+  t.members = t.members.map((m) => (m.person === ART ? { ...m, license: { from: iso(-32, 9, 0), until: iso(-2, 9, 0) }, wanted: iso(0, 9, 5) } : m));
+  // On Free, what Art stores counts against Art's own storage again, not the team's.
+  const free = planWithTeam(w.plan, t, ART.email);
+  w.plan = { ...free, storage: { ...free.storage, usedBytes: Math.round(2.1 * 2 ** 30) }, notices: [{ id: 'sb-notice-none', kind: 'licenses-none', at: iso(0, 9, 5), until: null, count: null, workspaceId: null }] };
+};
+/**
+ * Whoever paid for Launch left it this morning, so its payment moved to Art, its longest-standing admin with an account: he
+ * pays for it now, and its files count against his storage from a fortnight on, when its grace ends. Said at the top of
+ * Settings › Plan, and in a line over the side panel's plan, by the name Art sees it by.
+ */
+export const paysForLaunch = (w: World): void => {
+  w.plan = { ...w.plan, notices: [{ id: 'sb-notice-paying', kind: 'workspace-payer', at: iso(0, 9, 40), until: iso(15, 9, 40), count: null, workspaceId: LAUNCH }, ...w.plan.notices] };
+};
+/** Art's team license replaced Pro this morning: the two months that hadn't started went back to Art's balance. */
+export const replacedPro = (w: World): void => {
+  const at = iso(0, 9, 5);
+  w.plan = {
+    ...w.plan,
+    balance: { microUsd: w.plan.balance.microUsd + 40_000_000, history: [{ id: 'sb-entry-replaced', at, label: 'Refund: 2 months of Pro, for a team license', microUsd: 40_000_000 }, ...w.plan.balance.history] },
+    notices: [{ id: 'sb-notice-replaced', kind: 'license-replaced-pro', at, until: null, count: 2, workspaceId: null }]
+  };
 };
