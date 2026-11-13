@@ -9,7 +9,8 @@
   },
   "sideEffects": [
     "./src/**/*.css",
-    "./src/css-vars.ts"
+    "./src/css-vars.ts",
+    "./src/workspace/popover.tsx"
   ],
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

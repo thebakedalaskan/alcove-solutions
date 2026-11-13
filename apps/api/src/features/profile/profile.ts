@@ -76,7 +76,7 @@ export async function me(o: Owner, db: Db = o.pool): Promise<Person> {
 /**
  * Preferences as they stand, with the `summaryLength` the release before reads (StoredPreferences). Pins that point at
  * notes this person no longer has are dropped here and the cleaned list is saved. `held`: the notes they have, asked only
- * when there are pins (features/notes/service.ts › heldNoteIds).
+ * when there are pins (features/notes/access.ts › heldNoteIds).
  */
 export async function preferences(o: Owner, held: () => Promise<Set<string>>): Promise<StoredPreferences> {
   const prefs = (await profile(o)).preferences;
