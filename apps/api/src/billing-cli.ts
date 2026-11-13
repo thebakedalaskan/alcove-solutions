@@ -27,7 +27,7 @@ configureLogging({ level: env.LOG_LEVEL, format: env.LOG_FORMAT, service: 'alcov
 const USAGE = `billing show <who>           the account's plan, whether Pro renews, counts, and whether its balance covers a month of Pro
 billing credit <who> <usd>   adds <usd> dollars (20, 4.50) to its balance, as "Added by support"
 
-<who> is a top-up's reference, which that top-up's money is then added for, so it can't add itself again, or an account's ID.
+<who> is a top-up's reference or an account's ID. Credited by a top-up's reference, that top-up can't add itself again.
 Where KMASTER is set, as it is locally, an address the account signs in with names it too.
 `;
 const say = (text: string) => { process.stdout.write(`${text}\n`); };
