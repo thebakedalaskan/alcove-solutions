@@ -47,11 +47,12 @@ export type ScreenChange = z.infer<typeof ScreenChange>;
 
 /**
  * Where the organizer's plan stands in a call (features/billing): when they were told their notes are about to run out
- * at the call's pace, and when notes stopped because their notes or storage ran out, and which (ms on the server's clock).
+ * at the call's pace, and the stop, if their notes or storage ran out: when (ms on the server's clock) and which, one value
+ * as the wire has it (`CaptureState.stopped`).
  */
-export const NotesLimit = z.object({ warnedAt: z.number().nullable(), stoppedAt: z.number().nullable(), reason: z.enum(['notes', 'storage']).nullable() });
+export const NotesLimit = z.object({ warnedAt: z.number().nullable(), stopped: z.object({ at: z.number(), reason: z.enum(['notes', 'storage']) }).nullable() });
 export type NotesLimit = z.infer<typeof NotesLimit>;
-export const NO_LIMIT: NotesLimit = { warnedAt: null, stoppedAt: null, reason: null };
+export const NO_LIMIT: NotesLimit = { warnedAt: null, stopped: null };
 
 /** The paths that capture something, or send what was captured to the AI. */
 export type CapturePath = 'audio' | 'speech' | 'screen' | 'captions' | 'catch-up' | 'ask' | 'live-notes' | 'ideas' | 'sort';
@@ -202,8 +203,8 @@ export function stateFor(c: {
     mode: cant.has('recording') && cant.has('transcript') ? 'unavailable' : c.status,
     recording: part('recording'), transcript: part('transcript'), ai: part('ai'), screen: screenPart(c, when, actor),
     gaps: c.gaps, requests: c.requests, asked: c.asked, room: null, away: c.away, model: c.model, modelPrivate: c.modelPrivate, allowScreens: c.allowScreens,
-    stopped: c.limit.stoppedAt !== null && c.limit.reason !== null ? { reason: c.limit.reason, at: new Date(c.limit.stoppedAt).toISOString() } : null,
-    runningOut: c.organizerSees && c.limit.warnedAt !== null && c.limit.stoppedAt === null ? { at: new Date(c.limit.warnedAt).toISOString() } : null
+    stopped: c.limit.stopped ? { reason: c.limit.stopped.reason, at: new Date(c.limit.stopped.at).toISOString() } : null,
+    runningOut: c.organizerSees && c.limit.warnedAt !== null && c.limit.stopped === null ? { at: new Date(c.limit.warnedAt).toISOString() } : null
   };
 }
 

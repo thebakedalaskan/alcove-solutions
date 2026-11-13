@@ -126,7 +126,7 @@ export async function transcribe(o: Owner, recordingId: string, clip: transcript
   if (r.state !== 'recording') throw new ConflictError(r.state === 'paused' ? 'Recording is paused.' : 'This recording has stopped.', { context: ctx });
   const { seconds } = await progress(o, recordingId, 0);
   const meter = meterFor(o, {
-    payer: o.ownerId, spend: 'transcript', source: { kind: 'recording', id: recordingId },
+    payer: o.ownerId, spend: 'transcript', whose: 'yours', source: { kind: 'recording', id: recordingId },
     reserve: { model: o.cfg.NEAR_AI_NOTES_MODEL, most: writingAtMost({ seconds, rooms: 0, shareSeconds: 0 }) }
   });
   await transcripts.hear(o, meter, { recordingId, noteId: r.note_item_id }, clip);

@@ -78,7 +78,7 @@ export const ChooseAfterSigningIn: PageStory = {
   ...page('/', 'signed-out'),
   beforeEach: before((w) => { w.plan = carriedOver(); }),
   play: async ({ userEvent, step }) => {
-    await step('Art has used Alcove for weeks, and plans came while he was away. On the welcome page, use single sign-on', async () => {
+    await step('Art has used Alcove for weeks, and plans came while Art was away. On the welcome page, use single sign-on', async () => {
       await userEvent.click(await first(screen.findAllByRole('button', { name: 'Use single sign-on' }, SOON)));
       await userEvent.type(await screen.findByRole('textbox', { name: 'Work email' }, SOON), 'art@vandelay.industries');
     });

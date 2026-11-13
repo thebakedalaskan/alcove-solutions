@@ -5,7 +5,7 @@
  * through sign-in, wherever Google's way back lands).
  */
 import { Button, Icon, cn, type IconName } from '@alcove/ui';
-import { returnToPlans } from '~/lib/afterSignIn';
+import { returnTo } from '~/lib/afterSignIn';
 import { forgetSailOut } from '~/lib/sailOut';
 import { PLANS_COVE } from './coves';
 import { PartHead, Sky } from './Sky';
@@ -24,7 +24,7 @@ const PLANS: readonly { name: string; price: string; pro: boolean; facts: readon
 export function PlansScene({ auth }: { auth: Auth }) {
   const locked = auth.busy !== null;
   /* Signing in from here goes to Plans, not Home, so there's no cove to sail out of. */
-  const getPro = () => { returnToPlans(); auth.google(); forgetSailOut(); };
+  const getPro = () => { returnTo({ to: 'plans', checkout: 'pro' }); auth.google(); forgetSailOut(); };
   return (
     <Sky moment="plans" className="lp-plans" id="plans" cove={PLANS_COVE} sky={(
       <div className="lp-wrap lp-plans-in">

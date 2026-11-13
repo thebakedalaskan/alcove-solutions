@@ -8,7 +8,6 @@ import { z } from '../shared/zod';
 import { BreakoutBoardModeSchema, CallBoardSchema } from './boards';
 import { CaptureStateSchema } from './capture';
 import { LiveNotesSchema } from './catchup';
-import { CallCodeSchema } from './entry';
 import { RungSchema } from './rings';
 import { NotesChoicesSchema, NotesSettingSchema } from './settings';
 import { CallAttentionSchema, CallStatusSchema } from './attention';
@@ -87,13 +86,6 @@ export const CALL_PASS_HEADER = 'x-alcove-call' as const;
 
 /** A call pass as a browser keeps it (sessionStorage) for coming back after a reload: parsed before it's sent anywhere. */
 export const CallPassStoredSchema = z.string().min(20).max(2000).regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
-
-
-/**
- * The call a browser goes back to after signing in with Google from its join page (sessionStorage, in that tab only):
- * its code, as a link has it, and until when (ms).
- */
-export const CallReturnStoredSchema = z.object({ code: CallCodeSchema, until: z.number() });
 
 
 /** A LiveKit join token, for someone who's been let in. It only lasts until the browser connects; it carries no name. */

@@ -71,5 +71,3 @@ export const AutoPurchaseBodySchema = z.object({ on: z.boolean() });
 export const TeamAccessSchema = z.enum(['team', 'added']);
 export type TeamAccess = z.infer<typeof TeamAccessSchema>;
 export const TeamAccessBodySchema = z.object({ access: TeamAccessSchema });
-/** An invite's secret kept in one tab while its opener signs in, for ten minutes at most (the app's afterSignIn). */
-export const TeamJoinReturnStoredSchema = z.object({ secret: TeamSecretBodySchema.shape.secret, until: z.number() });

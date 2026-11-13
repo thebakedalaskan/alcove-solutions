@@ -30,12 +30,6 @@ export type NewNoteLink = z.infer<typeof NewNoteLinkSchema>;
 /** Opening a link: its secret, in the body. */
 export const NoteLinkClaimSchema = z.object({ secret: NoteLinkSecretSchema });
 
-/**
- * A link to notes waiting for its opener to sign in with Google, which takes the whole tab: its secret and until when
- * (ms), kept in that tab's sessionStorage for ten minutes at most, used once, and never in a URL.
- */
-export const NoteLinkReturnStoredSchema = z.object({ secret: NoteLinkSecretSchema, until: z.number() });
-
 /** What opening a link gives the account that opened it: the notes it's to, which are theirs to read now. */
 export const NoteLinkClaimedSchema = z.object({ noteId: IDSchema });
 

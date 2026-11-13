@@ -169,8 +169,8 @@ export function vandelayTeam(): TeamWorld {
 }
 
 /**
- * Vandelay's team as Art has just started it, from checkout's Start a team: him alone as its admin, made today, with nothing
- * bought for it yet and nobody licensed. `usedBytes`: what he stores, which counts against the team's storage once he's licensed.
+ * Vandelay's team as Art has just started it, from checkout's Start a team: Art alone as its admin, made today, with nothing
+ * bought for it yet and nobody licensed. `usedBytes`: what Art stores, which counts against the team's storage once Art is licensed.
  */
 export function startedTeam(usedBytes = 0): TeamWorld {
   return {

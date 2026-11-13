@@ -85,7 +85,8 @@ export class UnavailableError extends AppError { constructor(m: string, o?: Erro
 export class UnverifiedError extends UnavailableError {}
 /**
  * NEAR AI didn't answer: it timed out, couldn't be reached, or was busy. Nothing about the request was wrong,
- * so the notes worker waits and tries again instead of counting this as a failed attempt.
+ * so the notes worker waits and tries again instead of counting this as a failed attempt, unless it timed out once
+ * sent (`context.timedOut`): that one was charged what it held, so it counts.
  */
 export class UnansweredError extends UnavailableError {}
 /**

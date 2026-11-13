@@ -461,8 +461,11 @@ account.
   NVIDIA or NEAR AI unreachable, a platform out of date, anything in [What is checked](#what-is-checked)),
   nothing was sent. The job goes to `waiting` without using up the attempt, and is tried again five minutes
   later, for as long as it takes, so an outage or a TCB recovery doesn't lose notes. The same goes when the
-  notes model doesn't answer (`UnansweredError`: no answer within four minutes, unreachable, `429` or `5xx`):
-  nothing about the note is wrong, so it waits rather than using its attempts up. A draft can take the model
+  notes model can't be reached or is busy (`UnansweredError`: unreachable, `429` or `5xx`): nothing was charged and
+  nothing about the note is wrong, so it waits rather than using its attempts up. A request that gets no answer within
+  its time once it was sent (`timedOut`) was charged what it held (Charging, below), so it uses up an attempt like a
+  failure: notes that keep timing out are finished without a summary after three, and notes written again stay as they
+  were, instead of being charged again every five minutes without end. A draft can take the model
   well over a minute (about 24 tokens a second at its slowest, up to 4,000 of them, which is 167 seconds), so it gets
   four minutes, and the job's lease five.
 - **Retries.** A failed attempt (NEAR AI refusing the request, a reply that won't open, or one that isn't the
@@ -1324,7 +1327,9 @@ tags out of the selection couldn't promise that. What comes back is for the pers
 document: nothing is written to it from here, nothing is kept, and it has no receipt.
 
 It works as catching up does. It's one answer in one response, which `@alcove/api-http` hands over as parts (an
-`AsyncIterable`, as `notes.ask`); whoever the workspace counts against pays for it; and it has the same limit, 20 a minute per person. Asked from
+`AsyncIterable`, as `notes.ask`); whoever asks pays for it from their own plan, and a guest's ask goes to the default model
+and is paid by whoever the workspace counts against ([Plans and usage › Who pays](plans-and-usage.md)); and it has the same
+limit, 20 a minute per person, 6 for a guest. Asked from
 inside a call, it needs what catching up needs: the call is live, nothing's paused where this person is, and its notes have
 been on, so a call with notes off sends the AI nothing. Outside a call there's no call to rest on, so it needs an account that
 can edit the document. A demo account has the same limit as any other account.
@@ -1349,7 +1354,8 @@ offers nothing.
 `</stickies-…>` with a random mark, as a selection is, so nothing on a sticky can end the list early or be read as an
 instruction. Back comes `{themes: [{name, stickies}]}`: up to six themes of one to three words, every sticky in one. A label it
 wasn't given is nothing, one it uses twice stays where it was first, and a theme left with no stickies goes. It's one answer in
-one response, 20 a minute per person, and whoever the workspace counts against pays for it. In a call it needs the call to be live and nothing paused
+one response, 20 a minute per person (6 for a guest), and whoever asks pays for it, a guest's whoever the workspace counts
+against. In a call it needs the call to be live and nothing paused
 where this person is; with notes off it still works, as someone asked, about what people wrote. Outside a call it needs an
 account that can edit the board. Nothing is kept, and it has no receipt.
 
@@ -1763,7 +1769,8 @@ registry of the endpoints of the models it runs itself (`NEAR_AI_ENDPOINTS_URL`,
 `https://completions.near.ai/endpoints`, `{"endpoints": [{"domain", "models"}]}`). A model is offered when it
 takes text and images, isn't `is_ready: false`, has a price and its `pricing.input` is at most
 `NEAR_AI_MAX_INPUT_PRICE` (US dollars per million input tokens, 1 by default). The list is kept ten minutes, a
-failure to fetch it 30 seconds. `GET /v1/models` (signed in) returns `{ default, models }`, each
+failure to fetch it 30 seconds. Every metered request asks it for its model's price (`priceOf`): a price it has is used at
+once, the list read again behind it once it's old, so no transcript clip or question waits on the catalog. `GET /v1/models` (signed in) returns `{ default, models }`, each
 `{ id, name, private }`, the default first and the private ones before the unencrypted, each by name. The app
 shows the default as "<name> (default)".
 

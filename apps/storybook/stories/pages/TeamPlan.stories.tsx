@@ -29,7 +29,7 @@ const pressing = (name: string | RegExp, said: string, role: 'button' | 'switch'
   });
 };
 
-/** Nobody but Art left on his team: Delete team can be pressed. */
+/** Nobody but Art left on the team: Delete team can be pressed. */
 const alone = (w: World): void => { if (w.myTeam) w.myTeam.members = w.myTeam.members.filter((m) => m.role === 'admin'); };
 /** Nobody on the team has made a note visible to it yet. */
 const nothingVisible = (w: World): void => {
@@ -60,7 +60,7 @@ export const AsAdminTablet = tablet(AsAdmin);
 export const AsAdminWide = wide(AsAdmin);
 /** Two licenses left: the head and the licenses say so. */
 export const LicensesLow = page('/team', 'team-admin-low');
-/** None left, and Maya waiting for one: she's waiting on the horizon and in her row, and Buy licenses is filled. */
+/** None left, and Maya waiting for one: Maya waits on the horizon and in their row, and Buy licenses is filled. */
 export const SomeoneWaiting = page('/team', 'team-admin-none');
 export const SomeoneWaitingNight = night(SomeoneWaiting);
 export const SomeoneWaitingPhone = phone(SomeoneWaiting);
@@ -72,11 +72,11 @@ export const BuyWhenNeeded = page('/team', 'team-admin', { play: pressing('Buy o
 export const InviteLinkMade = page('/team', 'team-admin', { play: pressing('Make an invite link', 'Press Make an invite link') });
 export const InviteLinkMadeNight = night(InviteLinkMade);
 export const InviteLinkMadePhone = phone(InviteLinkMade);
-/** Remove asks in place, under Maya's row: her license isn't refunded, she goes back to Free, and her team notes stay. */
+/** Remove asks in place, under Maya's row: their license isn't refunded, they go back to Free, and their team notes stay. */
 export const RemoveAsked = page('/team', 'team-admin', { play: pressing('Remove Maya Chen', 'Press Remove on Maya’s row') });
 export const RemoveAskedNight = night(RemoveAsked);
 export const RemoveAskedPhone = phone(RemoveAsked);
-/** Only Art is left on it: Delete team, asked in place, says the licenses nobody took go back to his balance. */
+/** Only Art is left on it: Delete team, asked in place, says the licenses nobody took go back to Art's balance. */
 export const DeleteTeamAsked = page('/team', 'team-admin', { beforeEach: changing(alone), play: pressing('Delete team', 'Press Delete team') });
 /** Someone on the horizon opens their popover, as on a company's line: Ring, Schedule and the notes you both have. */
 export const APerson = page('/team', 'team-admin', { play: pressing(/^Priya Raman$/, 'Press Priya’s arch') });

@@ -496,7 +496,7 @@ call's sealed state (`apps/api/src/features/calls/capture.ts`) and the same for 
   and anyone reading the card get it without names: `by` says only "the organizer", and there are no gaps or
   asks. Every change sends the room a change push, so browsers fetch the call again.
 - **Running out** (`capture.runningOut`, `capture.stopped`). Notes are paid for from the organizer's AI allowance and
-  storage, so when what's left would last about 5 minutes at this call's pace the organizer alone is told, once
+  storage, so when what's left would last `ai.warn_seconds` (5 minutes) at this call's pace the organizer alone is told, once
   (`runningOut`), and when either is spent notes go off for everyone as if the organizer had turned them off (`stopped`,
   with its reason, `notes` or `storage`): the organizer is told why with the ways to more, everyone else whose notes ran
   out, and the organizer's app turns notes on again once they've bought more (user-flows 16.9). The call goes on, and what was captured until then still goes into the notes. A call also ends at `CallState.endsAt`, 10 hours
@@ -2383,7 +2383,8 @@ and the page a call leaves you on (`session/CallOver.tsx`).
   them when LiveKit says they've gone.
 - **Shared screens in the notes.** While notes are on or paused, the share steps ask **Include this share in the
   notes?**, on **No** until the presenter says **Yes** (their last answer in this call after that), without holding Share up. A kept share shows **Read for the notes** to everyone. The organizer chooses the model
-  that writes the notes (**Notes written by**) under what's captured. A piece of video that can't reach the notes says so
+  that writes the notes (**Notes written by**) under what's captured; a dearer one is refused while their plan's notes
+  can't hold what writing this call's notes would cost with it ([Plans and usage › Running out in a call](plans-and-usage.md#running-out-in-a-call)). A piece of video that can't reach the notes says so
   in the Notes panel ([Shared screens](#shared-screens)).
 - **Captions** show the newest live transcript line the viewer may read (said in their part of the call while
   they were there), under whoever said it, translated for each viewer who picks a language. They show in

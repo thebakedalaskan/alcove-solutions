@@ -1,165 +1,60 @@
 /*
- * Back to a call's join page when Google needs the current tab (a blocked popup or no completion channel). With a
- * popup the join page stays open and clears this on completion. Otherwise Google's way back lands on /ready or /home,
- * so the page to return to waits in this tab's sessionStorage: not in the sign-in URL, because a call's code is its link's
- * secret and the API's request logs keep URLs. It lasts ten minutes, like the sign-in attempt itself, and is used once.
+ * Where this tab goes once it's signed in, when signing in started on a page with somewhere to come back to: a call's join
+ * page, an agent's request at Agents, a link to someone's notes, an invite to a team, or Plans with checkout open (Get Pro on
+ * the welcome page). Google needs the current tab when its popup is blocked or can't report back, and its way back lands on
+ * /ready or /home, so where to go waits in this tab's sessionStorage (AfterSignInSchema): not in the sign-in URL, because a
+ * call's code and a link's or an invite's secret are secrets and the API's request logs keep URLs. It's one slot, so a
+ * sign-in started somewhere else since takes its place, and nothing else is waiting to race it. It lasts ten minutes, like
+ * the sign-in attempt itself, and is used once; with a popup the page it started on stays open and clears it.
  */
-import { AgentReturnStoredSchema, CallReturnStoredSchema, NoteLinkReturnStoredSchema, PlansReturnStoredSchema, TeamJoinReturnStoredSchema, type CheckoutParam, type PlansReturnStored } from '@alcove/api';
+import { AfterSignInStoredSchema, type AfterSignIn, type AfterSignInStored } from '@alcove/api';
 import { log } from './log';
 
 const alog = log.child({ component: 'after-sign-in' });
 const KEY = 'alcove.after-sign-in';
-const AGENT_KEY = 'alcove.agent-after-sign-in';
-const LINK_KEY = 'alcove.link-after-sign-in';
-const PLANS_KEY = 'alcove.plans-after-sign-in';
-const TEAM_KEY = 'alcove.team-after-sign-in';
 const MINUTES = 10;
 
-/** Signing in from this call's join page: come back to it afterwards. */
-export function returnToCall(code: string): void {
+/** Signing in from here: come back to `back` afterwards, in place of anything kept before. */
+export function returnTo(back: AfterSignIn): void {
   try {
-    sessionStorage.removeItem(AGENT_KEY);
-    sessionStorage.removeItem(PLANS_KEY);
-    sessionStorage.setItem(KEY, JSON.stringify({ code, until: Date.now() + MINUTES * 60_000 }));
+    const kept: AfterSignInStored = { back, until: Date.now() + MINUTES * 60_000 };
+    sessionStorage.setItem(KEY, JSON.stringify(kept));
   } catch (e) {
-    // Private browsing and the like: after signing in this tab lands on Home, and the link still works.
-    alog.debug('join page not kept for after sign-in', { err: e });
+    // Private browsing and the like: after signing in this tab lands on Home, and the page's own link still works.
+    alog.debug('way back not kept for after sign-in', { to: back.to, err: e });
   }
 }
 
-/** No Google sign-in is coming back to a join page (it was left, or the person signed in another way). */
+/** No sign-in is coming back to what's kept (it finished in a popup, failed, or was left). */
 export function clearReturn(): void {
   try {
     sessionStorage.removeItem(KEY);
-    sessionStorage.removeItem(AGENT_KEY);
-    sessionStorage.removeItem(PLANS_KEY);
   } catch (e) {
-    alog.debug('join page to go back to not cleared', { err: e });
+    alog.debug('way back not cleared', { err: e });
   }
 }
 
-/** A consent request is a pointer, never a bearer credential; keep it in this tab for one sign-in. */
-export function returnToAgent(requestId: string): void {
-  try {
-    sessionStorage.removeItem(KEY);
-    sessionStorage.removeItem(PLANS_KEY);
-    sessionStorage.setItem(AGENT_KEY, JSON.stringify({ requestId, until: Date.now() + MINUTES * 60_000 }));
-  } catch (e) {
-    alog.debug('agent consent not kept for after sign-in', { err: e });
-  }
-}
-export function takeAgentReturn(): string | null {
-  try {
-    const raw = sessionStorage.getItem(AGENT_KEY);
-    if (raw === null) return null;
-    sessionStorage.removeItem(AGENT_KEY);
-    const parsed = AgentReturnStoredSchema.safeParse(JSON.parse(raw));
-    return parsed.success && parsed.data.until > Date.now() ? parsed.data.requestId : null;
-  } catch (e) {
-    alog.debug('agent consent to go back to not readable', { err: e });
-    return null;
-  }
-}
-
-/**
- * Signing in to open a link to someone's notes: back to it afterwards, where it asks before opening them. Its secret waits
- * in this tab only, never in a URL, for ten minutes at most.
- */
-export function returnToLink(secret: string): void {
-  try {
-    sessionStorage.setItem(LINK_KEY, JSON.stringify({ secret, until: Date.now() + MINUTES * 60_000 }));
-  } catch (e) {
-    // Private browsing and the like: after signing in this tab lands on Home, and the link still works.
-    alog.debug('link to notes not kept for after sign-in', { err: e });
-  }
-}
-/** Whether a link to notes waits for this sign-in, without taking it. */
-export function linkWaiting(): boolean {
-  try { return sessionStorage.getItem(LINK_KEY) !== null; } catch { return false; }
-}
-/** The link's secret to open, once, if signing in started from it in the last ten minutes; an older one is dropped. */
-export function takeLinkReturn(): string | null {
-  try {
-    const raw = sessionStorage.getItem(LINK_KEY);
-    if (raw === null) return null;
-    sessionStorage.removeItem(LINK_KEY);
-    const w = NoteLinkReturnStoredSchema.safeParse(JSON.parse(raw));
-    return w.success && w.data.until > Date.now() ? w.data.secret : null;
-  } catch (e) {
-    alog.debug('link to notes to go back to not readable', { err: e });
-    return null;
-  }
-}
-
-/** The call to go back to, once, if signing in started on its join page in the last ten minutes; an older one is dropped. */
-export function takeReturn(): string | null {
+/** Where to go back to, without taking it, if a sign-in started in the last ten minutes kept one; an older one is dropped. */
+export function keptReturn(): AfterSignIn | null {
   try {
     const raw = sessionStorage.getItem(KEY);
     if (raw === null) return null;
+    const w = AfterSignInStoredSchema.safeParse(JSON.parse(raw));
+    if (w.success && w.data.until > Date.now()) return w.data.back;
     sessionStorage.removeItem(KEY);
-    const w = CallReturnStoredSchema.safeParse(JSON.parse(raw));
-    return w.success && w.data.until > Date.now() ? w.data.code : null;
+    return null;
   } catch (e) {
-    alog.debug('join page to go back to not readable', { err: e });
+    alog.debug('way back not readable', { err: e });
     return null;
   }
 }
 
-/**
- * Get Pro on the welcome page, before signing in: afterwards Plans opens with checkout on `checkout` (Pro), wherever sign-in
- * lands (Google's way back included). It's kept in this tab for ten minutes and used once; Cancel sign-in forgets it
- * (clearReturn).
- */
-export function returnToPlans(checkout: CheckoutParam = 'pro'): void {
-  try {
-    sessionStorage.removeItem(KEY);
-    sessionStorage.removeItem(AGENT_KEY);
-    const kept: PlansReturnStored = { checkout, until: Date.now() + MINUTES * 60_000 };
-    sessionStorage.setItem(PLANS_KEY, JSON.stringify(kept));
-  } catch (e) {
-    // Private browsing and the like: after signing in this tab lands on Home, where Plans is a press away.
-    alog.debug('plans not kept for after sign-in', { err: e });
-  }
-}
-/** What checkout opens on at Plans after signing in, once, if Get Pro started it in the last ten minutes; an older one is dropped. */
-export function takePlansReturn(): CheckoutParam | null {
-  try {
-    const raw = sessionStorage.getItem(PLANS_KEY);
-    if (raw === null) return null;
-    sessionStorage.removeItem(PLANS_KEY);
-    const w = PlansReturnStoredSchema.safeParse(JSON.parse(raw));
-    return w.success && w.data.until > Date.now() ? w.data.checkout : null;
-  } catch (e) {
-    alog.debug('plans to go to not readable', { err: e });
-    return null;
-  }
-}
+const goesTo = <T extends AfterSignIn['to']>(back: AfterSignIn, to: T): back is Extract<AfterSignIn, { to: T }> => back.to === to;
 
-/**
- * Signing in to join a team by its link: back to it afterwards, where it asks before joining. Its secret waits in this tab
- * only, never in a URL, for ten minutes at most.
- */
-export function returnToTeam(secret: string): void {
-  try {
-    sessionStorage.setItem(TEAM_KEY, JSON.stringify({ secret, until: Date.now() + MINUTES * 60_000 }));
-  } catch (e) {
-    alog.debug('team link not kept for after sign-in', { err: e });
-  }
-}
-/** Whether a link to join a team waits for this sign-in, without taking it. */
-export function teamWaiting(): boolean {
-  try { return sessionStorage.getItem(TEAM_KEY) !== null; } catch { return false; }
-}
-/** The team link's secret, once, if signing in started from it in the last ten minutes; an older one is dropped. */
-export function takeTeamReturn(): string | null {
-  try {
-    const raw = sessionStorage.getItem(TEAM_KEY);
-    if (raw === null) return null;
-    sessionStorage.removeItem(TEAM_KEY);
-    const w = TeamJoinReturnStoredSchema.safeParse(JSON.parse(raw));
-    return w.success && w.data.until > Date.now() ? w.data.secret : null;
-  } catch (e) {
-    alog.debug('team link to go back to not readable', { err: e });
-    return null;
-  }
+/** What's kept, taken once, if it goes `to` there: a link's page or an invite's takes its own secret, which never goes in a URL. */
+export function takeReturnTo<T extends AfterSignIn['to']>(to: T): Extract<AfterSignIn, { to: T }> | null {
+  const back = keptReturn();
+  if (!back || !goesTo(back, to)) return null;
+  clearReturn();
+  return back;
 }

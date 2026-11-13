@@ -281,8 +281,14 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
   const myShare = roomView.people[self]?.screenSid ?? null;
   const { screenProblem, sharingInRoom, keptMine, keptOf, startMine } = useScreenCapture({ session, state, media, screen: m.screen, departing: leaving || done });
 
+  /* The organizer's plan and the call's notes: what's said while it has stopped them, where, and notes on again once it has more. */
+  const planRestart = usePlanRestart(state, session);
+  const planStop = withRestart(usePlanStop(state), planRestart);
+  const stopMarks = useStopMarks(state);
+
   /* What the call says happened ("Notes are on…") arrives once, as a toast. Joining shows only the latest: the rest is history. */
   const shown = useRef<Set<string> | null>(null);
+  const { notesBack } = planRestart;
   useEffect(() => {
     // Once each, in this tab: a reload doesn't say them again.
     shown.current ??= new Set([...seenNotices(state.callId), ...state.notices.slice(0, -1).map((n) => n.id)]);
@@ -292,16 +298,14 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
       if (seen.has(n.id)) { session.dismissNotice(n.id); continue; }
       seen.add(n.id);
       fresh = true;
-      // Notes on again because the organizer's plan has more: their own toast says it (PlanStop.tsx), not this as well.
-      if (!(n.kind === 'notes' && planRestart.hushing())) toast(n.text, { icon: n.kind === 'notes' ? 'notesPen' : n.kind === 'people' ? 'people' : 'screen', ms: 3200 });
+      // Notes on again because the organizer's plan has more are said as what came (PlanStop.tsx).
+      const back = notesBack(n);
+      if (back) toast(back.text, back.options);
+      else toast(n.text, { icon: n.kind === 'notes' ? 'notesPen' : n.kind === 'people' ? 'people' : 'screen', ms: 3200 });
       session.dismissNotice(n.id);
     }
     if (fresh) keepSeen(state.callId, seen);
-  }, [state.notices, state.callId, session, toast]);
-  /* The organizer's plan and the call's notes: what's said while it has stopped them, where, and notes on again once it has more. */
-  const planRestart = usePlanRestart(state, session);
-  const planStop = withRestart(usePlanStop(state), planRestart);
-  const stopMarks = useStopMarks(state);
+  }, [state.notices, state.callId, session, toast, notesBack]);
 
   /*
    * Someone asking to join: a card drops in for the organizer and stays until they're answered, wherever that happens

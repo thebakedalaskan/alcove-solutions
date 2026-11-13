@@ -741,7 +741,7 @@ export async function ask(o: Owner, id: string, question: string): Promise<Answe
   // The model chosen for the call answers questions about it too.
   const via = await resolveModel(o.cfg, m.model);
   await recordUnencryptedUse(owner, id, via);
-  const parts = await answer(o.cfg, meterFor(o, { payer: o.ownerId, spend: 'ask' }), id, { ...briefOf(read, await me(owner), m.invited.map((e) => personOf(e))), via }, await me(o), question);
+  const parts = await answer(o.cfg, meterFor(o, { payer: o.ownerId, spend: 'ask', whose: 'yours' }), id, { ...briefOf(read, await me(owner), m.invited.map((e) => personOf(e))), via }, await me(o), question);
   const ms = Math.round(performance.now() - t0);
   if (await goneSince(o, [l])) {
     throw new ConflictError('These notes were deleted or removed from yours while the answer was being written, so it isn’t shown.', { context: { noteId: id, mine: l.mine, ms } });
@@ -794,7 +794,7 @@ export async function askAll(o: Owner, question: string, refs: readonly string[]
   const t0 = performance.now();
   // Across notes, the asker's own choice of model.
   const via = await resolveModel(o.cfg, (await profile(o)).preferences.model);
-  const { parts, sent, lines } = await answerFromNotes(o.cfg, meterFor(o, { payer: o.ownerId, spend: 'ask' }), notes, await person(o), question, via, async (ids) => {
+  const { parts, sent, lines } = await answerFromNotes(o.cfg, meterFor(o, { payer: o.ownerId, spend: 'ask', whose: 'yours' }), notes, await person(o), question, via, async (ids) => {
     const sent = new Set(ids);
     for (const l of ready) if (sent.has(l.note.itemId)) await recordUnencryptedUse(l.owner, l.note.itemId, via);
   }, new Set(wanted));

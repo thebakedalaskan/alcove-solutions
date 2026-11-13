@@ -14,7 +14,7 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { hoursOfNotes } from '~/features/plans/words';
 import { WaysIn, type Auth, type Busy } from '~/features/welcome/WaysIn';
-import { returnToTeam, takeTeamReturn } from '~/lib/afterSignIn';
+import { clearReturn, returnTo, takeReturnTo } from '~/lib/afterSignIn';
 import { sessionOrOffline } from '~/lib/guards';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
@@ -34,7 +34,7 @@ function takeSecret(): string | null {
     taken = r.success ? r.data : null;
     return taken;
   }
-  taken ??= takeTeamReturn();
+  taken ??= takeReturnTo('team')?.secret ?? null;
   return taken;
 }
 
@@ -105,14 +105,14 @@ export function JoinTeamPage() {
     busy, leaving: false,
     google: () => {
       if (!secret) return;
-      returnToTeam(secret);
+      returnTo({ to: 'team', secret });
       setBusy('google');
       void googleSignIn.start().then(async (r) => {
         if (r === 'redirecting') return;
-        takeTeamReturn();
+        clearReturn();
         setBusy(null);
         if (r && 'session' in r) await ask();
-      }).catch((e: unknown) => { takeTeamReturn(); toast(errorMessage(e), { icon: 'x' }); setBusy(null); });
+      }).catch((e: unknown) => { clearReturn(); toast(errorMessage(e), { icon: 'x' }); setBusy(null); });
     },
     cancelGoogle: googleSignIn.cancel,
     go: async (provider: DemoProvider, email?: string) => {

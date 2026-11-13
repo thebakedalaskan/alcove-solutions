@@ -6,8 +6,8 @@
  * organizer is asked, with Turn notes on. Everyone else is told whose notes ran out, with nothing to buy: a
  * call's notes are on its organizer's plan. Where notes stopped and came on again is marked in the notes.
  */
-import { CallStopsSeenSchema, errorCode, notesAreOn, type CallSession, type CallState, type Plan, type PlanOffers } from '@alcove/api';
-import { Button, Icon, buttonClass, useToast } from '@alcove/ui';
+import { CallStopsSeenSchema, errorCode, notesAreOn, type CallNotice, type CallSession, type CallState, type CaptureState, type Plan, type PlanOffers } from '@alcove/api';
+import { Button, Icon, buttonClass, type ToastOptions } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCheckout } from '~/features/plans/checkout';
@@ -26,11 +26,11 @@ export type StopWay = { kind: 'pro' } | { kind: 'hours'; label: string } | { kin
 /** Notes stopped by the organizer's plan, as it's said: a few words, a sentence, and the ways to more (none for anyone else). */
 export interface PlanStop { reason: 'notes' | 'storage'; at: string; title: string; line: string; ways: StopWay[] }
 
-/** Whether the organizer's plan has stopped this call's notes: the stop is in force while notes are off because of it. */
-const stopOf = (state: CallState) => {
-  const s = state.capture.stopped;
-  return s && !notesAreOn(state.capture.mode) ? s : null;
-};
+/**
+ * Whether the organizer's plan has stopped a call's notes: the stop is in force while notes are off because of it. The one
+ * rule for everywhere that says it or makes way for it (Notes' bars, the call's page after leaving).
+ */
+export const planStopOf = (c: CaptureState): CaptureState['stopped'] => (c.stopped && !notesAreOn(c.mode) ? c.stopped : null);
 
 /** How often the organizer's plan is read while it has stopped their call's notes: a payment from another device lands here soon. */
 const STOPPED_READ_MS = 10_000;
@@ -42,7 +42,7 @@ const STOPPED_READ_MS = 10_000;
  * notes or storage ran out, that the call carries on, and that what was written before stays.
  */
 export function usePlanStop(state: CallState): PlanStop | null {
-  const s = stopOf(state);
+  const s = planStopOf(state.capture);
   const host = state.isOrganizer;
   const plan = useQuery({ ...q.plan(), enabled: host && s !== null, refetchInterval: STOPPED_READ_MS }).data;
   const offers = useQuery({ ...q.offers(), enabled: host && s !== null }).data;
@@ -214,10 +214,14 @@ const boughtSince = (p: Plan, at: string): boolean => p.balance.history.some((e)
 const RETRY_MS = [2000, 5000, 10_000, 20_000, 40_000] as const;
 const passing = (e: unknown): boolean => { const c = errorCode(e); return c === 'network' || c === 'unavailable' || c === 'unknown'; };
 
-/** Notes on again for a stopped call, as its organizer has it: whether to offer it, and doing it. */
+/** Notes on again for a stopped call, as its organizer has it: whether to offer it, doing it, and how it's said once done. */
 export interface PlanRestart {
-  /** True while notes coming on is this, so the call's own notice about it isn't said as well. */
-  hushing: () => boolean;
+  /**
+   * How one of the call's notices is toasted when it's the one saying notes are on, and this browser turned them on because
+   * the organizer's plan has more: as what came ("You're on Pro. Notes are on again."). Null for any other notice, which is
+   * said in its own words. The call's notices are the one place this is said (InCall.tsx).
+   */
+  notesBack: (n: CallNotice) => { text: string; options: ToastOptions } | null;
   /** The plan has notes again without anything bought since the stop (a new period, more given): the organizer chooses. */
   ready: boolean;
   /** Turns notes on now, for the organizer who chose to. */
@@ -229,23 +233,29 @@ export interface PlanRestart {
 /**
  * For whoever organizes: the server doesn't turn a stopped call's notes on again by itself. When the organizer bought more
  * since they stopped (Pro, or more notes, in checkout over the call or paid from anywhere), their browser turns them on the
- * moment the plan has it, and a toast says so: "You're on Pro. Notes are on again." when Pro is what came, else "Notes are
- * on again.". When the plan has notes again without anything bought (a new period, more given), nothing turns on by
- * itself: the organizer is offered Turn notes on (`ready`). While a stop is in force the plan is read every 10 s, so a
- * payment that lands anywhere is heard within seconds. Turning notes on that fails for a reason that may pass is tried
- * again, waiting longer each time; refused (the plan wasn't enough after all), it's tried again only once the plan changes.
+ * moment the plan has it, and the call's notice that they're on says so (`notesBack`): "You're on Pro. Notes are on again."
+ * when Pro is what came, else "Notes are on again.". When the plan has notes again without anything bought (a new period,
+ * more given), nothing turns on by itself: the organizer is offered Turn notes on (`ready`). While a stop is in force the
+ * plan is read every 10 s, so a payment that lands anywhere is heard within seconds. Turning notes on that fails for a
+ * reason that may pass is tried again, waiting longer each time; refused (the plan wasn't enough after all), it's tried
+ * again only once the plan changes.
  */
 export function usePlanRestart(state: CallState, session: Pick<CallSession, 'setNotes'>): PlanRestart {
-  const toast = useToast();
-  const s = stopOf(state);
+  const s = planStopOf(state.capture);
   const host = state.isOrganizer && state.phase === 'in-call';
   const read = useQuery({ ...q.plan(), enabled: host && s !== null, refetchInterval: STOPPED_READ_MS });
   const plan = read.data;
   const readAt = read.dataUpdatedAt;
-  /* The plan when turning notes on was last refused, so the same plan isn't tried again; then whether they're on their way back. */
+  /* The plan when turning notes on was last refused, so the same plan isn't tried again. */
   const refused = useRef<{ at: string; plan: Plan } | null>(null);
-  const turning = useRef<{ pro: boolean } | null>(null);
-  const [busy, setBusy] = useState(false);
+  /*
+   * Notes on their way back on, and whether Pro is what came. State, so how the notice that they're on is said (notesBack)
+   * and the restart ending both read it from the render that brought them on, whichever runs first.
+   */
+  const [turning, setTurning] = useState<{ pro: boolean } | null>(null);
+  /* Which try is the latest: one from a restart that's over (notes came on, or the call's screen went) does nothing more. */
+  const attempt = useRef(0);
+  const retry = useRef<number | undefined>(undefined);
   const [ready, setReady] = useState(false);
   const stoppedAt = s?.at ?? null;
   const reason = s?.reason ?? null;
@@ -259,25 +269,27 @@ export function usePlanRestart(state: CallState, session: Pick<CallSession, 'set
 
   const turnOn = useCallback((pro: boolean, tries = 0) => {
     if (!stoppedAt || !reason || !plan) return;
-    turning.current = { pro };
-    setBusy(true);
+    const mine = ++attempt.current;
+    setTurning({ pro });
     slog.info('turning notes on again', { reason, kind: plan.kind, tries });
     session.setNotes(true).catch((e: unknown) => {
+      if (attempt.current !== mine) return;
       const wait = RETRY_MS[tries];
       if (passing(e) && wait !== undefined) {
         slog.info('notes didn’t come on again; trying again', { err: e, reason, tries });
-        window.setTimeout(() => { if (turning.current) turnOn(pro, tries + 1); }, wait);
+        retry.current = window.setTimeout(() => { if (attempt.current === mine) turnOn(pro, tries + 1); }, wait);
         return;
       }
       slog.info('notes didn’t come on again; the next change to the plan tries again', { err: e, reason });
-      turning.current = null;
       refused.current = { at: stoppedAt, plan };
-      setBusy(false);
+      setTurning(null);
     });
   }, [stoppedAt, reason, plan, session]);
+  /* The call's screen going ends any restart, and the try it was waiting to make. */
+  useEffect(() => () => { attempt.current += 1; window.clearTimeout(retry.current); }, []);
 
   useEffect(() => {
-    if (!host || !stoppedAt || !reason || !plan || turning.current) return;
+    if (!host || !stoppedAt || !reason || !plan || turning) return;
     // Only a plan read since notes stopped says what they can do now; one read before is a moment from being read again.
     if (readAt < Date.parse(stoppedAt)) return;
     const was = refused.current;
@@ -286,20 +298,23 @@ export function usePlanRestart(state: CallState, session: Pick<CallSession, 'set
     if (!boughtSince(plan, stoppedAt)) { setReady(true); return; }
     setReady(false);
     turnOn(wasKind.current === 'free' && plan.kind === 'pro');
-  }, [host, stoppedAt, reason, plan, readAt, turnOn]);
+  }, [host, stoppedAt, reason, plan, readAt, turnOn, turning]);
 
-  /* Notes are on again: said once, as what came. */
+  /* Notes are on again: the restart is over. The call's notice that they're on says what came (notesBack). */
   const on = notesAreOn(state.capture.mode);
+  const back = turning !== null && on && !stoppedAt;
   useEffect(() => {
-    const t = turning.current;
-    if (!t || !on || stoppedAt) return;
-    turning.current = null;
+    if (!back) return;
+    attempt.current += 1;
+    window.clearTimeout(retry.current);
     refused.current = null;
-    setBusy(false);
+    setTurning(null);
     setReady(false);
-    toast(t.pro ? 'You’re on Pro. Notes are on again.' : 'Notes are on again.', { icon: 'check', ms: 5200, topic: 'notes-back' });
-  }, [on, stoppedAt, toast]);
-  return { hushing: () => turning.current !== null, ready: host && ready && stoppedAt !== null, turnOn: () => turnOn(false), turning: busy };
+  }, [back]);
+  const notesBack = useCallback((n: CallNotice) => (back && turning && n.kind === 'notes'
+    ? { text: turning.pro ? 'You’re on Pro. Notes are on again.' : 'Notes are on again.', options: { icon: 'check', ms: 5200, topic: 'notes-back' } satisfies ToastOptions }
+    : null), [back, turning]);
+  return { notesBack, ready: host && ready && stoppedAt !== null, turnOn: () => turnOn(false), turning: turning !== null };
 }
 
 /**

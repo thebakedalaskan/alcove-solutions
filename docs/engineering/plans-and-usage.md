@@ -16,15 +16,16 @@ they bring: notes and storage. Every feature is on every plan.
 | Shared workspaces not tied to a call | As many as you like (storage is the limit) | Same | Same |
 
 A period is 30 days from when the plan began; a month of Pro is one period, and so is a team license from when it's
-taken. This page says what's built now.
+taken. A change to how long a period is applies from each account's next one: a period that has begun runs to its end
+as it began. This page says what's built now.
 
 Every number is a limit (`apps/api/src/limits.ts`, [Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)),
 changeable without a deploy: each plan's notes, storage, files and price; Pro's lower price for a year or more; the most
 months of Pro one purchase buys and how long before Pro ends its owner is told; more notes for a period, their price and
 the most bought at once; the most workspaces one account makes; what an hour of notes is reckoned at; when AI stops and
-when an organizer is told it's close; how much of an organizer's allowance guests in one call spend; how long a period and a grace last; a call's longest and its most people. The
-period's length isn't changed in production for now: an account on Free counts its periods from when it began, so a
-change would start a new one at once for every account on Free past its first.
+when an organizer is told it's close; how much of an organizer's allowance guests in one call spend; how long a period
+and a grace last; a call's longest and its most people. A period's length changes from each account's next period: each
+account's AI meter keeps the period it's in ([Pro › The plan in force](#pro)).
 
 ## Status
 
@@ -62,19 +63,24 @@ bought for a period ([below](#more-notes)) are part of its allowance, and end wi
 
 1. Before it's sent, the most the request can cost is **held**: its text at a token a byte, each image at
    `ai.image_tokens`, and the output it asks for at most, at its model's price. It's refused (`plan-limit`, 402) if that
-   would take what's left below `ai.stop_micro_usd` ($0.005), or once the allowance is spent.
+   would take what's left below `ai.stop_micro_usd` ($0.005), or once the allowance is spent. Only a spent allowance stops
+   anything: a request refused because it's too dear for what's left leaves cheaper ones to go.
 2. Once NEAR AI answers 200 it's **charged** what NEAR AI says it used (cached input at its cache price), even when what
    came back can't be used: the model did the work. A reply that doesn't say what it used is reckoned (a quarter of its
    characters a token). A Whisper clip is reckoned from its length when NEAR AI doesn't say: 1,500 tokens in for every
    30 seconds, and its words out.
 3. A request NEAR AI turned away (not 200), or that never went (its evidence didn't check out), is charged nothing. One
    that timed out once sent is charged what was held. A hold nothing settles within 5 minutes is charged in full the next
-   time the meter is touched.
+   time the meter is touched, and shown so already; answered after all, it's charged what it used instead, never both.
 
 Prices come from NEAR AI's catalog (`GET /v1/models`: `pricing.input` and `pricing.output` in USD a million tokens,
 `pricing.input_cache_read` a token), read with the list of models and kept as last listed through an outage
-(`features/notes/models.ts` `priceOf`). A model the catalog has never priced is charged at `ai.fallback_input_micro_usd`
-and `ai.fallback_output_micro_usd`, logged at warn.
+(`features/notes/models.ts` `priceOf`). A request whose model has a price kept never waits on the catalog: it's charged
+at that, and the list is read again behind it once it's ten minutes old; only a model never priced waits for the list.
+A model the catalog has never priced both ways is charged at `ai.fallback_input_micro_usd` and
+`ai.fallback_output_micro_usd`; each time the catalog is read, the models that can be charged without a price (the
+default, the speech model and every one offered) are logged at warn, once (`models not priced; charged at the
+fallback`, with their IDs), never with every request.
 
 **Who pays:**
 
@@ -85,7 +91,7 @@ and `ai.fallback_output_micro_usd`, logged at warn.
 | A room recording's transcript and notes | Whoever records |
 | A question or a catch-up in a call | Whoever asks, from their own plan; a guest's, the organizer, out of the guests' share (below), 6 a minute for each guest |
 | Asking a note, or every note; asking a series; an agent's questions (MCP) | Whoever asks |
-| AI on a document or board (shorter, checklist, what was said, sort into themes) | Whoever the workspace counts against; a guest's in a call, out of the guests' share |
+| AI on a document or board (shorter, checklist, what was said, sort into themes) | Whoever asks, from their own plan, in any workspace; a guest's, whoever the workspace counts against, on the default model, out of the guests' share (below) and within a guest's 6 a minute, and none while nobody does |
 
 Spend is kept by kind (`transcript`, `notes`, `live-notes`, `ideas`, `captions`, `catch-up`, `ask`, `series`,
 `documents`) with the allowance, so it can be explained, and logged when a period closes. Every change is made under the
@@ -97,8 +103,9 @@ and boards) is the organizer's. Every guest in one call spends from one share of
 would take them past it is refused ("Guests in this call have asked as much as the organizer’s plan allows. Sign in to ask
 from your own plan."), whichever guest asks, and the organizer's own notes keep the rest. On Free that's $0.25 a call, about
 30 minutes of notes, which is dozens of questions about a long call at the default model; a guest is also held to 6
-questions and catch-ups a minute, counted by the call and the person their pass names, so coming back on a new connection
-doesn't start again (`http/limits.ts › guestAskLimiter`, `calls/routes.ts`). Someone signed in asks from their own plan,
+questions, catch-ups and asks of AI on a document or board a minute between them, counted by the call and the person their
+pass names, so coming back on a new connection doesn't start again (`http/limits.ts › guestAskLimiter`, `calls/routes.ts`,
+`workspaces/reader-routes.ts`); their AI on documents and boards goes to the default model. Someone signed in asks from their own plan,
 and isn't counted in it. A request that carries no session is a guest's, so a signed-in invitee who leaves theirs off asks
 as a guest, within the same share.
 
@@ -107,23 +114,38 @@ as a guest, within the same share.
 A call's notes are written once it's over, so while it's live each transcript clip also **reserves** what writing them
 will cost at most so far (`drafting.writingAtMost`: the notes and their details from the transcript, a section for each
 breakout room, picking moments and reading a frame for every 15 seconds shared, every request at its most output).
-The allowance runs down with the call, and notes stop before it's spent rather than after.
+The allowance runs down with the call, and notes stop before it's spent rather than after. It's reckoned at the model
+the notes will be written with: when the organizer chooses another in the call (**Notes written by**) it's reckoned again
+at once, and a dearer one is refused while what's left can't hold it (`plan-limit`, "What’s left of your notes this
+period won’t cover writing this call’s notes with that model. Keep the one it has, or choose one that costs less."),
+after notes stop too; a cheaper one always goes.
 
 - **About to run out:** when what's left would last `ai.warn_seconds` (5 minutes) at this call's own pace (what it has cost
-  and will cost to write up, a second of it), the organizer alone is told, once (`CallState.capture.runningOut`).
+  and will cost to write up, a second of it), the organizer alone is told, once (`CallState.capture.runningOut`), by
+  whichever charge to the call gets there first: a transcript clip, captions, live notes or board ideas (`callMeter` in
+  `calls/recording.ts` tells the call as soon as the charge is saved).
 - **Spent:** notes go off for everyone, as if the organizer had turned them off (`capture.stopped`, reason `notes`), and
   the call goes on. Notes says Stopped, and over its tabs (or in a banner while Notes is closed) the organizer reads why with
   Get Pro and more hours for this period, which open checkout over the call; everyone else, guests included, reads whose
   notes ran out, with nothing to buy (user-flows 16.9). Captions, live notes,
   guests' questions and anything else the organizer pays for are refused; a signed-in person's own questions are theirs.
+  Whichever charge to the call spends it stops the call's notes at once; a clip or captions refused only for being too
+  dear for what's left stop nothing.
 - **The last note:** when the call ends, its notes are written from what was transcribed before notes stopped. Writing a
   call's notes the first time is never refused, so it may cost more than what was left: that's the only way past an
-  allowance, and what it costs over is Alcove's. Writing them again (after correcting the transcript) is refused like
-  anything else, and the notes stay as they were.
+  allowance, and what it costs over is Alcove's. It's paid from what the call held for it: what it's charged, and what
+  its requests hold on their way, come out of that and count on top only once they're past it, so writing the notes
+  stops nothing the call held enough for. Writing them again (after correcting the transcript) is refused like anything
+  else, and the notes stay as they were.
 - **Then nothing:** the allowance stays spent for the rest of the period, even when what the call reserved turns out to
   be more than writing cost; only a bigger allowance (more notes bought, the limits raised, a new period, a bigger plan)
   lifts it. A call scheduled with notes starts without them and says why; turning notes on, starting a room recording,
   or asking is refused with "Your notes for this period have run out. They start again when your plan renews."
+- **Whose, in words:** a refusal says whose allowance it is (`whose` on the meter's bill). Someone asking for what the
+  organizer pays for (a guest's question, captions, anything the call does) reads "The organizer’s notes for this period
+  have run out, and this is paid from them."; AI on a document or board its workspace's payer pays for, "The notes this
+  workspace’s AI is paid from have run out for this period.". A request refused only because what's left can't cover it says so instead, and nothing
+  stops: "What’s left of your notes this period isn’t enough for this." (the organizer's, or the workspace's, likewise).
 
 ## Storage
 
@@ -165,7 +187,7 @@ for.
   pay for it`, and the refusal at info with `why: 'nobody to pay'`.
 
 A call opens the workspace it uses to everyone in it, guests included, so whatever they add there counts against its payer,
-and AI they ask for there is paid by it. So it does that only while the organizer pays for it: its payer is the account the
+and AI a guest asks for there is paid by it (on the default model: anyone signed in pays for their own). So it does that only while the organizer pays for it: its payer is the account the
 call is kept in, and the organizer can still edit there (`access.ts › holdersOf`, asked on every request, so a change of
 payer or role takes effect at once). A workspace someone else pays for, made the call's by an organizer who can edit there,
 opens only for its own people; the Switch workspace question says so ("Its files don’t count against your storage, so it
@@ -240,7 +262,10 @@ month, starts a fresh period with the whole allowance: nothing carries over, and
 **The plan in force** (`inForce`, read with `planNow`) is Team while a team license is live ([Team](#team)), Pro while a
 bought month covers now, and Free otherwise. Free's periods count from
 when the account began, or from the end of the last month of Pro, whichever is later, so Free starts afresh when Pro ends,
-with or without upkeep.
+with or without upkeep. Each runs on from the one before as the AI meter keeps it (its `from` and `to`,
+`features/billing/meter-state.ts`), at the length `plan.period_seconds` has when it begins, so changing that limit never
+restarts a period that's running, nor gives back an allowance spent in it; an account the meter hasn't seen on Free since
+it started counts from the start. Pro's months and a team license's period are kept as they were bought or taken.
 
 **What's offered** (`GET /v1/plan/offers`): the period in days, what Free and Pro bring,
 the price of a month (`plan.pro.price_micro_usd`, $20) and the most months one purchase buys (`plan.pro.max_months`, 12).
@@ -456,8 +481,8 @@ as `read` edits too, an admin stays admin): `access.ts › standingIn`, from the
 It's in their Drive, and `WorkspaceTree.teamAccess` / `WorkspaceSummary.teamAccess` say which it is. Anything remembered
 of that access ends when their license does, and someone leaving or taken off the team, or the team deleted, moves the
 team's workspaces on, so nothing remembered outlasts it and every stream looks again. **AI in a team's workspace**
-(documents, boards) is paid for by whoever pressed it, from their own allowance; someone there only by a seat in a call
-falls back to the workspace's payer. Elsewhere the workspace's payer pays, as before.
+(documents, boards) is paid for by whoever pressed it, from their own allowance, as in any workspace; a guest, there only by
+a seat in a call, falls back to the workspace's payer, on the default model.
 
 ## Support
 
@@ -636,8 +661,10 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   `0026_workspace_calls.sql`, `0027_agent_activity.sql` and `0028_meeting_proposals.sql`, and nothing in them depends on
   those. No shared database ran them under the numbers they had on the plans branches
   (`0026_plans.sql`, `0027_workspace_payers.sql`, `0028_teams.sql`); a local one that did is refused by `migrate.ts`
-  until those three rows of `schema_migrations` are renamed to the new names (the files' contents, so their checksums,
-  are unchanged).
+  until those three rows of `schema_migrations` are renamed to the new names. `0029_plans.sql` also lost
+  `ai_meters.version` before it shipped (a count of each account's AI requests in the clear, which nothing read), so a
+  local database that ran it before is refused for that file too: drop the column and set that row's checksum to the
+  file's SHA-256, or start the database over (`pnpm db:reset`).
 - Credits are gone: every account starts on Free at $0, its old balance ignored, and then every top-up it paid for is
   added again as dollars, at face value (above): welcome credits aren't, and what credits were spent on notes isn't taken
   off. `billing_accounts` is no longer read, and goes in a later release.
