@@ -58,9 +58,11 @@ const Buys = z.discriminatedUnion('kind', [
 
 /**
  * What a deposit is, sealed. Token amounts are in the token's smallest unit, as integer strings. USDT is no longer
- * offered, but deposits opened with it before still open.
+ * offered, but deposits opened with it before still open. Loose, it and what it settled to: whatever this release doesn't
+ * read (the credits a release before plans promised and added) is kept by every save, so the record still opens in the
+ * release that wrote it.
  */
-export const DepositRecord = z.object({
+export const DepositRecord = z.looseObject({
   route: z.object({
     id: z.string(), provider: z.literal('oneclick'), chain: z.string(), chainName: z.string(), token: z.enum(['USDC', 'USDT']),
     decimals: z.number().int().min(0), minimum: units
@@ -83,7 +85,7 @@ export const DepositRecord = z.object({
    * integer strings), what it added to the balance (micro-USD; 0 when held), and the provider's name for the
    * settlement. One settled before plans added credits instead, and has no `addedMicroUsd`.
    */
-  settled: z.object({ sentMicroUsd: units, outMicroUsd: units, refundedMicroUsd: units, addedMicroUsd: units.nullable().default(null), providerRef: z.string() })
+  settled: z.looseObject({ sentMicroUsd: units, outMicroUsd: units, refundedMicroUsd: units, addedMicroUsd: units.nullable().default(null), providerRef: z.string() })
     .nullable().default(null),
   /** Whether it was logged that the provider couldn't answer past `give_up_at`, so it's logged once. */
   unanswered: z.boolean().default(false),
@@ -589,22 +591,6 @@ export async function list(d: Deps, ownerId: string): Promise<TopUp[]> {
   return found.map((r) => open(d, ownerId, r));
 }
 
-/**
- * A deposit's record with everything in it kept, what this release doesn't read included (the credits a release before
- * plans promised and added): saved again, it still opens in the previous release, serving while this one deploys.
- */
-const Kept = z.looseObject({ settled: z.looseObject({}).nullable().optional() });
-type Kept = z.infer<typeof Kept>;
-/** A deposit's record as stored (`Kept`) and as this release reads it, or why it can't be opened. */
-function openKept(d: Deps, ownerId: string, depositId: string, ciphertext: Uint8Array): { ok: true; kept: Kept; rec: DepositRecord } | { ok: false; error: unknown } {
-  try {
-    const kept = openJson(key(d), header(ownerId, depositId), ciphertext, Kept);
-    return { ok: true, kept, rec: DepositRecord.parse(kept) };
-  } catch (error) {
-    return { ok: false, error };
-  }
-}
-
 /** Whether every deposit a release before plans settled has been looked at, as far as this process knows. */
 let carriedAll = false;
 /**
@@ -633,16 +619,20 @@ export async function creditCarried(d: Deps): Promise<number> {
       const r = await maybeOne(c, Row, 'SELECT deposit_id, state, record_ciphertext, created_at FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE', where);
       if (!r) return { kind: 'nothing' };
       const lookedAt = () => exec(c, "UPDATE deposits SET check_after = 'infinity' WHERE owner_id = $1 AND deposit_id = $2", where);
-      const opened = openKept(d, x.owner_id, x.deposit_id, r.record_ciphertext);
-      if (!opened.ok) { await lookedAt(); return { kind: 'unopened', error: opened.error }; }
-      const { kept, rec } = opened;
+      let rec: DepositRecord;
+      try {
+        rec = record(d, x.owner_id, r);
+      } catch (error) {
+        await lookedAt();
+        return { kind: 'unopened', error };
+      }
       const s = rec.settled;
       if (!s || s.addedMicroUsd !== null) { await lookedAt(); return { kind: 'nothing' }; }
       const added = addedFor(rec, { sentMicroUsd: BigInt(s.sentMicroUsd), outMicroUsd: BigInt(s.outMicroUsd), refundedMicroUsd: BigInt(s.refundedMicroUsd) });
       if (added > 0n) await credit(d, c, x.owner_id, Number(added), `Added, ${formatUnits(BigInt(s.sentMicroUsd), 6)} ${rec.route.token}`);
-      const next = toJson({ ...kept, settled: { ...(kept.settled ?? {}), addedMicroUsd: added.toString() } });
+      // Saved as every save is, with what this release doesn't read kept: the credits it was settled for included.
       await exec(c, "UPDATE deposits SET record_ciphertext = $3, check_after = 'infinity' WHERE owner_id = $1 AND deposit_id = $2",
-        [...where, sealJson(key(d), header(x.owner_id, x.deposit_id), next)]);
+        [...where, sealJson(key(d), header(x.owner_id, x.deposit_id), toJson({ ...rec, settled: { ...s, addedMicroUsd: added.toString() } }))]);
       return { kind: 'carried' };
     }).catch((e: unknown) => {
       dlog.warn('top-up from before plans not looked at; it is next time', { depositId: x.deposit_id, err: e });
