@@ -2725,9 +2725,10 @@ left; and **Refund** gives back the licenses nobody has taken, asked in place.
 
 ### 16.19 On a team without a license
 
-When none was left for you, you stay on your own plan, and the team's admin is told. The side panel says it in caution, "No team
-license yet", under your notes left in place of the meter (on Pro, as the row's second line), and the row opens Team, which says
-who has been told. Settings › Plan says it once at the top, over your plan. The next time you open Alcove after the admin buys
+When none was left for you, you stay on your own plan, and the team's admin is told. The side panel says it over your own plan:
+"No team license yet" in caution, and under it who has been told ("Priya has been told"), or for the team's admin "Buy
+licenses, and one is yours". On Free your notes left and the meter stay under it, and Free's row is **Free plan · Team**, which
+opens Team. Settings › Plan says it once at the top, over your plan. The next time you open Alcove after the admin buys
 more, one is yours: your plan is Team, your license runs a period, and the side panel's foot is Team's row, over the team's name.
 
 ### 16.20 Choose a plan
