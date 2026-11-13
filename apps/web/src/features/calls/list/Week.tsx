@@ -9,14 +9,14 @@ import { CallsWeek, CallsWeekHead, type CallsWeekBlock, type CallsWeekDay, type 
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useMemo, type ReactNode } from 'react';
+import { FIRST_LENGTH } from '~/features/calls/flow/draft';
 import { useOpenScheduling } from '~/features/calls/scheduling/search';
-import { daysSpan } from '~/features/calls/scheduling/WeekSheet';
 import { pickerName } from '~/features/calls/scheduling/words';
 import { isSolo } from '~/features/home/day';
 import { freshCalls } from '~/features/shell/context';
 import { log } from '~/lib/log';
 import { q } from '~/lib/queries';
-import { daysFromToday, longDay, weekday } from '~/lib/time';
+import { daysFromToday, daysSpan, longDay, weekday } from '~/lib/time';
 import { waitingIn } from './past';
 
 const DAY_MINUTES = 1440;
@@ -113,7 +113,7 @@ export function WeekView({ offset, onOffset, notes, calls, inbox, me, now, calen
     <>
       <CallsWeekHead title={span} onBefore={() => onOffset(offset - 1)} onAfter={() => onOffset(offset + 1)} onToday={offset === 0 ? undefined : () => onOffset(0)} end={toggle} />
       <CallsWeek days={weekDays} blocks={blocks} now={{ day: daysFromToday(today, monday), minute: today.getHours() * 60 + today.getMinutes() }} label={span}
-        legend={legend} onBlock={open} onPick={(day, minute) => start(day, minute)} onRange={start} />
+        legend={legend} length={FIRST_LENGTH} onBlock={open} onPick={(day, minute) => start(day, minute)} onRange={start} />
     </>
   );
 }

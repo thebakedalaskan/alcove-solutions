@@ -30,13 +30,9 @@ export interface Repeating {
   calls: number | null;
 }
 
+/** Everything about a call being put together but when it is: the scheduler keeps that. */
 export interface Draft extends Guests {
-  /** The time picked. Null until one is: the best suggestion stands in. */
-  at: Date | null;
-  minutes: number;
   repeat: Repeating;
-  /** The times offered to a guest, when letting them pick. */
-  offer: Date[] | null;
   title: string;
   /** Someone typed the title: it stops following who's invited. */
   titled: boolean;
@@ -50,8 +46,8 @@ export interface Draft extends Guests {
 }
 
 export const NOT_REPEATING: Repeating = { kind: 'none', days: [], calls: null };
-/** How long a call runs until someone says otherwise. */
-const DEFAULT_MINUTES = 45;
+/** How long a call is until someone says otherwise: the scheduler's, and the outline pressing the Calls page's week shows. */
+export const FIRST_LENGTH = 45;
 /** How many calls a repeat runs for until someone sets an end date. */
 const CALLS_TO_START_WITH = 4;
 /** Past this many people, Details offers big-call settings, already on. */
@@ -59,7 +55,7 @@ export const BIG_CALL = 25;
 
 export function newDraft(prefs: Preferences | undefined, preset: { people: readonly Person[]; name?: string | undefined; documents?: readonly Document[] | undefined }): Draft {
   return {
-    tokens: tokensFor(preset.people, preset.name), unread: [], at: null, minutes: DEFAULT_MINUTES, repeat: NOT_REPEATING, offer: null, title: '', titled: false,
+    tokens: tokensFor(preset.people, preset.name), unread: [], repeat: NOT_REPEATING, title: '', titled: false,
     notes: prefs?.notesDefault ?? 'on', choices: DEFAULT_NOTES_CHOICES, joinMuted: null, documents: [...(preset.documents ?? [])], home: null
   };
 }

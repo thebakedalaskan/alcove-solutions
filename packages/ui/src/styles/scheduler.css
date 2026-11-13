@@ -188,8 +188,6 @@ button.sc-switch:disabled { cursor: default; opacity: .55; }
 
 /* ------------------------------------------------------------ details */
 .sc-keep { display: grid; gap: 4px; animation: sc-open var(--duration-2) var(--ease-out) both; }
-/* No notes left, under Notes: on the inner edge. */
-.pd-none.sc-door { margin: 0 0 4px 32px; }
 :is(.sc-value, .sc-quiet) .sc-chev { transition: transform var(--duration-2) var(--ease-out); }
 .sc-quiet[aria-expanded="true"] .sc-chev { transform: rotate(180deg); }
 @keyframes sc-open { from { opacity: 0; transform: translateY(-4px); } }

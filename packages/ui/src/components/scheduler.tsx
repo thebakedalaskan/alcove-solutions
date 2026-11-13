@@ -155,11 +155,17 @@ export function SchedChoice({ title, line, children }: { title: string; line?: R
 
 /**
  * The Who field: the tokens and the line to type in, as one box. Pressing anywhere in it is pressing into the line, as a
- * text box would. `open` while the people under it are showing.
+ * text box would; a press in something a token opens (where someone is) is that list's, though React carries it here.
+ * `open` while the people under it are showing.
  */
 export const SchedField = forwardRef<HTMLDivElement, { open?: boolean | undefined; fixed?: boolean | undefined; onPress?: (() => void) | undefined; children: ReactNode }>(
   function SchedField({ open = false, fixed = false, onPress, children }, ref) {
-    return <div ref={ref} className={cn('sc-people', open && 'is-open', fixed && 'is-fixed')} onClick={onPress}>{children}</div>;
+    return (
+      <div ref={ref} className={cn('sc-people', open && 'is-open', fixed && 'is-fixed')}
+        onClick={(e) => { if (onPress && e.target instanceof Node && e.currentTarget.contains(e.target)) onPress(); }}>
+        {children}
+      </div>
+    );
   });
 
 /** Over a list in a popover: "Often with you", "People and groups". */

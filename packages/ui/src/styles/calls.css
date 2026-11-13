@@ -13,11 +13,11 @@
 }
 .dark :is(.cs-tree, .cs-sheet) { --cs-mark: color-mix(in oklch, var(--sun-text) 30%, transparent); }
 .cs .dusk-in { display: flex; flex-direction: column; height: 100%; padding-bottom: 18px; }
-/* Its own search takes ⌘K here: the one at the top right, and the phone's, step aside. */
-.main:has(> .main-in > .dusk .cs-sky) .top-find { display: none; }
+/* Its own search takes ⌘K here: the one at the top right, and the phone's, step aside while the sky holds it (not while scheduling). */
+.main:has(> .main-in > .dusk .cs-sky-q > *) .top-find { display: none; }
 /* You stand in the sky's band, level with its search and its button. */
 @media (min-width: 861px) { .main:has(> .main-in > .dusk .cs-sky) .top-acts { top: calc(clamp(112px, 13vh, 128px) / 2 - 3px); } }
-.shell:has(> .main > .main-in > .dusk .cs-sky) .ph-end > :first-child { display: none; }
+.shell:has(> .main > .main-in > .dusk .cs-sky-q > *) .ph-end > :first-child { display: none; }
 /* The horizon keeps a strip of open water: the glitter stops short of the rail and the sheet. */
 .cs .hz > .hz-at, .cs .hz > .hz-light { clip-path: inset(-500px -2400px -16px -2400px); }
 

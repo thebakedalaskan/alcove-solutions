@@ -18,30 +18,30 @@ import { useCopyLink } from '~/features/call/session/links';
 import { NoNotesLeftDoor } from '~/features/plans/notesDoors';
 import { freshCalls, movedCalls } from '~/features/shell/context';
 import { useMyModelUnencrypted } from '~/lib/aiModels';
+import { useNow } from '~/lib/live';
 import { log } from '~/lib/log';
 import { byEmail, callName, listNames, sameEmail } from '~/lib/people';
 import { calendarConnectUrl, q, useCancelCall, useProposeTime, useScheduleCall, useUpdateCall } from '~/lib/queries';
 import { hm, timeZone } from '~/lib/time';
 import { Bring } from './Bring';
-import { BIG_CALL, NOT_REPEATING, guestsOf, newDraft, repeatInput, titleFor, type Draft, type Guests, type Repeating } from '../flow/draft';
+import { BIG_CALL, FIRST_LENGTH, NOT_REPEATING, guestsOf, newDraft, repeatInput, titleFor, type Draft, type Guests, type Repeating } from '../flow/draft';
 import { Failed } from '../flow/parts';
-import { useTimes } from './availability';
+import { aheadOf, busyFor, pageOf, pageRange, readUntil, useBusy } from './availability';
 import { FixedToken, PeopleField } from './PeopleField';
 import { clockIn } from './places';
 import { useScheduleWith, type ScheduleSearch } from './search';
-import { busyAt, expandRepeat, lengthAt, localDay, localWeekday, nextFree, nextHalfHour, offerTimes, outsideWork, soonestFree } from './times';
+import { LONGEST_CALL, SHORTEST_CALL, expandRepeat, lengthAt, localDay, localWeekday, nextFree, nextHalfHour, offerTimes, outsideWork, soonestFree } from './times';
 import { DayRow, LengthRow, RepeatRow, TimeRow, type WhenMenu } from './when';
 import { WeekSheet, type WeekCall } from './WeekSheet';
 import {
-  askedLine, busyLine, callCount, cancelNote, cancelledLine, dayWord, endHm, footLine, freeLine, nextFreeLabel, restoredLine, timeLine, unseenLine, whenWords, type Telling
+  askedLine, busyLine, callCount, cancelNote, cancelledLine, dayWord, endHm, footLine, freeLine, lengthLabel, nextFreeLabel, restoredLine, timeLine, unseenLine, whenWords, type Telling
 } from './words';
 
 const slog = log.child({ component: 'scheduling' });
 
 /** The fewest times a guest can be offered. */
 const FEWEST_OFFERED = 2;
-/** How long a call is until someone says otherwise. */
-const FIRST_LENGTH = 45;
+const MINUTE = 60_000;
 const minutesOf = (m: Meeting) => Math.max(5, Math.round((Date.parse(m.endsAt) - Date.parse(m.startsAt)) / 60_000));
 
 /** What the scheduler is doing: making a call, moving one of yours, or asking to move one you're invited to. */
@@ -143,6 +143,11 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
   const change = (d: Partial<Draft>) => setDraft((x) => ({ ...x, ...d }));
   const [when, setWhen] = useState<When>(() => ({ at: start.at, minutes: start.minutes ?? FIRST_LENGTH, offers: null, active: 0 }));
   const [menu, setMenu] = useState<Menu | null>(null);
+  /* What closes closes only itself: pressing one thing while another is open opens it, whichever hears the press first. */
+  const shut = (which: Menu) => setMenu((m) => (m === which ? null : m));
+  /* A time that had gone when the button was pressed, and where the call went instead. */
+  const [late, setLate] = useState<Date | null>(null);
+  const startField = useRef<HTMLInputElement>(null);
   /* Where an outside guest is, as you've said: only for showing their times. */
   const [place, setPlace] = useState<{ email: string; zone: string } | null>(null);
   const [scope, setScope] = useState<ChangeScope>('this');
@@ -169,7 +174,17 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
 
   const guests = useMemo(() => guestsOf(draft.tokens, me), [draft.tokens, me]);
   const emails = useMemo(() => guests.map((g) => g.email), [guests]);
-  const times = useTimes(emails, meeting);
+  /* Now, as the week has it: the soonest time, the times gone and the past all follow the clock. */
+  const nowMs = useNow();
+  const now = useMemo(() => new Date(nowMs), [nowMs]);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  /* Who's busy is read from today for as far as the soonest time is looked for, and a time put further on, a page of the week at a time. */
+  const ahead = useMemo(() => aheadOf(new Date(today)), [today]);
+  const aheadEnd = Date.parse(ahead.to);
+  const farPages = [when.at, ...(when.offers ?? []).map((o) => o.at)]
+    .flatMap((t) => (t && t.getTime() >= aheadEnd ? [pageOf(t, new Date(today))] : [])).filter((p, i, all) => all.indexOf(p) === i).sort((a, b) => a - b).join(',');
+  const ranges = useMemo(() => [ahead, ...(farPages ? farPages.split(',').map((p) => pageRange(Number(p), new Date(today))) : [])], [ahead, farPages, today]);
+  const times = useBusy(emails, meeting, ranges);
   const readable = useMemo(() => times.readable.map((p) => p.busy), [times.readable]);
   const telling: Telling = calendar?.source === 'sample' ? 'sample' : calendar?.source === 'google' && !calendar.needsAccess && prefs?.addToCalendar !== false ? 'google' : 'nobody';
   const noCalendar = !!calendar && (calendar.source === 'none' || calendar.needsAccess);
@@ -183,7 +198,7 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
   const zone = outside && place && sameEmail(place, outside) ? place.zone : null;
 
   /* The one time: where it was put, or until then the soonest free half hour for you and everyone whose calendar can be read. */
-  const soonest = useMemo(() => soonestFree({ now: times.now, minutes: when.minutes, you: times.you, people: readable }), [times.now, when.minutes, times.you, readable]);
+  const soonest = useMemo(() => soonestFree({ now, minutes: when.minutes, you: times.you, people: readable, until: aheadEnd }), [now, when.minutes, times.you, readable, aheadEnd]);
   const touched = when.at !== null;
   const chosen = when.at ?? soonest;
   const offers = offerable ? when.offers : null;
@@ -194,27 +209,47 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
   const ticked = offers?.filter((o) => o.on).length ?? 0;
 
   /* Who's busy at the one time: something of yours (by name when it has one), and whoever else's calendar says so. */
-  const yours = busyAt(times.own, chosen, when.minutes)[0]?.title;
-  const youBusy = busyAt(times.you, chosen, when.minutes).length > 0;
-  const theyBusy = guests.filter((g) => times.readable.some((p) => sameEmail(p, g) && busyAt(p.busy, chosen, when.minutes).length > 0));
+  const taken = busyFor(times, chosen.getTime(), chosen.getTime() + length * MINUTE);
+  const yours = taken.yours;
+  const youBusy = taken.busy;
+  const theyBusy = guests.filter((g) => taken.people.some((email) => sameEmail({ email }, g)));
   const clashing = youBusy || theyBusy.length > 0;
-  const next = clashing ? nextFree({ from: chosen, now: times.now, minutes: when.minutes, you: times.you, people: readable }) : null;
+  const next = clashing ? nextFree({ from: chosen, now, minutes: when.minutes, you: times.you, people: readable, until: readUntil(ranges, chosen.getTime()) }) : null;
+
+  /* Letting a guest pick, one length for every time offered: as long as each ticked one has room for before midnight. */
+  const offerLength = offers ? Math.min(when.minutes, ...offers.filter((o) => o.on).map((o) => lengthAt(o.at, when.minutes))) : length;
+  const lengthOf = (at: Date) => Math.min(offerLength, lengthAt(at, when.minutes));
+  const stopped = offers ? offers.findIndex((o) => o.on && lengthAt(o.at, when.minutes) < when.minutes) : -1;
+  /** What of yours an offered time clashes with, by name when it has one. */
+  const markOf = (at: Date) => { const b = busyFor(times, at.getTime(), at.getTime() + lengthOf(at) * MINUTE); return b.yours ?? (b.busy ? 'Busy' : undefined); };
 
   /* Moving: the times people invited have asked for, still to come. */
   const asked = (meeting?.isOrganizer ? meeting.proposals ?? [] : []).map((p) => ({ at: new Date(p.startsAt), who: meeting?.guests.find((g) => sameEmail(g, p)) }))
     .filter((p) => p.at.getTime() > Date.now());
 
   /* ---------- changing when ---------- */
-  /** The active time starts at `at`, keeping its length. */
-  const moveTo = (at: Date) => setWhen((w) => (offers && w.offers ? { ...w, offers: w.offers.map((o, i) => (i === active ? { ...o, at } : o)) } : { ...w, at }));
-  /** A length set: asking to move someone's call asks for a start, so it keeps the length it has. */
+  /**
+   * The active time starts at `at`, keeping its length. Letting a guest pick, a start another time offered has already is
+   * refused: the guest would be offered it twice.
+   */
+  const moveTo = (at: Date): boolean => {
+    if (offers?.some((o, i) => i !== active && o.at.getTime() === at.getTime())) return false;
+    setWhen((w) => (offers && w.offers ? { ...w, offers: w.offers.map((o, i) => (i === active ? { ...o, at } : o)) } : { ...w, at }));
+    return true;
+  };
+  /** A length set, from 5 minutes to 10 hours, as the server allows: asking to move someone's call asks for a start, so it keeps the length it has. */
   const setLength = (minutes: number) => {
     if (job.kind === 'propose') return;
-    setWhen((w) => ({ ...w, minutes, at: offers ? w.at : w.at ?? chosen }));
+    const kept = Math.max(SHORTEST_CALL, Math.min(LONGEST_CALL, Math.round(minutes)));
+    setWhen((w) => ({ ...w, minutes: kept, at: offers ? w.at : w.at ?? chosen }));
   };
   const setRange = (at: Date, minutes: number) => {
+    if (moveTo(at)) setLength(minutes);
+  };
+  /** Moved there from a line under the time (Next free, Move it there): the line goes, so the keyboard goes to the start. */
+  const moveFromLine = (at: Date) => {
+    startField.current?.focus({ preventScroll: true });
     moveTo(at);
-    setLength(minutes);
   };
   /** A day picked keeps the clock time; where that's gone, the next half hour at least 10 minutes off. */
   const pickDay = (day: Date) => {
@@ -223,7 +258,7 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
   };
   /** Letting a guest pick: on with three times (the one you had, then the same time on the next two days you're free); off, the active one stays. */
   const letPick = (on: boolean) => setWhen((w) => (on
-    ? { ...w, at: chosen, offers: offerTimes({ at: chosen, now: times.now, minutes: w.minutes, you: times.you }).map((at) => ({ at, on: true })), active: 0 }
+    ? { ...w, at: chosen, offers: offerTimes({ at: chosen, now, minutes: w.minutes, you: times.you }).map((at) => ({ at, on: true })), active: 0 }
     : { ...w, at: current, offers: null, active: 0 }));
   /** Who's invited changed: picking goes off the same way, keeping the active time. */
   const who = (g: Guests) => {
@@ -243,11 +278,15 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
   const organizer = meeting && !meeting.isOrganizer ? meeting.organizer : undefined;
   const to = organizer ? callName(organizer) : undefined;
 
-  /* Moving or asking, the button waits until the time has changed (and, moving, the length). */
+  /*
+   * Moving or asking, the button waits until the time has changed (and, moving, the length). The length it's meant to have
+   * counts, not where midnight stops it: a call kept from before that runs past midnight opens as it is, and only moving it
+   * stops it there.
+   */
   const startMoved = !!meeting && chosen.getTime() !== Date.parse(meeting.startsAt);
-  const changed = startMoved || (job.kind === 'move' && length !== minutesOf(job.meeting));
+  const changed = startMoved || (job.kind === 'move' && when.minutes !== minutesOf(job.meeting));
   const ready = job.kind === 'new' ? guests.length <= MAX_GUESTS && (offers ? ticked >= FEWEST_OFFERED : true) : changed;
-  const whenSaid = whenWords(chosen, times.now);
+  const whenSaid = whenWords(chosen, now);
   const goLabel = job.kind === 'propose' ? (startMoved ? `Ask to move it to ${whenSaid}` : 'Ask to move it')
     : job.kind === 'move' ? (changed ? `Move to ${whenSaid}` : 'Move')
       : offers ? `Send ${only ? callName(only) : 'your guest'} the times`
@@ -261,7 +300,7 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
     if (!moving && start.people.length && matchMedia('(hover: hover)').matches) { title.current?.focus({ preventScroll: true }); title.current?.select(); }
   }, [moving, start.people.length]);
 
-  const said = (at: Date) => `${dayWord(at, times.now).replace(/^Tomorrow/, 'tomorrow').replace(/^Today/, 'today')} at ${hm(at)}`;
+  const said = (at: Date) => `${dayWord(at, now).replace(/^Tomorrow/, 'tomorrow').replace(/^Today/, 'today')} at ${hm(at)}`;
   /* The toast that says a call was scheduled: what happened, who heard, and Undo while there's one to give. */
   const scheduled = async (m: Meeting) => {
     freshCalls.add(m.id);
@@ -288,6 +327,13 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
 
   const go = async () => {
     if (sending || !ready) return;
+    /* A time that has gone while the scheduler was open is never sent: the call goes to the next half hour, and says so. */
+    if (!offers && (job.kind === 'new' || startMoved) && chosen.getTime() <= Date.now()) {
+      const later = nextHalfHour(new Date());
+      moveTo(later);
+      setLate(later);
+      return;
+    }
     setSending(true);
     setFailed(null);
     try {
@@ -316,7 +362,7 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
       const offered = offers ? offers.filter((o) => o.on).map((o) => o.at).sort((a, b) => a.getTime() - b.getTime()) : null;
       const at = offered?.[0] ?? chosen;
       const input: MeetingInput = {
-        title: named.trim() || titleFor(draft.tokens, guests), startsAt: at.toISOString(), durationMinutes: lengthAt(at, when.minutes), guests: emails, notes: draft.notes,
+        title: named.trim() || titleFor(draft.tokens, guests), startsAt: at.toISOString(), durationMinutes: offered ? offerLength : length, guests: emails, notes: draft.notes,
         ...(draft.notes === 'on' ? { choices: draft.choices } : {}), ...(big ? { joinMuted: muted } : {}),
         ...(draft.documents.length ? { documents: draft.documents.map((d) => d.id) } : {}), ...(draft.home ? { workspaceId: draft.home.id } : {}),
         ...(repeat ? { repeat } : {}), ...(offered ? { offer: offered.map((t) => t.toISOString()) } : {})
@@ -354,7 +400,7 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
   /* What the week's ghost and bands call people: their first names. */
   const weekGuests = useMemo(() => guests.map((g) => ({ email: g.email, name: callName(g) })), [guests]);
   const weekCalls: WeekCall[] = offers
-    ? offers.map((o, i) => ({ at: o.at, minutes: lengthAt(o.at, when.minutes), n: i + 1, active: i === active, off: !o.on, clash: busyAt(times.you, o.at, when.minutes).length > 0 }))
+    ? offers.map((o, i) => ({ at: o.at, minutes: lengthOf(o.at), n: i + 1, active: i === active, off: !o.on, clash: markOf(o.at) !== undefined }))
     : [{ at: chosen, minutes: length, active: true, clash: clashing }];
   const answers = new Map((meeting?.answers ?? []).map((a) => [a.email.toLowerCase(), a.answer]));
   const stateOf = (p: Person) => {
@@ -364,7 +410,7 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
   const label = job.kind === 'move' ? `Move ${job.meeting.title}` : job.kind === 'propose' ? `Propose another time for ${job.meeting.title}` : 'Schedule a call';
   const kicker = job.kind === 'move' ? 'Move a call' : job.kind === 'propose' ? 'Ask to move a call' : 'New call';
   const whenMenu: WhenMenu | null = menu === 'place' || menu === 'agenda' ? null : menu;
-  const open = { menu: whenMenu, onMenu: (m: WhenMenu | null) => setMenu(m) };
+  const open = { menu: whenMenu, onMenu: (m: WhenMenu) => setMenu(m), onShut: (m: WhenMenu) => shut(m) };
   const guest = only ? callName(only) : '';
 
   const foot = (
@@ -393,7 +439,7 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
     <div className="sc-sheet" style={{ '--d': 1 }}>
       <WeekSheet guests={weekGuests} title={named || 'New call'} calls={weekCalls}
         was={meeting && changed ? { at: new Date(meeting.startsAt), minutes: minutesOf(meeting) } : undefined} except={meeting}
-        onMove={moveTo} onRange={setRange} onResize={setLength} onSelect={(i) => setWhen((w) => ({ ...w, active: i }))} />
+        onMove={moveTo} onRange={setRange} onLength={job.kind === 'propose' ? undefined : setLength} onSelect={(i) => setWhen((w) => ({ ...w, active: i }))} />
 
       <SchedPanel kicker={kicker} label={label} onClose={onClose} foot={foot}>
         {meeting
@@ -412,13 +458,13 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
             </SchedRow>
           ) : (
             <PeopleField value={draft} onChange={who} me={me}
-              where={outside ? { email: outside.email, zone, at: current, open: menu === 'place', onOpenChange: (o) => setMenu(o ? 'place' : null), onPick: (z) => setPlace({ email: outside.email, zone: z }) } : undefined} />
+              where={outside ? { email: outside.email, zone, at: current, open: menu === 'place', onOpenChange: (o) => (o ? setMenu('place') : shut('place')), onPick: (z) => setPlace({ email: outside.email, zone: z }) } : undefined} />
           )}
           {offerable && only ? (
             <SchedRow>
               <SchedSwitch title={`Let ${guest} pick the time`} line={`You can’t see ${guest}’s calendar.`} checked={!!offers} onChange={letPick} />
             </SchedRow>
-          ) : unseen.length > 0 && !noCalendar && <SchedLine tone="quiet">{unseenLine(unseen)}</SchedLine>}
+          ) : unseen.length > 0 && !noCalendar && !times.failed && <SchedLine tone="quiet">{unseenLine(unseen)}</SchedLine>}
         </SchedGroup>
 
         {offers ? (
@@ -426,12 +472,12 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
             <SchedRow icon="cal" top>
               <div className="sc-opts" role="group" aria-label="Times to offer">
                 {offers.map((o, i) => {
-                  const long = lengthAt(o.at, when.minutes);
-                  const day = dayWord(o.at, times.now);
+                  const long = lengthOf(o.at);
+                  const day = dayWord(o.at, now);
                   return (
                     <SchedOffer key={i} n={i + 1} day={day} time={`${hm(o.at)} – ${endHm(o.at, long)}`} said={`${day}, ${hm(o.at)} to ${endHm(o.at, long)}`}
                       side={zone ? `${clockIn(zone, o.at)} for ${guest}` : undefined}
-                      clash={busyAt(times.own, o.at, when.minutes)[0]?.title ?? (busyAt(times.you, o.at, when.minutes).length ? 'Busy' : undefined)}
+                      clash={markOf(o.at)}
                       active={i === active} on={o.on} lock={o.on && ticked <= FEWEST_OFFERED}
                       onSelect={() => setWhen((w) => ({ ...w, active: i }))}
                       onTick={() => setWhen((w) => ({ ...w, offers: (w.offers ?? []).map((x, k) => (k === i ? { ...x, on: !x.on } : x)) }))} />
@@ -440,10 +486,11 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
               </div>
             </SchedRow>
             <SchedLine tone="quiet" className="sc-tip">Press the week to move time {active + 1}.</SchedLine>
+            {stopped >= 0 && <SchedLine tone="quiet">Time {stopped + 1} stops at midnight, so each is {lengthLabel(offerLength)}.</SchedLine>}
             {/* There's no week on a phone: the active time is set here. */}
             <div className="sc-phone">
-              <DayRow at={current} now={times.now} {...open} onPick={pickDay} />
-              <TimeRow at={current} minutes={when.minutes} now={times.now} {...open} onStart={moveTo} onEnd={setLength} />
+              <DayRow at={current} now={now} {...open} onPick={pickDay} />
+              <TimeRow at={current} minutes={when.minutes} now={now} {...open} onStart={moveTo} onEnd={setLength} />
             </div>
             <LengthRow minutes={when.minutes} {...open} onChange={(minutes) => setWhen((w) => ({ ...w, minutes }))} />
           </SchedGroup>
@@ -454,22 +501,24 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
                 <Segmented value={scope} onChange={setScope} label="Which calls" options={[{ value: 'this', label: 'This call' }, { value: 'following', label: 'This and later calls' }]} />
               </SchedRow>
             )}
-            <DayRow at={chosen} now={times.now} {...open} onPick={pickDay} />
-            <TimeRow at={chosen} minutes={when.minutes} now={times.now} {...open} onStart={moveTo} onEnd={setLength} fixedEnd={job.kind === 'propose'} />
+            <DayRow at={chosen} now={now} {...open} onPick={pickDay} />
+            <TimeRow at={chosen} minutes={when.minutes} now={now} {...open} startRef={startField} onStart={moveTo} onEnd={setLength} fixedEnd={job.kind === 'propose'} />
+            {late && late.getTime() === chosen.getTime() && <SchedLine tone="caution">That time had passed, so the call moved to {hm(late)}.</SchedLine>}
             {times.loading && guests.length > 0 ? <SchedLine>Reading calendars…</SchedLine>
               : clashing ? (
-                <SchedLine tone="caution" action={next ? { label: nextFreeLabel(next, chosen, times.now), onClick: () => moveTo(next) } : undefined}>
+                <SchedLine tone="caution" action={next ? { label: nextFreeLabel(next, chosen, now), onClick: () => moveFromLine(next) } : undefined}>
                   {busyLine({ yours, busy: youBusy, people: theyBusy })}
                 </SchedLine>
               ) : times.readable.length > 0 && <SchedLine>{freeLine({ seen: guests.filter((g) => !times.unreadable.some((e) => sameEmail({ email: e }, g))), everyone: !times.unreadable.length, picked: touched, outside: outsideWork(chosen, when.minutes) })}</SchedLine>}
+            {/* A read that failed is said where who's free would be: under the time. */}
+            {times.failed && <SchedLine tone="quiet">Calendars can’t be read just now, so only your Alcove calls are known.</SchedLine>}
             {asked.map((p) => (
-              <SchedLine key={p.at.getTime()} action={p.at.getTime() !== chosen.getTime() ? { label: 'Move it there', onClick: () => moveTo(p.at) } : undefined}>{askedLine(p.who, p.at, times.now)}</SchedLine>
+              <SchedLine key={p.at.getTime()} action={p.at.getTime() !== chosen.getTime() ? { label: 'Move it there', onClick: () => moveFromLine(p.at) } : undefined}>{askedLine(p.who, p.at, now)}</SchedLine>
             ))}
-            {length < when.minutes && <SchedLine tone="quiet">It stops at midnight: a call ends on the day it starts.</SchedLine>}
+            {length < when.minutes && (job.kind === 'new' || changed) && <SchedLine tone="quiet">It stops at midnight: a call ends on the day it starts.</SchedLine>}
             {job.kind === 'new' && <RepeatRow repeat={draft.repeat} at={chosen} {...open} onChange={(r) => change({ repeat: r })} />}
             {job.kind === 'move' && series && scope === 'following' && <RepeatRow repeat={repeatMove} at={chosen} zone={zoneHere} keep {...open} onChange={setRepeatMove} />}
-            {times.failed ? <SchedLine tone="quiet">Calendars can’t be read just now, so only your Alcove calls are known.</SchedLine>
-              : noCalendar && <SchedLine tone="quiet" action={{ label: 'Connect Google Calendar', href: calendarConnectUrl() }}>Only your Alcove calls are known without a calendar.</SchedLine>}
+            {noCalendar && !times.failed && <SchedLine tone="quiet" action={{ label: 'Connect Google Calendar', href: calendarConnectUrl() }}>Only your Alcove calls are known without a calendar.</SchedLine>}
           </SchedGroup>
         )}
 
@@ -510,7 +559,7 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
                 <SchedSwitch title="Everyone joins muted" line="Microphones and cameras off, for a call this big" checked={muted} onChange={(joinMuted) => change({ joinMuted })} />
               </SchedRow>
             )}
-            <Bring picked={draft.documents} open={menu === 'agenda'} onOpenChange={(o) => setMenu(o ? 'agenda' : null)} onChange={(documents: Document[]) => change({ documents })} />
+            <Bring picked={draft.documents} open={menu === 'agenda'} onOpenChange={(o) => (o ? setMenu('agenda') : shut('agenda'))} onChange={(documents: Document[]) => change({ documents })} />
           </SchedGroup>
         )}
       </SchedPanel>

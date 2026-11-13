@@ -151,10 +151,10 @@ export function CallsPage({ search }: { search: CallsSearch }) {
   const [week, setWeek] = useState(0);
   useEffect(() => { if (!scheduling && (mode.kind !== 'view' || mode.view !== 'week')) setWeek(0); }, [modeKey, scheduling]);
 
-  /* The line takes ⌘K here, in the capture phase, so the shell doesn't open the palette as well. */
+  /* The line takes ⌘K here, in the capture phase, so the shell doesn't open the palette as well. While scheduling there's no line, and the palette opens. */
   useEffect(() => {
     const on = (e: globalThis.KeyboardEvent) => {
-      if (!withMod(e) || e.key.toLowerCase() !== 'k' || overlayOpen()) return;
+      if (!withMod(e) || e.key.toLowerCase() !== 'k' || overlayOpen() || !line.current) return;
       e.preventDefault();
       e.stopPropagation();
       line.current?.focus();
