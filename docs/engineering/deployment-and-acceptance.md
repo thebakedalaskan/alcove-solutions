@@ -52,9 +52,11 @@ the setup, deploys, rollbacks, staging, certificates and release verification.
    Sigstore's public log, Rekor, which the app reads to check the server). Sign it
    with cosign and the Cloud KMS key `alcove-image-signing`, which records it, with its commit, in Sigstore's public log.
    Execute the migration job, which gets only `DATABASE_URL`, and wait. Roll the group onto the image, a new VM first
-   (refused up front when the region's C3 quota can't hold it), and, in a job with no Google credentials, check it
-   through the load balancer's address: the attestation the app checks, that the TLS key is the attested
-   one, `/health`, and the commit and image. The migration job applies only the migrations
+   (refused up front when the region's C3 quota can't hold it), until the new VM is in service and the old one out of it,
+   which then drains and goes in the background, about eight minutes, before the next rollout starts
+   ([Confidential Space runbook › How long a rollout takes](../../infra/confidential-space/README.md#how-long-a-rollout-takes)).
+   Then, in a job with no Google credentials, check it through the load balancer's address: the attestation the app
+   checks, that the TLS key is the attested one, `/health`, and the commit and image. The migration job applies only the migrations
    the database hasn't had, and refuses one whose applied migrations were since edited or removed, so such a
    deploy stops before the new API starts and the previous release keeps serving (migrations only move
    forward: restore the file and put the change in a new one). The API refuses the same at start, so a rollback can't

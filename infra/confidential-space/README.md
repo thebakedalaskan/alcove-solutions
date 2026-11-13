@@ -244,14 +244,42 @@ pnpm --filter @alcove/confidential-space exec tsx verify-server.ts https://api.a
   --web https://alcove.solutions --commit "$COMMIT" --digest "${IMAGE#*@}"
 ```
 
-build.sh refuses a checkout that isn't exactly that commit, unchanged. deploy.sh first checks the region's C3 quota
-(`C3_CPUS`, 8 vCPUs) can hold the VM a rollout adds, and refuses up front, naming what else holds it, when it can't. Then it
-makes a template, rolls the group (the new VM first; the old one drains for up to 300 s and goes once the new one is
-healthy), waits until the group is stable and both backend services call the new VM healthy (up to about an hour), and
-keeps the newest five templates. A deploy takes the place of a rollout that hasn't finished. build.sh and deploy.sh print
-only their key=value lines on stdout, so `>> "$GITHUB_OUTPUT"` takes them; everything else, gcloud's and docker's output
-included, goes to stderr. Every script takes `--dry-run`, which prints each command that would change something and runs
-only the ones that read.
+build.sh refuses a checkout that isn't exactly that commit, unchanged. deploy.sh first waits, for up to fifteen minutes, for
+a VM an earlier rollout took out of service to finish going, then checks the region's C3 quota (`C3_CPUS`, 8 vCPUs) can hold
+the VM a rollout adds, and refuses up front, naming what else holds it, when it can't. Then it makes a template, rolls the
+group (the new VM first; once the group's health check calls it healthy, the old one is taken out of service), waits until
+the new VM is in service and the old one out of it and both backend services call the new VM healthy (up to about 55
+minutes), and keeps the newest five templates. It doesn't wait for the old VM to go: the load balancer sends it no new
+connections from the moment it's out, lets those it has drain for up to 300 s (`CS_DRAINING_TIMEOUT`, and up to a minute
+more), and the group then deletes it, which takes two minutes more. That's about eight minutes after deploy.sh has
+finished, and the next rollout waits for it, since until then the old VM holds quota. A deploy takes the place of a rollout
+that hasn't finished. build.sh and deploy.sh print only their key=value lines on stdout, so `>> "$GITHUB_OUTPUT"` takes
+them; everything else, gcloud's and docker's output included, goes to stderr. Every script takes `--dry-run`, which prints
+each command that would change something and runs only the ones that read.
+
+### How long a rollout takes
+
+Measured on 2026-11-13 from the Compute Engine audit log and the launcher's log (the VM's clock corrected by its `clock
+offset`), over the twelve production rollouts whose new VM started the first time, in seconds from deploy.sh making the
+template:
+
+| Phase | Took | Ends at |
+| --- | --- | --- |
+| The template made and the rolling update started | 7–12 | 7–12 |
+| The new VM made | 7–13 | 15–21 |
+| It boots, to the launcher's "Boot completed" (the guest's own boot is 20–24 s of it) | 37–42 | 53–62 |
+| The launcher measures the boot, pulls and checks the image and attests, to "workload task started" ("Workload setup completed" says 8–10 s, once 20) | 15–18 (once 32) | 69–87 |
+| The API starts: the Cloud SQL Auth Proxy, its secrets, the database, its keys, TLS | 1–5 | 71–92 |
+| The group's health check calls it healthy and the group takes the old VM out (every 30 s) | 22–34 | **97–126: the new VM serves** |
+| The old VM drains: `CS_DRAINING_TIMEOUT` and up to a minute more | 360–361 | 457–487 |
+| It's deleted, 120 s of it Confidential Space holding the VM after its workload stopped ("Shutdown scheduled") | 133–137 | 591–620 |
+
+deploy.sh's own checks take about 15 s before the template, and its last ones about 15 s after it stops waiting. Until
+2026-11-13 it waited for the old VM to go and the group to settle, so the deploy workflow's "Roll it out" took 10.4–10.9
+minutes, more than eight of them the old VM going; now it ends two to three minutes in. Five rollouts that day took about
+three and a half minutes more: their new VM's API refused to start, and the VM rebooted ([Known limits](#known-limits)). The
+migration job before it took 32–137 s from Cloud Run updating the job to the job's end, about a second of it migrating:
+the rest is Cloud Run starting a container from an image it hasn't pulled before.
 
 ## Rolling back
 
@@ -443,10 +471,12 @@ balancer keeps no request logs, so it logs no client addresses either.
   group recreates it. With one VM, that's a few minutes without the API. TDX VMs can't use reservations, so capacity in
   the zone isn't guaranteed either.
 - **Boots are slow.** A TDX VM boots, the launcher pulls the image and attests, and the API reads its secrets and unwraps
-  its master: autohealing gives a new VM 600 s, and a rollout takes minutes. Google doesn't document boot times; the
-  launcher logs "Boot completed" and "Workload setup completed" with their durations, to tune by. A crash reboots the whole VM
-  (`tee-restart-policy=OnFailure`, about 2 minutes, a fresh pull and a fresh attestation). Never use `gcloud compute
-  instances reset`, which counts against the vTPM's lockout; stop and start instead.
+  its master: a new VM serves about 100 s after its template is made ([How long a rollout takes](#how-long-a-rollout-takes)),
+  and autohealing gives it 600 s. Google doesn't document boot times; the launcher logs "Boot completed" and "Workload setup
+  completed" with their durations, to tune by. A crash reboots the whole VM (`tee-restart-policy=OnFailure`): the launcher
+  holds it two minutes first ("Reboot scheduled"), then it boots, pulls and attests again, so the API serves again about
+  three minutes and ten seconds after it stopped. Never use `gcloud compute instances reset`, which counts against the
+  vTPM's lockout; stop and start instead.
 - **A new VM's first database connection can stall.** On 2026-11-13, five of the eighteen VMs production started had their
   first connection through the Cloud SQL Auth Proxy go unanswered past pg's 10 s, and their API refused to start
   ("Connection terminated due to connection timeout"), costing each rollout a reboot; each connected at once after it, and
@@ -467,7 +497,9 @@ balancer keeps no request logs, so it logs no client addresses either.
   couldn't help; the API's own `/health`, over 443, runs `SELECT 1` and says whether LiveKit is reachable, and
   verify-server.ts reads that one.
 - **One rollout fits the quota.** `C3_CPUS` in us-central1 is 8 vCPUs: production's VM and the one a rollout adds. While
-  staging's VM runs, production can't roll out (deploy.sh refuses up front): delete staging first, or raise the quota.
+  staging's VM runs, production can't roll out (deploy.sh refuses up front): delete staging first, or raise the quota. A
+  rollout's old VM holds its share until it's deleted, about eight minutes after deploy.sh has finished, so the next
+  rollout waits for it first.
 - **Staging's Cloudflare token reaches the whole zone.** Cloudflare scopes a DNS token to a zone, not to names, so staging's
   could change production's records. Give it an end date, delete it with staging, and run on staging only commits you'd
   release.
