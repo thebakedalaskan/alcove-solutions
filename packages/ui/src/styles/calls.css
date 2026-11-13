@@ -165,7 +165,7 @@
 .ac-pop.cs-rmenu { min-width: 248px; max-width: min(340px, calc(100vw - 24px)); padding: 6px; }
 .ac-pop.cs-rmenu.is-wide { width: min(380px, calc(100vw - 24px)); max-width: none; }
 .cs-mlist { display: grid; outline: 0; }
-.cs-mi { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 0 10px; border-radius: var(--radius-sm); font: 500 14px/1.2 var(--font-sans); color: var(--ink); text-align: left; transition: background-color var(--duration-1); }
+.cs-mi { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 0 10px; border-radius: calc(var(--radius-lg) - 6px); font: 500 14px/1.2 var(--font-sans); color: var(--ink); text-align: left; transition: background-color var(--duration-1); }
 .cs-mi:hover, .cs-mi:focus-visible { background: color-mix(in oklch, var(--ink) 8%, transparent); outline: 0; }
 .cs-mi:focus-visible { box-shadow: inset 0 0 0 2px var(--focus); }
 .cs-mi > .ac-i { flex: none; color: var(--ink-2); }
