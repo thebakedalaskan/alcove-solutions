@@ -4,12 +4,12 @@
  * via @alcove/api-http, real Postgres, the local LiveKit server, and the stand-in Google, whose recurring events
  * expand their rules in their own time zones and which notes everything it emails.
  */
-import { AlcoveApiError, MAX_SERIES_CALLS, type CallSession, type CallState, type Meeting, type MeetingInput, type RepeatInput, type RepeatRule } from '@alcove/api';
+import { AlcoveApiError, MAX_SERIES_CALLS, REQUEST_ID_HEADER, type CallSession, type CallState, type Meeting, type MeetingInput, type RepeatInput, type RepeatRule } from '@alcove/api';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { openOwner } from '../../owners';
 import type { FakeEvent } from '../../testing/fake-google';
-import { connectGoogleCalendar, ORIGIN, startHarness, type Harness } from '../../testing/harness';
+import { connectGoogleCalendar, cookieFetch, ORIGIN, startHarness, type Browser, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
 import { findItem } from '../../vault';
 
@@ -1348,27 +1348,68 @@ describe('deleting an account', () => {
 });
 
 describe('a big series', () => {
-  it('schedules, changes and reads 60 calls with 300 people without taking seconds', async () => {
-    const org = await account();
-    const lena = await account();
-    const people = [lena.email, ...Array.from({ length: 299 }, (_, i) => `person.${i}@tests.example`)];
-    const time = async <T,>(fn: () => Promise<T>): Promise<[T, number]> => { const t0 = performance.now(); const out = await fn(); return [out, performance.now() - t0]; };
+  /*
+   * How long a step takes on a loaded runner is the runner's more than the code's: these same steps have taken a third of a
+   * second here and two seconds the next time, with nothing different asked of the database. So what's measured is what
+   * each step asks of it, which is the code's alone: every statement the API runs is logged under its request's ID (db.ts),
+   * a slow one as a slow query. 300 people on 60 calls are 18,000 invitations, so a statement for each person, let alone
+   * each person on each call, can't hide. Each address is hashed once (access.ts); hashing all 18,000 would still take a
+   * fraction of a second, which no time bound here could tell from a busy runner, so that isn't measured.
+   */
+  it('schedules, changes and reads 60 calls with 300 people in the same statements as with three', async () => {
+    let step = '';
+    /** A browser whose requests carry the step's request ID while there is one. */
+    const tagging = (): Browser => {
+      const own = cookieFetch(ORIGIN);
+      return h.browser({ fetch: (input, init) => { const headers = new Headers(init?.headers); if (step) headers.set(REQUEST_ID_HEADER, step); return own(input, { ...init, headers }); } });
+    };
+    const signedIn = async () => { const b = tagging(); const email = unique(); const { session } = await b.api.auth.signIn('sso', { email }); return { ...b, session, email }; };
+    const org = await signedIn();
+    const lena = await signedIn();
     // A demo account's sample day is on it already.
     const seeded = (await inserted(org.session.ownerId, `meeting_access WHERE owner_id = $1`)) ?? 0;
     const invites = async () => ((await inserted(org.session.ownerId, `meeting_access WHERE owner_id = $1`)) ?? 0) - seeded;
-    const [first, scheduling] = await time(() => org.api.meetings.create(schedule('All hands', people, MAX_SERIES_CALLS)));
-    expect(await invites()).toBe(MAX_SERIES_CALLS * 300);
-
-    const [calls, reading] = await time(() => upcomingIn(org, first.seriesId));
-    expect(calls).toHaveLength(MAX_SERIES_CALLS);
-    const [, changing] = await time(() => org.api.meetings.update(first.id, { guests: people.slice(0, 200), title: 'Fewer hands' }, { scope: 'following' }));
-    expect(await invites()).toBe(MAX_SERIES_CALLS * 200);
-    const [, invited] = await time(() => upcomingIn(lena, first.seriesId));
-    const [, cancelling] = await time(() => org.api.meetings.cancel(first.id, { scope: 'following' }));
-    expect(await seriesItems(org.session.ownerId)).toBe(0);
-    expect(await invites()).toBe(0);
-    // Generous for a loaded machine: the point is that nothing here costs a hash or a query per person per call.
-    expect({ scheduling: scheduling < 3000, reading: reading < 3000, changing: changing < 3000, invited: invited < 3000, cancelling: cancelling < 3000 }).toEqual({ scheduling: true, reading: true, changing: true, invited: true, cancelling: true });
+    const Line = z.object({ msg: z.string(), requestId: z.string().optional(), sql: z.string().optional() });
+    /**
+     * What a step asks of the database: its statements, in no particular order (a step may run some at once), but for the
+     * service limits and feature flags (limits.ts, feature-flags.ts). Every request may read those, and a read on its way
+     * is shared, logged under whichever request started it, so whether a step logs one is timing alone.
+     */
+    const counted = async <T,>(name: string, fn: () => Promise<T>): Promise<[T, string[]]> => {
+      step = `series-${name}-${(seq++).toString(36)}`;
+      const id = step;
+      const from = h.logs.length;
+      try {
+        const out = await fn();
+        const sql = h.logs.slice(from).flatMap((l) => {
+          const r = Line.safeParse(JSON.parse(l));
+          return r.success && r.data.requestId === id && (r.data.msg === 'query' || r.data.msg === 'slow query') && r.data.sql ? [r.data.sql] : [];
+        });
+        return [out, sql.filter((q) => !/service_limits|feature_flag/.test(q)).sort()];
+      } finally {
+        step = '';
+      }
+    };
+    /** The journey with `size` people, Lena first, and what each step asked of the database. */
+    const journey = async (size: number) => {
+      const people = [lena.email, ...Array.from({ length: size - 1 }, (_, i) => `person.${size}.${i}@tests.example`)];
+      const kept = people.slice(0, Math.round(size * 2 / 3));
+      const [first, scheduling] = await counted('scheduling', () => org.api.meetings.create(schedule('All hands', people, MAX_SERIES_CALLS)));
+      expect(await invites()).toBe(MAX_SERIES_CALLS * size);
+      const [calls, reading] = await counted('reading', () => upcomingIn(org, first.seriesId));
+      expect(calls).toHaveLength(MAX_SERIES_CALLS);
+      const [, changing] = await counted('changing', () => org.api.meetings.update(first.id, { guests: kept, title: 'Fewer hands' }, { scope: 'following' }));
+      expect(await invites()).toBe(MAX_SERIES_CALLS * kept.length);
+      const [, invited] = await counted('invited', () => upcomingIn(lena, first.seriesId));
+      const [, cancelling] = await counted('cancelling', () => org.api.meetings.cancel(first.id, { scope: 'following' }));
+      expect(await seriesItems(org.session.ownerId)).toBe(0);
+      expect(await invites()).toBe(0);
+      return { scheduling, reading, changing, invited, cancelling };
+    };
+    const many = await journey(300);
+    const few = await journey(3);
+    expect(Object.values(few).every((sql) => sql.length > 0)).toBe(true);
+    expect(many).toEqual(few);
   });
 });
 
