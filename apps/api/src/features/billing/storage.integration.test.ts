@@ -3,14 +3,14 @@
  * object store and, for calls, LiveKit. What refuses more once an account's storage is full, and what each refusal logs;
  * who pays for a workspace once whoever did isn't in it any more; and what others can add to whoever pays.
  */
-import { AlcoveApiError, type AlcoveApi, type CallSession, type CallState } from '@alcove/api';
+import { AlcoveApiError, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type ScreenPiece } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { LIMITS } from '../../limits';
 import { maintain } from '../../maintenance';
 import { startHarness, type Harness } from '../../testing/harness';
-import { disposeLiveKit } from '../../testing/livekit';
+import { disposeLiveKit, presentScreen, stopPresenting } from '../../testing/livekit';
 
 vi.setConfig({ testTimeout: 90_000 });
 
@@ -295,5 +295,46 @@ describe('what others can add', () => {
     await h.setLimit('media.others_day_bytes', MiB);
     expect(await upload(bob.api, ours, 2 * MiB)).toBe('succeeded');
     expect(await upload(cy.api, ours, 2 * MiB)).toBe(OTHERS_DAY);
+  });
+});
+
+describe('a storage that’s full', () => {
+  const piece = (at: number, bytes: number): AudioPiece => ({ data: new Blob([bytesOf(bytes)]), segment: 0, seq: at, at: at * 5, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
+  const screenPiece = (share: string, at: number, bytes = 4096): ScreenPiece => ({ data: new Blob([bytesOf(bytes)]), share, segment: 0, seq: at, at: at * 5, durationMs: 5000, mimeType: 'video/webm;codecs=vp8' });
+
+  it('refuses a room recording’s next piece, and a new recording, once the recorder’s storage is full; one carried on from offline still starts', async () => {
+    const ann = await account();
+    const startedAt = new Date(Date.now() - 60_000).toISOString();
+    const rec = await ann.api.recordings.start({ title: 'Design crit', startedAt });
+    await rec.appendAudio(piece(0, 40 * 1024));
+    // Storage the next piece won't fit in.
+    await h.setLimit('plan.free.storage_bytes', 64 * 1024);
+    const from = h.logs.length;
+    expect(await said(rec.appendAudio(piece(1, 40 * 1024)))).toBe(FULL);
+    expect(logged(from, FULL.slice('plan-limit: '.length))).toEqual([expect.objectContaining({ reason: 'storage', limit: 'plan.free.storage_bytes', addingBytes: 40 * 1024, limitBytes: 64 * 1024 })]);
+    // A new one doesn't start, and says why, logging the room it would need.
+    const STARTS = 'Your storage is full, so a recording can’t be kept. Delete something, or move to a plan with more room.';
+    expect(await said(ann.api.recordings.start({ title: 'Another' }))).toBe(`plan-limit: ${STARTS}`);
+    expect(logged(from, STARTS)).toEqual([expect.objectContaining({ reason: 'storage', limit: 'plan.free.storage_bytes', addingBytes: 1024 * 1024, limitBytes: 64 * 1024 })]);
+    // One recorded offline and uploaded again from its own start carries on, as it was let start with.
+    const again = await ann.api.recordings.start({ title: 'Design crit', startedAt });
+    expect(again.getSnapshot().id).toBe(rec.getSnapshot().id);
+  });
+
+  it('refuses a shared screen’s next piece once the organizer’s storage is full, and stops notes for everyone, for storage', async () => {
+    const org = await account();
+    const { code } = await org.api.calls.startNow({ notes: 'on' });
+    const host = await org.api.calls.join(code, { mic: true, cam: false });
+    await presentScreen(host, h.deps.livekit);
+    try {
+      const { share } = await host.startShare({ notes: true });
+      await host.appendScreen(screenPiece(share, 0));
+      await h.setLimit('plan.free.storage_bytes', 1);
+      expect(await said(host.appendScreen(screenPiece(share, 1)))).toBe('plan-limit: The organizer’s storage is full, so notes have stopped.');
+      const now = await settle(host, (s) => s.capture.stopped !== null);
+      expect(now.capture).toMatchObject({ mode: 'off', stopped: { reason: 'storage' } });
+    } finally {
+      await stopPresenting();
+    }
   });
 });

@@ -192,11 +192,24 @@ describe('a workspace', () => {
     // Its own root key, under its own envelope.
     const keys = (await h.pool.query<{ root_envelope: Buffer }>('SELECT root_envelope FROM owners WHERE owner_id = ANY($1)', [[owner, ann.ownerId]])).rows.map((r) => r.root_envelope.toString('hex'));
     expect(new Set(keys).size).toBe(2);
-    // No sign-in, session, profile, credits or receipts: an account's tables know nothing of it.
-    for (const t of ['identities', 'sessions', 'items', 'billing_accounts', 'operations']) expect(await count(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [owner]), t).toBe(0);
-    // Upkeep goes past it, however often it runs, and it's still there and still opens.
+    // A file in it and AI asked for in it, so its storage and its AI have been counted around it.
+    const doc = await make(ann, id, 'document', 'Plan');
+    await ann.api.workspaces.media.upload(id, doc, new File([new Uint8Array(randomBytes(4096))], 'harbour.png', { type: 'image/png' }));
+    const said: unknown[] = [];
+    for await (const part of ann.api.workspaces.ask(id, doc, { action: 'shorter', text: 'A long way of saying it' })) said.push(part);
+    expect(said).toEqual([{ type: 'text', text: 'Shorter: A long way of saying it' }]);
+    // No sign-in, session, profile, plan, AI allowance or receipts: an account's tables know nothing of it.
+    const accountTables = ['identities', 'sessions', 'items', 'plan_accounts', 'ai_meters', 'operations'];
+    const none = async () => { for (const t of accountTables) expect(await count(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [owner]), t).toBe(0); };
+    await none();
+    // What it stores and its AI are its payer's, Ann's.
+    expect(await count('SELECT count(*)::int AS n FROM plan_accounts WHERE owner_id = $1', [ann.ownerId])).toBe(1);
+    expect(await count('SELECT count(*)::int AS n FROM ai_meters WHERE owner_id = $1', [ann.ownerId])).toBe(1);
+    expect((await ann.api.plans.plan()).storage.usedBytes).toBeGreaterThan(4096);
+    // Upkeep goes past it, however often it runs, gives it no plan, and it's still there and still opens.
     await maintain(h.deps);
     await maintain(h.deps);
+    await none();
     expect((await ann.api.workspaces.get(id)).name).toBe('Ours');
     expect(await count('SELECT count(*)::int AS n FROM owners WHERE owner_id = $1', [owner])).toBe(1);
   });
