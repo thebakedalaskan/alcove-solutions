@@ -131,8 +131,10 @@ The call itself stays in the API: who's let in, notes and the transcript.
   typed, or their account's). Nobody joins before the organizer is there (`409 conflict`), while the call is
   locked (`403 forbidden`; a lock keeps new people out, not someone coming back to their place) or once it has ended (`409`, "This call has ended."); someone removed asks again. An
   ask taken back stays turned away, so its identity can't ask again as someone else. Someone waiting learns only
-  what the call captures, as the card does: nobody's name, no asks, and nothing that's been said. There's no
-  participant limit.
+  what the call captures, as the card does: nobody's name, no asks, and nothing that's been said. At most
+  `call.max_people` people are in a call: someone invited is turned away once the people in it fill it, an ask takes no
+  place, and someone who asked is let in only while there's room; one network has at most `call.asks_per_address` asks
+  waiting ([Plans and usage › Calls](plans-and-usage.md#calls)).
 - **Let in from the link, signed in.** The commit that lets in someone who asked with an address also adds it to
   the invite: to the meeting's guests, and to the note's invited people when notes have been on
   (`features/meetings/invites.ts`), so they get the notes when the call ends, like everyone invited by email. Only someone
@@ -245,7 +247,9 @@ order, and nothing a message carries can stop it: anything unreadable is skipped
   generation, this part). The host's browser adds only people the API lists as pending for that group
   (`CallMls.groups[].pending`), checks each key package (well formed, this suite, signed by its own key, naming
   the identity it came with; one that isn't is turned away), adds at most 50 at a time, and waits a little
-  longer after each refused commit, so a refusal can't become a loop. When nobody comes or goes it moves each
+  longer after each refused commit, so a refusal can't become a loop. A commit that would let in more people who asked
+  than the call has room for is refused (`409`, "This call is full: …"), and **Let in** says so in those words while they
+  go on asking. When nobody comes or goes it moves each
   group's keys on anyway every 10 minutes (an empty commit), so one set of keys never covers a whole call.
 - **Who commits.** The connection that hosts (the call's sealed `host`, mirrored in `calls.host_identity` for
   webhooks and upkeep), for every group: the organizer's while they're in the call, a stand-in's while they're away.
@@ -500,8 +504,8 @@ call's sealed state (`apps/api/src/features/calls/capture.ts`) and the same for 
   (`runningOut`), and when either is spent notes go off for everyone as if the organizer had turned them off (`stopped`,
   with its reason, `notes` or `storage`): the organizer is told why with the ways to more, everyone else whose notes ran
   out, and the organizer's app turns notes on again once they've bought more (user-flows 16.9). The call goes on, and what was captured until then still goes into the notes. A call also ends at `CallState.endsAt`, 10 hours
-  after it started, with everyone told 5 minutes before, and takes at most 100 people
-  ([Plans and usage](plans-and-usage.md#running-out-in-a-call)).
+  after it started, with everyone told 5 minutes before, and takes at most 100 people, where asking to be let in takes no
+  place ([Plans and usage](plans-and-usage.md#calls)).
 - **Pause** (`{type: "pause"}`, only while notes are on) stops every kind of capture at once. The one gate every
   capturing path goes through, `mayCapture` in `apps/api/src/features/calls/capture.ts`, refuses audio pieces, speech
   clips, caption translations, catch-up and questions with `409 conflict` ("Notes are paused…"), whoever sends
@@ -1421,8 +1425,11 @@ anyone only while that holds, asked on every read (`holdersOf`, `Holders.shares.
 for, such as one chosen as the call's home when it was scheduled, the call seats nobody on the boards it makes there, rooms'
 boards included, nobody new is seated, and nobody can let everyone in on a saved board there (`boardCheck` says
 `mayLetIn` false, and `board-open` with `letIn` is `409`: "Its files don’t count against the organizer’s storage, so it
-opens only for its own people."); a seat given there opens only for the workspace's own people. The scheduler says so when
-such a workspace is chosen for a call's notes.
+opens only for its own people."); a seat given there opens only for the workspace's own people. And what the call gives
+by address there goes only to its own people (`access.ts › givenByCall`: its members, and on a team's workspace for the whole
+team, whoever is live-licensed on it): a board it makes goes to those invited who are, and nobody else invited; someone let in
+from the link keeps nothing of it as the call ends unless they are; and a room's board, as rooms close, goes to the organizer
+and those invited who are. The scheduler says so when such a workspace is chosen for a call's notes.
 
 - **`CallState.board.open`** is per viewer, for the part of the call they're in: `workspaceId`, `documentId`, `name` (what it's
   called now), `openedBy` (the connection whoever opened it is on now, or null when they aren't in the call), `canClose`,
@@ -1843,7 +1850,8 @@ says whether it's on a board of its own (`rooms[].board`), which is all anyone o
   of something on it.
 - **After rooms close** room seats go, and each room's board is everyone invited's by email at `edit`, the organizer and everyone
   on the invite who wasn't taken out, as the people its room's notes go to: then it's kept, a restricted board like any other,
-  and workspace members who weren't invited never see it. Someone taken off the invite loses it with the room's notes.
+  and workspace members who weren't invited never see it. In a workspace the organizer doesn't pay for, only those of them who
+  are its own people get it (`givenByCall`). Someone taken off the invite loses it with the room's notes.
 - **Limits.** A call makes 64 boards for its rooms in all.
 ### More, and a board on a phone
 

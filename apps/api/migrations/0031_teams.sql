@@ -18,13 +18,13 @@ CREATE INDEX teams_due ON teams(due_at) WHERE due_at IS NOT NULL;
 CREATE INDEX teams_admin ON teams(admin_owner_id);
 
 -- Who's on a team: one team for each account. `member_id` is what the API calls them, so no account's owner ID reaches
--- anyone else. Their name and address are sealed under the team's key (`person_ciphertext`). A license is live from
--- `licensed_from` until `licensed_until`; `wanted_at` is when they last needed one and none was there.
+-- anyone else. Their name and address are sealed under the team's key (`person_ciphertext`), kept as their account has
+-- them. A license is live from `licensed_from` until `licensed_until`; `wanted_at` is when they last needed one and none
+-- was there.
 CREATE TABLE team_members (
   member_id alcove_id128 PRIMARY KEY,
   team_id alcove_id128 NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
   account_owner_id alcove_owner_id NOT NULL UNIQUE REFERENCES owners(owner_id) ON DELETE CASCADE,
-  email_index bytea NOT NULL,
   role text NOT NULL CHECK (role IN ('admin', 'member')),
   person_ciphertext bytea NOT NULL,
   licensed_from timestamptz,

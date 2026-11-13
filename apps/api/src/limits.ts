@@ -49,10 +49,11 @@ const WHOLE_DOWNLOAD_BYTES = 512 * MiB;
  * a team license's price and Pro's lower price for a year or more, the most months or licenses one purchase buys and when
  * Pro's end is told; more notes for a period, their price and the most bought at once; when a team's admin is told licenses
  * are low and how long an invite works; what an hour of notes is reckoned at, when AI stops and when an organizer is told
- * it's close, and how much of it guests in one call may spend; how long a plan's period and its grace last; the longest call and the most people in one; what one
- * person uploads in a day, everywhere, and what others add in a day to an account's storage, what's kept of it for the
- * account's own notes, and how long a workspace's files wait to count against whoever its payment moves to. A ceiling
- * leaves room to raise a default a long way, except a file's, which is
+ * it's close, and how much of it guests in one call may spend; how long a plan's period and its grace last; the longest call,
+ * the most people in one, and how many asks to join it one network may have waiting; what one person uploads in a day,
+ * everywhere, and what others add in a day to an account's storage, what's kept of it for the account's own notes, and how
+ * long a workspace's files wait to count against whoever its payment moves to. A ceiling leaves room to raise a default a
+ * long way, except a file's, which is
  * WHOLE_DOWNLOAD_BYTES for every plan: a whole file is read in one response, which is cut at 280 seconds, so 512 MiB
  * already needs about 15 Mbit/s to download whole. Zero is a value: none.
  */
@@ -83,9 +84,10 @@ export const LIMITS = {
   'ai.fallback_input_micro_usd': { default: 1_000_000, floor: 0, ceiling: 100_000_000, unit: 'micro-usd', measures: 'A million input tokens of a model NEAR AI lists no price for.' },
   'ai.fallback_output_micro_usd': { default: 4_000_000, floor: 0, ceiling: 100_000_000, unit: 'micro-usd', measures: 'A million output tokens of a model NEAR AI lists no price for.' },
   'ai.image_tokens': { default: 1_500, floor: 0, ceiling: 100_000, unit: 'count', measures: 'The input tokens one image is taken to be at most, before NEAR AI says.' },
-  'ai.guests_call_percent': { default: 10, floor: 0, ceiling: 100, unit: 'count', measures: 'The most guests in one call spend between them of its organizer’s allowance for the period, in percent: their questions, catch-ups, and AI on the call’s documents and boards.' },
+  'ai.guests_call_percent': { default: 10, floor: 0, ceiling: 100, unit: 'count', measures: 'The most guests in one call spend between them of its organizer’s allowance for the period, in percent: their questions, catch-ups, AI on the call’s documents and boards, captions in another language and live notes of their own.' },
   'call.max_seconds': { default: 10 * HOUR, floor: 10 * MINUTE, ceiling: 48 * HOUR, unit: 'seconds', measures: 'The longest a call runs: it ends then, everyone told 5 minutes before.' },
-  'call.max_people': { default: 100, floor: 2, ceiling: 1_000, unit: 'count', measures: 'The most people in a call at once, those waiting to be let in included.' },
+  'call.max_people': { default: 100, floor: 2, ceiling: 1_000, unit: 'count', measures: 'The most people in a call at once. Asking to be let in takes no place: someone who asked is let in only while there’s room.' },
+  'call.asks_per_address': { default: 10, floor: 1, ceiling: 1_000, unit: 'count', measures: 'The most asks to join one call waiting at once from one network (an address, or an IPv6 /64), so nobody can fill its host’s list of them.' },
   'team.max_licenses': { default: 500, floor: 1, ceiling: 100_000, unit: 'count', measures: 'The most team licenses one purchase buys.' },
   'team.low_licenses': { default: 5, floor: 0, ceiling: 100_000, unit: 'count', measures: 'Unconsumed licenses below which a team’s admin is told they’re running low.' },
   'team.invite_seconds': { default: DAY, floor: MINUTE, ceiling: 30 * DAY, unit: 'seconds', measures: 'How long a link to join a team works, once.' },

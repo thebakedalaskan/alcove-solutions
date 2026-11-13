@@ -18,7 +18,7 @@ import {
   ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpReview, type FollowUpTarget, type NoteAction, AgentAuthorizationIdSchema, AgentConnectionIdSchema, AgentDecisionInputSchema, AgentTokenInputSchema, DEFAULT_NOTES_CHOICES, searchOf, termsIn, termsSaid, type ActionPatch, type ActionProposal, type AlcoveApi, type AgentConnection, type AnswerPart, type Busy, type CallCard,
   type CallDocument, type CallSession, type Change, type ChangeScope, type DecisionPatch, type DecisionProposal, type ID, type Inbox, type IncomingRing,
   type InstantCallInput, type Interval, type LinePatch, type Meeting, type MeetingInput, type Note, type NoteFound, type NoteKind, type NoteProgress, type NoteSaid,
-  type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series, type SharedAudience, type SharedWrite,
+  type AudienceTeam, type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series, type SharedAudience, type SharedWrite,
   type SeriesAnswerPart, type SeriesNote, type SignInResult, type DemoProvider, type RoomRecordingInput, type RoomRecording, type CallMoveIn, type TeamAccess, type TranscriptLine
 } from '@alcove/api';
 import { isOnline } from '../browser';
@@ -37,6 +37,7 @@ import { current, me, nextId, openedAs } from './state';
 import { activityOf, agentRequest, agentsFor, answer as answerRequest, answered, connectionAllowed, EXPIRED_AGENT_REQUEST, forgetAgents, PREVIEW_AGENT_TOKEN, PREVIEW_MCP_ENDPOINT } from './agents';
 import * as spaces from './workspaces';
 import { licensed, licensedCount, teamNoteIn, teamNotesFor, teamsApi, visit } from './teams';
+import { isLive } from '../world/teams';
 import type { CallAheadMake, ProposalAnswer } from '@alcove/api';
 import { readyIn } from '../world/call-page';
 import { previewsIn, trashIn } from './drive';
@@ -68,6 +69,15 @@ function buyNow(w: World, buys: Purchase) {
   return planOf(w);
 }
 const offline = () => new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.');
+/**
+ * A question about your notes is paid from your own notes (apps/api/src/features/billing/meter.ts): once this period's have
+ * run out, the server refuses it before anything is written, in its own words.
+ */
+function mayAsk(w: World): void {
+  if (w.plan.notes.stopped || w.plan.notes.minutesLeft <= 0) {
+    throw new AlcoveApiError('plan-limit', 'Your notes for this period have run out. They start again when your plan renews.', { requestId: nextId('sb-req') });
+  }
+}
 /** With a call's pass, anyone in the call asks, a guest too, as the API reads it with the pass; without one, an account. */
 const asWho = (o?: WorkspaceReadOptions | undefined): 'anyone' | 'signed-in' => (o?.pass ? 'anyone' : 'signed-in');
 /**
@@ -133,8 +143,17 @@ function driveChoice(w: World, input: DriveExportInput) {
 /** The links to a note that still work, newest first. */
 const linksTo = (w: World, noteId: string): NoteLink[] => (w.noteLinks ?? []).filter((x) => x.noteId === noteId && Date.parse(x.link.expiresAt) > Date.now()).map((x) => x.link).reverse();
 
-/** What holds a box for writing into the shared notes to who had the notes when it opened: if anyone gets them since, it's refused. */
-const audienceSeal = (n: Note) => `shared:${n.people.map((p) => p.email.toLowerCase()).sort().join(' ')}`;
+/**
+ * The team a note is visible to, as whoever adds to it is shown: Art's own notes are visible to Art's team when he says so, and
+ * everyone live-licensed on it reads them, `people` of them not on the note already.
+ */
+const teamReading = (w: World, n: Note): AudienceTeam | null => {
+  const t = w.myTeam;
+  return n.teamVisible && t ? { name: t.name, people: t.members.filter((m) => isLive(m) && !n.people.some((p) => sameAddress(p.email, m.person.email))).length } : null;
+};
+const sameAddress = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+/** What holds a box for writing into the shared notes to who had the notes when it opened, and the team they were visible to: if either changes, it's refused. */
+const audienceSeal = (n: Note) => `shared:${n.people.map((p) => p.email.toLowerCase()).sort().join(' ')}${n.teamVisible ? ':team' : ''}`;
 
 /** Whether automatic exports cover a call, as the server's rule has it: on, and the call ended after they were turned on. */
 function automaticFor(w: World, n: Note): DriveAutomatic {
@@ -761,8 +780,13 @@ export const standIn: AlcoveApi = {
       if (w.writing?.id === noteId) w.writing = null;
       return { ...n, writingAgain: false };
     }),
-    ask: (noteId: ID, question: string) => stream((w) => asWritten(answerAbout(teamNoteIn(w, noteId) ?? noteIn(w, noteId), question))),
+    ask: (noteId: ID, question: string) => stream((w) => {
+      const n = teamNoteIn(w, noteId) ?? noteIn(w, noteId);
+      mayAsk(w);
+      return asWritten(answerAbout(n, question));
+    }),
     // Your notes, the ones shared with you and your team's; the ones @-referenced first, and one you can't open refused.
+    // With written notes to answer from and none of your notes left this period, it's refused before anything is written.
     askAll: (question: string, refs?: ID[]) => stream((w) => {
       const team = teamNotesFor(w).filter((n) => n.received?.role === 'team');
       const all = [...w.notes, ...team];
@@ -771,6 +795,7 @@ export const standIn: AlcoveApi = {
         if (!n) throw refused('not-found', 'One of the notes you referred to isn’t there, or you can’t open it.');
         return n;
       });
+      if (all.some((n) => n.status === 'ready')) mayAsk(w);
       const about = named.filter((n) => n.status === 'ready').flatMap((n) => answerAbout(n, question));
       return asWritten([...about, ...(about.length ? [] : answerAcross({ ...w, notes: all }, question))]);
     }),
@@ -796,7 +821,7 @@ export const standIn: AlcoveApi = {
       if (!e) throw refused('not-found', 'That isn’t in your notes any more.');
       const text = e.kind === 'note' ? e.text : e.kind === 'bookmark' ? e.label : e.answer;
       const moments = e.kind === 'bookmark' ? (e.moment ? [e.moment] : []) : e.kind === 'answer' ? e.moments : [];
-      return { entryId, text, moments, destination: { noteId: id, title: n.title }, audience: n.people, seal: `seal-${entryId}` };
+      return { entryId, text, moments, destination: { noteId: id, title: n.title }, audience: n.people, team: teamReading(w, n), seal: `seal-${entryId}` };
     }),
     addToShared: (id: ID, entryId: ID, body: PromoteBody) => changeNote(id, (n, w) => {
       const e = (w.personal[id] ?? []).find((x) => x.id === entryId);
@@ -832,7 +857,7 @@ export const standIn: AlcoveApi = {
     sharedAudience: (id: ID) => answer((w): SharedAudience => {
       const n = noteIn(w, id);
       if (n.status !== 'ready') throw refused('conflict', 'These notes are still being written. You can add this once they are.');
-      return { audience: n.people, seal: audienceSeal(n) };
+      return { audience: n.people, team: teamReading(w, n), seal: audienceSeal(n) };
     }),
     writeShared: (id: ID, body: SharedWrite) => changeNote(id, (n) => {
       if (n.status !== 'ready') throw refused('conflict', 'These notes are still being written. You can add this once they are.');
@@ -856,6 +881,7 @@ export const standIn: AlcoveApi = {
     get: (id: ID) => answer((w) => seriesIn(w, id)),
     ask: (id: ID, question: string): AsyncIterable<SeriesAnswerPart> => stream((w) => {
       const s = seriesIn(w, id);
+      mayAsk(w);
       const parts = answerAcross({ ...w, notes: w.notes.filter((n) => n.seriesId === id) }, question);
       return parts.flatMap((p): SeriesAnswerPart[] => {
         if (p.type === 'text') return [p];

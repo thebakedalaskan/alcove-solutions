@@ -126,7 +126,7 @@ which browsers edit together through the API ([Data and storage › Documents](d
 | Notes job | Three attempts, a 180-second lease, retries 20 and 90 seconds after a failure; at most 120,000 characters of transcript sent |
 | Calendar | Events from an hour ago to a week ahead, at most 100; or a stretch asked for of at most 31 days, at most 250 |
 | Meeting | 5 to 600 minutes, at most 300 people invited and 12 documents brought; a call started now is set to an hour; two or three times offered; picking one: 30 a minute per client address |
-| Call participants | At most 100 in a call or waiting to be let in (`call.max_people`), and a call ends at 10 hours (`call.max_seconds`), both changeable without a deploy ([Plans and usage › Calls](plans-and-usage.md#calls)); the organizer, people invited and guests by name. Join tokens last 120 seconds, call passes 12 hours |
+| Call participants | At most 100 in a call (`call.max_people`): asking to be let in takes no place, and one network has at most 10 asks waiting in a call (`call.asks_per_address`), and a call ends at 10 hours (`call.max_seconds`), both changeable without a deploy ([Plans and usage › Calls](plans-and-usage.md#calls)); the organizer, people invited and guests by name. Join tokens last 120 seconds, call passes 12 hours |
 | Note progress stream | One update a second, for at most two minutes |
 | Busy times | At most 31 days and 300 people, 60 reads a minute per account; other people's calendars 50 at a time |
 | Rings | A ring lasts 45 seconds, and 20 people can be rung at once. Each browser tab holds one stream, which delivers within about a second, repeats itself every 20 seconds and ends after 210 to 240 seconds. An account holds at most 8, a process 300. |

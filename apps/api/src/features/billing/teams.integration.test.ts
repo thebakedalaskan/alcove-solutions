@@ -11,7 +11,7 @@ import { z } from 'zod';
 import type { LimitName } from '../../limits';
 import { maintain } from '../../maintenance';
 import { speechWav } from '../../testing/fake-near';
-import { startHarness, type Harness } from '../../testing/harness';
+import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
 import { standing } from './meter';
 import { creditBySupport } from './support';
@@ -38,6 +38,19 @@ async function account(email = unique()) {
   return { ...b, session: r.session, email };
 }
 type Account = Awaited<ReturnType<typeof account>>;
+/** Signs in through the stand-in Google, which is how an account comes to have a new address: the same `sub`, another address. */
+async function withGoogle(email: string, sub: string, name: string): Promise<Account> {
+  const b = h.browser();
+  h.google.next({ sub, email, name });
+  let url = new URL(`${h.baseUrl}/v1/auth/google`);
+  for (let hop = 0; hop < 10 && url.origin !== new URL(ORIGIN).origin; hop++) {
+    const res = url.origin === h.google.issuer ? await fetch(url, { redirect: 'manual' }) : await b.fetch(url, { redirect: 'manual' });
+    url = new URL(res.headers.get('location') ?? '', url);
+  }
+  const session = await b.api.auth.getSession();
+  if (!session) throw new Error('not signed in with Google');
+  return { ...b, session, email: session.user.email };
+}
 const setLimit = (name: LimitName, value: number) => h.pool.query('INSERT INTO service_limits (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = excluded.value, updated_at = now()', [name, value]);
 const fileOf = (n: number) => { const out = new Uint8Array(new ArrayBuffer(n)); out.set(randomBytes(n)); return new File([out], 'harbour.png', { type: 'image/png' }); };
 const speech = (words: string, atMs: number): TranscriptClip => ({ data: new Blob([speechWav(words, 6000)], { type: 'audio/wav' }), segment: 0, at: atMs / 1000, durationMs: 6000 });
@@ -564,6 +577,40 @@ describe('team notes, Ask and team workspaces', () => {
     expect((await h.pool.query('SELECT count(*)::int AS n FROM team_notes WHERE note_item_id = $1', [id])).rows[0]).toEqual({ n: 0 });
   });
 
+  it('G18: tells anyone adding to a note that the team it’s visible to reads it, and holds what they add to who they were told', async () => {
+    const [ann, bob, cy, eve] = await Promise.all([account(), account(), account(), account()]);
+    await team(ann, 2);
+    await joined(ann, bob);
+    await joined(ann, cy);
+    const id = await note(bob, 'Harbour launch', 'We agreed the harbour opens on Friday.');
+    await bob.api.notes.share(id, { emails: [eve.email] });
+    // Eve, from outside the team, is told who reads what she adds: Bob and herself, and no team.
+    const box = await eve.api.notes.sharedAudience(id);
+    expect(box).toMatchObject({ audience: [{ email: bob.email }, { email: eve.email }], team: null });
+    const own = await eve.api.notes.personal(id).add({ kind: 'note', text: 'Ferry times, from Eve.' });
+    const entry = own.entries.find((e) => e.kind === 'note')?.id ?? 'no entry';
+    const preview = await eve.api.notes.previewAddition(id, entry);
+    expect(preview.team).toBeNull();
+    // Bob makes the notes visible to his team before she posts: her words would reach Cy, so what she was shown no longer holds.
+    await bob.api.notes.setTeamVisible(id, true);
+    expect(await refusal(eve.api.notes.writeShared(id, { text: 'The ferry leaves at nine.', seal: box.seal }))).toBe('conflict: Someone got these notes since you started writing. Look at who reads it now, then post it.');
+    expect(await refusal(eve.api.notes.addToShared(id, entry, { text: 'Ferry times, from Eve.', seal: preview.seal }))).toBe('conflict: Who has these notes changed since the preview, or what this points at did. Look again before you add it.');
+    expect((await cy.api.notes.get(id)).additions).toEqual([]);
+    // Looked at again, the team is named, with how many licensed on it aren't listed: Cy.
+    const now = await eve.api.notes.sharedAudience(id);
+    expect(now).toMatchObject({ audience: [{ email: bob.email }, { email: eve.email }], team: { name: 'Vandelay Industries', people: 1 } });
+    const again = await eve.api.notes.previewAddition(id, entry);
+    expect(again.team).toEqual({ name: 'Vandelay Industries', people: 1 });
+    // Posted with what she was shown, it reaches Cy, and only now.
+    await eve.api.notes.writeShared(id, { text: 'The ferry leaves at nine.', seal: now.seal });
+    await eve.api.notes.addToShared(id, entry, { text: 'Ferry times, from Eve.', seal: again.seal });
+    expect((await cy.api.notes.get(id)).additions.map((a) => a.text)).toEqual(['The ferry leaves at nine.', 'Ferry times, from Eve.']);
+    // Made not visible again, it's another change in who reads it.
+    await bob.api.notes.setTeamVisible(id, false);
+    expect(await refusal(eve.api.notes.writeShared(id, { text: 'One more.', seal: now.seal }))).toBe('conflict: Someone got these notes since you started writing. Look at who reads it now, then post it.');
+    expect((await eve.api.notes.sharedAudience(id)).team).toBeNull();
+  });
+
   it('G11: Ask reads the team’s notes too; @-references go first, at most 5, and one you can’t open is refused', async () => {
     const [ann, bob, cy] = await Promise.all([account(), account(), account()]);
     await team(ann, 2);
@@ -644,6 +691,51 @@ describe('team notes, Ask and team workspaces', () => {
     vi.useRealTimers();
   });
 
+  it('G17: a team workspace is the team’s only while whoever pays for it is on the team: leaving, going, or handing it to someone off it ends that, and it stays its own people’s', async () => {
+    const [ann, bob, cy, dee, zed] = await Promise.all([account(), account(), account(), account(), account()]);
+    await team(ann, 4);
+    await ann.api.auth.visit();
+    for (const who of [bob, cy, dee]) await joined(ann, who);
+    // Bob makes Launch for the whole team, and Few for the people he adds, with Cy as an admin.
+    const launch = await workspace(bob, 'Launch');
+    const { id: few } = await bob.api.workspaces.create('Few', { access: 'added' });
+    await bob.api.workspaces.addPerson(few, cy.email, 'admin');
+    expect(await cy.api.workspaces.get(launch.id)).toMatchObject({ role: 'edit', teamAccess: 'team' });
+    expect(await upload(cy, launch, 1024)).toBe('succeeded');
+    // Bob leaves the team. Launch is his alone, counted against him: nobody is in it through the team, and it's in no one else's Drive.
+    await bob.api.teams.leave();
+    expect(await refusal(cy.api.workspaces.get(launch.id))).toBe(NO_WORKSPACE);
+    expect(await refusal(ann.api.workspaces.get(launch.id))).toBe(NO_WORKSPACE);
+    expect(await upload(cy, launch, 1024)).toMatch(/^not-found: /);
+    expect((await cy.api.workspaces.list()).map((w) => w.id)).not.toContain(launch.id);
+    expect(await bob.api.workspaces.get(launch.id)).toMatchObject({ role: 'admin', teamAccess: null });
+    expect(await upload(bob, launch, 1024)).toBe('succeeded');
+    expect((await bob.api.plans.plan()).storage.usedBytes).toBeGreaterThanOrEqual(2048);
+    // Few is still Bob's and Cy's, and no team's: not even an admin licensed on the team can open it to the team.
+    expect(await cy.api.workspaces.get(few)).toMatchObject({ role: 'admin', teamAccess: null });
+    expect(await refusal(cy.api.workspaces.setTeamAccess(few, 'team'))).toBe('conflict: This workspace isn’t a team’s, so there’s no team to open it to.');
+    // Dee's, for the whole team, with Zed, on no team, as its other admin: she leaves it, so Zed pays for it now, and it's no team's.
+    const { id: handed } = await dee.api.workspaces.create('Handed on');
+    await dee.api.workspaces.addPerson(handed, zed.email, 'admin');
+    expect(await ann.api.workspaces.get(handed)).toMatchObject({ role: 'edit', teamAccess: 'team' });
+    const deeIn = (await dee.api.workspaces.people(handed)).find((p) => p.person.email === dee.email)?.id ?? 'not in it';
+    await dee.api.workspaces.removePerson(handed, deeIn);
+    expect(await refusal(ann.api.workspaces.get(handed))).toBe(NO_WORKSPACE);
+    expect(await zed.api.workspaces.get(handed)).toMatchObject({ role: 'admin', teamAccess: null });
+    // Dee's account goes. What she paid for goes to whoever's in charge of it now: Cy, on the team, so Kept stays the team's;
+    // Zed, who isn't, so Hers stops being it.
+    const { id: kept } = await dee.api.workspaces.create('Kept');
+    await dee.api.workspaces.addPerson(kept, cy.email, 'edit');
+    const { id: hers } = await dee.api.workspaces.create('Hers');
+    await dee.api.workspaces.addPerson(hers, zed.email, 'edit');
+    expect(await ann.api.workspaces.get(hers)).toMatchObject({ role: 'edit', teamAccess: 'team' });
+    await dee.api.account.delete();
+    expect(await cy.api.workspaces.get(kept)).toMatchObject({ role: 'admin', teamAccess: 'team' });
+    expect(await ann.api.workspaces.get(kept)).toMatchObject({ role: 'edit', teamAccess: 'team' });
+    expect(await refusal(ann.api.workspaces.get(hers))).toBe(NO_WORKSPACE);
+    expect(await zed.api.workspaces.get(hers)).toMatchObject({ role: 'admin', teamAccess: null });
+  });
+
   it('G13: AI in a team workspace is paid for by whoever pressed it, from their own plan, as it is in any other', async () => {
     const [ann, bob, eve] = await Promise.all([account(), account(), account()]);
     await team(ann, 2);
@@ -718,6 +810,29 @@ describe('nobody reaches another team', () => {
     // An invite joins only the team it was made for.
     expect(await joined(cy, eve)).toMatchObject({ name: 'Theirs' });
     expect((await ann.api.teams.mine())?.members).toHaveLength(2);
+  });
+});
+
+describe('a new address from the provider', () => {
+  it('I6: shows a member, and an invite’s admin, by the name and address they sign in with now, and keeps no hash of any address', async () => {
+    const sub = `sub-${seq++}`;
+    const old = unique('old');
+    const fresh = unique('fresh');
+    const ann = await withGoogle(old, sub, 'Ann Before');
+    const bob = await account();
+    await team(ann, 1);
+    await joined(ann, bob);
+    const { link } = await ann.api.teams.invite();
+    expect((await bob.api.teams.peek(secretOf(link))).admin).toMatchObject({ email: old, name: 'Ann Before' });
+    // Ann's provider gives her a new address and name: her next sign-in is the same account, and her team shows her as she is.
+    const again = await withGoogle(fresh, sub, 'Ann After');
+    expect(again.session.ownerId).toBe(ann.session.ownerId);
+    expect((await bob.api.teams.mine())?.members.map((m) => [m.role, m.person.email, m.person.name])).toEqual([['admin', fresh, 'Ann After'], ['member', bob.email, bob.session.user.name]]);
+    expect((await again.api.teams.mine())?.members.find((m) => m.you)?.person).toMatchObject({ email: fresh, name: 'Ann After' });
+    expect((await bob.api.teams.peek(secretOf(link))).admin).toMatchObject({ email: fresh, name: 'Ann After' });
+    // Nothing of a member is in the clear but IDs, times and their role: no keyed hash of an address, the old one or the new.
+    const columns = (await h.pool.query<{ name: string }>("SELECT column_name AS name FROM information_schema.columns WHERE table_name = 'team_members' AND table_schema = current_schema() ORDER BY ordinal_position")).rows.map((r) => r.name);
+    expect(columns).toEqual(['member_id', 'team_id', 'account_owner_id', 'role', 'person_ciphertext', 'licensed_from', 'licensed_until', 'wanted_at', 'created_at']);
   });
 });
 

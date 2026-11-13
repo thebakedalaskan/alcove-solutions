@@ -107,7 +107,7 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `payment-expired` | A payment opened to buy something: nothing arrives before its address closes |
 | `payment-failed` | A payment opened to buy something is seen, then 1Click fails it |
 | `plan-low` | Art is on Free with about 20 minutes of the period's notes left |
-| `plan-stopped` | The period's notes have run out: Settings says None, the side panel says no notes left until the period renews |
+| `plan-stopped` | The period's notes have run out: Settings says None, the side panel says no notes left until the period renews, and a question about your notes (Ask in the palette or on Calls, a note's or a series') is refused with `plan-limit`, as the server refuses it |
 | `plan-grace` | Over Free's storage in grace: 14.2 GB of 10, everything works as before for nine more days |
 | `plan-over` | The grace is over: uploads have stopped |
 | `plan-balance` | $60 in the balance, with a $20 top-up waiting for its payment and a $40 one already added |
@@ -489,7 +489,7 @@ Native two tabs is the explicit browser-receipt scene: open it twice, enable onc
 
 
 The plan lives under **Pages / Settings / Plan**, **Notes nearly out**, **No notes left**, **Over Free's limits (in
-grace)** and **A balance**. Top-ups live under **Payments**, **Add money picker** and **Payment…**: waiting, arriving,
+grace)**, **Over Pro's storage** (Make room filled, as the way out) and **A balance**. Top-ups live under **Payments**, **Add money picker** and **Payment…**: waiting, arriving,
 short, short after the address expired, added, held, failed, cancelled and expired, plus the deletion warnings.
 Phone and night variants show the picker and waiting address, and the expired-short phone at night. The default scenarios
 keep payments unavailable. **Journeys / 11 Settings / 11.24 Add money** chooses an amount, a token and network, opens a top-up,
@@ -508,7 +508,7 @@ changed, offline, extending, more notes), then paying (waiting, Cancel payment a
 arrived, refused, expired, cancelled, failed, the receipt), in both themes and on a phone. Team has the same: Start a team
 (its name, how many licenses, from the balance or a payment, unnamed, a changed price, payments off, offline), its first
 licenses' payment (`team-buying`) waiting, seen, bought, refused and expired, and its admin's Buy licenses (`team-admin-*`:
-who's waiting, from the balance, bought, with a payment), a member, and an admin who stopped being one. The stand-in plays
+who's waiting, from the balance, bought, with a payment), a member, and an admin who stopped being one (before buying, or while their payment was on its way), with nothing to buy and no steps. The stand-in plays
 a payment opened to buy something by itself (`src/api/payments.ts`): seen, then added and bought, a step every 5 seconds
 from when it was opened, or as the `payment-*` scenarios say; nothing runs on a timer, so nothing carries into the next
 story. `purchaseAt()` and `playsOut()` put one where a story needs it. Every address is a made-up preview no wallet takes.

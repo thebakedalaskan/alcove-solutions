@@ -4,7 +4,7 @@
  * so. The words are yours to cut down first; whatever's left in the box is what goes. The shared notes have a box of
  * their own once the notes are written, which says who reads what's written there before anything is typed.
  */
-import { MAX_ADDITION_TEXT, errorCode, errorMessage, type Note, type NoteAddition, type Person, type PersonalEntry, type PersonalPoint, type SourceMoment } from '@alcove/api';
+import { MAX_ADDITION_TEXT, errorCode, errorMessage, type AudienceTeam, type Note, type NoteAddition, type Person, type PersonalEntry, type PersonalPoint, type SourceMoment } from '@alcove/api';
 import { Avatar, Button, Dots, Faces, Icon, IconButton, Scope, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
@@ -20,6 +20,18 @@ import { OwnComposer, OwnEntries, Quote, Sure, rowsFor } from './parts';
 
 const WHERE = 'Shared notes';
 const say = (reach: 'later' | 'none') => (reach === 'later' ? 'It opens once the notes are written.' : 'Nothing was captured then.');
+
+/** Who reads what's added to the shared notes now: everyone who has them, and the team they're visible to, if they are. */
+interface Readers { audience: Person[]; team: AudienceTeam | null }
+/** Who reads it, in words: the people by name, everyone on the team the notes are visible to, and anyone they share them with. */
+const readersLine = (r: Readers, me: string | undefined) => `${peopleLine(r.audience, me)}${r.team ? `, everyone on ${r.team.name}` : ''}, and anyone they share the notes with`;
+/** How many people read it now: everyone who has the notes, and the team's licensed people who aren't among them. */
+const readersCount = (r: Readers) => r.audience.length + (r.team?.people ?? 0);
+/** What's changed in who reads it since the box opened: who got the notes, and the team, if they've been made visible to one. */
+function readersSince(now: Readers | undefined, first: Readers | null): { people: Person[]; team: AudienceTeam | null } {
+  if (!now || !first) return { people: [], team: null };
+  return { people: now.audience.filter((x) => !first.audience.some((y) => sameEmail(x, y))), team: now.team && !first.team ? now.team : null };
+}
 
 /** Where a moment is in a note: going there, or the breakout room's name (a room's talk isn't in the recording), and what was on screen. */
 function NoteMoment({ noteId, m, shown, onSeek }: { noteId: string; m: SourceMoment; shown: ScreenRefShown; onSeek: ((s: number) => void) | undefined }) {
@@ -41,9 +53,9 @@ function Preview({ note, entry, me, shown, onSeek, onClose, onAdded }: { note: N
   const [text, setText] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
   // Who it was going to when this opened, to say who got the notes since.
-  const first = useRef<Person[] | null>(null);
-  useEffect(() => { if (p) { setText((t) => t ?? p.text); first.current ??= p.audience; } }, [p]);
-  const since = p?.audience.filter((x) => first.current && !first.current.some((y) => sameEmail(x, y))) ?? [];
+  const first = useRef<Readers | null>(null);
+  useEffect(() => { if (p) { setText((t) => t ?? p.text); first.current ??= p; } }, [p]);
+  const since = readersSince(p, first.current);
   // All of it in view, with the keyboard in the box: the words, where they go and who reads them are read before anything's sent.
   const loaded = !!p;
   useEffect(() => {
@@ -77,12 +89,13 @@ function Preview({ note, entry, me, shown, onSeek, onClose, onAdded }: { note: N
           <span className="hint">Only what’s in this box goes. Nothing else from your notes, and no questions you asked.</span>
           <dl>
             <dt>Goes to</dt><dd>{WHERE}, in {p.destination.title}</dd>
-            <dt>Who reads it</dt><dd><Faces people={p.audience} size={20} max={4} /><span>{peopleLine(p.audience, me)}, and anyone they share the notes with</span></dd>
+            <dt>Who reads it</dt><dd><Faces people={p.audience} size={20} max={4} /><span>{readersLine(p, me)}</span></dd>
           </dl>
-          {since.length > 0 && <p className="cd-since"><Faces people={since} size={20} max={3} /><span>{listNames(since)} got the notes since you opened this, so they read it too.</span></p>}
+          {since.people.length > 0 && <p className="cd-since"><Faces people={since.people} size={20} max={3} /><span>{listNames(since.people)} got the notes since you opened this, so they read it too.</span></p>}
+          {since.team && <p className="cd-since"><span>{since.team.name} can read these notes since you opened this, so everyone on it reads it too.</span></p>}
           <div className="btns">
             <Button variant="quiet" size="sm" onClick={onClose}>Cancel</Button>
-            <Button variant="secondary" size="sm" loading={add.isPending} disabled={!words.trim() && !p.moments.length} onClick={send}>Add for {p.audience.length === 1 ? 'you' : `${p.audience.length} people`}</Button>
+            <Button variant="secondary" size="sm" loading={add.isPending} disabled={!words.trim() && !p.moments.length} onClick={send}>Add for {readersCount(p) === 1 ? 'you' : `${readersCount(p)} people`}</Button>
           </div>
         </>
       )}
@@ -186,9 +199,9 @@ function SharedComposer({ note, me }: { note: Note; me: string | undefined }) {
   const [draft, setDraft] = useState('');
   const a = box.data;
   // Who it was going to when the box opened, to say who got the notes since.
-  const first = useRef<Person[] | null>(null);
-  useEffect(() => { if (a) first.current ??= a.audience; }, [a]);
-  const since = a?.audience.filter((x) => first.current && !first.current.some((y) => sameEmail(x, y))) ?? [];
+  const first = useRef<Readers | null>(null);
+  useEffect(() => { if (a) first.current ??= a; }, [a]);
+  const since = readersSince(a, first.current);
   const post = () => {
     const text = draft.trim();
     if (!a || !text || write.isPending) return;
@@ -209,13 +222,14 @@ function SharedComposer({ note, me }: { note: Note; me: string | undefined }) {
   return (
     <form className="own-compose cd-shared-box" autoComplete="off" onSubmit={(e) => { e.preventDefault(); post(); }}>
       <span className="to">
-        {a ? <><Faces people={a.audience} size={18} max={4} /><span>{peopleLine(a.audience, me)}, and anyone they share the notes with</span></>
+        {a ? <><Faces people={a.audience} size={18} max={4} /><span>{readersLine(a, me)}</span></>
           : box.error ? <span className="bad">{errorMessage(box.error)}</span> : <Dots />}
       </span>
       <textarea value={draft} rows={rowsFor(draft, 34, 5)} maxLength={MAX_ADDITION_TEXT} placeholder="Write for everyone with the notes" aria-label="Write in the shared notes"
         onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); post(); } }} />
       <button type="submit" className="ac-btn is-secondary" aria-label="Post it in the shared notes" title="Post it in the shared notes" disabled={!draft.trim() || !a || write.isPending}><Icon name="arrowUp" size={15} /></button>
-      {since.length > 0 && <p className="cd-since"><Faces people={since} size={20} max={3} /><span>{listNames(since)} got the notes since you started, so they read it too.</span></p>}
+      {since.people.length > 0 && <p className="cd-since"><Faces people={since.people} size={20} max={3} /><span>{listNames(since.people)} got the notes since you started, so they read it too.</span></p>}
+      {since.team && <p className="cd-since"><span>{since.team.name} can read these notes since you started, so everyone on it reads it too.</span></p>}
     </form>
   );
 }

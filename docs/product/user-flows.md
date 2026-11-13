@@ -876,10 +876,13 @@ time, slides in on the right.
   the organizer is asked, "Your plan has notes again", with **Turn notes on**. While they're stopped, turning notes on or starting a room recording says "Your notes for this
   period have run out. They start again when your plan renews."
 - **How long a call runs.** A call ends at 10 hours, and everyone is told 5 minutes before ("This call ends at
-  14:30"); its notes are written as when anyone ends it. At most 100 people are in a call or asking to be let in: one
-  more is told "This call is full: 100 people are in it, the most a call can have", and whoever hosts is told someone
-  tried. An ask whose browser closed stops holding a place once it's gone from the host's list, and someone who reloads
-  while asking asks again in place of their earlier ask.
+  14:30"); its notes are written as when anyone ends it. At most 100 people are in a call. Asking to be let in takes no
+  place, so however many ask, someone invited still gets in while there's room; once the people in it fill it, someone
+  invited is told "This call is full: 100 people are in it, the most a call can have", and whoever hosts is told someone
+  tried. Anyone can still ask then, and **Let in** says the same until someone leaves. One network can have 10 asks waiting
+  at once ("Too many people on your network are already asking to join this call. Try again once the host has answered
+  them."), so nobody can fill the host's list. An ask whose browser closed stops counting once it's gone from the host's
+  list, and someone who reloads while asking asks again in place of their earlier ask.
 - **Asking for notes.** While notes are off or paused, anyone can ask for them: **Ask for notes** in what's captured,
   or in Notes, whose bar says **Ask to resume** while they're paused. Everyone sees who asked. The organizer gets a toast
   and sees the ask in People, and while notes are off, Notes says how many asked in its pill, in rose, with **Not now**
@@ -1370,7 +1373,8 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    more (whoever brought it can't edit it now): it opens in its place, and the call says "The rooms' boards came back on a new
    board. The one that was open can't take them." When the call's workspace can't take a new board, they stay where they are:
    "The rooms' boards didn't come back: this call's home can't take a new board any more. Each one is still saved there."
-   Afterwards a room's board is a saved board like any other, everyone invited's, and nothing to a teammate who wasn't invited.
+   Afterwards a room's board is a saved board like any other, everyone invited's, and nothing to a teammate who wasn't invited;
+   in a workspace someone else pays for, it's only for those invited who are in that workspace, as the call's own board is.
    **Present** then makes each room's frame a stop on the pager, in the order they sit: the room reports back, and the
    organizer moves on.
 6. **One board for every room.** With Shared, the board comes onto the organizer's stage as the rooms open, and they watch
@@ -1567,14 +1571,17 @@ another call while in one; 7.7 the call ends while they're on its page; 7.8 alon
   shared and made as a **Shared** tab, and the page scrolls as one.
 - **Add to the shared notes** on anything in Your notes shows, in place of the box you write in, exactly what goes:
   the words, which you can cut down, the moment they point at, **Shared notes** on this note, and everyone who
-  has the notes. Nothing goes until **Add for 3 people**; only what's in the box goes, and never a question you asked.
-  If someone got the notes since, it says so and shows them. An answer goes only if the moments behind it are in the
+  has the notes, with "everyone on Vandelay Industries" when the organizer made them visible to their team, whose
+  licensed people read them too. Nothing goes until **Add for 3 people** (the team's people counted in); only what's in the
+  box goes, and never a question you asked. If someone got the notes since, or the notes were made visible to the team, it
+  says so and shows them. An answer goes only if the moments behind it are in the
   notes. Once the notes are written is when this can be done: until then the people who'll get them aren't settled.
 - **Shared notes** (**Everyone with the notes**) shows what people wrote there or added from their own notes, with who
   and when, for everyone with the notes, and once the notes are written, a box of its own: before anything is typed it
-  says who reads it (their faces and names, "and anyone they share the notes with"), and Enter posts it for all of them
-  in one step. If someone got the notes after the box showed, posting is refused, the words stay in the box, and it says
-  who got them since; Enter again posts it for them too. What's posted can't be changed. **Take back** removes yours for
+  says who reads it (their faces and names, "everyone on Vandelay Industries" when the notes are visible to the team, "and
+  anyone they share the notes with"), and Enter posts it for all of them in one step. If someone got the notes after the box
+  showed, or the team can read them since, posting is refused, the words stay in the box, and it says who got them since;
+  Enter again posts it for them too. What's posted can't be changed. **Take back** removes yours for
   everyone, once you say so in the row; something added from Your notes stays there. The organizer can **Remove** any
   of them the same way. During a call the shared place to write is the call's workspace pages.
 - A call's page (`/calls/<note ID>`) is a slim band of sky over its head: the way back (**Calls**), **Share**, **Download**
@@ -2250,7 +2257,9 @@ is only for the people invited, so a call's notes never reach the whole team unl
 workspace's row in the Drive says Whole team. In its People sheet (its name at the top of the list, then People), its
 admins can switch between Whole team and Only people I add. Anyone else in it reads which it is. In a call, a team
 workspace opens to everyone in it only when the organizer pays for it, as for a call's home made for them; one a teammate
-made opens only for its own people (flow 6, The call's workspace, step 3).
+made opens only for its own people (flow 6, The call's workspace, step 3). A team workspace is the team's only while whoever
+pays for it is on the team: when they leave it, are taken off it, or delete their account, it stays theirs, with the people
+in it, and the rest of the team is out of it (it no longer says Whole team, and nobody can open it to the team again).
 
 ## 13. Boards
 
@@ -2578,8 +2587,9 @@ notes; they don't carry into the next period. Done says "10 more hours of notes"
    that arrives after all is added to your balance and buys nothing, so a new address never buys the same thing twice:
    checkout and your payments say "Your payment arrived after its address closed, so nothing was bought. It's in your
    balance.", with **Buy with your balance**.
-5. **Cancel.** **Cancel payment** in the foot asks first: a payment sent to that address anyway still counts when it arrives,
-   added to your balance as in 4.
+5. **Cancel.** While nothing has arrived, **Cancel payment** in the foot asks first: a payment sent to that address anyway
+   still counts when it arrives, added to your balance as in 4. Once part of it has arrived it can't be cancelled: what
+   arrived goes into your balance when the payment settles, and the address waits for the rest until it closes (1).
 6. **Something went wrong.** Checkout says so, with the reference to give support.
 7. **Payments off.** Choose says paying isn't available right now; a balance that covers it can still buy.
 

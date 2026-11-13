@@ -41,8 +41,10 @@ type Story = StoryObj<typeof meta>;
 
 /** Their portrait, on their own colour. */
 export const Portrait: Story = {};
-/** Someone without a portrait: the first letter of their name. */
+/** Someone without a portrait: the first letter of their name, in a pale arch (`arch-fill`, `arch-ink`). */
 export const Initial: Story = { args: { person: INES } };
+/** At night the arch stays pale, as portraits are, so they read as a person among the others, never as a gap. */
+export const InitialNight: Story = { ...Initial, name: 'Initial, night', globals: { theme: 'dark' } };
 /** A photo from their sign-in provider comes first. */
 export const Photo: Story = { args: { person: { ...JONAS, photoUrl: PHOTO } } };
 /**

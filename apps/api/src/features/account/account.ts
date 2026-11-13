@@ -20,7 +20,7 @@ import { takeAllBack } from '../notes/additions';
 import { forgetAllMade } from '../notes/links';
 import { queueDelete } from '../recordings/audio';
 import { open as openPlan, tellPayers } from '../billing/plans';
-import { forgetMembership, refuseDeletingAdmin } from '../billing/teams';
+import { forgetMembership, memberChanged, refuseDeletingAdmin } from '../billing/teams';
 import { forgetAccess, grantToRevoke, release, revokeGrant, unreachable, withdraw } from '../meetings/calendar';
 import { create as createMeeting, findUpcoming } from '../meetings/service';
 import { deleteOwnNote, heldNoteIds } from '../notes/service';
@@ -134,6 +134,8 @@ export async function signIn(d: Deps, { provider, who }: SignIn): Promise<{ owne
         await changeProfile(await openOwner(d, existing.owner_id, undefined, c), c, (p) => ({ ...p, email: who.email }));
         await moveAddress(d, c, existing.owner_id, existing.email_index, who.email);
       }
+      // Their team shows them as their provider has them now, name and address, from this sign-in on.
+      await memberChanged(d, c, existing.owner_id, { name: who.name, email: who.email });
       return { ownerId: existing.owner_id, isNew: false };
     }
     if (provider === 'google' && d.cfg.GOOGLE_SIGNUP_MODE === 'testers' && !d.cfg.GOOGLE_SIGNUP_TESTERS.includes(who.email)) {

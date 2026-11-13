@@ -45,7 +45,7 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | `Kwrap` | `HKDF(Kowner, salt=ownerId, "alcove/owner-wrap/v1")` | Derived per request; wraps revision and recording keys |
 | `Krecord` | 32 random bytes per item revision | `revisions.key_envelope`, wrapped under `Kwrap` with scope `revision:<id>` |
 | `Krec` | 32 random bytes per recording | `recordings.key_envelope`, wrapped under `Kwrap` with scope `recording:<id>`; seals the recording's audio pieces, its kept shares' video and the frames taken from it |
-| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `document-clients:<id>` (who each Yjs client in a document belongs to, as keyed hashes), `document-deletes:<id>` (a keyed hash of what each row of its log deletes, so the same deletes again cost nothing), `call:<id>` (call state), `call-attention:<id>` (ordered hands, explicit questions, votes, nudges for their one recipient, statuses and audience-bound notification cues), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `call-notes:<id>` (the call's shared live notes), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered, and the times they asked to move it to), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them), `screen-share:<recordingId>` (whose each share in a call was) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes), `note-links:<noteId>` (who made each link to a note's notes, and when). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note), `presenter-notes:<documentId>` (what they kept beside a whole document or board with an earlier release, which nothing opens now), `presenter-frame-notes:<boardId>` (what they keep beside each frame of a board, and the keyed hash that says which frame) and `promotion:<noteId>` (the seal on a preview of adding to the shared notes, and on the box for writing straight into them); and, under a workspace's root, `workspace` (its name, tree and line on what it's for, who its people and shares are, and carets and presence on their way between instances), `workspace-person` (what someone's known by in it, a keyed hash of how access knows them), `document:<id>` (what a document or board holds) and `media:<id>` (a file: what's said about it, and its pieces) | Derived per request, or per job in the notes worker |
+| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `document-clients:<id>` (who each Yjs client in a document belongs to, as keyed hashes), `document-deletes:<id>` (a keyed hash of what each row of its log deletes, so the same deletes again cost nothing), `call:<id>` (call state), `call-asks:<id>` (16 bits of a keyed hash of the network each ask to join came from, kept beside the ask in the call's state so one network can't fill the host's list: different in every call, and shared by about one network in 65,536, so it never says which), `call-attention:<id>` (ordered hands, explicit questions, votes, nudges for their one recipient, statuses and audience-bound notification cues), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `call-notes:<id>` (the call's shared live notes), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered, and the times they asked to move it to), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them), `screen-share:<recordingId>` (whose each share in a call was) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes), `note-links:<noteId>` (who made each link to a note's notes, and when). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note), `presenter-notes:<documentId>` (what they kept beside a whole document or board with an earlier release, which nothing opens now), `presenter-frame-notes:<boardId>` (what they keep beside each frame of a board, and the keyed hash that says which frame) and `promotion:<noteId>` (the seal on a preview of adding to the shared notes, and on the box for writing straight into them); and, under a workspace's root, `workspace` (its name, tree and line on what it's for, who its people and shares are, and carets and presence on their way between instances), `workspace-person` (what someone's known by in it, a keyed hash of how access knows them), `document:<id>` (what a document or board holds) and `media:<id>` (a file: what's said about it, and its pieces) | Derived per request, or per job in the notes worker |
 | Operation keys | `HKDF(Kowner, salt=ownerId, "alcove/operation-commit/v1")` and `"…/operation-result/v1"` | Derived per request |
 | Index key | `HKDF(KMASTER, "alcove/index/v1")` | Derived per use; keys the [blind indexes](#blind-indexes) |
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
@@ -119,7 +119,7 @@ piece of a file is sealed on the one core every call runs on. A `media-piece` is
 | `billing` | accounting key | owner (the credits account of before plans: no longer read) |
 | `plan-account` | accounting key | owner (the plan, the balance in dollars and its history, any grace, the months of Pro bought, renewing, the notices about Pro, the owner's team's licenses and a workspace whose payment moved to them (its ID, never its name), and more notes bought for a period) |
 | `team-name` | state key `team` under the team's own owner | team (its name) |
-| `team-member` | state key `team` under the team's own owner | team, member (their name and address) |
+| `team-member` | state key `team` under the team's own owner | team, member (their name and address, as their account has them: a sign-in that brings new ones seals them again) |
 | `team-billing` | accounting key | team's owner, team (its unconsumed licenses and what each cost, auto-purchase and what a license last cost the team, the alerts its admin has had, its pool as last reckoned and its grace), opened without anyone signed in so upkeep can reckon the pool |
 | `ai-meter` | accounting key | owner (the period's AI allowance in dollars, what's been spent by kind, what requests in flight and live calls hold, and when it ran out) |
 | `deposit` | accounting key | owner, deposit (a top-up's route, address, amounts and the provider's quote, and what it was opened to buy and how that went), opened without anyone signed in so the watcher can add it |
@@ -185,7 +185,8 @@ The hash is deterministic, so equal values show the same person across rows and 
    index: the `owners` row with a fresh `ownerId`, `Kowner`, root envelope and root check; the `identities`
    row; the sealed profile (name, email, photo URL, notes default `on`); and its plan account (`plan_accounts`, sealed under
    `Kservice`), on Free with a balance of nothing. Later sign-ins with the same subject open the same account and bring the profile's name,
-   email and photo, and the identity's email index, up to date with the provider. After every sign-in a
+   email and photo, the identity's email index, and the name and address their team shows (`teams.ts › memberChanged`)
+   up to date with the provider. After every sign-in a
    session opens; for a demo identity with nothing upcoming, the sample calendar is placed too: five sealed
    meetings, the first about 12 minutes later. A new account lands on `/ready`, which plays the account-creation screen over Home; anyone else lands on `/home`.
    Signed in from the welcome page, Home opens by sailing out of the welcome page's cove: as a way in is pressed, where the
@@ -561,7 +562,8 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   author's keys, read only by a request with that author's session, and there's no route that names anyone else's:
   the organizer and everyone else who has the note get `404 not-found` for an entry that isn't theirs. What a bookmark
   or a kept answer points at goes through the rules above each time it's read. Something leaves them only when its
-  author adds it to the shared notes, after a preview that says who reads it; from then on it's part of the note
+  author adds it to the shared notes, after a preview that says who reads it, the team the note is visible to included,
+  sealed to exactly that; from then on it's part of the note
   ([Notes and inference › Your own notes](notes-and-inference.md#your-own-notes)).
 - **Series.** What carries over from one call to the next is put together on each request from the notes
   the asker can read at that moment, through this same check, and kept nowhere
@@ -636,7 +638,11 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   lasts only as long as the license: a remembered yes ends at `licensed_until`, and someone leaving or taken off the team,
   or the team deleted, moves the team's workspaces on (`version`), so nothing remembered outlasts it. A workspace made in
   a call, and a call's home made for an organizer on a team, is `added`; only its admins open it to the team, and only one
-  live-licensed on that team. Deleting the team makes its workspaces nobody's team's.
+  live-licensed on that team. It's the team's only while whoever pays for it is on the team, since that's how it counts
+  against the team's pool: when they leave it, are taken off it or delete their account, the team's workspaces they pay for
+  stop being the team's at once (`teams.ts › leftWith`), and one that comes to be paid for by someone off the team, or by
+  nobody, does as its payer is settled (`storage.ts › offTeam`). Each stays with its own people, and nobody is in it through
+  the team any more. Deleting the team makes its workspaces nobody's team's.
 - **A call opens the workspace it uses** to everyone let in to it, guests without an account too, for as long as they're
   in the call: its home, unless the organizer switched to another. A row in `workspace_calls` says so, under the
   `call-workspace` index of the call and the workspace, which is what everyone in the call carries while the call uses that
@@ -712,7 +718,9 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   for its workspace (`payer_owner_id`), as a call opens a workspace only then, asked on every read (`holdersOf`): what anyone
   adds to a board, or asks AI to do on it, is its workspace's payer's. In a workspace someone else pays for, the call seats
   nobody on the boards it makes there and nobody can let everyone in on a saved one, and a seat given there opens only for
-  the workspace's own people, its members and a team's licensed people.
+  the workspace's own people, its members and a team's licensed people. What the call gives by address there goes only to its
+  own people too (`givenByCall`): a board it makes, to those invited who are; one kept as the call ends for someone let in from
+  the link, only if they are; a room's board as rooms close, to the organizer and those invited who are.
   A breakout room's board is restricted with nobody as its creator: only the seats of whoever is in that room open it, the
   organizer's only while visiting, and someone moved out loses it at once. When rooms close its seats go and everyone invited
   has it by address; a workspace member who wasn't invited never does, nor do the workspace's admins: nothing strands a room's

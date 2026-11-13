@@ -106,11 +106,13 @@ export async function limitReached(o: Owner, callId: string, what: 'warn' | 'sto
  * notes will cost so far, `reserve`), captions, live notes and board ideas. Whichever of them takes the organizer's notes
  * close to running out at the call's pace, or to spent, says so in the call at once (`limitReached`); a request refused
  * only because it's too dear for what's left stops nothing. Refused, it's the organizer's notes to anyone else (`v`).
+ * `guests`: it's for a guest alone, their captions in another language or live notes of their own, so it's paid from the
+ * share of the organizer's allowance every guest in this call spends from, as their questions are (billing/meter.ts).
  */
-export const callMeter = (v: Viewer, callId: string, recordingId: string, spend: Spend, reserve?: Bill['reserve']): Meter =>
+export const callMeter = (v: Viewer, callId: string, recordingId: string, spend: Spend, more: { reserve?: Bill['reserve']; guests?: boolean } = {}): Meter =>
   meterFor(v.organizer, {
-    payer: v.organizer.ownerId, spend, whose: v.isOrganizer ? 'yours' : 'organizer', source: { kind: 'call', id: recordingId }, reserve,
-    onLimit: (what) => limitReached(v.organizer, callId, what, 'notes')
+    payer: v.organizer.ownerId, spend, whose: v.isOrganizer ? 'yours' : 'organizer', source: { kind: 'call', id: recordingId }, reserve: more.reserve,
+    onLimit: (what) => limitReached(v.organizer, callId, what, 'notes'), ...(more.guests ? { guests: callId } : {})
   });
 
 type CaptureAction = Extract<CallAction, { type: 'notes' | 'pause' | 'resume' | 'request-notes' | 'decline-notes' | 'unavailable' | 'model' }>;
@@ -256,7 +258,7 @@ export async function transcribe(v: Viewer, callId: string, clip: transcripts.Cl
   const readers = roomsOpenAt(s, row, t0) ? readersAt(s, place, t0) : undefined;
   // The organizer pays, and holds what writing the notes will cost so far: notes stop before their allowance is spent,
   // and only then: a clip refused for anything else leaves them on.
-  const meter = callMeter(v, callId, into.recordingId, 'transcript', writingSoFar(o, row, s, nowMs));
+  const meter = callMeter(v, callId, into.recordingId, 'transcript', { reserve: writingSoFar(o, row, s, nowMs) });
   await transcripts.hear(o, meter, into, clip, { speaker, ...(place !== MAIN_PLACE ? { room: place } : {}), ...(readers ? { readers } : {}), began: t0, ...(atMs === undefined ? {} : { atMs }) });
   await tellRoom(o, row.room_name, callId, { call: true, log: false });
   return view(v, o.pool, callId);

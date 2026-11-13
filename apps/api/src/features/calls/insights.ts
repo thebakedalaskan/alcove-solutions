@@ -4,7 +4,7 @@ import type { Owner } from '../../context';
 import { defaultModel, type ChatModel } from '../../inference';
 import { id128 } from '../../crypto';
 import { exec, tx, type Db } from '../../db';
-import { AuthError, ConflictError, ForbiddenError, notFound } from '../../errors';
+import { AuthError, ConflictError, ForbiddenError, PlanLimitError, notFound } from '../../errors';
 import { me, profile } from '../account/account';
 import { type StoredIdea } from './space-state';
 import * as space from './workspace';
@@ -102,7 +102,8 @@ export async function maySortInCall(v: Viewer): Promise<void> {
 /**
  * Live transcript lines in another language, for the person asking: only lines they may read (said in the part of the
  * call they're in, while they were there). Each line is translated once per language and kept sealed with the live
- * transcript, which goes when the recording stops (and a room's, when it closes).
+ * transcript, which goes when the recording stops (and a room's, when it closes). The organizer pays, and a guest's come out
+ * of the share every guest in the call spends from (billing/meter.ts): one already translated costs nothing again.
  */
 export async function translate(v: Viewer, callId: string, language: CaptionLanguage, lineIds: string[]): Promise<CaptionTranslation[]> {
   requireIn(v, 'translate');
@@ -122,7 +123,8 @@ export async function translate(v: Viewer, callId: string, language: CaptionLang
     const t0 = performance.now();
     const via = await models.resolveModel(o.cfg, s.notes.model);
     await recordUnencryptedUse(o, into.noteId, via);
-    const fresh = await drafting.translate(o.cfg, callMeter(v, callId, into.recordingId, 'captions'), missing.map((l) => ({ id: l.id, text: l.text })), CAPTION_LANGUAGES.find((x) => x.code === language)?.english ?? language, via);
+    // A guest's are theirs alone, so they come out of the guests' share; anyone else's are the call's, for everyone.
+    const fresh = await drafting.translate(o.cfg, callMeter(v, callId, into.recordingId, 'captions', { guests: v.role === 'guest' }), missing.map((l) => ({ id: l.id, text: l.text })), CAPTION_LANGUAGES.find((x) => x.code === language)?.english ?? language, via);
     await transcripts.keepTranslations(o, into, language, [...fresh].map(([lineId, text]) => ({ lineId, text })));
     for (const [id, text] of fresh) have.set(id, text);
     clog.info('captions translated', { ...ctx, found: wanted.length, cached: wanted.length - missing.length, translated: fresh.size, ms: Math.round(performance.now() - t0) });
@@ -306,8 +308,10 @@ const REST_MS = 30_000;
  * Someone in the call is looking at the live notes. What the notes read of this part of the call is split by what this
  * person may read of it: all of it is everyone's view, and anything less is a view of its own, named by what they can't
  * read, which the notes model never sees for them. If that view has something new, it's been at least half a minute and
- * nobody else is at it, it’s refreshed now, for everyone in it. The organizer pays for it, as for everything the call does. True when
- * this look refreshed them; any other look at the same time answers false at once. Nothing is held while the model reads.
+ * nobody else is at it, it’s refreshed now, for everyone in it. The organizer pays for it, as for everything the call does; a
+ * view of its own refreshed for a guest's look comes out of the share every guest in the call spends from (billing/meter.ts),
+ * so the organizer's own notes keep the rest, and past it the view says why it isn't updated. True when this look refreshed
+ * them; any other look at the same time answers false at once. Nothing is held while the model reads.
  */
 export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
   const o = v.organizer;
@@ -364,7 +368,9 @@ export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
     const t0 = performance.now();
     const known = liveNotes.knownTo(claim, lines);
     await part.disclose();
-    const sorted = await drafting.catchUp(o.cfg, callMeter(v, callId, recordingId, 'live-notes'), part.brief(lines, read.gaps), catchup.describe(whole, barred.length > 0), { followUps: FOLLOW_UPS_READ, known });
+    // Everyone's view is the call's; one of its own, for a guest, is theirs alone.
+    const meter = callMeter(v, callId, recordingId, 'live-notes', { guests: view !== liveNotes.ALL && v.role === 'guest' });
+    const sorted = await drafting.catchUp(o.cfg, meter, part.brief(lines, read.gaps), catchup.describe(whole, barred.length > 0), { followUps: FOLLOW_UPS_READ, known });
     const done = {
       lines: lines.length, gaps: read.gaps.length, missed: read.missed.length, uncited: sorted.uncited, known: known.length, same: sorted.next.filter((f) => f.same).length, strays: sorted.strays,
       cut: sorted.cut?.count ?? 0, ms: Math.round(performance.now() - t0)
@@ -390,8 +396,11 @@ export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
     await tellRoom(o, row.room_name, callId, { call: true, log: false });
     return true;
   } catch (e) {
-    clog.warn('live notes not refreshed', { ...ctx, err: e });
-    if (await liveNotes.failed(o, callId, place, view, claim)) await tellRoom(o, row.room_name, callId, { call: true, log: false });
+    // Guests in the call have used their share: that view says so, and is tried again once there's room for them.
+    const guests = e instanceof PlanLimitError && e.context['why'] === 'guests';
+    if (guests) clog.info('live notes of a guest’s own not refreshed: guests’ share used', ctx);
+    else clog.warn('live notes not refreshed', { ...ctx, err: e });
+    if (await liveNotes.failed(o, callId, place, view, claim, guests ? 'guests' : 'error')) await tellRoom(o, row.room_name, callId, { call: true, log: false });
     return false;
   }
 }

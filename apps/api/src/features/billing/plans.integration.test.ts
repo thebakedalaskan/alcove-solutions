@@ -209,12 +209,22 @@ describe('a call’s limits', () => {
   it('turns away anyone past the most people a call can have, and tells whoever hosts', async () => {
     await h.setLimit('call.max_people', 2);
     const org = await account();
-    const { code: c } = await org.api.calls.startNow({ notes: 'off' });
+    const ivy = await account();
+    const { code: c } = await org.api.calls.startNow({ notes: 'off', guests: [ivy.email] });
     const host = await org.api.calls.join(c, { mic: true, cam: false });
-    await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Sam' });
-    expect(await refusal(h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Lee' }))).toBe('conflict: This call is full: 2 people are in it, the most a call can have.');
+    // Asking takes no place: the call is full once Sam is let in.
+    const sam = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await settle(host, (s) => s.waiting.some((w) => w.id === sam.ticket.identity));
+    await host.admit(sam.ticket.identity);
+    const FULL_CALL = 'conflict: This call is full: 2 people are in it, the most a call can have.';
+    // Ivy, invited, is let in by the invite as she joins, so that's when she's turned away, and whoever hosts is told.
+    expect(await refusal(ivy.api.calls.join(c, { mic: true, cam: false }))).toBe(FULL_CALL);
     const told = await settle(host, (s) => s.notices.some((n) => n.text.startsWith('Someone tried to join')));
     expect(told.notices.map((n) => n.text)).toContain('Someone tried to join, but this call is full: 2 people is the most a call can have.');
+    // Lee asks as ever, and letting him in is refused in the same words.
+    const lee = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Lee' });
+    await settle(host, (s) => s.waiting.some((w) => w.id === lee.ticket.identity));
+    expect(await refusal(host.admit(lee.ticket.identity))).toBe(FULL_CALL);
   });
 });
 

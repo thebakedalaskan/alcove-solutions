@@ -38,8 +38,8 @@
 
 /*
  * The line: everyone's feet on the horizon, and their name and license on the water just under it. Wider than the page,
- * it slides sideways (the auto margins centre it only while it fits). It keeps room above its arches and under its names
- * for an arch lifted to the pointer and the focus ring round a name.
+ * it slides sideways (the auto margins centre it only while it fits); on a phone it wraps instead (below). It keeps room
+ * above its arches and under its names for an arch lifted to the pointer and the focus ring round a name.
  */
 .tq-line { flex: none; display: flex; align-items: flex-start; gap: var(--tq-gap, 12px); height: calc(8px + 50px + var(--tq-below, 40px) + 6px); margin: 0 calc(-1 * var(--tq-edge, 0px)) calc(-1 * (var(--tq-below, 40px) + 6px)); padding: 8px var(--tq-edge, 0px) 6px; overflow: auto hidden; overscroll-behavior-x: contain; list-style: none; scrollbar-width: none; scroll-snap-type: x proximity; }
 .tq-line::-webkit-scrollbar { display: none; }
@@ -53,7 +53,7 @@
 @keyframes tq-up { from { transform: translateY(102%); } }
 .tq-who .nm { max-width: 100%; margin-top: 8px; font: 500 12.5px/16px var(--font-sans); color: var(--ink); text-align: center; text-shadow: 0 0 10px var(--ground), 0 0 3px var(--ground); }
 .tq-who .lc { margin-top: 2px; white-space: nowrap; font: 400 11.5px/14px var(--font-sans); color: var(--ink-2); text-align: center; text-shadow: 0 0 10px var(--ground), 0 0 3px var(--ground); }
-.tq-who.is-waiting .lc { font-weight: 600; color: var(--caution); }
+.tq-who.is-waiting .lc { font-weight: 600; color: var(--caution-text); }
 /* Ended is quiet where ink-3 can still be read on the evening: at night. By day, ink-2 and the word say it. */
 .dark .tq-who:is(.is-ended, .is-none) .lc { color: var(--ink-3); }
 /* An arch to press: it lifts a little to the pointer, and stays ringed while what it opened is open. */
@@ -64,6 +64,10 @@
 .tq-who-b[data-state="open"] .tq-fig, .tq-who-b:hover .tq-fig { overflow: visible; }
 
 /* ------------------------------------------------------------ the water: its people and notes, and beside them the admin's cards */
+/*
+ * At most 1120px, centred under the team, as the TeamPlan board has it: the people and the admin's cards read as one block
+ * under the line, while the page's title, search and you keep the page's own width.
+ */
 .tq-water { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 32px; max-width: 1120px; margin: calc(var(--tq-below, 40px) + 34px) auto 0; }
 .tq-water.is-solo { grid-template-columns: minmax(0, 760px); justify-content: center; }
 .tq-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 30px; align-content: start; min-width: 0; }
@@ -87,7 +91,8 @@
 .tq-row .tq-t { min-width: 0; }
 .tq-row .tq-t b { display: flex; align-items: center; gap: 8px; min-width: 0; font: 500 14.5px/20px var(--font-sans); color: var(--ink); }
 .tq-row .tq-t small { display: block; font: 400 13px/18px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
-.tq-row .tq-t small.is-caution { font-weight: 600; color: var(--caution); }
+/* Waiting for a license, out on the sea: caution-text, which reads at 4.5:1 there by day as caution doesn't. */
+.tq-row .tq-t small.is-caution { font-weight: 600; color: var(--caution-text); }
 .dark .tq-row .tq-t small.is-quiet { color: var(--ink-3); }
 .tq-row > .ac-btn { margin-right: -2px; }
 .tq-tag { flex: none; padding: 1px 8px; border-radius: var(--radius-pill); background: var(--sunk); font: 500 11.5px/18px var(--font-sans); color: var(--ink-2); }
@@ -145,6 +150,20 @@
 .tq-lnk:hover { text-decoration-color: currentColor; }
 .tq-lnk:disabled { opacity: .5; }
 
+/*
+ * Where the admin's cards would squeeze the people (the page under 1000px, as at 1024 with the side panel open), they fold
+ * under the people, side by side, before the notes: what's yours to do, first, as on a phone.
+ */
+@container (max-width: 1000px) {
+  .tq-water:not(.is-solo) { grid-template-columns: minmax(0, 1fr); }
+  .tq-water:not(.is-solo) > .tq-main { display: contents; }
+  .tq-side { order: 2; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .tq-wait { order: 0; }
+  .tq-people { order: 1; }
+  .tq-notes { order: 3; }
+  .tq-main > :not(.tq-wait, .tq-people, .tq-notes) { order: 4; }
+}
+
 /* Not on a team: a quiet row that starts one, under a company's page. */
 .tq-start { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; column-gap: 12px; padding: 14px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .tq-start-i { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-pill); background: var(--sun-soft); color: var(--sun-text); }
@@ -154,6 +173,17 @@
 
 @media (max-width: 860px) {
   .tq { --hz: 300px; --tq-slot: 72px; --tq-gap: 12px; --tq-edge: 20px; }
+  /*
+   * The line wraps onto more rows, as the board's does, and never slides: its first row stands on the horizon (the page's
+   * room above the sky is 6px on a phone) and the rest on the water under it, which they push down. The head and the
+   * team's name share the sky's first track; the line is the second, as tall as its rows, less the names under the last.
+   */
+  .tq-sky { display: grid; grid-template: calc(var(--hz) - 6px - 8px - 50px) minmax(calc(8px + 50px), auto) / minmax(0, 1fr); height: auto; }
+  .tq-sky > .dusk-top { grid-area: 1 / 1; align-self: start; }
+  .tq-hero { grid-area: 1 / 1; align-self: end; }
+  .tq-line { grid-area: 2 / 1; flex-wrap: wrap; justify-content: center; row-gap: 16px; height: auto; margin: 0 0 calc(-1 * (var(--tq-below, 40px) + 6px)); padding: 8px 0 6px; overflow: visible; scroll-snap-type: none; }
+  .tq-line > :first-child { margin-left: 0; }
+  .tq-line > :last-child { margin-right: 0; }
   .tq-hero { padding-bottom: 12px; }
   .tq-hero h2 { font-size: 36px; }
   /* One column. The admin's cards come up under the people, before the notes: what's yours to do, first. */
@@ -166,7 +196,7 @@
   .tq-notes { order: 3; }
   .tq-main > :not(.tq-wait, .tq-people, .tq-notes) { order: 4; }
   .tq-main > :is(.tp-s, .tp-gs) { margin-top: -12px; }
-  /* The line slides on a phone, so a sun behind it would stand behind whoever slides past: it has set, off to the left. */
+  /* The line fills a phone's width, so a sun beside it would stand behind someone on it: it has set, off to the left. */
   .tq .hz { --hz-sun-x: calc(-50cqw - 90px); }
   .tq-h { flex-wrap: wrap; row-gap: 0; }
   .tq-h small { text-align: left; }

@@ -211,8 +211,11 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const [licenses, setLicenses] = useState<number | null>(open.what.plan === 'team' ? open.what.licenses ?? null : null);
   const [other, setOther] = useState(false);
   const [routeId, setRouteId] = useState<string | null>(null);
-  /** What to say about the last try: a refusal, a price that changed, a payment that bought nothing. */
-  const [said, setSaid] = useState<{ text: string; ref: string | null } | null>(null);
+  /**
+   * What to say about the last try: a refusal, a price that changed, a payment that bought nothing (`paid`: its money is in the
+   * balance).
+   */
+  const [said, setSaid] = useState<{ text: string; ref: string | null; paid: boolean } | null>(null);
   const [asking, setAsking] = useState(false);
   const [receipt, setReceipt] = useState(false);
 
@@ -233,7 +236,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
    */
   if (t && paying === 'refused' && t.purchase) {
     chooseAgain(t);
-    setSaid({ text: t.purchase.why ?? `It wasn’t bought. The ${roundTokens(t.received?.microUsd ?? 0)} USDC that arrived is in your balance.`, ref: null });
+    setSaid({ text: t.purchase.why ?? `It wasn’t bought. The ${roundTokens(t.received?.microUsd ?? 0)} USDC that arrived is in your balance.`, ref: null, paid: true });
   }
 
   /* The amount that arrived counts up only when it's seen while the window is open. */
@@ -323,7 +326,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
    */
   const refused = (e: unknown) => {
     const code = errorCode(e);
-    setSaid({ text: errorMessage(e), ref: code === 'conflict' || code === 'invalid' || code === 'forbidden' ? null : errorRequestId(e) ?? null });
+    setSaid({ text: errorMessage(e), ref: code === 'conflict' || code === 'invalid' || code === 'forbidden' ? null : errorRequestId(e) ?? null, paid: false });
   };
   /**
    * The team licenses are for, made as you pay when you're starting one, with you its admin. False when it couldn't be
@@ -475,7 +478,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const offline = !online && <p className="ck-offline" role="status">You’re offline. Everything catches up when you’re back.</p>;
   const note = said && <CheckoutNote>{said.text}{said.ref && <><br /><RequestRef id={said.ref} /></>}</CheckoutNote>;
   const waiting = (words: string) => <p className="ck-wait" role="status"><Dots />{words}</p>;
-  let step: 1 | 2 | 3 = 1;
+  let step: 1 | 2 | 3 | null = 1;
   let stage: CheckoutStage = 'choose';
   let body: ReactNode;
   let foot: ReactNode = close;
@@ -558,17 +561,13 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
       }
     }
   } else if (notAdmin && teamNow) {
-    // On someone else's team: its admin buys its licenses, and you can't start another while you're on it.
+    // On someone else's team: its admin buys its licenses, and you can't start another while you're on it. Nothing can be
+    // bought here, so there are no steps, and it's said once, in one note: who buys them. A payment that couldn't buy them
+    // says first that its money is in the balance; a refused Buy says no more than who buys them, so it isn't said too.
+    step = null;
     const admin = teamNow.members.find((m) => m.role === 'admin');
-    // A payment that couldn't buy them says why first: its money is in the balance.
-    body = (
-      <>
-        {note}
-        <CheckoutNote tone="info">
-          {admin ? `${callName(admin.person)}, its admin, buys the licenses for ${teamNow.name}.` : `Only the admin of ${teamNow.name} buys its licenses.`}
-        </CheckoutNote>
-      </>
-    );
+    const who = admin ? `${callName(admin.person)}, its admin, buys the licenses for ${teamNow.name}.` : `Only the admin of ${teamNow.name} buys its licenses.`;
+    body = said?.paid ? <CheckoutNote>{said.text} {who}</CheckoutNote> : <CheckoutNote tone="info">{who}</CheckoutNote>;
   } else {
     // Choosing.
     const offLabel = pct !== null ? `${pct}% off` : null;
