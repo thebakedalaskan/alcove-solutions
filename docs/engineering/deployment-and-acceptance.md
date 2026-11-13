@@ -15,7 +15,7 @@ own verification.
 | API | `tsx watch` on `:8787`, proxied at `/api` | Google Cloud Confidential Space on Intel TDX: managed instance group `alcove-api` (one c3-standard-4 VM, `us-central1-a`) behind a regional external proxy Network Load Balancer, `alcove-api-ip`, for `api.alcove.solutions`. TLS ends in the VM ([Confidential Space runbook](../../infra/confidential-space/README.md)) |
 | Database | Postgres 17 in Docker | Cloud SQL `alcove-db`, Postgres 17 Enterprise; SSL, 03:00 UTC daily backup window, seven retained backups, PITR; reached through the Cloud SQL Auth Proxy in the image |
 | Objects | RustFS in Docker | Private Cloudflare R2 `alcove-objects`, accessed through the API |
-| Secrets | `.env`, gitignored | GCP Secret Manager: database, storage, LiveKit and Cloudflare DNS credentials; optional inference and Google credentials; the keys from before Confidential Space, until they're retired. Only an attested, signed image may read them, or use the Cloud KMS key that wraps the master ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)) |
+| Secrets | `.env`, gitignored | GCP Secret Manager: database, storage, LiveKit and Cloudflare DNS credentials; optional inference and Google credentials; the keys from before Confidential Space, until they're retired. Only an attested, signed image may read them, or use the Cloud KMS key that wraps the master, except that the keyless migration job reads the database URL and the project's Owners can do both ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing), [runbook › Known limits](../../infra/confidential-space/README.md#known-limits)) |
 | DNS | Localhost | GoDaddy registrar; Cloudflare nameservers `johnny.ns.cloudflare.com` and `maleah.ns.cloudflare.com`; DNS-only records |
 
 Run locally with `pnpm install && pnpm dev`. The [runbook](../../infra/README.md) contains bootstrap,
@@ -48,8 +48,8 @@ the setup, deploys, rollbacks, staging, certificates and release verification.
    `/v1/attestation`), carries ffmpeg for shared screens' video (ffmpeg-static's binary, pinned in
    `apps/api/package.json`, copied to `/app/bin/ffmpeg`, `FFMPEG_PATH`, so the image changes when that pin does) and the
    Cloud SQL Auth Proxy, and holds the web app built against `https://api.alcove.solutions`, with the CSP
-   `apps/web/scripts/csp.mjs` writes for that origin (inline scripts by hash, nothing third-party but LiveKit and
-   Sigstore's public log, Rekor, which the app reads to check the server). Sign it
+   `apps/web/scripts/csp.mjs` writes for that origin (inline scripts by hash, nothing third-party but LiveKit; the app
+   checks the image's entry in Sigstore's public log, Rekor, as the API hands it on, so no browser asks the log). Sign it
    with cosign and the Cloud KMS key `alcove-image-signing`, which records it, with its commit, in Sigstore's public log.
    Execute the migration job, which gets only `DATABASE_URL`, and wait. Roll the group onto the image, a new VM first
    (refused up front when the region's C3 quota can't hold it), until the new VM is in service and the old one out of it,

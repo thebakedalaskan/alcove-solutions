@@ -52,7 +52,7 @@ function CoveOnASky({ seed, words, only }: { seed: number; words: boolean; only?
       {words && (
         <div ref={sky} className="flex flex-col items-center gap-5 px-4 pt-[16dvh] text-center">
           <h1 className="max-w-[11.8em] font-display text-[clamp(36px,6vw,86px)] leading-none tracking-[-0.032em]">Your meeting superapp. Powered by confidential AI.</h1>
-          <p className="max-w-[35em] text-[clamp(17px,1.3vw,19px)] leading-[1.58] text-ink-2">Video calls with the note taker built in. Get a transcript, a summary and follow-ups, with recordings and notes encrypted in storage.</p>
+          <p className="max-w-[35em] text-[clamp(17px,1.3vw,19px)] leading-[1.58] text-ink-2">Calls, whiteboards, docs and notes in one place, with AI that runs in confidential compute, so Alcove can’t read your meetings.</p>
         </div>
       )}
     </div>
