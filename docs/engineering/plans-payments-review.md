@@ -50,7 +50,10 @@ Not fixed. The first two are the most worth doing before release.
    - The reverse also works: someone whose own notes have run out can still use document AI in a workspace someone
      else pays for, or ask as a guest.
 
-4. **Someone else's uploads can fill your storage in a day.** Files anyone adds to a workspace count against its payer,
+4. **Someone else's uploads can fill your storage in a day.** Fixed since (D2): someone else adds at most
+   `media.others_day_bytes` a day to your storage, guests in your calls `media.guests_day_bytes` between them, and nobody
+   but you reaches into the last `media.payer_reserve_bytes`, kept for your notes and recordings
+   ([Plans and usage › What others can add](plans-and-usage.md#what-others-can-add)). As it was found: files anyone adds to a workspace count against its payer,
    guests' in a call's workspace included. The only cap is per uploader, `media.account_day_bytes` (20 GiB a day), which
    is more than Free's 10 GiB, and a guest's identity is random for each person in each call (`upload-guest`), so joining
    again starts a new day. A full account can't upload anywhere, and its calls' notes stop. Low odds (it takes someone set

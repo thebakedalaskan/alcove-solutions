@@ -66,6 +66,8 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `workspace_media_uses` | owner, media, document: which documents and boards have a file | — |
 | `media_upload_days` | owner (an account), `day` (UTC), `bytes`: what it uploaded to workspaces that day, for the limit on a day ([Media](#media)) | — |
 | `media_guest_upload_days` | `guest_index`, `day` (UTC), `bytes`: what a guest in a call uploaded that day, for the same limit ([Media](#media)) | `guest_index`, a blind index of the person the guest's pass names |
+| `media_others_days` | the payer (an account), the uploader (an account), `day` (UTC), `bytes`: what someone signed in added that day to another account's storage, for `media.others_day_bytes` ([Media](#media)); migration `0030_workspace_payers.sql` | — |
+| `media_guest_payer_days` | the payer (an account), `day` (UTC), `bytes`: what guests in its calls added that day to its storage between them, for `media.guests_day_bytes`; migration `0030_workspace_payers.sql` | — |
 | `service_limits` | `name`, `value`, `updated_at`: a limit changed while the service runs, which overrides its default ([Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)). Numbers only | — |
 | `feature_flags_everyone` | `name`, `updated_at`: a feature flag switched on for everyone ([Feature flags](feature-flags.md)) | — |
 | `feature_flag_groups` | `name`, created: a hand-picked group for feature flags, an operator's label such as `staff` | — |
@@ -543,7 +545,14 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   MiB, the most a file can be here.", because only the server knows; a payer with no room left with `402 plan-limit`, "Your
   storage is full. Delete something, or move to a plan with more room."; and a day used up with
   `409 conflict`, "That’s all you can upload today. You can upload more tomorrow." A file size or a day at zero refuses
-  everything with "Files can’t be uploaded right now." A workspace that counts against nobody (none of its admins has an
+  everything with "Files can’t be uploaded right now." Anyone but whoever pays (and, on Team, the people licensed on the same
+  team) adds at most `media.others_day_bytes` (2 GiB) a day to that account's storage, guests in its calls
+  `media.guests_day_bytes` (256 MiB) between them, `409 conflict`, "That’s all you can add today to the storage this workspace
+  counts against. You can add more tomorrow."; and nobody else reaches into the last `media.payer_reserve_bytes` (1 GiB) of
+  it, kept for the payer's own notes and recordings: `402 plan-limit`, "This workspace can’t take more files now: the rest of
+  the storage it counts against is kept for notes and recordings." (once it's full, "This workspace can’t take more files:
+  the storage it counts against is full."), never saying whose it is or what's left. Every refusal logs the limit by its name
+  and the sizes. A workspace that counts against nobody (none of its admins has an
   account) takes no files: `409 conflict`, "Files can’t be added until one of this workspace’s admins signs in to Alcove."
   Lowering a limit refuses what comes next and deletes nothing. An account's day is counted in `media_upload_days` as its pieces are kept, and
   a guest's, who has no account, in `media_guest_upload_days`, by a blind index of the person their pass names: either way every
@@ -941,8 +950,8 @@ and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
 - **A tag** lasts until its person has heard, for at most 30 days, and goes before that with its document or their access.
 - **A file in a workspace** stays until someone deletes it or every document that has it is deleted for good, Trash
   included, and an upload nobody finished for a day. A limit going down never deletes one.
-- **`media_upload_days`** and **`media_guest_upload_days`** keep today and yesterday: upkeep deletes anything older. An account's
-  rows also go with the account.
+- **`media_upload_days`**, **`media_guest_upload_days`**, **`media_others_days`** and **`media_guest_payer_days`** keep today and
+  yesterday: upkeep deletes anything older. An account's rows, as payer or as uploader, also go with the account.
 - **`service_limits`** keeps a value until someone changes or deletes it. A value for `media.file_bytes` or `media.workspace_bytes`,
   which are gone, is ignored with a warning.
 - **`plan_accounts` and `ai_meters`** go with the account. A period's AI allowance doesn't carry over: the next period's replaces

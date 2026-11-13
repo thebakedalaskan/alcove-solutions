@@ -2615,8 +2615,9 @@ puts it away.
 ### 16.11 Storage full
 
 An upload refused for storage says "Your storage is full. Pro has 100 GB." with **Get Pro** on Free, or **Make room** (the
-Drive); in someone else's workspace it says the workspace can't take more files. A file over the plan's largest says its
-limit, and offers nothing.
+Drive); in someone else's workspace it says the workspace can't take more files: the storage it counts against is full, or
+the rest of it is kept for notes and recordings. Someone adding to another's storage past what they can add in a day hears
+they can add more tomorrow. A file over the plan's largest says its limit, and offers nothing.
 
 Whoever paid for a workspace leaves it, is taken out or deletes their account: its longest-standing admin with an account
 pays for it now. Settings › Plan says so at the top, by its name, with the day its files start to count against their

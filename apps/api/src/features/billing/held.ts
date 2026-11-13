@@ -9,7 +9,7 @@ import { type Db } from '../../db';
 import { PlanLimitError } from '../../errors';
 import { limitsNow, type LimitName } from '../../limits';
 import type { LogContext } from '../../log';
-import { graceUntil, heldTo, planNow, type InForce } from './plans';
+import { graceUntil, heldTo, isLive, licenseOf, planNow, type InForce } from './plans';
 import { takenOver, usedBytes } from './storage';
 import { poolOf } from './teams';
 
@@ -18,20 +18,21 @@ type Service = Pick<Deps, 'cfg' | 'pool'>;
 /**
  * Where an account's storage stands at `now`: what it's counted as storing (its own, or its team's pool), what its plan
  * gives (`planBytes`), what it's held to now (`heldBytes`: a grace's, if one runs and gives more, with what workspaces
- * whose payment moved to it held then on top while theirs run; null: no limit), and when the soonest grace running ends.
+ * whose payment moved to it held then on top while theirs run; null: no limit), when the soonest grace running ends, and
+ * the team whose pool it is, on Team.
  */
-export interface StorageNow { p: InForce; usedBytes: number; planBytes: number; heldBytes: number | null; graceUntil: number | null }
+export interface StorageNow { p: InForce; usedBytes: number; planBytes: number; heldBytes: number | null; graceUntil: number | null; teamId: string | null }
 export async function storageOf(d: Service, db: Db, ownerId: string, now = Date.now()): Promise<StorageNow> {
   const { a, p, license } = await planNow(d, db, ownerId, now);
   if (p.kind === 'team' && license) {
     const pool = await poolOf(d, db, license.teamId, now);
     const taken = await takenOver(db, { teamId: license.teamId }, now);
-    return { p, usedBytes: pool.usedBytes, planBytes: pool.bytes, heldBytes: pool.heldBytes + taken.bytes, graceUntil: soonest(pool.graceUntil, taken.until) };
+    return { p, usedBytes: pool.usedBytes, planBytes: pool.bytes, heldBytes: pool.heldBytes + taken.bytes, graceUntil: soonest(pool.graceUntil, taken.until), teamId: license.teamId };
   }
   const l = await limitsNow(d, db);
   const taken = await takenOver(db, { ownerId }, now);
   const held = heldTo(a, p, l, now).storageBytes;
-  return { p, usedBytes: await usedBytes(db, ownerId), planBytes: p.storageBytes, heldBytes: held === null ? null : held + taken.bytes, graceUntil: soonest(graceUntil(a, p, l, now), taken.until) };
+  return { p, usedBytes: await usedBytes(db, ownerId), planBytes: p.storageBytes, heldBytes: held === null ? null : held + taken.bytes, graceUntil: soonest(graceUntil(a, p, l, now), taken.until), teamId: null };
 }
 /** The sooner of two ends, either of which may not be running (null). */
 const soonest = (x: number | null, y: number | null): number | null => (x === null ? y : y === null ? x : Math.min(x, y));
@@ -43,12 +44,23 @@ const FILE_LIMIT = { free: 'plan.free.file_bytes', pro: 'plan.pro.file_bytes', t
 /**
  * An account's storage as a check, and a refusal's log line, read it: its plan's storage limit by name (on Team, a license's
  * share of the pool, which is `planBytes`), what it's counted as storing, what it's held to now (null: no limit; past the
- * plan's while a grace runs, `grace`).
+ * plan's while a grace runs, `grace`), and the team whose pool it is, on Team.
  */
-export interface Room { limit: LimitName; usedBytes: number; planBytes: number; heldBytes: number | null; grace: boolean }
+export interface Room { limit: LimitName; usedBytes: number; planBytes: number; heldBytes: number | null; grace: boolean; teamId: string | null }
 export async function roomOf(d: Service, db: Db, ownerId: string): Promise<Room> {
   const s = await storageOf(d, db, ownerId);
-  return { limit: STORAGE_LIMIT[s.p.kind], usedBytes: s.usedBytes, planBytes: s.planBytes, heldBytes: s.heldBytes, grace: s.graceUntil !== null };
+  return { limit: STORAGE_LIMIT[s.p.kind], usedBytes: s.usedBytes, planBytes: s.planBytes, heldBytes: s.heldBytes, grace: s.graceUntil !== null, teamId: s.teamId };
+}
+/**
+ * Whether what `accountId` adds (null: a guest in a call) goes into storage that's theirs: the payer's own, or on Team a
+ * pool they're licensed on too. Anyone else adds to someone else's storage (features/workspaces/media.ts holds that apart).
+ */
+export async function paysInto(db: Db, accountId: string | null, payerId: string, room: Room): Promise<boolean> {
+  if (accountId === null) return false;
+  if (accountId === payerId) return true;
+  if (room.teamId === null) return false;
+  const license = await licenseOf(db, accountId);
+  return license !== null && license.teamId === room.teamId && isLive(license, Date.now());
 }
 /** Whether `adding` more bytes keep a room within what it's held to, with `kept` of it still free. */
 export const fits = (r: Room, adding: number, kept = 0): boolean => r.heldBytes === null || r.usedBytes + adding + kept <= r.heldBytes;

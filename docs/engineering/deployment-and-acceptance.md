@@ -234,6 +234,10 @@ everywhere within a minute.
 | `team.invite_seconds` | 1 d | 1 m | 30 d | How long a link to join a team works, once. |
 | `workspaces.max_made` | 1,000 | 1 | 100,000 | The most workspaces one account makes, to stop one from making them without end. |
 | `media.account_day_bytes` | 20 GiB | 0 | 200 GiB | What one person uploads in a day (UTC), in every workspace. |
+| `media.others_day_bytes` | 2 GiB | 0 | 200 GiB | What someone signed in adds in a day (UTC) to another account's storage, through the workspaces it pays for. Someone licensed on the same team adds to its pool as to their own. |
+| `media.guests_day_bytes` | 256 MiB | 0 | 200 GiB | What guests in calls add between them in a day (UTC) to the storage of the account whose workspaces they work in. |
+| `media.payer_reserve_bytes` | 1 GiB | 0 | 1 TiB | What's kept of an account's storage for its own notes and recordings: uploads by anyone else stop once its room would fall below this. |
+| `workspaces.payer_grace_seconds` | 15 d | 0 | 90 d | When payment for a workspace moves to one of its admins because whoever paid for it left: how long until the files it held then count against their storage. |
 
 Zero is a value: none. A file size or a day's uploads at 0 stops every upload, with "Files can’t be uploaded right now."; storage
 at 0 says storage is full; notes at 0 brings none. Every plan's file limit has the same ceiling, 512 MiB

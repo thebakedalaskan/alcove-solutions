@@ -5,7 +5,7 @@
  * is refused before any of it is sent, in the server's own words with its limit, and offers nothing: Pro's largest file is
  * Free's today.
  */
-import { errorCode, type Plan } from '@alcove/api';
+import { errorCode, errorMessage, type Plan } from '@alcove/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useCallback } from 'react';
@@ -38,7 +38,8 @@ const yours = (plan: Plan, bytes: number): boolean => plan.over.storage || plan.
 /**
  * What a storage refusal says, from your plan as it is now and the offers: on Free, "Your storage is full. Pro has 100 GB."
  * with Get Pro; on a paid plan, "Your storage is full." with Make room, which opens the Drive (in a new tab from a call, so the
- * call goes on); someone else's, that the workspace can't take more, with nothing to buy. `signedIn`: a guest in a call has
+ * call goes on); someone else's, in the server's words, that the workspace can't take more (its storage is full, or what's
+ * left is kept for its payer's notes and recordings), with nothing to buy. `signedIn`: a guest in a call has
  * no plan, and hears the server's words. The plan is read only when an upload is refused, never kept up to date meanwhile.
  */
 export function useStorageRefusal(signedIn: boolean, from: 'page' | 'call'): StorageRefusal {
@@ -59,7 +60,8 @@ export function useStorageRefusal(signedIn: boolean, from: 'page' | 'call'): Sto
       slog.info('the plan wasn’t read for a storage refusal; the server’s words stand', { err: e });
       return null;
     }
-    if (!yours(plan, bytes)) return { text: 'This workspace can’t take more files: the storage it counts against is full.', action: null };
+    // Someone else's: the server's words say which (it's full, or what's left is kept for its payer's notes), never whose.
+    if (!yours(plan, bytes)) return { text: errorMessage(error), action: null };
     if (plan.kind === 'free' && pro !== null && pro > plan.storage.limitBytes) {
       return { text: `Your storage is full. Pro has ${roomLabel(pro)}.`, action: { label: 'Get Pro', onClick: () => open({ plan: 'pro' }, from === 'call' ? 'call' : 'door') } };
     }

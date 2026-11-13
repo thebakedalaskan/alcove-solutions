@@ -113,20 +113,6 @@ describe('Free', () => {
     expect((await ann.api.workspaces.list()).length).toBe(4);
   });
 
-  it('takes files up to its plan’s size, while there’s room, counting a workspace’s files against whoever made it', async () => {
-    const ann = await account();
-    const bob = await account();
-    const ours = await workspace(ann, 'Ours', [bob]);
-    await h.setLimit('plan.free.file_bytes', MiB);
-    expect(await upload(bob, ours, MiB + 1)).toBe('invalid: This file is bigger than 1 MiB, the most a file can be here.');
-    await h.setLimit('plan.free.storage_bytes', 2 * MiB);
-    expect(await upload(bob, ours, MiB)).toBe('succeeded');
-    // Bob added it, but it's Ann's workspace: it's Ann's storage it takes.
-    expect((await ann.api.plans.plan()).storage.usedBytes).toBeGreaterThan(MiB);
-    expect((await bob.api.plans.plan()).storage.usedBytes).toBe(0);
-    expect(await upload(bob, ours, MiB)).toBe(FULL);
-  });
-
   it('counts call recordings against the organizer, and stops notes for everyone when they fill it', async () => {
     const org = await account();
     const meeting = await org.api.meetings.create({ title: 'Review', startsAt: new Date(Date.now() + 3_600_000).toISOString(), durationMinutes: 30, guests: [], notes: 'on', choices: DEFAULT_NOTES_CHOICES });
@@ -162,7 +148,8 @@ describe('accounts from before plans', () => {
     await h.pool.query('UPDATE plan_accounts SET due_at = now() WHERE owner_id = $1', [ann.session.ownerId]);
     await maintain(h.deps);
     expect(await ann.api.plans.plan()).toMatchObject({ grace: null, over: { storage: true } });
-    expect(await upload(bob, ours, 1024)).toBe(FULL);
+    // Bob hears the workspace can't take more; Ann, whose storage it is, that hers is full.
+    expect(await upload(bob, ours, 1024)).toBe('plan-limit: This workspace can’t take more files: the storage it counts against is full.');
     expect(await upload(ann, ours, 1024)).toBe(FULL);
     expect(await addDoc(ann, ours.id)).toBe('succeeded');
   });

@@ -1,9 +1,9 @@
 /**
  * Storage (docs: Plans and usage › Storage), end to end: the real API over HTTP via @alcove/api-http, real Postgres, the
  * object store and, for calls, LiveKit. What refuses more once an account's storage is full, and what each refusal logs;
- * and who pays for a workspace once whoever did isn't in it any more.
+ * who pays for a workspace once whoever did isn't in it any more; and what others can add to whoever pays.
  */
-import { AlcoveApiError, type AlcoveApi } from '@alcove/api';
+import { AlcoveApiError, type AlcoveApi, type CallSession, type CallState } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -59,6 +59,36 @@ const storedBy = async (id: string) => Number((await h.pool.query<{ bytes: strin
 /** The API's log line that said `msg` since `from`, parsed: a refusal's line is its words, with its context beside them. */
 const LogLine = z.object({ msg: z.string() }).passthrough();
 const logged = (from: number, msg: string) => h.logs.slice(from).flatMap((l) => { const r = LogLine.safeParse(JSON.parse(l)); return r.success && r.data.msg === msg ? [r.data] : []; });
+
+async function until(ok: () => boolean | Promise<boolean>, what: string, ms = 15_000): Promise<void> {
+  const by = Date.now() + ms;
+  while (!(await ok())) {
+    if (Date.now() > by) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
+async function settle(call: CallSession, pred: (s: CallState) => boolean): Promise<CallState> {
+  for (let i = 0; i < 200 && !pred(call.getSnapshot()); i++) { await call.refresh(); await new Promise((r) => setTimeout(r, 30)); }
+  return call.getSnapshot();
+}
+const inGroup = (call: CallSession) => until(() => call.crypto.getSnapshot().status === 'in' && call.crypto.getSnapshot().media !== null, `${call.ticket.role} in the call’s group`);
+/** A call `org` is in, notes off, and `names` joining by its link as guests and let in, each with their seat. */
+async function callWith(org: Account, names: string[]) {
+  const { code } = await org.api.calls.startNow({ notes: 'off' });
+  const host = await org.api.calls.join(code, { mic: false, cam: false });
+  await inGroup(host);
+  const guests: { api: AlcoveApi; call: CallSession; pass: string; seat: string }[] = [];
+  for (const name of names) {
+    const b = h.browser();
+    const call = await b.api.calls.join(code, { mic: false, cam: false, name });
+    await settle(host, (s) => s.waiting.some((w) => w.id === call.ticket.identity));
+    await host.admit(call.ticket.identity);
+    await inGroup(call);
+    const seat = (await settle(host, (s) => s.participants.some((p) => p.id === call.ticket.identity))).participants.find((p) => p.id === call.ticket.identity)?.seat ?? '';
+    guests.push({ api: b.api, call, pass: call.ticket.pass, seat });
+  }
+  return { host, guests };
+}
 
 describe('a refusal for room', () => {
   it('logs the plan’s limit by its name and the sizes: a file too big, and storage that’s full', async () => {
@@ -179,5 +209,91 @@ describe('who pays for a workspace', () => {
     await maintain(h.deps);
     expect(await upload(cy.api, orphan, 1024)).toBe('succeeded');
     expect((await storage(admin)).usedBytes).toBe(await storedBy(orphan.id));
+  });
+});
+
+describe('what others can add', () => {
+  const KEPT = 'plan-limit: This workspace can’t take more files now: the rest of the storage it counts against is kept for notes and recordings.';
+  const OTHERS_FULL = 'plan-limit: This workspace can’t take more files: the storage it counts against is full.';
+  const OTHERS_DAY = 'conflict: That’s all you can add today to the storage this workspace counts against. You can add more tomorrow.';
+  const today = () => new Date().toISOString().slice(0, 10);
+
+  it('counts what anyone adds against whoever pays, and keeps the last of the payer’s room for their own notes and recordings', async () => {
+    const ann = await account();
+    const bob = await account();
+    const ours = await workspace(ann, 'Ours', [bob]);
+    // The file size is the payer's plan's.
+    await h.setLimit('plan.free.file_bytes', MiB);
+    expect(await upload(bob.api, ours, MiB + 1)).toBe('invalid: This file is bigger than 1 MiB, the most a file can be here.');
+    await h.resetLimits();
+    await h.setLimit('plan.free.storage_bytes', 4 * MiB);
+    await h.setLimit('media.payer_reserve_bytes', 2 * MiB);
+    // Bob adds what leaves Ann her 2 MiB: Ann's to pay for, not his.
+    expect(await upload(bob.api, ours, MiB)).toBe('succeeded');
+    expect((await storage(ann)).usedBytes).toBeGreaterThan(MiB);
+    expect((await storage(bob)).usedBytes).toBe(0);
+    // Another MiB would reach into the room kept for Ann's notes and recordings: refused, saying nobody's amounts or name.
+    const from = h.logs.length;
+    expect(await upload(bob.api, ours, MiB)).toBe(KEPT);
+    expect(logged(from, KEPT.slice('plan-limit: '.length))).toEqual([expect.objectContaining({
+      reason: 'storage', why: 'kept for notes', limit: 'plan.free.storage_bytes', limitBytes: 4 * MiB, reserveBytes: 2 * MiB, addingBytes: MiB, ownerId: ann.session.ownerId, theirs: false
+    })]);
+    // Ann's own upload into it works: the room is hers.
+    expect(await upload(ann.api, ours, MiB + MiB / 2)).toBe('succeeded');
+    // Full: Bob hears the workspace can't take more, and Ann that her storage is full.
+    expect(await upload(bob.api, ours, 2 * MiB)).toBe(OTHERS_FULL);
+    expect(await upload(ann.api, ours, 2 * MiB)).toBe(FULL);
+  });
+
+  it('holds someone signed in to what they add to another’s storage in a day, and guests to much less between them', async () => {
+    const org = await account();
+    const bob = await account();
+    const ours = await workspace(org, 'Ours', [bob]);
+    await h.setLimit('media.others_day_bytes', 3 * MiB);
+    await h.setLimit('media.guests_day_bytes', 2 * MiB);
+    expect(await upload(bob.api, ours, 2 * MiB)).toBe('succeeded');
+    expect(await upload(bob.api, ours, 2 * MiB)).toBe(OTHERS_DAY);
+    expect(await upload(bob.api, ours, MiB)).toBe('succeeded');
+    // In a workspace he pays for, nothing of the kind.
+    const his = await workspace(bob, 'His');
+    expect(await upload(bob.api, his, 2 * MiB)).toBe('succeeded');
+    // Guests in Org's call add 2 MiB between them, however many there are.
+    const { host, guests } = await callWith(org, ['Sam Guest', 'Jo Guest']);
+    const [sam, jo] = guests;
+    if (!sam || !jo) throw new Error('nobody joined');
+    await org.api.workspaces.share.set(ours.id, ours.doc, [{ seat: sam.seat }, { seat: jo.seat }], 'edit', { pass: host.ticket.pass });
+    expect(await upload(sam.api, ours, MiB, sam.pass)).toBe('succeeded');
+    expect(await upload(jo.api, ours, MiB + MiB / 2, jo.pass)).toBe(OTHERS_DAY);
+    expect(await upload(jo.api, ours, MiB / 2, jo.pass)).toBe('succeeded');
+    // The organizer is held to neither.
+    expect(await upload(org.api, ours, 4 * MiB)).toBe('succeeded');
+    // Counted by the payer and the account, or the payer alone for guests: IDs, days and sizes, nothing that names a guest.
+    const others = await h.pool.query<{ day: string; bytes: string }>("SELECT to_char(day, 'YYYY-MM-DD') AS day, bytes::text AS bytes FROM media_others_days WHERE payer_owner_id = $1 AND owner_id = $2", [org.session.ownerId, bob.session.ownerId]);
+    expect(others.rows).toEqual([{ day: today(), bytes: String(3 * MiB) }]);
+    const guestsAdded = await h.pool.query<{ day: string; bytes: string }>("SELECT to_char(day, 'YYYY-MM-DD') AS day, bytes::text AS bytes FROM media_guest_payer_days WHERE payer_owner_id = $1", [org.session.ownerId]);
+    expect(guestsAdded.rows).toEqual([{ day: today(), bytes: String(MiB + MiB / 2) }]);
+    // Upkeep keeps today and yesterday, and nothing older.
+    await h.pool.query("INSERT INTO media_guest_payer_days (payer_owner_id, day, bytes) VALUES ($1, current_date - 2, 1)", [org.session.ownerId]);
+    await maintain(h.deps);
+    expect((await h.pool.query('SELECT count(*)::int AS n FROM media_guest_payer_days WHERE payer_owner_id = $1', [org.session.ownerId])).rows[0]).toEqual({ n: 1 });
+  });
+
+  it('lets people licensed on the payer’s team add to its pool as to their own, and nobody else', async () => {
+    const ann = await account();
+    const bob = await account();
+    const cy = await account();
+    await ann.api.teams.create('Vandelay Industries');
+    // Money for two licenses, sent as a person sends it: a top-up the fake 1Click settles in full.
+    const t = await ann.api.plans.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 2 * 40_000_000);
+    h.oneclick.set(t.address ?? '', 'SUCCESS', { depositedAmount: String(2 * 40_000_000), amountOut: String(2 * 40_000_000), intentHashes: [`licenses-${t.id}`] });
+    await ann.api.plans.topUp(t.id);
+    await ann.api.teams.buyLicenses(2, 40_000_000);
+    await ann.api.auth.visit();
+    const link = (await ann.api.teams.invite()).link;
+    await bob.api.teams.join(link.slice(link.indexOf('#') + 1));
+    const ours = await workspace(ann, 'Ours', [bob, cy]);
+    await h.setLimit('media.others_day_bytes', MiB);
+    expect(await upload(bob.api, ours, 2 * MiB)).toBe('succeeded');
+    expect(await upload(cy.api, ours, 2 * MiB)).toBe(OTHERS_DAY);
   });
 });

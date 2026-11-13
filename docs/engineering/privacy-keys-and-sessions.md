@@ -770,7 +770,9 @@ document they were never shown. A document they can't open refuses in the same w
 refusal names neither. What a workspace keeps and
 what each person uploads in a day are limited, the same for everyone: an account's day is counted in `media_upload_days` and a
 guest's in `media_guest_upload_days`, under the `upload-guest` blind index of the person their pass names, a number a day
-([Data and storage › Media](data-and-storage.md#media)). `list` shows a reader what they can reach, and through which documents, and never a document they can't open.
+([Data and storage › Media](data-and-storage.md#media)). What someone adds to another account's storage is counted too, a
+number a day: by the payer and the uploader's account in `media_others_days`, and by the payer alone for guests in
+`media_guest_payer_days`, so nothing there names a guest. `list` shows a reader what they can reach, and through which documents, and never a document they can't open.
 
 A picture or a player can't send a header and a guest has no cookie, so reading a file takes a URL with a token in it. The token
 is signed, as a call pass is, and lasts 12 hours. It says who's asking (an account's ID, a seat in a call, or both) and what

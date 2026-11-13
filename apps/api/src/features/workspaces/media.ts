@@ -19,7 +19,7 @@ import { z } from 'zod';
 import type { Deps, Owner } from '../../context';
 import { b64u, blindIndex, concat, equalBytes, id128, openBinary, openJson, sealBinary, sealJson, sha, stateKey, toJson, type RecordHeader } from '../../crypto';
 import { bigintText, bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
-import { ConflictError, ForbiddenError, IntegrityError, InternalError, NotFoundError, UnavailableError, invalid, notFound, toAppError } from '../../errors';
+import { ConflictError, ForbiddenError, IntegrityError, InternalError, NotFoundError, PlanLimitError, UnavailableError, invalid, notFound, toAppError } from '../../errors';
 import { limitsNow, shown, type LimitName } from '../../limits';
 import { currentLogContext, log, withLogContext } from '../../log';
 import { masterKey } from '../../owners';
@@ -27,7 +27,7 @@ import { issueMediaToken, readMediaToken, type MediaToken } from '../../mediaTok
 import { deleteQueued, queueDelete } from '../recordings/audio';
 import { jpegSize } from '../recordings/screens';
 import { ID128, limitKey, requireDocument, roleOf, whoNamed, workspaceFor, type Reader, type Who, type Workspace } from './access';
-import { fileLimitOf, requireRoom, roomOf, type Room } from '../billing/held';
+import { fileLimitOf, fits, paysInto, roomContext, roomOf, type Room } from '../billing/held';
 import { payerOf } from '../billing/storage';
 
 const mlog = log.child({ component: 'media' });
@@ -243,16 +243,21 @@ const uploaderOf = (d: Deps, r: Reader): Uploader =>
   (r.account ? { account: r.account.owner.ownerId } : { guest: blindIndex(masterKey(d), 'upload-guest', limitKey(r)), callId: r.seat?.callId });
 /**
  * What a workspace takes (docs: Plans and usage › Storage): files as big as the plan of whoever it counts against has,
- * while their storage has room, and what one person uploads in a day, the same for everyone. A workspace nobody pays for
- * (none of its admins has an account, or its payer just deleted theirs) takes no files: they'd count against no storage at
- * all. Upkeep settles who pays within minutes of an admin signing in (billing/storage.ts `settlePayers`).
+ * while their storage has room, and what one person uploads in a day, the same for everyone. Anyone but whoever pays (and
+ * their team, on Team, whose pool it is) adds no more than `others` a day to that storage, guests in calls `guests` between
+ * them, and never into the last `reserve` of it, which is kept for the payer's own notes and recordings. A workspace nobody
+ * pays for (none of its admins has an account, or its payer just deleted theirs) takes no files: they'd count against no
+ * storage at all. Upkeep settles who pays within minutes of an admin signing in (billing/storage.ts `settlePayers`).
  */
-interface Allowed { file: { limit: LimitName; bytes: number }; day: number; payer: string }
+interface Allowed { file: { limit: LimitName; bytes: number }; day: number; payer: string; others: number; guests: number; reserve: number }
 async function allowedIn(d: Deps, db: Db, w: Place): Promise<Allowed> {
   const limits = await limitsNow(d, db);
   const payer = await payerOf(db, w.owner.ownerId);
   if (!payer) throw new ConflictError('Files can’t be added until one of this workspace’s admins signs in to Alcove.', { context: { workspaceId: w.workspaceId, why: 'no payer' } });
-  return { file: await fileLimitOf(d, db, payer), day: limits.get('media.account_day_bytes'), payer };
+  return {
+    file: await fileLimitOf(d, db, payer), day: limits.get('media.account_day_bytes'), payer,
+    others: limits.get('media.others_day_bytes'), guests: limits.get('media.guests_day_bytes'), reserve: limits.get('media.payer_reserve_bytes')
+  };
 }
 
 /** Today, as uploads are counted: in UTC. */
@@ -277,19 +282,38 @@ const NO_UPLOADS = 'Files can’t be uploaded right now.';
 /**
  * Refuses what would take a file past its plan's size, its payer's storage past their plan's, or someone's day past what's
  * allowed, and anything at all in a workspace that's read-only, before anything of it is read: at the start, with the whole
- * file, and with each piece, so uploads going at once pass a limit by the pieces on their way and no more. Each says which,
- * and a file says how big one can be, because only the server knows. Each logs the limit by its name and the sizes.
+ * file, and with each piece, so uploads going at once pass a limit by the pieces on their way and no more. Someone other
+ * than whoever pays is also held to what they can add to that storage today, and kept out of its last `reserve`, which is
+ * for the payer's own notes and recordings; they hear that the workspace can't take more, never whose storage it is or
+ * how much is left. Each says which, and a file says how big one can be, because only the server knows. Each logs the limit
+ * by its name and the sizes. Says whether the upload is someone else's, to count it towards what they added today.
  */
-async function withinLimits(d: Deps, db: Db, w: Place, u: Uploader, allowed: Allowed, size: number, adding: number): Promise<void> {
+async function withinLimits(d: Deps, db: Db, w: Place, u: Uploader, allowed: Allowed, size: number, adding: number): Promise<boolean> {
   const context = { workspaceId: w.workspaceId, sizeBytes: size, addingBytes: adding };
   if (size > allowed.file.bytes) {
     throw invalid(allowed.file.bytes ? `This file is bigger than ${shown(allowed.file.limit, allowed.file.bytes)}, the most a file can be here.` : NO_UPLOADS, { ...context, limit: allowed.file.limit, limitBytes: allowed.file.bytes });
   }
-  await requireRoom(d, db, allowed.payer, adding, context);
+  const room = await roomOf(d, db, allowed.payer);
+  const theirs = await paysInto(db, 'account' in u ? u.account : null, allowed.payer, room);
+  const refused = { ...context, ...roomContext(room, adding), ownerId: allowed.payer, theirs };
+  if (theirs && !fits(room, adding)) throw new PlanLimitError('Your storage is full. Delete something, or move to a plan with more room.', 'storage', { context: refused });
+  if (!theirs) {
+    if (!fits(room, adding)) throw new PlanLimitError('This workspace can’t take more files: the storage it counts against is full.', 'storage', { context: refused });
+    if (!fits(room, adding, allowed.reserve)) {
+      throw new PlanLimitError('This workspace can’t take more files now: the rest of the storage it counts against is kept for notes and recordings.', 'storage', { context: { ...refused, reserveBytes: allowed.reserve, why: 'kept for notes' } });
+    }
+    const most = 'guest' in u ? allowed.guests : allowed.others;
+    const added = await addedToday(db, allowed.payer, u);
+    if (added + adding > most) {
+      throw new ConflictError(most ? 'That’s all you can add today to the storage this workspace counts against. You can add more tomorrow.' : NO_UPLOADS,
+        { context: { ...context, limit: 'guest' in u ? 'media.guests_day_bytes' : 'media.others_day_bytes', addedBytes: added, limitBytes: most, ownerId: allowed.payer } });
+    }
+  }
   const day = await uploadedToday(db, u);
   if (day + adding > allowed.day) {
     throw new ConflictError(allowed.day ? 'That’s all you can upload today. You can upload more tomorrow.' : NO_UPLOADS, { context: { ...context, limit: 'media.account_day_bytes', uploadedBytes: day, limitBytes: allowed.day } });
   }
+  return !theirs;
 }
 /**
  * Says so, once, when a piece takes the storage of whoever the workspace counts against, or someone's day, past 80% of
@@ -304,10 +328,31 @@ function nearTheLimits(w: Place, u: Uploader, allowed: Allowed, room: Room, adde
     mlog.warn('someone is past 80% of what they can upload today', { ...('guest' in u ? { callId: u.callId ?? null } : { ownerId: u.account }), uploadedBytes: day.after, limitBytes: allowed.day });
   }
 }
-/** Forgets what accounts and guests uploaded before yesterday. Returns how many rows went. */
+/**
+ * What someone other than whoever pays has added to the payer's storage today: a signed-in person's own, and every guest's
+ * together, since a guest is someone new each time they join and only the payer stays the same.
+ */
+async function addedToday(db: Db, payer: string, u: Uploader): Promise<number> {
+  const Day = z.object({ bytes: bigintText });
+  if ('guest' in u) return (await maybeOne(db, Day, 'SELECT bytes FROM media_guest_payer_days WHERE payer_owner_id = $1 AND day = $2', [payer, today()]))?.bytes ?? 0;
+  return (await maybeOne(db, Day, 'SELECT bytes FROM media_others_days WHERE payer_owner_id = $1 AND owner_id = $2 AND day = $3', [payer, u.account, today()]))?.bytes ?? 0;
+}
+/** Counts a kept piece towards what someone other than the payer added to their storage today, in the piece's transaction. */
+async function countAdded(c: Db, payer: string, u: Uploader, bytes: number): Promise<void> {
+  if ('guest' in u) {
+    await exec(c, `INSERT INTO media_guest_payer_days (payer_owner_id, day, bytes) VALUES ($1, $2, $3)
+      ON CONFLICT (payer_owner_id, day) DO UPDATE SET bytes = media_guest_payer_days.bytes + excluded.bytes`, [payer, today(), bytes]);
+  } else {
+    await exec(c, `INSERT INTO media_others_days (payer_owner_id, owner_id, day, bytes) VALUES ($1, $2, $3, $4)
+      ON CONFLICT (payer_owner_id, owner_id, day) DO UPDATE SET bytes = media_others_days.bytes + excluded.bytes`, [payer, u.account, today(), bytes]);
+  }
+}
+/** Forgets what accounts and guests uploaded, and added to others' storage, before yesterday. Returns how many rows went. */
 export async function pruneUploadDays(d: Pick<Deps, 'pool'>): Promise<number> {
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-  return await exec(d.pool, 'DELETE FROM media_upload_days WHERE day < $1', [yesterday]) + await exec(d.pool, 'DELETE FROM media_guest_upload_days WHERE day < $1', [yesterday]);
+  let gone = 0;
+  for (const table of ['media_upload_days', 'media_guest_upload_days', 'media_others_days', 'media_guest_payer_days']) gone += await exec(d.pool, `DELETE FROM ${table} WHERE day < $1`, [yesterday]);
+  return gone;
 }
 
 /* ---------- putting a file in a document ---------- */
@@ -359,7 +404,7 @@ export async function storePiece(d: Deps, who: Reader, workspaceId: string, docu
   if (body.declared > length) throw invalid('That piece is the wrong size.', { ...where, bytes: body.declared, length });
   const u = uploaderOf(d, who);
   const allowed = await allowedIn(d, d.pool, w);
-  await withinLimits(d, d.pool, w, u, allowed, info.size, length);
+  const someoneElse = await withinLimits(d, d.pool, w, u, allowed, info.size, length);
 
   // Counted from here: a body is 4 MiB the moment it's read, whether or not anything has got to it yet.
   const arrival = await arriving.enter(askerOf(who));
@@ -370,9 +415,11 @@ export async function storePiece(d: Deps, who: Reader, workspaceId: string, docu
     let day: number | undefined;
     try {
       day = await tx(d.pool, async (c) => {
-        // The account's row before the workspace's, the order deleting an account takes them in, so the two can't wait on
-        // each other: counting the piece towards its day below takes a lock on that row too.
-        if ('account' in u) await exec(c, 'SELECT 1 FROM owners WHERE owner_id = $1 FOR KEY SHARE', [u.account]);
+        // The accounts' rows before the workspace's, the order deleting an account takes them in, so the two can't wait on
+        // each other: counting the piece towards its day, and towards what someone else added to the payer's storage,
+        // below takes a lock on those rows too.
+        const accounts = [...('account' in u ? [u.account] : []), ...(someoneElse ? [allowed.payer] : [])];
+        await exec(c, 'SELECT 1 FROM owners WHERE owner_id = ANY($1::text[]) ORDER BY owner_id FOR KEY SHARE', [accounts]);
         const held = await workspaceFor(d, who, workspaceId, c, 'hold');
         requireDocument(who, held, documentId, 'edit');
         if (!(await fileIn(held, c, documentId, mediaId, true))) throw noFile(held, documentId, mediaId);
@@ -380,7 +427,9 @@ export async function storePiece(d: Deps, who: Reader, workspaceId: string, docu
         if (n !== 1) return undefined;
         await exec(c, 'UPDATE workspace_media SET bytes = bytes + $3 WHERE owner_id = $1 AND media_id = $2', [held.owner.ownerId, mediaId, sealed]);
         await exec(c, 'UPDATE owners SET stored_bytes = stored_bytes + $2, version = version + 1 WHERE owner_id = $1', [held.owner.ownerId, sealed]);
-        // What they sent counts towards their day, with the piece, so a piece that isn't kept isn't counted.
+        // What they sent counts towards their day, and towards what they added to someone else's storage, with the piece,
+        // so a piece that isn't kept isn't counted.
+        if (someoneElse) await countAdded(c, allowed.payer, u, bytes.length);
         return countDay(c, u, bytes.length);
       });
     } catch (e) {

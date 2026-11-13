@@ -122,7 +122,11 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   than one purchase buys) is an ordinary refusal at info, with the owner, what it buys and `why`. Its words say what it
   costs, never the balance, since a refusal's message is its log line's.
 - An upload refused by a storage limit is an ordinary refusal at info: `402 plan-limit` for an account's storage that's full,
-  `409 conflict` for a day used up, `400 invalid` for a file too big, with the limit's name, the sizes and the limit in its context.
+  or, for someone other than whoever pays, for the room kept for the payer's notes (`why: 'kept for notes'`, with
+  `reserveBytes`); `409 conflict` for a day used up, theirs or what they can add to someone else's storage
+  (`media.others_day_bytes`, `media.guests_day_bytes`); `400 invalid` for a file too big, with the limit's name
+  (`plan.free.file_bytes`, `plan.free.storage_bytes`, …), the sizes (`usedBytes`, `addingBytes`) and the limit (`limitBytes`)
+  in its context. A recording that can't start for storage logs the same, for the room it would need.
   A piece that takes an account past 80% of its storage logs `an account is past 80% of its storage` at warn, and one that takes someone's day past 80% logs `someone is past
   80% of what they can upload today`, once each time it's crossed, with IDs and sizes. Every instance logs `service limit
   changed` at info when it reads a new value, with `limit`, `old` and `new`, and `service limit ignored` or `service limit

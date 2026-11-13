@@ -173,6 +173,27 @@ opening one a teammate pays for would spend that teammate's allowance.
   account can make at most `workspaces.max_made` (1,000), an abuse guard that a plan doesn't change.
 - An account warns, once, at 80% of its storage (logged with IDs and sizes).
 
+### What others can add
+
+Files anyone adds to a workspace count against its payer, so what others add is held apart from what the payer adds
+(`features/workspaces/media.ts › withinLimits`). "Others" is everyone but the payer and, on Team, the people licensed on the
+same team, whose pool it is as much as theirs:
+
+- **A day's allowance.** Someone signed in adds at most `media.others_day_bytes` (2 GiB) a day (UTC) to one account's
+  storage, through all the workspaces it pays for: four of Free's largest files, more than a person adds to someone else's
+  storage on an ordinary day, and five days of it to fill Free. Guests in its calls add at most `media.guests_day_bytes`
+  (256 MiB) a day between them: a guest is someone new each time they join, so only the payer stays the same to count
+  against, and 256 MiB is still about 80 photos (a guest's file can be no bigger, then). Past it: `409 conflict`, "That’s all you can add today to the storage this
+  workspace counts against. You can add more tomorrow." Counted in `media_others_days` (by the payer and the uploader's
+  account) and `media_guest_payer_days` (by the payer), sizes and IDs only; upkeep keeps today and yesterday.
+- **Room kept for notes.** Others' uploads stop once the payer's room would drop below `media.payer_reserve_bytes`
+  (1 GiB), which only the payer's own uploads, notes and recordings use: `402 plan-limit`, "This workspace can’t take more
+  files now: the rest of the storage it counts against is kept for notes and recordings." (and once it's full, "This
+  workspace can’t take more files: the storage it counts against is full."). 1 GiB is about five hours of a call with a
+  screen shared all through (audio at 32 kbps, a shared screen's video at about 400 kbps: some 200 MB an hour) or seventy
+  of audio alone, and a tenth of Free's storage, so nobody else's files can stop a payer's notes.
+- The words never say whose storage it is or what's left. The log line has the limit's name, the sizes and the reserve.
+
 ### Over the limit: the grace
 
 An account over its plan's storage gets `plan.grace_seconds` (15 days) with everything working as it did: when Pro ends
