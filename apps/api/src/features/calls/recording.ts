@@ -87,13 +87,13 @@ export async function limitReached(o: Owner, callId: string, what: 'warn' | 'sto
     if (row.state !== 'live') return null;
     const limit = state.notes.limit;
     if (what === 'warn') {
-      if (limit.warnedAt !== null || limit.stoppedAt !== null) return null;
+      if (limit.warnedAt !== null || limit.stopped !== null) return null;
       await save(o, c, callId, { ...state, notes: { ...state.notes, limit: { ...limit, warnedAt: Date.now() } } });
       return row.room_name;
     }
-    if (limit.stoppedAt !== null) return null;
+    if (limit.stopped !== null) return null;
     const off = state.notes.status === 'off' ? state : await stopNotes(o, c, state, tenthsIn(row.started_at), 'off');
-    await save(o, c, callId, { ...off, notes: { ...off.notes, limit: { ...limit, stoppedAt: Date.now(), reason } } });
+    await save(o, c, callId, { ...off, notes: { ...off.notes, limit: { ...limit, stopped: { at: Date.now(), reason } } } });
     return row.room_name;
   });
   if (told === null) return;

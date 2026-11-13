@@ -255,7 +255,7 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
       if (meeting.manifest.notes === 'on') {
         // The organizer's notes or storage have run out: the call goes on, and everyone sees why there are no notes.
         const blocked = await notesBlocked(o, c, o.ownerId);
-        if (blocked) s = { ...s, notes: { ...s.notes, limit: { ...NO_LIMIT, stoppedAt: Date.now(), reason: blocked } } };
+        if (blocked) s = { ...s, notes: { ...s.notes, limit: { ...NO_LIMIT, stopped: { at: Date.now(), reason: blocked } } } };
         else {
           s = await startNotes(o, c, s, meeting, 0, 'schedule');
           s = notice(s, 'Notes are on. Everyone here can see that.');
