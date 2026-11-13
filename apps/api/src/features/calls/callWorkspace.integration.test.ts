@@ -1955,6 +1955,7 @@ describe('playing a video together', () => {
     const jamie = await guest(host, c);
     const t0 = Date.now();
     await p.startPlaying(film, media, 42_000);
+    const t1 = Date.now();
     const mine = p.getSnapshot().workspace.play;
     expect(mine).toMatchObject({ mediaId: media, documentId: film, by: { name: priya.name }, playing: true, positionMs: 42_000, mine: true, canControl: true });
     expect(mine?.atMs).toBeGreaterThanOrEqual(t0 - 2000);
@@ -1963,13 +1964,16 @@ describe('playing a video together', () => {
     expect((await space(t)).play).toMatchObject({ mediaId: media, mine: false, canControl: false });
     expect((await space(host)).play).toMatchObject({ canControl: true });
 
-    // Someone who comes late lands at the same moment: the server's clock says so, whatever theirs says.
+    // Someone who comes late lands at the same moment: the server's clock says so, whatever theirs says. That clock is this
+    // process's, so where they land is bounded by when the play was started and when they read, however long each took.
     await rest(400);
+    const r0 = Date.now();
     const late = await read(t);
+    const r1 = Date.now();
     const at = late.workspace.play;
     if (!at) throw new Error('nothing playing');
-    expect(playPosition(at)).toBeGreaterThanOrEqual(42_300);
-    expect(playPosition(at)).toBeLessThan(45_000);
+    expect(playPosition(at)).toBeGreaterThanOrEqual(42_000 + (r0 - t1));
+    expect(playPosition(at)).toBeLessThanOrEqual(42_000 + (r1 - t0));
     expect(playPosition(at, 1000)).toBe(playPosition(at) + 1000);
 
     // Only whoever controls it.

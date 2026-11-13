@@ -549,13 +549,16 @@ describe('running out', () => {
     const org = await account(unique('organizer'));
     const { host } = await call(org);
     await host.appendAudio(piece('again', 0));
-    await host.transcribe(speech('We agreed to ship on Monday.', 0), host.ticket.identity);
+    // Words of this call's own: other tests' calls end meanwhile (upkeep, or their host's grace running out), and their notes
+    // are written in the background, to the same stand-in model.
+    const said = 'We agreed to ship the reprint on Monday.';
+    await host.transcribe(speech(said, 0), host.ticket.identity);
     await settle(host, (s) => s.capture.stopped !== null);
     const ended = await host.leave();
     const noteId = ended?.pendingNoteId ?? '';
     await written(org.api, noteId);
     const was = await org.api.notes.get(noteId);
-    expect(was.decisions.map((d) => d.text)).toEqual(['We agreed to ship on Monday.']);
+    expect(was.decisions.map((d) => d.text)).toEqual([said]);
     const spent = (await meter(org)).spentNano;
     const sent = h.near.prompts.length;
     // Writing them again is refused like anything else: the job ends at once, with nothing sent or charged and nothing retried.
@@ -564,7 +567,7 @@ describe('running out', () => {
     const after = await org.api.notes.get(noteId);
     expect(after).toMatchObject({ writingAgain: false, summary: was.summary, writtenAt: was.writtenAt, model: was.model });
     expect(after.decisions).toEqual(was.decisions);
-    expect(h.near.prompts.length).toBe(sent);
+    expect(h.near.prompts.slice(sent).filter((p) => p.includes(said))).toEqual([]);
     expect((await meter(org)).spentNano).toBe(spent);
     expect((await h.pool.query('SELECT 1 FROM content_jobs WHERE owner_id = $1', [org.session.ownerId])).rowCount).toBe(0);
   });
@@ -651,19 +654,27 @@ describe('AI in a workspace', () => {
     const jamie = await g.api.calls.join(meeting.code, { mic: false, cam: false, name: 'Jamie Guest' });
     await letIn(host, jamie);
     const pass = { pass: jamie.ticket.pass };
-    const sent = h.near.prompts.length;
+    /**
+     * The models these words went to since `from`. The stand-in hears every chat, and calls left by earlier tests end
+     * meanwhile (upkeep below ends them, as their host's grace running out does) and have their notes written in the
+     * background, so only chats with the words asked about count.
+     */
+    const askedFor = (from: number) => h.near.chats.slice(from).flatMap((c, i) => (h.near.prompts[from + i]?.includes(shorter.text) ? [c.model] : []));
+    let from = h.near.chats.length;
     expect(await refusal(answer(g.api.workspaces.ask(id, plan, shorter, pass)))).toBe('not-found: That workspace doesn’t exist, or you don’t have access to it.');
-    expect(h.near.prompts.length).toBe(sent);
+    expect(askedFor(from)).toEqual([]);
     // Upkeep counts it against Bob, its admin with an account: what the guest asks for is his to pay, on the default model,
     // not the one he chose for the call.
     await maintain(h.deps);
     before = await spent(bob);
+    from = h.near.chats.length;
     expect(await answer(g.api.workspaces.ask(id, plan, shorter, pass))).toEqual([{ type: 'text', text: 'Shorter: A long way of saying it' }]);
-    expect(h.near.chats.at(-1)?.model).toBe(NOTES_MODEL);
+    expect(askedFor(from)).toEqual([NOTES_MODEL]);
     expect(await spent(bob)).toBeGreaterThan(before);
     // Bob's own in the call goes to the call's model, from his own plan.
+    from = h.near.chats.length;
     await answer(bob.api.workspaces.ask(id, plan, shorter, { pass: host.ticket.pass }));
-    expect(h.near.chats.at(-1)?.model).toBe(UNENCRYPTED_MODEL);
+    expect(askedFor(from)).toEqual([UNENCRYPTED_MODEL]);
     // A guest's comes out of the share every guest in the call spends from, as their questions do: with none, it's refused,
     // and Bob's own isn't.
     await h.setLimit('ai.guests_call_percent', 0);

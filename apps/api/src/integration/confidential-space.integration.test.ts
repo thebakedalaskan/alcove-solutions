@@ -593,8 +593,10 @@ describe('confidential space', () => {
       const held = (await ask(e)).token;
       gcp.fail = true;
       const failing = gcp.asked;
+      // Its own failure, logged from here on: an earlier instance's is in the log already, in the same words.
+      const logged = h.logs.length;
       expect((await ask(e)).token).toBe(held);
-      await until(() => h.logs.some((l) => l.includes('"msg":"no attestation token"') && l.includes('"retryInMs":30000')), 'the launcher’s failure');
+      await until(() => h.logs.slice(logged).some((l) => l.includes('"msg":"no attestation token"') && l.includes('"retryInMs":30000')), 'the launcher’s failure');
       expect(gcp.asked).toBe(failing + 1);
       expect((await ask(e)).token).toBe(held);
       expect((await ask(e)).token).toBe(held);

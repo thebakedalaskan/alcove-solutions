@@ -279,7 +279,8 @@ describe('what a call captures', () => {
     await host.setNotes(true);
     await host.pause();
     expect(host.getSnapshot().capture.ai.mode).toBe('paused');
-    await host.leave();
+    // Its notes are written before the next test counts what reaches the notes model.
+    await written(org.api, (await host.leave())?.pendingNoteId ?? '');
   });
 
   it('refuses audio, speech, captions, catch-up and questions while paused, keeps what came before, and resumes in a new segment', async () => {
@@ -321,7 +322,8 @@ describe('what a call captures', () => {
     await host.transcribe(speech('Back on the record.', 1, 0), host.ticket.identity);
     expect(await pieces()).toBe(2);
     expect(await host.translate(lines, 'es')).toEqual([{ id: lines[0], text: '[Spanish] We agreed to ship on Friday.' }]);
-    await host.leave();
+    // Its notes are written before the next test reads what reached the notes model last.
+    await written(org.api, (await host.leave())?.pendingNoteId ?? '');
   });
 
   it('marks what wasn’t captured, in the call, a catch-up, the finished notes and what the notes model reads', async () => {
