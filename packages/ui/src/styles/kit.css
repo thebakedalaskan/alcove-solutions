@@ -652,6 +652,8 @@
 .ac-switch[aria-checked="true"]::after, [role="switch"][aria-checked="true"] > .ac-switch::after { transform: translateX(14px); background: var(--on-sun); }
 .ac-switch:disabled { opacity: .5; cursor: default; }
 .ac-switch:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* On a touchscreen it takes a press from round it too: 44px square, as a finger needs, while it still looks the same. */
+@media (pointer: coarse) { .ac-switch::before { content: ""; position: absolute; inset: -11px -4px; } }
 /* Who an action changes. */
 .ac-scope { flex: none; padding: 4px 7px; border-radius: 6px; background: var(--sunk); font: 500 11.5px/1 var(--font-sans); color: var(--ink-3); white-space: nowrap; }
 .ac-scope.is-all { background: var(--horizon-soft); color: var(--horizon); }
