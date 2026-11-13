@@ -323,6 +323,9 @@ when the last month was bought (its `monthlyMicroUsd`: a month's price then, so 
 month's $20 as it was, not at $16). A higher price is never taken from the balance without the owner seeing it: Pro isn't
 renewed, they're told `pro-ending` at the reminder and `pro-ended` at the end, and the money stays in the balance. Once
 they buy at the new price themselves, it's what renewing goes by. A lower price renews, and becomes what it goes by.
+Nothing renews while a team license is live: Team is the plan in force, so upkeep marks Pro's end handled without buying
+or telling anything (logged `pro ended`, `why: team`), as when a license replaces Pro. That includes a license taken after
+Pro ended and before upkeep came, which has no month to replace: upkeep reads the license once it holds the plan's row.
 
 **Notices** (`Plan.notices`, newest first, those not dismissed) are shown in the app and, with `NotificationPrefs.plan`
 on (the default), from the browser. `POST /v1/plan/notices/:id/dismiss` hides one; another account's ID, or an unknown

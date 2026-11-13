@@ -665,9 +665,11 @@ function notRenewed(a: PlanAccount, price: number): 'off' | 'price' | 'short' | 
  * month if renewing will (`notRenewed`), else tells its owner Pro is ending; at the end, buys a month the same way
  * (renewing turned on, or money added, since), else tells them Pro has ended. Each happens once for each end. A month
  * bought at the reminder follows the last; one bought at the end starts now, which is the end unless upkeep is late: a
- * month that's already over is never bought.
+ * month that's already over is never bought. While a team license is live (`license`) Team is the plan in force, so
+ * nothing is bought or told and the end is handled, as `replacedByLicense` does when a license is taken while Pro runs:
+ * a license taken after Pro ended and before upkeep came has no Pro left to replace.
  */
-function kept(a: PlanAccount, l: Limits, now: number, ownerId: string): PlanAccount {
+function kept(a: PlanAccount, l: Limits, now: number, license: License | null, ownerId: string): PlanAccount {
   let next = a;
   if (next.grace && Date.parse(next.grace.until) <= now) {
     next = { ...next, grace: null };
@@ -677,6 +679,10 @@ function kept(a: PlanAccount, l: Limits, now: number, ownerId: string): PlanAcco
   if (end === null || next.ended === end) return pruned(next, now);
   const atEnd = Date.parse(end) <= now;
   if (!atEnd && (next.reminded === end || remindAt(next, l, end) > now)) return pruned(next, now);
+  if (isLive(license, now)) {
+    plog.info('pro ended', { ownerId, why: 'team' });
+    return pruned({ ...next, reminded: end, ended: end }, now);
+  }
   const price = l.get('plan.pro.price_micro_usd');
   const marked = atEnd ? { ...next, reminded: end, ended: end } : { ...next, reminded: end };
   const why = notRenewed(next, price);
@@ -707,7 +713,11 @@ export async function upkeep(d: Service): Promise<{ settled: number; carried: nu
         'SELECT owner_id, state_ciphertext FROM plan_accounts WHERE due_at <= now() ORDER BY due_at LIMIT 1 FOR UPDATE SKIP LOCKED');
       if (!r) return false;
       const a = openJson(key(d), header(r.owner_id), r.state_ciphertext, PlanAccount);
-      await save(d, c, r.owner_id, kept(a, await limitsNow(d, c), Date.now(), r.owner_id));
+      const l = await limitsNow(d, c);
+      // Read after the plan's row is held, so a license taken before this decides is seen; one a visit is taking now
+      // waits on that row, and then replaces whatever this renews, as for any month running when a license is taken.
+      const license = await licenseOf(c, r.owner_id);
+      await save(d, c, r.owner_id, kept(a, l, Date.now(), license, r.owner_id));
       return true;
     });
     if (!one) break;
