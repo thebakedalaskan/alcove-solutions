@@ -135,7 +135,8 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   but a broken connection: it's `a file couldn’t be read to the end`, with the request's ID and the file's and piece's, at the
   level of what stopped it (info for someone who lost the document, warn for a limit, error for a failure). The Node adapter
   also prints one generic line of its own to standard error. A read logs `a read has its place` at debug once it has one,
-  with its IDs and whether it waited. A read this side ends logs `a read was cut`, with its IDs and why: it stopped and
+  with its IDs and whether it waited, and `waiting for a place` when it joins the line, with how many are in it; a piece logs
+  `a piece has its place` at debug once it's counted, with its IDs. A read this side ends logs `a read was cut`, with its IDs and why: it stopped and
   someone's waiting, or its time ran out. A piece that stopped arriving, or a read whose browser went while it
   waited, is an ordinary `503` at info, and so is its request's own line, `request refused`: a 5xx is `request failed` at error
   unless what answered it says it's an ordinary refusal.

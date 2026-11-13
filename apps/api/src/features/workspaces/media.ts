@@ -189,6 +189,7 @@ class Places {
       const timer = setTimeout(() => { out(this.full()); }, line.ms);
       closed?.addEventListener('abort', left, { once: true });
       this.queue.push(waiter);
+      mlog.debug('waiting for a place', { limit: this.what, waiting: this.queue.length });
       if (!this.looking) this.makeRoom(line.stalledMs);
     });
   }
@@ -408,6 +409,7 @@ export async function storePiece(d: Deps, who: Reader, workspaceId: string, docu
 
   // Counted from here: a body is 4 MiB the moment it's read, whether or not anything has got to it yet.
   const arrival = await arriving.enter(askerOf(who));
+  mlog.debug('a piece has its place', where);
   try {
     const bytes = await arrived(body, where);
     if (bytes.length !== length) throw invalid('That piece is the wrong size.', { ...where, bytes: bytes.length, length });

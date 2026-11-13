@@ -1627,7 +1627,8 @@ describe('awareness', () => {
     stolen.destroy();
     expect((await post(ann, `${docPath(id, doc)}/awareness`, { update })).status).toBe(403);
     await rest(100);
-    expect(JSON.stringify(carets(a))).not.toContain('77');
+    // Theo's caret is where he put it. (Not a search of everything for 77: his ID is random, and his name has the time in it.)
+    expect(carets(a).map((c) => c['cursor'])).toEqual([{ anchor: 1, head: 1 }]);
   });
 
   it('tells someone who arrives where everyone already is, and takes a caret away when its browser goes', async () => {
@@ -3486,12 +3487,25 @@ describe('streams, read closely', () => {
     const { ann, bob, id } = await together();
     for (let i = 0; i < 40; i++) { const d = await make(ann, id, 'document', `Doc ${i}`); await sendUpdate(ann, id, d, anUpdate(`Words ${i}`)); }
     const person = (await ann.api.workspaces.people(id)).find((p) => p.person.email === bob.email)?.id ?? '';
+    // The second document it reads takes until Bob has gone, as one slow to read would: otherwise how many more come is a
+    // race between the search and taking him out.
+    const run = h.deps.docs.run.bind(h.deps.docs);
+    let read = 0;
+    let go: () => void = () => undefined;
+    const gone = new Promise<void>((r) => { go = r; });
+    const reading = vi.spyOn(h.deps.docs, 'run').mockImplementation(async (task, input, o) => { if (task === 'searchLine' && ++read > 1) await gone; return run(task, input, o); });
     const lines: string[] = [];
-    for await (const d of bob.api.workspaces.searchText(id)) {
-      lines.push(d.id);
-      if (lines.length === 1) await ann.api.workspaces.removePerson(id, person);
+    try {
+      for await (const d of bob.api.workspaces.searchText(id)) {
+        lines.push(d.id);
+        if (lines.length === 1) { await ann.api.workspaces.removePerson(id, person); go(); }
+      }
+    } finally {
+      go();
+      reading.mockRestore();
     }
-    expect(lines.length).toBeLessThan(10);
+    // At most the one it was reading as his access went, and nothing after it: a search that went on would send all 41.
+    expect(lines.length).toBeLessThanOrEqual(2);
   });
 
   it('never gives away an address through a face', async () => {
