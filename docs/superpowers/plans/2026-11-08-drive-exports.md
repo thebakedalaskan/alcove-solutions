@@ -1,6 +1,6 @@
 # Google Drive call exports implementation plan
 
-**Goal:** Complete [issue #170](https://github.com/thebakedalaskan/the-privacy-suite/issues/170): automatic, explicitly authorized exports of finalized call artifacts to a chosen Google Drive folder.
+**Goal:** Complete [issue #170](https://github.com/thebakedalaskan/alcove-solutions/issues/170): automatic, explicitly authorized exports of finalized call artifacts to a chosen Google Drive folder.
 
 **Architecture:** `AlcoveApi.drive` is the public contract. Notes own export configuration, the independent Google authorization flow and the durable worker; existing maintenance opens the exporting owner's keys for each job. Google receives readable copies only after authorization and artifact readiness are checked again.
 

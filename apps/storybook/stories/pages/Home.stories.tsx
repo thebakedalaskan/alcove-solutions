@@ -223,7 +223,7 @@ export const DidntLoad = page('/home', 'busy', { beforeEach: changing(troubled({
 export const DidntLoadNight = { ...DidntLoad, globals: NIGHT };
 
 /**
- * On the public beta the server says it doesn't run in a TEE: Home still says Confidential compute, and that audio,
+ * When the server says it doesn't run in a TEE (a local API, say): Home still says Confidential compute, and that audio,
  * transcripts and notes are sealed, with no time it was verified and no caveat (docs/design/principles.md › Copy).
  */
 export const HostingNotAttestedPhone = phone(page('/home', 'busy', { beforeEach: notAttested }));

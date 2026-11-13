@@ -1,6 +1,6 @@
 # Call attention and sound
 
-Implements [issue #85](https://github.com/thebakedalaskan/the-privacy-suite/issues/85). The user approved the implementation description in this chat and authorized building, merging and deploying it.
+Implements [issue #85](https://github.com/thebakedalaskan/alcove-solutions/issues/85). The user approved the implementation description in this chat and authorized building, merging and deploying it.
 
 > **Superseded in part (9 Nov 2026, the call fixes).** The Attention button, its panel and side view are gone. Raised hands
 > stay, as the dock's button: a raised hand shows on the tile, People lists hands first in the order they went up, and
