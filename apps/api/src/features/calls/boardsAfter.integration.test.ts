@@ -13,7 +13,6 @@ import { z } from 'zod';
 import { openJson, sealJson, stateKey, toJson } from '../../crypto';
 import { NoteManifest } from '../notes/service';
 import { openOwner } from '../../owners';
-import { withWorkspace } from '../../testing/call-workspace';
 import { speechWav } from '../../testing/fake-near';
 import { acceptNoteSuggestions } from '../../testing/follow-ups';
 import { startHarness, type Harness } from '../../testing/harness';
@@ -71,12 +70,11 @@ async function joined(host: CallSession, code: string, who: Account) {
   await settle(host, (s) => s.participants.some((p) => p.id === call.ticket.identity));
   return call;
 }
-/** A call `art` hosts with notes on and `guests` invited, recording, with a workspace Art made in it for its boards. */
+/** A call `art` hosts with notes on and `guests` invited, recording. */
 async function notedCall(art: Account, guests: string[], o: { documents?: string[] } = {}) {
   const { code } = await art.api.calls.startNow({ notes: 'on', guests, ...(o.documents ? { documents: o.documents } : {}) });
   const host = await art.api.calls.join(code, { mic: true, cam: false });
   await inGroup(host);
-  await withWorkspace(host);
   for (const at of [0, 1, 2, 3]) await host.appendAudio(piece(audioBytes('board-after'), 0, at));
   return { code, host };
 }

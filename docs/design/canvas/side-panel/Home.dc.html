@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Home</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="water.css">
+<link rel="stylesheet" href="nav.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="water.js"></script>
+<script src="nav.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="{{rootCls}}" data-mode="{{mode}}" data-glass="false" data-take="page" data-art="sea" data-soon="{{soonFlag}}" style="{{shellStyle}}">
+<div class="sh-frame" ref="{{scrollRef}}">
+<sc-if value="{{isRail}}" hint-placeholder-val="{{false}}"><dc-import name="Panel" p="{{panel}}" hint-size="76px,100%"></dc-import></sc-if>
+<sc-if value="{{isFull}}" hint-placeholder-val="{{true}}"><dc-import name="Panel" p="{{panel}}" hint-size="256px,100%"></dc-import></sc-if>
+<main class="sh-panel">
+<div class="ah-scroll" ref="{{scrollRef}}">
+<div class="hm-stage">
+<dc-import name="SkyArt" a="{{pageData}}" hint-size="100%,100%"></dc-import>
+<dc-import name="Visitors" moment="home" mode="{{mode}}" hint-size="100%,100%"></dc-import>
+<div class="sh-bar">
+<span class="brand"><svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="hma"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><linearGradient id="hms" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient></defs><g clip-path="url(#hma)"><rect width="22" height="26" fill="url(#hms)"></rect><circle cx="11" cy="19.2" r="4.4" fill="#FFD58A"></circle><rect y="19.2" width="22" height="7" fill="#231C5E"></rect></g></svg>alcove</span>
+<div class="top-end"><button type="button" class="find" aria-label="Search or ask" onClick="{{openAsk}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg></button><button type="button" class="find" aria-label="Start a call" onClick="{{go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg></button><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></div>
+</div>
+<div class="sh-in">
+<header class="pn-top">
+<h1 class="pn-date">{{date}}</h1>
+<div class="top-end">
+<button type="button" class="find" onClick="{{openAsk}}" aria-label="Search or ask"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg><span class="w">Search or ask</span><span class="k">⌘K</span></button>
+<button type="button" class="me" aria-label="Art, settings"><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></button>
+</div>
+</header>
+
+<div class="hm-grid">
+<section class="st" aria-labelledby="st-h">
+<sc-if value="{{soon}}" hint-placeholder-val="{{false}}">
+<div class="jn"><dc-import name="Faces" who="priya,kofi" size="26" max="3" ring="var(--surface)" hint-size="44px,28px"></dc-import><span class="jn-t"><b class="clamp1">Design sync</b><small>In 4 minutes</small></span><button type="button" class="b b-press{{hotJoin}}" onClick="{{join}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.video}}"></path></svg>Join<span class="k">J</span></button></div>
+</sc-if>
+<h2 class="st-t" id="st-h">{{startTitle}}</h2>
+<div class="st-a">
+<button type="button" class="b {{goCls}} b-lg st-go" onClick="{{go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.video}}"></path></svg>Start now</button>
+<button type="button" class="b b-sky b-lg" onClick="{{later}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.cal}}"></path></svg>Schedule</button>
+</div>
+<sc-if value="{{hasPeople}}" hint-placeholder-val="{{true}}">
+<div class="st-p">
+<sc-for list="{{people}}" as="p" hint-placeholder-count="3"><button type="button" class="st-who" aria-label="Ring {{p.name}}" title="Ring {{p.name}}" onClick="{{p.go}}"><dc-import name="Faces" who="{{p.id}}" size="26" hint-size="26px,29px"></dc-import><span>{{p.first}}</span></button></sc-for>
+<button type="button" class="st-add" aria-label="Add someone" title="Add someone" onClick="{{later}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg></button>
+</div>
+</sc-if>
+</section>
+
+<section class="hw" aria-label="What’s yours">
+
+<!-- For you: To answer, and your Follow-ups. -->
+<sc-if value="{{forYou.shown}}" hint-placeholder-val="{{true}}">
+<section class="wg wg-for" aria-labelledby="wg-for">
+<header class="wg-h"><span class="wg-ic" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.inbox}}"></path></svg></span><h2 id="wg-for">For you</h2>
+<div class="wg-tabs" role="tablist" aria-label="For you">
+<button type="button" class="wg-tab is-ask{{forYou.askTab.cls}}{{forYou.askTab.hot}}" role="tab" aria-selected="{{forYou.askTab.sel}}" onClick="{{forYou.askTab.go}}">{{forYou.askTab.label}}<sc-if value="{{forYou.askTab.hasN}}" hint-placeholder-val="{{true}}"><span class="n">{{forYou.askTab.n}}</span></sc-if></button>
+<button type="button" class="wg-tab is-todo{{forYou.todoTab.cls}}{{forYou.todoTab.hot}}" role="tab" aria-selected="{{forYou.todoTab.sel}}" onClick="{{forYou.todoTab.go}}">{{forYou.todoTab.label}}<sc-if value="{{forYou.todoTab.hasN}}" hint-placeholder-val="{{true}}"><span class="n">{{forYou.todoTab.n}}</span></sc-if></button>
+</div>
+</header>
+<div class="wg-body">
+<sc-if value="{{forYou.loading}}" hint-placeholder-val="{{false}}"><div class="wg-sk" aria-label="Loading"><i style="width: 86%"></i><i style="width: 72%"></i><i style="width: 80%"></i><i style="width: 64%"></i></div></sc-if>
+<sc-if value="{{forYou.failed}}" hint-placeholder-val="{{false}}"><div class="wg-fail" role="status"><span class="up-warn" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.alert}}"></path></svg></span>This didn’t load.<button type="button" class="b b-line b-sm" onClick="{{forYou.retry}}">Try again</button></div></sc-if>
+<sc-for list="{{forYou.asks}}" as="r" hint-placeholder-count="3">
+<div class="wg-r{{r.cls}}">
+<span class="wg-k" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{r.icon}}"></path></svg></span>
+<p class="wg-t clamp2" title="From {{r.from}}">{{r.text}}</p>
+<span class="wg-f" title="From {{r.from}}"><sc-if value="{{r.hasFaces}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{r.faces}}" size="20" max="3" ring="var(--surface)" hint-size="44px,22px"></dc-import></sc-if><sc-if value="{{r.room}}" hint-placeholder-val="{{false}}"><span class="wg-room" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.mic}}"></path></svg></span></sc-if></span>
+<span class="wg-a">
+<sc-if value="{{r.open}}" hint-placeholder-val="{{true}}"><button type="button" class="wg-yes{{r.hotYes}}" onClick="{{r.goYes}}">{{r.yes}}</button><sc-if value="{{r.canNo}}" hint-placeholder-val="{{true}}"><button type="button" class="wg-no{{r.hotNo}}" aria-label="{{r.no}}" title="{{r.no}}" onClick="{{r.goNo}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button></sc-if><sc-if value="{{r.shared}}" hint-placeholder-val="{{false}}"><span class="wg-no" aria-hidden="true"></span></sc-if></sc-if>
+<sc-if value="{{r.answered}}" hint-placeholder-val="{{false}}"><span class="wg-did" role="status"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg>{{r.done}}</span><button type="button" class="wg-undo" onClick="{{r.undo}}">Undo</button></sc-if>
+</span>
+</div>
+</sc-for>
+<sc-for list="{{forYou.todos}}" as="t" hint-placeholder-count="3">
+<div class="wg-r is-todo{{t.cls}}">
+<button type="button" class="wg-ck{{t.hotTick}}" role="checkbox" aria-checked="{{t.onAria}}" aria-label="Done: {{t.text}}" onClick="{{t.tick}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></button>
+<p class="wg-t clamp1">{{t.text}}</p>
+<span class="wg-src clamp1">{{t.from}}</span>
+<span class="wg-due{{t.dueCls}}">{{t.due}}</span>
+</div>
+</sc-for>
+<sc-if value="{{forYou.empty}}" hint-placeholder-val="{{false}}">
+<div class="wg-empty">
+<sc-if value="{{forYou.emptyYet}}" hint-placeholder-val="{{false}}"><span class="fy-art{{fyArtCls}}" aria-hidden="true"><span class="r is-decide"><i class="k"></i><i class="l"></i><i class="p"></i></span><span class="r"><i class="k"></i><i class="l s"></i><i class="p"></i></span><span class="r is-decide"><i class="k"></i><i class="l m"></i><i class="p"></i></span></span></sc-if>
+<sc-if value="{{forYou.emptyDone}}" hint-placeholder-val="{{true}}"><svg class="hw-calm" viewBox="0 0 132 58" aria-hidden="true"><path class="s" d="M47 38a19 19 0 0 1 38 0z"></path><rect class="h" x="0" y="38" width="132" height="1.2" rx=".6"></rect><rect class="g" x="53" y="43" width="26" height="2" rx="1" opacity=".75"></rect><rect class="g" x="57" y="48" width="18" height="2" rx="1" opacity=".5"></rect><rect class="g" x="61" y="53" width="10" height="2" rx="1" opacity=".3"></rect></svg></sc-if>
+<b>{{forYou.emptyTitle}}</b><p>{{forYou.emptyLine}}</p>
+</div>
+</sc-if>
+</div>
+<sc-if value="{{forYou.hasMore}}" hint-placeholder-val="{{false}}"><footer class="wg-foot"><button type="button" class="wg-link" onClick="{{forYou.showMore}}">{{forYou.more}}</button></footer></sc-if>
+</section>
+</sc-if>
+
+<!-- Upcoming: a calendar widget. -->
+<section class="wg wg-up" aria-labelledby="wg-up">
+<header class="wg-h"><span class="wg-ic" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.cal}}"></path></svg></span><h2 id="wg-up">Upcoming</h2><span class="aside"><button type="button" class="wg-dots" aria-label="Calendar settings" title="Calendar settings"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.more}}"></path></svg></button></span></header>
+<div class="wg-body">
+<sc-if value="{{upcoming.loading}}" hint-placeholder-val="{{false}}"><div class="wg-sk" aria-label="Loading"><i style="width: 70%"></i><i style="width: 84%"></i><i style="width: 60%"></i></div></sc-if>
+<sc-if value="{{upcoming.connectState}}" hint-placeholder-val="{{false}}">
+<div class="up-connect">
+<span class="up-art" aria-hidden="true"><span><i></i><i class="r"></i></span><span><i class="s"></i></span><span><i></i><i></i></span></span>
+<b>See what’s coming up</b>
+<p>Your meetings with other people show here.</p>
+<button type="button" class="b b-line{{upcoming.hotConnect}}" onClick="{{upcoming.connect}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.cal}}"></path></svg>Connect Google Calendar</button>
+<small>Alcove reads your events and adds the calls you schedule.</small>
+</div>
+</sc-if>
+<sc-if value="{{upcoming.denied}}" hint-placeholder-val="{{false}}">
+<div class="up-connect is-warn" role="status">
+<span class="up-warn" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.alert}}"></path></svg></span>
+<b>Google didn’t allow the calendar</b>
+<p>Calls still work without it.</p>
+<button type="button" class="b b-line" onClick="{{upcoming.connect}}">Try again</button>
+</div>
+</sc-if>
+<sc-for list="{{upcoming.days}}" as="d" hint-placeholder-count="2">
+<div class="up-day{{d.cls}}">
+<div class="up-d"><small>{{d.word}}</small><sc-if value="{{d.hasNum}}" hint-placeholder-val="{{true}}"><b>{{d.num}}</b></sc-if></div>
+<div class="up-list">
+<sc-for list="{{d.rows}}" as="e" hint-placeholder-count="1">
+<div class="up-e{{e.cls}}" style="{{e.delay}}">
+<button type="button" class="up-b" onClick="{{e.go}}"><span class="up-tm">{{e.timeText}}</span><span class="up-t"><b class="clamp1">{{e.title}}</b><span class="up-w"><sc-if value="{{e.isCal}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-label="On Google Calendar"><path d="{{I.cal}}"></path></svg></sc-if><sc-if value="{{e.picking}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.clock}}"></path></svg>Lena is picking a time</sc-if><sc-if value="{{e.hasFaces}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{e.faces}}" size="16" max="3" ring="var(--surface)" hint-size="34px,18px"></dc-import></sc-if></span></span></button>
+<span class="up-x">
+<sc-if value="{{e.soonRow}}" hint-placeholder-val="{{false}}"><span class="up-soon">In 4 min</span></sc-if>
+<sc-if value="{{e.answer}}" hint-placeholder-val="{{false}}"><span class="up-answer">Answer</span></sc-if>
+<sc-if value="{{e.canMove}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-line b-xs{{e.hotMove}}" title="The meeting gets an Alcove link, and Google tells everyone on it" onClick="{{e.move}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.video}}"></path></svg>Use Alcove</button></sc-if>
+<sc-if value="{{e.movedNow}}" hint-placeholder-val="{{false}}"><span class="up-moved"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg>On Alcove</span></sc-if>
+</span>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-for>
+<sc-if value="{{upcoming.none}}" hint-placeholder-val="{{false}}"><p class="up-none">Nothing in the next 7 days.</p></sc-if>
+</div>
+<sc-if value="{{upcoming.missing}}" hint-placeholder-val="{{false}}"><div class="up-miss"><span class="up-miss-i" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.cal}}"></path></svg></span><p>See your other meetings here</p><button type="button" class="b b-line b-sm{{upcoming.hotConnect}}" onClick="{{upcoming.connect}}">Connect</button></div></sc-if>
+<sc-if value="{{upcoming.hasMore}}" hint-placeholder-val="{{false}}"><footer class="wg-foot"><button type="button" class="wg-link" onClick="{{upcoming.showMore}}">{{upcoming.more}}</button></footer></sc-if>
+</section>
+
+<!-- Recent notes: a row of cards with covers. -->
+<section class="nc" aria-labelledby="nc-h">
+<header class="nc-h"><h2 id="nc-h"><span class="wg-ic" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.notes}}"></path></svg></span>Recent notes</h2><button type="button" class="wg-link" onClick="{{goNotes}}">View all<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></button></header>
+<div class="nc-row">
+<sc-if value="{{notes.loading}}" hint-placeholder-val="{{false}}"><span class="nc-sk"></span><span class="nc-sk"></span><span class="nc-sk"></span><span class="nc-sk"></span><span class="nc-sk"></span></sc-if>
+<sc-for list="{{notes.cards}}" as="n" hint-placeholder-count="4">
+<button type="button" class="nc-c{{n.cls}}{{n.hotCls}}" onClick="{{n.go}}">
+<span class="nc-cv" style="{{n.cover}}" aria-hidden="true"><i class="s"></i><i class="w"></i><i class="g"></i><i class="g b"></i><sc-if value="{{n.example}}" hint-placeholder-val="{{false}}"><span class="tag">Example</span></sc-if></span>
+<span class="nc-fc"><sc-if value="{{n.hasFaces}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{n.face}}" size="28" max="2" ring="var(--surface)" hint-size="50px,31px"></dc-import></sc-if><sc-if value="{{n.room}}" hint-placeholder-val="{{false}}"><span class="nc-room"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.mic}}"></path></svg></span></sc-if></span>
+<span class="nc-b"><b class="clamp2">{{n.title}}</b><sc-if value="{{n.ready}}" hint-placeholder-val="{{true}}"><small>{{n.when}}</small></sc-if><sc-if value="{{n.writing}}" hint-placeholder-val="{{false}}"><small>Being written<span class="nc-dots" aria-hidden="true"><i></i><i></i><i></i></span></small></sc-if></span>
+</button>
+</sc-for>
+<sc-if value="{{notes.firstSlot}}" hint-placeholder-val="{{false}}"><div class="nc-slot"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.notes}}"></path></svg>Notes from your calls land here</div></sc-if>
+</div>
+</section>
+</section>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<nav class="phone-tabs" aria-label="Main">
+<sc-for list="{{tabs}}" as="n" hint-placeholder-count="5"><button type="button" class="phone-tab{{n.cls}}" aria-current="{{n.current}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.icon}}"></path></svg>{{n.label}}</button></sc-for>
+</nav>
+<sc-if value="{{google}}" hint-placeholder-val="{{false}}">
+<div class="hw-g" role="dialog" aria-label="Google’s own page">
+<p class="hw-g-tag">Google’s own page. Alcove isn’t part of it.</p>
+<div class="hw-g-card">
+<p class="hw-g-acc"><i>A</i>{{email}}</p>
+<h2>Alcove wants to use your Google Calendar</h2>
+<ul>
+<li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.cal}}"></path></svg>See the events on your calendars</li>
+<li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.clock}}"></path></svg>See when the people you invite are free</li>
+<li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.send}}"></path></svg>Add and change the events you schedule in Alcove</li>
+</ul>
+<div class="hw-g-a"><button type="button" onClick="{{cal.cancel}}">Cancel</button><button type="button" class="is-go" onClick="{{cal.allow}}">Allow</button></div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{pinOpen}}" hint-placeholder-val="{{false}}">
+<div class="nv-pw-scrim" onClick="{{pw.done}}"></div>
+<div class="nv-pw" role="dialog" aria-label="Pin a note">
+<div class="nv-pw-line"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{NI.pin}}"></path></svg><span>Find a note to pin</span></div>
+<div class="nv-pw-list" role="listbox" aria-label="Notes" aria-multiselectable="true">
+<p class="nv-pw-g">Pinned</p>
+<sc-for list="{{pw.pinned}}" as="r" hint-placeholder-count="2"><button type="button" class="nv-pw-r{{r.cls}}" onClick="{{r.go}}"><span class="{{r.cover}}" aria-hidden="true"><i></i></span><span class="nv-min0"><b class="clamp1">{{r.t}}</b><small>{{r.m}}</small></span><span class="nv-pw-tag"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{NI.pin}}"></path></svg>{{r.label}}</span></button></sc-for>
+<p class="nv-pw-g">Recent notes</p>
+<sc-for list="{{pw.recent}}" as="r" hint-placeholder-count="4"><button type="button" class="nv-pw-r{{r.cls}}" onClick="{{r.go}}"><span class="{{r.cover}}" aria-hidden="true"><i></i></span><span class="nv-min0"><b class="clamp1">{{r.t}}</b><small>{{r.m}}</small></span><span class="nv-pw-tag"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{NI.pin}}"></path></svg>{{r.label}}</span></button></sc-for>
+</div>
+<div class="nv-pw-foot"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{NI.pin}}"></path></svg><span>Pinned notes stay in the side panel, in the order you pin them.</span><button type="button" class="b b-press b-sm" onClick="{{pw.done}}">Done</button></div>
+</div>
+</sc-if>
+<dc-import name="Overlays" ov="{{ov}}" hint-size="0px,0px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"go":{"editor":null,"default":null},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"scroll":{"editor":null,"default":0},"v":{"editor":"enum","options":["today","a","b","c"],"default":"b"},"ns":{"editor":"enum","options":["rest","first","soon10","soon4","going","lots","alone","offline","low","waiting","pinHot","pinOpen","pinAdded","pinned"],"default":"rest"},"step":{"editor":"enum","options":["today","first","firstFollow","firstGoogle","firstConnected","firstDenied","firstWriting","firstNotes","alone","soon","askConfirmed","tabTodos","todoTicked","nothing","meetingMoved","later","laterConnected","lots","loading","failed"],"default":"today"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  componentWillUnmount() { clearTimeout(this.__toast); clearTimeout(this.__hwToast); }
+  renderVals() {
+    var AH = window.AH, self = this;
+    var v = AH.vm(this, 'home', { pal: 'blue-hour', mode: 'dark' });
+    var w = AH.HW.view(this);
+    var I = AH.I;
+    /* Which panel (v) and its state (ns), with what's been pressed since. */
+    var hsn = AH.hash();
+    var nvV = hsn.v || this.props.v || 'b';
+    var nvBase = AH.NV.STEPS[hsn.ns || this.props.ns || 'rest'] || {};
+    var cs = this.state || {};
+    var nvSt = AH.assign({}, nvBase, w.soon && nvBase.soon !== 'now' ? { soon: '4', homeLine: true } : {},
+      cs.nvPinOpen !== undefined ? { pinOpen: cs.nvPinOpen, pinHot: cs.nvPinOpen || nvBase.pinHot } : {},
+      cs.nvAdded !== undefined ? { added: cs.nvAdded } : {},
+      cs.nvFresh ? { fresh: !!(cs.nvAdded !== undefined ? cs.nvAdded : nvBase.added), pinHot: false } : {});
+
+    /* The sky, as the app draws it: the date, Start a call, and the people to ring. */
+    var art = AH.pageArt('sea', 'blue-hour', v.mode);
+    var people = w.people.map(function (p) {
+      return { id: p.id, name: p.name, first: p.name.split(' ')[0], go: function () { self.setState({ page: 'lobby', lobbyTitle: 'Call with ' + p.name.split(' ')[0], lobbySub: p.name.split(' ')[0] + ' gets a ring as you join.', hot: '' }); } };
+    });
+
+    /* What opens over the page: the kit's lobby, scheduling and search, and an Alcove call's card from Upcoming. */
+    var card = w.card;
+    var ov = AH.assign({}, v.ov, {
+      toast: w.toast || v.ov.toast, hasToast: w.hasToast || v.ov.hasToast,
+      cardOpen: !!card, card: card ? { title: card.title, when: card.time || 'A time is being picked', who: '', faces: card.faces } : {},
+      cardFaces: !!(card && card.faces), cardCalendar: false, cardAlcove: !!card,
+      closeCard: w.closeCard,
+      joinCard: function () { self.setState({ card: '', page: 'lobby', lobbyTitle: card ? card.title : '', lobbySub: '', hot: '' }); }
+    });
+
+    var tabs = [['Home', I.home, true], ['Notes', I.notes], ['Record', I.recordDot], ['Drive', I.folder], ['Team', I.people]].map(function (t) {
+      return { label: t[0], icon: t[1], cls: (t[2] ? ' is-on' : '') + (t[0] === 'Record' ? ' is-rec' : ''), current: t[2] ? 'page' : 'false' };
+    });
+
+    return {
+      mode: v.mode, shellStyle: v.shellStyle, I: I, ov: ov, tabs: tabs,
+      rootCls: 'ah sh hm hw-home nv-page' + (nvV === 'c' ? ' nv-is-rail' : ''),
+      isRail: nvV === 'c', isFull: nvV !== 'c',
+      panel: AH.NV.panel({
+        v: nvV, st: nvSt, home: w.side.places[0] ? Number(w.side.places[0].count || 0) : 8,
+        do: {
+          go: function (label) { if (label !== 'Home') w.toastFn(label + ' opens here. It isn’t part of this canvas.'); },
+          start: function () { self.setState({ modal: 'choose', guests: [], slot: 't17', fromCard: false, hot: '' }); },
+          join: function () { self.setState({ page: 'lobby', lobbyTitle: 'Design sync', lobbySub: 'Priya and Kofi are here.', hot: '' }); },
+          pin: function () { self.setState({ nvPinOpen: true }); },
+          open: function (t) { w.toastFn(t + ' opens here, on its note.'); },
+          hide: function () { w.toastFn('The side panel hides, as it does now.'); }
+        }
+      }),
+      pinOpen: !!nvSt.pinOpen, NI: AH.NV.I,
+      pw: AH.NV.pinWindow(nvSt, {
+        add: function () { self.setState({ nvAdded: !nvSt.added }); },
+        done: function () { self.setState({ nvPinOpen: false, nvFresh: true }); }
+      }),
+      pageData: AH.assign({}, art, { page: true }),
+      date: 'Wednesday 4 November',
+      soon: w.soon, soonFlag: w.soonFlag, hotJoin: w.hotJoin,
+      join: function () { self.setState({ page: 'lobby', lobbyTitle: 'Design sync', lobbySub: 'Priya and Kofi are here.', hot: '' }); },
+      startTitle: w.startTitle, goCls: w.goCls,
+      go: function () { self.setState({ page: 'lobby', lobbyTitle: 'Art’s call', lobbySub: '', hot: '' }); },
+      later: function () { self.setState({ modal: 'who', guests: [], slot: 't17', fromCard: true, hot: '' }); },
+      openAsk: v.openAsk,
+      people: people, hasPeople: people.length > 0,
+      forYou: w.forYou, fyArtCls: w.forYou.emptyTodo ? ' is-todo' : '', upcoming: w.upcoming, notes: w.notes, cal: w.cal,
+      goNotes: function () { w.toastFn('Notes opens here. It isn’t part of this canvas.'); },
+      google: w.google, email: w.email, scrollRef: w.scrollRef
+    };
+  }
+}
+</script>
+</body>
+</html>

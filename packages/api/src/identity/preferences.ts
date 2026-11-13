@@ -111,6 +111,13 @@ export type Group = z.infer<typeof GroupSchema>;
 /** The most notes someone can pin. */
 export const MAX_PINS = 8;
 
+/**
+ * The longest a pause's end can be. A date-time to the nanosecond, with its offset, is 35 characters
+ * ("2026-11-13T09:00:00.123456789+01:00"), but an ISO date-time takes any number of fractions of a second, and whatever is
+ * taken is sealed into the profile and kept in every revision of it.
+ */
+const MAX_PAUSED_UNTIL = 40;
+
 
 export const PreferencesSchema = z.object({
   /** Whether new calls start with notes on. Each call can still be set when it's scheduled. */
@@ -129,12 +136,23 @@ export const PreferencesSchema = z.object({
   pinned: z.array(IDSchema).max(MAX_PINS).refine(allUnique, 'Pins must be unique'),
   groups: z.array(GroupSchema).max(MAX_GROUPS).refine((g) => allUnique(g.map((x) => x.id)), 'Group IDs must be unique'),
   /** The model that does the AI work for calls you organize, by its ID in `models.list()`. Null means the default model. */
-  model: ModelIdSchema.nullable().default(null)
+  model: ModelIdSchema.nullable().default(null),
+  /**
+   * Pause notifications: until when nothing reaches this person from the browser or by sound, on every device signed in,
+   * but their own microphone and someone asking to join a call they host. Null, or a time already past, is not paused;
+   * a profile written before this existed reads as not paused.
+   */
+  notificationsPausedUntil: z.iso.datetime({ offset: true }).max(MAX_PAUSED_UNTIL).nullable().default(null)
 });
 
 export type Preferences = z.infer<typeof PreferencesSchema>;
-/** Flat leaves are optional; an included notification or sound group is complete, with no input defaults. */
-export const PreferencesPatchSchema = PreferencesSchema.extend({ model: ModelIdSchema.nullable() }).partial().extend({
+/**
+ * Flat leaves are optional; an included notification or sound group is complete, with no input defaults. `model` and
+ * `notificationsPausedUntil` take null (the default model; not paused), and a patch that leaves them out keeps them.
+ */
+export const PreferencesPatchSchema = PreferencesSchema.extend({
+  model: ModelIdSchema.nullable(), notificationsPausedUntil: PreferencesSchema.shape.notificationsPausedUntil.removeDefault()
+}).partial().extend({
   notifications: NotificationPrefsInputSchema.optional(), sounds: SoundPreferencesInputSchema.optional()
 });
 

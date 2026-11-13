@@ -30,7 +30,10 @@ export interface ObjectStore {
 export async function createObjectStore(cfg: Pick<Config, 'OBJECTS_ENDPOINT' | 'OBJECTS_BUCKET' | 'OBJECTS_ACCESS_KEY' | 'OBJECTS_SECRET_KEY'>): Promise<ObjectStore> {
   const s3 = new S3Client({
     endpoint: cfg.OBJECTS_ENDPOINT, region: 'us-east-1', forcePathStyle: true,
-    credentials: { accessKeyId: cfg.OBJECTS_ACCESS_KEY, secretAccessKey: cfg.OBJECTS_SECRET_KEY }
+    credentials: { accessKeyId: cfg.OBJECTS_ACCESS_KEY, secretAccessKey: cfg.OBJECTS_SECRET_KEY },
+    // Checksums only where S3 requires one: Google Cloud Storage's S3 interoperability (staging) refuses the SDK's default
+    // CRC32 trailers, and R2 and RustFS take either way.
+    requestChecksumCalculation: 'WHEN_REQUIRED', responseChecksumValidation: 'WHEN_REQUIRED'
   });
   const Bucket = cfg.OBJECTS_BUCKET;
   try { await s3.send(new HeadBucketCommand({ Bucket })); } catch {

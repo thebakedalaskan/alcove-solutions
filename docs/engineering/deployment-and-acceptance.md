@@ -5,24 +5,22 @@
 ## Environments
 
 The target is the apex `https://alcove.solutions`, with API `https://api.alcove.solutions`. Acceptance
-requires matching deployed commits, valid public HTTPS and the user journeys below. A successful
-`/health` request through the API's `run.app` URL establishes service health; public-domain access
-requires its own verification.
+requires the deployed commit, valid public HTTPS and the user journeys below. The deploy's own check, through the load
+balancer's address, establishes that the release runs attested with the right key; public-domain access requires its
+own verification.
 
 | | Local | Deployment target |
 | --- | --- | --- |
-| Web | Vite on `:3000` | Cloudflare Pages `alcove-web`, assigned hostname `alcove-web-bt8.pages.dev`, custom domain `alcove.solutions` |
-| API | `tsx watch` on `:8787`, proxied at `/api` | Cloud Run `alcove-api`, project `alcove-solutions`, `us-central1`, native mapping for `api.alcove.solutions` |
-| Database | Postgres 17 in Docker | Cloud SQL `alcove-db`, Postgres 17 Enterprise; SSL, 03:00 UTC daily backup window, seven retained backups, PITR |
+| Web | Vite on `:3000` | Served by the API from its own image, on `alcove.solutions` (`www` redirects to it) |
+| API | `tsx watch` on `:8787`, proxied at `/api` | Google Cloud Confidential Space on Intel TDX: managed instance group `alcove-api` (one c3-standard-4 VM, `us-central1-a`) behind a regional external proxy Network Load Balancer, `alcove-api-ip`, for `api.alcove.solutions`. TLS ends in the VM ([Confidential Space runbook](../../infra/confidential-space/README.md)) |
+| Database | Postgres 17 in Docker | Cloud SQL `alcove-db`, Postgres 17 Enterprise; SSL, 03:00 UTC daily backup window, seven retained backups, PITR; reached through the Cloud SQL Auth Proxy in the image |
 | Objects | RustFS in Docker | Private Cloudflare R2 `alcove-objects`, accessed through the API |
-| Secrets | `.env`, gitignored | GCP Secret Manager: database, `KMASTER`, `KSERVICE` and storage credentials; optional inference and Google credentials. The privacy promise needs `KMASTER` released only to an attested confidential VM, which Cloud Run is not; the API is ready to move to one ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)) |
-| DNS | Localhost | GoDaddy registrar; Cloudflare nameservers `johnny.ns.cloudflare.com` and `maleah.ns.cloudflare.com` |
+| Secrets | `.env`, gitignored | GCP Secret Manager: database, storage, LiveKit and Cloudflare DNS credentials; optional inference and Google credentials; the keys from before Confidential Space, until they're retired. Only an attested, signed image may read them, or use the Cloud KMS key that wraps the master ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)) |
+| DNS | Localhost | GoDaddy registrar; Cloudflare nameservers `johnny.ns.cloudflare.com` and `maleah.ns.cloudflare.com`; DNS-only records |
 
 Run locally with `pnpm install && pnpm dev`. The [runbook](../../infra/README.md) contains bootstrap,
-credential setup, repository variables, domain mapping and release verification. Native
-Cloud Run domain mapping is a Preview feature selected for this demo; Google recommends an external
-Application Load Balancer for production custom domains. See
-[Google's domain guidance](https://docs.cloud.google.com/run/docs/mapping-custom-domains).
+credential setup and repository variables, and the [Confidential Space runbook](../../infra/confidential-space/README.md)
+the setup, deploys, rollbacks, staging, certificates and release verification.
 
 ## Pipeline
 
@@ -44,30 +42,36 @@ Application Load Balancer for production custom domains. See
 3. **Deploy** (`.github/workflows/deploy.yml`) requires repository variable `DEPLOY_ENABLED=true`.
    Automatic deploys accept only successful CI runs from pushes to this repository's `main` and check
    that the selected commit still matches `main` before proceeding. Manual dispatch is restricted to
-   `main`. Runs are serialized.
-4. **API release.** Build and push the commit-SHA image, which records its commit (`ALCOVE_COMMIT`, reported
-   by `/health` and `/v1/attestation`) and carries ffmpeg for shared screens' video: ffmpeg-static's binary, pinned
-   in `apps/api/package.json`, copied to `/app/bin/ffmpeg` (`FFMPEG_PATH`), so the image changes when that pin does; execute the migration job, which gets only `DATABASE_URL`, and wait;
-   deploy Cloud Run; check `/health` through its service URL. The migration job applies only the migrations
+   `main`. Runs are serialized, and the monthly refresh skips while one is queued or running.
+4. **Release.** One image holds the API and the web app ([Confidential Space runbook › Deploying](../../infra/confidential-space/README.md#deploying)).
+   Build it from the commit and push it. It records its commit (`ALCOVE_COMMIT`, reported by `/health` and
+   `/v1/attestation`), carries ffmpeg for shared screens' video (ffmpeg-static's binary, pinned in
+   `apps/api/package.json`, copied to `/app/bin/ffmpeg`, `FFMPEG_PATH`, so the image changes when that pin does) and the
+   Cloud SQL Auth Proxy, and holds the web app built against `https://api.alcove.solutions`, with the CSP
+   `apps/web/scripts/csp.mjs` writes for that origin (inline scripts by hash, nothing third-party but LiveKit and
+   Sigstore's public log, Rekor, which the app reads to check the server). Sign it
+   with cosign and the Cloud KMS key `alcove-image-signing`, which records it, with its commit, in Sigstore's public log.
+   Execute the migration job, which gets only `DATABASE_URL`, and wait. Roll the group onto the image, a new VM first
+   (refused up front when the region's C3 quota can't hold it), and, in a job with no Google credentials, check it
+   through the load balancer's address: the attestation the app checks, that the TLS key is the attested
+   one, `/health`, and the commit and image. The migration job applies only the migrations
    the database hasn't had, and refuses one whose applied migrations were since edited or removed, so such a
    deploy stops before the new API starts and the previous release keeps serving (migrations only move
-   forward: restore the file and put the change in a new one). Checking `run.app` first avoids making the initial
-   deployment depend on an API domain mapping that needs the service to exist.
-5. **Web release.** Build against `https://api.alcove.solutions`, write the CSP for that origin with
-   `apps/web/scripts/csp.mjs` (inline scripts by hash, nothing third-party) and
-   publish the static SPA to Pages production branch `main` with pinned `pnpm dlx wrangler@4.157.0`.
-   Credentials are scoped to the publishing step's environment; the verified SHA supplies commit
-   attribution. Publishing does not add a workspace dependency.
+   forward: restore the file and put the change in a new one). The API refuses the same at start, so a rollback can't
+   go back past a release that added a migration ([Confidential Space runbook › Rolling back](../../infra/confidential-space/README.md#rolling-back)).
+5. **Refresh.** On the 3rd of each month (`.github/workflows/refresh.yml`) the same image moves onto Google's newest
+   Confidential Space image, which Google requires for attestation to keep working. It skips while a deploy is queued
+   or running.
 
 The static build emits `dist/client/index.html` through TanStack's SPA prerender output path `/index`.
-Pages' native SPA fallback serves the shell for client routes while matching existing assets directly;
-the deployment includes no catch-all `_redirects` or top-level `404.html`. The shell is the root route
+The API serves `dist/client` from its image (`WEB_DIR`) by the rules Cloudflare Pages applied: a file that exists, then
+`<path>/index.html`, then `<path>.html`, and otherwise the shell for client routes, with the headers in `_headers`;
+the build includes no catch-all `_redirects` or top-level `404.html`. The shell is the root route
 alone, so app addresses hydrate it and then render their own routes. An address no other route takes
 matches the catch-all `routes/$.tsx` (Nothing here, with the Drive offered), not a not-found component on
 the root route, which would render where the shell has none and fail hydration (React error #418).
 The public privacy policy is prerendered as `privacy.html` so it can be read without JavaScript.
-Manage the www-to-apex redirect as a Cloudflare zone Single Redirect. See
-[Cloudflare's SPA serving behavior](https://developers.cloudflare.com/pages/configuration/serving-pages/).
+The API redirects `www` to the apex.
 
 **Opening offline.** A service worker, `apps/web/public/sw.js`, keeps the build in the browser, so the app's
 files load without a connection once the browser has opened Alcove online. The web app's `build` script ends with
@@ -78,9 +82,9 @@ once the page has loaded, in production builds only (`apps/web/src/lib/serviceWo
 registration or install as a warning.
 
 - **Install** fetches every file in the list, and caches them once all have arrived. The shell is requested
-  as `/`, because Pages redirects `/index.html` there. If any file fails to arrive, nothing is cached, the
+  as `/`, the address the app loads it at. If any file fails to arrive, nothing is cached, the
   install fails and the previous worker stays. HTML under any name but the shell's counts as not arriving:
-  Pages answers a name it doesn't have with the shell, as a 200, so a deploy going live during an install
+  the server answers a name it doesn't have with the shell, as a 200, so a deploy going live during an install
   can't leave that cached as the asset.
 - **Page loads** go to the network first, with navigation preload. Without a connection they get the
   cached shell, which opens whichever screen was asked for. Nothing fetched is written back, so the
@@ -108,38 +112,42 @@ offline** with the way to Record (`OfflinePage`, also the router's error page fo
 through). A 401 still signs out. With no connection at all, queries aren't retried, so a page says so at once.
 See [Calls and recordings › Recording without a connection](calls-and-recordings.md#recording-without-a-connection).
 
-Only the API deployment job can request a GCP OIDC token. Workload Identity Federation restricts the
-immutable repository and owner IDs, main ref, deploy workflow and permitted event types. GCP and
-Cloudflare account identifiers are repository variables; `CLOUDFLARE_API_TOKEN` is a secret in the
-`production` environment. Automatic deployment requires no environment reviewer gate.
+Only the release job and the monthly refresh job can request a GCP OIDC token, and they run only the deploy scripts and
+pinned tools: the checks after them, which install and run workspace packages, are jobs of their own with no Google
+credentials. Workload Identity Federation restricts the immutable repository and owner IDs, main ref, the two workflows
+and the event types each may run on. GCP identifiers are repository variables; no Cloudflare credential is in GitHub (the
+DNS token lives in Secret Manager). Automatic deployment requires no environment reviewer gate.
 
-Cloud Run uses one instance, session affinity, gen2, one CPU, 2 GiB, port 8080, a 300-second timeout and 1,000
-requests at once: an open tab holds one for its stream of rings, so at the default of 80 they'd starve live calls.
-The API holds at most 300 of those streams, and 8 for any one account.
+The API runs as one Confidential Space VM, c3-standard-4 (4 vCPUs, 16 GB), behind a proxy load balancer that closes a
+connection after 3,600 seconds with nothing sent either way and gives a VM leaving the group 300 seconds to finish its
+connections. The limits below were set when it ran on Cloud Run (one instance, one CPU, 2 GiB, a 300-second request
+timeout, 1,000 requests at once, session affinity), and they still hold: every one fits inside the VM's room and the load
+balancer's timeouts. An open tab holds a request for its stream of rings, so at Cloud Run's default of 80 they'd have
+starved live calls. The API holds at most 300 of those streams, and 8 for any one account.
 A live stream of a workspace or a document holds a request too, for as long as it's open: at most 8 of a workspace and 8 of
 documents for any one person on an instance, where the next ends their oldest once it's been open 20 seconds, at most one
 every 20 seconds (`LIVE_MAKE_ROOM_MS`), 64 of both from one client address (`LIVE_STREAMS_PER_ADDRESS`), and 500 of both together for everyone
 (`LIVE_STREAMS_MAX`), past which they're refused with `503` and browsers try again, and the API lets go of each one after 280
-seconds for the browser to open it again (`LIVE_STREAM_MS`; keep it under the timeout). Cloud Run never tells the API that a
-browser closed a stream (HTTP/1 doesn't pass a disconnect on), so the browser says so itself, with `POST …/live/end` and the
-name it gave the stream, and the API ends it then and there. To check it on the deployed app, open twenty documents from the
+seconds for the browser to open it again (`LIVE_STREAM_MS`; keep it under the load balancer's timeout). Cloud Run never told the API that a
+browser closed a stream (HTTP/1 there didn't pass a disconnect on), so the browser says so itself, with `POST …/live/end` and the
+name it gave the stream, and the API ends it then and there; it still does. To check it on the deployed app, open twenty documents from the
 list in two minutes: none should stay on Reconnecting, and the log should have no "You have this open in too many windows"
 warning with `kind: document`. Rings and these are
 counted apart and come to 800 together, which leaves 200 requests for calls and everything else with both full. Raise one of
-them only with that in mind. Node gives its heap about half of the container's memory, so 2 GiB is a
-heap of about 1,120 MiB. Documents are opened in worker threads with memory of their own, 640 MiB for the one that takes big
+them only with that in mind. On Cloud Run, Node gave its heap about half of the container's memory, so 2 GiB was a
+heap of about 1,120 MiB; Node gives it more on the VM's 16 GB. Documents are opened in worker threads with memory of their own, 640 MiB for the one that takes big
 documents and 96 MiB for the rest (`DOC_HEAP_MB`, `DOC_WORKERS`), outside that heap, so keep the two inside the container
 together: a document at its ceilings peaks at about 550 MiB in the big worker. What's on its way in and out is outside the heap
 too, at most 128 MiB of updates and 64 MiB of documents (`DOC_SENDING_MB`), plus what's waiting for a worker, at most 128 MiB.
 Before the limits were set from real blocks, a document at its item limit and an 8 MB one, in a 1 GiB container, peaked at
-884 MiB, which is why it's 2 GiB. Set a process-wide `--max-old-space-size` on no instance: it overrides what a worker is
+884 MiB, which is why Cloud Run's instance was 2 GiB. Set a process-wide `--max-old-space-size` on no instance: it overrides what a worker is
 limited to. The bundle has a third file, `dist/live/docWorker.js`, which the image's `dist` already carries. Each instance holds one more Postgres connection, for `LISTEN`, once anyone streams from it, and
-checks it every 15 seconds (`HUB_CHECK_MS`, `HUB_TIMEOUT_MS`); it needs to reach Postgres directly, as Cloud SQL's
-connector does, because `LISTEN` doesn't work through a transaction-mode pooler.
-Files in a workspace are shaped by the same limits. Cloud Run refuses an HTTP/1 request or a response that says its length
+checks it every 15 seconds (`HUB_CHECK_MS`, `HUB_TIMEOUT_MS`); it needs to reach Postgres directly, as the Cloud SQL
+Auth Proxy in the image does, because `LISTEN` doesn't work through a transaction-mode pooler.
+Files in a workspace are shaped by the same limits. Cloud Run refused an HTTP/1 request or a response that said its length
 over 32 MiB, so a file goes up in pieces of 4 MiB, an answer to a range sends at most 16 MiB, and a whole file over that
 streams without a length ([Data and storage › Media](data-and-storage.md#media)). The API ends a read itself at 280 seconds
-(`MEDIA_READ_MS`), inside the timeout: a player asks on from where it got to, and so does a browser's download, with the
+(`MEDIA_READ_MS`), inside the timeout Cloud Run had: a player asks on from where it got to, and so does a browser's download, with the
 file's `ETag` (`If-Range`). Files pass through
 this one process, so what they hold in it and what they take of its core are limited (`MEDIA_LIMITS` in `features/workspaces/media.ts`),
 and past those limits a request is refused rather than taken on. At most 96 requests at once are files. The limits were set
@@ -147,8 +155,8 @@ for 1 GiB and stayed when the instance went to 2 GiB, because the rest is for do
 server with a 1,120 MiB heap and nothing else running, 920 pieces sent at once and 80 readers who stopped took it from 150 MiB
 to at most 840 MiB. With 20 people reading all their limits allow, a call's poll took 25 ms at the median, against 8 ms with
 nobody reading. Change the limits with the instance's memory, and measure again.
-CPU remains allocated between requests for background work: sweeping ended sessions, physical-deletion
-cleanup, and writing notes after a call or room recording stops. Sessions live in Postgres, so a restart
+The VM's CPU is there between requests for background work, as Cloud Run's was kept: sweeping ended sessions,
+physical-deletion cleanup, and writing notes after a call or room recording stops. Sessions live in Postgres, so a restart
 signs nobody out, and notes jobs left behind by a restart are picked up by the next maintenance run.
 
 **Rolling back past the release that added files deletes them.** The release before it doesn't know
@@ -156,20 +164,25 @@ signs nobody out, and notes jobs left behind by a restart are picked up by the n
 next run, within 5 minutes of starting. Nothing brings an object back. Fix forward instead. If a rollback can't be avoided, copy the
 object store first, and restore it once a release that knows files is back: the rows stay, so they'd find their objects again.
 
-NEAR AI has its own deployment switch. `NEAR_AI_ENABLED=true` binds `NEAR_AI_API_KEY` from
-`alcove-near-ai-api-key` into the API service (the migration job doesn't need it); the service is deployed
+**Nothing rolls back past the release that brought plans.** It added migrations, and the release before it (`a221e1f1d`,
+with credits) refuses at start a database that applied migrations it doesn't have. While the rollout still has its VM
+serving, it can't open the deposit records plans write, and knows nothing of Pro, more notes, teams or who pays for a
+workspace. Fix forward ([Plans and usage › How it upgrades](plans-and-usage.md#how-it-upgrades)).
+
+NEAR AI has its own deployment switch. With `NEAR_AI_ENABLED` true (or unset) the API reads `NEAR_AI_API_KEY` from
+`alcove-near-ai-api-key` (the migration job doesn't need it), and runs
 with `NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1` and the default models, speech endpoint and roots
 ([Notes and inference › Models and requests](notes-and-inference.md#models-and-requests)). With the flag false
-or unset there is no binding and no placeholder secret version is needed: the API keeps recordings but
+it isn't read and no placeholder secret version is needed: the API keeps recordings but
 doesn't transcribe them, notes wait, and `/health` reports `inference: missing`.
 
-Top-ups are on in production: the API service is deployed with `TREASURY_INTENTS_ACCOUNT=alcove-treasury.near`,
+Top-ups are on in production, which runs with `TREASURY_INTENTS_ACCOUNT=alcove-treasury.near`,
 the NEAR account whose Intents balance receives every top-up and refund, and without `ONECLICK_API_KEY`, so 1Click
 quotes at its own fee ([Plans and usage](plans-and-usage.md)). The migration job doesn't need either. To turn
-top-ups off, take the setting out and redeploy: nothing is checked or added meanwhile, and once it's back the watcher
+top-ups off, take the setting out of `infra/confidential-space/env.sh` and redeploy: nothing is checked or added meanwhile, and once it's back the watcher
 picks up every deposit it still watches.
 
-With NEAR AI enabled the API also reaches, over HTTPS, the models' own endpoints
+With NEAR AI enabled the API also reaches, over HTTPS through Cloud NAT, the models' own endpoints
 (`whisper-large-v3.completions.near.ai` and `deepseek-v4-1-flash.completions.near.ai`, and the host of any other private model chosen), where everything with
 content goes sealed, and the services that verify them before anything is sent: Intel's
 `api.trustedservices.intel.com` and `certificates.trustedservices.intel.com`, and NVIDIA's
@@ -177,18 +190,19 @@ content goes sealed, and the services that verify them before anything is sent: 
 None of them needs a credential. If one can't be reached, notes wait and clips aren't transcribed, rather
 than going unverified.
 
-Google provider credentials have a separate deployment switch. `GOOGLE_AUTH_ENABLED=true` binds
+Google provider credentials have a separate deployment switch. With `GOOGLE_AUTH_ENABLED` true (or unset) the API reads
 `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` from `alcove-google-client-id` and
-`alcove-google-client-secret` into the API service (the migration job needs only the database). Bootstrap creates these
-secret resources and grants runtime access; credential versions are populated separately. New
-installations leave the flag false or unset and need no Google secret values; the Google button then
-explains that sign-in isn't set up. The API also needs `API_URL`, its public base URL, from which the
+`alcove-google-client-secret` (the migration job needs only the database). Bootstrap creates these
+secret resources, and `infra/confidential-space/setup.sh` lets the attested identity read them; credential versions are
+populated separately. An installation without them sets the flag false and needs no Google secret values; the Google
+button then explains that sign-in isn't set up. The API also needs `API_URL`, its public base URL, from which the
 Google redirect URI is built.
 
-The GCP `_Default` sink excludes managed request logs for `alcove-api` because raw URLs can contain
-call codes or OAuth callback queries. Application structured logs remain. The exclusion is configured
-outside bootstrap and needs separate verification; additional log sinks must also avoid retaining
-those raw entries.
+The GCP `_Default` sink excludes Cloud Run's managed request logs for `alcove-api` because raw URLs can contain
+call codes or OAuth callback queries; keep it while that service exists. The load balancer in front of the VMs keeps no
+request logs. Application structured logs remain ([Logging and errors › Where production logs are](logging-and-errors.md#where-production-logs-are)).
+The exclusion is configured outside bootstrap and needs separate verification; additional log sinks must also avoid
+retaining raw request URLs.
 
 ## Changing a limit
 
@@ -203,18 +217,23 @@ everywhere within a minute.
 | --- | --- | --- | --- | --- |
 | `plan.free.notes_minutes` | 300 | 0 | 60,000 | Free: the minutes of notes a period brings, reckoned at `ai.hour_micro_usd` an hour. |
 | `plan.free.storage_bytes` | 10 GiB | 0 | 1 TiB | Free: what an account stores, its uploads and its recordings. |
-| `plan.free.file_bytes` | 512 MiB | 0 | 4 GiB | Free: one file. |
+| `plan.free.file_bytes` | 512 MiB | 0 | 512 MiB | Free: one file. |
 | `plan.pro.notes_minutes` | 3,000 | 0 | 600,000 | Pro: the minutes of notes a period (a month of Pro) brings, reckoned at `ai.hour_micro_usd` an hour. |
 | `plan.pro.storage_bytes` | 100 GiB | 0 | 10 TiB | Pro: what an account stores, its uploads and its recordings. Held this high for `plan.grace_seconds` after Pro ends. |
-| `plan.pro.file_bytes` | 2 GiB | 0 | 4 GiB | Pro: one file. What's enforced is at most 512 MiB (`WHOLE_DOWNLOAD_BYTES`) until downloads can pick up where they stopped. |
+| `plan.pro.file_bytes` | 512 MiB | 0 | 512 MiB | Pro: one file. |
 | `plan.pro.price_micro_usd` | $20 | $0 | $10,000 | Pro: one period. |
+| `plan.pro.yearly_price_micro_usd` | $16 | $0 | $10,000 | Pro: one period, bought `plan.pro.yearly_from_months` or more at once. None while it's 0 or not below `plan.pro.price_micro_usd`. |
+| `plan.pro.yearly_from_months` | 12 | 1 | 120 | The fewest months of Pro one purchase buys at `plan.pro.yearly_price_micro_usd`. None while it's more than `plan.pro.max_months`. |
+| `plan.pro.max_months` | 12 | 1 | 120 | The most months of Pro one purchase buys. |
+| `plan.pro.remind_seconds` | 3 d | 0 | 30 d | How long before Pro ends its owner is told, and a month is bought if renewing is on. |
 | `plan.team.price_micro_usd` | $40 | $0 | $10,000 | Team: one license, a person for one period. |
 | `plan.team.notes_minutes` | 3,000 | 0 | 600,000 | Team: the minutes of notes a license's period brings its member, reckoned at `ai.hour_micro_usd` an hour. |
 | `plan.team.storage_bytes` | 100 GiB | 0 | 10 TiB | Team: the storage each live license adds to its team's pool; also what someone who leaves a team is held to through `plan.grace_seconds`. |
-| `plan.team.file_bytes` | 2 GiB | 0 | 4 GiB | Team: one file. What's enforced is at most 512 MiB (`WHOLE_DOWNLOAD_BYTES`) until downloads can pick up where they stopped. |
-| `plan.pro_max_months` | 12 | 1 | 120 | The most months of Pro one purchase buys. |
-| `plan.pro_remind_seconds` | 3 d | 0 | 30 d | How long before Pro ends its owner is told, and a month is bought if renewing is on. |
-| `plan.period_seconds` | 30 d | 1 m | 365 d | A plan's period: notes renew, and paid time runs, in these. |
+| `plan.team.file_bytes` | 512 MiB | 0 | 512 MiB | Team: one file. |
+| `plan.hours.pack_minutes` | 600 | 1 | 60,000 | More notes: the minutes one pack adds to the period it's bought in, reckoned at `ai.hour_micro_usd` an hour. |
+| `plan.hours.price_micro_usd` | $15 | $0 | $10,000 | More notes: one pack. At 0, more notes aren't offered. |
+| `plan.hours.max_packs` | 5 | 1 | 100 | More notes: the most packs one purchase buys. |
+| `plan.period_seconds` | 30 d | 1 m | 365 d | A plan's period: notes renew, and paid time runs, in these. A change applies from each account's next period (below). |
 | `plan.grace_seconds` | 15 d | 0 | 90 d | Once an account is over its plan's limits: how long until what's over stops taking more. |
 | `ai.hour_micro_usd` | $0.50 | $0.000001 | $100 | What an hour of notes is reckoned at, to give the AI allowance as time. |
 | `ai.stop_micro_usd` | $0.005 | $0 | $10 | What's left of an allowance when transcription and every AI request stop. |
@@ -222,23 +241,37 @@ everywhere within a minute.
 | `ai.fallback_input_micro_usd` | $1 | $0 | $100 | A million input tokens of a model NEAR AI lists no price for. |
 | `ai.fallback_output_micro_usd` | $4 | $0 | $100 | A million output tokens of a model NEAR AI lists no price for. |
 | `ai.image_tokens` | 1,500 | 0 | 100,000 | The input tokens one image is taken to be at most, before NEAR AI says. |
+| `ai.guests_call_percent` | 10 | 0 | 100 | The most guests in one call spend between them of its organizer's allowance for the period, in percent: their questions, catch-ups, AI on the call's documents and boards, captions in another language and live notes of their own. |
 | `call.max_seconds` | 10 h | 10 m | 48 h | The longest a call runs: it ends then, everyone told 5 minutes before. |
-| `call.max_people` | 100 | 2 | 1,000 | The most people in a call at once, those waiting to be let in included. |
+| `call.max_people` | 100 | 2 | 1,000 | The most people in a call at once. Asking to be let in takes no place: someone who asked is let in only while there's room. |
+| `call.asks_per_address` | 10 | 1 | 1,000 | The most asks to join one call waiting at once from one network (an address, or an IPv6 /64), so nobody can fill its host's list of them. |
 | `team.max_licenses` | 500 | 1 | 100,000 | The most team licenses one purchase buys. |
 | `team.low_licenses` | 5 | 0 | 100,000 | Unconsumed licenses below which a team's admin is told they're running low. |
 | `team.invite_seconds` | 1 d | 1 m | 30 d | How long a link to join a team works, once. |
 | `workspaces.max_made` | 1,000 | 1 | 100,000 | The most workspaces one account makes, to stop one from making them without end. |
 | `media.account_day_bytes` | 20 GiB | 0 | 200 GiB | What one person uploads in a day (UTC), in every workspace. |
+| `media.others_day_bytes` | 2 GiB | 0 | 200 GiB | What someone signed in adds in a day (UTC) to another account's storage, through the workspaces it pays for. Someone licensed on the same team adds to its pool as to their own. |
+| `media.guests_day_bytes` | 256 MiB | 0 | 200 GiB | What guests in calls add between them in a day (UTC) to the storage of the account whose workspaces they work in. |
+| `media.payer_reserve_bytes` | 1 GiB | 0 | 1 TiB | What's kept of an account's storage for its own notes and recordings: uploads by anyone else stop once its room would fall below this. |
+| `workspaces.payer_grace_seconds` | 15 d | 0 | 90 d | When payment for a workspace moves to one of its admins because whoever paid for it left: how long until the files it held then count against their storage. |
 
 Zero is a value: none. A file size or a day's uploads at 0 stops every upload, with "Files can’t be uploaded right now."; storage
-at 0 says storage is full; notes at 0 brings none. A file's ceiling is the most
-that can be read whole: a whole file is read in one response, which is cut at 280 seconds, so it takes about 15 Mbit/s to
-download 512 MiB in one answer, and about 120 Mbit/s for 4 GiB. Slower, a download picks up where it stopped when the browser resumes it (by itself, or with
-its Resume), asking for the rest with the file's `ETag`.
-Everyone is on Free, so a plan's limits are the same for everyone; the day's uploads are the same for everyone, guests in a call
-included. Lowering one deletes nothing: it refuses the next upload, and the next piece of one already going
+at 0 says storage is full; notes at 0 brings none. Every plan's file limit has the same ceiling, 512 MiB
+(`WHOLE_DOWNLOAD_BYTES`), the most that can be read whole for now: a whole file is read in one response, which is cut at
+280 seconds, so it takes about 15 Mbit/s to download 512 MiB in one answer. A file limit can be lowered without a deploy,
+not raised past that; Pro's and Team's 2 GiB wait for downloads that pick up where they stopped. Slower, a download picks
+up where it stopped when the browser resumes it (by itself, or with its Resume), asking for the rest with the file's `ETag`.
+Each account is held to its own plan's limits, Free's, Pro's or, licensed on a team, Team's (with the team's pool for its
+storage), so a change to a plan's limit reaches only the accounts on that plan; the day's uploads are the same for everyone,
+guests in a call included. Lowering one deletes nothing: it refuses the next upload, and the next piece of one already going
 ([Data and storage › Media](data-and-storage.md#media)). What happens to an account over its plan's limits is in
 [Plans and usage › Over the limit](plans-and-usage.md#over-the-limit-the-grace).
+
+Changing `plan.period_seconds` applies from each account's next period. Each account's AI meter keeps the period it's in
+(its `from` and `to`), and an account on Free runs its periods on from that one, each at the length the limit says when it
+begins, so a period that has begun runs to its end as it began, with what's been spent and any stop. Months of Pro and
+team licenses keep the length they were bought or taken with. An account the meter hasn't seen on Free since it started
+counts its periods from when it began, at the length in force.
 
 `media.file_bytes` and `media.workspace_bytes` are gone: a file's size and what's stored are each plan's now, and storage is
 counted for each account, not each workspace. A row for either is ignored with `service limit ignored` at warn, and what it
@@ -273,17 +306,30 @@ ignored` at warn, and its limit keeps its default. A value past its bounds is he
 ## Changing a feature flag
 
 Feature flags switch new features on for everyone, for hand-picked groups or for individual people, with no release and no
-restart. Locally, `pnpm --filter @alcove/server feature-flags …` with `DATABASE_URL` and `KMASTER` from `.env`; in production, the
-Cloud Run job `alcove-feature-flags`, which each deploy keeps on the current image with only those two secrets bound:
-`gcloud run jobs execute alcove-feature-flags --region "$GCP_REGION" --wait --args=everyone,<feature-flag>,on`. Each instance reads the flags
+restart. Locally, `pnpm --filter @alcove/server feature-flags …` with `DATABASE_URL` and `KMASTER` from `.env`; in production,
+through the API itself, with the operator token whose SHA-256 is `OPERATOR_TOKEN_SHA256` in
+`infra/confidential-space/env.sh` (`POST /v1/operator/feature-flags`, [Feature flags › In production](feature-flags.md#in-production)),
+since addresses are hashed with a key that only exists inside the VM. Each instance reads the flags
 again every 30 seconds (`FEATURE_FLAGS_CACHE_MS`). Everything else, building behind a flag, every command and retiring a flag, is in
 [Feature flags](feature-flags.md).
+
+## Support's billing
+
+Support adds dollars to an account's balance, and says where its plan stands, with `billing` ([Plans and usage ›
+Support](plans-and-usage.md#support)). Locally, `pnpm --filter @alcove/server billing …` with `DATABASE_URL`, `KSERVICE` and
+`KMASTER` from `.env`. In production there's no job for it: the API runs in Confidential Space, and `KSERVICE` is in its
+server keys, sealed under the master only the VM gets ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)).
+The old `alcove-kservice` secret holds the same key only while the old keys are carried, and goes when they're retired, so a
+job bound to it would stop working then. Production's support needs a way in through the API, as feature flags have
+(the operator route), which isn't built: until it is, a credit there is added by hand, outside the deploy, and is support's
+to arrange. Named by a top-up's reference or its ID, never an address, and printing no amount, history or address, as
+before.
 
 ## Acceptance
 
 These journeys describe existing coverage and release checks still required. Passing local integration
 tests does not establish that production DNS, credentials, storage or the real Google round trip work. Accept a
-release only after the intended API image and Pages deployment match the commit, both public hostnames
+release only after the image running matches the commit, all three public hostnames
 have valid HTTPS, web deep links/security headers work, and an account/recording flow proves private
 object upload, playback and physical deletion in the deployed environment, and, with NEAR AI enabled, a
 live transcript and written notes.
@@ -304,7 +350,7 @@ live transcript and written notes.
 | At-rest leakage: canaries (including speech and a Google account's details) and refresh tokens absent from every table, object and log line, in plain, hex, base64 and base64url | API integration tests |
 | Deletion of a note, a meeting or a whole account removes rows, receipts and objects; a call set not to keep its transcript or recording leaves no revision, row, receipt or object of it; maintenance removes ended sessions and orphaned objects and retries refused deletes | API integration tests |
 | Files in a workspace: uploaded in pieces and read back whole and by range, a failed piece tried again, an upload carrying on through a lost connection, a dropped upload swept, a reader who loses the document or a guest whose seat ends refused on their next range, a seat reaching only its document's files, the bytes and name absent from every table, object and log line, deleted physically by an editor or when their last document goes, what a process takes on limited, however many ask at once, a read that stopped giving way to someone waiting, a piece that stopped arriving cut, a room opening one board all seeing it, and storage limits, the same for guests as for anyone, changed in the database and in force within the cache window, and refusing without deleting | API integration tests. Play a video over 32 MiB against the deployed API on each release, in Chrome and Safari, pausing it for over 5 seconds while someone waits for a read and playing on: local servers have no response limit, and tests have no player |
-| Feature flags: off by default; on for everyone, signed in or not, for the members of groups and for people granted directly, all at once; an address matched however it's typed, and granted before its owner signs up; a deleted group taking its members and grants; a name the code doesn't know ignored; a change in force within the cache window with no restart, and what was in force kept when they can't be read; a deleted account's address gone from groups and grants; the CLI and the logs never repeating an address or its hash | API integration tests. After the first deploy with the job, run `gcloud run jobs execute alcove-feature-flags --wait` once: it lists the flags, which shows the job starts with its secrets and reaches the database |
+| Feature flags: off by default; on for everyone, signed in or not, for the members of groups and for people granted directly, all at once; an address matched however it's typed, and granted before its owner signs up; a deleted group taking its members and grants; a name the code doesn't know ignored; a change in force within the cache window with no restart, and what was in force kept when they can't be read; a deleted account's address gone from groups and grants; the CLI and the logs never repeating an address or its hash | API integration tests. After the first deploy in Confidential Space, send `["list"]` to the operator route once: it lists the flags, which shows the route is on and reaches the database |
 | A failed request's ID leads to its log lines; browser reports reach the server log | API integration tests |
 | More calls ending at once than there are database connections; a call from start to end, a hand-off and the notes on one connection; a request with no connection to be had fails in 10 seconds | API integration tests |
 | Sign in with Google: identity-only scopes, PKCE, state, nonce, signature, audience, expiry, verified email, refusals | API integration tests against a local OpenID provider; verify the real Google round trip on each release |
@@ -312,15 +358,15 @@ live transcript and written notes.
 | Calls that repeat on Google Calendar: one recurring event and one invitation, a series across a change of the clocks, one call changed or cancelled, this and later calls from the first call and from a later one, a call made to repeat, and cancelling the whole series | API integration tests against a local Calendar stand-in, which expands rules as its authors understand Google to. Verify with a real calendar on each release that touches them: the stand-in can't show that Google accepts a single event turned recurring by `PATCH`, or a recurring event ended early with `recurrence` alone |
 | Real Microsoft and SSO sign-in | **Not implemented** (demo stand-ins in `apps/api/src/demo.ts`) |
 | Public DNS, certificates, CORS, CSP, deep links, JavaScript/CSS asset responses and deployed commit; a signed-in session contacts only Alcove's two origins, and pages carry no inserted beacon | Verify for each public release; assets must not redirect to the SPA shell |
-| The app opens offline: after one visit online, a reload without a connection gets the shell and its assets from the service worker, and a new release's worker replaces the previous cache | Verified by hand with headless Chrome against `wrangler pages dev` of a production build (offline through the DevTools protocol, then with the server stopped); verify for each public release |
+| The app opens offline: after one visit online, a reload without a connection gets the shell and its assets from the service worker, and a new release's worker replaces the previous cache | Verified by hand with headless Chrome against `wrangler pages dev` of a production build (offline through the DevTools protocol, then with the server stopped), when Cloudflare Pages served the app; verify against the deployed app, which the API now serves, for each public release |
 | Recording without a connection: cut the connection mid-recording, keep recording and finish; reload offline (Record lists it under **On this device**); reconnect, and it uploads once, in order, into one note; close the tab mid-upload and reopen it, and it still ends as one note; with the recording's account signed out another way and someone else signed in on the browser, nothing uploads into their account and it stays on the device until its own account signs in | Verified by hand with headless Chrome against a production build served with the API behind `/api` (offline through the DevTools protocol), reading the API log; verify for each public release |
 | Browser notifications: in a production build a reminder, notes ready and a share go through the service worker, one tab shows them (the next takes over when it closes), each once, a burst as one, a reminder survives a sleep, and a click opens the right page in the right window | Verified by hand with headless Chrome against a production build (`notificationclick` dispatched in the worker, since headless Chrome has no notification to click); verify a real click on each release |
 | The model code NEAR AI runs pinned to published provenance | **Not implemented**: the OS image is pinned, but its compose manager starts model code NEAR AI chooses |
 | Multi-party end-to-end encrypted calls: keys only in browsers, commits only from the browser that hosts (the organizer's, or a stand-in's), a new key with every join and leave, chat unreadable to the server and to later joiners, media unreadable without the key (LiveKit included), asking to join, no names to LiveKit | API integration tests against a real LiveKit server, with MLS clients and encrypted media; verify two browsers on each release |
 | Invitation emails from Alcove | **Not implemented** (with a connected Google Calendar, Google sends the invitations) |
-| Attested confidential compute, with `KMASTER` released only to it | **Required for the confidential production release**. The public beta on Cloud Run reports `tee: none`. The API can decrypt stored content to provide the service, and its operators can access its keys. Inside dstack: keys from its key service and refused from the environment, and `/v1/attestation` binding a nonce and the build, in API integration tests against a local dstack stand-in. See [Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing) |
+| Attested confidential compute, with the master key released only to it | **Required for the confidential production release**. Until DNS moves to Confidential Space, the public beta on Cloud Run reports `tee: none`, and whoever operates it can access its keys. In Confidential Space: every deploy and monthly refresh checks the server through the load balancer with `infra/confidential-space/verify-server.ts` (the attestation token and the image's signed entry in Rekor, as the app checks them; the TLS key the server presents is the attested one; the commit and image deployed). Staging tries a release first, its first start included, on its own empty database with nothing of production's ([Confidential Space runbook › Staging](../../infra/confidential-space/README.md#staging)). The project's Owners can still use the Cloud KMS key that wraps the master, and every use is in Cloud KMS's audit log ([Known limits](../../infra/confidential-space/README.md#known-limits)). See [Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing) |
 
-The public beta uses verified Google sign-in. The API and website disable demo sign-in in the Cloud Run release.
+The public beta uses verified Google sign-in. The API and website disable demo sign-in in production.
 Demo accounts are available in local and Storybook builds.
 
 The Google provider is the external app `Alcove` and the web client `AlcoveWeb`. Sign-in asks for

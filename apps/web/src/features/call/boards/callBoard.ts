@@ -1,7 +1,7 @@
 /*
  * The board in a call, as this browser holds it (docs: Calls and recordings › A board in a call): the board in the part of the
- * call you're in (`CallState.board`), which votes, ideas from the call and breakout rooms hang on, or a saved board you
- * opened just for you, which touches nothing in the call. Whichever is on your stage (layout/onStage.ts) has its session open
+ * call you're in (`CallState.board`), which votes, ideas from the call and breakout rooms hang on, or a saved board on your
+ * stage only (`SavedBoard`), which touches nothing in the call. Whichever is on your stage (layout/onStage.ts) has its session open
  * while you can open it; so does the call's board while it's in the call, for its presented tile. Who you're following on it,
  * and what you're told as it closes, are here too. What's drawn is features/board/CallBoard.tsx, loaded the first time it's
  * needed.
@@ -24,6 +24,7 @@ import type { BoardCommenting } from '~/features/board/comments';
 import type { BoardUpload } from '~/features/board/more/items';
 import type { BoardItem } from '~/features/board/more/objects';
 import type { SortAsk } from '~/features/board/useBoard';
+import { useStorageRefusal } from '~/features/plans/storageFull';
 import { usePersonIds } from '~/features/workspace/ids';
 import { canKeepEdits } from '~/features/workspace/keep';
 import { useOpensAgain } from '~/features/workspace/opened';
@@ -167,7 +168,10 @@ function useBoardComments(participants: CallState['participants'], workspaceId: 
   }, [people, ids, canAdd, toast]);
 }
 
-/** A saved board you opened just for you, from the picker: by where it's kept, and what it's called. */
+/**
+ * A saved board on your stage only: the one you had open when someone else made a new board in the call, or one asked for as
+ * the call started (Start a call here). By where it's kept, and what it's called.
+ */
 export interface SavedBoard { workspaceId: string; documentId: string; name: string }
 
 /**
@@ -398,7 +402,8 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
   const pictures = useMemo<BoardPictures>(() => (workspaceId && documentId ? boardPictures(workspaceId, documentId, drawnPass) : () => Promise.reject(new Error('no board'))), [workspaceId, documentId, drawnPass]);
   /* A picture put on the board is kept in its document, as a picture of a screen is, for whoever can add to it. */
   const canAdd = drawnOpen?.role === 'edit';
-  const upload = useMemo<BoardUpload | undefined>(() => (workspaceId && documentId && canAdd ? boardUpload(workspaceId, documentId, drawnPass) : undefined), [workspaceId, documentId, drawnPass, canAdd]);
+  const storageFull = useStorageRefusal(owner !== null, 'call');
+  const upload = useMemo<BoardUpload | undefined>(() => (workspaceId && documentId && canAdd ? boardUpload(workspaceId, documentId, drawnPass, storageFull) : undefined), [workspaceId, documentId, drawnPass, canAdd, storageFull]);
   /*
    * The board's workspace as you can open it, read once it's open to you: each link's name for you, and what More links to.
    * Someone it isn't open to reads nothing of it.

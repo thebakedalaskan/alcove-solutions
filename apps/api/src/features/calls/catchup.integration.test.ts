@@ -219,21 +219,76 @@ describe('catching up during a call', () => {
     await again.leave();
   });
 
-  it('lets a guest, whose questions the organizer pays for, ask a few a minute, and someone signed in as many as before', async () => {
+  it('lets a guest, whose questions the organizer pays for, ask a few a minute, coming back or not, and someone signed in as many as before', async () => {
     const org = await account();
     const kofiEmail = unique('kofi');
     const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [kofiEmail] });
     const host = await org.api.calls.join(c, { mic: true, cam: false });
     await inGroup(host);
-    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    const sams = guestBrowser();
+    const sam = await sams.calls.join(c, { mic: true, cam: false, name: 'Sam' });
     await letIn(host, sam);
     for (let i = 0; i < 6; i++) await sam.askSoFar('What did we agree?', { kind: 'all' });
     const refused = await sam.catchUp({ kind: 'all' }).catch((e: unknown) => e);
     expect([code(refused), message(refused)]).toEqual(['unavailable', 'Too many attempts. Wait a minute and try again.']);
+    // Back on a new connection with the earlier pass, Sam is the same guest, with the same few a minute.
+    const back = await sams.calls.join(c, { mic: true, cam: false, name: 'Sam', previous: sam.ticket.pass });
+    sam.close();
+    await inGroup(back);
+    const again = await back.askSoFar('What did we agree?', { kind: 'all' }).catch((e: unknown) => e);
+    expect([code(again), message(again)]).toEqual(['unavailable', 'Too many attempts. Wait a minute and try again.']);
     // Kofi is signed in, and his questions are his own plan's: he may ask more than a guest.
     const kofi = await (await account(kofiEmail)).api.calls.join(c, { mic: true, cam: false });
     await inGroup(kofi);
     for (let i = 0; i < 7; i++) await kofi.askSoFar('What did we agree?', { kind: 'all' });
+  });
+
+  it('lets the guests in a call spend only a share of the organizer’s allowance between them, a share for each call', async () => {
+    // 1% of an allowance of $0.31 (300 minutes reckoned at $0.062 an hour) is about $0.003: a handful of questions.
+    await h.setLimit('ai.hour_micro_usd', 62_000);
+    await h.setLimit('ai.guests_call_percent', 1);
+    try {
+      const org = await account();
+      const kofiEmail = unique('kofi');
+      /** A call with notes on, a line said in it, and two guests let in. */
+      const call = async (guests: string[]) => {
+        const { code: c } = await org.api.calls.startNow({ notes: 'on', guests });
+        const host = await org.api.calls.join(c, { mic: true, cam: false });
+        await inGroup(host);
+        const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+        await letIn(host, sam);
+        const lee = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Lee' });
+        await letIn(host, lee);
+        await host.appendAudio(piece(audioBytes('share'), 0, 0));
+        await host.transcribe(speech('We agreed to sell the old van.', 0, 5000), host.ticket.identity);
+        await lineIds(host, 1);
+        return { c, host, sam, lee };
+      };
+      const first = await call([kofiEmail]);
+      // Sam and Lee ask in turn: some questions are answered, then the share is spent, whichever of them asks.
+      let answered = 0;
+      let refused: unknown;
+      for (let i = 0; i < 10 && refused === undefined; i++) {
+        await (i % 2 ? first.lee : first.sam).askSoFar('Who buys the van?', { kind: 'all' }).then(() => { answered++; }, (e: unknown) => { refused = e; });
+      }
+      const SPENT = 'Guests in this call have asked as much as the organizer’s plan allows. Sign in to ask from your own plan.';
+      expect(answered).toBeGreaterThan(0);
+      expect([code(refused), message(refused)]).toEqual(['plan-limit', SPENT]);
+      for (const guest of [first.sam, first.lee]) expect(code(await guest.catchUp({ kind: 'all' }).catch((e: unknown) => e))).toBe('plan-limit');
+      // Kofi is signed in: his questions are his own plan's, and the organizer's notes go on, with most of the allowance left.
+      const kofi = await (await account(kofiEmail)).api.calls.join(first.c, { mic: true, cam: false });
+      await inGroup(kofi);
+      expect((await kofi.askSoFar('Who buys the van?', { kind: 'all' })).text).not.toBe('');
+      expect((await org.api.plans.plan()).notes.stopped).toBe(false);
+      expect((await settle(first.host, () => true)).capture).toMatchObject({ mode: 'on', stopped: null });
+      await first.host.leave();
+      // Another call of theirs has a share of its own.
+      const second = await call([]);
+      expect((await second.sam.askSoFar('Who buys the van?', { kind: 'all' })).text).not.toBe('');
+      await second.host.leave();
+    } finally {
+      await h.resetLimits();
+    }
   });
 
   it('lets a guest with the link read only what was said while they were in the call', async () => {

@@ -1,5 +1,5 @@
 /** Owns one call's OS delivery projection and exact existing-chat/action navigation registration. */
-import { type CallCrypto, type CallNotificationCategory, type CallNotificationTarget, type CallSession, type CallState, type DirectMessagesState, type NotificationPrefs } from '@alcove/api';
+import { CallNotificationCategorySchema, type CallCrypto, type CallNotificationCategory, type CallNotificationTarget, type CallSession, type CallState, type DirectMessagesState, type NotificationPrefs } from '@alcove/api';
 import { useToast } from '@alcove/ui';
 import { useEffect, useRef } from 'react';
 import { notificationPreferenceIntent, watchNotificationPreferences } from '~/lib/notification-preference-channel';
@@ -14,8 +14,10 @@ import { watchNotificationViews } from '~/features/shell/notification-views';
 const nlog = log.child({ component: 'call-notifications' });
 interface Baseline { scope: string; active: boolean; ids: Set<string>; allowed: Map<string, CallNotificationCategory> }
 const messageKey = (target: CallNotificationTarget) => target.type === 'private' ? `private:${target.message}` : target.type === 'thread' || target.type === 'chat' ? `room:${target.message}` : null;
+/** Whether an alert is one of the call's own kinds: the only ones this source raises, so the account's never reach it. */
+const isCallCategory = (kind: BrowserAlertKind): kind is CallNotificationCategory => CallNotificationCategorySchema.safeParse(kind).success;
 function permits(prefs: NotificationPrefs, kind?: BrowserAlertKind): boolean {
-  return prefs.enabled && (kind === undefined || (kind !== 'call' && kind !== 'ready' && kind !== 'shared' && kind !== 'due' && kind !== 'tagged' && kind !== 'plan' && prefs[kind]));
+  return prefs.enabled && (kind === undefined || (isCallCategory(kind) && prefs[kind]));
 }
 export function useCallBrowserNotifications({ session, state, crypto, direct, active, foreground, onOpen }: {
   session: CallSession; state: CallState; crypto: CallCrypto; direct: DirectMessagesState; active: boolean; foreground: boolean; onOpen: (target: CallNotificationTarget) => void;
@@ -81,8 +83,9 @@ export function useCallBrowserNotifications({ session, state, crypto, direct, ac
         return lifetime.current.scope === scope && lifetime.current.token === token && current.scope === scope && current.active && current.snapshot.ready && current.preferences.ready && current.preferences.ownerId === ownerId
           && current.permission === 'granted' && permits(currentPrefs, kind) && (key === undefined || baseline.current.allowed.has(key));
       },
+      notificationsPauseEnd: () => latest.current.preferences.notificationsPauseEnd,
       open: routeBrowserNotification,
       failed: () => toast('Browser notifications couldn’t be shown. Unread messages and outstanding call actions stay in Alcove.', { icon: 'bellOff' })
     });
-  }, [session, state, crypto, direct, snapshot, preferences.prefs, preferences.ready, owner, ownerId, scope, active, permission, toast]);
+  }, [session, state, crypto, direct, snapshot, preferences.prefs, preferences.notificationsPauseEnd, preferences.ready, owner, ownerId, scope, active, permission, toast]);
 }

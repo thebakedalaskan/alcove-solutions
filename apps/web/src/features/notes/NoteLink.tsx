@@ -13,7 +13,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { WaysIn, type Auth, type Busy } from '~/features/welcome/WaysIn';
-import { returnToLink, takeLinkReturn } from '~/lib/afterSignIn';
+import { clearReturn, returnTo, takeReturnTo } from '~/lib/afterSignIn';
 import { sessionOrOffline } from '~/lib/guards';
 import { log } from '~/lib/log';
 import { q, useClaimNoteLink, useGoogleSignIn, useSignIn } from '~/lib/queries';
@@ -31,7 +31,7 @@ function takeSecret(): string | null {
     taken = r.success ? r.data : null;
     return taken;
   }
-  taken ??= takeLinkReturn();
+  taken ??= takeReturnTo('link')?.secret ?? null;
   return taken;
 }
 
@@ -72,7 +72,7 @@ export function NoteLinkPage() {
       if (now?.ownerId !== who.ownerId) { setOpening(now ? { at: 'ask', who: asked(now) } : { at: 'sign-in' }); return; }
       const { noteId } = await claim.mutateAsync(secret);
       taken = null;
-      await navigate({ to: '/notes/$noteId', params: { noteId }, replace: true });
+      await navigate({ to: '/calls/$noteId', params: { noteId }, replace: true });
     } catch (e) {
       const code = errorCode(e);
       llog.info('note link not opened', { code });
@@ -94,14 +94,14 @@ export function NoteLinkPage() {
     google: () => {
       if (!secret) return;
       // In case Google takes the whole tab: the way back comes here again, to ask.
-      returnToLink(secret);
+      returnTo({ to: 'link', secret });
       setBusy('google');
       void googleSignIn.start().then(async (r) => {
         if (r === 'redirecting') return;
-        takeLinkReturn();
+        clearReturn();
         setBusy(null);
         if (r && 'session' in r) await ask();
-      }).catch((e: unknown) => { takeLinkReturn(); toast(errorMessage(e), { icon: 'x' }); setBusy(null); });
+      }).catch((e: unknown) => { clearReturn(); toast(errorMessage(e), { icon: 'x' }); setBusy(null); });
     },
     cancelGoogle: googleSignIn.cancel,
     go: async (provider: DemoProvider, email?: string) => {
@@ -141,7 +141,7 @@ export function NoteLinkPage() {
         <span className="rg-done is-quiet"><Icon name={opening.at === 'gone' ? 'clock' : 'link'} size={24} /></span>
         <h1>{opening.at === 'gone' ? 'This link has run out or been revoked' : 'There’s no link here'}</h1>
         <p>{opening.at === 'gone' ? 'Ask whoever sent it for a new one.' : 'Open the whole link you were sent: the part after # is what opens the notes.'}</p>
-        <Link to="/notes" className={buttonClass({ size: 'lg' })}>Go to your notes</Link>
+        <Link to="/calls" className={buttonClass({ size: 'lg' })}>Go to your notes</Link>
       </GuestCard>
     );
   }
@@ -151,7 +151,7 @@ export function NoteLinkPage() {
         <span className="rg-done is-quiet"><Icon name="lock" size={24} /></span>
         <h1>These notes can’t open here</h1>
         <p>{opening.message}</p>
-        <Link to="/notes" className={buttonClass({ size: 'lg' })}>Go to your notes</Link>
+        <Link to="/calls" className={buttonClass({ size: 'lg' })}>Go to your notes</Link>
       </GuestCard>
     );
   }

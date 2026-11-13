@@ -1,0 +1,287 @@
+/*
+ * Calls: the page of every call, ahead and past. Just after sunset, a slim band of sky holds the title, the search and
+ * Schedule a call; under the horizon a rail of places sits beside a sheet with what the place holds. The page doesn't
+ * scroll: the rail and the sheet each do. On a phone the page scrolls as one, the rail becomes chips at the top of the
+ * sheet, and Schedule is the top bar's plus. Classes start with cs-. The places and the sky suit any such page.
+ */
+.cs { --hz: calc(8px + clamp(112px, 13vh, 128px)); height: 100vh; height: 100dvh; }
+/* What's pointed at, lit and marked, wherever the rail and the sheet stand. */
+.cs-tree, .cs-sheet {
+  --cs-hl: color-mix(in oklch, var(--ink) 6%, transparent);
+  --cs-on: color-mix(in oklch, var(--ink) 10.5%, transparent);
+  --cs-mark: color-mix(in oklch, var(--sun-text) 22%, transparent);
+}
+.dark :is(.cs-tree, .cs-sheet) { --cs-mark: color-mix(in oklch, var(--sun-text) 30%, transparent); }
+.cs .dusk-in { display: flex; flex-direction: column; height: 100%; padding-bottom: 18px; }
+/* Its own search takes ⌘K here: the one at the top right, and the phone's, step aside. */
+.main:has(> .main-in > .dusk .cs-sky) .top-find { display: none; }
+/* You stand in the sky's band, level with its search and its button. */
+@media (min-width: 861px) { .main:has(> .main-in > .dusk .cs-sky) .top-acts { top: calc(clamp(112px, 13vh, 128px) / 2 - 3px); } }
+.shell:has(> .main > .main-in > .dusk .cs-sky) .ph-end > :first-child { display: none; }
+/* The horizon keeps a strip of open water: the glitter stops short of the rail and the sheet. */
+.cs .hz > .hz-at, .cs .hz > .hz-light { clip-path: inset(-500px -2400px -16px -2400px); }
+
+/* ------------------------------------------------------------ the sky */
+/* The search stays in the middle while there's room; with less, it gives way, never sliding under the title or the button. */
+.cs-sky { position: relative; z-index: 6; flex: none; display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(0, 600px) minmax(max-content, 1fr); column-gap: 24px; align-items: center; height: calc(var(--hz) - 42px); }
+.cs-sky-t { justify-self: start; }
+.cs-sky-q { min-width: 0; }
+/* What the page offers sits left of you, at the top right. */
+.cs-sky-a { justify-self: end; display: flex; align-items: center; gap: 12px; padding-right: 48px; }
+.cs-q { position: relative; display: flex; align-items: center; gap: 11px; height: 48px; padding: 0 7px 0 18px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ground) 64%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 16%, transparent); transition: background-color var(--duration-1), box-shadow var(--duration-1); }
+.cs-q:hover { background: color-mix(in oklch, var(--ground) 76%, transparent); }
+.cs-q:focus-within, .cs-q.is-on { background: color-mix(in oklch, var(--ground) 92%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 36%, transparent), var(--shadow-2); }
+.cs-q > .ac-i { flex: none; color: var(--ink-2); pointer-events: none; }
+/* Someone the search is narrowed to, before the words. */
+.cs-q-tok { flex: none; display: inline-flex; align-items: center; gap: 7px; height: 32px; margin-left: -6px; padding: 0 2px 0 5px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink) 10%, transparent); font: 600 13.5px/1 var(--font-sans); color: var(--ink); }
+.cs-q-tok .ac-avatar { --ring: transparent; }
+.cs-q-tok .ac-icon-btn { width: 26px; height: 26px; color: var(--ink-2); }
+.cs-q input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: none; font: 400 19px/1.2 var(--font-display); letter-spacing: -.004em; color: var(--ink); }
+.cs-q input::placeholder { color: var(--ink-2); opacity: 1; }
+.cs-q-k.ac-kbd { flex: none; margin-right: 9px; background: color-mix(in oklch, var(--ink) 11%, transparent); box-shadow: none; color: var(--ink-2); }
+.cs-q-x.ac-icon-btn { width: 32px; height: 32px; color: var(--ink-3); }
+.cs-q-x.ac-icon-btn:hover { background: color-mix(in oklch, var(--ink) 9%, transparent); color: var(--ink); }
+/* Tinted: Schedule a call is the page's one filled button. */
+.ac-btn.cs-q-ask { flex: none; height: 34px; padding: 0 13px 0 11px; background: color-mix(in oklch, var(--ink) 11%, transparent); box-shadow: none; color: var(--ink); }
+.ac-btn.cs-q-ask:hover { background: color-mix(in oklch, var(--ink) 17%, transparent); }
+.ac-btn.cs-q-ask[disabled] { opacity: .55; }
+
+/* ------------------------------------------------------------ the rail and the sheet */
+.cs-split { position: relative; z-index: 5; flex: 1; display: grid; grid-template-columns: 248px minmax(0, 1fr); column-gap: 22px; min-height: 0; margin-top: 30px; }
+.cs-split.is-whole { grid-template-columns: minmax(0, 1fr); }
+.cs-tree { display: flex; flex-direction: column; min-height: 0; }
+.cs-tree-in { flex: 1; min-height: 0; margin-inline: -6px; padding: 0 6px 16px; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: var(--line-control) transparent; }
+.cs-tr { position: relative; display: flex; align-items: center; }
+.cs-t { position: relative; flex: 1; min-width: 0; display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; column-gap: 8px; align-items: center; height: 34px; padding: 0 9px 0 10px; border-radius: var(--radius-sm); font: 500 14px/1 var(--font-sans); color: var(--ink-2); text-align: left; transition: background-color var(--duration-1), color var(--duration-1); }
+.cs-t:hover { background: var(--cs-hl); color: var(--ink); }
+.cs-t.is-on { background: var(--cs-on); color: var(--ink); }
+.cs-t:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.cs-t-ic { display: grid; place-items: center; }
+.cs-t-l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-t small { font: 600 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-2); }
+/* On the light sea ink-3 is too faint to read; by night it's the quiet count it should be. */
+.dark .cs-t small { color: var(--ink-3); }
+.cs-t small.is-trail { font-weight: 500; color: var(--ink-2); }
+.cs-t small.is-sun { color: var(--sun-text); }
+.cs-t.is-sub { height: 32px; padding-left: 30px; font-size: 13.5px; }
+.cs-t.is-sub2 { height: 32px; padding-left: 50px; font-size: 13.5px; }
+.cs-tw { position: absolute; left: -2px; z-index: 1; display: grid; place-items: center; width: 16px; height: 34px; color: var(--ink-3); }
+.cs-tw .ac-i { transition: transform var(--duration-1); }
+.cs-tw.is-open .ac-i { transform: rotate(90deg); }
+.cs-th { display: flex; align-items: center; height: 30px; margin-top: 14px; padding: 0 10px; font: 600 12.5px/1 var(--font-sans); color: var(--ink-2); }
+.cs-foot { flex: none; padding-top: 8px; border-top: 1px solid var(--line); }
+.cs-foot-l { display: grid; grid-template-columns: 22px minmax(0, 1fr) 14px; column-gap: 8px; align-items: center; padding: 8px 10px; border-radius: var(--radius-sm); text-align: left; transition: background-color var(--duration-1); }
+.cs-foot-l:hover { background: var(--cs-hl); }
+.cs-foot-l:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.cs-foot-l > .ac-i:first-child { color: var(--ink-2); }
+.cs-foot-l b { display: block; font: 600 13.5px/1.3 var(--font-sans); color: var(--ink); }
+.cs-foot-l small { display: block; margin-top: 2px; font: 400 12px/1.3 var(--font-sans); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-foot-go { color: var(--ink-3); }
+
+.cs-sheet { position: relative; min-width: 0; min-height: 0; overflow: hidden auto; padding: 24px clamp(22px, 2.6vw, 40px) 48px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), 0 30px 60px -40px rgb(4 10 22 / .6); scrollbar-width: thin; scrollbar-color: var(--line-control) transparent; }
+.cs-sheet > * { max-width: 1120px; }
+.cs-mh { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; align-items: start; margin-bottom: 14px; }
+.cs-mh h2 { font: 400 clamp(24px, 2.1vw, 30px)/1.15 var(--font-display); letter-spacing: -.01em; color: var(--ink); overflow-wrap: anywhere; }
+.cs-mh p { margin-top: 8px; font: 400 14px/1.35 var(--font-sans); color: var(--ink-2); }
+.cs-mh-a { display: flex; align-items: center; gap: 8px; }
+/* List or week: a small switch, on the sheet's top right. */
+.cs-view.ac-seg { padding: 3px; border-radius: 11px; background: color-mix(in oklch, var(--ink) 7%, transparent); }
+.cs-view.ac-seg button { height: 30px; padding: 0 12px; border-radius: 8px; font-weight: 500; }
+.cs-view.ac-seg .pill { border-radius: 8px; background: var(--surface-raised); box-shadow: 0 1px 2px rgb(4 10 22 / .2); }
+.cs-wnav { display: inline-flex; align-items: center; gap: 2px; margin-right: 4px; }
+.cs-wnav .ac-icon-btn { width: 32px; height: 32px; }
+
+/* ------------------------------------------------------------ the groups */
+.cs-g + .cs-g { margin-top: 10px; }
+.cs-gh { display: flex; align-items: center; gap: 12px; padding: 10px 0 6px; font: 600 13px/18px var(--font-sans); color: var(--ink-2); }
+.cs-gh::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.cs-gh.is-soon { color: var(--sun-text); }
+.cs-g:first-child > .cs-gh, .cs-connect + .cs-g > .cs-gh { padding-top: 0; }
+.cs-more { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 34px; margin: 2px 0 0 68px; padding: 0 12px; border-radius: 10px; font: 600 13.5px/1 var(--font-sans); color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
+.cs-more:hover { background: var(--cs-hl); color: var(--ink); }
+.cs-more:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* ------------------------------------------------------------ a call */
+.cs-row { position: relative; display: grid; grid-template-columns: 64px minmax(0, 1fr) 92px 36px; column-gap: 18px; align-items: start; margin-inline: -14px; padding: 14px; border-radius: 16px; transition: background-color var(--duration-1); }
+.cs-row:hover { background: var(--cs-hl); }
+.cs-row.is-soon { padding-block: 12px; }
+.cs-row.is-fresh { background: color-mix(in oklch, var(--sun-text) 13%, transparent); }
+.cs-row:has(.cs-link:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; }
+.cs-who { display: flex; justify-content: center; padding-top: 2px; }
+.cs-who .ac-avatar { --ring: var(--surface); }
+.cs-arch { display: grid; place-items: center; width: 38px; height: 42px; border-radius: var(--radius-arch) var(--radius-arch) 9px 9px; outline: 1.5px dashed color-mix(in oklch, var(--ink) 30%, transparent); outline-offset: -1.5px; color: var(--ink-2); }
+.cs-arch.is-solid { outline: 0; background: color-mix(in oklch, var(--ink) 9%, transparent); }
+.cs-main { min-width: 0; display: grid; gap: 5px; }
+.cs-t1 { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+/* The name is the row's link: pressing anywhere on the row is pressing it. What you can press in the row sits above. */
+.cs-link { flex: 0 1 auto; min-width: 0; font: 600 15.5px/1.3 var(--font-sans); color: var(--ink); outline: 0; }
+.cs-link::after { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: 16px; }
+.cs-row.is-muted .cs-link { color: var(--ink-2); }
+.cs-from { display: inline-flex; align-items: center; gap: 5px; flex: 0 6 auto; min-width: 0; overflow: hidden; white-space: nowrap; font: 500 12.5px/1 var(--font-sans); color: var(--ink-2); }
+.cs-from > span { overflow: hidden; text-overflow: ellipsis; }
+.cs-from .ac-i { flex: none; }
+.cs-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font: 500 13px/1.3 var(--font-sans); color: var(--ink-2); }
+.cs-quiet { color: var(--ink-3); }
+.cs-note { font-weight: 600; }
+.cs-note.is-rose { color: var(--rose); }
+.cs-note.is-sun { color: var(--sun-text); }
+.cs-nt { font: 500 12.5px/1 var(--font-sans); color: var(--ink-3); }
+.cs-gist { font: 400 14px/1.45 var(--font-sans); color: var(--ink-2); }
+.cs-quote { font: 400 14px/1.45 var(--font-sans); color: var(--ink); }
+.cs-quote small { font-size: 13px; color: var(--ink-2); }
+.cs-row mark { border-radius: 3px; background: var(--cs-mark); color: inherit; box-shadow: 0 0 0 1.5px var(--cs-mark); }
+.cs-chips { position: relative; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 3px; }
+.cs-when { display: grid; justify-items: end; gap: 6px; padding-top: 1px; text-align: right; }
+.cs-when b:empty { display: none; }
+.cs-when b { display: inline-flex; align-items: center; gap: 5px; font: 600 14px/1.2 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap; }
+.cs-when small { font: 500 12.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-2); white-space: nowrap; }
+.cs-row.is-soon .cs-when b { color: var(--sun-text); }
+.cs-pin { color: var(--sun-text); }
+.cs-menu { position: relative; z-index: 3; align-self: start; display: flex; justify-content: flex-end; }
+.cs-menu-b.ac-icon-btn { width: 32px; height: 32px; color: var(--ink-2); opacity: .6; }
+.cs-row:hover .cs-menu-b.ac-icon-btn, .cs-menu-b.ac-icon-btn[aria-expanded="true"], .cs-menu-b.ac-icon-btn:focus-visible { opacity: 1; }
+@media (hover: none) { .cs-menu-b.ac-icon-btn { opacity: 1; } }
+
+/* What you answer in place: equal buttons, or what you said with Change. */
+.cs-reply { position: relative; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+.cs-reply .ac-btn.is-xs { padding: 0 14px; }
+.cs-reply.is-said { gap: 8px; font: 600 13px/1 var(--font-sans); color: var(--ink-2); }
+.cs-reply.is-said > .ac-i { color: var(--sun-text); }
+.cs-reply.is-said .ac-btn { height: 28px; padding: 0 10px; }
+
+/* What waits on you, in its kind's colour, and a moment: ▶ and the time. */
+.cs-k { --tint: var(--horizon); display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px 0 7px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--tint) 12%, var(--surface)); font: 600 12.5px/1 var(--font-sans); color: color-mix(in oklch, var(--tint) 82%, var(--ink)); white-space: nowrap; }
+.dark .cs-k { background: color-mix(in oklch, var(--tint) 17%, transparent); color: var(--tint); }
+.cs-k.is-decide { --tint: var(--rose); }
+.cs-k.is-writing { --tint: var(--sun-text); padding-left: 9px; }
+.cs-k.is-rec { --tint: var(--rec); padding-left: 8px; }
+.cs-k .ac-dots { gap: 3px; }
+.cs-k .ac-dots i { width: 4px; height: 4px; }
+.cs-at { position: relative; z-index: 2; display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px 0 7px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink) 8%, transparent); font: 600 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-2); white-space: nowrap; transition: background-color var(--duration-1), color var(--duration-1); }
+.cs-at:hover { background: color-mix(in oklch, var(--ink) 13%, transparent); color: var(--ink); }
+.cs-at:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cs-at > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cs-at > .ac-i { flex: none; }
+
+/* ------------------------------------------------------------ a call's menu */
+.ac-pop.cs-rmenu { min-width: 248px; max-width: min(340px, calc(100vw - 24px)); padding: 6px; }
+.ac-pop.cs-rmenu.is-wide { width: min(380px, calc(100vw - 24px)); max-width: none; }
+.cs-mlist { display: grid; outline: 0; }
+.cs-mi { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 0 10px; border-radius: var(--radius-sm); font: 500 14px/1.2 var(--font-sans); color: var(--ink); text-align: left; transition: background-color var(--duration-1); }
+.cs-mi:hover, .cs-mi:focus-visible { background: color-mix(in oklch, var(--ink) 8%, transparent); outline: 0; }
+.cs-mi:focus-visible { box-shadow: inset 0 0 0 2px var(--focus); }
+.cs-mi > .ac-i { flex: none; color: var(--ink-2); }
+.cs-mi .l { flex: 1; min-width: 0; }
+.cs-mi small { flex: none; padding-left: 16px; font: 500 12px/1 var(--font-sans); color: var(--ink-3); }
+.cs-mi.is-caution, .cs-mi.is-caution > .ac-i { color: var(--caution); }
+.cs-sep { display: block; height: 1px; margin: 5px 6px; background: var(--line); }
+/* A question the menu asks first, in its place. */
+.cs-ask { display: grid; gap: 10px; padding: 10px 10px 8px; }
+.cs-ask > b { font: 600 14px/1.35 var(--font-sans); color: var(--ink); }
+.cs-ask-b { display: grid; gap: 10px; font: 400 13.5px/1.45 var(--font-sans); color: var(--ink-2); }
+.cs-ask-b .cf-scope { display: grid; gap: 8px; }
+.cs-ask-b .cf-scope b { font: 600 12.5px/1 var(--font-sans); color: var(--ink-2); }
+.cs-ask-a { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+
+/* ------------------------------------------------------------ asking every call */
+.cs-answer { position: relative; margin-bottom: 16px; padding: 16px 18px 18px 22px; border-radius: 18px; background: color-mix(in oklch, var(--ground) 55%, var(--surface)); box-shadow: inset 0 0 0 1px var(--line); }
+.cs-answer header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.cs-seal { display: inline-flex; align-items: center; gap: 7px; font: 600 13px/1.3 var(--font-sans); color: var(--ink-2); }
+.cs-seal .ac-i { flex: none; color: var(--sun-text); }
+.cs-answer header .ac-icon-btn { width: 32px; height: 32px; margin-right: -6px; }
+.cs-answer-t { max-width: 70ch; font: 400 17px/1.55 var(--font-sans); color: var(--ink); text-wrap: pretty; }
+.cs-answer-t.is-reading { display: inline-flex; align-items: center; gap: 10px; color: var(--ink-2); font-size: 15px; }
+.cs-answer-c { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.cs-answer-c .cs-at { max-width: 100%; }
+
+/* ------------------------------------------------------------ what a series carries */
+.cs-carry { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; column-gap: 12px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.cs-mk { display: grid; place-items: center; min-height: 21px; color: var(--ink-2); }
+.cs-carry.is-follow .cs-mk > i { width: 9px; height: 9px; border-radius: 50%; background: var(--horizon); }
+.cs-carry.is-decide .cs-mk > i { width: 9px; height: 9px; border-radius: 2px; background: var(--rose); transform: rotate(45deg); }
+.cs-carry-b { display: grid; gap: 5px; min-width: 0; }
+.cs-carry-b > b { font: 500 14.5px/1.4 var(--font-sans); color: var(--ink); text-wrap: pretty; }
+.cs-carry.is-done .cs-carry-b > b { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
+.cs-carry-b > small { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font: 400 12.5px/1.4 var(--font-sans); color: var(--ink-2); }
+.cs-carry-b .cs-at { height: 22px; font-size: 11.5px; }
+.cs-carry-b .carry-later { margin-top: 2px; }
+.cs-carry-a { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; }
+.cs-carry-a .ac-btn { height: 30px; }
+.cs-none { padding: 12px 0; font: 400 14px/1.45 var(--font-sans); color: var(--ink-2); }
+.cs-next { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+/* Asking about a series (the note's ask bar), at the foot of its sheet and in reach as it scrolls, fading the rows under it. */
+.cs-sheet { --cd-fade: var(--surface); }
+.cs-sheet .cd-askdock { bottom: 16px; margin-top: 18px; }
+/* Times to ask for, in a menu's question. */
+.cs-times { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.cs-times:empty { display: none; }
+
+/* ------------------------------------------------------------ connecting a calendar, and nothing yet */
+.cs-connect { display: flex; align-items: center; gap: 12px; margin: 0 0 14px; padding: 12px 12px 12px 16px; border-radius: 14px; background: color-mix(in oklch, var(--horizon) 9%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--horizon) 24%, transparent); font: 500 14px/1.45 var(--font-sans); color: var(--ink); }
+.cs-connect > .ac-i { flex: none; color: var(--horizon); }
+.cs-connect > span { flex: 1; min-width: 0; }
+.cs-connect .ac-btn { flex: none; }
+.cs-empty.ac-empty { gap: 12px; padding: 64px 0 24px; }
+.cs-empty.ac-empty > b { font: 400 28px/1.15 var(--font-display); letter-spacing: -.01em; }
+.cs-empty.ac-empty p { max-width: 44ch; font: 400 15px/1.55 var(--font-sans); color: var(--ink-2); text-wrap: balance; }
+.cs-empty .ac-empty-act { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
+.cs-empty-arch { display: grid; place-items: center; width: 60px; height: 68px; border-radius: var(--radius-arch) var(--radius-arch) 12px 12px; outline: 1.5px dashed color-mix(in oklch, var(--ink) 30%, transparent); outline-offset: -1.5px; color: var(--ink-2); }
+.cs-empty-arch.is-person { outline: 0; }
+.cs-wait { display: inline-flex; align-items: center; gap: 10px; padding: 18px 0; font: 500 14px/1.4 var(--font-sans); color: var(--ink-2); }
+.cs-stale { opacity: .55; transition: opacity var(--duration-2); }
+
+/* ------------------------------------------------------------ narrower */
+@media (max-width: 1100px) {
+  .cs-sky { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .cs-split { grid-template-columns: 220px minmax(0, 1fr); }
+  .cs-t small:not(.is-sun, .is-trail) { display: none; }
+}
+@media (min-width: 861px) and (max-width: 1240px) {
+  .cs-row { grid-template-columns: 56px minmax(0, 1fr) 84px 32px; column-gap: 14px; }
+  .cs-more { margin-left: 56px; }
+}
+/* The chips are the rail on a phone; wider, the rail is. */
+.cs-chips-nav { display: none; }
+@media (max-width: 860px) {
+  /* The sky goes up behind the phone's top bar, and the page scrolls as one. */
+  .shell:has(> .main > .main-in > .cs) .ph-head { position: relative; z-index: 1; }
+  .cs { --hz: 176px; --behind: 66px; height: auto; margin-top: -66px; }
+  .cs .dusk-in { display: block; height: auto; padding-top: 66px; padding-bottom: 20px; }
+  .cs-sky { grid-template-columns: minmax(0, 1fr); height: auto; padding: 14px 0 2px; }
+  .cs-sky-t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .cs-sky-a { display: none; }
+  .cs-q { height: 50px; }
+  .cs-q input { font-size: 18px; }
+  .cs-split { display: block; margin-top: 18px; }
+  .cs-tree { display: none; }
+  .cs-sheet { overflow: visible; padding: 12px 14px 24px; border-radius: 18px; }
+  .cs-chips-nav { display: flex; gap: 6px; margin: 0 0 10px; overflow-x: auto; scrollbar-width: none; }
+  .cs-chip { display: inline-flex; align-items: center; height: 32px; padding: 0 13px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink) 7%, transparent); font: 500 13.5px/1 var(--font-sans); color: var(--ink-2); white-space: nowrap; }
+  .cs-chip.is-on { background: color-mix(in oklch, var(--ink) 14%, transparent); color: var(--ink); font-weight: 600; }
+  .cs-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .cs-mh { align-items: center; column-gap: 10px; margin-bottom: 8px; }
+  .cs-mh h2 { font-size: 24px; }
+  .cs-mh p { display: none; }
+  .cs-mh-a { gap: 4px; }
+  .cs-wnav { gap: 0; margin-right: 2px; }
+  .cs-wnav .ac-icon-btn { width: 28px; height: 28px; }
+  .cs-wnav .ac-btn.is-xs { padding: 0 7px; }
+  .cs-view .cs-vl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .cs-view.ac-seg button { padding: 0 9px; }
+  .cs-row { grid-template-columns: 56px minmax(0, 1fr) auto 26px; column-gap: 10px; margin-inline: -6px; padding: 12px 6px; }
+  .cs-who { justify-content: flex-start; }
+  .cs-who .ac-faces .ac-avatar { margin-left: -9px; }
+  .cs-who .ac-faces .ac-avatar:first-child { margin-left: 0; }
+  .cs-q-k.ac-kbd { display: none; }
+  .cs-t1 { flex-wrap: wrap; row-gap: 3px; }
+  .cs-from { display: none; }
+  .cs-gist { -webkit-line-clamp: 2; }
+  .cs-menu-b.ac-icon-btn { width: 28px; height: 28px; opacity: 1; }
+  .cs-more { margin-left: 56px; }
+  .cs-connect { flex-wrap: wrap; }
+  .cs-answer { padding: 14px 14px 16px; }
+  .cs-answer-t { font-size: 16px; }
+  .cs-carry { grid-template-columns: 20px minmax(0, 1fr); }
+  .cs-carry-a { grid-column: 2; justify-content: flex-start; margin-top: 8px; }
+  .cs-empty.ac-empty { padding: 40px 0 12px; }
+}

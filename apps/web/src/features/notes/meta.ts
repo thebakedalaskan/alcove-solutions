@@ -1,14 +1,10 @@
 import { isAcceptedFollowUp, firstName, type ActionItem, type Note, type NoteSummary, type Person, type Received, type Recipient, type RecipientRole } from '@alcove/api';
 import { sameEmail, someNames } from '~/lib/people';
-import { noteWhen } from '~/lib/time';
+import { noteDay, noteWhen } from '~/lib/time';
 
-/** What a note's row says under its title. */
-export function noteMeta(n: NoteSummary): string {
-  const where = n.kind === 'room' ? 'In the room · ' : '';
-  if (n.status === 'recording') return `${where}Recording`;
-  if (n.status === 'pending') return `${where}Waiting to be written`;
-  return `${where}${n.totalActions ? `${n.totalActions} follow-up${n.totalActions === 1 ? '' : 's'}` : 'No follow-ups'}`;
-}
+/** What a note's row says under its title: its day, and how it came to you (receivedLine) or that it was in the room. */
+export const noteLine = (n: NoteSummary): string =>
+  [noteDay(n.startedAt), ...(n.received ? [receivedLine(n.received)] : n.kind === 'room' ? ['In the room'] : [])].join(' · ');
 
 /**
  * Who you are to a note, for what you may do in it: its organizer when it's yours, otherwise as you got it. A team's note
@@ -64,5 +60,34 @@ export function noteAsText(n: Note): string {
     ...(said.length ? ['', 'Follow-ups', ...said.map(line)] : []),
     ...(fromBoards.length ? ['', 'Follow-ups from the board', ...fromBoards.map(line)] : []),
     ...(n.additions.some((a) => a.text) ? ['', 'Shared notes', ...n.additions.filter((a) => a.text).map((a) => `- ${a.text} (${a.by.name})`)] : [])
+  ].join('\n');
+}
+
+/**
+ * A call's notes as Markdown, to keep on this device: its title and when, the summary and the full one, what was decided and
+ * whether it's confirmed, what's still open, the follow-ups with who and when, each breakout room's, and the shared notes.
+ */
+export function noteAsMarkdown(n: Note): string {
+  const about = (a: ActionItem) => [a.owner ? `${a.owner.name}${a.takenOn ? '' : ', not taken on yet'}` : '', a.due && !a.takenOn ? `suggested for ${a.due}` : a.due].filter((x): x is string => !!x).join(', ');
+  const item = (a: ActionItem) => `- [${a.done ? 'x' : ' '}] ${a.text}${about(a) ? ` (${about(a)})` : ''}`;
+  const decided = (ds: Note['decisions']) => ds.filter((d) => d.state !== 'rejected').map((d) => `- ${d.text}${d.state === 'proposed' ? ' (not confirmed yet)' : d.state === 'superseded' ? ' (no longer holds)' : ''}`);
+  const open = (qs: Note['questions']) => qs.filter((x) => x.state === 'open').map((x) => `- ${x.text}`);
+  const part = (title: string, lines: string[]) => (lines.length ? ['', `## ${title}`, '', ...lines] : []);
+  const full = n.details.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  const rooms = n.rooms.flatMap((r) => {
+    const lines = [...(r.summary ? [r.summary, ''] : []), ...decided(r.decisions), ...open(r.questions), ...r.actions.filter(isAcceptedFollowUp).map(item)];
+    return lines.length ? ['', `### ${r.name}`, '', ...lines] : [];
+  });
+  return [
+    `# ${n.title}`, '', noteWhen(n.startedAt, n.duration), '', n.summary,
+    ...part('Full summary', full.flatMap((p, i) => (i ? ['', p] : [p]))),
+    ...part('Decided', decided(n.decisions)),
+    ...part('Still open', open(n.questions)),
+    ...part('Follow-ups', n.actions.filter((a) => isAcceptedFollowUp(a) && a.from === null).map(item)),
+    ...part('Follow-ups from the board', n.actions.filter((a) => isAcceptedFollowUp(a) && a.from === 'board').map(item)),
+    ...part('How it went', n.chapters.map((c) => `- **${c.title}**${c.summary ? `: ${c.summary}` : ''}`)),
+    ...(rooms.length ? ['', '## Breakout rooms', ...rooms] : []),
+    ...part('Shared notes', n.additions.filter((a) => a.text).map((a) => `- ${a.text} (${a.by.name})`)),
+    ''
   ].join('\n');
 }

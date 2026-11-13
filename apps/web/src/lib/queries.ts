@@ -1,9 +1,10 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import type { AgentDecisionInput, AgentTokenInput, DriveExportInput, FileNotes, FollowUpReview, MeetingCreate } from '@alcove/api';
-import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type MyTeam, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Series, type SharedWrite, type ShareTarget, type TeamAccess, type DocumentLibrary, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree } from '@alcove/api';
-import { queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import type { AgentDecisionInput, AgentTokenInput, AgentUpdateInput, Attestation, Calendar, DriveExportInput, FollowUpReview, Trust } from '@alcove/api';
+import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Plan, type PromoteBody, type Purchase, type QuestionPatch, type TopUp, type RingReply, type Series, type SharedWrite, type ShareTarget, type DocumentLibrary, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type MyTeam, type TeamAccess } from '@alcove/api';
+import { infiniteQueryOptions, queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import { forgetAccount } from '~/features/record/offline';
+import { forgetHourLeft } from '~/features/plans/hourLeft';
 import { forgetNotified } from '~/features/shell/notified';
 import { announceMentionsRead } from '~/features/shell/attentionChannel';
 import { forgetEdits } from '~/features/workspace/keep';
@@ -12,11 +13,12 @@ import { forgetPlaces } from '~/features/workspace/places';
 import { forgetWords } from '~/features/workspace/words';
 import { accountGeneration, announceSignIn, announceSignOut } from './signedOut';
 import { announceNotificationPreferences, settleNotificationPreferences } from './notification-preference-channel';
-import { api } from './api';
+import { api, checkServer } from './api';
 import { log } from './log';
 import { weekOn } from './time';
 import { openGoogleSignIn, waitForGoogleReturn } from './googleSignIn';
 import { answerCallOptions, preferenceOptions, readMeeting, readPreferences, readWorkspaces, readNote, readInbox, refreshChangedNote, renameWorkspaceOptions, updateActionOptions, updateDecisionOptions, type PreferenceChange } from './queryWrites';
+import type { CalendarRange, CallAheadMake, ProposalAnswer } from '@alcove/api';
 
 export const qk = {
   drive: ['google-drive'] as const,
@@ -24,6 +26,8 @@ export const qk = {
   driveJobs: ['google-drive', 'jobs'] as const,
   driveNote: (id: string) => ['google-drive', 'note', id] as const,
   agents: ['agents'] as const,
+  /** What your agents did: a list of its own, read again only when it changes (disconnecting deletes what an agent did). */
+  agentActivity: ['agent-activity'] as const,
   agentEndpoint: ['agent-endpoint'] as const,
   agentAuthorization: (id: string, ownerId: string) => ['agent-authorization', id, ownerId] as const,
   session: ['session'] as const,
@@ -44,7 +48,8 @@ export const qk = {
   busy: (emails: readonly string[], from: ISODate, to: ISODate) => ['meetings', 'busy', from, to, ...emails] as const,
   documents: ['documents'] as const,
   notes: ['notes'] as const,
-  noteList: (kind?: NoteKind, text?: string) => ['notes', 'list', kind ?? 'all', text ?? ''] as const,
+  /** A list of notes, or a search of them: its words, and whose lines it looks in (`by`, an address, which stays in memory). */
+  noteList: (kind?: NoteKind, text?: string, by?: string) => ['notes', 'list', kind ?? 'all', text ?? '', by?.toLowerCase() ?? ''] as const,
   note: (id: string) => ['notes', 'one', id] as const,
   /** Your own notes on a note: never anyone else's, so nothing here is ever shown to someone who signs in after you (signing in starts the cache over). */
   personal: (id: string) => ['notes', 'personal', id] as const,
@@ -75,12 +80,30 @@ export const qk = {
   workspaceItem: (id: string, itemId: string) => ['workspaces', id, 'items', itemId] as const,
   workspaceTree: (id: string) => ['workspaces', id, 'tree'] as const,
   boardsToBring: ['workspaces', 'boards'] as const,
-  visionModels: ['models', 'vision'] as const
+  visionModels: ['models', 'vision'] as const,
+
+  calendarRange: (from: ISODate, to: ISODate) => ['meetings', 'calendar', from, to] as const,
+
+  /** What documents say at the top, for the Drive's cards: the IDs asked about, in the order asked. */
+  previews: (id: string, ids: readonly string[]) => ['workspaces', id, 'previews', ...ids] as const,
+  /** What's in Trash in every workspace, for the Drive's Trash. */
+  trashed: ['workspaces', 'trashed'] as const,
+
+  /** What the documents on a workspace's Home say at the top, for their cards. */
+  workspacePreviews: (id: string, items: readonly string[]) => ['workspaces', id, 'previews', items.join(',')] as const,
+  /** The line on what a workspace is for. */
+  workspaceAbout: (id: string) => ['workspaces', id, 'about'] as const,
 };
+
+/**
+ * Whether a list of notes' key (`qk.noteList`) is a search: it has words, or someone whose lines it looks in. The plain
+ * list of your notes isn't one, so it's never what a search shows while its answer is on the way.
+ */
+export const isNoteSearch = (key: ReturnType<typeof qk.noteList>): boolean => key[3] !== '' || key[4] !== '';
 
 /** A saved board someone could bring to a call: where it is, what it's called, whose it is, and when it was last changed. */
 export interface BoardToBring { workspaceId: string; workspace: string | null; id: string; name: string; by: string | null; editedAt: ISODate }
-/** How many of the newest workspaces the board picker looks in: what a team has is across the Drive, whichever the call's is. */
+/** How many of the newest workspaces the board picker looks in: a call's home is new, so what a team has is across the Drive. */
 const BOARD_SPACES = 12;
 /**
  * Every board you could bring from the newest of `spaces` (your Drive, as `q.workspaces` lists it), the most recently changed
@@ -96,24 +119,49 @@ async function boardsToBring(spaces: readonly WorkspaceSummary[]): Promise<Board
     .sort((a, b) => b.editedAt.localeCompare(a.editedAt));
 }
 
-/** What the API says it runs on, whether its answer is bound to the nonce this browser sent, and when it answered. */
-export interface Trust { tee: 'none' | 'dstack'; bound: boolean; at: number }
-async function checkTrust(): Promise<Trust> {
-  const nonce = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
-  const a = await api.trust.attestation(nonce);
-  if (a.tee === 'none') return { tee: 'none', bound: false, at: Date.now() };
-  // The quote's report data must be SHA-512 of this request's nonce and the running commit.
-  const want = await crypto.subtle.digest('SHA-512', new TextEncoder().encode(`alcove-attestation/v1\n${nonce}\n${a.build.commit}`));
-  const hex = Array.from(new Uint8Array(want), (b) => b.toString(16).padStart(2, '0')).join('');
-  return { tee: 'dstack', bound: a.nonce === nonce && a.reportData.toLowerCase() === hex && a.quote.length > 0, at: Date.now() };
+const trustLog = log.child({ component: 'trust' });
+/** Why a server that couldn't be asked isn't verified: whatever it said before no longer counts. */
+const UNASKED = 'Alcove’s server couldn’t be asked what it runs on.';
+/** What the API says it runs on, asked twice before giving up, a second apart: one dropped request doesn't count against it. */
+async function attestation(): Promise<Attestation | undefined> {
+  for (let tries = 1; ; tries++) {
+    try {
+      return await api.trust.attestation();
+    } catch (e) {
+      if (tries >= 2) {
+        trustLog.warn('the server couldn’t be asked what it runs on', { code: errorCode(e) });
+        return undefined;
+      }
+      await new Promise((go) => { setTimeout(go, 1000); });
+    }
+  }
 }
-/** When the server's hardware answer was bound to this browser's own request, or null: only then is it verified. */
-export const verifiedAt = (t: Trust | undefined): number | null => (t?.tee === 'dstack' && t.bound ? t.at : null);
 /**
- * The promise in the product's own words, verified only when the hardware answer is bound to this browser's request. No
- * caveats (docs/design/principles.md › Copy): the engineering docs say what's built.
+ * What the API says it runs on, checked in this browser (`checkServer`: its token, then its release in Sigstore's public
+ * log, as the server hands it on). A check that doesn't pass blocks nothing; it's logged with its reason, so the server's log
+ * shows it too. A server that can't be asked isn't verified, so a check that passed before never stays on screen for it.
+ */
+async function checkTrust(): Promise<Trust> {
+  const a = await attestation();
+  if (!a) return { state: 'unverified', reason: UNASKED, commit: 'unknown', at: Date.now() };
+  const t = await checkServer(a);
+  if (t.state === 'unverified') trustLog.warn('the server’s attestation didn’t check out', { reason: t.reason, commit: t.commit, digest: t.digest ?? null });
+  return t;
+}
+/** When this browser's check of the server passed, or null: only then is it verified. */
+export const verifiedAt = (t: Trust | undefined): number | null => (t?.state === 'verified' ? t.at : null);
+/** Why this browser's check of a server in a TEE didn't pass, or null: it passed, it's still to come, or there's no TEE. */
+export const unverifiedBecause = (t: Trust | undefined): string | null => (t?.state === 'unverified' ? `Not verified. ${t.reason}` : null);
+/**
+ * The promise in the product's own words, verified only when this browser's check of the server passes. No caveats
+ * (docs/design/principles.md › Copy): the engineering docs say what's built, and a check that fails says why only where
+ * the check's details are (`unverifiedBecause`).
  */
 export const trustLine = (t: Trust | undefined): string => (verifiedAt(t) === null ? 'Confidential compute' : 'Confidential compute · verified');
+
+/** How much of what your agents did a page of it holds, and where the first page starts (nowhere before it). */
+const ACTIVITY_PAGE = 12;
+const newest = (): string | null => null;
 
 /** Whether money can still arrive for a top-up: it's waiting, arriving or short. */
 export const topUpOpen = (t: TopUp): boolean => t.state === 'waiting' || t.state === 'arriving' || t.state === 'short';
@@ -131,6 +179,17 @@ export const q = {
     refetchInterval: (query) => (query.state.data?.jobs.some((job) => job.status === 'uploading' || (job.status === 'pending' && job.reason === null)) ? 2_000 : 10_000)
   }),
   agents: () => queryOptions({ queryKey: qk.agents, queryFn: () => api.agents.list() }),
+  /**
+   * What your agents did, newest first, a page at a time: Show more reads the page after the last one. Read again every
+   * minute while only the first page is open; once more are, reading again would read them all, so it waits to be asked.
+   */
+  agentActivity: () => infiniteQueryOptions({
+    queryKey: qk.agentActivity,
+    queryFn: ({ pageParam }) => api.agents.activity(pageParam === null ? { limit: ACTIVITY_PAGE } : { limit: ACTIVITY_PAGE, before: pageParam }),
+    initialPageParam: newest(),
+    getNextPageParam: (page) => page.next,
+    refetchInterval: (query) => ((query.state.data?.pages.length ?? 1) > 1 ? false : 60_000)
+  }),
   /** The MCP address agents connect to: it stays the same while the app is open. */
   agentEndpoint: () => queryOptions({ queryKey: qk.agentEndpoint, queryFn: () => api.agents.endpoint(), staleTime: Infinity }),
   agentAuthorization: (id: string, ownerId: string) => queryOptions({ queryKey: qk.agentAuthorization(id, ownerId), queryFn: () => api.agents.authorization(id), retry: false, staleTime: 0 }),
@@ -170,7 +229,11 @@ export const q = {
   }),
   /** Someone's other calendar events; refreshed every few minutes, since they change outside Alcove. */
   calendar: () => queryOptions({ queryKey: qk.calendar, queryFn: () => api.calendar.get(), staleTime: 60_000, refetchInterval: 3 * 60_000, retry: false }),
-  notes: (kind?: NoteKind, text?: string) => queryOptions({ queryKey: qk.noteList(kind, text), queryFn: () => api.notes.list({ kind, text }), placeholderData: (prev) => prev }),
+  /**
+   * Your notes, newest first, or what a search finds: notes with the words, and the lines that have them. `by` is someone's
+   * address: only what they said counts. The words and the address travel in the request's body, never its address.
+   */
+  notes: (kind?: NoteKind, text?: string, by?: string) => queryOptions({ queryKey: qk.noteList(kind, text, by), queryFn: () => api.notes.list({ kind, text, by }), placeholderData: (prev) => prev }),
   note: (id: string) => queryOptions({ queryKey: qk.note(id), queryFn: ({ client }) => readNote(api, client, id) }),
   personal: (id: string) => queryOptions({ queryKey: qk.personal(id), queryFn: () => api.notes.personal(id).get(), retry: false }),
   /** What adding an entry to the shared notes would do, read fresh each time it's opened: the people who'd get it can change. */
@@ -234,7 +297,7 @@ export const q = {
     refetchInterval: (query) => (query.state.data && topUpOpen(query.state.data) ? 5000 : false)
   }),
   /** Checked when the app opens (the side panel and the call both show it), then every ten minutes. */
-  trust: () => queryOptions({ queryKey: qk.trust, queryFn: checkTrust, staleTime: 10 * 60_000, refetchInterval: 10 * 60_000, retry: 1 }),
+  trust: () => queryOptions({ queryKey: qk.trust, queryFn: checkTrust, staleTime: 10 * 60_000, refetchInterval: 10 * 60_000 }),
   /** The feature flags on for whoever's here. Signing in or out clears the cache, so they're asked again for the new session. */
   featureFlags: () => queryOptions({ queryKey: qk.featureFlags, queryFn: () => api.featureFlags.on(), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true }),
 
@@ -290,7 +353,21 @@ export const q = {
    */
   boardsToBring: (spaces: readonly WorkspaceSummary[]) => queryOptions({
     queryKey: [...qk.boardsToBring, spaces.slice(0, BOARD_SPACES).map((w) => w.id).join(' ')], queryFn: () => boardsToBring(spaces), staleTime: 30_000
-  })
+  }),
+
+  /** Your other calendar events between two times, at most 31 days apart: any week the Calls page or scheduling shows. */
+  calendarRange: (range: CalendarRange) => queryOptions({
+    queryKey: qk.calendarRange(range.from, range.to), queryFn: () => api.calendar.get(range), staleTime: 60_000, retry: false, placeholderData: (prev) => prev
+  }),
+
+  /** What documents say at the top, for their cards in the Drive: read from each as it is, and kept only in this tab's memory. */
+  previews: (id: string, ids: readonly string[]) => queryOptions({ queryKey: qk.previews(id, ids), queryFn: () => api.workspaces.previews(id, [...ids]), staleTime: 30_000, enabled: ids.length > 0 }),
+  /** One Trash for every workspace you can open something in. */
+  trashed: () => queryOptions({ queryKey: qk.trashed, queryFn: () => api.workspaces.trashed() }),
+
+  /** Read from each document as it is, for whoever can open it: a few at a time, for the cards on a workspace's Home. */
+  workspacePreviews: (id: string, items: readonly string[]) => queryOptions({ queryKey: qk.workspacePreviews(id, items), queryFn: () => api.workspaces.previews(id, [...items]), staleTime: 30_000 }),
+  workspaceAbout: (id: string) => queryOptions({ queryKey: qk.workspaceAbout(id), queryFn: () => api.workspaces.about(id) }),
 };
 
 /**
@@ -392,6 +469,7 @@ async function forgetHere(owner: string | undefined, deleted: boolean) {
   if (owner) {
     announceSignOut(owner, deleted);
     forgetPlaces(owner);
+    forgetHourLeft(owner);
   }
   await forgetNotified();
   if (!owner) return;
@@ -399,7 +477,18 @@ async function forgetHere(owner: string | undefined, deleted: boolean) {
   try { await forgetEdits(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete the edits this device kept for the account', { err: e }); }
   try { await forgetPictures(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete the backgrounds this device kept for the account', { err: e }); }
 }
-export function useSignOut() {
+/**
+ * The account's session ended here (signed out, or the account deleted): what this device kept goes, `leave` takes the
+ * screen to the welcome page, and only once the welcome page has replaced the app is what the app read for the account
+ * forgotten. Emptied first, the app would change under the person while the welcome page loaded. The guards count the
+ * account as signed out meanwhile (lib/guards.ts). `leave` runs even if the screen that asked has gone.
+ */
+async function endHere(qc: QueryClient, owner: string | undefined, deleted: boolean, leave: () => Promise<void>) {
+  await forgetHere(owner, deleted);
+  try { await leave(); } finally { qc.clear(); qc.setQueryData(qk.session, null); }
+}
+/** Signs out of this device, then `leave` takes the screen to the welcome page (`endHere`). */
+export function useSignOut(leave: () => Promise<void>) {
   const qc = useQueryClient();
   // With no connection it fails now. Queued, it would happen by itself at some moment nobody chose.
   return useMutation({
@@ -409,16 +498,16 @@ export function useSignOut() {
       await api.auth.signOut();
       return owner;
     },
-    onSuccess: async (owner) => { await forgetHere(owner, false); qc.clear(); qc.setQueryData(qk.session, null); }
+    onSuccess: (owner) => endHere(qc, owner, false, leave)
   });
 }
 /**
- * Deletes the account for good. Every browser it was signed in on is signed out, this one included. `onDeleted` runs
- * then, even if the screen that asked has gone meanwhile. It's never queued for later, as signing out isn't. The cookie
- * decides whose account goes and another tab can have changed it since this page was drawn, so it first asks who's
- * signed in, and goes ahead only for the account on this screen.
+ * Deletes the account for good. Every browser it was signed in on is signed out, this one included. `onDeleted` then
+ * takes the screen to the welcome page (`endHere`), even if the screen that asked has gone meanwhile. It's never queued
+ * for later, as signing out isn't. The cookie decides whose account goes and another tab can have changed it since this
+ * page was drawn, so it first asks who's signed in, and goes ahead only for the account on this screen.
  */
-export function useDeleteAccount(onDeleted: () => void) {
+export function useDeleteAccount(onDeleted: () => Promise<void>) {
   const qc = useQueryClient();
   return useMutation({
     networkMode: 'always',
@@ -429,7 +518,7 @@ export function useDeleteAccount(onDeleted: () => void) {
       await api.account.delete();
       return here;
     },
-    onSuccess: async (owner) => { await forgetHere(owner, true); qc.clear(); qc.setQueryData(qk.session, null); onDeleted(); }
+    onSuccess: (owner) => endHere(qc, owner, true, onDeleted)
   });
 }
 /** Each channel hint belongs to its exact immutable query command, including after this hook re-renders. */
@@ -480,24 +569,76 @@ export function usePins() {
 export function useGroups() {
   return useMutation(preferenceOptions(api, useQueryClient(), qk, (groups: Group[]) => ({ groups })));
 }
+/**
+ * Pausing notifications until a time (an ISO date-time), or resuming them (`until: null`), shares that queue too: shown at
+ * once, and put back if it's refused. features/shell/pause.ts's `usePause` is how the app asks.
+ */
+export function usePauseNotifications() {
+  return useMutation(preferenceOptions(api, useQueryClient(), qk, ({ until }: { until: string | null }) => ({ notificationsPausedUntil: until })));
+}
 export function useInviteTeam() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (emails: string[]) => api.people.inviteToTeam(emails), onSuccess: (t) => qc.setQueryData(qk.team, t) });
 }
 
-/* ---------- buying Pro ---------- */
+/* ---------- buying Pro, more notes and Team's licenses ---------- */
+
+const plog = log.child({ component: 'plans' });
 
 /**
- * Buys months of Pro from the balance at the price shown. The answer is the plan as it is now. A refusal (a changed
- * price, a short balance) reads the plan and the offers again, so what's shown next is what's true.
+ * Licenses were just bought for the team you run (from the balance, or by a payment that bought them). You're using Alcove,
+ * so it's a visit, which takes one of them for you when you have no live license (docs: Plans and usage › Team); then the
+ * plan and the team are read again, so what's said next is what's true. A visit that isn't taken is logged and leaves yours
+ * for your next one. Null when the plan couldn't be read again: it's read again as soon as anything asks.
  */
-export function useBuyPro() {
+async function licensesBought(qc: QueryClient): Promise<Plan | null> {
+  try {
+    await api.auth.visit();
+  } catch (e) {
+    plog.info('a visit after buying licenses wasn’t taken', { code: errorCode(e) });
+  }
+  void qc.invalidateQueries({ queryKey: qk.teamNotes });
+  const [plan, team] = await Promise.allSettled([api.plans.plan(), api.teams.mine()]);
+  if (team.status === 'fulfilled') qc.setQueryData(qk.myTeam, team.value); else void qc.invalidateQueries({ queryKey: qk.myTeam });
+  if (plan.status === 'fulfilled') return plan.value;
+  plog.info('the plan wasn’t read again after buying licenses', { code: errorCode(plan.reason) });
+  return null;
+}
+
+/**
+ * Buys a purchase from the balance at the price (and, for more notes, the size) shown: Pro's months, packs of more notes for
+ * this period, or licenses for the team you run (then it's a visit too, which takes yours if you have none). Refused when the
+ * price changed (409, with the server's words), the balance is short, or you don't run the team; either way the plan, offers
+ * and team are read again, so what's shown is what's true now. Null when it was bought but the plan couldn't be read again.
+ */
+export function useBuy() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ months, microUsdPerMonth }: { months: number; microUsdPerMonth: number }) => api.plans.buyPro(months, microUsdPerMonth),
-    onSuccess: (p) => { qc.setQueryData(qk.plan, p); },
-    // `plan` is the offers' prefix: both are read again.
-    onError: () => { void qc.invalidateQueries({ queryKey: qk.plan }); }
+    mutationFn: async (b: Purchase): Promise<Plan | null> => {
+      if (b.kind === 'pro') return api.plans.buyPro(b.months, b.microUsdPerMonth);
+      if (b.kind === 'hours') return api.plans.buyHours(b.packs, b.microUsdPerPack, b.minutesPerPack);
+      await api.teams.buyLicenses(b.count, b.microUsdPerLicense);
+      return licensesBought(qc);
+    },
+    // What's open on the plan (the side panel, Settings, a call's notes) follows at once.
+    onSuccess: (p) => {
+      if (p) qc.setQueryData(qk.plan, p); else void qc.invalidateQueries({ queryKey: qk.plan, exact: true });
+      void qc.invalidateQueries({ queryKey: qk.topUps });
+    },
+    // `plan` is the offers' prefix: both are read again, and the team with them when it was licenses.
+    onError: (_e, b) => {
+      void qc.invalidateQueries({ queryKey: qk.plan });
+      if (b.kind === 'licenses') void qc.invalidateQueries({ queryKey: qk.myTeam });
+    }
+  });
+}
+
+/** A payment bought licenses for the team you run: the visit and the reads buying them from the balance makes. */
+export function useLicensesBought() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => licensesBought(qc),
+    onSuccess: (p) => { if (p) qc.setQueryData(qk.plan, p); else void qc.invalidateQueries({ queryKey: qk.plan, exact: true }); }
   });
 }
 
@@ -528,6 +669,25 @@ export function useDismissPlanNotice() {
     mutationFn: (id: string) => api.plans.dismissNotice(id),
     onSuccess: (p) => { qc.setQueryData(qk.plan, p); },
     onError: () => { void qc.invalidateQueries({ queryKey: qk.plan, exact: true }); }
+  });
+}
+
+/**
+ * Says the plans were shown (`Plan.choose` is false from then; saying it again changes nothing), once the plan choice or Plans
+ * itself has been on screen (features/plans/choice.ts). Nobody waits on it, so it's quiet: tried again a few times, and
+ * held while there's no connection, and a failure is logged and never shows the plans again in this tab. They show once
+ * more on a later visit, since the server still says they haven't been. It keeps going if the page that asked goes.
+ */
+export function useChosePlans() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationKey: ['plan', 'chosen'],
+    mutationFn: () => api.plans.chose(),
+    networkMode: 'online',
+    retry: 4,
+    retryDelay: (n) => Math.min(30_000, 2000 * 2 ** n),
+    onSuccess: (p) => { qc.setQueryData(qk.plan, p); plog.debug('the plans are marked shown', { choose: p.choose }); },
+    onError: (e) => { plog.warn('the plans weren’t marked shown; they show again on a later visit', { code: errorCode(e) }); }
   });
 }
 
@@ -624,12 +784,16 @@ export function useSetTeamVisible(noteId: string) {
 
 /* ---------- adding money ---------- */
 
-/** Opens a top-up on a route: the address to pay to. It joins the open ones on Plan. */
+/**
+ * Opens a top-up on a route: the address to pay to. It joins the open ones on Plan. With `buys`, what it's for is bought
+ * the moment it's added; a refusal (a changed price) reads the plan and the offers again, as buying does.
+ */
 export function useStartTopUp() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ routeId, microUsd }: { routeId: string; microUsd: number }) => api.plans.startTopUp(routeId, microUsd),
-    onSuccess: (t) => { qc.setQueryData(q.topUp(t.id).queryKey, t); void qc.invalidateQueries({ queryKey: qk.topUps }); }
+    mutationFn: ({ routeId, microUsd, buys = null }: { routeId: string; microUsd: number; buys?: Purchase | null | undefined }) => api.plans.startTopUp(routeId, microUsd, buys),
+    onSuccess: (t) => { qc.setQueryData(q.topUp(t.id).queryKey, t); void qc.invalidateQueries({ queryKey: qk.topUps }); },
+    onError: (_e, { buys }) => { if (buys) void qc.invalidateQueries({ queryKey: qk.plan }); }
   });
 }
 
@@ -654,25 +818,7 @@ export function useCancelTopUp() {
 
 export function useScheduleCall() {
   const qc = useQueryClient();
-  return useMutation({
-    networkMode: 'always', mutationFn: (input: MeetingCreate) => api.meetings.create(input),
-    // A new workspace made for the call is in the Drive now.
-    onSuccess: (_m, input) => { void qc.invalidateQueries({ queryKey: qk.meetings }); if (input.newWorkspace) void qc.invalidateQueries({ queryKey: qk.workspaces, exact: true }); }
-  });
-}
-/**
- * Files an ended call's notes in a workspace, when it had none: one of yours you can edit in, or a new one. The call's folder
- * goes there and the workspace is the call's from now on, so the call, the Drive and the note all read again.
- */
-export function useFileNotes() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (v: { meetingId: string; noteId: string; to: FileNotes }) => api.meetings.file(v.meetingId, v.to),
-    onSuccess: (_m, v) => {
-      for (const queryKey of [qk.meetings, qk.note(v.noteId), qk.allSeries]) void qc.invalidateQueries({ queryKey });
-      void qc.invalidateQueries({ queryKey: qk.workspaces, exact: true });
-    }
-  });
+  return useMutation({ networkMode: 'always', mutationFn: (input: MeetingInput) => api.meetings.create(input), onSuccess: () => qc.invalidateQueries({ queryKey: qk.meetings }) });
 }
 /** A call changed or went: Home's calls, and any series it's the next call of, catch up. */
 const callsChanged = (qc: QueryClient) => { void qc.invalidateQueries({ queryKey: qk.meetings }); void qc.invalidateQueries({ queryKey: qk.allSeries }); };
@@ -681,13 +827,23 @@ export function useUpdateCall() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (v: { id: string; input: Patch<MeetingInput>; scope?: ChangeScope | undefined }) => api.meetings.update(v.id, v.input, { scope: v.scope }), onSuccess: () => callsChanged(qc) });
 }
-/** Makes one of your own calendar events an Alcove call; an occurrence of a recurring event joins its series. */
+/**
+ * Makes one of your own calendar events an Alcove call; an occurrence of a recurring event joins its series. The meeting
+ * leaves the calendar's list at once, so it isn't listed beside its new call; the calendar is read again with the calls
+ * (its key is under theirs), with the meeting's Alcove link.
+ */
 export function useAdoptEvent() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (v: { eventId: string; notes?: NotesSetting | undefined }) => api.calendar.adopt(v.eventId, v.notes), onSuccess: () => callsChanged(qc) });
+  return useMutation({
+    mutationFn: (v: { eventId: string; notes?: NotesSetting | undefined }) => api.calendar.adopt(v.eventId, v.notes),
+    onSuccess: (_m, v) => {
+      qc.setQueryData<Calendar>(qk.calendar, (c) => (c ? { ...c, events: c.events.filter((e) => e.id !== v.eventId) } : c));
+      callsChanged(qc);
+    }
+  });
 }
-/** Where the browser goes to give Alcove access to Google Calendar. */
-export const calendarConnectUrl = () => api.calendar.connectUrl();
+/** Where the browser goes to give Alcove access to Google Calendar; Google sends it back to Settings, or to Home. */
+export const calendarConnectUrl = (opts?: { back?: '/home' | undefined }) => api.calendar.connectUrl(opts);
 /** Forgets the Google connection; the calendar then asks for access again. */
 export function useDisconnectCalendar() {
   const qc = useQueryClient();
@@ -999,23 +1155,11 @@ export function useRenameWorkspace() {
   return useMutation(renameWorkspaceOptions(api, qc, qk));
 }
 /**
- * Deletes a workspace for good, for everyone, with everything in it: admins only. What was read of it goes, and whatever named
- * it reads again: the Drive, calls that used it, what can be brought to a call, and storage.
+ * Only the requested name overlays the live tree. Once that stream acknowledges it, later people’s renames own it. The list of
+ * workspaces is read only while a rename of this one is on its way, so somewhere that only shows the name, such as a call
+ * screen, never lists them all.
  */
-export function useDeleteWorkspace() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => api.workspaces.remove(id),
-    onSuccess: (_r, id) => {
-      qc.removeQueries({ queryKey: ['workspaces', id] });
-      void qc.invalidateQueries({ queryKey: qk.workspaces, exact: true });
-      for (const queryKey of [qk.boardsToBring, qk.meetings, qk.documents, qk.plan]) void qc.invalidateQueries({ queryKey });
-    }
-  });
-}
-/** Only the requested name overlays the live tree. Once that stream acknowledges it, later people’s renames own it. */
 export function useWorkspaceName(id: string, liveName: string, signedIn: boolean) {
-  const list = useQuery({ ...q.workspaces(), enabled: signedIn }).data;
   const changes = useMutationState({ filters: { mutationKey: ['workspaces', 'rename'] }, select: (mutation) => {
     const v = mutation.state.variables;
     return v && typeof v === 'object' && 'id' in v && v.id === id && 'name' in v && typeof v.name === 'string'
@@ -1026,6 +1170,7 @@ export function useWorkspaceName(id: string, liveName: string, signedIn: boolean
   useEffect(() => { if (latest?.status === 'success' && latest.name === liveName) caught.current = latest.n; }, [latest?.n, latest?.name, latest?.status, liveName]);
   const pending = changes.some((change) => change.status === 'pending');
   const waiting = latest?.status === 'success' && latest.n > caught.current && latest.name !== liveName;
+  const list = useQuery({ ...q.workspaces(), enabled: signedIn && (pending || waiting) }).data;
   const name = (pending || waiting) ? list?.find((space) => space.id === id)?.name ?? liveName : liveName;
   return { name, state: pending ? 'saving' : latest?.status === 'error' ? 'failed' : latest?.status === 'success' ? 'saved' : 'quiet' } as const;
 }
@@ -1066,13 +1211,14 @@ export function useSortStickies(pass?: string | undefined) {
     }
   });
 }
-/** A document in a workspace made a moment ago, before anything in it is on screen: a call's new workspace starts with one. */
-export function useFirstDocument() {
-  return useMutation({ mutationFn: (workspaceId: string) => api.workspaces.items.create(workspaceId, { kind: 'document' }) });
+/** A document in a workspace made a moment ago, before anything in it is on screen: a call's new workspace starts with one. `pass`: the call's. */
+export function useFirstDocument(pass: string | undefined) {
+  return useMutation({ mutationFn: (workspaceId: string) => api.workspaces.items.create(workspaceId, { kind: 'document' }, pass ? { pass } : undefined) });
 }
 /**
  * Changes to a workspace's tree. Nothing's cached: what changed reaches the list on the workspace's stream. What can be brought
- * to a call is read again after each, as it lists these documents. `pass`: a guest's.
+ * to a call is read again after each, as it lists these documents. `pass`: the call's, in a call, where it lets anyone in the
+ * call change what's in the workspace it uses; deleting for good is never the pass's.
  */
 export function useItemChanges() {
   const qc = useQueryClient();
@@ -1081,12 +1227,12 @@ export function useItemChanges() {
   const as = (target: Target) => target.pass ? { pass: target.pass } : undefined;
   const library = () => qc.invalidateQueries({ queryKey: qk.documents });
   return {
-    create: useMutation({ mutationFn: (v: Target & { input: ItemInput }) => w.items.create(v.workspaceId, v.input), onSuccess: library }),
+    create: useMutation({ mutationFn: (v: Target & { input: ItemInput }) => w.items.create(v.workspaceId, v.input, as(v)), onSuccess: library }),
     // The live owner orders work; explicit targets survive an observer's options changing during navigation.
     rename: useMutation({ mutationFn: (v: Target & { id: string; name: string }) => w.items.rename(v.workspaceId, v.id, v.name, as(v)), onSuccess: library }),
-    move: useMutation({ mutationFn: (v: Target & { id: string; to: ItemPlace }) => w.items.move(v.workspaceId, v.id, v.to), onSuccess: library }),
-    duplicate: useMutation({ mutationFn: (v: Target & { id: string }) => w.items.duplicate(v.workspaceId, v.id), onSuccess: library }),
-    trash: useMutation({ mutationFn: (v: Target & { id: string }) => w.items.trash(v.workspaceId, v.id), onSuccess: library }),
+    move: useMutation({ mutationFn: (v: Target & { id: string; to: ItemPlace }) => w.items.move(v.workspaceId, v.id, v.to, as(v)), onSuccess: library }),
+    duplicate: useMutation({ mutationFn: (v: Target & { id: string }) => w.items.duplicate(v.workspaceId, v.id, as(v)), onSuccess: library }),
+    trash: useMutation({ mutationFn: (v: Target & { id: string }) => w.items.trash(v.workspaceId, v.id, as(v)), onSuccess: library }),
     restore: useMutation({ mutationFn: (v: Target & { id: string }) => w.items.restore(v.workspaceId, v.id, as(v)), onSuccess: library }),
     deleteForever: useMutation({ mutationFn: (v: Target & { id: string }) => w.items.deleteForever(v.workspaceId, v.id), onSuccess: library })
   };
@@ -1171,16 +1317,46 @@ export function useWorkspacePeople(workspaceId: string) {
 }
 
 /** Credentials live in the active form only, never in a query or a persisted mutation. */
+/*
+ * After a change to the connections, the list alone is read again, and nothing waits for it: what was changed answers at
+ * once (a token shows, Saved says so, allowing hands back to the agent) and the list catches up behind it.
+ */
+const readConnectionsAgain = (qc: QueryClient) => { void qc.invalidateQueries({ queryKey: qk.agents, exact: true }); };
 export function useCreateAgentToken() {
   const qc = useQueryClient();
-  return useMutation({ gcTime: 0, mutationFn: (input: AgentTokenInput) => api.agents.createToken(input), onSuccess: () => qc.invalidateQueries({ queryKey: qk.agents }) });
+  return useMutation({ gcTime: 0, mutationFn: (input: AgentTokenInput) => api.agents.createToken(input), onSuccess: () => readConnectionsAgain(qc) });
 }
+/** Disconnecting deletes what the agent did too: it leaves the line at once, and what they did is read again. */
 export function useRevokeAgent() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (id: string) => api.agents.revoke(id), onSuccess: () => qc.invalidateQueries({ queryKey: qk.agents }) });
+  return useMutation({
+    mutationFn: (id: string) => api.agents.revoke(id),
+    onSuccess: (_, id) => {
+      qc.setQueryData(q.agents().queryKey, (list) => list?.filter((c) => c.id !== id));
+      readConnectionsAgain(qc);
+      void qc.invalidateQueries({ queryKey: qk.agentActivity });
+    }
+  });
 }
+/** Allowing an agent connects it: the list is read again, so it stands on the line. */
 export function useAgentDecision(requestId: string) {
-  return useMutation({ gcTime: 0, mutationFn: (decision: AgentDecisionInput) => api.agents.decide(requestId, decision) });
+  const qc = useQueryClient();
+  return useMutation({ gcTime: 0, mutationFn: (decision: AgentDecisionInput) => api.agents.decide(requestId, decision), onSuccess: () => readConnectionsAgain(qc) });
+}
+/**
+ * Changing a connection: what it can do, or 30 more days. One change at a time, in the order they were made (`scope`), so
+ * quick presses of its chips land as pressed. What comes back is the connection as it now is, and it shows at once.
+ */
+export function useUpdateAgent() {
+  const qc = useQueryClient();
+  return useMutation({
+    scope: { id: 'agent-update' },
+    mutationFn: ({ id, ...change }: AgentUpdateInput & { id: string }) => api.agents.update(id, change),
+    onSuccess: (connection) => {
+      qc.setQueryData(q.agents().queryKey, (list) => list?.map((c) => (c.id === connection.id ? connection : c)));
+      readConnectionsAgain(qc);
+    }
+  });
 }
 
 /** Drive credentials stay on the server; the browser receives only a one-time consent destination. */
@@ -1216,3 +1392,58 @@ export function useRetryDriveExport() {
   return useMutation({ mutationFn: (id: string) => api.drive.retry(id), onSuccess: () => qc.invalidateQueries({ queryKey: qk.drive }) });
 }
 
+/** You, invited, asking the organizer to move a call to another time: they see it on theirs, and can move it there. */
+export function useProposeTime() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (v: { id: string; startsAt: ISODate }) => api.meetings.propose(v.id, v.startsAt), onSuccess: (m) => { qc.setQueryData(qk.meeting(m.id), m); callsChanged(qc); } });
+}
+/** The organizer answering a request to move a call: Move it moves the call there, as changing its time does; Keep lets the request go. */
+export function useAnswerProposal() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (v: { id: string; email: string; answer: ProposalAnswer }) => api.meetings.answerProposal(v.id, v.email, v.answer), onSuccess: (m) => { qc.setQueryData(qk.meeting(m.id), m); callsChanged(qc); } });
+}
+
+/**
+ * Gets a call ready before it starts, from its page: its home settled, with an agenda, a board or a document for files (`name`)
+ * made there and brought to the call. The call reads again, and so does what you can bring and the workspaces you're in.
+ */
+export function useReadyCall() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; make: CallAheadMake; name?: string | undefined }) => api.calls.ready(v.id, v.make, v.name),
+    onSuccess: () => { callsChanged(qc); void qc.invalidateQueries({ queryKey: qk.documents }); void qc.invalidateQueries({ queryKey: qk.workspaces }); }
+  });
+}
+
+/**
+ * What the Drive changes in a workspace: making something, renaming it, sending it to Trash and bringing it back. Each reads
+ * again what the Drive shows of it: the library Recent is made of, the workspace's tree, and one Trash.
+ */
+export function useDriveItems() {
+  const qc = useQueryClient();
+  const w = api.workspaces;
+  const reread = (v: { workspaceId: string }) => Promise.all([qk.documents, qk.trashed, qk.workspaceTree(v.workspaceId)].map((queryKey) => qc.invalidateQueries({ queryKey })));
+  return {
+    create: useMutation({ mutationFn: (v: { workspaceId: string; input: ItemInput }) => w.items.create(v.workspaceId, v.input), onSuccess: (_, v) => reread(v) }),
+    rename: useMutation({ mutationFn: (v: { workspaceId: string; id: string; name: string }) => w.items.rename(v.workspaceId, v.id, v.name), onSuccess: (_, v) => reread(v) }),
+    trash: useMutation({ mutationFn: (v: { workspaceId: string; id: string }) => w.items.trash(v.workspaceId, v.id), onSuccess: (_, v) => reread(v) }),
+    restore: useMutation({ mutationFn: (v: { workspaceId: string; id: string }) => w.items.restore(v.workspaceId, v.id), onSuccess: (_, v) => reread(v) })
+  };
+}
+
+/** Says what a workspace is for: the line shows at once, and goes back to what it was if Alcove doesn't take it. */
+export function useSetWorkspaceAbout(id: string) {
+  const qc = useQueryClient();
+  const key = q.workspaceAbout(id).queryKey;
+  return useMutation({
+    mutationFn: (about: string) => api.workspaces.setAbout(id, about),
+    onMutate: async (about) => {
+      await qc.cancelQueries({ queryKey: key });
+      const was = qc.getQueryData(key);
+      qc.setQueryData(key, about.replace(/\s+/g, ' ').trim());
+      return { was };
+    },
+    onError: (_e, _about, context) => { if (context) qc.setQueryData(key, context.was); },
+    onSettled: () => qc.invalidateQueries({ queryKey: key })
+  });
+}

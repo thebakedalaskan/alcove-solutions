@@ -60,7 +60,13 @@ export const Joined = z.preprocess(withHosting, z.object({
   /** Last waiting-browser heartbeat; older records start from their join time. */
   askedAt: z.number().default(0),
   earlier: z.array(z.object({ since: z.number(), left: z.number() })).default([]),
-  hosting: z.array(z.object({ from: z.number(), to: z.number().nullable() })).default([])
+  hosting: z.array(z.object({ from: z.number(), to: z.number().nullable() })).default([]),
+  /**
+   * Where an ask to join came from, as asks are counted against `call.asks_per_address`: 16 bits of a keyed hash, under this
+   * call's own key, of the network it came from (`joining.ts › askedFromOf`), so it's different in every call and says at most
+   * that two asks may share a network, never which. Null for anyone who didn't ask, and for asks kept before it was.
+   */
+  askedFrom: z.number().int().nullable().default(null)
 }));
 export type Joined = z.infer<typeof Joined>;
 
@@ -132,6 +138,15 @@ export const groupOf = (s: Placing, j: Joined): string | null => (j.identity ===
  */
 /** A waiting request expires 90 seconds after its last durable heartbeat. */
 export const admissionFresh = (j: Joined, now = Date.now()): boolean => j.status !== 'waiting' || now - Math.max(j.since, j.askedAt) <= 90_000;
+
+/**
+ * How many places a call's people take now, against `call.max_people` (docs: Plans and usage › Calls): everyone in it, and
+ * everyone it's letting in by itself, invited or coming back, while their way in hasn't gone quiet, each person once. Someone
+ * asking to be let in takes none: whoever hosts lets them in only while there's room (`mlsCommit`), so asks can't fill a call.
+ * `except`: an ask a reload replaces.
+ */
+export const placesTaken = (s: Pick<Placing, 'people'>, now = Date.now(), except?: Joined | undefined): number =>
+  new Set(s.people.filter((j) => j !== except && (j.status === 'in' || (j.status === 'waiting' && j.admit === 'auto' && admissionFresh(j, now)))).map((j) => j.person)).size;
 
 export const pendingFor = (s: Placing, generation: number, place: string) => (j: Joined): boolean =>
   j.identity !== s.host && admissionFresh(j) && (j.status === 'waiting' || j.status === 'in') && groupOf(s, j) === null && j.keysFor === generation && placeOf(s, j) === place;

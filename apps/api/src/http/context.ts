@@ -13,8 +13,10 @@ import * as callsParticipants from '../features/calls/participants';
 export type Env = { Bindings: HttpBindings; Variables: { owner: Owner; viewer: callsParticipants.Viewer; requestId: string; receipt: string | undefined; refusedAt: Level | undefined } };
 
 /**
- * The client's address as the front end saw it: the last x-forwarded-for entry, which Cloud Run's front end
- * appends. Anything before it came from the client, so it can't be trusted to tell people apart.
+ * The client's address as the front end saw it: the last x-forwarded-for entry. Behind the edge (edge/listen.ts) that's the
+ * only entry: the edge sets it to the address the load balancer's PROXY line gives, and drops whatever the client sent.
+ * Behind another front end that appends it, anything before it came from the client, so it can't be trusted to tell
+ * people apart.
  */
 export const clientAddress = (c: Context) => c.req.header('x-forwarded-for')?.split(',').at(-1)?.trim() || 'direct';
 

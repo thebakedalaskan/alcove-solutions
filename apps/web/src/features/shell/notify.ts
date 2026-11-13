@@ -17,6 +17,11 @@ import { watchNotificationViews } from './notification-views';
 const nlog = log.child({ component: 'account-notifications' });
 const POLL = { refetchInterval: 30_000, refetchIntervalInBackground: true };
 const HOUR = 60 * 60_000;
+/**
+ * The plan's notices are rare (around a Pro end, or a team's licenses) and each stays raisable for an hour, so the notifier
+ * reads the plan every 10 minutes, in the background too. The side panel reads it every minute while its page is in front.
+ */
+const PLAN_POLL = { refetchInterval: 10 * 60_000, refetchIntervalInBackground: true };
 /** Web Locks avoids duplicate polling. Atomic receipts remain authoritative when Web Locks are unavailable. */
 function useNotifier(able: boolean): boolean {
   const [held, setHeld] = useState(false);
@@ -37,6 +42,7 @@ export function useNoteOnScreen(noteId: string) {
   const owner = useQuery(q.session()).data?.ownerId;
   useEffect(() => owner ? watchNotificationViews(() => [`${owner}:note:${noteId}`]) : undefined, [owner, noteId]);
 }
+/** Whether the account's preferences let an alert of this kind through: only the kinds whose preference has another name are listed. */
 function category(prefs: NotificationPrefs, kind?: BrowserAlertKind): boolean {
   if (!prefs.enabled) return false;
   if (!kind) return true;
@@ -45,8 +51,6 @@ function category(prefs: NotificationPrefs, kind?: BrowserAlertKind): boolean {
     case 'ready': return prefs.notesReady;
     case 'shared': return prefs.sharedWithYou;
     case 'due': return prefs.followUpDue;
-    case 'tagged': return prefs.tagged;
-    case 'plan': return prefs.plan;
     default: return prefs[kind];
   }
 }
@@ -76,7 +80,7 @@ export function useNotifications() {
   const inbox = useQuery({ ...q.inbox(), enabled: allowed && prefs.prefs.followUpDue, ...POLL }).data;
   const mentions = useQuery({ ...q.mentions(), enabled: allowed, ...POLL });
   const notes = useQuery({ ...q.notes(), enabled: allowed, ...POLL });
-  const plan = useQuery({ ...q.plan(), enabled: allowed && prefs.prefs.plan, ...POLL }).data;
+  const plan = useQuery({ ...q.plan(), enabled: allowed && prefs.prefs.plan, ...PLAN_POLL }).data;
   const [tab] = useState(() => crypto.randomUUID());
   const token = useRef({});
   const context = useRef({ prefs, permission, allowed, go, toast });
@@ -166,8 +170,9 @@ export function useNotifications() {
         const chosen = { ...latest.prefs.prefs, ...notificationPreferenceIntent(owner) };
         return latest.allowed && latest.prefs.ownerId === owner && category(chosen, kind);
       },
+      notificationsPauseEnd: () => context.current.prefs.notificationsPauseEnd,
       open: (data) => context.current.go(data),
       failed: () => context.current.toast('Browser notifications couldn’t be shown. Unread messages and outstanding actions stay in Alcove.', { icon: 'bellOff' })
     });
-  }, [owner, allowed, prefs.prefs, calls, inbox, plan, mentions.data, mentions.dataUpdatedAt, mentions.isPlaceholderData, notes.data, notes.dataUpdatedAt, notes.isPlaceholderData, here, scope, tick]);
+  }, [owner, allowed, prefs.prefs, prefs.notificationsPauseEnd, calls, inbox, plan, mentions.data, mentions.dataUpdatedAt, mentions.isPlaceholderData, notes.data, notes.dataUpdatedAt, notes.isPlaceholderData, here, scope, tick]);
 }

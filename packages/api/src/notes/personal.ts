@@ -108,8 +108,18 @@ export interface PersonalApi {
 
 
 /**
+ * The team a note's organizer made it visible to, when they have: everyone live-licensed on it reads the notes, and so what's
+ * added to them, for as long as it's visible. `people`: how many of them now aren't among the people listed beside it.
+ */
+export const AudienceTeamSchema = z.object({ name: z.string(), people: z.number().int().nonnegative() });
+
+export type AudienceTeam = z.infer<typeof AudienceTeamSchema>;
+
+
+/**
  * What adding something to the shared notes would do, before it does: exactly what goes, where, and who gets it. Nothing
- * is sent until `notes.addToShared` says so with this `seal`, and only while the moments and the people are still these.
+ * is sent until `notes.addToShared` says so with this `seal`, and only while the moments, the people and the team are still
+ * these.
  */
 export const PromotionPreviewSchema = z.object({
   entryId: IDSchema,
@@ -121,6 +131,8 @@ export const PromotionPreviewSchema = z.object({
   destination: z.object({ noteId: IDSchema, title: z.string() }),
   /** Everyone who has the notes now, organizer first. Anyone they share them with later reads it too. */
   audience: z.array(PersonSchema),
+  /** The team the notes are visible to, if they are, whose licensed people read it too. */
+  team: AudienceTeamSchema.nullable(),
   seal: z.string()
 });
 
@@ -135,10 +147,11 @@ export type PromoteBody = z.infer<typeof PromoteBodySchema>;
 
 /**
  * Who reads what's written straight into the shared notes, shown before anything is typed: everyone who has the notes
- * now, organizer first, and anyone they share them with later. `seal` holds writing to them: if anyone gets the notes
- * before it's posted, posting is refused, and the box shows who reads it now.
+ * now, organizer first, the team they're visible to, if they are, and anyone they share them with later. `seal` holds
+ * writing to them: if anyone gets the notes, or a team can read them, before it's posted, posting is refused, and the box
+ * shows who reads it now.
  */
-export const SharedAudienceSchema = z.object({ audience: z.array(PersonSchema), seal: z.string() });
+export const SharedAudienceSchema = z.object({ audience: z.array(PersonSchema), team: AudienceTeamSchema.nullable(), seal: z.string() });
 
 export type SharedAudience = z.infer<typeof SharedAudienceSchema>;
 

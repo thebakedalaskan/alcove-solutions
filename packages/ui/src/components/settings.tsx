@@ -1,8 +1,9 @@
 /*
  * Settings is seven groups on one page: a group is a heading over one or two panels, and inside a panel each row is what
  * it is on the left and its control at the panel's right edge, with hairlines and space between them, never a card per
- * row. What you set up once opens in place inside its panel, with a foot that closes it. Everything here is stateless,
- * taking plain data and handlers. styles/settings.css.
+ * row. What you set up once opens in place inside its panel, with a foot that closes it. Payments list at a panel's foot,
+ * each with what can be done with it (a receipt opens checkout's PaymentReceipt). Everything here is stateless, taking
+ * plain data and handlers. styles/settings.css.
  */
 import { forwardRef, useId, useRef, type ButtonHTMLAttributes, type HTMLAttributes, type MouseEvent, type MouseEventHandler, type ReactNode } from 'react';
 import { cn } from '../cn';
@@ -49,6 +50,8 @@ export interface SettingRowProps extends Omit<HTMLAttributes<HTMLDivElement>, 'c
   help?: ReactNode;
   /** The help says what's wrong. */
   problem?: boolean | undefined;
+  /** The help says time is short (less than an hour of notes, a plan about to end), in the sun's warmth. */
+  warm?: boolean | undefined;
   /** At the panel's right edge: a Switch, Segmented, Select, SettingFact, a link, a button or two. */
   control?: ReactNode;
   /** Beside the control for a moment once a change is kept. */
@@ -57,6 +60,8 @@ export interface SettingRowProps extends Omit<HTMLAttributes<HTMLDivElement>, 'c
   saveState?: 'saving' | 'saved' | 'failed' | undefined;
   /** The control takes a wider column (three evenings, a folder, files), and the width under the label on a phone. */
   wide?: boolean | undefined;
+  /** On a phone the control goes under the label, so a long help keeps its measure: two buttons, or a fact and a button. */
+  under?: boolean | undefined;
   /** Something sits under the control: the label stays level with the control itself. */
   stack?: boolean | undefined;
   /** Waiting on something else: its choice stays as it is, greyed out. */
@@ -92,16 +97,16 @@ function SaveSign({ saved, saveState, className }: { saved: ReactNode; saveState
  * and help when they reach the control. A row that keeps focus when its control goes takes `tabIndex={-1}`, and `ref`.
  */
 export const SettingRow = forwardRef<HTMLDivElement, SettingRowProps>(function SettingRow(
-  { label, mark, help, problem = false, control, saved, saveState, wide = false, stack = false, off = false, sub = false, onLabel, children, className, ...rest }, ref
+  { label, mark, help, problem = false, warm = false, control, saved, saveState, wide = false, under = false, stack = false, off = false, sub = false, onLabel, children, className, ...rest }, ref
 ) {
   const id = useId();
   const from = useRef({ x: 0, y: 0 });
   return (
-    <div {...rest} ref={ref} className={cn('set-r', wide && 'is-wide', stack && 'is-stack', off && 'is-off', sub && 'is-sub', onLabel && 'is-press', className)}
+    <div {...rest} ref={ref} className={cn('set-r', wide && 'is-wide', under && 'is-under', stack && 'is-stack', off && 'is-off', sub && 'is-sub', onLabel && 'is-press', className)}
       role="group" aria-labelledby={`${id}l`} aria-describedby={help === undefined ? undefined : `${id}h`}>
       <div className="set-l" onPointerDown={(e) => { from.current = { x: e.clientX, y: e.clientY }; }} onClick={onLabel && ((e) => { if (pressed(e, from.current)) onLabel(e); })}>
         <p id={`${id}l`} className="set-t">{mark}{label}</p>
-        {help !== undefined && <p id={`${id}h`} className={cn('set-h', problem && 'is-no')}>{help}</p>}
+        {help !== undefined && <p id={`${id}h`} className={cn('set-h', problem && 'is-no', warm && !problem && 'is-warm')}>{help}</p>}
       </div>
       <div className="set-c">
         <div className="set-ctl">
@@ -119,26 +124,75 @@ export function SettingFact({ icon, tone, title, children }: { icon?: IconName |
   return <span className={cn('set-f', tone && `is-${tone}`)} title={title}>{icon && <Icon name={icon} size={15} />}{children}</span>;
 }
 
-/** A connection's own mark, as a row's `mark`: a small tile holding an icon, such as an agent's or a token's. */
+/** A connection's own mark, as a row's `mark`: a small tile holding an icon, such as the agent on Agents' row. */
 export function SettingTile({ icon }: { icon: IconName }) {
   return <span className="set-tile" aria-hidden="true"><Icon name={icon} size={17} /></span>;
 }
 
 /**
- * Something said inside a panel, on no hairline of its own: what just happened (back from Google), or what's in the way
- * (`caution`). The icon says which unless `icon` says otherwise.
+ * Something said inside a panel, on no hairline of its own: what just happened (back from Google, Pro renewed), or what's
+ * in the way (`caution`). The icon says which unless `icon` says otherwise. `action` is what to do about it (Make room), at
+ * the note's end and under its words on a phone. With `onDismiss` it stays until its × is pressed, named by `dismissLabel`.
  */
-export function SettingNote({ icon, tone = 'info', children, className, ...rest }: { icon?: IconName | undefined; tone?: 'info' | 'caution' | undefined; children: ReactNode; className?: string | undefined } & Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'className'>) {
+export function SettingNote({ icon, tone = 'info', children, className, action, onDismiss, dismissLabel = 'Dismiss', ...rest }: {
+  icon?: IconName | undefined; tone?: 'info' | 'caution' | undefined; children: ReactNode; className?: string | undefined;
+  action?: ReactNode; onDismiss?: (() => void) | undefined; dismissLabel?: string | undefined;
+} & Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'className'>) {
+  const acts = action !== undefined && action !== null && action !== false;
   return (
-    <div {...rest} className={cn('set-note is-flush', tone === 'caution' && 'is-caution', className)}>
+    <div {...rest} className={cn('set-note is-flush', tone === 'caution' && 'is-caution', acts && 'has-a', onDismiss && 'has-x', className)}>
       <Icon name={icon ?? (tone === 'caution' ? 'alert' : 'info')} size={17} /><p>{children}</p>
+      {acts && <div className="set-note-a">{action}</div>}
+      {onDismiss && <IconButton icon="x" size={16} label={dismissLabel} className="set-note-x" onClick={onDismiss} />}
     </div>
   );
 }
 
 /**
- * Something opened in place inside a panel, such as connecting an agent or making a token: its `title` and what it is
- * (`help`), then what to do. A SettingFoot after it closes it.
+ * Payments, at the foot of a panel: a small heading (`title`), then each a PaymentRow on its own hairline. A list longer
+ * than a few puts ShowMore after its rows.
+ */
+export function SettingPayments({ title, children, className }: { title: ReactNode; children: ReactNode; className?: string | undefined }) {
+  const h = useId();
+  return (
+    <div className={cn('set-pays', className)} role="group" aria-labelledby={h}>
+      <p id={h} className="set-pays-h">{title}</p>
+      {children}
+    </div>
+  );
+}
+
+export interface PaymentRowProps extends Omit<HTMLAttributes<HTMLDivElement>, 'children'> {
+  /** The network's mark (a CryptoMark), or an Icon where there's no network to show. */
+  mark: ReactNode;
+  /** What it was for: Pro, 12 months. */
+  label: ReactNode;
+  /** How much and when, or how it stands: 144.00 USDC on Base · 4 Nov 2026. */
+  detail: ReactNode;
+  /** `wait`: on its way (horizon). `problem`: something isn't right (caution). */
+  tone?: 'wait' | 'problem' | undefined;
+  /** At the row's end: Receipt, Open, a cancel. */
+  actions?: ReactNode;
+}
+
+/** One payment: its mark, what it was for, how much and when, and what can be done with it, in a fixed column. */
+export function PaymentRow({ mark, label, detail, tone, actions, className, ...rest }: PaymentRowProps) {
+  const id = useId();
+  return (
+    <div {...rest} className={cn('set-pay', className)} role="group" aria-labelledby={`${id}l`} aria-describedby={`${id}d`}>
+      <span className="set-pay-m" aria-hidden="true">{mark}</span>
+      <span className="set-pay-t">
+        <b id={`${id}l`} className="ac-clamp-1">{label}</b>
+        <small id={`${id}d`} className={tone && `is-${tone}`}>{detail}</small>
+      </span>
+      {actions !== undefined && <span className="set-pay-a">{actions}</span>}
+    </div>
+  );
+}
+
+/**
+ * Something opened in place inside a panel, such as asking whether to refund Pro: its `title` and what it is (`help`), then
+ * what to do. A SettingFoot after it closes it.
  */
 export function SettingStep({ title, help, children, className }: { title: ReactNode; help?: ReactNode; children?: ReactNode; className?: string | undefined }) {
   const h = useId();
@@ -291,16 +345,23 @@ function SmallEvening({ theme, corner = false }: { theme: 'light' | 'dark'; corn
   );
 }
 
-/** One choice of appearance: a small evening in its own colours (both, for `system`), named underneath. `pressed` rings the one in use. Three sit in a row. */
-export const ThemePreview = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & { theme: ThemeChoice; pressed: boolean }>(
-  function ThemePreview({ theme, pressed, className, type = 'button', ...rest }, ref) {
+/**
+ * One choice of appearance: a small evening in its own colours (both, for `system`), named underneath. `pressed` rings the
+ * one in use. Three sit in a row. `small` is the window alone, about 40 by 26 (your menu's Theme), named by its tooltip.
+ */
+export const ThemePreview = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & { theme: ThemeChoice; pressed: boolean; small?: boolean | undefined }>(
+  function ThemePreview({ theme, pressed, small = false, className, type = 'button', ...rest }, ref) {
+    const name = THEME_NAME[theme];
+    const art = (
+      <span className="set-win" aria-hidden="true">
+        <SmallEvening theme={theme === 'dark' ? 'dark' : 'light'} />
+        {theme === 'system' && <SmallEvening theme="dark" corner />}
+      </span>
+    );
+    if (!small) return <button ref={ref} type={type} aria-pressed={pressed} className={cn('set-eve', className)} {...rest}>{art}{name}</button>;
     return (
-      <button ref={ref} type={type} aria-pressed={pressed} className={cn('set-eve', className)} {...rest}>
-        <span className="set-win" aria-hidden="true">
-          <SmallEvening theme={theme === 'dark' ? 'dark' : 'light'} />
-          {theme === 'system' && <SmallEvening theme="dark" corner />}
-        </span>
-        {THEME_NAME[theme]}
-      </button>
+      <Tooltip label={name}>
+        <button ref={ref} type={type} aria-pressed={pressed} aria-label={name} className={cn('set-eve is-small', className)} {...rest}>{art}</button>
+      </Tooltip>
     );
   });

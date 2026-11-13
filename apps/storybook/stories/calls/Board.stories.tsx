@@ -1,6 +1,6 @@
 /*
  * A board in the call (user-flows 6, A board in the call): Board's picker; the board in the call, opened by Priya and filled as
- * the design review talks, on your stage just for you from the picker's In this call, with its name's menu and its seal, and in a
+ * the design review talks, on your stage, only on your screen, from the picker's In this call, with its name's menu and its seal, and in a
  * light theme, light on the night stage; Priya presenting it, closed for you, its tile taking you back; Priya's shared screen
  * as a tile while Kofi presents it, Show beside and P; a board you can't open; closed for everyone, by Priya or by you, moved to
  * Trash or its workspace deleted; a share taking your stage
@@ -28,8 +28,8 @@ const review = (cues: Cue[], board: CallScript['board'] = RETRO, more: Omit<Page
 const BOARD = 'Design review';
 /** One labelled step of a play. */
 const step = (label: string, run: (c: Context) => Promise<unknown>): Play => async (c) => { await c.step(label, async () => { await run(c); }); };
-/** Board, then the board in this call: on your stage, just for you. Nobody else's screen changes. */
-const onTheBoard = step('Press Board, at the top right (in More on a phone), then the board in this call: it opens just for you', (c) => openCallBoard(c, BOARD));
+/** Board, then the board in this call: on your stage, only on your screen. Nobody else's screen changes. */
+const onTheBoard = step('Press Board, at the top right (in More on a phone), then the board in this call: it opens on your screen', (c) => openCallBoard(c, BOARD));
 /** A play that opens the board in the call first, then does the rest. */
 const onIt = (...rest: Play[]): Omit<PageStory, 'args'> => ({ play: plays(onTheBoard, ...rest) });
 
@@ -161,7 +161,7 @@ export const ItsWorkspaceDeleted = review([...at(1, opensBoard(PRIYA, 'retro')),
 ));
 
 /**
- * Priya starts sharing while the board is open just for you: nobody presents the board, so her screen takes your stage, as a
+ * Priya starts sharing while the board is only on your screen: nobody presents the board, so her screen takes your stage, as a
  * presentation takes everyone's who isn't watching another. The board is still in the call: Board opens it again.
  */
 export const AShareStartsOnTheBoard = review([...at(1, opensBoard(KOFI, 'retro')), ...at(10, shares(PRIYA, CHECKLIST))], retroWith(4),

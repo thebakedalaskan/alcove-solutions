@@ -24,7 +24,7 @@ const meta = {
     <div className="grid w-[240px] gap-[18px]">
       <SidebarNav>
         <a href="#home" className="ac-nav-item" aria-current="page" onClick={stay}><NavItemContent icon="home" label="Home" /></a>
-        <a href="#notes" className="ac-nav-item" onClick={stay}><NavItemContent icon="notes" label="Notes" /></a>
+        <a href="#calls" className="ac-nav-item" onClick={stay}><NavItemContent icon="calls" label="Calls" /></a>
         <a href="#record" className="ac-nav-item ac-spot" onClick={stay}><NavItemContent icon="room" label="Record" /></a>
       </SidebarNav>
       <Coachmark {...args} />

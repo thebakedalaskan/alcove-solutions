@@ -37,7 +37,7 @@ export const InTheList: Story = {
   render: () => (
     <Box width="min(600px, 100%)" height="auto">
       <section className="rec-list" aria-label="Recorded before">
-        <div className="rec-h"><h2>Recorded before</h2><a href="#notes" className="rec-more-link">In Notes<Icon name="right" size={15} /></a></div>
+        <div className="rec-h"><h2>Recorded before</h2><a href="#notes" className="rec-more-link">In Calls<Icon name="right" size={15} /></a></div>
         <ul className="rec-before">
           {RECORDED.map((r) => (
             <li key={r.id}>

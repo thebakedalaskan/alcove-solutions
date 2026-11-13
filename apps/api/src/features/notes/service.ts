@@ -9,7 +9,7 @@
  */
 import {
   MAX_FOLLOW_UP_PROPOSALS, ACCEPTED_FOLLOW_UP, isAcceptedFollowUp, type FollowUpReview, ActionItemSchema, CaptureGapSchema, ChangerSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, ModelIdSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, RoomNoteSchema, ScreenMomentSchema, TranscriptLineSchema, UnencryptedUseSchema,
-  isAssignee, isBy, isProposer, mayAssign, mayChangeAction, mayDecide, mayDispute, mayRewordDecision, maySayNotReplaced, minutesLabel, searchOf, termsIn,
+  isAssignee, isBy, isProposer, mayAssign, mayChangeAction, mayDecide, mayDispute, mayRewordDecision, maySayNotReplaced, minutesLabel, nameWords, searchOf, startsName, termsSaidIn,
   type ActionItem, type ActionPatch, type ActionProposal, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type DecisionProposal, type GroupShare, type Inbox, type LinePatch,
   type Note, type NoteFound, type NoteKind, type NoteProgress, type NoteReader, type NoteSaid, type NoteSearch, type NoteSummary, type OpenAction, type PendingDecision, type Person, type Question, type QuestionPatch, type Received, type Recipient, type RecipientRole,
   type RevisitPatch, type RoomNote, type RoomRef, type Speaker, type TranscriptLine
@@ -21,8 +21,8 @@ import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError, notFound } from '../../errors';
 import { inference, type ChatModel } from '../../inference';
 import { log } from '../../log';
-import { findOwner, masterKey } from '../../owners';
-import { createItem, findItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../../vault';
+import { findOwner, indexKey } from '../../owners';
+import { createItem, findItem, findItems, getItem, listItems, lockItem, saveRevision, type Loaded } from '../../vault';
 import { me, profile, unpin } from '../account/account';
 import { carryModel } from './carryModel';
 import { resolveModel } from './models';
@@ -42,7 +42,8 @@ import { nameOf, personOf } from '../account/portraits';
 import * as screens from '../recordings/screens';
 import * as transcripts from '../recordings/transcripts';
 import { workedOnFor } from './worked-on';
-import { licensedOn } from '../billing/teams';
+import { licensedOn, teamReaders } from '../billing/teams';
+import { homeFor } from './home';
 
 const nlog = log.child({ component: 'notes' });
 
@@ -192,7 +193,7 @@ export async function updateNote(o: Owner, db: Db, noteId: string, fn: (n: NoteM
   return next;
 }
 
-const emailIndex = (o: Owner, email: string) => blindIndex(masterKey(o), 'email', email);
+const emailIndex = (o: Owner, email: string) => blindIndex(indexKey(o), 'email', email);
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 async function grant(o: Owner, db: Db, noteId: string, emails: string[], role: 'invited' | 'shared'): Promise<void> {
   for (const e of emails) {
@@ -438,7 +439,7 @@ export async function teamList(o: Owner): Promise<NoteSummary[]> {
   const held: Seen[] = (await everyNote(o, await myEmail(o))).filter((l) => visible.has(l.note.itemId));
   const notes = [...held, ...await teamNotes(o, new Set(held.map((l) => l.note.itemId)))];
   notes.sort((a, b) => b.note.manifest.startedAt.localeCompare(a.note.manifest.startedAt));
-  return Promise.all(notes.map(summary));
+  return Promise.all(notes.map(async (l) => summary(l, await seriesOf(l))));
 }
 
 /**
@@ -450,19 +451,28 @@ export async function setTeamVisible(o: Owner, id: string, visible: boolean): Pr
   const l = await locate(o, id);
   const context = { noteId: id, visible };
   if (!l.mine) throw new ForbiddenError('Only the organizer can make these notes visible to their team.', { context });
-  if (!visible) {
-    const gone = await exec(o.pool, 'DELETE FROM team_notes WHERE owner_id = $1 AND note_item_id = $2', [o.ownerId, id]);
-    nlog.info('note team visibility set', { ...context, changed: gone > 0 });
-    return;
-  }
-  if (l.note.manifest.status === 'recording') throw new ValidationError('These notes can be made visible to your team once the call ends.', { context });
-  const licensed = await licensedOn(o.pool, o.ownerId);
-  if (!licensed) throw new ForbiddenError('You need a license on a team to make notes visible to it.', { context });
-  // Made visible to another team before, while they were on it: it's this one's now.
-  const changed = await exec(o.pool, `INSERT INTO team_notes (owner_id, note_item_id, team_id) VALUES ($1,$2,$3)
-    ON CONFLICT (owner_id, note_item_id) DO UPDATE SET team_id = EXCLUDED.team_id, created_at = now() WHERE team_notes.team_id <> EXCLUDED.team_id`, [o.ownerId, id, licensed.teamId]);
-  nlog.info('note team visibility set', { ...context, teamId: licensed.teamId, changed: changed > 0 });
+  if (visible && l.note.manifest.status === 'recording') throw new ValidationError('These notes can be made visible to your team once the call ends.', { context });
+  // Under the note's lock, as what's added to it is: whoever adds reads who'd read it under the same lock, so a team that can
+  // read the notes from now on is a change in who reads it, which their seal won't pass.
+  const done = await tx(o.pool, async (c) => {
+    await lockItem(o, c, id);
+    if (!visible) return { changed: await exec(c, 'DELETE FROM team_notes WHERE owner_id = $1 AND note_item_id = $2', [o.ownerId, id]), teamId: null };
+    const licensed = await licensedOn(c, o.ownerId);
+    if (!licensed) throw new ForbiddenError('You need a license on a team to make notes visible to it.', { context });
+    // Made visible to another team before, while they were on it: it's this one's now.
+    const changed = await exec(c, `INSERT INTO team_notes (owner_id, note_item_id, team_id) VALUES ($1,$2,$3)
+      ON CONFLICT (owner_id, note_item_id) DO UPDATE SET team_id = EXCLUDED.team_id, created_at = now() WHERE team_notes.team_id <> EXCLUDED.team_id`, [o.ownerId, id, licensed.teamId]);
+    return { changed, teamId: licensed.teamId };
+  });
+  nlog.info('note team visibility set', { ...context, ...(done.teamId ? { teamId: done.teamId } : {}), changed: done.changed > 0 });
 }
+/** Titles of whichever of these notes are the account's own, read together from their manifests. */
+export async function ownNoteTitles(o: Owner, ids: string[]): Promise<Map<string, string>> {
+  if (!ids.length) return new Map();
+  return new Map((await findItems(o, o.pool, 'note', ids, NoteManifest)).map((n) => [n.itemId, n.manifest.title]));
+}
+/** The title of a note the account has, someone else's included, by the check reading it takes, from its manifest alone. */
+export async function noteTitle(o: Owner, id: string): Promise<string> { return (await locate(o, id)).note.manifest.title; }
 
 /**
  * Keeps a note, and this person's way to it, in place until the transaction ends, or says they've gone: deleting the
@@ -507,9 +517,16 @@ async function recipients(l: Seen, organizer: Person, db: Db = l.owner.pool): Pr
   ];
 }
 
-/** Everyone who has a note now, organizer first: who reads whatever is added to it. */
-export async function audienceOf(l: Located, db: Db = l.owner.pool): Promise<Person[]> {
-  return (await recipients(l, await me(l.owner), db)).map((r) => r.person);
+/**
+ * Who reads whatever is added to a note now: everyone who has it, organizer first, and, while its organizer has it visible to
+ * their team, that team, by its ID, its name and how many people live-licensed on it aren't among them (`people`).
+ */
+export interface Audience { people: Person[]; team: { id: string; name: string; people: number } | null }
+export async function audienceOf(l: Located, db: Db = l.owner.pool): Promise<Audience> {
+  const people = (await recipients(l, await me(l.owner), db)).map((r) => r.person);
+  const row = await maybeOne(db, z.object({ team_id: z.string() }), 'SELECT team_id FROM team_notes WHERE owner_id = $1 AND note_item_id = $2', [l.owner.ownerId, l.note.itemId]);
+  const team = row && await teamReaders(l.owner, db, row.team_id, people.map((p) => emailIndex(l.owner, p.email)));
+  return { people, team: row && team ? { id: row.team_id, ...team } : null };
 }
 
 /** How someone came to have a note that isn't theirs, from the address they have it under. */
@@ -542,7 +559,7 @@ async function teamVisible(l: Seen): Promise<boolean> {
 /** How someone came to have a note that isn't theirs: given to them, or made visible to their team. */
 const receivedOf = (l: Exclude<Seen, { mine: true }>, organizer: Person): Received =>
   (viaTeam(l) ? { role: 'team', by: organizer, at: l.team.at } : receivedBy(l.note.manifest, l.as, organizer));
-function summaryOf(l: Seen, organizer: Person, who: Recipient[], visible: boolean): NoteSummary {
+function summaryOf(l: Seen, organizer: Person, who: Recipient[], visible: boolean, seriesId: string | undefined): NoteSummary {
   const m = l.note.manifest;
   return {
     id: l.note.itemId, kind: m.kind, status: m.status, title: m.title, startedAt: m.startedAt, duration: m.duration,
@@ -550,41 +567,82 @@ function summaryOf(l: Seen, organizer: Person, who: Recipient[], visible: boolea
     excerpt: m.summary.split(/(?<=\.)\s/).slice(0, 2).join(' '),
     openActions: actionsOf(m).filter((a) => !a.done).length, totalActions: actionsOf(m).length,
     ...(m.meetingId && l.mine ? { meetingId: m.meetingId } : {}), ...(l.mine ? {} : { received: receivedOf(l, organizer) }),
-    teamVisible: visible, groupShares: groupSharesOf(who)
+    teamVisible: visible, ...(seriesId ? { seriesId } : {}), groupShares: groupSharesOf(who)
   };
 }
-async function summary(l: Seen): Promise<NoteSummary> {
+async function summary(l: Seen, seriesId: string | undefined): Promise<NoteSummary> {
   const organizer = await me(l.owner);
-  return summaryOf(l, organizer, await recipients(l, organizer), await teamVisible(l));
+  return summaryOf(l, organizer, await recipients(l, organizer), await teamVisible(l), seriesId);
 }
 
-/** Lines of what was said that a note's row and its preview show, at most. */
-const SAID_SHOWN = 4;
+/** Lines of what was said a found note quotes, at most: enough for the palette to open a call's other moments in place. */
+const SAID_SHOWN = 10;
 /** Everything said in a note as someone may read it: the main room, then each breakout room's lines, which say which room. */
 const saidIn = (m: NoteManifest): TranscriptLine[] => [...(m.transcript ?? []), ...m.rooms.flatMap((r) => r.transcript.map((l) => ({ ...l, room: { id: r.id, name: r.name } })))];
 
-/** What a search finds in a note as someone may read it: the lines with most of its words, best first, and how many lines have any. Nothing, when the note doesn't match. */
-function foundIn(l: Seen, { terms, question }: NoteSearch): Pick<NoteFound, 'said' | 'saidCount'> | undefined {
+/**
+ * What a line became in a note, read in the part of the call it was said in (the main room, or its breakout room's
+ * section): what a decision that isn't rejected rests on, or else what a follow-up rests on.
+ */
+function madeIn(m: NoteManifest): (line: TranscriptLine) => NoteSaid['made'] {
+  const parts = new Map(partsOf(m).map((p) => [p.room?.id ?? '', {
+    decided: new Set(p.decisions.filter((d) => d.state !== 'rejected').flatMap((d) => d.lines)),
+    followed: new Set(p.actions.filter(isAcceptedFollowUp).flatMap((a) => a.lines))
+  }]));
+  return (line) => {
+    const part = parts.get(line.room?.id ?? '');
+    return part?.decided.has(line.id) ? 'decision' : part?.followed.has(line.id) ? 'follow-up' : undefined;
+  };
+}
+
+/**
+ * What a search finds in a note as someone may read it: the lines with most of its words, best first, then the earliest,
+ * and how many lines have any. A word is in the note when it's in its title, summary, decisions, follow-ups or anything
+ * said, or starts a name of someone who spoke. With `by` (an address) only the lines they said count, so the note is found
+ * only through one of them, and with no words it's all of them, in time order. Nothing, when the note doesn't match.
+ */
+function foundIn(l: Seen, { terms, question }: NoteSearch, by: string | undefined): Pick<NoteFound, 'said' | 'saidCount'> | undefined {
   const m = asRead(l);
-  const lines = saidIn(m);
-  const has = termsIn(`${m.title} ${m.summary} ${lines.map((t) => t.text).join(' ')}`, terms);
-  if (question ? !has : has < terms.length) return undefined;
-  const matched = lines.flatMap((line) => { const n = termsIn(line.text, terms); return n ? [{ line, n }] : []; });
-  const said = matched.sort((a, b) => b.n - a.n || a.line.at - b.line.at).slice(0, SAID_SHOWN).map(({ line: { id, at, speaker, room, text } }): NoteSaid => (
-    { id, at, text, ...(speaker ? { speaker } : {}), ...(room ? { room } : {}) }
-  ));
+  const all = saidIn(m);
+  const lines = by === undefined ? all : all.filter((line) => line.speaker?.person !== undefined && same(line.speaker.person.email, by));
+  if (by !== undefined && !lines.length) return undefined;
+  const written = by === undefined ? [m.title, m.summary, ...decisionsOf(m).map((d) => d.text), ...actionsOf(m).map((a) => a.text)] : [];
+  // The note is read once: every line's words lower-cased, and each speaker's name split into its words. `searchOf` has
+  // lower-cased the search's words already.
+  const names = new Map<string, string[]>();
+  for (const line of lines) if (line.speaker && !names.has(line.speaker.name)) names.set(line.speaker.name, nameWords(line.speaker.name));
+  const heard = lines.map((line) => ({ line, words: line.text.toLowerCase(), name: line.speaker ? names.get(line.speaker.name) ?? [] : [] }));
+  const note = [...written.map((w) => w.toLowerCase()), ...heard.map((h) => h.words)].join(' ');
+  const speakers = [...names.values()];
+  const has = terms.filter((t) => note.includes(t) || speakers.some((name) => startsName(name, t))).length;
+  if (terms.length && (question ? !has : has < terms.length)) return undefined;
+  const matched = heard.flatMap(({ line, words, name }) => { const n = terms.length ? termsSaidIn(words, name, terms) : 1; return n ? [{ line, n }] : []; });
+  const made = madeIn(m);
+  const said = matched.sort((a, b) => b.n - a.n || a.line.at - b.line.at).slice(0, SAID_SHOWN).map(({ line }): NoteSaid => {
+    const became = made(line);
+    return { id: line.id, at: line.at, text: line.text, ...(line.speaker ? { speaker: line.speaker } : {}), ...(line.room ? { room: line.room } : {}), ...(became ? { made: became } : {}) };
+  });
   return { said, saidCount: matched.length };
 }
 
-export async function list(o: Owner, q: { kind?: NoteKind | undefined; text?: string | undefined }): Promise<NoteFound[]> {
+export async function list(o: Owner, q: { kind?: NoteKind | undefined; text?: string | undefined; by?: string | undefined }): Promise<NoteFound[]> {
   const search = searchOf(q.text ?? '');
+  const by = q.by?.trim().toLowerCase() || undefined;
   const notes = (await everyNote(o, await myEmail(o))).filter((l) => !q.kind || l.note.manifest.kind === q.kind);
   notes.sort((a, b) => b.note.manifest.startedAt.localeCompare(a.note.manifest.startedAt));
   const found = notes.flatMap((l) => {
-    const hit = search.terms.length ? foundIn(l, search) : { said: [], saidCount: 0 };
+    const hit = search.terms.length || by !== undefined ? foundIn(l, search, by) : { said: [], saidCount: 0 };
     return hit ? [{ l, hit }] : [];
   });
-  return Promise.all(found.map(async ({ l, hit }) => ({ ...await summary(l), ...hit })));
+  // Each call's series is read once, however many of its notes there are: a series' calls are each other's.
+  const seriesOfCall = new Map<string, Promise<string | undefined>>();
+  const seriesFor = (l: Located): Promise<string | undefined> => {
+    const key = `${l.owner.ownerId}:${l.note.manifest.meetingId ?? ''}`;
+    const known = seriesOfCall.get(key) ?? seriesOf(l);
+    seriesOfCall.set(key, known);
+    return known;
+  };
+  return Promise.all(found.map(async ({ l, hit }) => ({ ...await summary(l, await seriesFor(l)), ...hit })));
 }
 /** The series a note's call is in, read from the call in its organizer's vault. Room recordings have no call, so no series. */
 export async function seriesOf(l: Seen): Promise<string | undefined> {
@@ -597,13 +655,16 @@ export async function get(o: Owner, id: string): Promise<Note> {
   const read = asRead(l);
   const organizer = await me(l.owner);
   const who = await recipients(l, organizer);
-  const seriesId = await seriesOf(l);
+  // The call it was, in its organizer's vault: the series it's in, and its home. A room recording has neither.
+  const call = m.meetingId ? (await findItem(l.owner, l.owner.pool, 'meeting', m.meetingId, MeetingManifest))?.manifest : undefined;
+  const seriesId = call?.seriesId;
   const { decisions, questions, actions, suggestions, rooms } = entriesOf(read);
   return {
-    ...summaryOf(l, organizer, who, await teamVisible(l)), recipients: who, summary: m.summary, decisions, questions, actions, suggestions, chapters: m.chapters,
+    ...summaryOf(l, organizer, who, await teamVisible(l), seriesId), recipients: who, summary: m.summary, decisions, questions, actions, suggestions, chapters: m.chapters,
     gaps: m.gaps, screens: m.screens, transcript: read.transcript, rooms, additions: await additions.of(l, o.ownerId), writtenAt: m.writtenAt, writingAgain: m.status === 'ready' && !!(await jobOf(l.owner, l.owner.pool, id)),
     details: m.details, suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), kept: m.keep, inference: m.inference, workedOn: await workedOnFor(o, m.workedOn, everyoneWith(m, organizer.email)),
-    shares: m.keep.recording ? await screens.shareIntervals(l.owner, m.recordingId, m.segmentSeconds) : [], model: m.model, unencrypted: m.unencrypted, ...(seriesId ? { seriesId } : {})
+    shares: m.keep.recording ? await screens.shareIntervals(l.owner, m.recordingId, m.segmentSeconds) : [], model: m.model, unencrypted: m.unencrypted,
+    home: await homeFor(o, id, call?.workspaceId ?? null)
   };
 }
 /** A note's notes job while its notes are queued or being written, whichever of its revisions it was queued for. */
@@ -689,7 +750,7 @@ export async function ask(o: Owner, id: string, question: string): Promise<Answe
   // The model chosen for the call answers questions about it too.
   const via = await resolveModel(o.cfg, m.model);
   await recordUnencryptedUse(owner, id, via);
-  const parts = await answer(o.cfg, meterFor(o, { payer: o.ownerId, spend: 'ask' }), id, { ...briefOf(read, await me(owner), m.invited.map((e) => personOf(e))), via }, await me(o), question);
+  const parts = await answer(o.cfg, meterFor(o, { payer: o.ownerId, spend: 'ask', whose: 'yours' }), id, { ...briefOf(read, await me(owner), m.invited.map((e) => personOf(e))), via }, await me(o), question);
   const ms = Math.round(performance.now() - t0);
   if (await goneSince(o, [l])) {
     throw new ConflictError('These notes were deleted or removed from yours while the answer was being written, so it isn’t shown.', { context: { noteId: id, mine: l.mine, ms } });
@@ -742,7 +803,7 @@ export async function askAll(o: Owner, question: string, refs: readonly string[]
   const t0 = performance.now();
   // Across notes, the asker's own choice of model.
   const via = await resolveModel(o.cfg, (await profile(o)).preferences.model);
-  const { parts, sent, lines } = await answerFromNotes(o.cfg, meterFor(o, { payer: o.ownerId, spend: 'ask' }), notes, await person(o), question, via, async (ids) => {
+  const { parts, sent, lines } = await answerFromNotes(o.cfg, meterFor(o, { payer: o.ownerId, spend: 'ask', whose: 'yours' }), notes, await person(o), question, via, async (ids) => {
     const sent = new Set(ids);
     for (const l of ready) if (sent.has(l.note.itemId)) await recordUnencryptedUse(l.owner, l.note.itemId, via);
   }, new Set(wanted));
@@ -948,6 +1009,11 @@ export async function updateAction(o: Owner, noteId: string, actionId: string, p
       if (patch.takeOn) {
         if (!isAssignee(next, reader)) throw new ForbiddenError('Only the person a follow-up is for can take it on. You can give it to yourself.', { context });
         if (!next.takenOn) { changes.push({ by, at, what: 'took-on' }); next = { ...next, takenOn: true }; }
+      }
+      // Taking back a yes (Undo): it's suggested for them again, and the record says they reopened it.
+      if (patch.takeOn === false) {
+        if (!isAssignee(next, reader)) throw new ForbiddenError('Only whoever took this on can take that back.', { context });
+        if (next.takenOn) { changes.push({ by, at, what: 'reopened' }); next = { ...next, takenOn: false }; }
       }
       if (patch.due !== undefined) {
         const due = patch.due || undefined;

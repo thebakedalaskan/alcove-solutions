@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>A call, when notes run out</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="page-plans.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="appdata.js"></script>
+<script src="marks.js"></script>
+<script src="data-plans.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="oc" data-mode="{{mode}}" style="{{vars}}">
+<div class="oc-in">
+<section class="oc-stage" aria-label="Pricing sync">
+<header class="oc-top">
+<h1>Pricing sync</h1><span class="t">{{clock}}</span>
+<span class="oc-sign{{signCls}}"><sc-if value="{{live}}" hint-placeholder-val="{{false}}"><i class="dot"></i></sc-if><sc-if value="{{stopped}}" hint-placeholder-val="{{true}}"><i class="ring"></i></sc-if>{{signText}}</span>
+<div class="end">
+<button type="button" class="oc-tb"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.board}}"></path></svg>Board</button>
+<button type="button" class="oc-tb"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.notes}}"></path></svg>Workspace</button>
+<button type="button" class="oc-tb is-on"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.notes}}"></path></svg>Notes</button>
+<button type="button" class="oc-tb"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chat}}"></path></svg>Chat</button>
+</div>
+</header>
+<div class="oc-grid">
+<sc-for list="{{tiles}}" as="t" hint-placeholder-count="3">
+<div class="oc-tile{{t.cls}}"><dc-import name="Faces" who="{{t.id}}" size="150" hint-size="150px,162px"></dc-import><span class="nm">{{t.name}}</span></div>
+</sc-for>
+</div>
+<nav class="oc-dock" aria-label="Call controls">
+<button type="button" class="oc-db" aria-label="Microphone"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.mic}}"></path></svg></button>
+<button type="button" class="oc-db" aria-label="Camera"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.camera}}"></path></svg></button>
+<button type="button" class="oc-db is-word"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.screen}}"></path></svg>Share</button>
+<button type="button" class="oc-db" aria-label="React"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.smile}}"></path></svg></button>
+<button type="button" class="oc-db" aria-label="More"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.dots}}"></path></svg></button>
+<button type="button" class="oc-db is-leave"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.leave}}"></path></svg>Leave</button>
+</nav>
+</section>
+
+<aside class="oc-side" aria-label="Notes">
+<div class="oc-head"><h2>Notes</h2><span class="oc-pill{{pillCls}}"><sc-if value="{{live}}" hint-placeholder-val="{{false}}"><i class="dot"></i></sc-if><sc-if value="{{stopped}}" hint-placeholder-val="{{true}}"><i class="ring"></i></sc-if>{{pillText}}</span><button type="button" class="x" aria-label="Close Notes"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button></div>
+<sc-if value="{{stopped}}" hint-placeholder-val="{{true}}">
+<div class="oc-bar" role="status">
+<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.alert}}"></path></svg>
+<div><b>{{barT}}</b><p>{{barP}}</p></div>
+<sc-if value="{{isOrg}}" hint-placeholder-val="{{true}}"><div class="acts"><button type="button" class="b b-press{{hotPro}}" onClick="{{getPro}}">Get Pro</button><button type="button" class="b b-line{{hotHours}}" onClick="{{addHours}}">Add 10 hours · $15</button></div></sc-if>
+</div>
+</sc-if>
+<nav class="oc-tabs" aria-label="Notes"><button type="button" class="oc-tab is-on">Notes</button><button type="button" class="oc-tab">Transcript</button><button type="button" class="oc-tab">Ask</button><button type="button" class="oc-tab">Yours</button></nav>
+<div class="oc-notes">
+<section class="oc-sec"><h3>Decided</h3>
+<p class="oc-li"><span class="at">12:40</span><span>The team plan gets a monthly option.</span></p>
+<p class="oc-li"><span class="at">21:05</span><span>Free minutes stay as they are for now.</span></p>
+</section>
+<section class="oc-sec"><h3>Follow-ups</h3>
+<p class="oc-li"><span class="at">31:18</span><span>Maya sends the cost of an hour of notes by Friday.</span></p>
+<p class="oc-li"><span class="at">39:52</span><span>Lena checks what three teams pay today.</span></p>
+</section>
+<p class="oc-cut">Notes stopped · 44:10</p>
+<sc-if value="{{back}}" hint-placeholder-val="{{false}}">
+<p class="oc-cut is-on">Notes on again · 47:32</p>
+<section class="oc-sec"><h3>Still open</h3><p class="oc-li"><span class="at">47:50</span><span>Whether Team’s price includes guests.</span></p></section>
+</sc-if>
+<sc-if value="{{paying}}" hint-placeholder-val="{{false}}"><p class="oc-wait"><span class="pl-dots" aria-hidden="true"><i></i><i></i><i></i></span>Waiting for your payment. Notes start again once it arrives.</p></sc-if>
+</div>
+</aside>
+</div>
+<sc-if value="{{hasToast}}" hint-placeholder-val="{{false}}"><div class="toast" role="status"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg>{{toast}}</div></sc-if>
+<sc-if value="{{hasCo}}" hint-placeholder-val="{{false}}"><dc-import name="Checkout" at="{{coAt}}" mode="{{mode}}" from="call" on-close="{{coClose}}" on-done="{{coDone}}" hint-size="0px,0px"></dc-import></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"step":{"editor":"enum","options":["callOut","callHot","callGuest","callCo","callCoSend","callCoDone","callBack","callHours"],"default":"callOut"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var AH = window.AH, PL = AH.PL, I = PL.I, hs = AH.hash(), self = this, p = this.props;
+    var stepId = hs.step || p.step || 'callOut';
+    var st = AH.assign({ who: 'art', co: '', back: false, toast: '' }, PL.CALL[stepId] || PL.CALL.callOut, this.state || {});
+    var set = function (patch) { self.setState(AH.assign({ hot: '' }, patch)); };
+    var mode = hs.mode || p.mode || 'dark', org = st.who === 'art';
+    var v = { I: I, mode: mode, vars: AH.rootStyle('blue-hour', mode, 16.2) };
+    v.clock = st.back ? '47:51' : st.co ? '45:20' : '44:26';
+    v.live = !!st.back; v.stopped = !st.back; v.back = !!st.back;
+    v.signCls = st.back ? ' is-live' : ' is-stop';
+    v.signText = st.back ? 'Notes' : 'Notes stopped';
+    v.pillCls = st.back ? '' : ' is-caution';
+    v.pillText = st.back ? 'Live' : 'Stopped';
+    v.isOrg = org;
+    v.barT = org ? 'Notes stopped at this month’s 5 hours' : 'Notes stopped';
+    v.barP = org ? 'The call carries on. Notes start again the moment you have more.' : 'Art’s notes for this month are used up, and the call carries on. What was written before stays.';
+    v.tiles = (org ? [['maya', 'Maya', true], ['lena', 'Lena', false], ['art', 'You', false]] : [['art', 'Art', true], ['lena', 'Lena', false], ['maya', 'You', false]])
+      .map(function (t) { return { id: t[0], name: t[1], cls: t[2] ? ' is-speak' : '' }; });
+    v.hotPro = st.hot === 'get-pro' ? ' is-hot' : '';
+    v.hotHours = st.hot === 'hours' ? ' is-hot' : '';
+    v.getPro = function () { set({ co: 'coCall' }); };
+    v.addHours = function () { set({ co: 'coHours' }); };
+
+    /* Checkout opens over the call; you never leave it. */
+    v.hasCo = !!st.co; v.coAt = st.co || 'coCall';
+    v.paying = false;
+    v.coClose = function (stage) { set({ co: '' }); };
+    v.coDone = function () { set({ co: '', back: true, toast: 'You’re on Pro. Notes are on again.' }); clearTimeout(self.__t); self.__t = setTimeout(function () { self.setState({ toast: '' }); }, 3600); };
+    var toast = st.toast || (stepId === 'callBack' ? 'You’re on Pro. Notes are on again.' : '');
+    v.toast = toast; v.hasToast = !!toast;
+    return v;
+  }
+}
+</script>
+</body>
+</html>

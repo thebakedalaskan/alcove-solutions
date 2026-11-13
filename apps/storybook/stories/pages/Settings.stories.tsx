@@ -10,7 +10,7 @@ import { changing, page, pages, type PageArgs, type PageStory } from '../../src/
 import { withTopUp } from '../../src/world/payments';
 import { withDriveJustConnected, withDriveReconnect } from '../../src/world/drive-exports';
 import type { World } from '../../src/world';
-import { keptHere, noCalendar, notAttested, sharedDemo, troubled, unencryptedDefault } from './changes';
+import { adminWithoutLicense, checkFails, keptHere, mayaWaits, noCalendar, notAttested, paysForLaunch, replacedPro, sharedDemo, troubled, unencryptedDefault } from './changes';
 
 const meta = { title: 'Pages/Settings', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -61,13 +61,24 @@ export const ConnectionsNight = night(Connections);
 export const Plan = page('/settings#plan', 'busy');
 export const PlanNight = night(Plan);
 export const PlanPhone = phone(Plan);
-/** Confidential compute, with the time this browser verified the hardware the server runs on. */
+/** Confidential compute, with the time this browser checked the server: its token and its release in the public log. */
 export const Privacy = page('/settings#privacy', 'busy');
 export const PrivacyNight = night(Privacy);
 export const PrivacyPhone = phone(Privacy);
 /** The server says it doesn't run in a TEE: Confidential compute just says what it is, with no caveat. */
 export const PrivacyNotAttested = page('/settings#privacy', 'busy', { beforeEach: notAttested });
 export const PrivacyNotAttestedNight = night(PrivacyNotAttested);
+/**
+ * The server is in confidential compute, but this browser's check of it didn't pass: the row says why, beside a shield
+ * without its tick, and nothing is blocked. One story for each kind of reason (`checkFails` in changes.ts).
+ */
+export const PrivacyCheckFailedRoot = page('/settings#privacy', 'busy', { name: 'Privacy, check failed: not Google’s root', beforeEach: checkFails('another-root') });
+export const PrivacyCheckFailedOld = page('/settings#privacy', 'busy', { name: 'Privacy, check failed: an old token', beforeEach: checkFails('too-old') });
+export const PrivacyCheckFailedDebug = page('/settings#privacy', 'busy', { name: 'Privacy, check failed: could be debugged', beforeEach: checkFails('debuggable') });
+export const PrivacyCheckFailedBuild = page('/settings#privacy', 'busy', { name: 'Privacy, check failed: another build', beforeEach: checkFails('another-build') });
+export const PrivacyCheckFailedLog = page('/settings#privacy', 'busy', { name: 'Privacy, check failed: not in the public log', beforeEach: checkFails('unreleased') });
+export const PrivacyCheckFailedLogNight = { ...night(PrivacyCheckFailedLog), name: 'Privacy, check failed: not in the public log, at night' };
+export const PrivacyCheckFailedLogPhone = phone(PrivacyCheckFailedLog);
 
 /* ------------------------------------------------------------------ calls and notes */
 /** An AI model that isn't in a secure enclave is the default: Unencrypted shows on the choice and in the list, and the row says what that means. */
@@ -140,9 +151,6 @@ export const CalendarAccessDenied = page('/settings?calendar=denied#calendar', '
 /** Back with another Google account than the one you sign in with. */
 export const CalendarWrongAccount = page('/settings?calendar=account#calendar', 'busy', { beforeEach: changing(noCalendar) });
 export const CalendarConnectionFailed = page('/settings?calendar=failed#calendar', 'busy', { beforeEach: changing(noCalendar) });
-/** Connect: how Alcove uses Calendar data, before Google's consent. */
-export const CalendarConsent = page('/connect-calendar', 'busy', { beforeEach: changing(noCalendar) });
-export const CalendarConsentPhone = phone(CalendarConsent);
 /** The shared demo account: a sample calendar in place of Google's, its switches nested under it. */
 export const DemoAccount = page('/settings#calendar', 'busy', { beforeEach: changing(sharedDemo) });
 /** The calendar didn't answer: why, and Try again. */
@@ -226,56 +234,18 @@ export const GoogleDriveDisconnectAfterReturn = page('/settings?drive=connected'
   }
 });
 
-/** Presses Connect an agent: Alcove's address opens in place. */
-const connectingAnAgent: NonNullable<PageStory['play']> = async ({ userEvent, step }) => {
-  await step('Press Connect an agent', async () => {
-    await userEvent.click(await screen.findByRole('button', { name: 'Connect an agent' }, { timeout: 8000 }));
-  });
-};
-/** Then Create a token, for a script that can't sign in. */
-const makingAToken: NonNullable<PageStory['play']> = async (context) => {
-  await connectingAnAgent(context);
-  await context.step('Press Create a token', async () => {
-    await context.userEvent.click(await screen.findByRole('button', { name: 'Create a token' }, { timeout: 8000 }));
-  });
-};
-/** Then names it and makes it, with what it can do as it starts: reading. */
-const issuingAToken: NonNullable<PageStory['play']> = async (context) => {
-  await makingAToken(context);
-  await context.step('Name it and press Create token', async () => {
-    await context.userEvent.type(await screen.findByRole('textbox', { name: 'Name' }, { timeout: 8000 }), 'Planning assistant');
-    await context.userEvent.click(screen.getByRole('button', { name: 'Create token' }));
-  });
-};
-/** No agents yet: Connect an agent says so. */
-export const AgentsEmpty = page('/settings#agents', 'busy');
-/** Each connection on a row of its own, with what it can do, when it was last used and Disconnect. */
+/** No agents yet: the row says what they're for, and Connect an agent opens Agents. */
+export const AgentsNone = page('/settings#agents', 'busy');
+export const AgentsNoneNight = night(AgentsNone);
+/** Agents is one row: who's connected, and Open Agents, where they're connected and changed. */
 export const AgentsConnected = page('/settings#agents', 'agents-connected');
 export const AgentsConnectedNight = night(AgentsConnected);
+/** On a phone the row is the way to Agents, since the tab bar keeps its five. */
 export const AgentsConnectedPhone = phone(AgentsConnected);
+export const AgentsConnectedPhoneNight = phoneNight(AgentsConnected);
+/** Until the connections are in, or when they don't come, the row says what agents are for, and opens Agents all the same. */
 export const AgentsLoading = page('/settings#agents', 'busy', { beforeEach: changing(troubled({ 'agents.list': 'hold' })) });
 export const AgentsUnavailable = page('/settings#agents', 'busy', { beforeEach: changing(troubled({ 'agents.list': 'failed' })) });
-/** Connect an agent opens in place: Alcove's address, with Copy. */
-export const ConnectAnAgent = page('/settings#agents', 'busy', { play: connectingAnAgent });
-export const ConnectAnAgentNight = night(ConnectAnAgent);
-export const ConnectAnAgentPhone = phone(ConnectAnAgent);
-/** Alcove's address didn't load: why, and Try again. */
-export const AgentAddressUnavailable = page('/settings#agents', 'busy', { beforeEach: changing(troubled({ 'agents.endpoint': 'failed' })), play: connectingAnAgent });
-/** A token for a script: its name, how long it lasts and what it can do. */
-export const CreatingAgentToken = page('/settings#agents', 'busy', { play: makingAToken });
-export const CreatingAgentTokenNight = night(CreatingAgentToken);
-/** The token shows once, with Copy, and Alcove's address beside it. */
-export const AgentTokenIssued = page('/settings#agents', 'busy', { play: issuingAToken });
-export const AgentTokenIssuedPhone = phone(AgentTokenIssued);
-export const AgentTokenRefused = page('/settings#agents', 'busy', { beforeEach: changing(troubled({ 'agents.createToken': 'failed' })), play: issuingAToken });
-export const AgentDisconnectRefused = page('/settings#agents', 'agents-connected', {
-  beforeEach: changing(troubled({ 'agents.revoke': 'failed' })),
-  play: async ({ userEvent, step }) => {
-    await step('Disconnect fails, so the connection stays in the list and a toast says why', async () => {
-      await userEvent.click(within(await screen.findByRole('group', { name: 'Workspace assistant' }, { timeout: 8000 })).getByRole('button', { name: 'Disconnect' }));
-    });
-  }
-});
 
 /* ------------------------------------------------------------------ notifications */
 /** The browser hasn't been asked: alerts still show inside Alcove, and Turn on is the only thing that asks it. */
@@ -322,98 +292,174 @@ export const NotificationLeafRefused = page('/settings#notifications', 'busy', {
 });
 
 /* ------------------------------------------------------------------ plan */
+/*
+ * The canvas's Plan group by plan (docs/design/canvas/plans/Settings.dc.html): plFree is Plan above, plLow NotesNearlyOut,
+ * plOut NoNotesLeft, plWaiting PaymentForProOnItsWay, plPro OnPro, plEnding ProEnding, plExtended ProExtended, plEnded
+ * ProEnded; Team's plTeam OnTeam, plTeamAdmin TeamAdmin, plTeamLow LicensesLowSomeoneWaiting, plTeamMore BuyLicenses and
+ * plTeamWait NoTeamLicense.
+ */
+export const PlanPhoneNight = phoneNight(Plan);
 /** Payments are separate from the default server-without-a-treasury scenario. Every address is an invalid preview. */
 export const Payments = page('/settings#plan', 'payments');
 export const PaymentsNight = night(Payments);
-/** A server without a treasury takes no money: the balance is there, and there's no Add money. */
+/** A server without a treasury takes no money, and on Free with nothing paid there's no balance to show: the plan's panel alone. */
 export const PaymentsUnavailable = page('/settings#plan', 'busy');
-/** Nearly out: about 20 minutes of notes left, and the sun near the start of the line. */
+/** Nearly out: under an hour of notes left, the time and its help warm, and the sun near the start of the line. */
 export const NotesNearlyOut = page('/settings#plan', 'plan-low');
 export const NotesNearlyOutNight = night(NotesNearlyOut);
-/** None left: the period's notes have stopped until it renews, the sun has set, and a little of its light is left at the start of the line. */
+export const NotesNearlyOutPhone = phone(NotesNearlyOut);
+/** None left: calls go on without notes until the period renews, the sun has set, and Get Pro is the one filled button. */
 export const NoNotesLeft = page('/settings#plan', 'plan-stopped');
 export const NoNotesLeftNight = night(NoNotesLeft);
 export const NoNotesLeftPhone = phone(NoNotesLeft);
-/** Over Free's storage: 14.2 GB of 10. Everything works as before until the day the note names. */
+/** A payment for a year of Pro on its way: first in the payments, waiting, with Open (checkout, on that payment) and a cancel. */
+export const PaymentForProOnItsWay = page('/settings#plan', 'plan-buying-pro');
+export const PaymentForProOnItsWayNight = night(PaymentForProOnItsWay);
+export const PaymentForProOnItsWayPhone = phone(PaymentForProOnItsWay);
+/** Over Free's storage: 14.2 GB of 10. Everything works as before until the day the note names; its Make room opens the Drive. */
 export const OverFreesLimitsInGrace = page('/settings#plan', 'plan-grace');
 export const OverFreesLimitsInGraceNight = night(OverFreesLimitsInGrace);
 export const OverFreesLimitsInGracePhone = phone(OverFreesLimitsInGrace);
-/** The grace is over: uploads have stopped, and the note says so. */
+/**
+ * The grace is over: uploads and notes have stopped, and the note says so. Get Pro is the one filled button, and the note's
+ * Make room opens the Drive (under its words on a phone).
+ */
 export const OverFreesLimits = page('/settings#plan', 'plan-over');
 export const OverFreesLimitsNight = night(OverFreesLimits);
-/** $60 in the balance, with a $20 top-up waiting for its payment and a $40 one already added, each opening its sheet. */
+export const OverFreesLimitsPhoneNight = phoneNight(OverFreesLimits);
+/** Over Pro's 100 GB, its grace over: Make room is the way out, so it's the filled button, with Extend beside the plan. */
+export const OverProsStorage = page('/settings#plan', 'plan-pro', {
+  beforeEach: changing((w) => { w.plan = { ...w.plan, storage: { ...w.plan.storage, usedBytes: 104 * 2 ** 30 }, grace: null, over: { storage: true } }; })
+});
+export const OverProsStorageNight = night(OverProsStorage);
+/** $60 in the balance: a $20 top-up waiting for its payment, opening the add-money sheet, and the payments that made the balance. */
 export const ABalance = page('/settings#plan', 'plan-balance');
 export const ABalanceNight = night(ABalance);
 export const ABalancePhone = phone(ABalance);
-/* Pro, bought from the balance */
-/** On Free with nothing in the balance: Free and Pro side by side, Buy 1 month greyed out with what's short, and Add money the way on. */
-export const PlansShortOfMoney = page('/settings#plan', 'payments');
-export const PlansShortOfMoneyNight = night(PlansShortOfMoney);
-export const PlansShortOfMoneyPhone = phone(PlansShortOfMoney);
-/** On Free with $60: the balance covers a month, so Buy 1 month is the page's one filled button. */
-export const PlansWithMoney = page('/settings#plan', 'plan-balance');
-export const PlansWithMoneyNight = night(PlansWithMoney);
-/** Buying a month: Art is on Pro at once, with the whole of Pro's notes, and the balance is $20 less. */
-export const BuyAMonth = page('/settings#plan', 'plan-balance', { play: pressing('Buy 1 month', 'Buy a month of Pro from the balance') });
-export const BuyAMonthPhone = phone(BuyAMonth);
-/** On Pro: until when, more months to buy after the last, Renew from balance (off), and the two months after this one to refund. */
+/* Pro */
+/** On Pro: until when, with Extend; the balance, Renew from balance (off), the two months after this one to refund, and the payments. */
 export const OnPro = page('/settings#plan', 'plan-pro');
 export const OnProNight = night(OnPro);
 export const OnProPhone = phone(OnPro);
-/** Renewing from the balance is on. */
-export const OnProRenewing = page('/settings#plan', 'plan-pro', { beforeEach: changing((w) => { w.plan = { ...w.plan, pro: { ...w.plan.pro, renew: true } }; }) });
+export const OnProPhoneNight = phoneNight(OnPro);
+/** Renewing from the balance on, as a story's world needs it. */
+const renewing = (w: World) => { w.plan = { ...w.plan, pro: { ...w.plan.pro, renew: true } }; };
+/** Renewing from the balance is on: the plan says it renews before it ends. */
+export const OnProRenewing = page('/settings#plan', 'plan-pro', { beforeEach: changing(renewing) });
+/** Renewing is on, and the balance is short of a month: the row says Pro won't renew. */
+export const OnProRenewingShort = page('/settings#plan', 'plan-pro', { beforeEach: changing((w) => { w.plan = { ...w.plan, balance: { ...w.plan.balance, microUsd: 5_000_000 }, pro: { ...w.plan.pro, renew: true } }; }) });
 /** Refund asks in place: what goes back to the balance, and when Pro ends. */
 export const RefundAsked = page('/settings#plan', 'plan-pro', { play: pressing(/^Refund \(/, 'Ask to refund the months that haven’t started') });
 export const RefundAskedNight = night(RefundAsked);
-/** Pro ends in 3 days and won't renew: renewing is off and the balance is short of a month. */
+export const RefundAskedPhone = phone(RefundAsked);
+/** With renewing on, the refund turns it off, so the months given back aren't bought again: the question says so. */
+export const RefundAskedRenewing = page('/settings#plan', 'plan-pro', { beforeEach: changing(renewing), play: pressing(/^Refund \(/, 'Ask to refund the months that haven’t started, with renewing on') });
+/** Refunded with renewing on: the refund is first in the payments, and Renew from balance is off. */
+export const RefundedRenewing = page('/settings#plan', 'plan-pro', {
+  beforeEach: changing(renewing),
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Ask to refund the months that haven’t started, with renewing on', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: /^Refund \(/ }, { timeout: 8000 }));
+    });
+    await step('Refund them: the months go back to the balance, and renewing from it turns off', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: /^Refund \$/ }, { timeout: 8000 }));
+      await canvas.findByRole('switch', { name: 'Renew from balance', checked: false }, { timeout: 8000 });
+    });
+  }
+});
+/** A payment's receipt opens over the page, as paper, to print. */
+export const AReceipt = page('/settings#plan', 'plan-pro', { play: pressing(/^Receipt for Pro, 3 months/, 'Press Receipt beside Pro, 3 months') });
+export const AReceiptNight = night(AReceipt);
+export const AReceiptPhone = phone(AReceipt);
+/** Pro ends in 3 days and won't renew: the plan says when, warm, and Extend is the one filled button. */
 export const ProEnding = page('/settings#plan', 'plan-pro-ending');
 export const ProEndingNight = night(ProEnding);
 export const ProEndingPhone = phone(ProEnding);
-/** A month was bought from the balance 3 days before Pro ended. */
+/**
+ * Pro ends in 3 days though renewing is on with the money for a month: a month costs $24 now, more than the last did, so it
+ * won't renew by itself. The plan says when, warm, and Renew from balance says why.
+ */
+export const ProEndingPriceRose = page('/settings#plan', 'plan-pro-ending-price');
+export const ProEndingPriceRoseNight = night(ProEndingPriceRose);
+/** Pro extended by a year with a payment yesterday: until a year on, the twelve months to refund, and the payment with its receipt. */
+export const ProExtended = page('/settings#plan', 'plan-pro-extended');
+export const ProExtendedNight = night(ProExtended);
+/** A month was bought from the balance 3 days before Pro ended: said at the top until it's dismissed. */
 export const ProRenewed = page('/settings#plan', 'plan-pro-renewed');
 export const ProRenewedNight = night(ProRenewed);
-/** Pro ended: back on Free, and over Free's storage, so the grace is said too. */
+/** Pro ended: back on Free, said at the top until it's dismissed, Get Pro again, and over Free's storage, so the grace is said too. */
 export const ProEnded = page('/settings#plan', 'plan-pro-ended');
 export const ProEndedNight = night(ProEnded);
 export const ProEndedPhone = phone(ProEnded);
+/**
+ * Whoever paid for Launch left it, so Art, its admin, pays for it now: said at the top by its name, with the day its files
+ * start to count against his storage, until it's dismissed.
+ */
+export const PayingForAWorkspace = page('/settings#plan', 'busy', { beforeEach: changing(paysForLaunch) });
+export const PayingForAWorkspaceNight = night(PayingForAWorkspace);
+export const PayingForAWorkspacePhone = phone(PayingForAWorkspace);
 /** Dismissing a notice: it goes, here and from the side panel. */
 export const DismissANotice = page('/settings#plan', 'plan-pro-renewed', { play: pressing('Dismiss this notice', 'Dismiss the notice that Pro renewed') });
-/* Team: licenses bought by the team's admin (user-flows 11.28) */
-/** Not on a team: Team's card beside Free and Pro, $40 a person a month, with Start a team. */
-export const TeamCardNotOnATeam = page('/settings#plan', 'no-team');
-export const TeamCardNotOnATeamNight = night(TeamCardNotOnATeam);
-export const TeamCardNotOnATeamPhone = phone(TeamCardNotOnATeam);
-/** The team's admin: Team is the plan, 3 licenses left, how many to buy and Buy 1 license, then Auto-purchase and Refund. */
-export const TeamCardAdmin = page('/settings#plan', 'team-admin');
-export const TeamCardAdminNight = night(TeamCardAdmin);
-export const TeamCardAdminPhone = phone(TeamCardAdmin);
-/** Buying a license: one more left. */
-export const BuyALicense = page('/settings#plan', 'team-admin', { play: pressing('Buy 1 license', 'Buy a license from the balance') });
-/** Refund asks in place: what goes back to the balance. */
-export const RefundLicensesAsked = page('/settings#plan', 'team-admin', { play: pressing(/^Refund \(/, 'Ask to refund the licenses nobody has taken') });
-/** Auto-purchase is on. */
-export const AutoPurchaseOn = page('/settings#plan', 'team-admin', { beforeEach: changing((w) => { if (w.myTeam) w.myTeam.autoPurchase = true; }) });
-/** A member: on Team, and Priya buys the licenses. */
-export const TeamCardMember = page('/settings#plan', 'team-member');
-/** Licenses running low: a `licenses-low` notice. */
-export const LicensesLowNotice = page('/settings#plan', 'team-admin-low');
-export const LicensesLowNoticeNight = night(LicensesLowNotice);
-/** None left when someone needed one: a `licenses-none` notice. */
-export const NoLicensesLeftNotice = page('/settings#plan', 'team-admin-none');
-/** No license for Art: on Free, told to ask Priya (a `license-needed` notice). */
-export const LicenseNeededNotice = page('/settings#plan', 'team-member-unlicensed');
-export const LicenseNeededNoticePhone = phone(LicenseNeededNotice);
-/** A license replaced Pro: two months that hadn't started went back to the balance (a `license-replaced-pro` notice). */
-export const LicenseReplacedProNotice = page('/settings#plan', 'team-member', {
+/* Team: licenses, bought by the team's admin and taken as each person next opens Alcove (user-flows 16.18, 16.19) */
+/** A member with a license: Team, whose it is, until when the license runs and who buys them, with Open Team; notes of their own, and the team's storage. */
+export const OnTeam = page('/settings#plan', 'team-member');
+export const OnTeamNight = night(OnTeam);
+export const OnTeamPhone = phone(OnTeam);
+/**
+ * The team's admin: their license until when, then Licenses (3 of 8 left) with Buy licenses; beside the balance, buying one
+ * when it's needed and refunding those nobody has taken; and the license purchase in the payments.
+ */
+export const TeamAdmin = page('/settings#plan', 'team-admin');
+export const TeamAdminNight = night(TeamAdmin);
+export const TeamAdminPhone = phone(TeamAdmin);
+export const TeamAdminPhoneNight = phoneNight(TeamAdmin);
+/** Two left: said at the top until it's dismissed, and in warm in the side panel's Team row, with Buy. */
+export const LicensesLow = page('/settings#plan', 'team-admin-low');
+export const LicensesLowNight = night(LicensesLow);
+export const LicensesLowPhone = phone(LicensesLow);
+/** Two left, and Maya waiting for one: Licenses says so in warm, and Buy licenses is the one filled button. */
+export const LicensesLowSomeoneWaiting = page('/settings#plan', 'team-admin-low', { beforeEach: changing(mayaWaits) });
+export const LicensesLowSomeoneWaitingNight = night(LicensesLowSomeoneWaiting);
+export const LicensesLowSomeoneWaitingPhone = phone(LicensesLowSomeoneWaiting);
+/** None left when Maya needed one: said at the top, Maya waiting in warm, and Buy licenses filled. */
+export const NoLicensesLeft = page('/settings#plan', 'team-admin-none');
+export const NoLicensesLeftNight = night(NoLicensesLeft);
+/** Buy licenses opens checkout on Team, over Settings. */
+export const BuyLicenses = page('/settings#plan', 'team-admin-none', { play: pressing('Buy licenses', 'Press Buy licenses') });
+/** Buy one when it's needed is on: someone who needs a license gets one from the balance. */
+export const BuyOneWhenNeeded = page('/settings#plan', 'team-admin', { beforeEach: changing((w) => { if (w.myTeam) w.myTeam.autoPurchase = true; }) });
+/** On, with $10 in the balance: short of a license, so none would be bought. */
+export const BuyOneWhenNeededShort = page('/settings#plan', 'team-admin', {
   beforeEach: changing((w) => {
-    const at = new Date().toISOString();
-    w.plan = {
-      ...w.plan,
-      balance: { microUsd: w.plan.balance.microUsd + 40_000_000, history: [{ id: 'sb-entry-replaced', at, label: 'Refund: 2 months of Pro, for a team license', microUsd: 40_000_000 }, ...w.plan.balance.history] },
-      notices: [{ id: 'sb-notice-replaced', kind: 'license-replaced-pro', at, until: null, count: 2 }]
-    };
+    if (w.myTeam) w.myTeam.autoPurchase = true;
+    w.plan = { ...w.plan, balance: { ...w.plan.balance, microUsd: 10_000_000 } };
   })
 });
+/** Turning it on saves at once, and Saved shows beside it. */
+export const BuyOneWhenNeededSaved = page('/settings#plan', 'team-admin', {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Turn on Buy one when it’s needed', async () => {
+      await userEvent.click(await canvas.findByRole('switch', { name: 'Buy one when it’s needed' }, { timeout: 8000 }));
+    });
+  }
+});
+/** Refund asks in place: what goes back to the balance, and what happens when someone needs one then. */
+export const RefundLicensesAsked = page('/settings#plan', 'team-admin', { play: pressing('Refund', 'Ask to refund the licenses nobody has taken') });
+export const RefundLicensesAskedNight = night(RefundLicensesAsked);
+export const RefundLicensesAskedPhone = phone(RefundLicensesAsked);
+/** Dismissing a team's notice: it goes, and the side panel's Team row says the team's name again. */
+export const DismissATeamNotice = page('/settings#plan', 'team-admin-low', { play: pressing('Dismiss this notice', 'Dismiss the notice that licenses are low') });
+/** No license was left for Art: on Free, said once at the top, with who has been told; the side panel says it over Free. */
+export const NoTeamLicense = page('/settings#plan', 'team-member-unlicensed');
+export const NoTeamLicenseNight = night(NoTeamLicense);
+export const NoTeamLicensePhone = phone(NoTeamLicense);
+export const NoTeamLicensePhoneNight = phoneNight(NoTeamLicense);
+/** The admin's own license ran out with none left to take: on Free, waiting with the rest, and buying licenses gives them one. */
+export const AdminWithoutALicense = page('/settings#plan', 'team-admin', { beforeEach: changing(adminWithoutLicense) });
+export const AdminWithoutALicenseNight = night(AdminWithoutALicense);
+/** A license replaced Pro: two months that hadn't started went back to the balance, said at the top until it's dismissed. */
+export const LicenseReplacedPro = page('/settings#plan', 'team-member', { beforeEach: changing(replacedPro) });
+export const LicenseReplacedProNight = night(LicenseReplacedPro);
 
 export const AddMoneyPicker = page('/settings#plan', 'payments', {
   play: async ({ userEvent, step }) => {
@@ -445,12 +491,23 @@ export const PaymentShort = page('/settings#plan', 'payments', { beforeEach: cha
 /** The address has expired while 1Click is still reporting the short payment: no instruction to send more. */
 export const PaymentShortExpired = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('short', true)), play: openTopUp });
 export const PaymentShortExpiredPhoneNight = phoneNight(PaymentShortExpired);
-export const PaymentCredited = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('credited')), play: openTopUp });
-/** Finished payments stay reachable so their support reference can be opened after closing the sheet. */
+/** A payment that was added: in the payments, Added, 20 USDC, with its receipt, and the balance up by $20. */
+export const PaymentCredited = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('credited')) });
+/** Finished payments that need a person stay reachable, so their support reference can be opened after closing the sheet. */
 export const PaymentFailed = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('failed')), play: openTopUp });
 export const PaymentHeld = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('held')), play: openTopUp });
-export const PaymentCancelled = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('cancelled')), play: openTopUp });
-export const PaymentExpired = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('expired', true)), play: openTopUp });
+/** Cancelled from the sheet: a payment already sent to its address still counts when it arrives. */
+export const PaymentCancelled = page('/settings#plan', 'payments', {
+  beforeEach: changing(withTopUp('waiting')),
+  play: async (context) => {
+    await openTopUp(context);
+    await context.step('Cancel the payment', async () => {
+      await context.userEvent.click(await screen.findByRole('button', { name: 'Cancel payment' }, { timeout: 8000 }));
+    });
+  }
+});
+/** Its address closed with nothing sent: the sheet says so. */
+export const PaymentExpired = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('waiting', true)), play: openTopUp });
 export const DeleteWithPaymentOnItsWay = page('/settings#privacy', 'payments', {
   beforeEach: changing(withTopUp('arriving')), play: pressing('Delete account', 'Deletion warns that an arriving payment cannot be credited after the account is gone')
 });

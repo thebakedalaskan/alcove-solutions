@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Join a team</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-plans.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="marks.js"></script>
+<script src="data-plans.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="ah tj" data-mode="{{mode}}" style="{{vars}}">
+<div class="tj-scene"><dc-import name="Scene" a="{{scene}}" hint-size="100%,100%"></dc-import></div>
+<header class="tj-bar"><span class="brand"><svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="tjba"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><linearGradient id="tjbs" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient></defs><g clip-path="url(#tjba)"><rect width="22" height="26" fill="url(#tjbs)"></rect><circle cx="11" cy="19.2" r="4.4" fill="#FFD58A"></circle><rect y="19.2" width="22" height="7" fill="#231C5E"></rect></g></svg>alcove</span></header>
+<main class="tj-card" aria-labelledby="tj-t">
+<div class="tj-faces"><dc-import name="Faces" who="priya,kofi,lena,maya,aiko" size="40" max="5" ring="var(--surface)" hint-size="220px,44px"></dc-import></div>
+<sc-if value="{{isDone}}" hint-placeholder-val="{{false}}"><span class="pl-tick tj-tick"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></span></sc-if>
+<h1 id="tj-t" class="tj-title">{{title}}</h1>
+<p class="tj-line">{{line}}</p>
+<sc-if value="{{hasFacts}}" hint-placeholder-val="{{true}}">
+<ul class="tj-facts">
+<li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.notes}}"></path></svg>About 50 hours of notes a month, your own</li>
+<li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.people}}"></path></svg>The notes and workspaces the team shares</li>
+<li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.upload}}"></path></svg>Storage shared by everyone on it</li>
+</ul>
+</sc-if>
+<div class="tj-acts">
+<sc-if value="{{isJoin}}" hint-placeholder-val="{{true}}"><button type="button" class="b b-quiet" onClick="{{notNow}}">Not now</button><button type="button" class="b b-press{{hotJoin}}" onClick="{{join}}">{{joinT}}</button></sc-if>
+<sc-if value="{{isSignIn}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-press tj-google{{hotJoin}}" onClick="{{signIn}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.google}}"></path></svg>Continue with Google</button></sc-if>
+<sc-if value="{{isOpen}}" hint-placeholder-val="{{false}}"><button type="button" class="b {{openC}}">Open Alcove</button></sc-if>
+</div>
+<p class="tj-foot">{{foot}}</p>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"step":{"editor":"enum","options":["join","joinHot","joinSignIn","joinDone","joinNoLicense","joinUsed","joinOther"],"default":"join"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var AH = window.AH, PL = AH.PL, I = PL.I, T = PL.TEAM, hs = AH.hash(), self = this, p = this.props;
+    var stepId = (this.state && this.state.step) || hs.step || p.step || 'join';
+    var mode = hs.mode || p.mode || 'dark';
+    var set = function (step) { self.setState({ step: step }); };
+    var admin = T.memberAdmin;
+    var v = { I: I, T: T, mode: mode };
+    v.vars = AH.rootStyle('blue-hour', mode, 18.4);
+    v.scene = AH.assign({ page: true }, AH.scene('team', 'blue-hour', mode));
+    var S = {
+      join: { title: 'Join ' + T.company + '?', line: admin + ' invited you to their team on Alcove. Joining takes one of its licenses, so you have:', facts: true, join: true, foot: 'Nothing happens until you join. You can leave the team later, from Team.' },
+      joinSignIn: { title: 'Join ' + T.company + '?', line: admin + ' invited you to their team on Alcove. Sign in first, then join.', facts: true, signIn: true, foot: 'The invite waits in this tab while you sign in.' },
+      joinDone: { title: 'You’re on ' + T.company, line: 'Your license runs to 12 December. The notes and workspaces the team shares are yours to open now.', done: true, open: 'b-press', foot: 'Your own notes and calls stay yours.' },
+      joinNoLicense: { title: 'You’re on ' + T.company, line: 'None of its licenses was left, so you’re on your own plan for now. ' + admin + ' has been told, and one is yours the next time you open Alcove after they buy more.', done: true, open: 'b-press', foot: '' },
+      joinUsed: { title: 'This invite can’t be used', line: 'It’s been used, or a day has passed since it was made. Each invite works once. Ask ' + admin + ' for a new one.', open: 'b-line', foot: '' },
+      joinOther: { title: 'You’re on a team already', line: 'You can be on one team at a time. To join ' + T.company + ', leave Acme Corp first, from Team, then open this invite again while it lasts.', open: 'b-line', foot: '' }
+    };
+    var st = S[stepId === 'joinHot' ? 'join' : stepId] || S.join;
+    v.title = st.title; v.line = st.line; v.hasFacts = !!st.facts; v.foot = st.foot;
+    v.isJoin = !!st.join; v.isSignIn = !!st.signIn; v.isOpen = !!st.open; v.openC = st.open || 'b-line'; v.isDone = !!st.done;
+    v.hotJoin = stepId === 'joinHot' ? ' is-hot' : '';
+    v.joinT = 'Join ' + T.company;
+    v.join = function () { set('joinDone'); };
+    v.signIn = function () { set('join'); };
+    v.notNow = function () { set('join'); };
+    return v;
+  }
+}
+</script>
+</body>
+</html>

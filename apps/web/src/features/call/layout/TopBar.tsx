@@ -10,7 +10,7 @@ import { clock, type Person } from '@alcove/api';
 import { BoardPicker, CallTopButton, CallTopGroup, CallTopRule, Dots, Faces, Icon, Popover, Tooltip, cn, type BoardPickerProps } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState, type ReactNode } from 'react';
-import { q, trustLine, verifiedAt } from '~/lib/queries';
+import { q, trustLine, unverifiedBecause, verifiedAt } from '~/lib/queries';
 import { hm } from '~/lib/time';
 import type { SideView } from './side';
 
@@ -28,8 +28,8 @@ export interface TopWorkspace { on: boolean; count: number; onPress: () => void 
 /** Notes, Chat and who's here, which open your side: what it shows now, and how much chat you haven't seen. */
 export interface TopSide { view: SideView | null; toggle: (v: SideView) => void; unread: number }
 
-const BOARD_TIP = 'Open a board, just for you · O';
-const WORKSPACE_TIP = 'Open the workspace, just for you · W';
+const BOARD_TIP = 'Open a board on your screen · O';
+const WORKSPACE_TIP = 'Open the workspace on your screen · W';
 
 export function TopBar({ title, elapsed, sign, swap, people, asking, reconnecting, screens, modelPrivate, phone, board, workspace, side, timer }: {
   title: string; elapsed: number;
@@ -94,7 +94,7 @@ export function TopBar({ title, elapsed, sign, swap, people, asking, reconnectin
       {reconnecting && <span className="ic-recon" role="status"><Dots />Reconnecting</span>}
       {swap}
       <div className="end">
-        <CallTopGroup label="Just for you">
+        <CallTopGroup label="On your screen">
           <Popover open={board.menu.open} onOpenChange={(o) => { if (o) board.onPress(); else board.menu.onClose(); }} tip={BOARD_TIP} side="bottom" align="end" label="Open a board" className="bl"
             anchor={boardButton({ onPointerEnter: board.menu.reach })}>
             <BoardPicker {...board.menu.content} />
@@ -116,7 +116,7 @@ export function TopBar({ title, elapsed, sign, swap, people, asking, reconnectin
   );
 }
 
-/** The shield: hover or focus says what confidential compute covers here; a click keeps it open. */
+/** The shield: hover or focus says what confidential compute covers here, and why the check didn't pass if it didn't; a click keeps it open. */
 function Shield({ screens, modelPrivate }: { screens: boolean; modelPrivate: boolean }) {
   const trust = useQuery(q.trust()).data;
   const [open, setOpen] = useState(false);
@@ -125,21 +125,23 @@ function Shield({ screens, modelPrivate }: { screens: boolean; modelPrivate: boo
   const show = () => { if (later.current) clearTimeout(later.current); setOpen(true); };
   const hide = () => { if (later.current) clearTimeout(later.current); later.current = setTimeout(() => { if (!pinned.current) setOpen(false); }, 160); };
   const verified = verifiedAt(trust);
+  const failed = unverifiedBecause(trust);
   return (
     <Popover open={open} onOpenChange={(o) => { pinned.current = o; setOpen(o); }} side="bottom" align="start" label="Confidential compute" className="ic-seal" takeFocus={false}
       anchor={(
         <button type="button" className={cn('ic-sicon', open && 'is-on')} aria-label={verified === null ? 'Confidential compute' : 'Confidential compute, verified'}
           onPointerEnter={(e) => { if (e.pointerType !== 'touch') show(); }} onPointerLeave={hide} onFocus={show} onBlur={hide}>
-          <Icon name="sealed" size={19} />
+          <Icon name={failed === null ? 'sealed' : 'shieldOff'} size={19} />
         </button>
       )}>
       <div onPointerEnter={show} onPointerLeave={hide}>
-        <div className="hd"><Icon name="sealed" size={17} />{trustLine(trust)}</div>
+        <div className="hd"><Icon name={failed === null ? 'sealed' : 'shieldOff'} size={17} />{trustLine(trust)}</div>
         <div className="rows">
           {verified !== null && <div><span>Hardware checked</span><b className="ac-time">{hm(new Date(verified))}</b></div>}
           <div><span>Sealed</span>{modelPrivate ? (screens ? 'Audio, transcript, shared screens, notes' : 'Audio, transcript, notes') : (screens ? 'Audio, transcript, shared screens' : 'Audio, transcript')}</div>
         </div>
         {!modelPrivate && <div className="last"><Icon name="shieldOff" size={14} /> The notes and AI answers in this call use an unencrypted AI model, outside a secure enclave. Audio and transcript stay sealed.</div>}
+        {failed !== null && <div className="last"><Icon name="shieldOff" size={14} /> {failed}</div>}
         <div className="last">{verified === null ? 'Everything stays sealed.' : 'Alcove can’t read this call.'}</div>
       </div>
     </Popover>

@@ -11,7 +11,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { forgetView } from '~/features/call/layout/view';
 import { forgetTour } from '~/features/onboarding/store';
-import { q, topUpOpen, useDeleteAccount, verifiedAt } from '~/lib/queries';
+import { q, topUpOpen, unverifiedBecause, useDeleteAccount, verifiedAt } from '~/lib/queries';
 import { hm } from '~/lib/time';
 import { plural, usd } from '~/lib/words';
 
@@ -22,12 +22,14 @@ const LEDGER = [
 ] as const;
 
 /**
- * What the check made when the app opened found: only an answer bound to this browser's own request counts, and says when.
- * With nothing to show, the row just says what it is.
+ * What the check made when the app opened found: only a check of the server that passed in this browser counts, and says
+ * when. One that didn't pass says why, beside a shield without its tick. With nothing to show, the row just says what it is.
  */
 function Compute() {
   const checked = useQuery(q.trust());
   const verified = verifiedAt(checked.data);
+  const failed = unverifiedBecause(checked.data);
+  if (failed !== null) return <SettingRow mark={<Icon name="shieldOff" />} label="Confidential compute" help={failed} />;
   if (verified === null && !checked.isPending) return <SettingRow mark={<Icon name="sealed" />} label="Confidential compute" help="Where your audio is opened and your notes are written." />;
   return (
     <SettingRow label="Confidential compute"
@@ -98,7 +100,7 @@ function DeleteStep({ shared, onClose }: { shared: boolean; onClose: () => void 
   const del = useDeleteAccount(() => {
     if (ownerId) { forgetTour(ownerId); forgetView(ownerId); }
     toast('Your account is deleted.', { icon: 'check', ms: 5000 });
-    void navigate({ to: '/welcome', replace: true });
+    return navigate({ to: '/welcome', replace: true });
   });
   const pending = del.isPending;
   const [problem, setProblem] = useState<{ text: string; final: boolean } | null>(null);

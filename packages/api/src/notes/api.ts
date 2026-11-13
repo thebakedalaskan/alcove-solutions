@@ -9,10 +9,13 @@ import { type Series, type SeriesAnswerPart } from './series';
 import { type ActionPatch, type ActionProposal, type DecisionPatch, type DecisionProposal, type LinePatch, type QuestionPatch, type RevisitPatch } from './wire';
 export interface NotesApi {
   /**
-   * Every note you have, newest first, or the ones a search finds (`searchOf` says how `text` is read). A found note
-   * says what was said that matched, from what you may read of it.
+   * Every note you have, newest first, or the ones a search finds (`searchOf` says how `text` is read). A note has a
+   * word when it's in its title, summary, decisions, follow-ups or anything said, or starts a word of the name of
+   * someone who spoke in it. A found note says what was said that matched, from what you may read of it.
+   * `by` is someone's address: then only the lines they said count, a note is found only through one of them, and
+   * with no words it's everything they said.
    */
-  list(query?: { kind?: NoteKind | undefined; text?: string | undefined }): Promise<NoteFound[]>;
+  list(query?: { kind?: NoteKind | undefined; text?: string | undefined; by?: string | undefined }): Promise<NoteFound[]>;
   get(id: ID): Promise<Note>;
   progress(id: ID): AsyncIterable<NoteProgress>;
   /**
@@ -30,6 +33,8 @@ export interface NotesApi {
    * has the note, with ranges, so replay can seek.
    */
   screenVideoUrl(id: ID, share: ID, segment: number): string;
+  /** The same video whole, to save on this device: the browser has it decrypted, as it has the audio. */
+  screenVideo(id: ID, share: ID, segment: number, signal?: AbortSignal | undefined): Promise<Blob>;
   /**
    * Adds a decision the notes didn't hear, proposed by you, in your exact words. Anyone who has the notes can. Sending
    * the same words again adds nothing.
@@ -106,13 +111,17 @@ export interface NotesApi {
   personal(id: ID): PersonalApi;
   /** What adding one of your own entries to the shared notes would do: exactly what goes, where, and who gets it. Sends nothing. */
   previewAddition(id: ID, entryId: ID): Promise<PromotionPreview>;
-  /** Adds it, as previewed, for everyone with the notes. Refused if the people or the moments changed since the preview. */
+  /**
+   * Adds it, as previewed, for everyone with the notes and the team they're visible to. Refused if the people, the team or the
+   * moments changed since the preview.
+   */
   addToShared(id: ID, entryId: ID, body: PromoteBody): Promise<Note>;
   /** Who'd read something written straight into the shared notes now, once they're written, and the seal that holds writing to them. Sends nothing. */
   sharedAudience(id: ID): Promise<SharedAudience>;
   /**
    * Writes straight into the shared notes, under your name, for everyone with the notes, once they're written. Refused
-   * (`conflict`) if anyone got the notes since `sharedAudience`. Like an addition, it can be taken back, not changed.
+   * (`conflict`) if anyone got the notes, or a team could read them, or no longer can, since `sharedAudience`. Like an
+   * addition, it can be taken back, not changed.
    */
   writeShared(id: ID, body: SharedWrite): Promise<Note>;
   /** Takes something added to the shared notes out of them, for good: your own addition, or any on your own notes. */

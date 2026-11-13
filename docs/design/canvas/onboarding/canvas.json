@@ -1,0 +1,26 @@
+{
+ "v": 3,
+ "createdOnFiles": { "v": 1, "at": "2026-11-12T19:57:47Z" },
+ "title": "New onboarding",
+ "launch": { "view": "canvas", "page": "onboarding" },
+ "pages": [
+  { "id": "onboarding", "name": "The new onboarding" },
+  { "id": "parts", "name": "Parts" }
+ ],
+ "boards": {
+  "Main.dc.html": { "x": 0, "y": 0, "w": 1440, "h": 954, "title": "The first run: sign in, then the tour, every control working", "page": "onboarding", "expand": "fill", "is_interactive": true },
+  "Phone.dc.html": { "x": 1520, "y": 0, "w": 390, "h": 898, "title": "The first run on a phone", "page": "onboarding", "is_interactive": true },
+  "Stops.dc.html": { "x": 0, "y": 1074, "w": 2240, "h": 1199, "title": "Every stop, before and now", "page": "onboarding" },
+  "Home.dc.html": { "x": 0, "y": 0, "w": 1440, "h": 900, "title": "Home, as built, with the tour’s hooks", "page": "parts", "expand": "fill", "is_interactive": true },
+  "Panel.dc.html": { "x": 1520, "y": 0, "w": 256, "h": 900, "title": "The side panel", "page": "parts", "is_interactive": true },
+  "Art.dc.html": { "x": 1856, "y": 0, "w": 400, "h": 180, "title": "The tour’s art (k picks the stop)", "page": "parts" },
+  "Menu.dc.html": { "x": 2336, "y": 0, "w": 360, "h": 480, "title": "Your menu", "page": "parts" },
+  "Faces.dc.html": { "x": 0, "y": 1020, "w": 1000, "h": 820, "title": "People in the arch", "page": "parts" },
+  "Overlays.dc.html": { "x": 1080, "y": 1020, "w": 1000, "h": 300, "title": "What opens over a page", "page": "parts" },
+  "SkyArt.dc.html": { "x": 1080, "y": 1440, "w": 1000, "h": 340, "title": "Home’s sunset", "page": "parts" },
+  "Visitors.dc.html": { "x": 2160, "y": 1020, "w": 1200, "h": 420, "title": "What passes through", "page": "parts" }
+ },
+ "order": ["Main.dc.html", "Phone.dc.html", "Stops.dc.html", "Home.dc.html", "Panel.dc.html", "Art.dc.html", "Menu.dc.html", "Faces.dc.html", "Overlays.dc.html", "SkyArt.dc.html", "Visitors.dc.html"],
+ "notes": {},
+ "designSystems": []
+}

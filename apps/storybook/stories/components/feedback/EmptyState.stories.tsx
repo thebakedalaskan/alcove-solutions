@@ -1,7 +1,7 @@
 /*
  * EmptyState: what a list or page shows before there's anything in it, so none is ever blank: the empty arch, a title
  * that says what will appear, one line, and the way forward in `action`. `art` takes other art, or `null` where a
- * panel is too small for the arch.
+ * panel is too small for the arch. `role="status"` when it says something went wrong, so it's read out as it appears.
  */
 import { Button, Card, EmptyState } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -11,13 +11,13 @@ const meta = {
   title: 'Components/Feedback/EmptyState',
   component: EmptyState,
   parameters: { layout: 'centered' },
-  args: { title: 'Nothing needs you', children: 'Decisions to confirm and follow-ups show up here after your calls.' },
-  argTypes: { title: { control: 'text' }, children: { control: 'text' }, action: { control: false }, art: { control: false } }
+  args: { title: 'No documents to bring yet', children: 'Documents from your workspace show here, ready to bring to a call.' },
+  argTypes: { title: { control: 'text' }, children: { control: 'text' }, role: { control: false }, action: { control: false }, art: { control: false } }
 } satisfies Meta<typeof EmptyState>;
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Home, when nothing is waiting on you. */
+/** A call's documents, before the workspace has any to bring. */
 export const Default: Story = {};
 /** The way forward: the notes list before any call has had notes. */
 export const WithAnAction: Story = {
@@ -28,11 +28,21 @@ export const WithAnAction: Story = {
     action: <Button variant="primary" icon="video" onClick={did('onClick')}>Start a call</Button>
   }
 };
-/** No arch in a small panel: Home's Coming up, with nothing scheduled. */
+/** No arch in a small panel: a call's questions, before anyone has asked one. */
 export const InASmallPanel: Story = {
   name: 'In a small panel',
-  args: { title: 'Nothing coming up', children: 'The calls you schedule show up here.', art: null },
-  render: (args) => <Card title="Coming up" style={{ width: 320 }}><EmptyState {...args} /></Card>
+  args: { title: 'No questions yet', children: 'Ask everyone in this room. The questions with the most votes come first.', art: null },
+  render: (args) => <Card title="Questions" style={{ width: 320 }}><EmptyState {...args} /></Card>
+};
+/** Something didn't load: said as it happens (`role="status"`), with the way to try again. */
+export const SomethingWentWrong: Story = {
+  name: 'Something went wrong',
+  args: {
+    title: 'Documents can’t be read just now',
+    children: 'The call works without them. Try again in a moment.',
+    role: 'status',
+    action: <Button icon="retry" onClick={did('onRetry')}>Try again</Button>
+  }
 };
 /** A long title wraps under the arch, centred. */
 export const LongTitle: Story = {

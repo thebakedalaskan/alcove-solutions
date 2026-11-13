@@ -162,7 +162,7 @@ export function GoogleDrive({ result }: { result?: DriveConnectResult | undefine
               // Nothing has gone yet, and nothing can until there's a folder: nothing to show.
               : (jobs.data.length > 0 || data.destination) && (
                 <DriveExportHistory jobs={jobs.data.slice(0, 8)} when={wentAt} onRetry={retryJob} retrying={retry.isPending ? retry.variables : undefined} onReconnect={askToConnect}
-                  source={(id) => <Link to="/notes/$noteId" params={{ noteId: id }}>{notes.data?.find((note) => note.id === id)?.title ?? 'A call'}</Link>} />
+                  source={(id) => <Link to="/calls/$noteId" params={{ noteId: id }}>{notes.data?.find((note) => note.id === id)?.title ?? 'A call'}</Link>} />
               )}
           <SettingFoot sub actions={<Button variant="quiet" size="sm" loading={disconnect.isPending} disabled={busy} onClick={() => void off()}>{disconnect.isPending ? 'Disconnecting' : 'Disconnect Google Drive'}</Button>}>
             <DriveExportDisclosure />

@@ -15,8 +15,8 @@ export function useCallTimer(state: CallState, clock: CallClock, connected: bool
   const [, paint] = useState(0);
   const sound = useSoundPreferences();
   const owner = useRef({});
-  const live = useRef({ prefs: sound.prefs, speakerId, allowed: false });
-  live.current = { prefs: sound.prefs, speakerId, allowed: connected && sound.ready && state.phase === 'in-call' };
+  const live = useRef({ prefs: sound.prefs, notificationsPauseEnd: sound.notificationsPauseEnd, speakerId, allowed: false });
+  live.current = { prefs: sound.prefs, notificationsPauseEnd: sound.notificationsPauseEnd, speakerId, allowed: connected && sound.ready && state.phase === 'in-call' };
   const timer = state.timer;
   // The server's time now, read as this paints (a repaint a second runs it again), from the one anchor the call keeps.
   const serverNow = Date.now() + clock.skew;
@@ -40,7 +40,7 @@ export function useCallTimer(state: CallState, clock: CallClock, connected: bool
     document.addEventListener('visibilitychange', visible);
     return () => { clearInterval(repaint); document.removeEventListener('visibilitychange', visible); };
   }, [timer?.status]);
-  useEffect(() => () => stopSounds(owner.current), [state.callId, connected, sound.prefs]);
+  useEffect(() => () => stopSounds(owner.current), [state.callId, connected, sound.prefs, sound.notificationsPauseEnd]);
   // The chime, once, as this browser sees it reach zero: not for someone who joins or comes back to it over time.
   const previous = useRef<{ callId: string; key: string; remaining: number; at: number } | null>(null);
   useEffect(() => {
@@ -49,7 +49,7 @@ export function useCallTimer(state: CallState, clock: CallClock, connected: bool
     const key = timer ? `${timer.id}:${timer.durationSeconds}` : '';
     previous.current = connected && timer?.status === 'running' ? { callId: state.callId, key, remaining, at: now } : null;
     if (!live.current.allowed || !timer || !before || before.callId !== state.callId || before.key !== key || now - before.at > 5000 || before.remaining <= 0 || remaining > 0) return;
-    playSound({ owner: owner.current, cue: 'timer', key: `call-timer:${state.callId}:${key}`, until: Date.now() + 1000, current: () => ({ prefs: { ...live.current.prefs, enabled: live.current.prefs.enabled && live.current.allowed }, speakerId: live.current.speakerId }) });
+    playSound({ owner: owner.current, cue: 'timer', key: `call-timer:${state.callId}:${key}`, until: Date.now() + 1000, current: () => ({ prefs: { ...live.current.prefs, enabled: live.current.prefs.enabled && live.current.allowed }, notificationsPauseEnd: live.current.notificationsPauseEnd, speakerId: live.current.speakerId }) });
   }, [state.callId, timer, remaining, connected]);
   return { timer, remaining, time, tone, status, label, say };
 }

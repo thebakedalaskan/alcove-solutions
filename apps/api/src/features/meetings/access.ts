@@ -1,18 +1,18 @@
 /*
  * Who's invited to a call, so they can find it from their own account (docs: privacy-keys-and-sessions › Who can see a
  * call). A call lives in its organizer's vault. meeting_access lists everyone on its invite, one row each, by a keyed
- * hash of their address: a hash of its own (`invite`), so these rows can't be joined to accounts without KMASTER.
- * Someone's answer sits in their row, sealed under the organizer's keys. Someone else's call is opened with its
- * organizer's keys, and only after that check, as notes are.
+ * hash of their address: a hash of its own (`invite`), so these rows can't be joined to accounts without the index key.
+ * Someone's answer sits in their row, sealed under the organizer's keys, and so does the time they've asked to move the
+ * call to, if they have. Someone else's call is opened with its organizer's keys, and only after that check, as notes are.
  */
-import { RsvpSchema, type Rsvp, type RsvpCounts } from '@alcove/api';
+import { RsvpSchema, type GuestAnswer, type Proposal, type Rsvp, type RsvpCounts } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../../context';
 import { b64u, blindIndex, fromUtf8, openRecord, sealRecord, stateKey, utf8, type RecordHeader } from '../../crypto';
 import { bytea, exec, maybeOne, rows, tx, type Db } from '../../db';
-import { notFound } from '../../errors';
+import { ConflictError, ValidationError, notFound } from '../../errors';
 import { log } from '../../log';
-import { findOwner, masterKey } from '../../owners';
+import { findOwner, indexKey } from '../../owners';
 import { findItem, findItems, lockItem, type Loaded } from '../../vault';
 import { profile } from '../account/account';
 import { MeetingManifest, isOver, unjoined } from './service';
@@ -32,7 +32,7 @@ export const notesCanGo = (asker: { sample: boolean }, organizer: { sample: bool
  */
 const sameKind = (asker: { sample: boolean }, organizer: { sample: boolean }) => asker.sample === organizer.sample;
 
-const indexOf = (o: Owner, email: string) => Buffer.from(blindIndex(masterKey(o), 'invite', email));
+const indexOf = (o: Owner, email: string) => Buffer.from(blindIndex(indexKey(o), 'invite', email));
 /** Someone on an invite, as `Access` keys them: by their address's hash. */
 export const inviteKey = (o: Owner, email: string): string => b64u(indexOf(o, email));
 
@@ -45,6 +45,15 @@ const ANSWER_BYTES = 5;
 const sealAnswer = (organizer: Owner, meetingId: string, index: Uint8Array, answer: Rsvp) => sealRecord(answerKey(organizer, meetingId), answerHeader(organizer, meetingId, index), utf8(answer.padEnd(ANSWER_BYTES)));
 const openAnswer = (organizer: Owner, meetingId: string, index: Uint8Array, record: Uint8Array): Rsvp =>
   RsvpSchema.parse(fromUtf8(openRecord(answerKey(organizer, meetingId), answerHeader(organizer, meetingId, index), record)).trimEnd());
+
+/*
+ * A request to move the call: the time someone invited would rather it started, sealed in their row under the same key,
+ * as a record of its own kind. It's a moment as `toISOString` writes one, so every request is the same length.
+ */
+const proposalHeader = (organizer: Owner, meetingId: string, index: Uint8Array): RecordHeader => ({ v: 1, kind: 'meeting-proposal', ownerId: organizer.ownerId, meetingId, emailIndex: b64u(index) });
+const sealProposal = (organizer: Owner, meetingId: string, index: Uint8Array, startsAt: string) => sealRecord(answerKey(organizer, meetingId), proposalHeader(organizer, meetingId, index), utf8(startsAt));
+const openProposal = (organizer: Owner, meetingId: string, index: Uint8Array, record: Uint8Array): string =>
+  fromUtf8(openRecord(answerKey(organizer, meetingId), proposalHeader(organizer, meetingId, index), record));
 
 /* ---------- the organizer's side: every change to who's invited ---------- */
 
@@ -66,18 +75,23 @@ export async function dropInvites(o: Owner, db: Db, meetingIds: string[]): Promi
   return meetingIds.length ? exec(db, 'DELETE FROM meeting_access WHERE owner_id = $1 AND meeting_item_id = ANY($2::text[])', [o.ownerId, meetingIds]) : 0;
 }
 
-/** Everyone on a call's invite, by `inviteKey`, with their answer: null until they've given one. */
-export type Access = ReadonlyMap<string, Rsvp | null>;
-const AccessRow = z.object({ meeting_item_id: z.string(), email_index: bytea, answer_ciphertext: bytea.nullable() });
+/** Where someone invited stands: what they answered, and the time they've asked to move the call to. Null until they have. */
+export interface Invitee { answer: Rsvp | null; proposal: string | null }
+/** Everyone on a call's invite, by `inviteKey`, with where they stand. */
+export type Access = ReadonlyMap<string, Invitee>;
+const AccessRow = z.object({ meeting_item_id: z.string(), email_index: bytea, answer_ciphertext: bytea.nullable(), proposal_ciphertext: bytea.nullable() });
 
 /** The invites of these calls of the organizer's, read together. */
 export async function accessOf(organizer: Owner, meetingIds: string[]): Promise<ReadonlyMap<string, Access>> {
-  const out = new Map<string, Map<string, Rsvp | null>>();
+  const out = new Map<string, Map<string, Invitee>>();
   if (!meetingIds.length) return out;
-  const found = await rows(organizer.pool, AccessRow, 'SELECT meeting_item_id, email_index, answer_ciphertext FROM meeting_access WHERE owner_id = $1 AND meeting_item_id = ANY($2::text[])', [organizer.ownerId, meetingIds]);
+  const found = await rows(organizer.pool, AccessRow, 'SELECT meeting_item_id, email_index, answer_ciphertext, proposal_ciphertext FROM meeting_access WHERE owner_id = $1 AND meeting_item_id = ANY($2::text[])', [organizer.ownerId, meetingIds]);
   for (const r of found) {
-    const invite = out.get(r.meeting_item_id) ?? new Map<string, Rsvp | null>();
-    invite.set(b64u(r.email_index), r.answer_ciphertext ? openAnswer(organizer, r.meeting_item_id, r.email_index, r.answer_ciphertext) : null);
+    const invite = out.get(r.meeting_item_id) ?? new Map<string, Invitee>();
+    invite.set(b64u(r.email_index), {
+      answer: r.answer_ciphertext ? openAnswer(organizer, r.meeting_item_id, r.email_index, r.answer_ciphertext) : null,
+      proposal: r.proposal_ciphertext ? openProposal(organizer, r.meeting_item_id, r.email_index, r.proposal_ciphertext) : null
+    });
     out.set(r.meeting_item_id, invite);
   }
   return out;
@@ -86,14 +100,43 @@ export async function accessOf(organizer: Owner, meetingIds: string[]): Promise<
 /** How `invited` people have answered, from a call's invite: anyone without an answer there is waiting. */
 export function countsOf(access: Access | undefined, invited: number): RsvpCounts {
   const counts = { yes: 0, maybe: 0, no: 0 };
-  for (const a of access?.values() ?? []) if (a) counts[a]++;
+  for (const { answer } of access?.values() ?? []) if (answer) counts[answer]++;
   return { ...counts, waiting: Math.max(0, invited - counts.yes - counts.maybe - counts.no) };
+}
+
+/** The same counts from what each person answered. */
+export function countsFrom(answers: readonly GuestAnswer[]): RsvpCounts {
+  const counts = { yes: 0, maybe: 0, no: 0, waiting: 0 };
+  for (const { answer } of answers) counts[answer ?? 'waiting']++;
+  return counts;
+}
+
+/**
+ * What each of a call's guests answered, and the times they've asked to move it to, in the order of `guests`: what only
+ * its organizer sees. `keyOf` is `inviteKey` for the organizer, kept from one call to the next of a list.
+ */
+export function standing(access: Access | undefined, guests: readonly string[], keyOf: (email: string) => string): { answers: GuestAnswer[]; proposals: Proposal[] } {
+  const each = guests.map((email) => ({ email, at: access?.get(keyOf(email)) }));
+  return {
+    answers: each.map(({ email, at }) => ({ email, answer: at?.answer ?? null })),
+    proposals: each.flatMap(({ email, at }) => (at?.proposal ? [{ email, startsAt: at.proposal }] : []))
+  };
 }
 
 /** Which of these addresses have said yes to this call: the one answer that's theirs to give, and nobody else's to assume. */
 export async function saidYes(o: Owner, meetingId: string, emails: string[]): Promise<Set<string>> {
   const invite = (await accessOf(o, [meetingId])).get(meetingId);
-  return new Set(emails.filter((e) => invite?.get(inviteKey(o, e)) === 'yes'));
+  return new Set(emails.filter((e) => invite?.get(inviteKey(o, e))?.answer === 'yes'));
+}
+
+/**
+ * Lets go of the times people asked to move these calls to: all of them when a call has moved, since they were asked of
+ * where it was, or one person's (`email`) when the organizer keeps the time it has.
+ */
+export async function dropProposals(o: Owner, db: Db, meetingIds: string[], email?: string | undefined): Promise<number> {
+  if (!meetingIds.length) return 0;
+  if (email === undefined) return exec(db, 'UPDATE meeting_access SET proposal_ciphertext = NULL WHERE owner_id = $1 AND meeting_item_id = ANY($2::text[]) AND proposal_ciphertext IS NOT NULL', [o.ownerId, meetingIds]);
+  return exec(db, 'UPDATE meeting_access SET proposal_ciphertext = NULL WHERE owner_id = $1 AND meeting_item_id = ANY($2::text[]) AND email_index = $3 AND proposal_ciphertext IS NOT NULL', [o.ownerId, meetingIds, indexOf(o, email)]);
 }
 
 /**
@@ -126,12 +169,13 @@ export async function reconcileAccess(o: Owner, meetings: Loaded<MeetingManifest
 }
 
 /**
- * Forgets what a deleted account answered on other people's calls, unless another account still signs in with its
- * address. The invites stay: they're the organizers', who put the address on them.
+ * Forgets what a deleted account answered on other people's calls, and the times it asked to move them to, unless
+ * another account still signs in with its address. The invites stay: they're the organizers', who put the address on them.
  */
 export async function forgetAnswers(o: Owner, db: Db, email: string): Promise<number> {
-  return exec(db, `UPDATE meeting_access SET answer_ciphertext = NULL WHERE email_index = $1 AND owner_id <> $2 AND answer_ciphertext IS NOT NULL
-                   AND NOT EXISTS (SELECT 1 FROM identities WHERE email_index = $3 AND owner_id <> $2)`, [indexOf(o, email), o.ownerId, blindIndex(masterKey(o), 'email', email)]);
+  return exec(db, `UPDATE meeting_access SET answer_ciphertext = NULL, proposal_ciphertext = NULL WHERE email_index = $1 AND owner_id <> $2
+                   AND (answer_ciphertext IS NOT NULL OR proposal_ciphertext IS NOT NULL)
+                   AND NOT EXISTS (SELECT 1 FROM identities WHERE email_index = $3 AND owner_id <> $2)`, [indexOf(o, email), o.ownerId, blindIndex(indexKey(o), 'email', email)]);
 }
 
 /* ---------- the invited side: finding a call by your own address ---------- */
@@ -214,5 +258,27 @@ export async function answer(viewer: Owner, meetingId: string, value: Rsvp): Pro
   // Taken off the invite since it was read.
   if (!saved) throw notFound('That meeting', { meetingId });
   alog.info('invitation answered', { meetingId });
+  return invited;
+}
+
+/**
+ * Asks the organizer to move a call you're invited to: the time goes in your row, sealed under their keys, and replaces
+ * any you asked before. Only a call that hasn't started and has a time of its own can be asked, and only to a time
+ * that's still to come and isn't the one it has. Google Calendar doesn't hear about it.
+ */
+export async function propose(viewer: Owner, meetingId: string, at: string): Promise<Invited> {
+  const when = new Date(at);
+  if (Number.isNaN(when.getTime())) throw new ValidationError('Pick a time to ask for.', { context: { meetingId } });
+  const invited = await locateInvited(viewer, meetingId);
+  const { organizer, meeting: { manifest: m } } = invited;
+  if (m.status !== 'scheduled') throw new ConflictError('This call has started, so it can’t move now.', { context: { meetingId, status: m.status } });
+  if (m.offer) throw new ConflictError('A time is still being picked for this call.', { context: { meetingId } });
+  if (when.getTime() <= Date.now()) throw new ValidationError('Ask for a time that’s still to come.', { context: { meetingId } });
+  if (when.getTime() === new Date(m.startsAt).getTime()) throw new ValidationError('That’s the time it has already.', { context: { meetingId } });
+  const index = indexOf(viewer, (await profile(viewer)).email);
+  const saved = await exec(viewer.pool, 'UPDATE meeting_access SET proposal_ciphertext = $4 WHERE owner_id = $1 AND meeting_item_id = $2 AND email_index = $3',
+    [organizer.ownerId, meetingId, index, sealProposal(organizer, meetingId, index, when.toISOString())]);
+  if (!saved) throw notFound('That meeting', { meetingId });
+  alog.info('another time proposed', { meetingId });
   return invited;
 }

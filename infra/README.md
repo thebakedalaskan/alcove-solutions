@@ -1,27 +1,33 @@
 # Deploying Alcove
 
 The target is `https://alcove.solutions`, with API `https://api.alcove.solutions`. GoDaddy remains the
-registrar; Cloudflare provides DNS and Pages. GCP project `alcove-solutions` in `us-central1` holds
-Cloud Run, Cloud SQL, Artifact Registry and Secret Manager.
+registrar; Cloudflare provides DNS, as DNS-only records. GCP project `alcove-solutions` in `us-central1` holds
+the Confidential Space VMs, Cloud SQL, Artifact Registry, Cloud KMS, Secret Manager, and the migration job.
 
-Pages project `alcove-web` uses the assigned hostname `alcove-web-bt8.pages.dev`. Accept a public
-release only after verifying the deployed API and web commits, public HTTPS and the acceptance
-journeys below. A healthy API service URL alone does not establish that the public domains work.
+The API and the web app run together in one container, in Google Cloud Confidential Space on Intel TDX: the only
+place that holds the master key or ends TLS. Accept a public release only after verifying the deployed commit, public
+HTTPS and the acceptance journeys below. A healthy VM alone does not establish that the public domains work.
 
 ```text
-GoDaddy registrar → Cloudflare DNS
-  alcove.solutions ─────► Cloudflare Pages: alcove-web (static SPA)
-  api.alcove.solutions ─► Cloud Run domain mapping → alcove-api
-                                                     │
-                                  Cloud SQL Postgres 17 + private R2 objects
-                                                     │
-                                      Secret Manager runtime credentials
+GoDaddy registrar → Cloudflare DNS, DNS only
+  alcove.solutions, www, api ─► alcove-api-ip: regional external proxy Network Load Balancer
+                                 443 → 8443 (TLS ends in the VM) and 80 → 8080 (/health, redirects)
+                                  │
+                       alcove-api: one Confidential Space VM (c3-standard-4, Intel TDX), us-central1-a
+                         the API and the web app, in one signed image
+                                  │
+                 Cloud SQL Postgres 17 + private R2 objects (ciphertext only)
+                 Cloud KMS alcove-master + Secret Manager, for an attested, signed image only
 ```
+
+[confidential-space/README.md](confidential-space/README.md) is the runbook for everything in that picture: its pieces,
+the attestation policy, first setup, deploys, rollbacks, staging, the monthly image refresh, certificates, and retiring the
+keys from before. This page covers the project around it.
 
 ## GCP setup and recovery
 
-Use the dedicated `alcove` gcloud configuration. The script passes an explicit project to every
-command and does not change the default gcloud project:
+Use the dedicated `alcove` gcloud configuration. The scripts pass an explicit project to every
+command and do not change the default gcloud project. First the project's base:
 
 ```sh
 CLOUDSDK_ACTIVE_CONFIG_NAME=alcove \
@@ -40,19 +46,29 @@ The project must already exist and have billing linked. The script enables APIs 
 - Secret Manager entries `alcove-database-url`, `alcove-kservice`, `alcove-objects-access-key`,
   `alcove-objects-secret-key`, `alcove-livekit-api-key`, `alcove-livekit-api-secret`, optional
   `alcove-near-ai-api-key`, and optional Google provider entries
-  `alcove-google-client-id` and `alcove-google-client-secret`.
-- Runtime account `alcove-api@alcove-solutions.iam.gserviceaccount.com`, with Cloud SQL access and
-  access to those secrets. The deploy account can publish to the `alcove` registry, manage Cloud Run,
-  and act as this runtime account.
-- Workload Identity Federation restricted to repository ID `1442472668`, owner ID `280182442`, this
-  repository's deploy workflow on `main`, and its workflow-run/manual-dispatch events. No GCP
-  service-account key file is needed.
+  `alcove-google-client-id` and `alcove-google-client-secret`. `alcove-kmaster` and `alcove-kservice` hold the keys
+  from before Confidential Space, until they're retired. `alcove-cloudflare-dns-token` holds the Cloudflare token
+  ([The Cloudflare token](confidential-space/README.md#the-cloudflare-token) says how to make it); only Confidential
+  Space's attested production VMs read it.
+- Runtime account `alcove-api@alcove-solutions.iam.gserviceaccount.com`, which runs the migration job, with Cloud SQL
+  access and access to those secrets: Cloud Run's API service ran as it and read them. The migration job reads only
+  `alcove-database-url`; the rest go with the Cloud Run service when the old keys are retired
+  ([The old keys](confidential-space/README.md#the-old-keys)). The deploy account `alcove-deploy` can publish to the
+  `alcove` registry, deploy and run Cloud Run jobs (`run.developer`), and act as this runtime account.
+- Workload Identity Federation restricted to repository ID `1442472668`, owner ID `280182442`, `main`, and two
+  workflows: `deploy.yml` on its workflow-run and manual-dispatch events, and `refresh.yml` on its schedule and manual
+  dispatch. No GCP service-account key file is needed.
 
 Database passwords are persisted in Secret Manager before creating the SQL user. A rerun reuses that
 password and repairs the original empty-host socket URL without rotating it. If the user exists but
 its secret has no version, restore the current password through `ALCOVE_DB_PASSWORD`; the script
 refuses to invent a replacement. A disabled latest secret version must be restored explicitly. IAM
 bindings retry briefly to allow new service accounts to propagate.
+
+Then Confidential Space: `infra/confidential-space/setup.sh production` (with `--dry-run` first) makes the network, the
+Cloud KMS keys, the Workload Identity pool that only an attested, signed image passes, the VMs' service account, the
+deploy account's grants, and the load balancer, and grants production's master key and secrets to production's attested
+VMs alone ([its First setup](confidential-space/README.md#first-setup)).
 
 ## Cloudflare storage and DNS
 
@@ -69,40 +85,17 @@ johnny.ns.cloudflare.com
 maleah.ns.cloudflare.com
 ```
 
-The change was submitted at GoDaddy. Confirm Cloudflare reports the zone active and public resolvers
-return both nameservers before treating delegation as complete. Preserve existing mail and verification
-records. Add `alcove.solutions` as a custom domain of Pages project `alcove-web`; use its actual assigned
-hostname, `alcove-web-bt8.pages.dev`, wherever setup requests the project hostname. Configure
-`www.alcove.solutions` to redirect to the apex using a Cloudflare zone Single Redirect, preserving the
-path and query string.
+Preserve existing mail and verification records. The apex, `www` and `api` are DNS-only A records for the load
+balancer's address, which `infra/confidential-space/dns.sh production --switch` sets (and puts back from the file it saves,
+with `--rollback-file`). They're never proxied: TLS ends inside the VM, so Cloudflare must pass connections through
+untouched. The API redirects `www` to the apex itself. The script changes only those names' address records, and a CAA
+record that lets only Let's Encrypt, for only the VM's ACME account, issue certificates
+([Certificates](confidential-space/README.md#certificates)). It reads its Cloudflare token (Zone › DNS › Edit and
+Zone › Zone › Read on the zone, made as [The Cloudflare token](confidential-space/README.md#the-cloudflare-token) says)
+from `alcove-cloudflare-dns-token` each run; production's API orders its certificates with the same token.
 
-The web build uses TanStack's `spa.prerender.outputPath: '/index'` to emit
-`apps/web/dist/client/index.html`. Pages serves this root shell for client routes that do not match
-static assets, while serving JavaScript, CSS and other real assets directly. Keep the build free of a
-top-level `404.html` and catch-all `_redirects` rules so Pages' native SPA fallback applies. See
-[Cloudflare's SPA serving behavior](https://developers.cloudflare.com/pages/configuration/serving-pages/).
-
-The API uses a **native Cloud Run domain mapping**, created after the first API deployment:
-
-```sh
-CLOUDSDK_ACTIVE_CONFIG_NAME=alcove gcloud --project=alcove-solutions \
-  beta run domain-mappings create --service=alcove-api \
-  --domain=api.alcove.solutions --region=us-central1
-
-CLOUDSDK_ACTIVE_CONFIG_NAME=alcove gcloud --project=alcove-solutions \
-  beta run domain-mappings describe --domain=api.alcove.solutions \
-  --region=us-central1 --format='yaml(status.conditions,status.resourceRecords)'
-```
-
-Verify ownership of `alcove.solutions` with Google first if requested. Add the exact DNS records
-returned by the mapping to Cloudflare, using DNS-only records while Google's certificate provisions.
-A CNAME to an arbitrary `run.app` hostname does not replace domain mapping. Wait for mapping and
-certificate readiness, then verify `https://api.alcove.solutions/health`.
-
-Google lists native domain mappings as Preview and does not recommend them for production. This is
-the selected demo setup in supported region `us-central1`; a production rollout should move custom-domain
-routing to the recommended external Application Load Balancer or another supported front end. See
-[Google's domain mapping guidance](https://docs.cloud.google.com/run/docs/mapping-custom-domains).
+The web app is no longer on Cloudflare Pages, and the API no longer has a Cloud Run domain mapping: the image carries
+the web app, built for its API's origin with its Content-Security-Policy, and the API serves it.
 
 ## GitHub configuration
 
@@ -111,7 +104,8 @@ Environments, create `production` and restrict deployments to `main`. Required r
 deployment, so leave that requirement off for automatic deployment after CI.
 
 Identifiers and nonsecret settings below belong in **repository variables**, including the deployment
-switch; environment-scoped variables are unavailable to the early job condition.
+switch; environment-scoped variables are unavailable to the early job condition. Everything else a deployment runs
+with is in [infra/confidential-space/env.sh](confidential-space/env.sh).
 
 | Repository variable | Value |
 | --- | --- |
@@ -119,25 +113,23 @@ switch; environment-scoped variables are unavailable to the early job condition.
 | `GCP_REGION` | `us-central1` |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | full provider resource printed by bootstrap |
 | `GCP_DEPLOY_SERVICE_ACCOUNT` | `alcove-deploy@alcove-solutions.iam.gserviceaccount.com` |
-| `GCP_RUNTIME_SERVICE_ACCOUNT` | `alcove-api@alcove-solutions.iam.gserviceaccount.com` |
+| `GCP_RUNTIME_SERVICE_ACCOUNT` | `alcove-api@alcove-solutions.iam.gserviceaccount.com`, which the migration job runs as |
 | `GCP_CLOUDSQL_INSTANCE` | `alcove-solutions:us-central1:alcove-db` |
-| `CLOUDFLARE_ACCOUNT_ID` | account identifier, not an API token |
-| `CLOUDFLARE_PAGES_PROJECT` | `alcove-web` |
 | `OBJECTS_ENDPOINT` | account's R2 S3 endpoint |
-| `OBJECTS_BUCKET` | `alcove-objects` |
-| `WEB_ORIGIN` | `https://alcove.solutions` |
-| `API_ORIGIN` | `https://api.alcove.solutions`; also the API's `API_URL`, from which Google's redirect URI is built |
 | `LIVEKIT_URL` | the LiveKit Cloud project's URL, `wss://<project>.livekit.cloud` |
-| `NEAR_AI_ENABLED` | `false` on a new installation; `true` once the inference key has a version |
-| `GOOGLE_AUTH_ENABLED` | `false` on a new installation; `true` only after both Google credential versions exist |
+| `GOOGLE_SIGNUP_MODE` | `testers` (also when unset) or `public` |
+| `NEAR_AI_ENABLED` | `true` (also when unset) once the inference key has a version; `false` leaves it out |
+| `GOOGLE_AUTH_ENABLED` | `true` (also when unset) once both Google credential versions exist; `false` leaves them out |
 | `DEPLOY_ENABLED` | `false` during setup; `true` when ready to deploy |
 
-Store `CLOUDFLARE_API_TOKEN` as a **production environment secret**, with Pages edit permission for the
-intended account. R2 credentials stay in GCP Secret Manager. `NEAR_AI_ENABLED=false` omits the inference
-key from Cloud Run, so its secret needs no placeholder version; recordings are then kept but not
-transcribed, and their notes wait. Add the NEAR AI Cloud key as a version of `alcove-near-ai-api-key`
-(from a private environment variable, never a file in the repository), then set `NEAR_AI_ENABLED=true`:
-the next deployment binds it, and `/health` reports `inference: configured`.
+The deploy workflow passes the last five, prefixed `ALCOVE_`, to the scripts
+([Settings](confidential-space/README.md#settings)); staging needs none, and the monthly refresh reuses what the group's
+template has. `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_PAGES_PROJECT`, the
+production secret `CLOUDFLARE_API_TOKEN`, `OBJECTS_BUCKET`, `WEB_ORIGIN` and `API_ORIGIN` are no longer read: delete
+them once the switch is confirmed. With `NEAR_AI_ENABLED=false`, the API isn't given the inference key, so its secret
+needs no placeholder version; recordings are then kept but not transcribed, and their notes wait. Add the NEAR AI Cloud
+key as a version of `alcove-near-ai-api-key` (from a private environment variable, never a file in the repository): the
+next deployment reads it, and `/health` reports `inference: configured`.
 
 Import `.github/rulesets/main.json` through Settings › Rules › Rulesets to require a pull request and
 the four CI checks (Policy, Typecheck, Build, Integration tests) on an up-to-date branch. The file also
@@ -160,9 +152,9 @@ and secret; without them it doesn't start.
 4. Only the API issues join tokens, and only for rooms it created, so the project's other defaults
    can stay as they are.
 
-`/health` reports `livekit: reachable` once the API can reach the project, and the deploy's health
-check requires it. The web app's CSP allows the LiveKit host (and `*.livekit.cloud`, where media
-servers live) in `connect-src`.
+`/health` reports `livekit: reachable` once the API can reach the project, and the deploy's check
+(`verify-server.ts`) requires it in production (staging has no LiveKit credentials, and is checked with `--skip-livekit`).
+The web app's CSP allows the LiveKit host (and `*.livekit.cloud`, where media servers live) in `connect-src`.
 
 ## Google provider preparation
 
@@ -181,15 +173,15 @@ URIs on a development OAuth client. Keep credentials and tester addresses out of
 
 Verify ownership of `alcove.solutions` in Search Console and set the app homepage and
 `https://alcove.solutions/privacy` in **Branding**. Google allows basic identity requests from accounts outside
-its test-user list even when the OAuth app is in Testing. The Cloud Run beta disables the demo providers on the API
-and web. The workflow defaults to `GOOGLE_SIGNUP_MODE=testers` and binds `GOOGLE_SIGNUP_TESTERS` from
+its test-user list even when the OAuth app is in Testing. Production turns the demo providers off on the API and in the
+web build. It defaults to `GOOGLE_SIGNUP_MODE=testers` and then reads `GOOGLE_SIGNUP_TESTERS` from
 `alcove-google-signup-testers`, one approved email per line. This admits returning Google accounts and checks
 verified emails for new ones. For the public beta, set repository variable `GOOGLE_SIGNUP_MODE=public` after the
-updated website and privacy policy are live, and apply the same setting to the running API. New accounts and
+updated website and privacy policy are live; the next deployment applies it. New accounts and
 changes to a returning account’s email require a Gmail address or a verified Google Workspace identity,
 because Alcove uses email to share calls and notes.
 See the [deployment and acceptance requirements](../docs/engineering/deployment-and-acceptance.md) for what the beta
-provides and the remaining confidential-compute work. Keep `calendar.events` declared while a deployed release
+provides. Keep `calendar.events` declared while a deployed release
 still requests it. New requests use `calendar.events.owned`, and existing Calendar grants still work.
 
 In **Audience**, publish the external app. In **Verification Center**, submit the Calendar permissions with an
@@ -202,15 +194,14 @@ sensitive permissions are under review. See [Google's audience rules](https://su
 and [verification requirements](https://support.google.com/cloud/answer/13464321).
 
 Store `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` as versions of `alcove-google-client-id` and
-`alcove-google-client-secret` in Secret Manager. Bootstrap creates the secret resources and grants the
-runtime account access; it does not create credential versions or the OAuth application. Commands to
+`alcove-google-client-secret` in Secret Manager. Bootstrap creates the secret resources; confidential-space/setup.sh lets
+the attested identity read them. Neither creates credential versions or the OAuth application. Commands to
 add versions from private environment variables are printed by bootstrap.
 
-Set repository variable `GOOGLE_AUTH_ENABLED=true` only after both latest versions are enabled. This
-binds both values into the API service on the next deployment (the migration job gets only the database URL). New installations
-default to `false` or an unset variable, omit both bindings and require no placeholder values; the
-Google button then explains that sign-in isn't set up. Sign-in uses OpenID Connect with PKCE.
-Only explicit Calendar and Drive connections request offline access for their own refresh tokens.
+Set repository variable `GOOGLE_AUTH_ENABLED=false` while either latest version is missing, which leaves both out of
+what the API reads (the migration job gets only the database URL); the Google button then explains that sign-in isn't set
+up. Sign-in uses OpenID Connect with PKCE. Only explicit Calendar and Drive connections request offline access for their
+own refresh tokens.
 
 ## Schema changes
 
@@ -219,7 +210,10 @@ Migrations only move forward, and nothing resets the production database
 new file in `apps/api/migrations/`, which the migration job applies before the new API starts, while the
 previous one still serves. The job keeps a checksum of every file it applied and refuses a database whose
 applied files were since edited or removed. A deploy like that stops there, production keeps running the
-previous release, and the fix goes in the repository (restore the file, make the change in a new one).
+previous release, and the fix goes in the repository (restore the file, make the change in a new one). The API
+does the same at start, so no release starts on a database that applied a migration it doesn't have: a rollback
+can't go back past a release that added one, and the fix goes forward
+([Rolling back](confidential-space/README.md#rolling-back)).
 
 `alcove-db` keeps a backup a day for seven days, with point-in-time recovery over the same week. Before a
 migration that rewrites or removes data, take one on demand as well:
@@ -233,50 +227,46 @@ CLOUDSDK_ACTIVE_CONFIG_NAME=alcove gcloud --project=alcove-solutions sql backups
 Once credentials are populated, set repository variable `DEPLOY_ENABLED=true`. Merges to `main` run CI.
 Deploy accepts successful CI only when it came from a push to this repository's `main`, and skips a
 commit if it no longer matches `main` when deployment preparation runs. Manual dispatch on `main` is
-available for setup and recovery. Production deployments run serially.
+available for setup and recovery. Deployments run one at a time, and the monthly image refresh skips while one is queued
+or running ([Refreshing](confidential-space/README.md#refreshing)).
 
-Each deployment:
+Each deployment ([.github/workflows/deploy.yml](../.github/workflows/deploy.yml)):
 
-1. Builds the API container, recording its commit in `ALCOVE_COMMIT`, and pushes its commit-SHA tag to
-   Artifact Registry.
-2. Runs `alcove-migrate` once, with only `DATABASE_URL`, and waits for success before changing the API.
-3. Deploys `alcove-api`: gen2, port 8080, one CPU, 2 GiB, 300-second request timeout, 1,000 requests at once,
-   min/max one instance, session affinity, and CPU between requests for key expiry and object cleanup.
-4. Deploys the job `alcove-feature-flags` on the same image, with only `DATABASE_URL` and `KMASTER`, for switching feature flags
-   ([Feature flags](../docs/engineering/feature-flags.md)). The deploy never runs it.
-5. Checks `/health` at the deployed service's `run.app` URL, allowing the first deployment to finish
-   before custom-domain provisioning, and requires `livekit: reachable`.
-6. Builds the web app against `API_ORIGIN`, writes the CSP for that origin and the LiveKit host with
-   `apps/web/scripts/csp.mjs` (inline scripts allowed only by the hash of what the build produced; nothing
-   third-party but LiveKit), and publishes
-   `apps/web/dist/client` to Pages production branch `main` using `pnpm dlx wrangler@4.157.0`.
-   The publisher receives its token/account/project through step-scoped environment variables and
-   attributes the deployment to the verified Git commit without changing workspace dependencies.
+1. Builds the image for production from that commit (`confidential-space/build.sh`): the API, recording its commit in
+   `ALCOVE_COMMIT`, and the web app built against `https://api.alcove.solutions` with its CSP (inline scripts allowed
+   only by the hash of what the build produced; nothing third-party but LiveKit and Sigstore's public log, Rekor, which
+   the app reads to check the server). Pushes it to Artifact Registry.
+2. Signs it with cosign v2 and the Cloud KMS key `alcove-image-signing`, which records the signature, and the commit it
+   names, in Sigstore's public log (`confidential-space/sign.sh`), and checks the signature is where Confidential Space
+   and the web app look for it.
+3. Runs `alcove-migrate` once, on that image, with only `DATABASE_URL`, and waits for success before changing the API.
+4. Rolls the group onto the image (`confidential-space/deploy.sh`): a new VM first, the old one drained and removed
+   once the new one is healthy. It refuses up front when the region's C3 quota can't hold the new VM.
+5. In a job of its own with no Google credentials, checks the result through the load balancer's own address
+   (`confidential-space/verify-server.ts`): the attestation the web app checks, that the TLS key the server presents is
+   the attested one, that `/health` reaches LiveKit, and that it runs that commit and image.
+6. Nothing else is deployed. Support's billing CLI (`dist/billing-cli.js`, [Plans and usage › Support](../docs/engineering/plans-and-usage.md#support))
+   has no job: it needs `KSERVICE`, which the API keeps sealed in its server keys inside the TEE. The old `alcove-kservice`
+   secret is read only while the old keys are carried, and goes when they're retired.
 
-Cloud Run reserves some URL paths ending in `z`, so the public health probe uses `/health`.
-See [Google's reserved-path guidance](https://docs.cloud.google.com/run/docs/known-issues#reserved-url-paths).
-
-The service health check does not establish that public domains work. Before recording a release as
-live, verify DNS delegation, both HTTPS certificates, API health at the custom domain, CORS for the
-apex web origin, Pages security headers and deep links, JavaScript/CSS asset responses without redirect
+The deploy's check does not establish that public domains work. Before recording a release as
+live, verify DNS, the HTTPS certificate on all three names, API health at the custom domain, CORS for the
+apex web origin, the web app's security headers and deep links, JavaScript/CSS asset responses without redirect
 loops, and a Google sign-in and recording flow that
-uploads, reads and physically deletes encrypted objects. Match both deployments to the intended Git
-commit. Use the existing integration suite for automated checks; no browser test suite is permitted.
+uploads, reads and physically deletes encrypted objects. Use the existing integration suite for automated checks; no
+browser test suite is permitted.
 
-GCP's `_Default` logging sink has an exclusion for `alcove-api` managed Cloud Run request logs, which
-otherwise contain raw URLs and can expose call codes or OAuth callback queries. Application structured
-logs remain available. This setting is configured outside bootstrap: verify it separately and apply
-an equivalent exclusion to any future sink that would retain those entries. Inspect settings without
-reading request-log contents:
+The VMs' logs go to Cloud Logging ([Logs](confidential-space/README.md#logs)). The load balancer keeps no request logs.
+GCP's `_Default` logging sink still has an exclusion for `alcove-api` managed Cloud Run request logs, which contain raw
+URLs and can expose call codes or OAuth callback queries; keep it while the Cloud Run service exists, and apply an
+equivalent exclusion to any future sink that would retain such entries. Inspect settings without reading request-log
+contents:
 
 ```sh
 CLOUDSDK_ACTIVE_CONFIG_NAME=alcove gcloud --project=alcove-solutions \
   logging sinks describe _Default --format='yaml(exclusions)'
 ```
 
-Cloud Run is not a confidential VM: until the API runs in an attested VM that alone can read
-`KMASTER`, whoever operates the service could open accounts. The API is ready to move to one
-(`TEE=dstack`); the steps are in
-[Privacy › Moving to confidential computing](../docs/engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing). Sessions live in Postgres, so restarts
-sign nobody out. Outstanding confidential-compute, call-notes and inference work is tracked in
-[deployment and acceptance](../docs/engineering/deployment-and-acceptance.md).
+Sessions live in Postgres, so a new VM signs nobody out. Outstanding call-notes and inference work is tracked in
+[deployment and acceptance](../docs/engineering/deployment-and-acceptance.md), and what the API does with its keys in
+[Privacy › Moving to confidential computing](../docs/engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing).

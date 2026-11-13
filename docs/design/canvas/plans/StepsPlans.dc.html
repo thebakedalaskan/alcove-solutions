@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Plans and checkout, step by step</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-settings.css">
+<link rel="stylesheet" href="page-plans.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="data-settings.js"></script>
+<script src="marks.js"></script>
+<script src="data-plans.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="fl" style="width: 4668px">
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="2">
+<section class="fl-r">
+<h2 class="fl-h">{{r.name}}</h2>
+<div class="fl-s">
+<sc-for list="{{r.frames}}" as="f" hint-placeholder-count="4">
+<div class="fl-f{{r.cls}}">
+<p class="fl-c"><span>{{f.n}}</span>{{f.t}}</p>
+<div class="fl-box"><div class="fl-in">
+<sc-if value="{{f.isPlans}}" hint-placeholder-val="{{false}}"><dc-import name="Plans" mode="{{f.mode}}" step="{{f.step}}" hint-size="100%,100%"></dc-import></sc-if>
+<sc-if value="{{f.isSettings}}" hint-placeholder-val="{{false}}"><dc-import name="Settings" mode="{{f.mode}}" step="{{f.step}}" hint-size="100%,100%"></dc-import></sc-if>
+<sc-if value="{{f.isHome}}" hint-placeholder-val="{{false}}"><dc-import name="Home" mode="{{f.mode}}" step="{{f.step}}" plan="{{f.plan}}" hint-size="100%,100%"></dc-import></sc-if>
+<sc-if value="{{f.isCall}}" hint-placeholder-val="{{false}}"><dc-import name="CallOut" mode="{{f.mode}}" step="{{f.step}}" hint-size="100%,100%"></dc-import></sc-if>
+<sc-if value="{{f.isTeam}}" hint-placeholder-val="{{false}}"><dc-import name="TeamPlan" mode="{{f.mode}}" step="{{f.step}}" hint-size="100%,100%"></dc-import></sc-if>
+<sc-if value="{{f.isJoin}}" hint-placeholder-val="{{false}}"><dc-import name="Join" mode="{{f.mode}}" step="{{f.step}}" hint-size="100%,100%"></dc-import></sc-if>
+</div></div>
+</div>
+</sc-for>
+</div>
+</section>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":4668,"height":7700}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var PL = window.AH.PL;
+    return {
+      rows: PL.JOURNEYS.map(function (r) {
+        return {
+          name: r.name, cls: r.phone ? ' is-phone' : '',
+          frames: r.frames.map(function (f, i) {
+            return { n: i + 1, t: f.t, step: f.step, mode: f.mode || 'dark', plan: f.plan || 'free', isPlans: f.b === 'plans', isSettings: f.b === 'settings', isHome: f.b === 'home', isCall: f.b === 'call', isTeam: f.b === 'team', isJoin: f.b === 'join' };
+          })
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

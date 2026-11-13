@@ -372,10 +372,10 @@ export const RecordedBefore: PageStory = {
       await userEvent.click(within(await before()).getByRole('link', { name: /^Interview: Jonas Weber/ }));
       await screen.findByRole('heading', { name: 'Interview: Jonas Weber', level: 1 }, LATER);
     });
-    await step('The four newest show on Record. In Notes has the rest', async () => {
+    await step('The four newest show on Record. In Calls has the rest, recorded in the room', async () => {
       await userEvent.click(within(await screen.findByRole('complementary', { name: 'Side panel' })).getByRole('link', { name: /^Record/ }));
-      await userEvent.click(within(await before()).getByRole('link', { name: 'In Notes' }));
-      await screen.findByRole('heading', { name: 'Notes', level: 1 }, LATER);
+      await userEvent.click(within(await before()).getByRole('link', { name: 'In Calls' }));
+      await screen.findByRole('heading', { name: 'Recorded in the room', level: 2 }, LATER);
     });
     await step('Offline, a note doesn’t open, and it says so', async () => {
       await userEvent.click(within(screen.getByRole('complementary', { name: 'Side panel' })).getByRole('link', { name: /^Record/ }));

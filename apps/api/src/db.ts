@@ -54,8 +54,9 @@ export type Db = pg.Pool | pg.PoolClient;
 const CONNECTION_WAIT_MS = 10_000;
 /** The longest one statement may run, lock waits included. */
 export const STATEMENT_TIMEOUT_MS = 15_000;
-export function createPool(url: string): pg.Pool {
-  const pool = new pg.Pool({ connectionString: url, max: 10, statement_timeout: STATEMENT_TIMEOUT_MS, connectionTimeoutMillis: CONNECTION_WAIT_MS });
+/** Connections to the database: ten for the API's work, or `max`, as for the one the edge holds its certificate lock on. */
+export function createPool(url: string, max = 10): pg.Pool {
+  const pool = new pg.Pool({ connectionString: url, max, statement_timeout: STATEMENT_TIMEOUT_MS, connectionTimeoutMillis: CONNECTION_WAIT_MS });
   pool.on('error', (e) => dblog.error('idle database client failed', { err: e }));
   pool.on('acquire', (c) => { c.on('error', lent); });
   pool.on('release', (_e, c) => { c.off('error', lent); });

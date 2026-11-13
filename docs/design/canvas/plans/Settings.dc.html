@@ -1,0 +1,902 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-settings.css">
+<link rel="stylesheet" href="page-plans.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="data-settings.js"></script>
+<script src="marks.js"></script>
+<script src="data-plans.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="ah sh st2" id="{{uid}}" data-mode="{{mode}}" data-out="{{outFlag}}" style="{{shellStyle}}" onKeyDown="{{onKey}}">
+<div class="sh-frame" onScroll="{{onScroll}}">
+<dc-import name="Side" s="{{side}}" hint-size="256px,100%"></dc-import>
+<main class="sh-panel">
+<div class="ah-scroll" onScroll="{{onScroll}}">
+<div class="pg-stage">
+<dc-import name="Scene" a="{{scene}}" hint-size="100%,100%"></dc-import>
+<div class="st2-page"></div>
+<div class="sh-bar">
+<span class="brand"><svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="st3a"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><linearGradient id="st3s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient></defs><g clip-path="url(#st3a)"><rect width="22" height="26" fill="url(#st3s)"></rect><circle cx="11" cy="19.2" r="4.4" fill="#FFD58A"></circle><rect y="19.2" width="22" height="7" fill="#231C5E"></rect></g></svg>alcove</span>
+<div class="top-end"><button type="button" class="find" aria-label="Search or ask" onClick="{{openAsk}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg></button><dc-import name="Faces" who="{{who.me.id}}" size="30" hint-size="30px,33px"></dc-import></div>
+</div>
+<div class="pg-in">
+<sc-if value="{{anyOpen}}" hint-placeholder-val="{{false}}"><button type="button" class="st2-catch" aria-label="Close the list" tabindex="-1" onClick="{{closeOpen}}"></button></sc-if>
+
+<header class="st2-band">
+<div class="st2-me">
+<dc-import name="Faces" who="{{who.me.id}}" size="64" hint-size="64px,69px"></dc-import>
+<div class="st2-who"><h1 class="st2-name clamp1">{{who.me.name}}</h1><p class="st2-mail clamp1">{{who.me.email}}</p></div>
+<span class="st2-glow" aria-hidden="true"><i></i><i></i><i></i></span>
+</div>
+<div class="st2-end">
+<div class="top-end">
+<button type="button" class="find" onClick="{{openAsk}}" aria-label="Search or ask"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg><span class="w">Search or ask</span><span class="k">⌘K</span></button>
+</div>
+<div class="st2-acts">
+<button type="button" class="b b-quiet b-sm{{hotTour}}" onClick="{{tour}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.compass}}"></path></svg>Take the tour</button>
+<button type="button" class="b b-quiet b-sm{{hotOut}}" aria-expanded="{{outA}}" onClick="{{signOut}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.out}}"></path></svg>Sign out</button>
+</div>
+</div>
+<sc-if value="{{out}}" hint-placeholder-val="{{false}}">
+<div class="st2-ask" role="group" aria-label="Recordings on this device">
+<b>{{outTitle}}</b>
+<p>{{outBody}}</p>
+<div class="st2-ask-a" data-busy="{{outBusyA}}">
+<button type="button" class="b b-press" data-first-focus aria-disabled="{{outBusyA}}" onClick="{{stay}}">Stay signed in</button>
+<button type="button" class="b st2-sky" onClick="{{outGo}}"><sc-if value="{{outBusy}}" hint-placeholder-val="{{false}}"><span class="st2-spin" aria-hidden="true"></span></sc-if>{{outGoText}}</button>
+</div>
+</div>
+</sc-if>
+</header>
+
+<div class="st2-body">
+<nav class="st2-idx" aria-label="Settings">
+<ol>
+<sc-for list="{{idx}}" as="x" hint-placeholder-count="7"><li><button type="button" class="st2-ix{{x.cls}}" aria-current="{{x.current}}" onClick="{{x.go}}">{{x.nav}}</button></li></sc-for>
+<i class="st2-mark" style="{{markStyle}}" aria-hidden="true"></i>
+</ol>
+</nav>
+
+<div class="st2-parts">
+<nav class="st2-strip" aria-label="Settings"><sc-for list="{{idx}}" as="x" hint-placeholder-count="7"><button type="button" class="st2-sx{{x.cls}}" data-strip="{{x.id}}" aria-current="{{x.current}}" onClick="{{x.go}}">{{x.nav}}</button></sc-for></nav>
+
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+<section class="st2-grp" data-at="{{g.id}}" aria-label="{{g.h}}">
+<div class="st2-gh"><h2>{{g.h}}</h2><sc-if value="{{g.hasTag}}" hint-placeholder-val="{{false}}"><span class="st2-tag"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.laptop}}"></path></svg>{{g.tag}}</span></sc-if></div>
+<sc-for list="{{g.blocks}}" as="b" hint-placeholder-count="1">
+<div class="st2-blk" data-at="{{b.id}}">
+<sc-if value="{{b.hasH}}" hint-placeholder-val="{{false}}"><p class="st2-bh"><span>{{b.h}}</span><sc-if value="{{b.hasTag}}" hint-placeholder-val="{{false}}"><span class="st2-tag"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.laptop}}"></path></svg>{{b.tag}}</span></sc-if></p></sc-if>
+<div class="st2-pn">
+<sc-for list="{{b.items}}" as="r" hint-placeholder-count="3">
+
+<sc-if value="{{r.isRow}}" hint-placeholder-val="{{true}}">
+<div class="st2-r{{r.cls}}" data-k="{{r.k}}" tabindex="{{r.tab}}" data-row="{{r.id}}">
+<div class="st2-l" onClick="{{r.labelGo}}">
+<p class="st2-t"><sc-if value="{{r.hasLogo}}" hint-placeholder-val="{{false}}"><svg class="logo" viewBox="{{r.logo.vb}}" aria-hidden="true"><sc-for list="{{r.logo.paths}}" as="m" hint-placeholder-count="4"><path fill="{{m.f}}" d="{{m.d}}"></path></sc-for></svg></sc-if><sc-if value="{{r.hasTile}}" hint-placeholder-val="{{false}}"><span class="st2-tile" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{r.tile}}"></path></svg></span></sc-if><sc-if value="{{r.hasIcon}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.tIcon}}"></path></svg></sc-if>{{r.label}}</p>
+<sc-if value="{{r.hasHelp}}" hint-placeholder-val="{{false}}"><p class="st2-h{{r.helpCls}}">{{r.help}}</p></sc-if>
+</div>
+<div class="st2-c">
+<div class="st2-ctl{{r.ctlCls}}">
+
+<sc-if value="{{r.isSeg}}" hint-placeholder-val="{{false}}">
+<div class="st2-seg" role="group" aria-label="{{r.label}}"><sc-for list="{{r.seg}}" as="o" hint-placeholder-count="2"><button type="button" class="{{o.hotCls}}" aria-pressed="{{o.on}}" disabled="{{r.dis}}" onClick="{{o.go}}">{{o.t}}</button></sc-for></div>
+</sc-if>
+
+<sc-if value="{{r.isSel}}" hint-placeholder-val="{{false}}">
+<div class="st2-sel{{r.selCls}}">
+<button type="button" class="st2-sb{{r.hotSel}}" aria-haspopup="listbox" aria-expanded="{{r.openA}}" aria-label="{{r.selLabel}}" onClick="{{r.toggle}}"><span class="clamp1">{{r.value}}</span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.down}}"></path></svg></button>
+<sc-if value="{{r.open}}" hint-placeholder-val="{{false}}">
+<div class="st2-pop" role="listbox" aria-label="{{r.label}}"><sc-for list="{{r.options}}" as="o" hint-placeholder-count="4"><button type="button" class="st2-o{{o.hotCls}}" role="option" aria-selected="{{o.onA}}" onClick="{{o.go}}"><span><span class="clamp1">{{o.t}}</span><sc-if value="{{o.hasNote}}" hint-placeholder-val="{{false}}"><small class="{{o.noteCls}}"><sc-if value="{{o.hasNoteI}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.noteI}}"></path></svg></sc-if>{{o.note}}</small></sc-if></span><sc-if value="{{o.on}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></sc-if></button></sc-for></div>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{r.isSw}}" hint-placeholder-val="{{false}}">
+<button type="button" class="st2-swb{{r.hotSw}}" role="switch" aria-checked="{{r.onA}}" aria-label="{{r.label}}" disabled="{{r.dis}}" onClick="{{r.flip}}"><span class="sw{{r.swCls}}"></span></button>
+</sc-if>
+
+<sc-if value="{{r.isVol}}" hint-placeholder-val="{{false}}">
+<div class="st2-vol{{r.volCls}}">
+<button type="button" class="st2-ib{{r.hotMute}}" aria-pressed="{{r.mutedA}}" aria-label="{{r.muteLabel}}" title="{{r.muteLabel}}" onClick="{{r.mute}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.volIcon}}"></path></svg></button>
+<input class="st2-range" type="range" min="0" max="100" step="5" value="{{r.vol}}" style="{{r.volStyle}}" aria-label="Sound volume" disabled="{{r.volDis}}" onChange="{{r.setVol}}">
+<button type="button" class="st2-ib is-play{{r.volPlayCls}}" aria-label="Play a sound" title="Play a sound" disabled="{{r.volDis}}" onClick="{{r.volPlay}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.play}}"></path></svg></button>
+</div>
+</sc-if>
+
+<sc-if value="{{r.isDest}}" hint-placeholder-val="{{false}}">
+<div class="st2-pick{{r.selCls}}">
+<button type="button" class="st2-dest{{r.destCls}}{{r.hotSel}}" aria-haspopup="listbox" aria-expanded="{{r.openA}}" onClick="{{r.toggle}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.destIcon}}"></path></svg><span class="clamp1"><b class="clamp1">{{r.destT}}</b><sc-if value="{{r.hasDestSub}}" hint-placeholder-val="{{false}}"><small class="clamp1">{{r.destSub}}</small></sc-if></span><em>{{r.destGo}}</em></button>
+<sc-if value="{{r.open}}" hint-placeholder-val="{{false}}">
+<div class="st2-pop st2-folders" role="listbox" aria-label="Google Drive folders"><sc-for list="{{r.options}}" as="o" hint-placeholder-count="4"><button type="button" class="st2-o{{o.hotCls}}" role="option" aria-selected="{{o.onA}}" onClick="{{o.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.icon}}"></path></svg><span><span class="clamp1">{{o.t}}</span><small>{{o.note}}</small></span><sc-if value="{{o.on}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></sc-if></button></sc-for></div>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{r.isFmts}}" hint-placeholder-val="{{false}}">
+<div class="st2-fmts" role="group" aria-label="Files to export"><sc-for list="{{r.fmts}}" as="f" hint-placeholder-count="3"><button type="button" class="st2-fmt" aria-pressed="{{f.onA}}" onClick="{{f.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{f.icon}}"></path></svg><span><b>{{f.t}}</b><small>{{f.sub}}</small></span><svg class="i tick" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></button></sc-for></div>
+</sc-if>
+
+<sc-if value="{{r.isThemes}}" hint-placeholder-val="{{false}}">
+<div class="st2-eves" role="group" aria-label="Appearance">
+<sc-for list="{{r.themes}}" as="t" hint-placeholder-count="3">
+<button type="button" class="st2-eve{{t.cls}}" aria-pressed="{{t.onA}}" onClick="{{t.go}}">
+<span class="st2-win" aria-hidden="true">
+<span class="st2-art" style="{{t.a}}"><i class="sky"></i><i class="sea"></i><i class="glow"></i><span class="st2-up"><i class="sun"></i></span><i class="rim"></i><i class="g g1"></i><i class="g g2"></i><i class="g g3"></i><sc-if value="{{t.stars}}" hint-placeholder-val="{{false}}"><i class="star s1"></i><i class="star s2"></i><i class="star s3"></i></sc-if><sc-if value="{{t.clouds}}" hint-placeholder-val="{{false}}"><i class="cloud c1"></i><i class="cloud c2"></i></sc-if></span>
+<sc-if value="{{t.hasB}}" hint-placeholder-val="{{false}}"><span class="st2-art is-b" style="{{t.b}}"><i class="sky"></i><i class="sea"></i><i class="glow"></i><span class="st2-up"><i class="sun"></i></span><i class="rim"></i><i class="g g1"></i><i class="g g2"></i><i class="g g3"></i><i class="star s2"></i><i class="star s3"></i></span></sc-if>
+</span>
+{{t.t}}
+</button>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{r.hasFact}}" hint-placeholder-val="{{false}}"><span class="st2-f{{r.factC}}" title="{{r.title}}"><sc-if value="{{r.hasFactI}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.factI}}"></path></svg></sc-if>{{r.factT}}</span></sc-if>
+<sc-if value="{{r.hasBig}}" hint-placeholder-val="{{false}}"><span class="st2-left{{r.bigCls}}">{{r.bigT}}</span></sc-if>
+<sc-if value="{{r.hasGo}}" hint-placeholder-val="{{false}}"><button type="button" class="st2-go{{r.goCls}}{{r.hotGo}}" onClick="{{r.goGo}}"><sc-if value="{{r.hasGoLogo}}" hint-placeholder-val="{{false}}"><svg class="logo" viewBox="{{r.goLogo.vb}}" aria-hidden="true"><sc-for list="{{r.goLogo.paths}}" as="m" hint-placeholder-count="4"><path fill="{{m.f}}" d="{{m.d}}"></path></sc-for></svg></sc-if>{{r.goT}}<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.goI}}"></path></svg></button></sc-if>
+<sc-if value="{{r.hasBtn2}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-sm {{r.btn2C}}{{r.hotBtn2}}" onClick="{{r.btn2Go}}"><sc-if value="{{r.btn2Spin}}" hint-placeholder-val="{{false}}"><span class="st2-spin" aria-hidden="true"></span></sc-if>{{r.btn2T}}</button></sc-if>
+<sc-if value="{{r.hasBtn}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-sm {{r.btnC}}{{r.hotBtn}}" data-first-focus="{{r.btnFocus}}" aria-expanded="{{r.btnExp}}" onClick="{{r.btnGo}}"><sc-if value="{{r.btnSpin}}" hint-placeholder-val="{{false}}"><span class="st2-spin" aria-hidden="true"></span></sc-if><sc-if value="{{r.hasBtnI}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.btnI}}"></path></svg></sc-if>{{r.btnT}}<sc-if value="{{r.hasBtnE}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.btnE}}"></path></svg></sc-if></button></sc-if>
+
+<sc-if value="{{r.hasCheck}}" hint-placeholder-val="{{false}}"><button type="button" class="st2-test{{r.hotCheck}}" aria-pressed="false" title="Opens the microphone for eight seconds. Nothing is recorded." onClick="{{r.check}}"><span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Check the level</button></sc-if>
+<sc-if value="{{r.hasLevel}}" hint-placeholder-val="{{false}}"><div class="st2-lvl"><span class="st2-ticks" role="meter" aria-label="Microphone level" aria-valuenow="{{r.levelNow}}" aria-valuemin="0" aria-valuemax="100"><sc-for list="{{r.ticks}}" as="k" hint-placeholder-count="24"><i class="{{k.c}}"></i></sc-for></span><button type="button" class="st2-stop" onClick="{{r.stop}}">Stop · {{r.levelLeft}} s</button></div></sc-if>
+<sc-if value="{{r.hasPlay}}" hint-placeholder-val="{{false}}"><button type="button" class="st2-test{{r.playCls}}" onClick="{{r.play}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.speaker}}"></path></svg>{{r.playT}}</button></sc-if>
+
+<sc-if value="{{r.saved}}" hint-placeholder-val="{{false}}"><span class="st2-sv" role="status"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg>{{r.savedText}}</span></sc-if>
+</div>
+</div>
+<sc-if value="{{r.hasSun}}" hint-placeholder-val="{{false}}"><span class="st2-on{{r.sunCls}}" style="{{r.sun}}" aria-hidden="true"><span class="lit"></span><span class="sun"></span><span class="ref"><i></i><i></i></span></span></sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{r.isNote}}" hint-placeholder-val="{{false}}"><p class="st2-note is-flush" role="status"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg><span>{{r.text}}</span></p></sc-if>
+
+<sc-if value="{{r.isMxHead}}" hint-placeholder-val="{{false}}">
+<div class="st2-mx-h"><p class="st2-mx-g">{{r.first}}</p><span class="st2-mx-k"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.bell}}"></path></svg>Alert</span><span class="st2-mx-k{{r.sCls}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.sIcon}}"></path></svg>Sound</span></div>
+</sc-if>
+<sc-if value="{{r.isMxGroup}}" hint-placeholder-val="{{false}}"><p class="st2-mx-g">{{r.h}}</p></sc-if>
+<sc-if value="{{r.isMx}}" hint-placeholder-val="{{false}}">
+<div class="st2-mx-r" data-row="{{r.rowId}}">
+<p class="st2-mx-t"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.icon}}"></path></svg><span>{{r.t}}<sc-if value="{{r.hasQ}}" hint-placeholder-val="{{false}}"><span class="st2-mx-q">{{r.q}}</span></sc-if></span><sc-if value="{{r.saved}}" hint-placeholder-val="{{false}}"><span class="st2-sv" role="status"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg>Saved</span></sc-if></p>
+<div class="st2-mx-c"><sc-if value="{{r.hasA}}" hint-placeholder-val="{{false}}"><button type="button" class="st2-ck{{r.aHot}}" role="checkbox" aria-checked="{{r.aOn}}" aria-label="{{r.aLabel}}" onClick="{{r.aFlip}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></button></sc-if></div>
+<div class="st2-mx-c{{r.sCls}}"><sc-if value="{{r.hasS}}" hint-placeholder-val="{{false}}"><button type="button" class="st2-ck{{r.sHot}}" role="checkbox" aria-checked="{{r.sOn}}" aria-label="{{r.sLabel}}" disabled="{{r.sDis}}" onClick="{{r.sFlip}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></button></sc-if></div>
+</div>
+</sc-if>
+
+<sc-if value="{{r.isPays}}" hint-placeholder-val="{{false}}">
+<div class="st2-pays">
+<p>{{r.payH}}</p>
+<sc-for list="{{r.pays}}" as="y" hint-placeholder-count="1">
+<div class="st2-pay">
+<svg class="pl-mark" viewBox="{{y.mark.vb}}" aria-hidden="true"><sc-for list="{{y.mark.paths}}" as="m" hint-placeholder-count="1"><path fill="{{m.f}}" fill-rule="{{m.r}}" d="{{m.d}}"></path></sc-for></svg>
+<span><b>{{y.t}}</b><small class="{{y.sCls}}">{{y.s}}</small></span>
+<span class="acts">
+<sc-if value="{{y.isWait}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-line b-sm{{y.hot}}" onClick="{{y.open}}">Open</button></sc-if>
+<sc-if value="{{y.isPaid}}" hint-placeholder-val="{{true}}"><button type="button" class="b b-quiet b-sm" onClick="{{y.receipt}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{y.dl}}"></path></svg>Receipt</button></sc-if>
+</span>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{r.isJobs}}" hint-placeholder-val="{{false}}">
+<div class="st2-jobs">
+<p>Recent exports</p>
+<sc-for list="{{r.jobs}}" as="j" hint-placeholder-count="3">
+<div class="st2-job"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{j.icon}}"></path></svg><div><b>{{j.call}}</b> <span>· {{j.what}}</span><sc-if value="{{j.hasWhy}}" hint-placeholder-val="{{false}}"><span class="why">{{j.why}}</span></sc-if></div>
+<sc-if value="{{j.ok}}" hint-placeholder-val="{{true}}"><span class="st2-job-s"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg>{{j.when}}</span></sc-if>
+<sc-if value="{{j.bad}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-line" onClick="{{j.retry}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.retry}}"></path></svg>Try again</button></sc-if>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{r.isFoot}}" hint-placeholder-val="{{false}}">
+<div class="st2-foot{{r.cls}}"><p>{{r.text}}</p><div><sc-if value="{{r.hasB1}}" hint-placeholder-val="{{false}}"><button type="button" class="b {{r.b1C}}{{r.b1Hot}}" onClick="{{r.b1Go}}"><sc-if value="{{r.b1Spin}}" hint-placeholder-val="{{false}}"><span class="st2-spin" aria-hidden="true"></span></sc-if>{{r.b1T}}</button></sc-if><sc-if value="{{r.hasB2}}" hint-placeholder-val="{{false}}"><button type="button" class="b {{r.b2C}}{{r.b2Hot}}" onClick="{{r.b2Go}}">{{r.b2T}}</button></sc-if></div></div>
+</sc-if>
+
+<sc-if value="{{r.isConn}}" hint-placeholder-val="{{false}}">
+<div class="st2-conn">
+<b>{{r.title}}</b>
+<p>{{r.text}}</p>
+<sc-if value="{{r.hasAddr}}" hint-placeholder-val="{{false}}"><div class="st2-addr{{r.addrCls}}"><code>{{r.addr}}</code><button type="button" class="b b-line{{r.hotCopy}}" onClick="{{r.copy}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.copy}}"></path></svg>Copy</button></div></sc-if>
+<sc-if value="{{r.isForm}}" hint-placeholder-val="{{false}}">
+<div class="st2-form">
+<label class="st2-field"><span>Name</span><input class="st2-in" type="text" value="{{r.name}}" onChange="{{r.setName}}" aria-label="Token name"></label>
+<div class="st2-field"><span>Expires after</span><div class="st2-seg" role="group" aria-label="Expires after"><sc-for list="{{r.days}}" as="o" hint-placeholder-count="3"><button type="button" aria-pressed="{{o.on}}" onClick="{{o.go}}">{{o.t}}</button></sc-for></div></div>
+<div class="st2-field"><span>What it can do</span><div class="st2-perms"><sc-for list="{{r.perms}}" as="o" hint-placeholder-count="5"><button type="button" class="st2-perm" aria-pressed="{{o.onA}}" onClick="{{o.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg>{{o.t}}</button></sc-for></div></div>
+</div>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{r.isLedger}}" hint-placeholder-val="{{false}}">
+<div class="st2-led" role="table" aria-label="What Alcove knows and what it can’t read">
+<p class="st2-led-h" role="columnheader"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.server}}"></path></svg>Alcove knows</p>
+<p class="st2-led-h" role="columnheader"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg>Alcove can’t read</p>
+<sc-for list="{{r.pairs}}" as="l" hint-placeholder-count="3"><p class="st2-led-c" role="cell">{{l.a}}</p><p class="st2-led-c is-cant" role="cell">{{l.b}}</p></sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{r.isDel}}" hint-placeholder-val="{{false}}">
+<div class="st2-del is-flush" role="group" aria-label="Delete your account for good?">
+<div class="st2-gs">
+<div><p class="st2-gh2">What goes</p><ul class="st2-gl"><sc-for list="{{goes}}" as="x" hint-placeholder-count="5"><li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg><span>{{x}}</span></li></sc-for></ul></div>
+<div><p class="st2-gh2">What stays</p><p class="st2-gp">Notes other people gave you stay with them, without you. They keep what you said in the call, and your name on what you did in them.</p></div>
+</div>
+<div class="st2-da" data-busy="{{delBusyA}}">
+<button type="button" class="b b-press" data-first-focus aria-disabled="{{delBusyA}}" onClick="{{delClose}}">Keep my account</button>
+<button type="button" class="b st2-caution" onClick="{{delGo}}"><sc-if value="{{delBusy}}" hint-placeholder-val="{{false}}"><span class="st2-spin" aria-hidden="true"></span></sc-if>{{delGoText}}</button>
+</div>
+</div>
+</sc-if>
+
+</sc-for>
+</div>
+</div>
+</sc-for>
+</section>
+</sc-for>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<nav class="phone-tabs" aria-label="Main">
+<sc-for list="{{tabs}}" as="n" hint-placeholder-count="5"><button type="button" class="phone-tab{{n.cls}}" onClick="{{n.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.icon}}"></path></svg>{{n.label}}</button></sc-for>
+</nav>
+<dc-import name="Overlays" ov="{{ov}}" hint-size="0px,0px"></dc-import>
+<sc-if value="{{hasCo}}" hint-placeholder-val="{{false}}"><dc-import name="Checkout" at="{{coAt}}" mode="{{mode}}" from="settings" on-close="{{coClose}}" on-done="{{coDone}}" on-compare="{{coCompare}}" hint-size="0px,0px"></dc-import></sc-if>
+<sc-if value="{{hasBad}}" hint-placeholder-val="{{false}}"><div class="toast" role="status"><svg class="i is-x" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg>{{bad}}</div></sc-if>
+<sc-if value="{{hasPrompt}}" hint-placeholder-val="{{false}}">
+<div class="st2-bp" role="dialog" aria-label="{{promptText}}">
+<b>alcove.solutions wants to</b>
+<p><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{promptIcon}}"></path></svg>{{promptText}}</p>
+<div class="st2-bp-a"><button type="button" class="{{hotBlock}}" onClick="{{promptNo}}">Block</button><button type="button" class="{{hotAllow}}" onClick="{{promptYes}}">Allow</button></div>
+</div>
+</sc-if>
+<sc-if value="{{isGone}}" hint-placeholder-val="{{false}}">
+<div class="st2-gone">
+<div class="st2-gone-in">
+<span class="brand"><svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="st3g"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><linearGradient id="st3h" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient></defs><g clip-path="url(#st3g)"><rect width="22" height="26" fill="url(#st3h)"></rect><circle cx="11" cy="19.2" r="4.4" fill="#FFD58A"></circle><rect y="19.2" width="22" height="7" fill="#231C5E"></rect></g></svg>alcove</span>
+<p>{{goneText}}</p>
+<button type="button" class="b b-press" onClick="{{back}}">Back to the welcome page</button>
+</div>
+</div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"go":{"editor":null,"default":null},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"scene":{"editor":"enum","options":["today","first","demo","sso"],"default":"today"},"step":{"editor":null,"default":"rest"},"$preview":{"width":1440,"height":900}}'>
+var MARKS = {
+  google: { vb: '0 0 48 48', paths: [
+    { f: '#EA4335', d: 'M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z' },
+    { f: '#4285F4', d: 'M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z' },
+    { f: '#FBBC05', d: 'M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z' },
+    { f: '#34A853', d: 'M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z' }
+  ] },
+  microsoft: { vb: '0 0 21 21', paths: [
+    { f: '#F25022', d: 'M1 1h9v9H1z' }, { f: '#7FBA00', d: 'M11 1h9v9h-9z' }, { f: '#00A4EF', d: 'M1 11h9v9H1z' }, { f: '#FFB900', d: 'M11 11h9v9h-9z' }
+  ] }
+};
+var TICKS = 26, CHECK_S = 8, SAVED_MS = 2200;
+/* Every flag a template branch reads, false until a row says otherwise: sc-if needs a real boolean. */
+var FLAGS = ['isRow', 'isNote', 'isMxHead', 'isMxGroup', 'isMx', 'isJobs', 'isFoot', 'isConn', 'isLedger', 'isDel', 'isPays'];
+
+class Component extends DCLogic {
+  componentDidMount() { this.land(); }
+  componentDidUpdate() {
+    if (this.__focus) { var f = this.__focus; this.__focus = null; this.focusIn(f); }
+  }
+  componentWillUnmount() { clearTimeout(this.__sv); clearTimeout(this.__toast); clearTimeout(this.__play); clearTimeout(this.__bad); clearTimeout(this.__busy); clearInterval(this.__lv); }
+
+  el() { return document.getElementById(this.__uid); }
+  /* Which element scrolls: the panel on a computer, the whole frame on a phone. */
+  scroller() {
+    var r = this.el(); if (!r) return null;
+    var a = r.querySelector('.ah-scroll');
+    return a && a.scrollHeight > a.clientHeight + 1 ? a : r.querySelector('.sh-frame');
+  }
+  /* Where something sits in the scroller, in the page's own pixels, even inside a scaled journey frame. */
+  topOf(node, sc) {
+    var k = sc.getBoundingClientRect().height / (sc.offsetHeight || 1) || 1;
+    return (node.getBoundingClientRect().top - sc.getBoundingClientRect().top) / k + sc.scrollTop;
+  }
+  jump(id, smooth) {
+    var sc = this.scroller(), r = this.el(); if (!sc || !r) return;
+    var node = id === 'del' ? r.querySelector('[data-row="delete"]') : r.querySelector('[data-at="' + id + '"]') || r.querySelector('[data-row="' + id + '"]');
+    if (!node) return;
+    var strip = r.querySelector('.st2-strip');
+    var narrow = !!(strip && getComputedStyle(strip).display !== 'none');
+    var pad = id === 'del' ? 140 : narrow ? 66 : 32;
+    var y = Math.max(0, this.topOf(node, sc) - pad);
+    if (smooth && !matchMedia('(prefers-reduced-motion: reduce)').matches) sc.scrollTo({ top: y, behavior: 'smooth' }); else sc.scrollTop = y;
+  }
+  /* A step lands on its group once the page has drawn. */
+  land() {
+    var self = this, to = this.__st && this.__st.to;
+    if (to) {
+      var go = function () { self.jump(to, false); self.look(true); };
+      go();
+      [90, 300, 700, 1200].forEach(function (t) { setTimeout(go, t); });
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(go);
+    } else this.look(true);
+    var asks = this.__st && (this.__st.out || this.__st.del);
+    if (asks && !(this.el() && this.el().closest && this.el().closest('.fl-in'))) this.focusIn('[data-first-focus]');
+  }
+  /* The group in view: the last whose top has passed a quarter of the way down, or the last once the page ends. */
+  look(force) {
+    var self = this, sc = this.scroller(), r = this.el(); if (!sc || !r) return;
+    if (this.__held && !force) return;
+    var line = sc.clientHeight / 4, at = 'you';
+    window.AH.ST3.GROUPS.forEach(function (g) {
+      var node = r.querySelector('section[data-at="' + g.id + '"]');
+      if (node && self.topOf(node, sc) - sc.scrollTop <= line) at = g.id;
+    });
+    if (sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 2) at = 'privacy';
+    if (at !== (this.__st && this.__st.at)) {
+      this.setState({ at: at });
+      var strip = r.querySelector('.st2-strip'), b = r.querySelector('[data-strip="' + at + '"]');
+      if (strip && b) strip.scrollLeft = b.offsetLeft - 40;
+    }
+    /* The microphone only stays open while its group is on screen. */
+    if (this.__st && this.__st.checking && this.__lv) {
+      var d = r.querySelector('section[data-at="av"]');
+      if (d) { var y = this.topOf(d, sc) - sc.scrollTop; if (y > sc.clientHeight || y + d.offsetHeight < 0) this.stopCheck(); }
+    }
+  }
+  focusIn(sel) { var r = this.el(), n = r && r.querySelector(sel); if (n) n.focus({ preventScroll: true }); }
+
+  /* Everything saves as it changes: the row says Saved for a moment, just left of what was pressed. */
+  savedNow(row) {
+    var self = this;
+    this.setState({ saved: row });
+    clearTimeout(this.__sv);
+    this.__sv = setTimeout(function () { self.setState({ saved: '' }); }, SAVED_MS);
+  }
+  change(row, patch) {
+    var self = this;
+    this.setState({ p: Object.assign({}, this.__st.p, patch), saved: '', open: '', hot: '' });
+    clearTimeout(this.__sv);
+    this.__sv = setTimeout(function () { self.savedNow(row); }, 300);
+  }
+  set(patch, row) {
+    var self = this;
+    this.setState(Object.assign({ saved: '', hot: '' }, patch));
+    if (row) { clearTimeout(this.__sv); this.__sv = setTimeout(function () { self.savedNow(row); }, 300); }
+  }
+  toastNow(msg) {
+    var self = this;
+    this.setState({ toast: msg });
+    clearTimeout(this.__toast);
+    this.__toast = setTimeout(function () { self.setState({ toast: '' }); }, 3200);
+  }
+
+  /* Check the level: eight seconds, or until it's pressed again, or until this group leaves the screen. */
+  startCheck() {
+    var self = this, t0 = Date.now(), lvl = 0;
+    this.setState({ checking: true, lvl: 0, left: CHECK_S, hot: '' });
+    clearInterval(this.__lv);
+    this.__lv = setInterval(function () {
+      var gone = (Date.now() - t0) / 1000;
+      if (gone >= CHECK_S) { self.stopCheck(); return; }
+      var target = Math.random() < 0.24 ? 0.06 + Math.random() * 0.1 : 0.35 + Math.random() * 0.55;
+      lvl += (target - lvl) * 0.5;
+      self.setState({ lvl: lvl, left: Math.max(1, Math.ceil(CHECK_S - gone)) });
+    }, 110);
+  }
+  stopCheck() { clearInterval(this.__lv); this.__lv = null; this.setState({ checking: false, lvl: 0 }); }
+  chime(level) {
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext, a = new Ctx(), peak = 0.12 * (level === undefined ? 0.7 : level);
+      [[523.25, 0], [783.99, 0.16]].forEach(function (n) {
+        var o = a.createOscillator(), g = a.createGain(), t = a.currentTime + n[1];
+        o.type = 'sine'; o.frequency.value = n[0];
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(peak, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.75);
+        o.connect(g); g.connect(a.destination); o.start(t); o.stop(t + 0.8);
+      });
+    } catch (e) { /* No sound here: the button still says it played. */ }
+  }
+  playFor(key) {
+    var self = this;
+    this.setState({ playing: key, hot: '' });
+    clearTimeout(this.__play);
+    this.__play = setTimeout(function () { self.setState({ playing: '' }); }, 1300);
+  }
+
+  renderVals() {
+    var AH = window.AH, T = AH.ST3, hs = AH.hash(), self = this;
+    this.__uid = this.__uid || 'st3-' + Math.random().toString(36).slice(2, 9);
+    var stepId = hs.step || this.props.step || 'rest', step = T.STEPS[stepId] || {};
+    var sceneId = hs.scene || step.scene || this.props.scene || 'today';
+    if (!T.PEOPLE[sceneId]) sceneId = 'today';
+    var who = T.PEOPLE[sceneId];
+    /* A step can name who the page is open for, so every state is one `step` away. */
+    this.__host2 = this.__host2 || { setState: function (patch) { self.setState(patch); } };
+    this.__host2.props = AH.assign({}, this.props, { scene: sceneId === 'first' ? 'first' : 'today' });
+    this.__host2.state = this.state;
+    var v = AH.page(this.__host2, 'settings');
+    v.go = function (to) { if (typeof self.props.go === 'function') self.props.go(to); else self.toastNow('Opens ' + to + '.'); };
+    var st = AH.assign(T.start(sceneId), step, this.state || {});
+    this.__st = st;
+    var I = AH.assign({}, v.I, T.I), set = function (patch, row) { self.set(patch, row); };
+    var hot = function (k) { return st.hot === k ? ' is-hot' : ''; };
+    var P = st.p, E = st.ev;
+
+    /* Appearance changes the whole page at once. System follows whatever the page was opened in. */
+    var mode = P.theme === 'system' ? v.mode : P.theme;
+    if (mode !== v.mode) {
+      var hour = v.S.hour;
+      v.mode = mode;
+      v.shellStyle = AH.rootStyle(v.pal, mode, hour) + '; --frame: ' + AH.ok(AH.PALS[v.pal].dark.well) + '; --sky-low: ' + AH.skyLow(v.pal, hour, 104, 620);
+      v.scene = AH.assign({ page: true }, AH.scene('settings', v.pal, mode));
+    }
+
+    /* ---------------------------------------------------------------- what every item is made from */
+    var item = function (kind, more) { var o = {}; FLAGS.forEach(function (f) { o[f] = false; }); o[kind] = true; return AH.assign(o, more); };
+    var row = function (id, label, k, more) {
+      var r = AH.assign(item('isRow'), {
+        id: id, label: label, k: k, cls: '', help: '', helpCls: '', tab: null, logo: null, tile: '', tIcon: '', ctlCls: '',
+        isSeg: false, seg: [], isSel: false, isSw: false, isVol: false, isDest: false, isFmts: false, isThemes: false,
+        factT: '', factI: '', factC: '', title: '', bigT: '', bigCls: '', goT: '', goI: '', goCls: '', goLogo: null, hotGo: '', goGo: null,
+        btnT: '', btnC: 'b-line', btnI: '', btnE: '', btnSpin: false, btnFocus: null, btnExp: null, hotBtn: '', btnGo: null,
+        btn2T: '', btn2C: 'b-quiet', btn2Spin: false, hotBtn2: '', btn2Go: null,
+        check: null, hotCheck: '', level: false, play: null, playT: '', playCls: '', sun: '', sunCls: '',
+        saved: st.saved === id, savedText: 'Saved', labelGo: null, dis: false
+      }, more);
+      r.hasHelp = !!r.help; r.hasLogo = !!r.logo; r.hasTile = !!r.tile; r.hasIcon = !!r.tIcon;
+      r.hasFact = !!r.factT; r.hasFactI = !!r.factI; r.hasBig = !!r.bigT; r.hasGo = !!r.goT; r.hasGoLogo = !!r.goLogo;
+      r.hasBtn = !!r.btnT; r.hasBtnI = !!r.btnI; r.hasBtnE = !!r.btnE; r.hasBtn2 = !!r.btn2T;
+      r.hasCheck = !!r.check; r.hasLevel = !!r.level; r.hasPlay = !!r.play; r.hasSun = !!r.sun;
+      r.cls += (r.logo ? ' has-logo' : '') + (r.tile ? ' has-tile' : '');
+      return r;
+    };
+    var seg = function (id, label, key, opts, more) {
+      return row(id, label, 'seg', AH.assign({ isSeg: true, ctlCls: ' is-fill', cls: ' is-stackm', seg: opts.map(function (o) {
+        return { t: o[1], on: P[key] === o[0] ? 'true' : 'false', hotCls: hot(id + '-' + o[0]).trim(), go: function () { if (P[key] !== o[0]) { var c = {}; c[key] = o[0]; self.change(id, c); } } };
+      }) }, more));
+    };
+    var sw = function (id, label, on, flip, more) {
+      return row(id, label, 'sw', AH.assign({ isSw: true, swCls: on ? ' is-on' : '', onA: on ? 'true' : 'false', flip: flip, labelGo: flip, hotSw: hot(id) }, more));
+    };
+    var pref = function (id, label, key, more) {
+      return sw(id, label, !!P[key], function () { var c = {}; c[key] = !P[key]; self.change(id, c); }, more);
+    };
+    var list = function (id, label, key, items, more) {
+      var open = st.open === id;
+      return row(id, label, 'sel', AH.assign({
+        isSel: true, ctlCls: ' is-fill', cls: ' is-stackm', open: open, openA: open ? 'true' : 'false', selCls: open ? ' is-open' : '', hotSel: hot(id),
+        value: items[P[key]].t || items[P[key]], selLabel: label + ': ' + (items[P[key]].t || items[P[key]]),
+        toggle: function () { set({ open: open ? '' : id }); },
+        options: items.map(function (t, i) {
+          var text = t.t || t, note = t.note || '';
+          return { t: text, note: note, hasNote: !!note, noteCls: t.open ? 'is-open' : '', hasNoteI: !!note, noteI: t.open ? I.alert : I.sealed,
+            on: i === P[key], onA: i === P[key] ? 'true' : 'false', hotCls: hot(id + '-' + i),
+            go: function () { if (i === P[key]) { set({ open: '' }); return; } var c = {}; c[key] = i; self.change(id, c); } };
+        })
+      }, more));
+    };
+    var fact = function (id, label, text, icon, more) { return row(id, label, 'fact', AH.assign({ factT: text, factI: icon || '', cls: ' is-still' }, more)); };
+
+    /* ---------------------------------------------------------------- You */
+    var viaKey = who.via.toLowerCase();
+    var profile = [
+      who.sso ? fact('who', 'Name and photo', 'Single sign-on', I.lock, { help: 'From your company’s sign-in.' })
+        : row('who', 'Name and photo', 'link', { help: 'From your ' + who.via + ' sign-in.', goT: who.via + ' account', goCls: ' is-ext', goLogo: MARKS[viaKey], goI: I.ext, goGo: function () { self.toastNow('Your ' + who.via + ' account opens in a new tab.'); } }),
+      row('company', 'Company', 'link', { goT: who.company, goI: I.right, goGo: function () { v.go('team'); } }),
+      fact('zone', 'Time zone', 'London · GMT', I.globe, { help: 'From this computer.' })
+    ];
+    var eve = function (m) { return AH.scene('home', v.pal, m).vars; };
+    var pick = function (id) { return function () { if (P.theme !== id) { self.setState({ p: AH.assign({}, P, { theme: id }), hot: '' }); self.savedNow('theme'); } }; };
+    var look = [row('theme', 'Theme', 'themes', { isThemes: true, ctlCls: ' is-fill', cls: ' is-wide is-still', themes: [
+      { id: 'system', t: 'System', a: eve('light'), b: eve('dark'), hasB: true, clouds: true, stars: false },
+      { id: 'light', t: 'Light', a: eve('light'), b: '', hasB: false, clouds: true, stars: false },
+      { id: 'dark', t: 'Dark', a: eve('dark'), b: '', hasB: false, clouds: false, stars: true }
+    ].map(function (t) { return AH.assign(t, { cls: (P.theme === t.id ? ' is-on' : '') + hot('theme-' + t.id), onA: P.theme === t.id ? 'true' : 'false', go: pick(t.id) }); }) })];
+
+    /* ---------------------------------------------------------------- Calls and notes */
+    var model = T.MODELS[P.model];
+    var notes = [
+      seg('notes', 'Notes for new calls', 'notes', [['on', 'On'], ['off', 'Off']], { help: 'Everyone invited gets them. You can change it for each call.' }),
+      list('lang', 'Language', 'lang', T.LANGS, { savedText: 'Saved for new notes' }),
+      seg('summary', 'Summary', 'summary', [['short', 'Short'], ['detailed', 'Detailed']], { savedText: 'Saved for new notes' }),
+      list('model', 'AI model', 'model', T.MODELS, model.open
+        ? { help: 'Outside confidential compute: its provider can read what it’s sent.', helpCls: ' is-no' }
+        : { help: 'Writes your notes and answers questions, in confidential compute.' })
+    ];
+    var n = st.waiting, one = n === 1;
+    var recording = [pref('offline', 'Record without a connection', 'offline', { help: 'Kept on this device, encrypted, until you’re back online.' })];
+    if (n) recording.push(row('device', 'On this device', 'link', { help: (one ? '1 recording' : n + ' recordings') + ', ' + st.size + ', waiting to upload.', goT: 'See ' + (one ? 'it' : 'them'), goI: I.right, goGo: function () { v.go('record'); } }));
+
+    /* ---------------------------------------------------------------- Audio and video. Nothing opens by itself. */
+    var micRow, named = st.micPerm !== 'prompt';
+    if (st.micPerm === 'denied') {
+      micRow = row('mic', 'Microphone', 'fact', { help: 'Turn the microphone on for this site in the address bar, then try again.', helpCls: ' is-no', factT: 'Blocked', factI: I.micOff, factC: ' is-no', btn2T: 'Try again', btn2Go: function () { set({ micPerm: 'prompt', prompt: 'mic' }); } });
+    } else if (!named && !st.checking) {
+      micRow = row('mic', 'Microphone', 'stack', { help: 'Your browser asks first.', check: function () { set({ prompt: 'mic' }); }, hotCheck: ' is-flush' + hot('check') });
+    } else {
+      var lit = Math.round(st.lvl * TICKS), ticks = [];
+      for (var k = 0; k < TICKS; k++) ticks.push({ c: k < lit ? 'is-on' : '' });
+      micRow = list('mic', 'Microphone', 'mic', T.MICS, st.checking
+        ? { k: 'stack', ctlCls: ' is-stack', cls: ' is-stackm is-top', help: 'Speak, and watch it move. Nothing is recorded.', level: true, ticks: ticks, levelNow: Math.round(st.lvl * 100), levelLeft: st.left, stop: function () { self.stopCheck(); } }
+        : { k: 'stack', ctlCls: ' is-stack', cls: ' is-stackm is-top', check: function () { self.startCheck(); }, hotCheck: hot('check') });
+    }
+    var speakerRow = !named ? row('speaker', 'Speaker', 'stack', { factT: 'Same as system', cls: ' is-still' })
+      : list('speaker', 'Speaker', 'speaker', T.SPEAKERS, { k: 'stack', ctlCls: ' is-stack', cls: ' is-stackm is-top' });
+    speakerRow = AH.assign(speakerRow, {
+      hasPlay: named, playT: st.playing === 'test' ? 'Playing' : 'Play test sound', playCls: st.playing === 'test' ? ' is-busy' : hot('play'),
+      play: function () { if (st.playing) return; self.chime(P.vol / 100); self.playFor('test'); }
+    });
+    var cameraRow = st.camPerm === 'granted' ? list('camera', 'Camera', 'camera', T.CAMERAS)
+      : st.camPerm === 'denied' ? fact('camera', 'Camera', 'Blocked', I.videoOff, { factC: ' is-no', help: 'Allow the camera for this site in your browser’s settings.' })
+      : fact('camera', 'Camera', 'Not allowed yet', I.videoOff, { help: 'Allow it when you next join a call, then pick one here.' });
+    var devices = [micRow, speakerRow, cameraRow, pref('noise', 'Reduce background noise', 'noise')];
+
+    /* ---------------------------------------------------------------- Notifications */
+    var perm = st.perm, muted = !!P.muted;
+    var permRow = perm === 'granted'
+      ? sw('perm', 'Browser notifications', st.alertsOn, function () { self.set({ alertsOn: !st.alertsOn }, 'perm'); }, { help: 'When Alcove is in another tab. They never show names or messages.' })
+      : perm === 'denied' ? row('perm', 'Browser notifications', 'fact', { help: 'Blocked in this browser. Allow them for alcove.solutions in its site settings.', helpCls: ' is-no', factT: 'Blocked', factI: I.bellOff, factC: ' is-no', cls: ' is-still', tab: -1 })
+      : perm === 'unsupported' ? row('perm', 'Browser notifications', 'fact', { help: 'This browser can’t show them. Alerts still show inside Alcove.', factT: 'Not available', factI: I.bellOff, cls: ' is-still', tab: -1 })
+      : row('perm', 'Browser notifications', 'btn', { help: 'So alerts reach you when Alcove is in another tab.', btnT: 'Turn on', btnI: I.bell, hotBtn: hot('turnon'), tab: -1, btnGo: function () { set({ prompt: 'notify' }); } });
+    var how = [
+      permRow,
+      row('vol', 'Sounds', 'vol', {
+        isVol: true, ctlCls: ' is-fill', cls: ' is-still', help: muted ? 'Off. What each one plays is kept for when you turn them on.' : '',
+        volCls: muted ? ' is-muted' : '', mutedA: muted ? 'true' : 'false', muteLabel: muted ? 'Turn sounds on' : 'Turn sounds off', volIcon: muted ? I.volX : I.vol, hotMute: hot('mute'),
+        vol: P.vol, volStyle: '--v: ' + P.vol + '%', volDis: muted, volPlayCls: st.playing === 'vol' ? ' is-busy' : '',
+        mute: function () { self.change('vol', { muted: !muted }); },
+        setVol: function (e) { var x = Number(e.target.value); self.setState({ p: AH.assign({}, self.__st.p, { vol: x }) }); },
+        volPlay: function () { if (!muted) { self.chime(P.vol / 100); self.playFor('vol'); } }
+      }),
+      pref('quiet', 'Quiet mode', 'quiet', { help: 'Only your microphone and requests to join make a sound.', dis: muted }),
+      seg('before', 'Before a call starts', 'before', [['1', '1 min'], ['5', '5 min'], ['off', 'Off']], { help: 'A reminder for calls you organize.' })
+    ];
+    var mxRow = function (e) {
+      var x = E[e.id], flip = function (way) { return function () { var o = AH.assign({}, E); o[e.id] = AH.assign({}, x); o[e.id][way] = !x[way]; self.set({ ev: o }, 'm-' + e.id); }; };
+      return item('isMx', {
+        rowId: 'm-' + e.id, t: e.t, q: e.q || '', hasQ: !!e.q, icon: I[e.icon], saved: st.saved === 'm-' + e.id,
+        hasA: x.a !== null, aOn: x.a ? 'true' : 'false', aLabel: e.t + ': alert', aFlip: flip('a'), aHot: hot('m-' + e.id + '-a'),
+        hasS: x.s !== null, sOn: x.s ? 'true' : 'false', sLabel: e.t + ': sound', sFlip: flip('s'), sHot: hot('m-' + e.id + '-s'), sDis: muted, sCls: muted ? ' is-off' : ''
+      });
+    };
+    var what = [item('isMxHead', { first: T.EVENT_GROUPS[0].h, sIcon: muted ? I.volX : I.vol, sCls: muted ? ' is-off' : '' })];
+    T.EVENT_GROUPS.forEach(function (g, gi) {
+      if (gi > 0) what.push(item('isMxGroup', { h: g.h }));
+      T.EVENTS.filter(function (e) { return e.grp === g.id; }).forEach(function (e) { what.push(mxRow(e)); });
+    });
+
+    /* ---------------------------------------------------------------- Connections */
+    var google = [];
+    if (st.cal === 'google') {
+      google.push(row('cal', 'Google Calendar', 'conn', { logo: MARKS.google, help: who.me.email, factT: 'Connected', factI: I.check, factC: ' is-yes', cls: ' is-still is-free',
+        btn2T: st.calBusy === 'off' ? 'Disconnecting' : 'Disconnect', btn2Spin: st.calBusy === 'off', hotBtn2: hot('disconnect'), btn2Go: function () {
+          set({ calBusy: 'off' });
+          clearTimeout(self.__busy);
+          self.__busy = setTimeout(function () { self.setState({ calBusy: '', cal: 'none' }); self.toastNow('Google Calendar is disconnected.'); }, 900);
+        } }));
+    } else if (st.cal === 'sample') {
+      google.push(row('cal', 'Sample calendar', 'conn', { tile: I.cal, help: 'A day of calls, placed around when you signed in.', factT: 'Demo account', cls: ' is-still is-free' }));
+    } else {
+      google.push(row('cal', 'Google Calendar', 'conn', { logo: MARKS.google, help: 'Your meetings show on Home, and calls you schedule go on it.', cls: ' is-still is-free',
+        btnT: st.calBusy === 'on' ? 'Opening Google' : 'Connect', btnSpin: st.calBusy === 'on', hotBtn: hot('connect'), btnGo: function () {
+          set({ calBusy: 'on' });
+          clearTimeout(self.__busy);
+          self.__busy = setTimeout(function () { self.setState({ calBusy: '', cal: 'google' }); }, 1100);
+        } }));
+    }
+    if (st.cal !== 'none') {
+      google.push(pref('addCal', 'Put calls I schedule on my calendar', 'addCal', { cls: ' is-sub', help: (st.cal === 'google' ? 'Google' : 'Your calendar') + ' sends everyone invited an invitation.' }));
+      google.push(pref('others', 'Show my other meetings on Home', 'others', { cls: ' is-sub' }));
+    }
+    /* Google Drive: Connect, then set up in place; once set, it folds into one line that says where notes go. */
+    var folder = T.FOLDERS[st.folder], chosen = st.drive === 'set' || !!st.folderChosen || st.saved === 'drive-folder' || stepId === 'driveFiled' || stepId === 'driveOn';
+    var formats = T.FORMATS.filter(function (f) { return st.formats[f.id]; }).map(function (f) { return f.t.toLowerCase(); });
+    var sayFormats = formats.length ? formats.join(' and ').replace(/^./, function (c) { return c.toUpperCase(); }) : 'Nothing chosen yet';
+    if (st.drive === 'none') {
+      google.push(row('drive', 'Google Drive', 'conn', { logo: MARKS.google, help: 'Copy notes and transcripts to a folder after each call.', cls: ' is-still is-free',
+        btnT: st.driveBusy === 'on' ? 'Opening Google' : 'Connect', btnSpin: st.driveBusy === 'on', hotBtn: hot('drive-connect'), btnGo: function () {
+          set({ driveBusy: 'on' });
+          clearTimeout(self.__busy);
+          self.__busy = setTimeout(function () { self.setState({ driveBusy: '', drive: 'new', driveOpen: true, notice: 'drive', hot: '' }); }, 1100);
+        } }));
+    } else {
+      var auto = st.drive === 'set' && st.auto;
+      google.push(row('drive', 'Google Drive', 'conn', {
+        logo: MARKS.google, cls: ' is-still is-free',
+        help: st.drive === 'set' ? (auto ? 'After each call: ' + sayFormats.toLowerCase() + ' to ' + folder.t + '.' : 'Paused. Nothing is exported until you turn it on.') : 'Connected as ' + who.me.email + '.',
+        factT: st.drive === 'set' ? (auto ? 'Exporting' : 'Paused') : '', factI: auto ? I.check : '', factC: auto ? ' is-yes' : '',
+        btnT: st.driveOpen ? 'Done' : 'Manage', btnC: 'b-line', btnE: st.driveOpen ? I.up : I.down, btnExp: st.driveOpen ? 'true' : 'false', hotBtn: hot(st.driveOpen ? 'drive-done' : 'drive-manage'),
+        btnGo: function () { set({ driveOpen: !st.driveOpen, notice: '', open: '' }); }
+      }));
+      if (st.driveOpen) {
+        if (st.notice === 'drive') google.push(item('isNote', { text: 'Google Drive is connected. Choose a folder, and what to send to it.' }));
+        var opening = st.open === 'folder';
+        google.push(row('drive-folder', 'Folder', 'dest', {
+          isDest: true, ctlCls: ' is-fill', cls: ' is-sub is-wide is-still', help: 'For new exports. You can pick another on a call.',
+          destT: chosen ? folder.t : 'Choose a folder', destSub: chosen ? folder.sub : '', hasDestSub: chosen, destIcon: chosen ? I[folder.icon] : I.folder,
+          destCls: chosen ? '' : ' is-empty', destGo: chosen ? 'Change' : '', open: opening, openA: opening ? 'true' : 'false', selCls: opening ? ' is-open' : '', hotSel: hot('drive-folder'),
+          toggle: function () { set({ open: opening ? '' : 'folder' }); },
+          options: T.FOLDERS.map(function (f, i) {
+            var on = chosen && i === st.folder;
+            return { t: f.t, note: f.sub, icon: I[f.icon], on: on, onA: on ? 'true' : 'false', hotCls: hot('folder-' + i), go: function () { self.set({ folder: i, folderChosen: true, open: '', notice: '' }, 'drive-folder'); } };
+          })
+        }));
+        google.push(row('drive-files', 'Files', 'fmts', {
+          isFmts: true, ctlCls: ' is-fill', cls: ' is-sub is-wide is-still', help: 'Each goes once the call’s notes are final.',
+          fmts: T.FORMATS.map(function (f) {
+            var on = !!st.formats[f.id];
+            return { t: f.t, sub: f.sub, icon: I[f.icon], onA: on ? 'true' : 'false', go: function () { var o = AH.assign({}, st.formats); o[f.id] = !on; self.set({ formats: o }, 'drive-files'); } };
+          })
+        }));
+        var ready = chosen && formats.length > 0;
+        google.push(sw('drive-auto', 'Export after each call', ready && (st.drive === 'set' ? st.auto : !!st.autoOn), function () {
+          if (!ready) return;
+          if (st.drive === 'set') self.set({ auto: !st.auto }, 'drive-auto'); else self.set({ drive: 'set', auto: true }, 'drive-auto');
+        }, { cls: ' is-sub', dis: !ready, help: ready ? 'Files upload in the background, even after you leave.' : 'Choose a folder first.' }));
+        if (st.drive === 'set') {
+          google.push(item('isJobs', { cls: ' is-sub', jobs: T.JOBS.map(function (j) {
+            var bad = j.state === 'failed' && !st.retried;
+            return { call: j.call, what: j.what, when: j.when, ok: !bad, bad: bad, why: j.why || '', hasWhy: bad && !!j.why, icon: j.what === 'Notes' ? I.notes : j.what === 'Transcript' ? I.transcript : I.wave,
+              retry: function () { self.set({ retried: true }); self.toastNow('Sending the recording again.'); } };
+          }) }));
+        }
+        google.push(item('isFoot', {
+          cls: ' is-sub', text: 'Copies follow the folder’s sharing in Drive. Alcove never changes who can see them, and never sends private notes.',
+          hasB1: true, b1T: st.driveBusy === 'off' ? 'Disconnecting' : 'Disconnect Google Drive', b1C: 'b-quiet', b1Spin: st.driveBusy === 'off', b1Hot: '', b1Go: function () {
+            set({ driveBusy: 'off' });
+            clearTimeout(self.__busy);
+            self.__busy = setTimeout(function () { self.setState({ driveBusy: '', drive: 'none', driveOpen: false }); self.toastNow('Google Drive is disconnected. Copies already there stay.'); }, 900);
+          },
+          hasB2: false, b2T: '', b2C: '', b2Hot: '', b2Go: null
+        }));
+      }
+    }
+
+    /* Agents: each connection, then Connect, which opens in place. */
+    var agents = st.agents.map(function (a, i) {
+      return row('agent-' + a.id, a.name, 'conn', { tile: a.how === 'Token' ? I.key : I.bot, help: a.can + ' · ' + a.how, factT: a.last, cls: ' is-still is-free',
+        btn2T: 'Disconnect', hotBtn2: hot('agent-off-' + i), btn2Go: function () {
+          self.set({ agents: st.agents.filter(function (x) { return x.id !== a.id; }) });
+          self.toastNow(a.name + ' is disconnected. It can’t reach Alcove any more.');
+        } });
+    });
+    if (st.agent === '') {
+      agents.push(row('agent-connect', 'Connect an agent', 'btn', {
+        help: st.agents.length ? 'Use Alcove from your AI assistant, with only what you allow.' : 'None yet. Use Alcove from your AI assistant, with only what you allow.',
+        cls: ' is-still', btnT: 'Connect an agent', btnI: I.plus, hotBtn: hot('agent-connect'), btnGo: function () { set({ agent: 'connect' }); }
+      }));
+    } else if (st.agent === 'connect') {
+      agents.push(item('isConn', { title: 'Add Alcove to your agent', text: 'Paste this address into its connections. It opens Alcove to sign in, and you choose what it can do.',
+        hasAddr: true, addr: 'https://alcove.solutions/mcp', addrCls: '', hotCopy: hot('agent-copy'), copy: function () { self.toastNow('Copied. Paste it into your agent’s connections.'); }, isForm: false }));
+      agents.push(item('isFoot', { cls: '', text: 'For a script that can’t sign in, use a token instead.',
+        hasB1: true, b1T: 'Create a token', b1C: 'b-quiet', b1Spin: false, b1Hot: hot('agent-token'), b1Go: function () { set({ agent: 'token' }); },
+        hasB2: true, b2T: 'Done', b2C: 'b-line', b2Hot: '', b2Go: function () { set({ agent: '' }); } }));
+    } else if (st.agent === 'token') {
+      var days = st.days || '30';
+      agents.push(item('isConn', { title: 'Create a token', text: 'A token lets a script use Alcove without signing in. It shows once.', hasAddr: false, addr: '', addrCls: '', hotCopy: '', copy: null, isForm: true,
+        name: st.tokenName, setName: function (e) { self.setState({ tokenName: e.target.value }); },
+        days: [['7', '7 days'], ['30', '30 days'], ['90', '90 days']].map(function (d) { return { t: d[1], on: days === d[0] ? 'true' : 'false', go: function () { self.setState({ days: d[0] }); } }; }),
+        perms: T.PERMS.map(function (x, i) { var on = !!st.perms[i]; return { t: x.t, onA: on ? 'true' : 'false', go: function () { var o = st.perms.slice(); o[i] = !on; self.setState({ perms: o }); } }; }) }));
+      agents.push(item('isFoot', { cls: '', text: 'Your agent receives readable information from Alcove. Its provider handles it under its own policies.',
+        hasB1: true, b1T: 'Cancel', b1C: 'b-quiet', b1Spin: false, b1Hot: '', b1Go: function () { set({ agent: '' }); },
+        hasB2: true, b2T: 'Create token', b2C: 'b-press', b2Hot: hot('agent-create'), b2Go: function () { set({ agent: 'issued' }); } }));
+    } else {
+      agents.push(item('isConn', { title: st.tokenName + ' can use Alcove until 9 Dec', text: 'This token shows once. Copy it into your script now.',
+        hasAddr: true, addr: 'alc_••••••••••••••••••••••••3f9a', addrCls: ' is-token', hotCopy: hot('agent-copy'), copy: function () { self.toastNow('Token copied.'); }, isForm: false }));
+      agents.push(item('isFoot', { cls: '', text: 'Disconnect it here whenever you like. Alcove keeps only a sealed fingerprint of it.',
+        hasB1: false, b1T: '', b1C: '', b1Spin: false, b1Hot: '', b1Go: null,
+        hasB2: true, b2T: 'Done', b2C: 'b-press', b2Hot: '', b2Go: function () {
+          var added = { id: 'tok-' + Date.now(), name: st.tokenName, how: 'Token', can: T.PERMS.filter(function (x, i) { return st.perms[i]; }).map(function (x) { return x.t; }).join(' · '), last: 'Not used yet' };
+          set({ agent: '', agents: st.agents.concat([added]) });
+        } }));
+    }
+
+    /* ---------------------------------------------------------------- Plan: what you're on, what's left, what you paid */
+    var PL = AH.PL, PI = PL.I, planK = st.plan || 'free', onFree = ['free', 'low', 'out', 'ended', 'waiting', 'teamWait'].indexOf(planK) >= 0;
+    var onTeam = ['team', 'teamAdmin', 'teamLow'].indexOf(planK) >= 0, TM = PL.TEAM;
+    var openCo = function (at) { set({ co: at }); };
+    var payItem = function (net, t, s, more) { return AH.assign({ mark: PL.NET[net].mark, t: t, s: s, sCls: '', isWait: false, isPaid: true, hot: '', dl: PI.download, open: null, receipt: function () { self.toastNow('The receipt downloads as a PDF.'); } }, more); };
+    var plan = [];
+    if (planK === 'teamWait') plan.push(item('isNote', { text: 'You’re on ' + TM.company + ', but none of its licenses was left for you, so you’re on Free for now. ' + TM.memberAdmin + '’s been told, and one is yours the next time you open Alcove after they buy more.' }));
+    if (onFree) {
+      var left = { free: ['1 h 26 min', 0.29], waiting: ['1 h 26 min', 0.29], teamWait: ['3 h 10 min', 0.63], low: ['24 min', 0.08], out: ['None', 0], ended: ['5 h', 1] }[planK];
+      plan.push(row('plan', 'Free', 'plan', {
+        help: planK === 'ended' ? 'Pro ended on Tuesday 3 November. Nothing was deleted: you’re back to Free’s 5 hours of notes a month.' : 'Every feature, with 5 hours of notes and 10 GB of uploads a month.',
+        cls: ' is-still', btnT: planK === 'ended' ? 'Get Pro again' : 'Get Pro', btnC: planK === 'out' ? 'b-press' : 'b-line', hotBtn: hot('get-pro'), btnGo: function () { openCo('coChoose'); },
+        btn2T: 'See plans', btn2Go: function () { v.go('plans'); }
+      }));
+      plan.push(row('left', 'Notes left this month', 'left', {
+        help: planK === 'out' ? 'Calls go on without notes until 1 December.' : planK === 'low' ? 'Under an hour left. Back to 5 hours on 1 December.' : 'Back to 5 hours on 1 December. Calls without notes are free.',
+        helpCls: planK === 'low' ? ' is-warm' : planK === 'out' ? ' is-no' : '',
+        bigT: left[0], bigCls: planK === 'low' ? ' is-warm' : planK === 'out' ? ' is-out' : '',
+        cls: ' is-still', sun: '--at: calc(15px + (100% - 30px) * ' + left[1] + ')', sunCls: left[1] > 0 ? '' : ' is-set'
+      }));
+      plan.push(fact('uploads', 'Uploads this month', '2.4 GB of 10 GB', PI.upload, { help: 'Photos, video and files in workspaces and whiteboards, up to 512 MB each.' }));
+      plan.push(fact('spaces', 'Shared workspaces', '1 of 1', PI.folder, { help: 'The workspace every call gets doesn’t count.' }));
+      plan.push(row('hours', 'More notes', 'btn', { help: '10 hours for $15, kept until you use them.', cls: ' is-still', btnT: 'Add 10 hours', btnC: 'b-line', hotBtn: hot('hours'), btnGo: function () { openCo('coHours'); } }));
+      if (planK === 'waiting') plan.push(item('isPays', { payH: 'Payments', pays: [payItem('base', 'Pro, 12 months', 'Waiting for 144.00 USDC on Base · open until tomorrow 16:12', { sCls: 'is-wait', isWait: true, isPaid: false, hot: hot('open'), open: function () { openCo('coSend'); } })] }));
+      if (planK === 'ended') plan.push(item('isPays', { payH: 'Payments', pays: [payItem('sol', 'Pro, 1 month', '15.00 USDC on Solana · 3 Oct 2026')] }));
+    } else {
+      if (onTeam) {
+        /* Team: whose it is and until when, notes of your own, the team's pooled storage; for its admin, the licenses. */
+        var admin = planK !== 'team', low = planK === 'teamLow';
+        plan.push(row('plan', 'Team', 'plan', {
+          help: admin ? TM.company + '. You’re its admin: your license runs to 12 December.' : TM.company + '. Your license runs to 12 December; ' + TM.memberAdmin + ' buys them.',
+          cls: ' is-still', btnT: admin ? 'Open Team' : 'Open Team', btnC: 'b-line', hotBtn: hot('team'), btnGo: function () { v.go('team'); },
+          btn2T: 'See plans', btn2Go: function () { v.go('plans'); }
+        }));
+        plan.push(row('left', 'Notes left this period', 'left', {
+          help: 'Your own, back to 50 hours when your license is taken again. Calls without notes are free.',
+          bigT: '41 h', cls: ' is-still', sun: '--at: calc(15px + (100% - 30px) * 0.82)', sunCls: ''
+        }));
+        plan.push(fact('uploads', 'Storage', '312 GB of 600 GB', PI.upload, { help: 'The team’s, shared by everyone with a license: 100 GB for each. Files up to 512 MB.' }));
+        if (admin) {
+          var left2 = low ? 2 : 5;
+          plan.push(row('licenses', 'Licenses', 'btn', {
+            help: low ? left2 + ' of ' + TM.bought + ' left, and Aiko is waiting for one. Each is taken as someone next opens Alcove, for 30 days.' : left2 + ' of ' + TM.bought + ' left. Each is taken as someone next opens Alcove, for 30 days.',
+            helpCls: low ? ' is-warm' : '', cls: ' is-still',
+            btnT: 'Buy licenses', btnC: low ? 'b-press' : 'b-line', hotBtn: hot('buy-licenses'), btnGo: function () { openCo(low ? 'coTeamMore' : 'coTeamMoreBal'); }
+          }));
+          plan.push(sw('auto-buy', 'Buy one when it’s needed', !!st.autoBuy, function () { set({ autoBuy: !st.autoBuy }); }, { help: 'From your balance, when someone on the team needs a license and none is left.' }));
+          plan.push(row('refund-lic', 'Refund ' + left2 + ' licenses nobody has taken', 'btn', { help: '$' + left2 * TM.price + ' goes back to your balance. One someone has taken isn’t refunded.', cls: ' is-still', btnT: 'Refund', btnC: 'b-quiet', btnGo: function () { self.toastNow('Asks in place, as Pro’s refund does.'); } }));
+          plan.push(item('isPays', { payH: 'Payments', pays: [payItem('base', 'Team, 6 licenses', '240.00 USDC on Base · 4 Nov 2026'), payItem('base', 'Team, 2 licenses', '$80.00 from your balance · 12 Nov 2026')] }));
+        }
+      } else {
+      var team = false, until = planK === 'extended' ? 'Wednesday 10 November 2027' : 'Thursday 4 November 2027';
+      plan.push(row('plan', 'Pro', 'plan', {
+        help: planK === 'ending' ? 'Ends in 6 days, on Tuesday 10 November. Then you’re back on Free, and nothing is deleted.' : 'Until ' + until + '. Nothing renews by itself: Alcove reminds you before it ends.',
+        helpCls: planK === 'ending' ? ' is-warm' : '',
+        cls: ' is-still', btnT: 'Extend', btnC: planK === 'ending' ? 'b-press' : 'b-line', hotBtn: hot('extend'), btnGo: function () { openCo(planK === 'ending' ? 'coExtend' : 'coExtendNew'); },
+        btn2T: 'See plans', btn2Go: function () { v.go('plans'); }
+      }));
+      plan.push(fact('notes-pro', 'Notes left this period', 'About 41 h', PI.notes, { help: 'Back to 50 hours on 4 December. Calls without notes are free.' }));
+      plan.push(fact('uploads', 'Storage', '2.4 GB of 100 GB', PI.upload, { help: 'Uploads and call recordings. Files up to 512 MB.' }));
+      var pays = planK === 'ending' ? [payItem('sol', 'Pro, 1 month', '20.00 USDC on Solana · 10 Oct 2026')]
+        : planK === 'extended' ? [payItem('base', 'Pro, 12 more months', '192.00 USDC on Base · 4 Nov 2026'), payItem('sol', 'Pro, 1 month', '20.00 USDC on Solana · 10 Oct 2026')]
+        : [payItem('base', 'Pro, 12 months', '192.00 USDC on Base · 4 Nov 2026')];
+      plan.push(item('isPays', { payH: 'Payments', pays: pays }));
+      }
+    }
+
+    /* ---------------------------------------------------------------- Privacy, and the way out */
+    var see = [
+      item('isLedger', { pairs: T.LEDGER }),
+      st.trust === 'verified' ? fact('tee', 'Confidential compute', 'Hardware verified 16:04', I.sealed, { factC: ' is-yes', help: 'Where your audio is opened and your notes are written.' })
+        : fact('tee', 'Confidential compute', 'Checking the hardware…', I.sealed)
+    ];
+    var del = [];
+    if (st.del === 'demo') del.push(row('delete', 'This is the shared demo account, so it can’t be deleted.', 'btn', { cls: ' is-q is-say is-free', btnT: 'Close', btnC: 'b-press', btnFocus: true, btnGo: function () { set({ del: '' }); } }));
+    else if (st.del) del.push(row('delete', 'Delete your account for good?', 'q', { cls: ' is-q is-free' }), item('isDel', {}));
+    else del.push(row('delete', 'Delete your account', 'btn', { help: 'Your notes, the calls you scheduled and your sign-in go, for good.', cls: ' is-still is-free', btnT: 'Delete account', btnC: 'b-line st2-caution', btnI: I.trash, hotBtn: hot('delete'), btnGo: function () {
+      self.__focus = '[data-first-focus]';
+      set({ del: who.demo ? 'demo' : 'open' });
+      setTimeout(function () { self.jump('del', true); }, 40);
+    } }));
+
+    /* ---------------------------------------------------------------- the groups, as the page shows them */
+    var block = function (id, h, items, tag) { return { id: id, h: h || '', hasH: !!h, tag: tag || '', hasTag: !!tag, items: items }; };
+    var B = {
+      you: [block('you-profile', '', profile), block('you-look', 'Appearance', look, 'This browser')],
+      calls: [block('calls-notes', 'Notes', notes), block('calls-rec', 'Recording in the room', recording)],
+      av: [block('av-dev', '', devices)],
+      alerts: [block('alerts-how', '', how), block('alerts-what', 'What reaches you', what)],
+      apps: [block('apps-google', '', google), block('apps-agents', 'Agents', agents)],
+      plan: [block('plan-left', '', plan)],
+      privacy: [block('privacy-see', '', see), block('privacy-del', '', del)]
+    };
+    v.groups = T.GROUPS.map(function (g) { return { id: g.id, h: g.h, tag: g.tag || '', hasTag: !!g.tag, blocks: B[g.id] }; });
+    v.idx = T.GROUPS.map(function (g, i) {
+      var on = st.at === g.id;
+      return { id: g.id, nav: g.nav, i: i, cls: (on ? ' is-on' : '') + hot('idx-' + g.id), current: on ? 'true' : 'false', go: function () {
+        self.__held = true; clearTimeout(self.__hold);
+        self.__hold = setTimeout(function () { self.__held = false; }, 900);
+        set({ at: g.id }); self.jump(g.id, true);
+      } };
+    });
+    var atIndex = v.idx.filter(function (x) { return x.id === st.at; })[0];
+    v.markStyle = '--i: ' + (atIndex ? atIndex.i : 0);
+
+    /* ---------------------------------------------------------------- the sky: who you are, the tour and Sign out */
+    v.who = who; v.I = I; v.uid = this.__uid;
+    v.side = AH.assign({}, v.side, { foot: AH.assign(PL.foot({ teamAdmin: 'team' }[planK] || planK), { go: function () { self.jump('plan', true); } }) });
+    v.hasCo = !!st.co; v.coAt = st.co || 'coChoose';
+    v.coClose = function () { set({ co: '' }); };
+    v.coCompare = function () { set({ co: '' }); v.go('plans'); };
+    v.coDone = function (s) {
+      var to = s.plan === 'hours' ? planK : s.kind === 'extend' ? 'extended' : s.plan === 'team' ? 'teamAdmin' : 'pro';
+      self.setState({ co: '', plan: to === 'out' ? 'free' : to });
+      self.toastNow(s.plan === 'hours' ? '10 hours of notes added.' : s.kind === 'extend' ? 'Pro runs to 10 Nov 2027.' : s.plan === 'team' ? s.licenses + ' licenses added to Vandelay Industries.' : 'You’re on Pro until 4 Nov 2027.');
+    };
+    v.hotTour = hot('tour'); v.hotOut = hot('signout');
+    v.tour = function () { self.toastNow('Home opens and the tour plays again.'); };
+    v.out = !!st.out; v.outFlag = st.out ? 'true' : 'false'; v.outA = st.out ? 'true' : 'false'; v.outBusy = !!st.outBusy; v.outBusyA = st.outBusy ? 'true' : 'false';
+    v.outTitle = (one ? '1 recording' : n + ' recordings') + ' on this device ' + (one ? 'hasn’t' : 'haven’t') + ' uploaded. Signing out deletes ' + (one ? 'it' : 'them') + '.';
+    v.outBody = T.staying(n);
+    v.outGoText = st.outBusy ? 'Signing out' : 'Sign out and delete ' + (one ? 'it' : 'them');
+    v.signOut = function () {
+      if (n > 0) { if (!st.out) self.__focus = '[data-first-focus]'; set({ out: !st.out }); }
+      else { set({ outBusy: true }); setTimeout(function () { self.setState({ gone: 'out', outBusy: false }); }, 500); }
+    };
+    v.stay = function () { if (!st.outBusy) set({ out: false }); };
+    v.outGo = function () {
+      if (st.outBusy) return;
+      set({ outBusy: true });
+      setTimeout(function () { self.setState({ gone: 'out', out: false, outBusy: false, waiting: 0 }); }, 900);
+    };
+
+    /* Delete account, in place. */
+    v.delBusy = st.del === 'busy'; v.delBusyA = v.delBusy ? 'true' : 'false';
+    v.delGoText = st.del === 'busy' ? 'Deleting' : 'Delete my account';
+    v.goes = [
+      who.mine ? who.mine + (who.mine === 1 ? ' note' : ' notes') + ' you made, with their audio, for everyone who has them' : null,
+      who.calls ? who.calls + (who.calls === 1 ? ' call' : ' calls') + ' you scheduled, for everyone invited' : null,
+      onFree ? (left[1] > 0 ? 'Your ' + left[0] + ' of notes left this month' : null) : onTeam ? null : 'Pro, and the time left on it',
+      'Your own notes on every call',
+      st.cal === 'google' ? 'Your Google Calendar connection, and the calls Alcove put on it' : null,
+      st.drive !== 'none' ? 'Your Google Drive connection. Copies already in Drive stay there.' : null,
+      st.agents.length ? 'Every agent you connected' : null,
+      'Your sign-in, on every browser'
+    ].filter(Boolean);
+    v.delClose = function () { if (st.del === 'busy') return; set({ del: '' }); };
+    v.delGo = function () {
+      if (st.del === 'busy') return;
+      set({ del: 'busy' });
+      setTimeout(function () { self.setState({ gone: 'deleted', del: '' }); }, 1200);
+    };
+
+    /* The browser's own question. */
+    v.hasPrompt = !!st.prompt;
+    v.promptText = st.prompt === 'mic' ? 'Use your microphone' : 'Show notifications';
+    v.promptIcon = st.prompt === 'mic' ? I.mic : I.bell;
+    v.hotAllow = hot('allow').trim(); v.hotBlock = hot('block').trim();
+    v.promptYes = function () {
+      if (st.prompt === 'mic') { self.setState({ prompt: '', micPerm: 'granted', hot: '' }); self.startCheck(); }
+      else { self.set({ prompt: '', perm: 'granted', alertsOn: true }, 'perm'); self.focusIn('[data-row="perm"]'); }
+    };
+    v.promptNo = function () {
+      if (st.prompt === 'mic') set({ prompt: '', micPerm: 'denied' });
+      else { set({ prompt: '', perm: 'denied' }); self.focusIn('[data-row="perm"]'); }
+    };
+
+    /* Signed out, or deleted. */
+    v.isGone = !!st.gone;
+    v.goneText = st.gone === 'deleted' ? 'Your account is deleted.' : 'You’re signed out.';
+    v.back = function () { set({ gone: '' }); };
+
+    /* Lists, toasts and keys. */
+    v.anyOpen = !!st.open;
+    v.closeOpen = function () { set({ open: '' }); };
+    v.hasBad = !!st.bad; v.bad = st.bad;
+    var note = st.toast || '';
+    v.ov = AH.assign({}, v.ov, { toast: note, hasToast: !!note });
+    v.onKey = function (e) {
+      if (e.key !== 'Escape') return;
+      if (st.open) set({ open: '' });
+      else if (st.prompt) set({ prompt: '' });
+      else if (st.out && !st.outBusy) set({ out: false });
+      else if (st.del && st.del !== 'busy') set({ del: '' });
+      else if (st.agent) set({ agent: '' });
+    };
+    v.onScroll = function () { if (!self.__tick) self.__tick = requestAnimationFrame(function () { self.__tick = 0; self.look(false); }); };
+    v.tabs = v.nav;
+    return v;
+  }
+}
+</script>
+</body>
+</html>

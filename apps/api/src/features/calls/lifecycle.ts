@@ -21,15 +21,16 @@ import { getItem } from '../../vault';
 import { finishRecording, updateNote, type HeldRoom } from '../notes/service';
 import { storedMoments } from '../recordings/storedFrames';
 import { standIns, type HostChange } from './hosting';
-import { Joined, relocate } from './places';
+import { Joined, admissionFresh, relocate } from './places';
 import * as rings from './rings';
 import * as screens from '../recordings/screens';
 import { endSeats } from '../workspaces/service';
+import { seatEnded } from '../workspaces/access';
 import * as writer from '../notes/writer';
 import { log } from '../../log';
 import { closeRooms, hostNotices, load, roomsChanged, roomsClosedBetween, save, secondsIn, settle, sharesEnd, tenthsIn, type Row, type Stored, withPerson } from './state';
 import { MlsRow, appendMls, openMls } from './mls-log';
-import { hereIn, knownIn, knownUntil, personFor, speakersIn, type Viewer } from './participants';
+import { hereIn, knownIn, knownUntil, personFor, seatKey, seatOf, speakersIn, type Viewer } from './participants';
 import { afterClosing, keepRoomBoards, landRooms, syncBoardSeats, syncRoomBoards } from './room-boards';
 import { stillHosting } from './permissions';
 import { tellRoom } from './notifications';
@@ -207,9 +208,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
   // What's kept of the workspace is the last thing and nobody waits for it: it can take a worker as long as a worker has for
   // each document, and nothing about the call's end depends on it. It says itself when something didn't work.
   if (end.ended) void space.afterCall(o, { callId, meetingId: end.meetingId, worked, noteId: end.pendingNoteId, home, startedAt: end.startedAt });
-  // Notes with no workspace to go to: its organizer is asked where they go (`meetings.file`), or they stay in Notes.
-  const filed = end.pendingNoteId === null || await space.hasWorkspace(o, end.meetingId);
-  return { meetingId: end.meetingId, pendingNoteId: end.pendingNoteId, duration: end.duration, filed };
+  return { meetingId: end.meetingId, pendingNoteId: end.pendingNoteId, duration: end.duration };
 }
 
 /**
@@ -262,9 +261,15 @@ export async function handOff(v: Viewer, callId: string, to: string | null, onPu
     const organizer = (await me(o, c)).name;
     const { state: after, generation } = await newGeneration(o, c, row, onPurpose ? space.leftForGood(s, from.person, from.identity, space.ending(o, callId)) : s, { host: next, joining: false, gone: [from.identity] }, { change: { kind: 'left', from, to: next }, organizer });
     clog.info('host handed off and left', { ...ctx, generation, segment: after.notes.segment, notes: after.notes.status });
-    return { room: row.room_name, closed: roomsClosedBetween(state, s) };
+    // By seat: the organizer's is one on every device, so another of theirs still in the call keeps it.
+    const key = seatKey(o, callId);
+    const seat = seatOf(key, from);
+    const stillIn = after.people.some((x) => x.status === 'in' && seatOf(key, x) === seat);
+    return { room: row.room_name, closed: roomsClosedBetween(state, s), seat: stillIn ? null : seat };
   });
   if (r.room) await o.livekit.removeParticipant(r.room, v.pass.identity).catch((e: unknown) => clog.info('host already gone from the room', { callId, err: e }));
+  // As anyone leaving: what the call opened to them closes now.
+  if (r.seat) await seatEnded(o, callId, r.seat);
   await afterClosing({ organizer: o, callId }, r.closed, () => tellRoom(o, r.room, callId, { call: true, log: true }));
 }
 
@@ -293,10 +298,16 @@ export async function departed(o: Owner, callId: string, identity: string, at = 
     // asking again, and their identity can't come back as someone else (to be let in by a toast still showing the first ask).
     await save(o, c, callId, await sharesEnd(o, c, withPerson(state, identity, (x) => (j.status === 'waiting' ? { ...x, status: 'denied' } : { ...x, status: 'left', left: noticed ? knownUntil(callId, x, at) : at })),
       j.status === 'in' ? [identity] : [], tenthsIn(row.started_at)));
-    return { room: row.room_name, was: j.status, rooms: held.state.board.rooms.some((x) => !x.kept) };
+    // Their seat stops counting once no connection of theirs is still in the call: a reload that's back already keeps it.
+    const key = seatKey(o, callId);
+    const seat = seatOf(key, j);
+    const stillIn = state.people.some((x) => x.identity !== identity && x.status === 'in' && seatOf(key, x) === seat);
+    return { room: row.room_name, was: j.status, rooms: held.state.board.rooms.some((x) => !x.kept), seat: j.status === 'in' && !stillIn ? seat : null };
   });
   if (r) {
     clog.info(r.was === 'waiting' ? 'someone stopped asking to join' : 'someone left the call', { callId });
+    // What the call opened to them closes now, not at their streams' next ping.
+    if (r.seat) await seatEnded(o, callId, r.seat);
     // Someone who's gone isn't in their room: its board goes with them, and comes back when they do.
     if (r.rooms) await syncRoomBoards({ organizer: o, callId });
     await tellRoom(o, r.room, callId, { call: true, log: true });
@@ -335,8 +346,23 @@ async function goneFromRoom(d: Deps, ownerId: string, callId: string, roomName: 
 export const ARRIVAL_MS = 90_000;
 
 /**
+ * Asks to join that went quiet: no browser has said it's still asking for 90 seconds (`admissionFresh`), so whoever hosts
+ * can't see them and nobody can let them in. They're turned away, as their own browser would be the next time it asked, so
+ * nothing kept of them still reads as asking. In one transaction, under the call's row.
+ */
+async function turnAwayQuiet(o: Owner, callId: string, now: number): Promise<void> {
+  const quiet = await tx(o.pool, async (c) => {
+    const { row, state } = await load(o, c, callId, true);
+    const gone = new Set(row.state === 'live' ? state.people.flatMap((j) => (j.status === 'waiting' && !admissionFresh(j, now) ? [j.identity] : [])) : []);
+    if (gone.size) await save(o, c, callId, { ...state, people: state.people.map((j): Joined => (gone.has(j.identity) ? { ...j, status: 'denied' } : j)) });
+    return gone.size;
+  });
+  if (quiet) clog.info('asks to join that went quiet turned away', { callId, people: quiet });
+}
+
+/**
  * Takes out whoever was let in at least ARRIVAL_MS ago and isn't in the room: they never got there, or LiveKit's
- * word that they left was missed. Nobody is taken out while LiveKit can't be asked.
+ * word that they left was missed. Nobody is taken out while LiveKit can't be asked. Asks that went quiet are turned away.
  */
 export async function arrivals(d: Deps, ownerId: string, callId: string, roomName: string, now: number): Promise<void> {
   const o = await openOwner(d, ownerId, undefined);
@@ -346,6 +372,7 @@ export async function arrivals(d: Deps, ownerId: string, callId: string, roomNam
   if (row.state === 'live' && state.board.letIn.length) await syncBoardSeats({ organizer: o, callId });
   if (row.state === 'live' && state.board.rooms.some((r) => !r.kept)) await syncRoomBoards({ organizer: o, callId });
   if (row.state === 'live' && state.board.landing) await landRooms({ organizer: o, callId });
+  if (row.state === 'live' && state.people.some((j) => j.status === 'waiting' && !admissionFresh(j, now))) await turnAwayQuiet(o, callId, now);
   const due = row.state === 'live' ? state.people.filter((j) => j.role !== 'host' && j.identity !== state.host && j.status === 'in' && now - j.since >= ARRIVAL_MS) : [];
   if (!due.length) return;
   const here = new Set((await d.livekit.participants(roomName)).map((p) => p.identity));

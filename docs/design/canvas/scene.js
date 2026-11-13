@@ -30,6 +30,10 @@
     notes: { sky: [0.30, 0.52], lightSky: [0.40, 0.66], sun: null, glitter: 70, stars: 7, glowW: 980, glowH: 150 },
     note: { sky: [0.24, 0.40], lightSky: [0.30, 0.50], sun: null, glitter: 0, stars: 4, glowW: 760, glowH: 90 },
     settings: { sky: [0.18, 0.32], lightSky: [0.26, 0.42], sun: null, glitter: 0, stars: 0, glowW: 620, glowH: 70 },
+    /* Agents: Team's moment the other way round. The sun is low and to the right, just past the end of the line of agents. */
+    agents: { sky: [0.35, 0.6], lightSky: [0.43, 0.72], sun: { r: 36, x: 470 }, glitter: 70, stars: 3 },
+    /* Plans: just after sunset, with a long low glow. The page draws its own sun, over Pro's column. */
+    plans: { sky: [0.32, 0.58], lightSky: [0.42, 0.72], sun: null, glitter: 0, stars: 0, glowW: 1500, glowH: 230 },
     record: { night: true, sky: [0.08, 0.26], lightSky: [0.08, 0.26], sun: { r: 58, x: 0, rec: true }, glitter: 150, stars: 22 }
   };
 
@@ -59,8 +63,10 @@
     return out;
   }
 
-  AH.scene = function (moment, pal, mode) {
+  /* `over.sunX` moves the sun along the horizon for one page, as Agents does to keep it just past the end of its line. */
+  AH.scene = function (moment, pal, mode, over) {
     var M = MOMENTS[moment] || MOMENTS.notes, night = !!M.night, dark = mode === 'dark' || night;
+    if (over && over.sunX !== undefined && M.sun) M = AH.assign(M, { sun: AH.assign(M.sun, { x: over.sunX }) });
     var m = PALS[pal || 'blue-hour'][dark ? 'dark' : 'light'], R = rampOf(m);
     var low = dark ? M.sky : M.lightSky, top = night ? m.well : dark ? m.ground : R(0);
     var skyCss = grad([[top, 0], [night ? m.ground : R(low[0]), night ? 55 : 58], [R(low[1]), 100]]);
@@ -83,22 +89,48 @@
     };
   };
 
-  /* What every new page starts from: the shell Home uses, with the sidebar marking this page and giving way to its one filled button. */
-  var IDS = { home: 'Home', notes: 'Notes', record: 'Record', team: 'Team', note: 'Notes', settings: '' };
+  /*
+   * What every new page starts from: the shell Home uses, with the sidebar marking this page and giving way to its one
+   * filled button. The side panel's places are the app's today, with Agents after Team: Home, Notes, Drive, Record, Team
+   * and Agents. Start a call is a row like them, its camera in a warm circle. Agents counts the agents connected, as Team
+   * counts people. The phone's tab bar keeps the app's five, so Agents is reached from Settings there.
+   */
+  var IDS = { home: 'Home', notes: 'Notes', record: 'Record', team: 'Team', note: 'Notes', settings: '', plans: '', agents: 'Agents', drive: 'Drive' };
+  var PLACE_ICON = {
+    folder: 'M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2',
+    bot: 'M12 8V4H8M6 8h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zM2 14h2M20 14h2M15 13v2M9 13v2'
+  };
   AH.page = function (c, id, opts) {
     var o = opts || {}, p = c.props || {};
     var v = AH.vm(c, 'home', { pal: 'blue-hour', mode: o.night ? 'dark' : 'dark' });
-    var go = function (to) { if (typeof p.go === 'function') p.go(to); else v.toast('Opens ' + to + '.'); };
+    var go = function (to) { if (typeof p.go === 'function') p.go(to); else v.toast(to.charAt(0).toUpperCase() + to.slice(1) + ' opens here.'); };
+    var I = AH.I, st = v.st, agentsN = o.agents === undefined ? 3 : o.agents;
+    var places = [
+      { label: 'Home', icon: I.home, count: 2, waiting: true },
+      { label: 'Notes', icon: I.notes, count: 8 },
+      { label: 'Drive', icon: PLACE_ICON.folder, count: 0 },
+      { label: 'Record', icon: I.recordDot, count: 0 },
+      { label: 'Team', icon: I.people, count: 6 },
+      { label: 'Agents', icon: PLACE_ICON.bot, count: agentsN }
+    ];
     v.side = AH.assign({}, v.side, {
       startCls: 'b-tint',
-      nav: v.side.nav.map(function (n) {
-        var on = n.label === IDS[id];
-        return AH.assign({}, n, { cls: on ? ' is-on' : '', current: on ? 'page' : 'false', go: function () { go(n.label.toLowerCase()); } });
+      nav: places.map(function (n) {
+        var on = n.label === IDS[id], hotNav = st.hot === 'nav-' + n.label.toLowerCase();
+        return {
+          label: n.label, icon: n.icon, count: n.count, hasCount: n.count > 0, countCls: n.waiting ? '' : ' is-quiet',
+          cls: (on ? ' is-on' : '') + (hotNav ? ' is-hot' : ''), current: on ? 'page' : 'false',
+          go: function () { if (n.label === IDS[id]) return; if (typeof o.onNav === 'function') o.onNav(n.label.toLowerCase()); else go(n.label.toLowerCase()); }
+        };
       })
     });
-    v.nav = v.nav.map(function (n) { var on = n.label === IDS[id] || (id === 'settings' && n.label === 'Settings'); return AH.assign({}, n, { cls: (n.label === 'Record' ? ' is-rec' : '') + (on ? ' is-on' : ''), go: function () { go(n.label.toLowerCase()); } }); });
+    var tabs = [
+      { label: 'Home', icon: I.home }, { label: 'Notes', icon: I.notes }, { label: 'Record', icon: I.recordDot, rec: true },
+      { label: 'Drive', icon: PLACE_ICON.folder }, { label: 'Team', icon: I.people }
+    ];
+    v.nav = tabs.map(function (n) { var on = n.label === IDS[id]; return { label: n.label, icon: n.icon, cls: (n.rec ? ' is-rec' : '') + (on ? ' is-on' : ''), current: on ? 'page' : 'false', go: function () { go(n.label.toLowerCase()); } }; });
     v.go = go;
-    v.scene = AH.assign({ page: true }, AH.scene(o.moment || id, v.pal, v.mode));
+    v.scene = AH.assign({ page: true }, AH.scene(o.moment || id, v.pal, v.mode, o.sunX === undefined ? undefined : { sunX: o.sunX }));
     return v;
   };
 })();

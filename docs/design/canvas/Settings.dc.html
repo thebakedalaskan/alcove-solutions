@@ -12,6 +12,7 @@
 <script src="scene.js"></script>
 <script src="appdata.js"></script>
 <script src="data-settings.js"></script>
+<script src="data-agents.js"></script>
 </head>
 <body>
 <x-dc>
@@ -189,21 +190,6 @@
 <div class="st2-foot{{r.cls}}"><p>{{r.text}}</p><div><sc-if value="{{r.hasB1}}" hint-placeholder-val="{{false}}"><button type="button" class="b {{r.b1C}}{{r.b1Hot}}" onClick="{{r.b1Go}}"><sc-if value="{{r.b1Spin}}" hint-placeholder-val="{{false}}"><span class="st2-spin" aria-hidden="true"></span></sc-if>{{r.b1T}}</button></sc-if><sc-if value="{{r.hasB2}}" hint-placeholder-val="{{false}}"><button type="button" class="b {{r.b2C}}{{r.b2Hot}}" onClick="{{r.b2Go}}">{{r.b2T}}</button></sc-if></div></div>
 </sc-if>
 
-<sc-if value="{{r.isConn}}" hint-placeholder-val="{{false}}">
-<div class="st2-conn">
-<b>{{r.title}}</b>
-<p>{{r.text}}</p>
-<sc-if value="{{r.hasAddr}}" hint-placeholder-val="{{false}}"><div class="st2-addr{{r.addrCls}}"><code>{{r.addr}}</code><button type="button" class="b b-line{{r.hotCopy}}" onClick="{{r.copy}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.copy}}"></path></svg>Copy</button></div></sc-if>
-<sc-if value="{{r.isForm}}" hint-placeholder-val="{{false}}">
-<div class="st2-form">
-<label class="st2-field"><span>Name</span><input class="st2-in" type="text" value="{{r.name}}" onChange="{{r.setName}}" aria-label="Token name"></label>
-<div class="st2-field"><span>Expires after</span><div class="st2-seg" role="group" aria-label="Expires after"><sc-for list="{{r.days}}" as="o" hint-placeholder-count="3"><button type="button" aria-pressed="{{o.on}}" onClick="{{o.go}}">{{o.t}}</button></sc-for></div></div>
-<div class="st2-field"><span>What it can do</span><div class="st2-perms"><sc-for list="{{r.perms}}" as="o" hint-placeholder-count="5"><button type="button" class="st2-perm" aria-pressed="{{o.onA}}" onClick="{{o.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg>{{o.t}}</button></sc-for></div></div>
-</div>
-</sc-if>
-</div>
-</sc-if>
-
 <sc-if value="{{r.isLedger}}" hint-placeholder-val="{{false}}">
 <div class="st2-led" role="table" aria-label="What Alcove knows and what it can’t read">
 <p class="st2-led-h" role="columnheader"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.server}}"></path></svg>Alcove knows</p>
@@ -275,7 +261,7 @@ var MARKS = {
 };
 var TICKS = 26, CHECK_S = 8, SAVED_MS = 2200;
 /* Every flag a template branch reads, false until a row says otherwise: sc-if needs a real boolean. */
-var FLAGS = ['isRow', 'isNote', 'isMxHead', 'isMxGroup', 'isMx', 'isJobs', 'isFoot', 'isConn', 'isLedger', 'isDel'];
+var FLAGS = ['isRow', 'isNote', 'isMxHead', 'isMxGroup', 'isMx', 'isJobs', 'isFoot', 'isLedger', 'isDel'];
 
 class Component extends DCLogic {
   componentDidMount() { this.land(); }
@@ -647,44 +633,14 @@ class Component extends DCLogic {
       }
     }
 
-    /* Agents: each connection, then Connect, which opens in place. */
-    var agents = st.agents.map(function (a, i) {
-      return row('agent-' + a.id, a.name, 'conn', { tile: a.how === 'Token' ? I.key : I.bot, help: a.can + ' · ' + a.how, factT: a.last, cls: ' is-still is-free',
-        btn2T: 'Disconnect', hotBtn2: hot('agent-off-' + i), btn2Go: function () {
-          self.set({ agents: st.agents.filter(function (x) { return x.id !== a.id; }) });
-          self.toastNow(a.name + ' is disconnected. It can’t reach Alcove any more.');
-        } });
-    });
-    if (st.agent === '') {
-      agents.push(row('agent-connect', 'Connect an agent', 'btn', {
-        help: st.agents.length ? 'Use Alcove from your AI assistant, with only what you allow.' : 'None yet. Use Alcove from your AI assistant, with only what you allow.',
-        cls: ' is-still', btnT: 'Connect an agent', btnI: I.plus, hotBtn: hot('agent-connect'), btnGo: function () { set({ agent: 'connect' }); }
-      }));
-    } else if (st.agent === 'connect') {
-      agents.push(item('isConn', { title: 'Add Alcove to your agent', text: 'Paste this address into its connections. It opens Alcove to sign in, and you choose what it can do.',
-        hasAddr: true, addr: 'https://alcove.solutions/mcp', addrCls: '', hotCopy: hot('agent-copy'), copy: function () { self.toastNow('Copied. Paste it into your agent’s connections.'); }, isForm: false }));
-      agents.push(item('isFoot', { cls: '', text: 'For a script that can’t sign in, use a token instead.',
-        hasB1: true, b1T: 'Create a token', b1C: 'b-quiet', b1Spin: false, b1Hot: hot('agent-token'), b1Go: function () { set({ agent: 'token' }); },
-        hasB2: true, b2T: 'Done', b2C: 'b-line', b2Hot: '', b2Go: function () { set({ agent: '' }); } }));
-    } else if (st.agent === 'token') {
-      var days = st.days || '30';
-      agents.push(item('isConn', { title: 'Create a token', text: 'A token lets a script use Alcove without signing in. It shows once.', hasAddr: false, addr: '', addrCls: '', hotCopy: '', copy: null, isForm: true,
-        name: st.tokenName, setName: function (e) { self.setState({ tokenName: e.target.value }); },
-        days: [['7', '7 days'], ['30', '30 days'], ['90', '90 days']].map(function (d) { return { t: d[1], on: days === d[0] ? 'true' : 'false', go: function () { self.setState({ days: d[0] }); } }; }),
-        perms: T.PERMS.map(function (x, i) { var on = !!st.perms[i]; return { t: x.t, onA: on ? 'true' : 'false', go: function () { var o = st.perms.slice(); o[i] = !on; self.setState({ perms: o }); } }; }) }));
-      agents.push(item('isFoot', { cls: '', text: 'Your agent receives readable information from Alcove. Its provider handles it under its own policies.',
-        hasB1: true, b1T: 'Cancel', b1C: 'b-quiet', b1Spin: false, b1Hot: '', b1Go: function () { set({ agent: '' }); },
-        hasB2: true, b2T: 'Create token', b2C: 'b-press', b2Hot: hot('agent-create'), b2Go: function () { set({ agent: 'issued' }); } }));
-    } else {
-      agents.push(item('isConn', { title: st.tokenName + ' can use Alcove until 9 Dec', text: 'This token shows once. Copy it into your script now.',
-        hasAddr: true, addr: 'alc_••••••••••••••••••••••••3f9a', addrCls: ' is-token', hotCopy: hot('agent-copy'), copy: function () { self.toastNow('Token copied.'); }, isForm: false }));
-      agents.push(item('isFoot', { cls: '', text: 'Disconnect it here whenever you like. Alcove keeps only a sealed fingerprint of it.',
-        hasB1: false, b1T: '', b1C: '', b1Spin: false, b1Hot: '', b1Go: null,
-        hasB2: true, b2T: 'Done', b2C: 'b-press', b2Hot: '', b2Go: function () {
-          var added = { id: 'tok-' + Date.now(), name: st.tokenName, how: 'Token', can: T.PERMS.filter(function (x, i) { return st.perms[i]; }).map(function (x) { return x.t; }).join(' · '), last: 'Not used yet' };
-          set({ agent: '', agents: st.agents.concat([added]) });
-        } }));
-    }
+    /* Agents have a page of their own. Connections keeps one row: who's connected, and the way there. */
+    var agentNames = st.agents.map(function (a) { return a.name; });
+    var saidAgents = agentNames.length < 2 ? agentNames.join('') : agentNames.slice(0, -1).join(', ') + ' and ' + agentNames[agentNames.length - 1];
+    var agents = [row('agents-open', 'Agents', 'link', {
+      tile: I.bot, cls: ' is-still',
+      help: agentNames.length ? saidAgents + (agentNames.length === 1 ? ' is connected.' : ' are connected.') : 'Use Alcove from your AI assistant, with only what you allow.',
+      goT: agentNames.length ? 'Open Agents' : 'Connect an agent', goI: I.right, hotGo: hot('agents-open'), goGo: function () { v.go('agents'); }
+    })];
 
     /* ---------------------------------------------------------------- Plan and credits */
     var M = st.minutes || who;
@@ -716,7 +672,7 @@ class Component extends DCLogic {
       calls: [block('calls-notes', 'Notes', notes), block('calls-rec', 'Recording in the room', recording)],
       av: [block('av-dev', '', devices)],
       alerts: [block('alerts-how', '', how), block('alerts-what', 'What reaches you', what)],
-      apps: [block('apps-google', '', google), block('apps-agents', 'Agents', agents)],
+      apps: [block('apps-google', '', google), block('apps-agents', '', agents)],
       plan: [block('plan-left', '', plan)],
       privacy: [block('privacy-see', '', see), block('privacy-del', '', del)]
     };
@@ -803,7 +759,6 @@ class Component extends DCLogic {
       else if (st.prompt) set({ prompt: '' });
       else if (st.out && !st.outBusy) set({ out: false });
       else if (st.del && st.del !== 'busy') set({ del: '' });
-      else if (st.agent) set({ agent: '' });
     };
     v.onScroll = function () { if (!self.__tick) self.__tick = requestAnimationFrame(function () { self.__tick = 0; self.look(false); }); };
     v.tabs = v.nav;

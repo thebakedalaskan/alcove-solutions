@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>A journey, step by step</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="call-tokens.css">
+<link rel="stylesheet" href="call.css">
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-note.css">
+<link rel="stylesheet" href="after.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="data-note.js"></script>
+<script src="icons.js"></script>
+<script src="after.js"></script>
+<script src="cove.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="cv sx light" style="{{rootStyle}}">
+<div class="sx-head"><span class="sx-n">{{j.n}}</span><div><h1>{{j.title}}</h1><p>{{j.blurb}}</p></div></div>
+<div class="sx-row">
+<sc-for list="{{frames}}" as="f" hint-placeholder-count="6">
+<div class="{{fCls}}">
+<p class="sx-did"><i>{{f.k}}</i><span>{{f.did}}</span></p>
+<div class="fl-box"><div class="fl-in"><dc-import name="After" step="{{f.step}}" mode="{{mode}}" hint-size="{{hint}}"></dc-import></div></div>
+<p class="sx-see">{{f.see}}</p>
+</div>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"journey":{"editor":"enum","options":["end","ended","leave","keep","none","guest","phone"],"default":"end"},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":3904,"height":808}}'>
+/* One journey as numbered frames, from what's pressed to what happens. Each frame is the moment at half size, held still. */
+class Component extends DCLogic {
+  renderVals() {
+    var CE = window.CE, j = CE.journey(this.props.journey || 'end'), phone = !!j.phone;
+    var n = j.frames.length, fw = phone ? 250 : 720;
+    return {
+      j: j, mode: (window.AH.hash().mode) || this.props.mode || 'dark',
+      fCls: 'sx-s' + (phone ? ' is-phone' : ''), hint: phone ? '390px,844px' : '1440px,900px',
+      rootStyle: 'width: ' + Math.max(1200, 128 + n * fw + (n - 1) * 44) + 'px',
+      frames: j.frames.map(function (f, k) { return { k: String(k + 1), did: f.did, see: f.see, step: f.step }; })
+    };
+  }
+}
+</script>
+</body>
+</html>

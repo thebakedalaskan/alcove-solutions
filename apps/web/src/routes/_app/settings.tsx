@@ -2,9 +2,9 @@ import { CalendarConnectResultSchema, DriveConnectResultSchema, type CalendarCon
 /*
  * Settings: change one thing and leave. You stand on the horizon, in the last of the light, with the tour and Sign out
  * beside you. Under the water the page is seven groups of panels with an index beside them, which on a narrow screen is a
- * strip that stays at the top. Every control saves as it changes. Search and you at the top right, the phone's avatar and
- * its Settings tab open it; the minutes in the side panel open Plan, and other pages link to the places in a
- * group they need (Nav.tsx).
+ * strip that stays at the top. Every control saves as it changes. Your menu opens it, from your face at the top right of
+ * every page (and in the phone's top bar), which makes way here since you're in the sky; your plan in the side panel opens
+ * Plan, and other pages link to the places in a group they need (Nav.tsx).
  */
 import { Avatar, Button, Evening, SettingRow, SettingsGroup, SettingsPanel } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
@@ -33,7 +33,9 @@ export const Route = createFileRoute('/_app/settings')({
   // moment, so the page doesn't move under the reader, and no longer.
   loader: async ({ context: { queryClient: qc } }) => {
     const calendar = qc.ensureQueryData(q.calendar()).catch(() => undefined);
-    await Promise.allSettled([qc.ensureQueryData(q.prefs()), qc.ensureQueryData(q.plan()), qc.ensureQueryData(q.team()), Promise.race([calendar, new Promise((r) => setTimeout(r, 1200))])]);
+    // On a team, Plan says whose and (to its admin) the licenses: the team comes with the plan.
+    const plan = qc.ensureQueryData(q.plan()).then((p) => (p.team ? qc.ensureQueryData(q.myTeam()) : null));
+    await Promise.allSettled([qc.ensureQueryData(q.prefs()), plan, qc.ensureQueryData(q.team()), Promise.race([calendar, new Promise((r) => setTimeout(r, 1200))])]);
   },
   component: Settings
 });

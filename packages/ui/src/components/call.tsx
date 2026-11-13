@@ -1,26 +1,28 @@
 /*
  * The call stage, always night: tiles, the dock and More, what's yours at the top right, captions, pointers on a share, and
  * how loud someone is for you. What's open on your stage wears a frame, what someone presents waits as a tile with the
- * people, and Share, in the dock, presents your screen, a board or the workspace in a step or two.
+ * people, and Share, in the dock, presents your screen, a board or the workspace in a step or two. Leave, at the end of the
+ * dock, asks whoever hosts whether to end the call for everyone or leave it going with someone else hosting.
  */
-import { forwardRef, useLayoutEffect, useMemo, useRef, useSyncExternalStore, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
+import { firstName } from '@alcove/api';
+import { forwardRef, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ButtonHTMLAttributes, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
 import { motion, useReducedMotion } from 'motion/react';
 import { Emoji, type EmojiName } from './emoji';
 import { Dots, EASE } from './motion';
 import { Popover, Tooltip } from './overlay';
-import { Avatar, PortraitArt, type AvatarPerson } from './people';
+import { andList, Avatar, PortraitArt, type AvatarPerson } from './people';
 import { Button, IconButton, Notice, RecDot, Slider, Spinner, Segmented, Switch } from './primitives';
 
 /**
  * Something about the whole call that stays until it's closed: notes stopped because the organizer's plan ran out, the
  * organizer's notes about to run out, the call about to reach its longest. It drops from the top of the stage, centred,
- * and goes only when × is pressed. `tone`: caution for what has stopped, info for what's coming. `action`: one quiet
- * button, such as Upgrade for an organizer on Free.
+ * and goes only when × is pressed. `tone`: caution for what has stopped, info for what's coming. `actions`: the ways on,
+ * in a row under the words, such as Get Pro and more hours for an organizer whose notes ran out.
  */
-export function CallBanner({ icon, tone = 'info', title, children, action, onClose }: {
-  icon: IconName; tone?: 'info' | 'caution' | undefined; title: ReactNode; children?: ReactNode; action?: ReactNode; onClose: () => void;
+export function CallBanner({ icon, tone = 'info', title, children, actions, onClose }: {
+  icon: IconName; tone?: 'info' | 'caution' | undefined; title: ReactNode; children?: ReactNode; actions?: ReactNode; onClose: () => void;
 }) {
   const reduce = useReducedMotion() ?? false;
   return (
@@ -30,8 +32,8 @@ export function CallBanner({ icon, tone = 'info', title, children, action, onClo
       transition={reduce ? { duration: 0 } : { duration: 0.42, ease: EASE.out }}>
       <span className="ic-limit-i"><Icon name={icon} size={18} /></span>
       <span className="ic-limit-t"><b>{title}</b>{children !== undefined && <small>{children}</small>}</span>
-      {action}
       <IconButton icon="x" label="Close" className="ic-limit-x" onClick={onClose} />
+      {actions !== undefined && actions !== null && <span className="ic-limit-a">{actions}</span>}
     </motion.div>
   );
 }
@@ -287,6 +289,17 @@ export interface CallFrameClose {
   ask?: CloseAskProps | undefined;
 }
 
+/**
+ * Who can edit what's in a frame, said after how it stands: "Everyone in the call can edit", "You can edit while you’re in the
+ * call", "Everyone in this room can edit". With `onPress` it's a button that opens who has it, in place of the name's menu
+ * (`open` says that's showing now, so pressing it again puts it away); without, it's only said.
+ */
+export interface CallFrameAccess {
+  label: string;
+  onPress?: (() => void) | undefined;
+  open?: boolean | undefined;
+}
+
 /** Present, on the bar of a board or the workspace open just for you. */
 export interface CallFramePresent {
   onPress: () => void;
@@ -297,20 +310,22 @@ export interface CallFramePresent {
 
 /**
  * The frame anything open on your stage wears: a board, the workspace or a screen. Its bar says whose it is (their arch, or
- * the kind's icon while nobody presents it), what it is and how it stands, then what's yours to press: following its
+ * the kind's icon while nobody presents it), what it is, how it stands and who can edit it, then what's yours to press: following its
  * presenter, Present, focus, Stop sharing and Close. The body fills the rest; `foot` floats at its foot, centred. It fills
  * the box it's given: the app places that box. The frame itself takes the keys from code (not from Tab), as it opens from its
  * tile: what it is is said, and Tab goes on to its bar.
  */
-export function CallFrame({ who, icon, name, meta, menu, following, present, focus, onStop, close, lit = false, focused = false, phone = false, foot, label, className, style, children }: {
+export function CallFrame({ who, icon, name, meta, access, menu, following, present, focus, onStop, close, lit = false, focused = false, phone = false, foot, label, className, style, children }: {
   /** Whoever presents it, in the arch; null while nobody does: the kind's icon in a small square instead. */
   who: AvatarPerson | null;
   /** The kind: `presentation` for a board, `folderOpen` for the workspace, `screen` for a screen. */
   icon: IconName;
   /** "Launch retro", "Launch review · 4 Nov", "Your screen", "Priya’s screen". */
   name: string;
-  /** "Open just for you", "You’re presenting · 3 following", "You’re presenting · a tab with sound", "Priya is presenting". */
+  /** "Only on your screen", "You’re presenting · 3 following", "You’re presenting · a tab with sound", "Priya is presenting". */
   meta: string;
+  /** Who can edit it, after `meta`: a board or the workspace everyone in the call can edit. */
+  access?: CallFrameAccess | null | undefined;
   /** The name is a menu ▾ with the app's rows (`.mi`), in a popover under it. Null: the name is plain text. */
   menu: { open: boolean; onOpenChange: (open: boolean) => void; label: string; children: ReactNode } | null;
   following: CallFrameFollowing | null;
@@ -346,6 +361,11 @@ export function CallFrame({ who, icon, name, meta, menu, following, present, foc
     if (pressed && (document.activeElement === null || document.activeElement === document.body)) followButton.current?.focus({ preventScroll: true });
   }, [followOn]);
   const toggleFollow = () => { followPressed.current = true; following?.onToggle(); };
+  /*
+   * Who can edit it opens who has it in the name's menu, which a press anywhere else puts away first: pressed while that's
+   * showing, it stays put away rather than opening again.
+   */
+  const accessWasOpen = useRef(false);
   const closeButton = close && (
     <button type="button" className="ic-close" aria-label={`Close ${name}`} onClick={close.ask ? undefined : close.onClose}>
       <Icon name="x" size={15} />Close{close.ask && <Icon name="down" size={13} className="chev" />}
@@ -370,7 +390,16 @@ export function CallFrame({ who, icon, name, meta, menu, following, present, foc
                 {menu.children}
               </Popover>
             ) : <span className="ic-fname">{title}</span>}
-            <span className="ic-fmeta">{meta}</span>
+            <span className="ic-fstat">
+              <span className="ic-fmeta">{meta}</span>
+              {access && (access.onPress ? (
+                <button type="button" className="ic-facc" aria-expanded={access.open ?? false} title="Who’s in it"
+                  onPointerDown={() => { accessWasOpen.current = access.open === true; }}
+                  onClick={() => { if (accessWasOpen.current) { accessWasOpen.current = false; return; } access.onPress?.(); }}>
+                  <Icon name="people" size={14} /><span className="t">{access.label}</span>
+                </button>
+              ) : <span className="ic-facc"><Icon name="people" size={14} /><span className="t">{access.label}</span></span>)}
+            </span>
           </div>
         </div>
         <div className="ic-fend">
@@ -512,8 +541,6 @@ export interface PresentAskProps {
   phone?: boolean | undefined;
 }
 
-/** Names as a sentence says them, as the board picker does: "Theo", "Theo and Sam", "Theo, Sam and Kofi". */
-const andList = (names: string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`);
 
 /** Present's question, under `anchor` (Present on the frame's bar). */
 export function PresentAsk({ open, onOpenChange, names, board, where, onLetIn, onWithout, busy = false, phone = false, anchor }: PresentAskProps & { anchor: ReactNode }) {
@@ -571,6 +598,149 @@ export function FramePager({ at, total, part, onBack, onNext, notes }: {
       )}
     </div>
   );
+}
+
+/* ---------- Leave, for whoever hosts ---------- */
+
+/** Someone who could host if you leave the call going: their participant ID, and who they are. */
+export interface LeaveHost { id: string; person: AvatarPerson }
+
+/**
+ * Leave's question for whoever hosts: end the call for everyone, or leave it going with someone else hosting (the best person
+ * chosen already, and Change for who else could). Anyone who doesn't host is out at once, and alone in a call pressing Leave
+ * ends it, so neither is asked; alone, any other way out (going back a page, say) asks, with End for everyone only.
+ */
+export interface LeaveChoicesProps {
+  onEnd: () => void;
+  /** The call has notes: End's line says everyone invited gets them. */
+  notes: boolean;
+  /** You're the only one in the call: End's line says leaving ends it. */
+  alone?: boolean | undefined;
+  /** Who'd host if you leave it going, best first. Empty: nobody here can host (guests can't), so End is the only choice. */
+  hosts: LeaveHost[];
+  /** Leave it going, with this one (a `LeaveHost`'s `id`) hosting. */
+  onKeep: (id: string) => void;
+  /** You host in someone's place (their first name): leaving it going comes first, until they're back. */
+  standingInFor?: string | null | undefined;
+  /** Which choice is on its way: it says so ("Ending the call…", "Leaving…") and keeps the keys, and neither can be pressed again. */
+  busy?: 'end' | 'keep' | null | undefined;
+  /** Why the last choice didn't go through, in caution under the choices. */
+  error?: string | null | undefined;
+}
+
+export interface LeaveAskProps extends LeaveChoicesProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** "Leave Team standup" */
+  title: string;
+  /** The dock's Leave. */
+  anchor: ReactNode;
+  /** A phone: a sheet from the bottom. */
+  phone?: boolean | undefined;
+}
+
+/**
+ * The question's two steps: the choices, and Change's list of who could host, in the one place. Who's chosen to host is kept
+ * here, so it starts again from the best person each time the question opens.
+ */
+function LeaveSteps({ title, onEnd, notes, alone = false, hosts, onKeep, standingInFor = null, busy = null, error = null, onStay }: LeaveChoicesProps & {
+  title: string; onStay?: (() => void) | undefined;
+}) {
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [changing, setChanging] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const host = hosts.find((h) => h.id === chosen) ?? hosts[0] ?? null;
+  const first = host ? firstName(host.person.name) : '';
+  const moving = busy !== null;
+
+  /* Going from one step to the other, the keys go with it: to the chosen host in the list, and back to Change. */
+  const moved = useRef(false);
+  useLayoutEffect(() => {
+    if (!moved.current) return;
+    moved.current = false;
+    box.current?.querySelector<HTMLElement>(changing ? '[role="radio"][aria-checked="true"]' : '.ic-lv-change')?.focus({ preventScroll: true });
+  }, [changing]);
+  const step = (to: boolean) => { moved.current = true; setChanging(to); };
+
+  if (changing && host) {
+    return (
+      <div ref={box} className="ic-leavesteps">
+        <div className="ic-lv-step">
+          <button type="button" className="ic-sp-back" aria-label={`Back to ${title}`} onClick={() => step(false)}><Icon name="left" size={16} />Back</button>
+          <b className="ac-clamp-1">Who hosts after you</b>
+        </div>
+        <div role="radiogroup" aria-label="Who hosts after you" className="ic-lv-hosts">
+          {hosts.map((h) => (
+            <button key={h.id} type="button" role="radio" aria-checked={h.id === host.id} className="ic-lv-host"
+              onClick={() => { setChosen(h.id); step(false); }}>
+              <Avatar person={h.person} size={28} />
+              <span className="nm ac-clamp-1">{h.person.name}</span>
+              <Icon name="check" size={16} className="tick" />
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const endLine = alone ? 'You’re the only one here, so leaving ends the call.'
+    : hosts.length === 0 ? 'Guests can’t host, so leaving ends it for everyone.' : notes ? 'Everyone invited gets the notes.' : 'It ends for everyone in the call.';
+  const end = (
+    <button key="end" type="button" className="ic-cm" disabled={busy === 'keep'} aria-disabled={busy === 'end' || undefined} aria-busy={busy === 'end' || undefined}
+      onClick={moving ? undefined : onEnd}>
+      <span className="sq">{busy === 'end' ? <Spinner /> : <Icon name="people" size={18} />}</span>
+      <span><b>{busy === 'end' ? 'Ending the call…' : 'End for everyone'}</b><small>{endLine}</small></span>
+    </button>
+  );
+  const keep = host && (
+    <div key="keep" className={cn('ic-lv-keep', hosts.length > 1 && 'has-change')}>
+      <button type="button" className="ic-cm" disabled={busy === 'end'} aria-disabled={busy === 'keep' || undefined} aria-busy={busy === 'keep' || undefined}
+        onClick={moving ? undefined : () => onKeep(host.id)}>
+        <span className="sq">{busy === 'keep' ? <Spinner /> : <Icon name="signOut" size={18} />}</span>
+        <span>
+          <b>{busy === 'keep' ? 'Leaving…' : `Leave, ${first} hosts`}</b>
+          <small>{standingInFor ? `It goes on, with ${first} hosting until ${standingInFor} is back.` : 'It goes on. Rejoin, and you host again.'}</small>
+        </span>
+      </button>
+      {hosts.length > 1 && <button type="button" className="ic-lv-change" aria-label={`Change who hosts: ${host.person.name} now`} disabled={moving} onClick={() => step(true)}>Change</button>}
+    </div>
+  );
+  return (
+    <div ref={box} className="ic-leavesteps">
+      <p className="ic-askh ac-clamp-2">{title}</p>
+      {standingInFor ? [keep, end] : [end, keep]}
+      {error && <p className="ic-lv-error" role="alert"><Icon name="alert" size={15} />{error}</p>}
+      {onStay && <button type="button" className="ic-lv-stay" disabled={moving} onClick={onStay}>Stay in the call</button>}
+    </div>
+  );
+}
+
+/** Leave's question, over `anchor` (Leave, at the end of the dock), the way Close's opens under Close. A sheet on a phone. */
+export function LeaveAsk({ open, onOpenChange, title, anchor, phone = false, ...choices }: LeaveAskProps): ReactElement {
+  return (
+    <Popover open={open} onOpenChange={onOpenChange} anchor={anchor} side="top" align="end" stage label={title} className={cn('ic-leaveask', phone && 'is-sheet')}>
+      <LeaveSteps title={title} {...choices} />
+    </Popover>
+  );
+}
+
+/**
+ * The same question for the floating call's own window, in place of its picture and controls. It takes the keys as it shows,
+ * and with `onStay`, Stay in the call and Escape put it away.
+ */
+export function LeaveChoices({ onStay, ...props }: LeaveChoicesProps & { title: string; onStay?: (() => void) | undefined }): ReactElement {
+  const box = useRef<HTMLDivElement>(null);
+  const stay = useRef(onStay);
+  useLayoutEffect(() => { stay.current = onStay; });
+  useLayoutEffect(() => {
+    const root = box.current;
+    if (!root) return undefined;
+    root.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape' && stay.current) { e.preventDefault(); stay.current(); } };
+    root.addEventListener('keydown', key);
+    return () => root.removeEventListener('keydown', key);
+  }, []);
+  return <div ref={box} className="ic-leavechoices" role="group" aria-label={props.title}><LeaveSteps {...props} onStay={onStay} /></div>;
 }
 
 /* ---------- Share, from the dock ---------- */

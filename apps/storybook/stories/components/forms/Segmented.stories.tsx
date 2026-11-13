@@ -49,8 +49,3 @@ export const WithIcons: Story = {
 export const Disabled: Story = {
   args: { label: 'Remind me before a call', value: '5', disabled: true, options: [{ value: '1', label: '1 min' }, { value: '5', label: '5 min' }, { value: 'off', label: 'Off' }] }
 };
-/** One choice that can't be made now: a board in each room needs the call's workspace, which it hasn't got yet. */
-export const OneDisabled: Story = {
-  name: 'One choice disabled',
-  args: { label: 'Board', value: 'none', options: [{ value: 'none', label: 'None' }, { value: 'each', label: 'In each room', disabled: true }, { value: 'shared', label: 'Shared' }] }
-};

@@ -5,9 +5,9 @@
  * in place of Ring. Past thirteen people the line recedes, and the list of everyone finds whoever's too far away to read.
  */
 import { errorMessage, type NoteSummary, type Person, type Team } from '@alcove/api';
-import { Avatar, Button, GhostArch, Icon, IconButton, PickList, Popover, PopoverClose, buttonClass, cn, useToast, type PickRow } from '@alcove/ui';
+import { Avatar, Button, GhostArch, Icon, IconButton, PickList, Popover, PopoverClose, buttonClass, cn, useToast, type PickRow, type TeamArchButton } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { cloneElement, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useFloodToCall } from '~/features/calls/flow/parts';
 import { useCallFlow } from '~/features/shell/context';
 import { callName, fold } from '~/lib/people';
@@ -94,7 +94,7 @@ function Standing({ arch: a, person, style, sunny, between, ring }: { arch: Arch
   );
 }
 
-/** Notes listed in a popover before Open in Notes. */
+/** Notes listed in a popover before Open in Calls. */
 const NOTES = 5;
 
 /** What's in someone's popover: who they are, what you can do, and the notes you both have, a step further in. */
@@ -117,10 +117,10 @@ function About({ arch: a, person, between, ring, onLeave }: { arch: Arch; person
         </div>
         <div className="tp-pn">
           {shared.slice(0, NOTES).map((n) => (
-            <Link key={n.id} to="/notes/$noteId" params={{ noteId: n.id }} className="tp-pn-r"><span className="ac-clamp-1">{n.title}</span><small>{noteDay(n.startedAt, now)}</small></Link>
+            <Link key={n.id} to="/calls/$noteId" params={{ noteId: n.id }} className="tp-pn-r"><span className="ac-clamp-1">{n.title}</span><small>{noteDay(n.startedAt, now)}</small></Link>
           ))}
         </div>
-        <Link to="/notes" hash={`with=${encodeURIComponent(person.email)}`} className="tp-pop-l is-all"><span>Open in Notes</span><Icon name="right" size={14} className="go" /></Link>
+        <Link to="/calls" hash={`with=${encodeURIComponent(person.email)}`} className="tp-pop-l is-all"><span>Open in Calls</span><Icon name="right" size={14} className="go" /></Link>
       </>
     );
   }
@@ -178,4 +178,23 @@ function AllList({ me, team, onFind }: { me: Person; team: Team; onFind: (email:
     }))
   ].filter((r) => !typed || fold(r.name).includes(typed) || r.person.email.toLowerCase().includes(typed)).sort((a, b) => a.name.localeCompare(b.name));
   return <PickList label="Find someone" placeholder="Find someone" query={query} onQuery={setQuery} rows={rows} tall none="Nobody here by that name." onPress={(r) => onFind(r.person.email)} />;
+}
+
+/**
+ * Someone's popover around an arch that isn't on the company's line: the team's, on a plan (features/team/OnTeam.tsx). It's
+ * the same popover, with Ring, Schedule and the notes you both have, and the arch takes the focus back as it closes.
+ */
+export function PersonPop({ person, me = false, between, anchor }: { person: Person; me?: boolean | undefined; between: Between; anchor: TeamArchButton }) {
+  const { ring, flood } = useRing();
+  const pop = usePop(personPop(person.email));
+  const arch = useRef<HTMLButtonElement>(null);
+  const standing: Arch = { key: person.email, person, me, ghost: false, d: 0, k: 1, far: false, haze: 0, z: 1, px: 0 };
+  return (
+    <>
+      <Popover {...pop} side="bottom" align="center" caret label={listed(person)} className="tp-pop is-person" anchor={cloneElement(anchor, { ref: arch })}>
+        <About arch={standing} person={person} between={between} ring={ring} onLeave={() => { arch.current?.focus({ preventScroll: true }); pop.onOpenChange(false); }} />
+      </Popover>
+      {flood}
+    </>
+  );
 }

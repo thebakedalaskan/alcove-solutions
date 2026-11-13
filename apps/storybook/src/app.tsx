@@ -12,8 +12,8 @@ import { useState } from 'react';
 import { getRouter } from '~/router';
 import { Route as root } from '~/routes/__root';
 
-/** The router for one story, at `path`. */
-function routerAt(path: string) {
+/** The router for one story, at `path`. A story that puts something over the app (checkout, src/checkout.tsx) shares its query client. */
+export function routerAt(path: string) {
   Reflect.deleteProperty(root.options, 'shellComponent');
   const router = getRouter();
   const browser = router.history;
@@ -24,7 +24,7 @@ function routerAt(path: string) {
 }
 
 export interface AppProps {
-  /** Where the app opens: `/home`, `/notes`, `/notes/n2`, `/team`, `/record`, `/settings`, `/call/<code>`... */
+  /** Where the app opens: `/home`, `/calls`, `/calls/n2`, `/team`, `/record`, `/settings`, `/call/<code>`... */
   path: string;
 }
 

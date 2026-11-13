@@ -422,7 +422,7 @@ export function MomentView({ moment, startedAt, me, onLive }: { moment: Moment; 
       <div className="ic-scroll">
         {moment.error ? <div className="cu-moment-msg"><Notice tone="caution">{moment.error}</Notice></div>
           : !found ? <div className="cu-moment-msg ic-writing"><Dots />Opening the transcript</div> : (
-            <div className="tx cu-moment" role="log" aria-label="What was said around that moment">
+            <div className="tx-log cu-moment" role="log" aria-label="What was said around that moment">
               {found.lines.map((l, i) => {
                 const prev = found.lines[i - 1];
                 const marked = l.id === found.lineId;

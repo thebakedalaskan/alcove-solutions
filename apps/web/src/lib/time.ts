@@ -15,10 +15,29 @@ export const hms = (d: Date | string) => new Date(d).toLocaleTimeString('en-GB',
 export const shortDay = (d: Date) => `${weekday(d).slice(0, 3)} ${d.getDate()} ${month(d).slice(0, 3)}`;
 /** "3 Nov" */
 export const dayMonth = (d: Date) => `${d.getDate()} ${month(d).slice(0, 3)}`;
+/** "3 November": a day said in a sentence, such as when notes come back. */
+export const dayFullMonth = (d: Date) => `${d.getDate()} ${month(d)}`;
+/** "Nov" */
+export const shortMonth = (d: Date) => month(d).slice(0, 3);
 /** When something went: "16:40" today, "Thu 17:55" in the week before, then "3 Nov". */
 export const wentAt = (iso: string, now = new Date()): string => { const d = new Date(iso); const n = -daysFromToday(d, now); return n <= 0 ? hm(d) : n < 7 ? `${weekday(d).slice(0, 3)} ${hm(d)}` : dayMonth(d); };
 /** "Tuesday 3 November" */
 export const longDay = (d: Date) => `${weekday(d)} ${d.getDate()} ${month(d)}`;
+/** "Thursday 4 November 2027": a day far enough off to need its year, such as when a plan ends. */
+export const fullDate = (d: Date) => `${longDay(d)} ${d.getFullYear()}`;
+/** "4 Nov 2027" */
+export const shortDate = (d: Date) => `${dayMonth(d)} ${d.getFullYear()}`;
+/** "16:12", "tomorrow 16:12", "Thu 12 Nov 16:12": until when something is open, such as a payment's address. */
+export function byWhen(iso: string, now: number): string {
+  const days = daysFromToday(new Date(iso), new Date(now));
+  if (days <= 0) return hm(iso);
+  return `${days === 1 ? 'tomorrow' : shortDay(new Date(iso))} ${hm(iso)}`;
+}
+/** "14:30" today, "tomorrow", "Mon 9 Nov": the day something happens by, for a line that has no room for more. */
+export function byDay(iso: string, now: number): string {
+  const days = daysFromToday(new Date(iso), new Date(now));
+  return days <= 0 ? hm(iso) : days === 1 ? 'tomorrow' : shortDay(new Date(iso));
+}
 /** For lists of notes: "Today", "Yesterday" or "Fri 30 Oct". */
 export function noteDay(iso: string, now = new Date()): string {
   const d = new Date(iso);
@@ -31,7 +50,7 @@ export const noteAt = (iso: string, now = new Date()): string => `${noteDay(iso,
 export function noteWhen(startedAt: string, seconds: number): string {
   const a = new Date(startedAt);
   const b = new Date(a.getTime() + seconds * 1000);
-  return `${shortDay(a)} · ${hm(a)}–${hm(b)} · ${hoursAndMinutes(Math.max(1, Math.round(seconds / 60)))}`;
+  return `${shortDay(a)} · ${hm(a)}–${hm(b)} · ${callLength(seconds)}`;
 }
 /** Groups for the notes list, by day: "Today", "Yesterday", "This week", "Last week", then month names. */
 export function noteGroup(iso: string, now = new Date()): string {
@@ -55,15 +74,20 @@ export function untilLabel(minutes: number): string {
   const m = minutes % 60;
   return `in ${h} h${m ? ` ${m} min` : ''}`;
 }
-/** How long ago: "just now", "12 min ago", "2 h ago", "yesterday", the weekday this past week ("Friday"), else "Tue 27 Oct". */
-export function agoLabel(iso: string, now = Date.now()): string {
+/**
+ * How long ago: "just now", "12 min ago", "2 h ago", "yesterday", the weekday this past week ("Friday"), else "Tue 27 Oct".
+ * `short` for a line under something small: "Fri" this past week, else "27 Oct".
+ */
+export function agoLabel(iso: string, now = Date.now(), short = false): string {
   const mins = Math.floor((now - new Date(iso).getTime()) / 60_000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins} min ago`;
   const days = -daysFromToday(new Date(iso), new Date(now));
   if (days === 0) return `${Math.floor(mins / 60)} h ago`;
   if (days === 1) return 'yesterday';
-  return days < 7 ? weekday(new Date(iso)) : shortDay(new Date(iso));
+  const d = new Date(iso);
+  if (days < 7) return short ? weekday(d).slice(0, 3) : weekday(d);
+  return short ? dayMonth(d) : shortDay(d);
 }
 /** "6 h 40 min", "25 min" */
 export function hoursAndMinutes(minutes: number): string {
@@ -71,6 +95,8 @@ export function hoursAndMinutes(minutes: number): string {
   const h = Math.floor(m / 60);
   return h ? `${h} h${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`;
 }
+/** How long a call ran, from its seconds: "14 min", "1 h 12 min", and never under a minute. */
+export const callLength = (seconds: number) => hoursAndMinutes(Math.max(1, Math.round(seconds / 60)));
 /** "4:05" for positions in a recording. */
 export const position = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 /** The day something happened, after a "·": "today", "yesterday", "Mon" in the past week, else "27 Oct" (and the year if it isn't this one). */

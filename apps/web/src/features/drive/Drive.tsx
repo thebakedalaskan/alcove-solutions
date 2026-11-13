@@ -1,148 +1,146 @@
 /*
- * The Drive (docs: Product › The Drive): every workspace you're in, newest first. One made for a call says which call, and
- * when; one made by hand says when it was made. Each opens on its own page, and any of them can be shared from there. New
- * workspace is named in place, in the sky, and opens once it's made. Before the first, it says where they come from. Whoever
- * runs a workspace can delete it from its row's menu, which asks first, in place.
+ * The Drive (docs: Product › The Drive): every workspace you're in and everything in them, from your calls and made on
+ * purpose. A slim band of evening holds the page's title, the search, which finds what's called what as you type, and New,
+ * its one filled button. Under it, the tree of places beside a sheet of large previews of whichever is picked: Recent, by
+ * day; Shared with you; a workspace, with its folders, calls and files; a call's own workspace, with the call and what it
+ * made; Trash, across every workspace. A document opens beside the tree, in the workspace it lives in, and ⤢ takes it full
+ * screen. On a phone the tree becomes chips along the top, New sits beside the search, and a document opens full screen.
  */
-import { errorMessage, type TeamAccess, type WorkspaceSummary } from '@alcove/api';
-import { Button, EmptyState, Evening, Icon, IconButton, Popover, Segmented, cn, useToast, type Choice } from '@alcove/ui';
+import type { WorkspaceSummary } from '@alcove/api';
+import { Button, Dots, EmptyState, Evening, Icon, IconButton, Kbd, cn } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
-import { useEffect, useRef, useState, type FocusEvent, type FormEvent, type KeyboardEvent } from 'react';
-import { namesIn, peopleWords } from '~/features/workspace/List';
-import { q, useCreateWorkspace, useDeleteWorkspace } from '~/lib/queries';
-import { daysFromToday, hm, noteDay, shortDay } from '~/lib/time';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ariaShortcut, overlayOpen, shortcut, withMod } from '~/lib/keys';
+import { DocumentBeside } from '~/features/workspace/Beside';
+import { q } from '~/lib/queries';
+import { canEdit, useDriveActions, type DriveActions } from './actions';
+import { CallSheet } from './CallSpace';
+import { CallsList, SpacesList } from './Lists';
+import { NewButton } from './New';
+import { Found, Recent, SharedWithYou, sharedIn } from './Recent';
+import { SheetHead } from './Sheet';
+import { SpaceSheet } from './Space';
+import { TrashSheet } from './Trash';
+import { Tree } from './Tree';
+import { callTitle, filesIn, isCallSpace, marksFor, type DriveAt, type DriveFile } from './places';
 
-/** When something was made, as a row says it: "today", "yesterday" or "Fri 30 Oct". */
-function madeOn(iso: string): string {
-  const n = daysFromToday(new Date(iso));
-  return n === 0 ? 'today' : n === -1 ? 'yesterday' : shortDay(new Date(iso));
-}
-
-/** What a row says under a workspace's name: the call it was made for, or when it was made, and who's in it. */
-function aboutOf(w: WorkspaceSummary): string {
-  if (w.role === null) return 'Only what’s shared with you';
-  const made = w.call ? `From ${w.call.title}, ${noteDay(w.call.at)} at ${hm(w.call.at)}` : w.createdAt ? `Made ${madeOn(w.createdAt)}` : '';
-  return [made, w.teamAccess === 'team' ? 'Whole team' : peopleWords(w.people)].filter(Boolean).join(' · ');
-}
-
-/** A workspace's menu, for its admins: Delete workspace, which asks once in place, and waits for Alcove to say it's done. */
-function RowMenu({ id, name }: { id: string; name: string }) {
-  const toast = useToast();
-  const remove = useDeleteWorkspace();
-  const keep = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
-  const [sure, setSure] = useState(false);
-  useEffect(() => { if (sure) keep.current?.focus(); }, [sure]);
-  const change = (o: boolean) => { if (remove.isPending) return; setOpen(o); if (!o) setSure(false); };
-  const drop = async () => {
-    try {
-      await remove.mutateAsync(id);
-      setOpen(false);
-      setSure(false);
-      toast(`${name} is deleted for everyone`, { icon: 'trash' });
-    } catch (e) {
-      toast(errorMessage(e), { icon: 'alert' });
-    }
-  };
-  return (
-    <Popover open={open} onOpenChange={change} align="end" label={`${name}: more`} className="dv-pop" tip="More"
-      anchor={<IconButton icon="more" label={`More for ${name}`} title={undefined} className="dv-more" />}>
-      {sure ? (
-        <div className="dv-sure" role="alertdialog" aria-label={`Delete ${name}`}>
-          <b className="ac-clamp-2">Delete {name} for good?</b>
-          <p>It goes for everyone in it, with every document and board. Notes from calls stay in Notes. Nobody can bring it back.</p>
-          <div className="dv-sure-a">
-            <Button ref={keep} variant="quiet" size="sm" disabled={remove.isPending} onClick={() => change(false)}>Keep it</Button>
-            <Button variant="primary" size="sm" loading={remove.isPending} onClick={() => void drop()}>Delete</Button>
-          </div>
-        </div>
-      ) : (
-        <button type="button" className="dv-pop-row" onClick={() => setSure(true)}>
-          <span className="dv-pop-ic"><Icon name="trash" size={18} /></span>
-          <span className="dv-pop-b"><b>Delete workspace</b><small>For everyone. Can’t be undone.</small></span>
-        </button>
-      )}
-    </Popover>
-  );
-}
-
-function Row({ w, name }: { w: WorkspaceSummary; name: string }) {
-  return (
-    <li className="dv-item">
-      <Link to="/drive/$workspaceId" params={{ workspaceId: w.id }} className={cn('dv-row', w.call && 'is-call')}>
-        <span className="dv-ic"><Icon name={w.role === null ? 'lock' : w.call ? 'video' : 'folders'} size={19} /></span>
-        <span className="dv-t"><b className="ac-clamp-1">{name}</b><small className="ac-clamp-1">{aboutOf(w)}</small></span>
-        <span className="dv-end"><Icon name="chevron" size={16} /></span>
-      </Link>
-      {/* Outside the link, so pressing it opens the menu and nothing else. */}
-      {w.role === 'admin' ? <RowMenu id={w.id} name={name} /> : <span aria-hidden="true" />}
-    </li>
-  );
-}
-
-/** Who's in a team's workspace: everyone licensed on the team, or only the people added. */
-export const TEAM_ACCESS: Choice<TeamAccess>[] = [{ value: 'team', label: 'Whole team', icon: 'people' }, { value: 'added', label: 'Only people I add', icon: 'lock' }];
-
-/**
- * New workspace, then its name in the button's place: Enter makes it and opens it, Esc puts it away. On a team, while
- * licensed, it's the team's, and under the name it asks who's in it: the whole team (as it starts), or only the people added.
- */
-function Make() {
-  const [naming, setNaming] = useState(false);
-  const [name, setName] = useState('');
-  const [access, setAccess] = useState<TeamAccess>('team');
-  const onTeam = useQuery(q.plan()).data?.team?.licensed === true;
-  const create = useCreateWorkspace();
-  const navigate = useNavigate();
-  const push = useToast();
+/** The search in the sky. ⌘K comes here on this page, in place of the palette; Esc clears it. */
+function Search({ text, onText }: { text: string; onText: (text: string) => void }) {
   const field = useRef<HTMLInputElement>(null);
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    const to = name.trim();
-    if (!to || create.isPending) return;
-    create.mutateAsync({ name: to, access: onTeam ? access : undefined }).then(({ id }) => navigate({ to: '/drive/$workspaceId', params: { workspaceId: id } }), (err: unknown) => { push(errorMessage(err), { icon: 'alert' }); });
-  };
-  const keys = (e: KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Escape') { e.preventDefault(); setNaming(false); setName(''); setAccess('team'); } };
-  /** Leaving the name empty puts it away, unless focus went to who's in it. */
-  const blur = (e: FocusEvent<HTMLInputElement>) => {
-    if (name.trim() || (e.relatedTarget instanceof Node && e.currentTarget.closest('.dv-make')?.contains(e.relatedTarget))) return;
-    setNaming(false);
-  };
-  if (!naming) return <Button variant="primary" onClick={() => { setNaming(true); requestAnimationFrame(() => field.current?.focus()); }}><Icon name="plus" size={18} />New workspace</Button>;
+  /* In the capture phase, so the shell doesn't open the palette as well. With something open over the page, it's the shell's. */
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if (!withMod(e) || e.key.toLowerCase() !== 'k' || overlayOpen()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      field.current?.focus();
+      field.current?.select();
+    };
+    addEventListener('keydown', on, { capture: true });
+    return () => removeEventListener('keydown', on, { capture: true });
+  }, []);
   return (
-    <div className="dv-make">
-      <form className="dv-name" onSubmit={submit}>
-        <input ref={field} type="text" aria-label="Name this workspace" placeholder="Name this workspace" value={name} maxLength={120} autoComplete="off" enterKeyHint="done"
-          onChange={(e) => setName(e.target.value)} onKeyDown={keys} onBlur={blur} />
-        <Button variant="primary" type="submit" loading={create.isPending} disabled={!name.trim()}>Make it</Button>
-      </form>
-      {onTeam && (
-        <div className="dv-who">
-          <Segmented label="Who’s in it" value={access} onChange={setAccess} options={TEAM_ACCESS} />
-          <p>{access === 'team' ? 'Everyone licensed on your team can open and edit it.' : 'Only you, until you add people.'}</p>
-        </div>
-      )}
+    <div className="dv-q">
+      <Icon name="search" size={18} />
+      <input ref={field} type="search" value={text} placeholder="Find a document, a board or a file" aria-label="Find a document, a board or a file" aria-keyshortcuts={ariaShortcut('K')}
+        autoComplete="off" spellCheck={false} enterKeyHint="search" maxLength={200} onChange={(e) => onText(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Escape' && text) { e.preventDefault(); onText(''); } }} />
+      {text ? <IconButton icon="x" size={15} label="Clear search" className="dv-q-x" onClick={() => { onText(''); field.current?.focus(); }} /> : <Kbd className="dv-q-k">{shortcut('K')}</Kbd>}
     </div>
   );
 }
 
-export function Drive() {
+type Chip = 'recent' | 'shared' | 'workspaces' | 'calls' | 'trash';
+const CHIPS: { chip: Chip; label: string; to: DriveAt }[] = [
+  { chip: 'recent', label: 'Recent', to: {} }, { chip: 'shared', label: 'Shared with you', to: { show: 'shared' } },
+  { chip: 'workspaces', label: 'Workspaces', to: { show: 'workspaces' } }, { chip: 'calls', label: 'From calls', to: { show: 'calls' } },
+  { chip: 'trash', label: 'Trash', to: { show: 'trash' } }
+];
+/**
+ * On a phone, the places along the top: the one you're in, or the one the workspace you're in is under, is lit. From calls
+ * is there once there's a call's workspace to list.
+ */
+function Chips({ at, current, calls, actions }: { at: DriveAt; current: WorkspaceSummary | undefined; calls: boolean; actions: DriveActions }) {
+  const lit: Chip | null = at.q ? null : current ? (isCallSpace(current) ? 'calls' : 'workspaces') : at.show === undefined ? 'recent' : at.show;
+  return (
+    <nav className="dv-chips" aria-label="Places in the Drive">
+      {CHIPS.filter((c) => calls || c.chip !== 'calls').map((c) => <button key={c.chip} type="button" className={cn(lit === c.chip && 'is-on')} aria-current={lit === c.chip ? 'page' : undefined} onClick={() => actions.go(c.to)}>{c.label}</button>)}
+    </nav>
+  );
+}
+
+/** What the sheet shows for where you are. */
+function Place({ at, spaces, files, loading, failed, actions, onClear, onRetry }: {
+  at: DriveAt; spaces: readonly WorkspaceSummary[]; files: readonly DriveFile[]; loading: boolean; failed: boolean; actions: DriveActions; onClear: () => void; onRetry: () => void;
+}) {
+  if (at.q) return <Found text={at.q} files={files} spaces={spaces} actions={actions} onClear={onClear} />;
+  if (at.show === 'trash') return <TrashSheet spaces={spaces} actions={actions} />;
+  if (at.show === 'workspaces') return <SpacesList spaces={spaces} actions={actions} />;
+  if (at.show === 'calls') return <CallsList spaces={spaces} actions={actions} />;
+  if (at.ws && at.doc) {
+    const { ws, doc } = at;
+    return <DocumentBeside key={`${ws}/${doc}`} workspaceId={ws} documentId={doc} onFullScreen={() => actions.openFull(ws, doc)} onOpen={(id) => actions.go({ ws, doc: id })} onClose={() => actions.go({ ws }, { replace: true })} />;
+  }
+  if (at.ws) {
+    const w = spaces.find((s) => s.id === at.ws);
+    if (w && isCallSpace(w)) return <CallSheet key={w.id} w={w} actions={actions} />;
+    if (w) return <SpaceSheet key={w.id} w={w} mark={marksFor(spaces)(w)} at={at} actions={actions} />;
+    return (
+      <EmptyState className="dv-none" title="You can’t open this workspace" action={<Button variant="secondary" onClick={() => actions.go({})}>Back to Recent</Button>}>
+        It may have been deleted, or you were taken out of it.
+      </EmptyState>
+    );
+  }
+  if (failed) {
+    const title = at.show === 'shared' ? 'Shared with you' : 'Recent';
+    return <><SheetHead title={title} /><EmptyState className="dv-none" title="Your files didn’t load" action={<Button variant="secondary" onClick={onRetry}>Try again</Button>}>Alcove couldn’t be reached. Check your connection.</EmptyState></>;
+  }
+  if (loading) return <><SheetHead title={at.show === 'shared' ? 'Shared with you' : 'Recent'} /><p className="dv-loading"><Dots /></p></>;
+  if (at.show === 'shared') return <SharedWithYou files={sharedIn(files, spaces)} spaces={spaces} actions={actions} />;
+  return <Recent files={files} spaces={spaces} actions={actions} />;
+}
+
+export function Drive({ at }: { at: DriveAt }) {
   const spaces = useQuery(q.workspaces()).data ?? [];
-  const named = namesIn(spaces);
+  const library = useQuery(q.documents());
+  const actions = useDriveActions();
+  const files = useMemo(() => filesIn(library.data), [library.data]);
+  const shared = useMemo(() => sharedIn(files, spaces).length, [files, spaces]);
+  const current = at.ws ? spaces.find((w) => w.id === at.ws) : undefined;
+  const target = current && canEdit(current.role) ? { workspaceId: current.id, folder: at.folder ?? null } : null;
+  /*
+   * What's typed shows at once, and goes in the address as it's typed, so Back and Forward go through what was searched.
+   * Only a change that didn't come from typing here (Back, a link) puts words in the field.
+   */
+  const [text, setText] = useState(at.q ?? '');
+  const typed = useRef(at.q ?? '');
+  useEffect(() => {
+    if ((at.q ?? '') === typed.current) return;
+    typed.current = at.q ?? '';
+    setText(at.q ?? '');
+  }, [at.q]);
+  const search = (to: string) => {
+    setText(to);
+    typed.current = to.trim() ? to : '';
+    actions.go(to.trim() ? { ...at, q: to } : { ...at, q: undefined }, { replace: true });
+  };
+  const label = at.q ? 'What was found' : at.show === 'shared' ? 'Shared with you' : at.show === 'trash' ? 'Trash' : at.show === 'workspaces' ? 'Workspaces'
+    : at.show === 'calls' ? 'From calls' : current ? (isCallSpace(current) ? callTitle(current) : current.name ?? 'A workspace') : 'Recent';
   return (
     <Evening moment="drive" className="dv">
-      <header className="dusk-top" style={{ '--d': 0 }}><h1 className="dusk-title">Drive</h1></header>
-      <section className="dv-sky" style={{ '--d': 1 }} aria-label="New workspace">
-        <p>Workspaces hold documents and boards. Use one in a call and its notes, follow-ups and transcript land there, in a folder of their own.</p>
-        <Make />
-      </section>
-      <div className="dv-water" style={{ '--d': 2 }}>
-        {spaces.length === 0 ? (
-          <EmptyState className="dv-none" title="Nothing here yet">Make one here, or when you schedule a call.</EmptyState>
-        ) : (
-          <ul className="dv-list" aria-label="Your workspaces">{spaces.map((w) => <Row key={w.id} w={w} name={named(w)} />)}</ul>
-        )}
+      <header className="dv-sky" style={{ '--d': 0 }}>
+        <h1 className="dusk-title">Drive</h1>
+        <Search text={text} onText={search} />
+        <div className="dv-sky-end"><NewButton target={target} spaces={spaces} actions={actions} /></div>
+        <div className="dv-sky-phone"><NewButton target={target} spaces={spaces} actions={actions} compact /></div>
+      </header>
+      <div className="dv-split" style={{ '--d': 1 }}>
+        <Tree at={at} spaces={spaces} shared={shared} actions={actions} />
+        <section className={cn('dv-sheet', at.ws && at.doc && 'is-doc')} aria-label={label}>
+          <Chips at={at} current={current} calls={spaces.some(isCallSpace)} actions={actions} />
+          <Place at={at} spaces={spaces} files={files} loading={library.isPending} failed={library.isError} actions={actions}
+            onClear={() => search('')} onRetry={() => void library.refetch()} />
+        </section>
       </div>
     </Evening>
   );

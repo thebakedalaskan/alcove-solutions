@@ -15,7 +15,7 @@ import { withNotesLeft } from '../../src/world/plans';
 import { notConnected } from '../../src/world/build';
 import { busyEvents } from '../../src/world/calls';
 import { page, pages, type PageArgs, type PageStory } from '../../src/page';
-import { before, first, LATER, outage, pause, pressable, SOON, swap, unreachable } from './play';
+import { away, before, first, LATER, outage, pause, pressable, SOON, swap, unreachable } from './play';
 
 const meta = { title: 'Journeys/11 Settings', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -31,10 +31,12 @@ const goneFrom = (where: HTMLElement, text: string) =>
   waitFor(() => { if (within(where).queryByText(text)) throw new Error(`“${text}” is still there.`); }, SOON);
 /** The welcome page, signed out: it offers every way in, at the top and again at the bottom. */
 const welcome = () => first(screen.findAllByRole('button', { name: 'Continue with Microsoft' }, LATER));
-/** From any page, you at the top right open Settings. */
+/** From any page, your face at the top right opens your menu, and Settings in it opens Settings, as the menu goes. */
 const toSettings = async (click: (el: Element) => Promise<void>) => {
-  await click(await screen.findByRole('link', { name: 'Art Vandelay, settings' }, LATER));
+  await click(await screen.findByRole('button', { name: /^Art Vandelay, your menu/ }, LATER));
+  await click(await within(await screen.findByRole('dialog', { name: 'Your menu' }, SOON)).findByRole('link', { name: 'Settings' }, SOON));
   await screen.findByRole('heading', { name: 'Art Vandelay', level: 1 }, LATER);
+  await away('dialog', 'Your menu');
 };
 
 /** A failure on the server's side: the database connection dropping, Google not answering, the hardware check. */
@@ -134,13 +136,11 @@ export const ConnectGoogleCalendar: PageStory = {
   ...page('/settings#calendar', 'busy'),
   beforeEach: before((w) => { w.calendar = notConnected; }),
   play: async ({ userEvent, step }) => {
-    await step('Under Connections, click Connect beside Google Calendar, and review how Alcove uses calendar data', async () => {
-      await userEvent.click(within(await row('Google Calendar')).getByRole('link', { name: 'Connect' }));
+    await step('Under Connections, Google Calendar says what Alcove does with it: it reads your events and adds the calls you schedule', async () => {
+      await within(await row('Google Calendar')).findByText('Alcove reads your events and adds the calls you schedule.', {}, SOON);
     });
-    await step('Continue to Google. After consent, Google returns you to Calendar settings', async () => {
-      const dialog = await screen.findByRole('dialog', { name: 'Connect Google Calendar' }, SOON);
-      await userEvent.click(within(dialog).getByRole('button', { name: 'Continue to Google' }));
-      await within(dialog).findByRole('button', { name: 'Opening Google' }, SOON);
+    await step('Click Connect. It goes straight to Google, which asks for access, then returns you to Calendar settings', async () => {
+      await userEvent.click(within(await row('Google Calendar')).getByRole('link', { name: 'Connect' }));
     });
   }
 };
@@ -402,8 +402,8 @@ export const TimeOfNotesLeft: PageStory = {
   // Twelve minutes of notes left this period.
   beforeEach: before((w) => { w.plan = withNotesLeft(12); }),
   play: async ({ step }) => {
-    await step('Nearly out, the sun is at the start of the line', async () => {
-      await within(await row('Notes left')).findByText('About 12 min', {}, SOON);
+    await step('Nearly out, the time is warm and the sun is at the start of the line', async () => {
+      await within(await row('Notes left this period')).findByText('12 min', {}, SOON);
     });
   }
 };
@@ -472,9 +472,10 @@ export const FirstDay: PageStory = {
       await row('Record without a connection');
       await within(await row('Storage')).findByText('under 1 MB of 10 GB', {}, SOON);
     });
-    await step('Under Connections, Connect is there when you want it', async () => {
+    await step('Under Connections, Connect is there when you want it, and Agents says what agents are for, with Connect an agent', async () => {
       await jump('Connections');
       await within(await row('Google Calendar')).findByRole('link', { name: 'Connect' }, SOON);
+      await within(await row('Agents')).findByRole('link', { name: 'Connect an agent' }, SOON);
     });
     await step('The browser doesn’t name your devices until they’re allowed, so there’s no list yet', async () => {
       await jump('Audio and video');
@@ -486,7 +487,7 @@ export const FirstDay: PageStory = {
     });
     await step('All of Free’s notes, with the sun at the end of the line', async () => {
       await jump('Plan');
-      await within(await row('Notes left')).findByText('About 5 h', {}, SOON);
+      await within(await row('Notes left this period')).findByText('5 h', {}, SOON);
     });
   }
 };
@@ -527,18 +528,15 @@ export const AddMoney: PageStory = {
   ...page('/settings#plan', 'payments'),
   play: async ({ userEvent, step }) => {
     const sheet = () => screen.findByRole('dialog', { name: 'Add money' }, SOON);
-    await step('Open Add money and choose USDC on Base', async () => {
+    await step('Open Add money and choose Base, under Pay with USDC', async () => {
       await userEvent.click(within(await screen.findByRole('group', { name: 'Balance' }, LATER)).getByRole('button', { name: 'Add money' }));
-      await userEvent.click(within(await sheet()).getByRole('button', { name: /^Token:/ }));
-      const tokens = await screen.findByRole('listbox', { name: 'Token' }, SOON);
-      await userEvent.click(within(tokens).getByRole('option', { name: 'USDC' }));
       await userEvent.click(within(await sheet()).getByRole('button', { name: /^Network:/ }));
       const networks = await screen.findByRole('listbox', { name: 'Network' }, SOON);
       await userEvent.click(within(networks).getByRole('option', { name: 'Base' }));
     });
     await step('Get an address for $20, the first amount offered. The sheet waits for the payment', async () => {
       await userEvent.click(within(await sheet()).getByRole('button', { name: 'Get an address' }));
-      await within(await sheet()).findByText('Waiting for payment', {}, SOON);
+      await within(await sheet()).findByText('Waiting for your payment', {}, SOON);
     });
     await step('The provider sees 3.5 of 20 USDC: the same address can take the rest', async () => {
       const w = current();
@@ -550,12 +548,11 @@ export const AddMoney: PageStory = {
       const w = current();
       const t = w.payments.topUps[0];
       if (t) receiveTopUp(w, t.id, 'credited');
-      await within(await sheet()).findByText('It’s in your balance now.', {}, LATER);
+      await within(await sheet()).findByText('Added to your balance', {}, LATER);
       await userEvent.click(within(await sheet()).getByRole('button', { name: 'Done' }));
     });
-    await step('Reopen the completed payment from its row', async () => {
-      await userEvent.click(within(await group('Plan')).getByRole('button', { name: 'Open' }));
-      await within(await sheet()).findByText('It’s in your balance now.', {}, SOON);
+    await step('The balance says $20, and the payment is in the list with its receipt', async () => {
+      await within(await group('Plan')).findByText('Added, 20 USDC', {}, SOON);
     });
   }
 };

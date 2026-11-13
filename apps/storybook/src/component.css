@@ -17,3 +17,12 @@
 
 .sbc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
 .sbc-stack { display: grid; justify-items: start; gap: 16px; }
+
+/* A frame holding still for a moment: what's in it lands where it is, with no transition, as a loop starts again. */
+.sbc-still *, .sbc-still *::before, .sbc-still *::after { transition: none !important; }
+
+/* One pane of the palette's window on its own: the list, the preview, or the line and foot across it. */
+.sbc-pane { width: 576px; max-width: 100%; padding: 6px 8px 12px; border-radius: var(--radius-lg); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line), var(--shadow-2); }
+.sbc-pane.is-preview { display: flex; width: 424px; height: 560px; padding: 0; overflow: hidden; }
+.sbc-pane.is-preview > .pal-pv { flex: 1; border-left: 0; }
+.sbc-pane.is-line { padding: 0; overflow: hidden; }

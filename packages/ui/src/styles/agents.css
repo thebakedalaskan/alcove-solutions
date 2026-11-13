@@ -1,46 +1,309 @@
 /*
- * Agents (agents.tsx): what one can do, as chips you press; Alcove's address and a token shown once, each in a box with
- * Copy; and the consent page an agent sends you to. In Settings they sit inside the Agents panel, opened in place.
+ * Agents (agents.tsx). First the shared parts (`ac-agent-`): what one can do, as chips you press; what it receives; and
+ * the sheet an agent's `/connect` signs you in on. Then the Agents page (`ag-`): agents standing on the horizon as
+ * windows, the popover each opens, the question an agent asks on the sky, and what they did on the water. One place on
+ * the line is --u wide; --ag-w is how many places the line takes and --ag-sun how far from the middle, in places, the sun
+ * stands (both set by the page).
  */
-.ac-agent-permissions { min-width: 0; margin: 0; padding: 0; border: 0; }
-.ac-agent-permissions legend { float: left; width: 100%; margin-bottom: 7px; padding: 0; font: 500 13px/18px var(--font-sans); color: var(--ink-2); }
-.ac-agent-perms { display: flex; flex-wrap: wrap; gap: 8px; clear: both; }
-.ac-agent-perm { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 13px 0 11px; border-radius: var(--radius-pill); box-shadow: inset 0 0 0 1px var(--line-control); font: 500 13px/1 var(--font-sans); color: var(--ink-2); transition: background-color var(--duration-1), box-shadow var(--duration-1), color var(--duration-1); }
+.ac-agent-permissions { position: relative; min-width: 0; margin: 0; padding: 0; border: 0; }
+.ac-agent-permissions legend { float: left; width: 100%; margin-bottom: 9px; padding: 0; font: 500 13px/18px var(--font-sans); color: var(--ink-2); }
+.ac-agent-aside { position: absolute; top: 0; right: 0; }
+.ac-agent-perms { display: flex; flex-wrap: wrap; gap: 7px; clear: both; }
+.ac-agent-perm { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px 0 11px; border-radius: var(--radius-pill); box-shadow: inset 0 0 0 1px var(--line-control); font: 500 13px/1 var(--font-sans); color: var(--ink-2); transition: background-color var(--duration-1), box-shadow var(--duration-1), color var(--duration-1); }
 .ac-agent-perm:hover { color: var(--ink); }
 .ac-agent-perm .ac-i { stroke-width: 2.6; }
-.ac-agent-perm[aria-pressed="true"] { background: color-mix(in oklch, var(--ink) 9%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 30%, transparent); color: var(--ink); }
+.ac-agent-perm[aria-pressed="true"] { background: color-mix(in oklch, var(--ink) 10%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 30%, transparent); color: var(--ink); }
 .ac-agent-perm[aria-pressed="false"] .ac-i { display: none; }
 .ac-agent-perm:disabled { opacity: .5; }
 .ac-agent-perm:disabled:hover { color: var(--ink-2); }
 .ac-agent-perm[aria-pressed="true"]:disabled:hover { color: var(--ink); }
-/* On the consent page, what each permission lets the agent do, in full under the chips; one unticked steps back. */
-.ac-agent-details { display: grid; gap: 10px; margin: 16px 0 0; }
-.ac-agent-details > div { display: grid; gap: 1px; }
-.ac-agent-details dt { font: 500 14px/20px var(--font-sans); color: var(--ink); }
-.ac-agent-details dd { margin: 0; font: 400 13.5px/20px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
-.ac-agent-details > .is-off :is(dt, dd) { color: var(--ink-3); }
 
-/* A value to copy: the address whole, a token hidden but for its ends. */
-.ac-agent-copy { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; max-width: 560px; padding: 5px 5px 5px 15px; border-radius: 14px; background: color-mix(in oklch, var(--ink) 6%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
-.ac-agent-copy code { overflow: hidden; font: 450 13.5px/20px var(--font-mono); color: var(--ink); white-space: nowrap; text-overflow: ellipsis; }
-.ac-agent-copy.is-token code { letter-spacing: .02em; }
-.ac-agent-copy .ac-btn { height: 34px; padding: 0 14px; background: transparent; font-size: 13.5px; }
-.ac-agent-copy .ac-btn:hover { background: color-mix(in oklch, var(--ink) 7%, transparent); }
-.ac-agent-token { display: grid; gap: 8px; }
+/* What couldn't be done, in caution, where it was tried. */
 .ac-agent-problem { color: var(--caution); font: 400 13.5px/20px var(--font-sans); text-wrap: pretty; }
 
 /* What an agent receives, in one line. */
 .ac-agent-disclosure { text-wrap: pretty; }
 
-/* The consent page: one quiet column, with the requesting app and the person's choices together. */
+/* The sheet /connect shows before Agents asks: one quiet column on the theme's ground. */
 .ac-agent-connect { min-height: 100dvh; padding: clamp(24px, 5vw, 64px); background: var(--ground); color: var(--ink); }
 .ac-agent-connect > a { display: block; width: fit-content; margin: 0 auto 32px; }
 .ac-agent-sheet { width: min(100%, 640px); margin: 0 auto; padding: clamp(20px, 4vw, 36px); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); }
 .ac-agent-sheet h1 { margin-bottom: 18px; font: 450 clamp(30px, 5vw, 40px)/1.12 var(--font-display); }
 .ac-agent-sheet > p { margin: 10px 0; font: 400 15px/23px var(--font-sans); }
 .ac-agent-sheet > p[role="alert"] { color: var(--caution); }
-.ac-agent-sheet > .ac-agent-permissions { margin: 20px 0 4px; }
-.ac-agent-sheet > .ac-agent-disclosure { display: block; margin: 16px 0; color: var(--ink-2); font: 400 14px/22px var(--font-sans); }
-.ac-agent-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
-.ac-agent-hint { margin: 8px 0; color: var(--ink-3); font: 400 13px/20px var(--font-sans); }
-@media (max-width: 520px) { .ac-agent-connect { padding: 24px 12px; } .ac-agent-sheet { padding: 20px 16px; } .ac-agent-actions .ac-btn { flex: 1; } }
+@media (max-width: 520px) { .ac-agent-connect { padding: 24px 12px; } .ac-agent-sheet { padding: 20px 16px; } }
+
+/* ------------------------------------------------------------ the Agents page: the sky */
+.ag {
+  container-type: inline-size;
+  /* A long name at the end of the line reaches past its place, never past the window. */
+  overflow-x: clip;
+  --hz: clamp(330px, 41vh, 470px);
+  --u0: clamp(84px, 7.4vw, 112px);
+  /* The line and the sun past its end keep inside the page: 74px is the room the sun needs beyond the line's half-places. */
+  --u: min(var(--u0), calc((100cqw - 74px) / var(--ag-w, 8)));
+  --name-h: 46px;
+  --ag-dash: color-mix(in oklch, var(--ink) 54%, transparent);
+  --ag-edge: color-mix(in oklch, var(--ink) 12%, transparent);
+  /* Meta on the scene: ink-3 doesn't reach 4.5:1 on the light sky or sea. */
+  --ag-soft: var(--ink-2);
+}
+.dark .ag { --ag-edge: color-mix(in oklch, var(--ink) 14%, transparent); --ag-soft: var(--ink-3); }
+/* The sky as tall as the page is one action: taller on the first day, and most of the window while an agent asks. */
+.ag[data-sky="first"] { --hz: clamp(380px, 49vh, 540px); }
+.ag[data-sky="ask"] { --hz: clamp(660px, 75vh, 760px); }
+.ag[data-sky="done"] { --hz: clamp(420px, 56vh, 600px); }
+/*
+ * The sun stands just past the end of the whole line, whatever is on it now, so it stays put as the page changes. A line
+ * too long for the window would take it past the page's edge: there it stops, half set behind it.
+ */
+.dusk.ag .hz { --hz-sun-x: min(calc(var(--ag-sun, 4.6) * var(--u)), calc(50cqw - 8px)); }
+
+/* The sun's light on the water stops short of the headings under it. --far is how far out a glint is. */
+.ag .hz-glint { opacity: calc(var(--o) * clamp(0, (.6 - var(--far)) * 15, 1)); }
+
+.ag-sky { display: flex; flex-direction: column; height: calc(var(--hz) - 30px); }
+.ag-back { display: none; align-items: center; gap: 2px; height: 32px; margin-left: -8px; padding: 0 8px 0 4px; border-radius: var(--radius-pill); font: 500 14px/1 var(--font-sans); color: var(--ink-2); }
+.ag-back:hover { color: var(--ink); }
+.ag-hero { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; padding-bottom: 14px; text-align: center; }
+.ag-hero h2, .ag-qt { font: 400 clamp(36px, 3.8vw, 56px)/1.08 var(--font-display); letter-spacing: -.012em; color: var(--ink); text-wrap: balance; overflow-wrap: anywhere; }
+.ag-line { max-width: 31em; margin-top: 12px; font: 400 16.5px/1.45 var(--font-sans); color: var(--ink-2); text-wrap: balance; }
+.ag-why { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; font: 500 15px/1.35 var(--font-sans); color: var(--ink-2); text-wrap: balance; }
+.ag-why .ac-i { flex: none; color: var(--caution); }
+.ag-hero > .ac-btn, .ag-hero > [role="status"] { margin-top: 18px; }
+.ag-hero > [role="status"] { display: inline-flex; align-items: center; gap: 10px; font: 500 15px/1.3 var(--font-sans); color: var(--ink-2); }
+/* A button on the sky is a quiet glass over the evening; the filled one keeps its sun. */
+.ag-sky .ac-btn.is-secondary { background: color-mix(in oklch, var(--ground) 64%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 16%, transparent); color: var(--ink); }
+.ag-sky .ac-btn.is-secondary:hover { background: color-mix(in oklch, var(--ground) 82%, transparent); }
+
+/* The line. Every window stands on the horizon, its name on the water just below. */
+.ag-row { position: relative; display: flex; flex: none; align-items: flex-end; justify-content: center; margin: 0 0 calc(-1 * var(--name-h)); padding: 0; list-style: none; }
+.ag-gap { flex: none; width: calc(var(--u) * .5); }
+.ag-p { position: relative; flex: none; width: var(--u); }
+.ag-p.is-on { z-index: 2; }
+.ag-who { position: relative; display: block; width: 100%; border-radius: var(--radius-md); color: var(--ink); }
+.ag-who:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+.ag-n, .ag-s { display: block; margin-inline: calc(var(--u) * -.12); overflow: hidden; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.ag-n { height: 25px; padding-top: 7px; font: 500 14px/18px var(--font-sans); color: var(--ink); text-shadow: 0 0 10px var(--ground), 0 0 3px var(--ground); }
+/* When it was used sits on the water too: the water's lines pass behind it, as they do behind the name. */
+.ag-s { height: 18px; font: 400 12.5px/18px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ag-soft); text-shadow: 0 0 10px var(--ground), 0 0 3px var(--ground); }
+.ag-s.is-caution { color: var(--caution); font-weight: 500; }
+.ag-p.is-yet .ag-n { font-weight: 400; color: var(--ink-2); }
+.ag-who:hover .ag-win { transform: translateY(-3px); }
+.ag-who[data-state="open"] .ag-win { transform: translateY(-3px); box-shadow: 0 0 0 2px var(--ink); }
+.ag-who[data-state="open"] .ag-win.is-dashed { border-style: solid; border-color: var(--ink); box-shadow: none; }
+.ag-who[data-state="open"] .ag-n { font-weight: 600; color: var(--ink); }
+.ag-p.is-ghost .ag-who { cursor: default; }
+.ag-p.is-ghost .ag-who:hover .ag-win { transform: none; }
+.ag-row.is-loading .ag-win { animation: ag-wait var(--duration-5) var(--ease-in-out) calc(var(--d, 0) * 120ms) infinite; }
+@keyframes ag-wait { 50% { opacity: .45; } }
+/* What says the agents are on their way never rests: with reduced motion it still breathes, since opacity isn't movement. */
+@media (prefers-reduced-motion: reduce) { .ag-row.is-loading .ag-win { animation: ag-wait 2.4s ease-in-out infinite !important; } }
+
+/* An agent's window: a square with a rounded top. Solid once connected, dashed until then, rose while it asks. */
+.ag-win { position: relative; display: grid; place-items: center; width: 68%; margin-inline: auto; aspect-ratio: 1; border-radius: 20px 20px 3px 3px; background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--ag-edge, var(--line)); color: var(--ink); transform-origin: 50% 100%; transition: transform var(--duration-2) var(--ease-out), box-shadow var(--duration-2) var(--ease-out); }
+.ag-win > .ac-i { width: 40%; height: 40%; stroke-width: 1.6; }
+.ag-win.is-dashed { background: none; box-shadow: none; border: 1.5px dashed var(--ag-dash, var(--line-control)); border-bottom: 0; color: var(--ink-2); }
+.ag-win.is-asking { background: none; box-shadow: none; border: 1.5px solid var(--rose); border-bottom: 0; color: var(--ink); }
+.ag-win.is-allowed { box-shadow: inset 0 0 0 1px var(--ag-edge, var(--line)), 0 0 0 5px color-mix(in oklch, var(--ink) 10%, transparent); }
+.ag-dot { position: absolute; top: -4px; right: -4px; width: 12px; height: 12px; border-radius: 50%; background: var(--caution); box-shadow: 0 0 0 3px var(--ground); }
+.ag-tick { position: absolute; right: -6px; bottom: 6px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--ink); color: var(--ground); box-shadow: 0 0 0 3px var(--ground); }
+.ag-tick > .ac-i { width: 13px; height: 13px; stroke-width: 2.6; }
+/* The mark at the head of a popover. */
+.ag-win.is-small { width: 36px; height: 36px; margin: 0; border-radius: 12px 12px 3px 3px; background: color-mix(in oklch, var(--ink) 9%, transparent); box-shadow: none; }
+.ag-win.is-small > .ac-i { width: 17px; height: 17px; stroke-width: 1.8; }
+.ag-win.is-small .ag-tick { right: -5px; bottom: -4px; width: 17px; height: 17px; color: var(--surface-raised); box-shadow: 0 0 0 2px var(--surface-raised); }
+.ag-win.is-small .ag-tick > .ac-i { width: 10px; height: 10px; stroke-width: 3; }
+
+/* ------------------------------------------------------------ a window's popover */
+.ac-pop.ag-pop { width: 360px; min-width: 0; max-width: calc(100vw - 24px); padding: 16px; }
+.ag-pop-h { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; min-height: 36px; }
+.ag-pop-h.has-back { grid-template-columns: auto 36px minmax(0, 1fr) auto; }
+.ag-pop-w { min-width: 0; }
+.ag-pop-w b { font: 600 15.5px/20px var(--font-sans); color: var(--ink); }
+.ag-pop-w small { font: 400 13px/18px var(--font-sans); color: var(--ink-2); }
+.ag-pop-w small.is-caution { color: var(--caution); font-weight: 500; }
+.ag-pop .ag-x { align-self: start; width: 32px; height: 32px; margin: -6px -8px 0 0; color: var(--ink-3); }
+.ag-ib { width: 34px; height: 34px; color: var(--ink-2); }
+.ag-ib:hover { background: color-mix(in oklch, var(--ink) 8%, transparent); color: var(--ink); }
+.ag-ib.is-back { margin-left: -8px; }
+.ag-say { margin-top: 14px; font: 400 14.5px/21px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+.ag-well { display: block; margin-top: 10px; padding: 10px 12px; border-radius: 11px; background: color-mix(in oklch, var(--ink) 6%, transparent); font: 450 12.5px/19px var(--font-mono); color: var(--ink); overflow-wrap: anywhere; user-select: all; }
+.ag-well.is-copy { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 3px 3px 3px 12px; user-select: auto; }
+.ag-well.is-copy > code { overflow: hidden; font: inherit; white-space: nowrap; text-overflow: ellipsis; user-select: all; }
+.ag-well.is-words { padding: 6px 4px 6px 14px; font: 400 14.5px/20px var(--font-sans); }
+.ag-well + .ag-well { margin-top: 8px; }
+.ag-go { width: 100%; margin-top: 12px; }
+.ag-go > .ac-i:last-child { width: 15px; height: 15px; }
+/* It holds focus only so the keys keep their place when what was pressed goes: there's nothing to press in it. */
+.ag-wait:focus { outline: none; }
+.ag-wait { display: flex; align-items: center; justify-content: center; gap: 10px; height: 44px; margin-top: 12px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink) 8%, transparent); font: 500 14px/1 var(--font-sans); color: var(--ink-2); }
+.ag-more { display: flex; align-items: center; gap: 6px; width: calc(100% + 32px); margin: 14px -16px -16px; padding: 13px 16px 14px; border-top: 1px solid var(--line); border-radius: 0 0 var(--radius-lg) var(--radius-lg); font: 400 13.5px/1.3 var(--font-sans); color: var(--ink-2); text-align: left; }
+.ag-more:hover { background: color-mix(in oklch, var(--ink) 5%, transparent); }
+.ag-more b { font-weight: 500; color: var(--ink); }
+.ag-more > .ac-i { margin-left: auto; color: var(--ink-2); }
+.ag-small { margin-top: 12px; font: 400 12.5px/1.45 var(--font-sans); color: var(--ink-3); text-wrap: pretty; }
+.ag-pop .ac-agent-problem { margin-top: 10px; }
+.ag-pop .ac-agent-permissions { margin-top: 16px; }
+.ag-pop .ag-form .ac-agent-permissions { margin-top: 0; }
+.ag-pop-f { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; padding-top: 11px; border-top: 1px solid var(--line); }
+.ag-pop-f > .ac-btn { margin-left: -10px; }
+.ag-pop-f p { font: 400 12.5px/1.45 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); text-wrap: pretty; }
+.ag-saved { display: inline-flex; align-items: center; gap: 5px; font: 500 13px/18px var(--font-sans); color: var(--ink-2); }
+.ag-saved > .ac-i { stroke-width: 2.4; }
+.ag-asked { margin-top: 14px; }
+.ag-asked b { display: block; font: 600 15px/21px var(--font-sans); color: var(--ink); }
+.ag-asked p { margin-top: 3px; font: 400 14px/21px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+.ag-asked-a { display: flex; gap: 8px; margin-top: 14px; }
+/* Making a token. */
+.ag-form { display: grid; gap: 14px; margin-top: 14px; }
+.ag-form .ac-field { gap: 6px; }
+.ag-form .ac-field label, .ag-lasts > span { font: 500 13px/18px var(--font-sans); color: var(--ink-2); }
+.ag-form .ac-input { height: 40px; padding: 0 12px; border-radius: 11px; background: color-mix(in oklch, var(--ink) 6%, transparent); }
+.ag-form .ac-seg { display: flex; width: 100%; }
+.ag-form .ac-seg button { flex: 1; justify-content: center; }
+.ag-lasts { display: grid; gap: 6px; }
+
+/* ------------------------------------------------------------ the question an agent asks, on the sky */
+.ag-ask { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: safe center; min-height: 0; padding: 0 0 30px; text-align: center; }
+.ag-qt { font-size: clamp(32px, 3vw, 44px); line-height: 1.1; letter-spacing: -.01em; }
+.ag-lv { width: min(100%, 470px); margin-top: 22px; padding: 2px 8px 2px 14px; border-radius: 18px; background: color-mix(in oklch, var(--surface-raised) 70%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 13%, transparent); text-align: left; }
+.dark .ag-lv { background: color-mix(in oklch, var(--ground) 58%, transparent); }
+.ag-lv-r { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; min-height: 52px; }
+.ag-lv-r + .ag-lv-r { border-top: 1px solid color-mix(in oklch, var(--ink) 11%, transparent); }
+.ag-lv-i { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: color-mix(in oklch, var(--ink) 8%, transparent); color: var(--ink-2); }
+.ag-lv-n { min-width: 0; font: 500 15px/1.3 var(--font-sans); color: var(--ink); }
+.ag-lv-b { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 9px 0 12px; border-radius: 10px; font: 500 14.5px/1 var(--font-sans); color: var(--ink); white-space: nowrap; transition: background-color var(--duration-1); }
+.ag-lv-b:hover, .ag-lv-b[aria-expanded="true"] { background: color-mix(in oklch, var(--ink) 9%, transparent); }
+.ag-lv-b:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ag-lv-b > .ac-i { color: var(--ink-2); }
+.ag-lv-b.is-off { color: var(--ink-2); font-weight: 400; }
+.ag-lv-b:disabled { opacity: .5; }
+.ac-pop.ag-menu { width: 330px; min-width: 0; max-width: calc(100vw - 24px); padding: 6px; border-radius: 16px; }
+.ag-o { display: grid; grid-template-columns: minmax(0, 1fr) 18px; column-gap: 12px; align-items: center; width: 100%; padding: 9px 10px; border-radius: 10px; text-align: left; }
+.ag-o:hover, .ag-o:focus-visible { background: color-mix(in oklch, var(--ink) 7%, transparent); outline: none; }
+.ag-o:focus-visible { box-shadow: inset 0 0 0 2px var(--focus); }
+.ag-o b { display: block; font: 500 14.5px/20px var(--font-sans); color: var(--ink); }
+.ag-o small { display: block; font: 400 13px/18px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+.ag-o-k > .ac-i { stroke-width: 2.4; }
+.ag-o.is-sw { grid-template-columns: minmax(0, 1fr) auto; }
+.ag-disc { max-width: 36em; margin-top: 16px; font: 400 14px/1.45 var(--font-sans); color: var(--ink-2); text-wrap: balance; }
+.ag-ask-a { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 18px; }
+.ag-ask-a .ac-btn { min-width: 128px; height: 48px; font-size: 15px; }
+.ag-fine { max-width: 40em; margin-top: 12px; font: 400 13px/1.45 var(--font-sans); color: var(--ag-soft); text-wrap: balance; overflow-wrap: anywhere; }
+/* Where allowing sends you: the one thing in it to check. */
+.ag-fine b { font-weight: 600; }
+.ag-ask .ac-agent-problem { margin-top: 12px; }
+
+/* You and the agent, together on the horizon in place of the line. */
+.ag-row.is-pair { justify-content: center; }
+.ag-pair { display: flex; align-items: flex-end; justify-content: center; }
+.ag-pp { display: flex; flex-direction: column; align-items: center; width: 172px; }
+.ag-pp .ag-win { width: 76px; margin: 0; }
+.ag-pp .ag-n, .ag-pp .ag-s { width: 100%; margin-inline: 0; }
+.ag-arch { display: block; width: 76px; aspect-ratio: 1 / 1.1; overflow: hidden; border-radius: var(--radius-arch) var(--radius-arch) 0 0; }
+.ag-arch .ac-avatar { display: block; width: 100%; height: 100%; border-radius: var(--radius-arch) var(--radius-arch) 0 0; box-shadow: none; }
+.ag-link { position: relative; flex: none; display: grid; place-items: center; width: 64px; height: 78px; margin: 0 -28px var(--name-h); }
+.ag-link::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1.5px dashed var(--rose); }
+.ag-link-c { position: relative; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--rose); color: var(--ground); box-shadow: 0 0 0 4px color-mix(in oklch, var(--rose) 22%, transparent); }
+.ag-link-c > .ac-i { width: 14px; height: 14px; stroke-width: 2.2; }
+.ag-pair.is-joined .ag-link::before { border-top-style: solid; border-color: var(--ink); }
+.ag-pair.is-joined .ag-link-c { background: var(--ink); box-shadow: 0 0 0 4px color-mix(in oklch, var(--ink) 14%, transparent); }
+.ag-pair.is-joined .ag-link-c > .ac-i { stroke-width: 2.8; }
+.ag-pair.is-ended .ag-link::before { border-color: var(--ag-dash); }
+.ag-pair.is-ended .ag-link-c { background: color-mix(in oklch, var(--ink) 16%, var(--ground)); color: var(--ink-2); box-shadow: none; }
+
+/*
+ * ------------------------------------------------------------ the water: what they did, and things to ask
+ * What they did shows once there's an agent to do something; until then (`is-solo`) the water is only what you can ask,
+ * two across. Every row on it has the same shape: a mark by kind, the words, and what's at its end in a fixed column.
+ */
+.ag-water { position: relative; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 28px 56px; margin-top: calc(var(--name-h) + 30px); }
+.ag-water.is-solo { grid-template-columns: minmax(0, 1fr); }
+.ag-water > section { min-width: 0; }
+.ag-h { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 46px; }
+.ag-h h2 { font: 600 15px/1.3 var(--font-sans); color: var(--ink); }
+.ag-only { display: inline-flex; align-items: center; gap: 6px; font: 500 13px/1 var(--font-sans); color: var(--ag-soft); }
+.ag-day { padding: 16px 0 6px; font: 500 13px/1.3 var(--font-sans); color: var(--ag-soft); }
+.ag-day:first-of-type { padding-top: 4px; }
+.ag-rows { margin: 0; padding: 0; list-style: none; }
+.ag-r { display: grid; grid-template-columns: 32px minmax(0, 1fr) 52px; column-gap: 14px; align-items: start; padding: 11px 0; border-top: 1px solid var(--line); }
+.ag-k { --tint: var(--ink-2); display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: color-mix(in oklch, var(--tint) 14%, transparent); color: var(--tint); }
+.ag-k.is-quiet { background: color-mix(in oklch, var(--ink) 8%, transparent); }
+.ag-k.is-time { --tint: var(--sun-text); }
+.ag-k.is-follow { --tint: var(--horizon); }
+.ag-k.is-decision { --tint: var(--rose); }
+.ag-k.is-caution { --tint: var(--caution); }
+/* An agent's window not filled in yet, the size of a row's mark: the line's dashed windows, once more. */
+.ag-k.is-wait { --tint: var(--ink-2); background: none; border: 1.5px dashed var(--ag-dash); border-bottom: 0; border-radius: 11px 11px 2px 2px; }
+.ag-r-t { min-width: 0; padding-top: 5px; font: 400 15px/22px var(--font-sans); color: var(--ink); text-wrap: pretty; overflow-wrap: anywhere; }
+.ag-r-t b { font-weight: 600; }
+.ag-obj { display: inline; font-weight: 500; color: var(--ink); text-decoration: underline; text-decoration-color: color-mix(in oklch, var(--ink) 32%, transparent); text-underline-offset: 3px; border-radius: 4px; }
+.ag-obj:hover { text-decoration-color: var(--ink); }
+.ag-obj:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ag-r-t small { display: block; margin-top: 1px; font: 400 13.5px/20px var(--font-sans); color: var(--ag-soft); }
+.ag-r-w { padding-top: 6px; font: 400 13px/20px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ag-soft); text-align: right; }
+.ag-log-f { padding-top: 6px; border-top: 1px solid var(--line); }
+.ag-log-f .ac-btn { margin-left: -12px; }
+.ag-qs { margin: 0; padding: 0; list-style: none; }
+.ag-q { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; column-gap: 14px; align-items: center; min-height: 55px; padding: 11px 0; border-top: 1px solid var(--line); }
+.ag-q p { min-width: 0; font: 400 15px/22px var(--font-sans); color: var(--ink); text-wrap: pretty; }
+.ag-q small { display: flex; align-items: center; gap: 5px; margin-top: 2px; font: 400 13px/18px var(--font-sans); color: var(--ag-soft); }
+.ag-q small > .ac-i { flex: none; }
+/* With nothing connected, the questions are the water: two across, each row as tall as its neighbour. */
+.ag-water.is-solo .ag-qs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 56px; }
+/* Nothing in what they did yet: one row where the first will be (AgentNone), and Try again at its end when it didn't load. */
+.ag-none { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; column-gap: 14px; align-items: start; padding: 11px 0 12px; border-top: 1px solid var(--line); }
+.ag-none .ag-r-t b { font-weight: 500; }
+.ag-none > .ac-btn { align-self: center; }
+/* Looking for what they did: dots where the first row's mark will be. */
+.ag-waiting { display: flex; align-items: center; height: 55px; border-top: 1px solid var(--line); color: var(--ag-soft); }
+.ag-waiting > .ac-dots { justify-content: center; width: 32px; }
+
+@media (max-width: 1180px) {
+  .ag-water { grid-template-columns: minmax(0, 1fr); }
+  .ag-water.is-solo .ag-qs { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ------------------------------------------------------------ a phone: the line slides sideways, popovers are sheets */
+@media (max-width: 860px) {
+  .ag { --hz: 262px; --u0: 84px; --u: 84px; }
+  .ag[data-sky="first"] { --hz: 330px; }
+  .ag[data-sky="ask"] { --hz: 618px; }
+  .ag[data-sky="done"] { --hz: 452px; }
+  .ag-sky { height: calc(var(--hz) - 6px); }
+  .ag-back { display: inline-flex; }
+  .ag-hero h2 { font-size: 34px; }
+  .ag-line { font-size: 15.5px; }
+  .ag-row { justify-content: flex-start; margin-inline: -20px; padding: 10px 20px 0; overflow: auto hidden; scroll-snap-type: x proximity; scrollbar-width: none; }
+  .ag-row::-webkit-scrollbar { display: none; }
+  .ag-p { scroll-snap-align: center; }
+  .ag-p.is-on { z-index: auto; }
+  /* The line slides, so a sun behind it would be cut into slices: the evening keeps only its light on the water. */
+  .ag .hz-sun, .ag .hz-glow { display: none; }
+  .ag-water { margin-top: calc(var(--name-h) + 22px); }
+  .ag-r { grid-template-columns: 32px minmax(0, 1fr) 44px; column-gap: 12px; }
+  .ag-q, .ag-none { column-gap: 12px; }
+
+  .ag-ask { justify-content: flex-start; padding: 18px 0 22px; }
+  .ag-qt { font-size: 30px; }
+  .ag-lv { width: 100%; margin-top: 18px; }
+  .ag-disc { margin-top: 12px; }
+  .ag-ask-a { width: 100%; margin-top: 14px; }
+  .ag-ask-a .ac-btn { flex: 1; min-width: 0; }
+  .ag-row.is-pair { justify-content: center; margin-inline: 0; padding: 0; overflow: visible; }
+  .ag-pp { width: 150px; }
+  .ag-pp .ag-win, .ag-arch { width: 62px; }
+  .ag-link { width: 52px; height: 64px; margin-inline: -34px; }
+
+  /* Every popover is a sheet, over the tab bar; a level's menu sits above the tab bar. */
+  [data-radix-popper-content-wrapper]:has(> .ag-pop) { inset: auto 0 0 !important; min-width: 0 !important; transform: none !important; }
+  [data-radix-popper-content-wrapper]:has(> .ag-pop)::before { content: ""; position: fixed; inset: 0; background: color-mix(in oklch, var(--sunk) 74%, transparent); }
+  .ac-pop.ag-pop { position: relative; width: auto; max-width: none; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); border-radius: var(--radius-lg) var(--radius-lg) 0 0; animation: ag-sheet var(--duration-2) var(--ease-out); }
+  .ac-pop.ag-pop[data-state="closed"] { animation: ac-fade-out var(--duration-1) var(--ease-in) forwards; }
+  .ag-pop .ac-pop-caret { visibility: hidden; }
+  .ag-more { margin-bottom: calc(-18px - env(safe-area-inset-bottom, 0px)); padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); border-radius: 0; }
+  [data-radix-popper-content-wrapper]:has(> .ag-menu) { inset: auto 12px calc(78px + env(safe-area-inset-bottom, 0px)) !important; min-width: 0 !important; transform: none !important; }
+  .ac-pop.ag-menu { width: auto; max-width: none; }
+}
+@keyframes ag-sheet { from { transform: translateY(24px); } }

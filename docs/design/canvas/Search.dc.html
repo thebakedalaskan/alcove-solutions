@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Search</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-notes.css">
+<link rel="stylesheet" href="page-note.css">
+<link rel="stylesheet" href="page-search.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="data-note.js"></script>
+<script src="data-notes.js"></script>
+<script src="data-search.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="sr{{vcls}}" data-mode="{{mode}}" style="{{rootStyle}}" onKeyDown="{{keys}}">
+<div class="sr-page">
+<sc-if value="{{onHome}}" hint-placeholder-val="{{true}}"><dc-import name="Home" mode="{{mode}}" step="{{homeStep}}" find-fn="{{openFind}}" hint-size="100%,100%"></dc-import></sc-if>
+<sc-if value="{{onNote}}" hint-placeholder-val="{{false}}"><dc-import name="Note" mode="{{mode}}" step="{{noteStep}}" go="{{goBack}}" hint-size="100%,100%"></dc-import></sc-if>
+<sc-if value="{{onNotes}}" hint-placeholder-val="{{false}}"><dc-import name="Notes" mode="{{mode}}" step="{{notesStep}}" go="{{goBack}}" hint-size="100%,100%"></dc-import></sc-if>
+</div>
+
+<sc-if value="{{showNew}}" hint-placeholder-val="{{false}}">
+<div class="sr-scrim" onMouseDown="{{scrimDown}}">
+<div class="sr-win{{winCls}}" role="dialog" aria-modal="true" aria-label="Search or ask">
+<div class="sr-line{{lineCls}}">
+<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{lineIcon}}"></path></svg>
+<sc-if value="{{hasWho}}" hint-placeholder-val="{{false}}"><span class="sr-tok"><dc-import name="Faces" who="{{v.who}}" size="22" hint-size="22px,24px"></dc-import>{{v.whoFirst}}<button type="button" class="sr-tok-x" aria-label="Show everyone" title="Show everyone" onClick="{{clearWho}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button></span></sc-if>
+<input class="sr-in" type="text" value="{{q}}" placeholder="{{placeholder}}" aria-label="Search or ask your notes" role="combobox" aria-expanded="true" aria-autocomplete="list" autoComplete="off" spellCheck="{{no}}" autoFocus="{{focus}}" onChange="{{typed}}">
+<span class="sr-kbd">esc</span>
+<button type="button" class="sr-cancel" onClick="{{close}}">Cancel</button>
+</div>
+<div class="sr-body{{bodyCls}}">
+<div class="sr-list" role="listbox" aria-label="Results" ref="{{listRef}}">
+<sc-for list="{{v.rows}}" as="r" hint-placeholder-count="6">
+<sc-if value="{{r.isLabel}}" hint-placeholder-val="{{false}}"><div class="sr-lab"><span>{{r.text}}</span><sc-if value="{{r.hasCount}}" hint-placeholder-val="{{false}}"><small>{{r.count}}</small></sc-if></div></sc-if>
+<sc-if value="{{r.isAsk}}" hint-placeholder-val="{{false}}"><button type="button" class="sr-row sr-ask{{r.cls}}" role="option" aria-selected="{{r.on}}" onClick="{{r.go}}" onMouseMove="{{r.hover}}"><span class="ic"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.ask}}"></path></svg></span><span class="t"><b>Ask <q>{{r.text}}</q></b></span><span class="end"><span class="sr-kbd">{{askKey}}</span></span></button></sc-if>
+<sc-if value="{{r.isPerson}}" hint-placeholder-val="{{false}}"><button type="button" class="sr-row sr-person{{r.cls}}" role="option" aria-selected="{{r.on}}" onClick="{{r.go}}" onMouseMove="{{r.hover}}"><dc-import name="Faces" who="{{r.id}}" size="26" hint-size="26px,29px"></dc-import><span class="t"><b><sc-for list="{{r.nameParts}}" as="p" hint-placeholder-count="1"><span class="{{p.c}}">{{p.t}}</span></sc-for></b><small>{{r.meta}}</small></span><span class="end"><svg class="i go" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></span></button></sc-if>
+<sc-if value="{{r.isHead}}" hint-placeholder-val="{{false}}"><div class="sr-head"><span class="sr-thumb {{r.cover}}"></span><b class="clamp1">{{r.title}}</b><span class="d">{{r.meta}}</span></div></sc-if>
+<sc-if value="{{r.isMoment}}" hint-placeholder-val="{{false}}"><button type="button" class="sr-row sr-mo{{r.cls}}" role="option" aria-selected="{{r.on}}" onClick="{{r.go}}" onMouseMove="{{r.hover}}"><span class="face"><dc-import name="Faces" who="{{r.face}}" size="22" hint-size="22px,24px"></dc-import></span><span class="t"><span class="who"><span><sc-for list="{{r.nameParts}}" as="p" hint-placeholder-count="1"><span class="{{p.c}}">{{p.t}}</span></sc-for></span><sc-if value="{{r.hasTag}}" hint-placeholder-val="{{false}}"><span class="sr-tag {{r.tag.cls}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.tag.icon}}"></path></svg>{{r.tag.word}}</span></sc-if></span><span class="q clamp2"><sc-for list="{{r.parts}}" as="p" hint-placeholder-count="1"><span class="{{p.c}}">{{p.t}}</span></sc-for></span></span><span class="end"><span class="sr-at"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{r.atLabel}}</span></span></button></sc-if>
+<sc-if value="{{r.isMore}}" hint-placeholder-val="{{false}}"><button type="button" class="sr-row sr-more{{r.cls}}" role="option" aria-selected="{{r.on}}" onClick="{{r.go}}" onMouseMove="{{r.hover}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chev}}"></path></svg><span>{{r.text}}</span></button></sc-if>
+<sc-if value="{{r.isNote}}" hint-placeholder-val="{{false}}"><button type="button" class="sr-row sr-note{{r.cls}}" role="option" aria-selected="{{r.on}}" onClick="{{r.go}}" onMouseMove="{{r.hover}}"><span class="sr-thumb {{r.cover}}"></span><span class="t"><b class="clamp1">{{r.title}}</b><small class="clamp1">{{r.meta}}</small></span><span class="end"><svg class="i go" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></span></button></sc-if>
+<sc-if value="{{r.isAll}}" hint-placeholder-val="{{false}}"><button type="button" class="sr-row sr-all{{r.cls}}" role="option" aria-selected="{{r.on}}" onClick="{{r.go}}" onMouseMove="{{r.hover}}"><span>{{r.text}}</span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></button></sc-if>
+<sc-if value="{{r.isPeople}}" hint-placeholder-val="{{false}}"><div class="sr-lab"><span>People</span></div><div class="sr-people"><sc-for list="{{r.people}}" as="p" hint-placeholder-count="5"><button type="button" class="sr-pick{{p.cls}}" onClick="{{p.go}}" aria-label="What {{p.first}} said"><dc-import name="Faces" who="{{p.id}}" size="40" hint-size="40px,44px"></dc-import><span>{{p.first}}</span></button></sc-for></div></sc-if>
+<sc-if value="{{r.isBack}}" hint-placeholder-val="{{false}}"><button type="button" class="sr-back" onClick="{{r.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.left}}"></path></svg>Results</button></sc-if>
+<sc-if value="{{r.isReading}}" hint-placeholder-val="{{false}}"><div class="sr-ans is-reading"><span class="ic"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.ask}}"></path></svg></span><p><span class="sr-dots" aria-hidden="true"><i></i><i></i><i></i></span>Reading your notes</p></div></sc-if>
+<sc-if value="{{r.isAnswer}}" hint-placeholder-val="{{false}}"><div class="sr-ans"><span class="ic"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.ask}}"></path></svg></span><p>{{r.text}}</p></div></sc-if>
+</sc-for>
+<sc-if value="{{isNone}}" hint-placeholder-val="{{false}}"><div class="sr-none"><span class="big"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg></span><b>Nothing matches “{{v.typed}}”</b><p>Search looked through the names, titles, summaries, decisions, follow-ups and everything said in all {{count}} of your notes.</p></div></sc-if>
+<sc-if value="{{isFirst}}" hint-placeholder-val="{{false}}"><div class="sr-none"><span class="big"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.mic}}"></path></svg></span><b>Nothing to search yet</b><p>After your first call with notes on, everything said in it can be found here: who said it, and when.</p></div></sc-if>
+<sc-if value="{{isFailed}}" hint-placeholder-val="{{false}}"><div class="sr-none is-caution"><span class="big"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.alert}}"></path></svg></span><b>The search didn’t go through</b><p>Try again, or ask instead.</p><button type="button" class="b b-line b-sm" onClick="{{retry}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.retry}}"></path></svg>Try again</button></div></sc-if>
+<sc-if value="{{isOffline}}" hint-placeholder-val="{{false}}"><div class="sr-none"><span class="big"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wifiOff}}"></path></svg></span><b>You’re offline</b><p>Search needs a connection. It works again as soon as you’re back.</p></div></sc-if>
+</div>
+
+<div class="sr-pv" aria-live="polite">
+<sc-if value="{{pv.isMoment}}" hint-placeholder-val="{{false}}">
+<div class="sr-pv-in">
+<div class="sr-pv-h"><span><b>{{pv.title}}</b><small>{{pv.meta}}</small></span><sc-if value="{{pv.hasFaces}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{pv.faces}}" size="24" max="4" ring="var(--sr-pv)" hint-size="56px,26px"></dc-import></sc-if></div>
+<sc-if value="{{pv.hasTag}}" hint-placeholder-val="{{false}}"><div class="sr-tile"><span class="kind {{pv.tag.cls}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{pv.tag.icon}}"></path></svg>{{pv.tag.word}}</span><p>{{pv.tag.t}}</p><span class="s">{{pv.tag.state}}</span><sc-if value="{{tagWaiting}}" hint-placeholder-val="{{false}}"><span class="acts"><button type="button" class="b b-line b-sm" onClick="{{pv.confirm}}">Confirm</button><button type="button" class="b b-quiet b-sm" onClick="{{pv.notDecided}}">It wasn’t decided</button></span></sc-if></div></sc-if>
+<div class="sr-tr"><sc-for list="{{pv.lines}}" as="l" hint-placeholder-count="5"><div class="sr-tl{{l.cls}}"><span class="a">{{l.at}}</span><span class="f"><dc-import name="Faces" who="{{l.face}}" size="20" hint-size="20px,22px"></dc-import></span><span class="x"><span class="n">{{l.name}}</span><sc-for list="{{l.parts}}" as="p" hint-placeholder-count="1"><span class="{{p.c}}">{{p.t}}</span></sc-for></span></div></sc-for></div>
+</div>
+<div class="sr-pv-a"><button type="button" class="b b-press b-sm{{pv.openCls}}" onClick="{{pv.open}}"><span>Open at {{pv.atLabel}}</span><span class="k">↵</span></button><button type="button" class="b b-line b-sm" onClick="{{pv.play}}"><svg class="i fill" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.play}}"></path></svg><span>Play from {{pv.atLabel}}</span></button></div>
+</sc-if>
+<sc-if value="{{pv.isPerson}}" hint-placeholder-val="{{false}}">
+<div class="sr-pv-in">
+<div class="sr-who"><dc-import name="Faces" who="{{pv.id}}" size="52" hint-size="52px,57px"></dc-import><span><b>{{pv.name}}</b><small>{{pv.title}}</small></span></div>
+<p class="sr-pv-p">{{pv.meta}}</p>
+<sc-if value="{{pv.hasSaid}}" hint-placeholder-val="{{true}}"><h3 class="sr-sec">{{pv.saidLabel}}</h3><sc-for list="{{pv.said}}" as="s" hint-placeholder-count="3"><div class="sr-said"><small><span>{{s.call}}</span><span>{{s.at}}</span></small><p>{{s.text}}</p></div></sc-for></sc-if>
+</div>
+<div class="sr-pv-a"><button type="button" class="b b-press b-sm{{pv.goCls}}" onClick="{{pv.go}}"><span>What {{pv.first}} said</span><span class="k">↵</span></button><button type="button" class="b b-line b-sm" onClick="{{pv.withCalls}}"><span>Calls with {{pv.first}}</span></button></div>
+</sc-if>
+<sc-if value="{{pv.isNote}}" hint-placeholder-val="{{false}}">
+<div class="sr-pv-in">
+<div class="sr-pv-h"><span><b>{{pv.title}}</b><small>{{pv.meta}}</small></span><sc-if value="{{pv.hasFaces}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{pv.faces}}" size="24" max="4" ring="var(--sr-pv)" hint-size="56px,26px"></dc-import></sc-if></div>
+<p class="sr-pv-p">{{pv.summary}}</p>
+<sc-if value="{{pv.hasChips}}" hint-placeholder-val="{{false}}"><div class="sr-pv-chips"><sc-for list="{{pv.chips}}" as="c" hint-placeholder-count="2"><span class="sr-chip {{c.cls}}">{{c.t}}</span></sc-for></div></sc-if>
+</div>
+<div class="sr-pv-a"><button type="button" class="b b-press b-sm{{pv.goCls}}" onClick="{{pv.go}}"><span>Open notes</span><span class="k">↵</span></button></div>
+</sc-if>
+<sc-if value="{{pv.isAsk}}" hint-placeholder-val="{{false}}">
+<div class="sr-pv-in sr-askpv"><span class="ic"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.ask}}"></path></svg></span><h3>Ask your notes</h3><blockquote>{{pv.q}}</blockquote><p>{{pv.line}}</p></div>
+<div class="sr-pv-a"><button type="button" class="b b-press b-sm{{pv.goCls}}" onClick="{{pv.go}}"><span>Ask</span><span class="k">{{askKey}}</span></button></div>
+</sc-if>
+<sc-if value="{{pv.isAll}}" hint-placeholder-val="{{false}}">
+<div class="sr-pv-in sr-askpv"><span class="ic"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.notes}}"></path></svg></span><h3>In Notes</h3><blockquote>{{pv.q}}</blockquote><p>{{pv.countText}}, each under its note. Notes can narrow them to someone, or to calls, the room and what was shared with you.</p></div>
+<div class="sr-pv-a"><button type="button" class="b b-press b-sm{{pv.goCls}}" onClick="{{pv.go}}"><span>See all in Notes</span><span class="k">↵</span></button></div>
+</sc-if>
+</div>
+</div>
+
+<div class="sr-foot">
+<sc-if value="{{sealed}}" hint-placeholder-val="{{false}}"><span class="sr-priv is-sealed"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg>Answers are written in confidential compute, from your notes only.</span></sc-if>
+<sc-if value="{{notSealed}}" hint-placeholder-val="{{true}}"><span class="sr-priv"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg>Only you can see what you search.</span></sc-if>
+<span class="sr-keys"><span><span class="sr-kbd">↑</span><span class="sr-kbd">↓</span>Move</span><span><span class="sr-kbd">↵</span>{{enterWord}}</span><sc-if value="{{showTab}}" hint-placeholder-val="{{true}}"><span><span class="sr-kbd">Tab</span>Ask</span></sc-if><span><span class="sr-kbd">esc</span>{{escWord}}</span></span>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{hasToast}}" hint-placeholder-val="{{false}}"><div class="sr-toast" role="status"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg>{{toast}}</div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"step":{"editor":null,"default":"maya"},"still":{"editor":null,"default":false},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  componentWillUnmount() { clearTimeout(this.__ask); clearTimeout(this.__toast); }
+  componentDidUpdate() {
+    /* Keep the lit row in view as ↑ and ↓ move it, inside the list only. */
+    if (this.props.still) return;
+    var list = this.__list, row = list && list.querySelector('.sr-row.is-on');
+    if (!row) return;
+    var t = row.offsetTop, b = t + row.offsetHeight;
+    if (t < list.scrollTop + 8) list.scrollTop = Math.max(0, t - 8);
+    else if (b > list.scrollTop + list.clientHeight - 8) list.scrollTop = b - list.clientHeight + 8;
+  }
+  renderVals() {
+    var AH = window.AH, SR = AH.SR, I = AH.I, hs = AH.hash(), self = this;
+    var mode = hs.mode || this.props.mode || 'dark';
+    var stepId = hs.step || this.props.step || 'maya';
+    var still = !!this.props.still;
+    var st = AH.assign({ open: false, q: '', who: '', mode: '', askQ: '', act: null, actKey: null, more: {}, page: 'home', hot: '', toast: '' }, SR.STEPS[stepId] || {}, this.state || {});
+    var set = function (patch) { self.setState(AH.assign({ hot: '' }, patch)); };
+    var toast = function (msg) {
+      clearTimeout(self.__toast);
+      self.setState({ toast: msg });
+      self.__toast = setTimeout(function () { self.setState({ toast: '' }); }, 3200);
+    };
+
+    var api = {
+      set: set,
+      toast: toast,
+      ask: function () {
+        var q = String(st.q || '').trim();
+        if (!q) return;
+        set({ mode: 'asking', askQ: q, act: null, actKey: null });
+        clearTimeout(self.__ask);
+        self.__ask = setTimeout(function () { self.setState({ mode: 'answer', act: null, actKey: null }); }, 1200);
+      },
+      /* Team standup is written out on its own board, so its moments open there. Any other call says where it would open. */
+      openAt: function (id, at) {
+        var x = SR.IDX[id];
+        if (id === 'n2') {
+          var line = x.lines.filter(function (l) { return l.at === at; })[0];
+          set({ open: false, page: 'note', noteStep: line ? 'sr-' + line.id : 'home' });
+          return;
+        }
+        set({ open: false });
+        toast(x.n.title + (at ? ' opens at ' + SR.clock(at) + '.' : ' opens.'));
+      },
+      seeAll: function () {
+        var q = String(st.q || '').trim(), key = 'sr-all-' + (st.who || '') + '-' + q;
+        AH.NT.steps[key] = AH.assign({ q: q, focus: !!q }, st.who ? { who: st.who } : {});
+        set({ open: false, page: 'notes', notesStep: key });
+      },
+      close: function () { set({ open: false }); }
+    };
+
+    var v = SR.view(st, api);
+    var FLAGS = ['isLabel', 'hasCount', 'isAsk', 'isPerson', 'isHead', 'isMoment', 'isMore', 'isNote', 'isAll', 'isPeople', 'isBack', 'isQuestion', 'isReading', 'isAnswer', 'hasTag', 'room', 'on'];
+    var COVERS = { n1: 'c1', n2: 'c2', n3: 'c3', n4: 'c4', n5: 'c5', n6: 'c5', n7: 'c1', n8: 'c3', n9: 'c2', n10: 'c4', n11: 'c1' };
+    v.rows.forEach(function (r) {
+      FLAGS.forEach(function (f) { r[f] = !!r[f]; });
+      r.cover = (COVERS[r.id] || 'c1') + (r.room ? ' is-room' : '');
+    });
+    var pv = v.preview || {};
+    ['isMoment', 'isPerson', 'isNote', 'isAsk', 'isAll', 'hasTag', 'hasFaces', 'hasSaid', 'hasChips'].forEach(function (f) { pv[f] = !!pv[f]; });
+
+    var on = v.on, lit = on ? on.kind : '';
+    var open = !!st.open;
+    var small = v.state === 'first' || v.state === 'offline' || (v.state === 'answer' && !!pv.none);
+    var phoneFind = function () { set({ open: true, q: '', who: '', mode: '', act: null, actKey: null, more: {} }); };
+
+    return {
+      I: I, mode: mode, no: false, focus: !still, count: SR.count,
+      vcls: ' is-new',
+      rootStyle: AH.rootStyle('blue-hour', mode, 16.2),
+      keys: function (e) {
+        var k = e.key;
+        if ((e.metaKey || e.ctrlKey) && (k === 'k' || k === 'K')) { e.preventDefault(); set({ open: !open, mode: '', act: null, actKey: null }); return; }
+        if (!open) return;
+        if (e.nativeEvent && e.nativeEvent.isComposing) return;
+        var n = v.sel.length;
+        if (k === 'Escape') { e.preventDefault(); if (st.mode) set({ mode: '', act: null, actKey: null }); else set({ open: false }); }
+        else if (k === 'ArrowDown') { e.preventDefault(); if (n) set({ act: Math.min(n - 1, v.act + 1), actKey: null }); }
+        else if (k === 'ArrowUp') { e.preventDefault(); if (n) set({ act: Math.max(0, v.act - 1), actKey: null }); }
+        else if (k === 'Enter') { e.preventDefault(); if (on && on.go) on.go(); }
+        else if (k === 'Tab' && String(st.q || '').trim() && !st.mode) { e.preventDefault(); api.ask(); }
+        else if (k === 'Backspace' && !st.q && st.who) { e.preventDefault(); set({ who: '', act: null, actKey: null }); }
+      },
+      listRef: function (el) { if (el) self.__list = el; },
+
+      onHome: st.page === 'home', onNote: st.page === 'note', onNotes: st.page === 'notes',
+      homeStep: st.homeStep || 'home', noteStep: st.noteStep || 'home', notesStep: st.notesStep || 'list',
+      openFind: phoneFind,
+      goBack: function () { set({ page: 'home', open: false }); },
+
+      showNew: open,
+      winCls: small ? ' is-small' : '',
+      bodyCls: pv.none || small ? ' is-one' : '',
+      lineCls: v.askLit ? ' is-ask' : '',
+      lineIcon: v.askLit ? I.ask : I.search,
+      q: st.q, v: v, pv: pv, tagWaiting: !!(pv.tag && pv.tag.waiting),
+      hasWho: !!v.who,
+      placeholder: v.who ? 'Search what ' + v.whoFirst + ' said' : 'Search everything said, or ask a question',
+      typed: function (e) { set({ q: e.target.value, act: null, actKey: null, mode: '', more: {}, failed: false }); },
+      clearWho: function () { set({ who: '', act: null, actKey: null, more: {} }); },
+      close: api.close,
+      scrimDown: function (e) { if (e.target === e.currentTarget) api.close(); },
+      retry: function () { set({ failed: false }); },
+      askKey: lit === 'ask' ? '↵' : 'Tab',
+      isNone: v.state === 'none', isFirst: v.state === 'first', isFailed: v.state === 'failed', isOffline: v.state === 'offline',
+
+      sealed: v.askLit, notSealed: !v.askLit,
+      enterWord: lit === 'ask' ? 'Ask' : lit === 'person' ? 'Pick' : lit === 'more' ? 'Show' : lit === 'all' ? 'See all' : 'Open',
+      escWord: st.mode ? 'Back' : 'Close',
+      showTab: !st.mode && !!String(st.q || '').trim() && lit !== 'ask',
+
+      hasToast: !!st.toast, toast: st.toast
+    };
+  }
+}
+</script>
+</body>
+</html>

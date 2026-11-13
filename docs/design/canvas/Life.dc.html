@@ -35,21 +35,21 @@
 <script type="text/x-dc" data-dc-script data-props='{"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":1270}}'>
 var TILES = [
   { only: 'clouds', moment: 'home', name: 'Clouds', line: 'Striped like the light on the water, drifting across on the wind.', where: 'Every page, always. Shown 12 times faster.' },
-  { only: 'gulls', moment: 'home', name: 'Gulls', line: 'One, three or five. A few wing beats, then a glide.', where: 'Home, Team and Notes.' },
+  { only: 'gulls', moment: 'home', name: 'Gulls', line: 'One, three or five. A few wing beats, then a glide.', where: 'Home, Team, Agents, Notes, Drive and Plans.' },
   { only: 'balloon', moment: 'home', name: 'A hot air balloon', line: 'In from the edge, up in a curve, and out again. About 40 seconds.', where: 'Home, in the corner. Real speed.' },
-  { only: 'star', moment: 'record', name: 'Stars', line: 'They twinkle after dark, and now and then one shoots.', where: 'Notes and a note in dark mode. Record always.' },
-  { only: 'fish', moment: 'home', name: 'A fish', line: 'Leaps, with a ring on the water at each end.', where: 'Home, Team, Notes and Record.' },
-  { only: 'school', moment: 'home', name: 'A shoal', line: 'Five small fish, one after another.', where: 'Home, Team and Notes.' },
-  { only: 'flyer', moment: 'home', name: 'A flying fish', line: 'A long, low glide over the water.', where: 'Home and Team.' },
+  { only: 'star', moment: 'record', name: 'Stars', line: 'They twinkle after dark, and now and then one shoots.', where: 'Notes, Drive, Plans and a note in dark mode. Record and the page after a call always.' },
+  { only: 'fish', moment: 'home', name: 'A fish', line: 'Leaps, with a ring on the water at each end.', where: 'Home, Team, Agents, Notes, Drive, Plans and Record.' },
+  { only: 'school', moment: 'home', name: 'A shoal', line: 'Five small fish, one after another.', where: 'Home, Team, Agents, Notes and Plans.' },
+  { only: 'flyer', moment: 'home', name: 'A flying fish', line: 'A long, low glide over the water.', where: 'Home, Team and Agents.' },
   { only: 'marlin', moment: 'home', name: 'A marlin', line: 'The big one. A high leap.', where: 'Home.' },
-  { only: 'dolphins', moment: 'home', name: 'Dolphins', line: 'Two, one after the other, far out.', where: 'Home and Team.' },
+  { only: 'dolphins', moment: 'home', name: 'Dolphins', line: 'Two, one after the other, far out.', where: 'Home, Team and Agents.' },
   { only: 'whale', moment: 'home', name: 'A whale’s tail', line: 'Up out of the water, a moment there, and down again.', where: 'Home and Record.' },
-  { only: 'sail', moment: 'home', pace: 5, name: 'A sailing boat', line: 'Along the horizon, in front of the sun when it gets there.', where: 'Everywhere but a note. Shown 5 times faster.' },
-  { only: 'steamer', moment: 'home', pace: 5, name: 'A small ship', line: 'With a trail of smoke.', where: 'Home and Team. Shown 5 times faster.' },
-  { only: 'trawler', moment: 'home', pace: 5, name: 'A fishing boat', line: 'Out with its gear up.', where: 'Home, Team, Notes and Record. Shown 5 times faster.' },
-  { only: 'tug', moment: 'home', pace: 5, name: 'A tug', line: 'Small and quicker than the rest.', where: 'Home and Team. Shown 5 times faster.' },
-  { only: 'tall', moment: 'home', pace: 5, name: 'A tall ship', line: 'Three masts, the slowest of them.', where: 'Home, Team and Record. Shown 5 times faster.' },
-  { only: 'freighter', moment: 'home', pace: 5, name: 'A freighter', line: 'Long and low, stacked with boxes.', where: 'Home, Notes and Settings. Shown 5 times faster.' }
+  { only: 'sail', moment: 'home', pace: 5, name: 'A sailing boat', line: 'Along the horizon, in front of the sun when it gets there.', where: 'Everywhere but a note and after a call. Shown 5 times faster.' },
+  { only: 'steamer', moment: 'home', pace: 5, name: 'A small ship', line: 'With a trail of smoke.', where: 'Home, Team and Agents. Shown 5 times faster.' },
+  { only: 'trawler', moment: 'home', pace: 5, name: 'A fishing boat', line: 'Out with its gear up.', where: 'Home, Team, Agents, Notes, Drive, Plans and Record. Shown 5 times faster.' },
+  { only: 'tug', moment: 'home', pace: 5, name: 'A tug', line: 'Small and quicker than the rest.', where: 'Home, Team, Agents and Drive. Shown 5 times faster.' },
+  { only: 'tall', moment: 'home', pace: 5, name: 'A tall ship', line: 'Three masts, the slowest of them.', where: 'Home, Team, Agents and Record. Shown 5 times faster.' },
+  { only: 'freighter', moment: 'home', pace: 5, name: 'A freighter', line: 'Long and low, stacked with boxes.', where: 'Home, Notes, Plans and Settings. Shown 5 times faster.' }
 ];
 class Component extends DCLogic {
   renderVals() {

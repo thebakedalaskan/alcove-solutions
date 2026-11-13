@@ -1,0 +1,316 @@
+/*
+ * Agents: the agents you use stand on the horizon, as people do on Team. Solid once connected, dashed until then. An
+ * agent's popover hangs from its window; the question an agent asks fills the sky; what they did sits on the water.
+ * Everything here starts with agt-. One place on the line is --u wide.
+ */
+.agt { --agt-dash: color-mix(in oklch, var(--ink) 54%, transparent); --agt-soft: var(--ink-3); --agt-caution: oklch(.83 .12 76); --agt-win: var(--raised); --agt-edge: color-mix(in oklch, var(--ink) 14%, transparent); --agt-rule: color-mix(in oklch, var(--ink) 16%, transparent); }
+.agt[data-mode="light"] { --agt-soft: var(--ink-2); --agt-caution: oklch(.5 .11 64); --agt-win: oklch(1 0 0); --agt-edge: color-mix(in oklch, var(--ink) 12%, transparent); }
+.agt .pg-stage {
+  --hz: clamp(330px, calc(41 * var(--vh, 1vh)), 470px);
+  --u0: clamp(84px, 7.4cqw, 112px);
+  --u: min(var(--u0), calc((100cqw - 330px) / var(--w, 8)));
+  --name-h: 46px;
+}
+.agt[data-first="true"] .pg-stage { --hz: clamp(380px, calc(49 * var(--vh, 1vh)), 540px); }
+.agt[data-ask="true"] .pg-stage { --hz: clamp(660px, calc(75 * var(--vh, 1vh)), 760px); }
+.agt[data-done="true"] .pg-stage { --hz: clamp(420px, calc(56 * var(--vh, 1vh)), 600px); }
+/* The sun stands just past the end of the line, whatever the window. */
+.agt .sc-sun { left: calc(var(--sunu, 4.6) * var(--u) - 36px) !important; }
+.agt .sc-glow { left: calc(var(--sunu, 4.6) * var(--u) - 760px) !important; }
+
+/* The page's title, at the top left as on every page. */
+.agt .pg-top { position: relative; z-index: 6; }
+.agt-top { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.agt-title { font: 400 clamp(22px, 2vw, 28px)/1.2 var(--serif); letter-spacing: -.008em; color: var(--ink); }
+.agt-back { display: none; align-items: center; gap: 2px; height: 32px; margin-left: -8px; padding: 0 8px 0 4px; border-radius: 999px; font: 500 14px/1 var(--sans); color: var(--ink-2); }
+.agt-back .i { width: 18px; height: 18px; }
+
+/* The sky: the one job in the middle, the agents on the line. */
+.agt-sky { position: relative; z-index: 5; display: flex; flex-direction: column; height: var(--hz); margin-top: -22px; padding-top: 22px; }
+.agt-hero { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; padding-bottom: 14px; text-align: center; }
+.agt-t { font: 400 clamp(36px, 3.8cqw, 56px)/1.08 var(--serif); letter-spacing: -.012em; color: var(--ink); text-wrap: balance; }
+.agt-line { max-width: 31em; margin-top: 12px; font: 400 16.5px/1.45 var(--sans); color: var(--ink-2); text-wrap: balance; }
+.agt-why { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; font: 500 15px/1.35 var(--sans); color: var(--ink-2); }
+.agt-why .i { color: var(--agt-caution); }
+.agt-hero .b, .agt-done .b { margin-top: 18px; }
+.agt-sky .b-sky { background: color-mix(in oklch, var(--ground) 64%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 16%, transparent); color: var(--ink); }
+.agt-sky .b-sky:hover { background: color-mix(in oklch, var(--ground) 82%, transparent); }
+
+/* The line. Every window stands on the horizon, its name on the water just below. */
+.agt-row { position: relative; display: flex; justify-content: center; align-items: flex-end; flex: none; margin-bottom: calc(-1 * var(--name-h)); }
+.agt-gap { flex: none; width: calc(var(--u) * .5); }
+.agt-p { position: relative; flex: none; width: var(--u); }
+.agt-who { position: relative; display: block; width: 100%; color: var(--ink); border-radius: 14px; }
+.agt-who:focus-visible { outline-offset: 4px; }
+.agt-win { position: relative; display: grid; place-items: center; width: 68%; margin-inline: auto; aspect-ratio: 1; border-radius: 20px 20px 3px 3px; background: var(--agt-win); box-shadow: inset 0 0 0 1px var(--agt-edge); color: var(--ink); transform-origin: 50% 100%; transition: transform .24s var(--ease), box-shadow .24s var(--ease); }
+.agt-win .i { width: 40%; height: 40%; stroke-width: 1.6; }
+.agt-p.is-yet .agt-win { background: none; box-shadow: none; border: 1.5px dashed var(--agt-dash); border-bottom: 0; color: var(--ink-2); }
+.agt-p.is-other .agt-win .i { width: 34%; height: 34%; }
+.agt-n { display: block; height: 25px; padding-top: 7px; font: 500 14px/18px var(--sans); text-align: center; white-space: nowrap; text-shadow: 0 0 10px var(--ground), 0 0 3px var(--ground); }
+.agt-s { display: block; height: 18px; font: 400 12.5px/18px var(--sans); color: var(--agt-soft); text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; text-shadow: 0 0 10px var(--ground), 0 0 3px var(--ground); }
+.agt-p.is-yet .agt-n { color: var(--ink-2); font-weight: 400; }
+.agt-s.is-caution { color: var(--agt-caution); font-weight: 500; }
+.agt-who:hover .agt-win { transform: translateY(-3px); }
+.agt-p.is-on .agt-win { transform: translateY(-3px); box-shadow: 0 0 0 2px var(--ink); }
+.agt-p.is-on.is-yet .agt-win { border-style: solid; border-color: var(--ink); box-shadow: none; }
+.agt-p.is-on .agt-n { font-weight: 600; color: var(--ink); }
+.agt-p.is-on { z-index: 12; }
+/* A connection ending soon: a caution dot on its window, and its line says when. */
+.agt-dot { position: absolute; top: -4px; right: -4px; width: 12px; height: 12px; border-radius: 50%; background: var(--now); box-shadow: 0 0 0 3px var(--ground); }
+.agt-dot.is-caution { background: var(--agt-caution); }
+/* The agent asking stands alone on the line, in rose: a decision waiting on you. Once allowed it's solid. */
+.agt-p.is-asking .agt-win { border: 1.5px solid var(--notes); border-bottom: 0; box-shadow: 0 0 0 5px color-mix(in oklch, var(--notes) 20%, transparent); color: var(--ink); }
+.agt-p.is-allowed .agt-win { box-shadow: inset 0 0 0 1px var(--agt-edge), 0 0 0 5px color-mix(in oklch, var(--ink) 10%, transparent); }
+.agt-tick { position: absolute; right: -6px; bottom: 6px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--ink); color: var(--ground); box-shadow: 0 0 0 3px var(--ground); }
+.agt-tick .i { width: 13px; height: 13px; stroke-width: 2.6; }
+.agt-row.is-loading .agt-win { animation: agt-wait 2.4s ease-in-out calc(var(--d, 0) * 120ms) infinite; }
+@keyframes agt-wait { 50% { opacity: .45; } }
+
+/* A popover hangs from its window and slides along to stay in the page; the caret stays at the window. */
+.agt-catch { position: fixed; inset: 0; z-index: 4; display: block; width: 100%; height: 100%; cursor: default; }
+.agt-pop {
+  --w: 360px;
+  --x: calc(var(--px, 0) * var(--u));
+  --lim: calc((100cqw - 264px) / 2 - var(--w) / 2 - var(--pad));
+  --c: clamp(calc(-1 * var(--lim)), var(--x), var(--lim));
+  --dx: calc(var(--c) - var(--x));
+  --tx: calc(-50% + var(--dx));
+  position: absolute; z-index: 20; top: calc(100% + 4px); left: 50%; width: var(--w); padding: 16px; border-radius: 22px; background: var(--raised); color: var(--ink); text-align: left;
+  box-shadow: 0 0 0 1px var(--line), 0 28px 64px -26px rgb(0 0 0 / .62); transform: translate(var(--tx), 0); animation: agt-pop .18s var(--ease) both;
+}
+.agt[data-mode="light"] .agt-pop { box-shadow: 0 0 0 1px var(--line), 0 24px 56px -24px oklch(.3 .07 262 / .34); }
+@keyframes agt-pop { from { opacity: 0; transform: translate(var(--tx), 6px); } }
+@keyframes agt-sheet { from { transform: translateY(24px); } }
+.agt-caret { position: absolute; top: -6px; left: calc(50% - var(--dx)); width: 13px; height: 13px; margin-left: -6.5px; border-radius: 3px 0 0 0; background: var(--raised); box-shadow: -1px -1px 0 var(--line); transform: rotate(45deg); }
+.agt-pop-h { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; min-height: 36px; }
+.agt-pop-h.has-back { grid-template-columns: auto 36px minmax(0, 1fr) auto; }
+.agt-mini { position: relative; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 12px 12px 3px 3px; background: color-mix(in oklch, var(--ink) 9%, transparent); color: var(--ink); }
+.agt-mini .i { width: 17px; height: 17px; }
+.agt-mini-t { position: absolute; right: -5px; bottom: -4px; display: grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; background: var(--ink); color: var(--raised); box-shadow: 0 0 0 2px var(--raised); }
+.agt-mini-t .i { width: 10px; height: 10px; stroke-width: 3; }
+.agt-pop-w { min-width: 0; }
+.agt-pop-w b { display: block; font: 600 15.5px/20px var(--sans); }
+.agt-pop-w small { display: block; font: 400 13px/18px var(--sans); color: var(--ink-2); }
+.agt-pop-w small.is-caution { color: var(--agt-caution); font-weight: 500; }
+.agt-pop-h .dlg-x { margin: -6px -8px 0 0; align-self: start; }
+
+/* Connecting: what to do in one line, the address or command, and one button that does it. Then it waits. */
+.agt-say { margin-top: 14px; font: 400 14.5px/21px var(--sans); color: var(--ink-2); text-wrap: pretty; }
+.agt-code { display: block; margin-top: 10px; padding: 10px 12px; border-radius: 11px; background: color-mix(in oklch, var(--ink) 6%, transparent); font: 450 12.5px/19px "IBM Plex Mono", ui-monospace, Menlo, monospace; color: var(--ink); overflow-wrap: anywhere; user-select: all; }
+.agt-code.is-copy { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 3px 3px 3px 12px; user-select: auto; }
+.agt-code.is-copy code { overflow: hidden; font: inherit; white-space: nowrap; text-overflow: ellipsis; }
+.agt-code.is-try { padding: 6px 4px 6px 14px; font: 400 14.5px/20px var(--sans); }
+.agt-code + .agt-code { margin-top: 8px; }
+.agt-go { width: 100%; height: 42px; margin-top: 12px; }
+.agt-go .i { width: 15px; height: 15px; }
+.agt-wait { display: flex; align-items: center; justify-content: center; gap: 10px; height: 42px; margin-top: 12px; border-radius: 999px; background: color-mix(in oklch, var(--ink) 8%, transparent); font: 500 14px/1 var(--sans); color: var(--ink-2); }
+.agt-more { display: flex; align-items: center; gap: 6px; width: calc(100% + 32px); margin: 14px -16px -16px; padding: 13px 16px 14px; border-top: 1px solid var(--line); border-radius: 0 0 22px 22px; font: 400 13.5px/1.3 var(--sans); color: var(--ink-2); text-align: left; }
+.agt-more:hover { background: color-mix(in oklch, var(--ink) 5%, transparent); }
+.agt-more b { font-weight: 500; color: var(--ink); }
+.agt-more .i { width: 14px; height: 14px; margin-left: auto; color: var(--ink-2); }
+.agt-small { margin-top: 12px; font: 400 12.5px/1.45 var(--sans); color: var(--ink-3); }
+
+/* A connected agent: what it can do as chips you press, and Disconnect. */
+.agt-ib { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 50%; color: var(--ink-2); }
+.agt-ib:hover { color: var(--ink); background: color-mix(in oklch, var(--ink) 8%, transparent); }
+.agt-ib .i { width: 17px; height: 17px; }
+.agt-pop-h .agt-ib.is-back { margin-left: -8px; }
+
+.agt-pop-f { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; padding-top: 11px; border-top: 1px solid var(--line); }
+.agt-pop-f p { font: 400 12.5px/1.45 var(--sans); color: var(--ink-3); text-wrap: pretty; }
+.agt-pop-f .agt-acts { display: flex; gap: 6px; margin-left: auto; }
+.agt-dots { display: inline-flex; gap: 4px; }
+.agt-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-2); animation: agt-dot 1.2s ease-in-out infinite; }
+.agt-dots i:nth-child(2) { animation-delay: .15s; }
+.agt-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes agt-dot { 50% { transform: translateY(-3px); opacity: .5; } }
+@media (prefers-reduced-motion: reduce) { .agt-dots i { animation: agt-fade 2.4s ease-in-out infinite; } @keyframes agt-fade { 50% { opacity: .35; } } }
+
+.agt-can-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; font: 500 13px/18px var(--sans); color: var(--ink-2); }
+.agt-saved { display: inline-flex; align-items: center; gap: 5px; color: var(--ink-2); font-weight: 500; }
+.agt-saved .i { width: 14px; height: 14px; stroke-width: 2.4; }
+.agt-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+.agt-chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px 0 11px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line-strong); font: 500 13px/1 var(--sans); color: var(--ink-2); transition: background-color .14s, box-shadow .14s, color .14s; }
+.agt-chip:hover { color: var(--ink); }
+.agt-chip .i { width: 13px; height: 13px; stroke-width: 2.6; }
+.agt-chip[aria-pressed="true"] { background: color-mix(in oklch, var(--ink) 10%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 30%, transparent); color: var(--ink); }
+.agt-chip[aria-pressed="false"] .i { display: none; }
+.agt-asked { margin-top: 14px; }
+.agt-asked b { display: block; font: 600 15px/21px var(--sans); }
+.agt-asked p { margin-top: 3px; font: 400 14px/21px var(--sans); color: var(--ink-2); }
+.agt-asked .agt-acts { display: flex; gap: 8px; margin-top: 14px; }
+
+.agt-form { display: grid; gap: 14px; margin-top: 14px; }
+.agt-field { display: grid; gap: 6px; }
+.agt-field > span { font: 500 13px/18px var(--sans); color: var(--ink-2); }
+.agt-field input { height: 40px; padding: 0 12px; border: 0; border-radius: 11px; background: color-mix(in oklch, var(--ink) 6%, transparent); box-shadow: inset 0 0 0 1px var(--line-strong); font: 400 15px/1 var(--sans); color: var(--ink); outline: none; }
+.agt-field input:focus { box-shadow: inset 0 0 0 2px var(--focus); }
+.agt-seg { display: inline-grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; width: 100%; padding: 3px; border-radius: 11px; background: color-mix(in oklch, var(--ink) 7%, transparent); }
+.agt-seg button { height: 32px; border-radius: 8px; text-align: center; font: 500 13.5px/1 var(--sans); color: var(--ink-2); }
+.agt-seg button[aria-pressed="true"] { background: color-mix(in oklch, var(--ink) 15%, transparent); color: var(--ink); }
+
+/*
+ * The question an agent asks: one line on the sky, then what it could do in each part of Alcove, a row each with its level
+ * at the edge, and Allow. The agent and you stand together on the horizon, joined by a dashed line while it asks.
+ */
+.agt-ask { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: safe center; min-height: 0; padding: 0 0 30px; text-align: center; }
+.agt-qt { font: 400 clamp(32px, 3cqw, 44px)/1.1 var(--serif); letter-spacing: -.01em; color: var(--ink); text-wrap: balance; }
+.agt-lv { width: min(100%, 470px); margin-top: 22px; padding: 2px 8px 2px 14px; border-radius: 18px; background: color-mix(in oklch, var(--ground) 58%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 13%, transparent); text-align: left; }
+.agt[data-mode="light"] .agt-lv { background: color-mix(in oklch, var(--raised) 70%, transparent); }
+.agt-lv-r { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; min-height: 52px; }
+.agt-lv-r + .agt-lv-r { border-top: 1px solid color-mix(in oklch, var(--ink) 11%, transparent); }
+.agt-lv-i { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: color-mix(in oklch, var(--ink) 8%, transparent); color: var(--ink-2); }
+.agt-lv-i .i { width: 16px; height: 16px; }
+.agt-lv-n { font: 500 15px/1.3 var(--sans); color: var(--ink); }
+.agt-at { position: relative; display: inline-flex; }
+.agt-lv-b { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 9px 0 12px; border-radius: 10px; font: 500 14.5px/1 var(--sans); color: var(--ink); white-space: nowrap; transition: background-color .14s; }
+.agt-lv-b:hover, .agt-lv-b[aria-expanded="true"] { background: color-mix(in oklch, var(--ink) 9%, transparent); }
+.agt-lv-b .i { width: 15px; height: 15px; color: var(--ink-2); }
+.agt-lv-b.is-off { color: var(--ink-2); font-weight: 400; }
+.agt-menu { position: absolute; top: calc(100% + 6px); right: -4px; z-index: 30; width: 330px; padding: 6px; border-radius: 16px; background: var(--raised); color: var(--ink); text-align: left; box-shadow: 0 0 0 1px var(--line), 0 24px 56px -22px rgb(0 0 0 / .6); animation: agt-menu .16s var(--ease) both; }
+.agt[data-mode="light"] .agt-menu { box-shadow: 0 0 0 1px var(--line), 0 20px 48px -20px oklch(.3 .07 262 / .32); }
+@keyframes agt-menu { from { opacity: 0; transform: translateY(4px); } }
+.agt-o { display: grid; grid-template-columns: minmax(0, 1fr) 18px; column-gap: 12px; align-items: center; width: 100%; padding: 9px 10px; border-radius: 10px; text-align: left; }
+.agt-o:hover { background: color-mix(in oklch, var(--ink) 7%, transparent); }
+.agt-o b { display: block; font: 500 14.5px/20px var(--sans); color: var(--ink); }
+.agt-o small { display: block; font: 400 13px/18px var(--sans); color: var(--ink-2); text-wrap: pretty; }
+.agt-o-k .i { width: 16px; height: 16px; stroke-width: 2.4; }
+.agt-o.is-sw { grid-template-columns: minmax(0, 1fr) auto; }
+.agt-disc { max-width: 36em; margin-top: 16px; font: 400 14px/1.45 var(--sans); color: var(--ink-2); text-wrap: balance; }
+.agt-ask-a { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 18px; }
+.agt-ask-a .b { min-width: 128px; }
+.agt-ask-a .b[disabled] { opacity: .45; cursor: default; }
+.agt-fine { max-width: 40em; margin-top: 12px; font: 400 13px/1.45 var(--sans); color: var(--agt-soft); text-wrap: balance; }
+
+/* You and the agent on the horizon. */
+.agt-pair { display: flex; align-items: flex-end; justify-content: center; }
+.agt-pp { display: flex; flex-direction: column; align-items: center; width: 172px; }
+.agt-pp .agt-win { width: 76px; margin: 0; }
+.agt-pp .agt-win.is-dash { background: none; box-shadow: none; border: 1.5px dashed var(--agt-dash); border-bottom: 0; color: var(--ink); }
+.agt-pair.is-asking .agt-win.is-dash { border-color: var(--notes); border-style: solid; }
+.agt-arch { display: block; width: 76px; aspect-ratio: 1 / 1.1; border-radius: 999px 999px 0 0; overflow: hidden; }
+.agt-arch .sc-host, .agt-arch .ac-faces, .agt-arch .ac-avatar { display: block; width: 100% !important; height: 100% !important; }
+.agt-arch .ac-avatar { border-radius: 999px 999px 0 0; box-shadow: none; }
+.agt-pp .agt-n { width: 100%; }
+.agt-pp .agt-s { width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.agt-link { position: relative; flex: none; display: grid; place-items: center; width: 64px; height: 78px; margin: 0 -28px var(--name-h); }
+.agt-link::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1.5px dashed var(--notes); }
+.agt-link-c { position: relative; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--notes); color: var(--ground); box-shadow: 0 0 0 4px color-mix(in oklch, var(--notes) 22%, transparent); }
+.agt-link-c .i { width: 14px; height: 14px; stroke-width: 2.2; }
+.agt-pair.is-joined .agt-link::before { border-top-style: solid; border-color: var(--ink); }
+.agt-pair.is-joined .agt-link-c { background: var(--ink); box-shadow: 0 0 0 4px color-mix(in oklch, var(--ink) 14%, transparent); }
+.agt-pair.is-joined .agt-link-c .i { stroke-width: 2.8; }
+.agt-pair.is-ended .agt-link::before { border-color: var(--agt-dash); }
+.agt-pair.is-ended .agt-link-c { background: color-mix(in oklch, var(--ink) 16%, var(--ground)); color: var(--ink-2); box-shadow: none; }
+
+/* Allowed. */
+.agt-done { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; padding-bottom: 18px; text-align: center; }
+.agt-try { display: inline-flex; align-items: center; gap: 4px; margin-top: 18px; padding: 4px 4px 4px 18px; border-radius: 999px; background: color-mix(in oklch, var(--ground) 64%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 16%, transparent); font: 400 15px/1 var(--sans); color: var(--ink); }
+.agt-try small { margin-right: 8px; color: var(--ink-2); font-size: 13.5px; }
+.agt-done .b { margin-top: 16px; }
+
+/*
+ * The water. What your agents did shows once there's an agent to do something; until then the water is only what you can
+ * ask, two across. Nothing in it yet is one row in the list's own shape. Every row on the water is the same: a mark by
+ * kind, the words, and what's at its end in a fixed column.
+ */
+.agt-water { position: relative; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); column-gap: 56px; row-gap: 28px; margin-top: calc(var(--name-h) + 30px); }
+.agt-water > section { min-width: 0; }
+.agt-water.is-solo { grid-template-columns: minmax(0, 1fr); }
+.agt-water .pn-h { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 46px; }
+.agt-water .pn-h h2 { font: 600 15px/1.3 var(--sans); color: var(--ink); }
+.agt-only { display: inline-flex; align-items: center; gap: 6px; font: 500 13px/1 var(--sans); color: var(--agt-soft); }
+.agt-only .i { width: 14px; height: 14px; }
+
+/* A row's mark, tinted by what was done: reading is quiet, a booked call time, a follow-up horizon, a decision rose. */
+.agt-k { --tint: var(--ink-2); display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: color-mix(in oklch, var(--tint) 14%, transparent); color: var(--tint); }
+.agt-k .i { width: 16px; height: 16px; }
+.agt-k.is-ink { background: color-mix(in oklch, var(--ink) 8%, transparent); }
+.agt-k.is-now { --tint: var(--now); }
+.agt-k.is-focus { --tint: var(--focus); }
+.agt-k.is-notes { --tint: var(--notes); }
+.agt-k.is-caution { --tint: var(--agt-caution); }
+/* An agent's window not filled in yet, the size of a row's mark: the line's dashed windows, once more. */
+.agt-k.is-wait { background: none; border: 1.5px dashed var(--agt-dash); border-bottom: 0; border-radius: 11px 11px 2px 2px; color: var(--ink-2); }
+.agt-k.is-wait .i { width: 15px; height: 15px; }
+
+/* What they did, by day, newest first. */
+.agt-day { padding: 16px 0 6px; font: 500 13px/1.3 var(--sans); color: var(--agt-soft); }
+.agt-day:first-of-type { padding-top: 4px; }
+.agt-r { display: grid; grid-template-columns: 32px minmax(0, 1fr) 52px; column-gap: 14px; align-items: start; padding: 11px 0; border-top: 1px solid var(--line); }
+.agt-r.is-new { animation: agt-in .45s var(--ease) both; }
+@keyframes agt-in { from { opacity: 0; transform: translateY(-6px); } }
+.agt-r-t { min-width: 0; padding-top: 5px; font: 400 15px/22px var(--sans); color: var(--ink); text-wrap: pretty; }
+.agt-r-t b { font-weight: 600; }
+.agt-r-t small { display: block; margin-top: 1px; font: 400 13.5px/20px var(--sans); color: var(--agt-soft); }
+.agt-obj { display: inline; font-weight: 500; color: var(--ink); text-decoration: underline; text-decoration-color: color-mix(in oklch, var(--ink) 32%, transparent); text-underline-offset: 3px; border-radius: 4px; }
+.agt-obj:hover { text-decoration-color: var(--ink); }
+.agt-r-w { padding-top: 6px; font: 400 13px/20px var(--sans); color: var(--agt-soft); text-align: right; font-variant-numeric: tabular-nums; }
+.agt-log-f { padding-top: 6px; border-top: 1px solid var(--line); }
+.agt-log-f .b { margin-left: -12px; }
+
+/* Nothing yet: one row where the first will be, its mark an empty window and its words where a row's words go. */
+.agt-none { display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 14px; align-items: start; padding: 11px 0 12px; border-top: 1px solid var(--line); }
+.agt-none .agt-r-t b { font-weight: 500; }
+/* Looking for what they did: dots where the first row will be. */
+.agt-look { display: flex; align-items: center; gap: 14px; height: 55px; border-top: 1px solid var(--line); font: 400 13.5px/20px var(--sans); color: var(--agt-soft); }
+.agt-look .agt-dots { justify-content: center; width: 32px; }
+
+/* Things to ask: the same row, its mark what the agent will do, and Copy at the end. */
+.agt-qs { margin: 0; padding: 0; list-style: none; }
+.agt-q { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; column-gap: 14px; align-items: center; min-height: 55px; padding: 11px 0; border-top: 1px solid var(--line); }
+.agt-q p { min-width: 0; font: 400 15px/22px var(--sans); color: var(--ink); text-wrap: pretty; }
+.agt-q small { display: flex; align-items: center; gap: 5px; margin-top: 2px; font: 400 13px/18px var(--sans); color: var(--agt-soft); }
+.agt-q small .i { width: 13px; height: 13px; }
+.agt-q .agt-ib { margin-right: -6px; }
+/* With nothing connected, the questions are the water: two across, each row the same height as its neighbour. */
+.agt-water.is-solo .agt-qs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 56px; }
+
+
+/* The side panel's count here is how many agents, not something waiting. */
+.agt .sd-i.is-on .sd-n { color: var(--ink-2); }
+
+@container page (max-width: 1180px) {
+  .agt-water { grid-template-columns: minmax(0, 1fr); }
+  .agt-water.is-solo .agt-qs { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* A phone: the line slides sideways, popovers are sheets, the question fills the page. */
+@container page (max-width: 860px) {
+  .agt .pg-stage { --hz: 300px; --u: 84px; min-height: calc(100 * var(--vh, 1vh) - 66px); }
+  .agt[data-first="true"] .pg-stage { --hz: 380px; }
+  .agt[data-ask="true"] .pg-stage { --hz: 712px; }
+  .agt[data-done="true"] .pg-stage { --hz: 520px; }
+  .agt .pg-top .top-end { display: none; }
+  .agt .pg-in { padding-top: 0; }
+  .agt-back { display: inline-flex; }
+  .agt-sky { z-index: auto; height: calc(var(--hz) - 60px); margin-top: 0; padding-top: 0; }
+  .agt-p, .agt-p.is-on { z-index: auto; }
+  .agt-ask { justify-content: flex-start; padding-top: 30px; }
+  .agt-t { font-size: 34px; }
+  .agt-line { font-size: 15.5px; }
+  .agt-row { justify-content: flex-start; margin-inline: calc(-1 * var(--pad)); padding: 10px var(--pad) 0; overflow: auto hidden; scrollbar-width: none; scroll-snap-type: x proximity; }
+  .agt-p { scroll-snap-align: center; }
+  .agt .sc-sun, .agt .sc-glow { display: none; }
+  .agt-water { margin-top: calc(var(--name-h) + 22px); }
+  .agt-qt { font-size: 30px; }
+  .agt-lv { width: 100%; }
+  .agt-menu { position: fixed; left: 12px; right: 12px; top: auto; bottom: 78px; width: auto; }
+  .agt-row.is-pair { justify-content: center; overflow: visible; }
+  .agt-pp { width: 150px; }
+  .agt-pp .agt-win, .agt-arch { width: 62px; }
+  .agt-link { width: 52px; height: 64px; margin-inline: -34px; }
+  .agt-ask { padding-top: 18px; padding-bottom: 22px; }
+  .agt-lv { margin-top: 18px; }
+  .agt-disc { margin-top: 12px; }
+  .agt-ask-a { margin-top: 14px; }
+  .agt-ask-a { width: 100%; }
+  .agt-ask-a .b { flex: 1; }
+  .agt-r { grid-template-columns: 32px minmax(0, 1fr) 44px; column-gap: 12px; }
+  .agt-q, .agt-none { column-gap: 12px; }
+
+  .agt[data-sheet="true"] .sh-panel { z-index: 30; }
+  .agt-catch { z-index: 25; background: color-mix(in oklch, var(--well) 74%, transparent); }
+  .agt-pop { --tx: 0; position: fixed; left: 0; right: 0; top: auto; bottom: 0; z-index: 40; width: auto; padding: 18px 16px 22px; border-radius: 22px 22px 0 0; transform: none; animation-name: agt-sheet; }
+  .agt-caret { display: none; }
+}

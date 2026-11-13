@@ -11,7 +11,7 @@
   recordings in calls and in the room, playback, notes for everyone invited, sharing by email, people search
   and how much of the plan's notes is left.
 - Real Google sign-in (OpenID Connect with PKCE, verified emails only) and optional Google Calendar access: meetings with other
-  people in Home's Coming up, scheduled calls on the organizer's calendar with Google's invitations,
+  people in Home's Upcoming, scheduled calls on the organizer's calendar with Google's invitations,
   changes and cancellations kept in step, and an organizer's own event made an Alcove call.
 - Live transcript and written notes with NEAR AI Cloud: Whisper transcribes speech while notes are on; when
   the recording stops, a notes worker writes the summary, decisions, open questions, follow-ups, chapters and
@@ -86,9 +86,13 @@
   them; guests ask with a name, people signed in are added to the invite when the organizer lets them in, and
   every failure has its own screen with a request reference
   ([Calls and recordings › The join page](../engineering/calls-and-recordings.md#the-join-page)).
-- Ready for confidential compute: nothing third-party loads in the browser, logs are scrubbed so they can
-  leave a VM, and with `TEE=dstack` the API takes its keys from dstack's key service and attests to its
-  build with a nonce ([Privacy › Moving to confidential computing](../engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing)).
+- Confidential compute: the API and the web app run in Google Cloud Confidential Space on Intel TDX
+  (`TEE=confidential-space`, `infra/confidential-space`). The master is made in the TEE and kept wrapped by Cloud KMS for
+  attested, signed images alone, and seals the keys carried over from before (the index and photo token keys, `KSERVICE`);
+  secrets come from Secret Manager the same way, TLS ends inside the TEE, and the API hands out the launcher's shared PKI
+  attestation token, naming its TLS key and build, with its release's entry in Sigstore's public log, which the app checks
+  without asking anyone else. Nothing third-party loads in the browser, and logs are scrubbed so they can leave the VM
+  ([Privacy › Moving to confidential computing](../engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing)).
 - CI with merge-blocking checks; deploy pipeline and GCP bootstrap, first deployed on 3 November 2026
   ([deployment plan](../superpowers/plans/2026-11-03-alcove-deployment.md)); release acceptance is still open.
 
@@ -99,7 +103,7 @@
 | 1 | Real Microsoft and SSO sign-in, with their calendars and company directories | Replaces `apps/api/src/demo.ts`; shared notes depend on verified emails |
 | 2 | Invitation emails (SMTP) | For organizers without a connected calendar, and for people notes are shared with |
 | 3 | Release acceptance in the deployed environment | [Deployment and acceptance](../engineering/deployment-and-acceptance.md); public journeys, private storage and deletion |
-| 4 | Deploy the API to a dstack VM on Phala Cloud, bind TLS to the attestation, check it in the client, and pin the client | [Moving to confidential computing](../engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing) |
+| 4 | Bind requests to the attestation (an HPKE channel to a key the TEE makes, so trust doesn't rest on TLS alone) and pin the client | The API runs in Confidential Space and the app checks it; [Moving to confidential computing](../engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing) |
 | 5 | An attested notes participant | A member of the call's MLS group in a TEE that browsers verify before adding it, so no browser sends audio to the API; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
 | 6 | Paid plans: buying Pro, renewing and refunds, Team, and picking a plan at first sign-in | Free, the metered AI allowance, per-account storage, call limits and the dollar balance filled by top-ups (1Click) are built; [Plans and usage](../engineering/plans-and-usage.md) |
 | 7 | Pin the model code NEAR AI runs | Check what its compose manager starts against deployments with published provenance; bind the GPU evidence and the model's name to the VM; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |

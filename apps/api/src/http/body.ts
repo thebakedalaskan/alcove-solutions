@@ -10,7 +10,7 @@ import type { Clip } from '../features/recordings/transcripts';
 
 export const AUDIO_TYPES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
 
-/** The most audio one range carries, under Cloud Run's 32 MiB for a reply of a known length. A browser asks again for the rest. */
+/** The most audio one range carries, under 32 MiB for a reply of a known length, a limit kept from Cloud Run, which refused more. A browser asks again for the rest. */
 export const MOST_AUDIO_PER_REPLY = 24 * 1024 * 1024;
 
 /** IDs in paths are 22 characters of base64url; anything else names nothing. */

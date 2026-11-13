@@ -8,7 +8,7 @@
  * `onLabel`, pressing the setting's name does what the control does.
  */
 import type { NotesLanguage } from '@alcove/api';
-import { Button, Icon, ProviderMark, Segmented, Select, SettingFact, SettingRow, SettingsPanel, SettingTile, Switch, ThemePreview, type SelectOption, type ThemeChoice } from '@alcove/ui';
+import { Button, Icon, ProviderMark, Segmented, Select, SettingFact, SettingRow, SettingsPanel, SettingTile, Switch, THEMES, ThemePreview, type SelectOption, type ThemeChoice } from '@alcove/ui';
 import type { Decorator, Meta, StoryObj } from '@storybook/react-vite';
 import { useEffect, useState } from 'react';
 import { did } from '../../../src/component';
@@ -40,7 +40,6 @@ const LANGUAGES: SelectOption<NotesLanguage>[] = [
 ];
 /** Each microphone once, by the name people know it by, the system's saying so, as the app lists them. */
 const MICS: SelectOption<string>[] = [{ value: 'built-in', label: 'MacBook Pro Microphone', note: 'Your system’s choice' }, { value: 'usb', label: 'Studio USB Microphone' }];
-const THEMES: readonly ThemeChoice[] = ['system', 'light', 'dark'];
 
 const meta = {
   title: 'Components/Settings/SettingRow',
@@ -126,10 +125,10 @@ export const SubRows: Story = {
   )
 };
 export const SubRowsPhone: Story = { ...SubRows, name: 'Sub rows, phone', globals: { viewport: { value: 'phone' } } };
-/** An agent's connection: a tile as its mark. */
+/** Agents, in Connections: a tile as its mark, who's connected, and the way to Agents. */
 export const WithATile: Story = {
   name: 'With a tile',
-  args: { label: 'Weekly digest script', mark: <SettingTile icon="key" />, help: 'Read notes · Token', control: <><SettingFact>Expires 2 Dec</SettingFact><Button variant="quiet" size="sm" onClick={did('onDisconnect')}>Disconnect</Button></> }
+  args: { label: 'Agents', mark: <SettingTile icon="agent" />, help: 'Claude, Cursor and Weekly digest are connected.', control: <a href="#agents" className="set-go" onClick={(e) => e.preventDefault()}>Open Agents<Icon name="right" size={14} /></a> }
 };
 /** Something sits under the control (`stack`): the label stays level with the list, not with the pair. */
 export const Stacked: Story = {
@@ -158,6 +157,25 @@ export const Wide: Story = {
   }
 };
 export const WidePhone: Story = { ...Wide, name: 'Wide, phone', globals: { viewport: { value: 'phone' } } };
+/** Time is short (`warm`): the help says so in the sun's warmth, as Pro about to end does. */
+export const Warm: Story = {
+  args: {
+    label: 'Pro',
+    help: 'Ends in 3 days, on Saturday 7 November. Then you’re back on Free, and nothing is deleted.',
+    warm: true,
+    control: <Button variant="primary" size="sm">Extend</Button>
+  }
+};
+/** Two controls (`under`): on a phone they go under the label, so a long help keeps its measure. */
+export const Under: Story = {
+  args: {
+    label: 'Free',
+    help: 'Every feature, with about 5 hours of notes and 10 GB of storage.',
+    under: true,
+    control: <><Button variant="quiet" size="sm">See plans</Button><Button variant="secondary" size="sm">Get Pro</Button></>
+  }
+};
+export const UnderPhone: Story = { ...Under, name: 'Under, phone', globals: { viewport: { value: 'phone' } } };
 /** Waiting on something else (`off`): its choice stays as it is, greyed out. */
 export const Off: Story = {
   args: {

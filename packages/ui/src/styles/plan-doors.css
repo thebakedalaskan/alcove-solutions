@@ -1,0 +1,25 @@
+/*
+ * The doors into checkout that sit inside other places (components/plan-doors.tsx): no notes left where a call is started
+ * or scheduled, and where a question was refused for it. Caution says what ran out; the ways on sit under it, the secondary
+ * one first and a quiet way on without.
+ */
+.pd-none { display: grid; gap: 8px; min-width: 0; }
+.pd-none-t { display: flex; align-items: center; gap: 7px; margin: 0; font: 500 13px/1.35 var(--font-sans); color: var(--caution); }
+.pd-none-t .ac-i { flex: none; }
+.pd-none-a { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+/* On its own, as a note under the ways to start (Start now): a soft caution panel, the ways at its end where there's room. */
+.pd-none.is-alone { grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px; margin-top: 10px; padding: 8px 8px 8px 12px; border-radius: var(--radius-sm); background: var(--caution-soft); }
+.pd-none.is-alone .pd-none-t { font-size: 13.5px; font-weight: 600; }
+@media (max-width: 560px) { .pd-none.is-alone { grid-template-columns: minmax(0, 1fr); padding: 10px 12px; } }
+
+/*
+ * Where Start a call puts it: under the ways to start, inside the modal's padding; and under the scheduler's Notes row, its
+ * words lined up with the row's (its icon's 22px and the 12px after it).
+ */
+.cf-ways ~ .pd-none.is-alone { margin: -12px 30px 30px; }
+.sc-sec > .pd-none { margin: -2px 0 10px 34px; }
+@media (max-width: 640px) { .cf-ways ~ .pd-none.is-alone { margin: -10px 18px calc(26px + env(safe-area-inset-bottom, 0px)); } }
+/* A question refused for it: in the palette, over its list; on Calls, over the sheet's calls. */
+.pal-list > .pd-none.is-alone { margin: 6px 4px 10px; }
+.pd-none.is-alone.cs-door { margin: 0 0 16px; }

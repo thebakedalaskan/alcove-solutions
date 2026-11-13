@@ -9,7 +9,7 @@
  */
 import { errorCode, firstName, type WorkspaceItem } from '@alcove/api';
 import type { BoardReply } from '@alcove/board';
-import { BoardPop, Button, WsCantOpen, WsDoc, WsDocHead, WsGoneBar, WsOfflineEmpty, WsPopover, WsUnavailable, wsToast, type AvatarPerson, type BoardNaming, type IconName } from '@alcove/ui';
+import { BoardPop, Button, WsCantOpen, WsDoc, WsGoneBar, WsOfflineEmpty, WsPopover, WsUnavailable, wsToast, type AvatarPerson, type BoardNaming, type IconName } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { boardPictures, boardUpload, linkableIn } from '~/features/board/around';
@@ -19,19 +19,21 @@ import type { BoardLinks } from '~/features/board/more/objects';
 import { useBoardPeople } from '~/features/board/people';
 import { FollowingPill, StandingPill } from '~/features/board/pills';
 import { sealedOnPage, standingOf, useChangesSinceSaved, type PopRow, type StandingAction } from '~/features/board/standing';
+import { useStorageRefusal } from '~/features/plans/storageFull';
 import { useCallFlow } from '~/features/shell/context';
 import { useLive, useMedia, useOnline } from '~/lib/live';
 import { log } from '~/lib/log';
 import { q, useSortStickies } from '~/lib/queries';
 import { focusRow } from './actions';
 import { useWs, type Ws } from './context';
+import { PaneHead } from './Head';
 import { canKeepEdits } from './keep';
 import { useBackOnline, useOpensAgain, useSession, useTriesWhenShown, type Opened } from './opened';
 import { ShareSheet } from './Sheets';
-import { foldersAbove, nameOf } from './tree';
+import { folderName, foldersAbove, nameOf } from './tree';
 
 /** Where a board is: its workspace and the folders it's in. Its own name is on its bar, below. */
-const crumbsAbove = (ws: Ws, item: WorkspaceItem): string[] => [...(ws.sent.name === null ? [] : [ws.spaceName]), ...foldersAbove(ws.tree, item.id).map(nameOf)];
+const crumbsAbove = (ws: Ws, item: WorkspaceItem): string[] => [...(ws.sent.name === null ? [] : [ws.spaceName]), ...foldersAbove(ws.tree, item.id).map((f) => folderName(f, ws.callFolder))];
 
 const blog = log.child({ component: 'board-page' });
 
@@ -130,7 +132,7 @@ export function BoardPane({ item }: { item: WorkspaceItem }) {
   const ws = useWs();
   const { opened, reopen } = useSession(ws, item.id);
   const online = useOnline();
-  if (!opened) return <WsDoc className="is-board"><WsDocHead crumbs={crumbsAbove(ws, item)} save="quiet" onToggleList={ws.toggleList} />{!online && <WsOfflineEmpty />}</WsDoc>;
+  if (!opened) return <WsDoc className="is-board"><PaneHead crumbs={crumbsAbove(ws, item)} save="quiet" />{!online && <WsOfflineEmpty />}</WsDoc>;
   return <OpenedBoard key={opened.round} ws={ws} item={item} opened={opened} reopen={reopen} />;
 }
 
@@ -192,7 +194,8 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
    */
   const { workspaceId, pass, items: inTree, go } = ws;
   const pictures = useMemo(() => boardPictures(workspaceId, item.id, pass), [workspaceId, item.id, pass]);
-  const upload = useMemo(() => (readOnly ? undefined : boardUpload(workspaceId, item.id, pass)), [readOnly, workspaceId, item.id, pass]);
+  const refused = useStorageRefusal(ws.owner !== null, ws.call ? 'call' : 'page');
+  const upload = useMemo(() => (readOnly ? undefined : boardUpload(workspaceId, item.id, pass, refused)), [readOnly, workspaceId, item.id, pass, refused]);
   const linkable = useMemo(() => linkableIn(inTree), [inTree]);
   const links = useMemo((): BoardLinks => {
     const named = new Map(linkable.map((i) => [i.id, i]));
@@ -234,21 +237,22 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
   // Whatever the bar opened goes with what it was about.
   useEffect(() => { if (readOnly) setNaming(null); }, [readOnly]);
 
-  const where = crumbsAbove(ws, item);
+  /* Full screen the bar's path ends with the board; beside the list its own bar says its name. */
+  const where = ws.mode === 'page' ? [...crumbsAbove(ws, item), name] : crumbsAbove(ws, item);
   if (gone) {
     return (
       <WsDoc>
-        <WsDocHead crumbs={ws.sent.name === null ? [] : [ws.spaceName]} save="quiet" onToggleList={ws.toggleList} />
+        <PaneHead crumbs={ws.sent.name === null ? [] : [ws.spaceName]} save="quiet" />
         <WsCantOpen what="board" action={<Button size="sm" onClick={() => ws.go({ kind: 'home' }, { replace: true })}>Back to {ws.spaceName}</Button>} />
       </WsDoc>
     );
   }
-  if (!ready) return <WsDoc className="is-board"><WsDocHead crumbs={where} save="quiet" onToggleList={ws.toggleList} />{status.closed === 'unavailable' ? <WsUnavailable /> : offline && <WsOfflineEmpty online={online} onTry={session.retry} />}</WsDoc>;
+  if (!ready) return <WsDoc className="is-board"><PaneHead crumbs={where} save="quiet" />{status.closed === 'unavailable' ? <WsUnavailable /> : offline && <WsOfflineEmpty online={online} onTry={session.retry} />}</WsDoc>;
 
   const who = item.trashedBy ? firstName(item.trashedBy) : 'Someone';
   return (
     <WsDoc className="is-board">
-      <WsDocHead crumbs={where} save="quiet" onToggleList={ws.toggleList} />
+      <PaneHead crumbs={where} save="quiet" />
       <WsGoneBar what="board" who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} unsent={status.unsent} />
       <div ref={wrap} className="bpg">
         <Suspense>

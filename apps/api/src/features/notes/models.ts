@@ -124,6 +124,10 @@ async function load(cfg: Config): Promise<ModelEntry[]> {
     // Private ones first, then by name.
     .sort((a, b) => Number(b.private) - Number(a.private) || a.name.localeCompare(b.name));
   const models: ModelEntry[] = [{ id: cfg.NEAR_AI_NOTES_MODEL, name: nameOf(cfg.NEAR_AI_NOTES_MODEL), private: true, via: defaultModel(cfg) }, ...others];
+  // What can be charged with no price both ways is charged at the fallback (features/billing/meter.ts): said here, once each
+  // time the catalog is read, never with every request.
+  const unpriced = [...new Set([cfg.NEAR_AI_STT_MODEL, ...models.map((m) => m.id)])].filter((id) => !prices.has(id));
+  if (unpriced.length) mlog.warn('models not priced; charged at the fallback', { models: unpriced });
   mlog.info('models listed', { catalog: entries.length, endpoints: hosts.size, offered: others.length, unencrypted: others.filter((m) => !m.private).length, ms: Math.round(performance.now() - t0) });
   return models;
 }
@@ -155,11 +159,18 @@ export async function aiModels(cfg: Config): Promise<ModelEntry[]> {
 }
 
 /**
- * What a model costs, as NEAR AI's catalog last listed it, read again once the joined list is older than ten minutes.
- * Null for a model the catalog has never priced (both ways), when the caller falls back to its own price. NEAR AI not
- * answering leaves the last price in force.
+ * What a model costs, as NEAR AI's catalog last listed it. Every metered request asks, so none waits on the catalog for a
+ * price it has: that one is used at once, and the list is read again behind it once it's older than ten minutes. Only a
+ * model never priced waits for the list, and is null when the catalog doesn't price it (both ways): the caller falls back
+ * to its own price. NEAR AI not answering leaves the last price in force.
  */
 export async function priceOf(cfg: Config, model: string): Promise<Price | null> {
+  const known = prices.get(model);
+  if (known) {
+    // Not answering is logged where it's kept (`aiModels`); anything else is said here, as nobody waits on it.
+    void aiModels(cfg).catch((e: unknown) => { if (!(e instanceof UnansweredError)) mlog.warn('models not listed', { err: e }); });
+    return known;
+  }
   try {
     await aiModels(cfg);
   } catch (e) {

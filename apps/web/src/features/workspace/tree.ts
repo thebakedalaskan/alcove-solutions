@@ -8,6 +8,12 @@ import type { ItemPlace, WorkspaceItem } from '@alcove/api';
 const UNNAMED: Record<WorkspaceItem['kind'], string> = { document: 'Untitled', folder: 'Untitled folder', board: 'Untitled board' };
 export const nameOf = (item: Pick<WorkspaceItem, 'kind' | 'name'>): string => item.name || UNNAMED[item.kind];
 
+/**
+ * What the list calls a folder: in a call, the folder of the call you're in (`callFolder`) is This call, the part of the list
+ * that shows what's in it.
+ */
+export const folderName = (item: Pick<WorkspaceItem, 'id' | 'kind' | 'name'>, callFolder: string | null): string => (item.id === callFolder ? 'This call' : nameOf(item));
+
 /** A title can run on: the list keeps what fits in a name, on one line. */
 export const nameFrom = (title: string): string => title.replace(/\s+/g, ' ').trim().slice(0, 200);
 
@@ -42,20 +48,28 @@ export type ListRow = { draft: false; item: WorkspaceItem; depth: number; open: 
 
 /**
  * Everything the list shows, top to bottom: what's inside a folder only while it's open. A folder being made goes last in
- * the folder it's going into (`draftIn`; null is the top, undefined none).
+ * the folder it's going into (`draftIn`; null is the top, undefined none). `from` lists what's in one folder, as the top of a
+ * part of the list of its own; `skip` leaves a folder out, with everything in it, wherever it is.
  */
-export function rowsOf(t: Tree, open: ReadonlySet<string>, draftIn?: string | null | undefined): ListRow[] {
+export function rowsOf(t: Tree, open: ReadonlySet<string>, draftIn?: string | null | undefined, from: { top?: string | null | undefined; skip?: string | null | undefined } = {}): ListRow[] {
   const out: ListRow[] = [];
   const walk = (parent: string | null, depth: number) => {
     for (const item of kidsOf(t, parent)) {
+      if (item.id === from.skip) continue;
       const isOpen = item.kind === 'folder' && open.has(item.id);
       out.push({ draft: false, item, depth, open: isOpen });
       if (isOpen) walk(item.id, depth + 1);
     }
     if (draftIn === parent) out.push({ draft: true, depth });
   };
-  walk(null, 0);
+  walk(from.top ?? null, 0);
   return out;
+}
+
+/** How deep something shows in the list: the folders it's in, counted from `top` (a folder shown as a part of its own), or from the top. */
+export function depthOf(t: Tree, id: string, top: string | null): number {
+  const above = foldersAbove(t, id);
+  return above.length - (above.findIndex((f) => f.id === top) + 1);
 }
 
 /** The folders around something, outermost first. */
@@ -104,23 +118,27 @@ export function samePlace(t: Tree, id: string, to: ItemPlace): boolean {
   return was.after === to.after;
 }
 
-/** One place earlier or later among its siblings, for moving a row from the keyboard. Null at either end. */
-export function nudged(t: Tree, id: string, by: -1 | 1): ItemPlace | null {
+/**
+ * One place earlier or later among its siblings, for moving a row from the keyboard. Null at either end. A sibling the list
+ * doesn't show among them (`hidden`: the folder of the call you're in, which shows as This call) is stepped over.
+ */
+export function nudged(t: Tree, id: string, by: -1 | 1, hidden: string | null = null): ItemPlace | null {
   const parent = t.all.get(id)?.parent ?? null;
-  const siblings = kidsOf(t, parent);
+  const siblings = kidsOf(t, parent).filter((i) => i.id !== hidden);
   const at = siblings.findIndex((i) => i.id === id);
   const next = siblings[at + by];
   if (at < 0 || !next) return null;
   return by < 0 ? { parent, after: siblings[at - 2]?.id ?? null } : { parent, after: next.id };
 }
 
-/** Every folder something could move to: not itself, and nothing inside it. */
-export function foldersFor(t: Tree, moving: string): { id: string; name: string; path: string }[] {
+/** Every folder something could move to: not itself, and nothing inside it. Each is named as the list names it (`folderName`). */
+export function foldersFor(t: Tree, moving: string, callFolder: string | null = null): { id: string; name: string; path: string }[] {
   const out: { id: string; name: string; path: string }[] = [];
+  const named = (f: WorkspaceItem) => folderName(f, callFolder);
   const walk = (parent: string | null) => {
     for (const item of kidsOf(t, parent)) {
       if (item.kind !== 'folder' || item.id === moving) continue;
-      out.push({ id: item.id, name: nameOf(item), path: foldersAbove(t, item.id).map(nameOf).join(' / ') });
+      out.push({ id: item.id, name: named(item), path: foldersAbove(t, item.id).map(named).join(' / ') });
       walk(item.id);
     }
   };

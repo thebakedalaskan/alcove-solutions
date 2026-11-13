@@ -4,11 +4,14 @@
  *   - A migration that's on the base branch never changes, and is never deleted or renamed: production has
  *     applied it, and the API refuses a database whose applied migrations differ from the repository's.
  *   - New migrations are named NNNN_lowercase_words.sql and numbered after every migration on the base branch.
+ *   - A new migration never adds a column of one of Alcove's domains (alcove_id128, alcove_owner_id) to a table that's
+ *     already there: a domain's CHECK makes Postgres rewrite the whole table, TOAST and indexes included, under an
+ *     ACCESS EXCLUSIVE lock, while the previous release serves. Such a column is text; a foreign key holds it to an ID.
  * The base is the pull request's target branch in CI, the previous commit on a push to main, and origin/main
  * locally. Locally, with no base to compare with, it says so and passes; in CI it fails.
  */
 import { execFileSync } from 'node:child_process';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = new URL('..', import.meta.url).pathname;
@@ -54,6 +57,14 @@ for (const f of files) {
   if (numbers.has(n)) problems.push(`${DIR}/${f}: ${m[1]} is already ${numbers.get(n)}; number it after ${String(last).padStart(4, '0')}.`);
   numbers.set(n, f);
   if (!merged.has(f) && n <= last) problems.push(`${DIR}/${f}: number it after ${String(last).padStart(4, '0')}, the last migration on the base branch (main moved on: renumber yours).`);
+}
+// ALTER TABLE … ADD [COLUMN] [IF NOT EXISTS] name alcove_…, comments aside.
+const DOMAIN_COLUMN = /\bADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?(?!CONSTRAINT\b)("?\w+"?)\s+(alcove_\w+)/gi;
+for (const f of files.filter((x) => !merged.has(x))) {
+  const sql = readFileSync(join(root, DIR, f), 'utf8').replace(/--.*$/gm, '');
+  for (const [, column, domain] of sql.matchAll(DOMAIN_COLUMN)) {
+    problems.push(`${DIR}/${f}: ${column} is added to a table that's already there as ${domain}, whose CHECK makes Postgres rewrite the whole table under an ACCESS EXCLUSIVE lock while the previous release serves. Declare it text: a foreign key already holds it to an ID.`);
+  }
 }
 
 if (problems.length) {

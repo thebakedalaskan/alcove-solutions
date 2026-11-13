@@ -1,17 +1,17 @@
 /*
  * A team, in the stand-in: what `api.teams` and a visit do to the world (src/world/teams.ts), with the server's refusals in
- * its own words. Only Art's side is kept: notices go to his plan when they're his (an admin's when he's the admin, a
- * member's when he isn't), and the admin's balance is his own plan's when he's the admin.
+ * its own words. Only Art's side is kept: notices go to Art's plan when they're Art's (an admin's when Art is the admin, a
+ * member's otherwise), and the admin's balance is Art's own plan's when Art is the admin.
  */
 import { AlcoveApiError, TeamNameSchema, type MyTeam, type Note, type NoteSummary, type PlanNotice } from '@alcove/api';
 import type { World } from '../world';
 import { summaryOf } from '../world/build';
 import { LICENSE_PRICE, PLAN_OFFERS, PERIOD_MS } from '../world/plans';
-import { adminOf, INVITE_MS, isLive, LOW_LICENSES, meOn, planWithTeam, proReplaced, teamView, type TeamMemberWorld, type TeamWorld } from '../world/teams';
+import { addLicenses, adminOf, INVITE_MS, isLive, LOW_LICENSES, meOn, planWithTeam, proReplaced, teamView, type TeamMemberWorld, type TeamWorld } from '../world/teams';
+import { shortOf } from './payments';
 import { me, nextId } from './state';
 
 const refused = (code: 'not-found' | 'forbidden' | 'conflict' | 'invalid', message: string) => new AlcoveApiError(code, message, { requestId: nextId('sb-req') });
-const dollars = (microUsd: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(microUsd / 1_000_000);
 const licensesWord = (n: number) => `${n} ${n === 1 ? 'license' : 'licenses'}`;
 const LINK_GONE = 'This link to join a team has been used or has run out. Ask whoever sent it for a new one.';
 
@@ -36,9 +36,9 @@ function settled(w: World): MyTeam {
 }
 function tell(w: World, kind: PlanNotice['kind'], count: number | null): void {
   const at = new Date().toISOString();
-  w.plan = { ...w.plan, notices: [{ id: nextId('sb-notice'), kind, at, until: null, count }, ...w.plan.notices.filter((n) => n.kind !== kind)] };
+  w.plan = { ...w.plan, notices: [{ id: nextId('sb-notice'), kind, at, until: null, count, workspaceId: null }, ...w.plan.notices.filter((n) => n.kind !== kind)] };
 }
-/** The admin's balance pays for a license: Art's own, when he's the admin. Someone else's is taken to cover it. */
+/** The admin's balance pays for a license: Art's own, when Art is the admin. Someone else's is taken to cover it. */
 function adminPays(w: World, t: TeamWorld, microUsd: number, label: string): boolean {
   if (adminOf(t)?.person.email !== me().email) return true;
   const { balance } = w.plan;
@@ -156,12 +156,10 @@ export const teamsApi = {
     if (!Number.isInteger(count) || count < 1 || count > maxLicenses) throw refused('invalid', `Buy 1 to ${maxLicenses} licenses at a time.`);
     if (microUsdPerLicense !== price) throw refused('conflict', 'The price of a team license has changed. Look at it again before buying.');
     const cost = count * price;
-    if (w.plan.balance.microUsd < cost) {
-      throw refused('conflict', `Your balance is short: ${licensesWord(count)} cost ${dollars(cost)} and your balance is ${dollars(w.plan.balance.microUsd)}. Add money first.`);
-    }
+    const short = shortOf(w, { kind: 'licenses', count, microUsdPerLicense: price });
+    if (short) throw refused('conflict', short);
     adminPays(w, t, cost, `Team, ${licensesWord(count)}`);
-    t.unconsumed = [...t.unconsumed, ...Array.from({ length: count }, () => price)];
-    if (t.unconsumed.length >= LOW_LICENSES) t.lowSaid = false;
+    addLicenses(t, count, price);
     return settled(w);
   },
   refundLicenses: (w: World): MyTeam => {

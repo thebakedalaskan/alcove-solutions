@@ -1,11 +1,10 @@
 /*
  * SunLine: how much of a plan's notes (or storage) is left, drawn on a row's own hairline as a sun a `share` of the way along
- * it (0 to 1), with the line lit behind it. Settings' Plan puts it on the Notes left and Storage rows of its panel, so the
- * hairline under each row is the horizon. At nothing, the sun has set, and a little of its light is left at the start of the line.
+ * it (0 to 1), with the line lit behind it. Settings' Plan puts it on the Notes left this period row, so the hairline under
+ * it is the horizon. At nothing, the sun has set, and a little of its light is left at the start of the line.
  */
-import { Button, SettingRow, SettingsGroup, SettingsPanel, SunLine } from '@alcove/ui';
+import { SettingFact, SettingRow, SettingsGroup, SettingsPanel, SunLine } from '@alcove/ui';
 import type { Decorator, Meta, StoryObj } from '@storybook/react-vite';
-import { did } from '../../../src/component';
 
 /** Settings' column, as the page lays it out. */
 const sheet: Decorator = (Story) => <div className="set-groups" style={{ maxWidth: 940, margin: '0 auto' }}><Story /></div>;
@@ -31,13 +30,11 @@ const meta = {
     return (
       <SettingsGroup id="plan" title="Plan">
         <SettingsPanel>
-          <SettingRow className="is-left" label="Notes left" help="An estimate: busier calls use more." control={<span className="set-left">{share > 0 ? `About ${hoursAndMinutes(GRANTED * share)}` : 'None'}</span>}>
+          <SettingRow className="is-left" label="Notes left this period" help={share > 0 ? 'Back to 5 hours on 20 November. Calls without notes are free.' : 'Calls go on without notes until 20 November.'} problem={share === 0}
+            control={<span className={share > 0 ? 'set-left' : 'set-left is-out'}>{share > 0 ? <><small>About</small>{hoursAndMinutes(GRANTED * share)}</> : 'None'}</span>}>
             <SunLine {...args} />
           </SettingRow>
-        </SettingsPanel>
-        <SettingsPanel>
-          <SettingRow label="Balance" help="What plans are bought with. Add money with a stablecoin from any wallet or exchange."
-            control={<Button variant="secondary" size="sm" icon="plus" onClick={did('onAdd')}>Add money</Button>} />
+          <SettingRow label="Storage" help="Uploads and call recordings. Files up to 512 MB." control={<SettingFact icon="hardDrive">2.1 GB of 10 GB</SettingFact>} />
         </SettingsPanel>
       </SettingsGroup>
     );

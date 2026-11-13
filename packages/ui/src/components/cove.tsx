@@ -8,13 +8,16 @@
  * It's a drawing of plain numbers, the same numbers draw the same cove, and `seed` picks which one. Nothing rises within 24px
  * of the words on the sky: where the words reach across a narrow window, the whole land lies lower instead.
  *
+ * Whatever draws a cove measures the words where they rest (`restingBox`), and draws it again a moment after they or the
+ * window change size, or the fonts arrive (`useCoveFit`): the welcome page's sky and the page a call leaves you on.
+ *
  * `SailOut` is the cove over the real Home just after signing in, starting where the welcome page showed it: the headlands
  * go by on either side, nearest first, the horizon comes up to Home's and the sun eases to Home's size, only ever rising.
  * Then Alcove's frame forms round the sea (the side panel slides in and the page takes its rounded edge), Home's contents
  * rise in, and the sea clears to leave the real Home. It's decorative: it takes no focus, and a press, a key, the wheel or
  * a change of width ends it at once.
  */
-import { memo, useId, useLayoutEffect, useMemo, useRef, type Ref } from 'react';
+import { memo, useId, useLayoutEffect, useMemo, useRef, type DependencyList, type Ref } from 'react';
 import { createPortal } from 'react-dom';
 import { Horizon, type Showing } from './horizon';
 import { EASE } from './motion';
@@ -268,6 +271,70 @@ export const Cove = memo(function Cove({ width, line, sky, foot, words, seed, ou
   );
 });
 
+/* ------------------------------------------------------- measuring what a cove keeps clear of */
+
+/** Something on the sky as a box, in px: its left, right, top and bottom edges. */
+export interface RestingBox { l: number; r: number; t: number; b: number }
+
+/**
+ * Where `el` rests in `within` (px), its own entrance aside: offsets, which no transform moves, so words rising in are kept
+ * clear of where they'll stand. Null when `el` isn't laid out inside `within`.
+ */
+export function restingBox(el: HTMLElement, within: HTMLElement): RestingBox | null {
+  let x = 0;
+  let y = 0;
+  let at: Element | null = el;
+  while (at instanceof HTMLElement && at !== within) {
+    x += at.offsetLeft;
+    y += at.offsetTop;
+    at = at.offsetParent;
+  }
+  return at === within ? { l: x, r: x + el.offsetWidth, t: y, b: y + el.offsetHeight } : null;
+}
+
+/** How long a cove waits for what it keeps clear of to settle before it's drawn again (then a frame). */
+const REFIT_MS = 140;
+
+/**
+ * Keeps a cove fitted to what it keeps clear of. `start` runs as the part is laid out, before it shows, and gives the part's
+ * own draw, or null when there's nothing to draw: the draw measures, sets what it measured, and returns what to watch. It
+ * runs at once, and again a moment later (140 ms, then a frame) whenever something the last draw returned changes size, the
+ * window does, or the fonts arrive; something new on the sky is watched from the draw that finds it. It all starts again
+ * when `deps` change, and stops with the part.
+ */
+export function useCoveFit(start: () => (() => readonly (Element | null)[]) | null, deps: DependencyList): void {
+  useLayoutEffect(() => {
+    const draw = start();
+    if (!draw) return undefined;
+    let wait = 0;
+    let frame = 0;
+    let gone = false;
+    const later = () => {
+      if (gone) return;
+      clearTimeout(wait);
+      wait = window.setTimeout(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(fit); }, REFIT_MS);
+    };
+    const ro = new ResizeObserver(later);
+    const watched = new Set<Element>();
+    const fit = () => {
+      const now: Element[] = [];
+      for (const w of draw()) if (w) now.push(w);
+      for (const w of now) if (!watched.has(w)) { watched.add(w); ro.observe(w); }
+      for (const w of watched) if (!now.includes(w)) { watched.delete(w); ro.unobserve(w); }
+    };
+    fit();
+    addEventListener('resize', later);
+    void document.fonts.ready.then(later);
+    return () => {
+      gone = true;
+      clearTimeout(wait);
+      cancelAnimationFrame(frame);
+      ro.disconnect();
+      removeEventListener('resize', later);
+    };
+  }, deps);
+}
+
 /* ------------------------------------------------------- signing in: out of the cove to Home */
 
 /** Where the welcome page's cove stood on the window as a way in was pressed (px), and which cove it was. */
@@ -292,14 +359,19 @@ export interface SailFrom {
   seen?: boolean | undefined;
 }
 
-/** Home as it's laid out under the sail (px on the window): where it ends up, and the parts of it that come in. */
+/**
+ * Home as it's laid out under the sail (px on the window), or the page in its place (the plan choice): where it ends up, and the
+ * parts of it that come in.
+ */
 export interface SailHome {
-  /** Home's horizon. */
+  /** Its horizon. */
   line: number;
   /** Its sun's middle, across the window. */
   x: number;
   /** Its sun's radius. */
   r: number;
+  /** How far below the horizon its sun's middle stands: none for Home's, half risen; more for the last sliver of the plans'. */
+  sink?: number | undefined;
   /** The page's rounded edge, as insets from the window's edges, and its radius. None on a phone, which has no frame. */
   frame: { top: number; right: number; bottom: number; left: number; radius: number } | null;
   /** What slides in from the left as the frame forms: the side panel's contents. */
@@ -330,9 +402,9 @@ const hundredths = (v: number) => Math.round(v * 100) / 100;
 const px = (v: number) => `${v.toFixed(2)}px`;
 
 /**
- * Signing in, out of the cove to the real Home underneath (`home`). It plays once, as it mounts, over everything: in front
- * of the app and out of its way. Nothing in it can be focused, a press, a key, the wheel or a change of width clears it at
- * once, and it's done the moment Home has risen in.
+ * Signing in, out of the cove to the real Home underneath (`home`), or the plan choice in its place, whose sun sits lower. It
+ * plays once, as it mounts, over everything: in front of the app and out of its way. Nothing in it can be focused, a press, a
+ * key, the wheel or a change of width clears it at once, and it's done the moment the page has risen in.
  */
 export function SailOut({ from, home, onDone }: { from: SailFrom; home: SailHome; onDone: () => void }) {
   const root = useRef<HTMLDivElement>(null);
@@ -354,16 +426,17 @@ export function SailOut({ from, home, onDone }: { from: SailFrom; home: SailHome
     if (from.seen) v.style.visibility = 'hidden';
     else ours.push(v.animate([{ opacity: 1, visibility: 'visible' }, { opacity: 0, visibility: 'hidden' }], { duration: IN, easing: 'ease-out', fill: 'forwards' }));
 
-    /* The horizon comes up to Home's with the cove riding on it, and the sun eases to Home's size and onto the horizon. Its
-       middle moves by the same eased share as the horizon, so it only ever rises. */
+    /* The horizon comes up to Home's with the cove riding on it, and the sun eases to Home's size and onto the horizon (or as far
+       under it as the page's own sun sits). Its middle moves by the same eased share as the horizon, so it only ever rises. */
     const fromSun = from.line + from.sun;
+    const toSun = home.line + (home.sink ?? 0);
     let raf = 0;
     let t0 = -1;
     const step = (now: number) => {
       if (t0 < 0) t0 = now;
       const e = carry(clamp((now - t0 - IN) / SAIL, 0, 1));
       const line = hundredths(from.line + (home.line - from.line) * e);
-      const sun = hundredths(fromSun + (home.line - fromSun) * e);
+      const sun = hundredths(fromSun + (toSun - fromSun) * e);
       s.style.setProperty('--hz', px(line));
       s.style.setProperty('--cv-sink', px(sun - line));
       s.style.setProperty('--cv-sun-r', px(from.r + (home.r - from.r) * e));

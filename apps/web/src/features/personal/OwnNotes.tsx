@@ -1,10 +1,10 @@
 /*
- * Your own notes beside a note, and the shared notes beside them. Only you read the card. Adding something from it opens
+ * Your own notes on a call, in its Your notes tab, and the shared notes, in its Notes. Only you read your own. Adding something from it opens
  * where the entry is: exactly the words that go, where they land and who reads them, and nothing is sent until you say
  * so. The words are yours to cut down first; whatever's left in the box is what goes. The shared notes have a box of
  * their own once the notes are written, which says who reads what's written there before anything is typed.
  */
-import { MAX_ADDITION_TEXT, errorCode, errorMessage, type Note, type NoteAddition, type Person, type PersonalEntry, type PersonalPoint, type SourceMoment } from '@alcove/api';
+import { MAX_ADDITION_TEXT, errorCode, errorMessage, type AudienceTeam, type Note, type NoteAddition, type Person, type PersonalEntry, type PersonalPoint, type SourceMoment } from '@alcove/api';
 import { Avatar, Button, Dots, Faces, Icon, IconButton, Scope, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
@@ -20,6 +20,18 @@ import { OwnComposer, OwnEntries, Quote, Sure, rowsFor } from './parts';
 
 const WHERE = 'Shared notes';
 const say = (reach: 'later' | 'none') => (reach === 'later' ? 'It opens once the notes are written.' : 'Nothing was captured then.');
+
+/** Who reads what's added to the shared notes now: everyone who has them, and the team they're visible to, if they are. */
+interface Readers { audience: Person[]; team: AudienceTeam | null }
+/** Who reads it, in words: the people by name, everyone on the team the notes are visible to, and anyone they share them with. */
+const readersLine = (r: Readers, me: string | undefined) => `${peopleLine(r.audience, me)}${r.team ? `, everyone on ${r.team.name}` : ''}, and anyone they share the notes with`;
+/** How many people read it now: everyone who has the notes, and the team's licensed people who aren't among them. */
+const readersCount = (r: Readers) => r.audience.length + (r.team?.people ?? 0);
+/** What's changed in who reads it since the box opened: who got the notes, and the team, if they've been made visible to one. */
+function readersSince(now: Readers | undefined, first: Readers | null): { people: Person[]; team: AudienceTeam | null } {
+  if (!now || !first) return { people: [], team: null };
+  return { people: now.audience.filter((x) => !first.audience.some((y) => sameEmail(x, y))), team: now.team && !first.team ? now.team : null };
+}
 
 /** Where a moment is in a note: going there, or the breakout room's name (a room's talk isn't in the recording), and what was on screen. */
 function NoteMoment({ noteId, m, shown, onSeek }: { noteId: string; m: SourceMoment; shown: ScreenRefShown; onSeek: ((s: number) => void) | undefined }) {
@@ -41,9 +53,9 @@ function Preview({ note, entry, me, shown, onSeek, onClose, onAdded }: { note: N
   const [text, setText] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
   // Who it was going to when this opened, to say who got the notes since.
-  const first = useRef<Person[] | null>(null);
-  useEffect(() => { if (p) { setText((t) => t ?? p.text); first.current ??= p.audience; } }, [p]);
-  const since = p?.audience.filter((x) => first.current && !first.current.some((y) => sameEmail(x, y))) ?? [];
+  const first = useRef<Readers | null>(null);
+  useEffect(() => { if (p) { setText((t) => t ?? p.text); first.current ??= p; } }, [p]);
+  const since = readersSince(p, first.current);
   // All of it in view, with the keyboard in the box: the words, where they go and who reads them are read before anything's sent.
   const loaded = !!p;
   useEffect(() => {
@@ -77,12 +89,13 @@ function Preview({ note, entry, me, shown, onSeek, onClose, onAdded }: { note: N
           <span className="hint">Only what’s in this box goes. Nothing else from your notes, and no questions you asked.</span>
           <dl>
             <dt>Goes to</dt><dd>{WHERE}, in {p.destination.title}</dd>
-            <dt>Who reads it</dt><dd><Faces people={p.audience} size={20} max={4} /><span>{peopleLine(p.audience, me)}, and anyone they share the notes with</span></dd>
+            <dt>Who reads it</dt><dd><Faces people={p.audience} size={20} max={4} /><span>{readersLine(p, me)}</span></dd>
           </dl>
-          {since.length > 0 && <p className="nd-since"><Faces people={since} size={20} max={3} /><span>{listNames(since)} got the notes since you opened this, so they read it too.</span></p>}
+          {since.people.length > 0 && <p className="cd-since"><Faces people={since.people} size={20} max={3} /><span>{listNames(since.people)} got the notes since you opened this, so they read it too.</span></p>}
+          {since.team && <p className="cd-since"><span>{since.team.name} can read these notes since you opened this, so everyone on it reads it too.</span></p>}
           <div className="btns">
             <Button variant="quiet" size="sm" onClick={onClose}>Cancel</Button>
-            <Button variant="secondary" size="sm" loading={add.isPending} disabled={!words.trim() && !p.moments.length} onClick={send}>Add for {p.audience.length === 1 ? 'you' : `${p.audience.length} people`}</Button>
+            <Button variant="secondary" size="sm" loading={add.isPending} disabled={!words.trim() && !p.moments.length} onClick={send}>Add for {readersCount(p) === 1 ? 'you' : `${readersCount(p)} people`}</Button>
           </div>
         </>
       )}
@@ -130,16 +143,16 @@ export function OwnNotesCard({ note, me, entries, own, shown, onSeek }: {
   const open = (e: PersonalEntry) => { back.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setAdded(false); setAdding(e.id); };
   const close = () => { setAdding(null); back.current?.focus(); };
   return (
-    <section className="hm-panel nd-own" aria-label="Your notes">
-      <div className="hm-panel-h"><h2>Your notes</h2><span className="nd-only"><Icon name="lock" size={13} />Only you</span></div>
+    <section className="cd-own" aria-label="Your notes">
+      <p className="cd-mine-h"><Icon name="lock" size={14} />Only you can read these. Not the others on the call, not Alcove.</p>
       {entries && entries.length > 0 ? (
         <OwnEntries entries={entries} me={me} moment={(m) => <NoteMoment noteId={note.id} m={m} shown={shown} onSeek={onSeek} />} away={say} picked={adding}
           actions={{ edit: (entryId, text) => own.edit.mutateAsync({ entryId, text }), remove: (entryId) => own.remove.mutateAsync(entryId) }}
           share={(e) => (ready && !e.shared ? <IconButton icon="share" label="Add to the shared notes" size={15} onClick={() => open(e)} /> : null)} />
-      ) : entries && <p className="nd-own-e">Write something, bookmark a line, or keep an answer. Other participants, including the organizer, can’t open your own notes.</p>}
+      ) : entries && <p className="cd-own-e"><Icon name="pen" size={15} />Nothing yet. Bookmark a line in the transcript, keep an answer, or write here.</p>}
       {/* In the composer's place, outside the list that scrolls: all of it shows, the people and the button too. */}
       {picked ? <Preview key={picked.id} note={note} entry={picked} me={me} shown={shown} onSeek={onSeek} onClose={close} onAdded={() => { setAdded(true); setAdding(null); }} />
-        : <OwnComposer value={draft} onChange={setDraft} onSend={write} busy={own.add.isPending} focus={added} said />}
+        : <OwnComposer value={draft} onChange={setDraft} onSend={write} busy={own.add.isPending} focus={added} said placeholder="Write something only you will see" />}
     </section>
   );
 }
@@ -154,16 +167,16 @@ function AdditionRow({ a, noteId, mine, me, shown, onSeek, onTakeBack }: { a: No
   /** Back on the button it came from, which it took the place of. */
   const keep = () => { flushSync(() => setSure(false)); opener.current?.focus(); };
   return (
-    <div className="nd-a">
+    <div className="cd-a">
       <Avatar person={a.by} size={26} />
-      <div className="nd-a-b">
-        <p className="nd-a-h"><b>{yours ? 'You' : spokenName({ name: a.by.name, person: a.by }, me)}</b><small>{shortDay(d)}, {hm(d)}</small></p>
-        {a.text && <p className="nd-a-t">{a.text}</p>}
+      <div className="cd-a-b">
+        <p className="cd-a-h"><b>{yours ? 'You' : spokenName({ name: a.by.name, person: a.by }, me)}</b><small>{shortDay(d)}, {hm(d)}</small></p>
+        {a.text && <p className="cd-a-t">{a.text}</p>}
         {a.moments.map((m) => <Quote key={`q-${m.at}-${m.line?.id ?? ''}`} m={m} me={me} />)}
         {(a.moments.length > 0 || (a.removable && !sure)) && (
-          <div className="nd-a-f">
+          <div className="cd-a-f">
             {a.moments.map((m) => <NoteMoment key={`${m.at}-${m.line?.id ?? m.screen?.id ?? ''}`} noteId={noteId} m={m} shown={shown} onSeek={onSeek} />)}
-            {a.removable && !sure && <button ref={opener} type="button" className="nd-act" onClick={() => setSure(true)}>{act}</button>}
+            {a.removable && !sure && <button ref={opener} type="button" className="cd-act" onClick={() => setSure(true)}>{act}</button>}
           </div>
         )}
         {sure && <Sure ask="Take this out of the shared notes, for everyone?" act={act} onYes={() => { setSure(false); onTakeBack(); }} onNo={keep} />}
@@ -186,9 +199,9 @@ function SharedComposer({ note, me }: { note: Note; me: string | undefined }) {
   const [draft, setDraft] = useState('');
   const a = box.data;
   // Who it was going to when the box opened, to say who got the notes since.
-  const first = useRef<Person[] | null>(null);
-  useEffect(() => { if (a) first.current ??= a.audience; }, [a]);
-  const since = a?.audience.filter((x) => first.current && !first.current.some((y) => sameEmail(x, y))) ?? [];
+  const first = useRef<Readers | null>(null);
+  useEffect(() => { if (a) first.current ??= a; }, [a]);
+  const since = readersSince(a, first.current);
   const post = () => {
     const text = draft.trim();
     if (!a || !text || write.isPending) return;
@@ -207,15 +220,16 @@ function SharedComposer({ note, me }: { note: Note; me: string | undefined }) {
     });
   };
   return (
-    <form className="own-compose nd-shared-box" autoComplete="off" onSubmit={(e) => { e.preventDefault(); post(); }}>
+    <form className="own-compose cd-shared-box" autoComplete="off" onSubmit={(e) => { e.preventDefault(); post(); }}>
       <span className="to">
-        {a ? <><Faces people={a.audience} size={18} max={4} /><span>{peopleLine(a.audience, me)}, and anyone they share the notes with</span></>
+        {a ? <><Faces people={a.audience} size={18} max={4} /><span>{readersLine(a, me)}</span></>
           : box.error ? <span className="bad">{errorMessage(box.error)}</span> : <Dots />}
       </span>
       <textarea value={draft} rows={rowsFor(draft, 34, 5)} maxLength={MAX_ADDITION_TEXT} placeholder="Write for everyone with the notes" aria-label="Write in the shared notes"
         onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); post(); } }} />
       <button type="submit" className="ac-btn is-secondary" aria-label="Post it in the shared notes" title="Post it in the shared notes" disabled={!draft.trim() || !a || write.isPending}><Icon name="arrowUp" size={15} /></button>
-      {since.length > 0 && <p className="nd-since"><Faces people={since} size={20} max={3} /><span>{listNames(since)} got the notes since you started, so they read it too.</span></p>}
+      {since.people.length > 0 && <p className="cd-since"><Faces people={since.people} size={20} max={3} /><span>{listNames(since.people)} got the notes since you started, so they read it too.</span></p>}
+      {since.team && <p className="cd-since"><span>{since.team.name} can read these notes since you started, so everyone on it reads it too.</span></p>}
     </form>
   );
 }
@@ -231,8 +245,8 @@ export function SharedNotes({ note, me, shown, mine, onSeek }: { note: Note; me:
   const ready = note.status === 'ready';
   if (!ready && !note.additions.length) return null;
   return (
-    <section className="nd-b nd-shared" aria-label={WHERE}>
-      <div className="nd-b-h"><h2>{WHERE}</h2><span className="nd-only"><Icon name="people" size={13} />Everyone with the notes</span></div>
+    <section className="cd-grp cd-shared" aria-label={WHERE}>
+      <h2 className="cd-gh">{WHERE}<span className="cd-only"><Icon name="people" size={13} />Everyone with the notes</span></h2>
       {note.additions.map((a) => (
         <AdditionRow key={a.id} a={a} noteId={note.id} mine={mine} me={me} shown={shown} onSeek={onSeek}
           onTakeBack={() => take.mutate(a.id, { onSuccess: () => toast('It’s out of the shared notes, for everyone.', { icon: 'check' }), onError: (e) => toast(errorMessage(e), { icon: 'x' }) })} />
