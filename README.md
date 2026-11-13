@@ -19,6 +19,7 @@
 <p align="center">
   <picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/badge-tee-dark.svg"><img alt="Runs in Confidential Space · Intel TDX" src="docs/readme/badge-tee-light.svg" height="28"></picture>
   <picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/badge-ai-dark.svg"><img alt="Private inference · NEAR AI" src="docs/readme/badge-ai-light.svg" height="28"></picture>
+  <br>
   <picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/badge-e2ee-dark.svg"><img alt="End-to-end encrypted calls · MLS" src="docs/readme/badge-e2ee-light.svg" height="28"></picture>
   <picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/badge-sigstore-dark.svg"><img alt="Signed images · Sigstore" src="docs/readme/badge-sigstore-light.svg" height="28"></picture>
 </p>
