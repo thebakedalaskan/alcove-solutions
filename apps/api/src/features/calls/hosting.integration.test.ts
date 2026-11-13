@@ -635,10 +635,13 @@ describe('host hand-off', () => {
     // ...and ends once they've been gone as long as it always waited.
     await upkeepAfter(HOST_GRACE_MS);
     expect((await callRow(host.ticket.callId)).state).toBe('ended');
-    // A refresh joins a read already on its way, which may have been answered before the call ended; the one after it
-    // is a read of its own, made once the call has ended.
-    await sam.refresh().catch(() => undefined);
-    expect(code(await sam.refresh().catch((e: unknown) => e))).toBe('conflict');
+    // Sam's browser is told the call has ended one way or the other: a read of its own is refused, or its own log sync has
+    // already heard it and closed the call here, after which a refresh has nothing to read and sending says it's ended.
+    const read: unknown = await sam.refresh({ call: true, log: false }).then(() => null, (e: unknown) => e);
+    if (read === null) {
+      const sent: unknown = await sam.sendChat('Still there?').catch((e: unknown) => e);
+      expect(sent instanceof AlcoveApiError ? sent.message : sent).toBe('This call has ended.');
+    } else expect(code(read)).toBe('conflict');
   });
 
   it('never resumes or starts capture because the host changed: paused stays paused, off stays off, and only the organizer changes it', async () => {
