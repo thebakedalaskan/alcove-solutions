@@ -4,10 +4,12 @@
  * request, what it's charged, how a call's notes stop when the organizer's allowance is spent, the one note written past
  * it, and holds keeping requests at once from spending the same money twice.
  */
-import { AlcoveApiError, DEFAULT_NOTES_CHOICES, type AlcoveApi, type AnswerPart, type AudioPiece, type CallSession, type CallState, type TranscriptClip } from '@alcove/api';
+import { AlcoveApiError, DEFAULT_NOTES_CHOICES, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type TranscriptClip } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { UNENCRYPTED_MODEL, speechWav } from '../../testing/fake-near';
+import { z } from 'zod';
+import { maintain } from '../../maintenance';
+import { HALF_PRICED_MODEL, NOTES_MODEL, UNENCRYPTED_MODEL, speechWav } from '../../testing/fake-near';
 import { startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
 import { standing } from './meter';
@@ -18,9 +20,12 @@ vi.setConfig({ testTimeout: 90_000 });
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
 afterAll(async () => { await h?.close(); await disposeLiveKit(); });
-afterEach(async () => { h.closeCalls(); await h.resetLimits(); });
+afterEach(async () => { h.closeCalls(); vi.useRealTimers(); await h.resetLimits(); });
 
 const code = (e: unknown) => (e instanceof AlcoveApiError ? e.code : 'not-an-api-error');
+const LogLine = z.object({ level: z.number(), msg: z.string() }).passthrough();
+/** The API's log lines since `from`, read. */
+const linesSince = (from: number) => h.logs.slice(from).flatMap((l) => { const r = LogLine.safeParse(JSON.parse(l)); return r.success ? [r.data] : []; });
 const refusal = (p: Promise<unknown>) => p.then(() => 'succeeded', (e: unknown) => (e instanceof AlcoveApiError ? `${e.code}: ${e.message}` : String(e)));
 let seq = 0;
 const unique = (who = 'person') => `${who}.${Date.now().toString(36)}${(seq++).toString(36)}@tests.example`;
@@ -39,8 +44,10 @@ async function settle(call: CallSession, pred: (s: CallState) => boolean): Promi
   for (let i = 0; i < 200 && !pred(call.getSnapshot()); i++) { await call.refresh(); await new Promise((r) => setTimeout(r, 25)); }
   return call.getSnapshot();
 }
-async function answer(parts: AsyncIterable<AnswerPart>): Promise<AnswerPart[]> {
-  const out: AnswerPart[] = [];
+/** The call as it is now. */
+async function now(call: CallSession): Promise<CallState> { await call.refresh(); return call.getSnapshot(); }
+async function answer<T>(parts: AsyncIterable<T>): Promise<T[]> {
+  const out: T[] = [];
   for await (const p of parts) out.push(p);
   return out;
 }
@@ -151,6 +158,114 @@ describe('who pays', () => {
     expect(dear).toBeGreaterThan(cheap);
   });
 
+  it('charges a request still on its way after five minutes what it held, and once it’s answered what it used, never both', async () => {
+    const ann = await account();
+    const rec = await ann.api.recordings.start({ title: 'Late' });
+    await rec.transcribe(speech('We agreed to ship on Monday.', 0));
+    await written(ann.api, (await rec.stop()).pendingNoteId);
+    const asked = async () => {
+      const before = (await meter(ann)).byKind['ask'] ?? 0;
+      await answer(ann.api.notes.askAll('When do we ship?'));
+      return ((await meter(ann)).byKind['ask'] ?? 0) - before;
+    };
+    // What the question costs answered at once.
+    const once = await asked();
+    const before = (await meter(ann)).spentNano;
+    // Asked again, it's answered only six minutes later, and the same question goes meanwhile.
+    let overdue = 0;
+    let meanwhile = 0;
+    h.near.holdNext(async () => {
+      vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 6 * 60_000 });
+      // What it held is charged in full once it's overdue: shown so before the meter is next touched, as it will be then.
+      overdue = (await meter(ann)).spentNano - before;
+      meanwhile = await asked();
+    });
+    await answer(ann.api.notes.askAll('When do we ship?'));
+    expect(overdue).toBeGreaterThan(once);
+    expect(meanwhile).toBe(once);
+    // Answered after all, it's charged what it used instead of what it held: the two questions cost what one did twice.
+    const after = await meter(ann);
+    expect(after.spentNano - before).toBe(2 * once);
+    expect(after.leftNano).toBe(after.unspentNano);
+  });
+
+  it('charges a model the catalog prices only one way at the fallback, and says which once each time the catalog is read', async () => {
+    const ann = await account();
+    // Offered: it reads text and images, under the price cap, and the catalog gives its input price alone.
+    expect((await ann.api.models.list()).models.map((m) => m.id)).toContain(HALF_PRICED_MODEL);
+    const warned = () => h.logs.filter((l) => l.includes('models not priced; charged at the fallback') && l.includes(HALF_PRICED_MODEL)).length;
+    const said = warned();
+    expect(said).toBeGreaterThan(0);
+    const rec = await ann.api.recordings.start({ title: 'Fallback' });
+    await rec.transcribe(speech('We agreed to ship on Monday.', 0));
+    await written(ann.api, (await rec.stop()).pendingNoteId);
+    await ann.api.account.updatePreferences({ model: HALF_PRICED_MODEL });
+    const asked = async () => {
+      const before = (await meter(ann)).byKind['ask'] ?? 0;
+      await answer(ann.api.notes.askAll('When do we ship?'));
+      // What the fake says each answer used: its prompt's length a quarter, and 200 out.
+      return { cost: ((await meter(ann)).byKind['ask'] ?? 0) - before, tokens: Math.round((h.near.prompts.at(-1) ?? '').length / 4) };
+    };
+    // At the fallback's $1 and $4 a million.
+    const one = await asked();
+    expect(one.cost).toBe(Math.ceil((one.tokens * 1_000_000 + 200 * 4_000_000) / 1000));
+    // The fallback is a limit: raised, the next is charged at it.
+    await h.setLimit('ai.fallback_output_micro_usd', 40_000_000);
+    const two = await asked();
+    expect(two.cost).toBe(Math.ceil((two.tokens * 1_000_000 + 200 * 40_000_000) / 1000));
+    // Said when the catalog was read, not again with each request.
+    expect(warned()).toBe(said);
+  });
+
+  it('charges a clip what NEAR AI says it used, and cached input at the catalog’s cache price', async () => {
+    const ann = await account();
+    const rec = await ann.api.recordings.start({ title: 'Cached' });
+    // NEAR AI says the clip used a million tokens in and a thousand out: charged that, at Whisper's $0.01 a million each
+    // way, not reckoned from its length (which would be a few thousand).
+    h.near.speechUsageNext({ input: 1_000_000, output: 1_000 });
+    await rec.transcribe(speech('We agreed to ship on Monday.', 0));
+    expect((await meter(ann)).byKind['transcript']).toBe(Math.ceil((1_000_000 * 10_000 + 1_000 * 10_000) / 1000));
+    await written(ann.api, (await rec.stop()).pendingNoteId);
+    const asked = async () => {
+      const before = (await meter(ann)).byKind['ask'] ?? 0;
+      await answer(ann.api.notes.askAll('When do we ship?'));
+      return { cost: ((await meter(ann)).byKind['ask'] ?? 0) - before, prompt: h.near.prompts.at(-1) ?? '' };
+    };
+    // The same question twice, the second with all of its prompt cached: input at $0.30 a million, then at the catalog's
+    // cache-read price, $0.000000006 a token ($0.006 a million). Output at $1.20 a million both times.
+    const full = await asked();
+    h.near.cachedNext(Number.MAX_SAFE_INTEGER);
+    const cached = await asked();
+    expect(cached.prompt).toBe(full.prompt);
+    const tokens = Math.round(full.prompt.length / 4);
+    expect(full.cost).toBe(Math.ceil((tokens * 300_000 + 200 * 1_200_000) / 1000));
+    expect(cached.cost).toBe(Math.ceil((tokens * 6_000 + 200 * 1_200_000) / 1000));
+  });
+
+  it('charges at the price it has without waiting on NEAR AI’s catalog, and reads the catalog again behind it', async () => {
+    const ann = await account();
+    const rec = await ann.api.recordings.start({ title: 'Listed' });
+    await rec.transcribe(speech('We agreed to ship on Monday.', 0));
+    await written(ann.api, (await rec.stop()).pendingNoteId);
+    // The list of models is more than ten minutes old, and NEAR AI's catalog doesn't answer until the question has been.
+    let reading = false;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = () => resolve(); });
+    h.near.holdCatalogNext(async () => { reading = true; await gate; });
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 11 * 60_000 });
+    const from = h.logs.length;
+    const before = (await meter(ann)).byKind['ask'] ?? 0;
+    try {
+      // Answered and charged at the price it had, while the catalog is still being read.
+      expect((await answer(ann.api.notes.askAll('When do we ship?'))).length).toBeGreaterThan(0);
+      expect((await meter(ann)).byKind['ask']).toBeGreaterThan(before);
+      await expect.poll(() => reading).toBe(true);
+      expect(h.logs.slice(from).some((l) => l.includes('models not listed'))).toBe(false);
+    } finally {
+      release();
+    }
+  });
+
   it('charges nothing for a request NEAR AI turned away', async () => {
     const ann = await account();
     const rec = await ann.api.recordings.start({ title: 'Down' });
@@ -180,6 +295,81 @@ describe('running out', () => {
     expect(mine.capture.stopped).toBeNull();
     expect(mine.capture.mode).toBe('on');
     expect((await settle(theirs, (s) => s.capture.runningOut !== null)).capture.runningOut).toBeNull();
+  });
+
+  it('tells the organizer once, whichever charge to the call brings it close: captions as much as a transcript clip', async () => {
+    // Thirty minutes of notes, and no warning yet: the first clip says nothing.
+    await h.setLimit('plan.free.notes_minutes', 30);
+    await h.setLimit('ai.warn_seconds', 0);
+    const org = await account(unique('organizer'));
+    const kofi = await account(unique('kofi'));
+    const { host, meeting } = await call(org, [kofi.email]);
+    const theirs = await kofi.api.calls.join(meeting.code, { mic: true, cam: false });
+    await settle(theirs, (s) => s.participants.some((p) => p.isMe));
+    await host.appendAudio(piece('captions', 0));
+    await host.transcribe(speech('We agreed to ship on Monday.', 0), host.ticket.identity);
+    const line = (await settle(theirs, (s) => s.transcript.length > 0)).transcript[0]?.id ?? '';
+    expect((await now(host)).capture.runningOut).toBeNull();
+    // Told once there's under an hour left at the call's pace: the next charge to the call is Kofi's captions, and it tells them.
+    await h.setLimit('ai.warn_seconds', 3600);
+    await theirs.translate([line], 'de');
+    const told = (await settle(host, (s) => s.capture.runningOut !== null)).capture.runningOut;
+    expect(told).toEqual({ at: expect.any(String) });
+    // Once: the next clip doesn't tell them again.
+    await host.transcribe(speech('And we test on staging first.', 6000), host.ticket.identity);
+    await settle(host, (s) => s.transcript.length > 1);
+    expect(host.getSnapshot().capture.runningOut).toEqual(told);
+    expect((await now(theirs)).capture.runningOut).toBeNull();
+  });
+
+  it('refuses only a request too dear for what’s left: the allowance isn’t stopped, and a cheaper one still goes', async () => {
+    // An hour of notes at whatever ai.hour_micro_usd says, and no stop short of nothing.
+    await h.setLimit('plan.free.notes_minutes', 60);
+    await h.setLimit('ai.stop_micro_usd', 0);
+    const ann = await account();
+    const rec = await ann.api.recordings.start({ title: 'Asked' });
+    await rec.transcribe(speech('We agreed to ship on Monday.', 0));
+    await written(ann.api, (await rec.stop()).pendingNoteId);
+    // What the question holds on its way in the default model, seen while it is.
+    let holds = 0;
+    h.near.holdNext(async () => { const m = await meter(ann); holds = m.unspentNano - m.leftNano; });
+    await answer(ann.api.notes.askAll('When do we ship?'));
+    expect(holds).toBeGreaterThan(0);
+    // Left: a third more than that. The same question in a model at 5/3 of the default's prices holds more than is left.
+    const spent = (await meter(ann)).spentNano;
+    await h.setLimit('ai.hour_micro_usd', Math.ceil((spent + (holds * 4) / 3) / 1000));
+    await ann.api.account.updatePreferences({ model: UNENCRYPTED_MODEL });
+    const sent = h.near.prompts.length;
+    expect(await refusal(answer(ann.api.notes.askAll('When do we ship?')))).toBe('plan-limit: What’s left of your notes this period isn’t enough for this.');
+    expect(h.near.prompts.length).toBe(sent);
+    const after = await meter(ann);
+    expect(after).toMatchObject({ stopped: false, spentNano: spent });
+    // The cheaper one fits, and goes.
+    await ann.api.account.updatePreferences({ model: null });
+    expect((await answer(ann.api.notes.askAll('When do we ship?'))).length).toBeGreaterThan(0);
+    expect((await meter(ann)).spentNano).toBeGreaterThan(spent);
+  });
+
+  it('in a call, refuses captions too dear for what’s left and leaves notes on: only a spent allowance stops them', async () => {
+    await h.setLimit('plan.free.notes_minutes', 60);
+    await h.setLimit('ai.stop_micro_usd', 0);
+    const org = await account(unique('organizer'));
+    const kofi = await account(unique('kofi'));
+    const { host, meeting } = await call(org, [kofi.email]);
+    const theirs = await kofi.api.calls.join(meeting.code, { mic: true, cam: false });
+    await settle(theirs, (s) => s.participants.some((p) => p.isMe));
+    await host.appendAudio(piece('dear', 0));
+    await host.transcribe(speech('We agreed to ship on Monday.', 0), host.ticket.identity);
+    const line = (await settle(theirs, (s) => s.transcript.length > 0)).transcript[0]?.id ?? '';
+    // Left, beside what the call holds for its notes: a twentieth of a cent. A clip holds far less; captions far more.
+    const live = await meter(org);
+    await h.setLimit('ai.hour_micro_usd', Math.ceil((live.spentNano + live.unspentNano - live.leftNano + 500_000) / 1000));
+    expect(await refusal(theirs.translate([line], 'de'))).toBe('plan-limit: What’s left of the organizer’s notes this period isn’t enough for this.');
+    expect((await meter(org)).stopped).toBe(false);
+    expect((await now(host)).capture).toMatchObject({ mode: 'on', stopped: null });
+    // The call goes on being transcribed.
+    await host.transcribe(speech('And we test on staging first.', 6000), host.ticket.identity);
+    expect((await settle(host, (s) => s.transcript.length > 1)).capture).toMatchObject({ mode: 'on', stopped: null });
   });
 
   it('stops notes for everyone when the organizer’s allowance is spent, writes the last note past it, and nothing more', async () => {
@@ -231,6 +421,77 @@ describe('running out', () => {
     expect((await settle(next.host, (s) => s.capture.mode === 'on')).capture).toMatchObject({ mode: 'on', stopped: null });
   });
 
+  it('pays for writing a call’s notes from what the call held for them, so writing them stops nothing the call held enough for', async () => {
+    // An hour of notes at whatever ai.hour_micro_usd says, and no stop short of nothing.
+    await h.setLimit('plan.free.notes_minutes', 60);
+    await h.setLimit('ai.stop_micro_usd', 0);
+    const org = await account(unique('organizer'));
+    const { host } = await call(org);
+    await host.appendAudio(piece('held', 0));
+    await host.transcribe(speech('We agreed to ship on Monday.', 0), host.ticket.identity);
+    // What the call has spent and holds for writing its notes, and a twentieth of a cent more: less than writing them costs.
+    const live = await meter(org);
+    const reserved = live.unspentNano - live.leftNano;
+    expect(reserved).toBeGreaterThan(0);
+    await h.setLimit('ai.hour_micro_usd', Math.ceil((live.spentNano + reserved + 50_000) / 1000));
+    const room = (await meter(org)).leftNano;
+    expect(room).toBeGreaterThanOrEqual(50_000);
+    // While the notes are written, what each request holds is part of what the call held: nothing more is taken.
+    let writing: { leftNano: number; stopped: boolean } | null = null;
+    h.near.holdNext(async () => { writing = await meter(org); });
+    const ended = await host.leave();
+    await written(org.api, ended?.pendingNoteId ?? '');
+    expect(writing).toEqual(expect.objectContaining({ leftNano: room, stopped: false }));
+    const after = await meter(org);
+    expect(after.byKind['notes']).toBeGreaterThan(room);
+    expect(after.stopped).toBe(false);
+    expect((await org.api.plans.plan()).notes.stopped).toBe(false);
+  });
+
+  it('holds what writing a call’s notes will cost at the model it’s set to, and refuses a dearer one the organizer can’t cover', async () => {
+    await h.setLimit('plan.free.notes_minutes', 60);
+    await h.setLimit('ai.stop_micro_usd', 0);
+    const org = await account(unique('organizer'));
+    const { host } = await call(org);
+    await host.appendAudio(piece('model', 0));
+    await host.transcribe(speech('We agreed to ship on Monday.', 0), host.ticket.identity);
+    const held = async () => { const m = await meter(org); return m.unspentNano - m.leftNano; };
+    const theDefault = await held();
+    // A model at 5/3 of the default's prices: what the call holds for its notes goes up with it, and down again after.
+    await host.setModel(UNENCRYPTED_MODEL);
+    const dearer = await held();
+    expect(dearer).toBeGreaterThan(theDefault * 1.5);
+    await host.setModel(null);
+    expect(await held()).toBeLessThan(dearer);
+    // With a hundredth of a cent left beside what's held, the dearer model is refused: the call keeps its model and its notes.
+    const live = await meter(org);
+    await h.setLimit('ai.hour_micro_usd', Math.ceil((live.spentNano + live.unspentNano - live.leftNano + 100_000) / 1000));
+    expect(await refusal(host.setModel(UNENCRYPTED_MODEL))).toBe('plan-limit: What’s left of your notes this period won’t cover writing this call’s notes with that model. Keep the one it has, or choose one that costs less.');
+    expect((await now(host)).capture).toMatchObject({ mode: 'on', model: null, stopped: null });
+    expect(await meter(org)).toMatchObject({ stopped: false });
+    expect(await held()).toBeLessThan(dearer);
+  });
+
+  it('stops notes when the organizer’s storage fills, logging the limit by name, what’s stored, what was adding and the limit', async () => {
+    const org = await account(unique('organizer'));
+    const { host } = await call(org);
+    await host.appendAudio(piece('stored', 0));
+    const stored = (await org.api.plans.plan()).storage.usedBytes;
+    // Room for a kilobyte more: the next piece doesn't fit.
+    await h.setLimit('plan.free.storage_bytes', stored + 1024);
+    let from = h.logs.length;
+    expect(code(await host.appendAudio(piece('full', 1)).catch((e: unknown) => e))).toBe('plan-limit');
+    expect((await settle(host, (s) => s.capture.stopped !== null)).capture).toMatchObject({ mode: 'off', stopped: { reason: 'storage' } });
+    const full = linesSince(from).find((l) => l.msg === 'The organizer’s storage is full, so notes have stopped.');
+    expect(full).toMatchObject({ level: 30, reason: 'storage', limit: 'plan.free.storage_bytes', usedBytes: stored, limitBytes: stored + 1024, grace: false });
+    expect(full?.['addingBytes']).toBeGreaterThan(1024);
+    // Turning notes on again is refused while there's no room for them to come back, logged the same way.
+    from = h.logs.length;
+    const word = 'Your storage is full, so notes can’t be kept. Delete something, or move to a plan with more room.';
+    expect(await refusal(host.setNotes(true))).toBe(`plan-limit: ${word}`);
+    expect(linesSince(from).find((l) => l.msg === word)).toMatchObject({ level: 30, limit: 'plan.free.storage_bytes', usedBytes: stored, addingBytes: 1024 * 1024, limitBytes: stored + 1024 });
+  });
+
   it('after a Free organizer’s notes stop, an invitee on Pro still asks from their own allowance, and a guest can’t', async () => {
     await h.setLimit('plan.free.notes_minutes', 1);
     await h.setLimit('ai.hour_micro_usd', 3600);
@@ -247,7 +508,8 @@ describe('running out', () => {
     await host.appendAudio(piece('before', 0));
     await host.transcribe(speech('We agreed to ship on Monday.', 0), host.ticket.identity);
     expect((await settle(theirs, (s) => s.capture.stopped !== null)).capture.stopped).toEqual({ reason: 'notes', at: expect.any(String) });
-    expect(code(await guest.askSoFar('When do we ship?', { kind: 'all' }).catch((e: unknown) => e))).toBe('plan-limit');
+    // The guest is told whose notes ran out: theirs aren't.
+    expect(await refusal(guest.askSoFar('When do we ship?', { kind: 'all' }))).toBe('plan-limit: The organizer’s notes for this period have run out, and this is paid from them.');
     await theirs.askSoFar('When do we ship?', { kind: 'all' });
     const k = await meter(kofi);
     expect(k.plan).toBe('pro');
@@ -280,6 +542,67 @@ describe('running out', () => {
     expect(code(await ann.api.recordings.start({ title: 'Again' }).catch((e: unknown) => e))).toBe('plan-limit');
   });
 
+  it('leaves notes as they were when their organizer asks to write them again after the allowance is spent, and spends nothing', async () => {
+    await h.setLimit('plan.free.notes_minutes', 1);
+    await h.setLimit('ai.hour_micro_usd', 3600);
+    await h.setLimit('ai.stop_micro_usd', 0);
+    const org = await account(unique('organizer'));
+    const { host } = await call(org);
+    await host.appendAudio(piece('again', 0));
+    await host.transcribe(speech('We agreed to ship on Monday.', 0), host.ticket.identity);
+    await settle(host, (s) => s.capture.stopped !== null);
+    const ended = await host.leave();
+    const noteId = ended?.pendingNoteId ?? '';
+    await written(org.api, noteId);
+    const was = await org.api.notes.get(noteId);
+    expect(was.decisions.map((d) => d.text)).toEqual(['We agreed to ship on Monday.']);
+    const spent = (await meter(org)).spentNano;
+    const sent = h.near.prompts.length;
+    // Writing them again is refused like anything else: the job ends at once, with nothing sent or charged and nothing retried.
+    expect(await org.api.notes.rewrite(noteId)).toMatchObject({ writingAgain: true });
+    await written(org.api, noteId);
+    const after = await org.api.notes.get(noteId);
+    expect(after).toMatchObject({ writingAgain: false, summary: was.summary, writtenAt: was.writtenAt, model: was.model });
+    expect(after.decisions).toEqual(was.decisions);
+    expect(h.near.prompts.length).toBe(sent);
+    expect((await meter(org)).spentNano).toBe(spent);
+    expect((await h.pool.query('SELECT 1 FROM content_jobs WHERE owner_id = $1', [org.session.ownerId])).rowCount).toBe(0);
+  });
+
+  it('after the organizer buys more notes, or Pro, past a stop, the next clip and question are charged to what was bought, and notes stay on', async () => {
+    // A minute of notes at $0.0036 an hour and no stop short of nothing: the call's first clip spends it.
+    await h.setLimit('plan.free.notes_minutes', 1);
+    await h.setLimit('ai.hour_micro_usd', 3600);
+    await h.setLimit('ai.stop_micro_usd', 0);
+    for (const buys of ['hours', 'pro'] as const) {
+      const org = await account(unique('organizer'));
+      const { host } = await call(org);
+      await host.appendAudio(piece(buys, 0));
+      await host.transcribe(speech('We agreed to ship on Monday.', 0), host.ticket.identity);
+      expect((await settle(host, (s) => s.capture.stopped !== null)).capture).toMatchObject({ mode: 'off', stopped: { reason: 'notes' } });
+      await creditBySupport(h.deps, org.email, 20_000_000);
+      const bought = buys === 'hours' ? await org.api.plans.buyHours(1, 15_000_000, 600) : await org.api.plans.buyPro(1, 20_000_000);
+      expect(bought.notes.stopped).toBe(false);
+      await host.setNotes(true);
+      const on = await settle(host, (s) => s.capture.mode === 'on');
+      expect(on.capture).toMatchObject({ mode: 'on', stopped: null });
+      // The next clip, in the segment notes came back on in, is transcribed and charged: the meter's own stop has lifted.
+      const before = await meter(org);
+      await host.transcribe({ ...speech('And we test on staging first.', 0), segment: on.notes.recording?.segment ?? 0 }, host.ticket.identity);
+      expect((await settle(host, (s) => s.transcript.length > 1)).capture).toMatchObject({ mode: 'on', stopped: null });
+      const clip = await meter(org);
+      expect(clip).toMatchObject({ plan: buys === 'pro' ? 'pro' : 'free', stopped: false });
+      expect(clip.byKind['transcript'] ?? 0).toBeGreaterThan(buys === 'pro' ? 0 : before.byKind['transcript'] ?? 0);
+      // A question of the organizer's is charged too, and notes left go down.
+      const shown = (await org.api.plans.plan()).notes.minutesLeft;
+      await host.askSoFar('When do we ship?', { kind: 'all' });
+      expect((await meter(org)).byKind['ask']).toBeGreaterThan(0);
+      const plan = await org.api.plans.plan();
+      expect(plan.notes.stopped).toBe(false);
+      expect(plan.notes.minutesLeft).toBeLessThan(shown);
+    }
+  });
+
   it('holds what requests in flight may cost, so several at once never spend past the allowance', async () => {
     // A note to ask about, written while there's plenty.
     await h.setLimit('ai.stop_micro_usd', 0);
@@ -294,6 +617,119 @@ describe('running out', () => {
     expect(outcomes).toContain('answered');
     expect(outcomes).toContain('plan-limit');
     expect(after.spentNano).toBeLessThanOrEqual(after.allowanceNano);
+  });
+});
+
+describe('AI in a workspace', () => {
+  it('is paid by whoever asks, signed in; a guest’s by the workspace’s payer on the default model, and none while nobody pays', async () => {
+    const ann = await account(unique('maker'));
+    const bob = await account(unique('admin'));
+    const { id } = await ann.api.workspaces.create('Product');
+    await ann.api.workspaces.addPerson(id, bob.email, 'admin');
+    const plan = (await ann.api.workspaces.items.create(id, { kind: 'document', name: 'Plan', parent: null })).id;
+    const spent = async (who: Account) => (await meter(who)).byKind['documents'] ?? 0;
+    const shorter = { action: 'shorter' as const, text: 'A long way of saying it' };
+    // Bob asks: he's signed in, so his own plan pays, though the workspace counts against Ann.
+    await answer(bob.api.workspaces.ask(id, plan, shorter));
+    expect(await spent(bob)).toBeGreaterThan(0);
+    expect(await spent(ann)).toBe(0);
+    // Ann deletes her account, and the workspace counts against nobody until upkeep. Bob still pays for his own.
+    await ann.api.account.delete();
+    let before = await spent(bob);
+    await answer(bob.api.workspaces.ask(id, plan, shorter));
+    expect(await spent(bob)).toBeGreaterThan(before);
+    // Bob's call, with the workspace: a guest gets no AI there while nobody pays for it, and nothing is sent.
+    const { host, meeting } = await call(bob);
+    await host.setWorkspace(id);
+    await host.setModel(UNENCRYPTED_MODEL);
+    const g = h.browser();
+    const jamie = await g.api.calls.join(meeting.code, { mic: false, cam: false, name: 'Jamie Guest' });
+    await letIn(host, jamie);
+    const pass = { pass: jamie.ticket.pass };
+    const sent = h.near.prompts.length;
+    expect(await refusal(answer(g.api.workspaces.ask(id, plan, shorter, pass)))).toBe('not-found: That workspace doesn’t exist, or you don’t have access to it.');
+    expect(h.near.prompts.length).toBe(sent);
+    // Upkeep counts it against Bob, its admin with an account: what the guest asks for is his to pay, on the default model,
+    // not the one he chose for the call.
+    await maintain(h.deps);
+    before = await spent(bob);
+    expect(await answer(g.api.workspaces.ask(id, plan, shorter, pass))).toEqual([{ type: 'text', text: 'Shorter: A long way of saying it' }]);
+    expect(h.near.chats.at(-1)?.model).toBe(NOTES_MODEL);
+    expect(await spent(bob)).toBeGreaterThan(before);
+    // Bob's own in the call goes to the call's model, from his own plan.
+    await answer(bob.api.workspaces.ask(id, plan, shorter, { pass: host.ticket.pass }));
+    expect(h.near.chats.at(-1)?.model).toBe(UNENCRYPTED_MODEL);
+    // A guest's comes out of the share every guest in the call spends from, as their questions do: with none, it's refused,
+    // and Bob's own isn't.
+    await h.setLimit('ai.guests_call_percent', 0);
+    expect(await refusal(answer(g.api.workspaces.ask(id, plan, shorter, pass)))).toBe('plan-limit: Guests in this call have asked as much as the organizer’s plan allows. Sign in to ask from your own plan.');
+    expect((await answer(bob.api.workspaces.ask(id, plan, shorter))).length).toBeGreaterThan(0);
+    await h.resetLimits();
+    // A guest asks a few times a minute, as their questions in a call; Bob, paying for his own, more.
+    const guests = await Promise.all(Array.from({ length: 7 }, () => answer(g.api.workspaces.ask(id, plan, shorter, pass)).then(() => 'answered', code)));
+    expect(guests).toContain('unavailable');
+    const his = await Promise.all(Array.from({ length: 7 }, () => answer(bob.api.workspaces.ask(id, plan, shorter)).then(() => 'answered', code)));
+    expect(his.every((x) => x === 'answered')).toBe(true);
+  });
+});
+
+describe('periods', () => {
+  /** An account whose minute of notes a room recording's first clip spent, in periods of an hour. */
+  async function spentInAnHour() {
+    await h.setLimit('plan.period_seconds', 3600);
+    await h.setLimit('plan.free.notes_minutes', 1);
+    const ann = await account();
+    const rec = await ann.api.recordings.start({ title: 'Spent' });
+    await rec.transcribe(speech('We agreed to ship on Monday.', 0));
+    await written(ann.api, (await rec.stop()).pendingNoteId);
+    const spent = await meter(ann);
+    expect(spent).toMatchObject({ stopped: true, to: spent.from + 3_600_000 });
+    expect(code(await answer(ann.api.notes.askAll('When do we ship?')).catch((e: unknown) => e))).toBe('plan-limit');
+    return { ann, spent };
+  }
+
+  it('starts the next period afresh: a request after the period ends is charged to the new one, and the stop is lifted', async () => {
+    const { ann, spent } = await spentInAnHour();
+    vi.useFakeTimers({ toFake: ['Date'], now: spent.to + 60_000 });
+    // Shown so before anything touches it: all of the new period's notes.
+    expect(await ann.api.plans.plan()).toMatchObject({ period: { from: new Date(spent.to).toISOString() }, notes: { minutesPerPeriod: 1, stopped: false } });
+    const fresh = await meter(ann);
+    expect(fresh).toMatchObject({ from: spent.to, spentNano: 0, unspentNano: fresh.allowanceNano, stopped: false });
+    // A question is answered, and charged to the new period alone.
+    expect((await answer(ann.api.notes.askAll('When do we ship?'))).length).toBeGreaterThan(0);
+    const next = await meter(ann);
+    expect(next).toMatchObject({ from: spent.to, to: spent.to + 3_600_000, stopped: false, byKind: { ask: next.spentNano } });
+    expect(Object.keys(next.byKind)).toEqual(['ask']);
+    // And notes can be kept again: a room recording starts.
+    expect((await ann.api.recordings.start({ title: 'Again' })).getSnapshot().status).toBe('recording');
+  });
+
+  it('runs a period to its end as it began when plan.period_seconds changes, and the next one at the new length', async () => {
+    const { ann, spent } = await spentInAnHour();
+    // Half-hour periods from now on, forty minutes into the hour. Counted afresh from when the account began, it would be in
+    // its second period with all its notes back; it's in the one that began, still spent, until that one ends.
+    await h.setLimit('plan.period_seconds', 1800);
+    vi.useFakeTimers({ toFake: ['Date'], now: spent.from + 40 * 60_000 });
+    expect(await meter(ann)).toMatchObject({ from: spent.from, to: spent.to, stopped: true, spentNano: spent.spentNano });
+    expect((await ann.api.plans.plan()).period).toEqual({ from: new Date(spent.from).toISOString(), to: new Date(spent.to).toISOString() });
+    expect(code(await answer(ann.api.notes.askAll('When do we ship?')).catch((e: unknown) => e))).toBe('plan-limit');
+    // Once it's over, the next is half an hour long, with all its notes.
+    vi.setSystemTime(spent.to + 60_000);
+    expect(await meter(ann)).toMatchObject({ from: spent.to, to: spent.to + 1_800_000, stopped: false, spentNano: 0 });
+    await answer(ann.api.notes.askAll('When do we ship?'));
+    expect(Object.keys((await meter(ann)).byKind)).toEqual(['ask']);
+  });
+});
+
+describe('what’s kept', () => {
+  it('keeps nothing of an account’s allowance in the clear but whose it is: nothing counts its requests', async () => {
+    const ann = await account();
+    const rec = await ann.api.recordings.start({ title: 'Kept' });
+    await rec.transcribe(speech('We agreed to ship on Monday.', 0));
+    await written(ann.api, (await rec.stop()).pendingNoteId);
+    const columns = (await h.pool.query<{ name: string }>("SELECT column_name AS name FROM information_schema.columns WHERE table_name = 'ai_meters' ORDER BY ordinal_position")).rows.map((r) => r.name);
+    expect(columns).toEqual(['owner_id', 'state_ciphertext']);
+    expect((await h.pool.query('SELECT 1 FROM ai_meters WHERE owner_id = $1', [ann.session.ownerId])).rowCount).toBe(1);
   });
 });
 

@@ -1,7 +1,7 @@
 import { firstName, type Speaker } from '@alcove/api';
 import { CAPTION_LANGUAGES, MAIN_PLACE, MAX_CALL_IDEAS, type CallAction, type CallBoard, type CallBoardIdea, type CallAnswer, type CallMoment, type CaptionLanguage, type CaptionTranslation, type CaptureGap, type CatchUp, type CatchUpRange, type CatchUpWindow, type Changer, type LiveNotes, type Person, type CallFollowUps, type DocFollowUpTick, type SeriesAnswerPart } from '@alcove/api';
 import type { Owner } from '../../context';
-import type { ChatModel } from '../../inference';
+import { defaultModel, type ChatModel } from '../../inference';
 import { id128 } from '../../crypto';
 import { exec, tx, type Db } from '../../db';
 import { AuthError, ConflictError, ForbiddenError, notFound } from '../../errors';
@@ -31,19 +31,18 @@ import { invitedIn, mayRead, onlyHere, personFor, requireIn, roomsIn, saidIn, sp
 import { capturing, load, saveSettled, secondsIn, settle, tenthsIn, type Row, type Stored } from './state';
 import { landRooms, syncRoomBoards, workedOn } from './room-boards';
 import { tellRoom } from './notifications';
+import { callMeter } from './recording';
 import { meterFor, type Spend } from '../billing/meter';
 
 const clog = log.child({ component: 'calls' });
 
-/** What the call does for everyone (its captions, live notes and board ideas): the organizer pays, as part of this call. */
-const callMeter = (o: Owner, recordingId: string, spend: Spend) => meterFor(o, { payer: o.ownerId, spend, source: { kind: 'call', id: recordingId } });
 /**
  * Someone's own question or catch-up in the call: from their own plan, signed in, or a guest's from the organizer's, out of
  * the share every guest in this call spends from (billing/meter.ts).
  */
 async function askerMeter(v: Viewer, spend: Spend) {
-  const asker = await v.session();
-  return meterFor(v.organizer, asker ? { payer: asker.ownerId, spend } : { payer: v.organizer.ownerId, spend, guests: v.pass.callId });
+  const asker = (await v.session())?.ownerId;
+  return meterFor(v.organizer, asker ? { payer: asker, spend, whose: 'yours' } : { payer: v.organizer.ownerId, spend, whose: 'organizer', guests: v.pass.callId });
 }
 
 /** The call's follow-ups as this person may read them: the live notes' where they are, and the documents' they can open. */
@@ -71,9 +70,10 @@ export async function tickDocumentFollowUp(v: Viewer, callId: string, t: DocFoll
 /**
  * Asking about a selection needs in a call what catching up does: everything that reaches the AI from a call waits while
  * notes, or the room someone's in, are paused, and a call whose notes have never been on sends it nothing. Says which
- * model the call's AI goes to.
+ * model it goes to: the one chosen for the call, or the default (`model`), for a guest, whose ask is paid by a plan that
+ * didn't choose the call's.
  */
-export async function mayAskInCall(v: Viewer): Promise<ChatModel> {
+export async function mayAskInCall(v: Viewer, model: 'call' | 'default'): Promise<ChatModel> {
   const { row, state } = await load(v.organizer, v.organizer.pool, v.pass.callId);
   const s = settle(state, row);
   const mine = s.people.find((j) => j.identity === v.pass.identity);
@@ -81,6 +81,7 @@ export async function mayAskInCall(v: Viewer): Promise<ChatModel> {
   const call = capturing(row, s, mine ? placeOf(s, mine) : MAIN_PLACE);
   capture.mayReachAi(call, 'ask', ctx);
   if (!call.noteId) throw new ConflictError('Notes aren’t on in this call, so nothing goes to the AI from it.', { context: ctx });
+  if (model === 'default') return defaultModel(v.organizer.cfg);
   // What's asked in a call goes to the model chosen for it.
   const via = await models.resolveModel(v.organizer.cfg, s.notes.model);
   await recordUnencryptedUse(v.organizer, call.noteId, via);
@@ -121,7 +122,7 @@ export async function translate(v: Viewer, callId: string, language: CaptionLang
     const t0 = performance.now();
     const via = await models.resolveModel(o.cfg, s.notes.model);
     await recordUnencryptedUse(o, into.noteId, via);
-    const fresh = await drafting.translate(o.cfg, callMeter(o, into.recordingId, 'captions'), missing.map((l) => ({ id: l.id, text: l.text })), CAPTION_LANGUAGES.find((x) => x.code === language)?.english ?? language, via);
+    const fresh = await drafting.translate(o.cfg, callMeter(v, callId, into.recordingId, 'captions'), missing.map((l) => ({ id: l.id, text: l.text })), CAPTION_LANGUAGES.find((x) => x.code === language)?.english ?? language, via);
     await transcripts.keepTranslations(o, into, language, [...fresh].map(([lineId, text]) => ({ lineId, text })));
     for (const [id, text] of fresh) have.set(id, text);
     clog.info('captions translated', { ...ctx, found: wanted.length, cached: wanted.length - missing.length, translated: fresh.size, ms: Math.round(performance.now() - t0) });
@@ -363,7 +364,7 @@ export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
     const t0 = performance.now();
     const known = liveNotes.knownTo(claim, lines);
     await part.disclose();
-    const sorted = await drafting.catchUp(o.cfg, callMeter(o, recordingId, 'live-notes'), part.brief(lines, read.gaps), catchup.describe(whole, barred.length > 0), { followUps: FOLLOW_UPS_READ, known });
+    const sorted = await drafting.catchUp(o.cfg, callMeter(v, callId, recordingId, 'live-notes'), part.brief(lines, read.gaps), catchup.describe(whole, barred.length > 0), { followUps: FOLLOW_UPS_READ, known });
     const done = {
       lines: lines.length, gaps: read.gaps.length, missed: read.missed.length, uncited: sorted.uncited, known: known.length, same: sorted.next.filter((f) => f.same).length, strays: sorted.strays,
       cut: sorted.cut?.count ?? 0, ms: Math.round(performance.now() - t0)
@@ -515,7 +516,7 @@ export async function watchIdeas(v: Viewer, callId: string): Promise<boolean> {
     const frames = await boards.framesOf(o, open);
     const brief = part.brief(lines, read.gaps);
     await part.disclose();
-    const found = await drafting.ideasFrom(o.cfg, callMeter(o, recordingId, 'ideas'), brief, frames, kept?.list.map((i) => i.text) ?? []);
+    const found = await drafting.ideasFrom(o.cfg, callMeter(v, callId, recordingId, 'ideas'), brief, frames, kept?.list.map((i) => i.text) ?? []);
     const seen = lines.map((l) => ({ ...(l.when === undefined ? {} : { when: l.when }), ...(l.readers ? { readers: l.readers } : {}) }));
     const ideas = found.flatMap((f): StoredIdea[] => {
       const line = lines[f.line];

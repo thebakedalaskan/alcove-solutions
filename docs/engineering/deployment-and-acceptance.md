@@ -219,7 +219,7 @@ everywhere within a minute.
 | `plan.hours.pack_minutes` | 600 | 1 | 60,000 | More notes: the minutes one pack adds to the period it's bought in, reckoned at `ai.hour_micro_usd` an hour. |
 | `plan.hours.price_micro_usd` | $15 | $0 | $10,000 | More notes: one pack. At 0, more notes aren't offered. |
 | `plan.hours.max_packs` | 5 | 1 | 100 | More notes: the most packs one purchase buys. |
-| `plan.period_seconds` | 30 d | 1 m | 365 d | A plan's period: notes renew, and paid time runs, in these. Not changed in production for now (below). |
+| `plan.period_seconds` | 30 d | 1 m | 365 d | A plan's period: notes renew, and paid time runs, in these. A change applies from each account's next period (below). |
 | `plan.grace_seconds` | 15 d | 0 | 90 d | Once an account is over its plan's limits: how long until what's over stops taking more. |
 | `ai.hour_micro_usd` | $0.50 | $0.000001 | $100 | What an hour of notes is reckoned at, to give the AI allowance as time. |
 | `ai.stop_micro_usd` | $0.005 | $0 | $10 | What's left of an allowance when transcription and every AI request stop. |
@@ -248,10 +248,11 @@ guests in a call included. Lowering one deletes nothing: it refuses the next upl
 ([Data and storage › Media](data-and-storage.md#media)). What happens to an account over its plan's limits is in
 [Plans and usage › Over the limit](plans-and-usage.md#over-the-limit-the-grace).
 
-Don't change `plan.period_seconds` in production for now. An account on Free has its periods counted from when it began,
-in lengths of whatever the limit says when they're read, so a change starts a new period at once, with all its notes and
-any stop lifted, for every account on Free past its first period. Months of Pro and team licenses keep the length they
-were bought with. It's safe to change once each account keeps its own period.
+Changing `plan.period_seconds` applies from each account's next period. Each account's AI meter keeps the period it's in
+(its `from` and `to`), and an account on Free runs its periods on from that one, each at the length the limit says when it
+begins, so a period that has begun runs to its end as it began, with what's been spent and any stop. Months of Pro and
+team licenses keep the length they were bought or taken with. An account the meter hasn't seen on Free since it started
+counts its periods from when it began, at the length in force.
 
 `media.file_bytes` and `media.workspace_bytes` are gone: a file's size and what's stored are each plan's now, and storage is
 counted for each account, not each workspace. A row for either is ignored with `service limit ignored` at warn, and what it

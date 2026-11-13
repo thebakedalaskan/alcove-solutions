@@ -134,6 +134,16 @@ const roomsText = (rooms: RoomNote[], texts: string[]): string => rooms.map((r, 
 /** About 30,000 tokens of transcript; longer calls keep their beginning and end. */
 const MAX_TRANSCRIPT_CHARS = 120_000;
 
+/**
+ * What each request that writes a call's notes asks for back at most, in tokens: the notes (each breakout room's too),
+ * their details, the comparison with the series, picking moments from what was shared and reading a frame. Each request
+ * asks for this, and `writingAtMost` holds it while the call is live, so the two can't drift: a request added to writing
+ * the notes belongs here and there.
+ */
+const WRITING_OUTPUT = { notes: 4000, details: 2500, revisits: 500, pickMoments: 6000, readScreen: 1200 } as const;
+/** The requests that read a call's whole transcript, once each (a breakout room's notes read the room's). */
+const READ_WHOLE = ['notes', 'details', 'revisits'] as const;
+
 const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
@@ -565,7 +575,7 @@ export async function draft(cfg: Config, meter: Meter, b: Brief, style: NotesSty
   // Room for every entry the notes keep, each with its lines: a reply cut off isn't JSON, so the notes wouldn't be written.
   // At the slowest the model has been seen (about 24 tokens a second), all of it fits well inside the timeout, which
   // matters since a timeout never uses up an attempt.
-  ], { what: 'notes', maxTokens: 4000, timeoutMs: 240_000, via: b.via });
+  ], { what: 'notes', maxTokens: WRITING_OUTPUT.notes, timeoutMs: 240_000, via: b.via });
   const reply = Draft.safeParse(json);
   if (!reply.success) throw new UnavailableError('The notes came back in the wrong shape.', { context: { what: 'notes', issues: issues(reply.error) } });
   const d = reply.data;
@@ -694,7 +704,7 @@ export async function writeDetails(cfg: Config, meter: Meter, b: Brief, written:
   const { json, evidence } = await complete(cfg, meter, [
     { role: 'system', content: DETAILS_PROMPT(style, detailsParagraphs(b.seconds)) },
     { role: 'user', content: `${about(b)}\n\nNotes already written:\n${notes}\n\nTranscript:\n${fenced(sent.text)}` }
-  ], { what: 'details', maxTokens: 2500, timeoutMs: 180_000, via: b.via });
+  ], { what: 'details', maxTokens: WRITING_OUTPUT.details, timeoutMs: 180_000, via: b.via });
   const reply = DetailsReply.safeParse(json);
   if (!reply.success) throw new UnavailableError('The full summary came back in the wrong shape.', { context: { what: 'details', issues: issues(reply.error) } });
   return { details: clip(reply.data.details.replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim(), DETAILS_CHARS), evidence };
@@ -1214,7 +1224,7 @@ export async function revisited(cfg: Config, meter: Meter, b: Brief, decisions: 
         ...rooms.map((r, i) => `\nBreakout room ${i + 1}, ${oneLine(r.name)}:\n${fenced(roomsRead[i]?.text ?? '')}`)
       ].join('\n')
     }
-  ], { what: 'revisits', maxTokens: 500, timeoutMs: 60_000, via: b.via });
+  ], { what: 'revisits', maxTokens: WRITING_OUTPUT.revisits, timeoutMs: 60_000, via: b.via });
   const reply = RevisitReply.safeParse(json);
   if (!reply.success) throw new UnavailableError('The comparison with earlier calls came back in the wrong shape.', { context: { what: 'revisits', issues: issues(reply.error) } });
   const out = new Map<string, Revisited>();
@@ -1322,7 +1332,7 @@ export async function pickMoments(cfg: Config, meter: Meter, lines: TranscriptLi
     const { json, evidence: e } = await complete(cfg, meter, [
       { role: 'system', content: PICK_PROMPT },
       { role: 'user', content: `Shares:\n${listed.join('\n')}\n\nTranscript:\n${fenced(chunk.map((x) => x.text).join('\n'))}` }
-    ], { what: 'pick-moments', maxTokens: 6000, timeoutMs: 180_000, via });
+    ], { what: 'pick-moments', maxTokens: WRITING_OUTPUT.pickMoments, timeoutMs: 180_000, via });
     if (e) evidence.push(e);
     const reply = MomentsReply.safeParse(json);
     if (!reply.success) { unusable++; continue; }
@@ -1497,7 +1507,7 @@ export async function readScreen(cfg: Config, meter: Meter, jpeg: Uint8Array, o:
   const { json, evidence } = await complete(cfg, meter, [
     { role: 'system', content: READ_SCREEN_PROMPT },
     { role: 'user', content: frames }
-  ], { what: 'read-screen', maxTokens: 1200, timeoutMs: 60_000, via: o.via });
+  ], { what: 'read-screen', maxTokens: WRITING_OUTPUT.readScreen, timeoutMs: 60_000, via: o.via });
   const reply = ScreenReply.safeParse(json);
   if (!reply.success) throw new UnavailableError('The screen came back read in the wrong shape.', { context: { what: 'read-screen', issues: issues(reply.error) } });
   const r = reply.data;
@@ -1526,7 +1536,7 @@ const SPOKEN_CHARS = 18;
  * allowance holds it until the notes are written (features/billing/meter.ts): the notes and their details from the
  * transcript (up to MAX_TRANSCRIPT_CHARS), a section for each breakout room, the moments picked from what was shared and a
  * frame read, with the one before it, for every SECONDS_PER_SCREEN_FRAME of sharing (MAX_SCREEN_FRAMES at most), and
- * comparing its decisions with the series'. Every request at the most it can ask for back.
+ * comparing its decisions with the series'. Every request at the most it asks for back (WRITING_OUTPUT).
  */
 export function writingAtMost(o: { seconds: number; rooms: number; shareSeconds: number }): Most {
   const chars = Math.min(Math.ceil(o.seconds * SPOKEN_CHARS), MAX_TRANSCRIPT_CHARS);
@@ -1534,8 +1544,8 @@ export function writingAtMost(o: { seconds: number; rooms: number; shareSeconds:
   const frames = o.shareSeconds > 0 ? Math.min(MAX_SCREEN_FRAMES, Math.ceil(o.shareSeconds / SECONDS_PER_SCREEN_FRAME)) : 0;
   const picks = frames ? Math.max(1, Math.ceil(chars / PICK_CHARS)) : 0;
   return {
-    input: transcript * (3 + o.rooms + picks) + frames * READ_TOKENS,
+    input: transcript * (READ_WHOLE.length + o.rooms + picks) + frames * READ_TOKENS,
     images: frames * 2,
-    output: 4000 * (1 + o.rooms) + 2500 + 500 + picks * 6000 + frames * 1200
+    output: READ_WHOLE.reduce((n, r) => n + WRITING_OUTPUT[r], 0) + WRITING_OUTPUT.notes * o.rooms + WRITING_OUTPUT.pickMoments * picks + WRITING_OUTPUT.readScreen * frames
   };
 }

@@ -47,6 +47,12 @@ const tokensAtMost = (text: string) => utf8(text).length;
 const tokensAbout = (text: string) => Math.ceil(text.length / 4);
 
 /**
+ * Whether a request that failed with `e` timed out once it was sent: the model may have done the work, so it was charged
+ * the most it could have cost (`paidFor`), and trying it again costs that again.
+ */
+export const lostOnceSent = (e: unknown): boolean => e instanceof UnansweredError && e.context['timedOut'] === true;
+
+/**
  * Runs a request that `meter` pays for. `run` calls `answered` with what it used once a 200 comes back: charged then,
  * whatever happens after. A request that never got a 200 is charged nothing, unless it timed out once sent, when the
  * model may have done the work: then it's charged the most it could have cost.
@@ -59,7 +65,7 @@ async function paidFor<T>(meter: Meter, model: string, most: Most, run: (answere
     result = await run((u, reckoned) => { reply.used = { u, reckoned }; });
   } catch (e) {
     const sent = reply.used;
-    const charge = sent ? held.used(sent.u, sent.reckoned) : e instanceof UnansweredError && e.context['timedOut'] === true ? held.lost() : held.unsent();
+    const charge = sent ? held.used(sent.u, sent.reckoned) : lostOnceSent(e) ? held.lost() : held.unsent();
     await charge.catch((m: unknown) => ilog.error('request not charged', { model, err: m }));
     throw e;
   }

@@ -73,7 +73,7 @@ export const LIMITS = {
   'plan.hours.pack_minutes': { default: 600, floor: 1, ceiling: 60_000, unit: 'minutes', measures: 'More notes: the minutes one pack adds to the period it’s bought in, reckoned at ai.hour_micro_usd an hour.' },
   'plan.hours.price_micro_usd': { default: 15_000_000, floor: 0, ceiling: 10_000_000_000, unit: 'micro-usd', measures: 'More notes: one pack. At 0, more notes aren’t offered.' },
   'plan.hours.max_packs': { default: 5, floor: 1, ceiling: 100, unit: 'count', measures: 'More notes: the most packs one purchase buys.' },
-  'plan.period_seconds': { default: 30 * DAY, floor: MINUTE, ceiling: 365 * DAY, unit: 'seconds', measures: 'A plan’s period: notes renew, and paid time runs, in these. Not changed in production for now: every account on Free past its first period would start a new one at once.' },
+  'plan.period_seconds': { default: 30 * DAY, floor: MINUTE, ceiling: 365 * DAY, unit: 'seconds', measures: 'A plan’s period: notes renew, and paid time runs, in these. A change applies from each account’s next period: one that has begun runs to its end as it began.' },
   'plan.grace_seconds': { default: 15 * DAY, floor: 0, ceiling: 90 * DAY, unit: 'seconds', measures: 'Once an account is over its plan’s limits: how long until what’s over stops taking more.' },
   'ai.hour_micro_usd': { default: 500_000, floor: 1, ceiling: 100_000_000, unit: 'micro-usd', measures: 'What an hour of notes is reckoned at, to give the AI allowance as time.' },
   'ai.stop_micro_usd': { default: 5_000, floor: 0, ceiling: 10_000_000, unit: 'micro-usd', measures: 'What’s left of an allowance when transcription and every AI request stop.' },

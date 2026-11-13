@@ -15,6 +15,7 @@ import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { conflict, InternalError, invalid, notFound } from '../../errors';
 import { limitsNow, type Limits } from '../../limits';
 import { log, type LogContext } from '../../log';
+import { keptPeriodOf, type KeptPeriod } from './meter-state';
 import { settlePayers, usedBytes } from './storage';
 
 const plog = log.child({ component: 'plans' });
@@ -134,27 +135,34 @@ const boughtFor = (a: PlanAccount, p: Pick<InForce, 'kind' | 'from'>): number =>
 
 /**
  * The plan in force at `now`, with its notes and any more bought for the period it's in: the allowance the meter keeps
- * (features/billing/meter.ts) and what a period brings as the plan shows it.
+ * (features/billing/meter.ts) and what a period brings as the plan shows it. `kept`: the period the account's meter keeps
+ * (null: it has none yet), which Free's periods run on from.
  */
-export function inForce(a: PlanAccount, l: Limits, now: number, license: License | null): InForce {
-  const p = planAt(a, l, now, license);
+export function inForce(a: PlanAccount, l: Limits, now: number, license: License | null, kept: KeptPeriod | null): InForce {
+  const p = planAt(a, l, now, license, kept);
   return { ...p, notesMinutes: p.notesMinutes + boughtFor(a, p) };
 }
 
 /**
  * The plan at `now`, as it brings it: Team while a license is live, its period the license's; Pro while a month bought
- * covers it, its period that month; otherwise Free, in periods counted from `freeFrom`, the end of the last month of Pro or
- * the end of a license, whichever is latest, so Free starts afresh when Pro or a license ends.
+ * covers it, its period that month; otherwise Free, from `freeFrom`, the end of the last month of Pro or the end of a
+ * license, whichever is latest, so Free starts afresh when Pro or a license ends. Each period of Free runs as it began:
+ * the one the meter keeps (`kept`) to its end, then each after it at the length `plan.period_seconds` has when it begins,
+ * so a change to that limit applies from each account's next period and never restarts one that's running. Without one
+ * the meter keeps (an account it hasn't seen on Free since it started), they count from the start.
  */
-function planAt(a: PlanAccount, l: Limits, now: number, license: License | null): InForce {
+function planAt(a: PlanAccount, l: Limits, now: number, license: License | null, kept: KeptPeriod | null): InForce {
   if (license && isLive(license, now)) return { kind: 'team', from: license.from, to: license.to, ...teamBrings(l) };
   const month = runningAt(a, now);
   if (month) return { kind: 'pro', from: Date.parse(month.from), to: Date.parse(month.to), ...proBrings(l) };
   const period = l.get('plan.period_seconds') * 1000;
   const licenseEnded = license && license.to <= now ? license.to : -Infinity;
   const start = Math.max(Date.parse(a.freeFrom), lastEnded(a, now) ?? -Infinity, licenseEnded);
-  const n = Math.max(0, Math.floor((now - start) / period));
-  return { kind: 'free', from: start + n * period, to: start + (n + 1) * period, ...freeBrings(l) };
+  const on = kept && kept.plan === 'free' && kept.from >= start && kept.from <= now ? kept : null;
+  if (on && now < on.to) return { kind: 'free', from: on.from, to: on.to, ...freeBrings(l) };
+  const from = on ? on.to : start;
+  const n = Math.max(0, Math.floor((now - from) / period));
+  return { kind: 'free', from: from + n * period, to: from + (n + 1) * period, ...freeBrings(l) };
 }
 
 /**
@@ -254,9 +262,13 @@ export const isLive = (license: License | null, now: number): boolean => license
 
 /** An account's plan in force at `now` (docs: Plans and usage › Team), with its plan record and its team license, if any. */
 export async function planNow(d: Service, db: Db, ownerId: string, now = Date.now()): Promise<{ a: PlanAccount; p: InForce; license: License | null }> {
+  return planWith(d, db, ownerId, now, await keptPeriodOf(d, db, ownerId));
+}
+/** `planNow`, for a caller that has read the period the account's meter keeps (`kept`) already: the meter itself. */
+export async function planWith(d: Service, db: Db, ownerId: string, now: number, kept: KeptPeriod | null): Promise<{ a: PlanAccount; p: InForce; license: License | null }> {
   const a = await accountOf(d, db, ownerId);
   const license = await licenseOf(db, ownerId);
-  return { a, p: inForce(a, await limitsNow(d, db), now, license), license };
+  return { a, p: inForce(a, await limitsNow(d, db), now, license, kept), license };
 }
 
 /** Saves an account's plan, in the caller's transaction, which holds its row. */
@@ -298,11 +310,11 @@ function withMonths(a: PlanAccount, l: Limits, months: number, microUsd: number,
   return { ...a, pro: [...a.pro, ...bought] };
 }
 /**
- * `minutes` more notes for the period in force at `now`, on top of any bought for it already. More bought for an earlier
- * period are let go: they ended with it.
+ * `minutes` more notes for the period in force at `now` (as the meter keeps it, `kept`), on top of any bought for it
+ * already. More bought for an earlier period are let go: they ended with it.
  */
-function withHours(a: PlanAccount, l: Limits, minutes: number, now: number, license: License | null): PlanAccount {
-  const p = planAt(a, l, now, license);
+function withHours(a: PlanAccount, l: Limits, minutes: number, now: number, license: License | null, kept: KeptPeriod | null): PlanAccount {
+  const p = planAt(a, l, now, license, kept);
   return { ...a, hours: { plan: p.kind, from: new Date(p.from).toISOString(), minutes: boughtFor(a, p) + minutes } };
 }
 const monthsOf = (n: number) => `${n} ${n === 1 ? 'month' : 'months'}`;
@@ -426,7 +438,8 @@ interface Terms {
   /** What it buys, in words ("3 months of Pro"), and whether that's one of something, for the verb after it. */
   what: string;
   one: boolean;
-  add(a: PlanAccount, now: number): PlanAccount;
+  /** The account with it, bought at `now`, in the period the account's meter keeps (`kept`). */
+  add(a: PlanAccount, now: number, kept: KeptPeriod | null): PlanAccount;
 }
 
 /**
@@ -484,7 +497,7 @@ function termsOf(l: Limits, buys: Purchase, buyer: Buyer, now: number): Terms | 
   const minutes = buys.packs * buys.minutesPerPack;
   return {
     totalMicroUsd: buys.packs * buys.microUsdPerPack, label: `${notesTime(minutes, 'more ')} of notes`, what: `${notesTime(minutes)} of notes`, one: minutes === 60 || minutes === 1,
-    add: (a, at) => withHours(a, l, minutes, at, buyer.license)
+    add: (a, at, kept) => withHours(a, l, minutes, at, buyer.license, kept)
   };
 }
 
@@ -525,7 +538,7 @@ export async function purchase(d: Service, db: Db, ownerId: string, buys: Purcha
       }
     };
   }
-  await save(d, db, ownerId, withEntry(t.add(a, Date.now()), -t.totalMicroUsd, t.label));
+  await save(d, db, ownerId, withEntry(t.add(a, Date.now(), await keptPeriodOf(d, db, ownerId)), -t.totalMicroUsd, t.label));
   return { bought: true, totalMicroUsd: t.totalMicroUsd };
 }
 

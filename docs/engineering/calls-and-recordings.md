@@ -2383,7 +2383,8 @@ and the page a call leaves you on (`session/CallOver.tsx`).
   them when LiveKit says they've gone.
 - **Shared screens in the notes.** While notes are on or paused, the share steps ask **Include this share in the
   notes?**, on **No** until the presenter says **Yes** (their last answer in this call after that), without holding Share up. A kept share shows **Read for the notes** to everyone. The organizer chooses the model
-  that writes the notes (**Notes written by**) under what's captured. A piece of video that can't reach the notes says so
+  that writes the notes (**Notes written by**) under what's captured; a dearer one is refused while their plan's notes
+  can't hold what writing this call's notes would cost with it ([Plans and usage › Running out in a call](plans-and-usage.md#running-out-in-a-call)). A piece of video that can't reach the notes says so
   in the Notes panel ([Shared screens](#shared-screens)).
 - **Captions** show the newest live transcript line the viewer may read (said in their part of the call while
   they were there), under whoever said it, translated for each viewer who picks a language. They show in
