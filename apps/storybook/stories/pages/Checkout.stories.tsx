@@ -78,6 +78,8 @@ export const Offline = checkout('/record', 'payments', { plan: 'pro' }, {
     setOnline(false);
   }
 });
+/** Offline on a phone: the window fills the screen, the button waits, and why is said over it. */
+export const OfflinePhone: CheckoutStory = { ...Offline, globals: PHONE };
 /** Extending Pro, which ends in 3 days: counted from its end, with the days left said. */
 export const Extend = checkout('/settings#plan', 'plan-pro-ending', { plan: 'pro', from: 'settings' });
 /** More notes for this period, with notes stopped: 10, 20 or 50 hours. */
@@ -216,6 +218,8 @@ export const StartATeamOffline = checkout('/record', 'payments', { plan: 'team',
     setOnline(false);
   }
 });
+
+export const StartATeamOfflinePhone: CheckoutStory = { ...StartATeamOffline, globals: PHONE };
 
 /* ---------- Team: paying for its licenses ---------- */
 

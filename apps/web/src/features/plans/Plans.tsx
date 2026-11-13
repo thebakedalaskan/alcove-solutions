@@ -13,7 +13,7 @@
 import { errorCode, errorMessage, type CheckoutParam, type MyTeam, type Person, type Plan, type PlanBrings, type PlanOffers } from '@alcove/api';
 import { Button, EmptyState, Evening, EveryPlan, Faces, PayingLine, PlanCard, PlanCards, PlanCycle, PlanHere, PlanSunset, cn, type IconName, type PlanCycleChoice, type PlanFact } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import { useNow, useOnline } from '~/lib/live';
 import { callName } from '~/lib/people';
 import { q } from '~/lib/queries';
@@ -118,9 +118,11 @@ export interface FirstTime {
 
 /**
  * `opening`: what to open checkout on as the page opens, once; `onOpened` takes it out of the address. `first`: Plans opened
- * by itself once, as the plan choice.
+ * by itself once, as the plan choice. `evening`: the page's evening, for what arrives onto it (the plan choice's sail).
  */
-export function Plans({ opening, onOpened, first }: { opening?: CheckoutParam | undefined; onOpened?: (() => void) | undefined; first?: FirstTime | undefined }) {
+export function Plans({ opening, onOpened, first, evening }: {
+  opening?: CheckoutParam | undefined; onOpened?: (() => void) | undefined; first?: FirstTime | undefined; evening?: Ref<HTMLDivElement> | undefined;
+}) {
   /* The route's loader has tried them; offers that didn't load wait for Try again. */
   const offers = useQuery({ ...q.offers(), retryOnMount: false });
   const plan = useQuery(q.plan());
@@ -159,7 +161,7 @@ export function Plans({ opening, onOpened, first }: { opening?: CheckoutParam | 
     </div>
   );
   return (
-    <Evening moment="plans" className={cn('pl', first && 'is-first')} sky={SUNSET}>
+    <Evening ref={evening} moment="plans" className={cn('pl', first && 'is-first')} sky={SUNSET}>
       {first ? (
         /* The plan choice's head and the sky are one block down to the horizon, so the switch stays over the sun however long the line. */
         <div className="pl-lead" style={{ '--d': 0 }}>

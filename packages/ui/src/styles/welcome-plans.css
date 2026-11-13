@@ -4,11 +4,11 @@
  * edge as on the Plans page. The ways in sit under them: Start free beside Get Pro, the one filled button here. The sky's
  * colours are the scene's own, as the other parts' are.
  */
-.lp-plans .hz[data-moment="drive"] {
+.lp-plans .hz[data-moment="plans"] {
   --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.06 252) 0%, oklch(0.86 0.05 290) 62%, oklch(0.9 0.06 22) 100%);
   --hz-glow: oklch(0.93 0.09 50 / 0.62); --hz-glow-w: 1100px; --hz-glow-h: 210px;
 }
-.dark .lp-plans .hz[data-moment="drive"] {
+.dark .lp-plans .hz[data-moment="plans"] {
   --hz-sky: linear-gradient(to bottom in oklch, oklch(0.2 0.05 272) 0%, oklch(0.3 0.08 298) 64%, oklch(0.5 0.12 22) 100%);
   --hz-glow: oklch(0.72 0.14 45 / 0.5);
 }

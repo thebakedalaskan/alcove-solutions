@@ -321,8 +321,8 @@ owner, team and count.
 isn't refunded.
 
 **A license is taken on a visit**, by a member without a live one: signing in (both sign-in handlers), and
-`POST /v1/session/visit` (`AuthApi.visit`), which the app sends when it loads and when a tab comes back after 30 minutes or
-more. Nothing that only reads (`GET /v1/session`, `GET /v1/plan`, …) takes one, so polling never does. A taken license is
+`POST /v1/session/visit` (`AuthApi.visit`), which the app sends when it loads, when a tab comes back after 30 minutes or
+more, and right after its admin's checkout sees licenses bought (so the buyer's own license is taken then, as Done says). Nothing that only reads (`GET /v1/session`, `GET /v1/plan`, …) takes one, so polling never does. A taken license is
 live for `plan.period_seconds` from then (`licensed_from`, `licensed_until`); one that has ended is only replaced by a visit.
 On a visit:
 
