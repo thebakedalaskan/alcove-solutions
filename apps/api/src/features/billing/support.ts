@@ -62,8 +62,9 @@ export async function named(d: Support, who: string): Promise<Named> {
 
 /**
  * Adds `microUsd` to the balance of the account `who` names, as "Added by support", in one transaction. Named by a top-up's
- * reference, that top-up stops adding itself (`closedBySupport`), or one Alcove still watches is refused, and nothing is added.
- * Says which account, and the top-up's state.
+ * reference, it's that top-up's money, added in its place: it stops adding itself, even by a check already on its way to
+ * 1Click, and one Alcove still watches, or added already, is refused with nothing added (`closedBySupport`), so a top-up's
+ * money is added once. Named by the account's ID, it's money of its own. Says which account, and the top-up's state now.
  */
 export async function creditBySupport(d: Support, who: string, microUsd: number): Promise<Named & { state: TopUpState | null }> {
   const n = await named(d, who);

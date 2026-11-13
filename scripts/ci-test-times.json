@@ -22,9 +22,10 @@
   }
  },
  "src/features/billing/topups.integration.test.ts": {
-  "seconds": 6.8,
+  "seconds": 6.9,
   "groups": {
-   "top-ups": 6.8
+   "top-ups": 6.8,
+   "top-ups a release before plans added": 0.1
   }
  },
  "src/features/calls/attention-delivery.integration.test.ts": {
@@ -582,12 +583,11 @@
   }
  },
  "src/features/billing/plans.integration.test.ts": {
-  "seconds": 6.4,
+  "seconds": 6.3,
   "groups": {
    "Free": 2.6,
    "accounts from before plans": 0.8,
    "a call’s limits": 1.8,
-   "money": 0.1,
    "deleting an account": 1.2
   }
  },

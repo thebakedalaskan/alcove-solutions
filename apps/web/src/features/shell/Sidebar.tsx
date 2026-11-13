@@ -6,7 +6,7 @@
  * company and no team, has no Team page. It can be hidden. At 860px and narrower the phone's top bar and tab bar (TabBar.tsx) take its place, and the plan
  * is said in Settings.
  */
-import type { MyTeam, Plan, PlanNotice } from '@alcove/api';
+import type { MyTeam, Plan, PlanNotice, WorkspaceSummary } from '@alcove/api';
 import { ArchThumb, Dots, Icon, IconButton, Kbd, Logo, Meter, NavItemContent, SidebarNav, SunMark, buttonClass, cn, coverFor } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
@@ -14,7 +14,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import { aheadShown, joinable, whenLine } from '~/features/home/day';
 import { useCheckout } from '~/features/plans/checkout';
 import {
-  PLAN_NAMES, endsIn, licensesLeft, licensesShort, noticesNow, notesLeft, notesLow, notesOut, notesShare, proEnding, waitingForLicense
+  PLAN_NAMES, endsIn, licensesLeft, licensesShort, noticesNow, notesLeft, notesLow, notesOut, notesShare, paidFor, payingNow, proEnding, waitingForLicense
 } from '~/features/plans/plan-state';
 import { checkoutFor, payable, purchaseName, restToSend, settlingPurchase, tokensShort, waitingPurchase } from '~/features/plans/purchase';
 import { recordOfflineHere } from '~/lib/device';
@@ -189,6 +189,8 @@ function Foot({ online }: { online: boolean }) {
 function PlanFoot({ plan }: { plan: Plan }) {
   // On a team: who its admin is, and for the admin how many licenses are left.
   const team = useQuery({ ...q.myTeam(), enabled: plan.team !== null }).data;
+  // The workspaces you're in, read only while a notice says you pay for one now: it's named from there.
+  const spaces = useQuery({ ...q.workspaces(), enabled: plan.notices.some(payingNow) }).data;
   // Read again only while the foot shows a payment: every 30 s while one is on its way, every 5 minutes while one settles.
   const topUps = useQuery({
     ...q.topUps(),
@@ -221,11 +223,11 @@ function PlanFoot({ plan }: { plan: Plan }) {
   const out = notesOut(plan);
   const low = notesLow(plan);
   const waiting = waitingForLicense(plan);
-  const notices = noticesNow(plan, team);
+  const notices = noticesNow(plan, team, spaces, now);
   // A team's licenses running short are said by its row, unless notes have stopped, which come first there: then above it.
   const short = plan.kind === 'team' && !out ? notices.find(licensesShort) : undefined;
   const said = notices.find((n) => n !== short);
-  const notice = said && <Link to="/settings" hash="plan" className="sb-said"><Said notice={said} plan={plan} team={team} /></Link>;
+  const notice = said && <Link to="/settings" hash="plan" className="sb-said"><Said notice={said} plan={plan} team={team} spaces={spaces} /></Link>;
   if (plan.kind === 'free') return <>{notice}<NotesLeft plan={plan} waiting={waiting} /></>;
   const ending = proEnding(plan, now);
   const until = plan.pro.until;
@@ -271,14 +273,22 @@ function PlanFoot({ plan }: { plan: Plan }) {
 /** How many licenses a team has left to take, as its row and its notice say it. */
 const licensesLeftWords = (left: number): string => (left === 0 ? 'No licenses left' : `${plural(left, 'license')} left`);
 
-/** A notice in one short line, its news in bold: Pro renewed or ended, a team license replacing Pro, a team's licenses. */
-function Said({ notice, plan, team }: { notice: PlanNotice; plan: Plan; team: MyTeam | null | undefined }) {
+/**
+ * A notice in one short line, its news in bold: Pro renewed or ended, a team license replacing Pro, a team's licenses, and
+ * a workspace you pay for now, by its name, held to two lines however long that is.
+ */
+function Said({ notice, plan, team, spaces }: { notice: PlanNotice; plan: Plan; team: MyTeam | null | undefined; spaces: WorkspaceSummary[] | undefined }) {
   const on = plan.team ? ` on ${plan.team.name}` : '';
   switch (notice.kind) {
     case 'pro-renewed': return <><b>Pro renewed</b> from your balance</>;
     case 'license-replaced-pro': return notice.count ? <><b>Team replaced Pro.</b> {plural(notice.count, 'month')} refunded</> : <><b>Team replaced Pro</b></>;
     case 'licenses-low': case 'licenses-none': return <><b>{licensesLeftWords(licensesLeft(notice, team))}</b>{on}</>;
     case 'pro-ended': return <><b>Pro ended.</b> Nothing was deleted.</>;
+    case 'workspace-payer': {
+      const paying = paidFor(notice, spaces);
+      if (!paying) return null;
+      return <span className="ac-clamp-2"><b>You pay for {paying.name} now.</b> {notice.until === null ? 'Its files count against your storage' : `Its files count from ${dayMonth(new Date(notice.until))}`}</span>;
+    }
     // Said elsewhere: Pro ending by its own row, and waiting for a license by the row's second line.
     case 'pro-ending': case 'license-needed': return null;
   }

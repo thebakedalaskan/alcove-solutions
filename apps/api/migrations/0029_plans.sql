@@ -17,11 +17,3 @@ CREATE TABLE ai_meters (
   owner_id alcove_owner_id PRIMARY KEY REFERENCES owners(owner_id) ON DELETE CASCADE,
   state_ciphertext bytea NOT NULL
 );
-
--- When this release's migration ran: a deposit the previous release settles after it, while both serve, added credits
--- that no longer count, and is credited again as dollars (features/billing/deposits.ts). billing_accounts is no longer
--- read, and goes in a later release.
-CREATE TABLE billing_cutover (
-  at timestamptz NOT NULL
-);
-INSERT INTO billing_cutover (at) VALUES (now());

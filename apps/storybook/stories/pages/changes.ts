@@ -19,6 +19,7 @@ import { INVITATIONS, MOVING } from '../../src/world/invitations';
 import { withDriveExports } from '../../src/world/drive-exports';
 import { AIKO, ART, DIEGO, ELENA, LENA, MAYA, ME_ID, NADIA, OMAR, PRIYA, SAM, THEO } from '../../src/world/people';
 import { planWithTeam } from '../../src/world/teams';
+import { LAUNCH } from '../../src/world/workspaces';
 import { swap } from '../journeys/play';
 
 /** These parts of Alcove go wrong while the story is open (src/api/trouble.ts). */
@@ -242,7 +243,15 @@ export const adminWithoutLicense = (w: World): void => {
   t.members = t.members.map((m) => (m.person === ART ? { ...m, license: { from: iso(-32, 9, 0), until: iso(-2, 9, 0) }, wanted: iso(0, 9, 5) } : m));
   // On Free, what Art stores counts against Art's own storage again, not the team's.
   const free = planWithTeam(w.plan, t, ART.email);
-  w.plan = { ...free, storage: { ...free.storage, usedBytes: Math.round(2.1 * 2 ** 30) }, notices: [{ id: 'sb-notice-none', kind: 'licenses-none', at: iso(0, 9, 5), until: null, count: null }] };
+  w.plan = { ...free, storage: { ...free.storage, usedBytes: Math.round(2.1 * 2 ** 30) }, notices: [{ id: 'sb-notice-none', kind: 'licenses-none', at: iso(0, 9, 5), until: null, count: null, workspaceId: null }] };
+};
+/**
+ * Whoever paid for Launch left it this morning, so its payment moved to Art, its longest-standing admin with an account: he
+ * pays for it now, and its files count against his storage from a fortnight on, when its grace ends. Said at the top of
+ * Settings › Plan, and in a line over the side panel's plan, by the name Art sees it by.
+ */
+export const paysForLaunch = (w: World): void => {
+  w.plan = { ...w.plan, notices: [{ id: 'sb-notice-paying', kind: 'workspace-payer', at: iso(0, 9, 40), until: iso(15, 9, 40), count: null, workspaceId: LAUNCH }, ...w.plan.notices] };
 };
 /** Art's team license replaced Pro this morning: the two months that hadn't started went back to Art's balance. */
 export const replacedPro = (w: World): void => {
@@ -250,6 +259,6 @@ export const replacedPro = (w: World): void => {
   w.plan = {
     ...w.plan,
     balance: { microUsd: w.plan.balance.microUsd + 40_000_000, history: [{ id: 'sb-entry-replaced', at, label: 'Refund: 2 months of Pro, for a team license', microUsd: 40_000_000 }, ...w.plan.balance.history] },
-    notices: [{ id: 'sb-notice-replaced', kind: 'license-replaced-pro', at, until: null, count: 2 }]
+    notices: [{ id: 'sb-notice-replaced', kind: 'license-replaced-pro', at, until: null, count: 2, workspaceId: null }]
   };
 };

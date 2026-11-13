@@ -24,7 +24,7 @@ const adminName = (team: MyTeam | null | undefined, otherwise: string): string =
   return admin ? callName(admin) : otherwise;
 };
 
-/** What a team's notice says at the top of Plan, and its icon; null for Pro's, which Plan says itself. */
+/** What a team's notice says at the top of Plan, and its icon; null for Pro's and a workspace's, which Plan says itself. */
 export function teamNoticeSays(n: PlanNotice, plan: Plan, team: MyTeam | null | undefined): { icon: IconName; text: string } | null {
   const name = plan.team?.name ?? team?.name ?? 'your team';
   switch (n.kind) {
@@ -39,7 +39,7 @@ export function teamNoticeSays(n: PlanNotice, plan: Plan, team: MyTeam | null | 
     case 'license-replaced-pro': return { icon: 'swap', text: `Your team license replaced Pro.${n.count ? ` ${plural(n.count, 'month')} that hadn’t started went back to your balance.` : ''}` };
     // Waiting for a license is said by the note about it, for as long as it's true.
     case 'license-needed': return null;
-    case 'pro-ending': case 'pro-renewed': case 'pro-ended': return null;
+    case 'pro-ending': case 'pro-renewed': case 'pro-ended': case 'workspace-payer': return null;
   }
 }
 

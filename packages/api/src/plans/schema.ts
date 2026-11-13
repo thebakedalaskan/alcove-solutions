@@ -31,15 +31,21 @@ export type ProMonth = z.infer<typeof ProMonthSchema>;
  * - `licenses-none` (a team's admin): a member needed a license and none was left (nor bought, with auto-purchase).
  * - `license-needed` (a member): there was no license to take, so they're on their own plan until the admin buys more.
  * - `license-replaced-pro` (a member): a team license replaced Pro; `count` unstarted months went back to the balance.
+ * - `workspace-payer` (an admin of `workspaceId`): whoever paid for that workspace isn't in it any more, so its payment
+ *   moved to this account, its longest-standing admin with an account. Its files count against this account's storage
+ *   from `until`, the end of its grace (null: at once). The workspace's name is never kept with the plan: the app says it
+ *   from the workspaces its reader is in.
  */
-export const PlanNoticeKindSchema = z.enum(['pro-ending', 'pro-renewed', 'pro-ended', 'licenses-low', 'licenses-none', 'license-needed', 'license-replaced-pro']);
+export const PlanNoticeKindSchema = z.enum(['pro-ending', 'pro-renewed', 'pro-ended', 'licenses-low', 'licenses-none', 'license-needed', 'license-replaced-pro', 'workspace-payer']);
 export type PlanNoticeKind = z.infer<typeof PlanNoticeKindSchema>;
 export const PlanNoticeSchema = z.object({
   id: z.string(), kind: PlanNoticeKindSchema, at: ISODateSchema,
-  /** Pro's end, for Pro's notices; null for a team's. */
+  /** Pro's end, for Pro's notices; when a workspace's files start to count, for `workspace-payer`; null for a team's. */
   until: ISODateSchema.nullable(),
   /** How many, for `licenses-low` and `license-replaced-pro`; null otherwise. */
-  count: z.number().int().nonnegative().nullable()
+  count: z.number().int().nonnegative().nullable(),
+  /** The workspace, for `workspace-payer`; null otherwise. */
+  workspaceId: IDSchema.nullable()
 });
 export type PlanNotice = z.infer<typeof PlanNoticeSchema>;
 
@@ -198,8 +204,9 @@ export const TopUpSchema = z.object({
   received: z.object({ amount: z.string(), microUsd: MicroUsdSchema.nullable() }).nullable(),
   /**
    * What it was opened to buy, and how that went once it was added: `waiting` until then, `bought`, or `refused` (the
-   * price changed, or too little arrived) with why, in words for people. A refused purchase leaves the money in the balance.
-   * Null for a top-up that only adds money.
+   * price changed, too little arrived, or the payment arrived after the top-up was cancelled, expired or failed, when only
+   * the money is added) with why, in words for people. A refused purchase leaves the money in the balance. Null for a
+   * top-up that only adds money.
    */
   purchase: z.object({ buys: PurchaseSchema, outcome: z.enum(['waiting', 'bought', 'refused']), why: z.string().nullable() }).nullable()
 });

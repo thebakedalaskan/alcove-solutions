@@ -37,7 +37,8 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
     "No team license yet" in caution takes the line's place (under the meter's place on Free), and the row opens Team,
     which says who has been told. A payment for a plan on its way takes the row's place: dots and "Waiting for N USDC" in
     horizon ("Payment seen, adding licenses" for a team's), and the payment's row with Open. Anything else said (Pro renewed
-    or ended, Team replacing Pro, a team's licenses while notes have stopped) is one short line above the row, and only
+    or ended, Team replacing Pro, a team's licenses while notes have stopped, a workspace you pay for now, by its name and
+    held to two lines) is one short line above the row, and only
     while it shows (until it's dismissed in Settings). On Plans, Pro's or Team's row, or a payment's, is shaded as the place
     you're on, so there's still one shaded row; Free's notes left isn't shaded. Plans is reached from Settings › Plan's See
     plans and wherever a limit is met
@@ -534,8 +535,10 @@ The last of the light, with you in it, then seven groups. Change one thing and l
   `SettingNote` says until when everything works as before, or that uploads and notes have stopped, with Make room at its end
   (its `action`, under its words on a phone), which opens the Drive. Once they've stopped, the way out is the filled button:
   Get Pro on Free, beside which Make room is secondary, and Make room on Pro or a team, unless Extend (Pro ending) or Buy
-  licenses (someone waiting) already is. Pro renewed and Pro ended are `SettingNote`s with × at the top
-  until dismissed; ending is said once, in warm, in the plan row. The second panel: Balance with Add money, then on Pro
+  licenses (someone waiting) already is. Pro renewed and Pro ended are `SettingNote`s with × at the top until dismissed, and
+  so is a workspace whose payment moved to you because whoever paid left it: by the name you see it by (read from your
+  workspaces, never kept with the plan), and the day its files start to count against your storage; ending is said once, in
+  warm, in the plan row. The second panel: Balance with Add money, then on Pro
   Renew from balance and Refund. Add money opens a window over Settings (`features/settings/topup.tsx`, the kit's `Sheet`:
   560px, centred over the veiled page, and the width of a phone from its top), a small checkout of its own that shares
   checkout's paying flow: how much and the network, Get an address, then the payment followed with checkout's own parts and

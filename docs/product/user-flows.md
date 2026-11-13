@@ -2575,10 +2575,12 @@ notes; they don't carry into the next period. Done says "10 more hours of notes"
 3. **It couldn't buy.** The price changed before the payment arrived, or less arrived than the months cost: the money is in
    your balance and checkout says why, with **Buy with your balance** at today's price, or fewer months.
 4. **Nothing arrived in 24 hours.** The address closes and nothing was charged; **Get a new address** starts again. A payment
-   that arrives after all still counts, and still buys.
+   that arrives after all is added to your balance and buys nothing, so a new address never buys the same thing twice:
+   checkout and your payments say "Your payment arrived after its address closed, so nothing was bought. It's in your
+   balance.", with **Buy with your balance**.
 5. **Cancel.** While nothing has arrived, **Cancel payment** in the foot asks first: a payment sent to that address anyway
-   still counts when it arrives. Once part of it has arrived it can't be cancelled: what arrived goes into your balance when
-   the payment settles, and the address waits for the rest until it closes (1).
+   still counts when it arrives, added to your balance as in 4. Once part of it has arrived it can't be cancelled: what
+   arrived goes into your balance when the payment settles, and the address waits for the rest until it closes (1).
 6. **Something went wrong.** Checkout says so, with the reference to give support.
 7. **Payments off.** Choose says paying isn't available right now; a balance that covers it can still buy.
 
@@ -2624,8 +2626,15 @@ puts it away.
 ### 16.11 Storage full
 
 An upload refused for storage says "Your storage is full. Pro has 100 GB." with **Get Pro** on Free, or **Make room** (the
-Drive); in someone else's workspace it says the workspace can't take more files. A file over the plan's largest says its
-limit, and offers nothing.
+Drive); in someone else's workspace it says the workspace can't take more files: the storage it counts against is full, or
+the rest of it is kept for notes and recordings. Someone adding to another's storage past what they can add in a day hears
+they can add more tomorrow. A file over the plan's largest says its limit, and offers nothing.
+
+Whoever paid for a workspace leaves it, is taken out or deletes their account: its longest-standing admin with an account
+pays for it now. Settings › Plan says so at the top, by its name, with the day its files start to count against their
+storage, a fortnight on: nothing of theirs stops before then. The side panel says it in one line over the plan until it's
+dismissed. Leaving a workspace you pay for while none of its other admins has an Alcove account is refused, and says to make
+someone who has one an admin first.
 
 ### 16.12 An hour left
 

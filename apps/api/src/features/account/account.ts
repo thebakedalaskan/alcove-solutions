@@ -19,7 +19,7 @@ import { forgetAnswers } from '../meetings/access';
 import { takeAllBack } from '../notes/additions';
 import { forgetAllMade } from '../notes/links';
 import { queueDelete } from '../recordings/audio';
-import { open as openPlan } from '../billing/plans';
+import { open as openPlan, tellPayers } from '../billing/plans';
 import { forgetMembership, refuseDeletingAdmin } from '../billing/teams';
 import { forgetAccess, grantToRevoke, release, revokeGrant, unreachable, withdraw } from '../meetings/calendar';
 import { create as createMeeting, findUpcoming } from '../meetings/service';
@@ -264,6 +264,8 @@ export async function deleteAccount(o: Owner): Promise<void> {
   // The audio, screens and workspaces' files first: a slow Google mustn't hold them up.
   await queueDelete(o, gone.objects);
   await collect(o, gone.workspaces.owners);
+  // Whoever pays for a workspace it paid for now is told, once that's so.
+  await tellPayers(o, gone.workspaces.moves);
   await revokeGrant(o, refreshToken, AbortSignal.timeout(REVOKE_MS));
   alog.info('account deleted', {
     ownerId: o.ownerId, calendarCancelled: calendar.cancelled, calendarKept: calendar.kept, calendarNotCancelled: calendar.notCancelled,

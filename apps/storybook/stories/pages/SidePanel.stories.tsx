@@ -2,7 +2,7 @@
  * The side panel's foot, by plan (docs/design/pages.md › The frame; the canvas's Side board): under the confidential-compute
  * check, one row. On Free, about how much of the period's notes is left over a meter; on Pro one calm row with its own small
  * sun and until when; ending, its sun half set and Extend; a payment for a plan on its way, what it's waiting for and Open.
- * Anything else said (Pro renewed or ended, Team replacing Pro) is one short line above until it's dismissed. On Plans a
+ * Anything else said (Pro renewed or ended, Team replacing Pro, a workspace you pay for now) is one short line above until it's dismissed. On Plans a
  * paid plan's row is the place you're on. On Team (the canvas's team, teamLow and teamWait): the same calm row, Team over
  * the team's name; for its admin while licenses run short, how many are left and Buy, in warm; without a license, "No team
  * license yet" in caution as the row's second line, and the row goes to Team. Each opens on Home, at a laptop's width, by
@@ -11,7 +11,7 @@
 import type { Meta } from '@storybook/react-vite';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import { purchaseAt } from '../../src/world/payments';
-import { adminWithoutLicense, replacedPro } from './changes';
+import { adminWithoutLicense, paysForLaunch, replacedPro } from './changes';
 
 const meta = { title: 'Pages/The side panel', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -53,6 +53,9 @@ export const ProRenewedNight = night(ProRenewed);
 /** Pro ended: back on Free, said in one short line above the notes left until it's dismissed. */
 export const ProEnded = foot('/home', 'plan-pro-ended');
 export const ProEndedNight = night(ProEnded);
+/** Art pays for Launch now that whoever did left it: one short line over the notes left, by its name, until it's dismissed. */
+export const PayingForAWorkspace = page('/home', 'busy', { globals: LAPTOP, beforeEach: changing(paysForLaunch) });
+export const PayingForAWorkspaceNight = night(PayingForAWorkspace);
 /** On Plans: Free's notes left isn't a place, so nothing is shaded; Pro's row is the place you're on, the one shaded row. */
 export const OnPlans = foot('/plans', 'busy');
 export const OnPlansNight = night(OnPlans);
