@@ -16,7 +16,7 @@ import { conflict, InternalError, invalid, notFound } from '../../errors';
 import { limitsNow, type Limits } from '../../limits';
 import { log, type LogContext } from '../../log';
 import { keptPeriodOf, type KeptPeriod } from './meter-state';
-import { settlePayers, usedBytes } from './storage';
+import { settlePayers, usedBytes, type PayerMove } from './storage';
 
 const plog = log.child({ component: 'plans' });
 /** How many changes to the balance are kept with it, to explain it. */
@@ -44,8 +44,15 @@ const Month = z.object({
   monthlyMicroUsd: z.number().int().nullable().default(null)
 });
 type Month = z.infer<typeof Month>;
-/** `until`: Pro's end, for Pro's notices (null for a team's); `count`: how many licenses or months, where it says. */
-const Notice = z.object({ id: z.string(), kind: PlanNoticeKindSchema, at: z.string(), until: z.string().nullable(), count: z.number().int().nullable().default(null), dismissed: z.boolean() });
+/**
+ * `until`: Pro's end, for Pro's notices, or when a workspace's files start to count, for one's payment moving here (null
+ * for a team's); `count`: how many licenses or months, where it says; `workspaceId`: the workspace whose payment moved,
+ * its ID alone (its name is under its own keys, never here). A notice kept before either reads as null.
+ */
+const Notice = z.object({
+  id: z.string(), kind: PlanNoticeKindSchema, at: z.string(), until: z.string().nullable(), count: z.number().int().nullable().default(null),
+  workspaceId: z.string().nullable().default(null), dismissed: z.boolean()
+});
 /** More notes bought from the balance for one period (its plan and start): minutes added to that period's allowance alone. */
 const Hours = z.object({ plan: PlanKindSchema, from: z.string(), minutes: z.number().int() });
 export const PlanAccount = z.object({
@@ -280,9 +287,12 @@ export async function save(d: Service, db: Db, ownerId: string, a: PlanAccount):
 /** A change to the balance, with what it was for, kept with it (the latest HISTORY). */
 export const withEntry = (a: PlanAccount, microUsd: number, label: string): PlanAccount =>
   ({ ...a, balanceMicroUsd: a.balanceMicroUsd + microUsd, history: [...a.history, { id: id128(), at: new Date().toISOString(), label, microUsd }].slice(-HISTORY) });
-/** Something the owner is told (the latest NOTICES are kept): Pro's end (`until`), or how many (`count`) for a team's. */
-export const withNotice = (a: PlanAccount, kind: PlanNoticeKind, now: number, about: { until?: string | undefined; count?: number | undefined } = {}): PlanAccount =>
-  ({ ...a, notices: [...a.notices, { id: id128(), kind, at: new Date(now).toISOString(), until: about.until ?? null, count: about.count ?? null, dismissed: false }].slice(-NOTICES) });
+/**
+ * Something the owner is told (the latest NOTICES are kept): Pro's end (`until`), how many (`count`) for a team's, or the
+ * workspace whose payment moved to them (`workspaceId`) and when its files start to count (`until`).
+ */
+export const withNotice = (a: PlanAccount, kind: PlanNoticeKind, now: number, about: { until?: string | undefined; count?: number | undefined; workspaceId?: string | undefined } = {}): PlanAccount =>
+  ({ ...a, notices: [...a.notices, { id: id128(), kind, at: new Date(now).toISOString(), until: about.until ?? null, count: about.count ?? null, workspaceId: about.workspaceId ?? null, dismissed: false }].slice(-NOTICES) });
 /** Whether the owner has been told `kind` and hasn't dismissed it yet. */
 export const told = (a: PlanAccount, kind: PlanNoticeKind): boolean => a.notices.some((n) => n.kind === kind && !n.dismissed);
 /**
@@ -379,7 +389,7 @@ export function proOf(a: PlanAccount, l: Limits, now = Date.now()): Plan['pro'] 
 }
 /** The notices not dismissed, newest first. */
 export const noticesOf = (a: PlanAccount) =>
-  a.notices.filter((n) => !n.dismissed).reverse().map((n) => ({ id: n.id, kind: n.kind, at: n.at, until: n.until, count: n.count }));
+  a.notices.filter((n) => !n.dismissed).reverse().map((n) => ({ id: n.id, kind: n.kind, at: n.at, until: n.until, count: n.count, workspaceId: n.workspaceId }));
 
 /**
  * A team license taken at `now` replaces Pro at once: the month running ends now (it isn't refunded), and every month that
@@ -404,6 +414,29 @@ export function replacedByLicense(a: PlanAccount, now: number): { a: PlanAccount
  */
 export const leftTeam = (a: PlanAccount, l: Limits, now: number): PlanAccount =>
   ({ ...a, freeFrom: new Date(now).toISOString(), grace: { until: new Date(now + l.get('plan.grace_seconds') * 1000).toISOString(), storageBytes: l.get('plan.team.storage_bytes') } });
+
+/**
+ * Tells each account a workspace's payment moved to (storage.ts `settlePayer`) from someone who isn't in it any more that
+ * it pays for that workspace now, and from when its files count against its storage (null: at once, with no grace). Done
+ * once the move has committed, each in a transaction of its own, so a plan's row is never held with a workspace's: a
+ * notice that doesn't get there is logged at warn and changes nothing else. A workspace that gets its first payer, or is
+ * left with nobody to pay for it, tells nobody.
+ */
+export async function tellPayers(d: Service, moves: PayerMove[]): Promise<void> {
+  for (const m of moves) {
+    const said = { workspaceId: m.workspaceId, from: m.from, to: m.to };
+    if (m.from === null) { plog.debug('workspace payer settled', said); continue; }
+    if (m.to === null) { plog.info('workspace left with nobody to pay for it', said); continue; }
+    const to = m.to;
+    const until = m.graceUntil !== null && m.graceUntil.getTime() > Date.now() ? m.graceUntil.toISOString() : undefined;
+    try {
+      await changing(d, to, (a, _l, now) => withNotice(a, 'workspace-payer', now, { until, workspaceId: m.workspaceId }));
+      plog.info('workspace payer moved', { ...said, graceUntil: until ?? null });
+    } catch (e) {
+      plog.warn('workspace payer moved, not told', { ...said, err: e });
+    }
+  }
+}
 
 /** Changes an account's plan in a transaction of its own, with its row locked. */
 async function changing(d: Service, ownerId: string, change: (a: PlanAccount, l: Limits, now: number) => PlanAccount): Promise<void> {
@@ -662,7 +695,8 @@ function kept(a: PlanAccount, l: Limits, now: number, ownerId: string): PlanAcco
  * ending, Pro about to end and Pro ending (`kept`). Returns how many accounts it settled, gave a row and looked at.
  */
 export async function upkeep(d: Service): Promise<{ settled: number; carried: number; due: number }> {
-  const settled = await settlePayers(d.pool);
+  const moved = await settlePayers(d);
+  await tellPayers(d, moved);
   const missing = await rows(d.pool, z.object({ owner_id: z.string() }), `
     SELECT DISTINCT i.owner_id FROM identities i WHERE NOT EXISTS (SELECT 1 FROM plan_accounts p WHERE p.owner_id = i.owner_id) LIMIT $1`, [BATCH]);
   for (const m of missing) await tx(d.pool, (c) => carryOver(d, c, m.owner_id));
@@ -679,5 +713,5 @@ export async function upkeep(d: Service): Promise<{ settled: number; carried: nu
     if (!one) break;
     if (++due >= BATCH) break;
   }
-  return { settled, carried: missing.length, due };
+  return { settled: moved.length, carried: missing.length, due };
 }

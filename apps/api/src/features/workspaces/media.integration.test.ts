@@ -1470,9 +1470,10 @@ describe('guests in a call', () => {
     await send(sam, MiB);
     expect(await refusal(send(sam, MiB + MiB / 2))).toEqual(TODAYS);
     await send(jo, MiB + MiB / 2);
-    // And the storage of whoever the workspace counts against holds what it holds, whoever’s adding to it.
+    // And the storage of whoever the workspace counts against holds what it holds, whoever’s adding to it: a guest hears that
+    // the workspace can't take more, never whose storage it is.
     await h.setLimit('plan.free.storage_bytes', 2 * MiB);
-    expect(await refusal(send(jo, 16))).toEqual(FULL);
+    expect(await refusal(send(jo, 16))).toEqual({ code: 'plan-limit', message: 'This workspace can’t take more files: the storage it counts against is full.', status: 402 });
   });
 });
 

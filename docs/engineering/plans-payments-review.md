@@ -62,7 +62,10 @@ Not fixed. The first two are the most worth doing before release.
    - The reverse also works: someone whose own notes have run out can still use document AI in a workspace someone
      else pays for, or ask as a guest.
 
-4. **Someone else's uploads can fill your storage in a day.** Files anyone adds to a workspace count against its payer,
+4. **Someone else's uploads can fill your storage in a day.** Fixed since (D2): someone else adds at most
+   `media.others_day_bytes` a day to your storage, guests in your calls `media.guests_day_bytes` between them, and nobody
+   but you reaches into the last `media.payer_reserve_bytes`, kept for your notes and recordings
+   ([Plans and usage › What others can add](plans-and-usage.md#what-others-can-add)). As it was found: files anyone adds to a workspace count against its payer,
    guests' in a call's workspace included. The only cap is per uploader, `media.account_day_bytes` (20 GiB a day), which
    is more than Free's 10 GiB, and a guest's identity is random for each person in each call (`upload-guest`), so joining
    again starts a new day. A full account can't upload anywhere, and its calls' notes stop. Low odds (it takes someone set
@@ -79,7 +82,10 @@ Not fixed. The first two are the most worth doing before release.
      from others share one daily cap however many identities send them. Telling the payer when others pass 80% of it,
      and warning before storage fills, would go with it.
 
-5. **Taking over a workspace can stop the new payer's notes at once.** When a payer leaves, the workspace counts against
+5. **Taking over a workspace can stop the new payer's notes at once.** Fixed since (D1): the new payer gets
+   `workspaces.payer_grace_seconds` before its files count, is told, and a payer's leaving is refused while no other admin
+   has an account ([Plans and usage › When whoever pays leaves](plans-and-usage.md#when-whoever-pays-leaves)). As it was
+   found: when a payer leaves, the workspace counts against
    the admin in charge now (fixed below). If its files push them over their storage, their uploads and notes stop
    immediately, with no grace. Options: a grace for the new payer, or refuse to let a payer leave or be removed until
    someone else agrees to pay.
@@ -112,7 +118,8 @@ Not fixed. The first two are the most worth doing before release.
     `notesBlocked` also counts what live calls hold. With one call running, Settings can say "About 12 min" while a second
     call or a room recording is refused with "Your notes for this period have run out."
 
-13. **During the deploy, a top-up this release settles can't be opened by the previous one.** `apply` saves a deposit's
+13. **During the deploy, a top-up this release settles can't be opened by the previous one.** Fixed since: the deposit
+    record is read loose, so every save keeps what this release doesn't read. As it was found: `apply` saves a deposit's
     record through this release's `DepositRecord`, which drops the `credits` and `rate` the previous release requires. If
     this release settles a top-up the previous one opened, the previous release's top-up list for that account fails until
     the deploy finishes. Fix: save records the way `creditCarried` does (`Kept`, which keeps every field).
@@ -125,7 +132,8 @@ Fixed in the commit that added this page, with integration tests (rows B2′ and
 1. **Credits people already paid for disappeared.** Top-ups have been live in production since #175 (9 Nov 2026). Plans
    ignore `billing_accounts`, and `creditCarried` only re-added deposits settled in the day after the cutover, so anyone
    who paid before the release would start at $0. Now `creditCarried` (`features/billing/deposits.ts`) adds as dollars
-   every `credited` deposit settled before a day after `billing_cutover` that has no `addedMicroUsd`. The old query also
+   every `credited` deposit that has no `addedMicroUsd`, whenever it was settled (since, without the day's window or
+   `billing_cutover`: a previous release serving after a rollback settles top-ups too). The old query also
    had no way to move past rows it had already looked at (`LIMIT 100`, and the marker is inside the ciphertext), so with
    more than 100 deposits some were never reached. Each deposit is now looked at once, then its `check_after` is set to
    infinity, which nothing else reads for a `credited` deposit. A record saved again keeps every field, including the
@@ -137,8 +145,8 @@ Fixed in the commit that added this page, with integration tests (rows B2′ and
    `workspaces.payer_owner_id`, so the workspace's files filled the old payer's storage and its document AI spent their
    notes, with no way for them to see or delete either. It could also be used on purpose: spare accounts make
    workspaces, add one account as admin, then leave. Now `settlePayers` (`features/billing/storage.ts`) moves any
-   workspace whose payer isn't in it any more to whoever made it, while they're still in it, else to its first admin with
-   an account. Taking anyone out of a workspace runs it for that workspace at once (`dropMember` in
+   workspace whose payer isn't in it any more to its longest-standing admin with an account (since D1, with a grace and
+   a notice, and a payer's leaving is refused while none has one). Taking anyone out of a workspace runs it for that workspace at once (`dropMember` in
    `features/workspaces/service.ts`: leaving, being taken out, and a call's invite), and upkeep runs it for every
    workspace every 5 minutes, which catches any other way a payer stops being in one. That also fixes workspaces the
    `0030` backfill gave to a maker who had already left. Upkeep only writes workspaces whose payer changes.

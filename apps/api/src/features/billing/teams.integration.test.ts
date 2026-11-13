@@ -669,13 +669,18 @@ describe('team notes, Ask and team workspaces', () => {
     await dee.api.workspaces.removePerson(handed, deeIn);
     expect(await refusal(ann.api.workspaces.get(handed))).toBe(NO_WORKSPACE);
     expect(await zed.api.workspaces.get(handed)).toMatchObject({ role: 'admin', teamAccess: null });
-    // An account that goes takes what it pays for off the team the same way: Dee's other one stays Cy's.
+    // Dee's account goes. What she paid for goes to whoever's in charge of it now: Cy, on the team, so Kept stays the team's;
+    // Zed, who isn't, so Hers stops being it.
     const { id: kept } = await dee.api.workspaces.create('Kept');
     await dee.api.workspaces.addPerson(kept, cy.email, 'edit');
-    expect(await ann.api.workspaces.get(kept)).toMatchObject({ role: 'edit', teamAccess: 'team' });
+    const { id: hers } = await dee.api.workspaces.create('Hers');
+    await dee.api.workspaces.addPerson(hers, zed.email, 'edit');
+    expect(await ann.api.workspaces.get(hers)).toMatchObject({ role: 'edit', teamAccess: 'team' });
     await dee.api.account.delete();
-    expect(await refusal(ann.api.workspaces.get(kept))).toBe(NO_WORKSPACE);
-    expect(await cy.api.workspaces.get(kept)).toMatchObject({ role: 'admin', teamAccess: null });
+    expect(await cy.api.workspaces.get(kept)).toMatchObject({ role: 'admin', teamAccess: 'team' });
+    expect(await ann.api.workspaces.get(kept)).toMatchObject({ role: 'edit', teamAccess: 'team' });
+    expect(await refusal(ann.api.workspaces.get(hers))).toBe(NO_WORKSPACE);
+    expect(await zed.api.workspaces.get(hers)).toMatchObject({ role: 'admin', teamAccess: null });
   });
 
   it('G13: AI in a team workspace is paid for by whoever pressed it, from their own plan, as it is in any other', async () => {
@@ -779,6 +784,39 @@ describe('a new address from the provider', () => {
 });
 
 describe('deleting an account', () => {
+  it('takes the team’s row before the member’s, as a visit does, so a visit and the account’s deletion at once both go through', async () => {
+    const ann = await account();
+    const bob = await account();
+    const t = await team(ann);
+    // Bob is on the team with no license to take, so his next visit has something to do there.
+    await joined(ann, bob);
+    // Whoever waits on the team's row, to lock it or to change it.
+    const waiting = async () => (await h.pool.query<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_stat_activity
+      WHERE datname = current_database() AND wait_event_type = 'Lock' AND query ~ '(FROM|UPDATE) teams '
+    `)).rows[0]?.n;
+    const gate = await h.pool.connect();
+    let visit: Promise<string> | undefined;
+    let gone: Promise<string> | undefined;
+    try {
+      // The team's row held: Bob's app comes back, and waits on it first; then he deletes his account in another tab.
+      await gate.query('BEGIN');
+      await gate.query('SELECT 1 FROM teams WHERE team_id = $1 FOR UPDATE', [t.id]);
+      visit = refusal(bob.api.auth.visit());
+      await expect.poll(waiting, { timeout: 5000 }).toBe(1);
+      gone = refusal(bob.api.account.delete());
+      await expect.poll(waiting, { timeout: 15_000 }).toBe(2);
+      await gate.query('COMMIT');
+      // The visit takes the team's row and then Bob's place; the deletion waits for both, and takes them after.
+      expect(await Promise.all([visit, gone])).toEqual(['succeeded', 'succeeded']);
+    } finally {
+      await gate.query('ROLLBACK');
+      gate.release();
+      await Promise.allSettled([visit, gone]);
+    }
+    expect((await ann.api.teams.mine())?.members.map((m) => m.person.email)).toEqual([ann.email]);
+  });
+
   it('I3: takes a member off their team, refuses the admin of a team with others on it, and takes an empty team with its admin', async () => {
     const ann = await account();
     const bob = await account();

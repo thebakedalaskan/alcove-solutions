@@ -30,9 +30,10 @@ import { tellCall } from '../calls/notifications';
 import { roomsOfCalls } from '../calls/room-boards';
 import { collect, copyUses, releaseDocuments, releaseWorkspace } from './media';
 import { personOf, portraitFor } from '../account/portraits';
-import { settlePayers } from '../billing/storage';
+import { settlePayer, type PayerMove } from '../billing/storage';
 import { copyContent, kindOf, moveClientTags, startContent } from './documents';
 import { waitingFor } from './mentions';
+import { tellPayers } from '../billing/plans';
 import { licensedBy, licensedOn } from '../billing/teams';
 
 const wlog = log.child({ component: 'workspaces' });
@@ -538,36 +539,48 @@ export async function setRole(d: Deps, reader: Reader, workspaceId: string, memb
   });
 }
 export async function removePerson(d: Deps, reader: Reader, workspaceId: string, memberId: string): Promise<void> {
-  await change(d, reader, workspaceId, async (w, c) => {
+  const moves = await change(d, reader, workspaceId, async (w, c) => {
     requireRole(w, 'in');
     const m = await memberBy(w, c, memberId);
     const leaving = m !== undefined && reader.principals.some((p) => Buffer.compare(p, m.email_index) === 0);
     if (!leaving) requireRole(w, 'admin');
     if (!m) throw noOne(w, memberId);
     if (m.role === 'admin' && (await admins(w, c)) <= 1) throw onlyAdmin(w);
-    const stranded = await dropMember(w, c, m, leaving ? 'left' : 'taken');
+    const dropped = await dropMember(w, c, m, leaving ? 'left' : 'taken');
     // A call's invite never puts back someone taken out by hand, or who left. The newest are kept, as many as can be in it.
     const made = w.state.madeFor;
     const { email } = personOfMember(w, m);
     if (made && !made.out.includes(email)) w.state = { ...w.state, madeFor: { ...made, out: [...made.out, email].slice(-MAX_PEOPLE) } };
-    wlog.info('person removed', { workspaceId, memberId, leaving, stranded });
+    wlog.info('person removed', { workspaceId, memberId, leaving, stranded: dropped.stranded, payerMoved: dropped.moves.length > 0 });
+    return dropped.moves;
   });
+  // Whoever pays for it now is told, once that's so.
+  await tellPayers(d, moves);
 }
+/** Refused: the one leaving, or being taken out, pays for the workspace, and none of the admins left has an account to. */
+const nobodyToPay = (w: Pick<Workspace, 'workspaceId'>, memberId: string, why: 'taken' | 'left') => new ConflictError(why === 'left'
+  ? 'You pay for this workspace’s storage, and none of its other admins has an Alcove account to take that on. Make someone who has one an admin, then leave.'
+  : 'They pay for this workspace’s storage, and none of its other admins has an Alcove account to take that on. Make someone who has one an admin first.',
+{ context: { workspaceId: w.workspaceId, memberId, why: 'nobody to pay' } });
 /**
  * Takes someone out, in the caller's transaction, which holds the workspace's row; the caller saves the state. What they had
  * by restricting something goes with them, so coming back gives them only what they're given. What only they could reach:
  * taken out (`taken`, by an admin or by a call's invite), it goes to the workspace's admins (`handStranded`), so nobody's
  * words are lost to a change nobody made of that document; leaving (`left`), it's still theirs, in Trash, for 30 days, should
  * they come back (`trashStranded`), and nobody else's to read. Whoever the workspace counted against, if that was them,
- * stops paying for it: it counts against whoever's in charge of it now (`settlePayers`). How much did.
+ * stops paying for it: it counts against its longest-standing admin with an account now, with a grace before its files do
+ * (`settlePayer`), and when none of the admins left has an account, they can't go: refused, with nothing changed. How much
+ * went to its admins or Trash, and whose payment moved, for the caller to tell (plans.ts `tellPayers`) once it's committed.
  */
-async function dropMember(w: HeldWorkspace, c: Db, m: z.infer<typeof Member>, why: 'taken' | 'left'): Promise<number> {
+async function dropMember(w: HeldWorkspace, c: Db, m: z.infer<typeof Member>, why: 'taken' | 'left'): Promise<{ stranded: number; moves: PayerMove[] }> {
+  const paying = await maybeOne(c, z.object({ n: z.number() }), 'SELECT 1 AS n FROM workspaces w JOIN identities i ON i.owner_id = w.payer_owner_id WHERE w.owner_id = $1 AND i.email_index = $2 LIMIT 1', [w.owner.ownerId, m.email_index]);
   await exec(c, 'DELETE FROM workspace_members WHERE owner_id = $1 AND member_id = $2', [w.owner.ownerId, m.member_id]);
   await exec(c, 'DELETE FROM workspace_mentions WHERE owner_id = $1 AND principal_index = $2', [w.owner.ownerId, m.email_index]);
-  await settlePayers(c, w.owner.ownerId);
+  const moved = await settlePayer(w.owner, c, w.owner.ownerId);
+  if (paying && moved?.to === null) throw nobodyToPay(w, m.member_id, why);
   const { email } = personOfMember(w, m);
   w.state = { ...w.state, items: Object.fromEntries(Object.entries(w.state.items).map(([id, x]) => [id, x.restrictedBy === email ? { ...x, restrictedBy: null } : x])) };
-  return why === 'taken' ? handStranded(w, c) : trashStranded(w, c);
+  return { stranded: why === 'taken' ? await handStranded(w, c) : await trashStranded(w, c), moves: moved ? [moved] : [] };
 }
 
 /* ---------- the tree ---------- */
@@ -1108,11 +1121,13 @@ export async function sweepSeats(d: Deps): Promise<SeatsEnded> {
  * address; and what its calls (`callIds`) gave people's seats ends either way. A workspace left with nobody in it is
  * deleted; one left with no admin gets its longest-standing person as its admin; a restricted document only it could open
  * goes, and anything else left with nobody to open it goes to Trash; and what it made keeps its name and no longer its
- * address. Every row is touched under its workspace's lock, the order every change takes, and locks go in order of owner,
- * so two accounts leaving together never deadlock. `owners` are the workspaces it touched, for the caller to collect their
- * files' objects once the transaction commits.
+ * address. One it paid for counts against its longest-standing admin with an account now, with a grace before its files do,
+ * as when a payer leaves (`settlePayer`), or against nobody when none has one: deleting an account is never refused for
+ * it. Every row is touched under its workspace's lock, the order every change takes, and locks go in order of owner, so
+ * two accounts leaving together never deadlock. `owners` are the workspaces it touched, for the caller to collect their
+ * files' objects once the transaction commits, and `moves` whose payment moved, for it to tell (plans.ts `tellPayers`).
  */
-export async function forgetAccount(o: Owner, db: Db, email: string, callIds: string[]): Promise<{ workspaces: number; deleted: number; owners: string[] }> {
+export async function forgetAccount(o: Owner, db: Db, email: string, callIds: string[]): Promise<{ workspaces: number; deleted: number; owners: string[]; moves: PayerMove[] }> {
   const address = email.trim().toLowerCase();
   const index = blindIndex(masterKey(o), 'email', address);
   const elsewhere = await maybeOne(db, z.object({ n: z.number() }), 'SELECT 1 AS n FROM identities WHERE email_index = $1 AND owner_id <> $2 LIMIT 1', [index, o.ownerId]);
@@ -1122,6 +1137,7 @@ export async function forgetAccount(o: Owner, db: Db, email: string, callIds: st
     UNION SELECT owner_id FROM workspace_authors WHERE email_index = $1 AND $3
     UNION SELECT owner_id FROM document_access WHERE principal_index = $1 AND $3 ORDER BY owner_id`, [index, callIds, !elsewhere]);
   let deleted = 0;
+  const moves: PayerMove[] = [];
   if (!elsewhere) await exec(db, 'DELETE FROM workspace_mentions WHERE principal_index = $1', [index]);
   for (const { owner_id: ownerId } of found) {
     const w = await held(o, db, ownerId);
@@ -1137,6 +1153,8 @@ export async function forgetAccount(o: Owner, db: Db, email: string, callIds: st
       const first = left[0];
       if (!first) { await deleteOwner(db, ownerId); deleted++; continue; }
       if (!left.some((m) => m.role === 'admin')) await exec(db, "UPDATE workspace_members SET role = 'admin' WHERE owner_id = $1 AND member_id = $2", [ownerId, first.member_id]);
+      const moved = await settlePayer(o, db, ownerId);
+      if (moved) moves.push(moved);
       const theirs = (x: StoredItem | undefined) => x?.by?.email === address || x?.restrictedBy === address;
       const lost = (await strandedIn(w, db)).filter((id) => theirs(w.state.items[id]));
       await removeDocuments(w.owner, db, lost);
@@ -1146,7 +1164,7 @@ export async function forgetAccount(o: Owner, db: Db, email: string, callIds: st
     await trashStranded(w, db);
     await saveState(w, db);
   }
-  return { workspaces: found.length, deleted, owners: found.map((f) => f.owner_id) };
+  return { workspaces: found.length, deleted, owners: found.map((f) => f.owner_id), moves };
 }
 
 const RANK: Record<WorkspaceRole, number> = { read: 0, edit: 1, admin: 2 };

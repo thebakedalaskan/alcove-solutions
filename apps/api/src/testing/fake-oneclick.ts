@@ -81,6 +81,11 @@ export interface FakeOneClick {
   listDecimals(assetId: string, decimals: number | null): void;
   /** 1Click refuses every request (true), or answers again (false). */
   down(on: boolean): void;
+  /**
+   * Holds back what 1Click says about a deposit: a status request for it waits until `release`, then is answered as 1Click
+   * is set then (refused, if it's down). `asked` settles once one is waiting, so a test knows a check of it is on its way.
+   */
+  hold(address: string): { asked: Promise<void>; release(): void };
   close(): Promise<void>;
 }
 
@@ -123,6 +128,8 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
   const listed = new Map<string, number>();
   let isDown = false;
   let override: NextQuote = {};
+  /** Deposits whose status is held back, with the requests waiting for it. */
+  const held = new Map<string, { waiting: (() => void)[]; asked: () => void }>();
 
   async function quote(req: IncomingMessage, res: ServerResponse) {
     const body: unknown = JSON.parse(await text(req));
@@ -155,6 +162,12 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
   }
   function status(url: URL, res: ServerResponse) {
     const address = url.searchParams.get('depositAddress') ?? '';
+    const holding = held.get(address);
+    if (holding) {
+      holding.waiting.push(() => (isDown ? send(res, 503, { message: 'Service Unavailable' }) : status(url, res)));
+      holding.asked();
+      return;
+    }
     const d = deposits.get(address);
     if (!d) return send(res, 404, { message: 'Deposit address not found' });
     send(res, 200, {
@@ -192,6 +205,19 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
     nextQuote(o) { override = o; },
     listDecimals(assetId, decimals) { if (decimals === null) listed.delete(assetId); else listed.set(assetId, decimals); },
     down(on) { isDown = on; },
+    hold(address) {
+      let asked: () => void = () => undefined;
+      const waited = new Promise<void>((r) => { asked = () => r(); });
+      const waiting: (() => void)[] = [];
+      held.set(address, { waiting, asked: () => asked() });
+      return {
+        asked: waited,
+        release() {
+          held.delete(address);
+          for (const answer of waiting.splice(0)) answer();
+        }
+      };
+    },
     close: () => new Promise<void>((r) => server.close(() => r()))
   };
 }

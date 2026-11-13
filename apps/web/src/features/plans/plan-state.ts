@@ -4,7 +4,7 @@
  * and which of the plan's notices still say something true. What a purchase is and costs is purchase.ts's. Every number is
  * the server's.
  */
-import type { MyTeam, Person, Plan, PlanKind, PlanNotice, PlanOffers, TeamMember } from '@alcove/api';
+import type { MyTeam, Person, Plan, PlanKind, PlanNotice, PlanOffers, TeamMember, WorkspaceSummary } from '@alcove/api';
 import { daysFromToday, hoursAndMinutes } from '~/lib/time';
 
 export const PLAN_NAMES: Record<PlanKind, string> = { free: 'Free', pro: 'Pro', team: 'Team' };
@@ -55,13 +55,29 @@ export const waitingForLicense = (plan: Plan): boolean => plan.team !== null && 
 export const licensesShort = (n: PlanNotice): boolean => n.kind === 'licenses-low' || n.kind === 'licenses-none';
 
 /**
+ * Whether a notice says you pay for a workspace now: whoever paid for it isn't in it any more, and it moved to you, one of
+ * its admins. Only these name something of yours that the plan doesn't know, so only these need the workspaces you're in.
+ */
+export const payingNow = (n: PlanNotice): boolean => n.kind === 'workspace-payer';
+/**
+ * The workspace a notice that you pay for one now is about, as you see it among the workspaces you're in (`spaces`): its
+ * name is said only from there, never kept with the plan. Undefined until they're read, or once you're not in it.
+ */
+export const paidFor = (n: PlanNotice, spaces: WorkspaceSummary[] | undefined): (WorkspaceSummary & { name: string }) | undefined => {
+  const found = n.workspaceId === null ? undefined : spaces?.find((s) => s.id === n.workspaceId);
+  return found && found.name !== null ? { ...found, name: found.name } : undefined;
+};
+
+/**
  * The plan's notices that still say something true, newest first, each kind once (its newest): the one rule Settings ›
  * Plan shows them by and the side panel's foot picks from. Pro renewed while on Pro; Pro ended while on Free. For a team's
  * admin with a license (without one, waiting for it says it): licenses low until more are bought (none bought since, so no
  * more are left than it counted), and none left while none is, said instead of low. A team license replacing Pro, while
- * on Team. `team` is the team as `teams.mine` gives it, once it's known.
+ * on Team. That you pay for a workspace now, once for each workspace, while its files don't count against your storage yet
+ * and you're still in it (`spaces`, the workspaces you're in, once they're read: its name is said from there). `team` is
+ * the team as `teams.mine` gives it, once it's known.
  */
-export function noticesNow(plan: Plan, team?: MyTeam | null | undefined): PlanNotice[] {
+export function noticesNow(plan: Plan, team?: MyTeam | null | undefined, spaces?: WorkspaceSummary[] | undefined, now = Date.now()): PlanNotice[] {
   const admin = plan.team?.role === 'admin' && !waitingForLicense(plan);
   const left = team?.licenses?.unconsumed;
   const none = admin && (left === undefined || left === 0) && plan.notices.some((n) => n.kind === 'licenses-none');
@@ -72,18 +88,22 @@ export function noticesNow(plan: Plan, team?: MyTeam | null | undefined): PlanNo
       case 'licenses-low': return admin && !none && (left === undefined || left <= (n.count ?? 0));
       case 'licenses-none': return none;
       case 'license-replaced-pro': return plan.kind === 'team';
+      case 'workspace-payer': return (n.until === null || Date.parse(n.until) > now) && paidFor(n, spaces) !== undefined;
       case 'pro-ending': case 'license-needed': return false;
     }
   };
-  const said = new Set<PlanNotice['kind']>();
+  const said = new Set<string>();
   return plan.notices.filter((n) => {
-    if (!holds(n) || said.has(n.kind)) return false;
-    said.add(n.kind);
+    const key = sameAs(n);
+    if (!holds(n) || said.has(key)) return false;
+    said.add(key);
     return true;
   });
 }
-/** Every notice of the same kind as `n`, so dismissing the one shown dismisses those it stood for too. */
-export const noticesLike = (plan: Plan, n: PlanNotice): string[] => plan.notices.filter((m) => m.kind === n.kind).map((m) => m.id);
+/** What makes two notices say the same thing: their kind, and for a workspace you pay for now, which workspace. */
+const sameAs = (n: PlanNotice): string => (payingNow(n) ? `${n.kind}:${n.workspaceId ?? ''}` : n.kind);
+/** Every notice that says what `n` says, so dismissing the one shown dismisses those it stood for too. */
+export const noticesLike = (plan: Plan, n: PlanNotice): string[] => plan.notices.filter((m) => sameAs(m) === sameAs(n)).map((m) => m.id);
 
 /** How many licenses a short notice is about: how many are left now, once the team is known, else as many as it counted. */
 export const licensesLeft = (n: PlanNotice, team: MyTeam | null | undefined): number => teamLicenses(team)?.left ?? (n.kind === 'licenses-low' ? n.count ?? 0 : 0);

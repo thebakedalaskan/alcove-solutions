@@ -413,7 +413,7 @@ export const withTeamInvite = (expired = false) => (w: World): void => {
   w.teamInvites = [{ secret: TEAM_INVITE_SECRET, expiresAt: new Date(Date.now() + (expired ? -60_000 : 4 * 3_600_000)).toISOString(), team, admin: PRIYA }];
   returnTo({ to: 'team', secret: TEAM_INVITE_SECRET });
 };
-const teamNotice = (id: string, kind: PlanNotice['kind'], count: number | null, at = iso(0, 11, 20)): PlanNotice => ({ id, kind, at, until: null, count });
+const teamNotice = (id: string, kind: PlanNotice['kind'], count: number | null, at = iso(0, 11, 20)): PlanNotice => ({ id, kind, at, until: null, count, workspaceId: null });
 
 /* ---------- the scenarios ---------- */
 

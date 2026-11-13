@@ -623,18 +623,23 @@ describe('running out', () => {
 describe('AI in a workspace', () => {
   it('is paid by whoever asks, signed in; a guest’s by the workspace’s payer on the default model, and none while nobody pays', async () => {
     const ann = await account(unique('maker'));
-    const bob = await account(unique('admin'));
+    const cy = await account(unique('editor'));
+    // Bob is its other admin, by an address that has no account yet.
+    const bobEmail = unique('admin');
     const { id } = await ann.api.workspaces.create('Product');
-    await ann.api.workspaces.addPerson(id, bob.email, 'admin');
+    await ann.api.workspaces.addPerson(id, cy.email, 'edit');
+    await ann.api.workspaces.addPerson(id, bobEmail, 'admin');
     const plan = (await ann.api.workspaces.items.create(id, { kind: 'document', name: 'Plan', parent: null })).id;
     const spent = async (who: Account) => (await meter(who)).byKind['documents'] ?? 0;
     const shorter = { action: 'shorter' as const, text: 'A long way of saying it' };
-    // Bob asks: he's signed in, so his own plan pays, though the workspace counts against Ann.
-    await answer(bob.api.workspaces.ask(id, plan, shorter));
-    expect(await spent(bob)).toBeGreaterThan(0);
+    // Cy asks: she's signed in, so her own plan pays, though the workspace counts against Ann.
+    await answer(cy.api.workspaces.ask(id, plan, shorter));
+    expect(await spent(cy)).toBeGreaterThan(0);
     expect(await spent(ann)).toBe(0);
-    // Ann deletes her account, and the workspace counts against nobody until upkeep. Bob still pays for his own.
+    // Ann deletes her account while none of its other admins has one, so the workspace counts against nobody. Bob signs in
+    // after: it counts against nobody until upkeep, and he pays for his own.
     await ann.api.account.delete();
+    const bob = await account(bobEmail);
     let before = await spent(bob);
     await answer(bob.api.workspaces.ask(id, plan, shorter));
     expect(await spent(bob)).toBeGreaterThan(before);
