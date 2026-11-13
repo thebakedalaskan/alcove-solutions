@@ -430,7 +430,10 @@ describe('catching up during a call', () => {
     const logged = logsSince(from);
     expect(logged.find((l) => l.msg === 'caught up during a call')).toMatchObject({ lines: 8, cut: 2 });
     expect(logged.find((l) => l.msg === 'question answered during a call')).toMatchObject({ lines: 8, cut: 2 });
-    expect(h.logs.slice(from).join('')).not.toContain('w3k1');
+    // Not a word of what was said: a line's opening, or any of its words standing on its own, which no random ID can hold.
+    const text = h.logs.slice(from).join('');
+    expect(text).not.toContain('agreed on part');
+    expect(text).not.toMatch(/(?<![\w-])w\dk\d+(?![\w-])/);
     await host.leave();
   });
 
