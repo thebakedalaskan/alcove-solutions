@@ -2250,7 +2250,9 @@ is only for the people invited, so a call's notes never reach the whole team unl
 workspace's row in the Drive says Whole team. In its People sheet (its name at the top of the list, then People), its
 admins can switch between Whole team and Only people I add. Anyone else in it reads which it is. In a call, a team
 workspace opens to everyone in it only when the organizer pays for it, as for a call's home made for them; one a teammate
-made opens only for its own people (flow 6, The call's workspace, step 3).
+made opens only for its own people (flow 6, The call's workspace, step 3). A team workspace is the team's only while whoever
+pays for it is on the team: when they leave it, are taken off it, or delete their account, it stays theirs, with the people
+in it, and the rest of the team is out of it (it no longer says Whole team, and nobody can open it to the team again).
 
 ## 13. Boards
 

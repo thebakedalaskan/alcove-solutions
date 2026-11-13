@@ -4,8 +4,12 @@
  * shared ones it made, and its calls' own). Only sizes and counts are read here, never what's stored.
  */
 import { z } from 'zod';
-import { exec, maybeOne, type Db } from '../../db';
+import { exec, maybeOne, rows, type Db } from '../../db';
+import { publish } from '../../live/hub';
+import { log } from '../../log';
+import { TREE_NOTICE } from '../workspaces/access';
 
+const slog = log.child({ component: 'storage' });
 const bigintText = z.coerce.number().int().nonnegative();
 
 /** What an account stores: its own row's bytes and those of every workspace it pays for. */
@@ -30,10 +34,11 @@ export async function payerOf(db: Db, workspaceOwnerId: string): Promise<string 
  * while this one was deploying, one whose payer deleted their account, or one its payer left or was taken out of, so
  * nobody keeps paying for a workspace they can't open. A shared one is paid for by whoever made it, while they're still
  * in it; anything else by its first admin with an account (a call's own: its organizer), else nobody, and then it takes no
- * files (features/workspaces/media.ts). Only a workspace whose payer changes is written. Says how many changed.
+ * files (features/workspaces/media.ts). Only a workspace whose payer changes is written. A team's workspace that comes to
+ * be paid for by someone who isn't on its team stops being the team's (`offTeams`). Says how many payers changed.
  */
 export async function settlePayers(db: Db, workspaceOwnerId?: string | undefined): Promise<number> {
-  return exec(db, `
+  const changed = await exec(db, `
     WITH due AS (
       SELECT w.owner_id, COALESCE(
         (SELECT i.owner_id FROM workspace_authors a JOIN identities i ON i.email_index = a.email_index
@@ -49,4 +54,23 @@ export async function settlePayers(db: Db, workspaceOwnerId?: string | undefined
           WHERE m.owner_id = w.owner_id AND i.owner_id = w.payer_owner_id)))
     UPDATE workspaces w SET payer_owner_id = due.payer FROM due
     WHERE w.owner_id = due.owner_id AND w.payer_owner_id IS DISTINCT FROM due.payer`, [workspaceOwnerId ?? null]);
+  await offTeams(db, workspaceOwnerId);
+  return changed;
+}
+
+/**
+ * A team's workspace counts against the team's pool through whoever pays for it (docs: Plans and usage › Team), so it's the
+ * team's only while they're on that team. One paid for by someone who isn't on it (its payer left it and someone else is in
+ * charge of it now), or by nobody, stops being the team's: it stays its own people's, nobody is in it through the team any
+ * more, and its readers look again. Someone leaving a team takes what they pay for off it at once (teams.ts `leftWith`); this
+ * is the rest. Says how many.
+ */
+async function offTeams(db: Db, workspaceOwnerId: string | undefined): Promise<number> {
+  const off = await rows(db, z.object({ workspace_id: z.string() }), `UPDATE workspaces w SET team_id = NULL, team_access = NULL, version = version + 1
+    WHERE ($1::text IS NULL OR w.owner_id = $1) AND w.team_id IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM team_members m WHERE m.team_id = w.team_id AND m.account_owner_id = w.payer_owner_id)
+    RETURNING w.workspace_id`, [workspaceOwnerId ?? null]);
+  for (const w of off) await publish(db, w.workspace_id, TREE_NOTICE);
+  if (off.length) slog.info('workspaces off their team: paid for by someone not on it', { workspaces: off.length, workspaceIds: off.map((w) => w.workspace_id) });
+  return off.length;
 }

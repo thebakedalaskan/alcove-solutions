@@ -637,7 +637,11 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   lasts only as long as the license: a remembered yes ends at `licensed_until`, and someone leaving or taken off the team,
   or the team deleted, moves the team's workspaces on (`version`), so nothing remembered outlasts it. A workspace made in
   a call, and a call's home made for an organizer on a team, is `added`; only its admins open it to the team, and only one
-  live-licensed on that team. Deleting the team makes its workspaces nobody's team's.
+  live-licensed on that team. It's the team's only while whoever pays for it is on the team, since that's how it counts
+  against the team's pool: when they leave it, are taken off it or delete their account, the team's workspaces they pay for
+  stop being the team's at once (`teams.ts › leftWith`), and one that comes to be paid for by someone off the team, or by
+  nobody, does as its payer is settled (`storage.ts › offTeams`). Each stays with its own people, and nobody is in it through
+  the team any more. Deleting the team makes its workspaces nobody's team's.
 - **A call opens the workspace it uses** to everyone let in to it, guests without an account too, for as long as they're
   in the call: its home, unless the organizer switched to another. A row in `workspace_calls` says so, under the
   `call-workspace` index of the call and the workspace, which is what everyone in the call carries while the call uses that

@@ -341,7 +341,7 @@ export async function join(o: Owner, me: Pick<Person, 'name' | 'email'>, secret:
 /**
  * Takes someone off their team, in the caller's transaction with the team's row locked. A live license isn't refunded:
  * they're on Free from now, with `plan.grace_seconds` held to a team's storage for a person. Notes they made visible to
- * the team stay so. The pool is reckoned without them.
+ * the team stay so; the team's workspaces they pay for stop being the team's (`leftWith`). The pool is reckoned without them.
  */
 async function drop(d: Service, c: Db, t: TeamRow, m: MemberRow, why: 'removed' | 'left'): Promise<void> {
   const now = Date.now();
@@ -350,8 +350,8 @@ async function drop(d: Service, c: Db, t: TeamRow, m: MemberRow, why: 'removed' 
   const licensed = isLive(m, now);
   if (licensed) await changePlan(d, c, m.account_owner_id, (a) => leftTeam(a, l, now));
   await settle(d, c, t, openBilling(d, t), l, now);
-  await teamWorkspacesMoved(c, t.team_id);
-  tlog.info(why === 'removed' ? 'team member removed' : 'team member left', { teamId: t.team_id, memberId: m.member_id, licensed });
+  const workspaces = await leftWith(c, t.team_id, m.account_owner_id);
+  tlog.info(why === 'removed' ? 'team member removed' : 'team member left', { teamId: t.team_id, memberId: m.member_id, licensed, workspaces });
 }
 
 /** Admin only: takes someone off the team. The admin can't take themselves off. */
@@ -376,6 +376,20 @@ export async function leave(o: Owner): Promise<void> {
     if (!t || !m || m.team_id !== t.team_id) throw new NotFoundError('You’re not on a team.', { context: { ownerId: o.ownerId } });
     await drop(o, c, t, m, 'left');
   });
+}
+
+/**
+ * Someone's place on a team ended (they left, were taken off, or their account went), in the caller's transaction. A team's
+ * workspace counts against the team's pool through whoever pays for it (docs: Plans and usage › Team), so the team's
+ * workspaces they pay for stop being the team's: each stays theirs, with its own people, counted against them alone, and
+ * nobody is in one through the team any more, nor can open it to the team again. Then the team's workspaces for the whole team
+ * move on (`teamWorkspacesMoved`). Says how many stopped being the team's.
+ */
+async function leftWith(c: Db, teamId: string, ownerId: string): Promise<number> {
+  const theirs = await rows(c, z.object({ workspace_id: z.string() }), 'UPDATE workspaces SET team_id = NULL, team_access = NULL, version = version + 1 WHERE team_id = $1 AND payer_owner_id = $2 RETURNING workspace_id', [teamId, ownerId]);
+  for (const w of theirs) await publish(c, w.workspace_id, TREE_NOTICE);
+  await teamWorkspacesMoved(c, teamId);
+  return theirs.length;
 }
 
 /**
@@ -564,7 +578,8 @@ export async function refuseDeletingAdmin(db: Db, ownerId: string): Promise<void
 
 /**
  * An account being deleted, in its deletion's transaction: the admin's empty team goes with it (refused while anyone else
- * is on it); a member's place goes, and their team's pool is reckoned without them by upkeep. Says what went.
+ * is on it); a member's place goes, the team's workspaces they paid for stop being the team's (`leftWith`), and their team's
+ * pool is reckoned without them by upkeep. Says what went.
  */
 export async function forgetMembership(c: Db, ownerId: string): Promise<{ left: boolean; teamDeleted: boolean }> {
   const m = await membership(c, ownerId, true);
@@ -577,7 +592,7 @@ export async function forgetMembership(c: Db, ownerId: string): Promise<{ left: 
   }
   await exec(c, 'DELETE FROM team_members WHERE member_id = $1', [m.member_id]);
   await exec(c, 'UPDATE teams SET due_at = $2 WHERE team_id = $1', [m.team_id, new Date()]);
-  await teamWorkspacesMoved(c, m.team_id);
+  await leftWith(c, m.team_id, ownerId);
   return { left: true, teamDeleted: false };
 }
 

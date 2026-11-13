@@ -156,7 +156,8 @@ organizer whoever's action made it: their scheduling choice, getting the call re
 first time anyone opens Workspace in it, or its end with notes (`makeHome`).
 Only someone in a workspace pays for it: when its payer leaves it or is taken out, it counts against whoever made
 it if they're still in it, else its first admin with an account, at once. Upkeep settles any it missed every 5 minutes,
-whatever made a payer stop being in a workspace. A workspace none of whose admins has an account counts against nobody,
+whatever made a payer stop being in a workspace. A team's workspace whose payer this makes someone who isn't on its team, or
+nobody, stops being the team's then ([Team workspaces](#team)). A workspace none of whose admins has an account counts against nobody,
 and takes no files ("Files can't be added until one of this workspace's admins signs in to Alcove."), until upkeep's
 next pass after an admin signs in.
 
@@ -381,7 +382,8 @@ the same `not-found`; someone on a team already is `conflict`, and the link is l
 
 **Leaving.** The admin takes people off (`DELETE /v1/team/members/:id`); a member leaves (`POST /v1/team/leave`). A live
 license isn't refunded: they're on Free from then, a fresh period, with `plan.grace_seconds` held to
-`plan.team.storage_bytes`. Notes they made visible to the team stay so. The admin can't leave or take themselves off, and
+`plan.team.storage_bytes`. Notes they made visible to the team stay so. The team's workspaces they pay for stop being the
+team's (below): they stay theirs, with the people in them, counted against them alone. The admin can't leave or take themselves off, and
 deletes the team (`DELETE /v1/team/mine`) once nobody else is on it: its unconsumed licenses go back to their balance, its
 workspaces stop being the team's. Deleting the admin's account is refused while anyone else is on the team; once nobody
 is, the team goes with it. A member's account going takes their place with it.
@@ -419,7 +421,12 @@ written yet. Ask again once it’s ready."). Referenced notes go first, and send
 with the question; nothing else goes that the search didn't pick. The asker pays, as for any question.
 
 **Team workspaces.** A workspace made by someone live-licensed on a team is the team's (`workspaces.team_id`), counted
-against its pool through its maker, who pays for it. `POST /v1/workspaces { name, access? }`, the Drive's New workspace,
+against its pool through its maker, who pays for it. It's the team's only while whoever pays for it is on the team: when
+they leave the team, are taken off it or delete their account, the team's workspaces they pay for stop being the team's at
+once (`teams.ts › leftWith`: `team_id` and `team_access` go null), and so does one that comes to be paid for by someone who
+isn't on the team, or by nobody, as its payer is settled (`storage.ts › settlePayers`, below). Each stays with its own
+people, counted against whoever pays for it, nobody is in it through the team any more, and nobody can open it to a team
+again; one handed to someone else on the team stays the team's. `POST /v1/workspaces { name, access? }`, the Drive's New workspace,
 makes it the whole team's (`team_access = 'team'`) unless `access` is `added` (only the people added); off a team,
 `access` means nothing. One made in a call, and a call's home made for an organizer on a team, is `added`, so a call's
 notes never reach the whole team without someone choosing that. Its admins change it (`PUT /v1/workspaces/:id/team-access { access }` →

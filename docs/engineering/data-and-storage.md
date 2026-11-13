@@ -947,9 +947,11 @@ and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
   which are gone, is ignored with a warning.
 - **`plan_accounts` and `ai_meters`** go with the account. A period's AI allowance doesn't carry over: the next period's replaces
   it, with what the last one spent, by kind, logged as it closes.
-- **Teams.** A member's `team_members` row goes when they leave, are taken off, or delete their account. A team goes, with
-  its members, invites and `team_notes`, when its admin deletes it (once nobody else is on it) or deletes their account
-  then; until then deleting the admin's account is refused. `team_invites` go when used, and upkeep deletes expired ones.
+- **Teams.** A member's `team_members` row goes when they leave, are taken off, or delete their account, and the team's
+  workspaces they pay for stop being the team's then (`team_id` and `team_access` go null; each stays with its own people).
+  A team goes, with its members, invites and `team_notes`, when its admin deletes it (once nobody else is on it) or deletes
+  their account then; until then deleting the admin's account is refused. `team_invites` go when used, and upkeep deletes
+  expired ones.
 - **Feature flags** keep a flag on, a group, a member or a grant until someone switches or deletes it with `feature-flags`. Deleting a
   group deletes its members and grants; deleting an account deletes its address from every group and grant, unless another
   account signs in with that address too.

@@ -604,6 +604,46 @@ describe('team notes, Ask and team workspaces', () => {
     vi.useRealTimers();
   });
 
+  it('G17: a team workspace is the team’s only while whoever pays for it is on the team: leaving, going, or handing it to someone off it ends that, and it stays its own people’s', async () => {
+    const [ann, bob, cy, dee, zed] = await Promise.all([account(), account(), account(), account(), account()]);
+    await team(ann, 4);
+    await ann.api.auth.visit();
+    for (const who of [bob, cy, dee]) await joined(ann, who);
+    // Bob makes Launch for the whole team, and Few for the people he adds, with Cy as an admin.
+    const launch = await workspace(bob, 'Launch');
+    const { id: few } = await bob.api.workspaces.create('Few', { access: 'added' });
+    await bob.api.workspaces.addPerson(few, cy.email, 'admin');
+    expect(await cy.api.workspaces.get(launch.id)).toMatchObject({ role: 'edit', teamAccess: 'team' });
+    expect(await upload(cy, launch, 1024)).toBe('succeeded');
+    // Bob leaves the team. Launch is his alone, counted against him: nobody is in it through the team, and it's in no one else's Drive.
+    await bob.api.teams.leave();
+    expect(await refusal(cy.api.workspaces.get(launch.id))).toBe(NO_WORKSPACE);
+    expect(await refusal(ann.api.workspaces.get(launch.id))).toBe(NO_WORKSPACE);
+    expect(await upload(cy, launch, 1024)).toMatch(/^not-found: /);
+    expect((await cy.api.workspaces.list()).map((w) => w.id)).not.toContain(launch.id);
+    expect(await bob.api.workspaces.get(launch.id)).toMatchObject({ role: 'admin', teamAccess: null });
+    expect(await upload(bob, launch, 1024)).toBe('succeeded');
+    expect((await bob.api.plans.plan()).storage.usedBytes).toBeGreaterThanOrEqual(2048);
+    // Few is still Bob's and Cy's, and no team's: not even an admin licensed on the team can open it to the team.
+    expect(await cy.api.workspaces.get(few)).toMatchObject({ role: 'admin', teamAccess: null });
+    expect(await refusal(cy.api.workspaces.setTeamAccess(few, 'team'))).toBe('conflict: This workspace isn’t a team’s, so there’s no team to open it to.');
+    // Dee's, for the whole team, with Zed, on no team, as its other admin: she leaves it, so Zed pays for it now, and it's no team's.
+    const { id: handed } = await dee.api.workspaces.create('Handed on');
+    await dee.api.workspaces.addPerson(handed, zed.email, 'admin');
+    expect(await ann.api.workspaces.get(handed)).toMatchObject({ role: 'edit', teamAccess: 'team' });
+    const deeIn = (await dee.api.workspaces.people(handed)).find((p) => p.person.email === dee.email)?.id ?? 'not in it';
+    await dee.api.workspaces.removePerson(handed, deeIn);
+    expect(await refusal(ann.api.workspaces.get(handed))).toBe(NO_WORKSPACE);
+    expect(await zed.api.workspaces.get(handed)).toMatchObject({ role: 'admin', teamAccess: null });
+    // An account that goes takes what it pays for off the team the same way: Dee's other one stays Cy's.
+    const { id: kept } = await dee.api.workspaces.create('Kept');
+    await dee.api.workspaces.addPerson(kept, cy.email, 'edit');
+    expect(await ann.api.workspaces.get(kept)).toMatchObject({ role: 'edit', teamAccess: 'team' });
+    await dee.api.account.delete();
+    expect(await refusal(ann.api.workspaces.get(kept))).toBe(NO_WORKSPACE);
+    expect(await cy.api.workspaces.get(kept)).toMatchObject({ role: 'admin', teamAccess: null });
+  });
+
   it('G13: AI in a team workspace is paid for by whoever pressed it, from their own plan, as it is in any other', async () => {
     const [ann, bob, eve] = await Promise.all([account(), account(), account()]);
     await team(ann, 2);
