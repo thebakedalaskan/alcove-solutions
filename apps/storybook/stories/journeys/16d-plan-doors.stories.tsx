@@ -11,7 +11,8 @@ import { at, notesStop, run, type Present } from '../../src/api/script';
 import { current } from '../../src/api/state';
 import { inCall } from '../../src/call';
 import { caretAtEnd, page, pages, type PageArgs, type PageStory } from '../../src/page';
-import { monthsFrom, notesStopped, withProMonths } from '../../src/world/plans';
+import { addToBalance, boughtFromBalance, freshEntryId } from '../../src/world/payments';
+import { notesStopped, PRO_PRICE } from '../../src/world/plans';
 import { AIKO, KOFI, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK } from '../calls/talk';
 import { LAPTOP, LATER, SOON, first } from './play';
 
@@ -30,8 +31,13 @@ export const NotesRunOutInACall: PageStory = {
       ...LATE,
       cues: [
         ...at(4, run(() => { current().plan = notesStopped(); }), notesStop('notes')),
-        // The payment for a month of Pro lands from Art's phone, while the call goes on.
-        ...at(14, run(() => { const w = current(); w.plan = withProMonths(w.plan, monthsFrom(Date.now() - 60_000, 1)); }))
+        // Art pays for a month of Pro from his phone while the call goes on: the payment is added and buys it in the same go,
+        // as the server does, so the plan has Pro and the purchase since notes stopped.
+        ...at(14, run(() => {
+          const w = current();
+          addToBalance(w, PRO_PRICE, '20');
+          boughtFromBalance(w, { kind: 'pro', months: 1, microUsdPerMonth: PRO_PRICE }, freshEntryId(w));
+        }))
       ]
     }
   }, {
