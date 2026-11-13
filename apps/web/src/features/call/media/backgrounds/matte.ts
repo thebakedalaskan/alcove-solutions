@@ -13,7 +13,7 @@
  *    room or a picture.
  */
 import { FilesetResolver, ImageSegmenter } from '@mediapipe/tasks-vision';
-import { VideoTransformer, type VideoTransformerInitOptions } from '@livekit/track-processors';
+import { ProcessorWrapper, VideoTransformer, type VideoTransformerInitOptions } from '@livekit/track-processors';
 import { log } from '~/lib/log';
 import { MatteGl, type Edges } from './matteGl';
 import { FrameBudget, type BackgroundQuality } from './frameBudget';
@@ -128,15 +128,17 @@ export class Matte extends VideoTransformer<MatteOptions> {
     if (!this.budget.take(started)) { frame.close(); return; }
     let output: VideoFrame | null = null;
     try {
-      const { width, height } = this.budget.size(frame.displayWidth, frame.displayHeight);
+      const camera = this.upright(frame);
+      const { width, height } = this.budget.size(camera.width, camera.height);
       if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
       if (this.source.width !== width || this.source.height !== height) { this.source.width = width; this.source.height = height; }
-      this.sourceCtx.drawImage(frame, 0, 0, width, height);
-      this.smallCtx.drawImage(frame, 0, 0, MASK_W, MASK_H);
+      this.sourceCtx.drawImage(camera.image, 0, 0, width, height);
+      // The model reads the same upright picture that's drawn, so the mask lines up with it.
+      this.smallCtx.drawImage(this.source, 0, 0, MASK_W, MASK_H);
       const steady = this.settle(this.personIn(this.small, started));
       const look = this.options.look;
       // Keep the chosen blur's visible spread at every processing resolution.
-      const sigma = ('blur' in look ? BLUR_SIGMA[look.blur] : 14) * height / Math.max(frame.displayHeight, 1);
+      const sigma = ('blur' in look ? BLUR_SIGMA[look.blur] : 14) * height / Math.max(camera.height, 1);
       this.draw.draw(this.source, steady, MASK_W, MASK_H, width, height, sigma, EDGES);
       output = new VideoFrame(canvas, { timestamp: frame.timestamp });
       controller.enqueue(output);
@@ -161,6 +163,21 @@ export class Matte extends VideoTransformer<MatteOptions> {
   }
 
   /* ---------- each frame ---------- */
+
+  /**
+   * The camera's picture the right way up, and its size. Where LiveKit reads frames off the playing element (no
+   * MediaStreamTrackProcessor: WebKit, so every browser on an iPhone or iPad), each frame keeps the sensor's own
+   * orientation and drawing it doesn't turn it: held upright, a 480×640 camera gives 640×480 frames lying on their side,
+   * which went out sideways and squashed into the upright track. The element is drawn the way it's shown, at the
+   * track's own size, so there it's the element that's drawn. Frames straight off the track (Chrome) are upright.
+   */
+  private upright(frame: VideoFrame): { image: CanvasImageSource; width: number; height: number } {
+    const video = this.inputVideo;
+    if (!ProcessorWrapper.hasModernApiSupport && video && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0 && video.videoHeight > 0) {
+      return { image: video, width: video.videoWidth, height: video.videoHeight };
+    }
+    return { image: frame, width: frame.displayWidth, height: frame.displayHeight };
+  }
 
   /** How sure the model is that each pixel is the person, MASK_W×MASK_H, top row first. */
   private personIn(image: OffscreenCanvas, at: number): Float32Array {
