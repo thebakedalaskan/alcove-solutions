@@ -33,8 +33,9 @@ Not fixed. The first two are the most worth doing before release.
 
 3. **Other people can still spend your plan, more slowly now.**
    - AI on a document or board is paid by the workspace's payer, whoever asks (`workspaces/documents.ts`,
-     `workspaceMeter`). Any editor, including a guest seated in a call, gets 20 a minute (`ask-selection`, `sortLimiter`).
-     Undecided whether to limit it more (for example a per-workspace cap on asks by anyone but the payer).
+     `workspaceMeter`). Any editor, including a guest seated in a call, gets 20 a minute (`ask-selection`, `sortLimiter`);
+     a guest's comes out of their call's guests' share (below). Undecided whether to limit signed-in editors more (for
+     example a per-workspace cap on asks by anyone but the payer).
    - Files anyone adds to a workspace count against its payer (item 4).
    - Guests' questions are capped per guest (below), in each API process, counted by the call and the person their pass
      names, so a guest who comes back on a new connection with their earlier pass doesn't start over. Every guest in one
@@ -43,13 +44,16 @@ Not fixed. The first two are the most worth doing before release.
      so one call's guests can't spend the organizer's notes.
    - Main's #275 ("everyone in the call can open and edit its workspace and boards, guests too") widened the first two.
      With main merged, a call opens its workspace to everyone in it only while the organizer edits there and pays for it
-     (`access.ts › holdersOf`), so that way is closed. Boards are still open: a board the call makes (the main board and
-     the rooms' boards, in the call's home) seats everyone in the call, or the room, while the organizer can edit there, and
-     a saved board someone lets everyone in to seats them on that person's word (`calls/boards.ts`: `stillTheCalls`,
-     `madeMain`, `makeRoomBoards`, `letInHere`). When the home is a workspace someone else pays for (an existing one chosen
-     when the call was scheduled), a guest's files and AI on those boards count against that payer. Fix: seat everyone on
-     a board the call makes only while the organizer pays too, as `holdersOf` does, or refuse files and AI to someone who
-     has a document only through a call's seat unless that call's organizer pays for the workspace.
+     (`access.ts › holdersOf`), so that way is closed. Boards follow the same rule, so that way is closed too (it was open:
+     a board the call made seated everyone in the call or the room, and a saved board someone let everyone in to seated
+     them on that person's word, in a home someone else paid for as well). A seat a call gives on a board opens it for
+     anyone only while that call's organizer pays for its workspace, asked on every read (`holdersOf`'s
+     `Holders.shares.opens`); otherwise it opens only for the workspace's own people. In a workspace the organizer doesn't
+     pay for, the call seats nobody on the boards it makes there, nobody new is seated, and nobody can let everyone in on
+     a saved board there: Present says who can't open it, with no way to let them in (`calls/boards.ts › organizerPays`).
+     So a guest in such a call gets no seat on its boards, adds no files and gets no AI there. The scheduler says so when
+     such a workspace is chosen for a call's notes: "Its files don’t count against your storage, so its boards and files
+     open only for its own people."
    - The reverse also works: someone whose own notes have run out can still use document AI in a workspace someone
      else pays for, or ask as a guest.
 

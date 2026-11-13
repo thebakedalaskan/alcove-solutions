@@ -36,7 +36,7 @@ import { homesOn } from '../world/call-page';
 import { withAgentConnections, withAgentEnding, withClaudeJustConnected } from './agents';
 import { planWithTeam, priyasTeam, teamView, vandelayTeam, type TeamWorld } from '../world/teams';
 import { serve } from './state';
-import { forgetDocuments } from './workspaces';
+import { forgetDocuments, summaryOf } from './workspaces';
 
 export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'agents-ending' | 'agents-just-connected' | 'drive-connected' | 'payments'
   | 'plan-low' | 'plan-stopped' | 'plan-grace' | 'plan-over' | 'plan-balance' | 'plan-pro' | 'plan-pro-ending' | 'plan-pro-renewed' | 'plan-pro-ended'
@@ -621,7 +621,7 @@ export function checked(w: World): World {
     ['plan', PlanSchema.safeParse(w.plan)], ['documents', DocumentLibrarySchema.safeParse(w.documents)], ['workspaces', WorkspaceTreeSchema.array().safeParse(w.workspaces)],
     ['rings', IncomingRingSchema.array().safeParse(w.rings)], ['personal', PersonalEntrySchema.array().safeParse(Object.values(w.personal).flat())],
     ['shares', ShareEntrySchema.array().safeParse(Object.values(w.shares).flat())],
-    ['drive', WorkspaceSummarySchema.array().safeParse(w.workspaces)], ['mentions', MentionNoticeSchema.array().safeParse(w.mentions)],
+    ['drive', WorkspaceSummarySchema.array().safeParse(w.workspaces.map((x) => summaryOf(x, w.session?.user ?? ART)))], ['mentions', MentionNoticeSchema.array().safeParse(w.mentions)],
     ['media', WorkspaceMediaSchema.array().safeParse(w.media.map((m) => m.media))],
     ['team', MyTeamSchema.nullable().safeParse(w.myTeam ? teamView(w.myTeam, w.session?.user.email ?? ART.email) : null)]
   ] as const;

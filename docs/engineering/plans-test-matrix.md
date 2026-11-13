@@ -8,8 +8,9 @@ models as NEAR AI's catalog does) and the fake 1Click (the "fake money"). Limits
 a minute of notes, an hour's period, a few kilobytes of storage. Rows for later phases say which; rows marked
 "frontend" are the backend additions the plans frontend needs (a year for less, more notes, payments that buy).
 
-Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.ts`), `billing/plans`, `billing/teams`, `billing/topups`,
-`calls/liveNotes`, `calls/callWorkspace`, `recordings/transcripts`, `workspaces/media`, `integration/flows`.
+Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.ts`), `billing/plans`, `billing/support`, `billing/teams`,
+`billing/topups`, `calls/liveNotes`, `calls/callWorkspace`, `calls/boards-in-calls`, `calls/catchup`, `calls/guests`,
+`recordings/transcripts`, `workspaces/media`, `integration/flows`.
 
 | ID | Scenario | Where | Phase | Status |
 | --- | --- | --- | --- | --- |
@@ -133,6 +134,9 @@ there and pays for it. Migration `0030_workspace_payers.sql`'s backfill and upke
 | --- | --- | --- | --- | --- |
 | W1 | A guest in a call opens the organizer's own home, and what they upload there counts against the organizer's storage | calls/callWorkspace › everyone in the call › opens the organizer’s own home to a guest… | 1 | Passes |
 | W2 | A workspace someone else pays for, made the call's by an organizer who can edit there, doesn't open to a guest in the call: they can't open it, upload to it or ask AI in it, and `everyone` is false, in the Switch question too | calls/callWorkspace › everyone in the call › opens only while its organizer pays for it… | 1 | Passes |
+| W5 | Boards follow the same payer: in a home someone else pays for, the call seats nobody on the board it makes, so a guest can't open it, add a file to it or have AI sort it, while the workspace's own people work on it; nobody can let everyone in on a saved board there (`mayLetIn` false, `letIn` refused) | calls/boards-in-calls › a board in a workspace someone else pays for › seats nobody…; lets nobody in… | 1 | Passes |
+| W6 | In the organizer's own home a guest is seated, adds files and sorts as before, and the seat stops opening anything the moment the organizer stops paying (taken out of it), asked on every read | calls/boards-in-calls › a board in a workspace someone else pays for › stops a seat opening anything… | 1 | Passes |
+| W7 | The scheduler says, once, that a workspace someone else pays for opens only for its own people, boards and files included, when one is chosen for where a call's notes go (`WorkspaceSummary.youPay`) | Storybook › Pages/Scheduling › Notes in someone else's | 1 | A story; not run by hand |
 | W3 | An account makes workspaces up to `workspaces.max_made`; leaving one doesn't make room, deleting one does. A call's home doesn't count (`makeHome` notes its author with `made_workspace` false), which no test checks | workspaces/workspaces › … lets an account make as many workspaces as workspaces.max_made says… | 1 | Passes |
 | W4 | A workspace is deleted by an admin alone (`DELETE /v1/workspaces/:id`); the app has no button for it | workspaces/workspaces › … is deleted by an admin alone… | 1 | Passes |
 

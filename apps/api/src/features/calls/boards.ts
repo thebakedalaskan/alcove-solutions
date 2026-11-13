@@ -6,7 +6,9 @@
  * who loses one stops being told about it at once, and someone who can't open one is told nothing that names it.
  *
  * Nothing here decides who can open what: features/workspaces/access.ts does. `calls.ts` holds the call's row and says when to do
- * what; this is what's done. A live call comes first, so what touches a workspace is done with nothing of the call held, in
+ * what; this is what's done. A board the call seats everyone on is the organizer's to pay for, its files and its AI, so the call
+ * seats everyone only in a workspace its organizer pays for (`organizerPays`), as a call opens a workspace only then: in one
+ * someone else pays for, a board opens only for that workspace's own people, and access.ts asks that again on every read. A live call comes first, so what touches a workspace is done with nothing of the call held, in
  * the workspace's own transaction, and the call's row is held only to save what came of it.
  *
  * A board's vote is kept with it in the call's state, because it's this session's: closing the board ends it, and a saved
@@ -35,6 +37,7 @@ import {
 } from '../workspaces/access';
 import { readDocument, writeDocument } from '../workspaces/documents';
 import { addBoard } from '../workspaces/service';
+import { payerOf } from '../billing/storage';
 
 const blog = log.child({ component: 'call-boards' });
 
@@ -85,11 +88,11 @@ export async function shownTo(v: Viewer, s: Boarded, place: string): Promise<Cal
     const standing = standingIn(holders, reader);
     const role = roleOf(reader, standing, open.documentId, item);
     if (!role) return shut;
-    // Everyone here can edit it: it's in the workspace the call opens to everyone in it, and not restricted; or the call lets
-    // everyone in, which is when someone new gets a seat: a board it made while it's still the call's to give, and a saved one
-    // while whoever let everyone in still may. A room's own board is everyone's in the room.
-    const everyone = roomsOwn(s, open.documentId) || (standing.call && !item.restricted)
-      || await letsEveryoneIn(v.organizer, w, v.pass.callId, s.board.letIn.filter((e) => e.documentId === open.documentId));
+    // Everyone here can edit it: it's in the workspace the call opens to everyone in it, and not restricted; or, in a workspace
+    // the organizer pays for, the call lets everyone in, which is when someone new gets a seat: a board it made while it's still
+    // the call's to give, and a saved one while whoever let everyone in still may. A room's own board is everyone's in the room.
+    const everyone = (standing.call && !item.restricted) || (await organizerPays(v.organizer, w, v.organizer.pool)
+      && (roomsOwn(s, open.documentId) || await letsEveryoneIn(v.organizer, w, v.pass.callId, s.board.letIn.filter((e) => e.documentId === open.documentId))));
     // Ideas from the call are the call's to add (calls.ts), for whoever can add to the board.
     return { open: { workspaceId: open.workspaceId, documentId: open.documentId, name: item.name, role, ...seen, everyone }, timer: null, ...sessionFor(v, reader, s, open, role === 'edit'), ideas: [] };
   } catch (e) {
@@ -189,12 +192,15 @@ const mayShare = (who: Who, w: WorkspaceAs, documentId: string): boolean => {
   }
 };
 
-/** What the menu asks before a saved board opens: who in the call can't open it, and whether this person may let them in. */
+/**
+ * What the menu asks before a saved board opens: who in the call can't open it, and whether this person may let them in, which
+ * they can't in a workspace the organizer doesn't pay for: there it opens only for its own people.
+ */
 export async function check(o: Owner, reader: Reader, x: { callId: string; place: string; here: Here[] }, workspaceId: string, documentId: string): Promise<BoardCheck> {
   requireMainRoom(x.callId, x.place, 'board-check');
   const w = await bringable(o, reader, workspaceId, documentId, { letIn: false, db: o.pool });
   const left = await cantOpen(w, o.pool, documentId, x.here.map((p) => ({ ...p, who: whoInCall(o, x.callId, p, reader.seat?.workspace ?? null) })));
-  return { cannot: left.map((p) => firstName(p.name)), mayLetIn: mayShare(reader, w, documentId) };
+  return { cannot: left.map((p) => firstName(p.name)), mayLetIn: mayShare(reader, w, documentId) && await organizerPays(o, w, o.pool) };
 }
 
 /* ---------- letting people in ---------- */
@@ -236,6 +242,14 @@ async function stillShares(w: HeldWorkspace, db: Db, callId: string, by: Control
   return mayShare(who, await heldBy(w, db, who), documentId);
 }
 /**
+ * Whether the call's organizer pays for a workspace (`payer_owner_id`), so what anyone in the call adds to a board there, or asks
+ * AI to do on it, is theirs: only then does the call seat everyone on one, as only then does it open the workspace to everyone.
+ */
+const organizerPays = async (o: Owner, w: HeldWorkspace, db: Db): Promise<boolean> => (await payerOf(db, w.owner.ownerId)) === o.ownerId;
+/** Refused letting everyone in to a board in a workspace someone else pays for: it opens only for its own people. */
+const notOnTheirPlan = (callId: string, workspaceId: string) =>
+  new ConflictError('Its files don’t count against the organizer’s storage, so it opens only for its own people.', { context: { callId, workspaceId, why: 'payer' } });
+/**
  * Whether a board the call made is still the call's to give. Restricted, someone has decided who has it. And a call adds to a
  * workspace on its organizer's word alone, so that goes when they can't edit there.
  */
@@ -264,6 +278,8 @@ export async function seatNewcomers(o: Owner, callId: string, documentId: string
   return tx(o.pool, async (db) => {
     const w = await serverWorkspace(o, entry.workspaceId, db, 'change');
     if (!w?.state.items[documentId] || trashOf(w.state, documentId)) return undefined;
+    // Nobody new is seated on a board in a workspace the organizer doesn't pay for: it opens only for its own people.
+    if (!(await organizerPays(o, w, db))) return undefined;
     if (!(await (entry.by ? stillShares(w, db, callId, entry.by, documentId) : stillTheCalls(o, w, db, documentId)))) return undefined;
     const { entry: next, seats } = await letInHere(w, db, callId, entry, here, known);
     return { from: entry, next, seats };
@@ -392,7 +408,8 @@ export interface MadeMain { w: HeldWorkspace; workspaceId: string; documentId: s
 /**
  * The call's main board, made in the call's home, in the call's folder there, in the workspace's own transaction with nothing of
  * the call held, or `shut` when the home can't take it: its organizer can't edit there any more, and a call adds to a workspace
- * only while they can. Everyone invited has it by email, and anyone else here a seat.
+ * only while they can. Everyone invited has it by email, and anyone else here a seat, in a home the organizer pays for: in one
+ * someone else pays for, nobody's seated, and it opens only for that workspace's own people.
  */
 async function madeMain(m: MainBoardFor, workspaceId: string, folderId: string | null): Promise<MadeMain | 'shut'> {
   const { o, callId } = m;
@@ -404,7 +421,8 @@ async function madeMain(m: MainBoardFor, workspaceId: string, folderId: string |
     const documentId = await addBoard(w, c, nameOf(m.meeting.title), { by: m.maker, id: m.id }, folderId);
     const invited = invitedNow(m.s, m.meeting, m.here);
     if (invited.length && !there) await grant(w, c, documentId, invited.map((email): Grant => ({ kind: 'email', email, role: 'edit' })));
-    const { entry, seats } = await letInHere(w, c, callId, { workspaceId, documentId, by: null, seen: invited.map((e) => e.toLowerCase()) }, m.here, m.known);
+    const made: BoardLetIn = { workspaceId, documentId, by: null, seen: invited.map((e) => e.toLowerCase()) };
+    const { entry, seats } = await organizerPays(o, w, c) ? await letInHere(w, c, callId, made, m.here, m.known) : { entry: made, seats: [] };
     return { w, workspaceId, documentId, entry, seats, invited: invited.length };
   });
 }
@@ -743,6 +761,7 @@ async function prepareSaved<S extends Boarded>(x: Changing<S>, workspaceId: stri
   }
   const r = await tx(o.pool, async (c) => {
     const w = await bringable(o, reader, workspaceId, documentId, { letIn: true, db: c, lock: 'change' });
+    if (!(await organizerPays(o, w, c))) throw notOnTheirPlan(callId, w.workspaceId);
     const decided = there?.by === null && await stillTheCalls(o, w, c, documentId) ? null : by;
     return { workspaceId: w.workspaceId, ...await letInHere(w, c, callId, { workspaceId: w.workspaceId, documentId, by: decided, seen: [] }, x.here, x.known) };
   });

@@ -141,7 +141,11 @@ and AI they ask for there is paid by it. So it does that only while the organize
 call is kept in, and the organizer can still edit there (`access.ts › holdersOf`, asked on every request, so a change of
 payer or role takes effect at once). A workspace someone else pays for, made the call's by an organizer who can edit there,
 opens only for its own people; the Switch workspace question says so ("Its files don’t count against your storage, so it
-opens only for its own people."). A team's pool isn't counted as the organizer's here, though a teammate's
+opens only for its own people."). Its boards go by the same payer: a seat the call gives on a board opens it for anyone only
+while the organizer pays for its workspace, asked on every read too, so in one someone else pays for the call seats nobody
+on the boards it makes, and nobody can let everyone in on a saved one (`calls/boards.ts › organizerPays`). The scheduler says
+so when such a workspace is chosen for where a call's notes go ("Its files don’t count against your storage, so its boards
+and files open only for its own people.", `WorkspaceSummary.youPay`). A team's pool isn't counted as the organizer's here, though a teammate's
 workspace counts against the same pool: AI a guest asks for in a team's workspace is paid by the workspace's payer, so a call
 opening one a teammate pays for would spend that teammate's allowance.
 

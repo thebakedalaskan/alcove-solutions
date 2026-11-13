@@ -258,6 +258,9 @@ button.sc-row:focus-visible { outline: 2px solid var(--focus); outline-offset: 2
 .sc-keep .ac-select { max-width: 170px; }
 .sc-sealed { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 6px; font: 400 12.5px/1.35 var(--font-sans); color: var(--ink-2); }
 .sc-sealed .ac-i { flex: none; color: var(--sun-text); }
+/* Where the notes go is a workspace someone else pays for: who it opens for, said once under it. */
+.sc-own { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 6px; font: 400 12.5px/1.4 var(--font-sans); color: var(--ink-2); }
+.sc-own .ac-i { flex: none; margin-top: 1px; color: var(--horizon); }
 .sc-row.is-bring { align-items: start; }
 .sc-row.is-bring > .ac-i { margin-top: 1px; }
 .sc-docs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
