@@ -101,6 +101,11 @@
 /* ---- Avatar: the arch ---- */
 .ac-avatar { --size: 32px; position: relative; display: inline-block; flex: none; width: var(--size); height: calc(var(--size) * 1.08); border-radius: var(--radius-arch) var(--radius-arch) calc(var(--size) * .22) calc(var(--size) * .22); overflow: hidden; vertical-align: middle; background: var(--arch-fill); box-shadow: 0 0 0 2px var(--ring, transparent); }
 .ac-avatar svg, .ac-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* A round photo (cut to a circle, its corners see-through) is drawn larger from the top of the arch, so the circle reaches
+   past the arch's foot and fills it as any photo does. 1.22 would just reach; 1.28 leaves a pixel to spare at 22px. A
+   photo is hidden only until Avatar knows which it is, the moment it loads. */
+.ac-avatar img.is-round { transform: scale(1.28); transform-origin: 50% 0; }
+.ac-avatar img.is-looking { opacity: 0; }
 .ac-avatar .initial { display: grid; place-items: center; width: 100%; height: 100%; padding-top: 8%; font: 480 calc(var(--size) * .46)/1 var(--font-display); color: var(--arch-ink); }
 .ac-faces { display: inline-flex; align-items: flex-end; }
 .ac-faces .ac-avatar { --ring: var(--surface); margin-left: -6px; }
