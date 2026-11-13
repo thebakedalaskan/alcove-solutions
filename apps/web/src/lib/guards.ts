@@ -1,9 +1,9 @@
 import { errorCode, type Session } from '@alcove/api';
-import type { QueryClient } from '@tanstack/react-query';
+import { hashKey, type QueryClient } from '@tanstack/react-query';
 import { redirect } from '@tanstack/react-router';
 import { clearReturn, keptReturn } from './afterSignIn';
 import { signedInHere } from './device';
-import { q } from './queries';
+import { q, qk } from './queries';
 import { signedOut } from './signedOut';
 
 /**
@@ -13,21 +13,52 @@ import { signedOut } from './signedOut';
 export type Account = { offline: false; session: Session } | { offline: true; ownerId: string };
 
 /**
- * The session as Alcove says (null: signed out), or 'offline' when it can't be asked: no connection, or the request
- * didn't get through. A 401 is a signed-out session as ever; other failures throw. An account signed out in this browser
- * is signed out, though the app still holds its session while it leaves for the welcome page (useSignOut, lib/queries.ts).
+ * How long a screen waits for Alcove to say who's signed in, when someone is signed in on this device, before it opens
+ * offline. A connection that stalls (a weak signal, Wi-Fi with nothing behind it) neither answers nor fails, and every
+ * screen, Record too, would stay blank until it did. The answer still counts when it comes (`onSessionAnswer`).
+ */
+const SESSION_WAIT_MS = 5000;
+
+/**
+ * The session as Alcove says (null: signed out), or 'offline' when it can't be asked: no connection, the request didn't
+ * get through, or, for someone signed in on this device, it hasn't answered in SESSION_WAIT_MS. A 401 is a signed-out
+ * session as ever; other failures throw. An account signed out in this browser is signed out, though the app still holds
+ * its session while it leaves for the welcome page (useSignOut, lib/queries.ts).
  */
 export async function sessionOrOffline(qc: QueryClient): Promise<Session | null | 'offline'> {
   const known = qc.getQueryData(q.session().queryKey);
   if (known && signedOut(known.ownerId)) return null;
   if (known !== undefined) return known;
   if (!navigator.onLine) return 'offline';
+  const asked = qc.ensureQueryData(q.session());
   try {
-    return await qc.ensureQueryData(q.session());
+    return signedInHere() ? await answeredWithin(asked) : await asked;
   } catch (e) {
     if (errorCode(e) === 'network') return 'offline';
     throw e;
   }
+}
+
+/** The session, or 'offline' once it has taken SESSION_WAIT_MS. Asked on regardless: a late answer lands in the cache. */
+async function answeredWithin(asked: Promise<Session | null>): Promise<Session | null | 'offline'> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<'offline'>((resolve) => { timer = setTimeout(() => resolve('offline'), SESSION_WAIT_MS); });
+  try {
+    return await Promise.race([asked, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Calls `then` whenever Alcove answers who's signed in: a screen that opened offline because the answer was late reads
+ * everything again once it comes. Returns how to stop listening.
+ */
+export function onSessionAnswer(qc: QueryClient, then: () => void): () => void {
+  const session = hashKey(qk.session);
+  return qc.getQueryCache().subscribe((e) => {
+    if (e.type === 'updated' && e.action.type === 'success' && e.query.queryHash === session) then();
+  });
 }
 
 /**
