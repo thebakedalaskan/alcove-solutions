@@ -10,7 +10,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { speechWav } from '../../testing/fake-near';
 import { acceptNoteSuggestions } from '../../testing/follow-ups';
 import { startHarness, type Harness } from '../../testing/harness';
-import { disposeLiveKit } from '../../testing/livekit';
+import { connect, disposeLiveKit, type TestParticipant } from '../../testing/livekit';
 
 // Calls set up MLS groups and LiveKit rooms, which a busy runner can be slow to do: every wait says what it waited for.
 vi.setConfig({ testTimeout: 90_000 });
@@ -18,7 +18,9 @@ vi.setConfig({ testTimeout: 90_000 });
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
 afterAll(async () => { await h?.close(); await disposeLiveKit(); });
-afterEach(() => { h.closeCalls(); });
+/** Organizers' browsers in their calls' rooms, gone after each test. */
+const open: TestParticipant[] = [];
+afterEach(async () => { await Promise.all(open.splice(0).map((p) => p.disconnect().catch(() => undefined))); h.closeCalls(); });
 
 let seq = 0;
 const tag = () => `${Date.now().toString(36)}${(seq++).toString(36)}`;
@@ -233,6 +235,9 @@ describe('asking across the series during a call', () => {
     const now = await scheduleNext(org.api, two.meetingId);
     const host = await org.api.calls.join(now.code, { mic: true, cam: false });
     await inGroup(host);
+    // The organizer's browser is in the room, as it is in a real call. Otherwise, 25 seconds after they joined, upkeep
+    // finds them gone, and with nobody here in the room to host instead, ends the call: what a slow runner reaches.
+    open.push(await connect(await host.room(), { sending: host.crypto }));
     const inBea = await bea.api.calls.join(now.code, { mic: true, cam: false });
     await inGroup(inBea);
     const inCal = await cal.api.calls.join(now.code, { mic: true, cam: false });
@@ -320,11 +325,17 @@ describe('asking across the series during a call', () => {
     const { org, bea, one, now, host, inBea } = await third();
     const gone = ['conflict', 'Notes from one of these calls were deleted or removed from yours while the answer was being written, so it isn’t shown. Ask again.'];
     const sent = h.near.prompts.length;
-    h.near.slowNext(1500);
-    const answer = inBea.askEarlier('Why did we drop the tablet?', ZONE).catch((e: unknown) => e);
-    await waitFor(() => h.near.prompts.length > sent, 'the question to reach the notes model');
-    await org.api.notes.delete(one.noteId);
-    expect(refusal(await answer)).toEqual(gone);
+    // The note goes once the question has reached the notes model, which answers only after it. Anything else it's
+    // asked meanwhile (a call compared with earlier ones after its notes, which nothing waits for) goes by.
+    let deleted: unknown = 'the question never reached the notes model';
+    const hold = async (): Promise<void> => {
+      if (!h.near.instructions.at(-1)?.startsWith('You answer a question about a series')) { h.near.holdNext(hold); return; }
+      deleted = await org.api.notes.delete(one.noteId).then(() => 'deleted', (e: unknown) => e);
+    };
+    h.near.holdNext(hold);
+    expect(refusal(await inBea.askEarlier('Why did we drop the tablet?', ZONE).catch((e: unknown) => e))).toEqual(gone);
+    expect(deleted).toBe('deleted');
+    expect(h.near.prompts.length).toBeGreaterThan(sent);
     // Asked again, it answers from what's left; what went is in neither what carries over nor the answer.
     expect(await inBea.askEarlier('Why did we drop the tablet?', ZONE)).toEqual([{ type: 'text', text: 'That wasn’t covered in these meetings.' }]);
     expect(JSON.stringify(await bea.api.calls.series(now.code))).not.toMatch(/tablet/);
@@ -551,15 +562,25 @@ describe('what later calls did to what earlier ones left', () => {
     const { org, bea, next, decision, seriesId } = await twoCalls();
     const replaced = async () => (await bea.api.series.get(seriesId)).decisions.find((d) => d.id === decision)?.replacedBy;
 
-    // The notes model takes its time over the comparison: everyone has the notes by the time it's even asked.
+    // The notes model holds its answer to the comparison until the notes are read: everyone has them by the time it's
+    // even asked. Anything else it's asked meanwhile goes by.
     const third = await scheduleNext(org.api, next.id);
     const sent = h.near.prompts.length;
-    h.near.slowNext(3000, COMPARING);
-    const three = await ended(org.api, third.code, 'We decided to end annual pricing instead.');
-    await waitFor(() => h.near.prompts.slice(sent).some((p) => p.includes(COMPARING)), 'the comparison to reach the notes model');
-    expect(await org.api.notes.get(three)).toMatchObject({ status: 'ready', summary: expect.stringMatching(/\S/), decisions: [{ text: 'We decided to end annual pricing instead.' }] });
-    expect(await bea.api.notes.get(three)).toMatchObject({ status: 'ready', summary: expect.stringMatching(/\S/) });
-    expect((await replaced())?.noteId).not.toBe(three);
+    let answer = () => {};
+    const answered = new Promise<void>((r) => { answer = () => r(); });
+    const hold = async (): Promise<void> => {
+      if (!h.near.instructions.at(-1)?.startsWith('You compare one meeting') || !h.near.prompts.at(-1)?.includes('end annual pricing instead')) { h.near.holdNext(hold); return; }
+      await answered;
+    };
+    h.near.holdNext(hold);
+    let three = '';
+    try {
+      three = await ended(org.api, third.code, 'We decided to end annual pricing instead.');
+      await waitFor(() => h.near.prompts.slice(sent).some((p) => p.includes(COMPARING)), 'the comparison to reach the notes model');
+      expect(await org.api.notes.get(three)).toMatchObject({ status: 'ready', summary: expect.stringMatching(/\S/), decisions: [{ text: 'We decided to end annual pricing instead.' }] });
+      expect(await bea.api.notes.get(three)).toMatchObject({ status: 'ready', summary: expect.stringMatching(/\S/) });
+      expect((await replaced())?.noteId).not.toBe(three);
+    } finally { answer(); }
     await written(org.api, three);
     expect((await replaced())?.noteId).toBe(three);
 

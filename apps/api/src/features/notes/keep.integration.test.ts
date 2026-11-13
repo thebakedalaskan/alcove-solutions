@@ -50,10 +50,22 @@ const audioBytes = (marker: string) => { const src = Buffer.concat([Buffer.from(
 const piece = (marker: string, segment: number, at: number, durationMs = 5000): AudioPiece => ({ data: new Blob([audioBytes(marker)]), segment, seq: at, at: at * 5, durationMs, mimeType: 'audio/webm;codecs=opus' });
 const screenPiece = (share: string, i: number, data: Uint8Array<ArrayBuffer>): ScreenPiece => ({ data: new Blob([data]), share, segment: 0, seq: i, at: i * 5, durationMs: 5000, mimeType: 'video/webm;codecs=vp8' });
 const speech = (words: string, segment: number, atMs: number, ms = 6000): TranscriptClip => ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, at: atMs / 1000, durationMs: ms });
-async function written(api: AlcoveApi, noteId: string): Promise<NoteProgress[]> {
+/** Every step until the notes are written. `first`: called once the first step is in. */
+async function written(api: AlcoveApi, noteId: string, first?: (() => void) | undefined): Promise<NoteProgress[]> {
   const steps: NoteProgress[] = [];
-  for await (const p of api.notes.progress(noteId)) steps.push(p);
+  for await (const p of api.notes.progress(noteId)) { steps.push(p); if (steps.length === 1) first?.(); }
   return steps;
+}
+/** Answers the notes model still holds, given after each test: one that failed part-way leaves nothing waiting. */
+const holds: (() => void)[] = [];
+afterEach(() => { for (const answer of holds.splice(0)) answer(); });
+/** The notes model keeps its next answer until the returned function is called: the notes are being written until then. */
+function holdNotes(): () => void {
+  let answer = () => {};
+  const answered = new Promise<void>((r) => { answer = () => r(); });
+  h.near.holdNext(() => answered);
+  holds.push(() => answer());
+  return () => answer();
 }
 async function asked(api: AlcoveApi, noteId: string, question: string): Promise<AnswerPart[]> {
   const parts: AnswerPart[] = [];
@@ -125,7 +137,7 @@ describe('keeping the transcript', () => {
     expect(await count('FROM transcript_clips WHERE owner_id = $1', [org.session.ownerId])).toBe(1);
     // A receipt from scheduling it: answers are copied into them, so they go with the transcript.
     expect(await count('FROM operations WHERE owner_id = $1', [org.session.ownerId])).toBeGreaterThan(0);
-    h.near.slowNext(2000);
+    const answer = holdNotes();
     const noteId = await noteOf(call);
 
     // While the notes are being written it's there to write them from, and the organizer's alone: the note says what will happen to it.
@@ -146,7 +158,7 @@ describe('keeping the transcript', () => {
     expect((await org.api.notes.list({ text: first }))[0]?.said.map((l) => l.text)).toEqual(lines);
     expect((await revisionsOf(org.session.ownerId, noteId)).some((r) => r.text.includes(CANARY))).toBe(true);
 
-    const steps = await written(org.api, noteId);
+    const steps = await written(org.api, noteId, answer);
     expect(steps.at(0)?.steps[2]?.label).toBe('Transcript of 3 lines, deleted once the notes are written');
     expect(steps.at(-1)?.steps[2]?.label).toBe('The transcript was deleted once the notes were written');
     const note = await org.api.notes.get(noteId);
@@ -262,7 +274,7 @@ describe('keeping the recording', () => {
     expect(ids).toHaveLength(2);
     for (const id of ids) expect(await inBucket(id)).toBe(true);
     expect(await storedBytes(org.session.ownerId)).toBeGreaterThan(0);
-    h.near.slowNext(1000);
+    const answer = holdNotes();
     const noteId = await noteOf(call);
 
     // Gone with the call, before any notes are written.
@@ -270,6 +282,7 @@ describe('keeping the recording', () => {
     for (const id of ids) expect(await inBucket(id)).toBe(false);
     expect(await storedBytes(org.session.ownerId)).toBe(0);
     expect(await org.api.notes.get(noteId)).toMatchObject({ status: 'pending', audio: [], kept: { transcript: true, recording: false } });
+    answer();
     const steps = await written(org.api, noteId);
     expect(steps.at(-1)?.steps[1]?.label).toBe('The recording was deleted when the call ended');
 
@@ -451,7 +464,7 @@ describe('a call with breakout rooms', () => {
     await host.appendAudio(piece('kept', 0, 0));
     await talked(host, kofi, lena);
     expect(await count('FROM transcript_clips WHERE owner_id = $1', [ownerId])).toBe(3);
-    h.near.slowNext(2000);
+    const answer = holdNotes();
     const noteId = await noteOf(host);
 
     // While the notes are being written the rooms' transcripts are there to write them from, and the organizer's alone.
@@ -466,7 +479,7 @@ describe('a call with breakout rooms', () => {
     }
     for (const canary of [CANARY, DESIGN_CANARY, SUPPORT_CANARY]) expect(await anyHolds(ownerId, noteId, canary), canary).toBe(true);
 
-    const steps = await written(org.api, noteId);
+    const steps = await written(org.api, noteId, answer);
     expect(steps.at(0)?.steps[2]?.label).toBe('Transcript of 9 lines, deleted once the notes are written');
     expect(steps.at(-1)?.steps[2]?.label).toBe('The transcript was deleted once the notes were written');
 

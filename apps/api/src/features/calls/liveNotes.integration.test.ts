@@ -86,6 +86,18 @@ const sayNow = (host: CallSession, words: string, atMs: number) => host.transcri
 const runs = () => h.near.instructions.filter((s) => s.startsWith('You help someone catch up')).length;
 /** What each of those requests sent the notes model, from the `from`th on. */
 const sentSince = (from: number) => h.near.prompts.filter((_, i) => h.near.instructions[i]?.startsWith('You help someone catch up')).slice(from);
+/**
+ * Does `act` once a refresh of live notes that reads `said` reaches the notes model, which answers it only after `act`.
+ * Anything else it's asked meanwhile goes by: another call's notes, still being written in the background, or the
+ * refresh of another call's notes that was on its way when an earlier test stopped.
+ */
+function whileRefreshing(said: string, act: () => Promise<void>): void {
+  const hold = async (): Promise<void> => {
+    if (!h.near.instructions.at(-1)?.startsWith('You help someone catch up') || !h.near.prompts.at(-1)?.includes(said)) { h.near.holdNext(hold); return; }
+    await act();
+  };
+  h.near.holdNext(hold);
+}
 /** The notes as this browser reads them once they exist and aren't being written, and `pred` holds. */
 async function notesOf(call: CallSession, pred: (n: NonNullable<LiveNotes['notes']>) => boolean = () => true) {
   const s = await settle(call, (x) => { const n = x.liveNotes.notes; return n !== null && !x.liveNotes.writing && pred(n); });
@@ -141,12 +153,13 @@ describe('one set of live notes for the call', () => {
     await say(host, B, 4000);
     await say(host, C, 8000);
     const before = runs();
-    // A busy model, so both browsers are looking while the run is on its way.
-    h.near.slowNext(700);
+    // The model answers only once the other browser has seen the run on its way, so both are looking while it is.
+    let meanwhile: CallState | undefined;
+    whileRefreshing(C, async () => { meanwhile = await settle(kofi, (s) => s.liveNotes.writing); });
     const stop = [host.watchNotes(), kofi.watchNotes()];
     await waitFor(() => runs() > before, 'the notes model to be asked');
-    expect((await settle(kofi, (s) => s.liveNotes.writing)).liveNotes.writing).toBe(true);
     const seen = await notesOf(host);
+    expect(meanwhile?.liveNotes.writing).toBe(true);
     expect(texts(seen.decided)).toEqual([A]);
     expect(seen.next).toEqual([]);
     expect(proposalsOf(host)).toEqual([expect.objectContaining({ text: B, owner: 'Kofi', due: 'Friday', done: false, id: expect.any(String) })]);
@@ -564,6 +577,9 @@ describe('who reads what of them', () => {
     const { code: c } = await org.api.calls.startNow({ notes: 'on' });
     const host = await org.api.calls.join(c, { mic: true, cam: false });
     await inGroup(host);
+    // The organizer's browser is in the room, as it is in a real call. Otherwise, 25 seconds after they joined, upkeep
+    // finds them gone, and with nobody here who can host (a guest can't), ends the call: what a slow runner reaches.
+    open.push(await connect(await host.room(), { sending: host.crypto }));
     await host.appendAudio(piece(audioBytes('away'), 0, 0));
     const browser = guestBrowser();
     const sam = await browser.calls.join(c, { mic: true, cam: false, name: 'Sam' });
@@ -575,19 +591,26 @@ describe('who reads what of them', () => {
     stop();
     return { host, browser, sam, code: c };
   }
+  /**
+   * Transcript positions and presence both round to tenths: once a line is said, waits for a later tick of the call's
+   * clock, so someone who comes back now is back after that line. Returns the tick the line was said by.
+   */
+  async function laterTick(host: CallSession): Promise<number> {
+    const awayThrough = (await host.catchUpWindow()).now;
+    const until = Date.now() + 15_000;
+    while ((await host.catchUpWindow()).now <= awayThrough) {
+      if (Date.now() > until) throw new Error('timed out waiting for a later call-clock tick before rejoining');
+      await sleep(25);
+    }
+    return awayThrough;
+  }
   /** The guest's page goes, something's said while it's gone, and they're back. */
   async function backAfter(g: { host: CallSession; browser: ReturnType<typeof guestBrowser>; code: string }, sam: CallSession, said: string, atMs: number) {
     sam.closing();
     await gone(g.host, sam);
     await sleep(1200);
     await sayNow(g.host, said, atMs);
-    // Transcript positions and presence both round to tenths. Rejoin on a later server-clock tick, so this line stays away.
-    const awayThrough = (await g.host.catchUpWindow()).now;
-    const until = Date.now() + 15_000;
-    while ((await g.host.catchUpWindow()).now <= awayThrough) {
-      if (Date.now() > until) throw new Error('timed out waiting for a later call-clock tick before rejoining');
-      await sleep(25);
-    }
+    const awayThrough = await laterTick(g.host);
     const back = await g.browser.calls.join(g.code, { mic: true, cam: false, name: 'Sam', previous: sam.ticket.pass });
     await inGroup(back);
     await sleep(300);
@@ -606,7 +629,7 @@ describe('who reads what of them', () => {
     const before = runs();
     h.near.failNext(1, 'prose');
     const stop = back.watchNotes();
-    const failed = await settle(back, (s) => s.liveNotes.error !== null, 3000);
+    const failed = await settle(back, (s) => s.liveNotes.error !== null);
     expect(failed.liveNotes.error).toBe(NOT_UPDATED);
     expect(texts(failed.liveNotes.notes?.decided ?? [])).toEqual([FIRST]);
     // It's tried again after the half minute, and meanwhile looks don't read the transcript for it.
@@ -674,9 +697,11 @@ describe('who reads what of them', () => {
     await sleep(1200);
     const AWAY = 'We agreed on the price while Sam was away.';
     await sayNow(g.host, AWAY, 3000);
+    const awayThrough = await laterTick(g.host);
     const back = await g.browser.calls.join(g.code, { mic: true, cam: false, name: 'Sam', previous: g.sam.ticket.pass });
     await inGroup(back);
     await sleep(300);
+    expect((await back.catchUpWindow()).here?.at(-1)?.from).toBeGreaterThan(awayThrough);
     const NOW = 'We agreed on the date with Sam back.';
     await sayNow(g.host, NOW, 6000);
     await later(back);
@@ -1785,13 +1810,15 @@ describe('what stays', () => {
 
     // A refresh still on its way when the call ends finds nothing to save into, and nothing comes back.
     const late = await twoInCall();
-    await say(late.host, A);
-    h.near.slowNext(600);
+    const LATE = 'We agreed to close the books late.';
+    await say(late.host, LATE);
+    // The call ends while the notes model has the refresh, before it answers.
+    let left: unknown = 'not asked';
+    whileRefreshing(LATE, async () => { left = await late.host.leave().then(() => 'ended', (e: unknown) => e); });
     const before = runs();
-    const look1 = look(h.baseUrl, late.kofi);
-    await waitFor(() => runs() > before, 'a refresh under way');
-    await late.host.leave();
-    expect((await look1).body).toEqual({ refreshed: false });
+    expect((await look(h.baseUrl, late.kofi)).body).toEqual({ refreshed: false });
+    expect(left).toBe('ended');
+    expect(runs()).toBe(before + 1);
     expect(await notesRows(late.host.ticket.callId)).toBe(0);
 
     // An earlier release knows nothing of live notes, so a call it ended leaves them behind until upkeep.
