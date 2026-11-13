@@ -75,20 +75,75 @@ export type AvatarPerson = Pick<Person, 'name'> & { email?: string | undefined; 
 /** Names as a sentence says them: "Theo", "Theo and Sam", "Theo, Sam and Kofi". */
 export const andList = (names: readonly string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`);
 
+/** Whether each photo Avatar has looked at is round, by its URL, so it's looked at once a page. */
+const roundPhotos = new Map<string, boolean>();
+
+/**
+ * Whether a loaded photo is round: a square whose corners are see-through and whose middle is solid, as a photo comes when
+ * someone cut theirs to a circle (or a rounded square) before giving it to their sign-in provider. A photo whose pixels the
+ * browser won't hand over counts as square.
+ */
+function isRoundPhoto(img: HTMLImageElement): boolean {
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  if (!w || !h || Math.abs(w - h) > Math.max(w, h) / 50) return false;
+  const n = 32;
+  const canvas = document.createElement('canvas');
+  canvas.width = n;
+  canvas.height = n;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return false;
+  let pixels: Uint8ClampedArray;
+  try {
+    ctx.drawImage(img, 0, 0, n, n);
+    pixels = ctx.getImageData(0, 0, n, n).data;
+  } catch {
+    /* Unreadable (tainted by another origin, or a browser that won't read canvases): drawn as it is. */
+    return false;
+  }
+  const alpha = (x: number, y: number) => pixels[(y * n + x) * 4 + 3] ?? 0;
+  if ([alpha(1, 1), alpha(n - 2, 1), alpha(1, n - 2), alpha(n - 2, n - 2)].some((a) => a > 25)) return false;
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      if (Math.hypot(x + 0.5 - n / 2, y + 0.5 - n / 2) <= n * 0.42 && alpha(x, y) < 230) return false;
+    }
+  }
+  return true;
+}
+
 /**
  * A person in the arch: their photo, else their illustrated portrait on their own colour, else their
  * initial. Never a plain circle. A photo that doesn't load (gone, blocked, offline) falls back the same way.
+ * A round photo (one cut to a circle, its corners see-through) is drawn larger, so it fills the arch as any
+ * photo does rather than standing in it on the arch's fill. A photo is hidden until it's known which it is,
+ * which is as soon as it loads, so it never shows the wrong way first. Telling means reading its pixels, and
+ * a photo comes from Alcove's API, signed in and sometimes from another origin than the page's, so it's
+ * fetched with credentials in CORS mode, which the API answers for the web app's own origin only.
  */
 export function Avatar({ person, size = 32, className, style }: { person: AvatarPerson; size?: number; className?: string; style?: CSSProperties }) {
   const label = person.name || person.email || '?';
   const [failed, setFailed] = useState<string | null>(null);
+  const [, setLooked] = useState<string | null>(null);
   const photo = person.photoUrl && person.photoUrl !== failed ? person.photoUrl : undefined;
+  const round = photo === undefined ? undefined : roundPhotos.get(photo);
+  /* Once the photo has loaded: whether it's round. Also from its ref, for a photo that loaded before React listened. */
+  const look = (img: HTMLImageElement | null) => {
+    if (!img || !photo || !img.complete || !img.naturalWidth) return;
+    if (!roundPhotos.has(photo)) roundPhotos.set(photo, isRoundPhoto(img));
+    setLooked(photo);
+  };
   const bg = !photo && person.portrait ? person.portrait.bg : undefined;
   return (
     <span className={cn('ac-avatar', className)} style={{ '--size': `${size}px`, ...(bg ? { background: bg } : {}), ...style }} title={label}>
-      {photo ? <img src={photo} alt="" draggable={false} referrerPolicy="no-referrer" onError={() => setFailed(photo)} />
-        : person.portrait ? <svg viewBox="20 26 160 166" aria-hidden="true"><PortraitArt p={person.portrait} /></svg>
-          : <span className="initial">{label.charAt(0).toUpperCase()}</span>}
+      {photo ? (
+        <img ref={round === undefined ? look : undefined} src={photo} alt="" draggable={false} referrerPolicy="no-referrer" crossOrigin="use-credentials"
+          className={round === undefined ? 'is-looking' : round ? 'is-round' : undefined}
+          onLoad={(e) => look(e.currentTarget)} onError={() => setFailed(photo)} />
+      ) : person.portrait ? (
+        <svg viewBox="20 26 160 166" aria-hidden="true"><PortraitArt p={person.portrait} /></svg>
+      ) : (
+        <span className="initial">{label.charAt(0).toUpperCase()}</span>
+      )}
     </span>
   );
 }

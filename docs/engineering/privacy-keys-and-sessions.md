@@ -1016,7 +1016,10 @@ loads.
   browser caches it, and only this server can read it. The API fetches the image from an allowed host
   (`PHOTO_HOSTS`), keeps it in memory for an hour and serves it only to signed-in browsers. Google sees
   the API fetch a photo, not who looked at whom. Guests in a call aren't signed in, so they're shown
-  everyone without photos.
+  everyone without photos. The app loads a photo with its cookie in CORS mode (`crossOrigin="use-credentials"`
+  on `Avatar`'s image), because it reads the pixels to tell a photo cut to a circle, which it draws larger to
+  fill the arch, and the API can be on another origin than the page (`api.alcove.solutions`). The API's CORS
+  rule lets only `WEB_ORIGIN` read it, and the pixels never leave the page.
 - **The Content-Security-Policy** allows nothing outside the app's origin and the API's (requests, audio,
   photos, files, and the hidden frame a file downloads in), `blob:` for a picture read into the page and for what's played from it, and the LiveKit host for calls (with `*.livekit.cloud`, where LiveKit Cloud's media servers are). Inline scripts run only by the SHA-256 of what the build produced (`apps/web/scripts/csp.mjs`
   writes the policy at deploy), and nothing may `eval` (the contract configures zod not to compile code at

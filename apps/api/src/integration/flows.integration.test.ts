@@ -615,6 +615,13 @@ describe('signing in with Google', () => {
     expect(Buffer.from(await got.arrayBuffer()).equals(PNG)).toBe(true);
     await b.fetch(photo); // served from memory the second time
     expect(h.google.photoFetches() - fetchesBefore).toBe(1);
+    // The app reads a photo's pixels, to draw one cut to a circle larger so it fills the arch, and the API can be on another
+    // origin than the page: the photo is readable with its cookie by the web app's origin, and by no other site.
+    expect([got.headers.get('access-control-allow-origin'), got.headers.get('access-control-allow-credentials')]).toEqual([ORIGIN, 'true']);
+    // It varies by origin, so a browser never answers that read with a copy it kept from a plain image request.
+    expect(got.headers.get('vary')?.split(/,\s*/)).toContain('Origin');
+    const elsewhere = await b.fetch(photo, { headers: { origin: 'https://elsewhere.example' } });
+    expect([elsewhere.status, elsewhere.headers.get('access-control-allow-origin')]).toEqual([200, null]);
     expect((await h.browser().fetch(photo)).status).toBe(401);
     expect((await b.fetch(`${photo.slice(0, -4)}AAAA`)).status).toBe(404);
     // A real account starts with no sample calls and no sample directory: its calendar is Google's.
