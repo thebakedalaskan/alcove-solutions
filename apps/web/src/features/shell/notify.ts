@@ -17,6 +17,11 @@ import { watchNotificationViews } from './notification-views';
 const nlog = log.child({ component: 'account-notifications' });
 const POLL = { refetchInterval: 30_000, refetchIntervalInBackground: true };
 const HOUR = 60 * 60_000;
+/**
+ * The plan's notices are rare (around a Pro end, or a team's licenses) and each stays raisable for an hour, so the notifier
+ * reads the plan every 10 minutes, in the background too. The side panel reads it every minute while its page is in front.
+ */
+const PLAN_POLL = { refetchInterval: 10 * 60_000, refetchIntervalInBackground: true };
 /** Web Locks avoids duplicate polling. Atomic receipts remain authoritative when Web Locks are unavailable. */
 function useNotifier(able: boolean): boolean {
   const [held, setHeld] = useState(false);
@@ -75,7 +80,7 @@ export function useNotifications() {
   const inbox = useQuery({ ...q.inbox(), enabled: allowed && prefs.prefs.followUpDue, ...POLL }).data;
   const mentions = useQuery({ ...q.mentions(), enabled: allowed, ...POLL });
   const notes = useQuery({ ...q.notes(), enabled: allowed, ...POLL });
-  const plan = useQuery({ ...q.plan(), enabled: allowed && prefs.prefs.plan, ...POLL }).data;
+  const plan = useQuery({ ...q.plan(), enabled: allowed && prefs.prefs.plan, ...PLAN_POLL }).data;
   const [tab] = useState(() => crypto.randomUUID());
   const token = useRef({});
   const context = useRef({ prefs, permission, allowed, go, toast });
