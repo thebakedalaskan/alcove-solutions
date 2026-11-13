@@ -110,7 +110,10 @@ const lands = (scenario: CheckoutArgs['scenario'], open: Partial<CheckoutArgs>, 
     beforeEach: changing(purchaseAt('waiting', buys, asked), playsOut(PREVIEW_TOP_UP, play)), ...more
   });
 
-/** 128 of 192 USDC arrived: send the rest to the same address, or keep it in the balance. */
+/**
+ * 128 of 192 USDC arrived: send the rest to the same address, or keep it in the balance. A payment something has reached
+ * can't be cancelled (the server cancels only one nothing has reached), so the foot has Close alone.
+ */
 export const LessArrived = at('short');
 export const LessArrivedNight: CheckoutStory = { ...LessArrived, globals: DARK };
 /**

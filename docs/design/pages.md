@@ -531,13 +531,17 @@ The last of the light, with you in it, then seven groups. Change one thing and l
   are low or out). The AI allowance is kept in dollars and never
   shown: notes left is said as time, as an estimate, with a small "About" before the number. Over the plan's limits, one
   `SettingNote` says until when everything works as before. Pro renewed and Pro ended are `SettingNote`s with × at the top
-  until dismissed; ending is said once, in warm, in the plan row. The second panel: Balance with Add money (a sheet that
-  follows the payment with checkout's own parts and words, `features/plans/paying.tsx`: the deposit address with its QR code
-  and bold ends, never a window over the page), then on Pro Renew from balance and Refund. Renew says, in caution, why it
-  won't renew when it won't, as the server decides it (`pro.renewal`): the balance short of a month, or a month costing more
-  than the last did ("A month of Pro costs $24.00 now, more than your last did, so it won't renew by itself. Extend to keep it
-  at that price."). Refund asks in place: what goes back, that renewing turns off (while it's on), and that Pro ends with
-  the month running now. Then Payments (`SettingPayments`, `PaymentRow`): first what's on its way or needs a person, then
+  until dismissed; ending is said once, in warm, in the plan row. The second panel: Balance with Add money, then on Pro
+  Renew from balance and Refund. Add money opens a window over Settings (`features/settings/topup.tsx`, the kit's `Sheet`:
+  560px, centred over the veiled page, and the width of a phone from its top), a small checkout of its own that shares
+  checkout's paying flow: how much and the network, Get an address, then the payment followed with checkout's own parts and
+  words (`features/plans/paying.tsx`: the status, the amount to send, the deposit address with its QR code and bold ends,
+  the track), with Cancel payment while nothing has arrived, and Done; a payment's Open in Payments opens it again on that
+  payment. Renew says, in caution, why it won't renew when it won't, as the server decides it (`pro.renewal`): the balance
+  short of a month, or a month costing more than the last did ("A month of Pro costs $24.00 now, more than your last did, so
+  it won't renew by itself. Extend to keep it at that price."). Refund asks in place: what goes back, that renewing turns off
+  (while it's on), and that Pro ends with the month running now, with Keep them filled (the answer that loses nothing), as a
+  team's Refund of its licenses asks. Then Payments (`SettingPayments`, `PaymentRow`): first what's on its way or needs a person, then
   the balance's latest changes, each with Receipt opening `PaymentReceipt`, paper in both themes and alone on the page when
   printed. Buying is checkout's, never this page's. Controls drop under their words on a phone. The code is
   `features/settings/Plan.tsx`, with `features/plans/plan-state.ts`, which the side panel's foot and Plans share.
@@ -595,7 +599,11 @@ you're buying on the right, under its own small evening (`PlanWindow`) whose sun
   the address with its QR code and the track (`PayStatus`, `PayAmount`, `PayAddress`, `PayTrack`); Done draws its tick
   (`CheckoutDone`), with the receipt (`PaymentReceipt`) in the same window, as paper.
 - **One filled button per view:** Get the address, or Buy with your balance; on a phone while paying, Open in wallet.
-  Cancel payment asks in the foot (`CheckoutAsk`), with Keep waiting filled.
+  Cancel payment asks in the foot (`CheckoutAsk`), with Keep waiting filled, while nothing has arrived. Once part of the
+  payment has (Less than asked arrived), the foot has Close alone, though the board's has Cancel payment beside it: the server
+  cancels only a payment nothing has reached yet (`deposits.ts` › `cancel`; docs/engineering/plans-and-usage.md, Cancelling
+  a top-up), and refuses the rest. What arrived is added to the balance when the payment settles, whether or not the rest
+  comes, so there's nothing to cancel: the address waits for the rest until it closes.
 - **Motion** is one move a stage, transform and opacity only: waiting, the sun on its horizon and its glow breathing; seen,
   the sun lifts and the amount counts up; done, it clears the horizon and the sky warms. With reduced motion every stage
   shows at once and only the dots and glints fade.
