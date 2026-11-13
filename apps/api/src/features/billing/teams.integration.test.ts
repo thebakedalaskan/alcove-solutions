@@ -6,8 +6,9 @@
  */
 import { AlcoveApiError, type AlcoveApi, type Purchase, type TranscriptClip } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
 import type { LimitName } from '../../limits';
 import { maintain } from '../../maintenance';
 import { speechWav } from '../../testing/fake-near';
@@ -26,6 +27,9 @@ afterEach(async () => { h.closeCalls(); vi.useRealTimers(); await h.resetLimits(
 const MiB = 1024 * 1024;
 const GiB = 1024 * MiB;
 const LICENSE = 40_000_000;
+/** A team license for a year, a period: 12 periods at $32, 20% off $40. */
+const YEARLY_LICENSE = 32_000_000;
+const HOUR = 3_600_000;
 const PRICE = 20_000_000;
 /** A month of Pro bought 12 or more at once. */
 const YEARLY = 16_000_000;
@@ -71,11 +75,15 @@ async function deposit(who: Account, microUsd: number): Promise<void> {
 }
 /** Money in for a test that isn't about adding it: as support adds it. */
 const give = (who: Account, microUsd: number) => creditBySupport(h.deps, who.email, microUsd);
-/** A payment for `count` licenses, which the fake 1Click settles in full: what became of its purchase once it was added. */
-async function payFor(who: Account, count: number) {
-  const buys: Purchase = { kind: 'licenses', count, microUsdPerLicense: LICENSE };
-  const t = await who.api.plans.startTopUp(BASE_USDC, count * LICENSE, buys);
-  h.oneclick.set(t.address ?? '', 'SUCCESS', { depositedAmount: String(count * LICENSE), amountOut: String(count * LICENSE), intentHashes: [`intent-${t.id}`] });
+/**
+ * A payment for `count` licenses, each for `periods` periods at `microUsdPerLicense` a period, which the fake 1Click settles
+ * in full: what became of its purchase once it was added.
+ */
+async function payFor(who: Account, count: number, microUsdPerLicense = LICENSE, periods = 1) {
+  const buys: Purchase = { kind: 'licenses', count, microUsdPerLicense, periods };
+  const total = count * periods * microUsdPerLicense;
+  const t = await who.api.plans.startTopUp(BASE_USDC, total, buys);
+  h.oneclick.set(t.address ?? '', 'SUCCESS', { depositedAmount: String(total), amountOut: String(total), intentHashes: [`intent-${t.id}`] });
   return (await who.api.plans.topUp(t.id)).purchase;
 }
 const labels = async (who: Account) => (await who.api.plans.plan()).balance.history.map((e) => e.label);
@@ -129,7 +137,9 @@ describe('making a team and its licenses', () => {
   });
 
   it('G1: offers Team from the limits, and buys 1 to 500 licenses at the price shown, refusing a short balance or a changed price', async () => {
-    expect((await (await account()).api.plans.offers()).team).toEqual({ notesMinutes: 3000, storageBytes: 100 * GiB, fileBytes: 512 * MiB, microUsdPerLicense: LICENSE, maxLicenses: 500 });
+    expect((await (await account()).api.plans.offers()).team).toEqual({
+      notesMinutes: 3000, storageBytes: 100 * GiB, fileBytes: 512 * MiB, microUsdPerLicense: LICENSE, maxLicenses: 500, yearly: null
+    });
     const ann = await account();
     await team(ann);
     await give(ann, LICENSE);
@@ -373,7 +383,7 @@ describe('licenses', () => {
     await joined(ann, bob);
     expect(await kinds(ann)).toEqual(['licenses-none']);
     // The admin pays for three. Once the payment is added they're bought, and nobody has one yet.
-    expect(await payFor(ann, 3)).toEqual({ buys: { kind: 'licenses', count: 3, microUsdPerLicense: LICENSE }, outcome: 'bought', why: null });
+    expect(await payFor(ann, 3)).toEqual({ buys: { kind: 'licenses', count: 3, microUsdPerLicense: LICENSE, periods: 1 }, outcome: 'bought', why: null });
     expect((await ann.api.teams.mine())?.licenses).toEqual({ unconsumed: 3, refundableMicroUsd: 3 * LICENSE, autoPurchase: false });
     expect(await labels(ann)).toEqual(['Team, 3 licenses', 'Added, 120 USDC']);
     expect(await bob.api.plans.plan()).toMatchObject({ kind: 'free', team: { licensed: false } });
@@ -396,6 +406,121 @@ describe('licenses', () => {
     await dee.api.auth.visit();
     expect(await dee.api.plans.plan()).toMatchObject({ kind: 'team', team: { licensed: true } });
     expect((await ann.api.plans.plan()).notices).toMatchObject([{ kind: 'licenses-low', count: 1 }, { kind: 'licenses-none' }, { kind: 'licenses-low' }, { kind: 'licenses-none' }]);
+  });
+});
+
+describe('licenses for a year', () => {
+  // Licenses for a year ship off (plan.team.yearly_price_micro_usd 0) and are turned on once the release serves alone.
+  beforeEach(async () => { await setLimit('plan.team.yearly_price_micro_usd', YEARLY_LICENSE); });
+  it('G19: sells licenses for a year at the yearly price a period, refusing any other length or price; one taken is live for 12 periods, each with all of Team’s notes, and one nobody took is refunded whole', async () => {
+    await setLimit('plan.period_seconds', 3600);
+    await setLimit('ai.hour_micro_usd', 60_000);
+    const ann = await account();
+    const bob = await account();
+    await team(ann);
+    expect((await ann.api.plans.offers()).team.yearly).toEqual({ periods: 12, microUsdPerLicense: YEARLY_LICENSE });
+    await give(ann, 24 * YEARLY_LICENSE);
+    // The price for that many periods, and no other: a year at a license's price, a period at a year's, or a length not offered.
+    expect(await refusal(ann.api.teams.buyLicenses(1, LICENSE, 12))).toBe('conflict: The price of a team license for a year has changed. Look at it again before buying.');
+    expect(await refusal(ann.api.teams.buyLicenses(1, YEARLY_LICENSE))).toBe('conflict: The price of a team license has changed. Look at it again before buying.');
+    expect(await refusal(ann.api.teams.buyLicenses(1, YEARLY_LICENSE, 6))).toBe('conflict: The price of a team license for 6 months has changed. Look at it again before buying.');
+    for (const periods of [0, 121, 1.5]) expect(await refusal(ann.api.teams.buyLicenses(1, YEARLY_LICENSE, periods)), String(periods)).toMatch(/^invalid: /);
+    // What they cost, a year each, never the balance.
+    expect(await refusal(ann.api.teams.buyLicenses(3, YEARLY_LICENSE, 12))).toBe('conflict: Your balance is short of what 3 team licenses for a year cost ($1152). Add money first.');
+    expect(await ann.api.plans.plan()).toMatchObject({ balance: { microUsd: 24 * YEARLY_LICENSE } });
+    expect((await ann.api.teams.buyLicenses(2, YEARLY_LICENSE, 12)).licenses).toEqual({ unconsumed: 2, refundableMicroUsd: 24 * YEARLY_LICENSE, autoPurchase: false });
+    expect((await ann.api.plans.plan()).balance).toMatchObject({ microUsd: 0, history: [{ label: 'Team, 2 licenses for a year', microUsd: -24 * YEARLY_LICENSE }, {}] });
+    // Bob takes one: live for 12 periods from then, and his plan's period is the first of them, with all of Team's notes.
+    await joined(ann, bob);
+    const first = await bob.api.plans.plan();
+    const from = Date.parse(first.period.from);
+    expect(first).toMatchObject({ kind: 'team', team: { licensed: true }, period: { to: new Date(from + HOUR).toISOString() }, notes: { minutesLeft: 3000, minutesPerPeriod: 3000 } });
+    expect(await bob.api.teams.mine()).toMatchObject({ members: [{}, { you: true, license: { state: 'live', until: new Date(from + 12 * HOUR).toISOString() } }] });
+    expect((await ann.api.teams.mine())?.licenses).toEqual({ unconsumed: 1, refundableMicroUsd: 12 * YEARLY_LICENSE, autoPurchase: false });
+    // He spends some of the first period's notes; the next brings them all again, as each of a year's periods does.
+    const rec = await bob.api.recordings.start({ title: 'A year in' });
+    await rec.transcribe(speech('We agreed to ship on Monday.', 0));
+    await written(bob.api, (await rec.stop()).pendingNoteId);
+    expect((await bob.api.plans.plan()).notes.minutesLeft).toBeLessThan(3000);
+    vi.useFakeTimers({ toFake: ['Date'], now: from + HOUR + 60_000 });
+    expect(await bob.api.plans.plan()).toMatchObject({
+      kind: 'team', period: { from: new Date(from + HOUR).toISOString(), to: new Date(from + 2 * HOUR).toISOString() }, notes: { minutesLeft: 3000, minutesPerPeriod: 3000 }
+    });
+    vi.setSystemTime(from + 11 * HOUR + 60_000);
+    expect(await bob.api.plans.plan()).toMatchObject({ kind: 'team', period: { from: new Date(from + 11 * HOUR).toISOString(), to: new Date(from + 12 * HOUR).toISOString() } });
+    // Past its 12th period it has ended: Free from then, until a visit takes another.
+    vi.setSystemTime(from + 12 * HOUR + 60_000);
+    expect(await bob.api.plans.plan()).toMatchObject({ kind: 'free', period: { from: new Date(from + 12 * HOUR).toISOString() }, team: { licensed: false } });
+    vi.useRealTimers();
+    // The one nobody took goes back whole: 12 periods at $32.
+    expect((await ann.api.teams.refundLicenses()).licenses).toEqual({ unconsumed: 0, refundableMicroUsd: 0, autoPurchase: false });
+    expect((await ann.api.plans.plan()).balance).toMatchObject({ microUsd: 12 * YEARLY_LICENSE, history: [{ label: 'Team licenses refunded, 1', microUsd: 12 * YEARLY_LICENSE }, {}, {}] });
+  });
+
+  it('G20: licenses for a year are bought with a payment too, and taken oldest first among those for a period', async () => {
+    await setLimit('plan.period_seconds', 3600);
+    const ann = await account();
+    const [bob, cy] = await Promise.all([account(), account()]);
+    await team(ann, 1);
+    expect(await payFor(ann, 1, YEARLY_LICENSE, 12)).toEqual({ buys: { kind: 'licenses', count: 1, microUsdPerLicense: YEARLY_LICENSE, periods: 12 }, outcome: 'bought', why: null });
+    expect(await labels(ann)).toEqual(['Team, 1 license for a year', 'Added, 384 USDC', 'Team, 1 license', 'Added by support']);
+    expect((await ann.api.teams.mine())?.licenses).toEqual({ unconsumed: 2, refundableMicroUsd: LICENSE + 12 * YEARLY_LICENSE, autoPurchase: false });
+    // The license for a period was bought first, so Bob takes it; Cy takes the year.
+    const until = async (who: Account) => { const p = await who.api.plans.plan(); return Date.parse((await who.api.teams.mine())?.members.find((m) => m.you)?.license.until ?? '') - Date.parse(p.period.from); };
+    await joined(ann, bob);
+    expect(await until(bob)).toBe(HOUR);
+    await joined(ann, cy);
+    expect(await until(cy)).toBe(12 * HOUR);
+    expect((await ann.api.teams.mine())?.licenses).toEqual({ unconsumed: 0, refundableMicroUsd: 0, autoPurchase: false });
+  });
+
+  it('G21: auto-purchase still buys a license for one period at a license’s price, which licenses for a year at their lower price never lower, and never at a raised price', async () => {
+    await setLimit('plan.period_seconds', 3600);
+    const ann = await account();
+    const [bob, cy, dee] = await Promise.all([account(), account(), account()]);
+    await team(ann);
+    await give(ann, 12 * YEARLY_LICENSE + LICENSE);
+    await ann.api.teams.buyLicenses(1, YEARLY_LICENSE, 12);
+    await ann.api.teams.setAutoPurchase(true);
+    // Bob takes the year. None is left for Cy: auto-purchase buys one at $40, the price a license for a period had as the year
+    // was bought, and it's live for one period.
+    await joined(ann, bob);
+    expect(await joined(ann, cy)).toMatchObject({ licensed: true });
+    expect((await ann.api.plans.plan()).balance).toMatchObject({
+      microUsd: 0, history: [{ label: 'Team license, bought for a member', microUsd: -LICENSE }, { label: 'Team, 1 license for a year', microUsd: -12 * YEARLY_LICENSE }, {}]
+    });
+    const cyPlan = await cy.api.plans.plan();
+    expect(Date.parse(cyPlan.period.to) - Date.parse(cyPlan.period.from)).toBe(HOUR);
+    expect((await cy.api.teams.mine())?.members.find((m) => m.you)?.license.until).toBe(cyPlan.period.to);
+    // A license costs more now: auto-purchase never pays more than one last cost the team, so Dee gets none.
+    await setLimit('plan.team.price_micro_usd', 60_000_000);
+    await give(ann, 60_000_000);
+    expect(await joined(ann, dee)).toMatchObject({ licensed: false });
+    expect(await kinds(ann)).toEqual(['licenses-none', 'licenses-low']);
+    expect(await ann.api.plans.plan()).toMatchObject({ balance: { microUsd: 60_000_000 } });
+  });
+
+  it('G22: reads licenses a team bought before licenses for a year, kept with no periods, as licenses for one period: taken for one, refunded at what each cost', async () => {
+    await setLimit('plan.period_seconds', 3600);
+    const ann = await account();
+    const bob = await account();
+    await team(ann, 3);
+    // As the previous release sealed what the team bought: each license its ID and price, with no periods.
+    const row = z.object({ team_id: z.string(), owner_id: z.string(), billing_ciphertext: z.instanceof(Uint8Array) })
+      .parse((await h.pool.query('SELECT team_id, owner_id, billing_ciphertext FROM teams WHERE admin_owner_id = $1', [ann.session.ownerId])).rows[0]);
+    const key = serviceKey(unb64u(h.deps.cfg.KSERVICE, 32), 'accounting');
+    const header = { v: 1 as const, kind: 'team-billing', ownerId: row.owner_id, teamId: row.team_id, keyVersion: '1' };
+    const stored = openJson(key, header, row.billing_ciphertext, z.looseObject({ licenses: z.array(z.object({ id: z.string(), microUsd: z.number(), periods: z.number() })) }));
+    expect(stored.licenses.map((x) => x.periods)).toEqual([1, 1, 1]);
+    const older = { ...stored, licenses: stored.licenses.map((x) => ({ id: x.id, microUsd: x.microUsd })) };
+    await h.pool.query('UPDATE teams SET billing_ciphertext = $2 WHERE team_id = $1', [row.team_id, sealJson(key, header, toJson(older))]);
+    expect((await ann.api.teams.mine())?.licenses).toEqual({ unconsumed: 3, refundableMicroUsd: 3 * LICENSE, autoPurchase: false });
+    await joined(ann, bob);
+    const plan = await bob.api.plans.plan();
+    expect(plan).toMatchObject({ kind: 'team', period: { to: new Date(Date.parse(plan.period.from) + HOUR).toISOString() } });
+    expect((await bob.api.teams.mine())?.members.find((m) => m.you)?.license.until).toBe(plan.period.to);
+    expect((await ann.api.teams.refundLicenses()).licenses).toEqual({ unconsumed: 0, refundableMicroUsd: 0, autoPurchase: false });
+    expect((await ann.api.plans.plan()).balance).toMatchObject({ microUsd: 2 * LICENSE, history: [{ label: 'Team licenses refunded, 2', microUsd: 2 * LICENSE }, {}, {}] });
   });
 });
 

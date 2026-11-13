@@ -41,8 +41,8 @@ export function registerTeamRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
     return c.json({ left: true });
   });
   app.post('/v1/team/licenses', async (c) => {
-    const { count, microUsdPerLicense } = await body(c, BuyLicensesBodySchema);
-    return c.json(await teams.buyLicenses(c.get('owner'), count, microUsdPerLicense));
+    const { count, microUsdPerLicense, periods } = await body(c, BuyLicensesBodySchema);
+    return c.json(await teams.buyLicenses(c.get('owner'), count, microUsdPerLicense, periods));
   });
   app.post('/v1/team/licenses/refund', async (c) => c.json(await teams.refundLicenses(c.get('owner'))));
   app.put('/v1/team/auto-purchase', async (c) => c.json(await teams.setAutoPurchase(c.get('owner'), (await body(c, AutoPurchaseBodySchema)).on)));

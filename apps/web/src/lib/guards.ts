@@ -33,9 +33,9 @@ export async function sessionOrOffline(qc: QueryClient): Promise<Session | null 
 /**
  * The signed-in account, or off to the welcome screen to sign in. Signing in that started on a page with somewhere to come
  * back to goes there, wherever Google's way back landed (lib/afterSignIn.ts): a call's join page, Agents for an agent's
- * request, where it asks, Plans with checkout open for Get Pro on the welcome page, or the page of a link to someone's notes
- * or of an invite to a team, which asks before anything opens. A preload (a link hovered) never uses one up. Without a
- * connection, someone signed in on this device carries on offline.
+ * request, where it asks, Plans with checkout open for Get Pro or Start a team on the welcome page, or the page of a link to
+ * someone's notes or of an invite to a team, which asks before anything opens. A preload (a link hovered) never uses one up.
+ * Without a connection, someone signed in on this device carries on offline.
  */
 export async function requireAccount(qc: QueryClient, preload = false): Promise<{ account: Account }> {
   const s = await sessionOrOffline(qc);

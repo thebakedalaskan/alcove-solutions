@@ -27,7 +27,7 @@ export const GoogleSignInSearchSchema = z.object({
  * call's code and a link's or an invite's secret are secrets. One at a time, so a sign-in started somewhere else since takes
  * its place. A call's join page (`call`), an agent's request to be let in (`agent`, a pointer with no credential), a link to
  * someone's notes or an invite to a team, whose own pages take the secret (`link`, `team`), or Plans with checkout open on
- * what Get Pro on the welcome page chose (`plans`).
+ * what the welcome page's Get Pro or Start a team chose (`plans`).
  */
 export const AfterSignInSchema = z.discriminatedUnion('to', [
   z.object({ to: z.literal('call'), code: CallCodeSchema }),

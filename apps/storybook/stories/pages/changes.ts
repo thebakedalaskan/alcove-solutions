@@ -20,7 +20,7 @@ import { INVITATIONS, MOVING } from '../../src/world/invitations';
 import { withDriveExports } from '../../src/world/drive-exports';
 import { AIKO, ART, DIEGO, ELENA, LENA, MAYA, ME_ID, NADIA, OMAR, PRIYA, SAM, THEO } from '../../src/world/people';
 import { planWithTeam } from '../../src/world/teams';
-import { LAUNCH } from '../../src/world/workspaces';
+import { LAUNCH, withWorkspaces } from '../../src/world/workspaces';
 import { swap } from '../journeys/play';
 
 /** These parts of Alcove go wrong while the story is open (src/api/trouble.ts). */
@@ -270,9 +270,11 @@ export const adminWithoutLicense = (w: World): void => {
 /**
  * Whoever paid for Launch left it this morning, so its payment moved to Art, its longest-standing admin with an account: he
  * pays for it now, and its files count against his storage from a fortnight on, when its grace ends. Said at the top of
- * Settings › Plan, and in a line over the side panel's plan, by the name Art sees it by.
+ * Settings › Plan, and in a line over the side panel's plan, by the name Art sees it by, which is read from the workspaces
+ * he's in: so Launch is put in the world first (the busy afternoon has it only with `withWorkspaces`), or nothing names it.
  */
 export const paysForLaunch = (w: World): void => {
+  if (!w.workspaces.some((s) => s.id === LAUNCH)) withWorkspaces(w);
   w.plan = { ...w.plan, notices: [{ id: 'sb-notice-paying', kind: 'workspace-payer', at: iso(0, 9, 40), until: iso(15, 9, 40), count: null, workspaceId: LAUNCH }, ...w.plan.notices] };
 };
 /** Art's team license replaced Pro this morning: the two months that hadn't started went back to Art's balance. */

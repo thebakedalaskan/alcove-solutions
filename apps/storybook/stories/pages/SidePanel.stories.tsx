@@ -5,8 +5,9 @@
  * Anything else said (Pro renewed or ended, Team replacing Pro, a workspace you pay for now) is one short line above until it's dismissed. On Plans a
  * paid plan's row is the place you're on. On Team (the canvas's team, teamLow and teamWait): the same calm row, Team over
  * the team's name; for its admin while licenses run short, how many are left and Buy, in warm; without a license, "No team
- * license yet" in caution as the row's second line, and the row goes to Team. Each opens on Home, at a laptop's width, by
- * day and by night (the panel itself is night in both).
+ * license yet" in caution over your own plan with who has been told (for an admin, that buying licenses gives them one),
+ * then Free's notes left over its meter, and Free's row goes to Team. Each opens on Home, at a laptop's width, by day and
+ * by night (the panel itself is night in both).
  */
 import type { Meta } from '@storybook/react-vite';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
@@ -42,7 +43,7 @@ export const Pro = foot('/home', 'plan-pro');
 export const ProNight = night(Pro);
 /** Pro extended by a year: the same row, until a year on. */
 export const ProExtended = foot('/home', 'plan-pro-extended');
-/** Pro ending in 3 days and not renewing: the sun half set, and Extend, which opens checkout. */
+/** Pro ending in 6 days and not renewing, told a week before: the sun half set, and Extend, which opens checkout. */
 export const ProEnding = foot('/home', 'plan-pro-ending');
 export const ProEndingNight = night(ProEnding);
 /** Pro ending after its price went up, though renewing is on with the money: the same, since it won't renew at the new price by itself. */
@@ -73,10 +74,10 @@ export const TeamLicensesLowNight = night(TeamLicensesLow);
 /** None left when Maya needed one. */
 export const TeamNoLicensesLeft = foot('/home', 'team-admin-none');
 export const TeamNoLicensesLeftNight = night(TeamNoLicensesLeft);
-/** No license was left for Art: "No team license yet" in caution where the Free meter was; the row goes to Team, which says Priya has been told. */
+/** No license was left for Art: "No team license yet" in caution and "Priya has been told" under it, over Free's notes left and meter; Free's row goes to Team. */
 export const TeamNoLicense = foot('/home', 'team-member-unlicensed');
 export const TeamNoLicenseNight = night(TeamNoLicense);
-/** The admin's own license ran out with none left: the same caution line; Team, where they buy licenses, gives them one. */
+/** The admin's own license ran out with none left: the same caution line, with "Buy licenses, and one is yours" under it; Team is where they buy them. */
 export const TeamAdminNoLicense = page('/home', 'team-admin', { globals: LAPTOP, beforeEach: changing(adminWithoutLicense) });
 /** A team license replaced Pro: one short line above the row until it's dismissed in Settings. */
 export const TeamReplacedPro = page('/home', 'team-member', { globals: LAPTOP, beforeEach: changing(replacedPro) });

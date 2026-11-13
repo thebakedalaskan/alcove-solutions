@@ -78,8 +78,8 @@ export const ExtendPro: CheckoutStory = {
   name: '16.4 Extend Pro',
   ...checkout('/settings#plan', 'plan-pro-ending', { plan: 'pro', from: 'settings' }),
   play: async ({ userEvent, step }) => {
-    await step('Pro ends in 3 days. Extend opens checkout counted from its end: the days left aren’t lost', async () => {
-      await says('Added to the 3 days you have left');
+    await step('Pro ends in 6 days. Extend opens checkout counted from its end: the days left aren’t lost', async () => {
+      await says('Added to the 6 days you have left');
     });
     await step('How much longer: a year. The $5 in the balance comes off. Choose Solana', async () => {
       await userEvent.click(await choice('Pay with USDC on', 'Solana'));
