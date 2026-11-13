@@ -92,12 +92,12 @@ export const ProEndingRenewedEnded: PageStory = {
   ...page('/home', 'plan-pro-ending'),
   play: async ({ userEvent, step }) => {
     const sheet = () => screen.findByRole('dialog', { name: 'Add money' }, SOON);
-    await step('Three days before Pro ends, without renewing, the side panel’s small sun is half set: Ends in 3 days · Extend, which opens checkout', async () => {
-      await screen.findByRole('button', { name: /Ends in 3 days · Extend/ }, LATER);
+    await step('Told a week before Pro ends, and not renewing: the side panel’s small sun is half set, Ends in 6 days · Extend, which opens checkout', async () => {
+      await screen.findByRole('button', { name: /Ends in 6 days · Extend/ }, LATER);
     });
     await step('Open Settings at your plan. It says when Pro ends, and Extend is the one filled button', async () => {
       await toPlan((el) => userEvent.click(el));
-      await within(await plan()).findByText(/^Ends in 3 days, on/, {}, SOON);
+      await within(await plan()).findByText(/^Ends in 6 days, on/, {}, SOON);
     });
     await step('Turn on Renew from balance instead. $5 doesn’t buy a month, so it says Pro won’t renew', async () => {
       await userEvent.click(within(await row('Renew from balance')).getByRole('switch', { name: 'Renew from balance' }));

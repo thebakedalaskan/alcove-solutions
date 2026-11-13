@@ -89,11 +89,11 @@ Beside every page, dark in both themes, in two groups: your work at the top, and
   period's notes is left, "About 1 h 26 min of notes left" over a meter (warm under an hour, "No notes left until 1 Dec" in
   caution once they've stopped), which opens Settings at your plan. On Pro or Team, a row like the places: the plan's small
   sun, **Pro** and "Until 4 Nov 2027", opening Settings at your plan; once notes are low or out it says that instead ("About
-  40 min of notes left", "No notes left until 1 Dec"). While Pro is about to end without renewing, its sun is half set and it
-  says "Ends in 3 days · Extend", which opens checkout. A payment for a plan on its way takes the row's place: "Waiting for
-  192 USDC", and **Pro, 12 months · Open**, which opens it again in checkout. "Pro renewed from your balance" or "Pro ended.
-  Nothing was deleted." is one line above the row until it's dismissed in Settings. On Plans, Pro's or Team's row, or a
-  payment's, is the place you're on.
+  40 min of notes left", "No notes left until 1 Dec"). From a week before Pro ends without renewing, its sun is half set
+  and it says "Ends in 6 days · Extend", which opens checkout. A payment for a plan on its way takes the row's place:
+  "Waiting for 192 USDC", and **Pro, 12 months · Open**, which opens it again in checkout. "Pro renewed from your
+  balance" or "Pro ended. Nothing was deleted." is one line above the row until it's dismissed in Settings. On Plans,
+  Pro's or Team's row, or a payment's, is the place you're on.
 - Offline, a notice at the top says recording still works and everything else catches up when you're back
   (with **Record without a connection** off, that recording waits for the connection too). The call about to start and
   the check wait until the connection returns. Alcove also opens offline for someone signed in on this browser:
@@ -1953,21 +1953,22 @@ notes on new calls while the oldest request fails.
 - **Plan** (16.7, 16.8, 16.14), in two panels. What you have: **Free** ("Every feature, with about 5 hours of notes and
   10 GB of storage.") or **Pro** ("Until Thursday 4 November 2027. Nothing renews by itself: Alcove reminds you before it
   ends.", or "It renews from your balance before it ends."), with **See plans** (Plans) and **Get Pro** or **Extend**
-  (checkout). Ending is said in warm ("Ends in 3 days, on Saturday 7 November. Then you're back on Free, and nothing is
-  deleted."), and **Extend** is the page's one filled button then, as **Get Pro** is once notes have run out. **Notes left
-  this period** ("About 1 h 26 min", "Back to 5 hours on 1 December. Calls without notes are free.") has a sun on its line,
-  at the end of the line on a new period and back along it as notes are written: warm under an hour, "None" with "Calls go
-  on without notes until 1 December." once out. **Storage** ("2.1 GB of 10 GB", files up to 512 MB): over the plan's
-  storage, a note says until when everything works as before, then that uploads and notes have stopped until you make
-  room. **More notes** ("10 hours for $15, for this period.", **Add 10 hours**, which opens checkout) shows on Free, and on
-  any plan once notes are low or out. At the top until dismissed with ×: "Pro renewed from your balance, for another month."
-  or "Pro ended on … Nothing was deleted: you're back on Free." (with **Get Pro again**). What you pay with: **Balance**, in
-  dollars, with **Add money** (11.24); on Pro, **Renew from balance** (off by default; it says when the balance is short of
-  a month) and, while months bought after this one haven't started, **Refund**, asked in place. Then **Payments**: first
-  what's on its way or needs a person, each opening checkout (a payment for a plan) or the add-money sheet, with a cancel
-  while nothing has reached it; then the balance's latest changes, each with **Receipt**, a receipt to print. Without a
-  server that takes payments the balance has no **Add money**. On a team, the plan row says whose team it is and until when
-  your license runs, with **Open Team**, and Storage is the team's pool; its admin has the licenses too (16.18).
+  (checkout). Ending is said in warm from a week before ("Ends in 6 days, on Tuesday 10 November. Then you're back on
+  Free, and nothing is deleted."), and **Extend** is the page's one filled button then, as **Get Pro** is once notes have
+  run out. **Notes left this period** ("About 1 h 26 min", "Back to 5 hours on 1 December. Calls without notes are free.")
+  has a sun on its line, at the end of the line on a new period and back along it as notes are written: warm under an
+  hour, "None" with "Calls go on without notes until 1 December." once out. **Storage** ("2.1 GB of 10 GB", files up to
+  512 MB): over the plan's storage, a note says until when everything works as before, then that uploads and notes have
+  stopped until you make room. **More notes** ("10 hours for $15, for this period.", **Add 10 hours**, which opens
+  checkout) shows on Free, and on any plan once notes are low or out. At the top until dismissed with ×: "Pro renewed from
+  your balance, for another month." or "Pro ended on … Nothing was deleted: you're back on Free." (with
+  **Get Pro again**). What you pay with: **Balance**, in dollars, with **Add money** (11.24); on Pro,
+  **Renew from balance** (off by default; it says when the balance is short of a month) and, while months bought after
+  this one haven't started, **Refund**, asked in place. Then **Payments**: first what's on its way or needs a person, each
+  opening checkout (a payment for a plan) or the add-money sheet, with a cancel while nothing has reached it; then the
+  balance's latest changes, each with **Receipt**, a receipt to print. Without a server that takes payments the balance
+  has no **Add money**. On a team, the plan row says whose team it is and until when your license runs, with
+  **Open Team**, and Storage is the team's pool; its admin has the licenses too (16.18).
 - **Privacy**: what account and call information Alcove processes, then confidential compute: the time the hardware
   was verified when this browser could check it, **Not verified** and why when its check of the server didn't pass, or
   where your audio is opened and your notes are written. The **Privacy policy** explains how Alcove uses account and service
@@ -2537,9 +2538,9 @@ loses a payment on its way: the side panel and Settings show it, and opening it 
 
 ### 16.1 See the plans
 
-**Plans** (`/plans`) is what each plan brings and what it costs: Free and Pro side by side (Team joins when it's offered), on
-the last of the sunset. It's reached from Settings › Plan's **See plans**, checkout's
-**Compare plans**, and the welcome page's **Get Pro** (16.13), which opens it with checkout open on Pro (`/plans?checkout=pro`;
+**Plans** (`/plans`) is what each plan brings and what it costs: Free, Pro and Team side by side, on the last of the sunset.
+It's reached from the side panel's **Free plan · See plans** (16.7), Settings › Plan's **See plans**, checkout's **Compare plans**, and the welcome page's **Get Pro** and
+**Start a team** (16.13), which open it with checkout open on Pro (`/plans?checkout=pro`) or on Team (`?checkout=team`;
 `?checkout=hours` opens it on more notes); the address forgets it once checkout is open.
 
 1. On Free, Settings › Plan's **See plans** opens Plans priced for a year: Pro is $16 a month, "$192 for 12 months. You save $48.", and **Get
@@ -2552,7 +2553,7 @@ the last of the sunset. It's reached from Settings › Plan's **See plans**, che
 4. **Get Pro** opens checkout over Plans (16.2), on 12 months with Yearly chosen and 1 with Monthly.
 
 On Pro, Pro says **Your plan**, **Extend** is a second choice, and Free says "Where you’re back to if a plan ends". While Pro is
-ending it says "Ends in 3 days" and **Extend** is filled. On a team license Pro isn't sold, and its card says "Not while you’re on
+ending it says "Ends in 6 days" and **Extend** is filled. On a team license Pro isn't sold, and its card says "Not while you’re on
 your team’s plan" where its button would be. While the prices load, the cards wait in place; if they don't load, the page says
 why with **Try again**, and offline they show once you're back. The first time Home opens for an account, it opens on Plans
 instead, once (16.20).
@@ -2574,6 +2575,10 @@ instead, once (16.20).
 4. **Done.** The sun clears the horizon and a tick draws in: "You're on Pro", until when, the receipt row with **Receipt**, a
    receipt to print, "Nothing renews by itself. Alcove reminds you before it ends.", and **Done**. Pro starts at once with a
    fresh period and all of Pro's notes.
+5. **Closed.** However the window is closed from Done, the page under it says once what was bought, in the server's dates:
+   "You're on Pro until 4 Nov 2027." (extending, "Pro runs to 10 Nov 2027."; more notes, "10 hours of notes added."; a team,
+   "Vandelay Industries is on Team." or "6 licenses added to Vandelay Industries."). Over a call, notes coming on again say
+   it instead (16.9).
 
 What you send is what the balance is short of the total: money already in the balance counts ("Your balance — −$5"). A
 network's minimum above that raises the amount, and the summary says the rest stays in your balance. The payment adds the
@@ -2613,6 +2618,13 @@ notes; they don't carry into the next period. Done says "10 more hours of notes"
 7. **Payments off.** Choose says paying isn't available right now; a balance that covers it can still buy.
 
 ### 16.7 Your plan in the side panel
+
+Your plan is at the side panel's foot, under the confidential-compute check. On Free, about how much of the period's notes is
+left sits over a meter (warm under an hour, in caution once out) and opens Settings at your plan; under it, Free's row is the
+panel's way into Plans: **Free plan · See plans** opens Plans (16.1), **Free plan · Get Pro** opens checkout on Pro once notes
+are low or out, and on a team without a license **Free plan · Team** opens Team (16.19). On Pro or Team, the plan's own row
+(its small sun, and until when, the team's name, or ending with **Extend**, 16.14) opens Settings at your plan. On Plans,
+whichever row it is is the place you're on.
 
 A payment for a year of Pro is on its way: the foot says "Waiting for 192 USDC", and **Pro, 12 months · Open** reopens it in
 checkout. When it arrives, Pro is bought from it in the same go, and within half a minute the foot becomes Pro's own row: its
@@ -2671,18 +2683,20 @@ a call. The side panel's number turns warm.
 
 ### 16.13 Plans before signing in
 
-The welcome page's **Plans**: Free and Pro in a cove at the last of the sun, with what they cost, their notes and storage,
-**Start free**, and **Get Pro**, which signs in and then opens Plans with checkout open on Pro.
+The welcome page's **Plans**: Free, Pro and Team in a cove at the last of the sun, with what they cost (Team's for each person),
+their notes and storage, **Start free**, **Get Pro**, which signs in and then opens Plans with checkout open on Pro, and
+**Start a team**, which signs in and then opens it with checkout open on starting a team (16.15).
 
 ### 16.14 Pro ending, renewed, ended
 
-Three days before Pro ends without renewing, the foot's sun is half set ("Ends in 3 days · Extend"), and Plan says when in
-warm, with **Extend** filled; with browser notifications on and **Your plan** ticked (11.25), the browser says so too. With
-renewing on and less than a month's price in the balance, Plan says Pro won't renew; once **Add money** brings the balance to
-a month's price, it says it renews and the sun is up again. At the month's end a month is bought: "Pro renewed…" shows at the
-top and in the foot until dismissed. When Pro ends without renewing you're back on Free with nothing deleted, said at the
-top, with **Get Pro again**, and in the foot. Over Free's storage, everything works as before for a grace, then uploads and
-notes stop until you make room or get Pro again, which lifts it at once.
+A week before Pro ends without renewing, the foot's sun is half set ("Ends in 7 days · Extend", "Ends in 6 days" the next
+day), and Plan says when in warm, with **Extend** filled; with browser notifications on and **Your plan** ticked (11.25),
+the browser says so too, and again a day before it ends. With renewing on and less than a month's price in the balance,
+Plan says Pro won't renew; once **Add money** brings the balance to a month's price, it says it renews and the sun is up
+again. At the month's end a month is bought: "Pro renewed…" shows at the top and in the foot until dismissed. When Pro
+ends without renewing you're back on Free with nothing deleted, said at the top, with **Get Pro again**, and in the foot.
+Over Free's storage, everything works as before for a grace, then uploads and notes stop until you make room or get Pro
+again, which lifts it at once.
 
 ### 16.15 Start a team
 
@@ -2690,7 +2704,7 @@ A team is one admin (whoever starts it) and as many people as it has licenses fo
 on Plans says what a license is (a price for each person, for a period: $40 for 30 days unless the limits say otherwise) and,
 on **Yearly**, what one for a year costs a month ($32, $384 a person for 12 months), and **Start a team** on it opens checkout
 on Team over the page, for a year while Plans is on **Yearly**; a company's Team page has the same as a quiet row while you're
-on none, opening on a month.
+on none, opening on a month, and the welcome page's signs in first (16.13).
 
 1. The team's name, the company's to start with, with you its admin; how long, **Monthly** or **Yearly · 20% off** (while a
    license for a year is offered); and how many licenses: one for each person, you included. A license for a year is one
@@ -2741,9 +2755,10 @@ left; and **Refund** gives back the licenses nobody has taken, asked in place.
 
 ### 16.19 On a team without a license
 
-When none was left for you, you stay on your own plan, and the team's admin is told. The side panel says it in caution, "No team
-license yet", under your notes left in place of the meter (on Pro, as the row's second line), and the row opens Team, which says
-who has been told. Settings › Plan says it once at the top, over your plan. The next time you open Alcove after the admin buys
+When none was left for you, you stay on your own plan, and the team's admin is told. The side panel says it over your own plan:
+"No team license yet" in caution, and under it who has been told ("Priya has been told"), or for the team's admin "Buy
+licenses, and one is yours". On Free your notes left and the meter stay under it, and Free's row is **Free plan · Team**, which
+opens Team. Settings › Plan says it once at the top, over your plan. The next time you open Alcove after the admin buys
 more, one is yours: your plan is Team, your license runs a period, and the side panel's foot is Team's row, over the team's name.
 
 ### 16.20 Choose a plan
@@ -2773,5 +2788,12 @@ Alcove normally after plans came.
 While the prices load, the cards wait in place and **Continue on Free** is already on Free's; offline it says the plans show once
 you're back, and when they don't load it says why, each with **Continue on Free** to go on.
 
-Storybook's journeys use **16.1–16.20** above. The addresses, payments and networks in it are made up; a real
+### 16.21 Team at the third invite
+
+On a company's Team page while you're on no team, the invite that makes three of you (you, everyone on Alcove and everyone
+invited) goes as ever, and Team is offered beside it, once for the account on this browser: "That makes 3 of you. Put everyone
+on one plan: Team, $40 a person a month." in the server's price, with **See Team**, which opens checkout on Team over the page
+(16.15). Leaving it is Not now: it goes by itself, and invites after it say nothing more. Nothing is offered on a team.
+
+Storybook's journeys use **16.1–16.21** above. The addresses, payments and networks in it are made up; a real
 payment through 1Click needs a hand check with a wallet.

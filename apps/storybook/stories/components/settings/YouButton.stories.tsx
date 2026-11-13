@@ -10,6 +10,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useArgs } from 'storybook/preview-api';
 import { did } from '../../../src/component';
 import { ART } from '../../../src/world/people';
+import { ROUND_PHOTO } from '../../../src/world/photos';
 
 const meta = {
   title: 'Components/Settings/YouButton',
@@ -34,6 +35,9 @@ type Story = StoryObj<typeof meta>;
 /** At rest: your face. Hover it for its ring. */
 export const AtRest: Story = { name: 'At rest' };
 export const AtRestNight: Story = { ...AtRest, name: 'At rest, night', globals: { theme: 'dark' } };
+/** Your photo cut to a circle before it reached your sign-in provider: it fills the arch, as any photo does, never a circle
+ * standing in it on the arch's pale fill. */
+export const RoundPhotoNight: Story = { name: 'Round photo, night', args: { person: { ...ART, photoUrl: ROUND_PHOTO } }, globals: { theme: 'dark' } };
 /** Notifications paused until 17:12: the bell, crossed out, on its lower right. Its label says until when after your name, and so does its tooltip. */
 export const Paused: Story = { args: { until: '17:12' } };
 export const PausedNight: Story = { ...Paused, name: 'Paused, night', globals: { theme: 'dark' } };

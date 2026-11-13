@@ -52,7 +52,7 @@ export const FreeMonthlyPhone = phone(FreeMonthly);
 export const Pro = page('/plans', 'plan-pro');
 export const ProNight = night(Pro);
 export const ProPhone = phone(Pro);
-/** Pro ends in 3 days and won't renew: it says so beside its name, and Extend is the one filled button. */
+/** Pro ends in 6 days and won't renew: it says so beside its name, and Extend is the one filled button. */
 export const ProEnding = page('/plans', 'plan-pro-ending');
 export const ProEndingNight = night(ProEnding);
 export const ProEndingPhone = phone(ProEnding);
@@ -80,6 +80,12 @@ export const StartATeamMonthly = page('/plans', 'payments', {
     });
   }
 });
+/**
+ * Back from signing in with the welcome page's Start a team (`/plans?checkout=team`): checkout is open over Plans on starting
+ * one as the page opens, and the address forgets it.
+ */
+export const StartATeamFromTheWelcomePage = page('/plans?checkout=team', 'payments');
+export const StartATeamFromTheWelcomePagePhone = phone(StartATeamFromTheWelcomePage);
 /**
  * Vandelay's admin, licensed: Team is Art's plan, with Buy licenses. Pro isn't sold while the license lasts, and its card says so
  * where Get Pro would be. Nothing is filled.

@@ -5,6 +5,7 @@ import { infiniteQueryOptions, queryOptions, useIsMutating, useMutation, useMuta
 import { useCallback, useEffect, useRef } from 'react';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetHourLeft } from '~/features/plans/hourLeft';
+import { forgetTeamOffer } from '~/features/plans/teamOffer';
 import { forgetNotified } from '~/features/shell/notified';
 import { announceMentionsRead } from '~/features/shell/attentionChannel';
 import { forgetEdits } from '~/features/workspace/keep';
@@ -470,6 +471,7 @@ async function forgetHere(owner: string | undefined, deleted: boolean) {
     announceSignOut(owner, deleted);
     forgetPlaces(owner);
     forgetHourLeft(owner);
+    forgetTeamOffer(owner);
   }
   await forgetNotified();
   if (!owner) return;

@@ -80,7 +80,7 @@ export const Offline = checkout('/record', 'payments', { plan: 'pro' }, {
 });
 /** Offline on a phone: the window fills the screen, the button waits, and why is said over it. */
 export const OfflinePhone: CheckoutStory = { ...Offline, globals: PHONE };
-/** Extending Pro, which ends in 3 days: counted from its end, with the days left said. */
+/** Extending Pro, which ends in 6 days: counted from its end, with the days left said. */
 export const Extend = checkout('/settings#plan', 'plan-pro-ending', { plan: 'pro', from: 'settings' });
 /** More notes for this period, with notes stopped: 10, 20 or 50 hours. */
 export const MoreNotes = checkout('/home', 'plan-stopped', { plan: 'hours', from: 'side' }, { beforeEach: changing((w) => withPayments(w)) });
@@ -163,6 +163,16 @@ export const BoughtWithTheBalance = checkout('/home', 'plan-balance', { plan: 'p
 const press = (name: string): NonNullable<CheckoutStory['play']> => async ({ userEvent }) => {
   await userEvent.click(await pressable('button', name, LATER, within(await win())));
 };
+
+/**
+ * Three months bought from the balance, then Done: the window closes, and the page under it says once what was bought, in
+ * the server's date (the canvas's toast, "You’re on Pro until …"). More hours and licenses say theirs the same way.
+ */
+export const BoughtAndClosed: CheckoutStory = {
+  ...BoughtWithTheBalance,
+  play: async (c) => { await press('Buy with your balance')(c); await press('Done')(c); }
+};
+export const BoughtAndClosedNight: CheckoutStory = { ...BoughtAndClosed, globals: DARK };
 
 /**
  * Start a team, from Team's card on Plans, on nothing in the balance: its name is the company's, six licenses for the six

@@ -26,24 +26,25 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
     "Starts in 4 min" or "Happening now" in `sun-text`, and Join, never filled. On Home it makes way while Home's own
     line offers the call (its last few minutes, and while it's going), so there's one Join at a time. The rest of the
     day is Home's Upcoming. It comes in under Agents, so the places at the top never move
-  - the confidential-compute check, then your plan, in one row where the minutes of notes left were, so the foot is no
-    taller than it was. On Free, notes left over a thin meter that runs from rose to the sun's warmth ("About 1 h 26 min of
-    notes left", warm under an hour, caution once out), which opens Settings at Plan, and under it Free's row: "Free plan ·
-    See plans", which opens Plans, or "Free plan · Get Pro" (checkout) once notes are low or out, or "Free plan · Team" on a
-    team without a license. On Pro or Team, one calm row:
+  - the confidential-compute check, then your plan, as the plans canvas's Side board has it. On Free, notes left over a
+    thin meter that runs from rose to the sun's warmth ("About 1 h 26 min of notes left", warm under an hour, caution once
+    out), which opens Settings at Plan, and under it Free's row, the side panel's way into Plans: "Free plan · See plans",
+    which opens Plans, or "Free plan · Get Pro" (checkout) once notes are low or out, or "Free plan · Team" on a team
+    without a license. On Pro or Team, one calm row where Free's notes left are:
     `SunMark` (a 12px half sun on a 16px hairline, in the icon column under the shield), the plan in Newsreader 18px over a
     12.5px line in ink-2, and a chevron, with no box and no glow. The line says what matters most: "Ends in N days ·
     Extend" in sun-text 600 with the sun half set (it opens checkout), "No notes left until 1 Dec" in caution, for a team's
     admin while its licenses run short "2 licenses left · Buy" in sun-text 600 (it opens checkout on Team), "About 40 min
-    of notes left" in sun-text, or "Until 4 Nov 2027" on Pro and the team's name on Team. On a team without a license,
-    "No team license yet" in caution takes the line's place (under the meter's place on Free), and the row opens Team,
-    which says who has been told. A payment for a plan on its way takes the row's place: dots and "Waiting for N USDC" in
+    of notes left" in sun-text, or "Until 4 Nov 2027" on Pro and the team's name on Team. On a team without a license
+    you're on your own plan, told so over it: "No team license yet" in caution, and under it who has been told ("Priya has
+    been told"), or for an admin "Buy licenses, and one is yours"; on Free the notes left and the meter follow, then Free's
+    row with Team. A payment for a plan on its way takes the row's place: dots and "Waiting for N USDC" in
     horizon ("Payment seen, adding licenses" for a team's), and the payment's row with Open. Anything else said (Pro renewed
     or ended, Team replacing Pro, a team's licenses while notes have stopped, a workspace you pay for now, by its name and
     held to two lines) is one short line above the row, and only
     while it shows (until it's dismissed in Settings). On Plans, Pro's or Team's row, or a payment's, is shaded as the place
-    you're on, so there's still one shaded row; on Free it's Free's row. Plans is reached from Settings › Plan's See
-    plans and wherever a limit is met
+    you're on, so there's still one shaded row; on Free it's Free's row. Plans is reached from Free's row (See plans),
+    Settings › Plan's See plans, checkout's Compare plans and wherever a limit is met
 - **The page** scrolls under a rounded edge. Search ("Search or ask", ⌘K opens the palette) and you (your arch, which opens
   your menu) sit at its top right on every page, outside the page itself, so moving between pages leaves them alone. A page's
   title sits at its top left, in the same place on every page, and keeps clear of them with `--top-room`.
@@ -600,7 +601,8 @@ The last of the sunset, with the plans on the water: a page you compare on, so m
   member gets a quiet line saying who buys them. While the prices wait, three waiting cards.
 - **Under them:** On every plan, as chips, and the paying line with its wallet.
 - **States:** waiting cards, failed with Try again, offline. On a phone the cards stand one under another.
-- On Pro or Team, or with a payment on its way, the side panel's plan row is the place you're on while you're here.
+- While you're here, the side panel's plan row is the place you're on: Free's row (Free plan · See plans), Pro's or Team's,
+  or a payment's.
 - **The first time** (the plan choice, `features/plans/PlanChoice.tsx`): Home opens on Plans once, in its place, while the
   server says the plans haven't been shown (`Plan.choose`): every new account, after its arrival, and once every account from
   before plans. Its head is a short title in the page's own type (`dusk-title`) with one line under it (`pl-lede`), in place
@@ -632,6 +634,9 @@ you're buying on the right, under its own small evening (`PlanWindow`) whose sun
   cancels only a payment nothing has reached yet (`deposits.ts` › `cancel`; docs/engineering/plans-and-usage.md, Cancelling
   a top-up), and refuses the rest. What arrived is added to the balance when the payment settles, whether or not the rest
   comes, so there's nothing to cancel: the address waits for the rest until it closes.
+- **Closing from Done**, however it's closed, says once in a toast on the page under it what was bought, in the server's
+  dates: "You’re on Pro until 4 Nov 2027.", "Pro runs to 10 Nov 2027.", "10 hours of notes added.", "Vandelay Industries is
+  on Team.", "6 licenses added to Vandelay Industries.". Not over a call, where notes coming on again say it.
 - **Motion** is one move a stage, transform and opacity only: waiting, the sun on its horizon and its glow breathing; seen,
   the sun lifts and the amount counts up; done, it clears the horizon and the sky warms. With reduced motion every stage
   shows at once and only the dots and glints fade.
@@ -914,11 +919,12 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
 - **Your agent** (`AgentScene`) books a call over MCP, beside the tools it can use.
 - **Recording in the room** is Record's night, inset on the water (`RecordScene`): the recorder stands on the horizon,
   records offline and sets, then the session notes rise. **What Alcove can see** (`SealedScene`) sits on its water.
-- **Plans** looks out of a cove of its own (seed 8) on the plans moment, the last of the sun on its horizon: Free and Pro as small
-  cards on the water, Pro raised with a warm edge, then Start free and Get Pro, which signs in and opens Plans with checkout
-  on Pro. Both are secondary, though the Doors board fills Get Pro: the page's one filled button is its way in, and the last
-  ask's Continue with Google comes into view with them as the page scrolls on. Its prices are kept beside it, since the
-  server's offers need a session.
+- **Plans** looks out of a cove of its own (seed 8) on the plans moment, the last of the sun on its horizon: Free, Pro and Team
+  as small cards on the water, Pro raised with a warm edge, standing one under another below a tablet's width; then Start
+  free, Get Pro, which signs in and opens Plans with checkout on Pro, and Start a team, which signs in and opens it on Team.
+  All three are secondary, though the Doors board fills Get Pro: the page's one filled button is its way in, and the last
+  ask's Continue with Google comes into view with them as the page scrolls on. Its prices are kept beside it by hand, in the
+  Plans page's words, since the server's offers need a session.
 - **The last ask** is morning on the same sea, in a cove of its own (seed 11): the sun comes up as the page reaches it.
   The footer sits on the water.
 - **Signing in sails out of the cove to Home.** Every way in on the page keeps where the hero's cove stands on screen as

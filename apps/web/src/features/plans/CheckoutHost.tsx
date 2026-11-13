@@ -132,9 +132,9 @@ function described(buys: Purchase, offers: PlanOffers): { name: string; brief: s
   return { name: `${hours} of notes`, brief: 'For this period', lines: [{ label: `${hours} at ${usd(perHour)} an hour`, value: usd(costOf(buys)) }] };
 }
 
-/** What Done says of a purchase, and its receipt. */
+/** What Done says of a purchase, its receipt, and what's said on the page under it once the window closes (`toast`). */
 interface Done {
-  title: string; lines: string[]; reminder: string | null;
+  title: string; lines: string[]; reminder: string | null; toast: string;
   /** A team was just started: Done invites its people. */
   invite: boolean;
   row: { title: string; sub: string; reference: string | null };
@@ -404,19 +404,23 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
     const lines: string[] = [];
     let heading: string;
     let until: Date | null;
+    let told: string;
     if (b.kind === 'pro') {
       until = boughtUntil(b.months, fresh);
       heading = extend ? `Pro runs to ${shortDate(until)}` : 'You’re on Pro';
+      told = extend ? `${heading}.` : `You’re on Pro until ${shortDate(until)}.`;
       lines.push(`Until ${fullDate(until)}.`);
     } else if (b.kind === 'licenses') {
       // Said from the team and the plan as they are after the visit buying them made: whether yours was taken, what's left.
       until = null;
       heading = starting !== false ? `${named || 'Your team'} is on Team` : `${b.count} more ${b.count === 1 ? 'license' : 'licenses'}${licenseTerm(b.periods)}`;
+      told = starting !== false ? `${heading}.` : `${plural(b.count, 'license')}${licenseTerm(b.periods)} added to ${named || 'your team'}.`;
       const line = starting !== false ? startedWith(b.count, b.periods, fresh?.team?.licensed === true || teamNow?.licensed === true) : leftNow(teamNow);
       if (line) lines.push(line);
     } else {
       until = periodEnd;
       heading = moreHoursOfNotes(b.packs * b.minutesPerPack);
+      told = `${hoursOfNotes(b.packs * b.minutesPerPack)} of notes added.`;
       lines.push(`They’re yours until this period ends${until ? ` on ${longDay(until)}` : ''}${opened?.stopped ? ', and notes start again now' : ''}.`);
     }
     if (paid && sent > asked) lines.push(`You sent ${tokens(sent)} USDC, ${tokens(sent - asked)} more than asked: it’s in your balance.`);
@@ -425,7 +429,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
     // Licenses are for a team, whose name the receipt says; anything else is for whoever bought it.
     const forOn = b.kind === 'licenses' ? named || null : name;
     return {
-      title: heading, lines,
+      title: heading, lines, toast: told,
       invite: b.kind === 'licenses' && starting !== false,
       // Licenses run from when each is taken (a period, or a year's), and aren't renewed: there's nothing to remind. Pro
       // renews only when renewing will buy the next month (on, a month's price in the balance, no rise in price), as the
@@ -495,7 +499,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
 
   /* ---------- the step ---------- */
   const close = <Button variant="secondary" onClick={onClose}>Close</Button>;
-  const finish = <Button variant="primary" onClick={onClose}>{open.from === 'call' ? 'Back to the call' : 'Done'}</Button>;
+  const finish = <Button variant="primary" onClick={() => closeFromDone()}>{open.from === 'call' ? 'Back to the call' : 'Done'}</Button>;
   // Why the button waits, said on a phone too (its own class, which the phone's foot doesn't hide as it does a hint).
   const offline = !online && <p className="ck-offline" role="status">You’re offline. Everything catches up when you’re back.</p>;
   const note = said && <CheckoutNote>{said.text}{said.ref && <><br /><RequestRef id={said.ref} /></>}</CheckoutNote>;
@@ -690,9 +694,18 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
     body = <CheckoutDone title={d.title} lines={d.lines} reminder={d.reminder} receipt={{ ...d.row, onOpen: () => setReceipt(true) }}
       invite={d.invite ? <TeamInvite {...invite} bare /> : undefined} />;
   }
+  /**
+   * Closing the window from Done, however it's closed, says once on the page under it what was bought, in the server's dates
+   * (the canvas's toast: "You’re on Pro until 4 Nov 2027."). Not over a call, where notes coming on again say it.
+   */
+  const toastDone = done && open.from !== 'call' ? done.toast : null;
+  function closeFromDone() {
+    if (toastDone) toast(toastDone);
+    onClose();
+  }
 
   return (
-    <CheckoutWindow title={title} step={step} stage={stage} summary={summary} foot={foot} footKey={footKey} onClose={onClose}
+    <CheckoutWindow title={title} step={step} stage={stage} summary={summary} foot={foot} footKey={footKey} onClose={closeFromDone}
       theme={open.from === 'call' ? theme : null}
       receipt={receipt && done ? <PaymentReceipt {...done.receipt} onPrint={() => window.print()} onBack={() => setReceipt(false)} /> : undefined}>
       {body}

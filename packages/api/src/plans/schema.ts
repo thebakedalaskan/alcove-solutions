@@ -25,8 +25,9 @@ export type ProMonth = z.infer<typeof ProMonthSchema>;
 /**
  * Something about the plan its owner is told, in the app and, if they've turned it on, from the browser
  * (`NotificationPrefs.plan`), until they dismiss it:
- * - `pro-ending`: Pro ends at `until`, a few days from now, and won't renew: renewing is off, the balance is short, or a month
- *   costs more now than when the last was bought, which renewing never pays without its owner buying at it first.
+ * - `pro-ending`: Pro ends at `until`, a week from now (told again a day before), and won't renew: renewing is off, the
+ *   balance is short, or a month costs more now than when the last was bought, which renewing never pays without its owner
+ *   buying at it first.
  * - `pro-renewed`: a month was bought from the balance, so Pro now runs to `until`.
  * - `pro-ended`: Pro ended at `until`; the account is on Free.
  * - `licenses-low` (a team's admin): `count` licenses are left unconsumed, fewer than the team's low mark.
@@ -174,10 +175,10 @@ export const PurchaseSchema = z.discriminatedUnion('kind', [
 export type Purchase = z.infer<typeof PurchaseSchema>;
 export const RenewBodySchema = z.object({ renew: z.boolean() });
 /**
- * What the Plans page opens checkout on as it opens (`/plans?checkout=pro`): Pro, or more notes for this period. The welcome
- * page's Get Pro lands there once signed in.
+ * What the Plans page opens checkout on as it opens (`/plans?checkout=pro`): Pro, more notes for this period, or Team. The
+ * welcome page's Get Pro and Start a team land there once signed in.
  */
-export const CheckoutParamSchema = z.enum(['pro', 'hours']);
+export const CheckoutParamSchema = z.enum(['pro', 'hours', 'team']);
 export type CheckoutParam = z.infer<typeof CheckoutParamSchema>;
 
 /* ---------- adding money ---------- */
