@@ -101,6 +101,15 @@ export const YourNotesPointedAt = page('/calls/n2?tab=yours', 'busy', {
     });
   }
 });
+/** Writing in Your notes: the box is as tall as what's written, two lines here, with the button level with the last. */
+export const WritingInYourNotes = page('/calls/n2?tab=yours', 'busy', {
+  play: async ({ userEvent, step }) => {
+    await step('Write a note only Art reads', async () => {
+      const box = await screen.findByRole('textbox', { name: 'Write in your own notes' }, { timeout: 30000 });
+      await userEvent.type(box, 'Ask Kofi about the pricing page draft by Friday, and read the onboarding emails before Maya sends them.');
+    });
+  }
+});
 /** Ten more of Art's own notes, more in the shared notes and a dozen people: the tab scrolls by itself, and the stage stays. */
 export const YourNotesLong = page('/calls/n2?tab=yours', 'busy', { beforeEach: changing(longSide) });
 export const NotesLong = page('/calls/n2', 'busy', { beforeEach: changing(longSide) });

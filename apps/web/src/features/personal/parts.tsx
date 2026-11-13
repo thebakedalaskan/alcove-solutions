@@ -12,9 +12,6 @@ import { hm } from '~/lib/time';
 /** Each kind's marker. What you wrote is lines of text: a pencil there would read as the button that changes it. */
 const ICON: Record<PersonalEntry['kind'], IconName> = { note: 'textLines', bookmark: 'bookmark', answer: 'ask' };
 
-/** Lines a text box needs, up to `max`: what was typed, wrapped at about `wide` characters. */
-export const rowsFor = (text: string, wide: number, max: number) => Math.min(max, Math.max(1, text.split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / wide)), 0)));
-
 /** What a moment says: who said what. */
 export function Quote({ m, me }: { m: SourceMoment; me: string | undefined }) {
   if (!m.line) return null;
@@ -24,7 +21,8 @@ export function Quote({ m, me }: { m: SourceMoment; me: string | undefined }) {
 /**
  * Writing something for yourself. Who it's for is in the box before you type. Enter keeps it; Shift and Enter starts a
  * new line. The draft is the caller's: it stays where you left it however you move around, and never reaches another box.
- * `icon` leads the box, and `hint` stands where the button that keeps it is until something's typed.
+ * `icon` leads the box, and `hint` stands where the button that keeps it is until something's typed. The box is as tall as
+ * the lines its words take (`field-sizing` in personal.css), so it's one row here.
  */
 export function OwnComposer({ value, onChange, onSend, busy = false, focus = false, said = false, placeholder = 'Write something for yourself', icon, hint }: {
   value: string; onChange: (v: string) => void; onSend: (text: string) => void; busy?: boolean; focus?: boolean;
@@ -40,7 +38,7 @@ export function OwnComposer({ value, onChange, onSend, busy = false, focus = fal
     <form className="own-compose" autoComplete="off" onSubmit={(e) => { e.preventDefault(); send(); }}>
       {!said && <span className="to"><Scope>Your notes</Scope>Other participants can’t open this</span>}
       {icon && <Icon name={icon} size={16} />}
-      <textarea autoFocus={focus} value={value} rows={rowsFor(value, 34, 5)} maxLength={MAX_PERSONAL_TEXT} placeholder={placeholder} aria-label="Write in your own notes" onChange={(e) => onChange(e.target.value)} onKeyDown={keys} />
+      <textarea autoFocus={focus} value={value} rows={1} maxLength={MAX_PERSONAL_TEXT} placeholder={placeholder} aria-label="Write in your own notes" onChange={(e) => onChange(e.target.value)} onKeyDown={keys} />
       {hint && !value.trim() ? hint : <button type="submit" className="ac-btn is-secondary" aria-label="Keep it in your notes" title="Keep it in your notes" disabled={!value.trim() || busy}><Icon name={said ? 'arrowUp' : 'sendLine'} size={said ? 15 : 17} /></button>}
     </form>
   );
@@ -77,7 +75,7 @@ function EditBox({ text, label, max, multiline, onSave, onDone }: { text: string
   const save = () => { const t = value.trim(); if (t === text.trim()) onDone(); else onSave(t); };
   return (
     <form className="own-edit" onSubmit={(e) => { e.preventDefault(); save(); }}>
-      <textarea ref={box} value={value} rows={rowsFor(value, 34, 8)} maxLength={max} aria-label={label} onChange={(e) => setValue(e.target.value)}
+      <textarea ref={box} value={value} rows={1} maxLength={max} aria-label={label} onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onDone(); }
           if (e.key === 'Enter' && (!multiline || !e.shiftKey) && !e.nativeEvent.isComposing) { e.preventDefault(); save(); }

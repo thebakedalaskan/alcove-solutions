@@ -16,7 +16,7 @@ import type { ScreenMarks } from '~/features/notes/screens';
 import { listNames, sameEmail, spokenName } from '~/lib/people';
 import { q, qk, useAddToShared, useOwnNotes, useTakeBack, useWriteShared } from '~/lib/queries';
 import { hm, shortDay } from '~/lib/time';
-import { OwnComposer, OwnEntries, Quote, Sure, rowsFor } from './parts';
+import { OwnComposer, OwnEntries, Quote, Sure } from './parts';
 
 const WHERE = 'Shared notes';
 const say = (reach: 'later' | 'none') => (reach === 'later' ? 'It opens once the notes are written.' : 'Nothing was captured then.');
@@ -225,7 +225,7 @@ function SharedComposer({ note, me }: { note: Note; me: string | undefined }) {
         {a ? <><Faces people={a.audience} size={18} max={4} /><span>{readersLine(a, me)}</span></>
           : box.error ? <span className="bad">{errorMessage(box.error)}</span> : <Dots />}
       </span>
-      <textarea value={draft} rows={rowsFor(draft, 34, 5)} maxLength={MAX_ADDITION_TEXT} placeholder="Write for everyone with the notes" aria-label="Write in the shared notes"
+      <textarea value={draft} rows={1} maxLength={MAX_ADDITION_TEXT} placeholder="Write for everyone with the notes" aria-label="Write in the shared notes"
         onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); post(); } }} />
       <button type="submit" className="ac-btn is-secondary" aria-label="Post it in the shared notes" title="Post it in the shared notes" disabled={!draft.trim() || !a || write.isPending}><Icon name="arrowUp" size={15} /></button>
       {since.people.length > 0 && <p className="cd-since"><Faces people={since.people} size={20} max={3} /><span>{listNames(since.people)} got the notes since you started, so they read it too.</span></p>}
