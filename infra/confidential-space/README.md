@@ -37,7 +37,7 @@ GitHub Actions (deploy.yml): build ─► cosign + Cloud KMS ─► Rekor ─►
 | Network | `default`, proxy-only subnet `alcove-proxy-only` (`10.120.0.0/23`), `alcove-router`/`alcove-nat` | The VMs have no external address; outbound traffic goes through Cloud NAT, and Google's APIs stay on Google's network. |
 | Firewall | `alcove-allow-lb-proxies`, `alcove-allow-health-checks` | tcp:8080 and 8443 to the `alcove-api` tag, from the proxy-only subnet and from Google's probes (`35.191.0.0/16`, `130.211.0.0/22`). |
 | Address | `alcove-api-ip` | The static IPv4 the DNS names point at. |
-| Health checks | `alcove-api-lb` (every 5 s), `alcove-api-heal` (every 30 s, four failures) | HTTP `/health` on 8080, with the API's host name. The edge answers it itself, 200 once it serves TLS and 503 before, without touching the API or the database. The second judges autohealing, more slowly, since it replaces a VM. |
+| Health checks | `alcove-api-lb` (every 5 s), `alcove-api-heal` (every 10 s, twelve failures) | HTTP `/health` on 8080, with the API's host name. The edge answers it itself, 200 once it serves TLS and 503 before, without touching the API or the database. The second judges autohealing, more slowly, since it replaces a VM: two minutes of failures. A rollout waits on it too, before it takes the old VM out. |
 | Load balancer | `alcove-api-https`, `alcove-api-http`: a backend service, target TCP proxy and forwarding rule each | A target proxy has one backend service and a backend service one named port, so each port has its own. 443's proxy sends a PROXY v1 line; 80's doesn't. Idle timeout 3600 s, draining 300 s, client-IP affinity on 443. |
 | Group | `alcove-api` in `us-central1-a` | One VM. Updates add the new VM first and remove the old one once it's healthy (surge 1, unavailable 0); autohealing waits 600 s for a new VM. |
 | Templates | `alcove-api-<UTC time>-<digest prefix>` | One per rollout: c3-standard-4, TDX, `TERMINATE` on maintenance, Secure Boot, a 20 GB Balanced PD, the newest Confidential Space image by name, the account it runs as, and the image and its environment in metadata. deploy.sh keeps the newest five. |
@@ -270,7 +270,7 @@ template:
 | It boots, to the launcher's "Boot completed" (the guest's own boot is 20–24 s of it) | 37–42 | 53–62 |
 | The launcher measures the boot, pulls and checks the image and attests, to "workload task started" ("Workload setup completed" says 8–10 s, once 20) | 15–18 (once 32) | 69–87 |
 | The API starts: the Cloud SQL Auth Proxy, its secrets, the database, its keys, TLS | 1–5 | 71–92 |
-| The group's health check calls it healthy and the group takes the old VM out (every 30 s) | 22–34 | **97–126: the new VM serves** |
+| The group's health check calls it healthy and the group takes the old VM out (it asked every 30 s then; setup.sh now makes it every 10 s) | 22–34 | **97–126: the new VM serves** |
 | The old VM drains: `CS_DRAINING_TIMEOUT` and up to a minute more | 360–361 | 457–487 |
 | It's deleted, 120 s of it Confidential Space holding the VM after its workload stopped ("Shutdown scheduled") | 133–137 | 591–620 |
 
