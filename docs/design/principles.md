@@ -126,7 +126,7 @@ page. Blue Hour takes the page and the pressable colour from the logo's own sky 
 | Text | `ink`, `ink-2`, `ink-3` |
 | The one thing you press | `sun`, `on-sun` |
 | Warmth and highlights | `sun-text`, `sun-soft`, `sun-glow` |
-| Meaning | `rose`, `horizon`, `rec`, `caution`, each with a `-soft` |
+| Meaning | `rose`, `horizon`, `rec`, `caution`, each with a `-soft`; `caution-text` for small caution text out on the scene |
 | The call stage, always night | `stage`, `stage-tile`, `stage-raised`, `stage-ink`, `stage-ink-2`, `speak`, `stage-point` (pointers on a shared screen) |
 | Drawing on the evening | `dusk-sun`, `dusk-haze` |
 | Illustration, tour art and covers only | `dawn-1` to `dawn-4`, `gold`, the `cover-*` gradients |
@@ -166,7 +166,8 @@ the same parts), a receipt's title (`PaymentReceipt`), and the plans' prices, on
 else does: a new place for Newsreader is a design decision, not a style.
 
 In the light theme, `ink-3` doesn't reach 4.5:1 out on the sky or the sea. Meta text on the scene uses `ink-2`; `ink-3` is
-for text on `surface` and `ground`. Warm `sun-text` on the light sky is kept large or put on an icon.
+for text on `surface` and `ground`. Warm `sun-text` on the light sky is kept large or put on an icon. Small caution text out
+on the scene (Waiting for a license on Team's water) takes `caution-text`, which by day is deep enough to read there.
 
 Truncate with `ac-clamp-1` or `ac-clamp-2` rather than `nowrap`, so long text can't widen a column. Don't also set
 `display: block` on it: that cancels the clamp.

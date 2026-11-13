@@ -19,8 +19,8 @@ const ROLES: readonly Role[] = [
   { title: 'The one thing you press', about: 'Navy by day and cream by night: a solid fill with on-sun text and no shadow, one per view.', names: ['sun', 'on-sun'] },
   { title: 'Warmth and highlights', about: 'Time, now, a highlight. Never a fill you press.', names: ['sun-text', 'sun-soft', 'sun-glow'] },
   {
-    title: 'Meaning', about: 'rose: a decision waiting on someone’s answer. horizon: a follow-up, information, links, focus. rec: notes being taken or recording, nothing else. caution: a problem. Each has a soft one to sit behind it.',
-    names: ['rose', 'rose-soft', 'horizon', 'horizon-soft', 'rec', 'rec-soft', 'caution', 'caution-soft']
+    title: 'Meaning', about: 'rose: a decision waiting on someone’s answer. horizon: a follow-up, information, links, focus. rec: notes being taken or recording, nothing else. caution: a problem. Each has a soft one to sit behind it, and caution-text is caution for small text out on the scene, where caution falls short by day.',
+    names: ['rose', 'rose-soft', 'horizon', 'horizon-soft', 'rec', 'rec-soft', 'caution', 'caution-soft', 'caution-text']
   },
   { title: 'The call stage, always night', about: 'The stage, its tiles and what’s raised on it, its ink, the ring round whoever speaks, and pointers on a shared screen.', names: ['stage', 'stage-tile', 'stage-raised', 'stage-ink', 'stage-ink-2', 'speak', 'stage-point'] },
   { title: 'Drawing on the evening', about: 'For what stands in the scene: the low sun, and the haze along the horizon.', names: ['dusk-sun', 'dusk-haze'] },

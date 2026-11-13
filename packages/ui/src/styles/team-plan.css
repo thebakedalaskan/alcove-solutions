@@ -53,7 +53,7 @@
 @keyframes tq-up { from { transform: translateY(102%); } }
 .tq-who .nm { max-width: 100%; margin-top: 8px; font: 500 12.5px/16px var(--font-sans); color: var(--ink); text-align: center; text-shadow: 0 0 10px var(--ground), 0 0 3px var(--ground); }
 .tq-who .lc { margin-top: 2px; white-space: nowrap; font: 400 11.5px/14px var(--font-sans); color: var(--ink-2); text-align: center; text-shadow: 0 0 10px var(--ground), 0 0 3px var(--ground); }
-.tq-who.is-waiting .lc { font-weight: 600; color: var(--caution); }
+.tq-who.is-waiting .lc { font-weight: 600; color: var(--caution-text); }
 /* Ended is quiet where ink-3 can still be read on the evening: at night. By day, ink-2 and the word say it. */
 .dark .tq-who:is(.is-ended, .is-none) .lc { color: var(--ink-3); }
 /* An arch to press: it lifts a little to the pointer, and stays ringed while what it opened is open. */
@@ -87,7 +87,8 @@
 .tq-row .tq-t { min-width: 0; }
 .tq-row .tq-t b { display: flex; align-items: center; gap: 8px; min-width: 0; font: 500 14.5px/20px var(--font-sans); color: var(--ink); }
 .tq-row .tq-t small { display: block; font: 400 13px/18px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
-.tq-row .tq-t small.is-caution { font-weight: 600; color: var(--caution); }
+/* Waiting for a license, out on the sea: caution-text, which reads at 4.5:1 there by day as caution doesn't. */
+.tq-row .tq-t small.is-caution { font-weight: 600; color: var(--caution-text); }
 .dark .tq-row .tq-t small.is-quiet { color: var(--ink-3); }
 .tq-row > .ac-btn { margin-right: -2px; }
 .tq-tag { flex: none; padding: 1px 8px; border-radius: var(--radius-pill); background: var(--sunk); font: 500 11.5px/18px var(--font-sans); color: var(--ink-2); }

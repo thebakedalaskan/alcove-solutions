@@ -103,6 +103,8 @@
   /* Problems, explained calmly */
   --caution: #8A5300;
   --caution-soft: #FFF0D6;
+  /* Caution as small text out on the scene (the sky and the sea), where caution falls short of 4.5:1 by day. */
+  --caution-text: #6E410D;
   --gold: #FFB547;
   /* What's highlighted or commented on in a document */
   --hl: rgb(255 181 71 / .28);
@@ -232,6 +234,7 @@
   --rec-soft: #3D1621;
   --caution: #F3B85A;
   --caution-soft: #3A2A0E;
+  --caution-text: #F3B85A;
   --gold: #FFC774;
   --hl: rgb(255 199 116 / .2);
   --code-keyword: #C4AEFF;
@@ -321,7 +324,7 @@
   --color-horizon: var(--horizon); --color-horizon-soft: var(--horizon-soft);
   --color-rose: var(--rose); --color-rose-soft: var(--rose-soft); --color-frame: var(--frame);
   --color-rec: var(--rec); --color-rec-soft: var(--rec-soft);
-  --color-caution: var(--caution); --color-caution-soft: var(--caution-soft); --color-gold: var(--gold);
+  --color-caution: var(--caution); --color-caution-soft: var(--caution-soft); --color-caution-text: var(--caution-text); --color-gold: var(--gold);
   --color-stage: var(--stage); --color-stage-tile: var(--stage-tile); --color-stage-raised: var(--stage-raised);
   --color-stage-ink: var(--stage-ink); --color-stage-ink-2: var(--stage-ink-2); --color-speak: var(--speak);
   --color-dawn-1: var(--dawn-1); --color-dawn-2: var(--dawn-2); --color-dawn-3: var(--dawn-3); --color-dawn-4: var(--dawn-4); --color-focus: var(--focus);
