@@ -120,7 +120,7 @@ piece of a file is sealed on the one core every call runs on. A `media-piece` is
 | `plan-account` | accounting key | owner (the plan, the balance in dollars and its history, any grace, the months of Pro bought, renewing, the notices about Pro, the owner's team's licenses and a workspace whose payment moved to them (its ID, never its name), and more notes bought for a period) |
 | `team-name` | state key `team` under the team's own owner | team (its name) |
 | `team-member` | state key `team` under the team's own owner | team, member (their name and address, as their account has them: a sign-in that brings new ones seals them again) |
-| `team-billing` | accounting key | team's owner, team (its unconsumed licenses and what each cost, auto-purchase, the alerts its admin has had, its pool as last reckoned and its grace), opened without anyone signed in so upkeep can reckon the pool |
+| `team-billing` | accounting key | team's owner, team (its unconsumed licenses and what each cost, auto-purchase and what a license last cost the team, the alerts its admin has had, its pool as last reckoned and its grace), opened without anyone signed in so upkeep can reckon the pool |
 | `ai-meter` | accounting key | owner (the period's AI allowance in dollars, what's been spent by kind, what requests in flight and live calls hold, and when it ran out) |
 | `deposit` | accounting key | owner, deposit (a top-up's route, address, amounts and the provider's quote, and what it was opened to buy and how that went), opened without anyone signed in so the watcher can add it |
 | `sign-in-attempt` | sign-in attempt key | provider (`google`); the owner is empty, as nobody is signed in yet |

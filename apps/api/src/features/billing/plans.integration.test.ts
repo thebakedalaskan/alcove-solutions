@@ -235,6 +235,8 @@ const YEARLY = 16_000_000;
 /** A pack of more notes: 10 hours for $15. */
 const HOURS = 15_000_000;
 const PACK = 600;
+/** A team license. */
+const LICENSE = 40_000_000;
 const BASE_USDC = 'nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near';
 /** Money in, as a person adds it: a top-up the fake 1Click settles in full. */
 async function deposit(who: Account, microUsd: number): Promise<void> {
@@ -621,6 +623,37 @@ describe('Pro', () => {
       notices: [{ kind: 'pro-renewed', until: new Date(late + 3_600_000).toISOString() }, { kind: 'pro-ending' }]
     });
     expect(await labels(ann)).toEqual(['Pro, renewed for a month', 'Added by support', 'Pro, 1 month', 'Added by support']);
+  });
+
+  it('never renews Pro under a team license taken after Pro ended and before upkeep came, and has nothing more to do for it', async () => {
+    await h.setLimit('plan.period_seconds', 3600);
+    await h.setLimit('plan.pro.remind_seconds', 600);
+    const logged = (from: number, msg: string) => h.logs.slice(from).flatMap((l) => { const r = z.object({ msg: z.string() }).passthrough().safeParse(JSON.parse(l)); return r.success && r.data.msg === msg ? [r.data] : []; });
+    // Bob renews from his balance, which has the next month's price.
+    const bob = await account();
+    await give(bob, 2 * PRICE);
+    await bob.api.plans.buyPro(1, PRICE);
+    const end = Date.parse((await bob.api.plans.setRenew(true)).pro.until ?? '');
+    expect((await bob.api.plans.plan()).pro.renewal).toBe('buys');
+    // Ann's team has a license for him.
+    const ann = await account();
+    await give(ann, LICENSE);
+    await ann.api.teams.create('Vandelay Industries');
+    await ann.api.teams.buyLicenses(1, LICENSE);
+    const { link } = await ann.api.teams.invite();
+    // His month ends, and before upkeep comes he joins the team. Joining is a visit, so he takes the license; no month of
+    // Pro is running, so it has nothing to replace.
+    vi.useFakeTimers({ toFake: ['Date'], now: end + 60_000 });
+    expect(await bob.api.teams.join(link.slice(link.indexOf('#') + 1))).toMatchObject({ licensed: true });
+    const from = h.logs.length;
+    await upkeepAt(bob, end + 120_000);
+    // Upkeep buys nothing under the license, and tells nothing: Pro's end is handled.
+    const plan = await bob.api.plans.plan();
+    expect(plan).toMatchObject({ kind: 'team', balance: { microUsd: PRICE }, pro: { months: [], renew: true, renewal: null }, notices: [] });
+    expect(await labels(bob)).toEqual(['Pro, 1 month', 'Added by support']);
+    expect(logged(from, 'pro renewed')).toEqual([]);
+    expect(logged(from, 'pro ended')).toEqual([expect.objectContaining({ ownerId: bob.session.ownerId, why: 'team' })]);
+    expect(await dueAt(bob)).toBeNull();
   });
 
   it('turns renewing off with a refund, so upkeep never buys back what was refunded, and takes back the notice it renewed', async () => {

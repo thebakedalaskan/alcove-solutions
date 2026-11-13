@@ -57,7 +57,8 @@ CREATE TABLE team_notes (
 CREATE INDEX team_notes_team ON team_notes(team_id);
 
 -- A team's workspace: which team, and who's in it (`team`: every licensed member; `added`: only the people added). Both
--- null on every other workspace.
-ALTER TABLE workspaces ADD COLUMN team_id alcove_id128 REFERENCES teams(team_id) ON DELETE SET NULL;
+-- null on every other workspace. `team_id` is `text`, not `alcove_id128`, as `payer_owner_id` is (0030): a new column of a
+-- domain with a CHECK makes Postgres rewrite the whole table under its lock, and the foreign key already holds it to a team.
+ALTER TABLE workspaces ADD COLUMN team_id text REFERENCES teams(team_id) ON DELETE SET NULL;
 ALTER TABLE workspaces ADD COLUMN team_access text CHECK (team_access IN ('team', 'added'));
 CREATE INDEX workspaces_team ON workspaces(team_id) WHERE team_id IS NOT NULL;

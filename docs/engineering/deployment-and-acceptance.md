@@ -156,6 +156,12 @@ signs nobody out, and notes jobs left behind by a restart are picked up by the n
 next run, within 5 minutes of starting. Nothing brings an object back. Fix forward instead. If a rollback can't be avoided, copy the
 object store first, and restore it once a release that knows files is back: the rows stay, so they'd find their objects again.
 
+**Rolling back past the release that brought plans strands payments.** The release before it (`d62c2de1b`, with credits)
+can't open the deposit records plans write, so its watcher marks every one it gives up on as failed and unwatched: back on
+a release with plans, a late payment to one is added only by support, by account ID. It knows nothing of Pro, more notes,
+teams or who pays for a workspace either. Fix forward instead
+([Plans and usage › How it upgrades](plans-and-usage.md#how-it-upgrades)).
+
 NEAR AI has its own deployment switch. `NEAR_AI_ENABLED=true` binds `NEAR_AI_API_KEY` from
 `alcove-near-ai-api-key` into the API service (the migration job doesn't need it); the service is deployed
 with `NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1` and the default models, speech endpoint and roots

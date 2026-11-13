@@ -39,6 +39,12 @@ const Billing = z.object({
   licenses: z.array(z.object({ id: z.string(), microUsd: z.number().int() })),
   /** Whether a license is bought from the admin's balance when a member needs one and none is left. */
   autoPurchase: z.boolean(),
+  /**
+   * What a license last cost the team: the last bought, by its admin or by auto-purchase; before any was, the price when
+   * auto-purchase was turned on (null: neither yet). Auto-purchase never pays more (D3): a higher price is seen before
+   * it's paid, as the admin buys at it themselves. A record kept without it reads as null, and buys nothing by itself.
+   */
+  lastMicroUsd: z.number().int().nullable().default(null),
   /** The admin was told licenses are low (until there are `team.low_licenses` or more again), and that none were left (until more are bought). */
   low: z.boolean(),
   none: z.boolean(),
@@ -50,7 +56,7 @@ const Billing = z.object({
   pool: z.object({ bytes: z.number().int().nonnegative(), grace: z.object({ until: z.string(), storageBytes: z.number().int() }).nullable() })
 });
 type Billing = z.infer<typeof Billing>;
-const fresh = (): Billing => ({ licenses: [], autoPurchase: false, low: false, none: false, pool: { bytes: 0, grace: null } });
+const fresh = (): Billing => ({ licenses: [], autoPurchase: false, lastMicroUsd: null, low: false, none: false, pool: { bytes: 0, grace: null } });
 
 const billingKey = (d: Pick<Deps, 'cfg'>) => serviceKey(unb64u(d.cfg.KSERVICE, 32), 'accounting');
 const billingHeader = (t: Pick<TeamRow, 'owner_id' | 'team_id'>) => ({ v: 1 as const, kind: 'team-billing', ownerId: t.owner_id, teamId: t.team_id, keyVersion: '1' });
@@ -179,10 +185,10 @@ async function asAdmin(c: Db, ownerId: string): Promise<{ m: MemberRow; t: TeamR
 
 /**
  * Someone is using Alcove (a sign-in, or the app loading or coming back after a while): a member of a team without a live
- * license takes one. One that's unconsumed; or, with auto-purchase on and the admin's balance enough, one bought then;
- * otherwise none, and they stay on their own plan, told to ask their admin, who's told none are left. Taking one replaces
- * any Pro the member had, and tells the admin when fewer than `team.low_licenses` are left. Nothing happens for anyone
- * on no team, or with a live license.
+ * license takes one. One that's unconsumed; or, with auto-purchase on, the price no higher than a license last cost the
+ * team and the admin's balance enough, one bought then; otherwise none, and they stay on their own plan, told to ask their
+ * admin, who's told none are left. Taking one replaces any Pro the member had, and tells the admin when fewer than
+ * `team.low_licenses` are left. Nothing happens for anyone on no team, or with a live license.
  */
 export async function visit(d: Service, ownerId: string): Promise<void> {
   const seen = await membership(d.pool, ownerId);
@@ -196,14 +202,22 @@ export async function visit(d: Service, ownerId: string): Promise<void> {
     let b = openBilling(d, t);
     const ctx = { teamId: t.team_id, memberId: m.member_id };
     let bought = false;
+    // Why none was bought, when none was left: auto-purchase is off, a license costs more than it last did, or the
+    // admin's balance is short of it.
+    let why: 'off' | 'price' | 'short' = 'off';
     const [first, ...rest] = b.licenses;
     if (first) b = { ...b, licenses: rest };
     else if (b.autoPurchase) {
       const price = l.get('plan.team.price_micro_usd');
-      const admin = await accountOf(d, c, t.admin_owner_id, true);
-      if (admin.balanceMicroUsd >= price) {
-        await save(d, c, t.admin_owner_id, withEntry(admin, -price, 'Team license, bought for a member'));
-        bought = true;
+      // A higher price is never taken without the admin seeing it (D3): they're told none are left, and see it as they buy.
+      if (b.lastMicroUsd === null || price > b.lastMicroUsd) why = 'price';
+      else {
+        const admin = await accountOf(d, c, t.admin_owner_id, true);
+        if (admin.balanceMicroUsd >= price) {
+          await save(d, c, t.admin_owner_id, withEntry(admin, -price, 'Team license, bought for a member'));
+          b = { ...b, lastMicroUsd: price };
+          bought = true;
+        } else why = 'short';
       }
     }
     if (!first && !bought) {
@@ -215,14 +229,14 @@ export async function visit(d: Service, ownerId: string): Promise<void> {
         b = { ...b, none: true };
         await saveBilling(d, c, t, b);
       }
-      tlog.info('team license wanted, none left', { ...ctx, buying: b.autoPurchase });
+      tlog.info('team license wanted, none left', { ...ctx, buying: b.autoPurchase, why });
       return;
     }
     const until = now + l.get('plan.period_seconds') * 1000;
     await exec(c, 'UPDATE team_members SET licensed_from = $2, licensed_until = $3, wanted_at = NULL WHERE member_id = $1', [m.member_id, new Date(now), new Date(until)]);
     let refunded: number | null = null;
     await changePlan(d, c, ownerId, (a) => {
-      const r = replacedByLicense(a, now);
+      const r = replacedByLicense(a, l, now);
       refunded = r.refunded;
       return r.refunded === null ? r.a : withNotice(r.a, 'license-replaced-pro', now, { count: r.refunded });
     });
@@ -455,7 +469,7 @@ export async function licensesBought(d: Service, c: Db, t: TeamRow | null, owner
   const b = openBilling(d, t);
   const licenses = [...b.licenses, ...Array.from({ length: buys.count }, () => ({ id: id128(), microUsd: buys.microUsdPerLicense }))];
   const low = (await limitsNow(d, c)).get('team.low_licenses');
-  await saveBilling(d, c, t, { ...b, licenses, none: false, low: b.low && licenses.length < low });
+  await saveBilling(d, c, t, { ...b, licenses, none: false, low: b.low && licenses.length < low, lastMicroUsd: buys.microUsdPerLicense });
   tlog.info('team licenses bought', { ownerId, teamId: t.team_id, count: buys.count });
   return r;
 }
@@ -484,11 +498,16 @@ export async function refundLicenses(o: Owner): Promise<MyTeam> {
   return requireTeam(o, o.ownerId);
 }
 
-/** Admin only: whether a license is bought from their balance when a member needs one and none is left. */
+/**
+ * Admin only: whether a license is bought from their balance when a member needs one and none is left, at no more than a
+ * license last cost the team. Turned on before any was bought, the price then is what it goes by.
+ */
 export async function setAutoPurchase(o: Owner, on: boolean): Promise<MyTeam> {
   await tx(o.pool, async (c) => {
     const { t } = await asAdmin(c, o.ownerId);
-    await saveBilling(o, c, t, { ...openBilling(o, t), autoPurchase: on });
+    const b = openBilling(o, t);
+    const lastMicroUsd = on && b.lastMicroUsd === null ? (await limitsNow(o, c)).get('plan.team.price_micro_usd') : b.lastMicroUsd;
+    await saveBilling(o, c, t, { ...b, autoPurchase: on, lastMicroUsd });
     tlog.info('team auto-purchase set', { ownerId: o.ownerId, teamId: t.team_id, on });
   });
   return requireTeam(o, o.ownerId);

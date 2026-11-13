@@ -343,6 +343,9 @@ when the last month was bought (its `monthlyMicroUsd`: a month's price then, so 
 month's $20 as it was, not at $16). A higher price is never taken from the balance without the owner seeing it: Pro isn't
 renewed, they're told `pro-ending` at the reminder and `pro-ended` at the end, and the money stays in the balance. Once
 they buy at the new price themselves, it's what renewing goes by. A lower price renews, and becomes what it goes by.
+Nothing renews while a team license is live: Team is the plan in force, so upkeep marks Pro's end handled without buying
+or telling anything (logged `pro ended`, `why: team`), as when a license replaces Pro. That includes a license taken after
+Pro ended and before upkeep came, which has no month to replace: upkeep reads the license once it holds the plan's row.
 
 **Notices** (`Plan.notices`, newest first, those not dismissed) are shown in the app and, with `NotificationPrefs.plan`
 on (the default), from the browser. `POST /v1/plan/notices/:id/dismiss` hides one; another account's ID, or an unknown
@@ -422,17 +425,27 @@ live for `plan.period_seconds` from then (`licensed_from`, `licensed_until`); on
 On a visit:
 
 1. An unconsumed license is taken, the oldest bought.
-2. None left, with auto-purchase on (`PUT /v1/team/auto-purchase { on }`) and the admin's balance enough: one is bought
-   ("Team license, bought for a member") and taken.
+2. None left, with auto-purchase on (`PUT /v1/team/auto-purchase { on }`), the price no higher than a license last cost
+   the team, and the admin's balance enough: one is bought ("Team license, bought for a member") and taken.
 3. Otherwise none is: the member stays on their own plan and is told `license-needed` (ask your admin; never the admin
    themselves), `wanted_at` is set, and the admin is told `licenses-none`, once until more are bought. Logged `team license
-   wanted, none left`.
+   wanted, none left`, with why none was bought: `off`, `price` or `short`.
 
-A license taken replaces Pro at once: the running month ends then (not refunded), every month that hasn't started goes
-back to the balance ("Refund: 2 months of Pro, for a team license"), and the member is told `license-replaced-pro` with
-how many. Pro can't be bought while a license is live (`conflict`). When a take leaves fewer than `team.low_licenses` (5)
-unconsumed, the admin is told `licenses-low` with how many are left, once until there are 5 or more again. These notices
-are in `Plan.notices` with Pro's (`until` null, `count` where it says), shown and notified as Pro's are.
+Auto-purchase follows renewing's rule ([Pro](#pro)): a higher price is never taken from the balance without the admin
+seeing it. What a license last cost the team is kept in its `team-billing` record: the last bought, by the admin (from
+their balance or with a payment) or by auto-purchase, or, before any was, the price when auto-purchase was turned on.
+Once the price is higher, auto-purchase buys nothing and the admin is told `licenses-none`; when they buy licenses at the
+new price themselves, as checkout shows it, it's what auto-purchase goes by. A lower price is bought, and becomes what it
+goes by.
+
+A license taken replaces Pro at once: the running month ends then (not refunded), every month that hasn't started goes,
+and the balance gets back what refunding them would give ([Refunds](#pro): what was paid, less a month's price's
+difference on the months kept of a year or more that's left shorter, so a year replaced in its first month gives back
+$172, not $176; "Refund: 11 months of Pro, for a team license"), and the member is told `license-replaced-pro` with how
+many (none, and no line in the history, when nothing comes back). Pro can't be bought while a license is live
+(`conflict`). When a take leaves fewer than `team.low_licenses` (5) unconsumed, the admin is told `licenses-low` with how
+many are left, once until there are 5 or more again. These notices are in `Plan.notices` with Pro's (`until` null,
+`count` where it says), shown and notified as Pro's are.
 
 **On Team** the plan's kind is `team`, its period the license's, its notes `plan.team.notes_minutes` (3,000) for each
 member, metered as their own (a new license is a fresh period, with all of it), and its largest file
@@ -686,79 +699,128 @@ The server never holds a key that can move treasury money. By hand, in near.com,
 
 ## How it upgrades
 
-- Migration `0029_plans.sql` adds `plan_accounts` (record kind `plan-account`) and `ai_meters` (`ai-meter`).
-  `0030_workspace_payers.sql` adds nullable `payer_owner_id`, `payer_grace_until` and `payer_grace_bytes` to `workspaces`,
-  and the index on who pays: columns and an index only, so its lock on `workspaces` (and the foreign key's on `owners`)
-  lasts as long as those take, whatever the number of workspaces. `0032_workspace_payers_backfill.sql` then gives every
-  workspace its longest-standing admin with an account as its payer, in a transaction of its own that holds only the rows
-  it writes: the previous release keeps reading workspaces, and counting what's stored, while it runs. That's who `makeHome`
-  and `createIn` name now, and what upkeep's `settlePayers` gives a workspace nobody pays for, so the backfill, upkeep and
-  new workspaces agree. The previous release ignores all of it while the deploy migrates. These migrations follow main's
-  `0026_workspace_calls.sql`, `0027_agent_activity.sql` and `0028_meeting_proposals.sql`, and nothing in them depends on
-  those. No shared database ran them under the numbers they had on the plans branches
-  (`0026_plans.sql`, `0027_workspace_payers.sql`, `0028_teams.sql`); a local one that did is refused by `migrate.ts`
-  until those three rows of `schema_migrations` are renamed to the new names. `0029_plans.sql` also lost
-  `ai_meters.version` before it shipped (a count of each account's AI requests in the clear, which nothing read), so a
-  local database that ran it before is refused for that file too: drop the column and set that row's checksum to the
-  file's SHA-256, or start the database over (`pnpm db:reset`).
-- Credits are gone: every account starts on Free at $0, its old balance ignored, and then every top-up it paid for is
-  added again as dollars, at face value (above): welcome credits aren't, and what credits were spent on notes isn't taken
-  off. `billing_accounts` is no longer read, and goes in a later release.
-- An account's plan row is made the first time it's touched, or by upkeep. One already over Free's limits gets the grace
-  first. Workspaces the previous release makes while this one deploys are settled by upkeep, as its first payer: nobody is
-  told, and no grace runs. The backfill names nobody who isn't an admin, so a workspace's payer is in it from the start.
-- A notice in a `plan-account` record from before has no `workspaceId`: it reads as null (`.default`), and the record is
-  written with it the next time it's saved.
-- A deposit record from before keeps its `credits` and `rate` (ignored now); one settled by a release before plans has no
-  `addedMicroUsd` and is added again as dollars once (above).
-- A live call's state from before has no `notes.limit`, and reads as not stopped (`.default`). Its asks have no
-  `askedFrom`: they read as null (`.default`) and count against no network's `call.asks_per_address`, and are written with it
-  as null the next time the call is saved. While both serve, the previous release still counts fresh asks among a call's
-  places when it takes a join, so a call can turn someone away there that this release would let ask; it ignores
-  `askedFrom` and saves the asks it keeps without it.
-- The guests' share needs no migration: an `ai-meter` record kept without it has no shares and holds for no call's guests,
-  and reads as none spent (`.default`); it's written with them the next time it's saved. A live call's `call-notes` record kept
-  without `guests` (why its last refresh didn't work) reads as false (`.default`), so a view that failed before says what it
-  always did; the previous release, while both serve, ignores the field, and a record it writes reads as false.
-- Team is migration `0031_teams.sql`: `teams`, `team_members`, `team_invites`, `team_notes`, and `team_id` and
-  `team_access` on `workspaces` (null on every workspace there is). The previous release ignores them: while both serve,
-  it opens a team's note or workspace only for people who have it otherwise, and its workspaces aren't a team's. A notice in a
-  `plan-account` record from before has no `count`: it reads as null (`.default`), and its `until` stays as it was. The
-  previous release can't open a plan record holding a team's notice (a kind it doesn't know), which only an account on a
-  team, made by this release, has while both serve. `0031_teams.sql` lost `team_members.email_index` before it shipped (a
-  keyed hash of each member's address that nothing read, and that kept an address they'd left): a member's name and address
-  are only in their sealed `team-member` record, which their sign-in keeps as their account has them. So a local database
-  that ran `0031` before is refused for that file (`migrate.ts`: it changed after it was applied). Drop the column and set
-  that row's checksum to the file's SHA-256 (`ALTER TABLE team_members DROP COLUMN email_index;` then `UPDATE
-  schema_migrations SET checksum = '<sha256sum of apps/api/migrations/0031_teams.sql>' WHERE name = '0031_teams.sql';`), or
-  start the database over (`pnpm db:reset`). Neither main nor production has run it.
-- Pro needs no migration. A `plan-account` record from before has no `pro`, `renew`, `notices`, `reminded` or `ended`:
-  each has a `.default` (none bought, renewing off, no notices), and the record is written in the new shape the next
-  time it's saved. The previous release reads a record this one wrote (zod ignores the new fields), so an account that
-  bought Pro reads as Free there until this release is serving.
-- The yearly price needs no migration: it's two limits with defaults (`plan.pro.yearly_from_months`,
-  `plan.pro.yearly_price_micro_usd`). Each month of Pro in a `plan-account` record gains the purchase it was one of
-  (`purchase`) and a month's price when it was bought (`monthlyMicroUsd`), both `.default(null)`: a month from before has
-  neither, is a purchase of its own and is refunded at what was paid for it (`microUsd`), as before; the record is written in
-  the new shape the next time it's saved. The previous release, while the deploy runs, offers no yearly price and refuses a
-  buy at it as a changed price, charging nothing; a record it saves then loses the two fields (zod strips them), so its
-  months refund at what was paid, as from before.
-- More notes need no migration. A `plan-account` record from before has no `hours`: it reads as none bought
-  (`.default(null)`), and the record is written in the new shape the next time it's saved. While the deploy runs, the
-  previous release reads a record this one wrote without them (zod ignores the field), so it doesn't count them, and one
-  it saves then (a top-up it adds, its upkeep, a purchase made there) is saved without them: notes bought in those minutes
-  are lost, the money stays spent. The window is the deploy's few minutes; the person sees the purchase in their balance's
-  history, and support can give its price back (`billing credit`).
-- Payments that buy need no migration. A `deposit` record from before has no `purchase`: it reads as `null`
-  (`.default(null)`), a top-up that only adds money, and `TopUp.purchase` says so. A purchase of more notes keeps the
-  pack's minutes it was shown at (`minutesPerPack`); one kept without them reads as a pack of the default size
-  (`.default`, `plan.hours.pack_minutes`'s 600). While the deploy runs, the previous
-  release ignores `buys` in a request (zod drops it), so a top-up opened there only adds money, and one this release
-  opened that it settles then is added without its purchase: it saves the record without the field, so the money stays in
-  the balance and the top-up reads as one that only added money.
-- Payments that buy licenses need no migration. `{ kind: 'licenses', count, microUsdPerLicense }` is a third kind of
-  `buys` in a `deposit` record's `purchase`, sealed with the rest under the same header and key, and a record from before
-  (no `purchase`, or one buying Pro or more notes) reads as it did. What such a payment buys is kept as a purchase from the
-  balance keeps it, in the shapes there are: a line in the `plan-account` record's history, and licenses in the
-  `team-billing` record. Only this release opens one (it takes a team's admin, and teams come with this release); while
-  the deploy runs, the previous release treats it as any payment that buys (above).
+The previous release is `main` at `d62c2de1b`, which has credits, not plans. The deploy migrates while it still serves.
+
+**Migrations: `0029` to `0032`.** Four, each in a transaction of its own, all additive. `d62c2de1b` keeps serving while
+they run, and ignores everything they add: its inserts name their columns, so the new ones stay null, and every new
+foreign key into `owners` is `SET NULL` or `CASCADE`.
+
+- `0029_plans.sql`: new tables `plan_accounts` (record kind `plan-account`) and `ai_meters` (`ai-meter`).
+- `0030_workspace_payers.sql`: nullable `workspaces.payer_owner_id`, `payer_grace_until` and `payer_grace_bytes`, a CHECK
+  that the last two are null together, the index `workspaces_payer`, and new tables `media_others_days` and
+  `media_guest_payer_days`.
+- `0031_teams.sql`: new tables `teams`, `team_members`, `team_invites` and `team_notes`, and nullable `workspaces.team_id`
+  and `team_access` (null on every workspace there is) with a partial index. `team_members` keeps no hash of a member's
+  address: their name and address are only in their sealed `team-member` record, which their sign-in keeps as their
+  account has them.
+- `0032_workspace_payers_backfill.sql`: gives every workspace its longest-standing admin with an account as its payer,
+  the rule upkeep's `settlePayers` and new workspaces follow. On `d62c2de1b` that's a shared workspace's maker, and a call
+  home's organizer. It holds only the rows it writes, which are every workspace's: the previous release's reads go on,
+  and its writes to a workspace wait for it (about 1.5 s for 50,000 workspaces). A workspace none of whose admins has an
+  account stays unpaid until one signs in.
+
+The two new foreign-key columns are `text`, not a domain, so neither `0030` nor `0031` rewrites `workspaces`. Each holds
+its lock on the table (and `0030` its foreign key's on `owners`) while it reads the table twice, to check a new column's
+CHECK and to build an index. That grows with the table: under 35 ms a file for 50,000 workspaces, measured on Postgres 17
+from cache, where the domain-typed columns rewrote the whole table twice, for up to 3 s each.
+`scripts/check-migrations.mjs` now refuses a domain-typed column added to a table that's already there.
+
+**Credits become dollars.**
+
+- `billing_accounts` is no longer read or written. It stays for `d62c2de1b`, and goes in a later release.
+- Every account starts on Free at $0. Its credits are ignored, and welcome credits aren't carried.
+- Every top-up `d62c2de1b` settled (`credited`), before the deploy or while it still serves, is added once as dollars at
+  face value by upkeep (`creditCarried`, at boot and every 5 minutes, 100 a pass). It's then never looked at again
+  (`check_after` infinity). Credits spent on notes aren't taken off.
+- A `deposit` record from `d62c2de1b` opens as before. Its `credits` and `rate` are ignored, and kept on every save. Its
+  `purchase` reads as `null`, so it only adds money. Its `settled.addedMicroUsd` reads as `null` until it's carried.
+- A payment to an address `d62c2de1b` handed out is added as dollars: what was sent, or exactly what was asked when it's
+  within 1Click's band.
+
+**Accounts and workspaces.**
+
+- An account's `plan-account` row is made the first time it's touched, or by upkeep (100 a pass). It's on Free from
+  then, and shown the plans once.
+- An account already over Free's 10 GB (its recordings plus the workspaces it now pays for) gets 15 days with no storage
+  limit.
+- Its AI meter starts at its first AI request, with Free's allowance.
+- Workspaces `d62c2de1b` makes while both serve (a call's home, a shared workspace) get a payer within 5 minutes: upkeep
+  settles them when the new release starts, then every 5 minutes. Nobody is told, and no grace runs. Until then, on the
+  new release, nothing can be uploaded to one, its call doesn't open it to guests, its boards seat nobody, and a guest's
+  document AI is refused.
+- **Calls and meetings stop opening a workspace someone other than their organizer pays for, from the deploy.** A call
+  opens its workspace, and that workspace's boards, to everyone in it only while the organizer pays for the workspace. On
+  `d62c2de1b` an organizer could pick a shared workspace a colleague made, and its payer is now that colleague. From the
+  deploy such a call opens it only to the workspace's own members: its guests, and invitees who aren't members, lose it.
+  That includes calls in progress, whose streams reconnect to the new API and are refused, and meetings already
+  scheduled. What such a call makes there from the deploy (its board, each room's board) is given by address only to the
+  workspace's own people too; what `d62c2de1b` already gave by address stays given. A call's own home is unaffected,
+  since its organizer pays for it. Nothing is deleted.
+
+**Calls in progress.**
+
+- They're metered from the deploy on. A live call's state from `d62c2de1b` reads as not stopped by the plan
+  (`notes.limit` `.default`), and its notes are charged from its next transcript clip, against its organizer's fresh Free
+  allowance. That first clip may reckon what writing the whole call's notes will cost, which can warn the organizer that
+  notes are running out, or stop them at once for a long call with much screen shared. While both serve, a save of the
+  call by `d62c2de1b` drops such a stop: the banner can go and the organizer be warned twice, and notes stay off.
+- Calls live for more than `call.max_seconds` (10 hours) end shortly after the deploy: within 30 seconds of the new
+  release starting, without the 5-minute warning. Their notes are written.
+- Asking to be let in no longer takes a place: a call is full only by the people in it, checked as someone is let in,
+  and one network has at most `call.asks_per_address` (10) asks waiting in a call, a new limit. A live call's asks from
+  `d62c2de1b` have no `askedFrom` (a keyed hash of the network an ask came from): they read as null (`.default`), count
+  against no network's limit, and are written with it as null the next time the call is saved. While both serve,
+  `d62c2de1b` still counts fresh asks among a call's places when it takes a join, so it can turn someone away that this
+  release would let ask; it ignores `askedFrom`, and saves the asks it keeps without it.
+- A live call's `call-notes` record has a new flag, `guests`: its last refresh didn't work because guests had used their
+  share of the organizer's plan. A record without it, from `d62c2de1b` or written by it while both serve, reads as false
+  (`.default`), so a view that failed before says what it always did.
+
+**Tabs opened before the deploy see errors until they reload.**
+
+- The new API has no `/v1/credits/*`. In an old tab the balance and Add credits show nothing, and an open top-up sheet
+  stops following its payment, then says nothing arrived once its address expires; the payment is still added. Delete
+  account loses its warning that a payment is on its way.
+- An old tab can't save notification settings: every Alert tick, and turning browser notifications on or off, fails with
+  "Some of that input isn't valid." The request now requires `plan`. It isn't given a default: that would accept both the
+  old group without it and the new one with it, two shapes on the wire, and a default of on would turn plan alerts back
+  on for someone who turned them off in a new tab.
+- An old tab can't open a note it has only through a team ("Couldn't open this call").
+- A reload fixes all of these.
+
+**While both serve,** `d62c2de1b` can't open a deposit this release opened or settled: its `/v1/credits/top-ups` fails
+for that person. Its watcher never settles one, so nothing is added twice; one it claims waits about 17 minutes for the
+new watcher, unless its owner's own check settles it first.
+
+**Deposits this release writes don't open in `d62c2de1b`, so recovery is a fix forward, never a rollback past this
+release.**
+
+- Rolled back, `d62c2de1b`'s watcher marks every new deposit it gives up on as failed and unwatched. Back on this
+  release, a late payment to one is then added only by support, by account ID, and meanwhile `/v1/credits/top-ups` fails
+  for everyone with one.
+- `d62c2de1b` knows nothing of Pro, more notes, teams or who pays for a workspace.
+
+**Before deploying,** check production:
+
+```sql
+-- How big workspaces is: 0030 and 0031 each read it twice under their locks.
+SELECT pg_size_pretty(pg_relation_size('workspaces')) AS heap, pg_size_pretty(pg_total_relation_size('workspaces')) AS total;
+-- Top-ups still waiting on a payment, which old tabs stop following: deploy at 0, or accept the reloads.
+SELECT count(*) FROM deposits WHERE state IN ('waiting', 'arriving', 'short') AND give_up_at > now();
+-- Calls live for more than 10 hours, which end at once. If any matter, raise call.max_seconds in service_limits first
+-- (d62c2de1b ignores names it doesn't know), and lower it again after.
+SELECT count(*) FROM calls WHERE state = 'live' AND started_at < now() - interval '10 hours';
+```
+
+Once `0032` has run, live calls whose workspace their organizer doesn't pay for:
+
+```sql
+SELECT count(*) FROM workspace_calls c
+JOIN calls k ON k.call_id = c.call_id AND k.state = 'live'
+JOIN workspaces w ON w.owner_id = c.owner_id
+WHERE w.payer_owner_id IS DISTINCT FROM k.owner_id;
+```
+
+**Local databases** that applied `0029` to `0031` before they shipped (under the plans branches' numbers, or before
+`0029` lost `ai_meters.version`, `0030` and `0031` their domain-typed columns, and `0031` `team_members.email_index`) are
+refused by `migrate.ts`: start them over (`pnpm db:reset`). Neither main nor production has run them.
