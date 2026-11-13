@@ -411,9 +411,11 @@ On a visit:
    themselves), `wanted_at` is set, and the admin is told `licenses-none`, once until more are bought. Logged `team license
    wanted, none left`.
 
-A license taken replaces Pro at once: the running month ends then (not refunded), every month that hasn't started goes
-back to the balance ("Refund: 2 months of Pro, for a team license"), and the member is told `license-replaced-pro` with
-how many. Pro can't be bought while a license is live (`conflict`). When a take leaves fewer than `team.low_licenses` (5)
+A license taken replaces Pro at once: the running month ends then (not refunded), every month that hasn't started goes,
+and the balance gets back what refunding them would give ([Refunds](#pro): what was paid, less a month's price's
+difference on the months kept of a year or more that's left shorter, so a year replaced in its first month gives back
+$172, not $176; "Refund: 11 months of Pro, for a team license"), and the member is told `license-replaced-pro` with how
+many (none, and no line in the history, when nothing comes back). Pro can't be bought while a license is live (`conflict`). When a take leaves fewer than `team.low_licenses` (5)
 unconsumed, the admin is told `licenses-low` with how many are left, once until there are 5 or more again. These notices
 are in `Plan.notices` with Pro's (`until` null, `count` where it says), shown and notified as Pro's are.
 

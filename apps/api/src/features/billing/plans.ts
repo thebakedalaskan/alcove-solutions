@@ -393,19 +393,21 @@ export const noticesOf = (a: PlanAccount) =>
 
 /**
  * A team license taken at `now` replaces Pro at once: the month running ends now (it isn't refunded), and every month that
- * hasn't started goes back to the balance at what was paid for it. Upkeep has nothing left to remind about or end.
- * Says how many months were refunded (null: there was no Pro to replace).
+ * hasn't started goes, with what refunding them would give back added to the balance (`refundOf`, as `refundPro`): what was
+ * paid for them, less a month's price's difference on the months kept of a purchase at the lower price for a year or more
+ * that's left shorter. Upkeep has nothing left to remind about or end. Says how many months were refunded (0: nothing
+ * came back; null: there was no Pro to replace).
  */
-export function replacedByLicense(a: PlanAccount, now: number): { a: PlanAccount; refunded: number | null } {
+export function replacedByLicense(a: PlanAccount, l: Limits, now: number): { a: PlanAccount; refunded: number | null } {
   const running = runningAt(a, now);
-  const later = a.pro.filter((m) => Date.parse(m.from) > now);
+  const { months: later, microUsd } = refundOf(a, l, now);
   if (!running && !later.length) return { a, refunded: null };
   const cut = new Date(now).toISOString();
   const pro = a.pro.filter((m) => m !== running && !later.includes(m)).concat(running ? [{ ...running, to: cut }] : []);
   const end = pro.at(-1)?.to ?? null;
   const next: PlanAccount = { ...a, pro, reminded: end, ended: end };
-  const microUsd = later.reduce((n, m) => n + m.microUsd, 0);
-  return { a: later.length ? withEntry(next, microUsd, `Refund: ${monthsOf(later.length)} of Pro, for a team license`) : next, refunded: later.length };
+  if (microUsd <= 0) return { a: next, refunded: 0 };
+  return { a: withEntry(next, microUsd, `Refund: ${monthsOf(later.length)} of Pro, for a team license`), refunded: later.length };
 }
 
 /**

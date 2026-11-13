@@ -222,7 +222,7 @@ export async function visit(d: Service, ownerId: string): Promise<void> {
     await exec(c, 'UPDATE team_members SET licensed_from = $2, licensed_until = $3, wanted_at = NULL WHERE member_id = $1', [m.member_id, new Date(now), new Date(until)]);
     let refunded: number | null = null;
     await changePlan(d, c, ownerId, (a) => {
-      const r = replacedByLicense(a, now);
+      const r = replacedByLicense(a, l, now);
       refunded = r.refunded;
       return r.refunded === null ? r.a : withNotice(r.a, 'license-replaced-pro', now, { count: r.refunded });
     });

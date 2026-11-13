@@ -26,6 +26,8 @@ const MiB = 1024 * 1024;
 const GiB = 1024 * MiB;
 const LICENSE = 40_000_000;
 const PRICE = 20_000_000;
+/** A month of Pro bought 12 or more at once. */
+const YEARLY = 16_000_000;
 const refusal = (p: Promise<unknown>) => p.then(() => 'succeeded', (e: unknown) => (e instanceof AlcoveApiError ? `${e.code}: ${e.message}` : String(e)));
 let seq = 0;
 const unique = (who = 'person') => `${who}.${Date.now().toString(36)}${(seq++).toString(36)}@tests.example`;
@@ -251,6 +253,23 @@ describe('licenses', () => {
     await h.pool.query('UPDATE plan_accounts SET due_at = now() WHERE owner_id = $1', [bob.session.ownerId]);
     await maintain(h.deps);
     expect(await kinds(bob)).toEqual(['license-replaced-pro']);
+  });
+
+  it('G7′: a license replacing a year of Pro bought at its lower price gives back what refunding it would: $172, not $176', async () => {
+    const ann = await account();
+    const bob = await account();
+    await give(bob, 12 * YEARLY);
+    // The 11 months to come at $16, less the $4 more a month's price is on the one kept, since that's all that's left of the year.
+    const back = 11 * YEARLY - (PRICE - YEARLY);
+    expect((await bob.api.plans.buyPro(12, YEARLY)).pro.refundableMicroUsd).toBe(back);
+    await team(ann, 1);
+    await joined(ann, bob);
+    const plan = await bob.api.plans.plan();
+    expect(plan).toMatchObject({
+      kind: 'team', pro: { months: [], until: null, refundableMicroUsd: 0 }, balance: { microUsd: back },
+      notices: [{ kind: 'license-replaced-pro', count: 11, until: null }]
+    });
+    expect(plan.balance.history[0]).toMatchObject({ label: 'Refund: 11 months of Pro, for a team license', microUsd: back });
   });
 
   it('G8: an admin without a license still manages the team', async () => {
