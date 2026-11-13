@@ -363,7 +363,8 @@ deployer_permissions=(
   compute.instances.get compute.instances.list
   compute.regions.get
   compute.regionBackendServices.get compute.regionBackendServices.update
-  compute.regionHealthChecks.get compute.regionHealthChecks.useReadOnly
+  # A rolling update re-reads the group's autohealing check, which takes use, not useReadOnly (13 Nov 2026).
+  compute.regionHealthChecks.get compute.regionHealthChecks.use compute.regionHealthChecks.useReadOnly
   compute.networks.get compute.subnetworks.get compute.subnetworks.use
 )
 role_state="$(cs_gc iam roles describe "$CS_DEPLOYER_ROLE" --format='value(deleted)' 2>/dev/null || echo missing)"
