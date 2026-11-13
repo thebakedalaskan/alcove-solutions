@@ -4,9 +4,7 @@
  * shared ones it made, and its calls' own). Only sizes and counts are read here, never what's stored.
  */
 import { z } from 'zod';
-import { exec, maybeOne, type Db } from '../../db';
-
-const bigintText = z.coerce.number().int().nonnegative();
+import { bigintText, exec, maybeOne, type Db } from '../../db';
 
 /** What an account stores: its own row's bytes and those of every workspace it pays for. */
 export async function usedBytes(db: Db, ownerId: string): Promise<number> {
