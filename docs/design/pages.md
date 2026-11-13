@@ -272,7 +272,7 @@ right what came of it, in tabs, each its own scroll area. A series has no page o
     (unless you've scrolled), From the start once you're down it, and which breakout room you were in, with the others.
   - **Your notes:** only you read them; write, bookmark a line or keep an answer.
 - **Ask about this call** sits at the foot of the right column, Only you. Its suggestions show at the end of what's read,
-  and while it's pointed at or in use.
+  and while it's pointed at or in use; the wheel over them still scrolls what's read.
 - **Download** saves on this device: the transcript (text with times), the notes (Markdown), the recording and each shared
   screen. "Opened on this device. Alcove can't read it."
 - **More:** pin, copy as text, Meet again, Google Drive (a window with the call's own exports), Write the notes again, then

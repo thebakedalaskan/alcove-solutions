@@ -254,6 +254,21 @@ export function SourceLink({ c }: { c: Extract<Cite, { type: 'source' }> }) {
   );
 }
 
+/** The nearest box around `el` that scrolls, if one does. */
+function scrollerOf(el: Element): HTMLElement | null {
+  for (let at = el.parentElement; at; at = at.parentElement) {
+    const y = getComputedStyle(at).overflowY;
+    if (y === 'auto' || y === 'scroll') return at;
+  }
+  return null;
+}
+
+/** How far a wheel event asks to go, in pixels, however the browser counts it. */
+const wheelPixels = (e: WheelEvent, box: HTMLElement) => {
+  const dy = e.deltaY;
+  return e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? dy * box.clientHeight : e.deltaMode === WheelEvent.DOM_DELTA_LINE ? dy * 40 : dy;
+};
+
 /**
  * Ask about a call, or about the calls in a series. Answers stream in, with where they come from:
  * moments in this call to play, the shared screens they were read on, or the calls (and moments) to open.
@@ -315,6 +330,24 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
     watch.observe(el);
     return () => { watch.disconnect(); page.style.removeProperty('--cd-chips'); };
   }, [room]);
+  /*
+   * Beside what's read (a call's two columns), the suggestions float over the end of the notes without being in them, so
+   * the wheel over them, or between them, would stop the notes short with their last lines underneath. There, the wheel
+   * scrolls what's read. In one column the page scrolls both, and the wheel reaches it by itself.
+   */
+  useEffect(() => {
+    const el = suggs.current;
+    if (!el) return undefined;
+    const wheel = (e: WheelEvent) => {
+      const mark = endOfRead?.current;
+      const read = mark ? scrollerOf(mark) : null;
+      if (!read || read.contains(el) || e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      e.preventDefault();
+      read.scrollBy({ top: wheelPixels(e, read) });
+    };
+    el.addEventListener('wheel', wheel, { passive: false });
+    return () => el.removeEventListener('wheel', wheel);
+  }, [endOfRead, room]);
   // The bar is in view wherever the page is, so going to it never moves the page.
   useEffect(() => {
     const on = (e: KeyboardEvent) => { if (withMod(e) && e.key.toLowerCase() === 'j') { e.preventDefault(); input.current?.focus({ preventScroll: true }); } };

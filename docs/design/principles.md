@@ -229,8 +229,9 @@ Everything comes from the tokens in `styles.css`. Don't invent values.
 - The resting state of every animated element is the still picture. With reduced motion, the global stylesheet runs every
   animation once in a millisecond, so anything that only appears now and then must rest hidden at `opacity: 0`, and
   `Horizon` sends no visitors at all.
-- What says something is on its way never rests, or it reads as a broken icon. With reduced motion, `Spinner` stops turning
-  and `Dots` stop rising: both fade slowly in and out instead (`kit.css`), since opacity isn't movement.
+- What says something is on its way never rests, or it reads as a broken icon. With reduced motion, `Spinner` keeps turning
+  at half speed, as the system's own spinners do, since a ring that stands still or only fades still reads as broken; `Dots`
+  stop rising and fade slowly in and out instead (`kit.css`).
 - What passes through comes at random, one at a time: something quick every 22 to 60 seconds, a ship every 2.5 to 6
   minutes. A ship is sometimes already out there when the page opens. What comes depends on the moment (`LIFE` in
   `horizon.tsx`):
@@ -310,6 +311,6 @@ These came up in design reviews. They're the fastest way to see what "right" mea
 - The first-day empty state, and every other real state: loading, offline, errors, nothing yet, a lot.
 - Every menu, popover and modal opened from where it's used, over the screen it belongs to.
 - No overlap, no stacking bugs, no horizontal scroll, no console errors.
-- Keyboard focus visible and in order; reduced motion shows a still picture, and anything working (a spinner, dots) fades
-  slowly in and out instead.
+- Keyboard focus visible and in order; reduced motion shows a still picture, but a spinner still turns, at half speed, and
+  dots fade slowly in and out.
 - One filled button per view, each fact once, no green.
