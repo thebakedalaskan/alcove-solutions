@@ -136,7 +136,7 @@ function Hero({ auth }: { auth: Auth }) {
         ))}
       </h1>
       <motion.p className="lp-lede" {...rise(0)}>
-        Video calls with the note taker built in. Get a transcript, a summary and follow-ups, with recordings and notes encrypted in storage.
+        Calls, whiteboards, docs and notes in one place, with AI that runs in confidential compute, so Alcove can’t read your meetings.
       </motion.p>
       <motion.div {...rise(1)}><WaysIn auth={auth} layout="hero" note="Free to start, with about 5 hours of notes a month." /></motion.div>
     </div>

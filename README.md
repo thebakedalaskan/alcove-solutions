@@ -5,11 +5,13 @@
   </picture>
 </p>
 
-<h3 align="center">Private video calls with an AI note taker that can’t read your meetings.</h3>
+<h3 align="center">The meeting superapp: calls, whiteboards, docs, notes and scheduling in one place, with confidential AI.</h3>
 
 <p align="center">
-  No bot joins the call. Calls are end-to-end encrypted. The transcript and the notes are written by AI models running in
-  hardware enclaves that Alcove verifies first, and Alcove itself runs in confidential compute, so it can’t read them either.
+  Alcove isn’t a note taker you add to someone else’s call. It’s where the whole meeting happens: end-to-end encrypted
+  calls, whiteboards and breakout rooms, a workspace for every call, notes that write themselves, scheduling and your own
+  AI agents. The AI runs in hardware enclaves that Alcove verifies first, and Alcove itself runs in confidential compute,
+  so nobody can read your meetings, Alcove included.
 </p>
 
 <p align="center">
@@ -28,6 +30,7 @@
   <a href="#what-you-can-do"><b>What you can do</b></a> ·
   <a href="#how-it-works"><b>How it works</b></a> ·
   <a href="#run-it-yourself"><b>Run it yourself</b></a> ·
+  <a href="#built-at-near-hackathon"><b>NEAR HACKATHON</b></a> ·
   <a href="docs/README.md"><b>Docs</b></a>
 </p>
 
@@ -52,15 +55,15 @@ verifies before sending them anything. [More in How it works →](#how-it-works)
 
 ## Why Alcove
 
-Meeting notes come from one of three places today, and each is wrong for a sensitive conversation:
+A meeting today is spread across several tools, and every one of them can read it:
 
-1. **The platform’s own AI** (Meet, Zoom). Convenient, but the provider reads everything.
-2. **A note-taker bot** someone brings in. A third party sits visibly in the call, and its notes push everyone to sign up.
-3. **Recording in the background yourself.** Illegal under two-party consent in many places, and awkward for everyone else.
+1. **The video app** (Meet, Zoom), whose own AI reads everything said.
+2. **A note-taker bot** someone brings in: a third party sitting visibly in the call.
+3. **The whiteboard, the docs and the scheduling link** around the call: more companies holding your conversations.
 
-Alcove puts confidential transcription and notes inside an end-to-end encrypted video platform, and backs the promise with
-hardware evidence instead of a privacy policy: your browser checks what Alcove’s server runs on, and the server checks what
-the AI runs on, before anything is sent.
+Alcove brings the whole meeting into one app (the call, the board, the docs, the notes and the follow-ups) and keeps it
+private by construction, backed by hardware evidence instead of a privacy policy: your browser checks what Alcove’s server
+runs on, and the server checks what the AI runs on, before anything is sent.
 
 <p align="center">
   <img src="docs/readme/call.gif" alt="A design review in Alcove: as people talk, each line lands in the transcript under who said it, the live notes keep up with what was decided, and the seal shows the call is sealed." width="100%">
@@ -70,6 +73,46 @@ the AI runs on, before anything is sent.
 > [!TIP]
 > **Use it now at [alcove.solutions](https://alcove.solutions).** Sign in with Google. Every account starts on Free with
 > every feature: unlimited calls of up to 10 hours and 100 people, and about 5 hours of notes every 30 days.
+
+<br>
+
+## Built at NEAR HACKATHON
+
+Alcove was built during [NEAR HACKATHON](https://nearhackathon.com) in November 2026. The repository’s history starts
+on 2 November 2026 ([its first commit](https://github.com/thebakedalaskan/alcove-solutions/commit/2aa9b86a8)), so all
+of it is hackathon work, built on the open-source libraries listed in [Built with](#built-with) and the `package.json`
+files.
+
+**Where NEAR fits**
+
+- **NEAR AI Cloud, for private inference.** The live transcript (Whisper large-v3) and the notes (DeepSeek V4.1 Flash
+  by default) are written by models NEAR AI runs in confidential VMs. Alcove verifies each model’s attestation before
+  sending anything, and seals every request to the model’s attested key with Oblivious HTTP
+  ([how](#ai-runs-only-on-verified-private-models)). This is what lets Alcove’s AI work on a meeting without anyone
+  reading it.
+- **NEAR Intents 1Click, for payments.** Pro months and team licenses are paid in USDC from the network you choose, to
+  a one-off deposit address that 1Click settles into Alcove’s treasury on NEAR ([how](#pay-with-usdc)).
+
+**Try it: do this, see that**
+
+1. Open [alcove.solutions](https://alcove.solutions) and press **Continue with Google** (a Gmail or Google Workspace
+   address). Alcove makes your account on screen, then shows the plans once: press **Continue on Free**. You land on
+   Home, with a short tour.
+2. Look at the foot of the side panel: **Confidential compute · verified**. Your browser checked the server’s
+   attestation itself.
+3. Press <kbd>N</kbd>, then **Start now**, then join from the lobby. You’re in a call, and **Notes on** shows at the top
+   left: new calls take notes unless you turn that off in Settings.
+4. Talk for a few seconds. Your lines appear in **Notes › Transcript** under your name, and the **Notes** tab keeps live
+   notes. Point at the shield beside **Notes on**: it says what’s sealed and that Alcove can’t read the call.
+5. Press **Leave**, which ends a call you’re alone in. Within about a minute the note is written: a summary, decisions
+   and follow-ups. Press **Written in confidential compute** on the note to see which NEAR AI models wrote it and what
+   was checked.
+6. Press <kbd>⌘</kbd> <kbd>K</kbd> and ask a question about the call. The answer cites the moment it came from; press
+   it to open the call at that line.
+7. From a clone, run the check in [Verify it yourself](#verify-it-yourself). It prints the commit and the image
+   production runs.
+8. Without an account or any keys, `pnpm storybook` opens every page and journey of the app on made-up data, at
+   http://localhost:6006.
 
 <br>
 
