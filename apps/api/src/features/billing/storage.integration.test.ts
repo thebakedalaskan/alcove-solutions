@@ -276,6 +276,11 @@ describe('what others can add', () => {
     await h.pool.query("INSERT INTO media_guest_payer_days (payer_owner_id, day, bytes) VALUES ($1, current_date - 2, 1)", [org.session.ownerId]);
     await maintain(h.deps);
     expect((await h.pool.query('SELECT count(*)::int AS n FROM media_guest_payer_days WHERE payer_owner_id = $1', [org.session.ownerId])).rows[0]).toEqual({ n: 1 });
+    // Both go with the payer's account, as Bob's would with his (flows › deleting an account).
+    await org.api.account.delete();
+    const kept = await h.pool.query(`SELECT (SELECT count(*) FROM media_others_days WHERE payer_owner_id = $1)::int
+      + (SELECT count(*) FROM media_guest_payer_days WHERE payer_owner_id = $1)::int AS n`, [org.session.ownerId]);
+    expect(kept.rows[0]).toEqual({ n: 0 });
   });
 
   it('lets people licensed on the payer’s team add to its pool as to their own, and nobody else', async () => {

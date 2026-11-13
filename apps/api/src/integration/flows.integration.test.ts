@@ -3249,7 +3249,8 @@ describe('deleting an account', () => {
     await guest.api.account.updatePreferences({ pinned: [callNote] });
     await b.api.meetings.create({ title: 'Next week', startsAt: new Date(Date.now() + 7 * 86_400_000).toISOString(), durationMinutes: 30, guests: [guest.session.user.email], notes: 'on' });
     await b.api.account.updatePreferences({ pinned: [callNote], groups: [{ id: 'crew', name: 'Crew', emails: [guest.session.user.email] }] });
-    // A file she put in a workspace Ann keeps: it stays there, and what she uploaded today counts under her account.
+    // A file she put in a workspace Ann keeps: it stays there, and what she uploaded today counts under her account, and
+    // as hers among what others add to Ann's storage.
     const shared = (await ann.api.workspaces.create('Shared')).id;
     await ann.api.workspaces.addPerson(shared, lena.email, 'edit');
     const annPlan = (await ann.api.workspaces.items.create(shared, { kind: 'document', name: 'Plan', parent: null })).id;
@@ -3344,7 +3345,7 @@ describe('deleting an account', () => {
     expect(tables).toEqual([
       'agent_activity', 'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'ai_meters', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes',
       'call_private_messages', 'call_rings', 'calls', 'content_jobs', 'deposits', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts',
-      'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'items', 'media_upload_days', 'meeting_access',
+      'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'items', 'media_others_days', 'media_upload_days', 'meeting_access',
       'note_access', 'note_additions', 'note_links', 'object_gc', 'operations', 'owners', 'personal_notes', 'plan_accounts', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings',
       'revisions', 'screen_frames', 'screen_pieces', 'screen_shares', 'screen_videos', 'sessions', 'team_notes', 'teams', 'timer_presets', 'transcript_clips', 'transcript_translations',
       'workspace_authors', 'workspace_calls', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions',
