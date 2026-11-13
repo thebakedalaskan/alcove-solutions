@@ -85,13 +85,13 @@ function Scales() {
       </section>
       <Moving
         title="Durations"
-        about="From a quick press to the scene’s slow breaths. Each dot crosses in its own time, easing in and out."
+        about="From a quick press to the scene’s slow breaths, then the slower clock of a page taking another’s place: what goes, what it replaces and its smaller parts, the page itself, and the scene behind it settling. Each dot crosses in its own time, easing in and out."
         names={tokensNamed('duration-')}
         motion={(name) => ({ duration: `var(--${name})`, easing: 'var(--ease-in-out)' })}
       />
       <Moving
         title="Easing"
-        about="ease-out for things arriving, ease-in-out for things moving, ease-in for things leaving. Each dot takes duration-4."
+        about="ease-out for things arriving, ease-in-out for things moving, ease-in for things leaving, ease-expo for long settles and ease-soft for a whole page fading in over another. Each dot takes duration-4."
         names={tokensNamed('ease-')}
         motion={(name) => ({ duration: 'var(--duration-4)', easing: `var(--${name})` })}
       />

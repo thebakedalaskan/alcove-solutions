@@ -6,6 +6,11 @@ export interface PlansApi {
   /** The plans on offer, what each brings and what Pro costs now. */
   offers(): Promise<PlanOffers>;
   /**
+   * Says the plans were shown to the account, so `Plan.choose` is false from now. The app calls it once the tier screen
+   * has been seen; saying it again changes nothing.
+   */
+  chose(): Promise<Plan>;
+  /**
    * Buys `months` of Pro from the balance, after any already bought, at `microUsdPerMonth`, the price the buyer was shown.
    * On Free, Pro starts now with a fresh period and the whole allowance. Refused with nothing charged if the balance is
    * short, `months` is past the most one purchase buys, or the price has changed since.

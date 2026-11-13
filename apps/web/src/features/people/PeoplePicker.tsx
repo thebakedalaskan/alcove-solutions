@@ -46,7 +46,8 @@ const origin = (r: PersonSuggestion) =>
 /** Groups offered before anything is typed; typing finds any of them. */
 const GROUPS_FIRST = 3;
 
-function Picker({ title, cta, note, skip, preset, from, groups, after, onDone }: PickerOptions) {
+/** The picker itself, for a place that already holds it: a step in a menu, say. */
+export function Picker({ title, cta, note, skip, preset, from, groups, after, onDone }: PickerOptions) {
   const [sel, setSel] = useState<Person[]>(preset ?? []);
   const [group, setGroup] = useState<Group | undefined>(undefined);
   const [query, setQuery] = useState('');

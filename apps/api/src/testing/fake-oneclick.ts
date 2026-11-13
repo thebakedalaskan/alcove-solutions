@@ -13,7 +13,10 @@ import { z } from 'zod';
 
 /** A token 1Click swaps that isn't on Alcove's allowlist: wrapped NEAR. */
 export const NOT_ALLOWLISTED = 'nep141:wrap.near';
-/** What 1Click lists at /v0/tokens: every route on the allowlist, and one that isn't. BNB Chain's tokens have 18 decimals. */
+/**
+ * What 1Click lists at /v0/tokens: every route on the allowlist, and some that aren't (USDT, which Alcove doesn't take,
+ * and wrapped NEAR). BNB Chain's tokens have 18 decimals.
+ */
 const TOKENS: readonly { assetId: string; decimals: number; blockchain: string; symbol: string }[] = [
   { blockchain: 'near', symbol: 'USDC', assetId: 'nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1', decimals: 6 },
   { blockchain: 'eth', symbol: 'USDC', assetId: 'nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near', decimals: 6 },

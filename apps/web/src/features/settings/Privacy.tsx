@@ -98,7 +98,7 @@ function DeleteStep({ shared, onClose }: { shared: boolean; onClose: () => void 
   const del = useDeleteAccount(() => {
     if (ownerId) { forgetTour(ownerId); forgetView(ownerId); }
     toast('Your account is deleted.', { icon: 'check', ms: 5000 });
-    void navigate({ to: '/welcome', replace: true });
+    return navigate({ to: '/welcome', replace: true });
   });
   const pending = del.isPending;
   const [problem, setProblem] = useState<{ text: string; final: boolean } | null>(null);

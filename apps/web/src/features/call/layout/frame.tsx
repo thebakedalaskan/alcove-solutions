@@ -1,7 +1,8 @@
 /*
  * What's on your stage, each in its frame (docs: Calls and recordings › The call screen): a screen, a board or the workspace,
  * with one bar that works the same way for all three (`CallFrame` in @alcove/ui). On its left, whoever presents it (or the
- * kind's icon while it's open just for you), its name as a menu, and a line of what's so. On its right, only what applies:
+ * kind's icon while it's only on your screen), its name as a menu, a line of what's so, and on a board or the workspace who
+ * can edit it, which can open who has it in the name's menu. On its right, only what applies:
  * following whoever presents it, Present, focus, Stop sharing on your own screen, and Close, which asks "for you or for
  * everyone" while you present a board or the workspace, and on the call's board nobody presents for whoever opened it or the
  * organizer. On your own screen Close puts it away for you while it's still shared, as a tile with the people. Close says
@@ -43,17 +44,17 @@ export interface FrameBy {
 export interface FrameBar {
   icon: IconName;
   name: string;
-  /** Whoever presents it; null while it's open just for you. */
+  /** Whoever presents it; null while it's only on your screen. */
   by: FrameBy | null;
   /** How many follow you, while you present a board or the workspace. */
   followers: number;
   /** On someone else's board or workspace: whether you follow them, where they are, and the switch. */
   follow: { on: boolean; where: string; onToggle: () => void } | null;
-  /** Present, on a board or the workspace open just for you: null where you can't. */
+  /** Present, on a board or the workspace only on your screen: null where you can't. */
   present: { onPress: () => void; busy: boolean; ask?: PresentAskProps | undefined } | null;
   focus: { on: boolean; onToggle: () => void } | null;
   phone: boolean;
-  /** Close: closes what's open just for you, or someone else's presentation, or your own screen, for you. */
+  /** Close: closes what's only on your screen, or someone else's presentation, or your own screen, for you. */
   onClose: () => void;
   /** It's the only thing on your stage: closing it gives the stage back to the people, and Close says so. */
   clears: boolean;
@@ -62,8 +63,13 @@ export interface FrameBar {
    * for whoever may take it out of the call.
    */
   ask: Omit<CloseAskProps, 'title'> | null;
+  /**
+   * Who can edit it, after the line of what's so: "Everyone in the call can edit". `opens`: it opens who has it in the name's
+   * menu, which `rows` then starts on (`start` is `access`).
+   */
+  access: { label: string; opens: boolean } | null;
   /** The name's menu, as each kind fills it; with the organizer's stop after a line on someone else's. */
-  rows: (close: () => void) => ReactNode;
+  rows: (close: () => void, start: 'access' | null) => ReactNode;
   /** On someone else's presentation, for the organizer: "Close it for everyone", or "Stop it for everyone" on a screen. */
   stop: { label: string; onPick: () => void } | null;
 }
@@ -79,11 +85,12 @@ export function Frame({ bar, meta, onStop, foot, children }: {
   foot?: ReactNode;
   children: ReactNode;
 }) {
-  const [menu, setMenu] = useState(false);
+  /** The name's menu, opened from its name or from who can edit it. */
+  const [menu, setMenu] = useState<'name' | 'access' | null>(null);
   const { by } = bar;
   const theirs = by !== null && !by.mine;
-  const line = meta ?? (by === null ? 'Open just for you' : by.mine ? `You’re presenting · ${bar.followers} following` : `${by.first} is presenting`);
-  const rows = bar.rows(() => setMenu(false));
+  const line = meta ?? (by === null ? 'Only on your screen' : by.mine ? `You’re presenting · ${bar.followers} following` : `${by.first} is presenting`);
+  const rows = bar.rows(() => setMenu(null), menu === 'access' ? 'access' : null);
   const back = bar.clears ? ', and the people fill your stage again' : '';
   const tip = onStop ? `Put it away for you${back}. It’s still shared, as a tile with the people`
     : bar.ask ? `Close it for you, or for everyone${back}`
@@ -91,15 +98,16 @@ export function Frame({ bar, meta, onStop, foot, children }: {
         : `Close it for you${back}. While ${by.first} presents, its tile takes you back`;
   return (
     <CallFrame who={by?.person ?? null} icon={bar.icon} name={bar.name} meta={line} label={`${bar.name}, ${by ? 'everyone sees it' : 'only you see it'}`}
+      access={bar.access ? { label: bar.access.label, onPress: bar.access.opens ? () => setMenu('access') : undefined, open: menu === 'access' } : null}
       menu={{
-        open: menu, onOpenChange: setMenu, label: bar.name,
+        open: menu !== null, onOpenChange: (open) => setMenu(open ? 'name' : null), label: bar.name,
         children: (
           <>
             {rows}
-            {bar.stop && (
+            {bar.stop && menu === 'name' && (
               <>
                 <div className="ic-msep" />
-                <button type="button" className="mi is-stopall" role="menuitem" onClick={() => { setMenu(false); bar.stop?.onPick(); }}>
+                <button type="button" className="mi is-stopall" role="menuitem" onClick={() => { setMenu(null); bar.stop?.onPick(); }}>
                   <Icon name="x" size={17} /><span className="t">{bar.stop.label}</span>
                 </button>
               </>

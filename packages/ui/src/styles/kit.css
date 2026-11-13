@@ -19,7 +19,7 @@
 .ac-clamp-1, .ac-clamp-2 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 .ac-clamp-1 { -webkit-line-clamp: 1; word-break: break-all; }
 .ac-clamp-2 { -webkit-line-clamp: 2; }
-:where(.ac-btn, .ac-icon-btn, .ac-provider, .ac-tab, .ac-seg button, .ac-dock-btn, .ac-dock-leave, .ac-nav-item, .ac-input, .ac-composer):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+:where(.ac-btn, .ac-icon-btn, .ac-provider, .ac-tab, .ac-seg button, .ac-dock-btn, .ac-dock-leave, .ac-nav-item, .ac-input):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* ---- Button ---- */
 .ac-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0 18px; border: 0; border-radius: var(--radius-pill); font: 600 14px/18px var(--font-sans); cursor: pointer; white-space: nowrap; transition: background-color var(--duration-1) var(--ease-out), color var(--duration-1) var(--ease-out), transform var(--duration-1) var(--ease-out), box-shadow var(--duration-1), filter var(--duration-1); }
@@ -252,12 +252,23 @@
 .ac-nav-item[aria-current="page"] { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); }
 .ac-nav-item .count { margin-left: auto; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 
-/* ---- The palette's line, Field ---- */
-.ac-composer { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 0 8px 0 18px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); color: var(--ink-3); font: 400 15.5px/1.4 var(--font-sans); }
-.ac-composer > .ac-i { color: var(--sun-text); }
-.ac-composer .text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ac-composer input.text { height: 58px; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; }
-.ac-composer input.text::placeholder { color: var(--ink-3); }
+/* ---- Widget: one card on a page's water. Its head (an icon in a tile, the title, then what the head holds), its body, and a foot only while its list is longer than it shows ---- */
+.ac-widget { position: relative; display: flex; flex-direction: column; min-width: 0; border-radius: 20px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--shadow-2); }
+.ac-widget-h { display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 0 12px 0 18px; border-bottom: 1px solid var(--line); }
+.ac-widget-ic { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: var(--radius-sm); background: color-mix(in oklch, var(--ink) 8%, transparent); color: var(--ink-2); }
+.ac-widget-h h2 { min-width: 0; font: 600 15px/1.3 var(--font-sans); color: var(--ink); }
+.ac-widget-h h2:focus { outline: none; }
+.ac-widget-b { flex: 1; min-height: 0; padding: 4px 0; }
+.ac-widget-f { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px 0 18px; border-top: 1px solid var(--line); }
+.ac-widget-more { display: inline-flex; align-items: center; height: 32px; margin-left: -8px; padding: 0 8px; border-radius: var(--radius-sm); font: 500 13.5px/1 var(--font-sans); color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
+.ac-widget-more:hover { background: color-mix(in oklch, var(--ink) 7%, transparent); color: var(--ink); }
+.ac-widget-more:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* Bare: no card. The head and what's under it sit on the page, as a row of cards does. */
+.ac-widget.is-bare { border-radius: 0; background: none; box-shadow: none; }
+.ac-widget.is-bare > .ac-widget-h { min-height: 32px; margin-bottom: 14px; padding: 0; border: 0; }
+.ac-widget.is-bare > .ac-widget-b { padding: 0; }
+
+/* ---- Field ---- */
 .ac-field { display: grid; gap: 6px; }
 .ac-field label { font: 600 13.5px/1.2 var(--font-sans); color: var(--ink); }
 .ac-field .hint { font-size: 12.5px; color: var(--ink-3); }
@@ -281,8 +292,6 @@
 .ac-seg[aria-disabled="true"] { opacity: .5; }
 .ac-seg button:disabled { cursor: default; }
 .ac-seg button:disabled:hover { color: var(--ink-2); }
-/* One choice that can't be made now, in a choice that can. */
-.ac-seg:not([aria-disabled="true"]) button:disabled { opacity: .45; }
 .ac-seg button[aria-pressed="true"]:disabled:hover { color: var(--ink); }
 
 /* ---- Toast, Notice ---- */
@@ -312,6 +321,11 @@
 .ac-notice.has-x { grid-template-columns: 20px minmax(0, 1fr) auto; padding-right: 6px; }
 .ac-notice .ac-notice-x { width: 30px; height: 30px; margin-block: -6px; color: inherit; }
 .ac-notice .ac-notice-x:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
+/* Show N more under a list: a quiet text button, centred. */
+.ac-more { display: flex; justify-content: center; padding: 2px 0 10px; }
+.ac-more .lk { display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 8px; border-radius: var(--radius-sm); font: 500 13.5px/1 var(--font-sans); color: var(--ink-2); }
+.ac-more .lk:hover { color: var(--ink); }
+.ac-more .lk:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* A failed request's reference: quiet and monospace, copied on press. */
 .ac-ref { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 7px; border-radius: var(--radius-xs); color: var(--ink-3); font: 500 12px/1.3 var(--font-sans); transition: background-color var(--duration-1), color var(--duration-1); }
 .ac-ref code { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 500 12px/1.3 var(--font-mono); color: var(--ink-2); }
@@ -338,16 +352,18 @@
 .ac-tour-art { position: absolute; inset: 0; }
 .ac-tour-card .body { padding: 20px 24px 18px; }
 .ac-tour-card .body p { margin-top: 8px; color: var(--ink-2); font-size: 15px; line-height: 22px; text-wrap: pretty; }
-.ac-tour-card .foot { display: flex; align-items: center; gap: 8px; padding: 0 20px 20px 24px; }
+.ac-tour-card .foot { display: flex; align-items: center; gap: 6px; padding: 0 20px 20px 24px; }
+/* A long tour's dots and its longest button still fit on one row. */
+.ac-tour-card .foot .ac-btn.is-quiet { padding: 0 10px; }
 .ac-tour.is-sheet .ac-tour-card { width: 100%; max-width: none; border-radius: var(--radius-xl) var(--radius-xl) 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
 .ac-tour.is-sheet .ac-tour-card .art { height: 150px; }
 .ac-tour.is-sheet .ac-tour-card .body { padding: 18px 20px 14px; }
 .ac-tour.is-sheet .ac-tour-card .foot { padding: 0 16px 18px 20px; }
 /* A sheet standing above a target along the bottom, such as a tab bar: a card of the same width, rounded all round. */
 .ac-tour.is-sheet.is-lifted .ac-tour-card { border-radius: var(--radius-xl); padding-bottom: 0; }
-.ac-steps { display: flex; gap: 6px; margin-right: auto; }
-.ac-steps i { width: 6px; height: 6px; border-radius: 3px; background: var(--line-control); transition: width var(--duration-2) var(--ease-out), background-color var(--duration-2); }
-.ac-steps i.is-on { width: 20px; background: var(--ink); }
+.ac-steps { display: flex; gap: 5px; margin-right: auto; }
+.ac-steps i { width: 5px; height: 5px; border-radius: 2.5px; background: var(--line-control); transition: width var(--duration-2) var(--ease-out), background-color var(--duration-2); }
+.ac-steps i.is-on { width: 16px; background: var(--ink); }
 .ac-coach { position: relative; display: inline-block; max-width: 260px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--ink); color: var(--ground); font: 400 13.5px/1.45 var(--font-sans); box-shadow: var(--shadow-3); }
 .ac-coach b { display: block; font-weight: 600; margin-bottom: 2px; }
 .ac-coach::before { content: ""; position: absolute; left: 22px; top: -6px; width: 12px; height: 12px; border-radius: 2px; background: var(--ink); transform: rotate(45deg); }
@@ -390,7 +406,11 @@
 .ac-select.is-stage:hover, .ac-select.is-stage[data-state="open"] { background: rgb(255 255 255 / .12); }
 .ac-select.is-stage > .ac-i { color: var(--stage-ink-2); }
 .ac-select.is-stage:focus-visible, .ac-pop.is-stage .ac-option:focus-visible { outline-color: var(--speak); }
-.ac-select-list { position: relative; min-width: max(var(--radix-popover-trigger-width, 0px), 160px); max-width: min(360px, var(--radix-popover-content-available-width, 360px)); max-height: min(320px, var(--radix-popover-content-available-height, 320px)); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+/*
+ * The list's corner is an option's plus the 6px padding round them, so a lit option's corners follow it. Nine options
+ * (36px each, and that padding) show without scrolling.
+ */
+.ac-select-list { position: relative; min-width: max(var(--radix-popover-trigger-width, 0px), 160px); max-width: min(360px, var(--radix-popover-content-available-width, 360px)); max-height: min(336px, var(--radix-popover-content-available-height, 336px)); border-radius: calc(var(--radius-sm) + 6px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .ac-option { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 8px 10px; border-radius: var(--radius-sm); color: var(--ink); font: 500 13.5px/1.3 var(--font-sans); cursor: pointer; outline: none; scroll-margin: 6px; }
 .ac-option > span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .ac-option > .ac-note, .ac-select > .ac-note { flex: none; color: var(--ink-2); font-weight: 400; white-space: nowrap; }
@@ -455,6 +475,32 @@
 .ac-arch-art .well { fill: var(--sunk); }
 .ac-arch-art .sun { fill: var(--gold); opacity: .8; }
 .ac-arch-art .land { fill: var(--line); }
+/* EmptyRows: rows not filled in yet, in the colours they'll have. Follow-ups (`is-ticks`): boxes to tick and a day. */
+.ac-empty-rows { display: grid; gap: 7px; width: 176px; padding: 10px; border-radius: 12px; background: color-mix(in oklch, var(--ink) 6%, transparent); }
+.ac-empty-rows .r { --tint: var(--horizon); display: grid; grid-template-columns: 12px minmax(0, 1fr) 34px; column-gap: 9px; align-items: center; height: 18px; }
+.ac-empty-rows .r.is-decide { --tint: var(--rose); }
+.ac-empty-rows .k { justify-self: center; width: 9px; height: 9px; border-radius: 2px; border: 1.6px solid color-mix(in oklch, var(--tint) 75%, transparent); }
+.ac-empty-rows:not(.is-ticks) .r:not(.is-decide) .k { border-style: dashed; }
+.ac-empty-rows:not(.is-ticks) .r.is-decide .k { transform: rotate(45deg); }
+.ac-empty-rows .l { width: 82%; height: 5px; border-radius: 3px; background: color-mix(in oklch, var(--ink) 20%, transparent); }
+.ac-empty-rows .l.s { width: 58%; }
+.ac-empty-rows .l.m { width: 70%; }
+.ac-empty-rows .p { height: 12px; border-radius: 6px; background: color-mix(in oklch, var(--tint) 32%, transparent); }
+.ac-empty-rows.is-ticks .r { --tint: var(--horizon); }
+.ac-empty-rows.is-ticks .k { border-radius: 3px; }
+.ac-empty-rows.is-ticks .p { justify-self: end; width: 22px; height: 5px; border-radius: 3px; background: color-mix(in oklch, var(--ink) 20%, transparent); }
+/* EmptyWeek: three days, a few meetings in them, nothing to read yet. */
+.ac-empty-week { display: grid; grid-template-columns: repeat(3, 44px); gap: 6px; }
+.ac-empty-week > span { display: grid; gap: 5px; align-content: start; height: 70px; padding: 7px 6px; border-radius: 10px; background: color-mix(in oklch, var(--ink) 6%, transparent); }
+.ac-empty-week > span::before { content: ""; display: block; width: 14px; height: 4px; border-radius: 2px; background: color-mix(in oklch, var(--ink) 22%, transparent); }
+.ac-empty-week i { display: block; height: 12px; border-radius: 4px; background: color-mix(in oklch, var(--horizon) 30%, transparent); }
+.ac-empty-week i.r { background: color-mix(in oklch, var(--rose) 30%, transparent); }
+.ac-empty-week i.s { background: color-mix(in oklch, var(--sun-text) 34%, transparent); }
+/* SmallSunset: the sun half down on the horizon, and its glitter. */
+.ac-small-sunset { display: block; overflow: visible; }
+.ac-small-sunset .s { fill: var(--gold); }
+.ac-small-sunset .h { fill: color-mix(in oklch, var(--ink) 22%, transparent); }
+.ac-small-sunset .g { fill: var(--sun-text); }
 
 /* ---- Small pieces: check, meter, kbd, time chip ---- */
 .ac-check { position: relative; flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: var(--radius-xs); box-shadow: inset 0 0 0 1.5px var(--line-control); color: var(--on-sun); transition: background-color var(--duration-2), box-shadow var(--duration-2); }
@@ -514,6 +560,34 @@
 .ac-arch-thumb::after { content: ""; position: absolute; left: 50%; top: 68%; width: 32%; aspect-ratio: 1; border-radius: 50%; transform: translate(-50%, -50%); background: var(--gold); box-shadow: 0 0 10px 2px color-mix(in srgb, var(--sun-glow) 55%, transparent); }
 .ac-arch-thumb.in-room::after { background: var(--stage-ink); box-shadow: 0 0 0 4px rgb(255 255 255 / 0.22); width: 22%; }
 
+/* ---- NoteCard: a note in a row of cards. Its own small sunset as the cover (each cover a moment of the sky: illustration), the people on it standing on the cover's edge, its title. The title's link takes the whole card ---- */
+.ac-note-card { position: relative; display: grid; grid-template-rows: 96px auto; min-width: 0; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--shadow-1); overflow: hidden; text-align: left; transition: transform var(--duration-2) var(--ease-out), box-shadow var(--duration-2) var(--ease-out); }
+.ac-note-card:hover { transform: translateY(-3px); box-shadow: 0 0 0 1px var(--line), var(--shadow-2); }
+.ac-note-card:has(a:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ac-note-card a { color: inherit; }
+.ac-note-card a::after { content: ""; position: absolute; inset: 0; z-index: 3; }
+.ac-note-card a:focus-visible { outline: none; }
+.ac-note-cover { --c1: oklch(.34 .07 282); --c2: oklch(.56 .12 345); --c3: oklch(.8 .12 62); --sx: 64%; --sun: oklch(.93 .1 85); --sea: oklch(.3 .06 270); position: relative; display: block; overflow: hidden; background: linear-gradient(to bottom in oklch, var(--c1), var(--c2) 60%, var(--c3) 78%); }
+.ac-note-cover.is-first { --c1: oklch(.4 .08 300); --c2: oklch(.64 .12 12); --c3: oklch(.84 .1 75); --sx: 30%; --sun: oklch(.95 .08 92); --sea: oklch(.34 .07 290); }
+.ac-note-cover.is-dusk { --c1: oklch(.3 .06 252); --c2: oklch(.5 .1 300); --c3: oklch(.74 .11 35); --sx: 72%; --sun: oklch(.9 .11 75); --sea: oklch(.27 .05 258); }
+.ac-note-cover.is-haze { --c1: oklch(.36 .07 270); --c2: oklch(.6 .11 330); --c3: oklch(.82 .1 50); --sx: 46%; --sun: oklch(.94 .09 88); --sea: oklch(.3 .06 268); }
+.ac-note-cover.is-night { --c1: oklch(.28 .05 262); --c2: oklch(.42 .08 290); --c3: oklch(.62 .1 330); --sx: 56%; --sun: oklch(.86 .08 60); --sea: oklch(.24 .05 262); }
+.ac-note-cover.is-morning { --c1: oklch(.42 .07 250); --c2: oklch(.66 .09 300); --c3: oklch(.86 .08 40); --sx: 38%; --sun: oklch(.96 .07 90); --sea: oklch(.36 .06 262); }
+.ac-note-cover .s { position: absolute; left: var(--sx); bottom: 30%; width: 34px; height: 34px; border-radius: 50%; background: var(--sun); transform: translate(-50%, 50%); }
+.ac-note-cover .w { position: absolute; inset: auto 0 0; height: 30%; background: var(--sea); }
+.ac-note-cover .g { position: absolute; left: var(--sx); bottom: 18%; width: 26px; height: 2px; border-radius: 1px; background: var(--sun); opacity: .6; transform: translateX(-50%); }
+.ac-note-cover .g.b { bottom: 9%; width: 14px; opacity: .4; }
+.ac-note-cover .tag { position: absolute; top: 10px; left: 10px; height: 22px; padding: 0 9px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--stage) 55%, transparent); font: 600 11.5px/22px var(--font-sans); color: var(--stage-ink); }
+.ac-note-who { position: absolute; left: 14px; top: 78px; z-index: 2; display: flex; }
+.ac-note-who .arch { display: grid; place-items: center; width: 28px; height: 31px; border-radius: 14px 14px 4px 4px; background: var(--surface); box-shadow: 0 0 0 2px var(--surface); color: var(--ink-2); }
+.ac-note-b { display: grid; gap: 3px; align-content: start; min-height: 86px; padding: 24px 14px 14px; }
+.ac-note-b b { font: 600 14.5px/19px var(--font-sans); color: var(--ink); }
+.ac-note-b small { display: flex; align-items: center; gap: 6px; font: 400 12.5px/17px var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.ac-note-b .ac-dots { gap: 3px; }
+.ac-note-b .ac-dots i { width: 4px; height: 4px; }
+/* Being written: the cover breathes, slowly. */
+.ac-note-card.is-writing .ac-note-cover { animation: ac-breathe var(--duration-5) ease-in-out infinite; }
+
 /* ---- Fit: a scene drawn at a design size, scaled to its column ---- */
 .ac-fit { position: relative; width: 100%; overflow: hidden; }
 .ac-fit-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
@@ -549,21 +623,22 @@
 @keyframes ac-dots { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
 @keyframes ac-grow-x { from { transform: scaleX(0); } }
 
-/* An on/off switch: the sun fills it when it's on. */
-.ac-switch { position: relative; flex: none; width: 36px; height: 22px; border: 0; border-radius: 11px; background: var(--line-control); cursor: pointer; transition: background-color var(--duration-2) var(--ease-out); }
+/*
+ * An on/off switch: the sun fills it when it's on. Drawn inside a row that is itself the switch (`role="switch"` on the
+ * row, the switch a span in it), it takes its state from the row.
+ */
+.ac-switch { position: relative; display: inline-block; flex: none; width: 36px; height: 22px; border: 0; border-radius: 11px; background: var(--line-control); cursor: pointer; transition: background-color var(--duration-2) var(--ease-out); }
 .ac-switch::after { content: ""; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--surface); transition: transform var(--duration-2) var(--ease-out); }
-.ac-switch[aria-checked="true"] { background: var(--sun); }
-.ac-switch[aria-checked="true"]::after { transform: translateX(14px); background: var(--on-sun); }
+.ac-switch[aria-checked="true"], [role="switch"][aria-checked="true"] > .ac-switch { background: var(--sun); }
+.ac-switch[aria-checked="true"]::after, [role="switch"][aria-checked="true"] > .ac-switch::after { transform: translateX(14px); background: var(--on-sun); }
 .ac-switch:disabled { opacity: .5; cursor: default; }
 .ac-switch:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* Who an action changes. */
 .ac-scope { flex: none; padding: 4px 7px; border-radius: 6px; background: var(--sunk); font: 500 11.5px/1 var(--font-sans); color: var(--ink-3); white-space: nowrap; }
 .ac-scope.is-all { background: var(--horizon-soft); color: var(--horizon); }
-/* A modal: centred, or rising from the bottom. */
+/* A modal, centred. */
 .ac-modal { position: fixed; z-index: 51; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); display: flex; flex-direction: column; border-radius: var(--radius-xl); background: var(--surface-raised); color: var(--ink); box-shadow: var(--shadow-3); overflow: hidden; outline: none; animation: ac-dialog-in var(--duration-3) var(--ease-out) both; }
-.ac-modal.is-bottom { top: auto; bottom: 24px; transform: translateX(-50%); width: min(520px, calc(100vw - 32px)); animation: ac-modal-up var(--duration-3) var(--ease-out) both; }
 .ac-modal[data-state="closed"] { animation: ac-fade-out 180ms var(--ease-in) forwards; }
-@keyframes ac-modal-up { from { opacity: 0; transform: translateX(-50%) translateY(24px); } }
 
 /* A QR code: dark modules on a light card in either theme, the way every camera reads them. */
 .ac-qr { display: block; flex: none; border-radius: var(--radius-md); background: var(--stage-ink); color: var(--stage); box-shadow: inset 0 0 0 1px var(--line); }
@@ -714,3 +789,95 @@
 .ac-drive-empty.ac-empty { justify-items: start; gap: 3px; padding: 6px 0 8px; text-align: left; }
 .ac-drive-empty.ac-empty b { font: 500 14px/20px var(--font-sans); letter-spacing: 0; }
 .ac-drive-empty.ac-empty p { max-width: 62ch; font-size: 13px; line-height: 18px; }
+
+/* ---- FileCard and Thumb: a file as a large preview (files.tsx) ---- */
+/*
+ * A call's shared screens and what it made, the Drive's sheet and a workspace's home. `--fc-h` is the picture's height: a
+ * page sets its own where it needs to. The picture is drawn: a document's first lines, a board's stickies, a PDF's page,
+ * photos, or a shared screen at night with play over it. Its words end at a word, with an ellipsis (`fc-fit`, which files.tsx
+ * fills with as many words as fit).
+ */
+.fc { --fc-h: 92px; --fc-r: 14px; position: relative; display: grid; align-content: start; gap: 7px; min-width: 0; margin: -6px; padding: 6px 6px 8px; border-radius: var(--fc-r); text-align: left; transition: background-color var(--duration-1) var(--ease-out); }
+.fc.is-lg { --fc-h: 140px; --fc-r: 15px; gap: 9px; margin: -7px; padding: 7px 7px 10px; }
+.fc:hover { background: color-mix(in oklch, var(--ink) 6%, transparent); }
+.fc:has(.fc-open:focus-visible) { outline: 2px solid var(--focus); outline-offset: 0; }
+.fc-fit { display: block; min-width: 0; overflow: hidden; white-space: nowrap; }
+/* The whole of the words, unseen: they size the box, so what's fitted into it never does. */
+.fc-whole { display: block; height: 0; overflow: hidden; visibility: hidden; }
+.fc-name { display: flex; align-items: center; gap: 7px; min-width: 0; font: 600 13.5px/1.25 var(--font-sans); color: var(--ink); }
+.fc.is-lg .fc-name { padding-inline: 3px; font-size: 14px; line-height: 1.3; }
+.fc-name > .ac-i { flex: none; color: var(--ink-2); }
+.fc-open { flex: 1; min-width: 0; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.fc-open:focus-visible { outline: none; }
+/* The name is the card's button, stretched over the whole of it. */
+.fc-open::after { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: var(--fc-r); }
+.fc-by { display: flex; align-items: center; gap: 6px; min-width: 0; font: 400 12.5px/1.3 var(--font-sans); color: var(--ink-2); }
+.fc.is-lg .fc-by { padding-inline: 3px; line-height: 1.35; }
+/* Where it is shrinks to what it shows, so the "·" after it sits right beside it. */
+.fc-by em { flex: 0 1 auto; max-width: 60%; min-width: 0; overflow: hidden; font-style: normal; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
+.fc-by > .fc-fit { flex: 1; }
+.fc-sep { flex: none; color: var(--ink-3); }
+.fc-at { display: inline-flex; flex: none; align-items: center; gap: 4px; height: 22px; padding: 0 7px 0 6px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink) 8%, transparent); font: 600 11.5px/1 var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+/* The menu over the picture's corner, above the stretched button: there on hover and focus, and always on a touch screen. */
+.fc-menu { position: absolute; top: 12px; right: 12px; z-index: 2; opacity: 0; transition: opacity var(--duration-1) var(--ease-out); }
+.fc.is-lg .fc-menu { top: 13px; right: 13px; }
+.fc:hover .fc-menu, .fc:focus-within .fc-menu, .fc-menu:has([aria-expanded="true"]) { opacity: 1; }
+@media (hover: none) { .fc-menu { opacity: 1; } }
+.fc-menu .ac-icon-btn { width: 28px; height: 28px; border-radius: 8px; background: color-mix(in oklch, var(--surface-raised) 92%, transparent); box-shadow: 0 0 0 1px var(--line); }
+.fc-menu .ac-icon-btn:hover { background: var(--surface-raised); }
+/* What's playing or open now. */
+.fc.is-current .fc-thumb { box-shadow: inset 0 0 0 1px var(--line), 0 0 0 2px var(--sun-text); }
+
+/* The picture. */
+.fc-thumb { position: relative; display: block; height: var(--fc-h); overflow: hidden; border-radius: 10px; background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line); }
+.fc-thumb.has-picture > * { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* A document's page: its title, then its first lines, a bullet or a to-do before each where it has one. */
+.fc-page { display: grid; align-content: start; gap: 6px; height: 100%; padding: 12px 12px 0; }
+.fc-thumb.is-lg .fc-page { gap: 9px; padding: 18px 18px 0; }
+.fc-page b { display: block; min-width: 0; margin-bottom: 3px; font: 600 12.5px/1.25 var(--font-sans); color: var(--ink); }
+.fc-thumb.is-lg .fc-page b { font-size: 13.5px; }
+.fc-ln { display: flex; align-items: center; gap: 6px; min-width: 0; font: 400 10.5px/1.35 var(--font-sans); color: var(--ink-2); }
+.fc-ln > .fc-fit { flex: 1; }
+.fc-thumb.is-lg .fc-ln { font-size: 12px; }
+.fc-mk { flex: none; width: 8px; height: 8px; border-radius: 2px; box-shadow: inset 0 0 0 1.2px color-mix(in oklch, var(--ink) 40%, transparent); }
+.fc-thumb.is-lg .fc-mk { width: 9px; height: 9px; }
+.fc-mk.is-dot { width: 4px; height: 4px; margin-inline: 2px; border-radius: 50%; box-shadow: none; background: color-mix(in oklch, var(--ink) 42%, transparent); }
+.fc-thumb.is-lg .fc-mk.is-dot { width: 4px; height: 4px; }
+.fc-mk.is-done { background: color-mix(in oklch, var(--horizon) 80%, transparent); box-shadow: none; }
+.fc-bar { display: block; width: 86%; height: 5px; border-radius: 3px; background: color-mix(in oklch, var(--ink) 12%, transparent); }
+.fc-bar.is-short { width: 58%; }
+/* A board: a few stickies and a line between them, in the board's own colours. */
+.fc-thumb.is-board { background: var(--sunk); }
+.fc-thumb.is-board svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.fc-thumb.is-board path { fill: none; stroke: color-mix(in oklch, var(--ink-2) 55%, transparent); stroke-width: 1.4; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.fc-note { position: absolute; width: 26%; aspect-ratio: 1; border-radius: 3px; box-shadow: var(--note-shadow); }
+.fc-note::before, .fc-note::after { content: ""; position: absolute; left: 14%; right: 22%; height: 3px; border-radius: 2px; background: color-mix(in oklch, var(--note-ink) 18%, transparent); }
+.fc-note::before { top: 24%; }
+.fc-note::after { top: 40%; right: 38%; }
+.fc-note.n1 { left: 9%; top: 14%; background: var(--note-butter); transform: rotate(-3deg); }
+.fc-note.n2 { left: 39%; top: 10%; background: var(--note-rose); transform: rotate(2deg); }
+.fc-note.n3 { left: 66%; top: 18%; background: var(--note-sky); }
+.fc-note.n4 { left: 22%; top: 56%; border-radius: 50%; background: transparent; box-shadow: inset 0 0 0 1.5px color-mix(in oklch, var(--ink-2) 50%, transparent); }
+.fc-note.n4::before, .fc-note.n4::after { content: none; }
+.fc-note.n5 { left: 56%; top: 58%; width: 32%; aspect-ratio: 1.6; background: var(--note-butter); transform: rotate(1deg); }
+/* A PDF: its first page, with lines and its kind on it. */
+.fc-thumb.is-pdf { display: grid; place-items: center; }
+.fc-pdf { position: relative; display: block; width: 44%; max-width: 92px; aspect-ratio: .78; border-radius: 4px; background: var(--stage-ink); box-shadow: 0 6px 16px -8px rgb(0 0 0 / .45), 0 0 0 1px color-mix(in oklch, var(--dawn-1) 10%, transparent); }
+.fc-pdf i { position: absolute; inset: 18% 14% auto; height: 34%; border-radius: 2px; background: repeating-linear-gradient(to bottom, color-mix(in oklch, var(--dawn-1) 30%, transparent) 0 2px, transparent 2px 7px); }
+.fc-pdf b { position: absolute; left: 14%; bottom: 12%; padding: 3px 5px; border-radius: 3px; background: var(--dawn-1); font: 700 8px/1 var(--font-sans); color: var(--stage-ink); letter-spacing: .04em; }
+/* Photos: four of them, with how many there are on the last. */
+.fc-thumb.is-photos { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 3px; padding: 3px; }
+.fc-photo { position: relative; overflow: hidden; border-radius: 6px; background: var(--cover-dawn); }
+.fc-photo:nth-child(2) { background: var(--cover-haze); }
+.fc-photo:nth-child(3) { background: var(--cover-dusk); }
+.fc-photo:nth-child(4) { background: var(--cover-first); }
+.fc-photo::after { content: ""; position: absolute; left: 18%; bottom: 30%; width: 42%; height: 26%; background: color-mix(in oklch, var(--dawn-1) 70%, transparent); clip-path: polygon(0 100%, 0 30%, 30% 0, 60% 30%, 100% 30%, 100% 100%); }
+.fc-count { position: absolute; right: 8px; bottom: 8px; padding: 4px 7px; border-radius: 6px; background: color-mix(in oklch, var(--dawn-1) 78%, transparent); font: 600 11px/1 var(--font-sans); color: var(--stage-ink); font-variant-numeric: tabular-nums; }
+/* A shared screen: always night, the page that was shared, and play over it. */
+.fc-thumb.is-share { background: var(--stage-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07); }
+.fc-sheet { position: absolute; inset: 15% 24% 12%; display: grid; align-content: start; gap: 6px; padding: 10% 9%; border-radius: 3px; background: var(--stage-ink); }
+.fc-sheet i { display: block; height: 4px; border-radius: 2px; background: color-mix(in oklch, var(--dawn-1) 26%, var(--stage-ink)); }
+.fc-sheet i:nth-child(2) { width: 80%; }
+.fc-sheet i:nth-child(3) { width: 60%; }
+.fc-play { position: absolute; left: 50%; top: 50%; display: grid; place-items: center; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; background: color-mix(in oklch, var(--stage) 80%, transparent); color: var(--stage-ink); }
+.fc-play .ac-i { transform: translateX(1px); }

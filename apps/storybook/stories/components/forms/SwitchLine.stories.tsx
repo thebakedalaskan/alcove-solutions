@@ -1,33 +1,32 @@
 /*
- * SwitchLine: a switch with what it does, in the call modal: the title, a line under it when that needs saying, and
- * the Switch itself (`control`) at its end. What the call's notes keep is a few of these, and a big call's setup is one.
+ * SwitchLine: a switch with what it does: the title, a line under it when that needs saying, and the Switch itself
+ * (`control`) at its end. What a call's notes keep is a few of these, opened under Notes on the scheduler, and on the
+ * Notes view of a scheduled call's card.
  */
-import { FlowBody, FlowRow, FlowView, Switch, SwitchLine } from '@alcove/ui';
+import { Icon, Switch, SwitchLine } from '@alcove/ui';
 import type { Decorator, Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
-import { ModalFrame, did } from '../../../src/component';
+import { did } from '../../../src/component';
 
-/** Opened in place under a row of the call modal, as the switches are: a big call's setup, or (`row: 'notes'`) its notes. */
-const opened: Decorator = (Story, ctx) => (
-  <ModalFrame>
-    <FlowView>
-      <FlowBody>
-        <div className="cf-rows">
-          {ctx.parameters['row'] === 'notes'
-            ? <FlowRow icon="notes" on title="Notes and transcript" sub="Everyone invited gets them" expanded onClick={did('onRow')} />
-            : <FlowRow icon="megaphone" title="Set up for a big call" sub="Everyone joins muted." expanded onClick={did('onRow')} />}
-          <div className="cf-more"><Story /></div>
-        </div>
-      </FlowBody>
-    </FlowView>
-  </ModalFrame>
+/** Opened in place under Notes, in the scheduler's Details: What the notes keep. */
+const opened: Decorator = (Story) => (
+  <section className="sc-sec" style={{ width: 'min(372px, 100%)' }}>
+    <h3>Details</h3>
+    <div className="sc-row is-switch">
+      <Icon name="notes" size={17} className="is-rec" />
+      <span className="min-w-0"><b>Notes</b><small>Everyone invited gets them</small></span>
+      <Switch checked label="Notes" onChange={did('onNotes')} />
+    </div>
+    <button type="button" className="sc-more" aria-expanded onClick={did('onWhatTheyKeep')}>What the notes keep<Icon name="chevron" size={14} /></button>
+    <div className="sc-keep"><Story /></div>
+  </section>
 );
 
 const meta = {
   title: 'Components/Forms/SwitchLine',
   component: SwitchLine,
   decorators: [opened],
-  args: { title: 'Everyone joins muted, cameras off', control: null },
+  args: { title: 'Keep the recording', sub: 'Play back any moment from the notes', control: null },
   argTypes: { title: { control: 'text' }, sub: { control: 'text' }, control: { control: false } },
   /* The switch turns when it's pressed. */
   render: function Render(args) {
@@ -38,14 +37,13 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Just what it does, and the switch. */
+/** What it does, a line under it, and the switch. */
 export const On: Story = {};
-/** A line under the title, when what it does needs saying. */
-export const WithASub: Story = { name: 'With a line under it', parameters: { row: 'notes' }, args: { title: 'Keep the recording', sub: 'Play back any moment from the notes' } };
+/** Just what it does, when nothing more needs saying. */
+export const WithoutALine: Story = { name: 'Without a line under it', args: { title: 'Read shared screens', sub: undefined } };
 /** The line under it follows the switch: kept, or used and then deleted. */
 export const SaysWhatItDoes: Story = {
   name: 'Says what it does',
-  parameters: { row: 'notes' },
   args: { title: 'Keep the transcript' },
   render: function Render(args) {
     const [on, setOn] = useState(false);

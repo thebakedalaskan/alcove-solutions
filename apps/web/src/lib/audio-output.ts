@@ -2,6 +2,7 @@
 import { SoundReceiptsSchema, type SoundPreferences } from '@alcove/api';
 import { canChooseSpeaker } from '~/features/call/media/devices';
 import { log } from './log';
+import { notificationsPauseHolds } from './notification-pause';
 
 const alog = log.child({ component: 'sound-output' });
 export type SoundCue = 'mic-on' | 'mic-off' | 'join' | 'leave' | 'hand' | 'question' | 'message' | 'reply' | 'mention' | 'admission' | 'timer' | 'ring';
@@ -20,10 +21,21 @@ const category: Record<SoundCue, keyof SoundPreferences> = {
 };
 const priority = (cue: SoundCue) => cue === 'mic-on' || cue === 'mic-off' ? 4 : cue === 'admission' ? 3 : cue === 'mention' ? 2 : cue === 'timer' || cue === 'ring' ? 1 : 0;
 const cooldown = (cue: SoundCue) => category[cue] === 'mic' ? 0 : cue === 'admission' ? 700 : 1800;
-export function soundAllowed(cue: SoundCue, prefs: SoundPreferences): boolean {
-  return prefs.enabled && prefs.volume > 0 && Boolean(prefs[category[cue]]) && (!prefs.quiet || cue === 'mic-on' || cue === 'mic-off' || cue === 'admission');
+/**
+ * What a cue is played with, read as it's asked for and again as it plays: the sound choices, when the account's pause on
+ * notifications ends (`notificationsPauseEnd`, as lib/notification-pause.ts reads it; null for none, and for a guest) and
+ * the speaker.
+ */
+export interface SoundSettings { prefs: SoundPreferences; notificationsPauseEnd: number | null; speakerId: string | null }
+/**
+ * Whether a cue sounds at `now`. Quiet mode, and paused notifications while the pause holds, keep only your own microphone
+ * going on and off and someone asking to join a call you host (only a host is ever cued for that).
+ */
+export function soundAllowed(cue: SoundCue, { prefs, notificationsPauseEnd }: Pick<SoundSettings, 'prefs' | 'notificationsPauseEnd'>, now = Date.now()): boolean {
+  const hushed = prefs.quiet || notificationsPauseHolds(notificationsPauseEnd, now);
+  return prefs.enabled && prefs.volume > 0 && Boolean(prefs[category[cue]]) && (!hushed || cue === 'mic-on' || cue === 'mic-off' || cue === 'admission');
 }
-interface Request { owner: object; cue: SoundCue; key: string; until: number; current: () => { prefs: SoundPreferences; speakerId: string | null }; preview?: boolean; generation?: number; categoryGeneration?: number; cancelled?: boolean }
+interface Request { owner: object; cue: SoundCue; key: string; until: number; current: () => SoundSettings; preview?: boolean; generation?: number; categoryGeneration?: number; cancelled?: boolean }
 interface Output { context: AudioContext; destination: AudioNode; audio: HTMLAudioElement | null }
 const pending: Request[] = [];
 const generations = new WeakMap<object, number>();
@@ -157,8 +169,9 @@ async function prepare(request: Request): Promise<Output | null> {
   return valid(request) && out.context.state === 'running' && (!out.audio || !out.audio.paused) ? out : null;
 }
 async function render(request: Request, out: Output): Promise<boolean> {
-  const { prefs } = request.current();
-  if (!valid(request) || out.context.state !== 'running' || (!request.preview && !soundAllowed(request.cue, prefs))) return false;
+  const settings = request.current();
+  const { prefs } = settings;
+  if (!valid(request) || out.context.state !== 'running' || (!request.preview && !soundAllowed(request.cue, settings))) return false;
   const gain = out.context.createGain();
   gain.gain.value = 0.12 * prefs.volume;
   gain.connect(out.destination);
@@ -204,7 +217,7 @@ async function drain(): Promise<void> {
   finally { running = false; }
 }
 export function playSound(request: Request): void {
-  if (!request.preview && !soundAllowed(request.cue, request.current().prefs)) return;
+  if (!request.preview && !soundAllowed(request.cue, request.current())) return;
   if (pending.some((r) => r.key === request.key)) return;
   // A shifted request may still be awaiting output preparation. The generation invalidates it too.
   const nextCategory = (categoryGenerations.get(category[request.cue]) ?? 0) + 1;

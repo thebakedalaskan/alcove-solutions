@@ -52,8 +52,11 @@
 }
 .hz[data-moment="team"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.869 0.043 270) 58%, oklch(0.912 0.047 355.294) 100%); --hz-sun-x: -300px; --hz-sun-r: 40px; }
 .dark .hz[data-moment="team"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.292 0.066 264.923) 58%, oklch(0.402 0.076 305.789) 100%); }
-.hz[data-moment="notes"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.863 0.044 260) 58%, oklch(0.902 0.038 327.059) 100%); --hz-glow-w: 980px; --hz-glow-h: 150px; }
-.dark .hz[data-moment="notes"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.28 0.064 261.529) 58%, oklch(0.351 0.07 288.308) 100%); }
+/* Agents: Team's moment the other way round, the sun low on the right. The page moves it to just past the end of its line. */
+.hz[data-moment="agents"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.869 0.043 270) 58%, oklch(0.912 0.047 355.294) 100%); --hz-sun-x: 300px; --hz-sun-r: 36px; }
+.dark .hz[data-moment="agents"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.292 0.066 264.923) 58%, oklch(0.402 0.076 305.789) 100%); }
+.hz[data-moment="calls"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.863 0.044 260) 58%, oklch(0.902 0.038 327.059) 100%); --hz-glow-w: 980px; --hz-glow-h: 150px; }
+.dark .hz[data-moment="calls"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.28 0.064 261.529) 58%, oklch(0.351 0.07 288.308) 100%); }
 .hz[data-moment="drive"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.856 0.046 257) 58%, oklch(0.892 0.04 312) 100%); --hz-glow-w: 860px; --hz-glow-h: 120px; }
 .dark .hz[data-moment="drive"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.276 0.063 261) 58%, oklch(0.33 0.069 280) 100%); }
 /* Plans: just after sunset, with a long low glow. Its sun is the page's own (PlanSunset, styles/plans.css). */
@@ -73,6 +76,23 @@
   --hz-shape: oklch(0.14 0.035 262); --hz-leaper: oklch(0.8 0.05 60); --hz-sun-r: 58px;
 }
 .hz[data-moment="record"] .hz-sun { box-shadow: inset 0 0 0 1.5px var(--hz-rim), 0 0 26px -6px var(--hz-rim); }
+/*
+ * After a call: the night a call leaves you on, in both themes. No sun: a rose glow on the horizon where it went down, with
+ * its light lying on the bay, the stars out (in the light theme too) and a crescent moon high on the right. Only shooting
+ * stars pass through. Where the moon stands can be moved (`--hz-moon-x`, `--hz-moon-y`, `--hz-moon-size`).
+ */
+.hz[data-moment="after"], .dark .hz[data-moment="after"] {
+  --hz-sky: linear-gradient(to bottom in oklch, oklch(0.193 0.039 263) 0%, oklch(0.247 0.053 264) 62%, oklch(0.286 0.065 289) 100%);
+  --hz-sea: linear-gradient(to bottom in oklch, oklch(0.271 0.056 273.5) 0%, oklch(0.231 0.047 266.6) 45%, oklch(0.188 0.035 263.2) 100%);
+  --hz-glow: oklch(0.576 0.124 354 / 0.36); --hz-rim: oklch(0.82 0.08 62);
+  --hz-cloud: oklch(0.343 0.07 285.385); --hz-chop: oklch(0.835 0.022 250);
+  --hz-near: oklch(0.84 0.07 72); --hz-far: oklch(0.6 0.1 352);
+  --hz-shape: oklch(0.14 0.035 262); --hz-leaper: oklch(0.8 0.05 60); --hz-moon: oklch(0.93 0.04 85 / 0.8);
+  --hz-glow-w: 1240px; --hz-glow-h: 220px;
+}
+.hz[data-moment="after"] :is(.hz-star, .hz-shoot, .hz-lamp) { visibility: visible; }
+.hz[data-moment="after"] .hz-rim { display: none; }
+.hz[data-moment="after"] .hz-glint { height: 1.6px; }
 
 /* ------------------------------------------------------------ the scene */
 .hz i { position: absolute; display: block; }
@@ -80,10 +100,13 @@
 .hz-sky { position: absolute; inset: 0 0 auto; height: var(--hz); background: var(--hz-sky); }
 .hz-sea { position: absolute; inset: var(--hz) 0 0; background: var(--hz-sea); }
 .hz-up { position: absolute; inset: 0 0 auto; height: var(--hz); overflow: hidden; }
+.hz-stars { position: absolute; inset: 0; }
 .hz-at, .hz-light { position: absolute; left: 50%; top: var(--hz); width: 0; height: 0; }
 .hz-light { left: calc(50% + var(--hz-sun-x)); }
 
 .hz-glow { left: calc(var(--hz-glow-w) / -2); top: calc(var(--hz-glow-h) / -2); width: var(--hz-glow-w); height: var(--hz-glow-h); background: radial-gradient(closest-side, var(--hz-glow), transparent); animation: hz-breathe 11s ease-in-out infinite; }
+/* The glow's lower half, lying on the water under the horizon, where a moment has it (`bay`). */
+.hz-glow.is-bay { clip-path: inset(50% 0 0 0); }
 .hz-sun { left: calc(-1 * var(--hz-sun-r)); top: calc(-1 * var(--hz-sun-r)); width: calc(2 * var(--hz-sun-r)); height: calc(2 * var(--hz-sun-r)); border-radius: 50%; background: var(--hz-sun); animation: hz-rise 1.5s cubic-bezier(.16, .8, .24, 1) backwards; transition: transform .6s var(--ease-out); }
 .hz-cloud { height: 3px; border-radius: 2px; background: var(--hz-cloud); animation: hz-cloud 70s ease-in-out infinite alternate; animation-delay: calc(var(--i) * -22s); }
 .hz-rim { left: -560px; width: 1120px; height: 1.5px; background: linear-gradient(to right, transparent, var(--hz-rim), transparent); }
@@ -91,6 +114,9 @@
 .hz-chop i { height: 1.6px; border-radius: 1px; background: var(--hz-chop); }
 .hz-glint { height: 2.6px; opacity: var(--o); }
 .hz-glint::before { content: ""; position: absolute; inset: 0; border-radius: 2px; background: color-mix(in oklch, var(--hz-near), var(--hz-far) calc(var(--far) * 100%)); animation: hz-glint var(--every) ease-in-out var(--after) infinite; }
+
+/* The moon, after a call: a crescent drawn flat, standing still. */
+.hz-moon { position: absolute; left: var(--hz-moon-x, 82%); top: var(--hz-moon-y, 20%); width: var(--hz-moon-size, 26px); height: var(--hz-moon-size, 26px); translate: -50% -50%; fill: var(--hz-moon); }
 
 /* Stars come out in the dark; by day they aren't there to see. */
 .hz-star { visibility: hidden; opacity: var(--o); }
@@ -156,7 +182,7 @@
 .hz-wake.is-2 { left: calc(var(--cw) * .3); top: 16px; width: calc(var(--cw) * .42); opacity: .22; }
 .hz-wake.is-3 { left: calc(var(--cw) * .4); top: 22px; width: calc(var(--cw) * .22); opacity: .13; }
 /* Far out, on the pages with a short sky. */
-.hz[data-moment="notes"] .hz-sail, .hz[data-moment="plans"] .hz-sail, .hz[data-moment="settings"] .hz-sail { --small: .62; }
+.hz[data-moment="calls"] .hz-sail, .hz[data-moment="plans"] .hz-sail, .hz[data-moment="settings"] .hz-sail { --small: .62; }
 .hz-sail:not(.is-left) .hz-craft { scale: var(--small, 1); }
 .hz-sail.is-left .hz-craft { scale: calc(-1 * var(--small, 1)) var(--small, 1); }
 @keyframes hz-bob { 0%, 100% { transform: rotate(0); } 7% { transform: rotate(-1.4deg); } 19% { transform: rotate(1.2deg); } 31% { transform: rotate(-1deg); } 44% { transform: rotate(1.5deg); } 58% { transform: rotate(-1.3deg); } 71% { transform: rotate(1deg); } 86% { transform: rotate(-1.1deg); } }

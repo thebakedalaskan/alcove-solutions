@@ -1,0 +1,229 @@
+{
+ "v": 3,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-11-11T21:45:00Z"
+ },
+ "title": "After the call",
+ "launch": {
+  "view": "canvas",
+  "page": "after"
+ },
+ "pages": [
+  {
+   "id": "after",
+   "name": "The idea"
+  },
+  {
+   "id": "states",
+   "name": "Every state"
+  },
+  {
+   "id": "journeys",
+   "name": "Every journey, step by step"
+  },
+  {
+   "id": "parts",
+   "name": "Parts"
+  }
+ ],
+ "boards": {
+  "Idea.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1680,
+   "h": 1500,
+   "title": "After the call: a page of its own",
+   "page": "after"
+  },
+  "Over.dc.html": {
+   "x": 1760,
+   "y": 0,
+   "w": 1440,
+   "h": 900,
+   "title": "The page (pick a state under Tweaks)",
+   "page": "after",
+   "is_interactive": true
+  },
+  "Play.dc.html": {
+   "x": 3280,
+   "y": 0,
+   "w": 1520,
+   "h": 1210,
+   "title": "Play it",
+   "page": "after",
+   "is_interactive": true
+  },
+  "States.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1760,
+   "h": 2610,
+   "title": "Every state of the page",
+   "page": "states"
+  },
+  "J-end.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 3904,
+   "h": 808,
+   "title": "1 You end it for everyone",
+   "page": "journeys"
+  },
+  "J-ended.dc.html": {
+   "x": 0,
+   "y": 928,
+   "w": 2376,
+   "h": 785,
+   "title": "2 Whoever hosts ends it",
+   "page": "journeys"
+  },
+  "J-leave.dc.html": {
+   "x": 0,
+   "y": 1833,
+   "w": 3140,
+   "h": 808,
+   "title": "3 You leave, and it goes on",
+   "page": "journeys"
+  },
+  "J-keep.dc.html": {
+   "x": 0,
+   "y": 2761,
+   "w": 2376,
+   "h": 785,
+   "title": "4 You host, and leave it with someone",
+   "page": "journeys"
+  },
+  "J-none.dc.html": {
+   "x": 0,
+   "y": 3666,
+   "w": 2376,
+   "h": 785,
+   "title": "5 A call without notes",
+   "page": "journeys"
+  },
+  "J-guest.dc.html": {
+   "x": 0,
+   "y": 4571,
+   "w": 2376,
+   "h": 785,
+   "title": "6 A guest",
+   "page": "journeys"
+  },
+  "J-phone.dc.html": {
+   "x": 0,
+   "y": 5476,
+   "w": 1260,
+   "h": 899,
+   "title": "7 On a phone",
+   "page": "journeys"
+  },
+  "After.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 900,
+   "title": "One moment of a journey",
+   "page": "parts"
+  },
+  "Strip.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 3904,
+   "h": 808,
+   "title": "A journey, frame by frame",
+   "page": "parts"
+  },
+  "Note.dc.html": {
+   "x": 0,
+   "y": 1020,
+   "w": 1440,
+   "h": 900,
+   "title": "A note (from the kit)",
+   "page": "parts",
+   "is_interactive": true
+  },
+  "Home.dc.html": {
+   "x": 1520,
+   "y": 1020,
+   "w": 1440,
+   "h": 900,
+   "title": "Home (from the kit)",
+   "page": "parts",
+   "is_interactive": true
+  },
+  "Side.dc.html": {
+   "x": 3040,
+   "y": 1020,
+   "w": 256,
+   "h": 800,
+   "title": "The side panel",
+   "page": "parts"
+  },
+  "Faces.dc.html": {
+   "x": 3376,
+   "y": 1020,
+   "w": 1000,
+   "h": 420,
+   "title": "People in the arch",
+   "page": "parts"
+  },
+  "Scene.dc.html": {
+   "x": 0,
+   "y": 2040,
+   "w": 1200,
+   "h": 420,
+   "title": "One evening, drawn",
+   "page": "parts"
+  },
+  "Visitors.dc.html": {
+   "x": 1280,
+   "y": 2040,
+   "w": 1200,
+   "h": 420,
+   "title": "What passes through",
+   "page": "parts"
+  },
+  "SkyArt.dc.html": {
+   "x": 2560,
+   "y": 2040,
+   "w": 1000,
+   "h": 340,
+   "title": "The sunset, drawn",
+   "page": "parts"
+  },
+  "Overlays.dc.html": {
+   "x": 3640,
+   "y": 2040,
+   "w": 1000,
+   "h": 300,
+   "title": "What opens over a page",
+   "page": "parts"
+  }
+ },
+ "order": [
+  "Idea.dc.html",
+  "Over.dc.html",
+  "Play.dc.html",
+  "States.dc.html",
+  "J-end.dc.html",
+  "J-ended.dc.html",
+  "J-leave.dc.html",
+  "J-keep.dc.html",
+  "J-none.dc.html",
+  "J-guest.dc.html",
+  "J-phone.dc.html",
+  "After.dc.html",
+  "Strip.dc.html",
+  "Note.dc.html",
+  "Home.dc.html",
+  "Side.dc.html",
+  "Faces.dc.html",
+  "Scene.dc.html",
+  "Visitors.dc.html",
+  "SkyArt.dc.html",
+  "Overlays.dc.html"
+ ],
+ "notes": {},
+ "designSystems": []
+}

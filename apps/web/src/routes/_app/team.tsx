@@ -25,7 +25,7 @@ import { sameEmail } from '~/lib/people';
 import { q } from '~/lib/queries';
 
 export const Route = createFileRoute('/_app/team')({
-  /** `group`: one of your groups to show open (the side panel's groups link here), or NEW_GROUP to make one. */
+  /** `group`: one of your groups to show open (from its tile, or the address), or NEW_GROUP to make one. */
   validateSearch: (s: Record<string, unknown>): { group?: string | undefined } => {
     const g = GroupParamSchema.safeParse(s['group']);
     return { group: g.success ? g.data : undefined };

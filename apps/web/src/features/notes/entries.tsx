@@ -84,18 +84,17 @@ const disputeLine = (disputes: Dispute[], me: string | undefined) => {
   return `${you ? `You and ${listNames(others)}` : listNames(others)} ${others.length > 1 || you ? 'say' : 'says'} this wasn’t decided`;
 };
 
-/** What to be careful of in an entry, in plain words. Nothing shows when there's nothing to say. */
-export function EvidenceFlags({ evidence, disputes = [], me }: { evidence: NoteEvidence; disputes?: Dispute[] | undefined; me: string | undefined }) {
+/** What to be careful of in an entry, in plain words, one line each: nothing when there's nothing to say. */
+export function cautionsOf(evidence: NoteEvidence, disputes: Dispute[], me: string | undefined): string[] {
   // A conflict that's only a dispute says whose it is; one with a line against it says that too.
   const said = evidence.moments.some((m) => m.kind === 'line' && m.against);
   const flags = evidence.flags.filter((f) => f !== 'conflict' || said);
-  if (!flags.length && !disputes.length) return null;
-  return (
-    <>
-      {flags.map((f) => <span key={f} className="ent-flag"><Icon name="alert" size={13} />{FLAGS[f]}</span>)}
-      {disputes.length > 0 && <span className="ent-flag"><Icon name="alert" size={13} />{disputeLine(disputes, me)}</span>}
-    </>
-  );
+  return [...flags.map((f) => FLAGS[f]), ...(disputes.length ? [disputeLine(disputes, me)] : [])];
+}
+
+/** What to be careful of in an entry, in plain words. Nothing shows when there's nothing to say. */
+export function EvidenceFlags({ evidence, disputes = [], me }: { evidence: NoteEvidence; disputes?: Dispute[] | undefined; me: string | undefined }) {
+  return <>{cautionsOf(evidence, disputes, me).map((line) => <span key={line} className="ent-flag"><Icon name="alert" size={13} />{line}</span>)}</>;
 }
 
 /** One moment an entry rests on: who said what, when, and whether it cuts against it. */

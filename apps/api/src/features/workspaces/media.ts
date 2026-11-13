@@ -2,8 +2,8 @@
  * Files in a workspace: pictures, video, audio and anything else someone puts in a document or on a board (docs: Data and
  * storage › Media). A file is a row, its sealed info, and sealed pieces of 4 MiB in the object store under random names,
  * all under a key of its own from the workspace's root. It belongs to the workspace and is reached only through a document
- * that has it (`workspace_media_uses`): whoever can open that document can read it, because a guest's seat covers one
- * document, and features/workspaces/access.ts says who that is, on every request, each `Range` included.
+ * that has it (`workspace_media_uses`): whoever can open that document can read it, because what someone in a call is given
+ * can be one document, and features/workspaces/access.ts says who that is, on every request, each `Range` included.
  *
  * A use goes with its document, when that's deleted for good, so a version or something in Trash keeps its pictures, or
  * with the file, when someone deletes it. A file nothing uses any more goes in the same transaction, its objects queued in
@@ -244,13 +244,14 @@ const uploaderOf = (d: Deps, r: Reader): Uploader =>
 /**
  * What a workspace takes (docs: Plans and usage › Storage): files as big as the plan of whoever it counts against has,
  * while their storage has room, and what one person uploads in a day, the same for everyone. A workspace nobody pays for
- * yet (its payer just deleted their account, until upkeep settles it) takes Free's files.
+ * (none of its admins has an account, or its payer just deleted theirs) takes no files: they'd count against no storage at
+ * all. Upkeep settles who pays within minutes of an admin signing in (billing/storage.ts `settlePayers`).
  */
-interface Allowed { file: number; day: number; payer: string | null; storage: number | null }
+interface Allowed { file: number; day: number; payer: string; storage: number | null }
 async function allowedIn(d: Deps, db: Db, w: Place): Promise<Allowed> {
   const limits = await limitsNow(d, db);
   const payer = await payerOf(db, w.owner.ownerId);
-  if (!payer) return { file: limits.get('plan.free.file_bytes'), day: limits.get('media.account_day_bytes'), payer, storage: null };
+  if (!payer) throw new ConflictError('Files can’t be added until one of this workspace’s admins signs in to Alcove.', { context: { workspaceId: w.workspaceId, why: 'no payer' } });
   return { file: await fileBytesFor(d, db, payer), day: limits.get('media.account_day_bytes'), payer, storage: await storageLimitOf(d, db, payer) };
 }
 
@@ -284,7 +285,7 @@ async function withinLimits(d: Deps, db: Db, w: Place, u: Uploader, allowed: All
   if (size > allowed.file) {
     throw invalid(allowed.file ? `This file is bigger than ${shown('plan.free.file_bytes', allowed.file)}, the most a file can be here.` : NO_UPLOADS, { ...context, limit: 'file', limitBytes: allowed.file });
   }
-  if (allowed.payer) await requireRoom(d, db, allowed.payer, adding, context);
+  await requireRoom(d, db, allowed.payer, adding, context);
   const day = await uploadedToday(db, u);
   if (day + adding > allowed.day) {
     throw new ConflictError(allowed.day ? 'That’s all you can upload today. You can upload more tomorrow.' : NO_UPLOADS, { context: { ...context, limit: 'media.account_day_bytes', uploadedBytes: day, limitBytes: allowed.day } });
@@ -295,8 +296,8 @@ async function withinLimits(d: Deps, db: Db, w: Place, u: Uploader, allowed: All
  * what it's allowed: IDs and sizes, nothing else.
  */
 const passes80 = (before: number, after: number, limit: number): boolean => before < 0.8 * limit && after >= 0.8 * limit;
-function nearTheLimits(w: Place, u: Uploader, allowed: Allowed, stored: { before: number; after: number } | null, day: { before: number; after: number }): void {
-  if (stored && allowed.storage !== null && passes80(stored.before, stored.after, allowed.storage)) {
+function nearTheLimits(w: Place, u: Uploader, allowed: Allowed, stored: { before: number; after: number }, day: { before: number; after: number }): void {
+  if (allowed.storage !== null && passes80(stored.before, stored.after, allowed.storage)) {
     mlog.warn('an account is past 80% of its storage', { workspaceId: w.workspaceId, ownerId: allowed.payer, storedBytes: stored.after, limitBytes: allowed.storage });
   }
   if (passes80(day.before, day.after, allowed.day)) {
@@ -389,8 +390,8 @@ export async function storePiece(d: Deps, who: Reader, workspaceId: string, docu
     }
     if (kept) {
       mlog.debug('piece stored', { ...where, bytes: sealed });
-      const stored = allowed.payer ? await usedBytes(d.pool, allowed.payer) : null;
-      nearTheLimits(w, u, allowed, stored === null ? null : { before: stored - sealed, after: stored }, { before: kept.day - bytes.length, after: kept.day });
+      const stored = await usedBytes(d.pool, allowed.payer);
+      nearTheLimits(w, u, allowed, { before: stored - sealed, after: stored }, { before: kept.day - bytes.length, after: kept.day });
       return;
     }
     mlog.info('piece raced a retry; dropping the duplicate', where);

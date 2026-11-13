@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Search, step by step</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-notes.css">
+<link rel="stylesheet" href="page-note.css">
+<link rel="stylesheet" href="page-search.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="data-note.js"></script>
+<script src="data-notes.js"></script>
+<script src="data-search.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="fl" style="width: 4668px">
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="2">
+<section class="fl-r">
+<h2 class="fl-h">{{r.name}}</h2>
+<div class="fl-s">
+<sc-for list="{{r.frames}}" as="f" hint-placeholder-count="3">
+<div class="fl-f{{r.cls}}">
+<p class="fl-c"><span>{{f.n}}</span>{{f.t}}</p>
+<div class="fl-box"><div class="fl-in">
+<sc-if value="{{f.isMain}}" hint-placeholder-val="{{true}}"><dc-import name="Search" mode="{{f.mode}}" step="{{f.step}}" still="{{yes}}" hint-size="1440px,900px"></dc-import></sc-if>
+<sc-if value="{{f.isNote}}" hint-placeholder-val="{{false}}"><dc-import name="Note" mode="{{f.mode}}" step="{{f.step}}" hint-size="1440px,900px"></dc-import></sc-if>
+<sc-if value="{{f.isNotes}}" hint-placeholder-val="{{false}}"><dc-import name="Notes" mode="{{f.mode}}" step="{{f.step}}" hint-size="1440px,900px"></dc-import></sc-if>
+</div></div>
+</div>
+</sc-for>
+</div>
+</section>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":4668,"height":5110}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var AH = window.AH;
+    var rows = AH.SR.JOURNEYS.map(function (j) {
+      return {
+        name: j.name, cls: j.phone ? ' is-phone' : '',
+        frames: j.frames.map(function (f, i) {
+          var board = f.board || 'Main';
+          return { n: String(i + 1), t: f.t, step: f.step, mode: f.mode || 'dark', isMain: board === 'Main', isNote: board === 'Note', isNotes: board === 'Notes' };
+        })
+      };
+    });
+    return { rows: rows, yes: true };
+  }
+}
+</script>
+</body>
+</html>

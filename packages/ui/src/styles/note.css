@@ -1,340 +1,515 @@
 /*
- * A note: a slim band of sky, and the horizon is the call. Chapters stand on the line, what was decided and what's to do
- * sit on it, the sun is the playhead, and the light under it is what was said. Everything else on the page stays quiet:
- * the note lies on the water with space and hairlines, and only what's yours alone sits in a panel. A series sits on the
- * same evening, with its calls on the line. Classes start with nd-.
+ * A call's page (features/notes/Call.tsx), on a slim band of the evening: its title and one line, then two halves. On the
+ * left the player, which never scrolls: the call on its stage, always night, its line under it, then what was shared and
+ * made in it. On the right, tabs, each its own scroll area, with asking at the foot. In one column (`is-one`, from the page's
+ * own width) it's the stage, the line, then the tabs, and the page scrolls as one. Classes start with cd-. The kit's
+ * transcript line (`nd-l`, components/app.tsx) is styled at the end.
  */
-.nd {
-  /* The band of sky the head stands in, and under it the shared screens, when a note has them (--nd-stage, measured). */
-  --nd-sky-h: calc(8px + clamp(158px, 18.5vh, 196px));
-  --hz: calc(var(--nd-sky-h) + var(--nd-stage, 0px));
-  --nd-up: 38px;  /* how far above the top of the strip the line sits */
-  --nd-hair: color-mix(in oklch, var(--ink) 13%, transparent);
-  --nd-bed: var(--surface);
-  --nd-fade: var(--ground);
-  --nd-sun: var(--sun-glow);
-  --nd-lit-near: var(--sun-glow);
-  --nd-lit-far: var(--rose);
-  --nd-unlit: color-mix(in oklch, var(--ink-3) 46%, transparent);
-  --nd-rail: color-mix(in oklch, var(--ink) 34%, transparent);
-  --nd-side: clamp(300px, 24vw, 368px);
-  /* The sky and water of this moment (horizon.css), for the strip that stays at the top once it's left them behind. */
-  --nd-sky: linear-gradient(to bottom in oklch, oklch(0.847 0.049 253.947), oklch(0.878 0.041 285));
-  --nd-sea: linear-gradient(to bottom in oklch, oklch(0.872 0.042 275), oklch(0.825 0.055 252.105));
-  overflow-x: clip;
+.cd {
+  --hz: 158px;
+  --cd-hair: color-mix(in oklch, var(--ink) 12%, transparent);
+  --cd-hl: color-mix(in oklch, var(--ink) 6%, transparent);
+  /* Whoever's speaking, on the night stage: the warm of the low sun, in both themes. */
+  --cd-lit: color-mix(in oklch, var(--gold) 74%, white);
+  height: 100vh; height: 100dvh;
 }
-.dark .nd {
-  --nd-bed: var(--ground);
-  --nd-fade: var(--sunk);
-  --nd-sun: var(--sun-text);
-  --nd-lit-near: oklch(0.84 0.09 72);
-  --nd-lit-far: oklch(0.58 0.09 355);
-  --nd-unlit: color-mix(in oklch, oklch(0.58 0.09 355) 62%, var(--ink-3));
-  --nd-rail: color-mix(in oklch, var(--ink) 40%, transparent);
-  --nd-sky: linear-gradient(to bottom in oklch, oklch(0.272 0.062 260.824), oklch(0.307 0.067 270.769));
-  --nd-sea: linear-gradient(to bottom in oklch, oklch(0.305 0.06 268.408), oklch(0.24 0.052 258));
+.cd .dusk-in { display: flex; flex-direction: column; height: 100%; max-width: calc(1560px + 2 * var(--page-x)); padding-bottom: 0; }
+.cd .hz-star, .cd .hz-cloud { display: none; }
+/* The page has its own way back and its own acts, beside you: search isn't one of them here. */
+.main:has(> .main-in > .cd) { --top-room: 64px; }
+@media (min-width: 861px) { .main:has(> .main-in > .cd) .top-find { display: none; } }
+
+/* ------------------------------------------------------------ the head */
+.cd-head { flex: none; }
+.cd-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 40px; padding-right: var(--top-room); }
+.shell.is-bare .cd-bar { padding-left: max(0px, calc(72px - var(--page-x))); }
+.cd-back { display: inline-flex; align-items: center; gap: 6px; height: 34px; margin-left: -8px; padding: 0 10px 0 6px; border-radius: 10px; font: 500 14px/1 var(--font-sans); color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
+.cd-back:hover { color: var(--ink); background: var(--cd-hl); }
+.cd-acts { display: flex; align-items: center; gap: 6px; }
+.cd-acts .ac-icon-btn { color: var(--ink-2); }
+.cd-acts .ac-icon-btn:hover, .cd-acts .ac-icon-btn[data-state="open"] { background: color-mix(in oklch, var(--ink) 9%, transparent); color: var(--ink); }
+.cd-acts .ac-btn.is-secondary { background: transparent; box-shadow: inset 0 0 0 1px var(--line-control); }
+.cd-acts .ac-btn.is-secondary:hover { background: var(--cd-hl); }
+.cd-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; margin-top: 6px; font: 400 clamp(30px, 2.6vw, 40px)/1.12 var(--font-display); letter-spacing: -.015em; color: var(--ink); }
+.cd-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 20px; margin-top: 9px; font: 500 14px/1.3 var(--font-sans); color: var(--ink-2); }
+.cd-meta > span, .cd-meta > a { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.cd-meta .when { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.cd-meta .ac-i { flex: none; }
+.cd-whobtn { display: inline-flex; align-items: center; gap: 8px; margin: -4px -6px; padding: 4px 6px; border-radius: 9px; font: inherit; color: inherit; }
+.cd-whobtn:hover, .cd-whobtn[data-state="open"] { background: var(--cd-hl); color: var(--ink); }
+.cd-ser { border-radius: 6px; color: inherit; }
+.cd-ser:hover { color: var(--ink); }
+.cd-ser .chev { color: var(--ink-3); }
+.cd-rec { display: inline-flex; align-items: center; gap: 7px; flex: none; font: 500 14px/1 var(--font-sans); color: var(--ink); }
+/* Where it was written: the badge, lying flat on the line. */
+.ac-sealed.is-button.cd-seal, .cd-seal.is-plain { min-width: 0; gap: 7px; height: 26px; margin-left: -6px; padding: 0 6px; border-radius: var(--radius-pill); background: none; box-shadow: none; font: 500 14px/1 var(--font-sans); color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
+.ac-sealed.is-button.cd-seal:hover { background: var(--cd-hl); color: var(--ink); }
+.cd-seal .ic { width: 15px; height: 15px; background: none; color: var(--sun-text); }
+.cd-seal .ic .ac-i { width: 15px; height: 15px; }
+.cd-seal > .min-w-0 { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-seal b, .cd-seal small { display: inline; margin: 0; font: inherit; color: inherit; }
+.cd-seal small::before { content: " · "; }
+.cd-seal small:has(.ac-dots)::before { content: " "; }
+.cd-seal .chev { width: 14px; height: 14px; }
+.cd-seal.is-plain { display: inline-flex; align-items: center; white-space: nowrap; }
+.cd-seal.is-plain > .ac-i, .cd-seal .ac-dots { color: var(--sun-text); }
+/* Written by a model outside a secure enclave: a problem, so it says so in caution. */
+.ac-sealed.is-button.cd-seal.is-caution, .cd-seal.is-caution .ic, .cd-seal.is-plain.text-caution > .ac-i, .cd-seal.text-caution .ac-dots { color: var(--caution); }
+/* Who has the notes, opened from the faces. */
+.ac-pop.cd-who-pop { width: min(380px, calc(100vw - 24px)); padding: 6px 4px 4px; }
+.cd-who > h2 { padding: 6px 10px 8px; font: 600 14px/1.3 var(--font-sans); color: var(--ink); }
+.cd-p { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; column-gap: 10px; align-items: center; min-height: 40px; padding: 4px 10px; border-radius: 10px; }
+.cd-p.is-fresh { background: color-mix(in oklch, var(--sun-text) 10%, transparent); }
+.cd-p-n { font: 500 14px/1.3 var(--font-sans); color: var(--ink); }
+.cd-p-r { font: 400 12.5px/1.3 var(--font-sans); color: var(--ink-3); text-align: right; }
+.cd-open { display: flex; align-items: center; gap: 7px; margin: 6px 10px 6px; padding-top: 10px; border-top: 1px solid var(--line); font: 400 13px/1.35 var(--font-sans); color: var(--ink-3); }
+.cd-open .ac-i { color: var(--sun-text); }
+
+/* ------------------------------------------------------------ two halves */
+.cd-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(360px, 1fr); column-gap: clamp(28px, 3vw, 48px); margin-top: 26px; }
+/* The player never scrolls; what's under it does, if the window is short. */
+.cd-left { min-height: 0; display: flex; flex-direction: column; overflow: hidden auto; padding-bottom: 18px; scrollbar-width: none; }
+.cd-right { position: relative; min-height: 0; display: flex; flex-direction: column; padding-left: clamp(24px, 2.6vw, 40px); border-left: 1px solid var(--line); }
+
+/* ------------------------------------------------------------ the stage, always night */
+.cd-player { flex: none; display: flex; flex-direction: column; }
+.cd-stage { position: relative; isolation: isolate; flex: none; width: 100%; aspect-ratio: 16 / 9; max-height: min(50vh, 470px); border-radius: 20px; overflow: hidden; background: radial-gradient(120% 90% at 50% 112%, var(--dawn-2) 0%, var(--dawn-1) 46%, color-mix(in oklch, var(--dawn-1) 62%, var(--stage)) 100%); box-shadow: 0 0 0 1px rgb(255 255 255 / .07), 0 30px 60px -42px rgb(0 0 0 / .7); color: var(--stage-ink); }
+.cd-stage > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--stage); }
+.cd-stage > video[hidden] { display: none; }
+.cd-stage.is-share { background: var(--stage-tile); }
+.cd-arches { position: absolute; inset: 0 0 70px; display: flex; align-items: center; justify-content: center; gap: clamp(14px, 2.2vw, 34px); padding: 0 16px; }
+.cd-arch { display: grid; justify-items: center; gap: 10px; min-width: 0; }
+.cd-arch .ring { display: block; padding: 4px; border-radius: 999px 999px 21px 21px; transition: box-shadow var(--duration-2) var(--ease-out); }
+.cd-arch.is-speaking .ring { box-shadow: 0 0 0 2.5px var(--cd-lit), 0 0 32px 2px color-mix(in oklch, var(--cd-lit) 32%, transparent); }
+.cd-arch b { max-width: calc(var(--arch, 96px) + 16px); font: 600 13px/1.2 var(--font-sans); color: var(--stage-ink-2); text-align: center; }
+.cd-arch.is-speaking b { color: var(--stage-ink); }
+.cd-arch.is-more .ac-ghost { color: var(--stage-ink-2); border-color: color-mix(in oklch, var(--stage-ink) 30%, transparent); }
+.cd-roomarch { display: grid; place-items: center; width: 96px; height: 104px; border-radius: 999px 999px 20px 20px; background: var(--stage-raised); color: var(--stage-ink-2); }
+.cd-stage.is-room .cd-arches { inset: 0 0 64px; }
+.cd-cap { position: absolute; left: 50%; bottom: 18px; z-index: 2; display: block; width: max-content; max-width: min(86%, 620px); margin: 0; padding: 9px 14px 10px; border-radius: 12px; transform: translateX(-50%); background: color-mix(in oklch, var(--stage) 74%, transparent); font: 400 14.5px/1.45 var(--font-sans); color: var(--stage-ink); text-align: center; text-wrap: balance; }
+.cd-cap b { margin-right: 8px; font-weight: 650; color: var(--cd-lit); }
+.cd-cap.is-room { display: inline-flex; align-items: center; gap: 8px; color: var(--stage-ink-2); }
+.cd-stage.is-share .cd-cap { max-width: min(72%, 560px); bottom: 14px; }
+.cd-shot-l { position: absolute; left: 14px; top: 12px; z-index: 2; display: inline-flex; align-items: center; gap: 7px; max-width: calc(100% - 100px); height: 28px; padding: 0 11px 0 9px; border-radius: 9px; background: color-mix(in oklch, var(--stage) 72%, transparent); font: 600 12.5px/1 var(--font-sans); color: var(--stage-ink); }
+.cd-picks { position: absolute; left: 14px; top: 48px; z-index: 2; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 100px); }
+.cd-pick { border-radius: var(--radius-pill); }
+.cd-pick[aria-pressed="true"] .ac-chip { box-shadow: inset 0 0 0 1.5px var(--stage-sun); }
+.cd-mini { position: absolute; right: 14px; top: 12px; z-index: 2; padding: 3px; border-radius: 999px 999px 12px 12px; box-shadow: 0 0 0 2.5px var(--cd-lit); }
+.cd-says { position: absolute; left: 50%; top: 50%; z-index: 3; display: inline-flex; align-items: center; gap: 10px; max-width: 80%; padding: 10px 14px; border-radius: 12px; transform: translate(-50%, -50%); background: color-mix(in oklch, var(--stage) 84%, transparent); font: 500 14px/1.35 var(--font-sans); color: var(--stage-ink); }
+.cd-says-act { flex: none; font-weight: 600; color: var(--stage-sun); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ------------------------------------------------------------ the line, under the stage */
+.cd-line { --cd-rail: color-mix(in oklch, var(--ink) 20%, transparent); flex: none; display: grid; grid-template-columns: 40px auto minmax(0, 1fr) auto auto; column-gap: 10px; align-items: center; height: 62px; margin-top: 6px; }
+.cd-line.is-silent { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+.cd-play { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--ink); color: var(--ground); transition: transform var(--duration-1) var(--ease-out), opacity var(--duration-1); }
+.cd-play:hover { opacity: .9; }
+.cd-play:active { transform: scale(.96); }
+.cd-play .ac-i { fill: currentColor; }
+.cd-play .ac-spin { width: 15px; height: 15px; }
+.cd-t { min-width: 34px; font: 600 13px/1 var(--font-sans); color: var(--ink); font-variant-numeric: tabular-nums; }
+.cd-end { font: 500 13px/1 var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; text-align: right; }
+.cd-track { position: relative; height: 62px; min-width: 0; }
+/* What takes a press and a drag: a band over the line, so the line itself can be thin. */
+.cd-rail { position: absolute; left: 0; right: 0; top: 22px; height: 26px; border-radius: 6px; touch-action: none; }
+.cd-rail.is-live-scrub { cursor: pointer; }
+.cd-rail:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cd-seg { position: absolute; top: 9px; height: 7px; border-radius: 4px; background: var(--cd-rail); pointer-events: none; }
+.cd-seg.is-past { background: color-mix(in oklch, var(--sun-text) 70%, transparent); }
+.cd-seg.is-now { background: linear-gradient(to right, color-mix(in oklch, var(--sun-text) 72%, transparent) var(--f, 0%), var(--cd-rail) var(--f, 0%)); }
+.cd-seg-l { position: absolute; top: 4px; max-width: 70%; overflow: hidden; font: 600 12.5px/1.2 var(--font-sans); color: var(--ink); text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+.cd-seg-l.is-r { right: 0; text-align: right; }
+.cd-shr { position: absolute; top: 9px; z-index: 1; height: 7px; border-radius: 4px; background: color-mix(in oklch, var(--horizon) 62%, transparent); }
+.cd-shr .ac-i { position: absolute; left: 50%; top: 13px; transform: translateX(-50%); color: var(--ink-2); }
+.cd-gap { position: absolute; top: 3.5px; z-index: 2; display: grid; place-items: center; width: 18px; height: 18px; margin-left: -9px; border-radius: 50%; background: var(--ground); box-shadow: 0 0 0 1px var(--line); color: var(--ink-3); }
+.cd-mk { position: absolute; top: 34.5px; z-index: 3; padding: 0; border: 0; }
+.cd-mk::after { content: ""; position: absolute; inset: -7px; }
+.cd-mk.is-dec { width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 1.5px; transform: rotate(45deg); background: var(--rose); box-shadow: 0 0 0 1.5px var(--ground); }
+.cd-mk.is-dec.is-open { background: var(--ground); box-shadow: inset 0 0 0 1.6px var(--rose), 0 0 0 1.5px var(--ground); }
+.cd-mk.is-fu { top: 47px; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; background: var(--horizon); }
+button.cd-mk:hover, button.cd-mk:focus-visible { outline: none; filter: brightness(1.15); }
+button.cd-mk:focus-visible { box-shadow: 0 0 0 2px var(--focus); }
+.cd-sun { position: absolute; left: var(--p); top: 12.5px; z-index: 4; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: radial-gradient(circle at 50% 40%, color-mix(in oklch, var(--dusk-sun) 60%, white), var(--dusk-sun)); box-shadow: 0 0 0 3px var(--ground), 0 0 16px 3px color-mix(in oklch, var(--sun-glow) 45%, transparent); pointer-events: none; transition: left .32s var(--ease-out); }
+/* While the call is recorded, the line stops where it's got to, in the colour of recording. */
+.cd-edge { position: absolute; left: var(--edge); top: 4px; z-index: 3; width: 3px; height: 17px; margin-left: -1.5px; border-radius: 2px; background: var(--rec); pointer-events: none; }
+.cd-line.is-live .cd-seg { background: linear-gradient(to right, color-mix(in oklch, var(--rec) 46%, transparent) 0, color-mix(in oklch, var(--rec) 46%, transparent) 100%); }
+.cd-ghost { position: absolute; top: 26px; z-index: 5; transform: translateX(-50%); pointer-events: none; }
+.cd-ghost b { display: block; padding: 3px 7px; border-radius: 6px; background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line), var(--shadow-1); font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap; }
+.cd-ctl { display: inline-flex; align-items: center; gap: 2px; }
+.cd-ctl:empty { display: none; }
+.cd-speed { height: 30px; min-width: 38px; padding: 0 9px; border-radius: 8px; font: 600 12.5px/1 var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.cd-speed:hover { color: var(--ink); background: var(--cd-hl); }
+.cd-ctl .ac-icon-btn { width: 32px; height: 32px; }
+.cd-ctl .ac-icon-btn.is-on { background: none; color: var(--ink); }
+.cd-kept { display: flex; align-items: center; gap: 8px; margin: 2px 0 0; font: 400 14px/1.4 var(--font-sans); color: var(--ink-2); }
+.cd-kept .ac-i { color: var(--ink-3); }
+/* Full screen: the stage fills it, night, with the line along its foot. */
+.cd-player.is-full { justify-content: center; gap: 4px; padding: 24px 28px 18px; background: var(--stage); }
+.cd-player.is-full .cd-stage { flex: 1; aspect-ratio: auto; max-height: none; border-radius: 14px; }
+.cd-player.is-full .cd-sun { box-shadow: 0 0 0 3px var(--stage), 0 0 16px 3px color-mix(in oklch, var(--sun-glow) 45%, transparent); }
+
+/* ------------------------------------------------------------ shared and made in the call */
+.cd-made { margin-top: 20px; }
+.cd-made.is-tab { margin-top: 0; }
+.cd-sh { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.cd-sh h2 { font: 600 15px/1.2 var(--font-sans); color: var(--ink); }
+.cd-link { display: inline-flex; align-items: center; gap: 5px; height: 30px; margin-right: -8px; padding: 0 8px; border-radius: 9px; font: 500 13.5px/1 var(--font-sans); color: var(--ink-2); white-space: nowrap; }
+.cd-link:hover { color: var(--ink); background: var(--cd-hl); }
+.cd-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px 14px; }
+.cd-left-out { display: flex; align-items: flex-start; gap: 7px; margin-top: 12px; font: 400 13px/1.45 var(--font-sans); color: var(--ink-2); }
+.cd-left-out > .ac-i { flex: none; margin-top: 2px; color: var(--ink-3); }
+.cd-board-mini { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; }
+.cd-none-made.ac-empty { justify-items: start; gap: 4px; padding: 4px 0 6px; text-align: left; }
+.cd-none-made.ac-empty b { font: 500 14px/1.3 var(--font-sans); letter-spacing: 0; }
+
+/* ------------------------------------------------------------ tabs beside the player */
+.cd-tabs.ac-tabs { flex: none; gap: 2px; margin-top: -8px; border-bottom-color: var(--line); }
+.cd-tabs .ac-tab { height: 44px; padding: 0 12px; font: 500 14.5px/1 var(--font-sans); color: var(--ink-2); }
+.cd-tabs .ac-tab:first-child { margin-left: -12px; }
+.cd-tabs .ac-tab:hover { color: var(--ink); }
+.cd-tabs .ac-tab[aria-selected="true"] { color: var(--ink); font-weight: 600; }
+.cd-tabs .ac-tab[aria-selected="true"]::after { left: 12px; right: 12px; background: var(--sun-text); }
+.cd-pane { flex: 1; min-height: 0; overflow: hidden auto; margin: 0 -8px 0 -6px; padding: 18px 8px calc(36px + var(--cd-chips, 0px)) 6px; outline: none; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent); scrollbar-width: thin; scrollbar-color: var(--line-control) transparent; }
+
+/* ------------------------------------------------------------ the notes */
+.cd-sum { font: 400 17px/1.55 var(--font-sans); color: var(--ink); text-wrap: pretty; }
+.cd-more-sum { margin-top: 8px; }
+.cd-full { display: grid; gap: 10px; padding-top: 8px; font: 400 15px/1.6 var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+.cd-grp { margin-top: 26px; }
+.cd-grp.is-you { margin-top: 22px; }
+.cd-notes > .cd-grp:first-child { margin-top: 0; }
+.cd-gh { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; font: 600 14px/1.2 var(--font-sans); color: var(--ink); }
+.cd-gh > span { font-weight: 500; color: var(--ink-3); }
+.cd-none { display: flex; align-items: center; gap: 9px; padding: 10px 0 4px; font: 500 14px/1.4 var(--font-sans); color: var(--ink-2); }
+.cd-none .ac-i { color: var(--sun-text); }
+.cd-quiet { padding: 8px 0 4px; font: 400 14px/1.45 var(--font-sans); color: var(--ink-2); }
+/* A row: its kind's mark, its words, one line of who and where it stands with its moment, then what to do, and its menu. */
+.cd-row { position: relative; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; column-gap: 11px; align-items: start; padding: 11px 0; }
+.cd-row + .cd-row { border-top: 1px solid var(--line); }
+.cd-row > .mk { justify-self: center; margin-top: 5px; }
+.cd-row .mk.is-dec { width: 9px; height: 9px; margin-top: 7px; border-radius: 2px; transform: rotate(45deg); background: var(--rose); }
+.cd-row .mk.is-dec.is-hollow { background: transparent; box-shadow: inset 0 0 0 1.6px var(--rose); }
+.cd-row .mk.is-dec.is-off { background: transparent; box-shadow: inset 0 0 0 1.6px var(--ink-3); }
+.cd-row .mk.is-sug { width: 9px; height: 9px; margin-top: 7px; border-radius: 50%; background: var(--horizon); }
+.cd-row .mk.is-box { margin-top: 1px; }
+.cd-row .mk.is-open { width: 10px; height: 10px; margin-top: 6px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--ink-2); }
+.cd-row .mk.is-open.is-answered { background: var(--ink-3); box-shadow: none; }
+.cd-row .tx { min-width: 0; }
+.cd-row .kind { display: block; margin: 0 0 3px; font: 600 12px/1.25 var(--font-sans); }
+.cd-row .kind.is-rose { color: var(--rose); }
+.cd-row .kind.is-horizon { color: var(--horizon); }
+.cd-row .t { font: 400 15px/1.45 var(--font-sans); color: var(--ink); text-wrap: pretty; overflow-wrap: anywhere; }
+.cd-row.is-off .t, .cd-row.is-done .t { color: var(--ink-3); text-decoration: line-through; text-decoration-color: color-mix(in oklch, var(--ink-3) 60%, transparent); }
+.cd-row .ln { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 0; margin-top: 5px; font: 400 12.5px/1.3 var(--font-sans); color: var(--ink-2); }
+.cd-row .ln:empty { display: none; }
+.cd-row .ln .pt { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.cd-row .ln .sep { margin: 0 7px; color: var(--ink-3); }
+.cd-row .ln .who { display: inline-flex; align-items: center; gap: 6px; }
+.cd-row .ln .is-yours { font-weight: 600; color: var(--horizon); }
+.cd-row .ln.is-said { display: block; color: var(--ink-3); }
+.cd-row .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 10px; }
+.cd-row .acts .ac-btn.is-secondary { background: color-mix(in oklch, var(--ink) 9%, transparent); box-shadow: none; }
+.cd-row .acts .ac-btn.is-secondary:hover { background: color-mix(in oklch, var(--ink) 15%, transparent); }
+.cd-flags { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 6px; }
+.cd-flags:empty { display: none; }
+.cd-flags .ent-flag { min-height: 18px; padding: 0; background: none; font: 400 12.5px/18px var(--font-sans); }
+.cd-more.ac-icon-btn { width: 30px; height: 30px; margin: -2px -6px 0 0; color: var(--ink-3); }
+.cd-more.ac-icon-btn:hover, .cd-more.ac-icon-btn[data-state="open"] { background: var(--cd-hl); color: var(--ink); }
+/* Where there's a pointer, a row's menu shows while the row is pointed at or in use. */
+@media (hover: hover) {
+  .cd-row .cd-more.ac-icon-btn { opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1), color var(--duration-1); }
+  .cd-row:hover .cd-more.ac-icon-btn, .cd-row:focus-within .cd-more.ac-icon-btn, .cd-row .cd-more.ac-icon-btn[data-state="open"] { opacity: 1; }
 }
-.nd .dusk-in { padding-bottom: 24px; }
-/* By day the water comes up to the page's own ground, so a long read sits on paper, not on blue. */
-.nd .hz-sea::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to bottom in oklch, transparent 0, color-mix(in oklch, var(--ground) 70%, transparent) 260px, var(--ground) 620px); }
-.dark .nd .hz-sea::after { content: none; }
-/* Nothing said is still water: no chop for the eye to read as sound. */
-.nd[data-view="quiet"] .hz-chop { display: none; }
-/* What the keyboard lands on stays clear of the strip above and the bar below. */
-html:has(.nd) { scroll-padding-block: 92px 92px; }
-/* Except Ask's own caret, which sits in that band at the foot of the window: kept clear of it, every key would scroll the page. */
-html:has(.nd-ask input:focus) { scroll-padding-bottom: 0; }
-/* And, beside the note, the boxes in its own scroll area (Your notes, the shared notes, what would go to them), which
-   keeps their caret in sight itself and can end in that band: the page can't move a column that sticks. */
-@media (min-width: 1181px) { html:has(.nd-side :is(textarea, input):focus) { scroll-padding-bottom: 0; } }
-/* A toast sits above the Ask bar, not on it. */
-body:has(.nd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
-
-/* ------------------------------------------------------------ the band */
-.nd-head { position: relative; height: calc(var(--nd-sky-h) - 30px - var(--nd-up)); }
-.nd-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; margin-right: auto; }
-.nd-title h1 { min-width: 0; font: 400 clamp(26px, 2.3vw, 32px)/1.2 var(--font-display); letter-spacing: -.008em; color: var(--ink); }
-.nd-back { display: inline-flex; align-items: baseline; gap: 10px; flex: none; border-radius: 6px; font: 500 14.5px/1 var(--font-sans); color: var(--ink-2); transition: color var(--duration-1); }
-.nd-back:hover { color: var(--ink); }
-.nd-back i { font-style: normal; color: var(--ink-3); }
-.nd-acts { display: flex; align-items: center; gap: 6px; flex: none; }
-.nd-acts .ac-icon-btn { color: var(--ink-2); }
-.nd-acts .ac-icon-btn:hover { background: color-mix(in oklch, var(--ink) 10%, transparent); color: var(--ink); }
-.nd-acts .ac-icon-btn.is-on { background: none; color: var(--sun-text); }
-.nd-acts .ac-icon-btn.is-on .ac-i { fill: currentColor; }
-.nd-acts .ac-btn.is-secondary { height: 36px; padding: 0 16px 0 13px; background: color-mix(in oklch, var(--ink) 11%, transparent); box-shadow: none; }
-.nd-acts .ac-btn.is-secondary:hover { background: color-mix(in oklch, var(--ink) 17%, transparent); }
-
-.nd-meta { display: flex; align-items: center; gap: 14px; min-height: 28px; margin-top: 6px; font: 400 14px/1.3 var(--font-sans); color: var(--ink-2); }
-.nd-when { flex: none; color: var(--ink); }
-.nd-faces { display: inline-flex; align-items: center; gap: 9px; flex: none; white-space: nowrap; }
-.nd-faces .ac-avatar { --ring: var(--nd-bed); }
-.nd-how { display: inline-flex; align-items: center; flex: none; height: 24px; padding: 0 10px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink) 10%, transparent); font: 500 13px/1 var(--font-sans); color: var(--ink); white-space: nowrap; }
-.nd-rec { display: inline-flex; align-items: center; gap: 7px; flex: none; font: 500 14px/1 var(--font-sans); color: var(--ink); }
-
-/* Where it was written: the badge, lying flat on the sky. */
-.ac-sealed.is-button.nd-seal, .nd-seal.is-plain { min-width: 0; gap: 7px; height: 28px; margin-left: -8px; padding: 0 6px 0 8px; border-radius: var(--radius-pill); background: none; box-shadow: none; font: 400 14px/1 var(--font-sans); color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
-.ac-sealed.is-button.nd-seal:hover { background: color-mix(in oklch, var(--ink) 9%, transparent); color: var(--ink); }
-.nd-seal .ic { width: 15px; height: 15px; background: none; }
-.nd-seal .ic .ac-i { width: 15px; height: 15px; }
-.nd-seal > .min-w-0 { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nd-seal b, .nd-seal small { display: inline; margin: 0; font: inherit; color: inherit; }
-.nd-seal small::before { content: " · "; }
-.nd-seal small:has(.ac-dots)::before { content: " "; }
-.nd-seal .chev { width: 14px; height: 14px; }
-.nd-seal.is-plain { display: inline-flex; align-items: center; white-space: nowrap; }
-.nd-seal.is-plain > .ac-i { color: var(--sun-text); }
-.nd-seal .ac-dots { color: var(--sun-text); }
-
-/* ------------------------------------------------------------ the horizon */
-/* The line sits exactly where sky meets sea, and stays at the top of the page as you read. */
-.nd-hz-mark { height: 0; }
-.nd-hz { --nd-band: 66px; position: sticky; top: 8px; z-index: 13; height: 106px; pointer-events: none; }
-.nd-hz > *, .nd-hz button, .nd-hz .nd-gap { pointer-events: auto; }
-.nd-hz::before { content: ""; position: absolute; top: 0; left: -100vw; right: -100vw; height: var(--nd-band); background: var(--nd-sky) 0 0 / 100% var(--nd-up) no-repeat, var(--nd-sea) 0 var(--nd-up) / 100% 880px no-repeat; box-shadow: 0 1px 0 var(--nd-hair); opacity: 0; transition: opacity var(--duration-2) var(--ease-out); pointer-events: none; }
-.nd-hz.is-stuck::before { opacity: 1; }
-.nd-hz-in { position: relative; display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; column-gap: 12px; align-items: center; height: calc(var(--nd-up) * 2); }
-/* Once stuck, nothing that takes a press reaches past the band into the page under it. */
-.nd-hz.is-stuck .nd-hz-in { height: var(--nd-band); padding-top: calc(var(--nd-up) * 2 - var(--nd-band)); }
-.nd-play { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--sun); color: var(--on-sun); transition: transform var(--duration-1) var(--ease-out), filter var(--duration-1); }
-.nd-play:hover { filter: brightness(1.07); }
-.nd-play:active { transform: scale(.96); }
-.nd-play .ac-i { fill: currentColor; }
-.nd-now, .nd-end { font: 500 13.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
-.nd-now { min-width: 40px; color: var(--ink); }
-.nd-end { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
-.nd-end .ac-i { color: var(--ink-3); }
-
-.nd-track { position: relative; height: 0; min-width: 0; }
-.nd-rail, .nd-lit { position: absolute; left: 0; top: -1px; height: 2px; border-radius: 2px; }
-.nd-rail { right: 0; background: var(--nd-rail); }
-.nd-lit { width: var(--p); background: var(--nd-sun); transition: width .32s var(--ease-out); }
-.nd-seek { position: absolute; left: 0; right: 0; top: -10px; height: 72px; z-index: 1; cursor: pointer; border-radius: 6px; }
-.nd-hz.is-stuck .nd-seek { height: calc(var(--nd-band) - var(--nd-up) + 10px); }
-.nd-seek:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-.nd-wave { position: absolute; left: 0; right: 0; top: 0; height: 60px; pointer-events: none; }
-.nd-g { position: absolute; display: block; height: 2.6px; opacity: var(--o); }
-.nd-g::before { content: ""; position: absolute; inset: 0; border-radius: 2px; background: var(--nd-unlit); }
-.nd-g.is-lit::before { background: color-mix(in oklch, var(--nd-lit-near), var(--nd-lit-far) calc(var(--far) * 100%)); animation: hz-glint var(--every) ease-in-out var(--after) infinite; }
-.nd-hz.is-stuck .nd-wave { height: 26px; overflow: hidden; }
-
-/* The sun is the playhead: a sliver of it on the line, and its reflection through the light. */
-.nd-sun { position: absolute; left: var(--p); top: -9px; z-index: 2; width: 18px; height: 9px; margin-left: -9px; border-radius: 18px 18px 0 0; background: var(--nd-sun); pointer-events: none; transition: left .32s var(--ease-out); }
-.nd-sun::after { content: ""; position: absolute; left: 50%; top: 9px; width: 1.5px; height: 56px; margin-left: -.75px; background: linear-gradient(to bottom, var(--nd-sun), transparent); }
-.nd-hz.is-stuck .nd-sun::after { height: 24px; }
-.nd-ghost { position: absolute; top: -1px; z-index: 2; width: 0; height: 0; opacity: 0; pointer-events: none; transition: opacity var(--duration-1); }
-.nd-ghost::before { content: ""; position: absolute; left: -.5px; top: -8px; width: 1px; height: 18px; background: var(--ink); }
-.nd-ghost b { position: absolute; left: 0; top: 16px; transform: translateX(-50%); padding: 3px 7px; border-radius: 6px; background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line); font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap; }
-.nd-seek:hover ~ .nd-ghost { opacity: 1; }
-
-/* Chapters stand on the line. */
-.nd-ch { position: absolute; left: var(--x); bottom: 0; z-index: 3; display: block; height: 28px; max-width: calc(var(--room) - 6px); padding: 0 0 12px 7px; font: 500 13px/16px var(--font-sans); color: var(--ink-2); text-align: left; transition: color var(--duration-1); }
-.nd-ch::before { content: ""; position: absolute; left: 0; bottom: 0; width: 1px; height: 24px; background: color-mix(in oklch, var(--ink) 46%, transparent); transition: background-color var(--duration-1); }
-.nd-ch:hover, .nd-ch.is-on { color: var(--ink); }
-.nd-ch.is-on::before { background: var(--nd-sun); }
-.nd-ch > .ac-clamp-1 { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-line-clamp: unset; }
-
-/* What was decided and what's to do sit on it. Solid once people have said so. */
-.nd-m { --tint: var(--rose); position: absolute; left: var(--x); top: -12px; z-index: 4; display: grid; place-items: center; width: 24px; height: 24px; margin-left: -12px; border-radius: 50%; }
-.nd-m.is-follow { --tint: var(--horizon); }
-.nd-m > i { display: block; width: 10px; height: 10px; border-radius: 50%; background: var(--tint); box-shadow: 0 0 0 2.5px var(--nd-bed); transition: transform var(--duration-1) var(--ease-out); }
-.nd-m.is-decide > i { width: 9.5px; height: 9.5px; border-radius: 2px; transform: rotate(45deg); }
-.nd-m.is-open > i { background: var(--nd-bed); box-shadow: inset 0 0 0 2px var(--tint), 0 0 0 2.5px var(--nd-bed); }
-/* A follow-up said at a decision's moment sits just beside it, its hit area narrowed so the two can each be pressed. */
-.nd-m.is-nudged { width: 18px; margin-left: 6px; }
-.nd-m.is-nudged.is-r { margin-left: -24px; }
-.nd-m:hover > i, .nd-m:focus-visible > i { transform: scale(1.3); }
-.nd-m.is-decide:hover > i, .nd-m.is-decide:focus-visible > i { transform: rotate(45deg) scale(1.3); }
-/* Where nothing was captured: a stretch that isn't in the recording, so a point on the line. */
-.nd-gap { position: absolute; left: var(--x); top: -9px; z-index: 3; display: grid; place-items: center; width: 18px; height: 18px; margin-left: -9px; border-radius: 50%; background: var(--nd-bed); box-shadow: 0 0 0 1px var(--nd-hair); color: var(--ink-3); }
-
-.nd-tip { position: absolute; left: 50%; bottom: 100%; z-index: 6; display: grid; grid-template-columns: auto auto; column-gap: 8px; justify-content: start; align-items: baseline; width: max-content; max-width: 280px; margin-bottom: 6px; padding: 10px 12px; border-radius: 12px; background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line), 0 14px 30px -14px rgb(0 0 0 / .5); font: 400 13.5px/1.35 var(--font-sans); color: var(--ink); text-align: left; white-space: normal; transform: translateX(-50%); opacity: 0; visibility: hidden; transition: opacity var(--duration-1) var(--ease-out); pointer-events: none; }
-.nd-tip b { font-weight: 600; color: var(--tint, var(--ink)); }
-.nd-tip small { font-size: 12.5px; color: var(--ink-3); }
-.nd-tip > span { grid-column: 1 / -1; margin-top: 3px; }
-.nd-m:hover .nd-tip, .nd-m:focus-visible .nd-tip, .nd-ch:hover .nd-tip, .nd-ch:focus-visible .nd-tip, .nd-gap:hover .nd-tip, .nd-gap:focus-visible .nd-tip { opacity: 1; visibility: visible; }
-.nd-m.is-l .nd-tip { left: -4px; transform: none; }
-.nd-m.is-r .nd-tip { left: auto; right: -4px; transform: none; }
-.nd-tip-ch { left: 0; bottom: calc(100% + 2px); transform: none; }
-.nd-ch.is-r .nd-tip-ch { left: auto; right: 0; }
-.nd-hz.is-stuck .nd-tip { top: 100%; bottom: auto; margin: 22px 0 0; }
-
-.nd-hz.is-silent .nd-hz-in { grid-template-columns: minmax(0, 1fr); }
-.nd-hz.is-fixed .nd-m, .nd-hz.is-fixed .nd-ch { cursor: default; }
-/* While the call is recorded, the line stops where it's got to, in the colour of recording, and the sun plays along it. */
-.nd-hz.is-live .nd-rail { right: auto; width: var(--edge); background: var(--rec); }
-.nd-hz.is-live .nd-seek { right: auto; width: var(--edge); }
-.nd-edge { position: absolute; left: var(--edge); top: -9px; z-index: 2; width: 18px; height: 9px; margin-left: -9px; border-radius: 18px 18px 0 0; background: var(--rec); pointer-events: none; transition: left .32s var(--ease-out); }
-.nd-edge::after { content: ""; position: absolute; left: 50%; top: 9px; width: 1.5px; height: 56px; margin-left: -.75px; background: linear-gradient(to bottom, var(--rec), transparent); }
-.nd-hz.is-stuck .nd-edge::after { height: 24px; }
-.nd-hz.is-live .nd-g::before { background: color-mix(in oklch, var(--rec) 70%, transparent); }
-.nd-hz.is-fresh .nd-m { animation: nd-arrive .5s var(--ease-out) both; animation-delay: calc(var(--i) * 70ms + .1s); }
-@keyframes nd-arrive { from { opacity: 0; transform: translateY(-8px); } }
-.nd-kept { display: flex; align-items: center; gap: 8px; margin-top: 2px; font: 400 14px/1.4 var(--font-sans); color: var(--ink-2); }
-.nd-kept .ac-i { color: var(--ink-3); }
-.nd-hz.is-stuck .nd-kept { display: none; }
-.nd-kept.is-doc { margin-top: 36px; padding-top: 14px; border-top: 1px solid var(--nd-hair); }
-
-/* ------------------------------------------------------------ the note */
-.nd-cols { display: grid; grid-template-columns: minmax(0, 1fr) var(--nd-side); column-gap: clamp(32px, 3.2vw, 56px); align-items: stretch; margin-top: 4px; }
-.nd-main { position: relative; display: flex; flex-direction: column; min-width: 0; }
-.nd-sum { max-width: 44em; font: 400 clamp(17px, 1.34vw, 19px)/1.58 var(--font-sans); color: var(--ink); text-wrap: pretty; }
-/* The full summary under the short one: the same type, a little smaller, paragraphs apart. */
-.nd-more-sum { margin-top: 2px; }
-/* As wide as the short summary: its em is taken at the summary's size. */
-.nd-full { display: grid; gap: 14px; max-width: 44em; padding: 6px 0 4px; font-size: clamp(17px, 1.34vw, 19px); }
-.nd-full > p { font: 400 clamp(16px, 1.2vw, 17px)/1.6 var(--font-sans); color: var(--ink); text-wrap: pretty; }
-.nd-s { margin-top: 34px; }
-.nd-s > h2, .nd-sh > h2, .nd-b > h2, .nd-b-h > h2 { font: 600 15px/1.3 var(--font-sans); color: var(--ink); }
-.nd-s > h2 { display: flex; align-items: baseline; gap: 8px; padding-bottom: 10px; }
-.nd-s > h2 .n { font-weight: 500; color: var(--ink-3); }
-.nd-s.is-decide > h2 { color: var(--rose); }
-.nd-s.is-follow > h2 { color: var(--horizon); }
-/*
- * The boards open in the call, under the summary (NoteBoard, NoteRoomBoard), sized by the room their list has rather than
- * by the window (a container query): the note shares the page with Your notes, and on a wide screen with the transcript. The
- * call's: a live picture of all of it, above its name, what's on it and who can open it, or beside them with a share of the
- * width once the card is 600px wide; the whole card opens it. Each breakout room's: a card beside the others', two or three
- * across as there's room (a stack in a narrow column), its picture on top in the call card's shape; one click opens it.
- */
-.nd-boards, .nd-rboards { container: nd-boards / inline-size; }
-.nd-boards { display: grid; gap: 12px; }
-.nd-board { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 12px; padding: 12px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: 0 0 0 1px var(--nd-hair); transition: box-shadow var(--duration-1) var(--ease-out); }
-.nd-board:hover { box-shadow: 0 0 0 1px color-mix(in oklch, var(--ink) 24%, transparent), var(--shadow-1); }
-.nd-board:has(.nd-board-open:focus-visible) { box-shadow: 0 0 0 2px var(--horizon); }
-.nd-board-pic { position: relative; display: block; overflow: hidden; aspect-ratio: 5 / 3; border-radius: var(--radius-md); background: var(--bd-ground); box-shadow: inset 0 0 0 1px var(--nd-hair); }
-.nd-board-pic > .nd-board-mini { position: absolute; left: 0; top: 0; display: block; transform-origin: 0 0; pointer-events: none; }
-.nd-board-t { display: grid; justify-items: start; gap: 6px; min-width: 0; padding: 0 4px 4px; }
-@container nd-boards (min-width: 600px) {
-  .nd-board { grid-template-columns: minmax(0, 1.2fr) minmax(220px, 1fr); gap: 22px; }
-  .nd-board-t { padding: 0 8px 0 0; }
-}
-.nd-board-t h3 { font: 600 17px/1.3 var(--font-sans); color: var(--ink); }
-.nd-board-t p { max-width: 36em; font: 400 14.5px/1.5 var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
-.nd-board-open { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; border-radius: 6px; font: 600 14.5px/1.3 var(--font-sans); color: var(--sun-text); outline: none; }
-.nd-board-open::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius-lg); }
-.nd-board:hover .nd-board-open .ac-i { transform: translateX(2px); }
-.nd-board-open .ac-i { transition: transform var(--duration-1) var(--ease-out); }
-.nd-rboards { display: grid; gap: 10px; }
-.nd-boards + .nd-rboards { margin-top: 18px; }
-.nd-rboards-h { font: 500 13.5px/1.3 var(--font-sans); color: var(--ink-2); }
-.nd-rboards-g { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
-@container nd-boards (min-width: 440px) { .nd-rboards-g { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@container nd-boards (min-width: 760px) { .nd-rboards-g { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-.nd-rboard { display: grid; align-content: start; min-width: 0; padding: 10px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: 0 0 0 1px var(--nd-hair); text-align: left; transition: box-shadow var(--duration-1) var(--ease-out); }
-.nd-rboard:hover { box-shadow: 0 0 0 1px color-mix(in oklch, var(--ink) 24%, transparent), var(--shadow-1); }
-.nd-rboard:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--horizon); }
-.nd-rboard b { margin-top: 10px; font: 600 14.5px/1.3 var(--font-sans); color: var(--ink); }
-.nd-rboard .ln { margin-top: 3px; font: 400 13px/1.4 var(--font-sans); color: var(--ink-2); }
-.nd-rboard .rc { margin-top: 4px; font: 400 12.5px/1.4 var(--font-sans); color: var(--ink-3); }
-
-/* What was worked on in the call (WsWorkedOn): its rows between the note's own hairlines. */
-.nd-worked .ws-ndocs, .nd-worked .ws-ndoc { border-color: var(--nd-hair); }
-
-/*
- * Notes from a call with no workspace, for its organizer: where to file them, a choice and File them in a row, which wraps on a
- * narrow screen. On the note it sits in a Notice (`nd-filing`); at the end of the call, in the leave sheet's own panel.
- */
-.nd-filing { margin-top: 28px; }
-.nd-file { display: grid; gap: 10px; min-width: 0; }
-.nd-file-t { display: flex; align-items: flex-start; gap: 8px; margin: 0; font: 500 14px/1.45 var(--font-sans); color: var(--ink); }
-.nd-file-t.is-done .ac-i { flex: none; margin-top: 2px; color: var(--sun-text); }
-.nd-file-t b { font-weight: 600; overflow-wrap: anywhere; }
-.nd-file-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
-.nd-file-row .nd-file-pick { flex: 1 1 200px; max-width: 320px; }
-.nd-file-err { margin: 0; font: 400 13px/1.4 var(--font-sans); color: var(--caution); }
-.nd-none { padding: 12px 0 2px; border-top: 1px solid var(--nd-hair); font: 400 15px/22px var(--font-sans); color: var(--ink-3); }
-
-/* A row. Text on the left, then the same columns in every list: the moment, what to do, and the menu. */
-.nd-r { --tint: var(--ink-2); position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr) 66px 138px 30px; column-gap: 12px; align-items: center; min-height: 52px; padding: 10px 0; border-top: 1px solid var(--nd-hair); }
-.nd-r.is-decide { --tint: var(--rose); }
-.nd-r.is-follow { --tint: var(--horizon); }
-.nd-r > * { grid-row: 1; }
-.nd-r > :first-child { grid-column: 1; }
-.nd-r > .hm-tile-i { align-self: start; }
-.nd-r > .ac-check { justify-self: center; }
-.nd-r > .nd-rb { grid-column: 2; }
-.nd-r > .hm-moment { grid-column: 3; justify-self: end; margin-left: 0; }
-.nd-r > .nd-ra { grid-column: 4; }
-.nd-r > .nd-more { grid-column: 5; }
-.nd-r.is-decide.is-set .hm-tile-i { background: var(--tint); color: var(--nd-bed); }
-.nd-rb { min-width: 0; }
-.nd-rt { font: 400 15.5px/22px var(--font-sans); color: var(--ink); text-wrap: pretty; overflow-wrap: anywhere; }
-.nd-rs { margin-top: 1px; font: 400 13px/18px var(--font-sans); color: var(--ink-3); }
-.nd-rf { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; margin-top: 2px; }
-.nd-rf:empty { display: none; }
-.nd-rf .ent-flag { min-height: 18px; padding: 0; background: none; font: 400 13px/18px var(--font-sans); }
-.nd-r.is-off .nd-rt { color: var(--ink-3); }
-.nd-r.is-off .hm-tile-i { opacity: .6; }
-.nd-r.is-done .nd-rt { color: var(--ink-3); text-decoration: line-through; }
-.nd-r.is-done .nd-owner { color: var(--ink-3); }
-.nd-ra { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
-.nd-ra .hm-yes { flex: none; height: 32px; padding: 0 14px; line-height: 32px; white-space: nowrap; }
-.nd-r.is-editing > .nd-rb { grid-column: 2 / 4; }
-.nd-r.is-editing .nd-ra { grid-column: 4 / 6; }
-.nd-r.is-editing .hm-yes { padding: 0 12px; }
-.nd-r.is-editing > .hm-tile-i { align-self: start; margin-top: 6px; }
-.nd-r.is-editing > .ac-check { align-self: start; margin-top: 10px; }
-
-/* What can be pressed that isn't a button. */
-.nd-act { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 32px; border-radius: 6px; font: 500 13px/1 var(--font-sans); color: var(--ink-2); transition: color var(--duration-1); }
-.nd-act:hover { color: var(--ink); }
-.nd-act:disabled { opacity: .5; }
-.nd-more.ac-icon-btn { width: 30px; height: 30px; color: var(--ink-2); }
-.nd-more.ac-icon-btn:hover, .nd-more.ac-icon-btn[data-state="open"] { background: color-mix(in oklch, var(--ink) 10%, transparent); color: var(--ink); }
-
-.nd-owner { display: inline-flex; align-items: center; gap: 7px; min-width: 0; margin-right: auto; font: 500 13.5px/1 var(--font-sans); color: var(--ink); }
-.nd-owner.is-maybe .ac-avatar { outline: 1.5px dashed var(--horizon); outline-offset: 1.5px; }
-.nd-owner.is-none { color: var(--ink-3); font-weight: 400; }
-.nd-take { display: inline-flex; align-items: center; flex: none; height: 30px; margin-right: auto; padding: 0 11px; border: 1.5px dashed color-mix(in oklch, var(--horizon) 60%, transparent); border-radius: var(--radius-pill); background: color-mix(in oklch, var(--horizon) 12%, transparent); font: 600 13px/1 var(--font-sans); color: var(--ink); white-space: nowrap; transition: background-color var(--duration-1); }
-.nd-take:hover { background: color-mix(in oklch, var(--horizon) 28%, transparent); }
-.nd-due { flex: none; min-width: 44px; font: 500 13px/1 var(--font-sans); color: var(--ink-2); text-align: right; }
-.nd-due.is-soon { color: var(--sun-text); }
-.nd-due.is-maybe { font-style: italic; }
-
+/* A moment, as a ▶ chip that plays it on the stage. */
+.cd-tm { display: inline-flex; align-items: center; gap: 4px; height: 22px; margin-left: 8px; padding: 0 7px 0 6px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink) 8%, transparent); font: 600 11.5px/1 var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; transition: background-color var(--duration-1), color var(--duration-1); }
+.cd-tm:hover { background: color-mix(in oklch, var(--ink) 14%, transparent); color: var(--ink); }
+.cd-row .ln > .cd-tm:first-child { margin-left: 0; }
+.cd-area { display: block; width: 100%; field-sizing: content; min-height: 44px; padding: 9px 11px; border: 0; border-radius: 11px; outline: 0; background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); font: 400 15px/22px var(--font-sans); color: var(--ink); resize: none; }
+.cd-area:focus { box-shadow: inset 0 0 0 1.5px var(--focus); }
+.cd-row.is-editing .acts { margin-top: 8px; }
 /* Adding what the notes missed. */
-.nd-s .ent-add, .nd-sub .ent-add { display: flex; width: 100%; min-height: 40px; margin-top: 0; padding-top: 2px; border-top: 1px solid var(--nd-hair); font-weight: 500; }
-.nd-s .ent-form, .nd-sub .ent-form { margin-top: 0; border-top-color: var(--nd-hair); }
-
-/* ------------------------------------------------------------ what opens */
-.ac-pop.nd-rowmenu { width: min(320px, calc(100vw - 24px)); max-height: min(var(--radix-popover-content-available-height, 70vh), 560px); overflow-y: auto; overscroll-behavior: contain; padding: 8px; }
-.ac-pop.nd-rowmenu .ac-pop-item, .ac-pop.nd-whopop .ac-pop-item { align-items: center; padding: 8px 10px; }
-.nd-rowmenu .ac-pop-item b { font-weight: 500; }
-.ac-pop .nd-mp { grid-template-columns: 22px minmax(0, 1fr) auto; }
-.nd-mp .ac-avatar { justify-self: center; }
-.nd-tick { color: var(--sun-text); }
-.nd-rowmenu .ent-ms { padding: 4px 10px 8px; }
-.nd-rowmenu .ent-m .hm-moment { margin-left: auto; height: 24px; }
-.nd-rowmenu .ent-hist { padding: 4px 10px 6px; }
-.ac-pop.nd-whopop { width: min(300px, calc(100vw - 24px)); max-height: min(var(--radix-popover-content-available-height, 70vh), 420px); overflow-y: auto; padding: 8px; }
-.ac-pop.nd-more-pop { width: 268px; padding: 8px; }
-.nd-more-pop .ac-pop-item b { font-weight: 500; }
-.ac-pop.nd-del { width: min(340px, calc(100vw - 24px)); padding: 8px; }
-.nd-pop-h { padding: 8px 10px 6px; font: 600 15px/1.3 var(--font-sans); }
-.nd-pop-p { padding: 0 10px 8px; font: 400 13.5px/1.45 var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
-.nd-pop-n { padding: 4px 10px 6px; font: 400 13px/1.4 var(--font-sans); color: var(--ink-3); }
-.nd-pop-f { display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 6px 6px 4px; }
-.hm-yes.nd-danger { --tint: var(--sun-text); flex: none; height: 36px; padding: 0 16px; line-height: 36px; }
-.nd-dues { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 10px; }
-.nd-dc { height: 28px; padding: 0 10px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink) 8%, transparent); font: 500 13px/1 var(--font-sans); color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
-.nd-dc:hover { background: color-mix(in oklch, var(--ink) 14%, transparent); color: var(--ink); }
-.nd-dc.is-on { background: color-mix(in oklch, var(--horizon) 26%, transparent); color: var(--ink); }
-.nd-due-f { padding: 2px 10px 6px; }
-.nd-field { display: block; width: 100%; height: 34px; padding: 0 11px; border: 0; border-radius: 10px; outline: 0; background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); font: 400 14px/1 var(--font-sans); color: var(--ink); }
-.nd-field:focus { box-shadow: inset 0 0 0 1.5px var(--focus); }
-.nd-field::placeholder { color: var(--ink-3); }
+.cd-grp .ent-add { display: flex; width: 100%; min-height: 36px; margin-top: 2px; font-weight: 500; }
+.cd-grp .ent-form { margin-top: 4px; }
+.cd-grp > .ac-btn.is-quiet { margin: 2px 0 0 -10px; }
+/* A row's menu and what opens from it. */
+.ac-pop.cd-rowmenu { width: min(320px, calc(100vw - 24px)); max-height: min(var(--radix-popover-content-available-height, 70vh), 560px); overflow-y: auto; overscroll-behavior: contain; padding: 8px; }
+.ac-pop.cd-rowmenu .ac-pop-item { align-items: center; padding: 8px 10px; }
+.cd-rowmenu .ac-pop-item b { font-weight: 500; }
+.cd-rowmenu .ent-ms { padding: 4px 10px 8px; }
+.cd-rowmenu .ent-hist { padding: 4px 10px 6px; }
+.cd-rowmenu .ent-m .cd-tm { margin-left: auto; }
+.cd-pop-n { padding: 8px 10px; font: 400 13px/1.4 var(--font-sans); color: var(--ink-3); }
+.ac-pop .cd-mp, .ac-pop .nd-mp { grid-template-columns: 22px minmax(0, 1fr) auto; }
+.cd-mp .ac-avatar, .nd-mp .ac-avatar { justify-self: center; }
+.cd-mp b { font-weight: 500; }
+.cd-tick { margin-left: auto; color: var(--sun-text); }
+.cd-dues { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 10px 8px; }
+.cd-dc { height: 28px; padding: 0 10px; border-radius: var(--radius-pill); box-shadow: inset 0 0 0 1px var(--line-control); font: 500 13px/1 var(--font-sans); color: var(--ink-2); }
+.cd-dc:hover { color: var(--ink); }
+.cd-dc.is-on { background: var(--sun-soft); box-shadow: none; color: var(--sun-text); }
+.cd-due-f { padding: 0 10px 8px; }
+.cd-due-f .ac-input { height: 34px; }
+/* How it went: each chapter, what it was about, what was shared then, and each breakout room's own. */
+.cd-how .cd-gh { margin-bottom: 6px; }
+.cd-hw { display: grid; grid-template-columns: 62px minmax(0, 1fr); column-gap: 10px; padding: 12px 0 14px; border-top: 1px solid var(--line); }
+.cd-hw:first-of-type { border-top: 0; }
+.cd-hw .tmc { padding-top: 2px; }
+.cd-hw .tmc .cd-tm { margin-left: 0; }
+.cd-hw .t { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; min-height: 26px; }
+.cd-hw .t b { font: 600 15.5px/1.3 var(--font-sans); color: var(--ink); }
+.cd-hw .tag { display: inline-flex; align-items: center; gap: 5px; font: 500 12.5px/1 var(--font-sans); color: var(--horizon); }
+.cd-hw .g { margin-top: 3px; font: 400 14.5px/1.55 var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+.cd-rooms { display: grid; margin-top: 10px; }
+.cd-fold.ac-fold, .cd-fold.ac-fold + .cd-fold.ac-fold { margin-top: 0; border-top: 1px solid var(--line); border-radius: 0; background: none; box-shadow: none; }
+.cd-fold .cd-fold-t { display: grid; gap: 2px; min-width: 0; font: 400 14px/1.45 var(--font-sans); color: var(--ink-2); text-align: left; }
+.cd-fold .cd-fold-t b { font-weight: 600; color: var(--ink); }
+.cd-fold-sum { margin: 4px 0 10px; font: 400 14.5px/1.55 var(--font-sans); color: var(--ink); }
+.cd-sub { margin-top: 14px; }
+.cd-sub > h3 { font: 600 13.5px/1.3 var(--font-sans); color: var(--ink-2); }
+.cd-rch { display: grid; gap: 8px; padding-left: 18px; font: 400 14px/1.45 var(--font-sans); color: var(--ink-2); }
+.cd-rch b { margin-right: 6px; color: var(--ink); }
+/* The shared notes, for everyone with them, and their own box. */
+.cd-shared .cd-gh { justify-content: space-between; }
+.cd-only { display: inline-flex; align-items: center; gap: 5px; font: 500 12px/1 var(--font-sans); color: var(--ink-3); }
+.cd-a { display: grid; grid-template-columns: 26px minmax(0, 1fr); column-gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); }
+.cd-gh + .cd-a { border-top: 0; }
+.cd-a-b { min-width: 0; }
+.cd-a-h { display: flex; align-items: baseline; gap: 8px; font: 600 13.5px/1.3 var(--font-sans); color: var(--ink); }
+.cd-a-h small { font-weight: 400; color: var(--ink-3); }
+.cd-a-t { margin-top: 3px; font: 400 14.5px/1.5 var(--font-sans); color: var(--ink); }
+.cd-a-f { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 6px; }
+.cd-a-f .cd-act { margin-left: auto; }
+.cd-act { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 28px; border-radius: 6px; font: 500 13px/1 var(--font-sans); color: var(--ink-2); }
+.cd-act:hover { color: var(--ink); }
+.cd-since { display: flex; align-items: center; gap: 8px; margin-top: 8px; font: 400 13px/1.4 var(--font-sans); color: var(--ink-2); }
+.cd-shared-box { margin-top: 10px; }
+/* Until the notes are written, and around them. */
+.cd-writing { margin-bottom: 18px; }
+.cd-writing-t { font: 400 15px/1.55 var(--font-sans); color: var(--ink); }
+.cd-steps { display: grid; gap: 10px; margin-top: 16px; padding: 0; list-style: none; }
+.cd-steps li { display: flex; align-items: center; gap: 10px; font: 400 14px/1.4 var(--font-sans); color: var(--ink-3); }
+.cd-steps li.is-done { color: var(--ink-2); }
+.cd-steps li.is-now { color: var(--ink); font-weight: 500; }
+.cd-step-i { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--line-control); color: var(--sun-text); }
+.cd-steps li.is-done .cd-step-i { box-shadow: none; background: var(--sun-soft); }
+.cd-again { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 14px; font: 400 14px/1.45 var(--font-sans); color: var(--ink-2); }
+.cd-again > span { flex: 1 1 220px; }
+.cd-again b { font-weight: 600; color: var(--ink); }
+.cd-offer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 14px 0 0; padding: 9px 10px 9px 14px; border-radius: 14px; background: color-mix(in oklch, var(--sun-text) 10%, transparent); font: 400 14px/1.35 var(--font-sans); color: var(--ink); }
+.cd-offer > .ac-i { color: var(--sun-text); }
+.cd-offer > span { flex: 1 1 220px; min-width: 0; }
+.cd-unwritten { display: grid; gap: 12px; margin-bottom: 18px; }
+.cd-again-f { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cd-quiet-s { margin-bottom: 18px; }
+.cd-quiet-s h2 { font: 500 16px/1.4 var(--font-sans); color: var(--ink); }
+.cd-quiet-s p { margin-top: 6px; font: 400 14px/1.5 var(--font-sans); color: var(--ink-2); }
 
 /* ------------------------------------------------------------ the transcript */
-.nd-sh { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 20px; padding-bottom: 10px; }
-.nd-key { font: 400 13px/1.4 var(--font-sans); color: var(--ink-3); }
-.nd-lines { padding-top: 4px; border-top: 1px solid var(--nd-hair); }
-.nd-l { position: relative; display: grid; grid-template-columns: 50px 26px minmax(0, 1fr) 84px; column-gap: 10px; align-items: start; margin-inline: -10px; padding: 7px 10px; border-radius: 12px; scroll-margin-block: 96px 96px; transition: background-color var(--duration-1); }
+.cd-tools { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.cd-find { flex: 1; display: flex; align-items: center; gap: 9px; height: 38px; padding: 0 6px 0 12px; border-radius: 11px; background: color-mix(in oklch, var(--ink) 6%, transparent); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink-2); }
+.cd-find:focus-within { box-shadow: inset 0 0 0 1.5px var(--focus); }
+.cd-find input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: none; font: 400 14px/1 var(--font-sans); color: var(--ink); }
+.cd-find input::placeholder { color: var(--ink-3); opacity: 1; }
+.cd-find small { flex: none; font: 500 12.5px/1 var(--font-sans); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.cd-find .ac-icon-btn { width: 28px; height: 28px; }
+/* Far down the transcript, the way back to its start floats at the top of the pane. */
+.cd-start { position: sticky; top: 4px; z-index: 3; display: flex; align-items: center; gap: 6px; width: max-content; height: 30px; margin: 0 auto 6px; padding: 0 12px 0 10px; border-radius: var(--radius-pill); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line), var(--shadow-1); font: 500 13px/1 var(--font-sans); color: var(--ink-2); }
+.cd-start:hover { color: var(--ink); }
+.cd-key { margin: 4px 0 2px; font: 400 13px/1.4 var(--font-sans); color: var(--ink-3); }
+.cd-said-g { margin-top: 8px; }
+.cd-said-h { display: flex; gap: 10px; margin: 16px 0 4px; font: 600 13px/1.2 var(--font-sans); color: var(--ink-2); }
+.cd-said-h span { color: var(--sun-text); font-variant-numeric: tabular-nums; }
+.cd-said .nd-lines { padding-top: 0; border-top: 0; }
+.cd-rooms-said { margin-top: 6px; }
+.cd-roomnote { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 6px 0 6px; padding: 6px 0 6px 12px; border-left: 2px solid var(--line-control); font: 400 13.5px/1.4 var(--font-sans); color: var(--ink-2); }
+.cd-roomnote button { font-weight: 600; color: var(--horizon); }
+.cd-roomnote button:hover { text-decoration: underline; text-underline-offset: 3px; }
+.cd-empty.ac-empty { justify-items: start; gap: 4px; padding: 6px 0; text-align: left; }
+.cd-empty.ac-empty b { font: 500 15px/1.3 var(--font-sans); letter-spacing: 0; }
+
+/* ------------------------------------------------------------ your notes */
+.cd-mine-h { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font: 500 13.5px/1.4 var(--font-sans); color: var(--ink-2); }
+.cd-mine-h .ac-i { flex: none; }
+.cd-own-e { display: flex; align-items: center; gap: 10px; padding: 13px 0; border-top: 1px solid var(--line); font: 400 14.5px/1.5 var(--font-sans); color: var(--ink-2); }
+.cd-own .own-compose { margin-top: 10px; }
+
+/* ------------------------------------------------------------ asking (parts.tsx: AskBar) */
+/*
+ * Ask about a call, or about the calls in a series: in reach at the foot of what's read, raised over what scrolls under it,
+ * which fades as it goes (--cd-fade, what's behind it). On a call's page in two columns it's the foot of the right column
+ * instead, flat on the page, with the tabs scrolling above it. Its suggestions sit above it, over the end of what's read.
+ */
+body:has(.cd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
+.cd-end-mark { flex: none; height: 0; }
+.cd-askdock { position: sticky; bottom: 24px; z-index: 12; flex: none; margin-top: 18px; }
+.cd-askdock::before { content: ""; position: absolute; left: -16px; right: -16px; bottom: -24px; z-index: -1; height: 92px; background: linear-gradient(to bottom, transparent, color-mix(in oklch, var(--cd-fade, var(--ground)) 92%, transparent) 58%); -webkit-mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent); pointer-events: none; }
+/* The room above the bar is what's read until something shows in it: pointing there neither catches the pointer nor counts as over the bar. */
+.dark .cd-askdock::before { background: linear-gradient(to bottom, transparent, color-mix(in oklch, var(--cd-fade, var(--sunk)) 92%, transparent) 58%); }
+.cd-up { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); display: grid; gap: 8px; justify-items: start; pointer-events: none; }
+.cd-up > * { pointer-events: auto; }
+.answer.cd-ans { width: 100%; max-height: min(56vh, 460px); margin: 0; padding: 12px 14px; overflow-y: auto; border-radius: 18px; background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line), 0 26px 60px -24px rgb(0 0 0 / .6); }
+.cd-ans .q { margin-bottom: 6px; font: 500 13.5px/1.3 var(--font-sans); color: var(--ink-2); }
+.cd-ans .q > span { flex: 1; min-width: 0; }
+.cd-ans .q > .ac-i { color: var(--ink-3); }
+.cd-ans .q .ac-icon-btn { width: 26px; height: 26px; margin: -3px -4px -3px 0; }
+.cd-ans > p { font: 400 16px/1.5 var(--font-sans); color: var(--ink); text-wrap: pretty; }
+.cd-ans .wait { font-size: 14px; color: var(--ink-2); }
+.cd-ans .wait .ac-dots { color: var(--sun-text); }
+.cd-ans-f { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+.cd-ans-f .cd-tm { margin-left: 0; }
+.cd-ans-f .own-keep { margin: 0 0 0 auto; }
+.cd-ans-f .own-keep .lk { font: 500 13px/1 var(--font-sans); color: var(--ink-2); }
+.cd-ans-f .own-keep .lk:hover { color: var(--ink); text-decoration: none; }
+.cd-ans-f .own-keep .ac-scope { display: none; }
+/* Always laid out, so their height is known; out of sight and reach until the end of what's read, or the bar is pointed at or in use. */
+.cd-suggs { display: flex; flex-wrap: wrap; gap: 6px; transition: opacity var(--duration-1) var(--ease-out), visibility var(--duration-1); }
+.cd-suggs:not(.is-on) { opacity: 0; visibility: hidden; pointer-events: none; }
+.cd-suggs[hidden] { display: none; }
+.cd-sugg { min-height: 32px; padding: 6px 12px; border-radius: var(--radius-pill); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line); font: 500 13px/1.3 var(--font-sans); color: var(--ink); text-align: left; transition: background-color var(--duration-1); }
+.cd-sugg:hover { background: color-mix(in oklch, var(--ink) 15%, var(--surface-raised)); }
+.cd-ask { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 6px 0 16px; border-radius: 14px; background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line), 0 18px 40px -22px rgb(0 0 0 / .55); color: var(--ink-2); }
+.cd-ask:focus-within { box-shadow: 0 0 0 1.5px var(--focus), 0 18px 40px -22px rgb(0 0 0 / .55); }
+/* Its own line box, as tall as the font's: a caret sized from it is the text's height. */
+.cd-ask input { flex: 1; min-width: 0; padding: 0; border: 0; outline: 0; background: none; font: 400 14.5px/20px var(--font-sans); color: var(--ink); }
+.cd-ask input::placeholder { color: var(--ink-2); opacity: 1; }
+.cd-ask .cd-only { flex: none; white-space: nowrap; }
+.cd-ask-go.ac-icon-btn { width: 34px; height: 34px; background: color-mix(in oklch, var(--ink) 9%, transparent); color: var(--ink); }
+.cd-ask-go.ac-icon-btn:hover { background: color-mix(in oklch, var(--ink) 15%, transparent); }
+/* At the foot of a call's right column: flat on the page. */
+.cd:not(.is-one) .cd-right > .cd-askdock { position: relative; bottom: auto; margin: 8px 0 18px; }
+.cd:not(.is-one) .cd-right > .cd-askdock::before { content: none; }
+.cd:not(.is-one) .cd-right > .cd-askdock .cd-ask { height: 46px; padding-left: 14px; background: color-mix(in oklch, var(--ink) 6%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
+.cd:not(.is-one) .cd-right > .cd-askdock .cd-ask:focus-within { box-shadow: inset 0 0 0 1.5px var(--focus); }
+
+/* ------------------------------------------------------------ what opens from the head */
+.ac-pop.cd-dl { width: min(340px, calc(100vw - 24px)); padding: 8px; }
+.cd-dl .ac-pop-item b { font-weight: 500; }
+.cd-dl-i { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; column-gap: 10px; }
+.cd-dl-i small { font: 500 12px/1 var(--font-sans); color: var(--ink-3); white-space: nowrap; }
+.cd-dl-i .ac-spin { width: 16px; height: 16px; color: var(--ink-2); }
+.cd-dl-n { display: flex; align-items: center; gap: 8px; padding: 6px 10px 8px; font: 500 12.5px/1.35 var(--font-sans); color: var(--ink-2); }
+.cd-dl-n .ac-i { flex: none; color: var(--sun-text); }
+.ac-pop.cd-more-pop { width: min(300px, calc(100vw - 24px)); padding: 8px; }
+.cd-more-pop .ac-pop-item b { font-weight: 500; }
+.ac-pop.cd-del { width: min(340px, calc(100vw - 24px)); padding: 14px; }
+.cd-pop-h { font: 600 15px/1.35 var(--font-sans); color: var(--ink); }
+.cd-pop-p { margin-top: 6px; font: 400 13.5px/1.5 var(--font-sans); color: var(--ink-2); }
+.cd-pop-f { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.cd-danger.ac-btn { color: var(--caution); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--caution) 55%, transparent); }
+.cd-redo { width: min(440px, calc(100vw - 32px)); padding: 22px; }
+.cd-redo-h { display: flex; align-items: center; gap: 10px; font: 600 17px/1.3 var(--font-sans); color: var(--ink); }
+.cd-redo-p { margin: 8px 0 16px; font: 400 14px/1.5 var(--font-sans); color: var(--ink-2); }
+.cd-redo-f { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+/* The call's own Google Drive exports, in a window from More, with the export kit Settings uses. */
+.cd-drive-modal { width: min(460px, calc(100vw - 32px)); max-height: min(86vh, 720px); overflow: auto; padding: 18px 20px 20px; }
+.cd-drive-x { position: absolute; top: 12px; right: 12px; }
+.cd-drive > h2 { display: flex; align-items: center; gap: 8px; padding-right: 40px; font: 600 16px/1.3 var(--font-sans); color: var(--ink); }
+.cd-drive > h2 .ac-i { color: var(--ink-2); }
+.cd-drive-saving { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font: 500 12.5px/1 var(--font-sans); color: var(--ink-3); }
+.cd-drive-saving .ac-spin { width: 13px; height: 13px; }
+.cd-drive-wait, .cd-drive-info { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin-top: 12px; font: 400 13.5px/1.45 var(--font-sans); color: var(--ink-2); }
+.cd-drive-info a, .cd-drive-default a { display: inline-flex; align-items: center; gap: 4px; font-weight: 500; color: var(--ink); }
+.cd-drive-refused { display: grid; justify-items: start; gap: 10px; margin-top: 12px; font: 400 13.5px/1.45 var(--font-sans); color: var(--caution); }
+.cd-drive-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; margin-top: 10px; font: 500 14px/1.35 var(--font-sans); color: var(--ink); }
+.cd-drive-default, .cd-drive-custom { display: grid; justify-items: start; gap: 10px; margin-top: 8px; font: 400 13.5px/1.45 var(--font-sans); color: var(--ink-2); }
+.cd-drive-go.ac-btn { margin-top: 2px; }
+.cd-drive-about { margin-top: 12px; font: 400 13px/1.45 var(--font-sans); color: var(--ink-3); }
+.cd-drive-about summary { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font-weight: 500; color: var(--ink-2); }
+
+/* ------------------------------------------------------------ a call ahead (features/calls/list/Upcoming.tsx) */
+/* The same page before the call: who's invited on the stage, the link under it; the agenda and the notes beside it. */
+.cd-arch small { margin-top: -6px; font: 500 12px/1.2 var(--font-sans); color: var(--stage-ink-2); }
+.cd-arch.is-dim .ring { opacity: .55; }
+.cd-stage.is-lobby .cd-arches { inset: 0 0 64px; }
+.cd-wait { position: absolute; left: 16px; right: 16px; bottom: 22px; font: 500 13.5px/1.35 var(--font-sans); color: var(--stage-ink-2); text-align: center; text-wrap: balance; }
+.cd-wait-a { margin-left: 4px; font-weight: 600; color: var(--stage-ink); text-decoration: underline; text-underline-offset: 3px; }
+.cd-join { position: absolute; left: 0; right: 0; bottom: 18px; display: flex; justify-content: center; }
+/* Join and Pick a time are on the night stage, whatever the page's theme: cream, as the sun is by night. */
+.cd-join .ac-btn.is-primary { background: var(--stage-sun); color: var(--stage); }
+.cd-joinlink { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 7px 7px 7px 14px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line); font: 500 14px/1 var(--font-sans); color: var(--ink-2); }
+.cd-joinlink > .ac-i { flex: none; }
+.cd-joinlink > span { flex: 1; min-width: 0; overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
+.cd-joinlink .ac-btn { flex: none; }
+.cd-pane.is-soon { padding-top: 6px; }
+.cd-grp.is-first { margin-top: 0; }
+.cd-answer .cs-reply { margin-top: 8px; }
+.cd-ready { display: grid; gap: 14px; justify-items: start; padding: 8px 0 6px; }
+.cd-ready p { max-width: 52ch; font: 400 15px/1.55 var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+.cd-ways { display: flex; flex-wrap: wrap; gap: 8px; }
+.cd-ways.is-more { margin-top: 14px; gap: 4px; }
+.cd-grp .cd-cards { margin-top: 10px; }
+.cd-closed { display: flex; align-items: flex-start; gap: 9px; margin-top: 12px; font: 400 13.5px/1.45 var(--font-sans); color: var(--ink-2); }
+.cd-closed > .ac-i { flex: none; margin-top: 2px; color: var(--ink-3); }
+.cd-closed b { margin-right: 6px; font-weight: 600; color: var(--ink); }
+.cd-noteon { display: grid; grid-template-columns: 20px minmax(0, 1fr); column-gap: 10px; padding: 8px 0; font: 400 14.5px/1.5 var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+.cd-noteon > .ac-i { margin-top: 3px; color: var(--sun-text); }
+.cd-gh-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.cd-gh-row .cd-link { height: 26px; margin-block: -6px; }
+.cd-notes-change { display: grid; gap: 12px; margin-top: 6px; }
+.cd-notes-change .cd-pop-f { margin-top: 0; }
+
+/* ------------------------------------------------------------ gone */
+.cd.is-gone { height: auto; }
+.cd-gone { display: grid; justify-items: start; gap: 14px; max-width: 560px; margin-top: calc(var(--hz) - 40px); }
+.cd-gone h1 { font: 400 40px/1.1 var(--font-display); letter-spacing: -.015em; color: var(--ink); }
+.cd-gone p { font: 400 16px/1.5 var(--font-sans); color: var(--ink-2); }
+.cd-gone ul { display: grid; gap: 8px; padding: 0; list-style: none; }
+.cd-gone li { display: flex; align-items: center; gap: 10px; font: 400 15px/1.45 var(--font-sans); color: var(--ink); }
+.cd-gone li .ac-i { color: var(--sun-text); }
+/* Deleted: the call goes before saying what went. */
+.cd.is-going .cd-cols, .cd.is-going .cd-head { animation: cd-going 520ms var(--ease-in) forwards; }
+@keyframes cd-going { to { opacity: 0; transform: translateY(8px); } }
+
+/* ------------------------------------------------------------ one column */
+/* Narrower than the halves fit (Call.tsx): the stage, the line, then the tabs, and the page scrolls as one. */
+.cd.is-one { height: auto; }
+.cd.is-one .dusk-in { display: block; height: auto; padding-bottom: 72px; }
+.cd.is-one .cd-cols { display: flex; flex-direction: column; }
+.cd.is-one .cd-left { display: contents; }
+.cd.is-one .cd-stage { max-height: 34vh; }
+.cd.is-one .cd-right { margin-top: 22px; padding-left: 0; border-left: 0; }
+.cd.is-one .cd-tabs.ac-tabs { margin-top: 0; }
+.cd.is-one .cd-pane { overflow: visible; margin: 0; padding: 18px 0 calc(24px + var(--cd-chips, 0px)); -webkit-mask-image: none; mask-image: none; }
+html:has(.cd.is-one) { scroll-padding-block: 24px 92px; }
+
+@media (max-width: 860px) {
+  .shell:has(> .main > .main-in > .cd) .ph-end > :first-child { display: none; }
+  .cd { --hz: 196px; }
+  .cd-bar { padding-right: 0; }
+  .cd-acts .ac-btn.is-secondary { width: 36px; padding: 0; justify-content: center; font-size: 0; gap: 0; box-shadow: none; }
+  .cd-title { -webkit-line-clamp: 2; font-size: 28px; }
+  .cd-meta { gap: 4px 12px; font-size: 13px; }
+  .cd-cols { margin-top: 22px; }
+  .cd-stage { border-radius: 16px; }
+  /* Above the tab bar, and the toasts above it. */
+  .cd-askdock { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
+  .cd-askdock::before { bottom: -92px; height: 164px; -webkit-mask-image: none; mask-image: none; }
+  body:has(.cd-askdock) .ac-toasts:not(.on-stage) { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (max-width: 640px) {
+  .cd-arches { inset: 0 0 50px; gap: 6px; transform: scale(.62); }
+  .cd-arch b, .cd-arch small { display: none; }
+  .cd-cap { bottom: 10px; padding: 7px 11px 8px; font-size: 12.5px; }
+  .cd-line { grid-template-columns: 36px auto minmax(0, 1fr) auto; }
+  .cd-play { width: 36px; height: 36px; }
+  .cd-seg-l, .cd-ctl { display: none; }
+  .cd-tabs .ac-tab { padding: 0 10px; font-size: 14px; }
+  .cd-tabs .ac-tab:first-child { margin-left: -10px; }
+  .cd-cards { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 44%; overflow-x: auto; margin-inline: -20px; padding: 6px 20px 4px; scrollbar-width: none; }
+  .cd-made.is-tab .cd-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: row; margin-inline: 0; padding: 6px 6px 4px; }
+  .cd-hw { grid-template-columns: minmax(0, 1fr); row-gap: 6px; }
+  .cd-tm { position: relative; }
+  .cd-tm::after { content: ""; position: absolute; inset: -9px -2px; }
+}
+
+/* ------------------------------------------------------------ a transcript line (components/app.tsx: TranscriptLine) */
+.nd-lines { padding-top: 4px; }
+.nd-l { position: relative; display: grid; grid-template-columns: 44px 26px minmax(0, 1fr) 84px; column-gap: 10px; align-items: start; margin-inline: -8px; padding: 9px 8px; border-radius: 12px; scroll-margin-block: 96px 96px; transition: background-color var(--duration-1); }
 .nd-l:hover { background: color-mix(in oklch, var(--ink) 5%, transparent); }
-.nd-l.is-on { background: color-mix(in oklch, var(--sun-text) 17%, transparent); }
+.nd-l.is-on { background: color-mix(in oklch, var(--sun-text) 15%, transparent); }
 .nd-l.is-more { padding-top: 1px; }
-.nd-lines.is-nameless .nd-l { grid-template-columns: 50px minmax(0, 1fr) 84px; }
+.nd-lines.is-nameless .nd-l { grid-template-columns: 44px minmax(0, 1fr) 84px; }
 .nd-lines.is-nameless .nd-la { display: none; }
-.nd-lt { position: relative; display: block; width: 50px; border-radius: 4px; font: 500 13px/22px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); text-align: left; }
+.nd-lt { position: relative; display: block; width: 44px; border-radius: 4px; font: 600 12px/22px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); text-align: left; }
 button.nd-lt:hover { color: var(--ink); }
 /* A line that goes to its moment when pressed, as its time does: the time darkens while the line is pointed at. */
 .nd-l.is-press { cursor: pointer; }
@@ -345,365 +520,42 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-lk.is-decide { width: 6.5px; height: 6.5px; border-radius: 1.5px; background: var(--rose); transform: rotate(45deg); }
 .nd-la { display: block; min-height: 22px; padding-top: 1px; }
 .nd-lb { min-width: 0; }
-.nd-ln { display: flex; align-items: center; gap: 10px; font: 600 13.5px/22px var(--font-sans); color: var(--ink); }
+.nd-ln { display: flex; align-items: center; gap: 10px; font: 600 13px/22px var(--font-sans); color: var(--ink); }
 .nd-fixed { display: inline-flex; align-items: center; gap: 4px; border-radius: 4px; font: 400 12.5px/1 var(--font-sans); color: var(--ink-3); cursor: help; }
 .nd-fixed:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.nd-lp { font: 400 15.5px/24px var(--font-sans); color: var(--ink); text-wrap: pretty; overflow-wrap: anywhere; }
+.nd-lp { font: 400 14.5px/1.5 var(--font-sans); color: var(--ink); text-wrap: pretty; overflow-wrap: anywhere; }
 .nd-lx { display: flex; justify-content: flex-end; gap: 2px; }
 .nd-tool.ac-icon-btn { width: 26px; height: 26px; opacity: 0; color: var(--ink-2); transition: opacity var(--duration-1), background-color var(--duration-1), color var(--duration-1); }
 .nd-l:hover .nd-tool.ac-icon-btn, .nd-lx:focus-within .nd-tool.ac-icon-btn, .nd-lx:has([data-state="open"]) .nd-tool.ac-icon-btn, .nd-tool.ac-icon-btn.is-on { opacity: 1; }
 @media (hover: none) { .nd-tool.ac-icon-btn { opacity: 1; } }
 .nd-tool.ac-icon-btn:hover { background: color-mix(in oklch, var(--ink) 10%, transparent); color: var(--ink); }
 .nd-tool.ac-icon-btn.is-on { background: none; color: var(--sun-text); }
-.nd-l.is-edit { background: color-mix(in oklch, var(--ink) 6%, transparent); grid-template-columns: 50px 26px minmax(0, 1fr); }
-.nd-lines.is-nameless .nd-l.is-edit { grid-template-columns: 50px minmax(0, 1fr); }
+.nd-l.is-edit { background: color-mix(in oklch, var(--ink) 6%, transparent); grid-template-columns: 44px 26px minmax(0, 1fr); }
+.nd-lines.is-nameless .nd-l.is-edit { grid-template-columns: 44px minmax(0, 1fr); }
 .nd-nobody { display: grid; place-items: center; width: 24px; height: 26px; border-radius: 12px 12px 4px 4px; background: var(--sunk); color: var(--ink-3); }
 .nd-edit { display: grid; gap: 8px; min-width: 0; }
 .nd-whopick { display: inline-flex; align-items: center; justify-self: start; gap: 5px; height: 26px; margin: -2px 0 0 -8px; padding: 0 8px; border-radius: 7px; font: 600 13.5px/1 var(--font-sans); color: var(--ink); }
 .nd-whopick:hover, .nd-whopick[data-state="open"] { background: color-mix(in oklch, var(--ink) 9%, transparent); }
+.ac-pop.nd-whopop { width: min(300px, calc(100vw - 24px)); max-height: min(var(--radix-popover-content-available-height, 70vh), 420px); overflow-y: auto; padding: 8px; }
+.ac-pop.nd-whopop .ac-pop-item { align-items: center; padding: 8px 10px; }
 .nd-area { display: block; width: 100%; field-sizing: content; min-height: 44px; padding: 9px 11px; border: 0; border-radius: 11px; outline: 0; background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); font: 400 15px/22px var(--font-sans); color: var(--ink); resize: none; }
 .nd-area:focus { box-shadow: inset 0 0 0 1.5px var(--focus); }
 .nd-edit-f { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; }
-.nd .ac-btn.is-secondary.is-sm { background: color-mix(in oklch, var(--ink) 11%, transparent); box-shadow: none; }
-.nd .ac-btn.is-secondary.is-sm:hover { background: color-mix(in oklch, var(--ink) 17%, transparent); }
-.nd-allrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 6px; }
-.nd-all { display: inline-flex; align-items: center; gap: 6px; height: 32px; margin-left: -10px; padding: 0 10px; border-radius: var(--radius-pill); font: 600 13px/1 var(--font-sans); color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
-.nd-all:hover { background: color-mix(in oklch, var(--ink) 7%, transparent); color: var(--ink); }
-.nd-all .ac-i { transition: transform var(--duration-2) var(--ease-out); }
-.nd-all[aria-expanded="true"] .ac-i { transform: rotate(180deg); }
-.nd-scrlink { margin-left: auto; }
-.nd-said > .nd-scrlink { display: flex; margin: 14px 0 0; }
-.nd-offer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 10px; padding: 9px 10px 9px 14px; border-radius: 14px; background: color-mix(in oklch, var(--sun-text) 10%, transparent); font: 400 14px/1.35 var(--font-sans); color: var(--ink); }
-.nd-offer > .ac-i { color: var(--sun-text); }
-.nd-offer > span { flex: 1 1 220px; min-width: 0; }
+.nd-edit-f .nd-act { display: inline-flex; align-items: center; height: 32px; border-radius: 6px; font: 500 13px/1 var(--font-sans); color: var(--ink-2); transition: color var(--duration-1); }
+.nd-edit-f .nd-act:hover { color: var(--ink); }
+.nd-edit-f .nd-act:disabled { opacity: .5; }
+.nd-mp b { font-weight: 500; }
+.nd-tick { margin-left: auto; color: var(--sun-text); }
 .ac-capture-gap.nd-gapline { margin: 6px 0; background: color-mix(in oklch, var(--ink) 6%, transparent); }
 /* A shared screen, among the lines said while it was up. */
-.ac-screen.nd-scr { grid-template-columns: 60px minmax(0, 1fr); gap: 10px; width: calc(100% - 50px); margin: 2px 0 2px 50px; padding: 6px 10px; border-radius: 12px; background: none; box-shadow: none; transition: background-color var(--duration-1); }
+.ac-screen.nd-scr { grid-template-columns: 60px minmax(0, 1fr); gap: 10px; width: calc(100% - 44px); margin: 2px 0 2px 44px; padding: 6px 10px; border-radius: 12px; background: none; box-shadow: none; transition: background-color var(--duration-1); }
 .ac-screen.nd-scr:hover { background: color-mix(in oklch, var(--ink) 5%, transparent); box-shadow: none; }
-.nd-scr .thumb { width: 60px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--nd-hair); }
+.nd-scr .thumb { width: 60px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--line); }
 .nd-scr .t { font: 500 14px/19px var(--font-sans); }
 .nd-scr .t .ac-i { display: none; }
 .nd-scr .m { font-size: 12.5px; }
-
-/* ------------------------------------------------------------ breakout rooms, folded */
-.nd-fold.ac-fold, .nd-fold.ac-fold + .nd-fold.ac-fold { margin-top: 0; border-top: 1px solid var(--nd-hair); border-radius: 0; background: none; box-shadow: none; }
-.nd-fold > .ac-fold-h { flex-wrap: wrap; gap: 4px 10px; min-height: 48px; padding: 8px 0; border-radius: 0; font: 400 15px/1.3 var(--font-sans); color: var(--ink); }
-.nd-fold > .ac-fold-h:hover { background: none; }
-.nd-fold > .ac-fold-h:hover b { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
-.nd-fold > .ac-fold-h b { font-weight: 500; }
-.nd-fold > .ac-fold-h .ac-avatar { --ring: var(--nd-bed); }
-.nd-fold > .ac-fold-h small { margin-left: auto; font: 400 13px/1 var(--font-sans); color: var(--ink-3); }
-.nd-fold > .ac-fold-h .ac-fold-i { order: -1; width: 15px; height: 15px; margin-left: 0; transform: rotate(-90deg); }
-.nd-fold[open] > .ac-fold-h .ac-fold-i { transform: none; }
-.nd-fold > .ac-fold-b { padding: 0 0 16px 25px; }
-.nd-fold-sum { font: 400 15.5px/1.55 var(--font-sans); color: var(--ink); text-wrap: pretty; }
-.nd-sub { margin-top: 16px; }
-.nd-sub h3 { padding-bottom: 6px; font: 600 13.5px/1.3 var(--font-sans); color: var(--ink-2); }
-.nd-sub.is-decide h3 { color: var(--rose); }
-.nd-sub.is-follow h3 { color: var(--horizon); }
-.nd-r.is-room { grid-template-columns: 28px minmax(0, 1fr) 138px 30px; }
-.nd-r.is-room > .nd-ra { grid-column: 3; }
-.nd-r.is-room > .nd-more { grid-column: 4; }
-.nd-r.is-room.is-editing > .nd-rb { grid-column: 2; }
-.nd-r.is-room.is-editing .nd-ra { grid-column: 3 / 5; }
-.nd-rch { display: grid; gap: 6px; font: 400 14px/1.4 var(--font-sans); color: var(--ink-2); }
-.nd-rch li { display: flex; flex-wrap: wrap; gap: 0 8px; }
-.nd-rch b { font-weight: 500; color: var(--ink); }
-.nd-fold.is-said { margin-top: 14px; }
-.nd-lines.is-room { padding-top: 0; border-top: 0; }
-
-/* ------------------------------------------------------------ being written, nothing said, and gone */
-.nd-writing { padding-top: 4px; }
-/* (Where you write has a place between the two, for one column, so they're siblings but not next to each other.) */
-.nd-read:empty ~ .nd-said > .nd-s:first-child, .nd-read > .nd-s:first-child { margin-top: 0; }
-.nd-writing-t, .nd-quiet h2 { max-width: 40em; font: 400 clamp(17px, 1.34vw, 19px)/1.58 var(--font-sans); color: var(--ink); text-wrap: pretty; }
-.nd-steps { display: grid; margin-top: 20px; max-width: 460px; }
-.nd-steps li { display: flex; align-items: center; gap: 12px; min-height: 44px; border-top: 1px solid var(--nd-hair); font: 400 15px/1.3 var(--font-sans); color: var(--ink-3); }
-.nd-steps li.is-done { color: var(--ink-2); }
-.nd-steps li.is-now { color: var(--ink); font-weight: 500; }
-.nd-step-i { display: grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--nd-hair); color: var(--sun-text); }
-.nd-steps li.is-done .nd-step-i { background: color-mix(in oklch, var(--sun-text) 18%, transparent); box-shadow: none; }
-.nd-steps li.is-now .nd-step-i { box-shadow: none; }
-.nd-step-i .ac-dots { gap: 2px; }
-.nd-step-i .ac-dots i { width: 3.5px; height: 3.5px; }
-.nd-again { display: flex; align-items: baseline; gap: 10px; margin-bottom: 18px; padding: 10px 14px; border-radius: 14px; background: color-mix(in oklch, var(--ink) 7%, transparent); font: 400 14px/1.4 var(--font-sans); color: var(--ink-2); }
-.nd-again b { font-weight: 600; color: var(--ink); }
-.nd-again .ac-dots { flex: none; color: var(--sun-text); }
-.nd-again > span { flex: 1; min-width: 0; }
-.nd-again > .ac-btn { flex: none; align-self: center; margin: -4px -6px -4px 0; }
-.nd-unwritten { display: grid; justify-items: start; gap: 12px; margin-bottom: 8px; }
-.nd-quiet { display: grid; justify-items: start; gap: 6px; padding-top: 6px; }
-.nd-quiet p { font: 400 15px/1.5 var(--font-sans); color: var(--ink-2); }
-.nd-retry { margin-top: 10px; }
-
-.nd-gonetop { display: flex; align-items: center; min-height: 40px; }
-.nd-gone { display: grid; justify-items: center; align-content: start; gap: 8px; width: min(460px, 100%); margin: calc(var(--hz) + 10px) auto 0; padding-bottom: 40px; text-align: center; }
-.nd-gone h1 { font: 400 clamp(30px, 2.9vw, 40px)/1.14 var(--font-display); letter-spacing: -.012em; color: var(--ink); }
-.nd-gone p { font: 400 16px/1.5 var(--font-sans); color: var(--ink-2); text-wrap: balance; }
-.nd-gone ul { display: grid; width: 100%; margin: 12px 0 10px; padding: 0; list-style: none; text-align: left; }
-.nd-gone li { display: flex; align-items: center; gap: 10px; min-height: 42px; border-top: 1px solid var(--nd-hair); font: 400 15px/1.3 var(--font-sans); color: var(--ink); }
-.nd-gone li:last-child { border-bottom: 1px solid var(--nd-hair); }
-.nd-gone li .ac-i { flex: none; color: var(--sun-text); }
-.nd-gone .ac-btn { margin-top: 14px; }
-/* Deleted: the note goes before saying what went. */
-.nd.is-going .nd-head, .nd.is-going .nd-replay, .nd.is-going .nd-hz, .nd.is-going .nd-cols { animation: nd-going 520ms var(--ease-in) forwards; }
-@keyframes nd-going { to { opacity: 0; transform: translateY(-6px); } }
-
-/* ------------------------------------------------------------ ask */
-/* A slim bar that stays at the bottom, with the page fading out under it. */
-.nd-askdock { position: sticky; bottom: 24px; z-index: 12; margin-top: auto; }
-/* Room at the end of the note for the suggestions, which sit above the bar: AskBar sets --nd-chips to their height and the gap above the bar (one row until it has measured them). */
-.nd-said, .nd-read:not(:has(~ .nd-said)) { padding-bottom: calc(18px + var(--nd-chips, 42px)); }
-/* The room above the bar is the note's until something shows in it: pointing there neither catches the pointer nor counts as over the bar. */
-.nd-up { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); display: grid; gap: 8px; pointer-events: none; }
-.nd-up > * { pointer-events: auto; }
-.nd-askdock::before { content: ""; position: absolute; left: -16px; right: -16px; bottom: -24px; height: 92px; background: linear-gradient(to bottom, transparent, color-mix(in oklch, var(--nd-fade) 92%, transparent) 58%); -webkit-mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent); pointer-events: none; z-index: -1; }
-.nd-ask { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 6px 0 16px; border-radius: var(--radius-pill); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line), 0 18px 40px -22px rgb(0 0 0 / .55); color: var(--ink-3); }
-.nd-ask:focus-within { box-shadow: 0 0 0 1.5px var(--focus), 0 18px 40px -22px rgb(0 0 0 / .55); }
-/* Its own line box, as tall as the font's, as "Write something for yourself" has: a caret sized from it is the text's height. */
-.nd-ask input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: 400 15px/20px var(--font-sans); color: var(--ink); }
-.nd-ask input::placeholder { color: var(--ink-2); }
-.nd-only { display: inline-flex; align-items: center; gap: 5px; flex: none; font: 500 12.5px/1 var(--font-sans); color: var(--ink-3); white-space: nowrap; }
-.nd-ask-go.ac-icon-btn { background: color-mix(in oklch, var(--ink) 11%, transparent); color: var(--ink); }
-.nd-ask-go.ac-icon-btn:hover { background: color-mix(in oklch, var(--ink) 17%, transparent); }
-.nd-suggs { display: flex; flex-wrap: wrap; gap: 6px; transition: opacity var(--duration-1) var(--ease-out), visibility var(--duration-1); }
-/* Always laid out, so their height is known; out of sight and reach until the end of the note, or the bar is pointed at or in use. */
-.nd-suggs:not(.is-on) { opacity: 0; visibility: hidden; pointer-events: none; }
-.nd-suggs[hidden] { display: none; }
-.nd-sugg { height: 34px; padding: 0 13px; border-radius: var(--radius-pill); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line); font: 500 13.5px/1 var(--font-sans); color: var(--ink); transition: background-color var(--duration-1); }
-.nd-sugg:hover { background: color-mix(in oklch, var(--ink) 15%, var(--surface-raised)); }
-.answer.nd-ans { max-height: min(56vh, 460px); margin: 0; padding: 12px 14px; overflow-y: auto; border-radius: 18px; background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line), 0 26px 60px -24px rgb(0 0 0 / .6); }
-.nd-ans .q { margin-bottom: 6px; font: 500 13.5px/1.3 var(--font-sans); color: var(--ink-2); }
-.nd-ans .q > span { flex: 1; min-width: 0; }
-.nd-ans .q > .ac-i { color: var(--ink-3); }
-.nd-ans .q .ac-icon-btn { width: 26px; height: 26px; margin: -3px -4px -3px 0; }
-.nd-ans > p { font: 400 16px/1.5 var(--font-sans); color: var(--ink); text-wrap: pretty; }
-.nd-ans .wait { font-size: 14px; color: var(--ink-2); }
-.nd-ans .wait .ac-dots { color: var(--sun-text); }
-.nd-ans-f { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
-.nd-ans-f .hm-moment { margin-left: 0; }
-.nd-ans-f .own-keep { margin: 0 0 0 auto; }
-.nd-ans-f .own-keep .lk { font: 500 13px/1 var(--font-sans); color: var(--ink-2); }
-.nd-ans-f .own-keep .lk:hover { color: var(--ink); text-decoration: none; }
-.nd-ans-f .own-keep .ac-scope { display: none; }
-
-/* ------------------------------------------------------------ beside the note */
-/* Its own scroll area under the line, as tall as the window below it: where you write stays in reach however long the
-   note is, and scrolling one column never moves the other. Room at its edges for focus rings. */
-.nd-side { position: sticky; top: 84px; align-self: start; display: grid; row-gap: 30px; min-width: 0; max-height: calc(100vh - 100px); max-height: calc(100dvh - 100px); margin: -4px -6px 0; padding: 4px 6px 24px; overflow-y: auto; overscroll-behavior: contain; scroll-padding-block: 12px 24px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
-/* Where you write (Your notes, then the shared notes), and the rest. */
-.nd-yours, .nd-about { display: grid; row-gap: 30px; min-width: 0; }
-/* The two places where you write is put (whereYouWrite.ts): beside the note, and before the transcript in one column. Neither draws a box. */
-.nd-spot { display: contents; }
-.nd-own.hm-panel { padding: 0 16px 14px; }
-.nd-own .hm-panel-h { height: 48px; }
-.nd-own .own-list { display: grid; gap: 0; }
-.nd-own .own-row, .nd-own .own-row + .own-row { grid-template-columns: 18px minmax(0, 1fr); column-gap: 9px; padding: 9px 0; border-top: 1px solid var(--line); border-radius: 0; }
-.nd-own .own-row.is-picked { background: none; box-shadow: none; }
-.nd-own .own-mk, .nd-own .own-row.is-bookmark .own-mk { width: 18px; height: 20px; background: none; color: var(--ink-3); }
-.nd-own .own-t, .nd-own .own-q { font: 400 14.5px/20px var(--font-sans); }
-.nd-own .own-q { font-size: 13px; color: var(--ink-3); }
-.nd-own .own-quote { padding-left: 0; border-left: 0; font: 400 14.5px/20px var(--font-sans); color: var(--ink); }
-.nd-own .own-m { gap: 4px 8px; min-height: 24px; }
-.nd-own .own-m .hm-moment { margin-left: 0; height: 24px; }
-.nd-own .own-acts { opacity: 1; }
-.nd-own .own-acts .ac-icon-btn { width: 26px; height: 26px; opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1), color var(--duration-1); }
-/* At rest a row shows no actions: Add to the shared notes, Edit and Delete show together on hover or focus, and always on touch screens. */
-.nd-own .own-row:hover .own-acts .ac-icon-btn, .nd-own .own-row:focus-within .own-acts .ac-icon-btn { opacity: 1; }
-@media (hover: none) { .nd-own .own-acts .ac-icon-btn { opacity: 1; } }
-.nd-own .own-compose { grid-template-columns: minmax(0, 1fr) auto; align-items: center; min-height: 40px; margin-top: 6px; padding: 3px 5px 3px 12px; border-radius: 13px; }
-.nd-own .own-compose textarea { min-height: 20px; padding: 0; font: 400 14.5px/20px var(--font-sans); }
-.nd-own .own-compose .ac-btn { width: 30px; height: 30px; background: none; box-shadow: none; color: var(--ink-3); }
-.nd-own .own-compose:has(textarea:not(:placeholder-shown)) .ac-btn { background: color-mix(in oklch, var(--ink) 12%, transparent); color: var(--ink); opacity: 1; }
-.nd-own-e { padding: 2px 0 6px; font: 400 14px/1.45 var(--font-sans); color: var(--ink-3); text-wrap: pretty; }
-/* What would go to the shared notes, in place of the box you write in. */
-.nd-own .own-pv { gap: 9px; margin-top: 6px; padding: 12px 0 0; scroll-margin-block: 12px 24px; border-top: 1px solid var(--line); border-radius: 0; background: none; box-shadow: none; animation: ac-rise var(--duration-2) var(--ease-out) both; }
-.nd-own .own-pv .h { flex-wrap: wrap; gap: 4px 10px; font: 600 13.5px/1.3 var(--font-sans); }
-.nd-own .own-pv .ac-scope { background: none; padding: 0; color: var(--ink-3); font: 500 12.5px/1 var(--font-sans); }
-.nd-own .own-pv textarea { min-height: 72px; resize: none; border-radius: 11px; font: 400 14.5px/21px var(--font-sans); }
-.nd-own .own-pv textarea:focus { box-shadow: inset 0 0 0 1.5px var(--focus); }
-.nd-own .own-pv .own-quote { font-size: 13.5px; line-height: 1.45; color: var(--ink-2); }
-.nd-own .own-pv dl { grid-template-columns: auto minmax(0, 1fr); gap: 5px 12px; }
-.nd-own .own-pv dt, .nd-own .own-pv dt:not(:first-child) { margin: 0; font-size: 13px; }
-.nd-since { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 11px; background: color-mix(in oklch, var(--sun-text) 11%, transparent); font: 400 13px/1.35 var(--font-sans); color: var(--ink); }
-.nd-since .ac-avatar { --ring: transparent; }
-/* The shared notes' own box, on the water under what's in them: who reads it first, then what to write. */
-.nd-shared-box.own-compose { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 8px; margin-top: 10px; padding: 9px 5px 4px 12px; border-radius: 13px; }
-.nd-shared-box .to { min-width: 0; padding-right: 7px; font: 400 12.5px/1.35 var(--font-sans); color: var(--ink-2); }
-.nd-shared-box .to .ac-faces { flex: none; }
-.nd-shared-box .to .bad { color: var(--caution); }
-.nd-shared-box textarea { min-height: 20px; padding: 0; font: 400 14.5px/20px var(--font-sans); }
-.nd-shared-box .ac-btn { width: 30px; height: 30px; background: none; box-shadow: none; color: var(--ink-3); }
-.nd-shared-box:has(textarea:not(:placeholder-shown)) .ac-btn { background: color-mix(in oklch, var(--ink) 12%, transparent); color: var(--ink); opacity: 1; }
-.nd-shared-box .nd-since { grid-column: 1 / -1; margin-bottom: 4px; }
-
-.nd-b { min-width: 0; }
-.nd-b > h2 { padding-bottom: 10px; }
-.nd-b-h { display: flex; align-items: center; justify-content: space-between; padding-bottom: 10px; }
-.nd-allcalls { font: 500 13.5px/1.3 var(--font-sans); color: var(--ink-2); }
-.nd-a { display: grid; grid-template-columns: 26px minmax(0, 1fr); column-gap: 10px; align-items: start; padding: 11px 0; border-top: 1px solid var(--nd-hair); }
-.nd-a-b { display: grid; gap: 2px; min-width: 0; }
-.nd-a-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font: 400 13.5px/1.3 var(--font-sans); }
-.nd-a-h b { font-weight: 600; color: var(--ink); }
-.nd-a-h small { font-size: 12.5px; color: var(--ink-3); }
-.nd-a-t { font: 400 14.5px/21px var(--font-sans); color: var(--ink); text-wrap: pretty; overflow-wrap: anywhere; white-space: pre-wrap; }
-.nd-a .own-quote { padding-left: 0; border-left: 0; font-size: 13.5px; color: var(--ink-2); }
-.nd-a-f { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 8px; min-height: 26px; margin-top: 2px; }
-.nd-a-f .hm-moment { margin-left: 0; }
-.nd-a-f .nd-act { height: 26px; margin-left: auto; }
-.nd-a .own-sure { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; margin: 6px 0 0; padding: 8px 10px; border-radius: 11px; background: color-mix(in oklch, var(--ink) 7%, transparent); font: 400 13px/1.35 var(--font-sans); color: var(--ink); }
-.nd-a .own-sure .lk { font: 600 13px/26px var(--font-sans); color: var(--ink); }
-.nd-a .own-sure .lk.quiet { font-weight: 500; color: var(--ink-2); }
-.nd-p { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; column-gap: 10px; align-items: center; min-height: 42px; border-top: 1px solid var(--nd-hair); }
-.nd-p-n { font: 500 14px/20px var(--font-sans); color: var(--ink); }
-.nd-p-r { font: 400 13px/1 var(--font-sans); color: var(--ink-3); }
-.nd-p.is-fresh { animation: ac-rise var(--duration-3) var(--ease-out) both; }
-.nd-showall { height: 30px; }
-.nd-open { display: flex; align-items: center; gap: 7px; padding-top: 10px; border-top: 1px solid var(--nd-hair); font: 400 13px/1.35 var(--font-sans); color: var(--ink-3); }
-.nd-c { display: grid; grid-template-columns: 50px minmax(0, 1fr); column-gap: 10px; align-items: baseline; width: 100%; min-height: 40px; padding: 10px 0; border-top: 1px solid var(--nd-hair); text-align: left; }
-.nd-c:hover .nd-c-t { color: var(--ink); }
-.nd-c-d { font: 500 13px/20px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
-.nd-c-t { font: 400 14px/20px var(--font-sans); color: var(--ink-2); transition: color var(--duration-1); }
-.nd-c-open { padding: 10px 0 0; border-top: 1px solid var(--nd-hair); font: 400 13px/1.4 var(--font-sans); color: var(--ink-3); text-wrap: pretty; }
-.nd-next { display: flex; align-items: center; gap: 7px; margin-top: 8px; font: 400 13.5px/1.3 var(--font-sans); color: var(--ink-2); }
-.nd-next .ac-i { flex: none; color: var(--ink-3); }
-.nd-next b { font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink); }
-.nd-next .nd-act { height: 24px; margin-left: auto; }
-.nd-b > .nd-meet { justify-content: flex-start; margin-top: 8px; }
-/* The line has room for the chapters on all but a phone. */
-.nd-chapters { display: none; }
-.nd-chap { display: grid; grid-template-columns: 50px minmax(0, 1fr); column-gap: 10px; align-items: baseline; width: 100%; min-height: 44px; padding: 10px 0; border-top: 1px solid var(--nd-hair); text-align: left; }
-.nd-chap b { display: block; font: 500 14.5px/20px var(--font-sans); color: var(--ink); }
-.nd-chap small { display: block; font: 400 13px/18px var(--font-sans); color: var(--ink-3); }
-
-/* ------------------------------------------------------------ a series */
-/* Its calls stand on the line; the sun is on the latest one. */
-.nd-series .nd-ch { color: var(--ink-2); }
-/* At the far end of the line, its label stands on the other side of it. */
-.nd-ch.is-end { left: auto; right: calc(100% - var(--x)); padding: 0 7px 12px 0; }
-.nd-ch.is-end::before { left: auto; right: 0; }
-.nd-series .nd-sun { transition: none; }
-.nd-series .nd-sun::after { height: 34px; }
-.nd-series .nd-hz.is-stuck .nd-sun::after { height: 24px; }
-.nd-series .nd-how { gap: 6px; }
-.nd-series .nd-how .ac-i { color: var(--ink-2); }
-.nd-nothing.ac-empty { padding: 28px 0 8px; }
-/* What carries over is a row like any other: its kind, its words, the moment, and what's waiting on you. */
-.nd-series .carry-list { display: grid; }
-.nd-series .carry { --tint: var(--ink-2); grid-template-columns: 28px minmax(0, 1fr) 66px 138px; column-gap: 12px; align-items: center; min-height: 52px; padding: 10px 0; border-top-color: var(--nd-hair); }
-.nd-series .carry.is-decide { --tint: var(--rose); }
-.nd-series .carry.act-row { --tint: var(--horizon); }
-.nd-series .carry > .g { place-self: start center; width: 28px; height: 28px; border-radius: 50%; background: color-mix(in oklch, var(--tint) 20%, transparent); color: var(--tint); }
-.nd-series .carry.act-row > .g { height: 22px; background: none; }
-.nd-series .carry.confirmed > .g { background: var(--tint); color: var(--nd-bed); }
-.nd-series .carry.superseded > .g, .nd-series .carry.answered > .g { opacity: .6; }
-.nd-series .carry .pend { width: 12px; height: 12px; border: 1.5px dashed currentColor; border-radius: 50%; }
-.nd-series .carry .t { font: 400 15.5px/22px var(--font-sans); }
-.nd-series .carry .m { gap: 0 10px; font: 400 13px/18px var(--font-sans); }
-.nd-series .carry-from { font-weight: 500; }
-.nd-series .carry > .hm-moment { justify-self: end; margin: 0; }
-.nd-series .carry-a { grid-column: 4; display: flex; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; }
-.nd-series .carry-a .hm-yes { flex: 1; height: 32px; padding: 0 14px; line-height: 32px; white-space: nowrap; }
-.nd-series .carry .on-hover { opacity: 0; transition: opacity var(--duration-1); }
-.nd-series .carry:hover .on-hover, .nd-series .carry:focus-within .on-hover { opacity: 1; }
-@media (hover: none) { .nd-series .carry .on-hover { opacity: 1; } }
-.nd-series .carry-later { font: 400 13px/18px var(--font-sans); margin-top: 2px; }
-.nd-series .carry-later .acts { gap: 0 14px; }
-.nd-series .carry-later .nd-act { height: 26px; }
-.nd-series .grp { padding: 14px 0 6px; border-top: 1px solid var(--nd-hair); font: 500 13px/16px var(--font-sans); color: var(--ink-3); }
-.nd-series .grp + .carry { border-top: 0; }
-.nd-c.is-call { grid-template-columns: 50px minmax(0, 1fr) auto; }
-.nd-call.hm-panel { padding: 0 16px 14px; }
-.nd-call .hm-panel-h { height: 48px; }
-.nd-call-w { display: grid; gap: 2px; padding-top: 10px; border-top: 1px solid var(--line); font: 400 13.5px/20px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-2); }
-.nd-call-w b { font: 500 15px/21px var(--font-sans); color: var(--ink); }
-.nd-call-a { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
-
-/* Shared screens, opened. */
-.ac-modal.scr-view .scr-f { align-items: center; }
-.scr-f .hm-moment { margin-left: auto; }
-
-@media (prefers-reduced-motion: reduce) { .nd-g::before { animation: none !important; } }
-
-/* ------------------------------------------------------------ wide and narrow */
-/* Wide: what was said moves beside what was decided, so a moment never takes the note away. */
-@media (min-width: 1720px) {
-  .nd-main { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); grid-template-rows: 1fr auto; column-gap: 56px; align-items: start; }
-  /* Either column can finish last: both keep its controls above Ask's floating suggestions. */
-  .nd-main:has(> .nd-askdock) > .nd-read { padding-bottom: 60px; }
-  .nd-said .nd-s:first-child { margin-top: 0; }
-  .nd-askdock, .nd-end-mark { grid-column: 1 / -1; }
-}
-
-/* Narrower: everything in one column, and what's beside the note follows it, two across. */
-@media (max-width: 1180px) {
-  .nd-seal small { display: none; }
-  .nd-cols { grid-template-columns: minmax(0, 1fr); }
-  /* One column: the bar spans all of it, so it stays at the bottom through what's beside the note too. */
-  .nd-main { display: contents; }
-  .nd-read { grid-area: 2 / 1; min-width: 0; }
-  /* Where you write comes before the transcript, two across, so it's in reach without passing all of it; the rest follows it. */
-  .nd-side { display: contents; }
-  .nd-yours { grid-area: 3 / 1; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; align-items: start; padding-top: 34px; }
-  /* Alone (the shared notes show once the notes are written, or once something's added to them), Your notes takes the row. */
-  .nd-yours > :only-child { grid-column: 1 / -1; }
-  .nd-own .own-pv { scroll-margin-block: 92px 24px; }
-  .nd-said { grid-area: 4 / 1; min-width: 0; padding-bottom: 0; }
-  .nd-about { grid-area: 5 / 1; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; align-items: start; padding: 34px 0 calc(70px + var(--nd-chips, 42px)); }
-  .nd-end-mark { grid-area: 5 / 1; align-self: end; }
-  .nd-askdock { grid-area: 1 / 1 / 6 / 2; align-self: end; margin-top: 0; }
-}
-
 @media (max-width: 860px) {
-  .nd { --nd-sky-h: 158px; --nd-side: 100%; }
-  .nd-head { height: calc(var(--nd-sky-h) - 6px - var(--nd-up)); }
-  .nd .dusk-top { gap: 2px; }
-  .nd-title { flex: 1 1 auto; gap: 8px; }
-  .nd-title h1 { font-size: 25px; }
-  .nd-back { gap: 8px; }
-  .nd-acts { gap: 0; }
-  .nd-acts .ac-btn.is-secondary { width: 36px; padding: 0; background: none; color: var(--ink-2); font-size: 0; gap: 0; }
-  .nd-meta { flex-wrap: wrap; gap: 0 10px; margin-top: 0; font-size: 13.5px; }
-  .nd-seal, .ac-sealed.is-button.nd-seal { font-size: 13.5px; }
-  .nd-hz { top: 0; }
-  .nd-hz-in { grid-template-columns: 40px minmax(0, 1fr); }
-  .nd-hz.is-silent .nd-hz-in { grid-template-columns: minmax(0, 1fr); }
-  .nd-now { position: absolute; left: 52px; top: 10px; min-width: 0; }
-  .nd-end { position: absolute; right: 0; top: 10px; }
-  .nd-end .ac-i { display: none; }
-  .nd-ch { display: none; }
-  .nd-ch.is-on { display: block; left: 46px; max-width: calc(100% - 96px); height: 26px; padding-left: 0; color: var(--ink-2); }
-  .nd-ch.is-on::before { display: none; }
-  .nd-hz.is-silent .nd-ch.is-on { left: 0; }
-  .nd-m > i { width: 8.5px; height: 8.5px; box-shadow: 0 0 0 2px var(--nd-bed); }
-  .nd-m.is-decide > i { width: 8px; height: 8px; }
-  .nd-yours, .nd-about { grid-template-columns: minmax(0, 1fr); row-gap: 28px; }
-  .nd-yours { padding-top: 28px; }
-  .nd-about { padding-bottom: calc(106px + var(--nd-chips, 42px)); }
-  .nd-chapters { display: block; }
-  .nd-own .own-pv { scroll-margin-block: 80px 190px; }
-  .nd-r { grid-template-columns: 28px minmax(0, 1fr) 30px; row-gap: 8px; }
-  .nd-r > .nd-rb { grid-column: 2; }
-  .nd-r > .nd-more { grid-column: 3; grid-row: 1; }
-  .nd-r > .hm-moment { grid-column: 2; grid-row: 2; justify-self: start; }
-  .nd-r > .nd-ra { grid-column: 2 / 4; grid-row: 2; justify-content: flex-end; padding-left: 72px; }
-  .nd-r > .nd-ra:empty { display: none; }
-  .nd-r.is-editing > .nd-rb { grid-column: 2 / 4; }
-  .nd-r.is-editing .nd-ra { grid-column: 2 / 4; padding-left: 0; }
-  .nd-series .carry { grid-template-columns: 28px minmax(0, 1fr) auto; row-gap: 8px; }
-  .nd-series .carry-a { grid-column: 2 / -1; }
-  .nd-series .carry .on-hover { opacity: 1; }
-  /* A series has room for all its calls on the line, unlike a call's chapters. */
-  .nd-series .nd-hz .nd-ch, .nd-series .nd-hz.is-silent .nd-ch.is-on { display: block; left: var(--x); max-width: calc(var(--room) - 6px); height: 28px; padding-left: 7px; }
-  .nd-series .nd-hz .nd-ch.is-end, .nd-series .nd-hz.is-silent .nd-ch.is-end.is-on { left: auto; max-width: none; padding: 0 7px 12px 0; }
-  .nd-series .nd-ch::before, .nd-series .nd-ch.is-on::before { display: block; }
-  .nd-r.is-room { grid-template-columns: 28px minmax(0, 1fr) 30px; }
-  .nd-r.is-room > .nd-ra { grid-column: 2; grid-row: 2; padding-left: 0; }
-  .nd-r.is-room > .nd-more { grid-column: 3; }
-  .nd-r.is-room.is-editing > .nd-rb { grid-column: 2 / 4; }
-  .nd-r.is-room.is-editing .nd-ra { grid-column: 2 / 4; }
-  .nd-owner { margin-right: 10px; }
-  .nd-l { grid-template-columns: 26px minmax(0, 1fr) 30px; margin-inline: -8px; padding-inline: 8px; }
+  .nd-l { grid-template-columns: 26px minmax(0, 1fr) 30px; }
   .nd-l .nd-lt { grid-column: 2; grid-row: 1; width: auto; line-height: 18px; }
   .nd-l .nd-la { grid-column: 1; grid-row: 1 / 3; }
   .nd-l .nd-lb { grid-column: 2; }
@@ -721,63 +573,6 @@ button.nd-lt:hover { color: var(--ink); }
   .nd-lines.is-nameless .nd-l .nd-lx { grid-column: 2; }
   .nd-lk { position: static; display: inline-block; margin-left: 7px; vertical-align: 1px; }
   .ac-screen.nd-scr { width: 100%; margin-left: 0; padding-inline: 0; }
-  .nd-sh { display: grid; }
-  .nd-askdock { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
-  .nd-askdock::before { bottom: -92px; height: 164px; -webkit-mask-image: none; mask-image: none; }
-  body:has(.nd-askdock) .ac-toasts:not(.on-stage) { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
-  .nd-gone { margin-top: calc(var(--hz) - 36px); }
-  .nd-gonetop { display: none; }
-  /* Small controls keep a finger-sized target without changing how they sit. */
-  .nd .ac-check, .nd .hm-moment, .nd-more.ac-icon-btn, .nd-tool.ac-icon-btn { position: relative; }
-  .nd .ac-check::after { content: ""; position: absolute; inset: -12px; }
-  .nd .hm-moment::after { content: ""; position: absolute; inset: -9px -2px; }
-  .nd-more.ac-icon-btn::after, .nd-tool.ac-icon-btn::after { content: ""; position: absolute; inset: -6px; }
+  .nd-tool.ac-icon-btn { position: relative; }
+  .nd-tool.ac-icon-btn::after { content: ""; position: absolute; inset: -6px; }
 }
-
-/* Writing the notes again, from the menu: a small modal with the model to choose. */
-.ac-modal.nd-redo { width: min(480px, calc(100vw - 32px)); gap: 12px; padding: 22px 22px 18px; }
-.nd-redo-h { display: flex; align-items: center; gap: 8px; font: 600 18px/1.3 var(--font-sans); }
-.nd-redo-h > .ac-i { color: var(--sun-text); }
-.nd-redo-p { font: 400 14.5px/1.5 var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
-.nd-redo-f { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 6px; }
-
-/*
- * The shared screens, on the sky over the line, which runs along their foot as their seek bar and still sticks to the top
- * as you read, clear of the picture. As wide as the note's own column under them (.nd-cols), and never taller than about
- * half the window, keeping its shape: on a wide window it's narrower than the column. The sky grows by this height
- * (useStageOnTheSky). Playing from a frame comes up to them.
- */
-.nd-replay { width: calc(100% - var(--nd-side) - clamp(32px, 3.2vw, 56px)); padding-bottom: 8px; scroll-margin-top: 124px; outline: none; }
-.nd-replay .ac-replay { margin: 0; }
-.nd-replay .ac-replay:not(:fullscreen) .ac-replay-stage { max-height: 56vh; }
-/* In one column, the whole of it. */
-@media (max-width: 1180px) { .nd-replay { width: auto; } }
-
-/* Notes written by an unencrypted model: the same quiet button under the title, in caution. */
-.ac-sealed.is-button.nd-seal.is-caution, .ac-sealed.is-button.nd-seal.is-caution:hover { color: var(--caution); }
-
-/* A call's own Drive choice sits with its recipients, using the same export kit as Settings. */
-.nd-drive { padding: 20px 0; border-top: 1px solid var(--line); color: var(--ink); }
-.nd-drive > h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 13px; font: 600 14px/20px var(--font-sans); }
-.nd-drive > h2 .ac-i { color: var(--horizon); }
-.nd-drive-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 10px; font: 400 13px/19px var(--font-sans); }
-.nd-drive-info, .nd-drive-default > p, .nd-drive-refused > p { margin: 0 0 10px; font: 400 13px/20px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
-.nd-drive-info a, .nd-drive-default > a { display: inline-flex; align-items: center; gap: 4px; color: var(--horizon); font: 500 13px/20px var(--font-sans); }
-.nd-drive-default { padding-bottom: 14px; }
-.nd-drive-default > a { margin-top: 9px; }
-.nd-drive-custom { padding-bottom: 7px; }
-.nd-drive-custom > .ac-drive-formats { grid-template-columns: minmax(0, 1fr); gap: 5px; margin-top: 10px; }
-.nd-drive .ac-drive-job { column-gap: 8px; }
-.nd-drive .ac-drive-empty.ac-empty p { font-size: 12px; line-height: 18px; }
-.nd-drive-about { margin-top: 10px; }
-.nd-drive-about summary { display: flex; align-items: center; gap: 5px; width: fit-content; list-style: none; cursor: pointer; color: var(--ink-2); font: 400 12px/20px var(--font-sans); }
-.nd-drive-about summary::-webkit-details-marker { display: none; }
-.nd-drive-about[open] summary { margin-bottom: 10px; }
-.nd-drive-about[open] summary .ac-i { transform: rotate(180deg); }
-.nd-drive-about .ac-drive-disclosure { display: block; color: var(--ink-2); font: 400 12px/18px var(--font-sans); }
-.nd-drive-wait { display: flex; align-items: center; gap: 8px; font: 400 13px/20px var(--font-sans); color: var(--ink-2); }
-.nd-drive-refused p { color: var(--caution); }
-
-.nd-drive-saving { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; color: var(--ink-2); font: 400 12px/18px var(--font-sans); }
-/* Export to Google Drive: under the folder and files, on its own line. */
-.nd-drive .ac-btn.nd-drive-go { display: flex; width: fit-content; margin-top: 12px; }

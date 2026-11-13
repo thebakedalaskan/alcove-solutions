@@ -405,12 +405,7 @@ export const CallEndResultSchema = z.object({
   meetingId: IDSchema,
   /** Present when notes were on at some point. */
   pendingNoteId: IDSchema.nullable(),
-  duration: z.number(),
-  /**
-   * Its notes are in a workspace: false when it had notes and no workspace, for its organizer to file them in one
-   * (`meetings.file`) or leave them in Notes. True when it had no notes.
-   */
-  filed: z.boolean()
+  duration: z.number()
 });
 
 export type CallEndResult = z.infer<typeof CallEndResultSchema>;

@@ -121,6 +121,8 @@ export const NoteSummarySchema = z.object({
   received: ReceivedSchema.optional(),
   /** Whether its organizer made it visible to their team. */
   teamVisible: z.boolean(),
+  /** The series its call is in, when it's in one: see series.get. Worked out on each read, from the call in its organizer's vault. */
+  seriesId: IDSchema.optional(),
   /**
    * Each time someone who has the notes shared them with one of their groups, newest first: once for each
    * sharer and group (the latest time), and only while someone it reached still has them.
@@ -132,11 +134,22 @@ export type NoteSummary = z.infer<typeof NoteSummarySchema>;
 
 
 /** A line of what was said that a search found: where it is, who said it, the room it was said in, and the words. */
-export const NoteSaidSchema = TranscriptLineSchema.pick({ id: true, at: true, speaker: true, room: true, text: true });
+export const NoteSaidSchema = TranscriptLineSchema.pick({ id: true, at: true, speaker: true, room: true, text: true }).extend({
+  /**
+   * What the line became in the notes: it's what a decision that isn't rejected rests on (one of the decision's `lines`),
+   * or else what a follow-up rests on (one in `actions`, not a suggestion waiting for review), in the part of the call it
+   * was said in (a breakout room's line, in that room's section). Absent when nothing in the notes rests on it.
+   */
+  made: z.enum(['decision', 'follow-up']).optional()
+});
 
 export type NoteSaid = z.infer<typeof NoteSaidSchema>;
 
-/** A note as a search finds it: what was said that matched, the lines with most of its words first (empty without a search), and how many lines did in all. */
+/**
+ * A note as a search finds it: what was said that matched, the lines with most of its words first, then the earliest
+ * (empty without a search; everything they said, in time order, when the search is only someone's lines), and how many
+ * lines did in all.
+ */
 export const NoteFoundSchema = NoteSummarySchema.extend({ said: z.array(NoteSaidSchema), saidCount: z.number() });
 
 export type NoteFound = z.infer<typeof NoteFoundSchema>;
@@ -227,6 +240,16 @@ export const NoteWorkedOnSchema = z.object({
 export type NoteWorkedOn = z.infer<typeof NoteWorkedOnSchema>;
 
 
+/**
+ * Where a call's things are kept: its home, the workspace its organizer chose or the one made for it, with this run of the
+ * call's folder in it (null once that's gone, or before the call made one). Only for someone who's in that workspace now,
+ * worked out on every read and kept nowhere, so a note says nothing of a workspace its reader isn't in.
+ */
+export const NoteHomeSchema = z.object({ workspaceId: IDSchema, folderId: IDSchema.nullable() });
+
+export type NoteHome = z.infer<typeof NoteHomeSchema>;
+
+
 export const NoteSchema = NoteSummarySchema.extend({
   recipients: z.array(RecipientSchema),
   summary: z.string(),
@@ -274,10 +297,10 @@ export const NoteSchema = NoteSummarySchema.extend({
   kept: z.object({ transcript: z.boolean(), recording: z.boolean() }),
   /** The verified private models that transcribed the speech and wrote the notes. Empty when nothing was transcribed. */
   inference: z.array(InferenceEvidenceSchema),
-  /** The series its call is in, when it's in one: see series.get. */
-  seriesId: IDSchema.optional(),
   /** What was worked on in the call that you can open now. */
-  workedOn: z.array(NoteWorkedOnSchema).default([])
+  workedOn: z.array(NoteWorkedOnSchema).default([]),
+  /** The call's home, for someone in that workspace now: see `NoteHome`. Null for everyone else, and for a room recording. */
+  home: NoteHomeSchema.nullable().default(null)
 });
 
 export type Note = z.infer<typeof NoteSchema>;
@@ -331,3 +354,9 @@ export const NoteMomentSchema = z.number().min(0);
 
 /** A breakout room's section of a note, as a link opens it (`/notes/<id>?room=<room ID>`). From the address bar too. */
 export const NoteRoomParamSchema = IDSchema.min(1).max(64);
+
+/**
+ * That a link to a moment plays it from there (`/notes/<id>?at=245&play=true`), as Play from in the palette opens it.
+ * From the address bar too, where it can arrive as the word: true or 'true' both mean play, and anything else doesn't.
+ */
+export const NotePlayParamSchema = z.union([z.literal(true), z.literal('true')]).transform((): true => true);

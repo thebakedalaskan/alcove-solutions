@@ -1,7 +1,7 @@
 /*
  * Which models transcribed a note, wrote it and read its shared screens (docs: notes-and-inference › Verified private
- * inference). The page says in a few words, under the title, whether the notes were written in confidential compute,
- * and when the hardware was checked; one click shows the model for each task: verified, with a way to check it, or
+ * inference). The page says in a few words, under the title, whether the notes were written in confidential compute;
+ * one click shows when the hardware was checked and the model for each task: verified, with a way to check it, or
  * marked unencrypted. Only the notes as they are now: any other unencrypted model the call was sent to (for earlier
  * versions, or notes that were stopped or failed) is said once, at the foot.
  */
@@ -46,18 +46,18 @@ export function Provenance({ evidence, kind, unencrypted, model, writing }: { ev
   const wrote = rows.some((r) => r.task === 'notes');
   const verified = rows.flatMap((r) => (r.verifiedAt ? [r.verifiedAt] : []));
   const checked = verified.length ? new Date(verified.reduce((last, at) => (at > last ? at : last), '')) : null;
-  const at = checked ? (daysFromToday(checked) === 0 ? hm(checked) : `${shortDay(checked)}, ${hm(checked)}`) : null;
+  const when = checked ? (daysFromToday(checked) === 0 ? `at ${hm(checked)}` : `on ${shortDay(checked)} at ${hm(checked)}`) : null;
   const busy = !writing ? undefined : plain ? 'Being written by an unencrypted model' : writing === 'again' ? 'Being written again in confidential compute' : 'Being written in confidential compute';
   if (!rows.length) {
-    return busy ? <span className={plain ? 'nd-seal is-plain text-caution' : 'nd-seal is-plain'} role="status"><Icon name={plain ? 'shieldOff' : 'sealed'} size={15} />{busy}<Dots /></span> : null;
+    return busy ? <span className={plain ? 'cd-seal is-plain text-caution' : 'cd-seal is-plain'} role="status"><Icon name={plain ? 'shieldOff' : 'sealed'} size={15} />{busy}<Dots /></span> : null;
   }
   const anchor = plain ? (
-    <button type="button" className="ac-sealed is-button nd-seal is-caution">
+    <button type="button" className="ac-sealed is-button cd-seal is-caution">
       <span className="ic"><Icon name="shieldOff" size={18} /></span>
       <span className="min-w-0"><b>{busy ?? 'Written by an unencrypted model'}</b>{busy && <small><Dots /></small>}</span>
       <Icon name="down" size={16} className="chev" />
     </button>
-  ) : <SealedButton className="nd-seal" title={busy ?? (wrote ? 'Written in confidential compute' : 'Transcribed in confidential compute')} detail={busy ? <Dots /> : at ? `hardware verified ${at}` : undefined} />;
+  ) : <SealedButton className="cd-seal" title={busy ?? (wrote ? 'Written in confidential compute' : 'Transcribed in confidential compute')} detail={busy ? <Dots /> : undefined} />;
   return (
     <Popover open={open} onOpenChange={setOpen} align="start" label="Which models worked on these notes" className="proof-pop" anchor={anchor}>
       <div className="proof">
@@ -70,7 +70,7 @@ export function Provenance({ evidence, kind, unencrypted, model, writing }: { ev
           ) : (
             <>
               <b>Checked before anything was sent</b>
-              <p>Before sending this {kind === 'room' ? 'recording’s' : 'call’s'} speech{wrote ? ' and transcript' : ''} to a model on NEAR AI, Alcove checked its hardware evidence, then sealed everything to the key that evidence vouches for.</p>
+              <p>Before sending this {kind === 'room' ? 'recording’s' : 'call’s'} speech{wrote ? ' and transcript' : ''} to a model on NEAR AI, Alcove checked its hardware evidence, then sealed everything to the key that evidence vouches for.{when ? ` The hardware was last checked ${when}.` : ''}</p>
             </>
           )}
         </div>

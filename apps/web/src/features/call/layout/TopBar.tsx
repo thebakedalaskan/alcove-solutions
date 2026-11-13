@@ -28,8 +28,8 @@ export interface TopWorkspace { on: boolean; count: number; onPress: () => void 
 /** Notes, Chat and who's here, which open your side: what it shows now, and how much chat you haven't seen. */
 export interface TopSide { view: SideView | null; toggle: (v: SideView) => void; unread: number }
 
-const BOARD_TIP = 'Open a board, just for you · O';
-const WORKSPACE_TIP = 'Open the workspace, just for you · W';
+const BOARD_TIP = 'Open a board on your screen · O';
+const WORKSPACE_TIP = 'Open the workspace on your screen · W';
 
 export function TopBar({ title, elapsed, sign, swap, people, asking, reconnecting, screens, modelPrivate, phone, board, workspace, side, timer }: {
   title: string; elapsed: number;
@@ -94,7 +94,7 @@ export function TopBar({ title, elapsed, sign, swap, people, asking, reconnectin
       {reconnecting && <span className="ic-recon" role="status"><Dots />Reconnecting</span>}
       {swap}
       <div className="end">
-        <CallTopGroup label="Just for you">
+        <CallTopGroup label="On your screen">
           <Popover open={board.menu.open} onOpenChange={(o) => { if (o) board.onPress(); else board.menu.onClose(); }} tip={BOARD_TIP} side="bottom" align="end" label="Open a board" className="bl"
             anchor={boardButton({ onPointerEnter: board.menu.reach })}>
             <BoardPicker {...board.menu.content} />

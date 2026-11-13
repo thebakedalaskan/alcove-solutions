@@ -8,7 +8,7 @@
 import type { BreakoutPlan, CallSession } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
-import { asksToSee, at, joins, line } from '../../src/api/script';
+import { at, joins, line } from '../../src/api/script';
 import { MORE, inCall, light, narrow, phone, plays, press, reach } from '../../src/call';
 import { pages, type PageArgs } from '../../src/page';
 import { SOON, type Play } from './plays';
@@ -33,11 +33,6 @@ export const SettingUpFromPeople = { ...SettingUp, name: 'Setting up, from Peopl
  */
 export const SettingUpWithAGuest = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: [{ who: KOFI }, { who: MAYA, guest: true }] } }, { name: 'Setting up, with a guest', play: ROOMS });
 export const SettingUpWithAGuestLight = light(SettingUpWithAGuest);
-/**
- * A call with no workspace yet has nowhere to keep a new board: In each room, and Shared with no board open, can't be chosen,
- * and the line under them says to pick or make one in Workspace first.
- */
-export const SettingUpWithNoWorkspace = inCall({ scenario: 'no-workspace', call: REVIEW, script: { here: REVIEWERS } }, { name: 'Setting up, with no workspace', play: ROOMS });
 /** You go to a room as the rooms open: drag yourself into it, or move with the arrow keys. With notes on, the board says the main room isn't heard meanwhile. */
 const intoARoom: Play = async (c) => {
   await c.step('Put yourself in Room 1', async () => {
@@ -97,7 +92,7 @@ export const JoiningARoom = inCall({
  * from there. With notes on, Pricing doesn't say Notes: nobody invited is in it, so nothing said there is transcribed.
  */
 const withAGuest = (s: CallSession) => {
-  const maya = s.getSnapshot().participants.find((p) => p.person.email === MAYA.email)?.seat;
+  const maya = s.getSnapshot().participants.find((p) => p.person.id === MAYA.id)?.seat;
   s.openRooms({ ...TWO_ROOMS, rooms: [{ name: 'Empty states', emails: [PRIYA.email, KOFI.email] }, { name: 'Pricing', emails: [], seats: maya ? [maya] : [] }] });
 };
 export const OpenWithAGuest = inCall({
@@ -107,11 +102,11 @@ export const OpenWithAGuest = inCall({
 export const OpenWithAGuestPhone = phone(OpenWithAGuest);
 /**
  * The workspace while rooms are open: Workspace, W, Find or the notes' Open puts it on the organizer's stage, and the rooms stand
- * beside it, where the people would be. Maya, a guest who stayed in the main room, asks to see it six seconds in, and the
- * organizer can answer her there. On a phone, or a stage too narrow for both, it goes over the rooms until it's closed.
+ * beside it, where the people would be. Maya, a guest who stayed in the main room, can open it and edit it too, as everyone in
+ * the call can. On a phone, or a stage too narrow for both, it goes over the rooms until it's closed.
  */
 export const WorkspaceBesideRooms = inCall({
-  scenario: 'call-soon', call: REVIEW, script: { here: [...REVIEWERS, { who: MAYA, guest: true }], cues: at(6, asksToSee(MAYA)) },
+  scenario: 'call-soon', call: REVIEW, script: { here: [...REVIEWERS, { who: MAYA, guest: true }] },
   then: (s) => s.openRooms(TWO_ROOMS)
 }, { name: 'The workspace beside the rooms', play: reach('Workspace') });
 export const WorkspaceBesideRoomsPhone = phone(WorkspaceBesideRooms);

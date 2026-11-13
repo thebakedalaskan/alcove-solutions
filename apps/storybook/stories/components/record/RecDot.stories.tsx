@@ -15,4 +15,4 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
 /** Before a line, as a note's page says it's still recording. */
-export const BeforeALine: Story = { name: 'Before a line', render: () => <span className="nd-rec"><RecDot />Still recording</span> };
+export const BeforeALine: Story = { name: 'Before a line', render: () => <span className="cd-rec"><RecDot />Still recording</span> };

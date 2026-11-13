@@ -3,15 +3,16 @@ import {
   AgentAvailabilitySchema, AgentCancelCallSchema, AgentDecisionPatchSchema, AgentDecisionProposalSchema,
   AgentListMeetingsSchema, AgentListNotesSchema, AgentMeetingIdSchema, AgentNextCallSchema, AgentNoteIdSchema,
   AgentPageSchema, AgentPeopleSchema, AgentPersonalAddSchema, AgentPersonalEditSchema, AgentPersonalEntrySchema,
-  AgentQuestionPatchSchema, AgentScheduleSchema, AgentShareNoteSchema, AgentStartCallSchema, AgentTranscriptPatchSchema,
-  AgentUpdateCallSchema, type AgentScope, type Meeting
+  AgentQuestionPatchSchema, AgentResourceIdSchema, AgentScheduleSchema, AgentShareNoteSchema, AgentStartCallSchema, AgentTranscriptPatchSchema,
+  AgentUpdateCallSchema, type AgentScope, type AgentTool, type Meeting
 } from '@alcove/api';
 import { McpServer, type ToolAnnotations, type StandardSchemaWithJSON } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { Deps } from '../../../context';
-import { toJson } from '../../../crypto';
+import { toJson, type Json } from '../../../crypto';
 import { AppError, InternalError, UnavailableError } from '../../../errors';
 import { log } from '../../../log';
+import * as activity from '../activity';
 import { requireScope, type AgentPrincipal } from '../service';
 import * as calendar from '../../meetings/calendar';
 import * as meetings from '../../meetings/service';
@@ -44,6 +45,21 @@ function limit(d: Deps, ownerId: string, kind: 'write' | 'inference' | 'read'): 
 function page<T>(items: T[], input: { limit: number; offset: number }) {
   return { items: items.slice(input.offset, input.offset + input.limit), nextOffset: items.length > input.offset + input.limit ? input.offset + input.limit : null };
 }
+/** What a tool hands the agent, and how many it found in all: the number its owner's activity keeps, not the page's. */
+class Counted {
+  constructor(readonly output: unknown, readonly count: number) {}
+}
+const About = z.object({ noteId: AgentResourceIdSchema.optional(), meetingId: AgentResourceIdSchema.optional() });
+/** These make a call: the one they're about is the call made, not the one `schedule_next_call` follows. */
+const BOOKS: ReadonlySet<AgentTool> = new Set(['schedule_call', 'schedule_next_call', 'start_call']);
+/** The note and call a completed tool call was about, by ID, from what it was asked or the call it made. */
+function about(tool: AgentTool, input: unknown, output: Json): Pick<activity.Did, 'noteId' | 'meetingId'> {
+  const asked = About.safeParse(input);
+  const ids = asked.success ? asked.data : {};
+  if (!BOOKS.has(tool)) return ids;
+  const made = About.safeParse(output);
+  return { ...ids, meetingId: made.success ? made.data.meetingId : undefined };
+}
 const link = (d: Deps, code: string) => `${d.cfg.WEB_ORIGIN}/join/${code}`;
 const callResult = (d: Deps, meeting: Meeting) => ({ ok: true, meetingId: meeting.id, url: link(d, meeting.code) });
 
@@ -51,7 +67,7 @@ const callResult = (d: Deps, meeting: Meeting) => ({ ok: true, meetingId: meetin
 export function buildServer(d: Deps, principal: AgentPrincipal, pending: Set<Promise<unknown>>): McpServer {
   const server = new McpServer({ name: 'alcove', version: '1.0.0' }, { maxToolInputElements: 4000, capabilities: { tools: { listChanged: false } } });
   const o = principal.owner;
-  function register<S extends z.ZodObject & StandardSchemaWithJSON>(name: string, scope: AgentScope, description: string, inputSchema: S,
+  function register<S extends z.ZodObject & StandardSchemaWithJSON>(name: AgentTool, scope: AgentScope, description: string, inputSchema: S,
     annotations: ToolAnnotations, run: (input: z.output<S>) => Promise<unknown>, inference = false) {
     if (!principal.connection.scopes.includes(scope)) return;
     server.registerTool<StandardSchemaWithJSON, StandardSchemaWithJSON>(name, { description, inputSchema, annotations }, async (input) => {
@@ -59,11 +75,18 @@ export function buildServer(d: Deps, principal: AgentPrincipal, pending: Set<Pro
       try {
         requireScope(principal, scope);
         limit(d, o.ownerId, inference ? 'inference' : annotations.readOnlyHint ? 'read' : 'write');
-        const task = run(inputSchema.parse(input));
+        const asked = inputSchema.parse(input);
+        const task = run(asked);
         pending.add(task);
         let value: unknown;
         try { value = await task; } finally { pending.delete(task); }
-        const output = toJson(value);
+        const found = value instanceof Counted ? value : undefined;
+        const output = toJson(found ? found.output : value);
+        // Kept once it's done, tracked like the tool's own work so the owner's keys outlive it. Not keeping it fails nothing.
+        const kept = activity.record(principal, { tool: name, ...about(name, asked, output), count: found?.count })
+          .catch((e: unknown) => { mlog.warn('agent activity not recorded', { tool: name, grantId: principal.connection.id, err: e }); });
+        pending.add(kept);
+        try { await kept; } finally { pending.delete(kept); }
         mlog.info('agent tool completed', { tool: name, grantId: principal.connection.id, ms: Math.round(performance.now() - started) });
         return { content: [{ type: 'text', text: JSON.stringify(output) }], structuredContent: output };
       } catch (error) {
@@ -77,13 +100,14 @@ export function buildServer(d: Deps, principal: AgentPrincipal, pending: Set<Pro
     });
   }
   register('list_notes', 'notes:read', 'Find your notes and notes shared with you, newest first. Search text stays in the request body.', AgentListNotesSchema, READ,
-    async q => page(await notes.list(o, { kind: q.kind, text: q.text }), q));
+    async q => { const found = await notes.list(o, { kind: q.kind, text: q.text }); return new Counted(page(found, q), found.length); });
   register('get_note', 'notes:read', 'Read one note with the transcript and shared sections you may currently access.', AgentNoteIdSchema, READ, q => notes.get(o, q.noteId));
   register('ask_note', 'notes:read', 'Ask a question about one note using Alcove private inference; returns cited answer parts.', AgentAskNoteSchema, READ, async q => ({ parts: await notes.ask(o, q.noteId, q.question) }), true);
   register('ask_notes', 'notes:read', 'Ask across notes you may currently read using Alcove private inference.', AgentAskNotesSchema, READ, async q => ({ parts: await notes.askAll(o, q.question) }), true);
   register('get_inbox', 'notes:read', 'List your unfinished follow-ups and decisions waiting for your answer.', AgentPageSchema, READ, async q => {
     const inbox = await notes.inbox(o);
-    return page([...inbox.followUps.map(item => ({ kind: 'follow_up', ...item })), ...inbox.decisions.map(item => ({ kind: 'decision', ...item }))], q);
+    const waiting = [...inbox.followUps.map(item => ({ kind: 'follow_up', ...item })), ...inbox.decisions.map(item => ({ kind: 'decision', ...item }))];
+    return new Counted(page(waiting, q), waiting.length);
   });
   register('get_personal_notes', 'notes:read', 'Read only your own private entries on a note you may currently access.', AgentNoteIdSchema.extend(AgentPageSchema.shape), READ, async q => {
     const personalNotes = await personal.read(await personal.ofNote(o, q.noteId));
@@ -121,10 +145,13 @@ export function buildServer(d: Deps, principal: AgentPrincipal, pending: Set<Pro
   register('delete_note', 'notes:delete', 'Permanently delete your note, or remove a shared note from your own library. Returns only an acknowledgment.', AgentNoteIdSchema, DELETE,
     async q => { await notes.remove(o, q.noteId); return { ok: true, noteId: q.noteId }; });
   register('list_meetings', 'meetings:read', 'List upcoming calls or your past calls with usable Alcove join links.', AgentListMeetingsSchema, READ,
-    async q => page((await (q.view === 'past' ? meetings.past(o) : meetings.upcoming(o))).map(meeting => ({ ...meeting, url: link(d, meeting.code) })), q));
+    async q => {
+      const calls = (await (q.view === 'past' ? meetings.past(o) : meetings.upcoming(o))).map(meeting => ({ ...meeting, url: link(d, meeting.code) }));
+      return new Counted(page(calls, q), calls.length);
+    });
   register('get_meeting', 'meetings:read', 'Read a call you organize or are currently invited to, including its Alcove join link.', AgentMeetingIdSchema, READ,
     async q => { const meeting = await meetings.get(o, q.meetingId); return { ...meeting, url: link(d, meeting.code) }; });
-  register('find_people', 'meetings:read', 'Find people from your existing Alcove contacts and calendar for an invitation.', AgentPeopleSchema, READ, async q => page(await people.search(o, q.query), q));
+  register('find_people', 'meetings:read', 'Find people from your existing Alcove contacts and calendar for an invitation.', AgentPeopleSchema, READ, async q => { const found = await people.search(o, q.query); return new Counted(page(found, q), found.length); });
   register('schedule_call', 'meetings:write', 'Schedule an Alcove call. May send real Google Calendar invitations when connected. Use operationId for retries. Returns only IDs and the join link.', AgentScheduleSchema, { ...CREATE, openWorldHint: true }, async q =>
     created(principal, 'schedule_call', q.operationId, q, async () => (await meetings.create(o, q.input)).id, async id => callResult(d, await meetings.get(o, id))));
   register('update_call', 'meetings:write', 'Update a call you organize. May update real Google Calendar invitations when connected. Returns only an acknowledgment.', AgentUpdateCallSchema, CALENDAR_WRITE,
@@ -144,7 +171,7 @@ export function buildServer(d: Deps, principal: AgentPrincipal, pending: Set<Pro
     }, async id => callResult(d, await meetings.get(o, id))));
   register('get_calendar', 'calendar:read', 'Read your connected calendar events; does not connect or change Google access.', AgentPageSchema, { ...READ, openWorldHint: true }, async q => {
     const view = await calendar.view(o, () => meetings.recurringSeries(o));
-    return { source: view.source, needsAccess: view.needsAccess, ...page(view.events, q) };
+    return new Counted({ source: view.source, needsAccess: view.needsAccess, ...page(view.events, q) }, view.events.length);
   });
   register('get_availability', 'calendar:read', 'Find busy intervals for you and the named people from the calendars you can currently read.', AgentAvailabilitySchema, { ...READ, openWorldHint: true },
     q => calendar.busy(o, q, () => meetings.all(o)));

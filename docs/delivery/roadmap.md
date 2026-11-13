@@ -11,7 +11,7 @@
   recordings in calls and in the room, playback, notes for everyone invited, sharing by email, people search
   and how much of the plan's notes is left.
 - Real Google sign-in (OpenID Connect with PKCE, verified emails only) and optional Google Calendar access: meetings with other
-  people in Home's Coming up, scheduled calls on the organizer's calendar with Google's invitations,
+  people in Home's Upcoming, scheduled calls on the organizer's calendar with Google's invitations,
   changes and cancellations kept in step, and an organizer's own event made an Alcove call.
 - Live transcript and written notes with NEAR AI Cloud: Whisper transcribes speech while notes are on; when
   the recording stops, a notes worker writes the summary, decisions, open questions, follow-ups, chapters and

@@ -34,20 +34,20 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `screen_videos` | owner, recording, share, segment, chunk, object ID, ciphertext SHA-256 and length, the chunk's plaintext length, the video's length, how many chunks, where it starts in its segment (`at_ms`), duration, type | (the object: at most 4 MiB of the joined video, sealed under the recording's key) |
 | `screen_frames` | owner, note item, frame ID, object ID, ciphertext SHA-256 and length | `frame_tag` (keyed hash of the share and the image's digest, so the same image is kept once), `info_ciphertext` (whose share, when, the segment, the frame's size, the moment picked (to a tenth of a second) and why (`reference`, `change`, `question`, `topic`, the share's `start`, or `before`, a frame taken to compare a change with), the words that picked it, what the vision model read on it (how legible it was, its title, its text, what it shows (`shows`) and what changed since the frame before it (`changed`), and its regions), how much it matters, which model read it, and the frame on a 48 × 27 grey grid (`grid`, base64; null on rows from before it was kept) for telling whether the screen changed), and the object (the JPEG, sealed under the recording's key) |
 | `note_access` | owner (the organizer), note item, role (`invited`/`shared`), created | `email_index` |
-| `meeting_access` | owner (the organizer), meeting item | `email_index` (keyed hash of the address, with a purpose of its own), `answer_ciphertext` (whether they're coming, padded to one length, under the meeting's answers key; null until they answer) |
+| `meeting_access` | owner (the organizer), meeting item | `email_index` (keyed hash of the address, with a purpose of its own), `answer_ciphertext` (whether they're coming, padded to one length, under the meeting's answers key; null until they answer), `proposal_ciphertext` (the time they've asked to move the call to, under the same key; null until they ask, and again once the organizer answers or the call moves; migration `0028_meeting_proposals.sql`) |
 | `personal_notes` | owner (the author), the note's organizer and item: one row for each person and note | `body_ciphertext` (everything they keep on it: what they wrote, bookmarks and what they point at, kept questions and answers, and which of it was added to the shared notes), sealed under the author's own keys. Replaced with each change, with no earlier versions |
 | `note_additions` | owner (the note's organizer), note item, addition ID, when it was added | `author_index` (keyed hash of who added it, so deleting their account finds their additions on anyone's notes), `body_ciphertext` (the words, who added it, and the lines or shared screens it points at), sealed under the organizer's keys |
 | `note_links` | owner (the note's organizer), note item, link ID, when it runs out | `secret_hash` (SHA-256 of the link's secret, which is only ever in the link's fragment and a POST body), `maker_index` (keyed hash of who made it, so removing the note from theirs or deleting their account finds their links), `body_ciphertext` (who made it, as they were, and when), sealed under the organizer's keys. Deleted when it's revoked, once it's run out (upkeep), with the note, and with its maker's access or account (migration `0025_note_links.sql`) |
 | `billing_accounts` | owner, `version` | `state_ciphertext` (the credits balance and history of before plans, under `Kservice`). No longer read: it goes in a later release |
-| `plan_accounts` | owner, `version`, when upkeep next looks at it (`due_at`: a grace ending, Pro's end to be told, Pro ending) | `state_ciphertext` (a `plan-account` record under `Kservice`'s accounting key: the balance in micro-USD and its history, where Free's periods count from, whether the account hasn't been shown the plans yet, the grace it's in, if any, the months of Pro bought and what each cost, whether renewing is on, the latest 20 notices about Pro and whether each was dismissed, and which end of Pro upkeep has reminded about and handled). Migration `0026_plans.sql` ([Plans and usage](plans-and-usage.md)) |
+| `plan_accounts` | owner, `version`, when upkeep next looks at it (`due_at`: a grace ending, Pro's end to be told, Pro ending) | `state_ciphertext` (a `plan-account` record under `Kservice`'s accounting key: the balance in micro-USD and its history, where Free's periods count from, whether the account hasn't been shown the plans yet, the grace it's in, if any, the months of Pro bought and what each cost, whether renewing is on, the latest 20 notices about Pro and whether each was dismissed, and which end of Pro upkeep has reminded about and handled). Migration `0029_plans.sql` ([Plans and usage](plans-and-usage.md)) |
 | `ai_meters` | owner, `version` | `state_ciphertext` (an `ai-meter` record under the same key: the period's AI allowance in dollars, what's been spent and on which kinds of request, the requests in flight and live calls' notes that hold some of it, and when it ran out). Kept apart from `plan_accounts` so the many small charges of a live call never wait behind a purchase |
-| `billing_cutover` | `at`: when migration `0026` ran, one row | — |
-| `teams` | `team_id` (the public handle, Id128), its own owner row (its key seals its name and who's on it, as a workspace's does), `admin_owner_id` (whoever made it), `version`, when upkeep next looks at it (`due_at`: a license ending, its pool's grace ending), created. Migration `0028_teams.sql` ([Plans and usage › Team](plans-and-usage.md#team)) | `name_ciphertext` (a `team-name` record under the team's state key `team`), `billing_ciphertext` (a `team-billing` record under `Kservice`'s accounting key: the unconsumed licenses and what each cost, auto-purchase, whether the admin has been told licenses are low or gone, and the pool as last reckoned with its grace) |
+| `billing_cutover` | `at`: when migration `0029` ran, one row | — |
+| `teams` | `team_id` (the public handle, Id128), its own owner row (its key seals its name and who's on it, as a workspace's does), `admin_owner_id` (whoever made it), `version`, when upkeep next looks at it (`due_at`: a license ending, its pool's grace ending), created. Migration `0031_teams.sql` ([Plans and usage › Team](plans-and-usage.md#team)) | `name_ciphertext` (a `team-name` record under the team's state key `team`), `billing_ciphertext` (a `team-billing` record under `Kservice`'s accounting key: the unconsumed licenses and what each cost, auto-purchase, whether the admin has been told licenses are low or gone, and the pool as last reckoned with its grace) |
 | `team_members` | `member_id` (what the API calls them), team, `account_owner_id` (unique: one team for each account), role (`admin`/`member`), when their license runs (`licensed_from`, `licensed_until`), when they last needed one and none was there (`wanted_at`), created | `email_index`, `person_ciphertext` (a `team-member` record under the team's key: their name and address) |
 | `team_invites` | `secret_sha256` (SHA-256 of a one-time link's secret, which is only ever in the link's fragment and a POST body), team, `expires_at`, created. Deleted when used, and by upkeep once expired | — |
 | `team_notes` | owner (the note's organizer), note item, team, created: a note its organizer made visible to their team. Stays after they leave it; goes with the note or the team | — |
 | `deposits` | owner, deposit, provider (`oneclick`), state (`waiting`/`arriving`/`short`/`credited`/`held`/`failed`/`expired`/`cancelled`), created, when to check next (`check_after`), last checked, when to give up | `record_ciphertext` (a `deposit` record under `Kservice`'s accounting key, below) |
-| `workspaces` | owner, `workspace_id` (the public handle, Id128), `version`, when the oldest thing in its Trash went there (`trash_since`), created, `payer_owner_id` (the account its files count against, and whose plan pays for its AI: whoever pressed New workspace, which for one made in a call or when scheduling is its organizer; null while nobody does, after its payer deleted their account), migration `0027_workspace_payers.sql`; `team_id` and `team_access` (`team`: every licensed member; `added`: only the people added; both null on any other workspace), migration `0028_teams.sql` | `state_ciphertext` (its name and tree: [Workspaces](#workspaces)) |
+| `workspaces` | owner, `workspace_id` (the public handle, Id128), `version`, when the oldest thing in its Trash went there (`trash_since`), created, `payer_owner_id` (the account its files count against, and whose plan pays for its AI: whoever made it, and for a call's home its organizer, whoever's action made it; null while nobody does, after its payer deleted their account), migration `0030_workspace_payers.sql`; `team_id` and `team_access` (`team`: every licensed member; `added`: only the people added; both null on any other workspace), migration `0031_teams.sql` | `state_ciphertext` (its name, tree and line on what it's for: [Workspaces](#workspaces)) |
 | `workspace_members` | owner (the workspace), `member_id` (what the API calls them), role (`admin`/`edit`/`read`), created | `email_index`, `person_ciphertext` (their address, their name if the workspace was made by them, and whether a call's invite put them there and nobody has changed their place by hand since: older records read as not) |
 | `documents` | owner (the workspace), `document_id`, `next_seq`, what it comes to in bytes, items and depth of nesting at its snapshot and since (`snapshot_bytes`, `bytes_since_snapshot`, `snapshot_items`, `items_since_snapshot`, `snapshot_nesting`, `nesting_since_snapshot`), how many of its items aren't on its page (`snapshot_retired_items`), `updates_since_snapshot`, how far the newest version reaches and when it was kept (`version_seq`, `version_at`), until when something's restoring it (`held_until`) or it stays closed because it wouldn't open (`closed_until`), created. One row for each document or board in the tree; a folder has none | — |
 | `document_updates` | owner (the workspace), document, `seq`, how much it adds in `bytes`, `items` and `nesting`, `deletes_tag` (a keyed hash of what it deletes, so the same deletes again cost no row), created | `update_ciphertext` (one Yjs update and who sent it: [Documents](#documents)) |
@@ -56,6 +56,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `document_versions` | owner (the workspace), document, `version_id`, `bytes`, how many `parts`, created | `info_ciphertext` (who changed it, the call it was kept in, why it was kept) |
 | `document_version_parts` | owner (the workspace), document, version, `part` | `state_ciphertext` (256 KiB of its whole Yjs state) |
 | `document_access` | owner (the workspace), document, `access_id` (what the API calls the entry), `kind` (`email`/`seat`), role (`edit`/`read`), `call_id` (a seat's call), created | `principal_index` (an email index, or the `call-seat` index), `person_ciphertext` (the address, or the name in the seat) |
+| `workspace_calls` | owner (the workspace), `call_id`, created: a call that opens the workspace to everyone in it while it uses it, one row for each workspace a call has used, until the call ends or its organizer's account is deleted ([Privacy › Who can open a workspace](privacy-keys-and-sessions.md#who-can-open-a-workspace); migration `0026_workspace_calls.sql`) | `call_index` (the `call-workspace` index of the call and this workspace, which everyone in the call carries while the call uses it), `organizer_index` (the email index of the call's organizer, moved with a new address from their provider: the row counts only while they can edit here, and the workspace's payer is the account the call is kept in) |
 | `presenter_notes` | owner (the account), the document's workspace (`workspace_owner_id`) and `document_id`: one row for each person and document or board they kept notes beside with an earlier release. Nothing reads or writes it now | `body_ciphertext` ([Presenter notes](#presenter-notes)) |
 | `timer_presets` | owner (the account), `preset_id`, created: timer presets an earlier release kept. Nothing reads or writes it now. Its rows stay, unread, while the previous release may still serve (during a deploy, or after a rollback, when it can still write one); a later migration drops the table, rows and all, once that release is gone. Deleting an account deletes its rows meanwhile | `ciphertext` (a preset's name, segments and presenters, sealed under the account's own keys) |
 | `presenter_frame_notes` | owner (the account), the board's workspace (`workspace_owner_id`), `document_id` (the board) and `frame_index` (a keyed hash of the frame under the account's key): one row for each person and frame they keep notes beside | `body_ciphertext` (the frame and what's kept beside it, [Presenter notes](#presenter-notes)) |
@@ -82,14 +83,15 @@ everything it owns; deleting an item cascades to its revisions, its calls, its r
 transcript clips, its `note_access` or `meeting_access` rows, everyone's `personal_notes` on it, its `note_additions` and `note_links`, and a
 meeting's rings go with it. The `note_access` rows that give an account other people's notes belong to those notes'
 organizers, so deleting the account deletes them by its email index, unless another account still signs in with that
-address; on the same condition, what it answered in `meeting_access` is cleared, and the invite stays with its
+address; on the same condition, what it answered and asked in `meeting_access` is cleared, and the invite stays with its
 organizer. The `call_rings` rows to its address, in other people's calls, go by their own hash and without that
 exception. `object_gc` keeps a plain owner ID with no foreign key, so a failed object delete is still retried after its
 account is gone. A workspace's tables hang off its `workspaces` row, which
 hangs off its `owners` row, so deleting that owner deletes all of it; `document_access` and `workspace_media_uses` rows go
-with their document, and a file's pieces and uses with its `workspace_media` row. `document_access.call_id` has no foreign
-key, because a call belongs to its organizer, a different owner. `presenter_notes` and `presenter_frame_notes` belong to
-both an account and a document, so they go with either: by `owner_id`, or by their foreign key to `documents`.
+with their document, and a file's pieces and uses with its `workspace_media` row. `document_access.call_id` and
+`workspace_calls.call_id` have no foreign key, because a call belongs to its organizer, a different owner.
+`presenter_notes` and `presenter_frame_notes` belong to both an account and a document, so they go with either: by
+`owner_id`, or by their foreign key to `documents`.
 
 ## Manifests (encrypted)
 
@@ -119,12 +121,14 @@ Its name and tree are one record, `workspace-state`, under the workspace's key: 
 or null when nobody in particular did), `createdAt`, `editedAt`, `trashedAt`, `trashedBy`, `restricted`, `restrictedBy` (the
 address of whoever restricted it, when that wasn't its creator) and `call` (on a call's folder only: whose call it is, by
 the organizer's owner and address and the call's ID, when it started, whether it's over, and its note's ID once it is); and
-`madeFor`, on a workspace made for a call (in the call, when scheduling it, or for its notes once it's over): the call's title, when it started, its meeting and series, and `out`, the
-addresses taken out of it by hand or that left it, which its invite never puts back (older records take `[]`). Older records
+`madeFor`, on a workspace made as a call's home: the call's title, when it started, its meeting and series, and `out`, the
+addresses taken out of it by hand or that left it, which its invite never puts back (older records take `[]`); and `about`,
+the line on what the workspace is for, which its Home says under its name: one line of up to 200 characters, set by an
+admin and read by anyone in it, never by anyone outside it (older records take `''`, nothing said). Older records
 take `null` for `call` and `madeFor`. To the tree `kind` is only data: a document and a board
 are alike, each a row in `documents` that what it holds hangs off, and nothing here looks inside. A call's folder holds no
 content of its own: its pages read the call and its note through their own access
-([Calls and recordings › The call's folder](calls-and-recordings.md#the-calls-folder)), and nothing of either is copied here. A tree is small (at most 5,000 items, and folders at most 32 deep, though nothing that walks one
+([Calls and recordings › The call's home](calls-and-recordings.md#the-calls-home)), and nothing of either is copied here. A tree is small (at most 5,000 items, and folders at most 32 deep, though nothing that walks one
 relies on that: stored data of any depth reads and clears), so one record is enough, and every change is made
 under the `workspaces` row's lock, which also serialises changes to its people and who has what: an access check made
 under that lock holds until the change commits. The server filters the state for each reader, so nobody is sent a name
@@ -152,7 +156,7 @@ same row, so taking someone out takes their address with them. `workspace_author
 name is on something here, which is how deleting an account finds a workspace it left long ago. When a sign-in brings an
 account a new address, everything under the old hash moves to the new one in that sign-in's transaction, and its name on
 what it made follows. A workspace holds at most 1,000 people, a document is shared with at most 500, and an address can
-have made at most `workspaces.max_made` (1,000) and not deleted, however each was made: a workspace exists only because someone pressed New workspace. Who can do what is in
+have made at most 100 workspaces by hand: a home made for a call doesn't count. Who can do what is in
 [Privacy › Who can open a workspace](privacy-keys-and-sessions.md#who-can-open-a-workspace).
 
 ### Tags
@@ -493,7 +497,8 @@ they are, so everyone with the document open can be told by name. Nothing is sto
 
 A file is anything someone puts in a document or on a board: a picture, video, audio or anything else. It belongs to the
 workspace, as a row in `workspace_media`, and is reached only through a document that has it, a row in
-`workspace_media_uses`, because a guest's seat covers one document: a seat reaches that document's files and no others
+`workspace_media_uses`, because what someone can open of a workspace needn't be all of it: a seat reaches that document's
+files and no others, and what a call opens reaches none in what's restricted
 ([Privacy › Files](privacy-keys-and-sessions.md#files)). The API seals uploads, as it seals everything: a file reaches the
 process readable and is sealed there (`apps/api/src/features/workspaces/media.ts`).
 
@@ -531,7 +536,7 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   without a deploy and are in force everywhere within 30 seconds
   ([Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)): a file, 512 MiB on Free; storage, 10 GiB
   on Free, counted for each account, not each workspace: the account's own `stored_bytes` (its calls' audio and shared
-  screens, its room recordings) and every workspace it pays for, one made for a call included, whoever added the files, guests
+  screens, its room recordings) and every workspace it pays for, a call's own included, whoever added the files, guests
   too ([Plans and usage › Storage](plans-and-usage.md#storage)); and what one person uploads in a day
   (UTC), in every workspace together, 20 GiB. They're the same for everyone, guests in a call included. Each is checked when
   an upload starts, with the whole file, and again on every piece, so uploads going at once pass one by the pieces on their
@@ -539,7 +544,9 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   MiB, the most a file can be here.", because only the server knows; a payer with no room left with `402 plan-limit`, "Your
   storage is full. Delete something, or move to a plan with more room."; and a day used up with
   `409 conflict`, "That’s all you can upload today. You can upload more tomorrow." A file size or a day at zero refuses
-  everything with "Files can’t be uploaded right now." Lowering a limit refuses what comes next and deletes nothing. An account's day is counted in `media_upload_days` as its pieces are kept, and
+  everything with "Files can’t be uploaded right now." A workspace that counts against nobody (none of its admins has an
+  account) takes no files: `409 conflict`, "Files can’t be added until one of this workspace’s admins signs in to Alcove."
+  Lowering a limit refuses what comes next and deletes nothing. An account's day is counted in `media_upload_days` as its pieces are kept, and
   a guest's, who has no account, in `media_guest_upload_days`, by a blind index of the person their pass names: either way every
   instance counts the same day, and a restart forgets nothing. A piece
   that takes an account's storage or someone's day past 80% of its limit logs it at warn, once each time it's crossed.
@@ -710,7 +717,9 @@ and this way it runs through the same auth, origin check and tests as everything
   once when the browser says it's leaving. Someone can only be placed in what they can open, and every change to who has
   what is checked against everyone here. What each reader is told is worked out for them: where someone is if they can open
   it, otherwise `elsewhere`, with the document and block null. Someone outside the workspace hears of nobody who isn't in something
-  they can open or in a call with them, and an address goes only between people in the workspace. `callIdentity` goes
+  they can open or in a call with them, and an address goes only between people in the workspace. Who's who (`isMe`) goes by
+  someone's address or seat, never by what a call opens to everyone in it, which travels in the notice beside them (`calls`,
+  empty from an instance a release behind) and counts only for what they can open. `callIdentity` goes
   only to people in that call, so a tile can show where someone is, and so does `page`: which of the call's own pages they're
   on (Notes, Follow-ups or the Transcript), which anyone else hears of only as `elsewhere`. Only a browser in a call can be on
   its pages: a `page` from anyone else is dropped. Streams work out who's here at most five times a second.
@@ -719,9 +728,14 @@ and this way it runs through the same auth, origin check and tests as everything
   in the app has its name to show.
 - **Who's reading is checked again** at every ping, on the clock, however busy the workspace is, from the session and pass
   the stream came with. For a session it's one indexed read and nothing of the workspace; a pass takes the call's state,
-  and only people in a call have one. A session or pass that ended, a person out of the call, all end it, within 25 seconds
-  at most. A notice about the workspace does it at once. A stream that finds nothing left for its reader first asks who
-  they are now, because a new address from their provider moves what they have to another hash.
+  and only people in a call have one. A session or pass that ended ends it within 25 seconds at most. A notice about the
+  workspace does it at once, and so do these, though the rows they matched stay for everyone else: someone leaving a call
+  or taken out of it, which is told to every workspace the call is open to and every one that gave their seat something,
+  and a call moving on from a workspace, which is told to that workspace. Each is `look:` and the keyed hash of the seat,
+  or of the call there, and only the streams carrying it look again (the way a tag's `told:` reaches only its person's), as
+  at a ping; whatever someone in it is here as forgets it, and the next read settles who that leaves here. A stream that
+  finds nothing left for its reader first asks who they are now, because a new address from their provider moves what they
+  have to another hash.
 - **Letting go.** A stream ends without `closed` when the API lets go (after 280 seconds, inside Cloud Run's 300-second
   request timeout, so it's never cut), its browser says it closed it, its person needs its place, or its instance shuts
   down. The browser opens it again: quietly when it just ended, showing `reconnecting` when it failed, keeping what it last
@@ -796,9 +810,11 @@ dollars, once, if it settled after `billing_cutover`. No column holds anything r
   again shows the screens it kept, whatever they were judged.
 - **Notes jobs** are inserted `queued` by the stopping transaction, claimed with a lease by the notes worker,
   and deleted when the note is finished ([Notes and inference](notes-and-inference.md#the-notes-worker)).
-- **Google Calendar events** are read from Google whenever the app asks (`GET /v1/calendar`) and never
-  stored. An Alcove call's event ID and link are kept in its meeting manifest, and for an occurrence of a
-  recurring event, the recurring event's ID. A series that repeats is one recurring event: each call keeps its
+- **Google Calendar events** are read from Google whenever the app asks (`GET /v1/calendar`, the coming week or any
+  stretch of up to 31 days) and never stored. An Alcove call's event ID and link are kept in its meeting manifest, and
+  for an occurrence of a recurring event, the recurring event's ID. A call offering times keeps the IDs of the events
+  holding them on its organizer's calendar (`holds`, `[]` for calls from before them), until someone picks or it's
+  cancelled. A series that repeats is one recurring event: each call keeps its
   occurrence's ID and which recurring event that is, and the series keeps the event that carries its latest calls.
 - **Busy times** (`POST /v1/calendar/busy`) are read when the app asks, from Google, from the account's own calls,
   or for a demo account from `apps/api/src/demo.ts`, and go nowhere else: no row, no receipt, and in the logs only
@@ -811,9 +827,12 @@ dollars, once, if it settled after `billing_cutover`. No column holds anything r
   worked out for them and that call, which nothing stores. A call stored with the old demo catalog's IDs (`vandelay.…`, `own.…`)
   still opens, with those not listed: they look like nothing else, so they find nothing, and they stay in the manifest
   until the organizer next changes what's brought.
-- **The workspace a call uses** is in its meeting manifest (`workspaceId`, default null: nothing makes one by itself, so a call has one only when its organizer picked or made it), with its `agenda`, as IDs. What goes on in it
-  during the call is in the call's sealed state (`workspace`: who's asking, what's presented and playing, what's been
-  worked on and by whom, this run's folder in the workspace (`home`: workspace, folder and whether it's made), and the next agenda while it's being made; a previous release's `viewing` and `made` here go unread), and goes when the call ends: what was worked on into the note, if there is one, and nowhere else
+- **The workspace a call uses** is in its meeting manifest (`workspaceId`), with its `agenda`, as IDs. What goes on in it
+  during the call is in the call's sealed state (`workspace`: which workspace everyone views, what's presented and playing,
+  what's been worked on and by whom, and the next agenda while it's being made), and goes when the call ends: what was
+  worked on into the note, if there is one, and nowhere else. That the call opens it to everyone in it is a row in
+  `workspace_calls`, written when someone in the call opens Workspace, when it goes back to its home, or when the organizer
+  switches to another, which goes then too
   ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)).
 - **The call's timer** lives in the call's sealed state (`timer`), separate from its boards and workspace: one countdown's
   ID, revision, length with time added, whether it's paused, and its clock on the server, numbers only. Call state from the
@@ -934,10 +953,10 @@ and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
 - **Feature flags** keep a flag on, a group, a member or a grant until someone switches or deletes it with `feature-flags`. Deleting a
   group deletes its members and grants; deleting an account deletes its address from every group and grant, unless another
   account signs in with that address too.
-- **Seats** in `document_access` last while their call does.
-- **What a call keeps of its workspace** (who's asking, what's presented and playing, what's been worked on) lasts while the
-  call does. What was worked on goes into its note, and a call with notes off keeps only the versions. Asking Alcove about a
-  selection keeps nothing.
+- **Seats** in `document_access`, and what a call opens to everyone in it (`workspace_calls`), last while their call does.
+- **What a call keeps of its workspace** (which workspace everyone views, what's presented and playing, what's been worked
+  on) lasts while the call does. What was worked on goes into its note, and a call with notes off keeps only the versions.
+  Asking Alcove about a selection keeps nothing.
 - **Presenter notes** beside a board's frames last until their author empties them, or the board, the workspace or the account
   goes. The `presenter_notes` rows earlier releases kept last until the document, the workspace or the account goes.
 

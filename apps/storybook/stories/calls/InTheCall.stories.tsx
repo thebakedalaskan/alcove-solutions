@@ -457,7 +457,7 @@ export const FirstTimeYouPointAtATileBesideAShare = {
 export const MoveSomeonesTileBesideABoard = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, notes: 'off', talk: { lines: REVIEW_TALK, every: 6 }, board: RETRO, cues: at(1, opensBoard(PRIYA, 'retro')) } }, {
   name: 'Move someone’s tile beside a board',
   play: async (c) => {
-    await c.step('Open the board in the call, just for you', async () => { await openCallBoard(c, 'Design review'); });
+    await c.step('Open the board in the call, on your screen', async () => { await openCallBoard(c, 'Design review'); });
     await c.step('Drag Priya’s tile down the column, and let go: it moves there, and nothing opens', async () => {
       const tile = await screen.findByRole('group', { name: /^Priya/ }, { timeout: 10000 });
       const r = tile.getBoundingClientRect();

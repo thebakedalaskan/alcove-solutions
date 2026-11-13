@@ -6,7 +6,7 @@
  * organizer is asked, with Turn notes on. Everyone else is told whose notes ran out, with nothing to buy: a
  * call's notes are on its organizer's plan. Where notes stopped and came on again is marked in the notes.
  */
-import { CallStopsSeenSchema, errorCode, notesAreOn, type CallSession, type CallState, type Plan } from '@alcove/api';
+import { CallStopsSeenSchema, errorCode, notesAreOn, type CallSession, type CallState, type Plan, type PlanOffers } from '@alcove/api';
 import { Button, Icon, buttonClass, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -58,10 +58,7 @@ export function usePlanStop(state: CallState): PlanStop | null {
       line: s.reason === 'storage' ? `${whose}’s storage is full, and the call carries on. What was written before stays.` : `${whose}’s notes for this period are used up, and the call carries on. What was written before stays.`
     };
   }
-  const ways: StopWay[] = [];
-  if (plan?.kind === 'free') ways.push({ kind: 'pro' });
-  if (s.reason === 'notes' && plan && offers?.hours) ways.push({ kind: 'hours', label: hoursLabel(offers.hours) });
-  if (s.reason === 'storage' && plan) ways.push({ kind: 'room' });
+  const ways = waysFor(s.reason, plan, offers);
   if (s.reason === 'storage') {
     return { reason: s.reason, at: s.at, title: 'Notes stopped: your storage is full', line: 'The call carries on. Notes start again the moment you have room.', ways };
   }
@@ -70,13 +67,39 @@ export function usePlanStop(state: CallState): PlanStop | null {
   return { reason: s.reason, at: s.at, title, line, ways };
 }
 
-/** The ways to more, for whoever organizes: the first fills, the rest sit beside it. Checkout opens over the call. */
-export function StopWays({ ways }: { ways: readonly StopWay[] }) {
+/** The ways to more for whoever organizes, by what stopped notes: Get Pro on Free, more hours (when offered) for notes, room for storage. */
+function waysFor(reason: PlanStop['reason'], plan: Plan | undefined, offers: PlanOffers | undefined): StopWay[] {
+  const ways: StopWay[] = [];
+  if (plan?.kind === 'free') ways.push({ kind: 'pro' });
+  if (reason === 'notes' && plan && offers?.hours) ways.push({ kind: 'hours', label: hoursLabel(offers.hours) });
+  if (reason === 'storage' && plan) ways.push({ kind: 'room' });
+  return ways;
+}
+
+/**
+ * Notes the organizer's plan stopped, said on the page a call leaves you on while it goes on without you (CallOver.tsx), as
+ * the call said it: whose notes ran out or whose storage is full (`whose`: the organizer's first name, unless it's you), and
+ * that what was said until then is in the notes. For the organizer, the ways to more the call offers, read as the page opens.
+ */
+export function useStoppedAfter(reason: PlanStop['reason'] | null, organizer: boolean, whose: string): { said: string; ways: StopWay[] } | null {
+  const on = organizer && reason !== null;
+  const plan = useQuery({ ...q.plan(), enabled: on }).data;
+  const offers = useQuery({ ...q.offers(), enabled: on }).data;
+  if (!reason) return null;
+  const who = organizer ? 'Your' : `${capital(whose)}’s`;
+  return { said: `${who} ${reason === 'storage' ? 'storage is full' : 'notes for this period have run out'}. What was said until then is in the notes.`, ways: organizer ? waysFor(reason, plan, offers) : [] };
+}
+
+/**
+ * The ways to more, for whoever organizes: the first fills, the rest sit beside it, unless the page has its own filled button
+ * (`lead` false: none fills). Checkout opens over the call, or over the page.
+ */
+export function StopWays({ ways, lead = true }: { ways: readonly StopWay[]; lead?: boolean | undefined }) {
   const checkout = useCheckout();
   return (
     <>
       {ways.map((w, i) => {
-        const variant = i === 0 ? 'primary' : 'secondary';
+        const variant = lead && i === 0 ? 'primary' : 'secondary';
         if (w.kind === 'pro') return <Button key="pro" size="sm" variant={variant} onClick={() => checkout.open({ plan: 'pro' }, 'call')}>Get Pro</Button>;
         if (w.kind === 'hours') return <Button key="hours" size="sm" variant={variant} onClick={() => checkout.open({ plan: 'hours' }, 'call')}>{w.label}</Button>;
         if (w.kind === 'on') return <Button key="on" size="sm" variant={variant} loading={w.busy} onClick={w.go}>Turn notes on</Button>;

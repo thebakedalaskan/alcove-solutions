@@ -1,0 +1,120 @@
+/*
+ * Your menu, at the top right of every page and in the phone's top bar (YouButton, YouMenu and its rows in
+ * components/you.tsx). Your face opens it: you, standing on the horizon in the last of the light, then what you reach for
+ * from any page. A popover on a wide screen (312px: 300 inside its 6px), the kit's Sheet on a phone. Classes start with
+ * `ym-`.
+ *
+ * The rules it keeps:
+ *   one row, one thing; every row's icon, words and end sit in the same three columns;
+ *   what opens from a row opens in place under it, never a second menu;
+ *   nothing is filled at rest. When it asks, the answer that loses nothing is the filled one.
+ */
+
+/* ------------------------------------------------------------------ your face */
+.ym-me { --ym-size: 32px; position: relative; display: inline-flex; flex: none; border-radius: var(--radius-arch) var(--radius-arch) calc(var(--ym-size) * .22) calc(var(--ym-size) * .22); }
+/* Its rings follow the arch, 4px out: hovered, then open while the menu is, then the keyboard's. */
+.ym-me::after { content: ""; position: absolute; inset: -4px; border-radius: var(--radius-arch) var(--radius-arch) calc(var(--ym-size) * .22 + 4px) calc(var(--ym-size) * .22 + 4px); transition: box-shadow var(--duration-1); pointer-events: none; }
+.ym-me:hover::after { box-shadow: 0 0 0 1.5px color-mix(in oklch, var(--ink) 26%, transparent); }
+.ym-me[aria-expanded="true"]::after { box-shadow: 0 0 0 1.5px var(--line-control); }
+.ym-me:focus-visible { outline: none; }
+.ym-me:focus-visible::after { box-shadow: 0 0 0 2px var(--focus); }
+/* The button is what's pointed at, so the arch's own title (the name) never stands in for its tooltip. */
+.ym-me > * { pointer-events: none; }
+/* Paused: a small bell, crossed out, on your face's lower right, all the time the pause lasts. */
+.ym-zz { position: absolute; right: -6px; bottom: -4px; z-index: 1; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--surface-raised); color: var(--ink); box-shadow: 0 0 0 1px var(--line), var(--shadow-1); }
+.ym-zz .ac-i { stroke-width: 2.1; }
+
+/* ------------------------------------------------------------------ the menu */
+.ym { --eve-on: var(--surface-raised); width: 300px; outline: none; font: 400 14px/1.4 var(--font-sans); color: var(--ink); }
+
+/*
+ * You, standing on the horizon in the last of the light: Settings' own moment (styles/horizon.css, `settings`), in small.
+ * Its sky over a band of sea, a soft glow on the horizon behind you, the horizon's rim, and your light on the water. The
+ * colours are the evening's own, here so the head is drawn in whichever theme the menu is in, Record's night included.
+ */
+.ym-head {
+  --ym-sea: 22px;
+  --ym-sky-c: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.841 0.05 253.421) 58%, oklch(0.866 0.044 265) 100%);
+  --ym-sea-c: linear-gradient(to bottom in oklch, oklch(0.872 0.042 275) 0%, oklch(0.825 0.055 252.105) 46%, oklch(0.816 0.058 251.316) 100%);
+  --ym-glow: oklch(0.93 0.08 45 / 0.55); --ym-rim: oklch(0.9 0.09 60);
+  position: relative; isolation: isolate; display: flex; align-items: flex-end; gap: 13px; height: 98px; padding: 0 16px var(--ym-sea); border-radius: 16px; overflow: hidden;
+}
+:is(.dark, :root:has(.stage), :root:has(.dusk.rec)) .ym-head {
+  --ym-sky-c: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.264 0.059 260.118) 58%, oklch(0.282 0.065 261.765) 100%);
+  --ym-sea-c: linear-gradient(to bottom in oklch, oklch(0.305 0.06 268.408) 0%, oklch(0.24 0.052 258) 46%, oklch(0.205 0.046 258) 100%);
+  --ym-glow: oklch(0.66 0.12 22 / 0.55); --ym-rim: oklch(0.8 0.1 50);
+}
+.ym-sky { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.ym-sky i { position: absolute; display: block; }
+.ym-sky .sky { inset: 0 0 var(--ym-sea); background: var(--ym-sky-c); }
+.ym-sky .sea { inset: auto 0 0; height: var(--ym-sea); background: var(--ym-sea-c); }
+.ym-sky .glow { left: 36px; bottom: var(--ym-sea); width: 250px; height: 84px; transform: translate(-50%, 50%); background: radial-gradient(closest-side, var(--ym-glow), transparent); }
+.ym-sky .rim { left: 0; right: 0; bottom: var(--ym-sea); height: 1px; background: linear-gradient(to right, transparent, var(--ym-rim) 18%, transparent 82%); }
+.ym-you { position: relative; flex: none; display: block; line-height: 0; }
+.ym-you .ac-avatar { box-shadow: 0 -8px 30px -12px color-mix(in oklch, var(--gold) 55%, transparent); }
+/* Your light on the water, as Settings' band draws it under you. */
+.ym-gl { position: absolute; top: calc(100% + 5px); left: 50%; display: grid; justify-items: center; gap: 3px; transform: translateX(-50%); }
+.ym-gl i { display: block; height: 1.5px; border-radius: 2px; background: var(--gold); }
+.ym-gl i:nth-child(1) { width: 26px; opacity: .55; }
+.ym-gl i:nth-child(2) { width: 16px; opacity: .32; }
+.ym-gl i:nth-child(3) { width: 8px; opacity: .18; }
+.ym-who { flex: 1; min-width: 0; padding-bottom: 3px; }
+.ym-name { font: 600 15px/20px var(--font-sans); color: var(--ink); }
+.ym-mail { margin-top: 1px; font: 400 13px/18px var(--font-sans); color: var(--ink-2); }
+
+/* Rows: an icon, the words, and their end, in three columns, with a hairline between the groups. */
+.ym-rows, .ym-pause { display: grid; gap: 1px; }
+.ym-rows { margin-top: 6px; }
+.ym-rule { height: 1px; margin: 6px 12px; background: var(--line); }
+.ym-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; column-gap: 13px; align-items: center; width: 100%; min-height: 40px; padding: 0 10px 0 13px; border-radius: 12px; font: 500 14.5px/20px var(--font-sans); color: var(--ink); text-align: left; transition: background-color var(--duration-1); }
+.ym-row > .ac-i { color: var(--ink-2); }
+:is(button, a).ym-row:hover, .ym-row.is-open { background: var(--sunk); }
+.ym-end { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.ym-chev { flex: none; color: var(--ink-3); transition: transform var(--duration-1) var(--ease-out); }
+.ym-row.is-open .ym-chev { transform: rotate(180deg); }
+:is(.ym-row, .ym-opt):focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.ym [aria-disabled="true"] { cursor: default; }
+
+/* How long to pause: in place under the row, indented under its words, the time each ends in a column of its own. */
+.ym-opts { display: grid; gap: 1px; padding: 2px 0 4px 31px; animation: ym-in 180ms var(--ease-out) both; }
+.ym-opt { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; align-items: center; width: 100%; min-height: 34px; padding: 0 10px 0 13px; border-radius: 10px; font: 400 14px/20px var(--font-sans); color: var(--ink); text-align: left; transition: background-color var(--duration-1); }
+.ym-opt:hover { background: var(--sunk); }
+.ym-ends { font: 400 13px/18px var(--font-sans); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+/* Paused: the row says until when, its bell crossed out in the warmth of now, with Resume at its end. A long until goes
+   under the words, whole: tomorrow 9:00. */
+.ym-row.is-paused { padding-block: 5px; }
+.ym-row.is-paused > .ac-i { color: var(--sun-text); }
+.ym-row.is-paused b { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ac-btn.ym-resume { padding: 0 12px; background: transparent; }
+.ac-btn.ym-resume:hover { background: var(--sunk); }
+
+/* Theme: three small evenings, as Settings › You draws them. */
+.ym-eves { display: flex; gap: 8px; }
+
+/* Sign out, asking in place of the rows, in Settings' words. */
+.ym-ask { padding: 8px 12px 6px; animation: ym-in 180ms var(--ease-out) both; }
+.ym-ask b { display: block; font: 600 14.5px/21px var(--font-sans); color: var(--ink); text-wrap: pretty; }
+.ym-ask p { margin-top: 6px; font: 400 13.5px/19px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+.ym-ask-a { display: grid; gap: 8px; margin-top: 14px; }
+.ym-ask-a .ac-btn { width: 100%; height: 40px; }
+.ym-ask-a .ac-btn.is-secondary { background: transparent; }
+.ym-ask-a .ac-btn.is-secondary:hover { background: var(--sunk); }
+.ac-btn.ym-out { box-shadow: inset 0 0 0 1px var(--line-control); color: var(--caution); }
+.ac-btn.ym-out:hover { background: var(--sunk); color: var(--caution); }
+.ym-ask-a .ac-btn.is-primary[aria-disabled="true"], .ym-ask-a .ac-btn.is-secondary[aria-disabled="true"]:not(:has(.ac-spin)) { opacity: .5; }
+
+@keyframes ym-in { from { opacity: 0; transform: translateY(4px); } }
+
+/* ------------------------------------------------------------------ on a phone: the kit's Sheet, rising from the foot */
+.ac-sheet:has(> .ym.is-sheet) { top: auto; right: 0; bottom: 0; left: 0; width: auto; max-height: calc(100dvh - 24px); padding: 8px 8px calc(22px + env(safe-area-inset-bottom, 0px)); overflow-y: auto; overscroll-behavior: contain; border-radius: 24px 24px 0 0; transform: none; animation: ym-up var(--duration-3) var(--ease-out) both; }
+.ac-sheet:has(> .ym.is-sheet)[data-state="closed"] { animation: ym-down 180ms var(--ease-in) forwards; }
+/* Its grab handle. */
+.ac-sheet:has(> .ym.is-sheet)::before { content: ""; display: block; width: 38px; height: 4px; margin: 0 auto 10px; border-radius: 2px; background: var(--line-control); }
+.ym.is-sheet { width: auto; }
+.ym.is-sheet .ym-head { height: 104px; }
+.ym.is-sheet .ym-row { min-height: 50px; font-size: 15.5px; }
+.ym.is-sheet .ym-opt { min-height: 44px; font-size: 15px; }
+.ym.is-sheet .set-eve.is-small { width: 46px; height: 30px; }
+.ym.is-sheet .ym-ask-a .ac-btn { height: 44px; }
+@keyframes ym-up { from { transform: translateY(100%); } }
+@keyframes ym-down { to { transform: translateY(100%); } }

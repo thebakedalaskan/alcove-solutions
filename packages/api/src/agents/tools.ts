@@ -5,7 +5,7 @@ import { InstantCallInputSchema } from '../calls/entry';
 import { ISODateSchema } from '../shared/ids';
 import { NoteKindSchema } from '../notes/schema';
 import { PersonalEditSchema, PersonalInputSchema } from '../notes/personal';
-import { ActionPatchSchema, ActionProposalSchema, AskBodySchema, DecisionPatchSchema, DecisionProposalSchema, LinePatchSchema, QuestionPatchSchema, ShareInputSchema } from '../notes/wire';
+import { ActionPatchSchema, ActionProposalSchema, AskBodySchema, DecisionPatchSchema, DecisionProposalSchema, LinePatchSchema, MAX_SEARCH_TEXT, QuestionPatchSchema, ShareInputSchema } from '../notes/wire';
 import { BusyBodySchema, RsvpBodySchema } from '../meetings/wire';
 import { PeopleSearchBodySchema } from '../identity/wire';
 
@@ -14,7 +14,7 @@ export const AgentOperationIdSchema = AgentResourceIdSchema.describe('A fresh ra
 export const AgentPageSchema = z.object({ limit: z.number().int().min(1).max(100).default(25), offset: z.number().int().min(0).max(10000).default(0) });
 export const AgentNoteIdSchema = z.object({ noteId: AgentResourceIdSchema });
 export const AgentMeetingIdSchema = z.object({ meetingId: AgentResourceIdSchema });
-export const AgentListNotesSchema = AgentPageSchema.extend({ kind: NoteKindSchema.optional(), text: z.string().max(200).optional() });
+export const AgentListNotesSchema = AgentPageSchema.extend({ kind: NoteKindSchema.optional(), text: z.string().max(MAX_SEARCH_TEXT).optional() });
 export const AgentListMeetingsSchema = AgentPageSchema.extend({ view: z.enum(['upcoming', 'past']).default('upcoming') });
 export const AgentAskNoteSchema = AgentNoteIdSchema.extend({ question: AskBodySchema.shape.question });
 export const AgentAskNotesSchema = AskBodySchema;

@@ -1,7 +1,7 @@
 /*
  * What a screen shows when it can't load: offline, it says so and what still works (Record, for someone signed in on this
  * browser who records without a connection); anything else, that the page didn't load, with Try again; and an address
- * that leads nowhere, with the Drive offered (features/shell/OfflinePage.tsx, routes/$.tsx).
+ * that leads nowhere, with the Drive offered, or Calls for an old /notes link (features/shell/OfflinePage.tsx, routes/$.tsx).
  */
 import type { Meta } from '@storybook/react-vite';
 import { phone } from '../../src/call';
@@ -12,10 +12,10 @@ const meta = { title: 'Pages/Offline and errors', ...pages } satisfies Meta<Page
 export default meta;
 
 /** Opened with no connection, signed in on this browser: this page needs one, and recording still works. */
-export const Offline = page('/notes', 'offline');
+export const Offline = page('/calls', 'offline');
 export const OfflinePhone = phone(Offline);
 /** The same, with Record without a connection off: recording waits for the connection too. */
-export const OfflineRecordingWaits = page('/notes', 'offline', { beforeEach: changing(recordsOnlyOnline) });
+export const OfflineRecordingWaits = page('/calls', 'offline', { beforeEach: changing(recordsOnlyOnline) });
 /** Alcove can't be reached, and nobody is signed in on this browser to record here: it opens once the connection is back. */
 export const CantReachAlcove = page('/home', 'busy', {
   beforeEach: changing(troubled({ 'notes.inbox': 'network' })),
@@ -33,3 +33,5 @@ export const NothingHere = page('/nowhere', 'busy');
 export const NothingHerePhone = phone(NothingHere);
 /** A link from when workspaces were at /workspace: nothing's there now, and the Drive, where they are, is offered. */
 export const OldWorkspaceLink = page('/workspace/AbCdEfGhIjKlMnOpQrStUv/AbCdEfGhIjKlMnOpQrStUv', 'busy');
+/** A link from when calls and their notes were at /notes: nothing's there now, and Calls, where they are, is offered. */
+export const OldNotesLink = page('/notes/n2', 'busy');

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The side panel</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="water.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="water.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<aside class="sd sb" style="{{s.style}}" aria-label="Side panel">
+<button type="button" class="brand sd-logo" aria-label="Alcove, Home">
+<svg width="24" height="28" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="sda"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><clipPath id="sdu"><rect x="0" y="0" width="22" height="19.2"></rect></clipPath><linearGradient id="sds" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient><radialGradient id="sdn" cx=".42" cy=".38" r=".72"><stop offset="0" stop-color="#FFF6E0"></stop><stop offset=".5" stop-color="#FFD58A"></stop><stop offset="1" stop-color="#FFB547"></stop></radialGradient></defs><g clip-path="url(#sda)"><rect width="22" height="26" fill="url(#sds)"></rect><g clip-path="url(#sdu)"><circle cx="11" cy="19.2" r="4.4" fill="url(#sdn)"></circle></g><rect y="19.2" width="22" height="7" fill="#231C5E"></rect><rect x="7.2" y="20.5" width="7.6" height=".9" rx=".45" fill="#FFB36E" opacity=".8"></rect><rect x="8.8" y="22.1" width="4.4" height=".8" rx=".4" fill="#FFB36E" opacity=".45"></rect></g><path class="rim" d="M2 24.6V11a9 9 0 0 1 18 0v13.6z" stroke-width="1"></path></svg>
+alcove</button>
+<button type="button" class="sd-hide" aria-label="Hide the side panel"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{s.I.panel}}"></path></svg></button>
+<button type="button" class="sb-new" onClick="{{s.start}}"><span class="sb-new-ic"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{s.I.video}}"></path></svg></span><span>Start a call</span><span class="k">N</span></button>
+<nav class="sd-nav sb-nav" aria-label="Main">
+<sc-for list="{{s.places}}" as="n" hint-placeholder-count="5">
+<button type="button" class="sd-i{{n.cls}}" aria-current="{{n.current}}" onClick="{{n.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.icon}}"></path></svg><span>{{n.label}}</span><sc-if value="{{n.hasCount}}" hint-placeholder-val="{{false}}"><b class="sb-n">{{n.count}}</b></sc-if></button>
+</sc-for>
+</nav>
+<sc-if value="{{s.upNext}}" hint-placeholder-val="{{false}}">
+<div class="sd-sec"><h2>Up next</h2>
+<div class="sb-next">
+<div class="sb-next-t"><span class="sb-arch" aria-hidden="true"><i></i></span><span class="min0"><b class="clamp1">{{s.next.title}}</b><small>{{s.next.when}}</small></span></div>
+<div class="sb-next-a"><dc-import name="Faces" who="{{s.next.faces}}" size="24" max="3" ring="var(--surface)" hint-size="40px,26px"></dc-import><button type="button" class="b b-line b-sm sb-join"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{s.I.video}}"></path></svg>Join</button></div>
+</div>
+</div>
+</sc-if>
+<div class="sd-sec"><h2 class="sb-h">Pinned<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{s.I.pin}}"></path></svg></h2>
+<sc-if value="{{s.hasPinned}}" hint-placeholder-val="{{true}}"><sc-for list="{{s.pinned}}" as="p" hint-placeholder-count="2"><button type="button" class="sd-l sb-pin"><span class="sb-arch is-{{p.c}}" aria-hidden="true"><i></i></span><span class="clamp1">{{p.t}}</span></button></sc-for></sc-if>
+<sc-if value="{{s.noPinned}}" hint-placeholder-val="{{false}}"><p class="sb-note">Pin notes you keep coming back to, like a weekly call, and they stay here.</p></sc-if>
+</div>
+<sc-if value="{{s.hasGroups}}" hint-placeholder-val="{{true}}">
+<div class="sd-sec"><h2 class="sb-h">Groups<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{s.I.plus}}"></path></svg></h2><sc-for list="{{s.groups}}" as="g" hint-placeholder-count="2"><button type="button" class="sd-l sb-grp"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{s.I.hash}}"></path></svg><span class="clamp1">{{g.t}}</span><b>{{g.n}}</b></button></sc-for></div>
+</sc-if>
+<span class="sd-grow"></span>
+<div class="sd-foot">
+<p class="sd-seal sb-seal"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{s.I.sealed}}"></path></svg>Confidential compute · verified</p>
+<p class="sd-min"><b>{{s.minutes}}</b> of notes left</p>
+<span class="sd-meter"><i style="{{s.meter}}"></i></span>
+</div>
+</aside>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"s":{"editor":null,"default":null},"$preview":{"width":256,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var s = this.props.s;
+    if (!s) {
+      var host = { props: { step: 'today' }, state: null, setState: function () {} };
+      s = window.AH.HW.view(host).side;
+      s = window.AH.assign({}, s, { style: s.style + '; background: ' + window.AH.ok(window.AH.PALS['blue-hour'].dark.well) + '; height: 100vh; font-family: "Hanken Grotesk", system-ui, sans-serif' });
+    }
+    return { s: s };
+  }
+}
+</script>
+</body>
+</html>

@@ -7,15 +7,15 @@ import { unreadChatMentions } from '../session/attention';
 import { useSoundPreferences } from '~/lib/sound-preferences';
 
 export function useCallSounds({ call, state, chat, direct, speakerId, connected, presenting }: { call: CallSession; state: CallState; chat: CallCrypto; direct: DirectMessagesState; speakerId: string | null; connected: boolean; presenting: boolean }) {
-  const { prefs, ready } = useSoundPreferences();
+  const { prefs, notificationsPauseEnd, ready } = useSoundPreferences();
   // Presenting comes from actual local screen shares or CallPresent.mine, never inferred from someone else's content.
   const moderatesAttention = state.isHost || presenting;
   const audiblePrefs = { ...prefs, hands: prefs.hands && moderatesAttention, questions: prefs.questions && moderatesAttention };
   const owner = useRef({});
   const alive = useRef(false);
   const allowed = useRef({ connected, ready, phase: state.phase, scope: '' });
-  const current = useRef({ prefs: audiblePrefs, speakerId });
-  current.current = { prefs: audiblePrefs, speakerId };
+  const current = useRef({ prefs: audiblePrefs, notificationsPauseEnd, speakerId });
+  current.current = { prefs: audiblePrefs, notificationsPauseEnd, speakerId };
   const baseline = useRef<{ scope: string; latest: number; serverNow: number } | null>(null);
   const privateBaseline = useRef<{ scope: string; ids: Set<string> } | null>(null);
   const replyBaseline = useRef<{ scope: string; at: number; ids: Set<string> } | null>(null);
@@ -32,7 +32,7 @@ export function useCallSounds({ call, state, chat, direct, speakerId, connected,
     alive.current = true;
     return () => { alive.current = false; stopSounds(owner.current); };
   }, [call, scope]);
-  useEffect(() => () => stopSounds(owner.current), [prefs, moderatesAttention]);
+  useEffect(() => () => stopSounds(owner.current), [prefs, notificationsPauseEnd, moderatesAttention]);
   useEffect(() => {
     const previous = privateBaseline.current;
     const ids = new Set(direct.messages.filter((m) => m.to === call.ticket.identity && m.state === 'delivered').map((m) => m.id));

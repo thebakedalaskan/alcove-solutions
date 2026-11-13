@@ -13,7 +13,6 @@ import {
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type * as Y from 'yjs';
-import { withWorkspace } from '../../testing/call-workspace';
 import { speechWav } from '../../testing/fake-near';
 import { startHarness, type Browser, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
@@ -107,7 +106,6 @@ async function ideasCall() {
   const { code } = await art.api.calls.startNow({ notes: 'on', guests: [kofi.email] });
   const host = await art.api.calls.join(code, { mic: true, cam: false });
   await inGroup(host);
-  await withWorkspace(host);
   const k = await kofi.api.calls.join(code, { mic: true, cam: false });
   await inGroup(k);
   await settle(host, (s) => s.participants.some((p) => p.id === k.ticket.identity));

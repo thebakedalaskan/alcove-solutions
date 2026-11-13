@@ -442,9 +442,11 @@
 .bl-r small { display: block; font-size: 12px; line-height: 1.3; color: var(--ink-3); }
 .bl-r .when { font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .bl-f { display: flex; align-items: center; gap: 7px; margin-top: 8px; padding: 9px 6px 2px; border-top: 1px solid var(--line); font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
-.bl-q { margin: 8px 0 0; padding: 12px; border-radius: 12px; background: var(--sunk); animation: bd-unfold var(--duration-2) var(--ease-out) backwards; }
-.bl-q p { font-size: 13.5px; line-height: 1.4; color: var(--ink); }
-.bl-q .acts { display: flex; gap: 8px; margin-top: 10px; }
+/* A saved board some people here can't open: the question, in the picker's place, until it's answered. */
+.bl-q { display: grid; gap: 6px; padding: 4px 6px 2px; animation: bd-unfold var(--duration-2) var(--ease-out) backwards; }
+.bl-q b { overflow-wrap: anywhere; font: 600 15px/1.3 var(--font-sans); letter-spacing: -.005em; }
+.bl-q p { overflow-wrap: anywhere; font-size: 13.5px; line-height: 1.45; color: var(--ink-2); }
+.bl-q .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 .bl-q .ac-btn { height: 34px; padding: 0 12px; font-size: 13px; }
 .bl.is-busy { cursor: progress; }
 /* The board picker (`BoardPicker`): its own head, the board the call has, and why what's new can't be picked just now. */
@@ -457,8 +459,6 @@
 .bl-now b { color: var(--ink); }
 .bl-why { display: flex; align-items: flex-start; gap: 8px; margin: 12px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--sunk); font: 500 13px/1.4 var(--font-sans); color: var(--ink-2); }
 .bl-why .ac-i { flex: none; margin-top: 1px; color: var(--ink-3); }
-/* Why a new board can't be made: under New, over the templates it holds back. */
-.bl-why.is-new { margin: 8px 0; }
 .bl-c.is-off, .bl-r.is-off { opacity: .45; cursor: default; }
 .bl-c.is-off:hover { box-shadow: inset 0 0 0 1px var(--line); transform: none; }
 .bl-r.is-off:hover { background: none; }

@@ -4,17 +4,22 @@ import { cn } from '../cn';
 
 /**
  * The easing curves, for motion/react. `out` for arrivals, `inOut` for moves, `expo` for long
- * entrances and glides, `in` for leaving. Nothing snaps.
+ * entrances and glides, `in` for leaving, `soft` for a whole page fading in over another (`--ease-expo`
+ * and `--ease-soft` in CSS). Nothing snaps.
  */
 export const EASE = {
   out: [0.22, 0.8, 0.24, 1],
   inOut: [0.65, 0, 0.35, 1],
   expo: [0.16, 1, 0.3, 1],
-  in: [0.4, 0, 1, 1]
+  in: [0.4, 0, 1, 1],
+  soft: [0, 0, 0.58, 1]
 } as const;
 
-/** The `--duration-*` tokens in seconds, for motion/react. */
-export const DURATION = { 1: 0.14, 2: 0.24, 3: 0.42 } as const;
+/**
+ * The `--duration-*` tokens in seconds, for motion/react (in ms for the Web Animations API): the scale, and the slower
+ * clock of a page taking another's place.
+ */
+export const DURATION = { 1: 0.14, 2: 0.24, 3: 0.42, 4: 0.9, 5: 2.4, 'page-1': 0.34, 'page-2': 0.5, 'page-3': 0.6, 'page-4': 1.1 } as const;
 
 const VIEW = { once: true, margin: '0px 0px -12% 0px' } as const;
 const rise: Variants = { hidden: { opacity: 0, y: 36 }, shown: { opacity: 1, y: 0, transition: { duration: 1.1, ease: EASE.expo } } };

@@ -1,9 +1,14 @@
-/** Signed-in choices live in the sealed profile. Guests keep validated playback choices in this browser. */
+/**
+ * Signed-in choices live in the sealed profile. Guests keep validated playback choices in this browser.
+ * `notificationsPauseEnd` is when the account's pause on notifications ends (lib/notification-pause.ts), for every sound
+ * request to carry: a guest has none.
+ */
 import { DEFAULT_SOUND_PREFERENCES, SoundPreferencesSchema, errorMessage, type SoundPreferences } from '@alcove/api';
 import { useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { log } from './log';
+import { notificationsPauseEndOf } from './notification-pause';
 import { q, usePreferences } from './queries';
 
 const KEY = 'alcove.guest.sounds';
@@ -41,5 +46,6 @@ export function useSoundPreferences() {
       catch (e) { slog.debug('guest sound preference stays in this tab', { err: e }); }
     }
   };
-  return { prefs: session ? prefs.data?.sounds ?? DEFAULT_SOUND_PREFERENCES : guest, update, ready: !sessionQuery.isPending && !sessionQuery.isError && (!session || Boolean(prefs.data)) };
+  return { prefs: session ? prefs.data?.sounds ?? DEFAULT_SOUND_PREFERENCES : guest, notificationsPauseEnd: session ? notificationsPauseEndOf(prefs.data) : null, update,
+    ready: !sessionQuery.isPending && !sessionQuery.isError && (!session || Boolean(prefs.data)) };
 }

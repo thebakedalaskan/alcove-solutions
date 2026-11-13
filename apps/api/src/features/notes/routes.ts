@@ -1,4 +1,4 @@
-import { FollowUpReviewSchema, ActionPatchSchema, ActionProposalSchema, AskBodySchema, DecisionPatchSchema, DecisionProposalSchema, LinePatchSchema, NoteKindSchema, NoteLinkClaimSchema, QuestionPatchSchema, RevisitPatchSchema, RewriteBodySchema, SeriesAskBodySchema, ShareInputSchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema, SharedWriteSchema } from '@alcove/api';
+import { FollowUpReviewSchema, ActionPatchSchema, ActionProposalSchema, AskBodySchema, DecisionPatchSchema, DecisionProposalSchema, LinePatchSchema, NoteLinkClaimSchema, NoteSearchBodySchema, QuestionPatchSchema, RevisitPatchSchema, RewriteBodySchema, SeriesAskBodySchema, ShareInputSchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema, SharedWriteSchema } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { stream } from 'hono/streaming';
 import { z } from 'zod';
@@ -24,10 +24,10 @@ export function registerNoteRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   const { noteChangeLimiter, askLimiter, personalLimiter } = runtime.limits;
 
   /* notes */
-  // Search terms travel in the body, never the URL, so they can't end up in access logs.
+  // Search terms and whose lines to look in travel in the body, never the URL, so they can't end up in access logs.
   app.post('/v1/notes/search', async (c) => {
-    const q = await body(c, z.object({ kind: NoteKindSchema.optional(), text: z.string().max(200).optional() }));
-    return c.json(await notes.list(c.get('owner'), { kind: q.kind, text: q.text }));
+    const q = await body(c, NoteSearchBodySchema);
+    return c.json(await notes.list(c.get('owner'), { kind: q.kind, text: q.text, by: q.by }));
   });
 
   app.get('/v1/notes/inbox', async (c) => c.json(await notes.inbox(c.get('owner'))));

@@ -1,0 +1,203 @@
+/*
+ * The side panel, rethought (nv-): today's panel, A and B (the full panel, 256px) and C (the rail, 76px), the call that's
+ * about to start, Pin a note, and the boards that compare them. The panel is dark in both themes, on the frame's colour.
+ */
+
+/* ------------------------------------------------------------ the full panel */
+.nv { --sans: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; position: relative; z-index: 3; box-sizing: border-box; display: flex; flex-direction: column; min-width: 0; height: 100%; min-height: 0; background: var(--frame); color: var(--ink); font: 400 15px/1.4 var(--sans, "Hanken Grotesk", system-ui, sans-serif); }
+.nv *, .nv *::before, .nv *::after { box-sizing: border-box; }
+:where(.nv) button { margin: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.nv :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.nv:not(.nv-c) { width: 256px; padding: 18px 12px 14px 14px; }
+.nv-min0 { min-width: 0; }
+
+.nv-top { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 2px 0 16px 10px; }
+.nv-logo { display: flex; align-items: center; gap: 9px; border-radius: 9px; }
+.nv-logo .rim, .nv-r-logo .rim { fill: none; stroke: oklch(1 0 0 / .14); }
+.nv-hide { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; color: var(--ink-2); }
+.nv-hide:hover { background: color-mix(in oklch, var(--ink) 8%, transparent); color: var(--ink); }
+.nv-hide .i { width: 19px; height: 19px; }
+
+.nv-status { flex: none; display: flex; align-items: flex-start; gap: 9px; margin: -4px 0 10px; padding: 10px 12px; border-radius: 13px; background: color-mix(in oklch, var(--focus) 16%, transparent); color: var(--focus); font: 500 12.5px/1.4 var(--sans); }
+.nv-status .i { width: 16px; height: 16px; margin-top: 1px; }
+.nv-status b { display: block; font-weight: 600; }
+
+/* Start a call: a row like the places, its camera in a warm circle, never filled or shaded. */
+.nv-new { flex: none; display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; column-gap: 9px; align-items: center; width: 100%; height: 40px; padding: 0 12px 0 7px; border-radius: 11px; font: 500 14.5px/1 var(--sans); color: var(--ink); transition: background-color .14s; }
+.nv-new:hover { background: color-mix(in oklch, var(--ink) 7%, transparent); }
+.nv-new-ic { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: color-mix(in oklch, var(--now) 26%, transparent); color: var(--now); }
+.nv-new-ic .i { width: 15px; height: 15px; }
+.nv-new .k { background: color-mix(in oklch, var(--ink) 12%, transparent); color: var(--ink); opacity: .8; }
+
+.nv-places { flex: none; display: grid; gap: 2px; margin-top: 10px; }
+.nv-i { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; width: 100%; height: 40px; padding: 0 12px 0 10px; border-radius: 11px; font: 500 14.5px/1 var(--sans); color: var(--ink-2); transition: background-color .14s, color .14s; }
+.nv-i:hover { color: var(--ink); background: color-mix(in oklch, var(--ink) 8%, transparent); }
+.nv-i.is-on { color: var(--ink); background: color-mix(in oklch, var(--ink) 12%, transparent); }
+.nv-i .i { width: 19px; height: 19px; }
+.nv-n { font: 500 12.5px/1 var(--sans); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+/* Between the places and the foot: what you pinned (and, today, Up next and your groups). It scrolls when it's long. */
+.nv-mid { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden auto; scrollbar-width: none; margin: 0 -12px 0 -14px; padding: 0 12px 4px 14px; }
+.nv-mid::-webkit-scrollbar { display: none; }
+.nv.is-lots .nv-mid { box-shadow: inset 0 -1px 0 var(--line); }
+.nv-sec { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; margin-top: 22px; }
+.nv-sec-h { display: flex; align-items: center; justify-content: space-between; min-height: 26px; padding: 0 4px 0 12px; margin-bottom: 4px; }
+.nv-sec-h h2, h2.nv-sec-h { margin: 0; font: 500 13px/1.2 var(--sans); color: var(--ink-3); }
+h2.nv-sec-h { display: block; min-height: 0; padding: 0 12px 8px; margin: 0; }
+/* Pinned's pin shows while you point at the section or move through it; today it's always there. */
+.nv-add { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; color: var(--ink-3); opacity: 0; transition: opacity .14s, background-color .14s, color .14s; }
+.nv-add .i { width: 15px; height: 15px; }
+.nv-add:hover { background: color-mix(in oklch, var(--ink) 9%, transparent); color: var(--ink); }
+.nv-sec:hover .nv-add, .nv-sec:focus-within .nv-add, .nv-sec-h.is-always .nv-add, .nv-sec-h.is-hot .nv-add { opacity: 1; }
+.nv-sec-h.is-hot .nv-add { background: color-mix(in oklch, var(--ink) 9%, transparent); color: var(--ink); }
+.nv-l { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 12px; border-radius: 10px; font: 500 14px/1.2 var(--sans); color: var(--ink-2); transition: background-color .14s, color .14s; }
+.nv-l:hover { color: var(--ink); background: color-mix(in oklch, var(--ink) 8%, transparent); }
+.nv-l > .clamp1 { flex: 1; min-width: 0; }
+.nv-l b { flex: none; margin-left: auto; font: 500 12px/1 var(--sans); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.nv-grp .i { width: 15px; height: 15px; color: var(--ink-3); }
+.nv-pin.is-new { animation: nv-in .42s cubic-bezier(.2, .8, .2, 1) both; background: color-mix(in oklch, var(--ink) 6%, transparent); color: var(--ink); }
+@keyframes nv-in { from { opacity: 0; transform: translateY(6px); } }
+.nv-hint { margin: 0; padding: 2px 12px 0; font: 400 12.5px/1.45 var(--sans); color: var(--ink-3); }
+
+/* A note's cover: its own small sunset, in an arch. */
+.nv-arch { position: relative; display: block; flex: none; width: 15px; height: 18px; border-radius: 7.5px 7.5px 2px 2px; overflow: hidden; background: linear-gradient(to bottom in oklch, oklch(.36 .07 285), oklch(.55 .11 350) 62%, oklch(.78 .12 55)); }
+.nv-arch i { position: absolute; left: 50%; bottom: 4px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: oklch(.9 .11 80); }
+.nv-arch::after { content: ""; position: absolute; inset: auto 0 0; height: 5px; background: oklch(.3 .06 275); }
+.nv-arch.is-a { background: linear-gradient(to bottom in oklch, oklch(.42 .08 300), oklch(.62 .12 15) 62%, oklch(.82 .11 70)); }
+.nv-arch.is-b { background: linear-gradient(to bottom in oklch, oklch(.34 .06 250), oklch(.5 .09 300) 60%, oklch(.74 .1 40)); }
+.nv-arch.is-now { background: linear-gradient(to bottom in oklch, oklch(.38 .08 290), oklch(.6 .13 20) 60%, oklch(.84 .12 75)); }
+.nv-arch-l, .nv-now .nv-arch { width: 24px; height: 28px; border-radius: 12px 12px 3px 3px; }
+.nv-arch-l i, .nv-now .nv-arch i { width: 9px; height: 9px; margin-left: -4.5px; bottom: 6px; }
+.nv-arch-l::after, .nv-now .nv-arch::after { height: 7px; }
+
+/* Today's Up next: a card in the panel, all day. */
+.nv-card { display: grid; gap: 10px; margin: 0 2px; padding: 11px 11px 11px 12px; border-radius: 14px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.nv-card-t { display: grid; grid-template-columns: 26px minmax(0, 1fr); column-gap: 12px; align-items: center; }
+.nv-card-t b, .nv-now b { display: block; font: 600 14px/19px var(--sans); color: var(--ink); }
+.nv-card-t small, .nv-now small { display: block; font: 500 12.5px/17px var(--sans); color: var(--now); font-variant-numeric: tabular-nums; }
+.nv-card-a { display: flex; align-items: center; justify-content: space-between; }
+.nv-card-join, .nv-join { height: 32px; padding: 0 13px; gap: 6px; }
+.nv-card-join .i, .nv-join .i { width: 15px; height: 15px; }
+
+/* Team and Agents, at the foot (B). */
+.nv-low { margin-top: 12px; padding-top: 10px; }
+.nv.is-lots .nv-low { margin-top: 0; }
+
+/* The foot: the call about to start (A, B), then the check and the minutes of notes left. */
+.nv-foot { flex: none; display: grid; gap: 4px; padding-top: 16px; }
+.nv-now { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; column-gap: 11px; align-items: center; height: 54px; margin: 0 0 10px; padding: 0 8px 0 9px; border-radius: 13px; box-shadow: inset 0 0 0 1px var(--line); animation: nv-in .42s cubic-bezier(.2, .8, .2, 1) both; }
+.nv-now.is-going small { color: var(--ink-2); }
+.nv-seal { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0 12px 6px; font: 500 12px/1.35 var(--sans); color: var(--ink-3); }
+.nv-seal .i { width: 15px; height: 15px; color: var(--now); }
+.nv-left { display: grid; gap: 8px; width: 100%; padding: 10px 12px 10px; border-radius: 13px; font: 400 13px/1.3 var(--sans); color: var(--ink-2); transition: background-color .14s; }
+.nv-left:hover { background: color-mix(in oklch, var(--ink) 8%, transparent); }
+.nv-min b { font-weight: 600; color: var(--ink); }
+.nv-min.is-low, .nv-min.is-low b { color: var(--caution); }
+.nv-meter { display: block; height: 3px; border-radius: 2px; background: color-mix(in oklch, var(--ink) 18%, transparent); overflow: hidden; }
+.nv-meter i { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg in oklch, var(--notes), var(--now) 70%, var(--sun-edge)); }
+.nv:has(.nv-min.is-low) .nv-meter i { background: var(--caution); }
+
+/* ------------------------------------------------------------ C: the rail */
+.nv-c { width: 76px; padding: 16px 0 14px; align-items: center; overflow: visible; }
+.nv-r-logo { flex: none; display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 8px; border-radius: 12px; }
+.nv-r-logo:hover { background: color-mix(in oklch, var(--ink) 8%, transparent); }
+.nv-r-new { position: relative; flex: none; display: grid; place-items: center; width: 42px; height: 42px; margin-bottom: 14px; border-radius: 50%; background: color-mix(in oklch, var(--now) 26%, transparent); color: var(--now); transition: background-color .14s; }
+.nv-r-new:hover { background: color-mix(in oklch, var(--now) 34%, transparent); }
+.nv-r-new .i { width: 19px; height: 19px; }
+.nv-r-places { display: grid; gap: 4px; }
+.nv-r-i { display: grid; justify-items: center; gap: 5px; width: 68px; padding: 2px 0 4px; border-radius: 12px; font: 600 11px/1 var(--sans); letter-spacing: .005em; color: var(--ink-2); text-align: center; }
+.nv-r-pill { position: relative; display: grid; place-items: center; width: 46px; height: 30px; border-radius: 10px; transition: background-color .14s; }
+.nv-r-pill .i { width: 19px; height: 19px; }
+.nv-r-i:hover { color: var(--ink); }
+.nv-r-i:hover .nv-r-pill { background: color-mix(in oklch, var(--ink) 8%, transparent); }
+.nv-r-i.is-on { color: var(--ink); }
+.nv-r-i.is-on .nv-r-pill { background: color-mix(in oklch, var(--ink) 13%, transparent); }
+.nv-r-n { position: absolute; top: -5px; left: calc(50% + 6px); min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: color-mix(in oklch, var(--ink) 22%, var(--frame)); box-shadow: 0 0 0 2px var(--frame); font: 600 10.5px/17px var(--sans); color: var(--ink); font-variant-numeric: tabular-nums; text-align: center; }
+.nv-r-rule { flex: none; width: 28px; height: 1px; margin: 12px 0 10px; background: color-mix(in oklch, var(--ink) 16%, transparent); }
+.nv-r-pins { display: grid; gap: 2px; justify-items: center; }
+.nv-r-pin, .nv-r-now, .nv-r-ic, .nv-r-ring { position: relative; display: grid; place-items: center; width: 46px; height: 40px; border-radius: 11px; color: var(--ink-2); }
+.nv-r-pin:hover, .nv-r-ic:hover, .nv-r-ring:hover { background: color-mix(in oklch, var(--ink) 8%, transparent); }
+.nv-r-pin .nv-arch { width: 22px; height: 26px; border-radius: 11px 11px 3px 3px; }
+.nv-r-pin .nv-arch i { width: 8px; height: 8px; margin-left: -4px; bottom: 6px; }
+.nv-r-pin .nv-arch::after { height: 7px; }
+.nv-r-now { height: 58px; gap: 4px; align-content: center; animation: nv-in .42s cubic-bezier(.2, .8, .2, 1) both; }
+.nv-r-now .nv-arch { width: 26px; height: 30px; border-radius: 13px 13px 3px 3px; box-shadow: 0 0 0 2px var(--frame), 0 0 0 3.5px color-mix(in oklch, var(--now) 70%, transparent); }
+.nv-r-now .nv-arch i { width: 9px; height: 9px; margin-left: -4.5px; bottom: 7px; }
+.nv-r-now .nv-arch::after { height: 8px; }
+.nv-r-now small { font: 600 10.5px/1 var(--sans); color: var(--now); font-variant-numeric: tabular-nums; }
+.nv-r-ic .i { width: 18px; height: 18px; color: var(--now); }
+.nv-r-ring svg { width: 22px; height: 22px; transform: rotate(-90deg); }
+.nv-r-ring circle { fill: none; stroke-width: 2.6; }
+.nv-r-ring .t { stroke: color-mix(in oklch, var(--ink) 18%, transparent); }
+.nv-r-ring .v { stroke: var(--now); stroke-linecap: round; }
+.nv-r-ring.is-low .v { stroke: var(--caution); }
+/* A name beside what you point at: solid, on the panel's raised colour, over the page. */
+.nv-r-tip { position: absolute; z-index: 30; left: calc(100% + 12px); top: 50%; display: flex; align-items: center; gap: 8px; padding: 8px 11px; border-radius: 9px; background: var(--raised); box-shadow: inset 0 0 0 1px var(--line), 0 10px 28px -10px oklch(0 0 0 / .55); color: var(--ink); font: 500 13px/1 var(--sans); white-space: nowrap; opacity: 0; transform: translate(-4px, -50%); pointer-events: none; transition: opacity .14s, transform .14s; }
+.nv-r-tip .k { background: color-mix(in oklch, var(--ink) 12%, transparent); }
+:is(.nv-r-new, .nv-r-pin, .nv-r-now, .nv-r-ic, .nv-r-ring):is(:hover, :focus-visible, .is-tip) .nv-r-tip { opacity: 1; transform: translate(0, -50%); }
+.nv-grow { flex: 1 1 auto; min-height: 12px; }
+
+/* ------------------------------------------------------------ the frame, with the rail */
+.nv-page.nv-is-rail .sh-frame { grid-template-columns: 76px minmax(0, 1fr); }
+.nv-page .sh-frame > .sc-host:first-child { display: block; min-height: 0; height: 100%; position: relative; z-index: 3; }
+
+/* ------------------------------------------------------------ Pin a note (the app's window, unchanged) */
+.nv-pw-scrim { position: absolute; inset: 0; z-index: 60; background: oklch(.16 .03 280 / .55); }
+.nv-pw { position: absolute; z-index: 61; left: 50%; top: 92px; width: 560px; transform: translateX(-50%); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; border-radius: 18px; background: var(--raised); box-shadow: inset 0 0 0 1px var(--line), 0 30px 80px -20px oklch(0 0 0 / .6); color: var(--ink); overflow: hidden; font-family: var(--sans); }
+.nv-pw-line { display: flex; align-items: center; gap: 12px; height: 62px; padding: 0 18px; border-bottom: 1px solid var(--line); }
+.nv-pw-line .i { width: 18px; height: 18px; color: var(--ink-2); }
+.nv-pw-line span { font: 400 17px/1 var(--sans); color: var(--ink-3); }
+.nv-pw-list { display: grid; gap: 2px; padding: 8px 8px 10px; }
+.nv-pw-g { margin: 0; padding: 12px 10px 6px; font: 500 12.5px/1 var(--sans); color: var(--ink-3); }
+.nv-pw-r { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; width: 100%; min-height: 52px; padding: 6px 10px; border: 0; border-radius: 11px; background: none; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.nv-pw-r:hover, .nv-pw-r.is-lit { background: color-mix(in oklch, var(--ink) 7%, transparent); }
+.nv-pw-r .nv-arch { width: 22px; height: 26px; border-radius: 11px 11px 3px 3px; }
+.nv-pw-r .nv-arch i { width: 8px; height: 8px; margin-left: -4px; bottom: 6px; }
+.nv-pw-r .nv-arch::after { height: 7px; }
+.nv-pw-r b { display: block; font: 500 14.5px/1.3 var(--sans); }
+.nv-pw-r small { display: block; margin-top: 2px; font: 400 12.5px/1.3 var(--sans); color: var(--ink-3); }
+.nv-pw-tag { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 999px; font: 600 12.5px/1 var(--sans); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.nv-pw-tag .i { width: 14px; height: 14px; }
+.nv-pw-r.is-on .nv-pw-tag { box-shadow: none; background: color-mix(in oklch, var(--now) 20%, transparent); color: var(--now); }
+.nv-pw-foot { display: flex; align-items: center; gap: 10px; padding: 12px 14px 12px 18px; border-top: 1px solid var(--line); font: 400 12.5px/1.35 var(--sans); color: var(--ink-3); }
+.nv-pw-foot .i { width: 15px; height: 15px; flex: none; }
+.nv-pw-foot span { flex: 1; }
+
+/* ------------------------------------------------------------ the comparison board */
+.nv-board { box-sizing: border-box; min-height: 100vh; padding: 64px 72px 72px; background: oklch(.205 .035 280); color: oklch(.95 .01 280); font-family: "Hanken Grotesk", system-ui, sans-serif; }
+.nv-board * { box-sizing: border-box; }
+.nv-board-h { display: flex; align-items: baseline; gap: 18px; margin: 0 0 8px; }
+.nv-board-h h1 { margin: 0; font: 400 44px/1.1 "Newsreader", Georgia, serif; letter-spacing: -.01em; }
+.nv-board-sub { margin: 0 0 44px; max-width: 980px; font: 400 17px/1.5 "Hanken Grotesk", system-ui, sans-serif; color: oklch(.78 .03 280); }
+.nv-cols { display: grid; grid-template-columns: repeat(4, 392px); column-gap: 64px; align-items: start; }
+.nv-col > h2 { display: flex; align-items: center; gap: 10px; margin: 0; font: 600 22px/1.2 "Hanken Grotesk", system-ui, sans-serif; letter-spacing: -.005em; }
+.nv-col > p { margin: 6px 0 22px; min-height: 44px; font: 400 15px/1.45 "Hanken Grotesk", system-ui, sans-serif; color: oklch(.78 .03 280); }
+.nv-pick { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: oklch(.84 .1 75 / .2); color: oklch(.86 .1 75); font: 600 12.5px/1 "Hanken Grotesk", system-ui, sans-serif; }
+/* The panel stands in a slice of the window: the frame, and the page's rounded edge beside it. */
+.nv-win { position: relative; display: flex; height: 900px; border-radius: 18px; overflow: hidden; box-shadow: 0 0 0 1px oklch(1 0 0 / .08), 0 30px 60px -30px oklch(0 0 0 / .7); }
+.nv-win > .sc-host { display: block; height: 100%; }
+.nv-win-page { flex: 1; margin: 8px 8px 8px 0; border-radius: 24px 0 0 24px; background: linear-gradient(to bottom in oklch, oklch(.33 .07 282) 0%, oklch(.42 .09 300) 30%, oklch(.6 .12 350) 44%, oklch(.29 .06 270) 45%, oklch(.25 .05 270) 100%); box-shadow: 0 0 0 1px oklch(1 0 0 / .07); }
+.nv-what { display: grid; gap: 9px; margin: 22px 0 0; padding: 0; list-style: none; }
+.nv-what li { position: relative; display: block; padding-left: 28px; font: 400 14.5px/1.45 "Hanken Grotesk", system-ui, sans-serif; color: oklch(.86 .02 280); }
+.nv-what li::before { content: ""; position: absolute; left: 5px; top: 7px; width: 7px; height: 7px; border-radius: 50%; background: oklch(.7 .04 280); }
+.nv-what li.is-gone::before { left: 3px; top: 10px; width: 11px; height: 2px; border-radius: 1px; background: oklch(.74 .02 280); }
+.nv-what li.is-moved::before { left: 2px; top: 7px; width: 7px; height: 7px; border-radius: 1px; background: none; border-top: 2px solid oklch(.78 .08 240); border-right: 2px solid oklch(.78 .08 240); transform: rotate(45deg); }
+.nv-what li.is-new::before { left: 4px; top: 7px; width: 8px; height: 8px; border-radius: 50%; background: oklch(.84 .1 75); }
+.nv-what b { font-weight: 600; color: oklch(.96 .01 280); }
+.nv-what.nv-key { display: flex; flex-wrap: wrap; gap: 32px; margin: 48px 0 0; }
+.nv-what.nv-key li { color: oklch(.75 .03 280); font-size: 13.5px; }
+
+/* ------------------------------------------------------------ the states board */
+.nv-states { box-sizing: border-box; min-height: 100vh; padding: 56px 64px 64px; background: oklch(.205 .035 280); color: oklch(.95 .01 280); font-family: "Hanken Grotesk", system-ui, sans-serif; }
+.nv-states h1 { margin: 0 0 6px; font: 600 26px/1.2 "Hanken Grotesk", system-ui, sans-serif; }
+.nv-states > p { margin: 0 0 32px; font: 400 15.5px/1.45 "Hanken Grotesk", system-ui, sans-serif; color: oklch(.78 .03 280); }
+.nv-row { display: flex; gap: 40px; align-items: start; margin-bottom: 72px; }
+.nv-st { width: 256px; flex: none; }
+.nv-st.is-rail { width: 300px; }
+.nv-st > h3 { margin: 0; font: 600 15.5px/1.3 "Hanken Grotesk", system-ui, sans-serif; }
+.nv-st > p { margin: 4px 0 14px; min-height: 40px; font: 400 13.5px/1.45 "Hanken Grotesk", system-ui, sans-serif; color: oklch(.76 .03 280); }
+.nv-st-win { position: relative; height: 900px; border-radius: 14px; box-shadow: 0 0 0 1px oklch(1 0 0 / .08); background: oklch(.25 .05 270); }
+.nv-st-win > .sc-host { display: block; height: 100%; }
+.nv-st:not(.is-rail) .nv-st-win { overflow: hidden; }
+.nv-st.is-rail .nv-st-win { width: 76px; }
+.nv-st.is-rail .nv-st-win .nv { border-radius: 14px; }

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Every state of the page</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="call-tokens.css">
+<link rel="stylesheet" href="call.css">
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="after.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="icons.js"></script>
+<script src="after.js"></script>
+<script src="cove.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="cv sg light">
+<header class="sg-head"><h1>Every state of the page</h1><p>One page after every call. What it says, and its buttons, follow what happened.</p></header>
+<div class="sg-grid">
+<sc-for list="{{wide}}" as="w" hint-placeholder-count="10">
+<figure class="sg-f">
+<div class="sg-th"><div class="fl-in"><dc-import name="Over" state="{{w.state}}" hint-size="1440px,900px"></dc-import></div></div>
+<figcaption><b>{{w.t}}</b><span>{{w.p}}</span></figcaption>
+</figure>
+</sc-for>
+</div>
+<h2 class="sg-h2">On a phone</h2>
+<div class="sg-phones">
+<sc-for list="{{phones}}" as="w" hint-placeholder-count="4">
+<figure class="sg-f is-phone">
+<div class="sg-th is-phone"><div class="fl-in is-phone"><dc-import name="Over" state="{{w.state}}" phone="{{true}}" hint-size="390px,844px"></dc-import></div></div>
+<figcaption><b>{{w.t}}</b></figcaption>
+</figure>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1760,"height":2610}}'>
+/* Every state of the over screen, side by side, and the phone's. */
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      wide: [
+        { state: 'endWriting', t: 'You ended it', p: 'The notes are being written, and who gets them.' },
+        { state: 'endReady', t: 'Written, while you’re here', p: 'Their first lines, what was decided and the follow-ups. Read the notes.' },
+        { state: 'endSlow', t: 'Taking a while', p: 'They’ll be in Notes when they’re ready, so there’s no need to wait.' },
+        { state: 'endedBy', t: 'Someone else ended it', p: 'Who did, and that everyone invited gets the notes.' },
+        { state: 'left', t: 'You left, it goes on', p: 'Who’s still in it, whoever’s talking ringed, and how long it’s been. Rejoin.' },
+        { state: 'leftHost', t: 'You left it with Kofi', p: 'Kofi is hosting until you’re back. Rejoin takes it back.' },
+        { state: 'leftEnded', t: 'You left, then it ended', p: 'The page turns to the ended page while you’re on it.' },
+        { state: 'noNotes', t: 'No notes', p: 'It has ended, and Go to Home is the filled button.' },
+        { state: 'guestLeft', t: 'A guest who left', p: 'Rejoin, and nothing about Home or notes.' },
+        { state: 'guestEnded', t: 'A guest, once it has ended', p: 'Priya can share the notes. Nothing to press.' }
+      ],
+      phones: [
+        { state: 'endWriting', t: 'You ended it' },
+        { state: 'endReady', t: 'Written' },
+        { state: 'left', t: 'You left, it goes on' },
+        { state: 'noNotes', t: 'No notes' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

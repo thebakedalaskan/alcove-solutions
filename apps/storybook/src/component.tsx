@@ -19,10 +19,13 @@ const stage: Decorator = (Story) => <div className="stage sbc-stage"><Story /></
 /** Spread into a meta (or a story) that only exists at night: it stands on the stage, edge to edge. */
 export const onStage = { decorators: [stage], parameters: { layout: 'fullscreen' } };
 
-/** A popover's surface without the popover, for what's only ever shown inside one. `ws` for the workspace's. */
-export function PopSurface({ ws = false, width, children }: { ws?: boolean | undefined; width?: number | undefined; children: ReactNode }) {
+/**
+ * A popover's surface without the popover, for what's only ever shown inside one. `ws` for the workspace's; `className`
+ * for a popover's own look (`ag-pop`, an agent's).
+ */
+export function PopSurface({ ws = false, width, className, children }: { ws?: boolean | undefined; width?: number | undefined; className?: string | undefined; children: ReactNode }) {
   const style: CSSProperties | undefined = width === undefined ? undefined : { width };
-  return <div className={ws ? 'ws-pop sbc-pop' : 'ac-pop sbc-pop'} style={style}>{children}</div>;
+  return <div className={[ws ? 'ws-pop sbc-pop' : 'ac-pop sbc-pop', className].filter(Boolean).join(' ')} style={style}>{children}</div>;
 }
 
 /** A modal's frame without the modal, standing in the page: for the call modal's pieces, which only show inside one. */

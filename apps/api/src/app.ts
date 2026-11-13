@@ -14,7 +14,7 @@ import { registerAgentPublicRoutes, registerAgentRoutes } from './features/agent
 import { registerAccountSessionRoutes } from './features/account/session-routes';
 import { registerAccountRoutes } from './features/account/routes';
 import { registerMeetingRoutes } from './features/meetings/routes';
-import { registerDocumentLibraryRoute } from './features/workspaces/library-routes';
+import { registerLibraryRoutes } from './features/workspaces/library-routes';
 import { registerCallOwnerRoutes } from './features/calls/owner-routes';
 import { registerRecordingRoutes } from './features/recordings/routes';
 import { registerNoteRoutes } from './features/notes/routes';
@@ -40,7 +40,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   registerAgentRoutes(app, runtime);
   registerAccountRoutes(app, runtime);
   registerMeetingRoutes(app, runtime);
-  registerDocumentLibraryRoute(app, runtime);
+  registerLibraryRoutes(app, runtime);
   registerCallOwnerRoutes(app, runtime);
   registerRecordingRoutes(app, runtime);
   registerNoteRoutes(app, runtime);

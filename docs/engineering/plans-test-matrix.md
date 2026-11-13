@@ -15,15 +15,16 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | --- | --- | --- | --- | --- |
 | **A: signing up** |  |  |  |  |
 | A1 | A new account is on Free, with all its notes, $0, and the plans to pick first | billing/plans › a new account starts on Free…; flows › sign-in | 1 | Passes |
-| A1′ | The tier screen after the first sign-in | — | 4 | Not built |
+| A1′ | The plans are shown until the app says they were: `choose` is true for a new account and one from before plans, reading the plan or the session doesn't change it, `chose()` makes it false for that account alone, and saying it again changes nothing. The tier screen is the app's | billing/plans › a new account starts on Free…; carries over an account within Free’s limits…, and shows the plans once | 4 | Passes (server); screen built (`features/plans/PlanChoice.tsx`, Storybook › Journeys › 16.20) |
 | A2 | New account picks Pro with $0: refused, deposit, then buy: Pro's 3,000 minutes, 100 GiB and the whole allowance after spending on Free | billing/plans › Pro › a new account buys Pro once it has the money… | 2 | Passes |
 | A3 | New account picks Team: deposit, make a team, buy licenses, the admin takes one on a visit (not by reading the session or plan) | billing/teams › A3: a new account picks Team… | 3 | Passes |
 | A4 | An account from before plans: Free from now, credits gone, the plans shown once, 15 days' grace if over Free's storage | billing/plans › accounts from before plans (3 tests) | 1 | Passes |
-| A5 | A sign-in from a call link skips the tier screen, which shows on the next load | — | 4 | Not built |
+| A5 | A sign-in from a call link skips the tier screen, which shows on the next load | — (the app's: only Home opens on the plans, `features/plans/choice.ts`, and `chose()` is called once they've been on screen; the server needs nothing more) | 4 | Built (app); no browser tests |
 | A6 | Delete the account and sign in again: a fresh Free account | flows › deleting an account | 1 | Passes |
 | **B: money** |  |  |  |  |
 | B1 | Every 1Click outcome adds dollars at face value: exact, over, within the band, below it, refunded, part refunded, doubtful, late | billing/topups (53 tests) | 1 | Passes |
 | B2 | A deposit the previous release settled during the deploy is added as dollars, once | billing/plans › money | 1 | Passes |
+| B2′ | A deposit paid for before plans (its credits ignored now) is added as dollars, once | billing/plans › money › adds as dollars a top-up paid for before plans… | 1 | Passes |
 | B3 | Cancelling, the 15 waiting, 30 a day and 10 a minute, races between instances | billing/topups | 1 | Passes |
 | B4 | Buying with too little balance is refused, nothing changes | billing/plans › Pro › refuses a buy the balance is short for… | 2 | Passes |
 | B5 | Buying at a price that changed is refused, nothing charged | billing/plans › Pro › refuses a buy at a price that has changed… | 2 | Passes |
@@ -33,6 +34,9 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | C2 | Free makes as many shared workspaces as it likes, and every one works | billing/plans › makes as many shared workspaces…; workspaces (limits) for `workspaces.max_made` | 1 | Passes |
 | C3 | A file over the plan's size is refused; storage fills and refuses, counted against whoever made the workspace | billing/plans › takes files…; workspaces/media (limits); by hand | 1 | Passes |
 | C4 | Call recordings count; full storage stops notes for everyone (reason storage), and notes need 1 MiB to come back | billing/plans › counts call recordings… | 1 | Passes |
+| C5 | A payer who leaves a workspace, or is taken out, stops paying for it; it counts against the admin in charge now | billing/plans › stops counting a workspace against whoever leaves it… | 1 | Passes |
+| C6 | A workspace none of whose admins has an account counts against nobody and takes no files, after upkeep too | billing/plans › takes no files in a workspace none of whose admins… | 1 | Passes |
+| C7 | A guest asks or catches up 6 times a minute; someone signed in, paying for their own, 20 | calls/catchup › lets a guest, whose questions the organizer pays for… | 1 | Passes |
 | **D: metering** |  |  |  |  |
 | D1 | Each request charges the right payer: organizer (transcript, captions, live notes, notes), asker (ask, catch-up, ask a note, ask all), organizer for a guest, workspace's maker for document AI | billing/meter › who pays; calls/liveNotes; calls/callWorkspace; recordings/transcripts; flows | 1 | Passes |
 | D2 | A reply without usage is reckoned and charged | billing/meter › charges what NEAR AI says… | 1 | Passes |
@@ -124,31 +128,20 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | K12 | Licenses refused once the money arrived, the money staying in the balance, with why in words: a license's price changed, one purchase buys fewer, the team was deleted (no longer an admin), less arrived, or the balance it counted on was spent | billing/topups › top-ups that buy › says why it didn’t buy licenses when their price…; … when less arrived than they cost… | frontend | Passes |
 | K13 | Licenses bought once however many checks race, and once by a payment settled after its top-up was cancelled or expired; the team's row is locked before the plan's: while it's held, the payment waits without the plan (a purchase of notes goes through) and a buy of licenses from the balance waits too, then both are paid, nothing twice and no error | billing/topups › top-ups that buy › buys licenses once…; … takes the team’s lock before the plan’s…; … still buys licenses, once… | frontend | Passes |
 
-## Workspaces (changed 12 Nov 2026)
+## Workspaces (changed 12 Nov 2026, with main's homes)
 
-A workspace is made only when someone presses New workspace, and a call has one workspace or none
-([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)). The suites below were being
-rewritten for it when this was written, so each row is In progress until the suite has run green on the branch.
+Every call has a home again, made when it's needed, and the call opens the workspace it uses to everyone in it
+([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)). What plans add: the organizer
+pays for a home whoever's action made it, and a call opens a workspace to everyone in it only while its organizer can edit
+there and pays for it. Migration `0030_workspace_payers.sql`'s backfill and upkeep's `settlePayers` give a home the payer
+`makeHome` does, its first admin, the organizer; no test reaches the backfill, since tests start from an empty database.
 
 | ID | Scenario | Where | Phase | Status |
 | --- | --- | --- | --- | --- |
-| W1 | A call with no workspace has none: opening Workspace, however many at once and whoever does, makes nothing | calls/callWorkspace › which workspace a call uses › is none until its organizer makes or picks one… | 1 | Passes |
-| W2 | The organizer's New workspace in a call makes one for it: named after the call, its folder at the top, everyone invited in it, a guest nowhere | calls/callFolders › a call's workspace › is made by the organizer pressing New workspace… | 1 | Passes |
-| W3 | Scheduling with `newWorkspace` makes one for the call, or for every call of a series, with everyone invited in it | calls/callWorkspace › … is made as a call is scheduled when its organizer asks… | 1 | Passes |
-| W4 | A picked existing workspace gets a folder for each call and lets nobody in | calls/callFolders › … is the workspace chosen when it was scheduled…; calls/callWorkspace › … lets nobody in when the organizer picks one that's there… | 1 | Passes |
-| W5 | Only the organizer picks or makes it; a stand-in, someone not yet in the call, and a read-only role are refused | calls/callWorkspace › … refuses whoever isn't in the call yet, and the organizer's last connection, and a stand-in… | 1 | Passes |
-| W6 | A pick in a call carries to the series' later calls, never earlier ones | calls/callWorkspace › … comes with the meeting, and the organizer's pick in a call carries to the calls after it… | 1 | Passes |
-| W7 | Switching lets the old folder go: removed if empty, a plain ended folder if not; the notes go where the call is | calls/callFolders › … moves with the organizer's pick… | 1 | Passes |
-| W8 | A new board, or rooms' boards, with no workspace are refused (`409`), saved boards still open, and the board is made once the organizer makes one | calls/boards-in-calls › … is nowhere in a call with none…; … still opens: a call and a meeting from before any of this… | 1 | Passes |
-| W9 | A workspace the organizer can't edit in any more takes no folder and no new board | calls/boards-in-calls › … is refused in a call's workspace the organizer can't edit in any more…; calls/callFolders › … takes no folder when it has no room for one… | 1 | Passes |
-| W10 | A call with notes and no workspace ends unfiled (`filed` false), and nothing makes a workspace until the organizer says | calls/callFolders › filing a call's notes › is asked of the organizer… | 1 | Passes |
-| W11 | `meetings.file` puts the folder and its note at the top of a workspace they can edit in, or a new one, and lets nobody in to a picked one | calls/callFolders › filing a call's notes › puts them at the top of a workspace…; … is the organizer's alone… | 1 | Passes |
-| W12 | A call whose workspace was deleted has none, and the notes can be filed again | calls/callWorkspace › … survives its workspace being deleted…; calls/callFolders › … takes a call whose workspace was deleted as one with none | 1 | Passes |
-| W13 | Who's in a workspace made for a call follows its invite; one picked for it doesn't | calls/callFolders › who's in a workspace made for a call | 1 | Passes |
-| W14 | An account makes workspaces up to `workspaces.max_made`, however each was made | workspaces/workspaces › … lets an account make as many workspaces as workspaces.max_made says… | 1 | Passes |
-| W15 | A call from before this (`viewing`, `made`, a home made by the previous release) reads: everyone has the meeting's workspace | calls/callWorkspace › what the previous release stored › … still opens a call that was viewing another workspace than its home…; calls/callFolders › what the previous release stored | 1 | Passes |
-| W16 | Nothing readable in a workspace made for a call (its name, an address) | calls/callFolders › what's kept of a workspace made for a call | 1 | Passes |
-| W17 | Delete workspace from the Drive row, the workspace's menu and the call's frame menu, by an admin alone | workspaces/workspaces › … is deleted by an admin alone…; the three menus by hand | 1 | Passes |
+| W1 | A guest in a call opens the organizer's own home, and what they upload there counts against the organizer's storage | calls/callWorkspace › everyone in the call › opens the organizer’s own home to a guest… | 1 | Passes |
+| W2 | A workspace someone else pays for, made the call's by an organizer who can edit there, doesn't open to a guest in the call: they can't open it, upload to it or ask AI in it, and `everyone` is false, in the Switch question too | calls/callWorkspace › everyone in the call › opens only while its organizer pays for it… | 1 | Passes |
+| W3 | An account makes workspaces up to `workspaces.max_made`; leaving one doesn't make room, deleting one does. A call's home doesn't count (`makeHome` notes its author with `made_workspace` false), which no test checks | workspaces/workspaces › … lets an account make as many workspaces as workspaces.max_made says… | 1 | Passes |
+| W4 | A workspace is deleted by an admin alone (`DELETE /v1/workspaces/:id`); the app has no button for it | workspaces/workspaces › … is deleted by an admin alone… | 1 | Passes |
 
 ## Checked by hand
 
@@ -160,7 +153,7 @@ drive it end to end.
 | --- | --- | --- |
 | Signing up | App › Settings › Plan, light and dark, phone | Free, renews in 30 days, about 5 h of notes, under 1 MB of 10 GB, $0 |
 | Storage full (`plan.free.storage_bytes` 1 KiB) | App › a workspace | An upload is refused: "Your storage is full. Delete something, or move to a plan with more room." |
-| The side panel | App and Storybook › Pages › The side panel | On Free, "About 5 h of notes left" over its meter, then Free plan · See plans; on Pro, Pro's row with its sun and until when |
+| The side panel | App and Storybook › Pages › The side panel | One plan row where the minutes left were: on Free, "About 5 h of notes left" over its meter; on Pro, Pro's row with its sun and until when (built on the plans branch's panel; since the merge with main it's on the calmer panel, and that row hasn't been checked by hand again) |
 | Notes stopped | Storybook › Calls › Notes, wide and phone | The organizer's bar over Notes' tabs with Get Pro and Add 10 hours; everyone else's with nothing to buy; Turn notes on when the plan has notes again without a purchase |
 | About 5 minutes left, and the call's end | Storybook › Calls | The organizer's banner; everyone's "This call ends at…" |
 | The yearly price's and more notes' limits | `pnpm --filter @alcove/server limits list` and `limits set`, on a local database | Listed with their defaults and bounds; `'$16'`, `12`, `600`, `'$15'` and `5` set; 101 packs and 0 minutes a pack refused, out of bounds. Dollars and time, as `list` shows them and `set` takes them back, and a unit of the wrong kind or money past six places refused, are run by workspaces/media › storage limits › is set from the command line… |

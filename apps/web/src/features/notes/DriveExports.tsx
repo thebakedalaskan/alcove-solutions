@@ -1,5 +1,5 @@
 import { errorMessage, type DriveCallExports, type DriveExportInput } from '@alcove/api';
-import { Button, DriveExportDisclosure, DriveExportFormats, DriveExportHistory, DriveFolderButton, DriveFolderLocation, Icon, Spinner, Switch, useToast } from '@alcove/ui';
+import { Button, DriveExportDisclosure, DriveExportFormats, DriveExportHistory, DriveFolderButton, DriveFolderLocation, Icon, IconButton, Modal, Spinner, Switch, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
@@ -51,32 +51,42 @@ export function NoteDriveExports({ noteId, recordingAllowed, recordingKept }: { 
   };
   const canExport = !!data?.effective.destination && availableFormats.length > 0;
   const exportCall = () => void save({ enabled: true }).catch(fail);
-  const exportButton = <Button variant="secondary" size="sm" icon="cloudUpload" className="nd-drive-go" loading={change.isPending} disabled={!canExport} onClick={exportCall}>Export to Google Drive</Button>;
-  return <section className="nd-drive" aria-label="Google Drive exports for this call">
-    <h2><Icon name="cloudUpload" size={18} />Google Drive{change.isPending && <span className="nd-drive-saving" role="status"><Spinner />Saving…</span>}</h2>
-    {read.isPending || connection.isPending ? <p className="nd-drive-wait"><Spinner />Loading exports…</p> : read.isError || connection.isError ? <div className="nd-drive-refused"><p>{errorMessage(read.error ?? connection.error)}</p><Button size="sm" icon="retry" onClick={() => { void read.refetch(); void connection.refetch(); }}>Try again</Button></div> : data && <>
-      {!connected ? <p className="nd-drive-info">{connection.data?.connection.status === 'reconnect' ? 'Reconnect Google Drive to resume exports.' : 'Connect Google Drive to send completed call files to a folder you choose.'} <Link to="/settings" hash="google-drive">{connection.data?.connection.status === 'reconnect' ? 'Reconnect' : 'Set up exports'}<Icon name="right" size={13} /></Link></p> : <>
-        <div className="nd-drive-line"><span>Use custom settings</span><Switch label="Use custom export settings for this call" checked={data.override !== null} disabled={change.isPending} onChange={(on) => { if (on) void save({}).catch(fail); else change.mutate(null, { onError: fail }); }} /></div>
-        {data.override === null ? <div className="nd-drive-default">
+  const exportButton = <Button variant="secondary" size="sm" icon="cloudUpload" className="cd-drive-go" loading={change.isPending} disabled={!canExport} onClick={exportCall}>Export to Google Drive</Button>;
+  return <section className="cd-drive" aria-label="Google Drive exports for this call">
+    <h2><Icon name="cloudUpload" size={18} />Google Drive{change.isPending && <span className="cd-drive-saving" role="status"><Spinner />Saving…</span>}</h2>
+    {read.isPending || connection.isPending ? <p className="cd-drive-wait"><Spinner />Loading exports…</p> : read.isError || connection.isError ? <div className="cd-drive-refused"><p>{errorMessage(read.error ?? connection.error)}</p><Button size="sm" icon="retry" onClick={() => { void read.refetch(); void connection.refetch(); }}>Try again</Button></div> : data && <>
+      {!connected ? <p className="cd-drive-info">{connection.data?.connection.status === 'reconnect' ? 'Reconnect Google Drive to resume exports.' : 'Connect Google Drive to send completed call files to a folder you choose.'} <Link to="/settings" hash="google-drive">{connection.data?.connection.status === 'reconnect' ? 'Reconnect' : 'Set up exports'}<Icon name="right" size={13} /></Link></p> : <>
+        <div className="cd-drive-line"><span>Use custom settings</span><Switch label="Use custom export settings for this call" checked={data.override !== null} disabled={change.isPending} onChange={(on) => { if (on) void save({}).catch(fail); else change.mutate(null, { onError: fail }); }} /></div>
+        {data.override === null ? <div className="cd-drive-default">
           <p>{followsDefaults(data, availableFormats.length)}</p>
           {data.effective.destination && <DriveFolderLocation folder={data.effective.destination} />}
           {data.automatic !== 'on' && canExport && exportButton}
           <Link to="/settings" hash="google-drive">Change defaults<Icon name="right" size={13} /></Link>
-        </div> : <div className="nd-drive-custom">
+        </div> : <div className="cd-drive-custom">
           <DriveFolderButton folder={data.effective.destination} aria-label="Choose Google Drive folder for this call" disabled={change.isPending} onClick={() => setPicking(true)} />
           <DriveExportFormats selected={data.effective.formats} unavailable={recordingReason ? { 'recording-zip': recordingReason } : undefined} disabled={change.isPending} onChange={(formats) => void save({ formats }).catch(fail)} />
           {/* Exporting is something to do, not a switch: once it's on, the copies follow the notes until it's stopped. */}
           {data.override.enabled && canExport
-            ? <div className="nd-drive-line"><span>Goes to this folder. The copies follow the notes when they change.</span><Button variant="quiet" size="sm" disabled={change.isPending} onClick={() => void save({ enabled: false }).catch(fail)}>Stop exporting</Button></div>
+            ? <div className="cd-drive-line"><span>Goes to this folder. The copies follow the notes when they change.</span><Button variant="quiet" size="sm" disabled={change.isPending} onClick={() => void save({ enabled: false }).catch(fail)}>Stop exporting</Button></div>
             : exportButton}
-          {!canExport && <p className="nd-drive-info">Choose a folder and at least one file type to export this call.</p>}
+          {!canExport && <p className="cd-drive-info">Choose a folder and at least one file type to export this call.</p>}
         </div>}
       </>}
-      {data.override === null && recordingReason && <p className="nd-drive-info">{recordingReason}</p>}
-      {data.jobs.some((job) => job.status === 'failed') && <p className="nd-drive-info">Existing copies stay in their original folder. Choosing another destination and retrying a failed export creates a new copy there.</p>}
+      {data.override === null && recordingReason && <p className="cd-drive-info">{recordingReason}</p>}
+      {data.jobs.some((job) => job.status === 'failed') && <p className="cd-drive-info">Existing copies stay in their original folder. Choosing another destination and retrying a failed export creates a new copy there.</p>}
       <DriveExportHistory jobs={data.jobs} when={wentAt} empty="Nothing exported from this call" onRetry={(id) => retry.mutate(id, { onError: fail })} retrying={retry.isPending ? retry.variables : undefined} />
-      <details className="nd-drive-about"><summary>About these copies<Icon name="down" size={13} /></summary><DriveExportDisclosure /></details>
+      <details className="cd-drive-about"><summary>About these copies<Icon name="down" size={13} /></summary><DriveExportDisclosure /></details>
     </>}
     {picking && data && <DriveFolderPicker current={data.effective.destination} allowGoogle={false} onClose={() => setPicking(false)} onPick={(folder) => save({ destinationId: folder.id })} />}
   </section>;
+}
+
+/** The call's own Google Drive exports, from its More: one window, closed by Escape or ×. */
+export function DriveExportsModal({ open, onClose, noteId, recordingAllowed, recordingKept }: { open: boolean; onClose: () => void; noteId: string; recordingAllowed: boolean; recordingKept: boolean }) {
+  return (
+    <Modal open={open} onOpenChange={(o) => { if (!o) onClose(); }} label="Google Drive exports for this call" className="cd-drive-modal">
+      <div className="cd-drive-x"><IconButton icon="x" label="Close" onClick={onClose} /></div>
+      {open && <NoteDriveExports noteId={noteId} recordingAllowed={recordingAllowed} recordingKept={recordingKept} />}
+    </Modal>
+  );
 }

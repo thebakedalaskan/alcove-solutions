@@ -192,7 +192,7 @@ export const SHOWN: Record<'light' | 'dark' | 'pricing' | 'walkthrough', Screen>
   pricing: { title: 'Pricing page', kind: 'doc', accent: '#C0587A', pages: [{ heading: 'Pricing', lines: ['Start free', 'Talk to us', 'Buy minutes: three filled buttons, where one would do'] }] },
   walkthrough: {
     title: 'Sidebar walkthrough', accent: '#215DB3',
-    pages: [{ heading: 'Walking through the sidebar', lines: ['Start a call opens the call’s lobby', 'Drive holds every workspace', 'Record works without a connection'] }]
+    pages: [{ heading: 'Walking through the sidebar', lines: ['Start a call opens the call’s lobby', 'Drive holds every call’s home', 'Record works without a connection'] }]
   }
 };
 

@@ -8,14 +8,17 @@
  * night: .stage and .ac-stage take the dark values, and while a .stage is on screen so does the whole document,
  * because its menus, sheets and tooltips are portalled out of it. Record is night too (.rec), and takes the document
  * with it the same way, with search and the phone's bars, which sit outside the page. Components are styled in
- * styles/kit.css with the `ac-` prefix; the frame around every screen (side panel, phone bars, palette) in
- * styles/shell.css; the evening behind each page in styles/horizon.css; the cove the welcome page looks out of, and signing in
- * sailing out of it, in styles/cove.css (`cv-`); Home in styles/home.css; the Team page in styles/team.css (`tp-`); Notes in
- * styles/notes.css (`nt-`); a note and a series in styles/note.css (`nd-`); Settings in styles/settings.css (`set-`); Plans in
- * styles/plans.css (`pl-`); Record in styles/record.css (`rec-`); starting and scheduling a call in styles/flow.css (`cf-`);
+ * styles/kit.css with the `ac-` prefix; the frame around every screen (side panel, phone bars, Search or ask) in
+ * styles/shell.css; your menu, which your face at the top right opens, in styles/you.css (`ym-`); the palette Search or
+ * ask opens in styles/palette.css (`pal-`); the evening behind each page in
+ * styles/horizon.css; the cove the welcome page looks out of, and signing in
+ * sailing out of it, in styles/cove.css (`cv-`); Home in styles/home.css; the Team page in styles/team.css (`tp-`);
+ * Calls in styles/calls.css (`cs-`); a call's page in styles/note.css (`cd-`); Settings in styles/settings.css (`set-`); Plans
+ * in styles/plans.css (`pl-`); Record in styles/record.css (`rec-`); starting and scheduling a call in styles/flow.css (`cf-`);
  * the organizer's lobby, ringing and the page for picking a time in styles/ringing.css (`rg-`); the workspace, in a call and
  * in the app, in styles/workspace.css (`wt-`, `wd-`, `wm-`, `wv-`, `wp-`, `wh-`, `wl-`); the board in styles/board.css; the
- * welcome page in styles/welcome.css and its scenes' welcome-*.css (`lp-`); checkout, one window over any page, in styles/checkout.css (`ck-`), and the doors into it in
+ * welcome page in styles/welcome.css and its scenes' welcome-*.css (`lp-`); the page a call leaves you on in
+ * styles/call-over.css (`co-`); checkout, one window over any page, in styles/checkout.css (`ck-`), and the doors into it in
  * styles/plan-doors.css (`pd-`); the other screens in styles/{app,call}.css.
  */
 @import "./fonts.css";
@@ -27,6 +30,8 @@
 @import "./styles/welcome-night.css";
 @import "./styles/welcome-plans.css";
 @import "./styles/shell.css";
+@import "./styles/you.css";
+@import "./styles/palette.css";
 @import "./styles/app.css";
 @import "./styles/horizon.css";
 @import "./styles/cove.css";
@@ -35,10 +40,11 @@
 @import "./styles/team-plan.css";
 @import "./styles/record.css";
 @import "./styles/call.css";
+@import "./styles/call-over.css";
 @import "./styles/call-timer.css";
 @import "./styles/call-chat.css";
 @import "./styles/call-notes.css";
-@import "./styles/notes.css";
+@import "./styles/calls.css";
 @import "./styles/drive.css";
 @import "./styles/library.css";
 @import "./styles/capture.css";
@@ -167,9 +173,21 @@
   --duration-3: 420ms;
   --duration-4: 900ms;
   --duration-5: 2400ms;
+  /*
+   * A page taking another's place (a call's own page, and where it goes from there) moves on a slower clock of its own:
+   * what goes fades (page-1), what it takes the place of eases back and its smaller parts come in (page-2), it fades, rises
+   * or slides in (page-3), and the scene behind it settles (page-4).
+   */
+  --duration-page-1: 340ms;
+  --duration-page-2: 500ms;
+  --duration-page-3: 600ms;
+  --duration-page-4: 1100ms;
   --ease-out: cubic-bezier(0.22, 0.8, 0.24, 1);
   --ease-in-out: cubic-bezier(0.45, 0, 0.2, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  /* `expo` for long settles and glides; `soft` for a whole page fading in over another, gentler than ease-out at first. */
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-soft: cubic-bezier(0, 0, 0.58, 1);
 
   --font-display: "Newsreader", Georgia, "Times New Roman", serif;
   --font-sans: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -311,7 +329,7 @@
   --radius-xs: var(--radius-xs); --radius-sm: var(--radius-sm); --radius-md: var(--radius-md); --radius-lg: var(--radius-lg); --radius-xl: var(--radius-xl);
   --radius-arch: var(--radius-arch); --radius-pill: var(--radius-pill);
   --font-display: var(--font-display); --font-sans: var(--font-sans); --font-mono: var(--font-mono);
-  --ease-out: var(--ease-out); --ease-in-out: var(--ease-in-out); --ease-in: var(--ease-in);
+  --ease-out: var(--ease-out); --ease-in-out: var(--ease-in-out); --ease-in: var(--ease-in); --ease-expo: var(--ease-expo); --ease-soft: var(--ease-soft);
 }
 
 *, *::before, *::after { box-sizing: border-box; }

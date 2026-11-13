@@ -11,7 +11,7 @@ behind people's backs, and notes only the people in the call can read.
 3. **How it works.** [Data and storage](engineering/data-and-storage.md),
    [Calls and recordings](engineering/calls-and-recordings.md), [Notes and inference](engineering/notes-and-inference.md),
    [Plans and usage](engineering/plans-and-usage.md), [Logging and errors](engineering/logging-and-errors.md).
-   [Agents and MCP](engineering/agents-and-mcp.md) covers connecting clients, permissions and safe retries.
+   [Agents and MCP](engineering/agents-and-mcp.md) covers connecting clients, permissions, changing and renewing a connection, what agents did and safe retries.
    [Google Drive exports](engineering/drive-exports.md) covers readable copies, folder consent and durable upload jobs.
    [Feature flags](engineering/feature-flags.md) covers building behind a flag, switching it for people, releasing and retiring it.
 4. **Shipping.** [Deployment and acceptance](engineering/deployment-and-acceptance.md) and [infra/README.md](../infra/README.md).
@@ -35,6 +35,6 @@ Source placement, composition entry points and the enforced rules for new files 
 | `C01` | Confidential compute (Phala TDX or a GCP confidential VM) | Runs the API as the trusted plaintext endpoint | Required before production. The API is ready (`TEE=dstack`: keys from dstack's key service, `/v1/attestation`); not deployed |
 | `I01` | NEAR AI Cloud | The live transcript (Whisper), writing notes and answering questions (the organizer can choose another model, some unencrypted) | Working when `NEAR_AI_API_KEY` is set. Each model's evidence is checked first (Intel TDX, a published dstack OS image measured exactly, NVIDIA confidential GPUs), then everything goes by Oblivious HTTP sealed to its attested key ([Verified private inference](engineering/notes-and-inference.md#verified-private-inference)). The model code inside isn't pinned yet |
 | — | Google | Sign-in (OpenID Connect) and Google Calendar | Working; Microsoft and SSO are still demo stand-ins |
-| `P01` | NEAR Intents 1Click | Adding money to the balance with USDC and USDT | Working when `TREASURY_INTENTS_ACCOUNT` is set, and on in production ([Plans and usage](engineering/plans-and-usage.md)) |
+| `P01` | NEAR Intents 1Click | Adding money to the balance with USDC | Working when `TREASURY_INTENTS_ACCOUNT` is set, and on in production ([Plans and usage](engineering/plans-and-usage.md)) |
 | `D01` | Postgres | Ciphertext rows | Working (local); Cloud SQL prepared |
 | `O01` | S3-compatible store | Ciphertext objects | Working (RustFS); R2 prepared |

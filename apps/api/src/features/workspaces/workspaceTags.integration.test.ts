@@ -316,6 +316,36 @@ describe('a tag', () => {
     g.close();
   });
 
+  it('reaches a guest in a call by their seat, in the workspace the call opens to everyone in it', async () => {
+    const org = await account();
+    const id = await workspace(org, 'Ours');
+    const doc = await make(org, id, 'Doc');
+    const secret = await make(org, id, 'Restricted');
+    await org.api.workspaces.share.restrict(id, secret, true);
+    const { code: c } = await org.api.calls.startNow({ notes: 'off' });
+    const host = await org.api.calls.join(c, { mic: false, cam: false });
+    await until(() => host.crypto.getSnapshot().status === 'in', 'the host in the call’s group');
+    const b = h.browser();
+    const guest = await b.api.calls.join(c, { mic: false, cam: false, name: 'Sam Guest' });
+    const settle = async (pred: (s: CallState) => boolean) => { for (let i = 0; i < 200 && !pred(host.getSnapshot()); i++) { await host.refresh(); await rest(30); } return host.getSnapshot(); };
+    await settle((s) => s.waiting.some((x) => x.id === guest.ticket.identity));
+    await host.admit(guest.ticket.identity);
+    const seat = (await settle((s) => s.participants.some((p) => p.id === guest.ticket.identity))).participants.find((p) => p.id === guest.ticket.identity)?.seat ?? '';
+    await host.setWorkspace(id);
+    const pass = { pass: host.ticket.pass };
+    const g = b.api.workspaces.live(id, { pass: guest.ticket.pass });
+    await opened(g, 'the guest’s stream');
+    // Nothing given to their seat: the call opens the document to them, so they're told, as anyone who can open it is.
+    await org.api.workspaces.mention(id, doc, { to: { seat }, block: 'l1' }, pass);
+    await until(() => told(g).length === 1, 'the guest to hear');
+    expect(told(g)[0]).toMatchObject({ document: doc, block: 'l1' });
+    // What the call doesn't open to them, they aren't told of.
+    await org.api.workspaces.mention(id, secret, { to: { seat }, block: 'l1' }, pass);
+    expect(await count('SELECT count(*)::int AS n FROM workspace_mentions WHERE document_id = $1', [secret])).toBe(0);
+    g.close();
+    await host.leave();
+  });
+
   it('reaches someone signed in, by their seat, through what their address gives them, and after the call', async () => {
     const org = await account();
     const theo = await account();
@@ -379,7 +409,7 @@ describe('a tag in a photo’s caption', () => {
   }
   /** What the server reads the document as saying, as search and the notes read it. */
   async function said(who: Account, id: string, doc: string) {
-    const w = await workspaceFor(h.deps, { email: who.email, principals: [blindIndex(masterKey(h.deps), 'email', who.email)] }, id);
+    const w = await workspaceFor(h.deps, { email: who.email, principals: [blindIndex(masterKey(h.deps), 'email', who.email)], calls: [] }, id);
     const read = new Y.Doc();
     Y.applyUpdate(read, await readDocument(w, doc, 'state', {}));
     return { blocks: documentText(read, 'document').blocks, gallery: read.getXmlFragment('content').toArray().find((el): el is Y.XmlElement => el instanceof Y.XmlElement && el.getAttribute('id') === 'ga') };

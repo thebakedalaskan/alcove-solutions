@@ -26,7 +26,7 @@
 <sc-if value="{{isPage}}" hint-placeholder-val="{{false}}"><dc-import name="Visitors" moment="home" mode="{{mode}}" hint-size="100%,100%"></dc-import></sc-if>
 <div class="sh-bar">
 <span class="brand"><svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="hma"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><linearGradient id="hms" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient></defs><g clip-path="url(#hma)"><rect width="22" height="26" fill="url(#hms)"></rect><circle cx="11" cy="19.2" r="4.4" fill="#FFD58A"></circle><rect y="19.2" width="22" height="7" fill="#231C5E"></rect></g></svg>alcove</span>
-<div class="top-end"><button type="button" class="find" aria-label="Search or ask" onClick="{{openAsk}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg></button><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></div>
+<div class="top-end"><button type="button" class="find{{hotAsk}}" aria-label="Search or ask" onClick="{{openAsk}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg></button><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></div>
 </div>
 <div class="sh-in">
 <header class="pn-top">
@@ -128,12 +128,14 @@
 <dc-import name="Overlays" ov="{{ov}}" hint-size="0px,0px"></dc-import>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"go":{"editor":null,"default":null},"take":{"editor":null,"default":"page"},"art":{"editor":"enum","options":["sea","ridges","rings"],"default":"sea"},"fy":{"editor":"enum","options":["tiles","deck"],"default":"tiles"},"pal":{"editor":"enum","options":["blue-hour","afterglow","first-light","open-sky"],"default":"blue-hour"},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"scene":{"editor":"enum","options":["today","soon","first"],"default":"today"},"step":{"editor":null,"default":"home"},"$preview":{"width":1440,"height":900}}'>
+<script type="text/x-dc" data-dc-script data-props='{"go":{"editor":null,"default":null},"findFn":{"editor":null,"default":null},"take":{"editor":null,"default":"page"},"art":{"editor":"enum","options":["sea","ridges","rings"],"default":"sea"},"fy":{"editor":"enum","options":["tiles","deck"],"default":"tiles"},"pal":{"editor":"enum","options":["blue-hour","afterglow","first-light","open-sky"],"default":"blue-hour"},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"scene":{"editor":"enum","options":["today","soon","first"],"default":"today"},"step":{"editor":null,"default":"home"},"$preview":{"width":1440,"height":900}}'>
 class Component extends DCLogic {
   componentWillUnmount() { clearTimeout(this.__toast); }
   renderVals() {
     var AH = window.AH, hs = AH.hash(), self = this;
     var v = AH.vm(this, 'home', { pal: 'blue-hour', mode: 'dark' });
+    /* Search, rethought: the board that imports Home opens its own search from the same buttons. */
+    if (typeof this.props.findFn === 'function') v.openAsk = this.props.findFn;
     var S = v.S, st = v.st;
     v.notFirst = !v.first;
     v.noNotes = !v.hasNotes;

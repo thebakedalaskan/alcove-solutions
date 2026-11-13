@@ -223,7 +223,7 @@ export function OnTeam({ team, me, between, now, groups, shared }: {
           </TeamSection>
           {showNotes && (
             <TeamNotesList notes={shown}
-              link={(n, inside) => <Link to="/notes/$noteId" params={{ noteId: n.id }}>{inside}</Link>}
+              link={(n, inside) => <Link to="/calls/$noteId" params={{ noteId: n.id }}>{inside}</Link>}
               empty={teamNotes.isError
                 ? { title: 'These didn’t load', line: errorMessage(teamNotes.error), action: <Button size="sm" icon="retry" onClick={() => void teamNotes.refetch()}>Try again</Button> }
                 : team.licensed

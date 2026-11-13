@@ -49,10 +49,10 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
   // Who may be rung is settled before the call's lock is taken: knowing the team can take a calendar read.
   if (a.type === 'ring') await rings.mayRing(o, (await load(o, o.pool, callId)).row.meeting_item_id, a.emails);
   /**
-   * Who the invite took on (`add`) or let go of (`gone`), for the call's workspace to follow once the call's row is let go,
-   * when it was made for the call.
+   * Who the invite took on (`add`) or let go of (`gone`), for the call's home to follow once the call's row is let go, and the
+   * workspaces made in the call (`made`), which do too.
    */
-  const invite: { meetingId: string; add: string[]; gone: string[] } | null = a.type === 'ring' || a.type === 'remove' ? { meetingId: '', add: [], gone: [] } : null;
+  const invite: { meetingId: string; add: string[]; gone: string[]; made: string[] } | null = a.type === 'ring' || a.type === 'remove' ? { meetingId: '', add: [], gone: [], made: [] } : null;
   // Rooms opening with something to work on: it's made first, with nothing of the call held.
   const ready = a.type === 'rooms-open' && a.board.mode !== 'none' ? await roomsReady(v, callId, a) : undefined;
   await tx(o.pool, async (c) => {
@@ -204,6 +204,7 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       roomGuests: s.breakouts.open?.rooms.reduce((n, r) => n + r.guests.length, 0) ?? 0,
       pointing: s.pointing, othersPointOff: s.othersPointOff.length
     });
+    if (invite) invite.made = s.workspace.made;
     // Who has each room's board changes only as people move or rooms open or close, by time or by hand.
     const shifted = moved > 0 || a.type === 'rooms-open' || a.type === 'rooms-close' || a.type === 'rooms-move' || a.type === 'rooms-visit' || (state.breakouts.open !== null) !== (s.breakouts.open !== null);
     // Rooms that closed meanwhile (their time ran out as this was saved) change everyone's view, whatever this was.
@@ -212,9 +213,9 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     if (room) for (const who of gone) await o.livekit.removeParticipant(room, who).catch((e: unknown) => clog.info('removed person already gone', { callId, err: e }));
     // What the call gave them in a workspace goes with them.
     if (removed) await endSeat(o, callId, removed);
-    // So does a place in a workspace made for the call that the invite gave them; someone rung is on the invite, so in it. And a
+    // So does a place in a home made for the call that the invite gave them; someone rung is on the invite, so in it. And a
     // room's board they had by address, as they don't get that room's notes.
-    if (invite) await space.followHome(o, invite.meetingId, invite);
+    if (invite) await space.followHome(o, invite.meetingId, invite, invite.made);
     if (invite?.gone.length) await boards.offRoomBoards(o, board, invite.gone);
     // Each room's board goes with whoever's in its room before anyone's told, so whoever's moved out has lost it by then.
     if (shifted) await syncRoomBoards({ organizer: o, callId });

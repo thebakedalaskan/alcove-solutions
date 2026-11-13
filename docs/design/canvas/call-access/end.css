@@ -1,0 +1,62 @@
+/*
+ * The end state, on top of the call kit (tokens.css, call.css): the call's workspace and board open to everyone in the
+ * call, the bar saying so, one menu on the workspace's name, and what's made in the call landing in This call.
+ */
+
+/* The bar: where it shows, then who can edit it, which opens Who's in it. */
+.en-acc { display: inline-flex; align-items: center; gap: 6px; flex: none; height: 26px; padding: 0 10px 0 8px; border-radius: 8px; background: rgb(142 188 236 / .13); color: #D3E5F8; font: 600 12.5px/1 var(--font-sans); white-space: nowrap; cursor: pointer; }
+.en-acc:hover { background: rgb(142 188 236 / .22); }
+.en-acc svg.i { color: #8EBCEC; }
+.nc-fwho .nc-fmeta { flex: none; }
+
+/* The list: no name at its top (the bar has it), just Find and New. */
+.th-wl .en-tools { display: flex; align-items: center; gap: 6px; padding: 0 0 4px; }
+.en-find { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 6px 0 9px; border: 0; border-radius: 9px; background: rgb(255 255 255 / .06); color: #A9B9CA; font: 500 13px/1 var(--font-sans); text-align: left; cursor: pointer; }
+.en-find .nc-kbd { margin-left: auto; }
+.en-add { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 9px; background: none; color: #BFCAD7; cursor: pointer; }
+.en-add:hover, .en-find:hover { background: rgb(255 255 255 / .1); }
+.th-wlab.en-live { display: flex; align-items: center; gap: 7px; }
+.th-wlab.en-live i { width: 6px; height: 6px; border-radius: 50%; background: #FF6B83; }
+.th-wr.is-glow { background: rgb(142 188 236 / .14); color: #F7F3EB; box-shadow: inset 0 0 0 1px rgb(142 188 236 / .5); }
+.th-wr .lk { flex: none; color: #94A5B7; font: 500 11.5px/1 var(--font-sans); white-space: nowrap; }
+.th-wdh .crumb .sep { color: #6F8299; }
+.th-wpage h1.is-empty { color: #6F8299; }
+.th-sec .new { color: #F7F3EB; }
+
+/* A guest has no portrait: their initial, in their own colour. */
+.nc-tile .ws-t-init { position: absolute; left: 50%; top: 44%; display: grid; place-items: center; width: 96px; height: 96px; border-radius: 50%; transform: translate(-50%, -50%); background: #1F6F5C; color: #EAF6F1; font: 450 44px/1 var(--font-display); }
+.ac-avatar.is-guest .initial { color: #EAF6F1; }
+
+/* Who's in it, Switch workspace and the questions: in place of the menu, against what opened it. */
+.en-people { width: 392px; }
+.en-prow { display: grid; grid-template-columns: 30px 1fr auto; gap: 12px; align-items: center; padding: 8px 12px; }
+.en-prow b { display: block; font: 600 14px/1.25 var(--font-sans); color: var(--stage-ink); }
+.en-prow .d { display: block; margin-top: 3px; color: var(--stage-ink-2); font: 500 12.5px/1.3 var(--font-sans); }
+.en-prow .role { color: var(--stage-ink-2); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; }
+.en-tag { display: inline-flex; align-items: center; height: 18px; margin-left: 6px; padding: 0 6px; border-radius: 6px; background: rgb(31 138 112 / .28); color: #9FE3CD; font: 600 11px/1 var(--font-sans); vertical-align: 1px; }
+.en-switch { width: 360px; }
+.en-srow { display: grid; grid-template-columns: 32px 1fr 18px; gap: 11px; align-items: center; width: 100%; min-height: 54px; padding: 6px 12px 6px 10px; border-radius: 12px; text-align: left; }
+.en-srow:hover { background: rgb(255 255 255 / .06); }
+.en-srow .sq { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: rgb(255 255 255 / .07); color: var(--stage-ink-2); }
+.en-srow b { display: block; font: 600 13.5px/1.25 var(--font-sans); }
+.en-srow small { display: block; margin-top: 3px; color: var(--stage-ink-2); font: 500 12px/1.3 var(--font-sans); }
+.en-srow .ok { color: var(--stage-sun); }
+.en-ask { width: 384px; }
+.en-ask p { margin: 0; padding: 0 12px 10px; color: var(--stage-ink); font: 500 13.5px/1.45 var(--font-sans); }
+.en-ask p.m { color: var(--stage-ink-2); font-size: 12.5px; }
+.en-ask .act { display: flex; justify-content: flex-end; gap: 8px; padding: 6px 4px 4px; }
+.en-ask .who { display: flex; align-items: center; gap: 8px; padding: 2px 12px 12px; color: var(--stage-ink-2); font: 500 12.5px/1 var(--font-sans); }
+.nc-pop .hd b.big { font-size: 16px; }
+
+/* Journeys: each moment at half size, captioned with the press and what happens. */
+.jr { box-sizing: border-box; padding: 64px; background: #0B1424; color: #F2EEE6; font-family: var(--font-sans); }
+.jr-r + .jr-r { margin-top: 76px; }
+.jr-h { margin: 0 0 22px; font: 450 32px/1.15 var(--font-display); color: #F7F3EB; }
+.jr-fs { display: flex; gap: 44px; }
+.jr-f { flex: none; width: 720px; margin: 0; }
+.jr-c { display: flex; gap: 12px; min-height: 68px; margin: 0 0 12px; color: #C9D4E0; font: 500 14.5px/1.5 var(--font-sans); }
+.jr-c b { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #F6E8CC; color: #060D1A; font: 700 13px/1 var(--font-sans); }
+.jr-box { position: relative; width: 720px; height: 450px; border-radius: 14px; overflow: hidden; box-shadow: 0 0 0 1px rgb(255 255 255 / .12); }
+.jr-in { position: absolute; left: 0; top: 0; width: 1440px; height: 900px; transform: scale(.5); transform-origin: 0 0; }
+.jr-in > .sc-host { display: block; }
+.jr-in * { animation: none !important; transition: none !important; backdrop-filter: none !important; }

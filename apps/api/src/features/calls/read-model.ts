@@ -1,4 +1,4 @@
-import { LIVE_TRANSCRIPT_LINES, MAIN_PLACE, type Breakouts, type CallHost, type CallState, type Person, type CallWorkspace, type CallWorkspaceAsk } from '@alcove/api';
+import { LIVE_TRANSCRIPT_LINES, MAIN_PLACE, type Breakouts, type CallHost, type CallState, type Person, type CallWorkspace } from '@alcove/api';
 import { z } from 'zod';
 import { type Db } from '../../db';
 import { limitsNow } from '../../limits';
@@ -92,13 +92,8 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
   const who = hostOf(rooms, v, organizer, row.state === 'live');
   const kept = openAttention(o, callId, row.attention_ciphertext, { ciphertext: row.state_ciphertext, state: rooms });
   const { attention, statuses } = attentionFor(v, callId, rooms, kept, organizer, end.getTime());
-  // Who's asking to see the workspace, from whoever is in the call now: for the organizer, as they see everyone.
-  const asks: CallWorkspaceAsk[] = !v.isOrganizer ? [] : rooms.workspace.asks.flatMap((a) => {
-    const j = here.findLast((p) => p.person === a.person);
-    return a.state === 'asking' && j ? [{ id: a.id, participantId: j.identity, person: personFor(j, j.identity, j.name, organizer), at: new Date(a.at).toISOString() }] : [];
-  });
-  const { shown: workspace, lost } = await space.shownTo({ v, callId, meeting: meeting.manifest, s: rooms, place: where, chosenBy: who.organizer, asks });
-  if (lost.present.length || lost.space.length || lost.play.length) await stopLost(o, callId, lost);
+  const { shown: workspace, lost } = await space.shownTo({ v, callId, meeting: meeting.manifest, s: rooms, place: where, chosenBy: who.organizer });
+  if (lost.present.length || lost.space.length || lost.play.length || lost.viewing !== null) await stopLost(o, callId, lost);
   return {
     ...base, attention, timer: s.timer,
     participants: here.map((j) => ({
@@ -147,7 +142,7 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
 }
 
 /** What someone who isn't in the call yet is told of its workspace: nothing. */
-const PRIVATE: CallWorkspace = { id: null, chosen: false, name: null, chosenBy: { id: 'organizer', name: '', email: '' }, canOpen: false, role: null, documents: [], agenda: null, present: null, ended: null, play: null, asks: [], asked: 'no' };
+const PRIVATE: CallWorkspace = { id: null, home: null, name: null, chosenBy: { id: 'organizer', name: '', email: '' }, canOpen: false, role: null, everyone: false, documents: [], agenda: null, present: null, ended: null, play: null, asks: [], asked: 'no' };
 
 /**
  * Who hosts, as this viewer sees it: the connection hosting now and whether it stands in for the organizer, the

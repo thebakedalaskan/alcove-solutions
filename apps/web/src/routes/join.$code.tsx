@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { lastPass, rememberPass } from '~/features/call/session/pass';
+import { admissionOf, joinWithPass, KEYS_FAILED, turnedAway, useAsking } from '~/features/call/session/entering';
 import { Lobby } from '~/features/calls/lobby/Lobby';
 import { PickTime, PickTimeWaiting } from '~/features/calls/scheduling/PickTime';
 import { GuestName, GuestTradeOff, SignInHere, SignedInAs } from '~/features/join/JoinAs';
@@ -13,8 +13,7 @@ import { PrejoinCapture, type NotesAudience } from '~/features/join/PrejoinCaptu
 import { PrejoinCarry } from '~/features/join/PrejoinCarry';
 import { JoinMuted, PrejoinMain, usePrejoinMedia, type Prejoining } from '~/features/join/PrejoinMedia';
 import { useAuth } from '~/features/welcome/WaysIn';
-import { api } from '~/lib/api';
-import { sessions, useClosingWithPage, useLive } from '~/lib/live';
+import { sessions, useLive } from '~/lib/live';
 import { q, trustLine } from '~/lib/queries';
 
 /* Before the call: the only place your camera shows outside a call. Anyone with the link comes here; the organizer by their account. */
@@ -123,18 +122,15 @@ function GuestPrejoin({ card, code, me, media }: { card: CallCard; code: string;
     void navigate({ to: '/call/$code', params: { code }, replace: true });
   }, [code, navigate]);
   // Leaving the page while still asking takes the request back: for another screen here, or closing the tab.
-  useEffect(() => () => { if (asked && !entered.current) void asked.leave().catch(() => undefined); }, [asked]);
-  useClosingWithPage(asked);
+  useAsking(asked, entered);
   const join = async () => {
     if (!ready || joining) return;
     setJoining(true);
     setProblem(null);
     try {
-      const previous = lastPass(code);
       const { mic, cam } = media.m;
-      const s = await api.calls.join(code, { mic, cam, ...(me ? {} : { name: name.trim() }), ...(previous ? { previous } : {}) });
-      rememberPass(code, s.ticket.pass);
-      if (s.crypto.getSnapshot().status === 'in' && s.getSnapshot().participants.some((p) => p.isMe)) enter(s);
+      const s = await joinWithPass(code, { mic, cam, name: me ? undefined : name.trim() });
+      if (admissionOf(s.crypto.getSnapshot(), s.getSnapshot()) === 'in') enter(s);
       else setAsked(s);
     } catch (e) {
       setProblem(e);
@@ -186,12 +182,12 @@ function GuestPrejoin({ card, code, me, media }: { card: CallCard; code: string;
 function Asking({ session, host, onIn, onStop }: { session: CallSession; host: string; onIn: (s: CallSession) => void; onStop: () => void }) {
   const c = useLive(session.crypto);
   // In once this browser is in the call's group and the call (who's here) has come with it.
-  const named = useLive(session).participants.some((p) => p.isMe);
-  useEffect(() => { if (c.status === 'in' && named) onIn(session); }, [c.status, named, onIn, session]);
-  if (c.status === 'denied') {
-    return <div className="pj-step"><p className="pj-ask">{host.charAt(0).toUpperCase() + host.slice(1)} didn’t let you in.</p><button type="button" className="pj-link pj-back" onClick={onStop}><Icon name="left" size={15} />Back</button></div>;
+  const at = admissionOf(c, useLive(session));
+  useEffect(() => { if (at === 'in') onIn(session); }, [at, onIn, session]);
+  if (at === 'turned-away') {
+    return <div className="pj-step"><p className="pj-ask">{turnedAway(host)}</p><button type="button" className="pj-link pj-back" onClick={onStop}><Icon name="left" size={15} />Back</button></div>;
   }
-  if (c.status === 'failed') return <p className="pj-ask">Alcove couldn’t set up this call’s encryption. Reload the page and try again.</p>;
+  if (at === 'failed') return <p className="pj-ask">{KEYS_FAILED} Reload the page and try again.</p>;
   return (
     <div className="pj-step">
       <p className="pj-ask" aria-live="polite"><Spinner />{c.status === 'waiting' ? `Asked to join. Waiting for ${host} to let you in.` : 'Joining…'}</p>
