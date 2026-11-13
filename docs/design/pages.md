@@ -405,6 +405,12 @@ The sun is low and to the left, behind the people.
   Team, and buying one whenever it's needed) and invite links (Make an invite link, then Copy, and Make another). A member
   without a live license is told first, at the top of the water. Not on a team, a quiet Start a team row on a company's
   water opens checkout on Team (`features/team/StartTeam.tsx`).
+  - The water is at most 1120px and centred under the team, though other pages run to `--page-max`: the TeamPlan board
+    has it so, and it reads as one block under the line, while the page's title, search and you keep the page's width.
+  - Where the admin's cards would squeeze the people (the page under 1000px, as at 1024 with the side panel open), they
+    fold under the people, side by side, before the notes. On a phone they stand one under another there.
+  - On a phone the line wraps, as the board's does, and never slides: its first row stands on the horizon and the rest
+    on the water under it, the sun set off to the left.
 - **Joining** (`/team/join#…`, `features/team/Join.tsx`) is one card on the team's evening: whose team it is and what
   joining gives you, Join (filled) and Not now; signed out, the ways in first, while the invite waits in the tab.
 - Every number on the page is real: a group's calls are calls everyone in it was on. Someone on their own, with no

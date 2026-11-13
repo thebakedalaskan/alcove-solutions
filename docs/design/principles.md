@@ -199,6 +199,8 @@ Truncate with `ac-clamp-1` or `ac-clamp-2` rather than `nowrap`, so long text ca
   - 1320px: Home's widgets stack
   - 1241px: narrower than this, Calls' rows tighten their columns
   - 1240px and 1000px: Settings tightens, then its index becomes a strip
+  - a page under 1000px wide (a window under about 1256px with the side panel open): Team's admin cards fold under its
+    people
   - 1180px: the welcome page's top bar drops its links
   - 1100px: the top search becomes an icon, and Calls' rail narrows, its counts stepping back
   - 860px: the side panel becomes a top bar and a tab bar, with Record standing up out of it
