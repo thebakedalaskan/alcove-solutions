@@ -5,14 +5,14 @@
  * edge. Anything pressable keeps its text on the edge and lets its hover reach past it. Here on made-up data, with nothing
  * behind the buttons; the page itself is Pages/Scheduling.
  */
-import { Button, PersonToken, SchedAsk, SchedDoc, SchedField, SchedFoot, SchedGroup, SchedLine, SchedName, SchedOffer, SchedPanel, SchedQuiet, SchedRow, SchedSwitch, SchedTimes, SchedTitle, SchedValue, type SchedTime } from '@alcove/ui';
+import {
+  Avatar, Button, Faces, GhostArch, Icon, PersonToken, SchedAsk, SchedChoice, SchedDoc, SchedField, SchedFoot, SchedGroup, SchedLine, SchedListHead, SchedListNote, SchedName,
+  SchedOffer, SchedPanel, SchedPersonOption, SchedPop, SchedQuiet, SchedRow, SchedSwitch, SchedTimes, SchedTitle, SchedValue, Select, type SchedTime
+} from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState, type ReactNode } from 'react';
 import { PopSurface, did } from '../../../src/component';
-
-const PRIYA = { name: 'Priya Raman', email: 'priya@vandelay.example' };
-const KOFI = { name: 'Kofi Asante', email: 'kofi@vandelay.example' };
-const JONAS = { name: 'Jonas Weber', email: 'jonas@harbourline.example' };
+import { AIKO, INES, JONAS, KOFI, PRIYA } from '../../../src/world/people';
 
 /** The sheet the editor stands on, as tall as a laptop's page under the sky. */
 function Sheet({ children }: { children: ReactNode }) {
@@ -179,7 +179,8 @@ export const LettingAGuestPickNight: Story = { ...LettingAGuestPick, name: 'Lett
 
 /**
  * Moving a call: its name fixed, where it was struck through once the time has changed, who's on it with their answers, and
- * Cancel this call at the foot's start, which asks once, in place.
+ * Cancel this call at the foot's start, which asks once, in place. There's no quiet Cancel beside the button: × closes it,
+ * and a second Cancel would read as the same thing.
  */
 export const MovingACall: Story = {
   name: 'Moving a call',
@@ -195,7 +196,6 @@ export const MovingACall: Story = {
               </SchedAsk>
             )}
             lead={asking ? undefined : <Button variant="quiet" size="sm" icon="trash" className="sc-cancel" onClick={() => setAsking(true)}>Cancel this call</Button>}>
-            <Button variant="quiet" onClick={did('onCancel')}>Cancel</Button>
             <Button variant="primary" onClick={did('onMove')}>Move to tomorrow 15:30</Button>
           </SchedFoot>
         )}>
@@ -203,8 +203,8 @@ export const MovingACall: Story = {
           <SchedGroup label="Who">
             <SchedRow icon="people">
               <SchedField fixed>
-                <PersonToken people={[{ name: 'Ines Moreau', email: 'ines@vandelay.example' }]} label="Ines" state="Going" />
-                <PersonToken people={[{ name: 'Aiko Tanaka', email: 'aiko@vandelay.example' }]} label="Aiko" state="No answer yet" />
+                <PersonToken people={[INES]} label="Ines" state="Going" />
+                <PersonToken people={[AIKO]} label="Aiko" state="No answer yet" />
               </SchedField>
             </SchedRow>
           </SchedGroup>
@@ -243,6 +243,103 @@ export const Switches: Story = {
       </Sheet>
     );
   }
+};
+
+/**
+ * What the notes keep, opened in place under Notes: a switch row for each, then Where they go, shaped like a switch's row with a
+ * Select at its end (`SchedChoice`), and how the notes are written.
+ */
+export const WhatTheNotesKeep: Story = {
+  name: 'What the notes keep',
+  render: function Render() {
+    const [home, setHome] = useState('new');
+    const [recording, setRecording] = useState(false);
+    return (
+      <Sheet>
+        <SchedPanel kicker="New call" label="Schedule a call" onClose={did('onClose')}>
+          <SchedGroup label="Details">
+            <SchedRow icon="notes" rec><SchedSwitch title="Notes" tip="Everyone invited gets the notes" checked onChange={did('onNotes')} /></SchedRow>
+            <SchedRow><SchedQuiet chevron aria-expanded onClick={did('onWhatTheyKeep')}>What the notes keep</SchedQuiet></SchedRow>
+            <div className="sc-keep">
+              <SchedRow><SchedSwitch title="Keep the transcript" line="Who said what, and anyone invited can correct it" checked onChange={did('onTranscript')} /></SchedRow>
+              <SchedRow>
+                <SchedSwitch title="Keep the recording" line={recording ? 'Play back any moment from the notes' : 'Deleted when the call ends'} checked={recording} onChange={setRecording} />
+              </SchedRow>
+              <SchedRow><SchedSwitch title="Read shared screens" line="Whoever shares is asked whether it goes in the notes" checked onChange={did('onScreens')} /></SchedRow>
+              <SchedRow>
+                <SchedChoice title="Where they go" line={home === 'new' ? 'Everyone invited is in it' : 'In a folder of their own'}>
+                  <Select label="Where the notes go" value={home} align="end" onChange={setHome}
+                    options={[{ value: 'new', label: 'A new workspace', icon: 'plus' }, { value: 'launch', label: 'Launch', icon: 'folders' }, { value: 'design', label: 'Design', icon: 'folders' }]} />
+                </SchedChoice>
+              </SchedRow>
+              <SchedLine tone="quiet"><Icon name="sealed" size={14} />Written by an AI model in confidential compute.</SchedLine>
+            </div>
+          </SchedGroup>
+        </SchedPanel>
+      </Sheet>
+    );
+  }
+};
+
+/** Who, pressed: the people under the field in a popover that leaves the field its focus (`SchedPop`), headed by what they are. */
+function Who({ typed = '', head, children }: { typed?: string | undefined; head: string; children: ReactNode }) {
+  /* As wide as the editor beside the week, however little is in it. */
+  return (
+    <div style={{ width: 356, maxWidth: '100%' }}>
+      <Sheet>
+        <SchedPanel kicker="New call" label="Schedule a call" onClose={did('onClose')}>
+          <SchedGroup label="Who">
+            <SchedRow icon="people">
+              <SchedPop open onClose={did('onClose')} label="People to add" className="is-people"
+                anchor={<SchedField open><input aria-label="Add people" placeholder="Add people" defaultValue={typed} /></SchedField>}>
+                <SchedListHead>{head}</SchedListHead>
+                {children}
+              </SchedPop>
+            </SchedRow>
+          </SchedGroup>
+        </SchedPanel>
+      </Sheet>
+    </div>
+  );
+}
+
+/**
+ * The people under Who, before anything's typed: Often with you, each a face in its column (a group two of its faces, the
+ * company its building), the name, what they do, and +. The arrows have lit Priya, so Enter adds her.
+ */
+export const PeopleToAdd: Story = {
+  name: 'People to add',
+  render: () => (
+    <Who head="Often with you">
+      <div role="listbox" aria-label="People to add">
+        <SchedPersonOption id="pp-priya" face={<Avatar person={PRIYA} size={26} />} title="Priya Raman" sub="Product" lit onPick={did('onPick')} />
+        <SchedPersonOption id="pp-kofi" face={<Avatar person={KOFI} size={26} />} title="Kofi Asante" sub="Design lead" lit={false} onPick={did('onPick')} />
+        <SchedPersonOption id="pp-leads" face={<Faces people={[PRIYA, KOFI]} size={24} max={2} />} title="Leads" sub="Group · 3 people" lit={false} onPick={did('onPick')} />
+        <SchedPersonOption id="pp-everyone" face={<span className="sc-tile"><Icon name="building" size={16} /></span>} title="Everyone at Vandelay" sub="30 people" lit={false} onPick={did('onPick')} />
+      </div>
+    </Who>
+  )
+};
+/** An address typed that nobody has yet: People and groups, with the address itself first, lit, and an empty arch for its face. */
+export const AnAddressTyped: Story = {
+  name: 'An address typed',
+  render: () => (
+    <Who typed="jonas@weber.design" head="People and groups">
+      <div role="listbox" aria-label="People to add">
+        <SchedPersonOption id="pp-jonas" face={<GhostArch size={24} initial="jonas@weber.design" />} title="jonas@weber.design" sub="New to you" lit onPick={did('onPick')} />
+      </div>
+    </Who>
+  )
+};
+/** A name nobody has: nothing to list, and the words for that under the head (`SchedListNote`). */
+export const NobodyByThatName: Story = {
+  name: 'Nobody by that name',
+  render: () => (
+    <Who typed="Odile" head="People and groups">
+      <div role="listbox" aria-label="People to add" />
+      <SchedListNote>Nobody by that name yet. Type their full email address to add them.</SchedListNote>
+    </Who>
+  )
 };
 
 const pad = (n: number) => String(n).padStart(2, '0');

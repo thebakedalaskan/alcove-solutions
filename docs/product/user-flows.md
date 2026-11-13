@@ -302,10 +302,11 @@ send to anyone".
    as long as the drag), **Meet again** on a past call (the same people and name), and **Change the time** on a call
    (step 11). The page's sky keeps only its title, and one sheet fills the rest of the page: the week on the left
    (step 6) and the call's editor beside it, which says at its top what it's doing (**New call**, **Move a call** or
-   **Ask to move a call**). Its **×** (Close, back to Calls) and **Cancel** close it, keeping nothing. What opens from
-   the editor (the people to add, a month, a list of times, a menu) opens one at a time, under what opened it, and
-   **Escape** or pressing outside closes it, with focus back where it was. The address says what it's doing
-   (`/calls?schedule=new`, `move` or `again`); who it's with never goes in it.
+   **Ask to move a call**). Its **×** (Close, back to Calls) and **Cancel** close it, keeping nothing; moving a call has
+   only **×**, as **Cancel this call** is in its foot (step 11). What opens from the editor (the people to add, a month, a
+   list of times, a menu) opens one at a time, under what opened it, and **Escape** or pressing outside closes it, with
+   focus back where it was. The address says what it's doing (`/calls?schedule=new`, `move` or `again`); who it's with
+   never goes in it.
 3. **The name** is at the top, large: "Add a title" while it's empty, then "Call with Priya and Kofi" as people are
    added, until you type your own. Enter schedules.
 4. **Who** is one field of tokens (an arch, a first name, ×): "Add people" while it's empty, "Add someone" after.
@@ -431,7 +432,8 @@ send to anyone".
     moving later calls can change how they repeat, though not stop them repeating. The button reads **Move** until the
     time changes, then **Move to tomorrow 15:30**, and the foot says "Google Calendar tells Ines and Aiko." (or "Nobody
     else is invited."); once it's moved, **Undo** puts one call back, and a change to later calls has none. **Cancel
-    this call** waits in the foot, in caution, and asks once, in place (**Keep it** or **Cancel the call**). A call that
+    this call** waits in the foot, in caution, and asks once, in place (**Keep it** or **Cancel the call**). There's no
+    quiet **Cancel** beside the button, since a second Cancel would read as the same thing: **×** closes it. A call that
     has started, or is waiting for a guest to pick, can't be moved, and a call that's gone says so, with the way back to
     Calls.
 12. **Propose another time** (on a call you're invited to) opens the same scheduler for asking: its top says **Ask to
@@ -459,6 +461,16 @@ send to anyone".
 
 Alcove sends no emails of its own yet, so without a connected calendar nobody hears about the call, and calls
 started now don't go on the calendar: share the link. Everyone invited gets the notes (flow 7).
+
+Storybook's journeys use these numbers: **4.1 Start now**, **4.2 Schedule a call**, **4.3 Pick a time on the week**,
+**4.4 Start from the week**, **4.5 Repeat a call**, **4.6 Let a guest pick**, **4.7 Move a call**, **4.8 Answer a request
+to move**, **4.9 Propose another time**, **4.10 Meet again**, **4.11 Share a link instead**, **4.12 Paste a list of
+addresses**, **4.13 Change a scheduled call**, **4.14 Cancel a scheduled call**, **4.15 Answer an invitation**, **4.16
+Press a time, keep the length**, **4.17 Stop at midnight**, **4.18 Drag it to another day**, **4.19 Carry it into next
+week**, **4.20 Scroll the day, pick a start**, **4.21 Go to another week, or day**, **4.22 Find the next free time**,
+**4.23 Choose the times to offer**, **4.24 Stop letting a guest pick** (off again, and someone added while Jonas would
+pick: the call keeps the time that was lit) and **4.25 Type the time** (a start and an end typed, an end before the
+start, a time a 24-hour clock doesn't say, and 24:00).
 
 ## 5. Join
 

@@ -175,7 +175,8 @@ Top to bottom:
    Calendar tells Ines and Aiko." or "Nobody else is invited." / asking, "Kofi sees it, and can move the call there."
    Buttons: **Schedule**, **Schedule 4 calls**, **Send Jonas the times**, **Move to tomorrow 15:30** (**Move** until the
    time changes), **Ask to move it to tomorrow 15:30** (**Ask to move it** until then). Moving, **Cancel this call** sits in
-   the foot in caution and asks once, in place. A failed save stays above the foot with its reference.
+   the foot in caution and asks once, in place, and the foot has no quiet **Cancel**: a second Cancel would read as the
+   same thing, and × closes the editor. A failed save stays above the foot with its reference.
 
 Only one popover is open at a time; Escape or pressing outside closes it, and focus goes back to what opened it.
 
@@ -210,4 +211,5 @@ error that stays above the foot.
 
 The three time cards (`TimeCard`, `TimeCardWaiting`, `TimeCards`) and suggested times on the week; the week's growing
 hours; a typed end that runs into the next day; the scheduler column on the left with its section headings; ← Calls (×
-and Cancel close it); the week's sub-line and "This week" heading; the narrow weekend.
+closes it, and so does Cancel except while moving a call); the week's sub-line and "This week" heading; the narrow
+weekend.

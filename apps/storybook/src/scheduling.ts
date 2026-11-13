@@ -241,6 +241,16 @@ export const picking = (field: 'Starts' | 'Ends', at: string, said: string): Ste
     await userEvent.click(await within(list).findByRole('option', { name: new RegExp(`^${escaped(at)}`) }, SOON));
   });
 };
+/** Types over the start or the end, as a person types a time ("1415", "13:00", "24:00"), and Enter: it counts then, or says why it can't. */
+export async function typeTime(userEvent: UserEvent, field: 'Starts' | 'Ends', typed: string): Promise<void> {
+  const el = await timeField(field);
+  await userEvent.clear(el);
+  await userEvent.type(el, `${typed}{Enter}`);
+}
+/** A step that types over the start or the end. */
+export const typingTime = (field: 'Starts' | 'Ends', typed: string, said: string): Step => async ({ userEvent, step }) => {
+  await step(said, async () => { await typeTime(userEvent, field, typed); });
+};
 /** Waits until the page says something (a status under the time, a toast), wherever it says it first. */
 export const says = async (text: RegExp): Promise<void> => { await screen.findAllByText(text, {}, SOON); };
 /** A step that waits until the page says something. */

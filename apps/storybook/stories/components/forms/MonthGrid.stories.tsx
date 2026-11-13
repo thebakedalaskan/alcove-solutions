@@ -1,9 +1,10 @@
 /*
  * MonthGrid: a month to pick a day from, as `@` then Pick a date… opens it in a document, in the list's place, and as
  * pressing a date tag does, to change it. Six weeks, Monday first, the days of the months either side quiet, today in the
- * warm colour of now, and the day picked filled. Any day can be picked, past ones too. The arrow
- * keys move a day (a week up and down), Home and End go to the week's ends, Page Up and Page Down a month (with Shift, a
- * year), Enter picks and Esc goes back. Stories start on Wednesday 4 November 2026, the demo day.
+ * warm colour of now, and the day picked filled. Any day can be picked, past ones too, unless `from` says the first that can,
+ * as the scheduler's day does: the days before it are greyed. The arrow keys move a day (a week up and down), Home and End go
+ * to the week's ends, Page Up and Page Down a month (with Shift, a year), Enter picks and Esc goes back. Stories start on
+ * Wednesday 4 November 2026, the demo day.
  */
 import { MonthGrid } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -15,7 +16,7 @@ const meta = {
   component: MonthGrid,
   args: { value: null, today: '2026-11-04', label: 'Pick a date', autoFocus: false, onPick: did('onPick'), onCancel: did('onCancel') },
   argTypes: {
-    value: { control: 'text' }, today: { control: 'text' }, label: { control: 'text' }, autoFocus: { control: 'boolean' },
+    value: { control: 'text' }, today: { control: 'text' }, from: { control: 'text' }, label: { control: 'text' }, autoFocus: { control: 'boolean' },
     onPick: { control: false }, onCancel: { control: false }
   },
   /* On the popover it opens in, as wide as the `@` list. Picking a day makes it the one picked, as the tag it writes says. */
@@ -31,6 +32,8 @@ type Story = StoryObj<typeof meta>;
 export const NothingPicked: Story = { name: 'Nothing picked' };
 /** A date tag's own day, when it's pressed to change it: Friday the 13th. */
 export const Picked: Story = { args: { value: '2026-11-13' } };
+/** A call's day, as the scheduler opens it: from today, so the days gone are greyed and can't be picked. Tomorrow is the call's. */
+export const FromToday: Story = { name: 'From today', args: { value: '2026-11-05', from: '2026-11-04', label: 'Pick a day' } };
 /** A day in another year opens on its own month. */
 export const AnotherYear: Story = { name: 'Another year', args: { value: '2027-02-05' } };
 export const Night: Story = { args: { value: '2026-11-13' }, globals: { theme: 'dark' } };

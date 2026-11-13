@@ -4,8 +4,9 @@
  * draws it (docs/design/canvas/scheduling/; its journeys: it opens ready on the soonest time, drag it to any day or any week,
  * add people and the time follows them, pressing a time keeps the call's length, the day scrolls and the week never grows,
  * the week says which days it shows, letting Jonas pick a time, and schedule), with the ones it never drew: moving, answering
- * a request to move, proposing, meeting again, a link with nobody invited, a pasted list, and a call's own page. With Google
- * Calendar connected the stand-in says the call is on it; Google's invitations are the hand-off.
+ * a request to move, proposing, meeting again, a link with nobody invited, a pasted list, a call's own page, letting a guest
+ * pick turned off again, and a time typed. With Google Calendar connected the stand-in says the call is on it; Google's
+ * invitations are the hand-off.
  *
  * The busy afternoon, Wednesday 4 November at 16:12, so the scheduling week runs 4 – 10 Nov. Art is free from 09:00 tomorrow;
  * with Priya, from 10:00; with Priya and Kofi, not until 14:00, and at 12:00 only Priya is busy (src/world/scheduling.ts). The
@@ -21,8 +22,8 @@ import {
   DESIGN_CRIT, FRIDAY, HIRING_SYNC, MONDAY, NEXT_THURSDAY, THURSDAY, TUESDAY, withDesignCrit, withHiringSync
 } from '../../src/world/scheduling';
 import {
-  adding, browsing, button, choice, dragOnto, grabbing, halfHour, oneOf, picking, pointAt, pressOn, scheduler, says, scrollHours, switchFor, typingIn, whoField, type Ctx,
-  type Drag
+  adding, browsing, button, choice, dragOnto, grabbing, halfHour, oneOf, picking, pointAt, pressOn, scheduler, says, scrollHours, switchFor, typeTime, typingIn, whoField,
+  type Ctx, type Drag
 } from '../../src/scheduling';
 import { page, pages, type PageArgs, type PageStory } from '../../src/page';
 import { noCalendar } from '../pages/changes';
@@ -496,6 +497,64 @@ export const ChooseTheTimesToOffer: PageStory = {
     await step('Send Jonas the times', async () => {
       await userEvent.click(await button('Send Jonas the times'));
       await toast(/Link copied for Jonas|Send Jonas the link/);
+    });
+  }
+};
+
+export const StopLettingAGuestPick: PageStory = {
+  name: '4.24 Stop letting a guest pick',
+  ...page('/calls?schedule=new', 'busy'),
+  play: async (ctx) => {
+    const { userEvent, step } = ctx;
+    const letJonasPick = async () => { await userEvent.click(await switchFor(/^Let Jonas pick the time/)); };
+    await jonasInBerlin(ctx);
+    await step('Let Jonas pick the time, press the second time, then Friday at 15:00 on the week: time 2 goes there', async () => {
+      await letJonasPick();
+      await userEvent.click(await button(/^Time 2:/));
+      await pressAt(ctx, FRIDAY, '15:00');
+    });
+    await step('Turn it off again. The call keeps the time that was lit, Friday 15:00: not the first time, and not a new soonest one', async () => {
+      await letJonasPick();
+      await button(/^Day, Friday 6 November/);
+    });
+    await step('On again, from there: Friday 15:00 is time 1, then Monday and Tuesday at 15:00. Press time 2, Monday', async () => {
+      await letJonasPick();
+      await userEvent.click(await button(/^Time 2:/));
+    });
+    await pick(ctx, /^Priya Raman/, 'Add Priya while Jonas would pick: picking goes off the same way, and the call keeps the time that was lit');
+    await step('It’s on Monday at 15:00. Priya’s calendar is read, so it says whether you’re both free, and that you can’t see Jonas’s', async () => {
+      await escape(ctx);
+      await button(/^Day, Monday 9 November/);
+      await says(/see Jonas.s calendar/);
+    });
+  }
+};
+
+export const TypeTheTime: PageStory = {
+  name: '4.25 Type the time',
+  ...page('/calls?schedule=new', 'busy'),
+  play: async (ctx) => {
+    const { userEvent, step } = ctx;
+    await step('Scheduling opens on the soonest time you’re free, tomorrow 09:00 – 09:45', async () => { await scheduler(); });
+    await step('Type 1415 over the start, and Enter: a 24-hour time, with or without its colon. The call moves to 14:15 and keeps its 45 minutes', async () => {
+      await typeTime(userEvent, 'Starts', '1415');
+      await screen.findByDisplayValue('14:15', {}, SOON);
+    });
+    await step('Type 13:00 over the end: it has to end after it starts, said under the time, and the time stays 14:15 – 15:00', async () => {
+      await typeTime(userEvent, 'Ends', '13:00');
+      await says(/has to end after it starts/);
+    });
+    await step('Type 2pm over the start: it asks for a 24-hour time, like 14:15, and the time stays', async () => {
+      await typeTime(userEvent, 'Starts', '2pm');
+      await says(/Type a 24-hour time/);
+    });
+    await step('Type 22:30 over the start: the call moves there, 22:30 – 23:15, and what was said goes', async () => {
+      await typeTime(userEvent, 'Starts', '22:30');
+      await screen.findByDisplayValue('22:30', {}, SOON);
+    });
+    await step('Type 24:00 over the end: it ends at midnight, an hour and a half', async () => {
+      await typeTime(userEvent, 'Ends', '24:00');
+      await says(/^1 h 30 min$/);
     });
   }
 };

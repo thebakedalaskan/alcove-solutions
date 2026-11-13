@@ -701,7 +701,8 @@ to.
   - **The foot** (`SchedFoot`) comes after the content and pins to the bottom when the body scrolls: one line on what will
     happen, Cancel, and the one filled button, which says what it does (Schedule, Schedule 4 calls, Send Jonas the times,
     Move to tomorrow 15:30, Ask to move it to tomorrow 15:30). Moving a call, Cancel this call sits in it in caution and
-    asks in place. A failed save stays above it.
+    asks in place, and there's no quiet Cancel beside the button, which would read as the same thing: × closes it. A failed
+    save stays above it.
 
   One thing opens from it at a time, under what opened it; Escape or pressing outside closes it.
 - **The week** (`CallsWeek` under `CallsWeekHead`) is the Calls page's Week, scheduling: seven days from today, so every
