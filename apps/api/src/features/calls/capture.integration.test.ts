@@ -8,7 +8,7 @@ import { AlcoveApiError, type AlcoveApi, type AudioPiece, type CallSession, type
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { speechWav } from '../../testing/fake-near';
-import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
+import { ORIGIN, cookieFetch, startHarness, type Harness } from '../../testing/harness';
 
 // Letting people into a call goes through its MLS group, which a busy CI runner can be slow at; every wait says what it waited for.
 vi.setConfig({ testTimeout: 60_000 });
@@ -23,8 +23,8 @@ const message = (e: unknown) => (e instanceof AlcoveApiError ? e.message : '');
 let seq = 0;
 const unique = (who = 'person') => `${who}.${Date.now().toString(36)}${(seq++).toString(36)}@tests.example`;
 /** A fresh account (single sign-on signs in whoever's work email is typed), or the same one again in another browser. */
-async function account(email = unique()) {
-  const b = h.browser();
+async function account(email = unique(), o: Parameters<Harness['browser']>[0] = {}) {
+  const b = h.browser(o);
   const r = await b.api.auth.signIn('sso', { email });
   return { ...b, session: r.session };
 }
@@ -279,7 +279,8 @@ describe('what a call captures', () => {
     await host.setNotes(true);
     await host.pause();
     expect(host.getSnapshot().capture.ai.mode).toBe('paused');
-    await host.leave();
+    // Its notes are written before the next test counts what reaches the notes model.
+    await written(org.api, (await host.leave())?.pendingNoteId ?? '');
   });
 
   it('refuses audio, speech, captions, catch-up and questions while paused, keeps what came before, and resumes in a new segment', async () => {
@@ -321,7 +322,8 @@ describe('what a call captures', () => {
     await host.transcribe(speech('Back on the record.', 1, 0), host.ticket.identity);
     expect(await pieces()).toBe(2);
     expect(await host.translate(lines, 'es')).toEqual([{ id: lines[0], text: '[Spanish] We agreed to ship on Friday.' }]);
-    await host.leave();
+    // Its notes are written before the next test reads what reached the notes model last.
+    await written(org.api, (await host.leave())?.pendingNoteId ?? '');
   });
 
   it('marks what wasn’t captured, in the call, a catch-up, the finished notes and what the notes model reads', async () => {
@@ -367,7 +369,11 @@ describe('what a call captures', () => {
 
   it('stays paused through breakout rooms, someone coming back and a new organizer connection, until the organizer resumes', async () => {
     const orgEmail = unique('organizer');
-    const org = await account(orgEmail);
+    // The organizer's browser adds someone invited as soon as it sees them asking, by a commit; while `adding` is held, its
+    // commits wait for it.
+    let adding: Promise<void> | null = null;
+    const own = cookieFetch(ORIGIN);
+    const org = await account(orgEmail, { fetch: (input, init) => (adding && String(input).endsWith('/mls/commits') ? adding.then(() => own(input, init)) : own(input, init)) });
     const kofiEmail = unique('kofi');
     const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [kofiEmail] });
     const host = await org.api.calls.join(c, { mic: true, cam: false });
@@ -380,10 +386,15 @@ describe('what a call captures', () => {
     await settle(host, (x) => x.breakouts.open !== null);
     host.closeRooms();
     expect((await settle(host, (x) => x.breakouts.open === null)).capture.mode).toBe('paused');
-    // Kofi comes back on another connection: what he's told before he's in is the same, without names.
+    // Kofi comes back on another connection: what he's told before he's in is the same, without names. He's invited, so the
+    // organizer's browser lets him in without a press; it's held until what he's told before then has been read.
+    let letGo = () => { /* until there's something to let go */ };
+    adding = new Promise<void>((go) => { letGo = go; });
     const back = await kofi.api.calls.join(c, { mic: true, cam: false });
     expect(back.getSnapshot().capture).toMatchObject({ mode: 'paused', recording: { by: { kind: 'organizer' } }, gaps: [], requests: [] });
     expect(back.getSnapshot().capture.recording.by?.name).toBeUndefined();
+    adding = null;
+    letGo();
     await inGroup(back);
     expect((await settle(back, (x) => x.participants.some((p) => p.isMe))).capture.mode).toBe('paused');
 

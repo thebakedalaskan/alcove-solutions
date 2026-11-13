@@ -3308,6 +3308,9 @@ describe('deleting an account', () => {
     h.near.failNext(1, 'prose');
     await rec.stop();
     await until(async () => (await h.pool.query("SELECT 1 FROM content_jobs WHERE owner_id = $1 AND state = 'queued' AND attempt = 1", [ownerId])).rowCount === 1, 'the first attempt to fail');
+    // Its next try is due in 20 seconds, with a timer of its own, and what's made below can take that long on a busy runner:
+    // it's put off past the account's deletion, so the job is still queued then.
+    await h.pool.query("UPDATE content_jobs SET lease_until = now() + interval '1 hour' WHERE owner_id = $1 AND state = 'queued'", [ownerId]);
     // ...and a call still going, with notes on: its audio, the live transcript and a caption in German.
     const live = await b.api.calls.join((await b.api.calls.startNow({ notes: 'on', guests: [kofi.session.user.email] })).code, { mic: true, cam: false });
     await live.appendAudio(piece(audioBytes('leaving-live'), 0, 0));

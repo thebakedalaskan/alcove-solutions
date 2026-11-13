@@ -5,7 +5,7 @@
  * key from the call's MLS group. Test participants are @livekit/rtc-node rooms joined with the tokens the API hands out,
  * encrypting with those keys as browsers do.
  */
-import { AlcoveApiError, CALL_CODECS_LIMITS, CALL_CODECS_TOPIC, CALL_MARKS_TOPIC, CALL_REACT_TOPIC, CallCodecsMessageSchema, CallReactMessageSchema, ShareMarkMessageSchema, type CallCodecsMessage, type CallSession, type CallState, type ShareMarkMessage } from '@alcove/api';
+import { AlcoveApiError, CALL_CODECS_LIMITS, CALL_CODECS_TOPIC, CALL_DATA_OVERHEAD, CALL_MARKS_TOPIC, CALL_REACT_TOPIC, CallCodecsMessageSchema, CallReactMessageSchema, ShareMarkMessageSchema, type CallCodecsMessage, type CallSession, type CallState, type ShareMarkMessage } from '@alcove/api';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
@@ -214,7 +214,8 @@ describe('pointing at shared screens', () => {
 
     // What a browser that can't decode VP9 says, so that whoever shares a screen as VP9 sends VP8 instead. A browser
     // drops a packet bigger than the topic's limit before opening it, so once sealed it has to fit.
-    const said = await host.sealData(CALL_CODECS_TOPIC, new TextEncoder().encode(JSON.stringify({ vp9: false } satisfies CallCodecsMessage)));
+    const message = new TextEncoder().encode(JSON.stringify({ vp9: false } satisfies CallCodecsMessage));
+    const said = await host.sealData(CALL_CODECS_TOPIC, message);
     if (!said) throw new Error('no key to seal with');
     expect(said.byteLength).toBeLessThanOrEqual(CALL_CODECS_LIMITS.bytes);
     await hostRoom.sendData(said, CALL_CODECS_TOPIC, true);
@@ -228,8 +229,11 @@ describe('pointing at shared screens', () => {
     if (!plain) throw new Error('the codecs message did not open');
     expect(CallCodecsMessageSchema.parse(JSON.parse(new TextDecoder().decode(plain)))).toEqual({ vp9: false });
 
-    // What's sealed carries nothing readable, and opens only on its own topic, from its sender.
-    expect(Buffer.from(said).toString('latin1').includes('vp9')).toBe(false);
+    // What's sealed carries nothing readable: the seal's own overhead and as many bytes as the message, never the message
+    // itself (three bytes like "vp9" turn up in its random ones now and then, the whole message can't). And it opens only on
+    // its own topic, from its sender.
+    expect(said.byteLength).toBe(CALL_DATA_OVERHEAD + message.byteLength);
+    expect(Buffer.from(said).includes(Buffer.from(message))).toBe(false);
     expect(await guest.openData(CALL_REACT_TOPIC, host.ticket.identity, said)).toBeNull();
     expect(await guest.openData(CALL_CODECS_TOPIC, guest.ticket.identity, said)).toBeNull();
     await host.leave();

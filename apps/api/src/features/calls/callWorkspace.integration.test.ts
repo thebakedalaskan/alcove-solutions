@@ -1955,6 +1955,7 @@ describe('playing a video together', () => {
     const jamie = await guest(host, c);
     const t0 = Date.now();
     await p.startPlaying(film, media, 42_000);
+    const t1 = Date.now();
     const mine = p.getSnapshot().workspace.play;
     expect(mine).toMatchObject({ mediaId: media, documentId: film, by: { name: priya.name }, playing: true, positionMs: 42_000, mine: true, canControl: true });
     expect(mine?.atMs).toBeGreaterThanOrEqual(t0 - 2000);
@@ -1963,13 +1964,16 @@ describe('playing a video together', () => {
     expect((await space(t)).play).toMatchObject({ mediaId: media, mine: false, canControl: false });
     expect((await space(host)).play).toMatchObject({ canControl: true });
 
-    // Someone who comes late lands at the same moment: the server's clock says so, whatever theirs says.
+    // Someone who comes late lands at the same moment: the server's clock says so, whatever theirs says. That clock is this
+    // process's, so where they land is bounded by when the play was started and when they read, however long each took.
     await rest(400);
+    const r0 = Date.now();
     const late = await read(t);
+    const r1 = Date.now();
     const at = late.workspace.play;
     if (!at) throw new Error('nothing playing');
-    expect(playPosition(at)).toBeGreaterThanOrEqual(42_300);
-    expect(playPosition(at)).toBeLessThan(45_000);
+    expect(playPosition(at)).toBeGreaterThanOrEqual(42_000 + (r0 - t1));
+    expect(playPosition(at)).toBeLessThanOrEqual(42_000 + (r1 - t0));
     expect(playPosition(at, 1000)).toBe(playPosition(at) + 1000);
 
     // Only whoever controls it.
@@ -2612,13 +2616,19 @@ describe('a live call comes first', () => {
 
 describe('reading the call', () => {
   const LogLine = z.object({ msg: z.string(), requestId: z.string().optional(), sql: z.string().optional(), method: z.string().optional(), path: z.string().optional() });
-  /** The statements one read of the call ran, from its log lines: what it cost, in what it did. */
+  /**
+   * Whether a log line is a statement's. db.ts logs one that took over 250 ms as a slow query instead, and any statement takes
+   * that long while a busy runner holds this process's event loop, which the API shares with every browser here.
+   */
+  const isStatement = (msg: string) => msg === 'query' || msg === 'slow query';
+  /** The statements one read of the call ran, from its log lines: what it cost, in what it did, however long each took. */
   async function statementsOf(who: Browser, call: CallSession): Promise<string[]> {
     const requestId = `read-${id128()}`;
+    const from = h.logs.length;
     const res = await who.fetch(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}`, { headers: { 'x-alcove-call': call.ticket.pass, 'x-request-id': requestId } });
     await res.text();
     expect(res.status).toBe(200);
-    return h.logs.flatMap((l) => { const r = LogLine.safeParse(JSON.parse(l)); return r.success && r.data.requestId === requestId && r.data.msg === 'query' && r.data.sql ? [r.data.sql] : []; });
+    return h.logs.slice(from).flatMap((l) => { const r = LogLine.safeParse(JSON.parse(l)); return r.success && r.data.requestId === requestId && isStatement(r.data.msg) && r.data.sql ? [r.data.sql] : []; });
   }
   /** How many times a read opened a workspace's tree. */
   const opensTree = (sql: string[]) => sql.filter((q) => q.includes('state_ciphertext FROM workspaces')).length;
@@ -2660,7 +2670,7 @@ describe('reading the call', () => {
     const statements = h.logs.slice(from).flatMap((l) => {
       const r = LogLine.safeParse(JSON.parse(l));
       return r.success && r.data.method === 'GET' && r.data.path === `/v1/live/calls/${host.ticket.callId}`
-        && (r.data.msg === 'query' || r.data.msg === 'slow query') && r.data.sql ? [r.data.sql] : [];
+        && isStatement(r.data.msg) && r.data.sql ? [r.data.sql] : [];
     });
     expect(opensTree(statements)).toBe(1);
     // Someone who can open nothing, as a guest can't once the organizer can only read there: nothing of it is opened for them,

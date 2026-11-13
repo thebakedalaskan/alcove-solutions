@@ -77,6 +77,12 @@ async function until(check: () => Promise<boolean>) {
   for (let i = 0; i < 200; i++) { if (await check()) return; await new Promise((resolve) => setTimeout(resolve, 10)); }
   throw new Error('The database did not reach the expected wait.');
 }
+/**
+ * How many statements in this file's own database wait on a lock, of those whose text is like `pattern`. pg_stat_activity
+ * shows every database on the server, and other test files run at the same time against databases of their own.
+ */
+const waitingOn = async (pattern: string) => (await h.pool.query<{ n: number }>(
+  "SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE $1", [pattern])).rows[0]?.n;
 
 describe('agent connections', () => {
   it('gives a signed-in person the MCP address before any connection exists, the one a token then works at', async () => {
@@ -322,9 +328,9 @@ describe('OAuth agent consent', () => {
     try {
       await held.query('SELECT 1 FROM agent_codes WHERE owner_id = $1 FOR UPDATE', [signed.session.ownerId]);
       const redemption = post('/oauth/token', { grant_type: 'authorization_code', client_id: pending.client.client_id, redirect_uri: pending.parameters.redirect_uri, resource: `${h.baseUrl}/mcp`, code: redirect.searchParams.get('code') ?? '', code_verifier: pending.verifier });
-      await until(async () => (await h.pool.query<{ n: number }>("SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE '%FROM agent_codes%'")).rows[0]?.n === 1);
+      await until(async () => (await waitingOn('%FROM agent_codes%')) === 1);
       const revoke = owner.fetch(`${h.baseUrl}/v1/agents/${connection.id}`, { method: 'DELETE' });
-      await until(async () => (await h.pool.query<{ n: number }>("SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE 'DELETE FROM agent_grants%'")).rows[0]?.n === 1);
+      await until(async () => (await waitingOn('DELETE FROM agent_grants%')) === 1);
       await held.query('COMMIT');
       const [redeemed, revoked] = await Promise.all([redemption, revoke]);
       expect([200, 400]).toContain(redeemed.status);
@@ -469,7 +475,7 @@ describe('changing a connection', () => {
     const owner = h.browser();
     const signed = await owner.api.auth.signIn('sso', { email: 'agent-change-race@tests.example' });
     const issued = await owner.api.agents.createToken({ name: 'Raced helper', scopes: ['notes:read'], expiresInDays: 7 });
-    const waiting = (query: string) => until(async () => (await h.pool.query<{ n: number }>("SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE $1", [query])).rows[0]?.n === 1);
+    const waiting = (query: string) => until(async () => (await waitingOn(query)) === 1);
     const held = await h.pool.connect();
     await held.query('BEGIN');
     try {
