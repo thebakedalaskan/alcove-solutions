@@ -240,7 +240,8 @@ Each deployment ([.github/workflows/deploy.yml](../.github/workflows/deploy.yml)
    and the web app look for it.
 3. Runs `alcove-migrate` once, on that image, with only `DATABASE_URL`, and waits for success before changing the API.
 4. Rolls the group onto the image (`confidential-space/deploy.sh`): a new VM first, the old one drained and removed
-   once the new one is healthy. It refuses up front when the region's C3 quota can't hold the new VM.
+   once the new one is healthy. It refuses up front when the region's C3 quota can't hold the new VM, and finishes once
+   the new VM is in service: the old one drains and goes in the background, and the next rollout waits for it.
 5. In a job of its own with no Google credentials, checks the result through the load balancer's own address
    (`confidential-space/verify-server.ts`): the attestation the web app checks, that the TLS key the server presents is
    the attested one, that `/health` reaches LiveKit, and that it runs that commit and image.

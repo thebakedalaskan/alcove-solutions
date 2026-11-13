@@ -248,8 +248,8 @@ build.sh refuses a checkout that isn't exactly that commit, unchanged. deploy.sh
 a VM an earlier rollout took out of service to finish going, then checks the region's C3 quota (`C3_CPUS`, 8 vCPUs) can hold
 the VM a rollout adds, and refuses up front, naming what else holds it, when it can't. Then it makes a template, rolls the
 group (the new VM first; once the group's health check calls it healthy, the old one is taken out of service), waits until
-the new VM is in service and the old one out of it and both backend services call the new VM healthy (up to about 55
-minutes), and keeps the newest five templates. It doesn't wait for the old VM to go: the load balancer sends it no new
+the new VM is in service and the old one out of it and both backend services call the new VM healthy (up to about an
+hour), and keeps the newest five templates. It doesn't wait for the old VM to go: the load balancer sends it no new
 connections from the moment it's out, lets those it has drain for up to 300 s (`CS_DRAINING_TIMEOUT`, and up to a minute
 more), and the group then deletes it, which takes two minutes more. That's about eight minutes after deploy.sh has
 finished, and the next rollout waits for it, since until then the old VM holds quota. A deploy takes the place of a rollout
