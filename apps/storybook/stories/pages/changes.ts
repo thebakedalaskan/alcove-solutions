@@ -263,6 +263,11 @@ export const fromALink = (w: World): void => {
 
 /* ---------- a team (src/world/plans/teams.ts) ---------- */
 
+/** Priya made her roadmap review not visible to the team any more: Art, on the team, can't open it now. */
+export const teamNoteTakenBack = (w: World): void => {
+  if (w.myTeam) w.myTeam.notes = w.myTeam.notes.filter((n) => n.id !== 'tn-roadmap');
+};
+
 /** Maya needed a license this morning when none was left, and is waiting for one. */
 export const mayaWaits = (w: World): void => {
   if (w.myTeam) w.myTeam.members = w.myTeam.members.map((m) => (m.person === MAYA ? { ...m, wanted: iso(0, 11, 20) } : m));

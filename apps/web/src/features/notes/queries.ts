@@ -21,7 +21,16 @@ export const noteQueries = {
    * address: only what they said counts. The words and the address travel in the request's body, never its address.
    */
   notes: (kind?: NoteKind, text?: string, by?: string) => queryOptions({ queryKey: noteKeys.noteList(kind, text, by), queryFn: () => api.notes.list({ kind, text, by }), placeholderData: (prev) => prev }),
-  note: (id: string) => queryOptions({ queryKey: noteKeys.note(id), queryFn: ({ client }) => readNote(api, client, id) }),
+  /**
+   * One note. Someone who reads it only because its organizer made it visible to their team can lose it at any moment, from
+   * the organizer's window, so for them it's read again each time its page opens and each time they come back to the
+   * window: one that isn't theirs to read any more turns into the page for notes that aren't there.
+   */
+  note: (id: string) => queryOptions({
+    queryKey: noteKeys.note(id), queryFn: ({ client }) => readNote(api, client, id),
+    refetchOnMount: (query) => (query.state.data?.received?.role === 'team' ? 'always' : true),
+    refetchOnWindowFocus: (query) => (query.state.data?.received?.role === 'team' ? 'always' : false)
+  }),
   inbox: () => queryOptions({ queryKey: noteKeys.inbox, queryFn: ({ client }) => readInbox(api, client) })
 };
 

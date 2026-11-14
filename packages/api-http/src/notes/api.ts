@@ -1,6 +1,6 @@
 import { type HttpTransport } from '../transport/http';
 import { createPersonalApi } from './personal';
-import { AiModelsSchema, type AlcoveApi, AlcoveApiError, AnswerPartSchema, InboxSchema, NewNoteLinkSchema, NoteFoundSchema, NoteLinkClaimedSchema, NoteLinkSchema, NoteProgressSchema, NoteSchema, PromotionPreviewSchema, SeriesAnswerPartSchema, SeriesSchema, SharedAudienceSchema } from '@alcove/api';
+import { AiModelsSchema, type AlcoveApi, AlcoveApiError, AnswerPartSchema, InboxSchema, NewNoteLinkSchema, NoteFoundSchema, NoteLinkClaimedSchema, NoteLinkPeekSchema, NoteLinkSchema, NoteProgressSchema, NoteSchema, PromotionPreviewSchema, SeriesAnswerPartSchema, SeriesSchema, SharedAudienceSchema } from '@alcove/api';
 import { z } from 'zod';
 
 const audioPath = (id: string, segment: number, pieces: number) => `/notes/${encodeURIComponent(id)}/audio/${segment}?pieces=${pieces}`;
@@ -61,6 +61,7 @@ export function createNotesApi(t: HttpTransport): Pick<AlcoveApi, 'notes' | 'ser
       createLink: (id) => req(NewNoteLinkSchema, 'POST', `/notes/${encodeURIComponent(id)}/links`),
       revokeLink: (id, linkId) => req(z.array(NoteLinkSchema), 'DELETE', `/notes/${encodeURIComponent(id)}/links/${encodeURIComponent(linkId)}`),
       // A link's secret goes in the body, never in a URL, so no log can keep it.
+      peekLink: (secret) => req(NoteLinkPeekSchema, 'POST', '/note-links/peek', { secret }),
       claimLink: (secret) => req(NoteLinkClaimedSchema, 'POST', '/note-links/claim', { secret }),
       personal: (id) => personal(`/notes/${encodeURIComponent(id)}/personal`),
       previewAddition: (id, entryId) => req(PromotionPreviewSchema, 'POST', `/notes/${encodeURIComponent(id)}/personal/${encodeURIComponent(entryId)}/preview`),

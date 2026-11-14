@@ -24,6 +24,12 @@ export function receivedLine(r: Received, team?: string | undefined): string {
   return r.group ? `Shared by ${by} with ${r.group}` : `Shared by ${by}`;
 }
 
+/**
+ * The same, beside a note's title on its own page, where notes from a link also say they're yours to keep: only the link
+ * runs out, and what it gave stays ("From Lena’s link, yours to keep").
+ */
+export const receivedHere = (r: Received): string => (r.role === 'shared' && r.link ? `${receivedLine(r)}, yours to keep` : receivedLine(r));
+
 /** How someone has a note: they ran the call, were invited to it, opened someone's link, or who shared it with them afterwards (and with which group). */
 export function roleLine(r: Recipient, me: string | undefined): string {
   if (r.role === 'organizer') return 'Organizer';

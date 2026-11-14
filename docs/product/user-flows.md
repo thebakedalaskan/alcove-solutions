@@ -1642,15 +1642,20 @@ another call while in one; 7.7 the call ends while they're on its page; 7.8 alon
   who removed them gets them again. Each share records who shared the notes and when, and the group's name
   when they went to one of the sharer's groups.
 - **Share a link**, under the people in Share, is for someone whose address you don't have: **Make a link** shows a link
-  to copy, once. For seven days, whoever opens it can have the notes, as shared by you, and the link alone opens nothing.
+  to copy, once ("Whoever opens it signed in gets these notes to keep. The link works for 7 days."). The link can be
+  opened for seven days; whoever opens it signed in in that time gets the notes, as shared by you, and keeps them after
+  it runs out, as anyone they're shared with does. The link alone opens nothing.
   Signed in, it asks first, because everyone with the notes will see who opened it: "Open them as
-  kofi@vandelay.industries? Everyone who has them will see that you did." Only **Open the notes** gives that account the
-  notes and opens them; **Not now** goes to Home with nothing given. Someone signed out is asked to sign in first (to a
-  real account, unless the organizer's is a demo one), and is then asked the same: signing in never opens them by itself.
-  The links that still work are listed there, **Your link** or **Priya's link**, with until when, and whoever made one,
-  or the organizer, can **Revoke** it: from then on it opens nothing, and whoever it gave the notes to keeps them. A
-  link that's run out or been revoked says so, and to ask for a new one. Notes from a link say **From Priya's link**
-  beside their title, and **Who has these notes** says **By Priya's link**.
+  kofi@vandelay.industries? Everyone who has them will see that you did.", with until when the link works and that the
+  notes stay theirs after that ("This link works until Fri 21 Nov. Notes you open with it stay yours after that."). Only
+  **Open the notes** gives that account the notes and opens them; **Not now** goes to Home with nothing given. Someone
+  signed out is asked to sign in first (to a real account, unless the organizer's is a demo one), and is then asked the
+  same: signing in never opens them by itself. The links that still work are listed there, **Your link** or **Priya's
+  link**, with until when each works, and whoever made one, or the organizer, can **Revoke** it: from then on it opens
+  nothing, and whoever it gave the notes to keeps them, which the toast says. A link that's run out or been revoked says
+  so before asking anything: to ask for a new one, and that whoever opened it before has the notes already. Notes
+  from a link say **From Priya's link, yours to keep** beside their title (**From Priya's link** in lists), and **Who has
+  these notes** says **By Priya's link**. Nothing counts down: there's no time left on notes someone has.
 - Someone else's notes say how you got them, beside their title: **From Priya’s call** when you were invited,
   **Shared by Theo** when someone shared them afterwards, or **Shared by Theo with Leads** when it was to one of
   their groups. Calls lists them under the call they came from, and **Who has these notes** says how each person
@@ -1749,7 +1754,8 @@ another call while in one; 7.7 the call ends while they're on its page; 7.8 alon
   one in progress marked. When nothing was said, it says so, the water is still, and **Play** stays on the line for the
   audio. A call that didn't keep its transcript or recording says so in one line where it would have been, and has no
   player; you can still ask about what the notes say. After **Delete notes** it lists what went; a call that isn't
-  there (deleted, or never shared with you) says so, with **Back to Calls**.
+  there (deleted, or not open to you now: never shared with you, or not visible to your team any more) says so, with
+  **Back to Calls**.
 - A question can also go across every note you have, your own and other people's (`POST /v1/notes/ask`,
   behind the line on Calls' sky, and **Search or ask**, flow 2). The answer comes from those notes only, up
   to 12 of them that share the most words with the question, and cites the notes and the moments in them it
@@ -1824,12 +1830,21 @@ another call while in one; 7.7 the call ends while they're on its page; 7.8 alon
 
 While you're licensed on a team, Share on a call's notes you organized has **Visible to team** ("Everyone licensed on
 {team} can read it and ask about it."). It works on notes from before you joined, and they stay visible after you leave
-the team. A licensed member finds notes someone else made visible on the Team page, and they open on their call's page,
-saying "From {organizer}, visible to your team". They can be read, played and asked about, and asking across your notes
-reads them too. Anything else on them is their organizer's: the page has no Share and no Your notes, nothing to settle,
-propose, add or correct, an answer can't be kept, and More has no way to remove them. Anything asked of them anyway is
-refused in those words: "This note is visible to your team to read and ask about. Only its organizer changes it." Storybook
-shows one as **Pages / Calls / A call › A team note**.
+the team or your license ends: the switch stays while they're visible, so you can always turn it off, and says turning it
+on again takes a license. Anyone on the team invited to the call, or given the notes since, has them whatever the switch
+says, and it names them ("Priya, Kofi and Maya have them anyway, from the call."), as does the toast when it's turned
+off ("Not visible to Vandelay Industries any more. …"). The switch shows what you pressed until Alcove has it, then what
+the notes say, never the state before. Only a member with a live license reads them: someone on the team still waiting
+for one is told so on the Team page. A licensed member finds notes someone else made visible on the Team page, and they
+open on their call's page, saying "From {organizer}, visible to your team". They can be read, played and asked about, and
+asking across your notes reads them too. Anything else on them is their organizer's: the page has no Share and no Your
+notes, nothing to settle, propose, add or correct, an answer can't be kept, and More has no way to remove them. Anything
+asked of them anyway is refused in those words: "This note is visible to your team to read and ask about. Only its
+organizer changes it." The Team page reads the team's notes again each time it's shown and each time you come back to its
+window, and so does a team note's page: one turned off goes from the list then, and its page becomes the one for a call
+that isn't there. Storybook shows one as **Pages / Calls / A call › A team note**, and one turned off as **A team note taken back**; Share on a note
+visible to the team is **Sharing with the team**, turning it off **Not visible to the team**, and without a license
+**Sharing without a license**.
 
 Storybook journeys **8.1–8.10** play Calls: open a call, find what was said, see the week, answer an invitation, answer
 a request to move, follow a series, connect your calendar, ask every call, the first day, and meet again (to where the

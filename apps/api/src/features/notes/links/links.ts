@@ -2,16 +2,17 @@
  * Links to a call's notes (docs: Privacy, keys and sessions › Who can read a note). Anyone who has a call's notes can make
  * one once the call has ended. A link reads nothing by itself: opened by someone signed in, it gives that account the
  * notes, as shared by whoever made the link, the way sharing by address does (a note_access row, and the note's sealed
- * list of who it was shared with, saying it was a link). So every reader is still an account the note lists, and the
- * same rule as letting someone in from a call's link decides which accounts the notes may go to.
+ * list of who it was shared with, saying it was a link). So every reader is still an account the note lists, and keeps the
+ * notes as anyone they're shared with does, after the link runs out; and the same rule as letting someone in from a call's
+ * link decides which accounts the notes may go to.
  *
  * The link's secret travels only in its fragment, which browsers never send, and then in a POST body: only its SHA-256 is
  * stored. Who made it and when are sealed under the note's organizer's keys (record kind `note-link`, bound to the note
- * and the link). A link runs out after NOTE_LINK_DAYS, its maker or the organizer can revoke it, and it stops working once
+ * and the link). A link can be opened for NOTE_LINK_DAYS, its maker or the organizer can revoke it, and it stops working once
  * its maker no longer has the notes. It's deleted when it's revoked, once it's run out (upkeep), when its maker removes
  * the note from theirs or deletes their account (found by a keyed hash of the maker, opening nothing), and with the note.
  */
-import { MAX_NOTE_LINKS, NOTE_LINK_DAYS, type NewNoteLink, type NoteLink, type NoteLinkClaimed, type Person } from '@alcove/api';
+import { MAX_NOTE_LINKS, NOTE_LINK_DAYS, type NewNoteLink, type NoteLink, type NoteLinkClaimed, type NoteLinkPeek, type Person } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../../../platform/context';
 import { b64u, blindIndex, id128, openJson, random, sealJson, sha, stateKey, toJson, utf8 } from '../../../keys/crypto';
@@ -105,7 +106,18 @@ export async function revoke(o: Owner, noteId: string, linkId: string): Promise<
 }
 
 /**
- * Opens a link for the account signed in: its notes join theirs, as shared by whoever made the link. A link that's run
+ * Until when a link can be opened, for someone signed in who has it, before they open it (the page a link opens says so):
+ * it reads the link's row alone, so it opens nothing, gives nothing and names nobody. One that's run out, been revoked or
+ * never was is the same `not-found` as opening it. A link whose maker no longer has the notes was deleted with that.
+ */
+export async function peek(o: Owner, secret: string): Promise<NoteLinkPeek> {
+  const r = await maybeOne(o.pool, z.object({ expires_at: timestamp }), 'SELECT expires_at FROM note_links WHERE secret_hash = $1 AND expires_at > now()', [hashOf(secret)]);
+  if (!r) throw gone({ reason: 'no-link' });
+  return { expiresAt: r.expires_at.toISOString() };
+}
+
+/**
+ * Opens a link for the account signed in: its notes join theirs, to keep, as shared by whoever made the link. A link that's run
  * out, been revoked or whose maker no longer has the notes opens nothing, and says so the same way as one that never
  * was. The notes go only to an account they may go to: a real one, or any when the organizer's own is a demo one. The
  * organizer, and anyone who has the notes already, are just told which they are.

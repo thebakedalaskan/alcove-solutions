@@ -39,7 +39,7 @@ import { CallHead, CallMore, GonePage, WhoHas } from './Head';
 import { CallLine, marksOf } from './player/Line';
 import { correctedSince, speakersOf, type Correcting } from './lines';
 import { Made } from './Made';
-import { noteAsText, readerRole, receivedLine } from './meta';
+import { noteAsText, readerRole, receivedHere } from './meta';
 import { NewFollowUp } from './follow-ups/NoteFollowUps';
 import { NotesPane, type Acting } from './NotesPane';
 import { AskBar, type Focus, type LineKinds, type ScreenRefShown, type ScreensShown } from './parts';
@@ -387,7 +387,7 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
         <span className="when">{noteAt(note.startedAt)}{live ? '' : ` · ${callLength(note.duration)}`}</span>
         {note.kind === 'room' ? <span className="who"><Icon name="mic" size={15} /><span>{words}</span></span>
           : <WhoHas people={people} words={words} recipients={note.recipients} me={me} fresh={sharedTo} />}
-        {received && <span>{receivedLine(received)}</span>}
+        {received && <span>{receivedHere(received)}</span>}
         {note.seriesId && (
           <Link to="/calls" search={{ series: note.seriesId }} className="cd-ser" title="Every call in this series">
             <Icon name="repeat" size={15} /><span>{series ? seriesLabel(series) : 'In a series'}</span><Icon name="chevron" size={13} className="chev" />
@@ -504,7 +504,7 @@ export function Missing({ error }: { error: unknown }) {
   const notFound = errorCode(error) === 'not-found';
   const ref = errorRequestId(error);
   return (
-    <GonePage title={notFound ? 'This call isn’t here' : 'Couldn’t open this call'} lead={notFound ? 'Its notes were deleted, or they were never shared with you.' : errorMessage(error)}>
+    <GonePage title={notFound ? 'This call isn’t here' : 'Couldn’t open this call'} lead={notFound ? 'Its notes were deleted, or they aren’t open to you now.' : errorMessage(error)}>
       {ref && <RequestRef id={ref} />}
     </GonePage>
   );

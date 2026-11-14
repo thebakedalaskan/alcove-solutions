@@ -40,10 +40,13 @@ export function registerNoteRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
 
   app.get('/v1/notes/:id/progress', async (c) => {
     const o = c.get('owner'); const id = c.req.param('id');
+    // Read once before the stream starts, so someone who can't read the note is refused (404) as for the note itself,
+    // not answered with a stream that ends with nothing in it.
+    const first = await notes.progress(o, id);
     c.header('content-type', 'application/x-ndjson');
     return stream(c, async (s) => {
       for (let i = 0; i < 120; i++) {
-        const p = await notes.progress(o, id);
+        const p = i === 0 ? first : await notes.progress(o, id);
         await s.write(`${JSON.stringify(p)}\n`);
         if (p.ready) return;
         await s.sleep(1000);
@@ -211,14 +214,17 @@ export function registerNoteRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   app.post('/v1/notes/:id/share', async (c) => c.json(await sharing.share(c.get('owner'), c.req.param('id'), await body(c, ShareInputSchema))));
 
   /*
-   * Links to the notes: listed, made and revoked on the note, and opened by their secret, which travels in the body and
-   * never in a URL. Opening one needs an account: it gives the notes to whoever's signed in.
+   * Links to the notes: listed, made and revoked on the note, and looked at and opened by their secret, which travels in
+   * the body and never in a URL. Both need an account: opening one gives the notes to whoever's signed in, to keep.
    */
   app.get('/v1/notes/:id/links', async (c) => c.json(await links.list(c.get('owner'), c.req.param('id'))));
 
   app.post('/v1/notes/:id/links', async (c) => c.json(await links.create(changing(c), c.req.param('id'))));
 
   app.delete('/v1/notes/:id/links/:linkId', async (c) => c.json(await links.revoke(changing(c), c.req.param('id'), c.req.param('linkId'))));
+
+  // Looking at a link spends from the same budget as opening one, so neither finds links by guessing any faster.
+  app.post('/v1/note-links/peek', async (c) => c.json(await links.peek(changing(c), (await body(c, NoteLinkClaimSchema)).secret)));
 
   app.post('/v1/note-links/claim', async (c) => c.json(await links.claim(changing(c), (await body(c, NoteLinkClaimSchema)).secret)));
 

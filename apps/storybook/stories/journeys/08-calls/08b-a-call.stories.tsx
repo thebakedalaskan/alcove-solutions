@@ -604,7 +604,7 @@ export const ANoteThatsGone: PageStory = {
   name: '8.30 A note that’s gone',
   ...page('/calls/n-gone', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Deleted, or never shared with you. It says so', async () => {
+    await step('Deleted, or not open to you now. It says so', async () => {
       await userEvent.click(await screen.findByRole('link', { name: /Back to Calls/ }, LATER));
     });
     await step('Back to Calls', async () => {
@@ -797,16 +797,16 @@ export const ShareByLink: PageStory = {
   name: '8.39 Share by link',
   ...page('/calls/n2', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Press Share. Under the people, Share a link says whoever opens it signed in gets the notes, for 7 days', async () => {
+    await step('Press Share. Under the people, Share a link says whoever opens it signed in gets the notes to keep, and the link works for 7 days', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Share' }, LATER));
-      await screen.findByText('Whoever opens it signed in gets these notes, for 7 days.', {}, SOON);
+      await screen.findByText('Whoever opens it signed in gets these notes to keep. The link works for 7 days.', {}, SOON);
     });
-    await step('Make a link. It shows once, to copy, and it’s listed as yours until it runs out', async () => {
+    await step('Make a link. It shows once, to copy, and it’s listed as yours, with until when it works', async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Make a link' }));
       await screen.findByRole('group', { name: 'The link to these notes' }, SOON);
       await screen.findByText('Your link', { exact: false }, SOON);
     });
-    await step('Revoke it: from now on it opens nothing, and whoever it gave the notes to keeps them', async () => {
+    await step('Revoke it: from now on it opens nothing, and the toast says whoever opened it keeps the notes', async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Revoke' }));
       await away('button', 'Revoke');
     });
@@ -820,14 +820,15 @@ export const OpenALinkToNotes: PageStory = {
     await step('Priya sent Art a link to her research readout. Signed out, it opens nothing: it asks him to sign in first. Continue with Microsoft', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Continue with Microsoft' }, SOON));
     });
-    await step('Signed in, it still opens nothing. It asks whether to open them as his address, which everyone with the notes will see', async () => {
+    await step('Signed in, it still opens nothing. It asks whether to open them as his address, which everyone with the notes will see, and says until when the link works: the notes stay his after that', async () => {
       await screen.findByText(ART.email, {}, SOON);
+      await screen.findByText(/^This link works until /, {}, SOON);
       await screen.findByRole('button', { name: 'Open the notes' }, SOON);
     });
-    await step('Open the notes. The readout joins his notes, from Priya’s link, and opens', async () => {
+    await step('Open the notes. The readout joins his notes, from Priya’s link, to keep, and opens', async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Open the notes' }));
       await theCall('Customer research readout');
-      await screen.findByText('From Priya’s link', {}, SOON);
+      await screen.findByText('From Priya’s link, yours to keep', {}, SOON);
     });
   }
 };

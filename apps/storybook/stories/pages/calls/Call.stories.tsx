@@ -15,7 +15,7 @@ import { FOLLOW_UP_NOTE, withFollowUpProposals } from '../../../src/world/follow
 import { FOR_JONAS } from '../../../src/world/invitations';
 import { DESIGN_CRIT, HIRING_SYNC, withDesignCrit, withHiringSync } from '../../../src/world/scheduling';
 import { STATES, inEveryState } from '../../../src/world/states';
-import { aQuestionAdded, fromALink, invited, longSide, longSuggestions, troubled, writtenUnencrypted } from '../changes';
+import { aQuestionAdded, fromALink, invited, longSide, longSuggestions, teamNoteTakenBack, troubled, writtenUnencrypted } from '../changes';
 
 const meta = { title: 'Pages/Calls/A call', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -48,6 +48,11 @@ export const APastCallPhoneNight = phone(page('/calls/n2', 'busy', { ...everySta
 export const ATeamNote = page('/calls/tn-roadmap', 'team-member');
 export const ATeamNoteNight = page('/calls/tn-roadmap', 'team-member', { globals: night });
 export const ATeamNotePhone = phone(ATeamNote);
+/**
+ * Priya made her roadmap review not visible to the team any more: the next time Art opens it, or comes back to its window,
+ * it's the page for a call that isn't there.
+ */
+export const ATeamNoteTakenBack = page('/calls/tn-roadmap', 'team-member', { beforeEach: changing(teamNoteTakenBack) });
 
 /** ▶ 3:15 on the decision to confirm plays the call there, on the stage: who's speaking lit, their words as captions. Notes stays open. */
 export const PlayingAMoment = page('/calls/n2', 'busy', {
@@ -259,7 +264,7 @@ export const WithABoardNight = page(`/calls/${RETRO_NOTE}`, 'busy', { beforeEach
 export const WithABoardPhone = phone(page(`/calls/${RETRO_NOTE}?tab=shared`, 'busy', { beforeEach: changing(afterTheRetro) }));
 /** The example a first day opens: its notes to read and tick, its transcript, and nothing to play, share or delete. */
 export const Example = page('/calls/example', 'first-day');
-/** Notes that came by a link: From Priya’s link, beside the title. */
+/** Notes that came by a link: From Priya’s link, yours to keep, beside the title. */
 export const FromALink = page('/calls/n9', 'busy', { beforeEach: changing(fromALink) });
 /** An open question Art added afterwards, through his agent: Still open says You asked, with nothing said behind it. */
 export const AQuestionAdded = page('/calls/n2', 'busy', { beforeEach: changing(aQuestionAdded) });
@@ -292,6 +297,37 @@ export const SharingByLink = page('/calls/n2', 'busy', {
     });
   }
 });
+
+/** Presses Share on the note. */
+const pressShare: NonNullable<PageStory['play']> = async ({ canvas, userEvent, step }) => {
+  await step('Press Share', async () => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Share' }, { timeout: 30000 }));
+  });
+};
+/**
+ * Share on Art's standup, which he made visible to Vandelay's team: Visible to team is on, and says that Priya, Kofi and
+ * Maya, who are on the team and were invited to the call, have the notes anyway, whatever it says.
+ */
+export const SharingWithTheTeam = page('/calls/n2', 'team-admin', { play: pressShare });
+export const SharingWithTheTeamNight = page('/calls/n2', 'team-admin', { play: pressShare, globals: night });
+/**
+ * Visible to team turned off: the switch stays off, and the toast says the notes aren't visible to Vandelay Industries any
+ * more, and that Priya, Kofi and Maya have them anyway, from the call.
+ */
+export const NotVisibleToTheTeam = page('/calls/n2', 'team-admin', {
+  play: async (context) => {
+    await pressShare(context);
+    await context.step('Turn Visible to team off', async () => {
+      await context.userEvent.click(await screen.findByRole('switch', { name: 'Visible to team' }, { timeout: 8000 }));
+      await screen.findByText(/^Not visible to Vandelay Industries any more\./, {}, { timeout: 8000 });
+    });
+  }
+});
+/**
+ * Art's license on Priya's team ran out with his standup still visible to the team: Share keeps Visible to team, on, so he
+ * can turn it off, and says turning it on again takes a license.
+ */
+export const SharingWithoutALicense = page('/calls/n2', 'team-member-unlicensed', { play: pressShare });
 
 /** Opens More, then presses what's named. */
 const inMore = (item: RegExp, then?: string): NonNullable<PageStory['play']> => async ({ canvas, userEvent, step }) => {

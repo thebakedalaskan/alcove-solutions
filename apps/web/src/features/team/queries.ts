@@ -26,8 +26,12 @@ export const teamQueries = {
   invitedBy: (secret: string) => queryOptions({ queryKey: teamKeys.invitedBy(secret), queryFn: () => api.people.peekInvite(secret), retry: false, staleTime: 0 }),
   /** The team you're on, or null: its members and their licenses, and for its admin the licenses left. */
   myTeam: () => queryOptions({ queryKey: teamKeys.myTeam, queryFn: () => api.teams.mine(), staleTime: 60_000 }),
-  /** The notes made visible to your team that you can open (a live license needed). */
-  teamNotes: () => queryOptions({ queryKey: teamKeys.teamNotes, queryFn: () => api.teams.notes(), staleTime: 60_000 }),
+  /**
+   * The notes made visible to your team that you can open (a live license needed). Their organizers turn that on and off
+   * from their own windows, and nothing tells this one, so the list is read again whenever it's shown and whenever you come
+   * back to the window: what you see is never older than your last look.
+   */
+  teamNotes: () => queryOptions({ queryKey: teamKeys.teamNotes, queryFn: () => api.teams.notes(), staleTime: 0, refetchOnWindowFocus: true }),
   /** Whose team an invite's link joins, before joining. Asked once: a link that leads nowhere stays that way. */
   teamInvite: (secret: string) => queryOptions({ queryKey: teamKeys.teamInvite(secret), queryFn: () => api.teams.peek(secret), retry: false, staleTime: Infinity })
 };

@@ -520,8 +520,14 @@ notes can be made visible to your team once the call ends."), and only while liv
 to make notes visible to it."); any note of theirs, from before they joined too. It's a `team_notes` row (IDs only) for the
 team they're on; saying it again changes nothing. It stays visible after they leave the team; they can still make it not
 visible (`visible: false`), licensed or not, but not visible again until they're licensed on a team. It goes with the note,
-with their account, and with the team. Notes find it third, after their own and those given to them
-(`notes/access.ts › locateToRead`): a live-licensed member of that team can read it (`Note`, audio, shared screens,
+with their account, and with the team. Each change holds from the next request on: nothing a member did while it was
+visible gives them a way to it of their own, and anyone on the team invited to the call or given the notes since keeps them
+through their own `note_access` row. Nothing pushes the change to a member's browser, so the app reads the team's notes
+again whenever they're shown and whenever its window comes back (`teamQueries.teamNotes`), and a note read through the team
+too (`noteQueries.note`: one gone is the page for a call that isn't there); the organizer's switch stays while the notes
+are visible, licensed or not, shows what was pressed until it's saved and then the note read again, and names who on the
+team has them anyway (from the note's recipients and the team's members). Notes find it third, after their own and those
+given to them (`notes/access.ts › locateToRead`): a live-licensed member of that team can read it (`Note`, audio, shared screens,
 progress), ask about it, and Ask across notes reads it. `NoteSummary.teamVisible` says whether it's visible;
 `received` is `{ role: 'team', by: the organizer, at: when it was made visible }` for someone who has it only that way.
 Everyone else who has the note and adds to its shared notes is told the team reads what they add (`PromotionPreview.team`,

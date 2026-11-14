@@ -633,7 +633,18 @@ async function note(who: Account, title: string, words: string): Promise<string>
   await written(who.api, id);
   return id;
 }
+/** A call `who` holds with notes on and `guests` invited, in which `words` are said: ended, its notes written. */
+async function called(who: Account, title: string, words: string, guests: string[]): Promise<string> {
+  const call = await who.api.calls.join((await who.api.calls.startNow({ title, notes: 'on', guests })).code, { mic: true, cam: false });
+  await call.transcribe(speech(words, 0), call.ticket.identity);
+  const id = call.getSnapshot().notes.noteId ?? '';
+  await call.leave();
+  await written(who.api, id);
+  return id;
+}
 async function drain<T>(it: AsyncIterable<T>): Promise<T[]> { const out: T[] = []; for await (const x of it) out.push(x); return out; }
+/** What a read gave, or the error it was refused with. */
+const outcome = (p: Promise<string>) => p.then((v) => v, (e: unknown) => (e instanceof AlcoveApiError ? `${e.code}: ${e.message}` : String(e)));
 /** What the notes model was sent for a question across notes. */
 const promptFor = (question: string) => h.near.prompts.filter((p) => p.includes(`Question: ${question}`)).at(-1) ?? '';
 const TEAM_READS = 'forbidden: This note is visible to your team to read and ask about. Only its organizer changes it.';
@@ -734,6 +745,62 @@ describe('team notes, Ask and team workspaces', () => {
     await bob.api.notes.setTeamVisible(id, false);
     expect(await refusal(eve.api.notes.writeShared(id, { text: 'One more.', seal: now.seal }))).toBe('conflict: Someone got these notes since you started writing. Look at who reads it now, then post it.');
     expect((await eve.api.notes.sharedAudience(id)).team).toBeNull();
+  });
+
+  it('G23: turned on, off and on again, the team reads a call’s notes exactly while they’re visible; someone invited keeps them, and someone without a license reads them once they have one', async () => {
+    const [ann, bob, cy, dee, eve] = await Promise.all([account(), account(), account(), account(), account()]);
+    await team(ann, 3);
+    for (const who of [bob, cy, dee]) expect(await joined(ann, who)).toMatchObject({ licensed: true });
+    // Eve joins once no license is left: on the team, without one.
+    expect(await joined(ann, eve)).toMatchObject({ licensed: false });
+    // Bob's call, with Cy invited to it. Dee and Eve weren't.
+    const id = await called(bob, 'Lighthouse review', 'We agreed the lighthouse reopens in May.', [cy.email]);
+    let asks = 0;
+    /** Everything that reads or lists notes for `who`, as it stands right now. */
+    const reads = async (who: Account) => {
+      const across = `When does the lighthouse reopen? (${asks++})`;
+      await drain(who.api.notes.askAll(across));
+      return {
+        listed: (await who.api.notes.list()).some((n) => n.id === id),
+        found: (await who.api.notes.list({ text: 'lighthouse reopens' })).some((n) => n.id === id),
+        inbox: Object.values(await who.api.notes.inbox()).flat().some((x) => x.noteId === id),
+        team: (await who.api.teams.notes()).map((n) => [n.id, n.received?.role ?? 'organizer']),
+        opened: await outcome(who.api.notes.get(id).then((n) => n.received?.role ?? 'organizer')),
+        progress: await outcome(drain(who.api.notes.progress(id)).then((p) => (p.at(-1)?.ready ? 'ready' : 'not ready'))),
+        asked: await outcome(drain(who.api.notes.ask(id, 'When does it reopen?')).then(() => 'answered')),
+        askedAcross: promptFor(across).includes('Lighthouse review')
+      };
+    };
+    const never = { listed: false, found: false, inbox: false, team: [], opened: NO_NOTE, progress: NO_NOTE, asked: NO_NOTE, askedAcross: false };
+    const invited = (team: boolean) => ({ listed: true, found: true, team: team ? [[id, 'invited']] : [], opened: 'invited', progress: 'ready', asked: 'answered', askedAcross: true });
+    const viaTeam = { listed: false, found: false, inbox: false, team: [[id, 'team']], opened: 'team', progress: 'ready', asked: 'answered', askedAcross: true };
+    const organizer = async () => ({ visible: (await bob.api.notes.get(id)).teamVisible, team: (await bob.api.teams.notes()).map((n) => n.id) });
+    // Who reads what Cy adds to the shared notes: the team only while it's visible.
+    const audience = async () => (await cy.api.notes.sharedAudience(id)).team;
+
+    expect(await organizer()).toEqual({ visible: false, team: [] });
+    expect(await reads(cy)).toMatchObject(invited(false));
+    expect(await reads(dee)).toEqual(never);
+    expect(await reads(eve)).toEqual(never);
+    for (const visible of [true, false, true]) {
+      await bob.api.notes.setTeamVisible(id, visible);
+      // Each change holds from the next request on, for everyone, with nothing kept from before it.
+      expect(await organizer()).toEqual({ visible, team: visible ? [id] : [] });
+      expect(await reads(cy)).toMatchObject(invited(visible));
+      expect(await reads(dee)).toEqual(visible ? viaTeam : never);
+      expect(await reads(eve)).toEqual(never);
+      expect(await audience()).toEqual(visible ? { name: 'Vandelay Industries', people: 1 } : null);
+    }
+    expect((await h.pool.query('SELECT count(*)::int AS n FROM team_notes WHERE note_item_id = $1', [id])).rows[0]).toEqual({ n: 1 });
+    // Nothing a teammate did with it while it was visible left them a way to it of their own.
+    expect((await h.pool.query('SELECT count(*)::int AS n FROM note_access WHERE note_item_id = $1', [id])).rows[0]).toEqual({ n: 1 });
+    // Eve has no license, which is why it isn't open to her. Once she has one, it is, from her next request.
+    expect(await eve.api.plans.plan()).toMatchObject({ team: { name: 'Vandelay Industries', licensed: false } });
+    await give(ann, LICENSE);
+    await ann.api.teams.buyLicenses(1, LICENSE);
+    await eve.api.auth.visit();
+    expect(await reads(eve)).toEqual(viaTeam);
+    expect(await audience()).toEqual({ name: 'Vandelay Industries', people: 2 });
   });
 
   it('G11: Ask reads the team’s notes too; @-references go first, at most 5, and one you can’t open is refused', async () => {
