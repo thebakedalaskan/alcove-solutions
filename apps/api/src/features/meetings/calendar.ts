@@ -143,11 +143,11 @@ async function api<S extends z.ZodType>(o: Owner, method: string, path: string, 
     });
     // An access token Google has stopped honouring: drop it and try once with a fresh one.
     if (res.status === 401 && attempt === 0) { access.delete(o.ownerId); continue; }
-    if (res.status === 404 || res.status === 410) throw new NotFoundError('That calendar event isn’t there any more.', { context: { op: method, status: res.status } });
-    if (!res.ok) throw new UnavailableError('Google Calendar didn’t accept that. Try again.', { context: { op: method, status: res.status } });
+    if (res.status === 404 || res.status === 410) throw new NotFoundError('That calendar event isn’t there any more.', { context: { op: method, upstreamStatus: res.status } });
+    if (!res.ok) throw new UnavailableError('Google Calendar didn’t accept that. Try again.', { context: { op: method, upstreamStatus: res.status } });
     return schema.parse(res.status === 204 ? null : await res.json().catch(() => null));
   }
-  throw new UnavailableError('Google Calendar didn’t accept that. Try again.', { context: { op: method, status: 401 } });
+  throw new UnavailableError('Google Calendar didn’t accept that. Try again.', { context: { op: method, upstreamStatus: 401 } });
 }
 
 /* ---------- Google's event shape: only what Alcove reads ---------- */
@@ -374,8 +374,8 @@ async function othersBusy(o: Owner, emails: string[], range: { from: Date; to: D
         if (!c.errors.length) read.set(id.toLowerCase(), tidy(c.busy.map((b) => ({ from: Date.parse(b.start), to: Date.parse(b.end) })), range));
       }
     } catch (e) {
-      const status = e instanceof UnavailableError ? e.context['status'] : undefined;
-      clog.at(status === 403 ? 'info' : 'warn', 'free/busy not read', { ownerId: o.ownerId, people: chunk.length, status, errorClass: e instanceof Error ? e.name : 'unknown' });
+      const upstreamStatus = e instanceof UnavailableError ? e.context['upstreamStatus'] : undefined;
+      clog.at(upstreamStatus === 403 ? 'info' : 'warn', 'free/busy not read', { ownerId: o.ownerId, people: chunk.length, upstreamStatus, errorClass: e instanceof Error ? e.name : 'unknown' });
     }
   }));
   return read;

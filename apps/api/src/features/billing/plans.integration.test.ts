@@ -245,7 +245,7 @@ async function deposit(who: Account, microUsd: number): Promise<void> {
   await who.api.plans.topUp(t.id);
 }
 /** Money in for a test that isn't about adding it: as support adds it (`pnpm billing credit`). */
-const give = (who: Account, microUsd: number) => creditBySupport(h.deps, who.email, microUsd);
+const give = (who: Account, microUsd: number) => creditBySupport(h.deps, who.email, microUsd, { lookup: 'ids-and-addresses' });
 /** Upkeep at `at`, with the account due. */
 async function upkeepAt(who: Account, at: number): Promise<void> {
   vi.useFakeTimers({ toFake: ['Date'], now: at });

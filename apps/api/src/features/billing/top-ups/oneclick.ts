@@ -2,9 +2,10 @@
  * NEAR Intents 1Click as a deposit provider. A quote whose recipient (and refund target) is the treasury's Intents
  * account gives a one-off deposit address on the chain the person picked; whatever arrives there is swapped into USDC
  * on NEAR in the treasury's Intents balance. Only the stablecoins on the allowlist, and only while 1Click lists them.
- * Nothing about a deposit goes in a log line or an error: failures carry the HTTP status only.
+ * Nothing about a deposit goes in a log line or an error: failures carry 1Click's HTTP status only, as `upstreamStatus`.
  */
 import { z } from 'zod';
+import type { Config } from '../../../platform/config';
 import { toJson } from '../../../keys/crypto';
 import { UnavailableError } from '../../../platform/errors';
 import { log } from '../../../platform/log';
@@ -103,31 +104,63 @@ const unavailable = (context: Record<string, string | number>, level: 'warn' | '
  */
 const MAX_BAND_BPS = 150n;
 
-/** `apiKey` is the partner JWT; without one 1Click still quotes, with its own fee on top. */
-export function oneClick(o: { baseUrl: string; apiKey: string | undefined; treasury: string }): DepositProvider {
-  let tokens: { routes: DepositRoute[]; until: number } | { failed: true; until: number } | null = null;
+/** Where 1Click is, and the partner JWT that lowers its fee: what every request to it goes with. */
+interface OneClickApi { baseUrl: string; apiKey: string | undefined }
 
-  /** One request to 1Click, its JSON body parsed with `schema`. Anything but a 2xx answer that parses is unavailable. */
-  async function call<S extends z.ZodType>(schema: S, method: 'GET' | 'POST', path: string, body?: unknown): Promise<{ data: z.infer<S>; raw: unknown }> {
-    // Errors name the endpoint, never its query, which can name a deposit.
-    const endpoint = path.split('?')[0] ?? '';
-    let res: Response;
-    try {
-      res = await fetch(`${o.baseUrl}${path}`, {
-        method,
-        headers: { ...(o.apiKey === undefined ? {} : { 'X-API-Key': o.apiKey }), 'User-Agent': 'alcove-api', ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
-        body: body === undefined ? null : JSON.stringify(body),
-        signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS)
-      });
-    } catch (e) {
-      throw unavailable({ endpoint, error: e instanceof Error ? e.name : 'unknown' });
-    }
-    if (!res.ok) throw unavailable({ endpoint, status: res.status });
-    const raw: unknown = await res.json().catch(() => null);
-    const parsed = schema.safeParse(raw);
-    if (!parsed.success) throw unavailable({ endpoint, status: res.status, error: 'unexpected-response' });
-    return { data: parsed.data, raw };
+/**
+ * One request to 1Click, its JSON body parsed with `schema`. Anything but a 2xx answer that parses is unavailable, with
+ * 1Click's status as `upstreamStatus`. It's given up after PROVIDER_TIMEOUT_MS, or sooner when `signal` aborts.
+ */
+async function call<S extends z.ZodType>(o: OneClickApi, schema: S, method: 'GET' | 'POST', path: string, body?: unknown, signal?: AbortSignal | undefined): Promise<{ data: z.infer<S>; raw: unknown }> {
+  // Errors name the endpoint, never its query, which can name a deposit.
+  const endpoint = path.split('?')[0] ?? '';
+  const timeout = AbortSignal.timeout(PROVIDER_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${o.baseUrl}${path}`, {
+      method,
+      headers: { ...(o.apiKey === undefined ? {} : { 'X-API-Key': o.apiKey }), 'User-Agent': 'alcove-api', ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+      body: body === undefined ? null : JSON.stringify(body),
+      signal: signal ? AbortSignal.any([timeout, signal]) : timeout
+    });
+  } catch (e) {
+    throw unavailable({ endpoint, error: e instanceof Error ? e.name : 'unknown' });
   }
+  if (!res.ok) throw unavailable({ endpoint, upstreamStatus: res.status });
+  const raw: unknown = await res.json().catch(() => null);
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) throw unavailable({ endpoint, upstreamStatus: res.status, error: 'unexpected-response' });
+  return { data: parsed.data, raw };
+}
+
+/** The allowlist's routes that 1Click lists in `/v0/tokens`, with the decimals each is priced in, in the allowlist's order. */
+function listedRoutes(data: z.infer<typeof TokensSchema>): DepositRoute[] {
+  const listed = new Map(data.map((t) => [t.assetId, t.decimals]));
+  return Object.entries(ALLOWLIST).flatMap(([id, a]): DepositRoute[] => {
+    const decimals = listed.get(id);
+    if (decimals === undefined) return [];
+    if (decimals !== a.decimals) {
+      // Every amount on this route would be off by a power of ten: it isn't offered until someone looks.
+      olog.error('route listed with other decimals than allowlisted', { provider: 'oneclick', route: id, listed: decimals, allowlisted: a.decimals });
+      return [];
+    }
+    return [{ id, provider: 'oneclick', chain: a.chain, chainName: a.chainName, token: a.token, decimals: a.decimals, minimum: a.minimumUsd * 10n ** BigInt(a.decimals) }];
+  });
+}
+
+/**
+ * How many of the allowlist's routes 1Click offers now, for operator checks: asked afresh (`GET /v0/tokens`, which says
+ * nothing about anyone) and kept nowhere, so a top-up's routes are left as they were. Throws as those do. `signal` stops it,
+ * as a check's time limit does, so nothing goes on asking once the check has answered.
+ */
+export async function probeTokens(cfg: Pick<Config, 'ONECLICK_BASE_URL' | 'ONECLICK_API_KEY'>, signal?: AbortSignal | undefined): Promise<{ offered: number; allowed: number }> {
+  const { data } = await call({ baseUrl: cfg.ONECLICK_BASE_URL, apiKey: cfg.ONECLICK_API_KEY || undefined }, TokensSchema, 'GET', '/v0/tokens', undefined, signal);
+  return { offered: listedRoutes(data).length, allowed: Object.keys(ALLOWLIST).length };
+}
+
+/** `apiKey` is the partner JWT; without one 1Click still quotes, with its own fee on top. */
+export function oneClick(o: OneClickApi & { treasury: string }): DepositProvider {
+  let tokens: { routes: DepositRoute[]; until: number } | { failed: true; until: number } | null = null;
 
   return {
     name: 'oneclick',
@@ -138,23 +171,12 @@ export function oneClick(o: { baseUrl: string; apiKey: string | undefined; treas
       }
       let data: z.infer<typeof TokensSchema>;
       try {
-        ({ data } = await call(TokensSchema, 'GET', '/v0/tokens'));
+        ({ data } = await call(o, TokensSchema, 'GET', '/v0/tokens'));
       } catch (e) {
         tokens = { failed: true, until: Date.now() + TOKENS_FAILED_FOR_MS };
         throw e;
       }
-      // The allowlist's routes that 1Click lists, in the allowlist's order.
-      const listed = new Map(data.map((t) => [t.assetId, t.decimals]));
-      const routes = Object.entries(ALLOWLIST).flatMap(([id, a]): DepositRoute[] => {
-        const decimals = listed.get(id);
-        if (decimals === undefined) return [];
-        if (decimals !== a.decimals) {
-          // Every amount on this route would be off by a power of ten: it isn't offered until someone looks.
-          olog.error('route listed with other decimals than allowlisted', { provider: 'oneclick', route: id, listed: decimals, allowlisted: a.decimals });
-          return [];
-        }
-        return [{ id, provider: 'oneclick', chain: a.chain, chainName: a.chainName, token: a.token, decimals: a.decimals, minimum: a.minimumUsd * 10n ** BigInt(a.decimals) }];
-      });
+      const routes = listedRoutes(data);
       tokens = { routes, until: Date.now() + TOKENS_FOR_MS };
       return routes;
     },
@@ -162,7 +184,7 @@ export function oneClick(o: { baseUrl: string; apiKey: string | undefined; treas
       const asked = {
         originAsset: route.id, destinationAsset: NEAR_USDC, recipient: o.treasury, recipientType: 'INTENTS', refundTo: o.treasury, refundType: 'INTENTS'
       };
-      const { data, raw } = await call(QuoteResponseSchema, 'POST', '/v0/quote', {
+      const { data, raw } = await call(o, QuoteResponseSchema, 'POST', '/v0/quote', {
         dry: false, swapType: 'FLEX_INPUT', slippageTolerance: 100, depositType: 'ORIGIN_CHAIN', amount: amount.toString(), ...asked,
         deadline: new Date(Date.now() + DEADLINE_MS).toISOString()
       });
@@ -187,7 +209,7 @@ export function oneClick(o: { baseUrl: string; apiKey: string | undefined; treas
     },
     async check(deposit): Promise<DepositCheck> {
       const query = new URLSearchParams({ depositAddress: deposit.address, ...(deposit.memo === null ? {} : { depositMemo: deposit.memo }) });
-      const { data } = await call(StatusSchema, 'GET', `/v0/status?${query.toString()}`);
+      const { data } = await call(o, StatusSchema, 'GET', `/v0/status?${query.toString()}`);
       const progress = IN_PROGRESS.get(data.status);
       if (progress) {
         const sent = seen.safeParse(data.swapDetails);
@@ -214,7 +236,7 @@ export function oneClick(o: { baseUrl: string; apiKey: string | undefined; treas
         };
       }
       // A status this code doesn't know: say so, and let the caller decide (it keeps watching until the deadline).
-      olog.warn('unreadable deposit status', { provider: 'oneclick', status: data.status.slice(0, 40) });
+      olog.warn('unreadable deposit status', { provider: 'oneclick', state: data.status.slice(0, 40) });
       return { state: 'unknown' };
     }
   };

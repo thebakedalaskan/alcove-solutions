@@ -23,6 +23,7 @@ import { unb64u } from '../keys/crypto';
 import { tlsKey } from '../edge/tls-keys';
 import { UnavailableError } from '../platform/errors';
 import { log } from '../platform/log';
+import { facts, failureCode, tracked } from '../platform/runs';
 
 const tlog = log.child({ component: 'attestation' });
 
@@ -75,7 +76,7 @@ function askLauncher(socket: string, body: string): Promise<string> {
         const text = Buffer.concat(chunks).toString('utf8').trim();
         if (res.statusCode === 200) resolve(text);
         // The launcher explains in a line of plain text, such as which check Google's attestation service refused.
-        else reject(new UnavailableError('The launcher wouldn’t give an attestation token.', { context: { status: res.statusCode, said: text.slice(0, 200) } }));
+        else reject(new UnavailableError('The launcher wouldn’t give an attestation token.', { context: { upstreamStatus: res.statusCode, said: text.slice(0, 200) } }));
       });
     });
     req.on('error', (e) => reject(new UnavailableError('The launcher couldn’t be asked for an attestation token.', { cause: e, context: { socket } })));
@@ -121,7 +122,8 @@ export function createAttester(d: Pick<Deps, 'cfg'>, outside: AttesterOutside = 
     if (asking) return asking;
     const now = Date.now();
     if (now < retryAt) return Promise.reject(new UnavailableError('The launcher failed a moment ago; it isn’t asked again yet.', { context: { retryInMs: retryAt - now } }));
-    asking = (async (): Promise<Held> => {
+    // Each ask is a run operators see (`attestation`), and what it came to is this instance's fact (operator release).
+    asking = tracked('attestation', async (): Promise<Held> => {
       let token: string;
       let t: ReturnType<typeof read>;
       try {
@@ -134,15 +136,24 @@ export function createAttester(d: Pick<Deps, 'cfg'>, outside: AttesterOutside = 
         retryAt = Date.now() + backoff;
         tlog.warn('no attestation token', { err: e, retryInMs: backoff });
         backoff = Math.min(backoff * 2, LONGEST_BACKOFF_MS);
+        const was = facts.get('attestation');
+        facts.set('attestation', {
+          issuedAt: was?.issuedAt ?? null, expiresAt: was?.expiresAt ?? null, imageDigest: was?.imageDigest ?? null, rekorLogIndex: was?.rekorLogIndex ?? null,
+          lastFailure: { code: failureCode(e), at: Date.now() }, nextAskAt: retryAt
+        });
         throw e;
       }
       backoff = FIRST_BACKOFF_MS;
       retryAt = 0;
       const next: Held = { asked, token, issuedAt: t.issuedAt, expiresAt: t.expiresAt, ...(await releaseFor(t.image, commit)) };
       held = next;
+      facts.set('attestation', {
+        issuedAt: next.issuedAt, expiresAt: next.expiresAt, imageDigest: t.image?.digest ?? null, rekorLogIndex: next.release?.logIndex ?? null,
+        lastFailure: facts.get('attestation')?.lastFailure ?? null, nextAskAt: next.issuedAt + FRESH_MS
+      });
       tlog.info('attestation token issued', { issuedAt: new Date(next.issuedAt).toISOString(), expiresAt: new Date(next.expiresAt).toISOString(), release: next.release !== null });
       return next;
-    })().finally(() => { asking = undefined; });
+    }).finally(() => { asking = undefined; });
     return asking;
   };
   return {

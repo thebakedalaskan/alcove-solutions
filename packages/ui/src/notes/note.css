@@ -464,6 +464,8 @@ body:has(.cd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
 .cd-gone ul { display: grid; gap: 8px; padding: 0; list-style: none; }
 .cd-gone li { display: flex; align-items: center; gap: 10px; font: 400 15px/1.45 var(--font-sans); color: var(--ink); }
 .cd-gone li .ac-i { color: var(--sun-text); }
+/* The reference to quote, close under why, its words in line with the lead's. */
+.cd-gone .ac-ref { margin: -8px 0 4px -7px; }
 /* Deleted: the call goes before saying what went. */
 .cd.is-going .cd-cols, .cd.is-going .cd-head { animation: cd-going 520ms var(--ease-in) forwards; }
 @keyframes cd-going { to { opacity: 0; transform: translateY(8px); } }

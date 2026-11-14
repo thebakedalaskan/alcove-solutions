@@ -9,12 +9,13 @@
 import { createRemoteJWKSet, errors as joseErrors, jwtVerify, type JWTVerifyGetKey } from 'jose';
 import { GoogleSignInPopupIdSchema } from '@alcove/api';
 import { z } from 'zod';
-import type { Config } from '../platform/config';
+import type { Keyless } from '../platform/config';
 import type { Deps } from '../platform/context';
 import { b64u, equalBytes, openJson, random, sealJson, sha, signInAttemptKey, unb64u, utf8 } from '../keys/crypto';
 import { UnavailableError } from '../platform/errors';
 import { nameFrom, type GoogleIdentity } from './identity';
 import { log } from '../platform/log';
+import { codeOf } from '../platform/runs';
 import { masterKey } from '../keys/owners';
 
 const glog = log.child({ component: 'google' });
@@ -48,6 +49,8 @@ const TokenReply = z.object({
   refresh_token: z.string().min(1).optional(), scope: z.string().default('')
 });
 const RefreshReply = z.object({ access_token: z.string().min(1), expires_in: z.number().default(3600), scope: z.string().optional() });
+/** Google's key set, only to count its keys: sign-in reads it through jose. */
+const KeySet = z.object({ keys: z.array(z.unknown()) });
 /** Google's error code (e.g. invalid_grant) is safe to log; descriptions aren't kept. */
 const TokenError = z.object({ error: z.string().max(80) }).catch({ error: 'unknown' });
 const Claims = z.object({
@@ -67,10 +70,10 @@ const Attempt = z.object({
 });
 const HEADER = { v: 1 as const, kind: 'sign-in-attempt', ownerId: '', provider: 'google' };
 
-type Ready = Config & { GOOGLE_CLIENT_ID: string; GOOGLE_CLIENT_SECRET: string };
-export const configured = (cfg: Config): cfg is Ready => !!cfg.GOOGLE_CLIENT_ID && !!cfg.GOOGLE_CLIENT_SECRET;
+type Ready = Keyless & { GOOGLE_CLIENT_ID: string; GOOGLE_CLIENT_SECRET: string };
+export const configured = (cfg: Keyless): cfg is Ready => !!cfg.GOOGLE_CLIENT_ID && !!cfg.GOOGLE_CLIENT_SECRET;
 /** The redirect URI registered with Google for this deployment. */
-export const redirectUri = (cfg: Config) => `${cfg.API_URL.replace(/\/$/, '')}/v1/auth/google/callback`;
+export const redirectUri = (cfg: Keyless) => `${cfg.API_URL.replace(/\/$/, '')}/v1/auth/google/callback`;
 
 /** A signal that aborts after `ms`, or sooner if `signal` does: a caller's own time limit on a request to Google. */
 export const within = (ms: number, signal?: AbortSignal | undefined): AbortSignal => (signal ? AbortSignal.any([AbortSignal.timeout(ms), signal]) : AbortSignal.timeout(ms));
@@ -97,7 +100,7 @@ function provider(issuer: string, signal?: AbortSignal | undefined): Promise<Pro
   if (known) return waitFor(known, signal);
   const p = (async () => {
     const res = await fetch(`${issuer.replace(/\/$/, '')}/.well-known/openid-configuration`, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) throw new UnavailableError('Google can’t be reached right now.', { context: { step: 'discovery', status: res.status } });
+    if (!res.ok) throw new UnavailableError('Google can’t be reached right now.', { context: { step: 'discovery', upstreamStatus: res.status } });
     const endpoints = Discovery.parse(await res.json());
     return { endpoints, keys: createRemoteJWKSet(new URL(endpoints.jwks_uri)) };
   })();
@@ -156,7 +159,7 @@ export async function refreshAccess(d: Deps, refreshToken: string, signal?: Abor
   });
   if (!res.ok) {
     const error = TokenError.parse(await res.json().catch(() => ({}))).error;
-    glog.warn('google access refresh refused', { status: res.status, googleError: error });
+    glog.warn('google access refresh refused', { upstreamStatus: res.status, googleError: error });
     return { ok: false, revoked: error === 'invalid_grant' };
   }
   const r = RefreshReply.safeParse(await res.json().catch(() => null));
@@ -183,12 +186,80 @@ export async function revokeRefresh(d: Deps, refreshToken: string, signal?: Abor
       signal: within(8000, signal)
     });
     if (res.ok) return true;
-    glog.warn('google grant not revoked', { status: res.status, googleError: TokenError.parse(await res.json().catch(() => ({}))).error });
+    glog.warn('google grant not revoked', { upstreamStatus: res.status, googleError: TokenError.parse(await res.json().catch(() => ({}))).error });
   } catch (e) {
     // Discovery or the request failed (a timeout, a network failure): the error carries neither the token nor anything of the person.
     glog.warn('google grant not revoked', { err: e });
   }
   return false;
+}
+
+/** How sign-in with Google stands from here, as an operator check finds it (features/operator/checks.ts). */
+export interface GoogleCheck {
+  /** The first step that failed, with its code: Google's HTTP status, its error code (invalid_client), or what stopped it. */
+  failed: { step: 'discovery' | 'keys' | 'client'; code: string } | null;
+  /** How many signing keys Google publishes. */
+  keys: number | null;
+  /** How far this server's clock is behind Google's, in whole seconds, by the Date on its discovery document, and over what round trip. */
+  behindGoogleS: number | null;
+  roundTripMs: number | null;
+  /** Whether Google takes the client ID and secret: `not-set` without them, `unchecked` when a step before failed. */
+  client: 'ok' | 'refused' | 'not-set' | 'unchecked';
+}
+/** Google's error code (invalid_grant) when it is one, never its description. */
+const errorCode = (body: unknown): string => { const { error } = TokenError.parse(body); return /^[a-z_]{1,64}$/.test(error) ? error : 'unknown'; };
+
+/**
+ * Checks sign-in with Google afresh, for operator checks: its discovery document and key set, then the client ID and secret,
+ * by swapping a code Google never issued at its token endpoint. Google answers that with `invalid_grant` when the client is
+ * good and `invalid_client` when it isn't. Nothing about anyone is sent, nothing is kept, and sign-in's own discovery and
+ * keys are left as they are. `signal` stops it waiting.
+ */
+export async function checkGoogle(cfg: Keyless, signal?: AbortSignal | undefined): Promise<GoogleCheck> {
+  const found: GoogleCheck = { failed: null, keys: null, behindGoogleS: null, roundTripMs: null, client: configured(cfg) ? 'unchecked' : 'not-set' };
+  let step: NonNullable<GoogleCheck['failed']>['step'] = 'discovery';
+  const failed = (code: string): GoogleCheck => ({ ...found, failed: { step, code } });
+  try {
+    const sent = Date.now();
+    const res = await fetch(`${cfg.GOOGLE_ISSUER.replace(/\/$/, '')}/.well-known/openid-configuration`, { signal: within(5000, signal) });
+    const received = Date.now();
+    // Read as gcp.ts reads it: the header is in whole seconds, Google's clock read within the second after it.
+    const google = Date.parse(res.headers.get('date') ?? '');
+    if (Number.isFinite(google)) {
+      found.behindGoogleS = Math.round((google + 500 - (sent + received) / 2) / 1000);
+      found.roundTripMs = received - sent;
+    }
+    if (!res.ok) { await res.body?.cancel().catch(() => undefined); return failed(String(res.status)); }
+    const discovery = Discovery.safeParse(await res.json().catch(() => null));
+    if (!discovery.success) return failed('unexpected-answer');
+
+    step = 'keys';
+    const keys = await fetch(discovery.data.jwks_uri, { signal: within(5000, signal) });
+    if (!keys.ok) { await keys.body?.cancel().catch(() => undefined); return failed(String(keys.status)); }
+    const set = KeySet.safeParse(await keys.json().catch(() => null));
+    if (!set.success) return failed('unexpected-answer');
+    found.keys = set.data.keys.length;
+
+    if (!configured(cfg)) return found;
+    step = 'client';
+    const token = await fetch(discovery.data.token_endpoint, {
+      method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code', code: b64u(random(32)), redirect_uri: redirectUri(cfg), client_id: cfg.GOOGLE_CLIENT_ID, client_secret: cfg.GOOGLE_CLIENT_SECRET,
+        code_verifier: b64u(random(32))
+      }),
+      signal: within(8000, signal)
+    });
+    // A code Google never issued can't be swapped for anything.
+    if (token.ok) { await token.body?.cancel().catch(() => undefined); return failed('unexpected-answer'); }
+    const error = errorCode(await token.json().catch(() => ({})));
+    if (error === 'invalid_grant') return { ...found, client: 'ok' };
+    if (error === 'invalid_client') found.client = 'refused';
+    return failed(error === 'unknown' ? String(token.status) : error);
+  } catch (e) {
+    // What stopped a request reaching Google: the system's code (ECONNREFUSED), or the error's name (TimeoutError).
+    return failed(codeOf(e));
+  }
 }
 
 function openAttempt(d: Deps, cookie: string | undefined): z.infer<typeof Attempt> | null {
@@ -224,7 +295,7 @@ export async function finish(d: Deps, q: Record<string, string>, attempt: z.infe
     body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri(cfg), client_id: cfg.GOOGLE_CLIENT_ID, client_secret: cfg.GOOGLE_CLIENT_SECRET, code_verifier: attempt.verifier }),
     signal: AbortSignal.timeout(8000)
   });
-  if (!res.ok) return refuse('failed', { step: 'token', status: res.status, googleError: TokenError.parse(await res.json().catch(() => ({}))).error });
+  if (!res.ok) return refuse('failed', { step: 'token', upstreamStatus: res.status, googleError: TokenError.parse(await res.json().catch(() => ({}))).error });
   const token = TokenReply.safeParse(await res.json().catch(() => null));
   if (!token.success) return refuse('failed', { step: 'token-reply' });
 

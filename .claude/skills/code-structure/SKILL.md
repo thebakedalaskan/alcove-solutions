@@ -59,7 +59,7 @@ Drop the prefix inside the folder; the folder says it. Words of the folder's own
 ### "the X feature may not import Y" (server)
 
 Server features import only those before them: `profile → billing → workspaces → meetings → recordings → notes → calls →
-agents → account`. Pick the fix that matches why the import exists:
+agents → account → operator`. Pick the fix that matches why the import exists:
 
 ```ts
 // 1. Pass it in. The caller, higher up, already knows; the lower feature takes a value or a function.

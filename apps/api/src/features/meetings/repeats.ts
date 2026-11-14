@@ -477,7 +477,7 @@ async function changeFollowing(o: Owner, id: string, seriesId: string, patch: Pa
     const { series, calls } = await lockSeries(o, c, seriesId);
     const call = calls.find((m) => m.itemId === id);
     if (!call) throw notFound('That meeting', { meetingId: id });
-    if (call.manifest.status !== 'scheduled') throw new ConflictError(STARTED, { context: { meetingId: id, status: call.manifest.status } });
+    if (call.manifest.status !== 'scheduled') throw new ConflictError(STARTED, { context: { meetingId: id, state: call.manifest.status } });
     const was = [call, ...laterThan(calls, call)];
     const starts = patch.repeat ? startsOf(patch.repeat, patch.startsAt ?? call.manifest.startsAt) : undefined;
     const kept = starts ? was.slice(0, starts.length) : was;
@@ -576,7 +576,7 @@ export async function cancelInSeries(o: Owner, id: string, seriesId: string, sco
       const call = calls.find((m) => m.itemId === id);
       if (!call) throw notFound('That meeting', { meetingId: id });
       if (call.manifest.status === 'live') throw new ConflictError('That call is happening now. Leave it first.', { context: { meetingId: id } });
-      if (scope === 'following' && call.manifest.status !== 'scheduled') throw new ConflictError('This call has started, so it can’t be cancelled with the calls after it. Cancel from the next one instead.', { context: { meetingId: id, status: call.manifest.status } });
+      if (scope === 'following' && call.manifest.status !== 'scheduled') throw new ConflictError('This call has started, so it can’t be cancelled with the calls after it. Cancel from the next one instead.', { context: { meetingId: id, state: call.manifest.status } });
       const gone = scope === 'following' ? [call, ...laterThan(calls, call)] : [call];
       const left = calls.filter((m) => !gone.includes(m));
       await deleteItems(o, c, [...gone.map((m) => m.itemId), ...(left.length ? [] : [seriesId])]);

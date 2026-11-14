@@ -304,6 +304,14 @@ async function carryOver(d: Service, db: Db, ownerId: string): Promise<void> {
   if (made) plog.info('plan account carried over', { ownerId, grace: over });
 }
 
+/**
+ * Whether an account has its plan's row yet. One from before plans has none until it's next used, or upkeep gives it one
+ * (`carryOver`); asking makes none, so a look (an operator's) starts no grace and changes nothing.
+ */
+export async function hasPlan(db: Db, ownerId: string): Promise<boolean> {
+  return (await maybeOne(db, z.object({ n: z.number() }), 'SELECT 1 AS n FROM plan_accounts WHERE owner_id = $1', [ownerId])) !== undefined;
+}
+
 /** An account's plan, made first if it has none yet. `lock` holds its row for the rest of the caller's transaction. */
 export async function accountOf(d: Service, db: Db, ownerId: string, lock = false): Promise<PlanAccount> {
   const read = () => maybeOne(db, Row, `SELECT state_ciphertext FROM plan_accounts WHERE owner_id = $1${lock ? ' FOR UPDATE' : ''}`, [ownerId]);

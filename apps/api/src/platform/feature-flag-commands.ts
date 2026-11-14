@@ -1,14 +1,16 @@
 /*
- * The feature-flags commands (docs: engineering/feature-flags.md): words in, the lines to say back out. The command line
- * (feature-flags-cli.ts) prints them, and inside the API the operator route answers with them (http/system-routes.ts), so both
- * take the same words and say the same lines. Addresses are hashed here, with the index key the API finds people by, under
- * flags' own purpose (`flagHash`), so what's stored for one joins to no account. Nothing said repeats an address, or anything
- * else typed that isn't a flag or a group: it says flags, groups and counts. Words it can't run are refused with an AppError
- * whose message is what to say instead: how the commands go, or which flags there are.
+ * The feature-flags commands (docs: engineering/feature-flags.md): words in, the lines to say back out. The command
+ * line (feature-flags-cli.ts) prints them, and inside the API the operator route answers with them
+ * (features/operator/routes.ts), so both take the same words and say the same lines. Addresses are hashed here, with
+ * the index key the API finds people by, under flags' own purpose (`flagHash`), so what's stored for one joins to no
+ * account. Nothing said repeats an address, or anything else typed that isn't a flag or a group: it says flags, groups
+ * and counts. Words it can't run are refused with an AppError whose message is what to say instead: how the commands
+ * go, or which flags there are.
  */
 import { FEATURE_FLAG_NAMES, FEATURE_FLAGS, isFeatureFlagName, type FeatureFlagName } from '@alcove/api';
 import type { Db } from './db';
 import { ValidationError } from './errors';
+import type { OperatorScope } from '../keys/operator-keys';
 import { addMembers, createGroup, deleteGroup, featureFlagReport, flagHash, grantGroup, grantPerson, groupNames, isMember, memberCount, removeMembers, revokeGroup, revokePerson, setEveryone } from './feature-flags';
 
 const USAGE = `feature-flags list
@@ -32,6 +34,13 @@ const usage = () => new ValidationError(USAGE, { context: { why: 'usage' } });
 const COMMANDS = new Set(['list', 'groups', 'everyone', 'group', 'grant', 'revoke']);
 /** The command the words name, for a log line: what was typed isn't logged when it's no command, as it may be an address. */
 export const commandName = (words: string[]): string => (words[0] !== undefined && COMMANDS.has(words[0]) ? words[0] : 'unknown');
+/**
+ * What an operator's key needs to run the words through the operator route: `read` to list flags and groups, and to count a
+ * group's members; `write` for anything else. Asking whether one address is in a group finds out something about a person
+ * by their address, as finding an account by one does, so it takes a write key and a reason too.
+ */
+export const featureFlagScope = (words: string[]): OperatorScope =>
+  (words[0] === 'list' || words[0] === 'groups' || (words[0] === 'group' && words[1] === 'members' && words.length <= 3) ? 'read' : 'write');
 
 /** The flag named. What was typed isn't said back: it may be an address put in the wrong place. */
 function featureFlagNamed(name: string | undefined): FeatureFlagName {

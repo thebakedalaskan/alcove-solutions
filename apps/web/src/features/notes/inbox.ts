@@ -7,5 +7,13 @@ import { isAcceptedFollowUp, type Inbox, type NoteSummary } from '@alcove/api';
 const WEEK_MS = 7 * 86_400_000;
 /** Notes someone shared with you this past week. */
 export const sharedLately = (notes: readonly NoteSummary[], now: number) => notes.filter((n) => n.received?.role === 'shared' && now - new Date(n.received.at).getTime() < WEEK_MS);
-/** How much is waiting on you: For you's count, and the side panel's. */
-export const openCount = (inbox: Inbox, notes: readonly NoteSummary[], now: number) => inbox.decisions.length + inbox.followUps.filter(isAcceptedFollowUp).length + sharedLately(notes, now).length;
+/**
+ * How much is waiting on you, by For you's tabs before you answer anything: to answer (decisions, follow-ups the notes
+ * suggest are yours, notes shared with you lately), and the follow-ups you took on and haven't ticked off, a tick still
+ * saving included. The side panel's Home counts both.
+ */
+export function waitingCounts(inbox: Inbox, notes: readonly NoteSummary[], now: number): { ask: number; todo: number } {
+  const followUps = inbox.followUps.filter((a) => isAcceptedFollowUp(a) && !a.done);
+  const todo = followUps.filter((a) => a.takenOn).length;
+  return { ask: inbox.decisions.length + followUps.length - todo + sharedLately(notes, now).length, todo };
+}

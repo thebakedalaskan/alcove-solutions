@@ -31,7 +31,7 @@ import { Quote, QuoteVerifier, intel, utils as dcap, type Collateral, type TDRep
 import { decodeProtectedHeader, errors as jose, jwtVerify } from 'jose';
 import { X509Certificate } from 'node:crypto';
 import { z } from 'zod';
-import type { Config } from '../platform/config';
+import type { Keyless } from '../platform/config';
 import { concat, equalBytes, random, utf8 } from '../keys/crypto';
 import { DSTACK_IMAGES, type DstackImage } from '../tee/dstack-images';
 import { UnverifiedError } from '../platform/errors';
@@ -135,7 +135,7 @@ const Signature = z.object({ signature: z.string() });
 const Dated = z.object({ nextUpdate: z.string() });
 
 /** Intel's collateral for a quote's platform: revocation lists, TCB info and QE identity, each with its signing chain. */
-async function collateral(cfg: Config, quote: Quote): Promise<Collateral> {
+async function collateral(cfg: Keyless, quote: Quote): Promise<Collateral> {
   let fmspc: string;
   let ca: string;
   try {
@@ -174,7 +174,7 @@ async function collateral(cfg: Config, quote: Quote): Promise<Collateral> {
 }
 
 /** Intel's verdict on a quote: the signature chain to the configured root, the collateral, and Intel's TCB status for the platform. */
-async function verifiedQuote(cfg: Config, bytes: Uint8Array): Promise<{ status: string; advisories: string[]; td: TDReport10 }> {
+async function verifiedQuote(cfg: Keyless, bytes: Uint8Array): Promise<{ status: string; advisories: string[]; td: TDReport10 }> {
   let quote: Quote;
   try { quote = Quote.parse(bytes); } catch (e) { return refuse('tdx-quote', why(e)); }
   if (quote.header.isSgx()) return refuse('tdx-quote', 'an SGX quote, not TDX');
@@ -223,7 +223,7 @@ function rtmr3(events: z.infer<typeof EventLog>): Uint8Array | null {
  * quote binds and measures. The fields the report echoes are only compared with the quote; the gateway
  * must echo its report data.
  */
-async function checkTdx(cfg: Config, r: z.infer<typeof Signed>, nonce: Uint8Array, echoes: 'report-data' | 'nonce-only'): Promise<Tdx> {
+async function checkTdx(cfg: Keyless, r: z.infer<typeof Signed>, nonce: Uint8Array, echoes: 'report-data' | 'nonce-only'): Promise<Tdx> {
   const key = unhex(r.signing_address);
   if (r.signing_algo !== 'ed25519' || !key || key.length !== 32) return refuse('signing-key', 'not an Ed25519 signing key');
   if (r.request_nonce.toLowerCase() !== hex(nonce)) return refuse('nonce', 'the report answers another nonce');
@@ -259,7 +259,7 @@ const Jwks = z.object({ keys: z.array(z.object({ kid: z.string(), x5c: z.array(z
 const Verdict = z.object({ 'x-nvidia-overall-att-result': z.boolean(), eat_nonce: z.string(), exp: z.number(), submods: z.record(z.string(), z.unknown()) });
 
 const keysets = new Map<string, { until: number; keys: z.infer<typeof Jwks>['keys'] }>();
-async function nrasKeys(cfg: Config, kid: string): Promise<z.infer<typeof Jwks>['keys'][number] | undefined> {
+async function nrasKeys(cfg: Keyless, kid: string): Promise<z.infer<typeof Jwks>['keys'][number] | undefined> {
   const url = `${cfg.NVIDIA_NRAS_URL.replace(/\/$/, '')}/.well-known/jwks.json`;
   const hit = keysets.get(url);
   const found = hit && hit.until > Date.now() ? hit.keys.find((k) => k.kid === kid) : undefined;
@@ -284,7 +284,7 @@ function chainsTo(chain: X509Certificate[], root: X509Certificate, now: Date): b
 }
 
 /** NVIDIA's verdict on a model's GPU evidence: how many GPUs, which architecture, and until when the verdict holds. */
-async function checkGpu(cfg: Config, payloadText: string | undefined, nonce: Uint8Array): Promise<{ count: number; arch: string; until: number }> {
+async function checkGpu(cfg: Keyless, payloadText: string | undefined, nonce: Uint8Array): Promise<{ count: number; arch: string; until: number }> {
   const payload = GpuPayload.safeParse(jsonish(payloadText));
   if (!payloadText || !payload.success) return refuse('gpu', 'the model has no GPU evidence');
   if (payload.data.nonce.toLowerCase() !== hex(nonce)) return refuse('nonce', 'the GPU evidence answers another nonce');
@@ -326,7 +326,7 @@ async function checkGpu(cfg: Config, payloadText: string | undefined, nonce: Uin
 
 interface Candidate { tdx: Tdx; gpu: { count: number; arch: string; until: number }; ohttp: KeyConfig }
 
-async function checkModel(cfg: Config, raw: unknown, nonce: Uint8Array, model: string): Promise<Candidate> {
+async function checkModel(cfg: Keyless, raw: unknown, nonce: Uint8Array, model: string): Promise<Candidate> {
   const r = ModelReport.safeParse(raw);
   if (!r.success) return refuse('malformed', 'a model report with an unexpected shape');
   const m = r.data;
@@ -360,7 +360,7 @@ export interface Verified {
   until: number;
 }
 
-async function verify(cfg: Config & { NEAR_AI_API_KEY: string }, model: string, task: Task): Promise<Verified> {
+async function verify(cfg: Keyless & { NEAR_AI_API_KEY: string }, model: string, task: Task): Promise<Verified> {
   const t0 = performance.now();
   const ms = () => Math.round(performance.now() - t0);
   const nonce = random(32);
@@ -418,14 +418,14 @@ async function verify(cfg: Config & { NEAR_AI_API_KEY: string }, model: string, 
 const kept = new Map<string, Verified>();
 const refused = new Map<string, { until: number; error: UnverifiedError }>();
 const running = new Map<string, Promise<Verified>>();
-const idOf = (cfg: Config, model: string, task: Task) => `${cfg.NEAR_AI_BASE_URL}|${model}|${task}`;
+const idOf = (cfg: Keyless, model: string, task: Task) => `${cfg.NEAR_AI_BASE_URL}|${model}|${task}`;
 
 /**
  * The model's current verification: the one kept, while it holds, or a new one. Requests that arrive
  * while one is being made wait for it, so a model is verified once however many clips come in; a
  * refusal stands for 30 seconds before the next request checks again.
  */
-export async function verified(cfg: Config & { NEAR_AI_API_KEY: string }, model: string, task: Task): Promise<Verified> {
+export async function verified(cfg: Keyless & { NEAR_AI_API_KEY: string }, model: string, task: Task): Promise<Verified> {
   const id = idOf(cfg, model, task);
   const hit = kept.get(id);
   if (hit && hit.until > Date.now()) return hit;
@@ -443,8 +443,15 @@ export async function verified(cfg: Config & { NEAR_AI_API_KEY: string }, model:
   return made;
 }
 
+/**
+ * The model's evidence fetched with a fresh nonce and checked now, as for a request, but never read from or kept in the
+ * verifications requests use: operator checks say how the evidence stands at this moment without changing which key
+ * requests are sealed to, or holding a refusal against them. Throws UnverifiedError, with the check that failed.
+ */
+export const verifyFresh = (cfg: Keyless & { NEAR_AI_API_KEY: string }, model: string, task: Task): Promise<Verified> => verify(cfg, model, task);
+
 /** Stops using a verification whose key NEAR AI no longer accepts, so the next request verifies again. */
-export function forget(cfg: Config, v: Verified): void {
+export function forget(cfg: Keyless, v: Verified): void {
   const id = idOf(cfg, v.model, v.task);
   if (kept.get(id)?.key === v.key) kept.delete(id);
 }

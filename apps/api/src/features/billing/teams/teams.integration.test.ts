@@ -74,7 +74,7 @@ async function deposit(who: Account, microUsd: number): Promise<void> {
   await who.api.plans.topUp(t.id);
 }
 /** Money in for a test that isn't about adding it: as support adds it. */
-const give = (who: Account, microUsd: number) => creditBySupport(h.deps, who.email, microUsd);
+const give = (who: Account, microUsd: number) => creditBySupport(h.deps, who.email, microUsd, { lookup: 'ids-and-addresses' });
 /**
  * A payment for `count` licenses, each for `periods` periods at `microUsdPerLicense` a period, which the fake 1Click settles
  * in full: what became of its purchase once it was added.

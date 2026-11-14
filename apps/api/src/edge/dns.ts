@@ -42,7 +42,7 @@ export async function cloudflareZone(zone: string, token: string, at: DnsService
     }
     const answer = Answer(result).safeParse(await res.json().catch(() => undefined));
     if (!res.ok || !answer.success || !answer.data.success) {
-      throw new UnavailableError('Cloudflare refused a change to the DNS.', { context: { what, status: res.status, codes: answer.success ? answer.data.errors.map((e) => e.code) : [] } });
+      throw new UnavailableError('Cloudflare refused a change to the DNS.', { context: { what, upstreamStatus: res.status, codes: answer.success ? answer.data.errors.map((e) => e.code) : [] } });
     }
     return answer.data.result;
   };

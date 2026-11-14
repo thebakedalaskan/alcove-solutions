@@ -15,6 +15,7 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { noteQueries } from '~/features/notes/queries';
 import { sharingQueries, useConnectDrive, useDisconnectDrive, useRetryDriveExport, useUpdateDrive } from '~/features/notes/sharing/queries';
+import { toastFailure } from '~/lib/failed';
 import { wentAt } from '~/lib/time';
 import { DriveFolderPicker } from '~/features/notes/sharing/DriveFolderPicker';
 import { Setting, useSaving } from './save';
@@ -94,7 +95,7 @@ export function GoogleDrive({ result }: { result?: DriveConnectResult | undefine
       const { url } = await connect.mutateAsync();
       setDialog(null);
       location.assign(url);
-    } catch (e) { setGoing(false); toast(errorMessage(e), { icon: 'x' }); }
+    } catch (e) { setGoing(false); toastFailure(toast, e); }
   };
   const off = async () => {
     try {
@@ -102,7 +103,7 @@ export function GoogleDrive({ result }: { result?: DriveConnectResult | undefine
       setOpen(false);
       setSaid(false);
       toast('Google Drive is disconnected. Copies already there stay.', { icon: 'check' });
-    } catch (e) { toast(errorMessage(e), { icon: 'x' }); }
+    } catch (e) { toastFailure(toast, e); }
     finally { stay(); }
   };
   /** Saves a change as the row named `name`, which says how it stands. Refused, it rejects, for whoever asked to say why. */
@@ -118,9 +119,9 @@ export function GoogleDrive({ result }: { result?: DriveConnectResult | undefine
   };
   const change = (patch: Partial<DriveExportInput>, name: string) => {
     const was = document.activeElement;
-    void save(patch, name).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' })).finally(() => refocus(was));
+    void save(patch, name).catch((e: unknown) => toastFailure(toast, e)).finally(() => refocus(was));
   };
-  const retryJob = (id: string) => retry.mutate(id, { onError: (e) => toast(errorMessage(e), { icon: 'x' }) });
+  const retryJob = (id: string) => retry.mutate(id, { onError: (e) => toastFailure(toast, e) });
   const toggle = () => { setOpen(!open); setSaid(false); };
   const reconnect = status === 'reconnect';
   /** The one line: what it says and its control, however Drive stands. It's the same row throughout, so focus can stay on it. */

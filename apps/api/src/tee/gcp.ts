@@ -10,6 +10,7 @@ import { z } from 'zod';
 import type { SecretSetting, TeeBoot, TeeKeys } from '../platform/config';
 import { InternalError, KeyError, UnavailableError } from '../platform/errors';
 import { log } from '../platform/log';
+import { facts } from '../platform/runs';
 import type { KeyWrapper } from '../keys/server-keys';
 
 const glog = log.child({ component: 'gcp' });
@@ -65,7 +66,7 @@ async function ask(service: string, url: string, init: RequestInit): Promise<Ans
   }
   const received = Date.now();
   const body: unknown = await res.json().catch(() => undefined);
-  glog.debug('google cloud answered', { service, status: res.status, ms: Math.round(performance.now() - t0) });
+  glog.debug('google cloud answered', { service, upstreamStatus: res.status, ms: Math.round(performance.now() - t0) });
   return { status: res.status, ok: res.ok, body, date: res.headers.get('date'), sent, received };
 }
 
@@ -81,6 +82,8 @@ function logClockOffset(a: Answer): void {
   // The header is in whole seconds: Google's clock read within the second after it, while the request was out.
   const behindGoogleS = Math.round((google + 500 - (a.sent + a.received) / 2) / 1000);
   glog.at(Math.abs(behindGoogleS) > 30 ? 'warn' : 'info', 'clock offset', { behindGoogleS, roundTripMs: a.received - a.sent });
+  // The newest measurement, for operators (operator release).
+  facts.set('clock', { behindGoogleS, roundTripMs: a.received - a.sent, at: a.received });
 }
 const refusal = (body: unknown) => { const r = ApiRefusal.safeParse(body); return r.success ? r.data.error.status : undefined; };
 
@@ -110,7 +113,7 @@ function attestedIdentity(provider: string, at: GoogleCloud): AttestedIdentity {
     if (!r.ok) {
       // Its error code (unauthorized_client when the attestation doesn't meet the provider's condition), never its description.
       const why = StsRefusal.safeParse(r.body);
-      throw new KeyError(`Google’s Security Token Service refused this VM’s attestation for ${provider}.`, { context: { status: r.status, error: why.success ? why.data.error : undefined } });
+      throw new KeyError(`Google’s Security Token Service refused this VM’s attestation for ${provider}.`, { context: { upstreamStatus: r.status, error: why.success ? why.data.error : undefined } });
     }
     const answer = StsAnswer.safeParse(r.body);
     if (!answer.success) throw new InternalError('Google’s Security Token Service answered with something that isn’t a token.', { context: { issues: answer.error.issues.length } });
@@ -131,7 +134,7 @@ async function readSecret(project: string, name: string, identity: AttestedIdent
   const r = await ask('secret-manager', `${at.secretManager}/v1/projects/${project}/secrets/${name}/versions/latest:access`, {
     headers: { authorization: `Bearer ${await identity()}` }
   });
-  if (!r.ok) throw new KeyError(`Secret Manager didn’t give this VM’s attested identity the secret ${name}.`, { context: { secret: name, status: r.status, reason: refusal(r.body) } });
+  if (!r.ok) throw new KeyError(`Secret Manager didn’t give this VM’s attested identity the secret ${name}.`, { context: { secret: name, upstreamStatus: r.status, reason: refusal(r.body) } });
   const answer = SecretAnswer.safeParse(r.body);
   if (!answer.success) throw new InternalError(`Secret Manager answered with something that isn’t the secret ${name}.`, { context: { secret: name } });
   return Buffer.from(answer.data.payload.data, 'base64').toString('utf8').trim();
@@ -148,7 +151,7 @@ function cloudKmsWrapper(key: string, identity: AttestedIdentity, at: GoogleClou
       method: 'POST', headers: { authorization: `Bearer ${await identity()}`, 'content-type': 'application/json' },
       body: JSON.stringify({ [field]: Buffer.from(value).toString('base64'), additionalAuthenticatedData: MASTER_AAD })
     });
-    if (!r.ok) throw new KeyError(`Cloud KMS refused to ${op} with ${key}.`, { context: { key, op, status: r.status, reason: refusal(r.body) } });
+    if (!r.ok) throw new KeyError(`Cloud KMS refused to ${op} with ${key}.`, { context: { key, op, upstreamStatus: r.status, reason: refusal(r.body) } });
     const answer = (op === 'encrypt' ? Encrypted.transform((a) => a.ciphertext) : Decrypted.transform((a) => a.plaintext)).safeParse(r.body);
     if (!answer.success) throw new InternalError(`Cloud KMS answered ${op} with ${key} with something it doesn’t say.`, { context: { key, op } });
     return answer.data;

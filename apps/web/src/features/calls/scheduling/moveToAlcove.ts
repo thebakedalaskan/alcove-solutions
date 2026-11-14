@@ -1,6 +1,7 @@
 /* Moving one of your calendar meetings to Alcove, from Home's Upcoming and from a row's menu on Calls. */
-import { errorMessage, type CalendarEvent } from '@alcove/api';
+import type { CalendarEvent } from '@alcove/api';
 import { useToast } from '@alcove/ui';
+import { toastFailure } from '~/lib/failed';
 import { listNames } from '~/lib/people';
 import { useAdoptEvent } from './queries';
 
@@ -17,7 +18,7 @@ export function useMoveToAlcove() {
       toast(`${m.title} is an Alcove call now.${m.guests.length ? ` ${listNames(m.guests)} ${m.guests.length > 1 ? 'get' : 'gets'} the new link.` : ''}`, { icon: 'video' });
       return true;
     } catch (err) {
-      toast(errorMessage(err), { icon: 'x' });
+      toastFailure(toast, err);
       return false;
     }
   };

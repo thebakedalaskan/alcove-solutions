@@ -141,8 +141,8 @@ with fewer than 30 days left, and each serves the newest stored, swapped in with
    binds it to every log line for the request ([Logging and errors](logging-and-errors.md)).
 2. CORS answers only `WEB_ORIGIN`. A state-changing request must come from `WEB_ORIGIN` with a JSON or
    audio body, or on its own route, a shared-screen frame or a piece of a file. The one exception is under
-   `/v1/operator/` (feature flags, for operators with curl and a bearer token, never a cookie): no Origin is needed there,
-   and the body must still be JSON.
+   `/v1/operator/` (operators' routes, each request signed with an operator's own key by the operator CLI, never a
+   cookie: `http/operator.ts`): no Origin is needed there, and the body must still be JSON.
 3. Public routes come first: `GET /health` and `/healthz`, `GET /v1/session`, `POST /v1/auth/sign-in`
    (the demo providers), `GET /v1/auth/google` and `GET /v1/auth/google/callback`, `GET /v1/attestation`
    ([what's running](privacy-keys-and-sessions.md#moving-to-confidential-computing)) and `POST /v1/telemetry`.

@@ -116,7 +116,7 @@ function writeSeal(o: Owner, noteId: string, audience: Audience): string {
 export async function audience(o: Owner, noteId: string): Promise<SharedAudience> {
   const l = await locate(o, noteId);
   const m = l.note.manifest;
-  if (m.status !== 'ready') throw new ConflictError(NOT_WRITTEN, { context: { noteId, status: m.status } });
+  if (m.status !== 'ready') throw new ConflictError(NOT_WRITTEN, { context: { noteId, state: m.status } });
   const people = await audienceOf(l);
   return { ...shownOf(people), seal: writeSeal(o, noteId, people) };
 }
@@ -138,7 +138,7 @@ export async function write(o: Owner, noteId: string, body: SharedWrite): Promis
     // Removing the note from theirs waits for this: it can't land in between and leave words behind.
     await holdAccess(o, l, c);
     const m = l.note.manifest;
-    if (m.status !== 'ready') throw new ConflictError(NOT_WRITTEN, { context: { ...ctx, status: m.status } });
+    if (m.status !== 'ready') throw new ConflictError(NOT_WRITTEN, { context: { ...ctx, state: m.status } });
     const people = await audienceOf(l, c);
     // Compared as text, in constant time: it's a keyed hash either way.
     if (!equalBytes(utf8(writeSeal(o, noteId, people)), utf8(body.seal))) {
@@ -159,7 +159,7 @@ export async function preview(o: Owner, noteId: string, entryId: string): Promis
   const l = await locate(o, noteId);
   const m = l.note.manifest;
   const ctx = { noteId, entryId };
-  if (m.status !== 'ready') throw new ConflictError(NOT_WRITTEN, { context: { ...ctx, status: m.status } });
+  if (m.status !== 'ready') throw new ConflictError(NOT_WRITTEN, { context: { ...ctx, state: m.status } });
   const entry = await personal.entryOf(o.pool, personal.inNote(o, l), entryId);
   const reader = personal.noteReader(asRead(l));
   const { text, points } = whatGoes(entry, reader, ctx);
@@ -189,7 +189,7 @@ export async function addToShared(o: Owner, noteId: string, entryId: string, bod
     // Removing the note from theirs waits for this, then takes their own notes with it: it can't land in between and be undone.
     await holdAccess(o, l, c);
     const m = l.note.manifest;
-    if (m.status !== 'ready') throw new ConflictError(NOT_WRITTEN, { context: { ...ctx, status: m.status } });
+    if (m.status !== 'ready') throw new ConflictError(NOT_WRITTEN, { context: { ...ctx, state: m.status } });
     const place = personal.inNote(o, l);
     const entry = await personal.entryOf(c, place, entryId);
     if (entry.shared && (await personal.additionIds(c, owner.ownerId, noteId)).has(entry.shared.additionId)) {

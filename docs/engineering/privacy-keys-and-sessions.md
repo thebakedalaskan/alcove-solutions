@@ -888,8 +888,9 @@ decides.
   (`403 forbidden` otherwise) and a JSON or audio body (`400 invalid` otherwise), or for a piece of a shared screen's video WebM or MP4, and
   for a piece of a file bytes (`application/octet-stream`), on those routes alone. This blocks blind cross-site
   POSTs that `SameSite=Strict` would still allow from sibling ports or subdomains. CORS answers only
-  `WEB_ORIGIN`, with credentials. The one exception is under `/v1/operator/` (`http/system-routes.ts`): operators call it
-  with curl and a bearer token, never a cookie, so no Origin is needed there, and its body must still be JSON.
+  `WEB_ORIGIN`, with credentials. The one exception is under `/v1/operator/` (`http/operator.ts`): operators call it
+  with the operator CLI, each request signed with the operator's own key, never a cookie, so no Origin is needed there,
+  and its body must still be JSON.
 - **Idempotency.** Signed-in mutations carry `x-alcove-operation` (Id128). The receipt stores an HMAC
   commitment of method, path and exact body bytes, plus the JSON response sealed under the operation-result
   key. A retry gets the same response; a different request under the same ID is `409 conflict`. Receipts may

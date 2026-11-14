@@ -20,7 +20,7 @@ import { Icon, type IconName } from '../foundation/icon';
 import { CheckDraw, CountUp, Dots } from '../foundation/motion';
 import { Modal, ThemeScope } from '../foundation/overlay';
 import { Faces, type AvatarPerson } from '../foundation/people';
-import { Button, CopyField, IconButton, Segmented, buttonClass } from '../foundation/primitives';
+import { Button, CopyField, IconButton, RequestRef, Segmented, buttonClass } from '../foundation/primitives';
 import { QrCode } from '../foundation/qr';
 
 /** Which small evening a purchase is drawn as: Pro's sunset, Team's with its people, more notes' last light. */
@@ -554,7 +554,10 @@ export function CheckoutLine({ children }: { children: ReactNode }) {
   return <p className="ck-line2">{children}</p>;
 }
 
-/** The payment's receipt, as a row: what was paid and on what, the day, what it bought and its reference, and Receipt. */
+/**
+ * The payment's receipt, as a row: what was paid and on what, the day and what it bought, its reference whole on a line of
+ * its own (copied when pressed, to give support), and Receipt.
+ */
 export interface ReceiptRowData { title: string; sub: string; reference: string | null; onOpen: () => void }
 
 /**
@@ -586,8 +589,9 @@ export function CheckoutDone({ title, lines, receipt, reminder, invite, inviteTi
       {receipt && (
         <div className="ck-receipt-row">
           <Icon name="receipt" size={22} />
-          <span><b>{receipt.title}</b><small>{receipt.sub}{receipt.reference && <> · <code>{receipt.reference}</code></>}</small></span>
+          <span><b>{receipt.title}</b><small>{receipt.sub}</small></span>
           <Button variant="secondary" size="sm" icon="download" onClick={receipt.onOpen}>Receipt</Button>
+          {receipt.reference && <RequestRef id={receipt.reference} />}
         </div>
       )}
       {invite !== undefined && invite !== null && invite !== false && (

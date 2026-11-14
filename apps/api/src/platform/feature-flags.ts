@@ -66,10 +66,19 @@ function summary(s: State, featureFlag: FeatureFlagName) {
   return { everyone: s.everyone.has(featureFlag), granted: groups.join(' '), groups: groups.length, people: s.people.get(featureFlag)?.size ?? 0, members: members.size };
 }
 
-/** One instance's copy: when it was read, what it said, and which unknown names it has already warned about. */
-interface Copy { at: number; state: State; noted: Set<string>; reading: Promise<void> | undefined }
+/**
+ * One instance's copy: when it was read, what it said, and which unknown names it has already warned about. For operators,
+ * in Unix ms: when it was last read, and last read successfully, and how many reads have failed since.
+ */
+interface Copy { at: number; state: State; noted: Set<string>; reading: Promise<void> | undefined; readAt: number | null; okAt: number | null; failures: number }
 /** One copy per database, which is one per process outside tests. */
 const copies = new WeakMap<Db, Copy>();
+
+/** How this instance's copy of the flags has been read (operator release), or undefined before it first is. Times are Unix ms. */
+export function featureFlagsCache(pool: Db): { readAt: number | null; okAt: number | null; failures: number } | undefined {
+  const copy = copies.get(pool);
+  return copy ? { readAt: copy.readAt, okAt: copy.okAt, failures: copy.failures } : undefined;
+}
 
 /** Reads the flags into a copy and says what changed. If they can't be read, what was in force stays, until the next try. */
 async function refresh(d: Pick<Deps, 'pool'>, copy: Copy): Promise<void> {
@@ -86,10 +95,14 @@ async function refresh(d: Pick<Deps, 'pool'>, copy: Copy): Promise<void> {
         }
       }
       copy.state = next;
+      copy.okAt = Date.now();
+      copy.failures = 0;
     } catch (e) {
+      copy.failures++;
       featureFlagLog.warn('feature flags not read; keeping what was in force', { err: e });
     } finally {
       copy.at = performance.now();
+      copy.readAt = Date.now();
       copy.reading = undefined;
     }
   })();
@@ -99,7 +112,7 @@ async function refresh(d: Pick<Deps, 'pool'>, copy: Copy): Promise<void> {
 async function stateNow(d: Pick<Deps, 'pool' | 'cfg'>): Promise<State> {
   let copy = copies.get(d.pool);
   if (!copy) {
-    copy = { at: -Infinity, state: empty(), noted: new Set(), reading: undefined };
+    copy = { at: -Infinity, state: empty(), noted: new Set(), reading: undefined, readAt: null, okAt: null, failures: 0 };
     copies.set(d.pool, copy);
   }
   if (performance.now() - copy.at >= d.cfg.FEATURE_FLAGS_CACHE_MS) await refresh(d, copy);

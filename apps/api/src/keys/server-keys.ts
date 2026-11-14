@@ -102,6 +102,11 @@ async function masterOf(pool: pg.Pool, wrapper: KeyWrapper, carrying: boolean): 
     wrapped = await row(pool, 'master');
     if (!wrapped) throw new InternalError('The master was stored, but isn’t there.');
   }
+  return unwrapped(wrapper, wrapped);
+}
+
+/** The master, as Cloud KMS unwraps what's stored. */
+async function unwrapped(wrapper: KeyWrapper, wrapped: Uint8Array): Promise<Uint8Array> {
   let master: Uint8Array;
   // A copy of its own: pg hands back a Buffer, which can be a view into memory it shares.
   try { master = await wrapper.unwrap(new Uint8Array(wrapped)); } catch (e) {
@@ -202,30 +207,41 @@ function opensUnder(master: Uint8Array, ownerId: string, envelope: Uint8Array, c
 }
 
 /**
- * Forgets the old master, for good, once no account's root key is under it alone: none has only the old envelope, and
- * every new one opens under the master (one that doesn't would be lost with it).
+ * What forgetting the old master would leave behind, counted: accounts with both envelopes whose new one the master doesn't
+ * open (`wrong`), and accounts with no new envelope yet (`left`). Refused while either is above none (`not-rewrapped`).
  */
-async function retire(pool: pg.Pool, master: Uint8Array, bundle: Bundle): Promise<Bundle> {
+const unopened = async (db: Db, master: Uint8Array): Promise<number> => {
   let wrong = 0;
   for (let after = ''; ;) {
-    const page = await rows(pool, MovingRow, `SELECT owner_id, root_envelope_v2, root_check FROM owners
+    const page = await rows(db, MovingRow, `SELECT owner_id, root_envelope_v2, root_check FROM owners
       WHERE root_envelope IS NOT NULL AND root_envelope_v2 IS NOT NULL AND owner_id > $1 ORDER BY owner_id LIMIT 500`, [after]);
     for (const r of page) if (r.root_envelope_v2 && !opensUnder(master, r.owner_id, r.root_envelope_v2, r.root_check)) wrong++;
     const last = page.at(-1);
     if (!last || page.length < 500) break;
     after = last.owner_id;
   }
-  if (wrong) {
-    throw new ConflictError(`${wrong} accounts still have a root key only the old master opens. Start with LEGACY_SECRETS until the API logs owners rewrapped with nothing remaining, then retire it.`, { context: { wrong } });
-  }
+  return wrong;
+};
+const withoutNew = async (db: Db): Promise<number> =>
+  (await maybeOne(db, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM owners WHERE root_envelope_v2 IS NULL'))?.n ?? 0;
+const notRewrapped = {
+  wrong: (wrong: number) => new ConflictError(`${wrong} accounts still have a root key only the old master opens. Start with LEGACY_SECRETS until the API logs owners rewrapped with nothing remaining, then retire it.`, { context: { wrong, reason: 'not-rewrapped' } }),
+  left: (left: number) => new ConflictError(`${left} accounts still have their root key only under the old master. Start with LEGACY_SECRETS and without RETIRE_LEGACY_KMASTER until the API logs owners rewrapped with nothing remaining, then retire it.`, { context: { left, reason: 'not-rewrapped' } })
+};
+
+/**
+ * Forgets the old master, for good, once no account's root key is under it alone: none has only the old envelope, and
+ * every new one opens under the master (one that doesn't would be lost with it).
+ */
+async function retire(pool: pg.Pool, master: Uint8Array, bundle: Bundle): Promise<Bundle> {
+  const wrong = await unopened(pool, master);
+  if (wrong) throw notRewrapped.wrong(wrong);
   const retired = { ...bundle, legacyKmaster: null };
   await tx(pool, async (c) => {
     // No account can be made under the old master alone while this looks, so none is left behind.
     await exec(c, 'LOCK TABLE owners IN SHARE MODE');
-    const left = (await maybeOne(c, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM owners WHERE root_envelope_v2 IS NULL'))?.n ?? 0;
-    if (left > 0) {
-      throw new ConflictError(`${left} accounts still have their root key only under the old master. Start with LEGACY_SECRETS and without RETIRE_LEGACY_KMASTER until the API logs owners rewrapped with nothing remaining, then retire it.`, { context: { left } });
-    }
+    const left = await withoutNew(c);
+    if (left > 0) throw notRewrapped.left(left);
     await exec(c, "UPDATE server_keys SET record = $1, updated_at = now() WHERE id = 'bundle'", [seal(master, retired)]);
   });
   klog.info('old master retired');
@@ -253,21 +269,65 @@ export async function resolveKeys(pool: pg.Pool, s: KeySource): Promise<Keys> {
     } finally { kmaster.fill(0); }
   }
   const { wrapper, legacy, retire: retiring } = s;
-  if (legacy && !Legacy.safeParse(legacy).success) throw new KeyError('The old KMASTER and KSERVICE must each be 32 bytes, base64url.');
-  if (legacy && retiring) throw new KeyError('Retiring the old master takes the old keys away: start without LEGACY_SECRETS.');
+  checkGiven(legacy, retiring);
 
   const master = await masterOf(pool, wrapper, legacy !== undefined);
   try {
     let bundle = (await stored(pool, master)) ?? (await seed(pool, master, legacy, s.opensAccounting));
-    if (legacy) {
-      if (bundle.legacyKmaster === null) throw new KeyError('These server keys carry no old master: it was retired, or this database never had one. Start without LEGACY_SECRETS.');
-      if (!same(legacy.kmaster, bundle.legacyKmaster) || !same(legacy.kservice, bundle.kservice)) throw new KeyError('The old keys given aren’t the ones these server keys carry.');
-    }
+    if (legacy) checkCarried(legacy, bundle);
     if (retiring && bundle.legacyKmaster !== null) bundle = await retire(pool, master, bundle);
-    // The old master is the one given: one only the bundle carries, as a copy of the bundle from before it was retired would, is left alone.
-    const old = legacy ? bundle.legacyKmaster ?? undefined : undefined;
-    klog.info('server keys opened', { oldMaster: old !== undefined, carried: bundle.legacyKmaster !== null });
-    return { KMASTER: b64u(master), KSERVICE: bundle.kservice, INDEX_KEY: bundle.indexKey, PHOTO_KEY: bundle.photoKey, LEGACY_KMASTER: old };
+    const keys = keysOf(master, bundle, legacy);
+    klog.info('server keys opened', { oldMaster: keys.LEGACY_KMASTER !== undefined, carried: bundle.legacyKmaster !== null });
+    return keys;
+  } finally {
+    master.fill(0);
+  }
+}
+
+/** The old keys a TEE is started with, as a start takes them: each 32 bytes, and never while it retires the old master. */
+function checkGiven(legacy: LegacyKeys | undefined, retiring: boolean): void {
+  if (legacy && !Legacy.safeParse(legacy).success) throw new KeyError('The old KMASTER and KSERVICE must each be 32 bytes, base64url.');
+  if (legacy && retiring) throw new KeyError('Retiring the old master takes the old keys away: start without LEGACY_SECRETS.');
+}
+/** The old keys given are the ones these server keys carry. */
+function checkCarried(legacy: LegacyKeys, bundle: Bundle): void {
+  if (bundle.legacyKmaster === null) throw new KeyError('These server keys carry no old master: it was retired, or this database never had one. Start without LEGACY_SECRETS.');
+  if (!same(legacy.kmaster, bundle.legacyKmaster) || !same(legacy.kservice, bundle.kservice)) throw new KeyError('The old keys given aren’t the ones these server keys carry.');
+}
+/** The keys the server runs with: the master, the server keys sealed under it, and the old master while it's given. */
+function keysOf(master: Uint8Array, bundle: Bundle, legacy: LegacyKeys | undefined): Keys {
+  // The old master is the one given: one only the bundle carries, as a copy of the bundle from before it was retired would, is left alone.
+  const old = legacy ? bundle.legacyKmaster ?? undefined : undefined;
+  return { KMASTER: b64u(master), KSERVICE: bundle.kservice, INDEX_KEY: bundle.indexKey, PHOTO_KEY: bundle.photoKey, LEGACY_KMASTER: old };
+}
+
+/**
+ * The keys as a start would resolve them, read only, for the checks job (operator-job.ts). Outside a TEE, as resolveKeys
+ * does, which only reads there. Inside one: the master Cloud KMS unwraps from what's stored, the server keys opened under
+ * it, and the old keys it's started with checked against them. Nothing is made, sealed, retired or written. Where a start
+ * would write, on its first start on a database, this refuses, its code saying what isn't there (`no-master`,
+ * `no-server-keys`). Where a start would forget the old master now (`retiring`), what it would refuse that over is counted,
+ * and refused as it would be (`not-rewrapped`). `carried`: the server keys still carry the old master.
+ */
+export async function openKeys(pool: pg.Pool, s: KeySource): Promise<{ keys: Keys; carried: boolean; retiring: boolean }> {
+  if (s.tee === 'none') return { keys: await resolveKeys(pool, s), carried: false, retiring: false };
+  const { wrapper, legacy, retire: asked } = s;
+  checkGiven(legacy, asked);
+  const wrapped = await row(pool, 'master');
+  if (!wrapped) throw new KeyError('There’s no master here: the first start on a database makes one, and this never does.', { context: { code: 'no-master' } });
+  const master = await unwrapped(wrapper, wrapped);
+  try {
+    const bundle = await stored(pool, master);
+    if (!bundle) throw new KeyError('There are no server keys here: the first start on a database seals them, and this never does.', { context: { code: 'no-server-keys' } });
+    if (legacy) checkCarried(legacy, bundle);
+    const retiring = asked && bundle.legacyKmaster !== null;
+    if (retiring) {
+      const wrong = await unopened(pool, master);
+      if (wrong) throw notRewrapped.wrong(wrong);
+      const left = await withoutNew(pool);
+      if (left) throw notRewrapped.left(left);
+    }
+    return { keys: keysOf(master, bundle, legacy), carried: bundle.legacyKmaster !== null, retiring };
   } finally {
     master.fill(0);
   }

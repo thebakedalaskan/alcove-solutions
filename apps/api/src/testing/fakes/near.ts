@@ -25,8 +25,9 @@
  * can make one up; and asked to compare a call with earlier ones in its series, it reads "instead" in a decision and
  * "Answer:" at the start of a line, with labels and moments that aren't there among them, as a model can make them up.
  * Every request body is kept as it arrived, so tests can show that nothing readable crossed the
- * wire; each request with content records the attested key it was sealed to; and the evidence can be made to lie,
- * so tests can show what Alcove refuses.
+ * wire; each request with content records the attested key it was sealed to; the evidence can be made to lie,
+ * so tests can show what Alcove refuses; and a model can turn every request away with a status of its own while its
+ * evidence checks out (`refuseModel`), as NEAR AI's notes model did on 13 Nov.
  */
 import { gcm } from '@noble/ciphers/aes.js';
 import { ed25519, x25519 } from '@noble/curves/ed25519.js';
@@ -70,6 +71,8 @@ export type Tamper =
   | 'report-down' | 'refuse' | 'reply-sealed';
 /** The attested machines: the speech model, the notes model and the second vision model. */
 export type Task = 'transcript' | 'notes' | 'vision';
+/** What a model refusing (refuseModel) says in its error, as a provider's message can say anything: never repeated by Alcove. */
+export const REFUSAL = 'Key ak-vandelay-7781 was revoked for Vandelay Industries; balance $0.00';
 /** How a reply can fail: the service down, prose instead of JSON, empty notes, or a reply that ran out of tokens part way. */
 export type Failure = 'down' | 'prose' | 'stub' | 'cut-off' | 'empty' | 'partial' | 'lines';
 
@@ -125,6 +128,12 @@ export interface FakeNear {
   speechUsageNext(usage: { input: number; output: number }): void;
   /** The next request for a call's full summary comes back in the wrong shape (the notes are written as usual). */
   failDetailsNext(): void;
+  /**
+   * From now on the model's own endpoint opens every request sealed to it and answers with `status` inside the sealed reply,
+   * as NEAR AI's notes model did on 13 Nov: 401 or 403 for a key or an account it turns away, 429 or 5xx when it's busy or
+   * down, while its evidence still checks out. Its error says REFUSAL, which Alcove must never repeat. null: it answers again.
+   */
+  refuseModel(task: Task, status: number | null): void;
   /** The next chat reply takes this long, as a busy model does. */
   slowNext(ms: number, only?: string | undefined): void;
   /** The next request to the notes model waits for this before it's answered, as if something happened while the model wrote. */
@@ -616,6 +625,8 @@ export async function startFakeNear(): Promise<FakeNear> {
   let holding: (() => Promise<void>) | null = null;
   const memory: Memory = { reworded: new Map(), worded: new Map(), identified: new Map(), split: new Map() };
   let tampered: { how: Tamper; of: 'model' | 'gateway' } | null = null;
+  /** The models refusing every request, and with what status (refuseModel). */
+  const refusing = new Map<Task, number>();
   let ohttpIds = 1;
   const lie = (of: 'model' | 'gateway') => (tampered?.of === of ? tampered.how : undefined);
 
@@ -680,6 +691,8 @@ export async function startFakeNear(): Promise<FakeNear> {
       reply(res, 200, tampered?.how === 'reply-sealed' ? randomBytes(sealed.length) : sealed, 'message/ohttp-res');
     };
     if (inner.headers.get('authorization') !== `Bearer ${apiKey}`) return respond(401, { error: { message: 'Invalid or missing Authorization header' } });
+    const refusal = refusing.get(task);
+    if (refusal !== undefined) return respond(refusal, { error: { message: REFUSAL, type: 'authentication_error' } });
     const out = await handle(inner);
     return respond(out.status, out.body);
   }
@@ -874,6 +887,7 @@ export async function startFakeNear(): Promise<FakeNear> {
     cachedNext(tokens) { cached = tokens; },
     speechUsageNext(usage) { speechUsage = usage; },
     failDetailsNext() { detailsFailing = true; },
+    refuseModel(task, status) { if (status === null) refusing.delete(task); else refusing.set(task, status); },
     slowNext(ms, only) { slow = ms; slowOnly = only; },
     holdNext(then) { holding = then; },
     reword(line, text) { if (text === null) memory.reworded.delete(line); else memory.reworded.set(line, text); },

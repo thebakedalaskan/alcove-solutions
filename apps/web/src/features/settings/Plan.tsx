@@ -22,6 +22,7 @@ import { useCheckout } from '~/features/plans/checkout';
 import { PLAN_NAMES, endsIn, nextPeriodMinutes, noticesLike, noticesNow, notesLeft, notesLow, notesOut, notesShare, paidFor, payingNow, proEnding, renews, teamLicenses } from '~/features/plans/planState';
 import { checkoutFor, purchaseName, restToSend, tokensExact } from '~/features/plans/purchase';
 import { hoursOfNotes } from '~/features/plans/words';
+import { toastFailure } from '~/lib/failed';
 import { useNow } from '~/lib/live';
 import { accountQueries } from '~/features/account/queries';
 import { planQueries, topUpOpen, useCancelTopUp, useDismissPlanNotice, useRefundPro, useSetRenew } from '~/features/plans/queries';
@@ -81,7 +82,7 @@ function Notices({ plan, team }: { plan: Plan; team: MyTeam | null | undefined }
       const next = document.querySelector<HTMLButtonElement>('#plan .set-note-x');
       if (next) next.focus();
       else document.getElementById('plan')?.focus({ preventScroll: true });
-    }), (e: unknown) => toast(errorMessage(e), { icon: 'x' }));
+    }), (e: unknown) => toastFailure(toast, e));
   };
   return shown.map((n) => {
     const teams = teamNoticeSays(n, plan, team);
@@ -249,7 +250,7 @@ function Renew({ plan, offers, canAdd }: { plan: Plan; offers: PlanOffers | unde
   const state = useSaveState();
   const toast = useToast();
   const set = (on: boolean) => {
-    void saving(RENEW, () => renew.mutateAsync(on)).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' }));
+    void saving(RENEW, () => renew.mutateAsync(on)).catch((e: unknown) => toastFailure(toast, e));
   };
   const price = offers?.pro.microUsdPerMonth;
   // Why it won't renew, as the server says (`pro.renewal`): the balance is short, or a month costs more than the last did.
@@ -344,7 +345,7 @@ function Payments({ topUps, history, add, onAddMoney }: {
         const row = near ? document.querySelector<HTMLButtonElement>(`[data-top-up="${near.id}"] .set-pay-a button`) : null;
         (row ?? add.current)?.focus();
       }),
-      onError: (e) => toast(errorMessage(e), { icon: 'x' })
+      onError: (e) => toastFailure(toast, e)
     });
   };
   const more = history.length - FIRST;

@@ -7,7 +7,7 @@
  * you're invited to (Propose another time), and starts from a call that happened (Meet again). It closes once it's done; the
  * call is marked on the page, and a toast says what happened, with Undo.
  */
-import { MAX_GUESTS, errorMessage, type ChangeScope, type Document, type Meeting, type MeetingInput, type Patch, type Person } from '@alcove/api';
+import { MAX_GUESTS, type ChangeScope, type Document, type Meeting, type MeetingInput, type Patch, type Person } from '@alcove/api';
 import {
   Button, Dots, EmptyState, Icon, SchedAsk, SchedChoice, SchedField, SchedFoot, SchedGroup, SchedLine, SchedName, SchedOffer, SchedPanel, SchedQuiet, SchedRow,
   SchedSwitch, SchedTitle, Segmented, Select, Unencrypted, useToast
@@ -18,6 +18,7 @@ import { useCopyLink } from '~/features/call/session/links';
 import { NoNotesLeftDoor } from '~/features/plans/notesDoors';
 import { freshCalls, movedCalls } from './fresh';
 import { useMyModelUnencrypted } from '~/features/notes/models';
+import { toastFailure } from '~/lib/failed';
 import { useNow } from '~/lib/live';
 import { log } from '~/lib/log';
 import { byEmail, callName, listNames, sameEmail } from '~/lib/people';
@@ -312,7 +313,7 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
     const code = m.seriesCode ?? m.code;
     const copied = () => navigator.clipboard?.writeText(`${location.origin}/join/${code}`).then(() => true, () => false) ?? Promise.resolve(false);
     const offerLink = { label: 'Copy link', onClick: () => copy(code) };
-    const undo = { label: 'Undo', onClick: () => cancel.mutate({ id: m.id, code: m.code, scope: m.repeat ? 'following' : undefined }, { onError: (e) => toast(errorMessage(e), { icon: 'x' }) }) };
+    const undo = { label: 'Undo', onClick: () => cancel.mutate({ id: m.id, code: m.code, scope: m.repeat ? 'following' : undefined }, { onError: (e) => toastFailure(toast, e) }) };
     if (m.offer) {
       const name = only ? callName(only) : 'your guest';
       if (await copied()) toast(`Link copied for ${name}. The call waits until they pick a time.`, { icon: 'link', ms: 7000 });
@@ -359,7 +360,7 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
         movedCalls.add(moved.id);
         onClose();
         const told = m.guestCount && (moved.calendarUrl || telling === 'sample') ? ` ${moved.calendarUrl ? 'Google Calendar tells' : 'Your calendar tells'} ${listNames(m.guests)}.` : '';
-        const back = scope === 'this' ? { label: 'Undo', onClick: () => { void update.mutateAsync({ id: m.id, input: was, scope: applied }).then(() => movedCalls.add(m.id), (e: unknown) => toast(`Couldn’t undo that. ${errorMessage(e)}`, { icon: 'x', ms: 6000 })); } } : undefined;
+        const back = scope === 'this' ? { label: 'Undo', onClick: () => { void update.mutateAsync({ id: m.id, input: was, scope: applied }).then(() => movedCalls.add(m.id), (e: unknown) => toastFailure(toast, e, 'Couldn’t undo that.')); } } : undefined;
         toast(`Moved to ${said(chosen)}.${told}`, { icon: 'cal', ms: 6000, action: back });
         return;
       }
@@ -394,7 +395,7 @@ function Scheduler({ start, onClose }: { start: Start; onClose: () => void }) {
       /* One call comes back as it was, with a new link; a call in a series can't rejoin it. */
       const again = !m.repeat ? { label: 'Undo', onClick: () => {
         void schedule.mutateAsync({ title: m.title, startsAt: m.startsAt, durationMinutes: minutesOf(m), guests: m.guests.map((g) => g.email), notes: m.notes, choices: m.choices, joinMuted: m.joinMuted, documents: m.documents.flatMap((d) => (d.name === null ? [] : [d.id])) })
-          .then((n) => toast(restoredLine(n), { icon: 'cal', ms: 9000, action: { label: 'Copy link', onClick: () => copy(n.code) } }), (e: unknown) => toast(`Couldn’t schedule the call again. ${errorMessage(e)}`, { icon: 'x', ms: 6000 }));
+          .then((n) => toast(restoredLine(n), { icon: 'cal', ms: 9000, action: { label: 'Copy link', onClick: () => copy(n.code) } }), (e: unknown) => toastFailure(toast, e, 'Couldn’t schedule the call again.'));
       } } : undefined;
       toast(cancelledLine(m, applied === 'following'), { icon: 'trash', ms: 6000, action: again });
     } catch (e) {

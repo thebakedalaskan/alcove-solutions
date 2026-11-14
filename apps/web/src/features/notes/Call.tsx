@@ -8,10 +8,10 @@
  * written the page says how they're coming along; a call deleted or removed says what went.
  */
 import {
-  errorCode, errorMessage, firstName, minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type Note, type NoteProgress, type Person,
+  errorCode, errorMessage, errorRequestId, firstName, minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type Note, type NoteProgress, type Person,
   type PersonalPoint, type Question, type QuestionPatch, type TranscriptLine
 } from '@alcove/api';
-import { Button, Dots, Evening, Icon, Modal, Notice, RecDot, Select, Tabs, cn, useToast } from '@alcove/ui';
+import { Button, Dots, Evening, Icon, Modal, Notice, RecDot, RequestRef, Select, Tabs, cn, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
@@ -21,6 +21,7 @@ import { useOpenScheduling } from '~/features/calls/scheduling/search';
 import { useNoteOnScreen } from '~/features/notifications/notify';
 import { api } from '~/lib/api';
 import { isUnencrypted, modelOf, modelOptions, modelValue, useAiModels } from '~/features/notes/models';
+import { toastFailure } from '~/lib/failed';
 import { log } from '~/lib/log';
 import { listNames, sameEmail } from '~/lib/people';
 import { accountQueries } from '~/features/account/queries';
@@ -272,9 +273,9 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
       setGoing(true);
       await sleep(620);
       onGone({ kind: mine ? 'deleted' : 'removed', transcript: lines.length > 0, audio: hasAudio ? minutesLabel(note.duration) : null, screens: note.screens.length, rooms: note.rooms.length, roomsSaid, organizer: organizer ? firstName(organizer.name) : 'The organizer' });
-    } catch (e) { toast(errorMessage(e), { icon: 'x' }); }
+    } catch (e) { toastFailure(toast, e); }
   };
-  const failed = (e: unknown) => toast(errorMessage(e), { icon: 'x' });
+  const failed = (e: unknown) => toastFailure(toast, e);
   /** Each change says what went wrong itself, and rejects, so whoever asked can say what worked. */
   const tell = <T,>(p: Promise<T>): Promise<T> => p.catch((e: unknown) => { failed(e); throw e; });
   const act: Acting = {
@@ -498,10 +499,15 @@ function Gone({ kind, transcript, audio, screens, rooms, roomsSaid, organizer }:
   return <GonePage title="Deleted" lead="Gone from Alcove, for everyone who had them."><ul>{went.map((w) => <li key={w}><Icon name="check" size={16} />{w}</li>)}</ul></GonePage>;
 }
 
-/** A call that isn't here, or couldn't be read: why, and the way back. */
+/** A call that isn't here, or couldn't be read: why, the reference to quote when Alcove answered, and the way back. */
 export function Missing({ error }: { error: unknown }) {
   const notFound = errorCode(error) === 'not-found';
-  return <GonePage title={notFound ? 'This call isn’t here' : 'Couldn’t open this call'} lead={notFound ? 'Its notes were deleted, or they were never shared with you.' : errorMessage(error)} />;
+  const ref = errorRequestId(error);
+  return (
+    <GonePage title={notFound ? 'This call isn’t here' : 'Couldn’t open this call'} lead={notFound ? 'Its notes were deleted, or they were never shared with you.' : errorMessage(error)}>
+      {ref && <RequestRef id={ref} />}
+    </GonePage>
+  );
 }
 
 /* The call from the welcome screen, written out: its notes to read and tick, and its transcript. Nothing to play, share or delete. */

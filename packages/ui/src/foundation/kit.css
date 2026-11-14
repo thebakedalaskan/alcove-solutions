@@ -257,11 +257,21 @@
 .ac-card-head > span { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-3); }
 .ac-card-head a { display: inline-flex; align-items: center; gap: 4px; font: 600 13px/1 var(--font-sans); color: var(--ink-3); transition: color var(--duration-1); }
 .ac-card-head a:hover { color: var(--sun-text); }
-.ac-nav { display: grid; gap: 2px; }
-.ac-nav-item { display: flex; align-items: center; gap: 11px; height: 40px; padding: 0 12px; border-radius: 11px; color: var(--ink-2); font: 500 14.5px/1 var(--font-sans); text-decoration: none; transition: background-color var(--duration-1), color var(--duration-1); }
+.ac-nav { --nav-r: 11px; --count-in: 6px; display: grid; gap: 2px; }
+.ac-nav-item { display: flex; align-items: center; gap: 11px; height: 40px; padding: 0 12px; border-radius: var(--nav-r, 11px); color: var(--ink-2); font: 500 14.5px/1 var(--font-sans); text-decoration: none; transition: background-color var(--duration-1), color var(--duration-1); }
 .ac-nav-item:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
 .ac-nav-item[aria-current="page"] { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); }
-.ac-nav-item .count { margin-left: auto; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+/*
+ * A count stands in a column of its own at the row's end, 6px in and at least 28px wide, its digits centred, so counts line
+ * up whatever their digits and whichever kind they are. A count that's a link of its own (NavCount: Home's, to For you) is
+ * that column's cell, over the row: pointing at it lights it alone, its corners concentric with the row's.
+ */
+.ac-nav-item .count { box-sizing: border-box; min-width: 28px; margin: 0 calc(var(--count-in, 6px) - 12px) 0 auto; padding: 0 var(--count-in, 6px); text-align: center; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.ac-nav-place { position: relative; display: grid; }
+.ac-nav-place > .ac-nav-item { padding-right: 52px; }
+.ac-nav-count { position: absolute; top: var(--count-in, 6px); right: var(--count-in, 6px); bottom: var(--count-in, 6px); box-sizing: border-box; display: grid; place-items: center; min-width: 28px; padding: 0 var(--count-in, 6px); border-radius: calc(var(--nav-r, 11px) - var(--count-in, 6px)); font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); text-decoration: none; transition: background-color var(--duration-1), color var(--duration-1); }
+.ac-nav-count:hover { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); }
+.ac-nav-count:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* ---- Widget: one card on a page's water. Its head (an icon in a tile, the title, then what the head holds), its body, and a foot only while its list is longer than it shows ---- */
 .ac-widget { position: relative; display: flex; flex-direction: column; min-width: 0; border-radius: 20px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--shadow-2); }
@@ -274,6 +284,13 @@
 .ac-widget-more { display: inline-flex; align-items: center; height: 32px; margin-left: -8px; padding: 0 8px; border-radius: var(--radius-sm); font: 500 13.5px/1 var(--font-sans); color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
 .ac-widget-more:hover { background: color-mix(in oklch, var(--ink) 7%, transparent); color: var(--ink); }
 .ac-widget-more:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/*
+ * Landed on: a link named the widget (Home's count in the side panel, For you). A ring in the horizon's blue goes round it
+ * and fades as the eye finds it. Fading isn't movement, so it fades with reduced motion too.
+ */
+.ac-widget[data-landed]::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 2px var(--horizon), 0 0 0 7px var(--horizon-soft); pointer-events: none; animation: ac-landed 1.8s var(--ease-in) forwards; }
+@keyframes ac-landed { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ac-widget[data-landed]::after { animation-duration: 1.8s !important; } }
 /* Bare: no card. The head and what's under it sit on the page, as a row of cards does. */
 .ac-widget.is-bare { border-radius: 0; background: none; box-shadow: none; }
 .ac-widget.is-bare > .ac-widget-h { min-height: 32px; margin-bottom: 14px; padding: 0; border: 0; }
@@ -337,9 +354,9 @@
 .ac-more .lk { display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 8px; border-radius: var(--radius-sm); font: 500 13.5px/1 var(--font-sans); color: var(--ink-2); }
 .ac-more .lk:hover { color: var(--ink); }
 .ac-more .lk:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-/* A failed request's reference: quiet and monospace, copied on press. */
+/* A reference to quote, a failed request's or a payment's: quiet and monospace, copied on press. A long one wraps, whole. */
 .ac-ref { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 7px; border-radius: var(--radius-xs); color: var(--ink-3); font: 500 12px/1.3 var(--font-sans); transition: background-color var(--duration-1), color var(--duration-1); }
-.ac-ref code { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 500 12px/1.3 var(--font-mono); color: var(--ink-2); }
+.ac-ref code { min-width: 0; overflow-wrap: anywhere; text-align: left; font: 500 12px/1.3 var(--font-mono); color: var(--ink-2); }
 .ac-ref:hover { background: var(--sunk); color: var(--ink-2); }
 .ac-ref:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 /* A long value to copy exactly (CopyField): the whole value over up to two lines, its copy button beside it. */
@@ -483,6 +500,8 @@
 .ac-empty { display: grid; justify-items: center; gap: 10px; padding: 28px 16px 22px; text-align: center; }
 .ac-empty b { font: 480 22px/1.2 var(--font-display); letter-spacing: -.015em; color: var(--ink); }
 .ac-empty p { margin: 0; max-width: 24em; font-size: 14px; line-height: 1.5; color: var(--ink-3); }
+/* A reference under what went wrong (the page that didn't load): a line of its own, centred. */
+.ac-empty p .ac-ref { display: flex; width: fit-content; margin: 6px auto 0; }
 .ac-empty .ac-empty-act { margin-top: 8px; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
 .ac-arch-art .rim { fill: none; stroke: var(--line-control); stroke-dasharray: 3 4; }
 .ac-arch-art .well { fill: var(--sunk); }

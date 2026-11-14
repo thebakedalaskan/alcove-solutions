@@ -17,7 +17,10 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
   - Start a call (N): a row like the places, its name in line with theirs and its camera in a warm circle. It's never
     filled or shaded, so the place you're on is the one shaded row
   - Home, Calls, Drive and Record. A count says something waits on you there (what's for you on Home, tags you haven't
-    seen in the Drive, recordings waiting to upload), quiet, in `ink-3` at the row's end. Nothing counts a total
+    seen in the Drive, recordings waiting to upload), quiet, in `ink-3`, its digits centred in a column of its own at the
+    row's end (28px wide, 6px in), so counts line up. Home's is a link of its own, that column's cell over the row
+    (`NavCount`): pointing at it lights it alone, in corners concentric with the row's, and its tooltip says what's in each
+    of For you's tabs; pressing it lands on For you. Nothing counts a total
   - Pinned, once you've pinned something: no heading and no sentence before that. Its pin shows at the end of the heading
     while you point at the list, as an add button does. It scrolls between the places and the foot
   - at the foot, Team (where your groups are, so the panel doesn't list them again) and Agents, with Team hidden for
@@ -105,7 +108,9 @@ Home is for starting a call and for what's yours. It's nearly all sky.
   15px semibold, then the body, and a foot with Show N more only when a list is longer than it shows.
   - **For you** has two tabs in its head, To answer and Follow-ups, each with a count in a pill: rose under To answer
     and horizon under Follow-ups while that tab is on, neutral otherwise. A 2px ink line along the head's foot marks the
-    tab you're on.
+    tab you're on. Landed on from the side panel's Home count, it comes into view only as far as it takes to see it whole,
+    32px clear of the page's edge, and a `horizon` ring with a soft halo goes round it and fades over 1.8s (Widget's
+    `landed`), with reduced motion too, since fading isn't movement. Its rows keep their places for the visit.
     - **A row to answer** is one grid: the kind in a circle (a rose diamond for a decision, a dashed horizon box for a
       follow-up that isn't yours yet, a warm share icon for notes shared with you), the words in up to two lines, the
       faces of whoever was on the call (a microphone arch for a room recording) in a fixed column, and the answer in a
@@ -639,8 +644,10 @@ One window over any page, a call included, where it opens in your own theme: at 
 you're buying on the right, under its own small evening (`PlanWindow`) whose sun rises as the payment lands.
 - **Steps:** Choose, Pay, Done (`CheckoutSteps`). Choose is the lengths (`MonthsPicker`, with its 20% off bracket) or the
   hours (`HoursPicker`), then the network (`NetworkPicker`) only when money is needed; Pay is the status, the amount to send,
-  the address with its QR code and the track (`PayStatus`, `PayAmount`, `PayAddress`, `PayTrack`); Done draws its tick
-  (`CheckoutDone`), with the receipt (`PaymentReceipt`) in the same window, as paper.
+  the address with its QR code and the track (`PayStatus`, `PayAmount`, `PayAddress`, `PayTrack`), with the payment's
+  reference last from the start, a quiet line that copies when pressed (`RequestRef`), for support; Done draws its tick
+  (`CheckoutDone`), with the receipt's row (that reference whole on a line of its own) and the receipt
+  (`PaymentReceipt`) in the same window, as paper.
 - **One filled button per view:** Get the address, or Buy with your balance; on a phone while paying, Open in wallet.
   Cancel payment asks in the foot (`CheckoutAsk`), with Keep waiting filled, while nothing has arrived. Once part of the
   payment has (Less than asked arrived), the foot has Close alone, though the board's has Cancel payment beside it: the server
