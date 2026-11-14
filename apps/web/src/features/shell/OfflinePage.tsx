@@ -1,9 +1,10 @@
 /*
  * What a screen shows when it can't load. Without a connection: that it's offline and that recording still works,
- * with the way to Record. Anything else: that the page didn't load, with Try again.
+ * with the way to Record. Anything else: that the page didn't load, with Try again, and the failed request's reference to
+ * quote when reporting it.
  */
-import { AlcoveApiError, errorCode } from '@alcove/api';
-import { Button, EmptyState, Icon, buttonClass } from '@alcove/ui';
+import { AlcoveApiError, errorCode, errorRequestId } from '@alcove/api';
+import { Button, EmptyState, Icon, RequestRef, buttonClass } from '@alcove/ui';
 import { Link, useRouter, type ErrorComponentProps } from '@tanstack/react-router';
 import { recordOfflineHere, signedInHere } from '~/features/account/device';
 
@@ -25,15 +26,17 @@ export function OfflinePage() {
   );
 }
 
-/** Every screen's error page: offline, or anything else, said plainly. */
+/** Every screen's error page: offline, or anything else, said plainly, with its reference when Alcove answered. */
 export function RouteError({ error }: ErrorComponentProps) {
   const router = useRouter();
   if (errorCode(error) === 'network') return <OfflinePage />;
+  const ref = errorRequestId(error);
   return (
     <div className="grid min-h-[60vh] place-items-center p-6">
       <EmptyState title="This page didn’t load"
         action={<Button variant="secondary" icon="retry" onClick={() => void router.invalidate()}>Try again</Button>}>
         {error instanceof AlcoveApiError ? error.message : 'Something went wrong on our side.'}
+        {ref && <RequestRef id={ref} />}
       </EmptyState>
     </div>
   );

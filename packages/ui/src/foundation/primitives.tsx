@@ -152,8 +152,9 @@ export function Notice({ tone = 'info', icon, children, className, onDismiss, di
 }
 
 /**
- * A failed request's reference, to quote when reporting the problem: it finds that request's lines in the server's
- * log, and says nothing about anyone. Pressing it copies it.
+ * A reference to quote when reporting a problem: a failed request's, which finds that request's lines in the server's
+ * log, or a payment's, which finds the top-up. It says nothing about anyone. Pressing it copies it; a long one wraps,
+ * so all of it can be read.
  */
 export function RequestRef({ id, className }: { id: string; className?: string | undefined }) {
   const [copied, setCopied] = useState(false);

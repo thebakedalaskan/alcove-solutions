@@ -46,8 +46,6 @@ const ORDER = ['base', 'sol', 'eth', 'arb', 'pol', 'near', 'op', 'avax', 'bsc'];
 const rank = (r: TopUpRoute) => { const i = ORDER.indexOf(r.chain); return i < 0 ? ORDER.length : i; };
 const PRICED = 'Priced in US dollars. 1 USDC is 1 dollar, so you send exactly the total.';
 
-/** A reference as a row shows it: the start of it. The receipt has it whole. */
-const shortRef = (id: string) => (id.length > 10 ? id.slice(0, 8) : id);
 /** The balance entry a purchase of `cost` made in the last day, newest first: its reference is the receipt's. */
 const entryFor = (history: BalanceEntry[] | undefined, cost: number, now: number) =>
   history?.find((e) => e.microUsd === -cost && Date.parse(e.at) > now - DAY) ?? null;
@@ -427,7 +425,9 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
     }
     if (paid && sent > asked) lines.push(`You sent ${tokens(sent)} USDC, ${tokens(sent - asked)} more than asked: it’s in your balance.`);
     if (open.from === 'call' && b.kind === 'pro' && opened?.stopped) lines.push('Notes are on again in the call.');
-    const reference = entry?.id ?? paid?.id ?? null;
+    // The payment's reference when one paid for it, as its Pay step showed it, which is what support looks up; else the
+    // balance's line for it.
+    const reference = paid?.id ?? entry?.id ?? null;
     // Licenses are for a team, whose name the receipt says; anything else is for whoever bought it.
     const forOn = b.kind === 'licenses' ? named || null : name;
     return {
@@ -439,7 +439,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
       reminder: b.kind !== 'pro' ? null : fresh && renews(fresh) ? 'Renews from your balance.' : 'Nothing renews by itself. Alcove reminds you before it ends.',
       row: {
         title: paid ? `${tokens(added)} USDC on ${paid.route.chainName}` : `${usd(c)} from your balance`,
-        sub: `${shortDate(at)} · ${bought}`, reference: reference ? shortRef(reference) : null
+        sub: `${shortDate(at)} · ${bought}`, reference
       },
       receipt: {
         title: bought, total: usdCents(c),

@@ -271,7 +271,7 @@ export async function propose(viewer: Owner, meetingId: string, at: string): Pro
   if (Number.isNaN(when.getTime())) throw new ValidationError('Pick a time to ask for.', { context: { meetingId } });
   const invited = await locateInvited(viewer, meetingId);
   const { organizer, meeting: { manifest: m } } = invited;
-  if (m.status !== 'scheduled') throw new ConflictError('This call has started, so it can’t move now.', { context: { meetingId, status: m.status } });
+  if (m.status !== 'scheduled') throw new ConflictError('This call has started, so it can’t move now.', { context: { meetingId, state: m.status } });
   if (m.offer) throw new ConflictError('A time is still being picked for this call.', { context: { meetingId } });
   if (when.getTime() <= Date.now()) throw new ValidationError('Ask for a time that’s still to come.', { context: { meetingId } });
   if (when.getTime() === new Date(m.startsAt).getTime()) throw new ValidationError('That’s the time it has already.', { context: { meetingId } });

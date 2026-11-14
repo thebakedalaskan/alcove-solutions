@@ -293,7 +293,17 @@ counts its periods from when it began, at the length in force.
 counted for each account, not each workspace. A row for either is ignored with `service limit ignored` at warn, and what it
 said isn't carried over to `plan.free.file_bytes` or `plan.free.storage_bytes`. Delete the row.
 
-From a checkout, against whichever database `DATABASE_URL` names, `.env` locally or Cloud SQL through its proxy, as `migrate` is:
+In production, through the API itself: the operator CLI signs each request with an operator's own key
+(`POST /v1/operator/limits`, [Operating Alcove](operating-alcove.md)). Listing reads; setting one takes a `write` key and a
+reason, a ticket's reference, and answers with the line the command line prints:
+
+```
+pnpm --filter @alcove/server operator limits list
+pnpm --filter @alcove/server operator limits set call.max_seconds 12h --reason INC-77
+call.max_seconds is 12 h now; it was 10 h. Every instance has it within LIMITS_CACHE_MS.
+```
+
+Locally, from a checkout, against whichever database `DATABASE_URL` names (`.env`), as `migrate` is, with the same words:
 
 ```
 pnpm --filter @alcove/server limits list
@@ -305,9 +315,10 @@ pnpm --filter @alcove/server limits set ai.hour_micro_usd '$0.60'
 `set` takes a whole number. Bytes may have a unit (`KiB`, `MiB`, `GiB`, `TiB`), as `512MiB` or as `list` writes it,
 `512 MiB`; time may have one too (`s`, `m`, `h`, `d`), as `30d` or `10 h`; and money is in dollars, `$0.50` or `$20`, up to
 six places (quote it in a shell, which reads `$0` as a variable). Minutes and counts are whole numbers. It refuses a name
-that isn't a limit and a value outside its bounds, at warn, and logs `service limit set` with the old value and the new.
-The image has it as `dist/limits-cli.js`, beside `dist/migrate-cli.js`. Or from Cloud SQL's console, in the unit it's
-kept in: bytes, seconds, micro-USD ($0.50 is 500000), minutes or a count:
+that isn't a limit and a value outside its bounds, at warn, and logs `service limit set` with the old value and the new;
+through the operator route, the `operator call` line beside it names the key and the reason. The image has the command
+line as `dist/limits-cli.js`, beside `dist/migrate-cli.js`, for anywhere that reaches the database. Or from Cloud SQL's
+console, in the unit it's kept in: bytes, seconds, micro-USD ($0.50 is 500000), minutes or a count:
 
 ```sql
 INSERT INTO service_limits (name, value) VALUES ('plan.free.storage_bytes', 21474836480) ON CONFLICT (name) DO UPDATE SET value = excluded.value, updated_at = now();
@@ -323,9 +334,11 @@ ignored` at warn, and its limit keeps its default. A value past its bounds is he
 
 Feature flags switch new features on for everyone, for hand-picked groups or for individual people, with no release and no
 restart. Locally, `pnpm --filter @alcove/server feature-flags …` with `DATABASE_URL` and `KMASTER` from `.env`; in production,
-through the API itself, with the operator token whose SHA-256 is `OPERATOR_TOKEN_SHA256` in
-`infra/confidential-space/env.sh` (`POST /v1/operator/feature-flags`, [Feature flags › In production](feature-flags.md#in-production)),
-since addresses are hashed with a key that only exists inside the VM. Each instance reads the flags
+through the API itself, with `pnpm --filter @alcove/server operator feature-flags …`, which signs each request with an
+operator's own key, one of the environment's `CS_OPERATOR_KEYS` in `infra/confidential-space/env.sh`
+(`POST /v1/operator/feature-flags`, [Feature flags › In production](feature-flags.md#in-production),
+[Operating Alcove](operating-alcove.md)), since addresses are
+hashed with a key that only exists inside the VM. Each instance reads the flags
 again every 30 seconds (`FEATURE_FLAGS_CACHE_MS`). Everything else, building behind a flag, every command and retiring a flag, is in
 [Feature flags](feature-flags.md).
 
@@ -333,12 +346,21 @@ again every 30 seconds (`FEATURE_FLAGS_CACHE_MS`). Everything else, building beh
 
 Support adds dollars to an account's balance, and says where its plan stands, with `billing` ([Plans and usage ›
 Support](plans-and-usage.md#support)). Locally, `pnpm --filter @alcove/server billing …` with `DATABASE_URL`, `KSERVICE` and
-`KMASTER` from `.env`. In production there's no job for it: the API runs in Confidential Space, and `KSERVICE` is in its
-server keys, sealed under the master only the VM gets ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)).
+`KMASTER` from `.env`. In production the API runs in Confidential Space, and `KSERVICE` is in its server keys, sealed under
+the master only the VM gets ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)).
 The old `alcove-kservice` secret, which held the same key, was deleted when the old keys were retired (2026-11-13), so
-nothing outside the VM has it. Production's support needs a way in through the API, as feature flags have (the operator
-route), which isn't built: until it is, support can't add a credit in production. Built, it names a top-up by its
-reference or its ID, never an address, and prints no amount, history or address, as the CLI does.
+nothing outside the VM has it, and no job runs the command line. Support runs the same commands through the API instead,
+by signed operator requests:
+
+```
+pnpm --filter @alcove/server operator billing show <who>
+pnpm --filter @alcove/server operator billing credit <who> <usd> --reason <ref>
+```
+
+They name a top-up by its reference or an account by its ID, never by an address, and print what the command line prints:
+no amount, history or address. `operator topup <reference>` says what happened to one payment, and `operator topup check`
+asks 1Click about it again. A credit takes a `write` key, and adds at most $1,000, and $2,000 a key a day
+([Operating Alcove › A payment didn't arrive](operating-alcove.md#3-a-payment-didnt-arrive-or-arrived-twice)).
 
 ## Acceptance
 

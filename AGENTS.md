@@ -41,10 +41,11 @@ skill (`.claude/skills/code-structure/SKILL.md`) shows the fix for each failure.
   (on the server) integration suites. A helper one feature uses belongs to that feature, whatever its name sounds like.
   Cross-feature suites live in `apps/api/src/integration`; shared fixtures in `apps/api/src/testing`.
 - **Dependencies point one way.** Server features import only those before them: `profile → billing → workspaces →
-  meetings → recordings → notes → calls → agents → account`. Shared homes (`platform`, `keys`, `tee`, `inference`,
-  `providers`, `http`, `live`, `edge`) never import a feature; `app.ts`, `start.ts`, `maintenance.ts` and the CLIs compose
-  them. In the web app `lib/` never imports a feature, and features never import routes. No runtime import cycle spans two
-  owners. When code needs something from above, it takes it as an argument, or the piece moves down to the owner of its data.
+  meetings → recordings → notes → calls → agents → account → operator`. Shared homes (`platform`, `keys`, `tee`,
+  `inference`, `providers`, `http`, `live`, `edge`) never import a feature; `app.ts`, `start.ts`, `maintenance.ts` and
+  the CLIs compose them. In the web app `lib/` never imports a feature, and features never import routes. No runtime
+  import cycle spans two owners. When code needs something from above, it takes it as an argument, or the piece moves
+  down to the owner of its data.
 - **Folders stay small.** At most 20 files in a folder, and no 4 files starting with a word that isn't the folder's own:
   that word is a subfolder (`drive-*.ts` → `drive-exports/`). Split along what changes together and record the new
   subfolder in the map. `call` is the running call and `calls` is making, scheduling, listing and entering calls; neither

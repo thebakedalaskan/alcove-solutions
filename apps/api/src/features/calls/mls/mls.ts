@@ -273,7 +273,7 @@ export async function mlsBack(v: Viewer, callId: string, b: z.infer<typeof CallB
     const s = settle(state, row);
     const mine = s.people.find((j) => j.identity === v.pass.identity && j.person === v.pass.person);
     if (row.state !== 'live' || !mine || !mayComeBack(mine) || b.generation !== row.mls_generation) {
-      throw new ConflictError('There’s no way back in from here. Join the call again.', { context: { callId, generation: b.generation, current: row.mls_generation, status: mine?.status ?? 'none' }, level: 'info' });
+      throw new ConflictError('There’s no way back in from here. Join the call again.', { context: { callId, generation: b.generation, current: row.mls_generation, state: mine?.status ?? 'none' }, level: 'info' });
     }
     // The host's browser takes them out of their group first, so its keys move on without the connection that went.
     if (groupOf(s, mine) !== null) throw new ConflictError('Still moving the call’s keys on. Try again in a moment.', { context: { callId, reason: 'in-group' }, level: 'info' });

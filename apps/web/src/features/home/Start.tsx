@@ -3,7 +3,6 @@
  * or in its last few minutes, a line above them joins it, and Join takes the one filled button. Nothing else about the
  * day comes up here: people join from their calendar, and ring someone from Team or from Start a call.
  */
-import { errorMessage } from '@alcove/api';
 import { Button, Faces, Icon, buttonClass, useToast } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { useId, useRef } from 'react';
@@ -11,6 +10,7 @@ import { useFloodToCall } from '~/features/calls/flow/parts';
 import { useCallFlow } from '~/features/calls/flow/context';
 import { useStartNow } from '~/features/calls/list/queries';
 import { peopleOn, whenLine, type Ahead } from '~/features/calls/list/ahead';
+import { toastFailure } from '~/lib/failed';
 
 export function Start({ first, soon, me, now }: { first: boolean; soon: Ahead | undefined; me: string | undefined; now: number }) {
   const flow = useCallFlow();
@@ -23,7 +23,7 @@ export function Start({ first, soon, me, now }: { first: boolean; soon: Ahead | 
   const once = (run: () => Promise<unknown>) => {
     if (busy.current) return;
     busy.current = true;
-    run().catch((e: unknown) => toast(errorMessage(e), { icon: 'x' })).finally(() => { busy.current = false; });
+    run().catch((e: unknown) => toastFailure(toast, e)).finally(() => { busy.current = false; });
   };
   const begin = (from: Element) => once(() => go(from, async () => (await startNow.mutateAsync({})).code));
   return (

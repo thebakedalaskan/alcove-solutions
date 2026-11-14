@@ -11,14 +11,12 @@ import { ForbiddenError, NotFoundError, UnavailableError, ValidationError } from
 import { log } from '../../platform/log';
 import { lockOwner, openOwner } from '../../keys/owners';
 import { profile } from '../profile/profile';
-import { createGrant, GRANT_MS, GrantRow, grantInfo, grantKey, issuerUrl, newToken, resourceUrl, storeToken, tokenHash, type Grant } from './service';
+import { createGrant, GRANT_MS, GrantRow, grantInfo, grantKey, issuerUrl, MAX_CONNECTIONS, MAX_TOKEN_HISTORY, newToken, resourceUrl, storeToken, tokenHash, type Grant } from './service';
 
 const olog = log.child({ component: 'agent-oauth' });
 const CLIENT_MS = 90 * 86_400_000;
 const REQUEST_MS = 10 * 60_000;
 const ACCESS_MS = 60 * 60_000;
-/** A client normally refreshes hourly: this persists a finite bound across addresses, restarts and instances. */
-const MAX_TOKEN_HISTORY = 4096;
 const Client = AgentClientInputSchema;
 const RequestInfo = z.object({ clientId: z.string(), clientName: z.string(), redirectUri: z.string(), resource: z.string(), state: z.string().nullable(), challenge: z.string(), scopes: AgentScopesSchema });
 const CodeInfo = z.object({ clientId: z.string(), redirectUri: z.string(), resource: z.string(), challenge: z.string(), scopes: AgentScopesSchema });
@@ -119,7 +117,7 @@ export async function decide(o: Owner, id: string, decision: AgentDecisionInput)
     if (!decision.allow) { redirect.searchParams.set('error', 'access_denied'); return { redirectUrl: redirect.href }; }
     await lockOwner(o, db);
     const total = await maybeOne(db, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM agent_grants WHERE owner_id = $1 AND expires_at > now()', [o.ownerId]);
-    if ((total?.n ?? 0) >= 50) throw new UnavailableError('Disconnect an agent before adding another.');
+    if ((total?.n ?? 0) >= MAX_CONNECTIONS) throw new UnavailableError('Disconnect an agent before adding another.');
     const grant = await createGrant(o, db, { name: info.clientName, kind: 'oauth', scopes: decision.scopes, clientId: info.clientId }, new Date(Date.now() + GRANT_MS));
     // An explicitly approved connection must remain refreshable for its whole grant, even for an older registration.
     await exec(db, 'UPDATE agent_clients SET expires_at = GREATEST(expires_at, $2) WHERE id = $1', [info.clientId, new Date(Date.now() + CLIENT_MS)]);

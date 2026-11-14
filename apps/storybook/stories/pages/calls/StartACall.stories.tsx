@@ -44,7 +44,7 @@ export const FromTheTeamPage = page('/team', 'busy', {
     });
   }, press('Schedule', 'Press Schedule. The scheduler opens with Priya in it'))
 });
-/** The call couldn't be made: the modal stays, and says why. */
+/** The call couldn't be made: the modal stays, and a toast says why, with Copy reference to quote it. */
 export const StartFailed = page('/home', 'busy', { beforeEach: changing(troubled({ 'calls.startNow': 'failed' })), play: playing(open, press(/^Start now/, 'Start now')) });
 
 /*

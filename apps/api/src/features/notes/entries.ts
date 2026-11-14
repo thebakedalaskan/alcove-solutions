@@ -31,7 +31,7 @@ export const roleIn = (l: Located): RecipientRole => (l.mine ? 'organizer' : l.n
 /** A note that's written, located for someone who has it, and who they are for its history and its grants. */
 export async function writtenNote(o: Owner, noteId: string) {
   const l = await locate(o, noteId);
-  if (l.note.manifest.status !== 'ready') throw new ConflictError('These notes are still being written.', { context: { noteId, status: l.note.manifest.status } });
+  if (l.note.manifest.status !== 'ready') throw new ConflictError('These notes are still being written.', { context: { noteId, state: l.note.manifest.status } });
   const p = await profile(o);
   const role = roleIn(l);
   const by: Change['by'] = { id: o.ownerId, name: p.name, email: p.email, as: role };

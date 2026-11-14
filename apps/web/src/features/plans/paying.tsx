@@ -3,9 +3,10 @@
  * Add money say where a payment is, with the kit's parts and one set of words. While it can take money: how it stands and
  * until when, exactly what to send, the address made for it with its QR code and its first and last characters in bold,
  * and what not to send. Seen: what arrived, counting up while you watch, and the track to what it does. Added. Or over
- * without going on: what happened in the chip, and in the headline what that means for the money, with the reference to
- * give support when a person has to look. Each window has its own foot and its own way on: checkout a new address or
- * choosing again, Add money another payment.
+ * without going on: what happened in the chip, and in the headline what that means for the money. Its reference (the
+ * top-up's ID, which finds it and nothing else) shows last, for support: while it waits, which is when people ask, while
+ * it's seen, and when it failed or is held, which needs a person to look. Each window has its own foot and its own way on:
+ * checkout a new address or choosing again, Add money another payment.
  */
 import type { TopUp } from '@alcove/api';
 import { CheckoutBig, CheckoutDone, CheckoutLine, CheckoutNote, PayAddress, PayAmount, PayArrived, PayStatus, PayTrack, RequestRef } from '@alcove/ui';
@@ -52,8 +53,8 @@ const amounts = (t: TopUp) => ({ asked: microOf(t.asked.amount) ?? 0, got: micro
 
 /**
  * A payment that can still take money, or the rest of it: how it stands and until when, exactly what to send, the address
- * made for it (the same one for the rest), and what not to send. `quiet` while the window asks something else in its foot,
- * whose answer is then the filled button, not Open in wallet.
+ * made for it (the same one for the rest), what not to send, and its reference. `quiet` while the window asks something
+ * else in its foot, whose answer is then the filled button, not Open in wallet.
  */
 export function PayNow({ t, now, quiet = false }: { t: TopUp; now: number; quiet?: boolean | undefined }) {
   const short = t.state === 'short';
@@ -74,13 +75,14 @@ export function PayNow({ t, now, quiet = false }: { t: TopUp; now: number; quiet
       )}
       {short && <CheckoutNote tone="info">If you don’t, the {roundTokens(got)} {token} that arrived stays in your balance.</CheckoutNote>}
       <CheckoutNote>Only send {token} on {chainName}. Anything else may be lost. Sending from an exchange? Add its withdrawal fee on top.</CheckoutNote>
+      <RequestRef id={t.id} className="ck-ref" />
     </>
   );
 }
 
 /**
  * A payment seen and being added: what arrived (counting up while you watch, `count`), what's being done with it (`doing`,
- * "Starting Pro. This takes a minute or two."), and the track from sending it to that (`last`, "Pro starts").
+ * "Starting Pro. This takes a minute or two."), the track from sending it to that (`last`, "Pro starts"), and its reference.
  */
 export function PaySeen({ t, count, doing, last }: { t: TopUp; count: boolean; doing: string; last: string }) {
   const { asked, got } = amounts(t);
@@ -91,6 +93,7 @@ export function PaySeen({ t, count, doing, last }: { t: TopUp; count: boolean; d
       <PayArrived amount={tokens(got || asked)} value={(got || asked) / 1_000_000} token={token} chainName={chainName} count={count} />
       <CheckoutLine>{doing}</CheckoutLine>
       <PayTrack steps={['Sent', `Seen on ${chainName}`, last]} />
+      <RequestRef id={t.id} className="ck-ref" />
     </>
   );
 }

@@ -23,7 +23,7 @@ import { log } from '../../../platform/log';
 import { createOwner, lockOwner, openRootKey } from '../../../keys/owners';
 import { publish, TREE_NOTICE } from '../../../live/hub';
 import { personOf } from '../../profile/portraits';
-import { accountOf, leftTeam, purchase, refusedError, replacedByLicense, save, told, withEntry, withNotice, type PlanAccount, type Purchased } from '../plans';
+import { accountOf, leftTeam, purchase, refusedError, replacedByLicense, save, told, withEntry, withNotice, type Accounting, type PlanAccount, type Purchased } from '../plans';
 
 const tlog = log.child({ component: 'teams' });
 /** How many teams upkeep looks at each time. */
@@ -65,10 +65,10 @@ const fresh = (): Billing => ({ licenses: [], autoPurchase: false, lastMicroUsd:
 /** What unconsumed licenses cost, which is what refunding them gives back: each its price a period for each of its periods. */
 const costOf = (licenses: Billing['licenses']) => licenses.reduce((n, x) => n + x.periods * x.microUsd, 0);
 
-const billingKey = (d: Pick<Deps, 'cfg'>) => serviceKey(unb64u(d.cfg.KSERVICE, 32), 'accounting');
+const billingKey = (d: Pick<Accounting, 'cfg'>) => serviceKey(unb64u(d.cfg.KSERVICE, 32), 'accounting');
 const billingHeader = (t: Pick<TeamRow, 'owner_id' | 'team_id'>) => ({ v: 1 as const, kind: 'team-billing', ownerId: t.owner_id, teamId: t.team_id, keyVersion: '1' });
 const sealBilling = (d: Pick<Deps, 'cfg'>, t: Pick<TeamRow, 'owner_id' | 'team_id'>, b: Billing) => sealJson(billingKey(d), billingHeader(t), toJson(b));
-const openBilling = (d: Pick<Deps, 'cfg'>, t: TeamRow) => openJson(billingKey(d), billingHeader(t), t.billing_ciphertext, Billing);
+const openBilling = (d: Pick<Accounting, 'cfg'>, t: TeamRow) => openJson(billingKey(d), billingHeader(t), t.billing_ciphertext, Billing);
 
 /** The team's own key: its name and who's on it. */
 /** The key a team's own records are sealed under, derived from its root, for one request: zeroed when it's done. */
@@ -134,8 +134,8 @@ function poolView(b: Billing, live: { licenses: number; usedBytes: number }, l: 
   return { licenses: live.licenses, bytes, usedBytes: live.usedBytes, heldBytes, graceUntil: running ? Date.parse(running.until) : null };
 }
 
-/** A team's pool at `now`, without changing anything. */
-export async function poolOf(d: Service, db: Db, teamId: string, now = Date.now()): Promise<Pool> {
+/** A team's pool at `now`, without changing anything: it reads only what plans do, so support's command line can too. */
+export async function poolOf(d: Accounting, db: Db, teamId: string, now = Date.now()): Promise<Pool> {
   const t = await teamRow(db, teamId);
   if (!t) return { licenses: 0, bytes: 0, usedBytes: 0, heldBytes: 0, graceUntil: null };
   return poolView(openBilling(d, t), await licensedNow(db, teamId, now), await limitsNow(d, db), now);

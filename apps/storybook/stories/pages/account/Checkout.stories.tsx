@@ -88,7 +88,10 @@ export const MoreNotesPhone: CheckoutStory = { ...MoreNotes, globals: PHONE };
 
 /* ---------- paying ---------- */
 
-/** A payment on its way for 12 months of Pro, reopened from the side panel: the amount, the QR code and the address. */
+/**
+ * A payment on its way for 12 months of Pro, reopened from the side panel: the amount, the QR code and the address, and
+ * under them its reference for support, all 22 characters, from the start (pressing it copies it).
+ */
 export const Waiting = checkout('/home', 'plan-waiting', { plan: 'pro', topUpId: PREVIEW_TOP_UP });
 export const WaitingNight: CheckoutStory = { ...Waiting, globals: DARK };
 export const WaitingPhone: CheckoutStory = { ...Waiting, globals: PHONE };
@@ -122,11 +125,14 @@ export const LessArrivedNight: CheckoutStory = { ...LessArrived, globals: DARK }
  */
 export const LessArrivedClosed = at('closed-short');
 export const LessArrivedClosedPhone: CheckoutStory = { ...LessArrivedClosed, globals: PHONE };
-/** The payment is seen and Pro is starting: the track's glint runs, and the window can be closed. */
+/** The payment is seen and Pro is starting: the track's glint runs, its reference stays under it, and the window can be closed. */
 export const Seen = at('seen');
 export const SeenNight: CheckoutStory = { ...Seen, globals: DARK };
 export const SeenPhone: CheckoutStory = { ...Seen, globals: PHONE };
-/** Seen, then bought a few seconds later: You're on Pro, with the receipt's row and the reminder that nothing renews by itself. */
+/**
+ * Seen, then bought a few seconds later: You're on Pro, with the receipt's row (the payment's reference on it whole, as the
+ * Pay step showed it) and the reminder that nothing renews by itself.
+ */
 export const Done = lands('payments', {});
 export const DoneNight: CheckoutStory = { ...Done, globals: DARK };
 export const DonePhone: CheckoutStory = { ...Done, globals: PHONE };

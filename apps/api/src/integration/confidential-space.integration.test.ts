@@ -20,7 +20,7 @@ import { join } from 'node:path';
 import { brotliDecompressSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { unb64u } from '../keys/crypto';
+import { b64u, unb64u } from '../keys/crypto';
 import { acmeAccountKey, tlsKey } from '../edge/tls-keys';
 import { DatabaseError, KeyError, UnavailableError } from '../platform/errors';
 import { startServer, type Outside, type Running } from '../start';
@@ -30,6 +30,8 @@ import { PRODUCTION_IMAGE, spkiHash, startFakeGcp, type FakeGcp, type TokenSpoil
 import type { GoogleUser } from '../testing/fakes/google';
 import { startFakeRekor, type FakeRekor } from '../testing/fakes/rekor';
 import { cookieFetch, startHarness, type Browser, type Harness } from '../testing/harness';
+import { signedClient } from '../testing/operator';
+import { ReleaseAnswer, WorkAnswer } from '../features/operator/wire';
 
 const COMMIT = '3f9c2a1b7d4e5f60718293a4b5c6d7e8f9012345';
 const PROJECT = 'alcove-tests';
@@ -86,6 +88,8 @@ const env = (more: Record<string, string> = {}): NodeJS.ProcessEnv => ({
   WEB_ORIGIN: WEB, API_URL: API, OBJECTS_ENDPOINT: h.deps.cfg.OBJECTS_ENDPOINT, OBJECTS_BUCKET: h.deps.cfg.OBJECTS_BUCKET,
   LIVEKIT_URL: h.deps.cfg.LIVEKIT_URL, GOOGLE_ISSUER: h.google.issuer, GOOGLE_API_URL: h.google.issuer, PHOTO_HOSTS: 'googleusercontent.com,127.0.0.1',
   DEMO_AUTH_ENABLED: 'false', LIMITS_CACHE_MS: '0', FEATURE_FLAGS_CACHE_MS: '0', DOC_WORKERS: '1', CLOUDFLARE_ZONE: acme.zone, ACME_DIRECTORY: acme.directory,
+  // Who can operate it, as the image lists them: the harness's read and write keys.
+  OPERATOR_KEYS: [h.operator.keys.read, h.operator.keys.write].map((k) => `${k.key.scope}:${b64u(k.key.publicKey)}`).join(','),
   ...more
 });
 /** SECRETS as env() gives it, but with the database's URL read from `secret`. */
@@ -317,6 +321,24 @@ describe('confidential space', () => {
     expect(second.release).toEqual(first.release);
     expect(gcp.asked).toBe(asked + 1);
     good = first;
+  });
+
+  it('tells an operator which image it runs, how its token and clock stand, and the certificate it serves', async () => {
+    const operator = signedClient(API, new URL(API).origin, h.operator.keys.read, edgeFetch(via(a, '198.51.100.4')));
+    const r = await operator.get('/v1/operator/release');
+    expect(r.status).toBe(200);
+    const release = ReleaseAnswer.parse(await r.json());
+    // The image the attestation token names, and its build's entry in the public log, which the token just handed out found.
+    expect(release.build).toEqual({ commit: COMMIT, imageDigest: gcp.digest, rekorLogIndex: expect.any(Number) });
+    expect(release.attestation).toMatchObject({ issuedAt: expect.any(String), expiresAt: expect.any(String), ageS: expect.any(Number), imageDigest: gcp.digest, lastFailure: null, nextAskAt: expect.any(String) });
+    expect(release.clock).toEqual({ behindGoogleS: expect.any(Number), roundTripMs: expect.any(Number), at: expect.any(String) });
+    // The certificate the stand-in CA issued at its start: for its TLS key, naming its three hosts, months from due, looked at once.
+    expect(release.certificate).toMatchObject({ hosts: 3, spkiMatches: true, renewal: 'not due', lastCheck: { at: expect.any(String), ok: true, code: null } });
+    expect(release.certificate?.daysLeft).toBeGreaterThan(30);
+    expect(release.settings.values).toMatchObject({ TEE: 'confidential-space', TLS_HOSTS: 'alcove.test,www.alcove.test,api.alcove.test' });
+    // And the loops behind them, as work shows them.
+    const work = WorkAnswer.parse(await (await operator.get('/v1/operator/work')).json());
+    expect(work.loops.filter((l) => l.name === 'attestation' || l.name === 'certificates').map((l) => [l.name, l.lastOk])).toEqual([['attestation', true], ['certificates', true]]);
   });
 
   it('a browser checks what it’s handed, the release included, and finds it verified without asking anyone', async () => {

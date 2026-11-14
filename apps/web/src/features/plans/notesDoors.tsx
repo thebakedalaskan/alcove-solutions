@@ -5,10 +5,11 @@
  * left is your own plan's, a call's notes are on its organizer's, who is whoever starts or schedules it, and a question is
  * on whoever asks it. Every number is the server's (GET /v1/plan, /v1/plan/offers).
  */
-import { errorCode, errorMessage, type Plan } from '@alcove/api';
+import { errorCode, type Plan } from '@alcove/api';
 import { Button, NoNotesLeft, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { toastFailure } from '~/lib/failed';
 import { log } from '~/lib/log';
 import { planQueries } from './queries';
 import { dayFullMonth } from '~/lib/time';
@@ -86,7 +87,7 @@ export function useAskRanOut(): { out: boolean; refused: (e: unknown) => boolean
   const [out, setOut] = useState(false);
   const refused = useCallback((e: unknown) => {
     if (errorCode(e) !== 'plan-limit') return false;
-    const said = () => toast(errorMessage(e), { icon: 'x' });
+    const said = () => toastFailure(toast, e);
     void qc.fetchQuery({ ...planQueries.plan(), staleTime: 0 }).then((plan) => {
       if (!notesOut(plan)) { said(); return; }
       plog.info('a question met no notes left', { kind: plan.kind });

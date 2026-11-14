@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useRef } from 'react';
 import { accountQueries } from '~/features/account/queries';
 import { calendarConnectUrl, calendarQueries, useDisconnectCalendar } from '~/features/calls/scheduling/queries';
+import { toastFailure } from '~/lib/failed';
 import { SwitchSetting, useSave } from './save';
 
 /** What Google's way back said, as the row says it. */
@@ -36,7 +37,7 @@ export function GoogleCalendar({ prefs, result }: { prefs: Preferences | undefin
   const stay = () => row.current?.focus({ preventScroll: true });
   const off = () => disconnect.mutate(undefined, {
     onSuccess: () => toast('Google Calendar is disconnected.', { icon: 'check' }),
-    onError: (e) => toast(errorMessage(e), { icon: 'x' }),
+    onError: (e) => toastFailure(toast, e),
     onSettled: stay
   });
   const plain = { mark: <Icon name="cal" />, label: 'Your calendar' };

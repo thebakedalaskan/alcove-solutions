@@ -9,7 +9,7 @@ import { type Db } from '../../../platform/db';
 import { PlanLimitError } from '../../../platform/errors';
 import { limitsNow, type LimitName } from '../../../platform/limits';
 import type { LogContext } from '../../../platform/log';
-import { graceUntil, heldTo, isLive, licenseOf, planNow, type InForce } from '../plans';
+import { graceUntil, heldTo, isLive, licenseOf, planNow, type Accounting, type InForce } from '../plans';
 import { takenOver, usedBytes } from '../storage';
 import { poolOf } from '../teams/teams';
 
@@ -19,10 +19,10 @@ type Service = Pick<Deps, 'cfg' | 'pool'>;
  * Where an account's storage stands at `now`: what it's counted as storing (its own, or its team's pool), what its plan
  * gives (`planBytes`), what it's held to now (`heldBytes`: a grace's, if one runs and gives more, with what workspaces
  * whose payment moved to it held then on top while theirs run; null: no limit), when the soonest grace running ends, and
- * the team whose pool it is, on Team.
+ * the team whose pool it is, on Team. It reads only what plans do, so support's command line can say it too (support.ts).
  */
 export interface StorageNow { p: InForce; usedBytes: number; planBytes: number; heldBytes: number | null; graceUntil: number | null; teamId: string | null }
-export async function storageOf(d: Service, db: Db, ownerId: string, now = Date.now()): Promise<StorageNow> {
+export async function storageOf(d: Accounting, db: Db, ownerId: string, now = Date.now()): Promise<StorageNow> {
   const { a, p, license } = await planNow(d, db, ownerId, now);
   if (p.kind === 'team' && license) {
     const pool = await poolOf(d, db, license.teamId, now);
@@ -36,6 +36,16 @@ export async function storageOf(d: Service, db: Db, ownerId: string, now = Date.
 }
 /** The sooner of two ends, either of which may not be running (null). */
 const soonest = (x: number | null, y: number | null): number | null => (x === null ? y : y === null ? x : Math.min(x, y));
+/**
+ * Where storage stands, as its owner's plan shows it (plan-view.ts) and support reads it (support.ts): `within` what it's
+ * held to; past its plan's while a grace runs, `grace`; or `over`, past what it's held to with no grace running, so nothing
+ * more is uploaded.
+ */
+export function storageState(s: StorageNow): 'within' | 'grace' | 'over' {
+  if (s.usedBytes <= s.planBytes) return 'within';
+  if (s.graceUntil !== null) return 'grace';
+  return s.heldBytes !== null && s.usedBytes > s.heldBytes ? 'over' : 'within';
+}
 
 /** Each plan's storage limit and largest file by their names in the limits table, as refusals log them. */
 const STORAGE_LIMIT = { free: 'plan.free.storage_bytes', pro: 'plan.pro.storage_bytes', team: 'plan.team.storage_bytes' } as const satisfies Record<PlanKind, LimitName>;

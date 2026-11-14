@@ -1,7 +1,8 @@
 /*
  * What a screen shows when it can't load: offline, it says so and what still works (Record, for someone signed in on this
- * browser who records without a connection); anything else, that the page didn't load, with Try again; and an address
- * that leads nowhere, with the Drive offered, or Calls for an old /notes link (features/shell/OfflinePage.tsx, routes/$.tsx).
+ * browser who records without a connection); anything else, that the page didn't load, with the failed request's reference
+ * and Try again; and an address that leads nowhere, with the Drive offered, or Calls for an old /notes link
+ * (features/shell/OfflinePage.tsx, routes/$.tsx).
  */
 import type { Meta } from '@storybook/react-vite';
 import { phone } from '../../../src/call';
@@ -25,8 +26,11 @@ export const CantReachAlcove = page('/home', 'busy', {
     });
   }
 });
-/** Anything else: the page didn't load, with Try again. */
-export const DidntLoad = page('/home', 'busy', { beforeEach: changing(troubled({ 'notes.inbox': 'failed' })) });
+/**
+ * Anything else: the page didn't load, with the failed request's reference to quote (pressing it copies it), and Try again.
+ * Here Home's calls ahead, which Home can't open without (what's waiting on you can fail by itself: Pages/Home's DidntLoad).
+ */
+export const DidntLoad = page('/home', 'busy', { beforeEach: changing(troubled({ 'meetings.upcoming': 'failed' })) });
 export const DidntLoadPhone = phone(DidntLoad);
 /** An address that leads nowhere: Go home, or Open the Drive. */
 export const NothingHere = page('/nowhere', 'busy');

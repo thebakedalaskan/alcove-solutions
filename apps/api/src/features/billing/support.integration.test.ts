@@ -2,12 +2,16 @@
  * Support's command line (docs: Plans and usage › Support), run as support runs it: `billing-cli.ts` in its own process, against
  * the harness's database, with only the settings production's job has bound (the database and KSERVICE), and with KMASTER as
  * well, as it is locally. What it adds is read back through the real API over HTTP via @alcove/api-http, and what it prints
- * and logs, which the job's Cloud Logging keeps, holds no amount, history or address.
+ * and logs, which the job's Cloud Logging keeps, holds no amount, history or address. Then limits through the operator route,
+ * signed as an operator's CLI signs them. The same billing commands through the operator route, and the operator CLI's, are
+ * billing's operator suite's (operator/operator.integration.test.ts).
  */
 import type { TopUp } from '@alcove/api';
 import { spawn } from 'node:child_process';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
+import { signedClient, makeOperatorKey, type SignedClient } from '../../testing/operator';
 import { watch } from './top-ups/deposits';
 
 vi.setConfig({ testTimeout: 90_000 });
@@ -78,6 +82,29 @@ const unwatched = async (id: string) => (await h.pool.query<{ closed: boolean }>
 /** How many times the API logged `msg` since `from`. */
 const logged = (from: number, msg: string) => h.logs.slice(from).filter((l) => l.includes(`"msg":"${msg}"`)).length;
 const ADDED = (ownerId: string) => `Added to the balance of account ${ownerId}, as “Added by support”.`;
+/** What the command line printed, without the JSON lines it logged. */
+const printed = (out: string) => out.split('\n').filter((l) => l && !l.startsWith('{'));
+
+const Lines = z.object({ lines: z.array(z.string()) });
+const Refusal = z.object({ code: z.string(), message: z.string() });
+/** A signed request as an operator's CLI sends it, its status and its answer. */
+async function signed(client: SignedClient, method: 'GET' | 'POST', path: string, body?: unknown): Promise<{ status: number; body: unknown }> {
+  const res = method === 'GET' ? await client.get(path) : await client.post(path, body);
+  const parsed: unknown = JSON.parse(await res.text());
+  return { status: res.status, body: parsed };
+}
+const linesOf = (r: { body: unknown }) => Lines.parse(r.body).lines;
+const refusalOf = (r: { status: number; body: unknown }) => [r.status, Refusal.parse(r.body).message];
+/**
+ * A read key and a write key of their own, on an instance of their own sharing the database, as a second VM does: a key
+ * changes at most 20 things a minute, so each test starts afresh.
+ */
+async function ownOperators(): Promise<{ read: SignedClient; write: SignedClient; close(): Promise<void> }> {
+  const read = makeOperatorKey('read');
+  const write = makeOperatorKey('write');
+  const server = await h.secondServer({ operatorKeys: [read.key, write.key] });
+  return { read: signedClient(server.baseUrl, h.operator.audience, read), write: signedClient(server.baseUrl, h.operator.audience, write), close: () => server.close() };
+}
 
 describe('billing on the command line', () => {
   it('adds dollars to an account found by its address where KMASTER is set, and says where its plan stands without an amount', async () => {
@@ -88,10 +115,9 @@ describe('billing on the command line', () => {
     expect(await balance(ann)).toMatchObject({ microUsd: 24_500_000, history: [{ label: 'Added by support', microUsd: 20_000_000 }, { label: 'Added by support', microUsd: 4_500_000 }] });
     const show = await billing(['show', ann.email]);
     expect(show.code).toBe(0);
-    const lines = show.out.split('\n').filter((l) => l && !l.startsWith('{'));
-    expect(lines).toEqual([
-      `Account ${ann.session.ownerId}`, 'Plan: free; renewing Pro off', 'Months of Pro not over: 0', 'Balance: covers a month of Pro',
-      'Changes to the balance kept: 2', 'Notices not dismissed: 0', 'Top-ups: none'
+    expect(printed(show.out)).toEqual([
+      `Account ${ann.session.ownerId}`, 'Plan: free; renewing Pro off', 'Renewal: none', 'Months of Pro not over: 0', 'License: none',
+      'Balance: covers a month of Pro', 'Changes to the balance kept: 2', 'Notices waiting: none', 'Notes: running', 'Storage: within', 'Top-ups: none'
     ]);
     // Nothing it says is an amount: not the balance, not what was added. A log line's time is left out, since one such as
     // 18:24:54.512Z holds "4.5".
@@ -260,5 +286,39 @@ describe('billing on the command line', () => {
     const all = said.join('\n').toLowerCase();
     for (const email of addresses) expect(all).not.toContain(email.toLowerCase());
     expect(all).not.toContain('@tests.example');
+  });
+});
+
+describe('limits through the operator route', () => {
+  // Each test signs as operators of its own (ownOperators).
+  let op: Awaited<ReturnType<typeof ownOperators>>;
+  beforeEach(async () => { op = await ownOperators(); });
+  afterEach(async () => { await op.close(); });
+
+  it('lists the limits with a read key, and sets one within its bounds with a write key and a reason, in force on the next request', async () => {
+    const ann = await account();
+    const limits = (client: SignedClient, words: string[], reason?: string) => signed(client, 'POST', '/v1/operator/limits', { words, ...(reason === undefined ? {} : { reason }) });
+    try {
+      const listed = linesOf(await limits(op.read, ['list']));
+      expect(listed.find((l) => l.startsWith('plan.pro.price_micro_usd '))).toMatch(/^plan\.pro\.price_micro_usd +\$20\.00 +the default; /);
+      // Changing one takes a write key, and a reason.
+      expect((await limits(op.read, ['set', 'plan.pro.price_micro_usd', '$25'], 'SUP-8001')).status).toBe(403);
+      expect((await limits(op.write, ['set', 'plan.pro.price_micro_usd', '$25'])).status).toBe(400);
+      expect(linesOf(await limits(op.write, ['set', 'plan.pro.price_micro_usd', '$25'], 'SUP-8001'))).toEqual([
+        'plan.pro.price_micro_usd is $25.00 now; it was $20.00. Every instance has it within LIMITS_CACHE_MS.'
+      ]);
+      expect((await ann.api.plans.offers()).pro.microUsdPerMonth).toBe(25_000_000);
+      // Outside its bounds, or not a limit at all: refused, and nothing changes. A name that isn't a limit is neither said nor logged.
+      const logsFrom = h.logs.length;
+      expect(refusalOf(await limits(op.write, ['set', 'plan.free.file_bytes', '99GiB'], 'SUP-8002'))).toEqual([400, 'Not set: plan.free.file_bytes goes from 0 to 512 MiB.']);
+      const typo = await limits(op.write, ['set', ann.email, '5'], 'SUP-8003');
+      expect(typo.status).toBe(400);
+      expect(Refusal.parse(typo.body).message).toMatch(/^That isn’t a limit\. The limits are: plan\.free\.notes_minutes, /);
+      expect(refusalOf(await limits(op.write, ['unset', 'plan.free.file_bytes'], 'SUP-8004'))[0]).toBe(400);
+      expect((await ann.api.plans.offers()).free.fileBytes).toBe(512 * 1024 * 1024);
+      // Through the route a refusal is said by the request's own lines: the command logs none of its own.
+      expect(logged(logsFrom, 'limit not set')).toBe(0);
+      expect(h.logs.slice(logsFrom).join('\n').toLowerCase()).not.toContain(ann.email.toLowerCase());
+    } finally { await h.resetLimits(); }
   });
 });

@@ -563,31 +563,70 @@ a seat in a call, falls back to the workspace's payer, on the default model.
 way into an account's plan, in whichever database `DATABASE_URL` names. It reads only `DATABASE_URL`, `KSERVICE` (to open
 and seal plans), `LIMITS_CACHE_MS` and `LOG_*`, with `KMASTER` where it's set, and none of the API's other settings, so it
 runs where `KSERVICE` is at hand: outside a TEE, locally, from `.env`. In production the API runs in Confidential Space, where
-`KSERVICE` is sealed in its server keys and opened only inside the VM, so no deploy runs it as a job
-([Deployment › Support's billing](deployment-and-acceptance.md#supports-billing)).
+`KSERVICE` is sealed in its server keys and opened only inside the VM, so nothing outside it can run the command line
+([Deployment › Support's billing](deployment-and-acceptance.md#supports-billing)). There, support runs the same commands
+through the operator route (`POST /v1/operator/billing`), each request signed with an operator's own key by the operator
+CLI: `operator billing show <who>` and `operator billing credit <who> <usd> --reason <ref>`. Both run
+`features/billing/support-commands.ts`, as `billing-cli.ts` does, so they take the same words and print the same lines.
+Showing reads; a credit needs a `write` key and a reason, a ticket's reference ([Operating Alcove](operating-alcove.md)).
 
-`<who>` names the account: a top-up's reference (its deposit ID, which the person gives support), or the account's ID.
-Wherever a run is recorded (a job's arguments are kept with its execution and in Cloud Audit Logs, which Alcove can't
-delete), an address is never one: only where `KMASTER` is set too, which is locally, does an address name an account, found
-as sign-in finds it (its blind index, under the index key derived from `KMASTER`). An address signed in to more than one account (through different providers) is refused, and nothing is done.
+`<who>` names the account: a top-up's reference (its deposit ID, which the person gives support), or the account's ID, a
+person's: one that signs in, never a workspace's or a team's, which read as nobody's. The operator route takes nothing else,
+so an address never reaches a URL or a log line through it: it's refused ("Name the account by a top-up’s reference or by
+its ID."), and the operator CLI refuses one before sending anything. To find an account by its address, a `write` key asks
+`operator account find`, which hashes the address inside the API as sign-in does, at most 20 times a key an hour, and says
+the account's ID. Only on the command line where `KMASTER` is set too, which is locally, does an address name an account in
+`<who>`, found as sign-in finds it (its blind index, under the index key the API resolves from `KMASTER` outside a TEE,
+which refuses a database a TEE has carried over). An address signed in to more than one account (through different
+providers) is refused, and nothing is done.
 
-- `billing show <who>`: the account, the top-up it was named by and its state, its plan and whether Pro renews, how many
-  months of Pro aren't over, whether the balance covers a month of Pro at its price now, how many changes to the balance are
-  kept, how many notices wait and how many top-ups it has in each state. What it prints may be kept in a log, so that's all
-  it says: what a log may hold, never an amount, a history, a date or an address.
-- `billing credit <who> <usd>`: adds dollars (`20`, `4.50`, at most $10,000) to the balance, as "Added by support", logged
-  `balance added by support` with the owner and the top-up, never the amount. Named by a top-up's reference, it's that
-  top-up's money, added in its place, once: the top-up is never asked about again, and the answer to a check of it already
-  on its way to 1Click adds nothing, so a payment 1Click settles for it later can't add it a second time, whichever comes
-  first. One given up on with no answer from 1Click reads as failed from then on. Refused by its reference, with nothing
-  added: one Alcove still watches (open, or cancelled while its address takes a payment), since what reaches it is added by
-  itself; one added already, by itself or by support; one settled with nothing to add; and one past the 30 days it's
-  watched for. Anything else, such as a second payment to a used address, is added by the account's ID, which
-  `billing show <reference>` says. Locally, with an address, it's the fake money for buying Pro without 1Click.
+- `billing show <who>`: the account, the top-up it was named by and its state, its plan and whether Pro renews, why renewing
+  will or won't buy the next month (`Renewal: buys`, `off`, `price` or `short`, or `none` with no month left to renew), how
+  many months of Pro aren't over, its team license (`none`, or the role it's held in and the day it runs to), its team (its
+  role, and how many are on it, hold a live license and are invited), whether the balance covers a month of Pro at its price
+  now, how many changes to the balance are kept, the notices waiting by kind, whether notes have stopped for the period,
+  whether storage is `within`, `in grace` or `over`, and how many top-ups it has in each state. What it prints may be kept in a
+  log, so that's all it says: what a log may hold, never an amount, a history, an address, or a date but the day a license
+  runs to.
+- `billing credit <who> <usd>`: adds dollars (`20`, `4.50`, at most $10,000 on the command line) to the balance, as "Added
+  by support", logged `balance added by support` with the owner and the top-up, never the amount. Through the operator
+  route a credit is at most $1,000 and needs a reason, and each key makes at most two credits a day (UTC), so it adds at
+  most $2,000: every credit through the route is kept in `operator_credits`, which every instance shares, and the key's day
+  is counted there, so the bound holds whichever instance answers and whatever restarts (a key's third is refused, `403`).
+  One key's credits are taken one at a time, under a lock on its ID, so two at once can't both pass the count. Named by the
+  account's ID there, a ticket adds money to that account once: a second credit with the same reason, whatever its case,
+  is refused (`409`, "That ticket already added money to this account. Nothing was added."), as `operator_credits` keeps a
+  keyed hash of the account and the ticket; one by a top-up's reference keeps a keyed hash of the top-up; neither keeps an
+  amount. Named by a top-up's
+  reference, it's that top-up's money, added in its place, once: the top-up is never asked about again, and the answer to
+  a check of it already on its way to 1Click adds nothing, so a payment 1Click settles for it later can't add it a second
+  time, whichever comes first. One given up on with no answer from 1Click reads as failed from then on. Refused by its
+  reference, with nothing added: one Alcove still watches (open, or cancelled while its address takes a payment), since
+  what reaches it is added by itself; one added already, by itself or by support; one settled with nothing to add; and one
+  past the 30 days it's watched for. Anything else, such as a second payment to a used address, is added by the account's
+  ID, which `billing show <reference>` says. Locally, with an address, it's the fake money for buying Pro without 1Click.
 
 Every refusal (an amount that isn't one, nobody found, more than one account, a top-up still watched or added already)
 exits 1 and logs `billing refused` at warn, with its code or why, never what was typed: it may be an address put in the
-wrong place.
+wrong place. Through the operator route it's the API's error, `{ code, message, requestId }`, whose message is the line the
+command line prints, and the operator CLI exits 1.
+
+Two more operator routes are support's, for a top-up named by its reference (`features/billing/operator/operator.ts`):
+
+- `operator topup <reference>` (`GET /v1/operator/topups/:reference`): what happened to one payment. Its account's ID,
+  provider and state; when it was opened and its deadline, and whether that has passed; whether it's still watched, and
+  when it's next and was last asked about. Then, from its sealed record, opened inside the API: whether any money was seen
+  arriving, whether it settled, why 1Click's answer couldn't be trusted (a code), whether 1Click has gone unanswered since
+  the deadline, and what it was to buy and how that went. Never an amount, its address or memo, the quote, or 1Click's
+  reference for it, which leads to the payer's wallet. A payment's exact time, set against the treasury's public
+  transfers, could lead there too, so its times are to the hour.
+- `operator topup check <reference> --reason <ref>` (`POST /v1/operator/topups/:reference/check`, a `write` key): asks
+  1Click about it now, exactly as the person's own checkout does (`deposits.ts › ask`, which `get` runs), under the row lock
+  the watcher takes, so it adds money and buys only as their check would, and asks nothing when it was asked in the last 5
+  seconds. It answers its state before and after, whether it's still watched, and whether 1Click was asked and answered
+  (`answered`), or why not (`recently`, `unwatched`, `no-provider`). One 1Click didn't answer is a `503`, as it was. One
+  nothing watches any more is refused (`409`, "That top-up isn’t watched any more."). It never runs the watcher's pass,
+  which takes anyone's due top-ups.
 
 ## Adding money
 
@@ -720,18 +759,22 @@ The server never holds a key that can move treasury money. By hand, in near.com,
 - **Withdrawals.** Withdraw USDC from the Intents balance in batches, when topping up NEAR AI, not after every payment:
   each withdrawal costs a flat 0.004615 USDC.
 - **A stray payment** (a second payment to a used address, or one after it expired) reaches the treasury as a 1Click
-  refund and isn't added. The person gives support the top-up's reference (its deposit ID). Support opens that deposit's
-  sealed record (`deposits`, under `Kservice`'s accounting key) to find its address, confirms the payment in 1Click's
-  status for it, and adds what reached the treasury to their balance by their account's ID, which `billing show <reference>`
-  says: `billing credit <account> <usd>` ([Support](#support)). The top-up's reference adds only its own payment, once.
+  refund and isn't added. The person gives support the top-up's reference (its deposit ID). Its address is only in its
+  sealed record (`deposits`, under `Kservice`'s accounting key), which nothing outside the VM opens:
+  `operator topup <reference>` says what the record holds only as states. Support confirms the refund in the treasury's
+  own records, against the payment the person shows, and adds what reached the treasury to their balance by their
+  account's ID, which `operator topup <reference>` says:
+  `operator billing credit <account id> <usd> --reason <ticket>` ([Support](#support)). The top-up's reference adds only
+  its own payment, once.
 - **A failed top-up** (logged at error with its deposit ID and a reason) is one 1Click reported money for that wasn't
-  added. Support opens its record and 1Click's status as above, and adds only what 1Click shows reached the treasury
-  (`billing credit <reference> <usd>`). Until then, if 1Click settles it cleanly within 30 days, it's added by itself, and
-  then its reference is refused; once support has added it, it never is, even by a check that was on its way to 1Click as
-  support added it, so its money is never added twice. It still reads as failed in the person's list of top-ups, and
-  their balance's history says "Added by support".
+  added. Support reads it with `operator topup <reference>`, asks 1Click again with `operator topup check`, confirms what
+  reached the treasury in its own records, and adds only that, by its reference
+  (`operator billing credit <reference> <usd> --reason <ticket>`). Until then, if 1Click settles it cleanly within 30
+  days, it's added by itself, and then its reference is refused; once support has added it, it never is, even by a check
+  that was on its way to 1Click as support added it, so its money is never added twice. It still reads as failed in the
+  person's list of top-ups, and their balance's history says "Added by support".
 - **A depeg (accepted risk).** Every amount sent is valued at face (1 token = 1 USD). When a stablecoin depegs, turn
-  top-ups off (take `TREASURY_INTENTS_ACCOUNT` out of the API's settings in `deploy.yml` and redeploy) until it recovers.
+  top-ups off (take `TREASURY_INTENTS_ACCOUNT` out of `infra/confidential-space/env.sh` and redeploy) until it recovers.
 
 ## How it upgrades
 
@@ -782,7 +825,8 @@ from cache, where the domain-typed columns rewrote the whole table twice, for up
 **Accounts and workspaces.**
 
 - An account's `plan-account` row is made the first time it's touched, or by upkeep (100 a pass). It's on Free from
-  then, and shown the plans once.
+  then, and shown the plans once. Support looking at it (`billing show`, `operator account`) makes none: it's said to have
+  no plan yet, so no grace starts from that look.
 - An account already over Free's 10 GB (its recordings plus the workspaces it now pays for) gets 15 days with no storage
   limit.
 - Its AI meter starts at its first AI request, with Free's allowance.

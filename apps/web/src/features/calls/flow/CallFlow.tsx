@@ -6,13 +6,14 @@
  * modal away for checkout, since no window opens over another, and opens it again with the same people, documents and
  * board once checkout closes.
  */
-import { errorMessage, type Document, type NotesSetting, type Person } from '@alcove/api';
+import type { Document, NotesSetting, Person } from '@alcove/api';
 import { FlowHead, FlowNote, FlowView, Modal, WayCard, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { openWhenStarted } from '~/features/call/session/opening';
 import { NoNotesLeftDoor } from '~/features/plans/notesDoors';
 import type { BoardToOpen, CallFlow, StartOptions } from '~/features/calls/flow/context';
+import { toastFailure } from '~/lib/failed';
 import { someNames } from '~/lib/people';
 import { accountQueries } from '~/features/account/queries';
 import { useStartNow } from '~/features/calls/list/queries';
@@ -66,7 +67,7 @@ function StartFlow({ open, onClose, onBack, people, name, documents, board }: {
   return (
     <Modal open={open} onOpenChange={(o) => { if (!o) onClose(); }} label="Start a call" className="cf-modal">
       <FlowView>
-        <Choice people={others} name={name} team={!!team} documents={documents} board={board} onClose={onClose} onBack={onBack} onLater={later} toast={(e) => toast(errorMessage(e), { icon: 'x' })} />
+        <Choice people={others} name={name} team={!!team} documents={documents} board={board} onClose={onClose} onBack={onBack} onLater={later} toast={(e) => toastFailure(toast, e)} />
       </FlowView>
     </Modal>
   );

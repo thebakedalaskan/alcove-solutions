@@ -1,7 +1,8 @@
 /*
  * A stand-in for Google, for integration tests: OpenID Connect discovery, an authorize endpoint that
- * "signs in" whoever the test says, a token endpoint that checks the client secret, the one-time code,
- * the redirect URI and the PKCE verifier, ID tokens signed with a real RS256 key published at its
+ * "signs in" whoever the test says, a token endpoint that checks the client (`invalid_client` for one it doesn't know or
+ * the wrong secret), then the one-time code, the redirect URI and the PKCE verifier (`invalid_grant` for any of them, as
+ * for a code it never issued), ID tokens signed with a real RS256 key published at its
  * JWKS, refresh tokens issued the way Google issues them (only on first consent, or when asked again)
  * and revoked at its revocation endpoint, and a Calendar API behind bearer tokens. Recurring events
  * work as Google's do: they need a time zone, their rule is expanded in it, and each occurrence can be
@@ -391,18 +392,20 @@ export async function startFakeGoogle(): Promise<FakeGoogle> {
     }
     if (req.method === 'POST' && url.pathname === '/token') {
       const form = new URLSearchParams(await text(req));
+      // Like Google: the client first, then what it asks for. A client it doesn't know, or the wrong secret, is
+      // `invalid_client`; a code or refresh token it never issued to that client, or no longer honours, `invalid_grant`.
+      if (form.get('client_id') !== clientId || form.get('client_secret') !== clientSecret) return send(res, 401, { error: 'invalid_client', error_description: 'Unauthorized' });
       if (form.get('grant_type') === 'refresh_token') {
         await holds.find((h) => h.match({ method: 'POST', path: url.pathname }))?.open;
         const held = refreshTokens.get(form.get('refresh_token') ?? '');
-        if (!held || form.get('client_id') !== clientId || form.get('client_secret') !== clientSecret) return send(res, 400, { error: 'invalid_grant' });
+        if (!held) return send(res, 400, { error: 'invalid_grant' });
         return send(res, 200, { access_token: issueAccess(held.sub, held.scopes), token_type: 'Bearer', expires_in: 3599, scope: held.scopes.join(' ') });
       }
       const code = form.get('code') ?? '';
       const grant = grants.get(code);
       grants.delete(code);
       const verified = !!grant && createHash('sha256').update(form.get('code_verifier') ?? '').digest('base64url') === grant.challenge;
-      if (!grant || !verified || form.get('grant_type') !== 'authorization_code' || form.get('client_id') !== clientId
-        || form.get('client_secret') !== clientSecret || form.get('redirect_uri') !== grant.redirectUri) return send(res, 400, { error: 'invalid_grant' });
+      if (!grant || !verified || form.get('grant_type') !== 'authorization_code' || form.get('redirect_uri') !== grant.redirectUri) return send(res, 400, { error: 'invalid_grant', error_description: 'Malformed auth code.' });
       const now = Math.floor(Date.now() / 1000);
       const issuedAt = grant.spoil === 'expired' ? now - 7200 : now;
       const idToken = await new SignJWT({

@@ -14,11 +14,14 @@
  *    for what reads it, so it comes back with no evidence, and the note says it was written unencrypted.
  *
  * What passes through is speech and what was said, so log lines carry only models, sizes, durations, counts,
- * statuses, codes and timings.
+ * statuses, codes and timings. The status NEAR AI answered is an error's `upstreamStatus`.
+ *
+ * Operators' checks (features/operator/checks.ts) probe each private model with one fixed request that holds nothing of anyone's
+ * (probeNotes, probeSpeech), sealed to its attested key like any other and paid for by Alcove, not by anyone's plan.
  */
 import type { InferenceEvidence } from '@alcove/api';
 import { z } from 'zod';
-import type { Config } from '../platform/config';
+import type { Config, Keyless } from '../platform/config';
 import { equalBytes, fromUtf8, utf8 } from '../keys/crypto';
 import { AppError, InternalError, UnansweredError, UnavailableError, UnverifiedError, ValidationError } from '../platform/errors';
 import { fingerprint, forget, unhex, verified, type Task, type Verified } from './evidence';
@@ -76,8 +79,8 @@ async function paidFor<T>(meter: Meter, model: string, most: Most, run: (answere
 export interface Inference { configured: boolean; baseUrl: string }
 export const inference = (cfg: Config): Inference => ({ configured: !!cfg.NEAR_AI_API_KEY, baseUrl: cfg.NEAR_AI_BASE_URL });
 
-type Ready = Config & { NEAR_AI_API_KEY: string };
-export const ready = (cfg: Config): cfg is Ready => !!cfg.NEAR_AI_API_KEY;
+type Ready = Keyless & { NEAR_AI_API_KEY: string };
+export const ready = (cfg: Keyless): cfg is Ready => !!cfg.NEAR_AI_API_KEY;
 const notConnected = (what: string) => new UnavailableError('Alcove’s notes service isn’t connected on this server.', { context: { what } });
 
 /** The model didn't open a request sealed to the key it vouched for (it rotated, or another instance answered): verify again and retry once. */
@@ -85,11 +88,16 @@ class KeyRefused extends Error {
   constructor(readonly error: AppError) { super(error.message); }
 }
 
-/** An answer's status as Alcove's error: what was sent was unreadable, the key was refused, or the service is busy or down. */
+/**
+ * An answer's status as Alcove's error: what was sent was unreadable, the key was refused, or the service is busy or down.
+ * The status NEAR AI answered goes in the context as `upstreamStatus`, so a revoked key, an account out of credit and an
+ * outage there don't read alike: the error's own status is the one Alcove answers with.
+ */
 function statusError(status: number, context: Record<string, string | number>): AppError {
-  if (status === 400 || status === 413 || status === 422) return new ValidationError('The notes service couldn’t read that.', { context });
-  if (status === 401 || status === 403) return new InternalError('The notes service turned Alcove away.', { context });
-  return new UnansweredError('Alcove’s notes service is busy. Try again in a moment.', { context });
+  const said = { ...context, upstreamStatus: status };
+  if (status === 400 || status === 413 || status === 422) return new ValidationError('The notes service couldn’t read that.', { context: said });
+  if (status === 401 || status === 403) return new InternalError('The notes service turned Alcove away.', { context: said });
+  return new UnansweredError('Alcove’s notes service is busy. Try again in a moment.', { context: said });
 }
 
 /**
@@ -116,7 +124,7 @@ async function sealed(cfg: Ready, v: Verified, endpoint: string, o: { path: stri
       if (timedOut) throw error;
       throw new KeyRefused(error);
     }
-    const context = { what: o.what, status: res.status, ms: Math.round(performance.now() - t0) };
+    const context = { what: o.what, upstreamStatus: res.status, ms: Math.round(performance.now() - t0) };
     if (!res.ok) {
       await res.body?.cancel().catch(() => undefined);
       if (res.status === 400 || res.status === 421 || res.status === 422) throw new KeyRefused(new UnavailableError('The notes service didn’t open what was sealed to the key it vouched for.', { context }));
@@ -459,8 +467,10 @@ function jsonIn(text: string): unknown {
 export type ChatModel =
   | { model: string; private: true; url: string }
   | { model: string; private: false; temperature: boolean; json: boolean };
+/** A model NEAR AI runs in its TEEs, at its own endpoint: every request to it is sealed to its attested key. */
+export type PrivateModel = Extract<ChatModel, { private: true }>;
 /** The default model, at its own endpoint. */
-export const defaultModel = (cfg: Config): ChatModel => ({ model: cfg.NEAR_AI_NOTES_MODEL, private: true, url: cfg.NEAR_AI_NOTES_URL });
+export const defaultModel = (cfg: Keyless): PrivateModel => ({ model: cfg.NEAR_AI_NOTES_MODEL, private: true, url: cfg.NEAR_AI_NOTES_URL });
 
 /** An unencrypted model's answer, through NEAR AI's gateway over TLS: nothing seals it, and nothing vouches for what reads it. */
 async function plainly(cfg: Ready, body: Uint8Array, o: { what: string; timeoutMs: number }): Promise<{ status: number; body: Uint8Array }> {
@@ -531,4 +541,83 @@ export async function complete(cfg: Config, meter: Meter, messages: Message[], o
 /** Asks a chat model for one JSON object, as `complete` does, for answers nothing keeps (questions, catching up). */
 export async function completeJson(cfg: Config, meter: Meter, messages: Message[], o: { what: string; maxTokens: number; timeoutMs?: number; via?: ChatModel | undefined }): Promise<unknown> {
   return (await complete(cfg, meter, messages, o)).json;
+}
+
+/* ---------- probes: does a private model answer? ---------- */
+
+/** What a probe asks the notes model: the same every time, with nothing of anyone's in it. */
+const PROBE_MESSAGES: Message[] = [
+  { role: 'system', content: 'You answer health checks in JSON.' },
+  { role: 'user', content: 'Reply with {"ok":true} and nothing else.' }
+];
+const PROBE_TOKENS = 16;
+
+/** One second of 16 kHz mono 16-bit silence, as WAV: what the speech model hears from a probe. */
+function silence(): Uint8Array<ArrayBuffer> {
+  const samples = 16_000;
+  const wav = new Uint8Array(new ArrayBuffer(44 + samples * 2));
+  const v = new DataView(wav.buffer);
+  const ascii = (at: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(at + i, s.charCodeAt(i)); };
+  ascii(0, 'RIFF'); v.setUint32(4, 36 + samples * 2, true); ascii(8, 'WAVE');
+  ascii(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 16_000, true); v.setUint32(28, 32_000, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  ascii(36, 'data'); v.setUint32(40, samples * 2, true);
+  return wav;
+}
+
+/**
+ * What a probe found: the HTTP status inside the model's sealed reply, whether a 200 read as that model's kind of answer,
+ * and how long the model took.
+ */
+export interface Probe { status: number; readable: boolean; ms: number }
+
+/**
+ * Sends one probe sealed to the key `v` vouched for, as every request to the model is, and opens the reply. It's metered
+ * to no one (Alcove pays for probes), never retried, and never sent again to another key: it says how the model answers
+ * now. Throws as a request does when no reply came back or the reply couldn't be opened.
+ */
+async function probe(cfg: Ready, v: Verified, endpoint: string, o: { path: string; type: string; body: Uint8Array; timeoutMs: number }, readable: (body: Uint8Array) => boolean): Promise<Probe> {
+  const t0 = performance.now();
+  const ms = () => Math.round(performance.now() - t0);
+  try {
+    const reply = await sealed(cfg, v, endpoint, { ...o, what: 'probe' });
+    const found = { status: reply.status, readable: reply.status === 200 && readable(reply.body), ms: ms() };
+    ilog.at(found.readable ? 'info' : 'warn', 'operator probe', { model: v.model, upstreamStatus: found.status, readable: found.readable, ms: found.ms });
+    return found;
+  } catch (e) {
+    const error = e instanceof KeyRefused ? e.error : e;
+    ilog.warn('operator probe', { model: v.model, ms: ms(), err: error });
+    throw error;
+  }
+}
+
+/**
+ * Whether a private chat model answers, for operator checks: asks it for `{"ok":true}` in 16 tokens at most, sealed to the
+ * key `v` vouched for (its evidence, just checked).
+ */
+export async function probeNotes(cfg: Keyless, via: PrivateModel, v: Verified, timeoutMs: number): Promise<Probe> {
+  if (!ready(cfg)) throw notConnected('probe');
+  const body = utf8(JSON.stringify({
+    model: via.model, messages: PROBE_MESSAGES, temperature: 0, max_tokens: PROBE_TOKENS, response_format: { type: 'json_object' }, chat_template_kwargs: { enable_thinking: false }, stream: false
+  }));
+  // Readable only when the answer is the JSON object asked for: a model that answers in prose writes no notes either.
+  return probe(cfg, v, via.url, { path: '/v1/chat/completions', type: 'application/json', body, timeoutMs }, (b) => {
+    const chat = Chat.safeParse(parsed(b));
+    const content = chat.success ? chat.data.choices[0]?.message.content : null;
+    const answer = typeof content === 'string' ? jsonIn(content) : null;
+    return typeof answer === 'object' && answer !== null && !Array.isArray(answer);
+  });
+}
+
+/** Whether the speech model answers, for operator checks: one second of silence, sealed to the key `v` vouched for. */
+export async function probeSpeech(cfg: Keyless, v: Verified, timeoutMs: number): Promise<Probe> {
+  if (!ready(cfg)) throw notConnected('probe');
+  const form = new FormData();
+  form.set('model', cfg.NEAR_AI_STT_MODEL);
+  form.set('response_format', 'verbose_json');
+  form.set('temperature', '0');
+  form.set('file', new Blob([silence()], { type: 'audio/wav' }), 'probe.wav');
+  const multipart = new Request(new URL('/v1/audio/transcriptions', cfg.NEAR_AI_STT_URL), { method: 'POST', body: form });
+  const body = new Uint8Array(await multipart.arrayBuffer());
+  return probe(cfg, v, cfg.NEAR_AI_STT_URL, { path: '/v1/audio/transcriptions', type: multipart.headers.get('content-type') ?? 'multipart/form-data', body, timeoutMs },
+    (b) => Transcription.safeParse(parsed(b)).success);
 }

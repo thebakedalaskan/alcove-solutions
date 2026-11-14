@@ -60,7 +60,7 @@ export async function photo(d: Deps, token: string): Promise<{ bytes: Uint8Array
     throw new UnavailableError('That photo can’t be fetched right now.', { cause: e, context: { host: url.hostname } });
   }
   const type = (res.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
-  const ctx = { host: url.hostname, status: res.status, type, ms: Math.round(performance.now() - t0) };
+  const ctx = { host: url.hostname, upstreamStatus: res.status, type, ms: Math.round(performance.now() - t0) };
   if (!res.ok || !TYPES.has(type)) { await res.body?.cancel().catch(() => undefined); throw new NotFoundError('That photo isn’t available.', { context: ctx }); }
   const bytes = new Uint8Array(await res.arrayBuffer());
   if (!bytes.length || bytes.length > MAX_BYTES) throw new NotFoundError('That photo isn’t available.', { context: { ...ctx, bytes: bytes.length } });

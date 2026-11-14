@@ -305,9 +305,9 @@ export const Deleted = page('/calls/n1', 'busy', { play: inMore(/Delete notes/, 
 export const Removed = page('/calls/n3', 'busy', { play: inMore(/Remove from your notes/, 'Remove') });
 /** Eight notes are pinned already, the most there can be: pinning another says to unpin one first. */
 export const PinsFull = page('/calls/lot-20', 'lots', { play: inMore(/Pin to the side panel/) });
-/** A call that isn't there any more. */
+/** A call that isn't there any more, with the request's reference to quote (pressing it copies it). */
 export const Gone = page('/calls/n-gone', 'busy');
-/** Alcove couldn't answer: the page says so. */
+/** Alcove couldn't answer: the page says so, with the request's reference to quote. */
 export const CouldntOpen = page('/calls/n3', 'busy', { beforeEach: changing(troubled({ 'notes.get': (id) => (id === 'n3' ? 'failed' : null) })) });
 /** Opened without a connection: a call's page needs one, and Record still works. */
 export const Offline = page('/calls/n2', 'offline');
@@ -393,5 +393,5 @@ export const BeforeACallMore = page(`/calls/upcoming/${HIRING_SYNC.id}`, 'busy',
     });
   }
 });
-/** A call ahead that isn't there: cancelled, or never one you were invited to. */
+/** A call ahead that isn't there: cancelled, or never one you were invited to, with the request's reference to quote. */
 export const ACallAheadThatsGone = page('/calls/upcoming/m-gone', 'busy');

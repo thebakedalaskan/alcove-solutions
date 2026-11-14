@@ -182,7 +182,7 @@
 .ck-b > .ck-note:first-child { margin-top: 0; }
 .ck-note + .ck-sec { margin-top: 20px; }
 .ck-wait { display: flex; align-items: center; gap: 10px; font: 400 14px/20px var(--font-sans); color: var(--ink-2); }
-/* A payment's reference for support, under what happened to it: in checkout's step and in Add money alike. */
+/* A payment's reference for support, last on the Pay step from the start: in checkout's step and in Add money alike. */
 .ac-ref.ck-ref { margin: 10px 0 0 -7px; }
 
 /* ------------------------------------------------------------------ paying: the exact amount, the address made for it, and how it stands */
@@ -247,7 +247,9 @@
 .ck-receipt-row > .ac-i { color: var(--ink-2); }
 .ck-receipt-row b { display: block; font: 500 14.5px/20px var(--font-sans); color: var(--ink); }
 .ck-receipt-row small { display: block; font: 400 13px/18px var(--font-sans); color: var(--ink-2); }
-.ck-receipt-row small code { font: 400 12.5px/18px var(--font-mono); }
+/* The payment's reference, whole, on a row of its own under the day and what it bought, as wide as the row under Receipt
+   too, so it stays on one line on a phone; its words in line with theirs. */
+.ck-receipt-row .ac-ref { grid-column: 2 / -1; justify-self: start; margin: 2px 0 0 -7px; }
 .ck-rem { display: flex; align-items: center; gap: 10px; margin-top: 14px; font: 400 13.5px/20px var(--font-sans); color: var(--ink-2); }
 .ck-rem .ac-i { flex: none; color: var(--sun-text); }
 /* A team just started: inviting its people, on a hairline under the receipt. */
