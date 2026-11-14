@@ -1116,13 +1116,19 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    for the call, named after it and the day (**Launch check-in · 5 Nov**), with the organizer and everyone invited in it.
    Everyone let in to the call can open it and edit it, guests too (step 3). Its bar says "Only on your screen" and, beside
    that, "Everyone in the call can edit", or "You can edit while you’re in the call" for a guest or anyone else not in the
-   workspace, which opens **Who’s in it**: the workspace's people, and everyone in the call. The workspace's name, on its
-   bar, is its one menu: **Switch workspace** for the organizer (step 2), **Find in the workspace**, **Who’s in it**,
-   **Rename** for an admin, and **Copy link**; a guest's has **Find in the workspace** and **Who’s in it**. The list's head
+   workspace, which opens who's in it: the workspace's people, and everyone in the call. The workspace's name, on its
+   bar, is its one menu: **Switch workspace** for the organizer (step 2), **Find in the workspace**, **Share workspace**
+   (the same sheet: an admin adds people there, anyone else in it is told who can; Share in the dock is presenting),
+   **Rename** for an admin, and **Copy link**; a guest's, or anyone else's who isn't in the workspace, has **Find in the
+   workspace** and **Who’s in it**, the people in the call. The list's head
    has only **Find** and **+**. At the top of the list is **This call**: the call's own folder in its home, named after the
    call and the day as a new home is, with **Notes**, **Follow-ups** and **Transcript**, then whatever's made in it, and
-   what's been brought to the call. What you make during the call (**N**, **+**, **New document**) goes in This call. A
-   home for several calls has a folder for each, the newest first. Everyone sees the same workspace, late or back from a
+   what's been brought to the call. What you make during the call (**N**, **+**, **New document**) goes in This call. Over
+   the page, its path runs from the workspace through This call and its folders to the document, and pressing a step shows
+   it in the list, the list coming out if it was away (over the page in a narrow window): the folder opens, lit, with the
+   keyboard on it, and the page stays as it is; the workspace and This call go to the list's top, where This call lights
+   up. A long path gives up whole steps from its start. A home for several calls has a folder for each, the newest
+   first. Everyone sees the same workspace, late or back from a
    reload. It opens on this call's agenda, or the first thing brought to it, or with neither on what you had open there
    last. Anyone who can open a document can bring it from its row's menu (**Bring to this call**, **Take out of this
    call**), or by dropping its row on This call. Pressing
@@ -1642,15 +1648,23 @@ another call while in one; 7.7 the call ends while they're on its page; 7.8 alon
   who removed them gets them again. Each share records who shared the notes and when, and the group's name
   when they went to one of the sharer's groups.
 - **Share a link**, under the people in Share, is for someone whose address you don't have: **Make a link** shows a link
-  to copy, once. For seven days, whoever opens it can have the notes, as shared by you, and the link alone opens nothing.
+  to copy, once ("Whoever opens it signed in gets these notes to keep. The link works for 7 days."). The link can be
+  opened for seven days; whoever opens it signed in in that time gets the notes, as shared by you, and keeps them after
+  it runs out, as anyone they're shared with does. The link alone opens nothing.
   Signed in, it asks first, because everyone with the notes will see who opened it: "Open them as
-  kofi@vandelay.industries? Everyone who has them will see that you did." Only **Open the notes** gives that account the
-  notes and opens them; **Not now** goes to Home with nothing given. Someone signed out is asked to sign in first (to a
-  real account, unless the organizer's is a demo one), and is then asked the same: signing in never opens them by itself.
-  The links that still work are listed there, **Your link** or **Priya's link**, with until when, and whoever made one,
-  or the organizer, can **Revoke** it: from then on it opens nothing, and whoever it gave the notes to keeps them. A
-  link that's run out or been revoked says so, and to ask for a new one. Notes from a link say **From Priya's link**
-  beside their title, and **Who has these notes** says **By Priya's link**.
+  kofi@vandelay.industries? Everyone who has them will see that you did.", with until when the link works and that the
+  notes stay theirs after that, to the minute it stops ("This link works until Fri 21 Nov 16:00. Notes you open with it stay
+  yours after that.", or "16:00 today" on its last day). Only
+  **Open the notes** gives that account the notes and opens them; **Not now** goes to Home with nothing given. Someone
+  signed out is asked to sign in first (to a real account, unless the organizer's is a demo one), and is then asked the
+  same: signing in never opens them by itself. The links that still work are listed there, **Your link** or **Priya's
+  link**, with until when each works, to the minute ("works until tomorrow 16:00"), and whoever made one, or the organizer,
+  can **Revoke** it: from then on it opens nothing, and whoever it gave the notes to keeps them, which the toast says. A
+  link that's run out or been revoked says so before asking anything: to ask for a new one, and that whoever opened it
+  before has the notes already. So does one that wouldn't give this account the notes now, saying nothing of why: its
+  maker no longer has them, or the account is a demo one and the organizer's isn't. Notes
+  from a link say **From Priya's link, yours to keep** beside their title (**From Priya's link** in lists), and **Who has
+  these notes** says **By Priya's link**. Nothing counts down: there's no time left on notes someone has.
 - Someone else's notes say how you got them, beside their title: **From Priya’s call** when you were invited,
   **Shared by Theo** when someone shared them afterwards, or **Shared by Theo with Leads** when it was to one of
   their groups. Calls lists them under the call they came from, and **Who has these notes** says how each person
@@ -1749,7 +1763,8 @@ another call while in one; 7.7 the call ends while they're on its page; 7.8 alon
   one in progress marked. When nothing was said, it says so, the water is still, and **Play** stays on the line for the
   audio. A call that didn't keep its transcript or recording says so in one line where it would have been, and has no
   player; you can still ask about what the notes say. After **Delete notes** it lists what went; a call that isn't
-  there (deleted, or never shared with you) says so, with **Back to Calls**.
+  there (deleted, or not open to you now: never shared with you, or not visible to your team any more) says so, with
+  **Back to Calls**.
 - A question can also go across every note you have, your own and other people's (`POST /v1/notes/ask`,
   behind the line on Calls' sky, and **Search or ask**, flow 2). The answer comes from those notes only, up
   to 12 of them that share the most words with the question, and cites the notes and the moments in them it
@@ -1824,12 +1839,21 @@ another call while in one; 7.7 the call ends while they're on its page; 7.8 alon
 
 While you're licensed on a team, Share on a call's notes you organized has **Visible to team** ("Everyone licensed on
 {team} can read it and ask about it."). It works on notes from before you joined, and they stay visible after you leave
-the team. A licensed member finds notes someone else made visible on the Team page, and they open on their call's page,
-saying "From {organizer}, visible to your team". They can be read, played and asked about, and asking across your notes
-reads them too. Anything else on them is their organizer's: the page has no Share and no Your notes, nothing to settle,
-propose, add or correct, an answer can't be kept, and More has no way to remove them. Anything asked of them anyway is
-refused in those words: "This note is visible to your team to read and ask about. Only its organizer changes it." Storybook
-shows one as **Pages / Calls / A call › A team note**.
+the team or your license ends: the switch stays while they're visible, so you can always turn it off, and says turning it
+on again takes a license. Anyone on the team invited to the call, or given the notes since, has them whatever the switch
+says, and it names them ("Priya, Kofi and Maya have them anyway, from the call."), as does the toast when it's turned
+off ("Not visible to Vandelay Industries any more. …"). The switch shows what you pressed until Alcove has it, then what
+the notes say, never the state before. Only a member with a live license reads them: someone on the team still waiting
+for one is told so on the Team page. A licensed member finds notes someone else made visible on the Team page, and they
+open on their call's page, saying "From {organizer}, visible to your team". They can be read, played and asked about, and
+asking across your notes reads them too. Anything else on them is their organizer's: the page has no Share and no Your
+notes, nothing to settle, propose, add or correct, an answer can't be kept, and More has no way to remove them. Anything
+asked of them anyway is refused in those words: "This note is visible to your team to read and ask about. Only its
+organizer changes it." The Team page reads the team's notes again each time it's shown and each time you come back to its
+window, and so does a team note's page: one turned off goes from the list then, and its page becomes the one for a call
+that isn't there. Storybook shows one as **Pages / Calls / A call › A team note**, and one turned off as **A team note taken back**; Share on a note
+visible to the team is **Sharing with the team**, turning it off **Not visible to the team**, and without a license
+**Sharing without a license**.
 
 Storybook journeys **8.1–8.10** play Calls: open a call, find what was said, see the week, answer an invitation, answer
 a request to move, follow a series, connect your calendar, ask every call, the first day, and meet again (to where the
@@ -2180,14 +2204,20 @@ time, five until **Show N more**; and **Trash**. Pressing the row of the workspa
 opens it; going anywhere else opens the workspace you go to. Recent is everything you can open, the most recently edited first, by day,
 as pictures or a list: each card shows what the file is (a document's first lines as it is now, a board, photos, a PDF),
 where it is (**From Team standup**, **For Launch check-in**, **In Launch**, **Shared with you**) and who touched it last and
-when. A workspace on the sheet shows who's in it, its folders, the calls kept in it with **Open the call**, its files, and
-**Open full screen**; a card inside it doesn't say which workspace again. A call's own workspace shows the call's **Notes**,
-**Follow-ups** and **Transcript** as cards, for whoever has its notes, then what the call made, with **New document**,
-**New board** and **Upload files**, and in a series the calls before. **Trash** is one list across every workspace: where
+when. A workspace on the sheet shows who's in it, its folders, the calls kept in it with **Open the call**, its files,
+**Share** and **Open full screen**; a card inside it doesn't say which workspace again. **Share** there is the whole
+workspace's, for anyone in it, a call's own workspace too: who's in it, the sheet **People** shows (below). A call's own
+workspace shows the call's **Notes**, **Follow-ups** and **Transcript** as cards, for whoever has its notes, then its
+**Files** (**For the call** before it), everything in it wherever it is, with **New document**, **New board** and **Upload
+files**, which make one at its top, and in a series the calls before. **Trash** is one list across every workspace: where
 each thing was, who moved it there and when, how many days it has left, and **Restore** for whoever can edit it. Pressing a
-card opens it beside the tree, in its workspace, with the tree open to it; **⤢** takes it full screen. Its **⋯** has
-**Open**, **Open full screen**, **Copy link**, **Rename** (typed in the same menu; a document's title follows, for everyone)
-and **Move to Trash**, with **Undo**. The search at the top (**⌘K**) narrows
+card opens it beside the tree, in its workspace, with the tree open to it; **⤢** takes it full screen, **Share** beside
+it says who has it, a board as a document, and a step of the path over it takes the Drive to the workspace or the folder;
+a call's folder there goes where that call's row in the Drive does, to the call's own page once it has notes, else to the
+place its row is in. Its **⋯** has **Open**, **Open full screen**, **Share** (who has it, in the menu's place, for someone
+in its workspace who can edit there, with **←** back to the rows; when it can't be shown it says why: the workspace can't
+be opened any more, or Alcove can't be reached), **Copy link**, **Rename** (typed in the same menu; a document's title
+follows, for everyone) and **Move to Trash**, with **Undo**. The search at the top (**⌘K**) narrows
 everything by name as it's typed, the workspaces it names first. **New** makes a document, a board or files where you are;
 on Recent, Shared with you or Trash it asks which workspace in the same menu, with **New workspace** last, named in place.
 On a phone the tree becomes chips along the top of the sheet, New sits beside the search, and a document opens full screen.
@@ -2196,29 +2226,43 @@ Journey **12.2** opens a workspace: under Workspaces, **Launch** shows its folde
 **Open full screen** takes it full screen. Journey **12.3** picks up where you left off: Recent's **Launch checklist** opens
 beside the tree, in the workspace it lives in, Team standup's, and **⤢** gives it the whole screen. Journey **12.4** is the
 first day: the Drive is Recent, Shared with you, New workspace and Trash, with one empty state; **New document** asks for a
-workspace to put it in, named in the same menu, and the document opens in it, beside the tree.
+workspace to put it in, named in the same menu, and the document opens in it, beside the tree. Journey **12.7** shares a
+whole workspace: under From calls, **Team standup**'s **Share** shows the organizer and everyone invited; typing **Aiko** and
+**Enter** adds Aiko, beyond the invite; full screen, who can open it at the foot of the side panel opens the same people,
+Aiko among them. Journey **12.8** shares a file from the Drive: on Recent, the **Standup board**'s **⋯** has **Share**, and
+an address typed there gives that board, and nothing else in the workspace, to someone outside it.
 
 **A workspace, full screen.** Any workspace opens full screen, in a frame of its own in place of the app's: a side panel,
 dark in both themes, beside the page, with one bar over the page. The side panel has the logo (Home), the workspace
 switcher, **Search** (Find, **⌘K**), then **Home** and **Pages**, the tree with its folders, and **Calls**, the calls kept in
 it, each opening its call. **Trash** is at the foot, with a count only when something's in it, and who can open the
-workspace ("Priya, Kofi, Ines and you can open it"). The bar has **← Drive**, or **← Calls** when it was opened from a call,
-the path, how it's saving, who else is here ("Priya is here"), **Share**, **⋯**, **Leave full screen** and you. Leaving
-goes back where it came from: the Drive, at this workspace, or Calls. **Home** is the workspace's name on the evening after
+workspace ("Priya, Kofi, Ines and you can open it"), which ends in **Share** for anyone in it and opens who's in it: the
+whole workspace is shared from there on any page of it, a call's own workspace too, which has no Home. The bar has
+**← Drive**, or **← Calls** when it was opened from a call, the path, how it's saving, who else is here ("Priya is here"),
+**Share** (on Home the workspace's, on a page that page's), **⋯**, **Leave full screen** and you. Every step of the path
+before the page goes there: the workspace to its Home, a folder open in the side panel with its row lit (every call kept
+here listed, when it's in one behind **N more**), and a call's folder, or a call's own workspace (which has no Home), to the
+call's own page once it has notes, else to the call's row in the side panel. A call's own workspace and its call's folder
+share a name, so the path says it once. Share, on the bar or at the foot of the side panel, closes whatever a board has
+open first. Leaving goes back
+where it came from: the Drive, at this workspace, or Calls. **Home** is the workspace's name on the evening after
 sunset; the line on what it's for, which an admin writes in place by pressing it (**Say what this workspace is for** until
 there is one), everyone in it reads, and nobody else is told of; who's in it; **Recently edited**, three large previews;
 and its calls, the next one first, for whoever organizes it. A call's own workspace has no Home: it opens on what the call
-made, with **The call, today ↗** first in its list (opening the call's page), then **Made in the call** (**For the call**
-before it), then in a series **Earlier calls**. A page says under its title the call it came from, as a chip that opens
-it, who made it and when it was last edited; a quote from a call says who said it, in which call, and its **▶** moment
-opens the call there; and something made in the last ten minutes says **New** in the list. On a phone the workspace's pages
-come first, under **← Drive**, and a page has **←** and the workspace's name to go back to them.
+made, with **The call, today ↗** first in its list (opening the call's page), what was made in the call under it, then
+**Pages**, where **+** makes something (**For the call** before the call, when everything in it is), then in a series
+**Earlier calls**. A page says under its title the call it came from, as a chip that opens it, who made it and when it was
+last edited; a quote from a call says who said it, in which call, and its **▶** moment opens the call there; and something
+someone else made in the last ten minutes says **New** in the list until you open it, full screen, beside the Drive or in
+a call, a board on your stage included, and stays gone after a reload. What you made never says New. This browser keeps
+what you opened, so another device can still say New for those ten minutes. On a phone the workspace's pages come first,
+under **← Drive**, and a page has **←** and the workspace's name to go back to them.
 
 Journey **12.5** works on a page: from Launch's Home, **Launch plan** opens with the call it came from and Priya writing in
 it; a to-do ticks, and the callout's count in the margin opens its comments; the path's **Launch** goes back to Home.
 Journey **12.6** is what a call made: this morning's standup, on its page, has **Open its workspace**; the standup's own
-workspace opens on what it made, with the call first in its list and the standups before it after; **Standup board** opens
-full screen.
+workspace opens on what's in it, with the call first in its list, then its **Pages**, and the standups before it after;
+**Standup board** opens full screen, and **Team standup · 4 Nov**, on the path, goes back to the call's page.
 
 **A call's folder.** At the top of a call's home is the call's folder, named after it and the day. In a call it holds its
 **Notes**, **Follow-ups** and **Transcript**: while you're in the call they're its live pages, and once it's over they open
@@ -2308,11 +2352,14 @@ this?** answers beside the words, from every note you have, or in a call from wh
 how long it has left: things stay for 30 days. **Restore** puts something back in its folder, or at the top if the folder
 has gone, and **Delete forever** asks once, then deletes it for everyone. A document in Trash still opens, to read.
 
-**Sharing.** **Share** at the top of a document shows who has it: the workspace, and anyone it's shared with beyond it,
-each with what they can do. Typing a name or an address finds people (**Enter** adds the first, or an address nobody
-knows); they can edit, and their row changes that to **Can read** or takes them off. The workspace's row can close the
-document to **Only people added here**: then it opens only for whoever made it and the people listed, and it's gone from
-everyone else's list. Someone it's shared with who isn't in the workspace sees that document alone.
+**Sharing.** **Share** at the top of a document or a board shows who has it: the workspace, and anyone it's shared with
+beyond it, each with what they can do. Typing a name or an address finds people (**Enter** adds the first, or an address
+nobody knows); they can edit, and their row changes that to **Can read** or takes them off. The workspace's row can close
+the document to **Only people added here**: then it opens only for whoever made it and the people listed, and it's gone from
+everyone else's list. Someone it's shared with who isn't in the workspace sees that document alone. Share is there for
+someone in the workspace who can edit what's open, and so is **Share** in its card's **⋯** in the Drive; whoever can only
+read it, or has it only through a call, isn't offered it. A whole workspace is shared from who's in it (**Workspaces**,
+below).
 
 **Who's here.** Faces on a row and at the top of a document show who has it open, live, and go when they do. Pressing a face
 opens their card: where they are, in the words you may know (a document you can't open is **A document you can’t open**, never
@@ -2345,8 +2392,13 @@ read can open a thread and has nothing to press.
 
 **Workspaces.** The switcher at the top of the side panel (in a call, the name at the top of the list) lists your workspaces with who's in each, and opens another. **People**
 shows who's in this one in the same sheet as Share: an admin adds people by name or address and sets each to **Admin**,
-**Can edit** or **Can read**, or removes them; anyone can leave. **Rename** (admins) and **New workspace** turn the name
-into a field: type, then **Enter**. A workspace always keeps an admin.
+**Can edit** or **Can read**, or removes them; anyone can leave. Anyone else in it reads who's in it and is told who can add
+someone: **Only an admin can add people. Ask Priya.** The same sheet is how a whole workspace is shared, wherever the
+workspace is shown whole: **Share** on its Home, **Share** beside **Open full screen** on its sheet in the Drive, who can
+open it at the foot of its side panel full screen (on any page of it, and for a call's own workspace, which has no Home),
+and in a call **Share workspace**, under its name. A call's own workspace takes people beyond its invite the same way: an admin (the organizer,
+to begin with) adds them, and they stay, whatever the invite does after. **Rename** (admins) and **New workspace** turn the
+name into a field: type, then **Enter**. A workspace always keeps an admin.
 
 **When things go wrong.** At the top of every document one quiet word says how it stands: **Saved**, **Saving…**,
 **Reconnecting** or **Couldn’t save**.
@@ -2465,7 +2517,9 @@ and the sheet offers **Back to the board** in its middle, which shows everything
 **Under its name.** Pressing the board's name offers **Rename**, where the name becomes a field in its place (**Enter**
 keeps it, **Esc** puts it back); **Saved in** the workspace, which shows it in the list; **Who can add to it**, the
 workspace's share sheet, where the board can be shared beyond the workspace or closed to **Only people added here**; and
-**Copy link**. Its tip says which of these are yours to do. Pressing the seal says how the board stands, in the seal's own
+**Copy link**. Its tip says which of these are yours to do. **Share**, on the head over the board as over a document (the
+bar full screen, the head beside the Drive's tree), opens the same sheet, for whoever can say who has the board; on a phone
+it's under the name. Pressing the seal says how the board stands, in the seal's own
 word: sealed, where it's saved and how it's encrypted in storage; or **Reconnecting**, **Couldn’t save** or **View only**,
 with what that means, under the pill and never over it. Escape, or **Copy link**, gives the keys back to the board.
 

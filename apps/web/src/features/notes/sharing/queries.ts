@@ -2,16 +2,24 @@
  * Sharing a note: its links, sharing it with people or a group, making it visible to your team, and exporting notes to
  * Google Drive (the connection, the folder, and each note's export).
  */
-import type { DriveExportInput, Group } from '@alcove/api';
+import { errorCode, type DriveExportInput, type Group } from '@alcove/api';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { teamKeys } from '~/features/team/queryKeys';
 import { api } from '~/lib/api';
-import { noteChanged, noteGone } from '../queries';
+import { log } from '~/lib/log';
+import { noteChanged, noteGone, noteQueries } from '../queries';
 import { noteKeys } from '../queryKeys';
+
+const slog = log.child({ component: 'note-sharing' });
 
 export const sharingQueries = {
   /** The links to a note that still work, read fresh whenever Share opens. */
   noteLinks: (id: string) => queryOptions({ queryKey: noteKeys.noteLinks(id), queryFn: () => api.notes.links(id), staleTime: 0, retry: false }),
+  /**
+   * Until when a link to notes can be opened, asked by the page it opens before anything opens. Asked afresh each time, and
+   * not kept: its secret goes from memory with the page.
+   */
+  noteLink: (secret: string) => queryOptions({ queryKey: noteKeys.noteLink(secret), queryFn: () => api.notes.peekLink(secret), staleTime: 0, gcTime: 0, retry: false }),
   drive: () => queryOptions({ queryKey: noteKeys.drive, queryFn: () => api.drive.get(), retry: false }),
   driveFolders: () => queryOptions({ queryKey: noteKeys.driveFolders, queryFn: () => api.drive.folders(), staleTime: 0, retry: false }),
   driveJobs: () => queryOptions({ queryKey: noteKeys.driveJobs, queryFn: () => api.drive.jobs(), refetchInterval: 10_000, retry: false }),
@@ -22,12 +30,25 @@ export const sharingQueries = {
   })
 };
 
-/** Makes a note you organized visible to your team, or stops it being: the note and the team's notes are read again. */
+/**
+ * Makes a note you organized visible to your team, or stops it being. The switch never goes back to what it said before:
+ * once it's saved the note says so at once, and then it's read again, past any read that set out before the change (with
+ * your lists and the team's notes), so the switch ends on what Alcove has. Refused or lost, it's read again all the same.
+ */
 export function useSetTeamVisible(noteId: string) {
   const qc = useQueryClient();
+  const readAgain = () => {
+    void qc.invalidateQueries({ queryKey: teamKeys.teamNotes });
+    // A read that fails says so on the note's page itself (a note that's gone is the page for one that isn't there).
+    void noteChanged(qc, { id: noteId }).catch((e: unknown) => slog.info('note not read again after its team visibility changed', { noteId, code: errorCode(e) }));
+  };
   return useMutation({
     mutationFn: (visible: boolean) => api.notes.setTeamVisible(noteId, visible),
-    onSettled: () => { for (const queryKey of [noteKeys.note(noteId), ['notes', 'list'], teamKeys.teamNotes]) void qc.invalidateQueries({ queryKey }); }
+    onSuccess: (_saved, visible) => {
+      qc.setQueryData(noteQueries.note(noteId).queryKey, (n) => (n ? { ...n, teamVisible: visible } : n));
+      readAgain();
+    },
+    onError: readAgain
   });
 }
 /** Makes a link to a note. Its secret is in the answer, said once, for showing where it was made; the list is read again. */

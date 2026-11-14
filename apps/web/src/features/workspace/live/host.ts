@@ -21,6 +21,8 @@ export interface LiveHost {
   /** The workspace is closed and kept as it was. */
   closed: boolean;
   toggleList: () => void;
+  /** Shows This call in the list, where these pages are, for the call's step on their path: the list comes out, and its top is in view. */
+  showCall: () => void;
   /** Who's who in the workspace's documents, as far as it's known (../ids.ts). */
   ids: PersonIds;
   /** Who you're following, here too when they open one of these pages. Nobody, with no workspace. */

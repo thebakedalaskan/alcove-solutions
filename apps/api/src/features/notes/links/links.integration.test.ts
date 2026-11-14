@@ -1,9 +1,11 @@
 /**
  * Links to a call's notes (docs: Privacy, keys and sessions › Who can read a note), end to end through the real API over
  * HTTP via @alcove/api-http, real Postgres and the fake Google and NEAR AI: anyone with the notes makes one once the call
- * has ended; it gives the notes to whoever opens it signed in, as shared by its maker, and to nobody without an account;
- * it stops when it's revoked, runs out or its maker no longer has the notes; it's refused across accounts; and it goes with
- * the note and with its maker's account. Only the secret's hash is stored, and the secret never reaches a row or a log.
+ * has ended; looked at first, it says until when it works, only while opening it would give the reader the notes, and opens
+ * nothing; it gives the notes to whoever opens it signed in, to keep, as shared by its maker, and to nobody without an
+ * account; it stops when it's revoked, runs out or its maker no longer has the notes (removed, or left under an address they
+ * no longer have), and whoever it gave them to keeps them after that; it's refused across accounts; and it goes with the
+ * note and with its maker's account. Only the secret's hash is stored, and the secret never reaches a row or a log.
  */
 import { randomUUID, createHash } from 'node:crypto';
 import { AlcoveApiError, NOTE_LINK_DAYS, type TranscriptClip } from '@alcove/api';
@@ -27,10 +29,12 @@ async function account(email = unique('person')) {
   return { ...b, session, email };
 }
 type Account = Awaited<ReturnType<typeof account>>;
-/** Signs in with Google, as a real account is: a demo account's notes are open to demo accounts alone. */
-async function googleAccount() {
+/**
+ * Signs in with Google, as a real account is: a demo account's notes are open to demo accounts alone. The same `sub` with
+ * another address is the same account, whose address changed.
+ */
+async function googleAccount(who: GoogleUser = { sub: `links-${randomUUID()}`, email: `real.${randomUUID()}@tests.example`, name: 'Ines Moreau' }) {
   const b = h.browser();
-  const who: GoogleUser = { sub: `links-${randomUUID()}`, email: `real.${randomUUID()}@tests.example`, name: 'Ines Moreau' };
   h.google.next(who);
   let next = new URL(b.api.auth.signInUrl('google'));
   for (let i = 0; i < 8 && next.origin !== ORIGIN; i++) {
@@ -73,10 +77,16 @@ describe('links to a call’s notes', () => {
     const everything = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM note_links x`)).rows[0]?.all ?? '');
     for (const enc of [made.secret, Buffer.from(made.secret).toString('hex')]) expect(everything.includes(enc)).toBe(false);
 
-    // The link alone reads nothing: without an account it opens no notes.
+    // The link alone reads nothing: without an account it opens no notes, and says nothing of itself.
     expect(await fails(h.browser().api.notes.claimLink(made.secret))).toBe('unauthenticated');
+    expect(await fails(h.browser().api.notes.peekLink(made.secret))).toBe('unauthenticated');
     const reader = await account(unique('reader'));
     expect(await fails(reader.api.notes.get(noteId))).toBe('not-found');
+    // Looked at before it's opened, it says until when it works, and nothing more: the notes aren't the reader's yet.
+    expect(await reader.api.notes.peekLink(made.secret)).toEqual({ expiresAt: made.link.expiresAt });
+    expect(await org.api.notes.peekLink(made.secret)).toEqual({ expiresAt: made.link.expiresAt });
+    expect(await fails(reader.api.notes.get(noteId))).toBe('not-found');
+    expect((await org.api.notes.get(noteId)).recipients.map((r) => r.person.email)).toEqual([org.email]);
     expect(await reader.api.notes.claimLink(made.secret)).toEqual({ noteId });
     expect((await reader.api.notes.get(noteId)).received).toMatchObject({ role: 'shared', by: { email: org.email }, link: true });
     expect(await recipientOf(org, noteId, reader.email)).toMatchObject({ role: 'shared', by: { email: org.email }, link: true });
@@ -88,7 +98,11 @@ describe('links to a call’s notes', () => {
     expect((await org.api.notes.get(noteId)).recipients).toHaveLength(people);
     // A secret that was never made opens nothing, said as for one that ran out; one that isn't a secret at all is refused.
     expect(await fails(reader.api.notes.claimLink('AAAAAAAAAAAAAAAAAAAAAA'))).toBe('not-found');
+    expect(await fails(reader.api.notes.peekLink('AAAAAAAAAAAAAAAAAAAAAA'))).toBe('not-found');
     expect(await fails(reader.api.notes.claimLink('not a secret'))).toBe('invalid');
+    expect(await fails(reader.api.notes.peekLink('not a secret'))).toBe('invalid');
+    // Neither keeps a receipt, which would hold a copy of what it answered.
+    expect((await h.pool.query("SELECT count(*)::int AS n FROM operations WHERE method LIKE '%note-links%'")).rows[0]).toEqual({ n: 0 });
     // Nothing of the secret reaches a log line.
     expect(h.logs.join('').includes(made.secret)).toBe(false);
   });
@@ -109,24 +123,54 @@ describe('links to a call’s notes', () => {
     expect(await linkRows(noteId)).toBe(0);
     const sam = await account(unique('sam'));
     expect(await fails(sam.api.notes.claimLink(kofis.secret))).toBe('not-found');
+    expect(await fails(sam.api.notes.peekLink(kofis.secret))).toBe('not-found');
     expect((await lena.api.notes.get(noteId)).received?.link).toBe(true);
     const another = await kofi.api.notes.createLink(noteId);
     expect(await org.api.notes.revokeLink(noteId, another.link.id)).toEqual([]);
 
-    // Run out: it opens nothing, isn't listed, and upkeep deletes it.
+    // Run out: it opens nothing, isn't listed, and upkeep deletes it. Whoever opened it before keeps the notes: the link ran
+    // out, not what it gave.
     const old = await kofi.api.notes.createLink(noteId);
+    const dee = await account(unique('dee'));
+    await dee.api.notes.claimLink(old.secret);
     await h.pool.query("UPDATE note_links SET expires_at = now() - interval '1 second' WHERE link_id = $1", [old.link.id]);
     expect(await fails(sam.api.notes.claimLink(old.secret))).toBe('not-found');
+    expect(await fails(sam.api.notes.peekLink(old.secret))).toBe('not-found');
     expect(await kofi.api.notes.links(noteId)).toEqual([]);
     await maintain(h.deps);
     expect(await linkRows(noteId)).toBe(0);
+    expect((await dee.api.notes.get(noteId)).received).toMatchObject({ role: 'shared', by: { email: kofi.email }, link: true });
+    expect((await dee.api.notes.list()).map((n) => n.id)).toContain(noteId);
 
     // Its maker removes the notes from theirs: their links go with them, and would open nothing anyway.
     const last = await kofi.api.notes.createLink(noteId);
     await kofi.api.notes.delete(noteId);
     expect(await linkRows(noteId)).toBe(0);
+    expect(await fails(sam.api.notes.peekLink(last.secret))).toBe('not-found');
     expect(await fails(sam.api.notes.claimLink(last.secret))).toBe('not-found');
     expect(await fails(sam.api.notes.get(noteId))).toBe('not-found');
+  });
+
+  it('says it works only while its maker still has the notes: not once the notes stayed with an address they no longer have', async () => {
+    const org = await account(unique('organizer'));
+    const kofiAt: GoogleUser = { sub: `links-${randomUUID()}`, email: unique('kofi'), name: 'Kofi Asante' };
+    const kofi = await googleAccount(kofiAt);
+    const noteId = await writtenCall(org, [kofiAt.email]);
+    const kofis = await kofi.api.notes.createLink(noteId);
+    const lena = await account(unique('lena'));
+    expect(await lena.api.notes.peekLink(kofis.secret)).toEqual({ expiresAt: kofis.link.expiresAt });
+    // Kofi's address changes: the notes were given to the old one, so they aren't his now, though his link is still kept.
+    const moved = await googleAccount({ ...kofiAt, email: unique('kofi.moved') });
+    expect(moved.session.ownerId).toBe(kofi.session.ownerId);
+    expect(await fails(moved.api.notes.get(noteId))).toBe('not-found');
+    expect(await linkRows(noteId)).toBe(1);
+    // Looked at, it says what opening it would: the same as a link that's run out, naming nobody and opening nothing.
+    expect(await fails(lena.api.notes.peekLink(kofis.secret))).toBe('not-found');
+    expect(await fails(lena.api.notes.claimLink(kofis.secret))).toBe('not-found');
+    expect(await fails(lena.api.notes.get(noteId))).toBe('not-found');
+    // The organizer's own link still works.
+    const orgs = await org.api.notes.createLink(noteId);
+    expect(await lena.api.notes.peekLink(orgs.secret)).toEqual({ expiresAt: orgs.link.expiresAt });
   });
 
   it('is refused for notes you don’t have, across accounts, while the call is on, and from a demo account to a real organizer', async () => {
@@ -151,9 +195,12 @@ describe('links to a call’s notes', () => {
     const real = await googleAccount();
     const realNote = await writtenCall(real);
     const realLink = await real.api.notes.createLink(realNote);
+    // Looked at first, it doesn't say it works for an account it won't open for: the same as a link that's run out.
+    expect(await fails(stranger.api.notes.peekLink(realLink.secret))).toBe('not-found');
     expect(await fails(stranger.api.notes.claimLink(realLink.secret))).toBe('forbidden');
     expect(await fails(stranger.api.notes.get(realNote))).toBe('not-found');
     const alsoReal = await googleAccount();
+    expect(await alsoReal.api.notes.peekLink(realLink.secret)).toEqual({ expiresAt: realLink.link.expiresAt });
     expect(await alsoReal.api.notes.claimLink(realLink.secret)).toEqual({ noteId: realNote });
   });
 

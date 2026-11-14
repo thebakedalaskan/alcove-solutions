@@ -2,7 +2,7 @@ import { type FollowUpReview } from './follow-ups';
 import type { DriveCallExports, DriveExportInput, DriveExportJob, DriveFolder, DriveSettings } from './drive';
 import { type ID } from '../shared/ids';
 import { type PersonalApi, type PromoteBody, type PromotionPreview, type SharedAudience, type SharedWrite } from './personal';
-import { type NewNoteLink, type NoteLink, type NoteLinkClaimed } from './links';
+import { type NewNoteLink, type NoteLink, type NoteLinkClaimed, type NoteLinkPeek } from './links';
 import { type NoteProgress } from './progress';
 import { type AnswerPart, type Inbox, type Note, type NoteFound, type NoteKind } from './schema';
 import { type Series, type SeriesAnswerPart } from './series';
@@ -17,6 +17,10 @@ export interface NotesApi {
    */
   list(query?: { kind?: NoteKind | undefined; text?: string | undefined; by?: string | undefined }): Promise<NoteFound[]>;
   get(id: ID): Promise<Note>;
+  /**
+   * Where the notes are, about once a second until they're ready. It ends with `not-found` once the note isn't yours to read
+   * any more, as reading it would; a stream that just ends before the notes are ready is to be followed again.
+   */
   progress(id: ID): AsyncIterable<NoteProgress>;
   /**
    * URL of the first `pieces` of one decrypted audio segment, for a signed-in browser's audio element: it answers byte
@@ -83,8 +87,9 @@ export interface NotesApi {
    */
   askAll(question: string, refs?: ID[]): AsyncIterable<AnswerPart>;
   /**
-   * The organizer, while licensed on a team: makes a note visible to the team (read and ask only), or stops it being.
-   * It stays visible after they leave the team.
+   * The organizer, while licensed on a team: makes a note visible to the team (read and ask only). Licensed or not, they can
+   * stop it being, which holds from the next request on. It stays visible after they leave the team. Anyone invited to the
+   * call or given the notes since keeps them whatever this says.
    */
   setTeamVisible(noteId: ID, visible: boolean): Promise<void>;
   /**
@@ -96,15 +101,21 @@ export interface NotesApi {
   /** The links to these notes that still work, newest first. Everyone with the notes sees them. */
   links(id: ID): Promise<NoteLink[]>;
   /**
-   * Makes a link to these notes, once the call has ended: whoever opens it while signed in gets them, as shared by you,
-   * until it runs out (NOTE_LINK_DAYS) or it's revoked. The link alone reads nothing. Anyone with the notes can make one.
+   * Makes a link to these notes, once the call has ended. It can be opened until it runs out (NOTE_LINK_DAYS) or it's
+   * revoked, and whoever opens it while signed in gets the notes to keep, as shared by you: its running out takes nothing
+   * back. The link alone reads nothing. Anyone with the notes can make one.
    */
   createLink(id: ID): Promise<NewNoteLink>;
   /** Revokes a link, so it opens nothing from now on: yours, or any on your own notes. Whoever it gave the notes to keeps them. */
   revokeLink(id: ID, linkId: ID): Promise<NoteLink[]>;
   /**
-   * Opens a link by its secret: its notes join yours, as shared by whoever made the link, and this says which they are.
+   * Until when a link can still be opened, by its secret, before opening it: nothing joins your notes, and nobody is named.
    * One that's run out, been revoked or never was is `not-found`, all alike.
+   */
+  peekLink(secret: string): Promise<NoteLinkPeek>;
+  /**
+   * Opens a link by its secret: its notes join yours, to keep, as shared by whoever made the link, and this says which they
+   * are. One that's run out, been revoked or never was is `not-found`, all alike.
    */
   claimLink(secret: string): Promise<NoteLinkClaimed>;
   /** Your own notes on these notes: only ever yours, whoever else has them. */

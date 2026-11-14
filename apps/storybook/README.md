@@ -26,7 +26,8 @@ src/api/api.ts            what main.ts puts in place of the app's lib/api.ts: th
 src/api/standin.ts        the stand-in AlcoveApi, composed of its parts, and stopping what the last story left open
 src/api/answer.ts         how every answer comes back: after a moment, refused offline or signed out, as a copy
 src/api/state.ts, live.ts the world served now, and live stores; scenarios.ts the scenarios; trouble.ts a part of Alcove
-                          that fails, can't be reached or keeps a page waiting, as the story's world says
+                          that fails, can't be reached, says what was asked for isn't there, or keeps a page waiting, as
+                          the story's world says
 src/api/<part>/api.ts     each part of AlcoveApi, laid out as @alcove/api-http is: account/ (signing in, preferences, people,
                           your plan and payments.ts, a team), agents/, meetings/ (calls ahead, calendars), calls/ (making and
                           entering calls, a move to this device, rings.ts), recordings/ (recording.ts, kept.ts: what's kept on
@@ -224,7 +225,10 @@ contract (`changing()` in `src/page.tsx`). `stories/pages/changes.ts` has the on
 ```tsx
 /** The summary couldn't be written: a note in that state, put into the busy afternoon. */
 export const Unwritten = page(`/calls/${STATES.unwritten}`, 'busy', { beforeEach: changing(inEveryState) });
-/** A part of Alcove that fails (`failed`), can't be reached (`network`) or never answers while the story is open (`hold`). */
+/**
+ * A part of Alcove that fails (`failed`), can't be reached (`network`), says what was asked for isn't there (`gone`) or never
+ * answers while the story is open (`hold`).
+ */
 export const Loading = page('/team', 'busy', { beforeEach: changing(troubled({ 'people.team': 'hold' })) });
 /** Recordings kept on this device that haven't uploaded, in every state Record shows. */
 export const OnThisDevice = page('/record', 'busy', { beforeEach: changing(keptHere) });

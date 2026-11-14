@@ -140,8 +140,9 @@ content of its own: its pages read the call and its note through their own acces
 relies on that: stored data of any depth reads and clears), so one record is enough, and every change is made
 under the `workspaces` row's lock, which also serialises changes to its people and who has what: an access check made
 under that lock holds until the change commits. The server filters the state for each reader, so nobody is sent a name
-they can't open. `pos` is a fractional position, a base-62 string read as a fraction and sorted as plain text, so
-something can always land between two siblings without touching either.
+they can't open, and tells each reader what they made themselves (`mine`) from the address kept on it, which isn't sent.
+`pos` is a fractional position, a base-62 string read as a fraction and sorted as plain text, so something can always land
+between two siblings without touching either.
 
 **Trash.** `trashedAt` is set on what was sent there; what's in a folder in Trash is there with it, and comes back with
 it, except anything that went to Trash by itself earlier. Something restored whose folder isn't in the tree comes back to

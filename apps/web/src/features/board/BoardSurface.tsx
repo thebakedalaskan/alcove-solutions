@@ -98,6 +98,12 @@ export interface BoardHandle {
    * whoever offers it makes sure of.
    */
   setNight(on: boolean): void;
+  /**
+   * Closes whatever's open over the sheet, as a press on the sheet does: a tool's options, More, the bar's menus, the picker
+   * and Vote's menu. For something outside the board about to open over it, such as Share over the page, so a window never
+   * opens over another.
+   */
+  closeOver(): void;
 }
 
 /** Rooms' boards coming back to this one: which rooms, by id, and until when (ms) they're on their way. */
@@ -579,7 +585,8 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
     saveImage: () => barItems.image?.(),
     savePdf: () => barItems.pdf?.(),
     night: () => board.getSnapshot().night,
-    setNight: (on) => board.nightBoard(on)
+    setNight: (on) => board.nightBoard(on),
+    closeOver: () => board.closeOver()
   }), [board, presence, barItems]);
 
   return (

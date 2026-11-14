@@ -18,6 +18,18 @@ export function callsIn(tree: Tree): KeptCall[] {
   return (tree.kids.get(null) ?? []).flatMap((i) => keptOf(i) ?? []).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 }
 
+/** How many of the calls kept in a workspace its side panel shows, full screen, before "N more" (Side.tsx). */
+export const EARLIER = 5;
+/**
+ * Whether the side panel keeps `id` behind "N more": it's one of the calls kept at the top, after the first EARLIER of them in
+ * the list's order, or it's in one. A call's own workspace's call (`theCall`) is never among them: it's first, on its own.
+ */
+export function behindMore(tree: Tree, id: string, theCall: string | null): boolean {
+  const top = foldersAbove(tree, id)[0] ?? tree.all.get(id);
+  if (!top || top.call === null || top.id === theCall) return false;
+  return (tree.kids.get(null) ?? []).filter((i) => i.call !== null && i.id !== theCall).findIndex((i) => i.id === top.id) >= EARLIER;
+}
+
 /** The day a call was, or is, in a sentence: "today", "yesterday", "tomorrow", else "Mon 2 Nov". */
 export function callDay(iso: string, now = new Date()): string {
   const n = daysFromToday(new Date(iso), now);

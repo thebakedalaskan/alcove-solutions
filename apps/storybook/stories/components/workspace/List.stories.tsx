@@ -144,6 +144,17 @@ function Headings(args: ComponentProps<typeof WsSection>) {
 export const Sections: SectionStory = { name: 'Section: This call and Documents', args: { label: 'This call', area: 'pins', into: false }, argTypes: sectionTypes, render: (args) => <Headings {...args} /> };
 /** Dragging a document onto This call brings it to the call: the heading lights up while it's over it. */
 export const SectionInto: SectionStory = { name: 'Section: something dragged onto it', args: { label: 'This call', area: 'pins', into: true }, argTypes: sectionTypes, render: (args) => <Headings {...args} /> };
+/** The path over the page names the workspace or This call: This call lights up for 1.4 s, as a row that arrives does. Press to see it again. */
+function Shown(args: ComponentProps<typeof WsSection>) {
+  const [round, setRound] = useState(0);
+  return (
+    <Stack>
+      <Button size="sm" icon="folderOpen" onClick={() => setRound((n) => n + 1)}>This call, on the path</Button>
+      <Headings key={round} {...args} />
+    </Stack>
+  );
+}
+export const SectionFlash: SectionStory = { name: 'Section: shown from the path', args: { label: 'This call', area: 'pins', flash: true }, argTypes: sectionTypes, render: (args) => <Shown {...args} /> };
 
 /* ---------- rows ---------- */
 

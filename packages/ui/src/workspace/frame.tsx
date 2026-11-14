@@ -4,13 +4,13 @@
  * and handlers; the app composes them (apps/web/src/features/workspace/full-screen/Frame.tsx). The rows in the side panel are the list's
  * own (`WsRow`, `WsSection`, `WsTrashRow`), on the panel's dark. Classes `wf-` in workspace.css.
  */
-import { Fragment, useEffect, useRef, type KeyboardEvent, type ReactNode, type Ref } from 'react';
+import { useEffect, useRef, type KeyboardEvent, type ReactNode, type Ref } from 'react';
 import { cn } from '../foundation/cn';
 import { Horizon } from '../evening/horizon';
 import { Icon } from '../foundation/icon';
 import { Avatar, Faces, type AvatarPerson } from '../foundation/people';
 import { Button, IconButton, Kbd } from '../foundation/primitives';
-import { WsSaveState, type WsFace, type WsSave } from './document';
+import { WsPath, WsSaveState, type WsCrumb, type WsFace, type WsSave } from './document';
 import { WsSpaceField, WsTree, type WsNaming, type WsTreeProps } from './list';
 import { WsPopover, type WsPop } from './popover';
 
@@ -64,13 +64,20 @@ export interface WsSideProps extends WsTreeProps {
   foot?: ReactNode;
   /** Who can open the workspace, beside the seal: "Priya, Kofi, Ines and you can open it". */
   sealed: string;
+  /**
+   * Share: who can open it is pressed to see who's in it, which opens over the foot (the people sheet: adding people, what each
+   * can do, leaving). Left out for someone who isn't in it, for whom it's only said. Its name is what it says, then the
+   * workspace's name, which only a screen reader says: "Priya, Kofi and you can open it Share Launch".
+   */
+  share?: WsPop | undefined;
 }
 
 /**
  * The side panel: the logo, the workspace switcher, Search, then the rows (Home or the call first, then each section), and at
- * the foot Trash and who can open it. Dark in both themes. On a phone it's the workspace's pages, the width of the screen.
+ * the foot Trash and who can open it, which opens who's in it. Dark in both themes. On a phone it's the workspace's pages, the
+ * width of the screen.
  */
-export function WsSide({ brand, space, onSearch, searchKeys, reconnecting, foot, sealed, label = 'This workspace', ...tree }: WsSideProps) {
+export function WsSide({ brand, space, onSearch, searchKeys, reconnecting, foot, sealed, share, label = 'This workspace', ...tree }: WsSideProps) {
   return (
     <nav className="wf-side dark" aria-label={label}>
       <div className="wf-brand">{brand}</div>
@@ -92,14 +99,17 @@ export function WsSide({ brand, space, onSearch, searchKeys, reconnecting, foot,
       <WsTree label={label} {...tree} />
       <div className="wf-foot">
         {foot}
-        <p className="wf-seal"><Icon name="sealed" size={13} /><span className="ac-clamp-2">{sealed}</span></p>
+        {share ? (
+          <WsPopover open={share.open} onOpenChange={share.onOpenChange} label={`People in ${space.name}`} side="top" anchor={
+            <button type="button" className="wf-seal">
+              <Icon name="sealed" size={13} /><span className="ac-clamp-2">{sealed}</span>{' '}<span className="wf-seal-go">Share<span className="wf-seal-name"> {space.name}</span></span>
+            </button>
+          }>{share.content}</WsPopover>
+        ) : <p className="wf-seal"><Icon name="sealed" size={13} /><span className="ac-clamp-2">{sealed}</span></p>}
       </div>
     </nav>
   );
 }
-
-/** A step on the bar's path: the workspace, a folder, the page. One you can press goes there. */
-export interface WsCrumb { label: string; onClick?: (() => void) | undefined }
 
 /** Who else is here, on the bar: their faces, each opening their card, and the words for it ("Priya is here"). */
 export interface WsHere { faces: WsFace[]; line: string }
@@ -107,7 +117,7 @@ export interface WsHere { faces: WsFace[]; line: string }
 export interface WsBarProps {
   /** Where the workspace was opened from, which pressing it goes back to: ← Drive or ← Calls. */
   back: { label: string; onClick: () => void };
-  /** The path after it: the workspace, its folders, and the page you're on, last. */
+  /** The path after it (`WsPath`): the workspace, its folders, and the page you're on, last, each step before it going there. */
   crumbs?: readonly WsCrumb[] | undefined;
   /** A phone's way back to the workspace's pages from a page: ← and the workspace's name. Left out on the pages themselves. */
   up?: { label: string; onClick: () => void } | undefined;
@@ -130,20 +140,10 @@ export interface WsBarProps {
 export function WsBar({ back, crumbs = [], up, save, here, share, more, moreLabel = 'More', onExit, me }: WsBarProps) {
   return (
     <header className={cn('wf-bar', up && 'has-up')}>
-      <nav className="wf-path" aria-label="Where you are">
+      <div className="wf-path">
         <button type="button" className="wf-back" onClick={back.onClick} title={`Back to ${back.label}`}><Icon name="left" size={16} /><span>{back.label}</span></button>
-        {crumbs.map((c, i) => {
-          const last = i === crumbs.length - 1;
-          return (
-            <Fragment key={i}>
-              <Icon name="chevron" size={13} className="wf-sep" />
-              {c.onClick && !last
-                ? <button type="button" className="wf-crumb" onClick={c.onClick}><span className="ac-clamp-1">{c.label}</span></button>
-                : <span className={cn('wf-crumb', last && 'is-last')} aria-current={last ? 'page' : undefined}><span className="ac-clamp-1">{c.label}</span></span>}
-            </Fragment>
-          );
-        })}
-      </nav>
+        {crumbs.length > 0 && <><Icon name="chevron" size={13} className="wf-sep" /><WsPath crumbs={crumbs} label="Where you are" className="wf-crumbs" /></>}
+      </div>
       {up && <button type="button" className="wf-up" onClick={up.onClick}><Icon name="left" size={17} /><span className="ac-clamp-1">{up.label}</span></button>}
       <div className="wf-end">
         {save && save !== 'quiet' && <WsSaveState state={save} />}

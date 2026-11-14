@@ -5,7 +5,7 @@
  */
 import {
   ACCEPTED_FOLLOW_UP, NOTE_LINK_DAYS, type ActionPatch, type ActionProposal, type AlcoveApi, type AudienceTeam, type Change, type DecisionPatch, type DecisionProposal,
-  type FollowUpReview, type FollowUpTarget, type ID, type Inbox, type LinePatch, type NewNoteLink, type Note, type NoteAction, type NoteLink, type NoteLinkClaimed,
+  type FollowUpReview, type FollowUpTarget, type ID, type Inbox, type LinePatch, type NewNoteLink, type Note, type NoteAction, type NoteLink, type NoteLinkClaimed, type NoteLinkPeek,
   type NoteProgress, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type Series, type SeriesAnswerPart, type SeriesNote, type SharedAudience,
   type SharedWrite
 } from '@alcove/api';
@@ -278,6 +278,12 @@ export const notesApi: Pick<AlcoveApi, 'notes' | 'series' | 'models'> = {
       noteIn(w, id);
       w.noteLinks = (w.noteLinks ?? []).filter((x) => x.link.id !== linkId);
       return linksTo(w, id);
+    }),
+    // Until when a link opens, before it's opened: nothing joins Art's notes yet.
+    peekLink: (secret: string) => answer((w): NoteLinkPeek => {
+      const found = (w.noteLinks ?? []).find((x) => x.secret === secret && Date.parse(x.link.expiresAt) > Date.now());
+      if (!found) throw refused('not-found', 'This link has run out or been revoked. Ask whoever sent it for a new one.');
+      return { expiresAt: found.link.expiresAt };
     }),
     claimLink: (secret: string) => answer((w): NoteLinkClaimed => {
       const found = (w.noteLinks ?? []).find((x) => x.secret === secret && Date.parse(x.link.expiresAt) > Date.now());

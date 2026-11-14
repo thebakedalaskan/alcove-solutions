@@ -3,7 +3,7 @@
  * States board: making one, putting one in a document, everything under its name, a comment, the connection going; then adding to
  * it, changing what's there and undoing it, linking things, looking round, resolving a comment, and a board someone can only look at.
  * Then after the call, from the canvas's `after` and `notes` journeys: the board on the note, opening it, starting a call on it,
- * and each breakout room's board on the note, opened in one click.
+ * and each breakout room's board on the note, opened in one click. Last, sharing it from Share on the head over it.
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, waitFor, within } from 'storybook/test';
@@ -175,20 +175,22 @@ export const AddToIt: PageStory = {
   name: '13.6 Add to it, one sticky after another',
   ...page(RETRO, 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Double-click under Went well, where nothing is yet: a sticky, ready to type', async () => {
-      // Under No rollbacks and clear of its frame: a sticky lands centred where it's double-clicked.
+    await step('Double-click in Went well, beside No rollbacks, where nothing is yet: a sticky, ready to type', async () => {
+      // Inside the frame, in the space under Pricing page shipped a week early: a sticky lands centred where it's double-clicked.
+      // Outside a frame, a double-click starts text, as the blank board says.
       const last = (await screen.findByText('No rollbacks', {}, SOON)).closest('[data-id]')?.getBoundingClientRect();
-      if (!last) throw new Error('No rollbacks isn’t on the board.');
+      const above = (await screen.findByText('Pricing page shipped a week early', {}, SOON)).closest('[data-id]')?.getBoundingClientRect();
+      if (!last || !above) throw new Error('Went well’s stickies aren’t on the board.');
       const board = await sheet('Launch retro');
-      await userEvent.pointer({ keys: '[MouseLeft][MouseLeft]', target: board, coords: { clientX: last.x + last.width / 2, clientY: last.bottom + last.height * 0.9 } });
+      await userEvent.pointer({ keys: '[MouseLeft][MouseLeft]', target: board, coords: { clientX: above.x + above.width / 2, clientY: last.y + last.height / 2 } });
       await screen.findByRole('textbox', { name: 'Edit this sticky' }, SOON);
     });
-    await step('Type it, then press Tab: the next sticky starts beside it', async () => {
+    await step('Type it, then press Tab: the next sticky starts after it, at the start of the next row as the frame runs out', async () => {
       await userEvent.keyboard('Name who writes the changelog');
       await userEvent.keyboard('{Tab}');
       await userEvent.keyboard('Keep the runbook in the workspace');
     });
-    await step('Esc when you’re done. Both stay, side by side', async () => {
+    await step('Esc when you’re done. Both stay', async () => {
       await userEvent.keyboard('{Escape}');
       await screen.findByText('Keep the runbook in the workspace', {}, SOON);
     });
@@ -334,6 +336,24 @@ export const RoomsInTheNotes: PageStory = {
     await step('Click Comms board: a room’s board is a saved board like any other, and it can be opened in the next call', async () => {
       await userEvent.click(within(await made()).getByRole('button', { name: 'Comms board' }));
       await sheet('Comms board');
+    });
+  }
+};
+
+export const ShareFromItsHead: PageStory = {
+  name: '13.14 Share it, from the head over it',
+  ...page(RETRO, 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Share is on the head over the board, as it is over a document. Press it', async () => {
+      await sheet('Launch retro');
+      await userEvent.click(await screen.findByRole('button', { name: 'Share' }, SOON));
+    });
+    await step('Who can add to it: everyone in Product, and anyone it’s shared with beyond it. Add someone outside it by address', async () => {
+      await userEvent.type(await within(await screen.findByRole('dialog', { name: 'Share' }, SOON)).findByRole('textbox', { name: 'Add people by name or email' }, SOON), 'jonas@weber.design');
+      await userEvent.keyboard('{Enter}');
+    });
+    await step('Jonas can add to the board, and to nothing else in Product: the arrow beside the name changes that to Can read', async () => {
+      await within(await screen.findByRole('dialog', { name: 'Share' }, SOON)).findByText('Jonas Weber', {}, SOON);
     });
   }
 };

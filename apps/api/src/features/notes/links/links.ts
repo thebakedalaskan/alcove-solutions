@@ -2,16 +2,17 @@
  * Links to a call's notes (docs: Privacy, keys and sessions › Who can read a note). Anyone who has a call's notes can make
  * one once the call has ended. A link reads nothing by itself: opened by someone signed in, it gives that account the
  * notes, as shared by whoever made the link, the way sharing by address does (a note_access row, and the note's sealed
- * list of who it was shared with, saying it was a link). So every reader is still an account the note lists, and the
- * same rule as letting someone in from a call's link decides which accounts the notes may go to.
+ * list of who it was shared with, saying it was a link). So every reader is still an account the note lists, and keeps the
+ * notes as anyone they're shared with does, after the link runs out; and the same rule as letting someone in from a call's
+ * link decides which accounts the notes may go to.
  *
  * The link's secret travels only in its fragment, which browsers never send, and then in a POST body: only its SHA-256 is
  * stored. Who made it and when are sealed under the note's organizer's keys (record kind `note-link`, bound to the note
- * and the link). A link runs out after NOTE_LINK_DAYS, its maker or the organizer can revoke it, and it stops working once
+ * and the link). A link can be opened for NOTE_LINK_DAYS, its maker or the organizer can revoke it, and it stops working once
  * its maker no longer has the notes. It's deleted when it's revoked, once it's run out (upkeep), when its maker removes
  * the note from theirs or deletes their account (found by a keyed hash of the maker, opening nothing), and with the note.
  */
-import { MAX_NOTE_LINKS, NOTE_LINK_DAYS, type NewNoteLink, type NoteLink, type NoteLinkClaimed, type Person } from '@alcove/api';
+import { MAX_NOTE_LINKS, NOTE_LINK_DAYS, type NewNoteLink, type NoteLink, type NoteLinkClaimed, type NoteLinkPeek, type Person } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../../../platform/context';
 import { b64u, blindIndex, id128, openJson, random, sealJson, sha, stateKey, toJson, utf8 } from '../../../keys/crypto';
@@ -104,17 +105,54 @@ export async function revoke(o: Owner, noteId: string, linkId: string): Promise<
   return linksOf(l, o.ownerId);
 }
 
+/** A link that still works, by its secret, and its note's organizer, whose keys open who made it. The caller zeroes the keys. */
+async function linkFor(o: Owner, secret: string): Promise<{ r: Row; owner: Owner }> {
+  const r = await maybeOne(o.pool, Row, `SELECT ${COLUMNS} FROM note_links WHERE secret_hash = $1 AND expires_at > now()`, [hashOf(secret)]);
+  if (!r) throw gone({ reason: 'no-link' });
+  const owner = await findOwner(o, r.owner_id, undefined);
+  if (!owner) throw gone({ reason: 'no-organizer' });
+  return { r, owner };
+}
+
 /**
- * Opens a link for the account signed in: its notes join theirs, as shared by whoever made the link. A link that's run
+ * Whether whoever made a link still has its notes: the organizer, or someone the note is given to under the address they have
+ * now. A link hands on only what its maker has, so once they don't, it stops: when they've removed the notes from theirs, and
+ * when their address changed and the notes stayed with the old one.
+ */
+async function makerHas(owner: Owner, db: Db, noteId: string, makerId: string): Promise<boolean> {
+  if (makerId === owner.ownerId) return true;
+  return !!(await maybeOne(db, z.object({ n: z.number() }), `SELECT 1 AS n FROM note_access a JOIN identities i ON i.email_index = a.email_index
+    WHERE a.owner_id = $1 AND a.note_item_id = $2 AND i.owner_id = $3 LIMIT 1`, [owner.ownerId, noteId, makerId]));
+}
+
+/**
+ * Until when a link can be opened, for someone signed in who has it, before they open it (the page a link opens says so). It
+ * says so only when opening it would give them the notes now, which it checks as opening does, giving nothing and naming
+ * nobody: its organizer is there, its maker still has the notes, and the notes may go to this account (a demo account gets a
+ * real organizer's notes from no link). Any of those, or a link that's run out, been revoked or never was, is the same
+ * `not-found`, so the answer says nothing of which.
+ */
+export async function peek(o: Owner, secret: string): Promise<NoteLinkPeek> {
+  const { r, owner } = await linkFor(o, secret);
+  const ctx = { noteId: r.note_item_id, linkId: r.link_id };
+  try {
+    if (owner.ownerId !== o.ownerId) {
+      const [reader, organizer] = await Promise.all([profile(o), profile(owner)]);
+      if (!notesCanGo(reader, organizer)) throw gone({ ...ctx, reason: 'demo-account' });
+      if (!(await makerHas(owner, o.pool, r.note_item_id, opened(owner, r).by.id))) throw gone({ ...ctx, reason: 'maker-gone' });
+    }
+    return { expiresAt: r.expires_at.toISOString() };
+  } finally { owner.root.fill(0); owner.wrapKey.fill(0); }
+}
+
+/**
+ * Opens a link for the account signed in: its notes join theirs, to keep, as shared by whoever made the link. A link that's run
  * out, been revoked or whose maker no longer has the notes opens nothing, and says so the same way as one that never
  * was. The notes go only to an account they may go to: a real one, or any when the organizer's own is a demo one. The
  * organizer, and anyone who has the notes already, are just told which they are.
  */
 export async function claim(o: Owner, secret: string): Promise<NoteLinkClaimed> {
-  const r = await maybeOne(o.pool, Row, `SELECT ${COLUMNS} FROM note_links WHERE secret_hash = $1 AND expires_at > now()`, [hashOf(secret)]);
-  if (!r) throw gone({ reason: 'no-link' });
-  const owner = await findOwner(o, r.owner_id, undefined);
-  if (!owner) throw gone({ reason: 'no-organizer' });
+  const { r, owner } = await linkFor(o, secret);
   const noteId = r.note_item_id;
   const ctx = { noteId, linkId: r.link_id };
   try {
@@ -127,10 +165,7 @@ export async function claim(o: Owner, secret: string): Promise<NoteLinkClaimed> 
       // Still working, read holding the note: one revoked or run out meanwhile gives nothing.
       const still = await maybeOne(c, z.object({ n: z.number() }), 'SELECT 1 AS n FROM note_links WHERE owner_id = $1 AND note_item_id = $2 AND link_id = $3 AND expires_at > now() FOR KEY SHARE', [owner.ownerId, noteId, r.link_id]);
       if (!still) throw gone({ ...ctx, reason: 'gone-meanwhile' });
-      // A link hands on only what its maker has: once they don't, it stops.
-      const maker = made.by.id === owner.ownerId || !!(await maybeOne(c, z.object({ n: z.number() }), `SELECT 1 AS n FROM note_access a JOIN identities i ON i.email_index = a.email_index
-        WHERE a.owner_id = $1 AND a.note_item_id = $2 AND i.owner_id = $3 LIMIT 1`, [owner.ownerId, noteId, made.by.id]));
-      if (!maker) throw gone({ ...ctx, reason: 'maker-gone' });
+      if (!(await makerHas(owner, c, noteId, made.by.id))) throw gone({ ...ctx, reason: 'maker-gone' });
       return giveByLink(owner, c, noteId, reader.email, organizer.email, made.by, new Date().toISOString());
     });
     llog.info('note link opened', { ...ctx, added });

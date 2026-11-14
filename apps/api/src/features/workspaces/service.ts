@@ -184,10 +184,14 @@ export async function callsIn(db: Db, who: Who, seatCall: string | null, s: Work
   return out;
 }
 
-/** One item as a reader sees it. `trash` is what it's in Trash with, on its own or with a folder. */
-function wireItem(id: string, item: StoredItem, role: DocumentRole, outside: boolean, trash: { at: string; by: string | null } | null, call: ItemCall | null): WorkspaceItem {
+/**
+ * One item as a reader sees it. `trash` is what it's in Trash with, on its own or with a folder. `email` is the reader's
+ * address, lower-cased, if they have one: whether they made it is told by the address kept on it, which is never sent.
+ */
+function wireItem(id: string, item: StoredItem, role: DocumentRole, outside: boolean, trash: { at: string; by: string | null } | null, call: ItemCall | null, email: string | undefined): WorkspaceItem {
   return {
     id, kind: item.kind, name: item.name, parent: outside ? null : item.parent, by: item.by && { name: item.by.name, portrait: portraitFor(item.by.email || item.by.name) },
+    mine: !!email && item.by?.email === email,
     createdAt: item.createdAt, editedAt: item.editedAt, trashedAt: trash?.at ?? null, trashedBy: trash?.by ?? null, restricted: item.restricted, role, call
   };
 }
@@ -199,6 +203,7 @@ type Seen = Standing & { workspaceId: string; state: WorkspaceState; people: num
  */
 function treeFor(who: Who, w: Seen, calls: ReadonlyMap<string, ItemCall>, teamAccess: TeamAccess | null): WorkspaceTree {
   const outside = w.role === null && !w.call;
+  const email = who.email?.trim().toLowerCase();
   const items: WorkspaceItem[] = [];
   const kids = childrenIn(w.state);
   type Next = { child: Child; above: { at: string; by: string | null } | null };
@@ -208,7 +213,7 @@ function treeFor(who: Who, w: Seen, calls: ReadonlyMap<string, ItemCall>, teamAc
     const { id, item } = at.child;
     const trash = item.trashedAt ? { at: item.trashedAt, by: item.trashedBy } : at.above;
     const role = roleOf(who, w, id, item);
-    if (role) items.push(wireItem(id, item, role, outside, trash, calls.get(id) ?? null));
+    if (role) items.push(wireItem(id, item, role, outside, trash, calls.get(id) ?? null, email));
     stack.push(...next(id, trash));
   }
   return { id: w.workspaceId, name: outside ? null : w.state.name, role: w.role, inCall: w.call, people: w.role === null ? null : w.people, teamAccess: w.role === null ? null : teamAccess, items };
@@ -224,7 +229,7 @@ export async function item(d: Deps, reader: Reader, workspaceId: string, itemId:
   const w = await workspaceFor(d, reader, workspaceId);
   const found = requireItem(reader, w, itemId);
   const calls = found.item.call ? await callsIn(d.pool, reader, reader.seat?.callId ?? null, { ...w.state, items: { [itemId]: found.item } }) : new Map<string, ItemCall>();
-  return wireItem(itemId, found.item, found.role, w.role === null && !w.call, trashOf(w.state, itemId), calls.get(itemId) ?? null);
+  return wireItem(itemId, found.item, found.role, w.role === null && !w.call, trashOf(w.state, itemId), calls.get(itemId) ?? null, reader.email?.trim().toLowerCase());
 }
 
 const ListedRow = z.object({

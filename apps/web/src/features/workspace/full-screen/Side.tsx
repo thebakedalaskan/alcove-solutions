@@ -1,24 +1,23 @@
 /*
  * A workspace's side panel, full screen: the Alcove logo, the workspace switcher, Search, then Home and its Pages, with the
- * calls kept in it under Calls; or, for a call's own workspace, the call first ("The call, today ↗"), then what it made, then
- * a series' earlier calls. Trash and who can open it at the foot. Its rows are the list's own (List.tsx): every menu, drag,
- * rename and key works here as it does there.
+ * calls kept in it under Calls; or, for a call's own workspace, the call first ("The call, today ↗", holding what was made in
+ * it), then the workspace's own Pages (For the call, before it), where + makes something, then a series' earlier calls. Trash
+ * and who can open it at the foot. Its rows are the list's own (List.tsx): every menu, drag, rename and key works here as it
+ * does there.
  */
 import { firstName, type WorkspacePerson } from '@alcove/api';
 import { Logo, WsMark, WsRow, WsSection, WsSide } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useState, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { shortcut } from '~/lib/keys';
 import { useNow } from '~/lib/live';
 import { workspaceQueries } from '~/features/workspace/queries';
-import { beforeTheCall, callDay, callDayTitle, homeOf } from './calls';
+import { EARLIER, beforeTheCall, behindMore, callDay, callDayTitle, homeOf } from './calls';
 import { useWs } from '../context';
 import { CALL_ICON, useListParts, type ListDrag } from '../tree/List';
 import { rowsOf, type ListRow } from '../tree/tree';
-
-/** How many of a series' earlier calls show before "N more". */
-const EARLIER = 5;
+import { useSpaceShare } from '../sharing/Sheets';
 
 /** Who can open a workspace, in words, beside the seal at the foot. */
 export function whoCanOpen(people: readonly WorkspacePerson[] | undefined, count: number | null): string {
@@ -35,11 +34,13 @@ export function Side({ drags }: { drags: ListDrag }) {
   const navigate = useNavigate();
   const now = useNow(60_000);
   const parts = useListParts(drags);
-  const [allCalls, setAllCalls] = useState(false);
-  const { tree, sent } = ws;
+  /* Every call kept here, once "N more" is pressed, or a step of the path shows one of them. */
+  const { tree, sent, allCalls, showAllCalls } = ws;
   const { inside } = parts;
   const summary = useQuery({ ...workspaceQueries.workspaces(), enabled: ws.owner !== null }).data?.find((w) => w.id === ws.workspaceId);
   const people = useQuery({ ...workspaceQueries.workspacePeople(ws.workspaceId), enabled: inside }).data;
+  /* Who can open it, at the foot, opens who's in it: the way to share the whole workspace from any page of it, a call's own too. */
+  const share = useSpaceShare();
   const home = homeOf(summary, tree);
 
   /* Every row of the tree, in its section: the call a call's workspace is for, the calls kept in it, and everything else. */
@@ -54,7 +55,9 @@ export function Side({ drags }: { drags: ListDrag }) {
     const inCall = row.draft ? row.depth > 0 && topIsCall : topIsCall;
     (!inCall ? pages : top === theCall ? calling : calls).push(row);
   }
-  const shownCalls = allCalls ? calls : (() => {
+  /* Every call, once asked for, or while what's open is in one of those after the first few: its row is always drawn. */
+  const everyCall = allCalls || (ws.at.kind === 'document' && behindMore(tree, ws.at.id, theCall));
+  const shownCalls = everyCall ? calls : (() => {
     let seen = 0;
     return calls.filter((r) => { if (!r.draft && r.depth === 0) seen++; return seen <= EARLIER; });
   })();
@@ -63,8 +66,12 @@ export function Side({ drags }: { drags: ListDrag }) {
   const rowOf = (row: ListRow, label?: string | undefined): ReactElement => (row.draft ? parts.draftRow(row.depth) : parts.rowOf(row.item, 'tree', row.depth, row.open, row.depth === 0 && label ? { label } : {}));
   const callLabel = (row: ListRow): string | undefined => (!row.draft && row.depth === 0 && home && row.item.call ? callDayTitle(row.item.call.startedAt, new Date(now)) : undefined);
 
+  /*
+   * What's at the top, outside the calls' folders, and where + puts what it makes. In a call's own workspace that's all for the
+   * call until it starts; from then on what the call makes is in its folder, under its row, and the rest is the workspace's own.
+   */
   const before = home !== null && beforeTheCall(home, now);
-  const made = home ? (before ? 'For the call' : 'Made in the call') : inside ? 'Pages' : 'Shared with you';
+  const pagesLabel = before ? 'For the call' : inside ? 'Pages' : 'Shared with you';
   const items = pages.length + calls.length + calling.length;
   return (
     <>
@@ -72,18 +79,18 @@ export function Side({ drags }: { drags: ListDrag }) {
         space={{ name: ws.spaceName, mark: <WsMark name={ws.spaceName} call={home !== null} />, picker: parts.picker, naming: parts.namingField, saveState: ws.spaceSave }}
         onSearch={ws.openFind} searchKeys={shortcut('K')} reconnecting={ws.listDown}
         listKey={ws.workspaceId} onKeyDown={parts.rowKeys} empty={items > 0 ? false : !inside ? 'shared' : ws.canChange ? 'yours' : 'others'}
-        foot={parts.trashRow} sealed={whoCanOpen(people, sent.people)}>
+        foot={parts.trashRow} sealed={whoCanOpen(people, sent.people)} share={share}>
         {home ? (
           calling.length > 0
             ? calling.map((row) => (row.draft ? parts.draftRow(row.depth) : parts.rowOf(row.item, 'tree', row.depth, row.open, row.depth === 0 ? { label: `The call, ${callDay(home.at, new Date(now))}`, place: true } : {})))
             : <WsRow key="place:call" id="place:call" kind="place" icon={CALL_ICON} name={`${home.title}, ${callDay(home.at, new Date(now))}`} out
               onOpen={() => { void navigate({ to: '/calls' }); }} />
         ) : inside && <WsRow key="place:home" id="place:home" kind="place" icon="home" name="Home" current={ws.at.kind === 'home'} onOpen={() => ws.go({ kind: 'home' })} />}
-        <WsSection key="sec:pages" label={made} add={parts.createTop} addLabel={tree.boards ? 'New document, folder or board' : 'New document or folder'} />
+        <WsSection key="sec:pages" label={pagesLabel} add={parts.createTop} addLabel={tree.boards ? 'New document, folder or board' : 'New document or folder'} />
         {pages.map((row) => rowOf(row))}
         {calls.length > 0 && <WsSection key="sec:calls" label={home ? 'Earlier calls' : 'Calls'} />}
         {shownCalls.map((row) => rowOf(row, callLabel(row)))}
-        {!allCalls && hidden > 0 && <WsRow key="place:more" id="place:more" kind="place" icon="more" name={`${hidden} more`} onOpen={() => setAllCalls(true)} />}
+        {!everyCall && hidden > 0 && <WsRow key="place:more" id="place:more" kind="place" icon="more" name={`${hidden} more`} onOpen={showAllCalls} />}
         {parts.dropLine}
       </WsSide>
       {parts.files}

@@ -2,18 +2,22 @@
  * A board on its own page, beside the list. The board's bar is the page's head: its name, with everything about the board
  * itself under it, and its seal, which says how it's saving. Reconnecting and Couldn't save take the pill at the top of the
  * sheet too, as in a call. Someone who can only look has no tools, and the seal says View only. Who else is here sits at the
- * end of the bar, beside Start a call here. What's done offline is kept on this device, as a document's is, and goes when
- * the connection's back; a board that goes from under someone says so in its place. More beside the tools has what it has in a
- * call: a picture kept in the board's files, a link to something in this workspace, a table, a mind map, a comment and a
- * template. On a phone the page is the phone's board: no tools beside it, + to add a sticky, and it opens where it can be read.
+ * end of the bar, beside Start a call here. The head over it, the workspace's, has Share, as a document's does, for whoever
+ * can say who has the board: the sheet Who can add to it opens. What's done offline is kept on this device, as a document's
+ * is, and goes when the connection's back; a board that goes from under someone says so in its place. More beside the tools
+ * has what it has in a call: a picture kept in the board's files, a link to something in this workspace, a table, a mind map,
+ * a comment and a template. On a phone the page is the phone's board: no tools beside it, + to add a sticky, and it opens
+ * where it can be read. Share, on the head or at the foot of the side panel, closes whatever the board has open first: its
+ * menus, a tool's options, its pickers.
  */
 import { errorCode, firstName, type WorkspaceItem } from '@alcove/api';
 import type { BoardReply } from '@alcove/board';
-import { BoardPop, Button, WsCantOpen, WsDoc, WsGoneBar, WsOfflineEmpty, WsPopover, WsUnavailable, extensionUi, wsToast, type AvatarPerson, type BoardNaming, type IconName } from '@alcove/ui';
+import { BoardPop, Button, WsCantOpen, WsDoc, WsGoneBar, WsOfflineEmpty, WsPopover, WsUnavailable, extensionUi, wsToast, type AvatarPerson, type BoardNaming, type IconName, type WsPop } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { boardPictures, boardUpload, linkableIn } from '~/features/board/around';
 import type { BoardCommenting } from '~/features/board/people/comments';
+import type { BoardHandle } from '~/features/board/BoardSurface';
 import { BoardSurface } from '~/features/board/lazy';
 import type { BoardLinks } from '~/features/board/more/objects';
 import { useBoardPeople } from '~/features/board/people/people';
@@ -26,14 +30,11 @@ import { log } from '~/lib/log';
 import { workspaceQueries, useSortStickies } from '~/features/workspace/queries';
 import { focusRow } from '../tree/actions';
 import { useWs, type Ws } from '../context';
-import { PaneHead } from '../Head';
+import { PaneHead, pathTo } from '../Head';
 import { canKeepEdits } from '../offline/keep';
 import { useBackOnline, useOpensAgain, useSession, useTriesWhenShown, type Opened } from '../opened';
 import { ShareSheet } from '../sharing/Sheets';
-import { folderName, foldersAbove, nameOf } from '../tree/tree';
-
-/** Where a board is: its workspace and the folders it's in. Its own name is on its bar, below. */
-const crumbsAbove = (ws: Ws, item: WorkspaceItem): string[] => [...(ws.sent.name === null ? [] : [ws.spaceName]), ...foldersAbove(ws.tree, item.id).map((f) => folderName(f, ws.callFolder))];
+import { nameOf } from '../tree/tree';
 
 const blog = log.child({ component: 'board-page' });
 
@@ -57,8 +58,11 @@ function useStartHere(workspaceId: string, item: WorkspaceItem, name: string): (
   }, [flow, qc, workspaceId, item.id, item.role, name]);
 }
 
-/** What's open from the bar: the menu under the name, what the seal says, or the share sheet. */
-type Pop = 'name' | 'seal' | 'share' | null;
+/**
+ * What's open from the bar: the menu under the name, what the seal says, or the share sheet, from Who can add to it under the
+ * name (`share`) or from Share on the head over the board (`head`).
+ */
+type Pop = 'name' | 'seal' | 'share' | 'head' | null;
 
 /** "Rename, share or copy a link": what the menu under the name lets this person do, for its tip. */
 function nameTip(doing: readonly string[]): string {
@@ -133,7 +137,7 @@ export function BoardPane({ item }: { item: WorkspaceItem }) {
   const ws = useWs();
   const { opened, reopen } = useSession(ws, item.id);
   const online = useOnline();
-  if (!opened) return <WsDoc className="is-board"><PaneHead crumbs={crumbsAbove(ws, item)} save="quiet" />{!online && <WsOfflineEmpty />}</WsDoc>;
+  if (!opened) return <WsDoc className="is-board"><PaneHead crumbs={pathTo(ws, item, ws.mode === 'page' ? nameOf(item) : null)} save="quiet" />{!online && <WsOfflineEmpty />}</WsDoc>;
   return <OpenedBoard key={opened.round} ws={ws} item={item} opened={opened} reopen={reopen} />;
 }
 
@@ -150,6 +154,14 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
   const [pop, setPop] = useState<Pop>(null);
   const [naming, setNaming] = useState<string | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
+  /* The board itself, to close what it has open over its sheet when Share opens over the page. */
+  const surface = useRef<BoardHandle>(null);
+  const closeOverRef = ws.closeOver;
+  useEffect(() => {
+    const close = () => { surface.current?.closeOver(); setPop(null); };
+    closeOverRef.current = close;
+    return () => { if (closeOverRef.current === close) closeOverRef.current = null; };
+  }, [closeOverRef]);
 
   const member = ws.sent.role !== null;
   const trashed = item.trashedAt !== null || status.trashed || status.refused === 'trashed';
@@ -238,12 +250,12 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
   // Whatever the bar opened goes with what it was about.
   useEffect(() => { if (readOnly) setNaming(null); }, [readOnly]);
 
-  /* Full screen the bar's path ends with the board; beside the list its own bar says its name. */
-  const where = ws.mode === 'page' ? [...crumbsAbove(ws, item), name] : crumbsAbove(ws, item);
+  /* Full screen the bar's path ends with the board; beside the list its own bar says its name, and the path ends above it. */
+  const where = pathTo(ws, item, ws.mode === 'page' ? name : null);
   if (gone) {
     return (
       <WsDoc>
-        <PaneHead crumbs={ws.sent.name === null ? [] : [ws.spaceName]} save="quiet" />
+        <PaneHead crumbs={ws.sent.name === null ? [] : [{ label: ws.spaceName }]} save="quiet" />
         <WsCantOpen what="board" action={<Button size="sm" onClick={() => ws.go({ kind: 'home' }, { replace: true })}>Back to {ws.spaceName}</Button>} />
       </WsDoc>
     );
@@ -251,13 +263,21 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
   if (!ready) return <WsDoc className="is-board"><PaneHead crumbs={where} save="quiet" />{status.closed === 'unavailable' ? <WsUnavailable /> : offline && <WsOfflineEmpty online={online} onTry={session.retry} />}</WsDoc>;
 
   const who = item.trashedBy ? firstName(item.trashedBy) : 'Someone';
+  /*
+   * Share on the head, as a document has it: the same sheet as Who can add to it, for whoever can say who has the board. What
+   * the board has open goes first, so the sheet never opens over one of its menus.
+   */
+  const headShare: WsPop | undefined = canShare ? {
+    open: pop === 'head', content: pop === 'head' ? <ShareSheet item={item} /> : null,
+    onOpenChange: (to) => { if (to) surface.current?.closeOver(); setPop(to ? 'head' : null); }
+  } : undefined;
   return (
     <WsDoc className="is-board">
-      <PaneHead crumbs={where} save="quiet" />
+      <PaneHead crumbs={where} save="quiet" share={headShare} />
       <WsGoneBar what="board" who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} unsent={status.unsent} />
       <div ref={wrap} className="bpg">
         <Suspense>
-          <BoardSurface doc={session.doc} awareness={session.awareness} mode={readOnly ? 'pageRead' : phone ? 'pagePhone' : 'page'} name={name} naming={nameField}
+          <BoardSurface ref={surface} doc={session.doc} awareness={session.awareness} mode={readOnly ? 'pageRead' : phone ? 'pagePhone' : 'page'} name={name} naming={nameField}
             nameTitle={nameTitle} seal={standing.seal} sealIcon={standing.icon} sealTitle={standing.title} everyone={everyone} people={people} comments={commenting}
             pictures={pictures} upload={upload} workspace={toLink} links={links}
             onName={() => setPop((p) => (p === 'name' ? null : 'name'))} onSeal={() => setPop((p) => (p === 'seal' ? null : 'seal'))}

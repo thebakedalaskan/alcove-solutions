@@ -6,6 +6,7 @@ import { watchDevice } from './features/account/device';
 import { log } from './lib/log';
 import { accountKeys } from './features/account/queryKeys';
 import { interactiveWrites } from './lib/queryWrites';
+import { watchWindowFocus } from './lib/windowFocus';
 import { routeTree } from './routeTree.gen';
 
 export function getRouter() {
@@ -24,6 +25,7 @@ export function getRouter() {
     defaultOptions: { mutations: interactiveWrites, queries: { staleTime: 20_000, retry: (n, e) => n < 2 && errorCode(e) === 'network' && navigator.onLine, refetchOnWindowFocus: false } }
   });
   watchDevice(queryClient);
+  watchWindowFocus();
   const router = createRouter({
     routeTree,
     context: { queryClient },

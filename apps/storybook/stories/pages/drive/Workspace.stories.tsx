@@ -1,16 +1,20 @@
 /*
- * A workspace, from the Drive: the list beside the page, or one at a time on a phone; sharing, Trash, a workspace you can
- * only read; tags, comments, photos, video and files in a document; its History, grouped by call; and what the page says
- * when Alcove won't take what's written, with the words offered back (user-flows 12).
+ * A workspace, from the Drive: the list beside the page, or one at a time on a phone; sharing a document, and the whole
+ * workspace from who can open it at the foot of its side panel; Trash, a workspace you can only read; tags, comments, photos,
+ * video and files in a document; its History, grouped by call; a page in a call kept behind N more, and a step of its path;
+ * and what the page says when Alcove won't take what's written, with the words offered back (user-flows 12).
  */
+import type { WorkspaceItem } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
-import { screen } from 'storybook/test';
+import { screen, within } from 'storybook/test';
+import { rememberSeen } from '~/features/workspace/tree/seen';
 import { drawnPicture } from '../../../src/api/media';
 import { itemId } from '../../../src/api/scenarios';
 import { caretAtEnd, changing, page, pages, type PageArgs, type PageStory } from '../../../src/page';
 import type { World } from '../../../src/world/world';
 import { iso } from '../../../src/world/clock';
-import { HIRING_SYNC, LAUNCH, spaceItem, withWorkspaces } from '../../../src/world/workspaces';
+import { ME_ID } from '../../../src/world/people';
+import { HIRING_SYNC, JUST_OPENED, LAUNCH, spaceItem, withJustMade, withWorkspaces } from '../../../src/world/workspaces';
 import { troubled } from '../changes';
 
 const meta = { title: 'Pages/Drive/Workspace', ...pages } satisfies Meta<PageArgs>;
@@ -68,16 +72,108 @@ export const APageThread = page(LAUNCH_PLAN_PAGE, 'busy', {
   }
 });
 /**
- * A call's own workspace, opened from the call: it has no Home, so it opens on what the call made, with the call itself first
- * in its list, then what it made, then the standups before it.
+ * A call's own workspace, opened from the call: it has no Home, so it opens on what's in it, with the call itself first in its
+ * list (anything made in the call is under its row), then the workspace's own Pages, where + makes something, then the
+ * standups before it.
  */
 export const WhatTheCallMade = page(STANDUP_MADE, 'busy', { beforeEach: launch, globals: { ...DESKTOP, theme: 'dark' } });
 export const WhatTheCallMadeLight = page(STANDUP_MADE, 'busy', { beforeEach: launch, globals: DESKTOP });
 /** What the call made, opened full screen from the Drive: the way back says Drive. */
 export const ACallsPage = page(STANDUP_CHECKLIST, 'busy', { beforeEach: launch, globals: DESKTOP });
-/** An agenda just made in Hiring sync's workspace, before its call tomorrow: it's for the call, and Ines is reading it. */
+/** Presses who can open it, at the foot of the side panel: it opens who's in the workspace, to share it whole. */
+const whoCanOpen = (space: string): NonNullable<PageStory['play']> => async ({ canvas, userEvent }) => {
+  await userEvent.click(await canvas.findByRole('button', { name: new RegExp(` Share ${space}`) }, { timeout: 8000 }));
+};
+/**
+ * A call's own workspace has no Home, so who can open it, at the foot of its side panel, is where it's shared whole: the
+ * organizer and everyone invited, and anyone its admin adds by name or address.
+ */
+export const WhoCanOpenIt = page(STANDUP_MADE, 'busy', { beforeEach: launch, globals: DESKTOP, play: whoCanOpen('Team standup') });
+export const WhoCanOpenItNight = page(STANDUP_MADE, 'busy', { beforeEach: launch, globals: { ...DESKTOP, theme: 'dark' }, play: whoCanOpen('Team standup') });
+/** On a phone it's at the foot of the workspace's pages, and opens as a sheet. */
+export const WhoCanOpenItPhone = page(STANDUP_MADE, 'busy', { beforeEach: launch, globals: { ...PHONE, theme: 'dark' }, play: whoCanOpen('Team standup') });
+/** Launch's, from any page of it: the same people as Share on its Home. */
+export const WhoCanOpenItFromAPage = page(LAUNCH_PLAN_PAGE, 'busy', { beforeEach: launch, globals: WIDE, play: whoCanOpen('Launch') });
+/** The standup board, kept in the call's own folder, as what's made in a call is. */
+function boardInTheCallsFolder(w: World): void {
+  const home = w.workspaces.find((s) => s.id === 'ws-standup');
+  const folder = home?.items.find((i) => i.kind === 'folder' && i.call?.noteId === 'n2');
+  if (!home || !folder) return;
+  home.items = home.items.map((i) => (i.id === spaceItem('Standup board') ? { ...i, parent: folder.id } : i));
+}
+const STANDUP_BOARD = `/drive/ws-standup/${spaceItem('Standup board')}?from=calls`;
+/**
+ * The standup board in the call's own folder, opened from Calls. The call's workspace and its folder have one name, so the
+ * path says it once, ← Calls › Team standup · 4 Nov › Standup board, and pressing it opens the call's own page.
+ */
+export const ABoardInTheCallsFolder = page(STANDUP_BOARD, 'busy', { beforeEach: changing(withWorkspaces, boardInTheCallsFolder), globals: { ...DESKTOP, theme: 'dark' } });
+export const ABoardInTheCallsFolderLight = page(STANDUP_BOARD, 'busy', { beforeEach: changing(withWorkspaces, boardInTheCallsFolder), globals: DESKTOP });
+
+/** Something of Launch's, kept as anything in a workspace is: by nobody in particular, made `at`. */
+const keptIn = (name: string, kind: WorkspaceItem['kind'], at: string, parent: string | null, call: WorkspaceItem['call'] = null): WorkspaceItem => ({
+  id: spaceItem(name), kind, name, parent, by: null, mine: false, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, role: 'edit', call
+});
+/**
+ * Launch keeping seven planning calls, the five before October's with no notes for Art: the side panel lists five of them, then
+ * 2 more. The oldest's folder keeps a folder of press notes, with last summer's press list in it.
+ */
+function sevenPlannings(w: World): void {
+  const space = w.workspaces.find((s) => s.id === LAUNCH);
+  if (!space) return;
+  const earlier = (['29 Sep', '15 Sep', '1 Sep', '18 Aug', '4 Aug'] as const).map((day, i) => {
+    const at = iso(-36 - 14 * i, 16, 0);
+    return keptIn(`Launch planning · ${day}`, 'folder', at, null, { startedAt: at, on: false, here: false, noteId: null });
+  });
+  const oldest = earlier.at(-1)?.id ?? null;
+  space.items = [...space.items, ...earlier, keptIn('Press notes', 'folder', iso(-92, 17, 0), oldest), keptIn('Old press list', 'document', iso(-92, 17, 5), spaceItem('Press notes'))];
+}
+const OLD_PRESS_LIST = `/drive/${LAUNCH}/${spaceItem('Old press list')}`;
+/**
+ * A page in a call the side panel keeps behind "2 more": open, every call is listed, so its row is there. Press notes, on the
+ * path over the page, shows the folder where it is, open in that call's folder, lit, with the keyboard on it.
+ */
+export const AStepBehindMore = page(OLD_PRESS_LIST, 'busy', {
+  beforeEach: changing(withWorkspaces, sevenPlannings), globals: DESKTOP,
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Press Press notes on the path: the side panel shows it where it is, in the oldest planning call, lit', async () => {
+      const path = await canvas.findByRole('navigation', { name: 'Where you are' }, { timeout: 8000 });
+      await userEvent.click(await within(path).findByRole('button', { name: 'Press notes' }, { timeout: 8000 }));
+    });
+  }
+});
+/** Launch's Home, with its seven planning calls: five in the side panel, then 2 more. */
+export const SevenCallsKept = page(LAUNCH_HOME, 'busy', { beforeEach: changing(withWorkspaces, sevenPlannings), globals: { ...DESKTOP, theme: 'dark' } });
+/**
+ * An agenda Art just made in Hiring sync's workspace, before its call tomorrow: its pages are For the call, and Ines is reading
+ * it. It's Art's, so it never says New.
+ */
 export const AnAgendaJustMade = page(AGENDA_PAGE, 'busy', { beforeEach: launch, globals: { ...DESKTOP, theme: 'dark' } });
 export const AnAgendaJustMadePhone = page(AGENDA_PAGE, 'busy', { beforeEach: launch, globals: PHONE });
+
+/** Launch with what's just been made in it, and Priya's press quotes opened in this browser a minute ago. */
+const justMade = changing(withWorkspaces, withJustMade, () => { rememberSeen(ME_ID, JUST_OPENED); });
+/**
+ * What's new to Art, full screen: Kofi's pricing FAQ, made three minutes ago, says New until it's opened. Art's own launch
+ * tweet never does, and nor do Priya's press quotes, which Art has opened.
+ */
+export const WhatsNew = page(LAUNCH_HOME, 'busy', { beforeEach: justMade, globals: DESKTOP });
+export const WhatsNewNight = page(LAUNCH_HOME, 'busy', { beforeEach: justMade, globals: { ...DESKTOP, theme: 'dark' } });
+export const WhatsNewWide = page(LAUNCH_HOME, 'busy', { beforeEach: justMade, globals: WIDE });
+/** On a phone, among the workspace's pages. */
+export const WhatsNewPhone = page(LAUNCH_HOME, 'busy', { beforeEach: justMade, globals: { ...PHONE, theme: 'dark' } });
+/** Opening Kofi's FAQ takes its New away, and it stays away back on Home. */
+export const WhatsNewOpened = page(LAUNCH_HOME, 'busy', {
+  beforeEach: justMade, globals: DESKTOP,
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Open Pricing FAQ, which says New', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: /^Pricing FAQ/ }, { timeout: 8000 }));
+    });
+    await step('Back to Home: it doesn’t say New any more', async () => {
+      await beat(600);
+      await userEvent.click(await canvas.findByRole('button', { name: 'Home' }));
+    });
+  }
+});
 /** A moment, as a person takes one. */
 const beat = (ms: number) => new Promise<void>((done) => { setTimeout(done, ms); });
 /** Holds a finger on the first block of this kind until its menu opens: a phone has no handles to press. */
@@ -102,12 +198,13 @@ const share: PageStory['play'] = async ({ canvas, userEvent }) => {
 const withTeamSpace = (role: 'admin' | 'edit') => (w: World): void => {
   w.workspaces = [...w.workspaces, { id: 'ws-launch', name: 'Launch', role, inCall: false, people: 5, teamAccess: 'team', createdAt: iso(-6, 11, 0), call: null, items: [] }];
 };
-/** Opens People from the workspace's name at the top of its list. */
+/** Opens People from the workspace switcher, its name at the top of the side panel. */
 const teamPeople: PageStory['play'] = async ({ canvas, userEvent, step }) => {
-  await step('Press Launch at the top of its list, then People', async () => {
-    const named = await canvas.findAllByRole('button', { name: /^Launch/ }, { timeout: 8000 });
-    const top = named.find((b) => b.closest('.wt-head') !== null);
-    if (top) await userEvent.click(top);
+  await step('Press Launch, the switcher at the top of its side panel, then People', async () => {
+    const named = await canvas.findAllByRole('button', { name: /Launch/ }, { timeout: 8000 });
+    const top = named.find((b) => b.classList.contains('wf-switch'));
+    if (!top) throw new Error('The workspace switcher isn’t there.');
+    await userEvent.click(top);
     const people = await screen.findByRole('menuitem', { name: /^People/ }, { timeout: 5000 });
     // A menu takes no press until its rows have been still for a moment (WsMenu).
     await beat(800);
@@ -123,6 +220,8 @@ export const TeamWorkspacePeopleNotAdmin = page(at('ws-launch'), 'team-member', 
 
 /** Product, which Art runs: the launch plan open beside the list. */
 export const ADocument = page(PLAN, 'busy');
+/** The handbook, which Art can only read: who's in it, from the foot of its side panel, and who to ask to add someone. */
+export const WhoCanOpenItReadOnly = page(at('ws-handbook', 'Holidays'), 'busy', { play: whoCanOpen('Company handbook') });
 const renameWorkspace: NonNullable<PageStory['play']> = async ({ canvas, userEvent, step }) => {
   await step('12. Rename the workspace; its requested name shows while saving', async () => {
     await userEvent.click(await canvas.findByRole('button', { name: 'Product' }));

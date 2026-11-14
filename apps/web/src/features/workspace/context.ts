@@ -107,6 +107,11 @@ export interface WorkspaceProps {
   mode: 'page' | 'call' | 'beside';
   /** ⤢ on a document shown `beside`: the same document, full screen. */
   onExpand?: (() => void) | undefined;
+  /**
+   * Shown `beside`: a step of the path over the document was pressed, so the page it's beside shows where that is, the
+   * workspace (null) or one of its folders. The Drive goes there.
+   */
+  onPlace?: ((folder: string | null) => void) | undefined;
   /** As a `page`: where it was opened from, which ← and leaving full screen go back to. */
   frame?: WorkspaceFrame | undefined;
   workspaceId: string;
@@ -204,8 +209,27 @@ export interface Ws {
   /** The folders open in the list. */
   open: ReadonlySet<string>;
   setOpen: (id: string, open: boolean) => void;
-  /** Rows that glow, 1.4 s: just made, or just moved. */
+  /**
+   * Shows where something is, as a step of the path over the page asks: the workspace itself (null), or one of its folders,
+   * opened in the list with the folders around it, its row lit and the keyboard on it, while the page stays as it is. In a
+   * call the list comes out for it, and the workspace and This call are its top: the list goes there, and This call lights
+   * up. Full screen the workspace's name goes to its Home, and a call's folder, or a call's own workspace (which has no
+   * Home), to the call's own page once it has notes, and otherwise to its row, with every call shown when it's behind
+   * "N more". Beside another page, that page shows it (`WorkspaceProps.onPlace`), and a call's folder is the call: its own
+   * page once it has notes, and otherwise the place its row is in.
+   */
+  reveal: (folder: string | null) => void;
+  /** Rows that glow, 1.4 s: just made, just moved, or shown by a step of the path; and in a call This call's heading (`THIS_CALL`). */
   glowing: ReadonlySet<string>;
+  /** Full screen, whether the side panel shows every call kept in the workspace, rather than the first few and "N more". */
+  allCalls: boolean;
+  showAllCalls: () => void;
+  /**
+   * Closes what the page has open over itself, for something about to open beside it, so a window never opens over another:
+   * a board's menus, a tool's options and its pickers, as Share at the foot of the side panel opens. A board sets it while
+   * it's open; null otherwise.
+   */
+  closeOver: RefObject<(() => void) | null>;
   /** The document a block is being dragged onto, which lights up. */
   blockInto: string | null;
   setBlockInto: (id: string | null) => void;

@@ -580,6 +580,13 @@ describe('everyone in the call', () => {
     await jamie.api.workspaces.items.restore(id, copy, pass);
     expect((await art.api.workspaces.get(id)).items.find((x) => x.id === made)).toMatchObject({ name: 'From Jamie', parent: null, by: { name: 'Jamie Guest' } });
     expect(await code(theo.api.workspaces.items.create(id, { kind: 'board', name: 'Theo’s board', parent: folder }, theos))).toBe('allowed');
+    // Whose it is goes by an account's address, which a guest's seat hasn't got: what Jamie made isn't said to be his, to him
+    // or anyone. What Theo makes, signed in, is his, as it says to him alone.
+    const theosPage = (await theo.api.workspaces.items.create(id, { kind: 'document', name: 'Theo’s page', parent: null }, theos)).id;
+    const mine = async (who: Browser, as: { pass: string }) => Object.fromEntries((await who.api.workspaces.get(id, as)).items.filter((x) => x.id === made || x.id === theosPage).map((x) => [x.name, x.mine]));
+    expect(await mine(jamie, pass)).toEqual({ 'From Jamie': false, 'Theo’s page': false });
+    expect(await mine(theo, theos)).toEqual({ 'From Jamie': false, 'Theo’s page': true });
+    expect(Object.fromEntries((await art.api.workspaces.get(id)).items.filter((x) => x.id === made || x.id === theosPage).map((x) => [x.name, x.mine]))).toEqual({ 'From Jamie': false, 'Theo’s page': false });
     // They're seen where they are, as anyone working there is.
     const here = jamie.api.workspaces.live(id, pass);
     await until(() => here.getSnapshot().status === 'live', 'Jamie’s stream');

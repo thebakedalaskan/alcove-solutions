@@ -1,6 +1,6 @@
 /* A document's frame: its head, the bars that drop in under it, and the page. What's on the page is the editor's. */
 import { AnimatePresence, motion } from 'motion/react';
-import { forwardRef, useEffect, useRef, type HTMLAttributes, type KeyboardEventHandler, type ReactNode } from 'react';
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, type HTMLAttributes, type KeyboardEventHandler, type ReactNode, type RefObject } from 'react';
 import { cn } from '../foundation/cn';
 import { EmptyState } from '../foundation/empty';
 import { Icon, type IconName } from '../foundation/icon';
@@ -34,25 +34,76 @@ export function WsSaveState({ state }: { state: WsSave }) {
 /** Someone in this document, and the card that opens when you press their face. */
 export interface WsFace { person: AvatarPerson; card: WsPop }
 
+/** A step on a path: the workspace, a folder, the page. One you can press (`onClick`) goes there; where you are has none. */
+export interface WsCrumb { label: string; onClick?: (() => void) | undefined }
+
 /**
- * The head of a document. `crumbs`: the path, the document last, as much of it as fits, from the end. `faces`: who's in it,
- * up to four. Share and ⋯ show when they're given (a live page has none), each a button with its popover. Beside the list
- * it starts with the list's button (`onToggleList`); shown on its own beside something else, such as the Drive's tree, it
- * has ⤢ instead (`onExpand`), which gives it the whole screen.
+ * The steps of a path that went onto its cut-off line can't be seen, so they can't be tabbed to either. Worked out after each
+ * render and whenever the path or a step changes size: the head narrowing, a name changing, the fonts arriving.
+ */
+function useOnlyWhatShows(nav: RefObject<HTMLElement | null>, steps: number) {
+  const mark = useCallback(() => {
+    const el = nav.current;
+    if (!el) return;
+    const bottom = el.getBoundingClientRect().bottom;
+    for (const step of el.children) {
+      const button = step.querySelector('button');
+      if (button) button.tabIndex = step.getBoundingClientRect().top >= bottom - 1 ? -1 : 0;
+    }
+  }, [nav]);
+  useLayoutEffect(mark);
+  useEffect(() => {
+    const el = nav.current;
+    if (!el) return undefined;
+    const sizes = new ResizeObserver(mark);
+    sizes.observe(el);
+    for (const step of el.children) sizes.observe(step);
+    return () => sizes.disconnect();
+  }, [nav, mark, steps]);
+}
+
+/**
+ * Where something is: the workspace, its folders, then what's open, on one line, laid out from the end back. A step that
+ * doesn't fit whole leaves, from the first, so nothing's squeezed to a letter and where you are stays readable. A step with
+ * `onClick` is a button that goes there. The last step is where you are, unless it can be pressed: a board's head ends with
+ * the folder it's in, as the board's own bar says its name.
+ */
+export function WsPath({ crumbs, label, className }: { crumbs: readonly WsCrumb[]; label: string; className?: string | undefined }) {
+  const nav = useRef<HTMLElement>(null);
+  useOnlyWhatShows(nav, crumbs.length);
+  return (
+    <nav ref={nav} className={cn('ws-path', className)} aria-label={label}>
+      {crumbs.map((c, i) => {
+        const last = i === crumbs.length - 1;
+        const here = last && !c.onClick;
+        const words = <span className="t">{c.label}</span>;
+        return (
+          <span key={i} className={cn('ws-step', here && 'is-here')} style={{ order: crumbs.length - i }}>
+            {c.onClick
+              ? <button type="button" className="ws-step-b" title={c.label} onClick={c.onClick}>{words}</button>
+              : <span className="ws-step-b" title={c.label} aria-current={here ? 'page' : undefined}>{words}</span>}
+            {!last && <Icon name="chevron" size={12} className="ws-step-sep" />}
+          </span>
+        );
+      })}
+    </nav>
+  );
+}
+
+/**
+ * The head of a document. `crumbs`: the path (`WsPath`), the document last, each step before it going there. `faces`: who's
+ * in it, up to four. Share and ⋯ show when they're given (a live page has none), each a button with its popover. Beside the
+ * list it starts with the list's button (`onToggleList`); shown on its own beside something else, such as the Drive's tree,
+ * it has ⤢ instead (`onExpand`), which gives it the whole screen.
  */
 export function WsDocHead({ crumbs, save, faces = [], onToggleList, onExpand, share, more }: {
-  crumbs: string[]; save: WsSave; faces?: WsFace[] | undefined; onToggleList?: (() => void) | undefined; onExpand?: (() => void) | undefined;
+  crumbs: readonly WsCrumb[]; save: WsSave; faces?: WsFace[] | undefined; onToggleList?: (() => void) | undefined; onExpand?: (() => void) | undefined;
   share?: WsPop | undefined; more?: WsPop | undefined;
 }) {
   return (
     <header className="wd-head">
       {onToggleList && <IconButton icon="panel" size={17} className="wd-ib" label="Show or hide the document list" title="⌘\" onClick={onToggleList} />}
-      <nav className="wd-crumbs" aria-label="Where this document is">
-        {crumbs.map((c, i) => {
-          const last = i === crumbs.length - 1;
-          return <span key={i} className={cn('cw', last && 'is-last')} style={{ order: crumbs.length - i }}><span className="c" aria-current={last ? 'page' : undefined}>{c}</span>{!last && <Icon name="chevron" size={12} />}</span>;
-        })}
-      </nav>
+      <WsPath crumbs={crumbs} label="Where this document is" className="wd-crumbs" />
       <WsSaveState state={save} />
       {faces.length > 0 && (
         <span className="wd-faces">

@@ -29,7 +29,7 @@ import { useNow, useSettled } from '~/lib/live';
 import { byEmail, callName, fold, isEmail, sameEmail } from '~/lib/people';
 import { accountQueries } from '~/features/account/queries';
 import { calendarQueries } from '~/features/calls/scheduling/queries';
-import { noteQueries } from '~/features/notes/queries';
+import { noteQueries, readGone } from '~/features/notes/queries';
 import { teamQueries } from '~/features/team/queries';
 import { callQueries } from './queries';
 import { plural } from '~/lib/words';
@@ -135,7 +135,8 @@ export function CallsPage({ search }: { search: CallsSearch }) {
   const found = (searched.data ?? []).filter((n) => !token || n.people.some((p) => sameEmail(p, token)));
   const cites = answer?.done ? answer.cites.flatMap((c) => (c.type === 'cite' ? [c.noteId] : [])) : [];
   const reads = useQueries({ queries: [...new Set(cites)].map((id) => ({ ...noteQueries.note(id), retry: false })) });
-  const read = (id: string) => reads.find((r) => r.data?.id === id)?.data;
+  /* A note that's gone since (not the reader's any more) isn't shown among the sources, whatever was read of it before. */
+  const read = (id: string) => reads.find((r) => r.data?.id === id && !readGone(r))?.data;
 
   /* What the sheet shows: an answer, someone's calls, what a search found, a series, or a place. */
   type Mode = { kind: 'asked' } | { kind: 'person'; person: Person } | { kind: 'found' } | { kind: 'series'; id: string } | { kind: 'view'; view: CallsView };

@@ -2,8 +2,9 @@
  * A board's own page, in the workspace beside the list (user-flows 13): the launch retro with Priya and Kofi on it, as the
  * whiteboards canvas's page has it, and a board nobody has added to yet; then every way its seal can stand, from the canvas's
  * States board (Reconnecting, Couldn't save, View only, and a board you can't open any more), what's under its name and in
- * its seal, who can add to it, someone outside the workspace it was shared with, a comment, More beside the tools, in Trash, at
- * night, as a night board by day, and on a phone, where it's the phone's board and + adds a sticky.
+ * its seal, who can add to it, from its name and from Share on the head over it, someone outside the workspace it was shared
+ * with, a comment, More beside the tools, in Trash, at night, as a night board by day, and on a phone, where it's the phone's
+ * board and + adds a sticky.
  */
 import type { WorkspaceItem } from '@alcove/api';
 import { setNight } from '@alcove/board';
@@ -50,7 +51,7 @@ const BLANK_ID = itemId('Untitled board');
 const blank = (w: World): void => {
   const product = w.workspaces.find((s) => s.id === 'ws-product');
   const at = iso(0, 16, 11);
-  if (product) product.items = [...product.items, { id: BLANK_ID, kind: 'board', name: 'Untitled board', parent: null, by: ART.portrait ? { name: ART.name, portrait: ART.portrait } : null, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, role: 'edit', call: null }];
+  if (product) product.items = [...product.items, { id: BLANK_ID, kind: 'board', name: 'Untitled board', parent: null, by: ART.portrait ? { name: ART.name, portrait: ART.portrait } : null, mine: true, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, role: 'edit', call: null }];
   w.boards[BLANK_ID] = {};
 };
 
@@ -68,7 +69,7 @@ export const Blank = page(`/drive/ws-product/${BLANK_ID}`, 'busy', { beforeEach:
 export const Reconnecting = page(RETRO, 'busy', { beforeEach: changing(standing('offline')) });
 /** Alcove wouldn't take what was added here: it's only on this screen, and Try again sends it again. */
 export const CouldntSave = page(RETRO, 'busy', { beforeEach: changing(standing('failed')) });
-/** Shared with Art to read: the tools go, and he can still look round and follow people. */
+/** Shared with Art to read: the tools go, and he can still look round and follow people. No Share: that's for whoever can edit it. */
 export const ViewOnly = page(RETRO, 'busy', { beforeEach: changing(reading) });
 /** Taken from Art while it was open: the page says he can't open it, the same as for a board that never was. */
 export const NoAccess = page(RETRO, 'busy', { beforeEach: changing(standing('gone')) });
@@ -85,6 +86,13 @@ export const WhoCanAddToIt = page(RETRO, 'busy', {
     await ctx.userEvent.click(await screen.findByRole('button', { name: 'Who can add to it' }, SOON));
   }
 });
+/** Share, on the head over the board, as a document's head has it: the same sheet as Who can add to it. */
+const shareOnTheHead: PageStory['play'] = async ({ userEvent }) => {
+  await screen.findByRole('application', { name: 'Launch retro' }, SOON);
+  await userEvent.click(await screen.findByRole('button', { name: 'Share' }, SOON));
+};
+export const ShareOnTheHead = page(RETRO, 'busy', { play: shareOnTheHead });
+export const ShareOnTheHeadNight = page(RETRO, 'busy', { globals: { theme: 'dark' }, play: shareOnTheHead });
 /** Its seal says what's true of it. */
 export const TheSeal = page(RETRO, 'busy', {
   play: async ({ userEvent }) => { await userEvent.click(await screen.findByRole('button', { name: 'Sealed' }, SOON)); }

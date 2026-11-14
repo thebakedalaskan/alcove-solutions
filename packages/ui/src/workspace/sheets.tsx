@@ -7,7 +7,7 @@ import { Icon, type IconName } from '../foundation/icon';
 import { andList, Avatar, Faces, type AvatarPerson } from '../foundation/people';
 import { Dots } from '../foundation/motion';
 import { stayForExtensions } from '../foundation/overlay';
-import { Button, Kbd, Segmented, type Choice } from '../foundation/primitives';
+import { Button, IconButton, Kbd, Segmented, type Choice } from '../foundation/primitives';
 import { WsMenu, WsPopover, type WsMenuRow } from './popover';
 import { canTakeFocus, firstName, focusedNow, useMove } from './shared';
 
@@ -270,10 +270,11 @@ const TEAM_ACCESS_SAYS: Record<WsTeamAccess, string> = {
  * Share, at the top of a document, and the same sheet for who's in a workspace. `title` is its heading, and `about` a line
  * under it. `rows`: who has it. `inCall`: people in the call who aren't among them, who can edit it while they're in the
  * call, under the rows. `matches`: who the field found, as you type. Someone who can't add people has no field: leave
- * `onQuery` out.
+ * `onQuery` out. `onBack`: it opened in place of a menu's rows, and ← before its heading goes back to them.
  */
-export function WsShareSheet({ title, about, query = '', onQuery, onAdd, matches = [], rows, inCall = [], team }: {
+export function WsShareSheet({ title, about, query = '', onQuery, onAdd, matches = [], rows, inCall = [], team, onBack }: {
   title: string; about?: string | undefined; query?: string | undefined; onQuery?: ((q: string) => void) | undefined;
+  onBack?: (() => void) | undefined;
   /** On a team's workspace: who's in it, which its admins change (`onChange`) and everyone else reads. */
   team?: { access: WsTeamAccess; onChange?: ((access: WsTeamAccess) => void) | undefined } | null | undefined;
   /** Enter in the field, with an email address or a name. */
@@ -283,7 +284,7 @@ export function WsShareSheet({ title, about, query = '', onQuery, onAdd, matches
 }) {
   return (
     <div className="wv-share">
-      <div className="wv-h"><b>{title}</b>{about && <p>{about}</p>}</div>
+      <div className="wv-h">{onBack ? <span className="wv-h-back"><IconButton icon="left" size={15} label="Back" onClick={onBack} /><b>{title}</b></span> : <b>{title}</b>}{about && <p>{about}</p>}</div>
       {team && (
         <div className="wv-team">
           {team.onChange

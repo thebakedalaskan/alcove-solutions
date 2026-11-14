@@ -1,8 +1,8 @@
 /*
- * A workspace on the sheet, beside the tree: its mark and name, who's in it and what it's for, and Open full screen; then its folders as
- * tiles with how many files each holds, the calls kept in it as rows that open the call, and its files as large previews
- * that don't say again which workspace they're in, ending in the dashed ways to make something there. A folder opens in
- * the same place, under the way back to its workspace.
+ * A workspace on the sheet, beside the tree: its mark and name, who's in it and what it's for, Share (who's in it, for anyone in
+ * it) and Open full screen; then its folders as tiles with how many files each holds, the calls kept in it as rows that open
+ * the call, and its files as large previews that don't say again which workspace they're in, ending in the dashed ways to make
+ * something there. A folder opens in the same place, under the way back to its workspace.
  */
 import { errorCode, type Person, type WorkspaceItem, type WorkspaceSummary } from '@alcove/api';
 import { Button, Dots, EmptyState, Faces, Icon } from '@alcove/ui';
@@ -15,6 +15,7 @@ import { noteAt } from '~/lib/time';
 import { plural } from '~/lib/words';
 import { canEdit, type DriveActions } from './actions';
 import { MakeTiles } from './New';
+import { SpaceShare } from './Share';
 import { FileList, Section, SheetHead } from './Sheet';
 import { callFolderTitle, fileOf, type DriveAt, type DriveFile } from './places';
 
@@ -68,6 +69,8 @@ export function SpaceSheet({ w, mark, at, actions }: { w: WorkspaceSummary; mark
   const folder = at.folder ? items.find((i) => i.id === at.folder && i.kind === 'folder') : undefined;
   const name = w.name ?? 'Shared with you';
   const full = <Button variant="secondary" size="sm" className="dv-full" onClick={() => actions.openFull(w.id)}><Icon name="grow" size={16} />Open full screen</Button>;
+  /* Share is the whole workspace's, so it's at its top, not over one of its folders. */
+  const top = <><SpaceShare w={w} name={name} />{full}</>;
   const meta = people.length > 0 && <p><Faces people={people.map((p) => p.person)} size={22} max={5} /><span>{[peopleLine(people), w.role === 'read' ? 'You can read it' : null, about || null].filter(Boolean).join(' · ')}</span></p>;
 
   if (tree.isError) {
@@ -81,7 +84,11 @@ export function SpaceSheet({ w, mark, at, actions }: { w: WorkspaceSummary; mark
       </>
     );
   }
-  if (!tree.data) return <><SheetHead title={name} mark={mark} meta={meta} actions={full} /><p className="dv-loading"><Dots /></p></>;
+  /*
+   * The head is the same one once what's in the workspace has come, so Share, open on it by then, stays open. A folder's has
+   * no Share from the first: a folder isn't shared on its own, and its name comes with the tree.
+   */
+  if (!tree.data) return <><SheetHead key="head" title={name} mark={at.folder ? undefined : mark} meta={at.folder ? undefined : meta} actions={at.folder ? full : top} /><p className="dv-loading"><Dots /></p></>;
 
   const place = inPlace(items, folder?.id ?? null);
   const files = place.files.flatMap((i): DriveFile[] => { const f = fileOf(w.id, i); return f ? [f] : []; });
@@ -98,7 +105,7 @@ export function SpaceSheet({ w, mark, at, actions }: { w: WorkspaceSummary; mark
           <Icon name="chevron" size={13} /><span>{folder.name || 'Untitled folder'}</span>
         </nav>
       )}
-      <SheetHead title={folder ? folder.name || 'Untitled folder' : name} mark={folder ? undefined : mark} meta={folder ? undefined : meta} actions={full} />
+      <SheetHead key="head" title={folder ? folder.name || 'Untitled folder' : name} mark={folder ? undefined : mark} meta={folder ? undefined : meta} actions={folder ? full : top} />
       {empty ? (
         <EmptyState className="dv-none" title={folder ? 'Nothing in this folder yet' : `Nothing in ${name} yet`} action={editable && <MakeTiles className="is-row" target={target} actions={actions} />}>
           {editable ? 'Make a document or a board here, or upload files.' : 'Whatever’s made here shows here.'}

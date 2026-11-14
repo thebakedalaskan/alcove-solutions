@@ -1,9 +1,10 @@
 /*
  * What opens in a popover in the workspace, and what opens over everything. Someone's card (WsPersonCard), the question asked
  * once when you tag someone who can't open the document (WsMentionPrompt), a comment and its thread (WsCommentCompose,
- * WsCommentThread), Share (WsShareSheet), which is also who's in a workspace, and in a call who else is in the call, the one
- * question before a call changes workspace (WsSwitchSheet), renaming the workspace from its menu (WsNameSheet), and photos to
- * add (WsUploadPicker). Find (WsFind, ⌘K) dims the page and opens over it.
+ * WsCommentThread), Share (WsShareSheet), which is also who's in a workspace (with who to ask, for someone who can't add
+ * people), and in a call who else is in the call, the one question before a call changes workspace (WsSwitchSheet), renaming
+ * the workspace from its menu (WsNameSheet), and photos to add (WsUploadPicker). Find (WsFind, ⌘K) dims the page and opens
+ * over it.
  */
 import {
   Avatar, Button, Icon, WsCaptionField, WsCommentCompose, WsCommentThread, WsDoc, WsFind, WsMentionPrompt, WsNameSheet, WsPage, WsPane, WsPersonCard, WsPopover,
@@ -47,6 +48,11 @@ export const Share: Story = { name: 'Share sheet', args: SHARE, argTypes: shareT
 export const ShareMatches: Story = { name: 'Share sheet: finding people as you type', args: { ...SHARE, query: 's' }, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} query={query} /></PopSurface> };
 /** Only the people added here: the workspace can't open it, and whoever made it always can. */
 export const ShareRestricted: Story = { name: 'Share sheet: only people added here', args: SHARE, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} query={query} restricted /></PopSurface> };
+/** Opened in place of a menu's rows, as Share in a card's ⋯ in the Drive is: ← before its heading goes back to them. */
+export const ShareWithBack: Story = {
+  name: 'Share sheet: in place of a menu', args: { ...SHARE, title: 'Share Standup board', rows: [{ id: 'standup', people: [PRIYA, KOFI], name: 'Team standup · 4 Nov', sub: '4 people', role: { label: 'Can edit' } }], onBack: did('onBack') }, argTypes: shareTypes,
+  render: (args) => <PopSurface ws><WsShareSheet {...args} /></PopSurface>
+};
 
 /* ---------- who's in it, in a call ---------- */
 
@@ -79,6 +85,24 @@ export const WhosInItForAGuest: Story = {
     ]
   },
   argTypes: shareTypes,
+  render: (args) => <PopSurface ws><WsShareSheet {...args} /></PopSurface>
+};
+
+/* ---------- who's in a workspace, as someone who isn't its admin ---------- */
+
+/** The handbook's people, for Art, who can only read it: Priya runs it. */
+const HANDBOOK_PEOPLE: WsShareRow[] = [
+  { id: 'art', people: [ART], name: `${ART.name} (you)`, sub: ART.email, role: { label: 'Can read', options: [{ label: 'Leave this workspace', caution: true, onSelect: did('onLeave') }] } },
+  { id: 'priya', people: [PRIYA], name: PRIYA.name, sub: PRIYA.email, role: role('Admin') },
+  { id: 'kofi', people: [KOFI], name: KOFI.name, sub: KOFI.email, role: role('Can edit') }
+];
+/**
+ * Share on a whole workspace, for someone in it who isn't an admin: who's in it, and who to ask, as only an admin adds people.
+ * No field to add anyone, and their own row has Leave this workspace.
+ */
+export const PeopleNotAdmin: Story = {
+  name: 'People sheet: as someone who isn’t an admin',
+  args: { title: 'People in Vandelay handbook', about: 'Only an admin can add people. Ask Priya.', rows: HANDBOOK_PEOPLE }, argTypes: shareTypes,
   render: (args) => <PopSurface ws><WsShareSheet {...args} /></PopSurface>
 };
 

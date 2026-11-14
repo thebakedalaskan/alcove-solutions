@@ -12,7 +12,8 @@ import { accountQueries } from '~/features/account/queries';
 import { workspaceQueries } from '~/features/workspace/queries';
 import { canEdit, type DriveActions } from './actions';
 import { DriveCard, FileRow, Files, type CardActions } from './Card';
-import { byLine, whereOf, type DriveFile } from './places';
+import { byLine, callTitle, whereOf, type DriveFile } from './places';
+import { FileShare } from './Share';
 
 /* ---------- the head and its sections ---------- */
 
@@ -76,13 +77,17 @@ export function usePreviews(files: readonly DriveFile[]): Map<string, DocumentPr
 
 /* ---------- cards ---------- */
 
-/** What a card's ⋯ offers for a file: Rename and Trash only where its workspace lets you change things. */
+/**
+ * What a card's ⋯ offers for a file: Rename and Trash only where its workspace lets you change things, and Share only for
+ * someone in its workspace who can edit there, as only they can say who has something of it.
+ */
 export function cardActions(f: DriveFile, w: WorkspaceSummary | undefined, a: DriveActions): CardActions {
   const changes = w === undefined || w.role === null || canEdit(w.role);
   return {
     onOpen: () => a.open(f),
     onFullScreen: () => a.openFull(f.workspaceId, f.id),
     onCopyLink: () => a.copyLink(f),
+    share: w !== undefined && canEdit(w.role) ? (back) => <FileShare file={f} space={w.call ? callTitle(w) : w.name ?? 'Its workspace'} onBack={back} /> : undefined,
     onRename: changes ? (name) => a.rename(f, name) : undefined,
     onTrash: changes ? () => a.trash(f) : undefined
   };

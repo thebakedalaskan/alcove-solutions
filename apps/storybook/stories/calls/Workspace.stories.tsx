@@ -2,16 +2,18 @@
  * The workspace in a call (user-flows 6): the call's home, open on your stage, only on your screen, which everyone in the call
  * can open and edit while they're in it, guests too, as its frame's bar says. This call at the top of its list, with the call's
  * live Notes, Follow-ups and Transcript and what's made in the call, which lands there. Its one menu, on its name: the
- * organizer's Switch workspace and switching, Find, Who's in it, Rename and Copy link. Following someone, a tag and a comment;
+ * organizer's Switch workspace and switching, Find, Share workspace, Rename and Copy link. Following someone, a tag and a comment;
  * Find and History; presenting it, with everyone following, and Play for everyone; a guest's workspace; a follow-up added by
- * hand; and the toasts. Everyone else's browser is the script's: where they are in the workspace, and what they present and play.
+ * hand; the path over the page, the organizer's and a teammate's, to This call, and with the list put away in a narrow
+ * window; and the toasts. Everyone else's browser is the script's: where they are in the workspace, and what they present
+ * and play.
  */
 import { DEFAULT_NOTES_CHOICES, type CallSession } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
 import { screen, waitFor, within } from 'storybook/test';
 import { at, goesTo, leaves, opensPage, plays, presentsWorkspace, tagsYou, type CallScript, type Line, type Present } from '../../src/api/call/script';
 import { current } from '../../src/api/state';
-import { inCall, light, phone, reach, type InCall, type StoryCall } from '../../src/call';
+import { inCall, light, narrow, phone, reach, type InCall, type StoryCall } from '../../src/call';
 import { iso } from '../../src/world/clock';
 import { ART } from '../../src/world/people';
 import { caretAtEnd, pages, type PageArgs, type PageStory } from '../../src/page';
@@ -113,18 +115,27 @@ export const OnItsHomeLight = light(OnItsHome);
 
 /* ---------- its one menu ---------- */
 
-/** Its name is the workspace's one menu. The organizer's: Switch workspace, Find in the workspace, Who's in it, Rename and Copy link. */
+/** Its name is the workspace's one menu. The organizer's: Switch workspace, Find in the workspace, Share workspace, Rename and Copy link. */
 export const TheMenu = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, { play: openMenu('Design review · 4 Nov') });
 export const TheMenuPhone = phone(TheMenu);
 /**
- * Who's in it, from who can edit it on the bar, or from the menu: the workspace's people, then whoever else is in the call,
- * who can edit it while they're there. Sam came in with the link: a guest.
+ * Who's in it, from who can edit it on the bar, or Share workspace in the menu: the workspace's people, then whoever else is
+ * in the call, who can edit it while they're there. Sam came in with the link: a guest.
  */
 export const WhosInIt = inCall(
   { scenario: 'call-soon', call: REVIEW, script: { here: [...REVIEWERS, { who: SAM, guest: true }] } },
   { play: whoCanEdit('Design review · 4 Nov', /^Everyone in the call can edit/) }
 );
 export const WhosInItPhone = phone(WhosInIt);
+/**
+ * Share workspace, from its name: the same sheet, where Art, its admin, adds people by name or address. Share in the dock is
+ * presenting to the call; sharing the workspace itself is here, by name.
+ */
+export const ShareWorkspace = inCall(
+  { scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } },
+  { play: fromMenu('Design review · 4 Nov', 'Share workspace', 'Its people, with a field to add someone by name or address') }
+);
+export const ShareWorkspacePhone = phone(ShareWorkspace);
 /** Rename, for an admin: the name in a field, in place of the rows. Enter keeps it, Esc leaves it as it was. */
 export const Rename = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, {
   play: async (c) => {
@@ -208,10 +219,13 @@ export const AddFollowUp = inCall({ scenario: 'call-soon', call: REVIEW, script:
   play: async (c) => {
     await openPage('Follow-ups')(c);
     await c.step('Add one nobody said, with a date and nobody assigned yet', async () => {
-      await c.userEvent.click(await c.canvas.findByRole('button', { name: 'Add a follow-up' }, { timeout: 8000 }));
-      await c.userEvent.type(await c.canvas.findByRole('textbox', { name: 'What needs doing' }), 'Book the room for the launch retro');
-      await c.userEvent.type(await c.canvas.findByRole('textbox', { name: 'Due' }), 'Friday');
-      await c.userEvent.click(c.canvas.getByRole('button', { name: 'Add' }));
+      // On the Follow-ups page: the Notes panel beside it has an Add a follow-up of its own.
+      const page = (await c.canvas.findByRole('heading', { name: 'Follow-ups', level: 1 }, { timeout: 8000 })).closest<HTMLElement>('.wl');
+      if (!page) throw new Error('The Follow-ups page isn’t open.');
+      await c.userEvent.click(await within(page).findByRole('button', { name: 'Add a follow-up' }, { timeout: 8000 }));
+      await c.userEvent.type(await within(page).findByRole('textbox', { name: 'What needs doing' }), 'Book the room for the launch retro');
+      await c.userEvent.type(await within(page).findByRole('textbox', { name: 'Due' }), 'Friday');
+      await c.userEvent.click(within(page).getByRole('button', { name: 'Add' }));
     });
   }
 });
@@ -533,6 +547,71 @@ export const NotesTurnedOff = inCall({
   }
 });
 export const NotesTurnedOffPhone = phone(NotesTurnedOff);
+
+/* ---------- the path over the page ---------- */
+
+/**
+ * A folder in This call and a document in it, made as anyone makes them: New at the top of the list, then the folder's +. The
+ * path over the page then runs from the workspace to the document, a chevron between each step. Pressing the folder on it
+ * shows the folder in the list, lit, with the keyboard on it, and the page stays as it is. `tucked`: the frame has no room
+ * for the list beside the page, so its button brings it over the page, and opening the document puts it away again.
+ */
+const longPath = (home: string, step = 'Press and partners', tucked = false): Play => async (c) => {
+  await openWorkspace(c);
+  if (tucked) {
+    await c.step('There’s no room for the list beside the page: its button brings it over the page', async () => {
+      await c.userEvent.click(await within(await frameOf(home)).findByRole('button', { name: 'Show or hide the document list' }, { timeout: 10000 }));
+    });
+  }
+  await c.step('Press New at the top of the list, then New folder, and name it: it goes in This call', async () => {
+    await c.userEvent.click(await within(await frameOf(home)).findByRole('button', { name: 'New document or folder' }, { timeout: 10000 }));
+    const folder = await screen.findByRole('menuitem', { name: /^New folder/ }, { timeout: 5000 });
+    await settle();
+    await c.userEvent.click(folder);
+    await c.userEvent.keyboard('Press and partners{Enter}');
+  });
+  await c.step('Its +, then New document, and name it: the path runs from the workspace to it', async () => {
+    const row = (await rowIn(/^Press and partners$/)).closest<HTMLElement>('[role="treeitem"]');
+    if (!row) throw new Error('The folder’s row isn’t there.');
+    await c.userEvent.hover(row);
+    await c.userEvent.click(await within(row).findByRole('button', { name: 'Add inside Press and partners' }));
+    const doc = await screen.findByRole('menuitem', { name: /^New document/ }, { timeout: 5000 });
+    await settle();
+    await c.userEvent.click(doc);
+    await settle();
+    await c.userEvent.keyboard('Embargo times');
+  });
+  await c.step(step === 'This call'
+    ? 'Press This call on the path: the list goes to its top, and This call lights up, with the keyboard on its first row'
+    : `Press ${step} on the path: the list${tucked ? ' comes over the page and' : ''} shows the folder, lit, with the keyboard on it`, async () => {
+    const path = await screen.findByRole('navigation', { name: 'Where this document is' }, { timeout: 8000 });
+    await c.userEvent.click(await within(path).findByRole('button', { name: step }, { timeout: 8000 }));
+  });
+};
+/**
+ * The design review is Art's, and its home is new: Design review · 4 Nov › This call › Press and partners › Embargo times. With
+ * Notes open beside it the document is narrow, and the path gives up whole steps from its start, never the document's name.
+ */
+export const ALongPath = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, { play: longPath('Design review · 4 Nov'), name: 'A long path, the organizer’s' });
+export const ALongPathPhone = phone(ALongPath);
+/**
+ * Priya's check-in, with Art invited: the home is hers, and Art is in it as a teammate, so the path is the same as hers, here
+ * in a wide window with room for all of it.
+ */
+export const ALongPathTeammate = inCall({ scenario: 'busy', call: { ...CHECK_IN, code: 'lch-chck-pth' }, script: { here: CHECKING_IN } }, {
+  play: longPath('Launch check-in · 4 Nov'), name: 'A long path, a teammate’s', globals: { viewport: { value: 'wide', isRotated: false } }
+});
+/** This call, or the workspace, on the path: the list's top, This call lit for a moment, the keyboard on its first row. */
+export const ALongPathThisCall = inCall({ scenario: 'busy', call: { ...CHECK_IN, code: 'lch-chck-tcl' }, script: { here: CHECKING_IN } }, {
+  play: longPath('Launch check-in · 4 Nov', 'This call'), name: 'A long path, to This call', globals: { viewport: { value: 'wide', isRotated: false } }
+});
+/**
+ * In a narrow window the list has no room beside the page: its button brings it over the page, and opening something puts it
+ * away. A step of the path brings it back over the page, showing the folder.
+ */
+export const ALongPathNarrow = narrow(inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, {
+  play: longPath('Design review · 4 Nov', 'Press and partners', true), name: 'A long path, the list put away'
+}));
 
 /* ---------- a workspace made in the call, and a name twice ---------- */
 

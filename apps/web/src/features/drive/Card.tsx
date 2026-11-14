@@ -3,8 +3,8 @@
  * then where it is and who touched it last ("From Team standup · Kofi, 10:12"), said once: a card inside a workspace doesn't
  * say which. The picture is the document's first lines as it is now, read for whoever can open it (`pictureOf`, from
  * features/workspace/document/picture.ts); a board is drawn as one, a document that's photos shows them, one that's a PDF
- * its page. Pressing the card opens it; its ⋯ has what else can be done, and Rename asks for the name in the same menu.
- * Grid or list, as the sheet's switch says.
+ * its page. Pressing the card opens it; its ⋯ has what else can be done, and Rename asks for the name and Share says who
+ * has it, each in the same menu. Grid or list, as the sheet's switch says.
  */
 import type { DocumentPreview } from '@alcove/api';
 import { FileCard, Icon, IconButton, WsMenu, WsPopover, type WsMenuRow } from '@alcove/ui';
@@ -17,6 +17,8 @@ export interface CardActions {
   onOpen: () => void;
   onFullScreen: () => void;
   onCopyLink: () => void;
+  /** Share: who has it, which takes the menu's place, with `back` to its rows. */
+  share?: ((back: () => void) => ReactNode) | undefined;
   onRename?: ((name: string) => void) | undefined;
   onTrash?: (() => void) | undefined;
 }
@@ -41,30 +43,34 @@ export function NameField({ name, label, onDone }: { name: string; label: string
 
 /* ---------- its menu ---------- */
 
-/** A card's ⋯: Open, Open full screen, Copy link, then Rename and Move to Trash for whoever can. Rename asks for the name in the menu's place. */
+/**
+ * A card's ⋯: Open, Open full screen, Share and Copy link, then Rename and Move to Trash for whoever can. Rename asks for the
+ * name in the menu's place, and Share shows who has it there, each with ← back to the rows.
+ */
 function More({ name, current, actions }: { name: string; current: string; actions: CardActions }) {
   const [open, setOpen] = useState(false);
-  const [naming, setNaming] = useState(false);
+  const [inside, setInside] = useState<'rename' | 'share' | null>(null);
   const [typed, setTyped] = useState(current);
   const close = (then: () => void) => () => { setOpen(false); then(); };
-  const rename = actions.onRename;
+  const { onRename: rename, share } = actions;
   const rows: WsMenuRow[] = [
     { id: 'open', icon: 'fileText', label: 'Open', onSelect: close(actions.onOpen) },
     { id: 'full', icon: 'grow', label: 'Open full screen', onSelect: close(actions.onFullScreen) },
+    ...(share ? [{ id: 'share', icon: 'addUser' as const, label: 'Share', onSelect: () => setInside('share') }] : []),
     { id: 'link', icon: 'link', label: 'Copy link', onSelect: close(actions.onCopyLink) }
   ];
-  if (rename) rows.push({ type: 'sep' }, { id: 'rename', icon: 'pen', label: 'Rename', onSelect: () => { setTyped(current); setNaming(true); } });
+  if (rename) rows.push({ type: 'sep' }, { id: 'rename', icon: 'pen', label: 'Rename', onSelect: () => { setTyped(current); setInside('rename'); } });
   if (actions.onTrash) rows.push({ type: 'sep' }, { id: 'trash', icon: 'trash', label: 'Move to Trash', onSelect: close(actions.onTrash) });
   return (
-    <WsPopover open={open} onOpenChange={(to) => { setOpen(to); if (!to) setNaming(false); }} label={`More for ${name}`} align="end"
+    <WsPopover open={open} onOpenChange={(to) => { setOpen(to); if (!to) setInside(null); }} label={inside === 'share' ? `Share ${name}` : `More for ${name}`} align="end"
       anchor={<IconButton icon="more" size={16} label={`More for ${name}`} />}>
-      {naming && rename ? (
-        <form className="dv-pop-name" onSubmit={(e) => { e.preventDefault(); const to = typed.trim(); setOpen(false); setNaming(false); if (to && to !== current) rename(to); }}>
-          <p className="dv-pop-head"><IconButton icon="left" size={15} label="Back" type="button" onClick={() => setNaming(false)} />Rename</p>
+      {inside === 'rename' && rename ? (
+        <form className="dv-pop-name" onSubmit={(e) => { e.preventDefault(); const to = typed.trim(); setOpen(false); setInside(null); if (to && to !== current) rename(to); }}>
+          <p className="dv-pop-head"><IconButton icon="left" size={15} label="Back" type="button" onClick={() => setInside(null)} />Rename</p>
           <input type="text" aria-label={`Rename ${name}`} value={typed} maxLength={200} autoFocus autoComplete="off" spellCheck={false} onFocus={(e) => e.currentTarget.select()}
-            onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setNaming(false); } }} />
+            onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setInside(null); } }} />
         </form>
-      ) : <WsMenu label={`More for ${name}`} rows={rows} />}
+      ) : inside === 'share' && share ? share(() => setInside(null)) : <WsMenu label={`More for ${name}`} rows={rows} />}
     </WsPopover>
   );
 }

@@ -1,13 +1,14 @@
 /*
  * A workspace, full screen: WsFrame holds its side panel (WsSide: the logo, the switcher with the workspace's WsMark, Search,
- * then the list's own rows and sections, Trash and who can open it) beside the page, with one bar over the page (WsBar: the
- * way back and the path, how it's saving, who else is here, Share, ⋯, leaving full screen, and you). Home is WsHomeBand (the
- * name on the evening), WsAbout (its line, which an admin writes in place), WsPeopleLine and WsHomeSections. A page's title
- * has WsDocMeta under it. Everything here answers: rows open, the bar goes back, the line is written and kept.
+ * then the list's own rows and sections, Trash and who can open it, which opens who's in it) beside the page, with one bar
+ * over the page (WsBar: the way back and the path, how it's saving, who else is here, Share, ⋯, leaving full screen, and you).
+ * Home is WsHomeBand (the name on the evening), WsAbout (its line, which an admin writes in place), WsPeopleLine and
+ * WsHomeSections. A page's title has WsDocMeta under it. Everything here answers: rows open, the bar goes back, the line is
+ * written and kept.
  */
 import {
-  Avatar, CallChip, CallRow, FileCard, Logo, WsAbout, WsBar, WsDocMeta, WsFrame, WsHomeBand, WsHomeSection, WsMark, WsPeopleLine, WsRow, WsSection, WsSide, WsTrashRow,
-  hereLine, type LinkRender, type WsFace, type WsNaming, type WsPhone, type WsPop
+  Avatar, CallChip, CallRow, FileCard, Logo, WsAbout, WsBar, WsDocMeta, WsFrame, WsHomeBand, WsHomeSection, WsMark, WsPeopleLine, WsRow, WsSection, WsShareSheet, WsSide, WsTrashRow,
+  hereLine, type LinkRender, type WsFace, type WsNaming, type WsPhone, type WsPop, type WsShareRow
 } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState, type ReactNode } from 'react';
@@ -20,14 +21,20 @@ const pop = (content: ReactNode, [open, setOpen]: [boolean, (open: boolean) => v
 /** A link that only says it was followed. */
 const link = (name: string): LinkRender => (props) => <a {...props} href="#" onClick={(e) => { e.preventDefault(); did(name)(); }} />;
 
-/** The side panel of Launch, a workspace kept by hand: Home, its pages, the calls kept in it, Trash. */
-function LaunchSide({ at, onGo }: { at: string; onGo: (to: string) => void }) {
+/** Launch's people, as Share at the foot of its side panel shows them to its admin. */
+const LAUNCH_PEOPLE: WsShareRow[] = [ART, PRIYA, KOFI, INES].map((p, i) => ({ id: p.id, people: [p], name: i === 0 ? `${p.name} (you)` : p.name, sub: p.email, role: { label: i === 0 ? 'Admin' : 'Can edit' } }));
+
+/** The side panel of Launch, a workspace kept by hand: Home, its pages, the calls kept in it, Trash, and who can open it. */
+function LaunchSide({ at, onGo, sharing = false }: { at: string; onGo: (to: string) => void; sharing?: boolean | undefined }) {
   const [picker, setPicker] = useState(false);
   const [press, setPress] = useState(true);
+  const [share, setShare] = useState(sharing);
+  const [query, setQuery] = useState('');
   return (
     <WsSide brand={<a href="#" aria-label="Alcove, Home" onClick={(e) => e.preventDefault()}><Logo size={22} /></a>}
       space={{ name: 'Launch', mark: <WsMark name="Launch" />, picker: pop(<p className="wf-none">Your workspaces, and a new one.</p>, [picker, setPicker]) }}
-      onSearch={did('onSearch')} searchKeys="⌘K" foot={<WsTrashRow count={2} onOpen={() => onGo('trash')} current={at === 'trash'} />} sealed="Priya, Kofi, Ines and you can open it">
+      onSearch={did('onSearch')} searchKeys="⌘K" foot={<WsTrashRow count={2} onOpen={() => onGo('trash')} current={at === 'trash'} />} sealed="Priya, Kofi, Ines and you can open it"
+      share={pop(<WsShareSheet title="People in Launch" query={query} onQuery={setQuery} onAdd={did('onAdd')} rows={LAUNCH_PEOPLE} />, [share, setShare])}>
       <WsRow id="place:home" kind="place" icon="home" name="Home" current={at === 'home'} onOpen={() => onGo('home')} />
       <WsSection label="Pages" add={pop(<p className="wf-none">New document, folder or board</p>, [false, did('onAdd')])} addLabel="New document, folder or board" />
       <WsRow id="plan" name="Launch plan" faces={[PRIYA]} current={at === 'plan'} onOpen={() => onGo('plan')} />
@@ -94,8 +101,8 @@ function LaunchPage() {
   );
 }
 
-/** The whole frame, at `at`, with the bar put where the frame keeps it. */
-function Frame({ phone = 'page', start = 'home' }: { phone?: WsPhone | undefined; start?: string | undefined }) {
+/** The whole frame, at `at`, with the bar put where the frame keeps it. `sharing`: who can open it, at the foot, is pressed. */
+function Frame({ phone = 'page', start = 'home', sharing = false }: { phone?: WsPhone | undefined; start?: string | undefined; sharing?: boolean | undefined }) {
   const [at, setAt] = useState(start);
   const [shows, setShows] = useState<WsPhone>(phone);
   const [bar, setBar] = useState<HTMLDivElement | null>(null);
@@ -105,7 +112,7 @@ function Frame({ phone = 'page', start = 'home' }: { phone?: WsPhone | undefined
   const home = at === 'home';
   const go = (to: string) => { setAt(to); setShows('page'); };
   return (
-    <WsFrame side={<LaunchSide at={at} onGo={go} />} bar={setBar} phone={shows} home={home}>
+    <WsFrame side={<LaunchSide at={at} onGo={go} sharing={sharing} />} bar={setBar} phone={shows} home={home}>
       {bar && createPortal(
         <WsBar back={{ label: 'Drive', onClick: did('onBack') }} crumbs={home ? [] : [{ label: 'Launch', onClick: () => setAt('home') }, { label: 'Launch plan' }]}
           up={shows === 'page' ? { label: 'Launch', onClick: () => setShows('list') } : undefined} save={home ? undefined : 'saved'}
@@ -138,6 +145,12 @@ export const PhonePages: Story = { ...PHONE, render: () => <Frame phone="list" /
 export const PhonePage: Story = { ...PHONE, render: () => <Frame start="plan" /> };
 /** The frame waiting for its workspace: the side panel dark and empty. */
 export const Waiting: Story = { render: () => <WsFrame /> };
+/**
+ * Who can open it, at the foot of the side panel, pressed: who's in the workspace (`share`), from any page of it, a call's own
+ * workspace too, which has no Home. Left out for someone who isn't in it, for whom it's only said.
+ */
+export const WhoCanOpenIt: Story = { render: () => <Frame start="plan" sharing /> };
+export const WhoCanOpenItPhone: Story = { ...PHONE, render: () => <Frame phone="list" sharing /> };
 
 /** The line on what it's for: said; for an admin, pressed to write in place; nothing said yet; for someone who can only read it. */
 export const TheLine: StoryObj = {

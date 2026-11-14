@@ -8,7 +8,10 @@ import { z } from '../shared/zod';
  */
 export const NoteLinkSecretSchema = z.string().regex(/^[A-Za-z0-9_-]{22}$/);
 
-/** How long a link to a call's notes works once it's made, in days. */
+/**
+ * How long a link to a call's notes works once it's made, in days: how long it can be opened. Whoever opens it keeps the
+ * notes after it runs out, as anyone they're shared with does.
+ */
 export const NOTE_LINK_DAYS = 7;
 
 /** The most links a note can have working at once. */
@@ -27,8 +30,16 @@ export const NewNoteLinkSchema = z.object({ link: NoteLinkSchema, secret: NoteLi
 
 export type NewNoteLink = z.infer<typeof NewNoteLinkSchema>;
 
-/** Opening a link: its secret, in the body. */
+/** Opening a link, or looking at it first: its secret, in the body. */
 export const NoteLinkClaimSchema = z.object({ secret: NoteLinkSecretSchema });
+
+/**
+ * A link as whoever's signed in with it sees it before opening it: until when it can be opened. It names nobody and opens
+ * nothing.
+ */
+export const NoteLinkPeekSchema = z.object({ expiresAt: ISODateSchema });
+
+export type NoteLinkPeek = z.infer<typeof NoteLinkPeekSchema>;
 
 /** What opening a link gives the account that opened it: the notes it's to, which are theirs to read now. */
 export const NoteLinkClaimedSchema = z.object({ noteId: IDSchema });

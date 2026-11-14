@@ -364,10 +364,12 @@ export function inTheCall(participants: readonly CallParticipant[], viewer: Call
 }
 
 /**
- * The workspace's one menu, on its name on the frame's bar. The organizer: Switch workspace, Find in the workspace, Who's in it,
- * Rename (an admin) and Copy link. Anyone else in it: the same but Switch workspace. Someone it's open to only through the call,
- * a guest say: Find in the workspace and Who's in it. Switch workspace, Who's in it and Rename open in place of the rows; `start`
- * opens it on Who's in it, from who can edit it on the bar.
+ * The workspace's one menu, on its name on the frame's bar. The organizer: Switch workspace, Find in the workspace, Share
+ * workspace, Rename (an admin) and Copy link. Anyone else in it: the same but Switch workspace. Share workspace is who's in it,
+ * the people sheet: an admin adds people there, and anyone else is told who can. (In a call, Share in the dock is presenting,
+ * so the workspace's is here, by name.) Someone it's open to only through the call, a guest say: Find in the workspace and
+ * Who's in it, the people in the call. Switch workspace, Share workspace (or Who's in it) and Rename open in place of the rows;
+ * `start` opens it on that sheet, from who can edit it on the bar.
  */
 export function WorkspaceMenuRows({ workspace, organizer, people, act, start, onFind, onCopy, onRenamed, onDone }: {
   workspace: CallWorkspace; organizer: boolean; act: WorkspacePanelState['act'];
@@ -421,7 +423,7 @@ export function WorkspaceMenuRows({ workspace, organizer, people, act, start, on
     <>
       {organizer && opened && row('folders', 'Switch workspace', press(() => setInside('switch')))}
       {row('search', 'Find in the workspace', pick(onFind), shortcut('K'))}
-      {opened && row('people', 'Who’s in it', press(() => setInside('people')))}
+      {opened && (member ? row('addUser', 'Share workspace', press(() => setInside('people'))) : row('people', 'Who’s in it', press(() => setInside('people'))))}
       {admin && row('pen', 'Rename', press(() => setInside('name')))}
       {copy && row('link', 'Copy link', pick(copy))}
     </>

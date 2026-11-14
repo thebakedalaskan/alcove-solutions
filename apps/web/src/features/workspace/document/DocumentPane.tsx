@@ -15,7 +15,7 @@ import type { CommentOpen } from './Comments';
 import { useAsk } from '../find/Ask';
 import { useWs, type Ws } from '../context';
 import { DocMeta, QuoteCite } from '../full-screen/Origin';
-import { PaneHead } from '../Head';
+import { PaneHead, pathTo } from '../Head';
 import { useDocumentMedia } from '../uploads/DocumentMedia';
 import { Editor } from '../editor/lazy';
 import { useHistory } from './History';
@@ -32,7 +32,7 @@ import { useBackOnline, useOpensAgain, useSession, useTriesWhenShown, type Opene
 import { withDocument } from '../session';
 import { ShareSheet } from '../sharing/Sheets';
 import { tagRect, useTags } from './tags';
-import { documentsIn, folderName, foldersAbove, foldersFor, nameFrom, nameOf } from '../tree/tree';
+import { documentsIn, foldersFor, nameFrom, nameOf } from '../tree/tree';
 
 const Comments = lazy(() => import('./Comments'));
 
@@ -260,7 +260,8 @@ function Blank({ ws, item }: { ws: Ws; item: WorkspaceItem }) {
   return <PaneHead crumbs={crumbsOf(ws, item)} save="quiet" />;
 }
 
-const crumbsOf = (ws: Ws, item: WorkspaceItem) => [...(ws.sent.name === null ? [] : [ws.spaceName]), ...foldersAbove(ws.tree, item.id).map((f) => folderName(f, ws.callFolder)), nameOf(item)];
+/** Where a document is: its workspace and the folders it's in, each a step to press, then the document. */
+const crumbsOf = (ws: Ws, item: WorkspaceItem) => pathTo(ws, item, nameOf(item));
 
 /** Why what's written here isn't reaching Alcove, as the bar says it, if it says anything. */
 function unsavedOf(status: DocStatus, ready: boolean, guest: boolean): WsUnsaved | null {
@@ -303,7 +304,7 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
   if (gone) {
     return (
       <WsDoc>
-        <PaneHead crumbs={ws.sent.name === null ? [] : [ws.spaceName]} save="quiet" />
+        <PaneHead crumbs={ws.sent.name === null ? [] : [{ label: ws.spaceName }]} save="quiet" />
         <WsCantOpen what="document" unsent={rescue !== null}
           action={rescue ?? <Button size="sm" onClick={() => ws.go({ kind: 'home' }, { replace: true })}>Back to {ws.spaceName}</Button>} />
       </WsDoc>

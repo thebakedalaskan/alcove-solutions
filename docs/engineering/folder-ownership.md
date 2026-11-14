@@ -83,7 +83,7 @@ argument from the caller, or the piece moves down to the feature that owns its d
 | `apps/api/src/integration`, `testing` | Cross-feature suites; the harness and fakes of outside services (`testing/fakes/`). |
 | `apps/web/src/routes` | Route declarations: loaders, guards, search schemas, and the feature page each renders. |
 | `apps/web/src/features` | Every screen and its data access, by feature (below). |
-| `apps/web/src/lib` | What every feature shares: the API client (`api.ts`, the only importer of `@alcove/api-http`), the query client and cross-feature writes (`queryWrites.ts`), feature flags, trust, logging, live stores, keys, time and words. |
+| `apps/web/src/lib` | What every feature shares: the API client (`api.ts`, the only importer of `@alcove/api-http`), the query client and cross-feature writes (`queryWrites.ts`), when coming back to the window reads again (`windowFocus.ts`), feature flags, trust, logging, live stores, keys, time and words. |
 | `packages/api/src` | Contracts only, by feature (the call's contracts in subfolders matching the server's); `client.ts` composes `AlcoveApi`. |
 | `packages/api-http/src` | The HTTP client, by feature, with `transport/` and `trust/`; `index.ts` composes it. |
 | `packages/ui/src` | The design system, by area, each component beside its CSS (see `packages/ui/AGENTS.md`). |

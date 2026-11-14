@@ -15,6 +15,8 @@ export const noteKeys = {
   addition: (id: string, entryId: string) => ['notes', 'addition', id, entryId] as const,
   sharedAudience: (id: string) => ['notes', 'shared-audience', id] as const,
   noteLinks: (id: string) => ['notes', 'links', id] as const,
+  /** One link, by its secret, before it's opened: outside `notes`, so nothing that reads notes again reads it again. */
+  noteLink: (secret: string) => ['note-link', secret] as const,
   inbox: ['notes', 'inbox'] as const,
   /** Everything about series: what carries over changes whenever a note or a call in one does. */
   allSeries: ['series'] as const,

@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNow } from '~/lib/live';
 import { agoLabel } from '~/lib/time';
 import { useWs } from '../context';
-import { PaneHead } from '../Head';
+import { PaneHead, pathTo } from '../Head';
 import { nameOf, trashIn } from './tree';
 
 const KEPT_DAYS = 30;
@@ -55,7 +55,7 @@ export function TrashPage() {
   });
   return (
     <WsDoc>
-      <PaneHead crumbs={[ws.spaceName, 'Trash']} save="quiet" />
+      <PaneHead crumbs={pathTo(ws, null, 'Trash')} save="quiet" />
       <WsScroll><WsTrash items={items} /></WsScroll>
     </WsDoc>
   );

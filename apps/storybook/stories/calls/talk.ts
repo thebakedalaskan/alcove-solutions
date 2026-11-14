@@ -132,7 +132,7 @@ export function addWalkthrough(): void {
   if (!space || space.items.some((i) => i.id === WALKTHROUGH)) return;
   const at = iso(0, 15, 40);
   space.items.push({
-    id: WALKTHROUGH, kind: 'document', name: 'Onboarding walkthrough', parent: null, by: AIKO.portrait ? { name: AIKO.name, portrait: AIKO.portrait } : null,
+    id: WALKTHROUGH, kind: 'document', name: 'Onboarding walkthrough', parent: null, by: AIKO.portrait ? { name: AIKO.name, portrait: AIKO.portrait } : null, mine: false,
     createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, role: 'edit', call: null
   });
   w.pages[WALKTHROUGH] = {

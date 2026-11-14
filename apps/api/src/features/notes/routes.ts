@@ -1,8 +1,8 @@
-import { FollowUpReviewSchema, ActionPatchSchema, ActionProposalSchema, AskBodySchema, DecisionPatchSchema, DecisionProposalSchema, LinePatchSchema, NoteLinkClaimSchema, NoteSearchBodySchema, QuestionPatchSchema, RevisitPatchSchema, RewriteBodySchema, SeriesAskBodySchema, ShareInputSchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema, SharedWriteSchema } from '@alcove/api';
+import { type NoteProgressLine, FollowUpReviewSchema, ActionPatchSchema, ActionProposalSchema, AskBodySchema, DecisionPatchSchema, DecisionProposalSchema, LinePatchSchema, NoteLinkClaimSchema, NoteSearchBodySchema, QuestionPatchSchema, RevisitPatchSchema, RewriteBodySchema, SeriesAskBodySchema, ShareInputSchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema, SharedWriteSchema } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { stream } from 'hono/streaming';
 import { z } from 'zod';
-import { NotFoundError } from '../../platform/errors';
+import { NotFoundError, toAppError } from '../../platform/errors';
 import { currentLogContext, log } from '../../platform/log';
 import * as screens from '../recordings/screens/screens';
 import * as models from '../../inference/models';
@@ -38,16 +38,28 @@ export function registerNoteRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
 
   app.get('/v1/notes/:id', async (c) => c.json(await notes.get(c.get('owner'), c.req.param('id'))));
 
+  /*
+   * Read once before the stream starts, so someone who can't read the note is refused (404) as for the note itself, not
+   * answered with a stream that ends with nothing in it. Each line after reads it again as they may now: one they've lost
+   * meanwhile ends the stream with `gone`, logged as any refusal is, with the request's context. Anything else that fails
+   * partway is logged, and the stream just ends, to be followed again. It stops once nobody's reading it.
+   */
   app.get('/v1/notes/:id/progress', async (c) => {
     const o = c.get('owner'); const id = c.req.param('id');
+    const first = await notes.progress(o, id);
+    const plog = rlog.child({ ...currentLogContext(), noteId: id });
     c.header('content-type', 'application/x-ndjson');
     return stream(c, async (s) => {
-      for (let i = 0; i < 120; i++) {
-        const p = await notes.progress(o, id);
+      for (let i = 0; i < 120 && !s.aborted; i++) {
+        const p = i === 0 ? first : await notes.progress(o, id);
         await s.write(`${JSON.stringify(p)}\n`);
         if (p.ready) return;
         await s.sleep(1000);
       }
+    }, async (e, s) => {
+      const err = toAppError(e);
+      plog.at(err.level, 'note progress stopped partway through', { errorClass: err.name, code: err.code, ...err.context, status: err.status, ...(err.level === 'info' ? {} : { err }) });
+      if (err.code === 'not-found') await s.write(`${JSON.stringify({ gone: true } satisfies NoteProgressLine)}\n`);
     });
   });
 
@@ -211,14 +223,17 @@ export function registerNoteRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   app.post('/v1/notes/:id/share', async (c) => c.json(await sharing.share(c.get('owner'), c.req.param('id'), await body(c, ShareInputSchema))));
 
   /*
-   * Links to the notes: listed, made and revoked on the note, and opened by their secret, which travels in the body and
-   * never in a URL. Opening one needs an account: it gives the notes to whoever's signed in.
+   * Links to the notes: listed, made and revoked on the note, and looked at and opened by their secret, which travels in
+   * the body and never in a URL. Both need an account: opening one gives the notes to whoever's signed in, to keep.
    */
   app.get('/v1/notes/:id/links', async (c) => c.json(await links.list(c.get('owner'), c.req.param('id'))));
 
   app.post('/v1/notes/:id/links', async (c) => c.json(await links.create(changing(c), c.req.param('id'))));
 
   app.delete('/v1/notes/:id/links/:linkId', async (c) => c.json(await links.revoke(changing(c), c.req.param('id'), c.req.param('linkId'))));
+
+  // Looking at a link spends from the same budget as opening one, so neither finds links by guessing any faster.
+  app.post('/v1/note-links/peek', async (c) => c.json(await links.peek(changing(c), (await body(c, NoteLinkClaimSchema)).secret)));
 
   app.post('/v1/note-links/claim', async (c) => c.json(await links.claim(changing(c), (await body(c, NoteLinkClaimSchema)).secret)));
 

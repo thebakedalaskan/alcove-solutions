@@ -84,7 +84,10 @@ function Place({ at, spaces, files, loading, failed, actions, onClear, onRetry }
   if (at.show === 'calls') return <CallsList spaces={spaces} actions={actions} />;
   if (at.ws && at.doc) {
     const { ws, doc } = at;
-    return <DocumentBeside key={`${ws}/${doc}`} workspaceId={ws} documentId={doc} onFullScreen={() => actions.openFull(ws, doc)} onOpen={(id) => actions.go({ ws, doc: id })} onClose={() => actions.go({ ws }, { replace: true })} />;
+    return (
+      <DocumentBeside key={`${ws}/${doc}`} workspaceId={ws} documentId={doc} onFullScreen={() => actions.openFull(ws, doc)} onOpen={(id) => actions.go({ ws, doc: id })}
+        onClose={() => actions.go({ ws }, { replace: true })} onPlace={(folder) => actions.go(folder === null ? { ws } : { ws, folder })} />
+    );
   }
   if (at.ws) {
     const w = spaces.find((s) => s.id === at.ws);

@@ -63,7 +63,8 @@ interface ItemShape { parent?: string | null; role?: DocumentRole; restricted?: 
 function item(name: string, kind: WorkspaceItem['kind'], by: Person, hoursAgo: number, o: ItemShape = {}): WorkspaceItem {
   const at = hoursBefore(hoursAgo);
   return {
-    id: itemId(name), kind, name, parent: o.parent ?? null, by: by.portrait ? { name: by.name, portrait: by.portrait } : null, createdAt: o.made === undefined ? at : hoursBefore(o.made), editedAt: at,
+    id: itemId(name), kind, name, parent: o.parent ?? null, by: by.portrait ? { name: by.name, portrait: by.portrait } : null, mine: by.email === ART.email,
+    createdAt: o.made === undefined ? at : hoursBefore(o.made), editedAt: at,
     trashedAt: o.trashed ? hoursBefore(o.trashed.hoursAgo) : null, trashedBy: o.trashed?.by.name ?? null, restricted: o.restricted ?? false, role: o.role ?? 'edit',
     call: o.call ?? null
   };
@@ -116,6 +117,8 @@ function workspaces(): Space[] {
     },
     {
       id: 'ws-handbook', name: 'Company handbook', role: 'read', inCall: false, people: 38, teamAccess: null, createdAt: iso(-400, 9, 0), call: null,
+      // Nadia writes it and runs it: its admin, the one its people sheet says to ask, as its read-only bar does.
+      members: [NADIA, PRIYA, KOFI, THEO, INES],
       items: [item('Holidays', 'document', NADIA, 700, reading), item('Expenses', 'document', NADIA, 1300, reading), item('Working from home', 'document', NADIA, 2100, reading)]
     }
   ];

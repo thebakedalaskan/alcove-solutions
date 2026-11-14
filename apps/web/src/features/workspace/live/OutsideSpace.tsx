@@ -4,10 +4,11 @@
  * so little in it the list is all there is to go by, so where there's no room for it, the page has its button.
  */
 import { WsDoc, WsDocHead, WsList, WsPane, WsSection } from '@alcove/ui';
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { WorkspaceCall, WorkspacePlace } from '../context';
 import { LiveHostContext, type LiveHost } from './host';
 import { NO_IDS } from '../sharing/ids';
+import { showRow } from '../tree/reveal';
 import { LivePage } from './LivePage';
 import { LiveRows } from './LiveRows';
 import type { LiveCall } from './types';
@@ -25,10 +26,17 @@ export function OutsideSpace({ live, at, go, say, closed, list, children }: {
     else list.onToggle();
   }, [list.onToggle]);
   const goAndClose = useCallback<LiveHost['go']>((to) => { setPhoneList(false); go(to); }, [go]);
-  const host = useMemo((): LiveHost => ({ live, at, go: goAndClose, say, here: [], workspaceId: null, put: null, lastDocument: null, closed, toggleList, ids: NO_IDS, following: null, stopFollowing: () => undefined }), [live, at, goAndClose, say, closed, toggleList]);
+  /* The call's step on a page's path: the list, with the call's pages, comes out. */
+  const pane = useRef<HTMLElement>(null);
+  const showCall = useCallback(() => {
+    if (matchMedia('(max-width: 640px)').matches) setPhoneList(true);
+    else list.onShow();
+    showRow(pane.current, null);
+  }, [list.onShow]);
+  const host = useMemo((): LiveHost => ({ live, at, go: goAndClose, say, here: [], workspaceId: null, put: null, lastDocument: null, closed, toggleList, showCall, ids: NO_IDS, following: null, stopFollowing: () => undefined }), [live, at, goAndClose, say, closed, toggleList, showCall]);
   return (
     <LiveHostContext value={host}>
-      <WsPane listOff={list.off} listPeek={list.peek} phoneList={phoneList}>
+      <WsPane ref={pane} listOff={list.off} listPeek={list.peek} phoneList={phoneList}>
         <WsList label="This call">
           <WsSection key="call" label="This call" area="pins" />
           <LiveRows key="rows" />

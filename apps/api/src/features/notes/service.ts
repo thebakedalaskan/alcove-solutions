@@ -32,7 +32,7 @@ import { workedOnFor } from './worked-on';
 import { licensedOn } from '../billing/teams/teams';
 import { homeFor } from './home';
 import { NoteManifest, partsOf, same, decisionsOf, actionsOf, everyoneWith, recordUnencryptedUse, emailIndex } from './manifest';
-import { type Seen, everyNote, myEmail, teamNotes, summary, locate, asRead, type Located, sharedWithMe, recipients, locateToRead, summaryOf, teamVisible, goneSince, viaTeam } from './access';
+import { type Seen, everyNote, heldAmong, myEmail, teamNotes, summary, locate, asRead, type Located, sharedWithMe, recipients, locateToRead, summaryOf, teamVisible, goneSince, viaTeam } from './access';
 import { roleIn } from './entries';
 
 const nlog = log.child({ component: 'notes' });
@@ -41,14 +41,15 @@ const said = (m: NoteManifest): boolean => !!m.transcript?.length || m.rooms.som
 
 /**
  * The team's notes (`GET /v1/team/notes`): every note made visible to the team this person is live-licensed on, their own
- * among them, newest first, each as they have it (a note also given to them says so). None without a live license.
+ * among them, newest first, each as they have it (a note also given to them says so). None without a live license. Only
+ * those notes are opened, however many others they have: the app reads this list whenever it's shown.
  */
 export async function teamList(o: Owner): Promise<NoteSummary[]> {
   const licensed = await licensedOn(o.pool, o.ownerId);
   if (!licensed) return [];
   const visible = new Set((await rows(o.pool, z.object({ id: z.string() }), 'SELECT note_item_id AS id FROM team_notes WHERE team_id = $1', [licensed.teamId])).map((r) => r.id));
   if (!visible.size) return [];
-  const held: Seen[] = (await everyNote(o, await myEmail(o))).filter((l) => visible.has(l.note.itemId));
+  const held: Seen[] = await heldAmong(o, await myEmail(o), visible);
   const notes = [...held, ...await teamNotes(o, new Set(held.map((l) => l.note.itemId)))];
   notes.sort((a, b) => b.note.manifest.startedAt.localeCompare(a.note.manifest.startedAt));
   return Promise.all(notes.map(async (l) => summary(l, await seriesOf(l))));

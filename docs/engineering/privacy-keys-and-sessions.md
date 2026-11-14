@@ -530,17 +530,30 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   ask about it, and Ask across notes reads it; nobody else, and not someone on the team without a license. It's read
   only: nothing gives them a `note_access` row, they aren't listed among who has it, and every change, share, link,
   addition, their own notes on it and Drive exports are refused (`403 forbidden`, one sentence that names nobody). A
-  transcript set to go once the notes are written stays the organizer's, as for everyone else. It stays visible after
-  the organizer leaves the team, until they say otherwise; the row goes with the note (it cascades from the item), with
-  the organizer's account, and with the team.
+  transcript set to go once the notes are written stays the organizer's, as for everyone else. Turning it off holds from
+  the next request on, for every path that reads or lists notes: a member who had it only through the team gets `404
+  not-found`, as for a note that was never there, and nothing they did with it while it was visible (opening it, asking
+  about it, asking across notes) left them a way to it of their own. Anyone on the team who was invited to the call, or
+  was given the notes since, keeps them through their own `note_access` row whatever the switch says, and Share names
+  them. It stays visible after the organizer leaves the team, or their license ends, until they say otherwise, which
+  needs no license; the row goes with the note (it cascades from the item), with the organizer's account, and with the
+  team.
 - **By a link.** Anyone who can read a call's notes can make a link to them once the call has ended or the recording has
   stopped (`POST /v1/notes/:id/links`, `apps/api/src/features/notes/links/links.ts`). The link reads nothing by itself: opened
   by an account that's signed in (`POST /v1/note-links/claim`, the secret in the body), it gives that account the notes
-  as sharing by address does, with a `note_access` row with role `shared`, and the note's sealed `shared` list says who
-  made the link, that it was a link, and when. So every reader is still an account the note lists ("By Priya's link" in
-  who has it, "From Priya's link" for the reader), and can lose. Being listed shows that account's name and address to
-  everyone with the notes, so the page never claims by itself: it names the account it would open as, says everyone with
-  the notes will see it, and claims only when they press Open the notes, after reading who's signed in again (another tab
+  to keep, as sharing by address does, with a `note_access` row with role `shared`, and the note's sealed `shared` list
+  says who made the link, that it was a link, and when. So every reader is still an account the note lists ("By Priya's
+  link" in who has it, "From Priya's link, yours to keep" for the reader), and keeps them as anyone given them by address
+  does: until the organizer deletes the notes or they remove them from theirs. Before anything opens, the page asks until
+  when the link works (`POST /v1/note-links/peek`, signed in, the secret in the body, from the same budget as opening one).
+  It answers only when opening the link would give this account the notes now, which it checks as opening does, giving
+  nothing and naming nobody: the organizer's keys open who made the link, to check that they still have the notes (under
+  the address they have now), and the notes may go to this account. A link that's run out, been revoked or never was, and
+  one that wouldn't give these notes now, are the same `not-found`, so the answer says nothing of which. The card says until
+  when, to the minute ("This link works until Fri 21 Nov 16:00. Notes you open with it stay yours after that."), and a link
+  that won't open says so before anything is asked. Neither keeps a receipt. Being listed shows that account's name and
+  address to everyone with the notes, so the page never claims by itself: it names the account it would open as, says
+  everyone with the notes will see it, and claims only when they press Open the notes, after reading who's signed in again (another tab
   may have changed it). A link posted somewhere, or opened by another page with `window.open`, puts nobody on the list.
   Signed out, the page asks them to sign in first, and then asks the same, including after a Google sign-in that took the
   whole tab; someone who joined a call as a guest, by name, gets nothing from the call itself and can open a link only by
@@ -548,7 +561,9 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   same rule as letting someone in from a call's link decides which accounts it may go to: a real one, or any when the
   organizer's own account is a demo one (`403 forbidden` otherwise). Its secret (128 random bits) is only ever in the
   link's fragment (`<web app>/link#<secret>`), which browsers never send, and in that POST body; only its SHA-256 is
-  stored, beside who made it and when, sealed under the organizer's keys (`note-link`). It runs out after seven days.
+  stored, beside who made it and when, sealed under the organizer's keys (`note-link`). It can be opened for seven days
+  (`NOTE_LINK_DAYS`), and what it gave stays given after it runs out, as after it's revoked: it's the link that ends, never
+  anyone's notes.
   Whoever made it, or the organizer, can revoke it, and it stops when its maker no longer has the notes: removing them
   from theirs, or deleting their account, deletes their links, found by a keyed hash (`note-link-maker`). One that's run
   out, been revoked or never was is `404 not-found`, all alike, so a guess learns nothing. Whoever it already gave the
@@ -1110,8 +1125,9 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   closed. A fresh authenticated session can reopen access, while a session response started before revocation cannot.
   Existing JPEG records, keys and their authenticated headers read unchanged; no database version upgrade is needed.
 - **Where you were in your workspaces** (`localStorage` `alcove.workspace.<ownerId>`, `WorkspacePlacesSchema`): the IDs of
-  the workspace and documents last open, what was opened recently in each, the folders left open, and whether the list is
-  hidden. Nothing readable. Signing out, or deleting the account, on this browser deletes it.
+  the workspace and documents last open, what was opened recently in each, the folders left open, whether the list is
+  hidden, and when each document or board was opened in the last hour (`seen`, so what someone else made stops saying New;
+  older ones go as the next is kept). Nothing readable. Signing out, or deleting the account, on this browser deletes it.
 - **What Find looks through** is in the tab's memory and nowhere else: the words of what you can open, for this session
   ([In a browser](data-and-storage.md#in-a-browser)). Signing out or in lets go of it, and so does losing what it's from.
   What's typed into Find never leaves the browser.
@@ -1524,7 +1540,7 @@ Moving, in order:
 | Protected inference: end-to-end encrypted requests to `I01`, with its attestation checked | Each model's evidence is checked first (Intel TDX quote and collateral, a published dstack OS image by MRTD and RTMR0–2, report data with a fresh nonce, RTMR3 and the measured compose, NVIDIA GPU verdict, the OHTTP key's signature). Every request, speech and chat, goes by Oblivious HTTP sealed to the model's attested key at its own endpoint: NEAR AI's E2EE chat doesn't bind its fields to the client's key, so whoever terminates TLS could replay them, and doesn't cover speech. The one plaintext way is a model chosen on purpose that NEAR AI doesn't run in an enclave: it's reached through the gateway over TLS, shown as "Unencrypted" wherever it's picked, and recorded on the note. Speech has none | Done for what the evidence shows. The model code NEAR AI's compose manager starts isn't pinned, the GPU evidence and model name aren't bound to the VM, and the endpoints are ones NEAR AI calls experimental ([What's left](notes-and-inference.md#whats-left)) |
 | Encrypted manifest binding all chunks; rollback detection | Not implemented: a database writer could roll a head back or drop trailing pieces | To do (version-bound associated data and an encrypted piece list) |
 | Plan accounts, AI meters and top-ups keyed by a random account ID plus `owner_tag` | Keyed by `owner_id` | To do; payments are live keyed by `owner_id` |
-| Guests (#17): joining a call grants no notes, and a shareable link alone is not authorization to read owner content | Notes can be shared by a link (#259), which reads nothing by itself: opened by a signed-in account the notes may go to, it gives that account the notes as shared by its maker, listed in who has them, for seven days or until revoked. No URL reads a note | The product owner chose this over a public link anyone could read (which would need an unauthenticated way to open the organizer's keys) and over notes for guests only through the call's own sign-in |
+| Guests (#17): joining a call grants no notes, and a shareable link alone is not authorization to read owner content | Notes can be shared by a link (#259), which reads nothing by itself: opened by a signed-in account the notes may go to, within seven days of being made and until it's revoked, it gives that account the notes to keep, as shared by its maker, listed in who has them. No URL reads a note | The product owner chose this over a public link anyone could read (which would need an unauthenticated way to open the organizer's keys) and over notes for guests only through the call's own sign-in |
 | Provider secrets never in environment variables | Outside a TEE, `KMASTER`, `KSERVICE`, the NEAR AI key and the Google client secret are environment variables (`.env` locally). With `TEE=confidential-space` the master is made in the TEE and kept wrapped by Cloud KMS for attested builds only, the index key and `KSERVICE` come from the server keys sealed under it, and both keys are refused from the environment; the provider secrets (`SECRETS`) and, while a database's accounts are carried over, the old keys (`LEGACY_SECRETS`) are read at start from Secret Manager as the attested identity, never through the environment | Accepted locally. In production the master exists unwrapped only in the attested VM, and provider secrets aren't environment variables there, since Confidential Space puts the environment in its attestation. |
 
 ## Production requirements

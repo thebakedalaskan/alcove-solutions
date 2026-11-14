@@ -289,19 +289,20 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `TeamFoot`, `TeamNotesList` (what's visible to the team), `LicensesCard`, `TeamInvite` (a one-time link with Copy; `bare` for
   under checkout Done's heading), `TeamStartRow` (a quiet Start a team on a company's page), `JoinCard` and `JoinEvening`.
   The workspace kit is in `workspace/`, every part stateless, taking plain data and handlers: `WsPane` holds
-  `WsList` (`WsListHead`, or `WsListTools` in a call, where the frame's bar names the workspace; `WsSection` with `add`,
+  `WsList` (`WsListHead`, or `WsListTools` in a call, where the frame's bar names the workspace; `WsSection` with `add` and `flash`,
   `WsRow` with the kinds `place` and `call` and their `tag` and `out`, `WsRenameRow`, `WsDropLine`, `WsTrashRow`; the rows
-  themselves are `WsTree`) and `WsDoc` (`WsDocHead` with
+  themselves are `WsTree`) and `WsDoc` (`WsDocHead` with `WsPath` (the path, also on `WsBar`: whole steps leave from its
+  start when it's long, and each step before the page is a button that shows where it is),
   `WsSaveState`, `WsFollowBar`, `WsOfflineBar`, `WsUnsavedBar` (with `WsRescue` for what didn't reach Alcove), `WsGoneBar`,
   `WsReadOnlyBar`, `WsVersionBar`, `WsVersionFailed`, `WsScroll`, `WsPage`, `WsDocBy`, `WsTemplates`, `WsTail`, `WsTrash`,
   `WsEmpty`, `WsPickDocument`, `WsCantOpen`, `WsUnavailable`, `WsOfflineEmpty`, `WsNoAccess`, `WsLostSpace`), with
   `WsHistory` beside it. `WsPane`'s `beside` is one document beside the Drive's tree. A workspace full screen is `WsFrame`
-  (in `workspace/frame.tsx`): `WsSide` (its side panel, with `WsMark` and `WsSpaceField`), `WsBar` (its top bar,
-  with `hereLine`), and its Home's `WsHomeBand`, `WsAbout`, `WsPeopleLine` and `WsHomeSection`, with `WsDocMeta` over a
-  document.
+  (in `workspace/frame.tsx`): `WsSide` (its side panel, with `WsMark` and `WsSpaceField`; who can open it, at its foot,
+  ends in Share and opens who's in it, its `share`), `WsBar` (its top bar, with `hereLine`), and its Home's `WsHomeBand`,
+  `WsAbout`, `WsPeopleLine` and `WsHomeSection`, with `WsDocMeta` over a document.
   Anything that opens sits on `WsPopover` (a sheet on a phone by itself, and it hands focus back): `WsMenu` and its
   `WsNewMenu`, `WsRowMenu`, `WsDocMenu`, `WsMovePicker`, `WsSpacePicker`, `WsAskMenu`, `WsAskAnswer`; `WsPersonCard`, `WsMentionPrompt`,
-  `WsCommentCompose`, `WsCommentThread`, `WsShareSheet`, `WsSwitchSheet`, `WsNameSheet`, `WsDeleteAsk`, `WsDiscardAsk`, `WsUploadPicker`. The call's
+  `WsCommentCompose`, `WsCommentThread`, `WsShareSheet` (its `onBack` when it opens in place of a menu's rows), `WsSwitchSheet`, `WsNameSheet`, `WsDeleteAsk`, `WsDiscardAsk`, `WsUploadPicker`. The call's
   own pages are `WsNotesPage`, `WsFollowUps`, `WsTranscript` and `WsNotesOff`. Over the call: `WsFind`, `WsKeyboard`,
   `WsPlayBar`, `WsToasts` (say them with `wsToast`, which has every toast's words), `WsDragGhost`, `WsKeyboardBar`. `WsFade`
   swaps what's inside in place.

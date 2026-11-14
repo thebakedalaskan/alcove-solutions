@@ -319,7 +319,7 @@ describe('the tree', () => {
     const tree = await itemsOf(ann.api, id);
     // Parents before what's in them, each in its place.
     expect(tree.map((i) => [i.name, i.kind, i.parent])).toEqual([['Pricing', 'folder', null], ['Plan', 'document', pricing], ['Map', 'board', pricing], ['Top', 'document', null]]);
-    expect(item(tree, plan)).toMatchObject({ role: 'edit', restricted: false, trashedAt: null, trashedBy: null, by: { name: ann.name } });
+    expect(item(tree, plan)).toMatchObject({ role: 'edit', restricted: false, trashedAt: null, trashedBy: null, by: { name: ann.name }, mine: true });
     expect(item(tree, plan)?.by?.portrait).toBeTruthy();
     expect(JSON.stringify(tree)).not.toContain(ann.email);
 
@@ -1276,8 +1276,9 @@ describe('a new address from the provider', () => {
     expect((await after.api.workspaces.mentions()).map((m) => m.document)).toEqual([tagged]);
 
     expect((await after.api.workspaces.get(id)).role).toBe('edit');
-    expect((await after.api.workspaces.items.get(id, made)).role).toBe('edit');
-    expect((await after.api.workspaces.items.get(id, annsDoc)).role).toBe('edit');
+    // What it made is still its own, and still says so.
+    expect(await after.api.workspaces.items.get(id, made)).toMatchObject({ role: 'edit', mine: true });
+    expect(await after.api.workspaces.items.get(id, annsDoc)).toMatchObject({ role: 'edit', mine: false });
     expect((await after.api.workspaces.items.get(elsewhere, given)).role).toBe('edit');
     expect((await ann.api.workspaces.people(id)).map((p) => p.person.email)).toEqual([ann.email, fresh]);
     expect((await ann.api.workspaces.share.list(elsewhere, given)).entries.map((e) => e.person.email)).toEqual([fresh]);
@@ -1398,6 +1399,15 @@ describe('the live stream', () => {
     expect(live.getSnapshot()).toEqual({ status: 'connecting', tree: null, here: [], mentions: [] });
     await until(() => live.getSnapshot().status === 'live', 'the first line');
     expect(liveNames(live)).toEqual(['Doc']);
+    // Each is told what they made themselves: Ann's document isn't Theo's, and what Theo makes is.
+    expect(treeOf(live)?.items.map((i) => i.mine)).toEqual([false]);
+    expect((await ann.api.workspaces.items.get(id, doc)).mine).toBe(true);
+    const his = await make(theo, id, 'document', 'His');
+    await until(() => liveNames(live).includes('His'), 'his document');
+    expect(treeOf(live)?.items.map((i) => [i.name, i.mine])).toEqual([['Doc', false], ['His', true]]);
+    expect((await ann.api.workspaces.items.get(id, his)).mine).toBe(false);
+    await theo.api.workspaces.items.trash(id, his);
+    await until(() => liveNames(live).join() === 'Doc', 'his document to go to Trash');
     let heard = 0;
     const off = live.subscribe(() => { heard++; });
 

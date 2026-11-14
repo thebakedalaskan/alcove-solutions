@@ -39,8 +39,10 @@ import { LiveHostContext } from './live/host';
 import { LivePage } from './live/LivePage';
 import { useSending } from './live/useSending';
 import { openedIn, placesOf, rememberPlaces, useOwnListOff } from './tree/places';
+import { seenIn } from './tree/seen';
 import { othersIn, usePresence } from './presence';
 import { TrashPage } from './tree/TrashPage';
+import { useReveal } from './tree/reveal';
 import { arrivals, documentsIn, foldersAbove, nameOf, treeOf, type Tree } from './tree/tree';
 import { useWorkspaceMedia } from './uploads/useWorkspaceMedia';
 import { useWordsFollow } from './find/words';
@@ -97,12 +99,20 @@ function useToasts() {
   return { toasts, say };
 }
 
-/** What just arrived in the list or moved in it, for everyone, glows. */
-function useGlow(sent: WorkspaceTree | null, mode: WorkspaceProps['mode']): ReadonlySet<string> {
+/** What just arrived in the list or moved in it, for everyone, glows, and so does a row the path over the page shows you (`light`). */
+function useGlow(sent: WorkspaceTree | null, mode: WorkspaceProps['mode']): { glowing: ReadonlySet<string>; light: (ids: readonly string[]) => void } {
   const [glowing, setGlowing] = useState<ReadonlySet<string>>(new Set());
   const before = useRef<Tree | null>(null);
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
   useEffect(() => { const t = timers.current; return () => { t.forEach(clearTimeout); }; }, []);
+  const light = useCallback((lit: readonly string[]) => {
+    setGlowing((on) => new Set([...on, ...lit]));
+    const t = setTimeout(() => {
+      timers.current.delete(t);
+      setGlowing((on) => new Set([...on].filter((id) => !lit.includes(id))));
+    }, GLOW_MS);
+    timers.current.add(t);
+  }, []);
   useEffect(() => {
     if (!sent) return;
     const now = treeOf(sent.items, mode !== 'call');
@@ -110,15 +120,9 @@ function useGlow(sent: WorkspaceTree | null, mode: WorkspaceProps['mode']): Read
     before.current = now;
     if (!was) return;
     const lit = arrivals(was, now);
-    if (lit.length === 0) return;
-    setGlowing((on) => new Set([...on, ...lit]));
-    const t = setTimeout(() => {
-      timers.current.delete(t);
-      setGlowing((on) => new Set([...on].filter((id) => !lit.includes(id))));
-    }, GLOW_MS);
-    timers.current.add(t);
-  }, [sent, mode]);
-  return glowing;
+    if (lit.length > 0) light(lit);
+  }, [sent, mode, light]);
+  return { glowing, light };
 }
 
 /** How long a tag's toast stays, and so how long the next one waits. */
@@ -256,7 +260,7 @@ function useLanding({ mode, at, documentId, empty, sent, tree, owner, workspaceI
 
 /**
  * What follows the document that's open: a document just made is only opening while it's the one open, and what's open stays
- * remembered, with its folders open around it.
+ * remembered, with its folders open around it, and stops saying New (tree/seen.ts).
  */
 function useOpenDocument({ documentId, item, tree, owner, workspaceId, justMade, openAll }: {
   documentId: string | null;
@@ -269,7 +273,7 @@ function useOpenDocument({ documentId, item, tree, owner, workspaceId, justMade,
 }): void {
   useEffect(() => { if (justMade.current !== null && justMade.current !== documentId) justMade.current = null; }, [documentId]);
   useEffect(() => {
-    if (documentId) rememberPlaces(owner, (p) => openedIn(p, workspaceId, documentId));
+    if (documentId) rememberPlaces(owner, (p) => seenIn(openedIn(p, workspaceId, documentId), documentId, Date.now()));
   }, [owner, workspaceId, documentId]);
   const inFolders = item ? foldersAbove(tree, item.id).map((f) => f.id).join() : '';
   useEffect(() => { if (inFolders) openAll(inFolders.split(',')); }, [inFolders, openAll]);
@@ -308,7 +312,7 @@ function useMakeKeys({ asleep, mode, canChange, onBoard, justMade, madeIn, toggl
 }
 
 /** The workspace once its stream is open. */
-function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, onExpand, frame, pass, call }: WorkspaceProps & { store: WorkspaceLive }) {
+function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, onExpand, onPlace, frame, pass, call }: WorkspaceProps & { store: WorkspaceLive }) {
   const view = useLive(store);
   const online = useOnline();
   useListTriesWhenShown(store, call?.closed ?? false);
@@ -320,12 +324,17 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, onExpand,
   const tree = useMemo(() => treeOf(items, mode !== 'call'), [items, mode]);
   const { toasts, say: sayHere } = useToasts();
   const say = call?.say ?? sayHere;
-  const glowing = useGlow(view.tree, mode);
+  const { glowing, light } = useGlow(view.tree, mode);
   const { open, setOpen, openAll } = useFolders(owner, workspaceId);
   const [draft, setDraft] = useState<FolderDraft | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [naming, setNaming] = useState<'new' | 'rename' | null>(null);
   const [blockInto, setBlockInto] = useState<string | null>(null);
+  /* Full screen, every call kept here in the side panel, once "N more" is pressed or a step of the path shows one of them. */
+  const [allCalls, setAllCalls] = useState(false);
+  const showAllCalls = useCallback(() => setAllCalls(true), []);
+  /* What the page has open over itself, which closes as something opens beside it (a board's menus). */
+  const closeOver = useRef<(() => void) | null>(null);
   /* Full screen the side panel and the page take turns from 860px down, as the app's own frame does; in a call, from 640px. */
   const phone = useMedia(mode === 'page' ? '(max-width: 860px)' : '(max-width: 640px)');
   const [phoneList, setPhoneList] = useState(at.kind === 'home');
@@ -404,6 +413,11 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, onExpand,
   useMakeKeys({ asleep, mode, canChange, onBoard: item?.kind === 'board', justMade, madeIn, toggleList, newFolder, actions });
 
   const find = useFindKeys(asleep, call?.finding ?? false, call?.onFinding);
+  /* A step of the path over the page shows where it is: the list comes out for it, over the page on a phone. */
+  const reveal = useReveal({
+    mode, tree, callFolder, home, pane, openAll, light, go, onPlace, showAllCalls,
+    showList: () => { if (phone) setPhoneList(true); else showInCall?.(); }
+  });
   useWordsFollow(workspaceId, pass, view);
 
   const { drag, arm, ended } = useRowDrag({
@@ -432,14 +446,14 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, onExpand,
   const ws: Ws = {
     mode, workspaceId, pass, call, sent: view.tree, here: view.here, others, present, following, follow, stopFollowing, items, tree, at, go, switchTo: onSwitch, owner, me,
     self: view.here.find((h) => h.isMe)?.person ?? me, actions, say, canChange, callFolder, madeIn, spaceName, spaceSave, listDown: view.status === 'reconnecting' ? { onTry: online ? store.retry : undefined } : null,
-    open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, expand: onExpand, frame, home, showPages: () => setPhoneList(true), naming, setNaming, justMade, openDoc, page, put, lastDocument, openFind: () => find.setFinding(true), pictures, ids
+    open, setOpen, reveal, glowing, allCalls, showAllCalls, closeOver, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, expand: onExpand, frame, home, showPages: () => setPhoneList(true), naming, setNaming, justMade, openDoc, page, put, lastDocument, openFind: () => find.setFinding(true), pictures, ids
   };
-  const host = call ? { live: call.live, at, go, say, here: view.here, workspaceId, put, lastDocument, closed: call.closed, toggleList, ids, following, stopFollowing: () => stopFollowing() } : null;
+  const host = call ? { live: call.live, at, go, say, here: view.here, workspaceId, put, lastDocument, closed: call.closed, toggleList, showCall: () => reveal(null), ids, following, stopFollowing: () => stopFollowing() } : null;
   /* Full screen, a workspace's own Home is its page with nothing open; a call's own workspace has none, and opens on what the call made. */
   const onHome = isPage && member && at.kind === 'home' && homeKnown && !callHome;
   const opened = at.kind === 'live' ? <LivePage page={at.page} line={at.line} /> : at.kind === 'trash' ? <TrashPage /> : item?.kind === 'board' ? <BoardPane key={item.id} item={item} /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
     <WsDoc>
-      <PaneHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" />
+      <PaneHead crumbs={view.tree.name === null ? [] : [{ label: spaceName }]} save="quiet" />
       {/* A board that was open here says it's a board it can't open. A document's words can go into a new one; a board's changes have nowhere else to go. */}
       <KeptHere key={at.id} workspaceId={workspaceId} documentId={at.id} what={known.current.get(at.id)?.board ? 'board' : 'document'} owner={owner} pass={pass} say={say}
         copyTo={canChange && owner !== null && !known.current.get(at.id)?.board ? { workspaceId, name: () => known.current.get(at.id)?.name ?? null, parent: null, go: (id) => go({ kind: 'document', id }) } : undefined}
@@ -448,7 +462,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, onExpand,
   ) : onHome ? <Home /> : isPage && member && !homeKnown ? null : (
     /* Nothing's open, so the head has nothing to say, unless the list has gone: then it has the way back to it. */
     <WsDoc className={listOff ? undefined : 'is-bare'}>
-      <PaneHead crumbs={[spaceName]} save="quiet" />
+      <PaneHead crumbs={[{ label: spaceName }]} save="quiet" />
       {empty
         ? <WsEmpty space={spaceName} page={isPage} onDocument={canChange ? () => actions.newDocument(madeIn) : undefined} onFolder={canChange ? newFolder : undefined} />
         : <WsPickDocument onDocument={canChange ? () => actions.newDocument(madeIn) : undefined} />}

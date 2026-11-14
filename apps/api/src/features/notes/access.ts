@@ -62,10 +62,13 @@ export const myEmail = async (o: Owner): Promise<string> => (await profile(o)).e
 
 /**
  * Every note someone else gave you, by invitation or by sharing it with you: each found by the index of
- * your address `as` right now. Each organizer's keys are opened once, however many of their notes you have.
+ * your address `as` right now, or only those among `among`. Each organizer's keys are opened once, however many of their
+ * notes you have.
  */
-export async function sharedWithMe(o: Owner, as: string): Promise<Located[]> {
-  const access = await rows(o.pool, AccessRow, 'SELECT owner_id, note_item_id FROM note_access WHERE email_index = $1 AND owner_id <> $2', [emailIndex(o, as), o.ownerId]);
+export async function sharedWithMe(o: Owner, as: string, among?: readonly string[]): Promise<Located[]> {
+  const access = among === undefined
+    ? await rows(o.pool, AccessRow, 'SELECT owner_id, note_item_id FROM note_access WHERE email_index = $1 AND owner_id <> $2', [emailIndex(o, as), o.ownerId])
+    : await rows(o.pool, AccessRow, 'SELECT owner_id, note_item_id FROM note_access WHERE email_index = $1 AND owner_id <> $2 AND note_item_id = ANY($3::text[])', [emailIndex(o, as), o.ownerId, [...among]]);
   const owners = new Map<string, Owner | undefined>();
   const out: Located[] = [];
   for (const a of access) {
@@ -81,6 +84,13 @@ export async function sharedWithMe(o: Owner, as: string): Promise<Located[]> {
 export async function everyNote(o: Owner, as: string): Promise<Located[]> {
   const own = (await listItems(o, o.pool, 'note', NoteManifest)).map((note): Located => ({ owner: o, note, mine: true }));
   return [...own, ...await sharedWithMe(o, as)];
+}
+/** Which of these notes this person has, as `everyNote` finds them, opening only those: their own, and given to them under `as`. */
+export async function heldAmong(o: Owner, as: string, ids: ReadonlySet<string>): Promise<Located[]> {
+  if (!ids.size) return [];
+  const among = [...ids];
+  const own = (await findItems(o, o.pool, 'note', among, NoteManifest)).map((note): Located => ({ owner: o, note, mine: true }));
+  return [...own, ...await sharedWithMe(o, as, among)];
 }
 
 /**
