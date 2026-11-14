@@ -54,6 +54,9 @@
  * stand on the horizon.
  */
 .tp:has(.tp-why.is-link) { --hz: clamp(364px, calc(40vh + 42px), 512px); }
+/* On your own: what starting a team is, in one line under Start your team. It takes room of its own as that line does. */
+.tp-lede { max-width: 540px; margin-top: 10px; font: 400 16px/24px var(--font-sans); color: var(--ink-2); text-wrap: balance; }
+.tp:has(.tp-lede) { --hz: clamp(372px, calc(40vh + 50px), 520px); }
 
 /* The line. Everyone's feet are on the horizon, and their name is on the water just below it. */
 .tp-row { position: relative; display: flex; flex: none; align-items: flex-end; justify-content: center; margin: 0 0 calc(-1 * var(--name-h)); padding: 0; list-style: none; }
@@ -146,6 +149,8 @@
 .tp-ck.is-off { visibility: hidden; }
 .tp-pop-f { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; padding: 8px 6px 0; border-top: 1px solid var(--line); }
 .tp-pop-f .ac-btn[disabled] { opacity: .5; }
+/* With no link to copy (on your own, before there's a team), Invite stands alone at the foot's end. */
+.tp-pop-f > .ac-btn:only-child { margin-left: auto; }
 /* Copy link, and making a new link beside it, at the foot's start. */
 .tp-pop-fl { display: flex; align-items: center; gap: 2px; }
 .tp-pop-fl .ac-icon-btn { width: 32px; height: 32px; color: var(--ink-3); }

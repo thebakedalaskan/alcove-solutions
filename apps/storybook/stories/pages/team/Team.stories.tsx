@@ -1,8 +1,8 @@
 /*
  * Team: your company standing on the horizon, with the invitations to you at the top of its water, then your groups and the
- * people not on Alcove yet (user-flows 10); at a personal address, the invitations to you on the team's evening. On no team,
- * every Invite opens Invite people with its people ticked, which says before anything is sent that inviting starts the team;
- * while an invitation to you waits, it says to join that first.
+ * people not on Alcove yet (user-flows 10); at a personal address, the invitations to you on the team's evening, or with none
+ * waiting, Start your team. On no team, every Invite opens Invite people with its people ticked, which says before anything
+ * is sent that inviting starts the team; while an invitation to you waits, it says to join that first.
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
@@ -69,8 +69,62 @@ export const DeleteAGroup = page('/team?group=g-product', 'busy', {
 });
 /** A new group being made: name it, then fill it. */
 export const NewGroup = page('/team?group=new', 'busy');
-/** Someone on their own has no team: the address goes Home. */
+/**
+ * Someone on their own (a personal address: no company page, no team, no invitations): Start your team, what it costs in one
+ * line, Invite people (filled) and Name your team, with Art on the horizon beside empty arches, the sun in one of them.
+ */
 export const OnTheirOwn = page('/team', 'on-their-own');
+export const OnTheirOwnNight: PageStory = { ...OnTheirOwn, globals: { theme: 'dark' } };
+export const OnTheirOwnPhone = phone(OnTheirOwn);
+/**
+ * Invite people, on your own: named for the team it starts, "Invite people to Art’s team", and saying so once under the
+ * field. Nobody to tick, so the field takes whole addresses; and no link to copy until there's a team.
+ */
+export const InvitePeopleOnTheirOwn = page('/team', 'on-their-own', {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Press Invite people, then type a friend’s address', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'Invite people' }, SOON));
+      const invite = await screen.findByRole('dialog', { name: 'Invite people to Art’s team' }, SOON);
+      await userEvent.type(within(invite).getByRole('combobox', { name: 'Name or email' }), 'priya.raman@gmail.com');
+    });
+  }
+});
+export const InvitePeopleOnTheirOwnNight: PageStory = { ...InvitePeopleOnTheirOwn, globals: { theme: 'dark' } };
+export const InvitePeopleOnTheirOwnPhone = phone(InvitePeopleOnTheirOwn);
+/** Invite 1: the team starts, the page is Art’s team’s, Priya under Invited, and the toast says so: "Started Art’s team and invited Priya." */
+export const StartedOnTheirOwn = page('/team', 'on-their-own', {
+  play: async (context) => {
+    await InvitePeopleOnTheirOwn.play?.(context);
+    await context.step('Press Invite 1', async () => {
+      await context.userEvent.click(await pressable('button', 'Invite 1', SOON, within(await screen.findByRole('dialog', { name: 'Invite people to Art’s team' }, SOON))));
+    });
+  }
+});
+export const StartedOnTheirOwnNight: PageStory = { ...StartedOnTheirOwn, globals: { theme: 'dark' } };
+export const StartedOnTheirOwnPhone = phone(StartedOnTheirOwn);
+/** Name your team: its name in a popover over the button, "Art’s team" to start with, and Start the team. */
+export const NameYourTeam = page('/team', 'on-their-own', {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Press Name your team', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'Name your team' }, SOON));
+    });
+  }
+});
+export const NameYourTeamNight: PageStory = { ...NameYourTeam, globals: { theme: 'dark' } };
+export const NameYourTeamPhone = phone(NameYourTeam);
+/** Start the team, named: it's made, free, with Art its admin, and the page is the team's, its name taking the focus. */
+export const NamedOnTheirOwn = page('/team', 'on-their-own', {
+  play: async (context) => {
+    await NameYourTeam.play?.(context);
+    await context.step('Name it Book club, then Start the team', async () => {
+      const naming = await screen.findByRole('dialog', { name: 'Name your team' }, SOON);
+      const field = within(naming).getByRole('textbox', { name: 'Its name' });
+      await context.userEvent.clear(field);
+      await context.userEvent.type(field, 'Book club');
+      await context.userEvent.click(within(naming).getByRole('button', { name: 'Start the team' }));
+    });
+  }
+});
 
 /** Priya's popover: when you're next in a call together, Ring, Schedule, and the notes you both have. */
 export const APerson = page('/team', 'busy', { play: opening(/^Priya Raman$/, 'Press Priya’s arch') });

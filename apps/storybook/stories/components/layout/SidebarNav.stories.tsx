@@ -4,7 +4,8 @@
  * NavItemContent: its icon, its name, and a count while something waits on you there (what's for you on Home, tags you
  * haven't seen in the Drive, recordings waiting to upload). Home's count is a link of its own (NavCount): pointing at it
  * says what's waiting, by For you's tabs, and pressing it lands on For you. The page you're on carries aria-current="page".
- * Someone on their own has no Team. At 860px and narrower the phone's tab bar takes its place.
+ * Everyone has Team, someone on their own too, who starts a team there. At 860px and narrower the phone's tab bar takes its
+ * place.
  */
 import { Icon, Kbd, Logo, NavCount, NavItemContent, SidebarNav, buttonClass, cn, type IconName } from '@alcove/ui';
 import type { Decorator, Meta, StoryObj } from '@storybook/react-vite';
@@ -20,12 +21,13 @@ const WORK: Place[] = [
   { to: '/record', icon: 'recordDot', label: 'Record' },
   { to: '/team', icon: 'people', label: 'Team' }
 ];
-/** On your own: no Team, nothing waits on Home, and a recording waits on this device to upload. */
+/** On your own: nothing waits on Home, a recording waits on this device to upload, and Team, where a team starts. */
 const ALONE: Place[] = [
   { to: '/home', icon: 'home', label: 'Home' },
   { to: '/calls', icon: 'calls', label: 'Calls' },
   { to: '/drive', icon: 'folderOpen', label: 'Drive' },
-  { to: '/record', icon: 'recordDot', label: 'Record', count: 1 }
+  { to: '/record', icon: 'recordDot', label: 'Record', count: 1 },
+  { to: '/team', icon: 'people', label: 'Team' }
 ];
 /** The foot: Agents, which everyone has, someone on their own too. */
 const FOOT: Place[] = [

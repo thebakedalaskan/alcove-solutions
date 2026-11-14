@@ -9,7 +9,7 @@ import { Link, useRouterState } from '@tanstack/react-router';
 import { useOpenScheduling } from '~/features/calls/scheduling/search';
 import { plural } from '~/lib/words';
 import { Offline } from './Sidebar';
-import { TABS, places, useCounts, usePlacesKnown } from './places';
+import { TABS, useCounts } from './places';
 import { YourFace } from '~/features/account/YouMenu';
 
 /** The top of the page on a phone. It scrolls away with the page. */
@@ -43,12 +43,11 @@ export function PhoneTop({ onSearch, onNew }: { onSearch: () => void; onNew: () 
 }
 
 export function TabBar() {
-  const known = usePlacesKnown();
   /* Invitations to you waiting on Team: the one count the tab bar shows, as a dot, since nothing else there waits on you as they do. */
   const invited = useCounts().team?.n ?? 0;
   return (
     <nav className="tabbar" aria-label="Main">
-      {places(TABS, known).map((t) => {
+      {TABS.map((t) => {
         const dot = t.to === '/team' && invited > 0;
         return (
           <Link key={t.to} to={t.to} className={cn('tab', t.raised && 'is-raised')} data-tour={t.tour} aria-label={dot ? `${t.label}, ${plural(invited, 'invitation')}` : undefined}>

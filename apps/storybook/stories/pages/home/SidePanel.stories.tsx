@@ -95,7 +95,7 @@ export const UpgradeAskedNight = night(UpgradeAsked);
 export const FreeTeamMember = foot('/home', 'team-free-member');
 /** Invited to Vandelay Industries, on no team: Team among the places, with a count of 1. */
 export const Invited = foot('/home', 'invited');
-/** At a personal address, invited: Team shows (it wouldn't otherwise), with its count. */
+/** At a personal address, invited: Team, which everyone has, with its count. */
 export const InvitedOnTheirOwn = foot('/home', 'invited-personal');
 export const InvitedOnTheirOwnNight = night(InvitedOnTheirOwn);
 /** On Plans, Team's row is the place you're on. */

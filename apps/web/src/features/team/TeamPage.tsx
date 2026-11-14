@@ -1,17 +1,17 @@
 /*
- * Team (docs/design/pages.md › Team): one evening, whichever of three views it shows. On a team, the team's (OnTeam.tsx); on
- * none, with a company around you, your company's (Company.tsx); with neither, the invitations to you (Invitations.tsx);
- * with none of those either, there's no Team page: nothing links here, and its address goes Home. The page rises once, as
- * it opens. Switching views in place (joining, a first invitation starting the team, leaving or deleting it) keeps the
- * evening and crossfades: what's left of the last view fades out over the next (leaveFading), the horizon and the sun move
- * to where the next has them, and the focus goes to the next's heading. Inviting works the same from anywhere on it
- * (People.tsx's InvitingContext). `group` is one of your groups to show open (from its tile, or the address), or NEW_GROUP to
- * make one.
+ * Team (docs/design/pages.md › Team): one evening, whichever of four views it shows. On a team, the team's (OnTeam.tsx); on
+ * none, with a company around you, your company's (Company.tsx); with neither, the invitations to you while one waits
+ * (Invitations.tsx), and otherwise starting a team of your own (OnYourOwn.tsx). Everyone has a Team page. The page rises
+ * once, as it opens. Switching views in place (joining, a first invitation or a name starting the team, putting the last
+ * invitation aside, leaving or deleting the team) keeps the evening and crossfades: what's left of the last view fades out
+ * over the next (leaveFading), the horizon and the sun move to where the next has them, and the focus goes to the next's
+ * heading. Inviting works the same from anywhere on it (People.tsx's InvitingContext). `group` is one of your groups to
+ * show open (from its tile, or the address), or NEW_GROUP to make one.
  */
 import { NEW_GROUP, errorCode, type InvitationForYou, type NoteSummary, type Team, type TeamInvitation } from '@alcove/api';
 import { Evening, cn, leaveFading } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Navigate, useNavigate } from '@tanstack/react-router';
+import { useNavigate } from '@tanstack/react-router';
 import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNow, useOnline } from '~/lib/live';
 import { sameEmail } from '~/lib/people';
@@ -30,6 +30,7 @@ import { useJoining } from './invitations/ToYou';
 import { Invitations } from './Invitations';
 import { blanks, inLine, lineOf, sunOf, you } from './line';
 import { OnTeam } from './OnTeam';
+import { OnYourOwn } from './OnYourOwn';
 import { useOpen } from './open';
 import { InvitingContext, type Inviting } from './People';
 import type { Between } from './PeopleLine';
@@ -102,14 +103,17 @@ export function TeamPage({ group }: { group: string | undefined }) {
   const asked = useAskedBefore(team.data);
   /* Who's invited stands on the horizon in the order the page opened with, as the list under it does. */
   const invitedInOrder = useSteadyInvitations(mine?.invitations ?? NO_TEAM_INVITATIONS);
+  /*
+   * With no company and no team: the invitations to you while one waits, or while they're on their way or didn't come (so
+   * nothing offers to start a team past one that may be waiting); with none waiting, starting your own.
+   */
+  const alone = team.data === null && mine === null;
+  const view = mine ? 'team' : !alone ? 'company' : invitations.data && !toYou.some((i) => !i.putAside) ? 'own' : 'invited';
   /* Whether a view has taken another's place since the page opened: from then on, views crossfade rather than rise. */
-  const view = mine ? 'team' : team.data === null && mine === null ? 'invited' : 'company';
   const [opened] = useState(view);
   const [swapped, setSwapped] = useState(false);
   if (!swapped && view !== opened) setSwapped(true);
   if (!session) return null;
-  /* Nothing to show: no company around you, no team, and nobody has invited you to one. */
-  if (team.data === null && mine === null && invitations.data !== undefined && !toYou.length) return <Navigate to="/home" replace />;
 
   const me = session.user;
   const here = team.data ?? undefined;
@@ -126,6 +130,8 @@ export function TeamPage({ group }: { group: string | undefined }) {
     toCard: (i) => joining.toJoin(i.id), join: (i) => joining.press(i), starting: heading.next
   };
 
+  /* One filled button: an open popover has its own, a group ready to be made while its editor's open, and a waiting invitation's Join. */
+  const filled = open === undefined && !(group === NEW_GROUP && readyToMake(draft)) && waiting === null;
   const groups = <Groups open={group} onOpen={openGroup} notes={notes} person={person} shown={shown} draft={draft} onDraft={setDraft} />;
   const shared = <SharedWithGroups notes={notes} me={me} now={now} />;
   let look: { className: string; style?: CSSProperties; line?: 'short' | 'long' };
@@ -143,6 +149,18 @@ export function TeamPage({ group }: { group: string | undefined }) {
     body = (
       <OnTeam team={mine} me={me} company={here?.name} between={between} now={now} groups={groups} shared={shared} invitations={toYou} joining={joining}
         horizon={horizon} colleagues={colleagues} heading={heading.ref} onGone={heading.next} />
+    );
+  } else if (view === 'own') {
+    /* You on the horizon beside empty arches, for the people you'll bring, the sun in one of them, as on a company's first day. */
+    const line = lineOf(you(me), blanks(FIRST_DAY));
+    const sun = sunOf(line);
+    look = {
+      className: 'tp', line: line.arches.length <= 3 ? 'short' : 'long',
+      style: { '--tp-sum': line.width.toFixed(3), '--tp-sun-x': sun.x.toFixed(3), '--tp-sun-r': sun.r.toFixed(3) }
+    };
+    body = (
+      <OnYourOwn me={me} line={line} sun={sun} between={between} invitations={toYou} joining={joining} groups={groups} shared={shared}
+        filled={filled} heading={heading.ref} onStarting={heading.next} />
     );
   } else if (view === 'invited') {
     look = { className: 'ti-page' };
@@ -163,8 +181,6 @@ export function TeamPage({ group }: { group: string | undefined }) {
         : first ? (off.length ? inLine([], off.slice(0, FIRST_DAY), undefined) : blanks(2))
           : inLine(on, off, forward));
     const sun = sunOf(line);
-    /* One filled button: an open popover has its own, a group ready to be made while its editor's open, and a waiting invitation's Join. */
-    const filled = open === undefined && !(group === NEW_GROUP && readyToMake(draft)) && waiting === null;
     look = {
       className: 'tp', line: line.arches.length <= 3 ? 'short' : 'long',
       style: { '--tp-sum': line.width.toFixed(3), '--tp-sun-x': sun.x.toFixed(3), '--tp-sun-r': sun.r.toFixed(3) }
