@@ -6,17 +6,20 @@
  * Each frame:
  * 1. MediaPipe's multiclass selfie segmenter (256×256, on this device) gives how sure it is that each pixel is
  *    background, and the person is everything else, hair included, which the plain selfie models lost against a
- *    background of a similar colour.
+ *    background of a similar colour. It runs in a worker of its own (segmenter.ts), one frame at a time, so compiling
+ *    its shaders and waiting on the GPU never hold up the page; the frames in between are drawn with the mask it last
+ *    gave. Where LiveKit reads frames off a playing element (WebKit: every browser on an iPhone) all of this runs on the
+ *    page's own thread, and the model there froze the screen for seconds as a background was chosen.
  * 2. That's smoothed over time: where it changes a little (the model being unsure) it moves slowly, so the edge
  *    settles; where it changes a lot (someone moving) it follows at once, so nothing trails.
  * 3. matteGl.ts sizes it up to the frame along the camera's own colour edges, and lays the person over the blurred
  *    room or a picture.
  */
-import { FilesetResolver, ImageSegmenter } from '@mediapipe/tasks-vision';
 import { ProcessorWrapper, VideoTransformer, type VideoTransformerInitOptions } from '@livekit/track-processors';
 import { log } from '~/lib/log';
 import { MatteGl, type Edges } from './matteGl';
 import { FrameBudget, type BackgroundQuality } from './frameBudget';
+import { Segmenter } from './segmenter';
 import type { BlurStrength } from '@alcove/api';
 
 const mlog = log.child({ component: 'matte' });
@@ -25,7 +28,6 @@ const mlog = log.child({ component: 'matte' });
 export type Look = { blur: BlurStrength } | { picture: string } | { color: readonly [number, number, number] };
 export type MatteOptions = { look: Look };
 
-const ASSETS = { wasm: '/mediapipe/wasm', model: '/mediapipe/selfie_multiclass_256x256.tflite' };
 /** The model's own input size: what each frame is made before it's segmented, and the mask's size. */
 const MASK_W = 256;
 const MASK_H = 256;
@@ -48,7 +50,8 @@ const smoothstep = (a: number, b: number, x: number) => { const t = Math.min(1, 
 
 export class Matte extends VideoTransformer<MatteOptions> {
   private options: MatteOptions;
-  private segmenter: ImageSegmenter | null = null;
+  /** The model, in its worker: kept from the first start until it's destroyed, restarts included. */
+  private segmenter: Segmenter | null = null;
   private draw: MatteGl | null = null;
   /** The frame made small for the model. */
   private small: OffscreenCanvas | null = null;
@@ -71,7 +74,8 @@ export class Matte extends VideoTransformer<MatteOptions> {
   }
 
   static get isSupported(): boolean {
-    return typeof OffscreenCanvas !== 'undefined' && new OffscreenCanvas(1, 1).getContext('webgl2') !== null;
+    return typeof Worker !== 'undefined' && typeof OffscreenCanvas !== 'undefined' && 'transferToImageBitmap' in OffscreenCanvas.prototype
+      && new OffscreenCanvas(1, 1).getContext('webgl2') !== null;
   }
 
   override async init(opts: VideoTransformerInitOptions): Promise<void> {
@@ -133,9 +137,15 @@ export class Matte extends VideoTransformer<MatteOptions> {
       if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
       if (this.source.width !== width || this.source.height !== height) { this.source.width = width; this.source.height = height; }
       this.sourceCtx.drawImage(camera.image, 0, 0, width, height);
-      // The model reads the same upright picture that's drawn, so the mask lines up with it.
-      this.smallCtx.drawImage(this.source, 0, 0, MASK_W, MASK_H);
-      const steady = this.settle(this.personIn(this.small, started));
+      // The model reads the same upright picture that's drawn, so the mask lines up with it: this frame, unless it's still
+      // reading an earlier one.
+      if (!this.segmenter.busy(started)) {
+        this.smallCtx.drawImage(this.source, 0, 0, MASK_W, MASK_H);
+        this.segmenter.send(this.small.transferToImageBitmap(), started);
+      }
+      const steady = this.steady;
+      // Until the first mask there's nothing to draw: never the camera without its background.
+      if (!steady) return;
       const look = this.options.look;
       // Keep the chosen blur's visible spread at every processing resolution.
       const sigma = ('blur' in look ? BLUR_SIGMA[look.blur] : 14) * height / Math.max(camera.height, 1);
@@ -156,7 +166,8 @@ export class Matte extends VideoTransformer<MatteOptions> {
 
   /** A selected background never falls back to an unprocessed camera frame. Report once, then discard frames. */
   private fail(error: unknown): void {
-    if (this.failed) return;
+    // Stopped on purpose (Off, another camera): whatever stopped with it isn't a failure.
+    if (this.failed || this.closed) return;
     this.failed = true;
     mlog.error('the matte failed; camera frames are discarded', { err: error });
     this.onFailure(error);
@@ -177,18 +188,6 @@ export class Matte extends VideoTransformer<MatteOptions> {
       return { image: video, width: video.videoWidth, height: video.videoHeight };
     }
     return { image: frame, width: frame.displayWidth, height: frame.displayHeight };
-  }
-
-  /** How sure the model is that each pixel is the person, MASK_W×MASK_H, top row first. */
-  private personIn(image: OffscreenCanvas, at: number): Float32Array {
-    const got: { mask: Float32Array | null } = { mask: null };
-    this.segmenter?.segmentForVideo(image, at, (result) => {
-      // Background, hair, body skin, face skin, clothes, other: the person is everything but the background. The masks
-      // only live inside this callback, so it's copied out (by the `map`).
-      got.mask = result.confidenceMasks?.[0]?.getAsFloat32Array().map((v) => 1 - v) ?? null;
-    });
-    if (!got.mask) throw new Error('The segmenter gave no mask.');
-    return got.mask;
   }
 
   /** `reading` folded into the settled mask, which it returns. */
@@ -240,18 +239,11 @@ export class Matte extends VideoTransformer<MatteOptions> {
     this.steady = null;
     this.failed = false;
     if (!this.segmenter) {
-      const files = await FilesetResolver.forVisionTasks(ASSETS.wasm);
-      if (this.closed) throw new Error('The background was stopped.');
-      // Its own canvas, so MediaPipe's WebGL state never meets the drawing's.
-      const segmenter = await ImageSegmenter.createFromOptions(files, {
-        baseOptions: { modelAssetPath: ASSETS.model, delegate: 'GPU' },
-        canvas: new OffscreenCanvas(1, 1),
-        runningMode: 'VIDEO',
-        outputConfidenceMasks: true,
-        outputCategoryMask: false
-      });
-      if (this.closed) { segmenter.close(); throw new Error('The background was stopped.'); }
+      // Ready once its shaders are compiled, so the first frame is answered at once. Masks fold into the settled one.
+      const segmenter = new Segmenter((mask) => { if (!this.closed && this.segmenter === segmenter) this.steady = this.settle(mask); }, (error) => this.fail(error));
       this.segmenter = segmenter;
+      try { await segmenter.ready; } catch (e) { if (this.segmenter === segmenter) this.segmenter = null; throw e; }
+      if (this.closed) throw new Error('The background was stopped.');
     }
     await this.showLook();
   }

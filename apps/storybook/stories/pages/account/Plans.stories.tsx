@@ -13,7 +13,7 @@ import { screen, waitFor, within } from 'storybook/test';
 import { setOnline } from '../../../src/browser';
 import { phone } from '../../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../../src/page';
-import { noTeamYear, paymentsOff } from '../../../src/world/plans/payments';
+import { largerFilesWhenPaid, noTeamYear, paymentsOff } from '../../../src/world/plans/payments';
 import { carriedOverInGrace } from '../../../src/world/plans/plans';
 import { troubled } from '../changes';
 
@@ -101,6 +101,12 @@ export const TeamAdminMonthly = page('/plans', 'team-admin', { play: monthByMont
  */
 export const TeamYearOff = page('/plans', 'payments', { beforeEach: changing(noTeamYear) });
 export const TeamYearOffNight = night(TeamYearOff);
+/**
+ * Every plan takes files of the same size, so no card says it (every story above). Once the limits give Pro and Team larger files
+ * than Free, each card says its own: Files up to 512 MB on Free, 2 GB on Pro and Team.
+ */
+export const LargerFilesWhenPaid = page('/plans', 'busy', { beforeEach: changing(largerFilesWhenPaid) });
+export const LargerFilesWhenPaidPhone = phone(LargerFilesWhenPaid);
 /** On Priya's team, licensed: Team is Art's plan, Priya buys its licenses, and Pro says not while Art is on the team's plan. */
 export const TeamMember = page('/plans', 'team-member');
 export const TeamMemberNight = night(TeamMember);

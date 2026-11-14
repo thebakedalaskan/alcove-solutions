@@ -2631,7 +2631,8 @@ It's reached from the side panel's **Free plan · See plans** (16.7), Settings �
 2. **Monthly** shows $20 a month, "For as many months as you choose. Or $16 for a year or more."; **Yearly · 20% off** goes
    back. The switch shows only while a year or more costs less, and the saving is worked out from the two prices.
 3. Every number is the server's: about how many hours of notes a period brings (Free: "Back to 5 hours on the 1st of each
-   period"), the storage and the largest file. Free's last line says what more notes cost this period while they're offered.
+   period") and the storage. The largest file is said on each card only while the plans differ in it: the same on every plan,
+   as it is now, no card says it. Free's last line says what more notes cost this period while they're offered.
    Under the plans, **On every plan**, then how paying works: "for 1 to 12 months at a time. Nothing renews by itself…".
 4. **Get Pro** opens checkout over Plans (16.2), on 12 months with Yearly chosen and 1 with Monthly.
 

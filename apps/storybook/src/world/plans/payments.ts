@@ -93,6 +93,12 @@ export function boughtFromBalance(w: World, buys: Purchase, entry: string, now =
 export function noTeamYear(w: World): void {
   w.payments.offers = { ...w.payments.offers, team: { ...w.payments.offers.team, yearly: null } };
 }
+/** The limits let Pro and a team license take files of up to 2 GB, four times Free's: no longer the same on every plan. */
+export function largerFilesWhenPaid(w: World): void {
+  const o = w.payments.offers;
+  const twoGb = 2 * 2 ** 30;
+  w.payments.offers = { ...o, pro: { ...o.pro, fileBytes: twoGb }, team: { ...o.team, fileBytes: twoGb } };
+}
 
 /** An ID for a new line of the balance that none of its lines has yet: a list of them keys on it. */
 export function freshEntryId(w: World): string {

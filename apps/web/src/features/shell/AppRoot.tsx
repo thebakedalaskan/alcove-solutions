@@ -1,7 +1,8 @@
 /*
  * What's round every page, signed in or not, a call and a recording included: the query client, the theme, tooltips, toasts and
  * checkout, with a new account's arrival, rings, browser notifications and the tab's attention. It keeps this build in the
- * browser, so Alcove opens without a connection. routes/__root.tsx renders it inside the document.
+ * browser, so Alcove opens without a connection, and holds the page at its own scale on iOS. routes/__root.tsx renders it
+ * inside the document.
  */
 import { ThemeProvider, ToastProvider, TooltipProvider } from '@alcove/ui';
 import { type QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -14,11 +15,14 @@ import { CheckoutHost } from '~/features/plans/CheckoutHost';
 import { useNotifications } from '~/features/notifications/notify';
 import { TabAttention } from '~/features/notifications/TabAttention';
 import { registerServiceWorker } from '~/lib/serviceWorker';
+import { holdScaleOnIos } from '~/lib/viewport';
 
 export function AppRoot({ queryClient }: { queryClient: QueryClient }) {
   const router = useRouter();
   // Keeps this build in the browser, so Alcove opens without a connection.
   useEffect(registerServiceWorker, []);
+  // On iOS a small field's focus zooms the page in and leaves it sliding sideways (lib/viewport.ts).
+  useEffect(holdScaleOnIos, []);
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
