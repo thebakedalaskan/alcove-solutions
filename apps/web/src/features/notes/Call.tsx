@@ -14,7 +14,7 @@ import {
 import { Button, Dots, Evening, Icon, Modal, Notice, RecDot, Select, Tabs, cn, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { OwnNotesCard, SharedNotes, useOwn } from '~/features/notes/personal/OwnNotes';
 import { seriesLabel } from '~/features/notes/series/cards';
 import { useOpenScheduling } from '~/features/calls/scheduling/search';
@@ -240,7 +240,7 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
   // The transcript went with the notes written, as the call was set to: no transcript here is no sign nothing was said.
   const deleted = !note.kept.transcript && !lines.length;
   // A call set to keep neither its recording nor its transcript has nothing to play back, even while its transcript is
-  // still there to write the notes from: no stage and no line, and nothing goes to a moment on them.
+  // still there to write the notes from: no stage and no line, and nothing offers to play a moment.
   const playback = note.kept.recording || note.kept.transcript;
 
   /* Where the call is: the player's clock, or for a note with no recording, where someone last went. */
@@ -436,10 +436,11 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
 
 /** In the player's place, for a call set to keep neither its recording nor its transcript: why there's nothing to play. */
 function NothingToPlay() {
+  const heading = useId();
   return (
-    <section className="cd-unplayed" aria-label="Nothing to play back">
+    <section className="cd-unplayed" aria-labelledby={heading}>
       <Icon name="micOff" size={18} />
-      <h2>Nothing to play back</h2>
+      <h2 id={heading}>Nothing to play back</h2>
       <p>This call was set not to keep its recording or its transcript.</p>
     </section>
   );

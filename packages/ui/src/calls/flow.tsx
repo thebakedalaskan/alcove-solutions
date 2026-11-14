@@ -174,17 +174,20 @@ export function NotesSwitches({ notes, choices, modelPrivate = true, onNotes, on
  * What a call's notes keep, each a switch with what it means: the transcript, the recording and shared screens, then who
  * writes the notes. On a scheduled call's card under Write notes, and in the organizer's lobby under What the notes keep.
  */
-export function KeepSwitches({ choices, modelPrivate = true, onChoices }: {
+export function KeepSwitches({ choices, modelPrivate = true, disabled = false, onChoices }: {
   /** The organizer's AI model runs in a secure enclave. When it doesn't, the note under the switches says so. */
-  modelPrivate?: boolean | undefined; choices: NotesChoices; onChoices: (c: NotesChoices) => void }) {
+  modelPrivate?: boolean | undefined;
+  /** Nothing can be switched now: the lobby's call is being joined. */
+  disabled?: boolean | undefined;
+  choices: NotesChoices; onChoices: (c: NotesChoices) => void }) {
   return (
     <>
       <SwitchLine title="Keep the transcript" sub={choices.keepTranscript ? 'Who said what, and anyone invited can correct it' : 'Used to write the notes, then deleted'}
-        control={<Switch checked={choices.keepTranscript} label="Keep the transcript" onChange={(keepTranscript) => onChoices({ ...choices, keepTranscript })} />} />
+        control={<Switch checked={choices.keepTranscript} label="Keep the transcript" disabled={disabled} onChange={(keepTranscript) => onChoices({ ...choices, keepTranscript })} />} />
       <SwitchLine title="Keep the recording" sub={choices.keepRecording ? 'Play back any moment from the notes' : 'Deleted when the call ends'}
-        control={<Switch checked={choices.keepRecording} label="Keep the recording" onChange={(keepRecording) => onChoices({ ...choices, keepRecording })} />} />
+        control={<Switch checked={choices.keepRecording} label="Keep the recording" disabled={disabled} onChange={(keepRecording) => onChoices({ ...choices, keepRecording })} />} />
       <SwitchLine title="Read shared screens" sub="Whoever shares is asked whether it goes in the notes"
-        control={<Switch checked={choices.allowScreens} label="Read shared screens" onChange={(allowScreens) => onChoices({ ...choices, allowScreens })} />} />
+        control={<Switch checked={choices.allowScreens} label="Read shared screens" disabled={disabled} onChange={(allowScreens) => onChoices({ ...choices, allowScreens })} />} />
       {modelPrivate
         ? <p className="cf-sealed"><Icon name="sealed" size={14} />Written by an AI model in confidential compute.</p>
         : <p className="cf-sealed"><Icon name="shieldOff" size={14} />Written by an AI model outside a secure enclave. <Unencrypted compact /></p>}

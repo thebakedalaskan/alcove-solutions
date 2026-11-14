@@ -512,7 +512,8 @@ the same for everyone. Someone newly invited and a guest with the link see nothi
   they keep: **What the notes keep** opens in place under Notes with the switches scheduling has (**Keep the
   transcript**, **Keep the recording**, **Read shared screens**, then who writes the notes), and shut, it says what
   won't be kept. Each switch saves as it's pressed, and a change that can't be saved says so and goes back; **Join**
-  waits for what's still saving, so the call starts as the lobby shows it. Once it's live all of it is read-only. On a
+  waits for what's still saving (the name too), with nothing switchable meanwhile, so the call starts as the lobby
+  shows it, and a change that couldn't be saved stops it there. Once it's live all of it is read-only. On a
   team, a call started just now shows arches of people on Alcove, free first and busy dimmed, with **Add** for anyone
   else; pressing one picks them (anyone the call was started with comes picked), and the button says **Join and ring
   2**. With nobody picked it says **Join**.
@@ -1707,7 +1708,8 @@ another call while in one; 7.7 the call ends while they're on its page; 7.8 alon
   that didn't keep its recording has the line and nothing to play, and says the recording was deleted when the call ended.
   A call set to keep neither its recording nor its transcript has nothing to play back, so it has no stage and no line,
   even while its transcript is still there to write the notes from: **Nothing to play back** stands in their place and
-  says the call was set not to keep them, and nothing on the page goes to a moment.
+  says the call was set not to keep them, and nothing on the page offers to play a moment (no ▶ chips, scrubbing, or
+  playing from a shared screen).
 - Every ▶ chip on the page (a decision's, a follow-up's, a chapter's, an answer's) plays its moment on the stage without
   changing the tab, and a moment opened from a link (`?at=`, from an answer or a search) opens the Transcript at the line
   said then, lit, playing only when the link says so.

@@ -45,8 +45,11 @@ function linkCopied(code: string): boolean {
   }
 }
 
-/** The call's name, which can be changed in place until it starts: Enter or leaving the field saves, Escape puts it back. */
-function LobbyName({ meeting, editable }: { meeting: Meeting; editable: boolean }) {
+/**
+ * The call's name, which can be changed in place until it starts: Enter or leaving the field saves, Escape puts it back.
+ * Its save goes to `track`, as the notes' do; once Join is pressed (`locked`) there's no pen.
+ */
+function LobbyName({ meeting, editable, locked, track }: { meeting: Meeting; editable: boolean; locked: boolean; track: (saving: Promise<boolean>) => void }) {
   const update = useUpdateCall();
   const toast = useToast();
   const [editing, setEditing] = useState(false);
@@ -63,13 +66,12 @@ function LobbyName({ meeting, editable }: { meeting: Meeting; editable: boolean 
     const next = value.trim();
     if (!next || next === title) return;
     setSaving(next);
-    update.mutate({ id: meeting.id, input: { title: next } }, {
-      onError: (e) => {
-        llog.warn('renaming the call failed', { err: e, meetingId: meeting.id });
-        setSaving(null);
-        toast(`Couldn’t rename the call, so it’s still ${title}. ${errorMessage(e)}`, { icon: 'x', ms: 6000 });
-      }
-    });
+    track(update.mutateAsync({ id: meeting.id, input: { title: next } }).then(() => true, (e: unknown) => {
+      llog.warn('renaming the call failed', { err: e, meetingId: meeting.id });
+      setSaving(null);
+      toast(`Couldn’t rename the call, so it’s still ${title}. ${errorMessage(e)}`, { icon: 'x', ms: 6000 });
+      return false;
+    }));
   };
   const keys = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter' && e.key !== 'Escape') return;
@@ -89,7 +91,7 @@ function LobbyName({ meeting, editable }: { meeting: Meeting; editable: boolean 
   return (
     <div className="rg-name">
       <h1 className="ac-clamp-2">{saving ?? title}</h1>
-      {editable && <IconButton ref={pen} icon="pen" size={16} label="Rename the call" onClick={() => setEditing(true)} />}
+      {editable && !locked && <IconButton ref={pen} icon="pen" size={16} label="Rename the call" onClick={() => setEditing(true)} />}
     </div>
   );
 }
@@ -126,15 +128,17 @@ export function Lobby({ meeting, me, capture, team, standIn, media }: { meeting:
   /*
    * Backing out of a call started just now cancels it, once: leaving this page any way but by joining, unless its link
    * was copied. A reload never gets here. React comes straight back after the first unmount in development, which puts
-   * that off for a moment.
+   * that off for a moment. `gone`: the lobby isn't on screen any more, so a Join still waiting on a save doesn't go on.
    */
-  const leaving = useRef<{ joined: boolean; started: boolean; id: string; code: string; timer?: ReturnType<typeof setTimeout> | undefined }>({ joined: false, started, id: meeting.id, code: meeting.code });
+  const leaving = useRef<{ joined: boolean; started: boolean; gone: boolean; id: string; code: string; timer?: ReturnType<typeof setTimeout> | undefined }>({ joined: false, started, gone: false, id: meeting.id, code: meeting.code });
   leaving.current.started = started;
   const cancelCall = cancel.mutateAsync;
   useEffect(() => {
     const l = leaving.current;
+    l.gone = false;
     clearTimeout(l.timer);
     return () => {
+      l.gone = true;
       l.timer = setTimeout(() => {
         if (l.joined || !l.started || linkCopied(l.code)) return;
         llog.info('backed out of a call nobody joined', { meetingId: l.id });
@@ -143,7 +147,7 @@ export function Lobby({ meeting, me, capture, team, standIn, media }: { meeting:
     };
   }, [cancelCall]);
 
-  /* What the lobby is still saving (its notes, and what they keep), each saying whether it was saved. */
+  /* What the lobby is still saving (its name, its notes and what they keep), each saying whether it was saved. */
   const saves = useRef(new Set<Promise<boolean>>());
   const track = (saving: Promise<boolean>) => {
     saves.current.add(saving);
@@ -156,9 +160,10 @@ export function Lobby({ meeting, me, capture, team, standIn, media }: { meeting:
   const join = async () => {
     setJoining(true);
     setProblem(null);
-    // The call starts as the lobby shows it: what's still saving gets there first. A change that couldn't be saved has gone
-    // back and said so, and joining waits for another press.
+    // The call starts as the lobby shows it: what's still saving gets there first, and nothing switches meanwhile. A change
+    // that couldn't be saved has gone back and said so, and joining waits for another press. Left meanwhile, it's not joined.
     const saved = await Promise.allSettled([...saves.current]);
+    if (leaving.current.gone) return;
     if (!saved.every((r) => r.status === 'fulfilled' && r.value)) { setJoining(false); return; }
     leaving.current.joined = true;
     try {
@@ -180,7 +185,7 @@ export function Lobby({ meeting, me, capture, team, standIn, media }: { meeting:
     <div className="pj">
       <PrejoinMain media={media} me={me} className="rg-in" />
       <div className="pj-side rg-side rg-in b">
-        <LobbyName meeting={meeting} editable={settling} />
+        <LobbyName meeting={meeting} editable={settling} locked={joining} track={track} />
         {!started && <div className="pj-time ac-time">{now ? 'Starting now' : `${day}${hm(meeting.startsAt)} – ${hm(meeting.endsAt)}`}</div>}
         {!started && (
           <div className="presence">
@@ -188,7 +193,7 @@ export function Lobby({ meeting, me, capture, team, standIn, media }: { meeting:
               : <span className="nobody"><Icon name="link" size={16} />Just you on this call so far.</span>}
           </div>
         )}
-        {settling ? <LobbyNotes meeting={meeting} who={ringing ? 'Everyone you ring gets them' : 'Everyone invited gets them'} track={track} />
+        {settling ? <LobbyNotes meeting={meeting} who={ringing ? 'Everyone you ring gets them' : 'Everyone invited gets them'} locked={joining} track={track} />
           : <PrejoinCapture notes={meeting.notes} choices={meeting.choices} capture={capture} audience={{ kind: 'organizer', guests }} organizerName={me.name} />}
         {meeting.joinMuted && <JoinMuted />}
         {ringing && <LobbyRing people={people} picked={picked} onChange={setPicked} />}
