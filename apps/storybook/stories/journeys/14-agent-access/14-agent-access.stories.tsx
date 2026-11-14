@@ -40,8 +40,8 @@ export const ConnectClaude: PageStory = {
   ...page('/home', 'first-day'),
   beforeEach: keepTabs,
   play: async ({ userEvent, step }) => {
-    await step('Agents is at the foot of the side panel, after Team. Click it, from any page', async () => {
-      await userEvent.click(within(await screen.findByRole('navigation', { name: 'Team and agents' }, LATER)).getByRole('link', { name: 'Agents' }));
+    await step('Agents is at the foot of the side panel. Click it, from any page', async () => {
+      await userEvent.click(within(await screen.findByRole('navigation', { name: 'Agents' }, LATER)).getByRole('link', { name: 'Agents' }));
     });
     await step('The agents people use stand on the horizon, dashed until they’re connected, and under it, things to ask them. Click Claude', async () => {
       await screen.findByRole('heading', { name: 'Connect your agent' }, LATER);

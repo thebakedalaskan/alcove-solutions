@@ -64,11 +64,12 @@ screen. Signing in on another browser doesn't end the first session.
 
 ## 2. The side panel
 
-Beside every page, dark in both themes, in two groups: your work at the top, and who works with you at the foot.
+Beside every page, dark in both themes, in two groups: the places at the top, and Agents at the foot.
 
 - **Start a call** (or **N**) opens flow 4.
-- **Home**, **Calls** (flow 8), **Drive**, every workspace, where you write together (flow 12), and **Record**, where
-  recording in the room starts (flow 9). A count beside a place says something is waiting on you there: on Home, what's
+- **Home**, **Calls** (flow 8), **Drive**, every workspace, where you write together (flow 12), **Record**, where
+  recording in the room starts (flow 9), and **Team** (flow 10), where your groups are. Someone on their own, at a
+  personal address, has no Team page. A count beside a place says something is waiting on you there: on Home, what's
   for you; in the Drive, tags you haven't seen; on Record, recordings on this device waiting to upload. Nothing counts a
   total, such as every call or everyone on Team. Home's count is a link of its own: pointing at it says what's waiting in
   each of **For you**'s tabs ("For you: 3 to answer, 2 follow-ups"), and pressing it, from Home or any other page, brings
@@ -77,8 +78,7 @@ Beside every page, dark in both themes, in two groups: your work at the top, and
   note that was deleted, or that you removed from your notes, isn't listed. A call's page pins its notes; the pin at the end
   of the heading, which shows while you point at Pinned, opens the palette to pick notes to pin or unpin, and with 8 pinned
   it says to unpin one first. With nothing pinned there's no Pinned at all.
-- At the foot, **Team** (flow 10), where your groups are, and **Agents** (flow 14). Someone on their own, at a personal
-  address, has no Team page, and still has Agents.
+- At the foot, **Agents** (flow 14), for everyone, someone on their own too.
 - Under them, on every page, while a call is going, or from 10 minutes before one with someone else on it until it ends:
   the call, when it starts (or **Happening now** once someone's in it), and **Join**. A meeting on your calendar is offered when it has a video link (unless **Show my
   other meetings on Home** is off). The rest of the day is on Home, under Upcoming. On Home it makes way while Home's own
@@ -2476,7 +2476,7 @@ gets readable information, which its maker handles under its own policies. Allow
 long as it was made for. Signing out of a browser doesn't disconnect an agent; **Disconnect**, its access running out and
 deleting the account end it.
 
-**Agents** (`/agents`) is a place at the foot of the side panel, after Team (flow 2). On a phone
+**Agents** (`/agents`) is a place at the foot of the side panel (flow 2). On a phone
 it opens from **Settings → Connections** (flow 11), and its head has a way back to Settings. It's Team's evening the other
 way round, the sun low on the right just past the end of the line, and the agents stand on the horizon as windows, as people
 stand in arches:

@@ -56,16 +56,16 @@ const forYouSays = ({ ask, todo }: { ask: number; todo: number }): string =>
 export const inWorkspace = (path: string): boolean => path.startsWith('/drive/');
 
 export interface NavPlace { to: Place; icon: IconName; label: string; count?: Counter | undefined; tour?: string | undefined }
-/** The side panel's places under Start a call: where your own work is. */
+/** The side panel's places under Start a call: your own work, then Team, where your groups are. */
 export const NAV: readonly NavPlace[] = [
   { to: '/home', icon: 'home', label: 'Home', count: 'home' },
   { to: '/calls', icon: 'calls', label: 'Calls', tour: 'calls' },
   { to: '/drive', icon: 'folderOpen', label: 'Drive', count: 'drive', tour: 'drive' },
-  { to: '/record', icon: 'recordDot', label: 'Record', count: 'record', tour: 'record' }
+  { to: '/record', icon: 'recordDot', label: 'Record', count: 'record', tour: 'record' },
+  { to: '/team', icon: 'people', label: 'Team' }
 ];
-/** The places at the side panel's foot, above the check: who works with you. */
+/** The places at the side panel's foot, above the check: your agents. */
 export const NAV_FOOT: readonly NavPlace[] = [
-  { to: '/team', icon: 'people', label: 'Team' },
   { to: '/agents', icon: 'agent', label: 'Agents', tour: 'agents' }
 ];
 

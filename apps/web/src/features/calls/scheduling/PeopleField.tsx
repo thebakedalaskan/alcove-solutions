@@ -6,7 +6,7 @@
  * can't be read, says on their token where they are, once you've said.
  */
 import { MAX_GUESTS, type Group, type Person, type PersonSuggestion, type Team } from '@alcove/api';
-import { Avatar, Faces, FlowNote, GhostArch, Icon, PersonToken, Popover, SchedField, SchedListHead, SchedListNote, SchedNote, SchedPersonOption, SchedPop, SchedRow, SchedTimes, cn } from '@alcove/ui';
+import { Avatar, Faces, FlowNote, GhostArch, Icon, PersonToken, Popover, SchedField, SchedListHead, SchedListNote, SchedNote, SchedPersonOption, SchedPop, SchedRow, SchedTimes, cn, extensionUi } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useId, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 import { byEmail, callName, fold, isEmail, sameEmail } from '~/lib/people';
@@ -178,12 +178,13 @@ export function PeopleField({ value, onChange, me, where, label = 'Add people' }
             /* Pressing anywhere in the field puts the cursor in it, as a text box would; the tokens are its content. */
             <SchedField open={open} onPress={() => { setAdding(true); input.current?.focus(); }}>
               {tokens.map((t) => <TokenView key={t.id} t={t} held={t.id === held} where={t.kind === 'person' && where && sameEmail(t.person, where) ? where : undefined} onRemove={() => drop(t.id)} />)}
-              <input ref={input} type="text" value={query} autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} aria-label={label} enterKeyHint="next"
+              {/* Finding people, not signing in: no password manager's offer on it, and focus going into one's UI isn't leaving. */}
+              <input ref={input} type="text" value={query} autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} data-1p-ignore aria-label={label} enterKeyHint="next"
                 placeholder={tokens.length ? 'Add someone' : 'Add people'}
                 role="combobox" aria-expanded={open} aria-controls={open ? list : undefined} aria-autocomplete="list"
                 aria-activedescendant={open && lit ? `${list}-${shown.indexOf(lit)}` : undefined}
                 onChange={(e) => { setQuery(e.target.value); setActive(e.target.value.trim() ? 0 : -1); setHeld(null); }} onKeyDown={keys} onPaste={paste}
-                onFocus={() => setAdding(true)} onBlur={() => { setAdding(false); setHeld(null); }} />
+                onFocus={() => setAdding(true)} onBlur={(e) => { if (extensionUi(e.relatedTarget)) return; setAdding(false); setHeld(null); }} />
             </SchedField>
           )}>
           <SchedListHead>{typed ? 'People and groups' : tokens.length ? 'Add someone else' : team ? 'Often with you' : 'People you’ve met'}</SchedListHead>

@@ -323,6 +323,12 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   with the mark of the row it will make, and who can). `AgentPermissions` (what an agent can do, as chips), `AgentDisclosure` and
   `AgentConsentFrame` (the sheet `/connect` signs you in on) sit beside them.
   A row's menu is an `IconButton` as the anchor of a `Popover` with a `tip`.
+- A popup closes on a press or focus outside it, but never for a browser extension's own UI (`extensionUi` in
+  `foundation/overlay.tsx`): a password manager's menu takes focus as it opens over a field, as 1Password's does, and it
+  isn't the person leaving. The kit's overlays (`Popover`, `Select`, `Sheet`, `Modal`, `WsPopover`, `SchedPop`) already
+  ask it, a Radix layer with `onInteractOutside={stayForExtensions}`; a popup with its own press or blur handler asks
+  `extensionUi(e.target)` or `extensionUi(e.relatedTarget)` first. A field for finding people, not signing in, carries
+  `data-1p-ignore`, so no password manager offers to fill it.
 - Colours, shadows, radii, fonts and easing come from the tokens in `packages/ui/src/styles.css`: light
   values on `:root`, dark on `.dark` and the night surfaces, `.stage` and `.ac-stage`, with the whole document going dark while a `.stage` or Record (`.rec`) is up so what's portalled out of it stays night (`.light` and `.dark` on any element scope one theme to that part of a page), with Tailwind utilities on the same names (`bg-ground`,
   `bg-surface`, `bg-frame`, `text-ink-2`, `bg-sun`, `text-sun-text`, `shadow-2`, `rounded-lg`,

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, type KeyboardEvent, type PointerEvent, type
 import { cn } from '../foundation/cn';
 import { Icon, type IconName } from '../foundation/icon';
 import { Avatar, type AvatarPerson } from '../foundation/people';
+import { extensionUi } from '../foundation/overlay';
 import { Kbd } from '../foundation/primitives';
 import { useSettledPress } from '../foundation/settle';
 import { canTakeFocus, focusedNow } from './shared';
@@ -45,7 +46,8 @@ function edges(): { top: number; right: number; bottom: number; left: number } {
 /**
  * What every menu and sheet in the workspace sits on, against what opened it (`anchor`, which it toggles) or against a
  * place (`at`: a point, or a function that says where a caret or a word is now). It flips to stay on screen, pops in
- * over 140 ms, closes on Esc or a click outside, and puts focus back where it was, or leaves it where someone clicked.
+ * over 140 ms, closes on Esc or a click outside (but not one in a browser extension's own UI, such as a password
+ * manager's menu: `extensionUi`), and puts focus back where it was, or leaves it where someone clicked.
  * On a phone it's a sheet at the bottom of the window. `takeFocus={false}` for one that opens while someone's typing.
  * `within` says what on the page `at` is part of (the words, a tag, a block): the popover follows it as what it's in
  * scrolls or moves, and hides while it's scrolled out of view, coming back with it.
@@ -78,7 +80,7 @@ export function WsPopover({ id, open, onOpenChange, anchor, at, within, label, s
       <RPopover.Portal>
         <RPopover.Content id={id} side={side} align={align} sideOffset={side === 'left' || side === 'right' ? 10 : 6} collisionPadding={open ? edges() : 8} aria-label={label}
           hideWhenDetached={within !== undefined}
-          className={cn('ws-pop', className)} onInteractOutside={() => { away.current = true; }}
+          className={cn('ws-pop', className)} onInteractOutside={(e) => { if (extensionUi(e.target)) e.preventDefault(); else away.current = true; }}
           onOpenAutoFocus={(e) => {
             back.current = focusedNow();
             away.current = false;

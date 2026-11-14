@@ -9,6 +9,7 @@ import { Popover as RPopover } from 'radix-ui';
 import { forwardRef, useId, useLayoutEffect, useRef, type ButtonHTMLAttributes, type HTMLAttributes, type KeyboardEvent, type ReactNode, type Ref } from 'react';
 import { cn } from '../foundation/cn';
 import { Icon, type IconName } from '../foundation/icon';
+import { extensionUi } from '../foundation/overlay';
 import { IconButton } from '../foundation/primitives';
 
 /* ---------- the column ---------- */
@@ -303,7 +304,8 @@ export function SchedTimes({ id, label, options, value, near, autoFocus = false,
 
 /**
  * What opens under a field without taking its focus: the people under Who, and a time's list under its field. It's placed
- * like a Popover (it turns upward near the window's foot), and Escape or pressing anywhere but its field puts it away.
+ * like a Popover (it turns upward near the window's foot), and Escape or pressing anywhere but its field puts it away, as
+ * long as that isn't in a browser extension's own UI (`extensionUi`).
  */
 export function SchedPop({ open, onClose, anchor, label, children, className }: {
   open: boolean; onClose: () => void; anchor: ReactNode; label: string; children: ReactNode; className?: string | undefined;
@@ -315,7 +317,7 @@ export function SchedPop({ open, onClose, anchor, label, children, className }: 
       <RPopover.Portal>
         <RPopover.Content side="bottom" align="start" sideOffset={4} collisionPadding={12} aria-label={label} className={cn('ac-pop sc-pop', className)}
           onOpenAutoFocus={(e) => e.preventDefault()} onCloseAutoFocus={(e) => e.preventDefault()}
-          onInteractOutside={(e) => { if (e.target instanceof Node && at.current?.contains(e.target)) e.preventDefault(); }}>
+          onInteractOutside={(e) => { if (extensionUi(e.target) || (e.target instanceof Node && at.current?.contains(e.target))) e.preventDefault(); }}>
           {children}
         </RPopover.Content>
       </RPopover.Portal>

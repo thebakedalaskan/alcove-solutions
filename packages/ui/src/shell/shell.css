@@ -98,7 +98,7 @@
 /*
  * What you've pinned scrolls between the places and the foot. A hairline shows at an edge with more beyond it: the
  * frame-coloured covers travel with the list and hide each line while its edge is reached. With nothing pinned it's
- * empty room, which keeps Team and Agents at the foot.
+ * empty room, which keeps Agents at the foot.
  */
 .sb-mid {
   position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
@@ -119,7 +119,7 @@
   .sb-pins .sb-sec-h .ac-icon-btn { opacity: 0; transition: opacity var(--duration-1), color var(--duration-1), background-color var(--duration-1); }
   .sb-pins:is(:hover, :focus-within) .sb-sec-h .ac-icon-btn { opacity: 1; }
 }
-/* Team and Agents, at the foot: who works with you, under what you do. */
+/* Agents, at the foot, under the places and what you've pinned. */
 .sb .ac-nav.sb-low { margin-top: 12px; }
 /*
  * A call about to start, at the foot: its cover, its name and when, and Join. One row with a hairline round it, never a
