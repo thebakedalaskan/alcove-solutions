@@ -33,13 +33,28 @@ export function facesIn(here: readonly WorkspaceHere[], document: string): Perso
   return [...seen.values()];
 }
 
+/** Where you are, as a page and the editor say it: whom you follow goes with it (`usePresence`). */
+export type SaidPlace = Omit<WorkspaceWhere, 'following'>;
+
 /**
  * Everyone can see you're in a document from the moment it's open, and that you've left once it's out of sight. The editor
- * says which line through what this returns, which says nothing while the workspace is out of sight.
+ * says which line through what this returns, which says nothing while the workspace is out of sight. Whom you follow
+ * (`following`, by `person.id`) goes with it, so they know you're with them; saying so again keeps the line last said.
  */
-export function usePresence(store: WorkspaceLive, document: string | null, page: CallPage | null, closed: boolean): (where: WorkspaceWhere) => void {
-  useEffect(() => { store.present({ document: closed ? null : document, block: null, typing: false, page: closed ? null : page }); }, [store, document, page, closed]);
+export function usePresence(store: WorkspaceLive, document: string | null, page: CallPage | null, closed: boolean, following: string | null): (where: SaidPlace) => void {
+  const followingNow = useRef(following);
+  followingNow.current = following;
+  const said = useRef<SaidPlace>({ document: null, block: null, typing: false, page: null });
+  useEffect(() => {
+    said.current = { document: closed ? null : document, block: null, typing: false, page: closed ? null : page };
+    store.present({ ...said.current, following: followingNow.current });
+  }, [store, document, page, closed]);
+  useEffect(() => { store.present({ ...said.current, following }); }, [store, following]);
   const closedNow = useRef(closed);
   closedNow.current = closed;
-  return useCallback((where: WorkspaceWhere) => { if (!closedNow.current) store.present(where); }, [store]);
+  return useCallback((where: SaidPlace) => {
+    if (closedNow.current) return;
+    said.current = where;
+    store.present({ ...where, following: followingNow.current });
+  }, [store]);
 }

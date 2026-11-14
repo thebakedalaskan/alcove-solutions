@@ -24,9 +24,14 @@ export const BoardPresenceSchema = z.object({
   view: z.object({ x: z.number(), y: z.number(), z: z.number().positive(), h: z.number().positive().optional() }).nullable(),
   sel: z.array(BoardIdSchema).max(BOARD_LIMITS.objects),
   edit: BoardIdSchema.nullable(),
-  typing: z.boolean()
+  typing: z.boolean(),
+  /**
+   * It's following whoever presents the board, so their bar counts it. Only that, never whom else it follows. A browser from
+   * before it says nothing, and isn't counted.
+   */
+  withPresenter: z.boolean().optional()
 });
 export type BoardPresence = z.output<typeof BoardPresenceSchema>;
 
 /** A browser with nothing to show yet. */
-export const NO_PRESENCE: BoardPresence = { at: null, view: null, sel: [], edit: null, typing: false };
+export const NO_PRESENCE: BoardPresence = { at: null, view: null, sel: [], edit: null, typing: false, withPresenter: false };

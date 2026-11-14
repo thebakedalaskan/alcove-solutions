@@ -88,7 +88,7 @@ export function WorkspaceFrame({ box, shown, place, session, state, participants
   const wsLink = space.id ? `${location.origin}/drive/${encodeURIComponent(space.id)}` : undefined;
   const p = stage.presentedOf('ws');
   const bar: FrameBar = {
-    icon: 'folderOpen', name, by: byOf(p), followers: place.followers, phone: place.phone, focus: place.focus, clears: place.clears,
+    icon: 'folderOpen', name, by: byOf(p), followers: work.together.followers.length, phone: place.phone, focus: place.focus, clears: place.clears,
     access: space.everyone && space.id !== null ? { label: space.role !== null ? 'Everyone in the call can edit' : 'You can edit while you’re in the call', opens: true } : null,
     follow: p && !p.mine ? { on: stage.following('ws'), where: presenting.where ?? 'the workspace', onToggle: () => stage.setFollow('ws', !stage.following('ws')) } : null,
     present: p === null && mayPresent ? { onPress: () => { void presenting.start().then(() => land({ to: 'frame', id: 'ws' }, holding()), () => undefined); }, busy: false } : null,
@@ -104,7 +104,7 @@ export function WorkspaceFrame({ box, shown, place, session, state, participants
       <Frame bar={bar}>
         <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} showing={shown} finding={work.finding} people={spacePeople} invited={spaceInvited} reach={work.reach}
           listOff={!listShown} listPeek={work.peek} listWanted={work.listWanted} live={live} act={work.act} presenter={p && !p.mine ? presenting.connection : null} playing={playing}
-          foot={shown ? foot : null} onToggleList={toggleList} onShowList={onShowList} />
+          foot={shown ? foot : null} onToggleList={toggleList} onShowList={onShowList} onOwn={presenting.ownWay} />
       </Frame>
     </FrameBox>
   );
