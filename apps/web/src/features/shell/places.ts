@@ -6,9 +6,11 @@
 import type { MyTeam, Team } from '@alcove/api';
 import type { IconName } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
+import { FOR_YOU } from '~/features/home/landing';
 import { uploads } from '~/features/record/uploads';
 import { useLive } from '~/lib/live';
-import { openCount } from '~/features/notes/inbox';
+import { plural } from '~/lib/words';
+import { waitingCounts } from '~/features/notes/inbox';
 import { noteQueries } from '~/features/notes/queries';
 import { workspaceQueries } from '~/features/workspace/queries';
 import type { FileRoutesByTo } from '~/routeTree.gen';
@@ -25,15 +27,30 @@ const TAGS_MS = 60_000;
  * every agent) never waits on you, so nothing counts one.
  */
 export type Counter = 'home' | 'drive' | 'record';
-/** How many there are of each, once they've loaded, and only while there's at least one. */
-export function useCounts(): Record<Counter, number | undefined> {
+/**
+ * A place's count: how many, and for one that leads somewhere the place's own link doesn't (`to`), where and what it says.
+ * Home's leads to For you, under Home's horizon, and says what's in each of its tabs.
+ */
+export interface Count { n: number; to?: { hash: string; says: string } | undefined }
+/** Each place's count, once it's loaded, and only while there's at least one. */
+export function useCounts(): Record<Counter, Count | undefined> {
   const notes = useQuery(noteQueries.notes()).data;
   const inbox = useQuery(noteQueries.inbox()).data;
-  const tags = useQuery({ ...workspaceQueries.mentions(), refetchInterval: TAGS_MS }).data?.length;
+  const tags = useQuery({ ...workspaceQueries.mentions(), refetchInterval: TAGS_MS }).data?.length ?? 0;
   const kept = useLive(uploads);
   const waiting = kept.list.filter((k) => k.status === 'waiting' || k.status === 'uploading' || k.status === 'refused').length;
-  return { home: (inbox && openCount(inbox, notes ?? [], Date.now())) || undefined, drive: tags || undefined, record: waiting || undefined };
+  const forYou = inbox ? waitingCounts(inbox, notes ?? [], Date.now()) : { ask: 0, todo: 0 };
+  const home = forYou.ask + forYou.todo;
+  return {
+    home: home ? { n: home, to: { hash: FOR_YOU, says: forYouSays(forYou) } } : undefined,
+    drive: tags ? { n: tags } : undefined,
+    record: waiting ? { n: waiting } : undefined
+  };
 }
+
+/** Home's count in words, by For you's tabs: "For you: 3 to answer, 2 follow-ups". */
+const forYouSays = ({ ask, todo }: { ask: number; todo: number }): string =>
+  `For you: ${[ask ? `${ask} to answer` : '', todo ? plural(todo, 'follow-up') : ''].filter((part) => part !== '').join(', ')}`;
 
 /** A workspace's pages, in the Drive, fill the frame, keep one screen as you move around them, and take N for themselves. */
 export const inWorkspace = (path: string): boolean => path.startsWith('/drive/');

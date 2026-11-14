@@ -262,6 +262,15 @@
 .ac-nav-item:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
 .ac-nav-item[aria-current="page"] { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); }
 .ac-nav-item .count { margin-left: auto; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+/*
+ * A place whose count is a link of its own (NavCount: Home's, to For you). The count sits where any count does, its digits
+ * 12px in from the row's end, over the row: pointing at it lights it alone, with corners concentric with the row's.
+ */
+.ac-nav-place { --count-in: 6px; position: relative; display: grid; }
+.ac-nav-place > .ac-nav-item { padding-right: 52px; }
+.ac-nav-count { position: absolute; top: var(--count-in); right: var(--count-in); bottom: var(--count-in); display: grid; place-items: center; min-width: 28px; padding: 0 var(--count-in); border-radius: calc(11px - var(--count-in)); font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); text-decoration: none; transition: background-color var(--duration-1), color var(--duration-1); }
+.ac-nav-count:hover { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); }
+.ac-nav-count:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* ---- Widget: one card on a page's water. Its head (an icon in a tile, the title, then what the head holds), its body, and a foot only while its list is longer than it shows ---- */
 .ac-widget { position: relative; display: flex; flex-direction: column; min-width: 0; border-radius: 20px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--shadow-2); }
@@ -274,6 +283,13 @@
 .ac-widget-more { display: inline-flex; align-items: center; height: 32px; margin-left: -8px; padding: 0 8px; border-radius: var(--radius-sm); font: 500 13.5px/1 var(--font-sans); color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
 .ac-widget-more:hover { background: color-mix(in oklch, var(--ink) 7%, transparent); color: var(--ink); }
 .ac-widget-more:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/*
+ * Landed on: a link named the widget (Home's count in the side panel, For you). A ring in the horizon's blue goes round it
+ * and fades as the eye finds it. Fading isn't movement, so it fades with reduced motion too.
+ */
+.ac-widget[data-landed]::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 2px var(--horizon), 0 0 0 7px var(--horizon-soft); pointer-events: none; animation: ac-landed 1.8s var(--ease-in) forwards; }
+@keyframes ac-landed { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ac-widget[data-landed]::after { animation-duration: 1.8s !important; } }
 /* Bare: no card. The head and what's under it sit on the page, as a row of cards does. */
 .ac-widget.is-bare { border-radius: 0; background: none; box-shadow: none; }
 .ac-widget.is-bare > .ac-widget-h { min-height: 32px; margin-bottom: 14px; padding: 0; border: 0; }
