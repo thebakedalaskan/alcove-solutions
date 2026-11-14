@@ -255,8 +255,9 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
   // Dragging and resizing tiles: not on a phone, nor in the strip under someone you or the organizer chose, nor among arches,
   // nor while rooms are open.
   const handsOn = !narrow && plan.shape !== 'focus' && !rooms && (!panels || panels.mode === 'tiles');
-  // Bigger tiles are the stage's: a column of people keeps them all alike.
-  const sizable = handsOn && !panels;
+  // Bigger tiles are the stage's: a column of people keeps them all alike. With fewer than three in the call, the stage
+  // already gives each of them its room.
+  const sizable = handsOn && !panels && people.length > 2;
   const self = plan.self ? byId.get(plan.self.id) ?? null : null;
   const cornered = self && plan.self && !plan.self.folded ? self : null;
   const focusables = [...plan.leads, ...plan.rest.filter((k) => !isWaitKey(k)), ...(cornered ? [cornered.id] : [])].filter((k) => !L.off.has(k));

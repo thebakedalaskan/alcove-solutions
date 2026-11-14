@@ -2259,8 +2259,8 @@ and the page a call leaves you on (`session/CallOver.tsx`).
   recording has nothing to hear.
 - **Focus** fills your window with what's in the frame (⌘⇧F, or the frame's Fill your window with it): the top bar slides
   off, the people keep a rail of arches at the right, and the dock tucks to the microphone, camera, Show everything and Leave. Show
-  everything, ⌘⇧F or Esc brings it all back. Esc goes in the canvas's order: a menu, a sheet or a drag takes it first (they
-  listen on `window`), then whatever's being edited keeps it (a field does what it does anywhere, so a rename is cancelled
+  everything, ⌘⇧F or Esc brings it all back. It isn't on offer while you're alone in the call. Esc goes in the canvas's
+  order: a menu, a sheet or a drag takes it first (they listen on `window`), then whatever's being edited keeps it (a field does what it does anywhere, so a rename is cancelled
   and the chat box keeps its words, and words selected in the document lose their format bar), then the list over the page
   goes, then focus. The workspace takes it in the capture phase on `document` and steps aside for all of those (`editing`
   in WorkspacePanel.tsx); with only the caret in the document, the editor never sees it, so the caret stays where it was.
@@ -2307,7 +2307,8 @@ and the page a call leaves you on (`session/CallOver.tsx`).
   open stays open), with Undo in its toast, as unpinning everyone has. Testers asked for preset layouts or tiles that
   snap to drop zones again (#227): both stay out, as #178 and #197 decided, and what's there is easier to find instead.
   The first time the pointer rests on a tile you can move (`TileHint.tsx`, watching the call's area, so `Stage.tsx` is
-  untouched), a `Coachmark` under it says "Drag a tile to move it", and in the grid "Pull its corner to make it bigger";
+  untouched), a `Coachmark` under it says "Drag a tile to move it", and in the grid "Pull its corner to make it bigger"
+  (a tile has that corner only with three or more in the call);
   it stays while the pointer does, and goes as it leaves the tile or at the next press.
 - **What's remembered where.** How you like calls (where you see yourself and its corner: `CallViewPrefsSchema`) is in
   `localStorage` for your account, `alcove.callView.<ownerId>` (one set for a browser without an account), because it's
