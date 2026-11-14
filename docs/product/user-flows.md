@@ -508,10 +508,14 @@ and **All of it**, the series, in a new tab so the camera here stays on. It come
 the same for everyone. Someone newly invited and a guest with the link see nothing, not even that there's a series.
 
 - **The organizer** gets the lobby, which rises in two beats: until the call has started they can rename it (the
-  pencil; Enter or clicking away saves, Escape puts it back) and turn notes on or off, and a change that can't be
-  saved says so and goes back. Once it's live both are read-only. On a team, a call started just now shows arches of
-  people on Alcove, free first and busy dimmed, with **Add** for anyone else; pressing one picks them (anyone the call
-  was started with comes picked), and the button says **Join and ring 2**. With nobody picked it says **Join**.
+  pencil; Enter or clicking away saves, Escape puts it back), turn notes on or off, and, while they're on, choose what
+  they keep: **What the notes keep** opens in place under Notes with the switches scheduling has (**Keep the
+  transcript**, **Keep the recording**, **Read shared screens**, then who writes the notes), and shut, it says what
+  won't be kept. Each switch saves as it's pressed, and a change that can't be saved says so and goes back; **Join**
+  waits for what's still saving, so the call starts as the lobby shows it. Once it's live all of it is read-only. On a
+  team, a call started just now shows arches of people on Alcove, free first and busy dimmed, with **Add** for anyone
+  else; pressing one picks them (anyone the call was started with comes picked), and the button says **Join and ring
+  2**. With nobody picked it says **Join**.
   **Copy link** sits quietly under the button, on a team or on your own; there's no link box, since the address the
   organizer is on is the call's link too. A scheduled call shows the
   time and who is invited, without the arches. **Home** out of a call started just now cancels it; reloading doesn't.
@@ -1701,6 +1705,9 @@ another call while in one; 7.7 the call ends while they're on its page; 7.8 alon
   the first of the recording arrives; **Space** plays and pauses it, as in most players, with nothing focused, and the page
   doesn't scroll. While a call is still recording, the line ends at a recording-coloured edge where it has got to. A call
   that didn't keep its recording has the line and nothing to play, and says the recording was deleted when the call ended.
+  A call set to keep neither its recording nor its transcript has nothing to play back, so it has no stage and no line,
+  even while its transcript is still there to write the notes from: **Nothing to play back** stands in their place and
+  says the call was set not to keep them, and nothing on the page goes to a moment.
 - Every ▶ chip on the page (a decision's, a follow-up's, a chapter's, an answer's) plays its moment on the stage without
   changing the tab, and a moment opened from a link (`?at=`, from an answer or a search) opens the Transcript at the line
   said then, lit, playing only when the link says so.

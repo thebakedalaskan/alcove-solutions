@@ -2,8 +2,9 @@
  * A call's page (features/notes/Call.tsx), on a slim band of the evening: its title and one line, then two halves. On the
  * left the player, which never scrolls: the call on its stage, always night, its line under it, then what was shared and
  * made in it. On the right, tabs, each its own scroll area, with asking at the foot. In one column (`is-one`, from the page's
- * own width) it's the stage, the line, then the tabs, and the page scrolls as one. Classes start with cd-. The kit's
- * transcript line (`nd-l`, transcript.tsx) is styled at the end.
+ * own width) it's the stage, the line, then the tabs, and the page scrolls as one. A call set to keep neither its recording
+ * nor its transcript has no player: Nothing to play back (`cd-unplayed`) stands in its place. Classes start with cd-. The
+ * kit's transcript line (`nd-l`, transcript.tsx) is styled at the end.
  */
 .cd {
   --hz: 158px;
@@ -144,6 +145,11 @@ button.cd-mk:focus-visible { box-shadow: 0 0 0 2px var(--focus); }
 .cd-ctl .ac-icon-btn.is-on { background: none; color: var(--ink); }
 .cd-kept { display: flex; align-items: center; gap: 8px; margin: 2px 0 0; font: 400 14px/1.4 var(--font-sans); color: var(--ink-2); }
 .cd-kept .ac-i { color: var(--ink-3); }
+/* In the player's place, for a call set to keep neither its recording nor its transcript: why there's nothing to play. */
+.cd-unplayed { flex: none; display: grid; grid-template-columns: 22px minmax(0, 1fr); column-gap: 10px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.cd-unplayed > .ac-i { grid-row: span 2; margin-top: 2px; color: var(--ink-3); }
+.cd-unplayed h2 { font: 500 16px/1.4 var(--font-sans); color: var(--ink); }
+.cd-unplayed p { margin-top: 4px; font: 400 14px/1.5 var(--font-sans); color: var(--ink-2); }
 /* Full screen: the stage fills it, night, with the line along its foot. */
 /* The page's hover tint is worked out from its own ink, so the night player works it out again from night's. */
 .cd-player.is-full { --cd-hl: color-mix(in oklch, var(--ink) 6%, transparent); justify-content: center; gap: 4px; padding: 24px 28px 18px; background: var(--stage); }
@@ -469,6 +475,12 @@ body:has(.cd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
 .cd.is-one .cd-cols { display: flex; flex-direction: column; }
 .cd.is-one .cd-left { display: contents; }
 .cd.is-one .cd-stage { max-height: 34vh; }
+.cd.is-one .cd-unplayed { padding-bottom: 0; border-bottom: 0; }
+/*
+ * Where the stage would have covered the horizon, Nothing to play back starts on the water: the head reaches down to it
+ * (less the page's own top padding, horizon.css's `.dusk-in`), so the horizon never runs through what it says.
+ */
+.cd.is-one:has(.cd-unplayed) .cd-head { min-height: calc(var(--hz) - 30px); }
 .cd.is-one .cd-right { margin-top: 22px; padding-left: 0; border-left: 0; }
 .cd.is-one .cd-tabs.ac-tabs { margin-top: 0; }
 .cd.is-one .cd-pane { overflow: visible; margin: 0; padding: 18px 0 calc(24px + var(--cd-chips, 0px)); -webkit-mask-image: none; mask-image: none; }
@@ -477,6 +489,7 @@ html:has(.cd.is-one) { scroll-padding-block: 24px 92px; }
 @media (max-width: 860px) {
   .shell:has(> .main > .main-in > .cd) .ph-end > :first-child { display: none; }
   .cd { --hz: 196px; }
+  .cd.is-one:has(.cd-unplayed) .cd-head { min-height: calc(var(--hz) - 6px); }
   .cd-bar { padding-right: 0; }
   .cd-acts .ac-btn.is-secondary { width: 36px; padding: 0; justify-content: center; font-size: 0; gap: 0; box-shadow: none; }
   .cd-title { -webkit-line-clamp: 2; font-size: 28px; }

@@ -250,7 +250,10 @@ right what came of it, in tabs, each its own scroll area. A series has no page o
   and what they say as captions at its foot (hidden while the Transcript is open, since it says the same). When a screen was
   shared and kept, it plays there in step with the audio, with whose it is at the top and the speaker small in the corner;
   chips switch between two that overlap, and it says when one is loading or couldn't be played, with Try again. A room
-  recording has a microphone's arch. Full screen fills the screen with the stage and its line.
+  recording has a microphone's arch. Full screen fills the screen with the stage and its line. A call set to keep neither
+  its recording nor its transcript has nothing to play back, so it has no stage and no line: Nothing to play back
+  (`cd-unplayed`) stands in their place, a hairline over what was shared and made, and starts on the water in one column,
+  under the horizon the stage would have covered.
 - **The line,** under the stage (play controls sit under the picture, never over it): play, the time, the chapter you're in
   above the line, the chapters as lengths along it, decisions as rose diamonds on it (hollow until confirmed) and follow-ups
   as blue dots under it, a shared screen as a tinted length with a screen under it, the sun as the playhead, the end, speed
@@ -281,8 +284,8 @@ right what came of it, in tabs, each its own scroll area. A series has no page o
   tab, and the page scrolls as one. On a phone the arches shrink and their names go; the line keeps play, the time and the
   end.
 - **States, each with its own look:** still recording, being written (each step ticked off), written again, unwritten,
-  nothing said, no transcript or recording, breakout rooms, disputed, a room recording, the example, and a call that's
-  gone (what went, and Back to Calls).
+  nothing said, no transcript or recording (nothing to play back), breakout rooms, disputed, a room recording, the
+  example, and a call that's gone (what went, and Back to Calls).
 
 **Before the call** the same page waits for it. The stage has everyone invited in arches with how each answered (its
 organizer sees everyone's, dimming who hasn't answered; anyone else sees their own), and "Join shows here five minutes

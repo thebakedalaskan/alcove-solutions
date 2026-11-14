@@ -238,8 +238,14 @@ export const WrittenAgain = page(`/calls/${STATES.again}`, 'busy', everyState);
 export const Unwritten = page(`/calls/${STATES.unwritten}`, 'busy', everyState);
 /** Nothing was said while notes were on. */
 export const NothingSaid = page(`/calls/${STATES.quiet}`, 'busy', everyState);
-/** The call kept neither its transcript nor its recording: the line has nothing to play, and it says the recording went. */
+/**
+ * The call was set to keep neither its transcript nor its recording, so there's nothing to play back: no stage or line,
+ * and Nothing to play back says why in their place. What was decided and handed out stands on its own.
+ */
 export const NoTranscriptOrRecording = page(`/calls/${STATES.unkept}`, 'busy', everyState);
+export const NoTranscriptOrRecordingNight = page(`/calls/${STATES.unkept}`, 'busy', { ...everyState, globals: night });
+/** In one column: Nothing to play back over the tabs, with what was shared and made in its own tab. */
+export const NoTranscriptOrRecordingPhone = phone(NoTranscriptOrRecording);
 /** Breakout rooms: How it went has each room under its chapter, and the Transcript says which room you were in. */
 export const Rooms = page(`/calls/${STATES.rooms}`, 'busy', everyState);
 export const RoomsTranscript = page(`/calls/${STATES.rooms}?tab=transcript`, 'busy', everyState);

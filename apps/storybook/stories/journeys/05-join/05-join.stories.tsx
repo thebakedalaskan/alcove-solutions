@@ -39,6 +39,19 @@ export const YourLobby: PageStory = {
       await userEvent.click(await screen.findByRole('switch', { name: 'Notes', checked: false }, SOON));
       await screen.findByText('Everyone invited gets them', {}, SOON);
     });
+    await step('What the notes keep opens under Notes, with the switches scheduling has', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'What the notes keep' }, SOON));
+      await screen.findByRole('switch', { name: 'Keep the recording', checked: true }, SOON);
+    });
+    await step('Switch off Keep the recording: it’s saved at once, and deleted when the call ends', async () => {
+      await userEvent.click(await screen.findByRole('switch', { name: 'Keep the recording' }, SOON));
+      await screen.findByText('Deleted when the call ends', {}, SOON);
+    });
+    await step('Shut, it says what won’t be kept', async () => {
+      await pause(1200);
+      await userEvent.click(await screen.findByRole('button', { name: 'What the notes keep' }, SOON));
+      await screen.findByText('The recording is deleted when the call ends.', {}, SOON);
+    });
     await step('The microphone’s picker opens its menu, each microphone once. Pick another: the tick and its level move, and Follow your system comes in last', async () => {
       await userEvent.click(screen.getByRole('button', { name: /^Microphone:/ }));
       await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Desk microphone' }, SOON));

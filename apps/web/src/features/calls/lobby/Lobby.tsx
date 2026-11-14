@@ -1,16 +1,18 @@
 /*
  * The organizer's lobby: the pre-join on the night stage, where a call is settled before it starts. While it hasn't
- * started, its name and notes can change here; once it's live they're read-only, as the call shows them. On a team you
- * pick who to ring, and they hear it the moment you join. Copy link, quietly under Join, is for anyone else: the address
- * you're on is the call's link too. Backing out of a call started just now cancels it: it was never on anyone's calendar,
- * and nobody has been told. Once its link has been copied, somebody may have been: then it stays, for anyone with the link.
+ * started, its name, its notes and what they keep can change here (LobbyNotes.tsx), and Join waits for what's still
+ * saving; once it's live they're read-only, as the call shows them. On a team you pick who to ring, and they hear it the
+ * moment you join. Copy link, quietly under Join, is for anyone else: the address you're on is the call's link too.
+ * Backing out of a call started just now cancels it: it was never on anyone's calendar, and nobody has been told. Once
+ * its link has been copied, somebody may have been: then it stays, for anyone with the link.
  */
-import { errorMessage, firstName, type CallSession, type CaptureState, type Meeting, type NotesSetting, type Person, type Team } from '@alcove/api';
-import { Button, Faces, Icon, IconButton, Notice, Switch, keptLines, useRaisedToasts, useToast } from '@alcove/ui';
+import { errorMessage, firstName, type CallSession, type CaptureState, type Meeting, type Person, type Team } from '@alcove/api';
+import { Button, Faces, Icon, IconButton, Notice, useRaisedToasts, useToast } from '@alcove/ui';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useCopyLink } from '~/features/call/session/links';
 import { JoinRefused } from './JoinProblem';
+import { LobbyNotes } from './LobbyNotes';
 import { PrejoinCapture } from './PrejoinCapture';
 import { PrejoinCarry } from './PrejoinCarry';
 import { JoinMuted, PrejoinMain, type Prejoining } from './PrejoinMedia';
@@ -92,37 +94,6 @@ function LobbyName({ meeting, editable }: { meeting: Meeting; editable: boolean 
   );
 }
 
-/** Notes for the call, until it starts: said once, and switched here. A failed save puts the switch back and says so. */
-function LobbyNotes({ meeting, who }: { meeting: Meeting; who: string }) {
-  const update = useUpdateCall();
-  const toast = useToast();
-  const [saving, setSaving] = useState<NotesSetting | null>(null);
-  const saved = meeting.notes;
-  useEffect(() => { if (saving === saved) setSaving(null); }, [saving, saved]);
-  const notes = saving ?? saved;
-  const change = (on: boolean) => {
-    if (update.isPending) return;
-    const next: NotesSetting = on ? 'on' : 'off';
-    setSaving(next);
-    update.mutate({ id: meeting.id, input: { notes: next } }, {
-      onError: (e) => {
-        llog.warn('changing the call’s notes failed', { err: e, meetingId: meeting.id });
-        setSaving(null);
-        toast(`Couldn’t turn notes ${next}, so they’re still ${saved}. ${errorMessage(e)}`, { icon: 'x', ms: 6000 });
-      }
-    });
-  };
-  const kept = notes === 'on' ? keptLines(meeting.choices) : [];
-  return (
-    <div className="rg-notes">
-      <Icon name="notes" size={18} />
-      <span className="min-w-0"><b>Notes {notes}</b><small>{notes === 'on' ? who : 'You can turn them on during the call.'}</small></span>
-      <Switch checked={notes === 'on'} label="Notes" onChange={change} />
-      {kept.length > 0 && <div className="kept">{kept.map((l) => <span key={l}>{l}</span>)}</div>}
-    </div>
-  );
-}
-
 /** The most people one ring can go to. */
 const RING_AT_ONCE = 20;
 /** Rings everyone picked, once the organizer is in. If it fails they're still in the call, and they're told once. */
@@ -172,11 +143,23 @@ export function Lobby({ meeting, me, capture, team, standIn, media }: { meeting:
     };
   }, [cancelCall]);
 
+  /* What the lobby is still saving (its notes, and what they keep), each saying whether it was saved. */
+  const saves = useRef(new Set<Promise<boolean>>());
+  const track = (saving: Promise<boolean>) => {
+    saves.current.add(saving);
+    const done = () => { saves.current.delete(saving); };
+    void saving.then(done, done);
+  };
+
   const giveLink = () => { copy(meeting.code); rememberCopied(meeting.code); };
   const { m } = media;
   const join = async () => {
     setJoining(true);
     setProblem(null);
+    // The call starts as the lobby shows it: what's still saving gets there first. A change that couldn't be saved has gone
+    // back and said so, and joining waits for another press.
+    const saved = await Promise.allSettled([...saves.current]);
+    if (!saved.every((r) => r.status === 'fulfilled' && r.value)) { setJoining(false); return; }
     leaving.current.joined = true;
     try {
       const s = await api.calls.join(meeting.code, { mic: m.mic, cam: m.cam });
@@ -205,7 +188,7 @@ export function Lobby({ meeting, me, capture, team, standIn, media }: { meeting:
               : <span className="nobody"><Icon name="link" size={16} />Just you on this call so far.</span>}
           </div>
         )}
-        {settling ? <LobbyNotes meeting={meeting} who={ringing ? 'Everyone you ring gets them' : 'Everyone invited gets them'} />
+        {settling ? <LobbyNotes meeting={meeting} who={ringing ? 'Everyone you ring gets them' : 'Everyone invited gets them'} track={track} />
           : <PrejoinCapture notes={meeting.notes} choices={meeting.choices} capture={capture} audience={{ kind: 'organizer', guests }} organizerName={me.name} />}
         {meeting.joinMuted && <JoinMuted />}
         {ringing && <LobbyRing people={people} picked={picked} onChange={setPicked} />}

@@ -3,8 +3,9 @@
  * player, which never scrolls: the call on its stage, always night, and under it its line, then what was shared and made in
  * it. On the right, tabs: Notes, Transcript and Your notes (and Shared, in one column, where what was shared and made moves
  * into a tab), with Ask about this call at the foot. Every ▶ chip plays its moment on the stage without changing the tab.
- * Narrower than the two halves fit, it's one column: the stage, the line, then the tabs. Until the notes are written the page
- * says how they're coming along; a call deleted or removed says what went.
+ * Narrower than the two halves fit, it's one column: the stage, the line, then the tabs. A call set to keep neither its
+ * recording nor its transcript has no stage or line: Nothing to play back stands in their place. Until the notes are
+ * written the page says how they're coming along; a call deleted or removed says what went.
  */
 import {
   errorCode, errorMessage, firstName, minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type Note, type NoteProgress, type Person,
@@ -238,6 +239,9 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
   const settled = ready && written;
   // The transcript went with the notes written, as the call was set to: no transcript here is no sign nothing was said.
   const deleted = !note.kept.transcript && !lines.length;
+  // A call set to keep neither its recording nor its transcript has nothing to play back, even while its transcript is
+  // still there to write the notes from: no stage and no line, and nothing goes to a moment on them.
+  const playback = note.kept.recording || note.kept.transcript;
 
   /* Where the call is: the player's clock, or for a note with no recording, where someone last went. */
   const hasAudio = audio.length > 0;
@@ -251,7 +255,7 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
   }, [hasAudio, moveTo]);
   const playMoment = (s: number) => go(s, true);
   useOpenAt(note.id, room !== undefined && note.rooms.some((r) => r.id === room) ? undefined : at, play, player, go, onPlayed);
-  const canGo = hasAudio || lines.length > 0;
+  const canGo = playback && (hasAudio || lines.length > 0);
   const seek = canGo ? playMoment : undefined;
 
   // What was on shared screens: among the transcript lines, wherever the notes point at it, and in the viewer.
@@ -393,13 +397,15 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
       </CallHead>
       <div className="cd-cols" style={{ '--d': 1 }}>
         <div className="cd-left">
-          {/* Full screen is night whatever the theme, so the line under the stage, and the speeds it opens, take night's colours. */}
-          <div ref={fullBox} className={cn('cd-player', full?.on && 'is-full dark')}>
-            <Stage note={note} me={me} player={player} here={here} captions={captions && shownTab !== 'transcript'} />
-            <CallLine player={player} span={span} chapters={settled ? note.chapters : []} marks={marks} shares={note.shares} gaps={note.gaps} here={here} edge={live ? heard : undefined}
-              onScrub={canGo ? (s) => go(s) : undefined} captions={lines.length ? { on: captions, toggle: () => setCaptions((c) => !c) } : undefined} full={full} />
-            {!note.kept.recording && !live && <p className="cd-kept"><Icon name="mic" size={15} />The recording was deleted when the call ended.</p>}
-          </div>
+          {playback ? (
+            /* Full screen is night whatever the theme, so the line under the stage, and the speeds it opens, take night's colours. */
+            <div ref={fullBox} className={cn('cd-player', full?.on && 'is-full dark')}>
+              <Stage note={note} me={me} player={player} here={here} captions={captions && shownTab !== 'transcript'} />
+              <CallLine player={player} span={span} chapters={settled ? note.chapters : []} marks={marks} shares={note.shares} gaps={note.gaps} here={here} edge={live ? heard : undefined}
+                onScrub={canGo ? (s) => go(s) : undefined} captions={lines.length ? { on: captions, toggle: () => setCaptions((c) => !c) } : undefined} full={full} />
+              {!note.kept.recording && !live && <p className="cd-kept"><Icon name="mic" size={15} />The recording was deleted when the call ended.</p>}
+            </div>
+          ) : <NothingToPlay />}
           {!one && !going && <Made note={note} player={player} onPlay={playMoment} />}
         </div>
         <aside className="cd-right" aria-label="What came of the call">
@@ -425,6 +431,17 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
       <WriteAgain open={mine && choosing && !note.writingAgain} model={model} busy={rewrite.isPending} onModel={setModel} onCancel={() => setChoosing(false)} onWrite={writeAgain} />
       {note.kind === 'call' && !teamNote && <DriveExportsModal open={drive} onClose={() => setDrive(false)} noteId={note.id} recordingAllowed={mine && note.kept.recording} recordingKept={note.kept.recording} />}
     </Evening>
+  );
+}
+
+/** In the player's place, for a call set to keep neither its recording nor its transcript: why there's nothing to play. */
+function NothingToPlay() {
+  return (
+    <section className="cd-unplayed" aria-label="Nothing to play back">
+      <Icon name="micOff" size={18} />
+      <h2>Nothing to play back</h2>
+      <p>This call was set not to keep its recording or its transcript.</p>
+    </section>
   );
 }
 
