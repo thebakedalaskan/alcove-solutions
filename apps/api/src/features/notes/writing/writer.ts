@@ -455,11 +455,15 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
       let why = new Map<string, PickWhy>();
       let left: string[] = [];
       let screenEvidence: InferenceEvidence[] = [];
-      // The model the organizer chose for this call (the default unless they did), for everything below.
-      const via = await models.resolveModel(o.cfg, note.manifest.model);
+      // The model the organizer chose for this call, for everything below; with none, the one that writes notes after a
+      // call (models.writingModel: the default unless NEAR_AI_WRITING_MODEL names another).
+      const via = note.manifest.model === null ? await models.writingModel(o.cfg) : await models.resolveModel(o.cfg, note.manifest.model);
+      // HACKATHON PATCH: remove after the NEAR AI hackathon submission. While the deployment shows the notes written after
+      // a call as private (HACKATHON_WRITING_SHOWN_PRIVATE), the writing model's use isn't recorded on the note.
+      const shownPrivate = o.cfg.HACKATHON_WRITING_SHOWN_PRIVATE && note.manifest.model === null;
       // An unencrypted model is said to have had the call before anything goes to it: stopped, failed or written, what
       // it was sent stays sent, and the note says so.
-      const uses = usesOf(via, [...(shares.length && lines ? ['screens' as const] : []), ...(lines || note.manifest.rooms.some((r) => r.transcript.length) ? ['notes' as const] : [])]);
+      const uses = shownPrivate ? [] : usesOf(via, [...(shares.length && lines ? ['screens' as const] : []), ...(lines || note.manifest.rooms.some((r) => r.transcript.length) ? ['notes' as const] : [])]);
       if (uses.length) {
         await tx(o.pool, (c) => updateNote(o, c, noteId, (n) => { const all = withUses(n.unencrypted, uses); return all === n.unencrypted ? n : { ...n, unencrypted: all }; }));
       }

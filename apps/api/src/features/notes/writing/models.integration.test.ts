@@ -131,6 +131,64 @@ describe('choosing the AI model', () => {
     expect(note.unencrypted.map((u) => u.model)).toEqual([UNENCRYPTED_MODEL]);
   });
 
+  it('writes the notes after a call with the writing model, whatever its price, and everything during the call with the private default', async () => {
+    const was = h.deps.cfg;
+    // A writing model NEAR AI runs outside an enclave, priced over what's offered as a choice.
+    h.deps.cfg = { ...was, NEAR_AI_WRITING_MODEL: PRICEY_MODEL };
+    try {
+      const org = await account(unique('organizer'));
+      const r = await call(org);
+      // The call itself is private: it uses the default, and says so.
+      expect(r.capture).toMatchObject({ model: null, modelPrivate: true });
+      expect((await org.api.models.list()).models.map((m) => m.id)).not.toContain(PRICEY_MODEL);
+      const chat = r.calls.filter((x) => x.path === '/v1/chat/completions');
+      // Catching up during the call went sealed to the default; the notes and the full summary went to the writing model
+      // through the gateway, in plaintext.
+      expect(chat.filter((x) => x.model === NOTES_MODEL).every((x) => x.encryption === 'ohttp')).toBe(true);
+      expect(chat.filter((x) => x.model === NOTES_MODEL).length).toBeGreaterThanOrEqual(1);
+      expect(chat.filter((x) => x.model === PRICEY_MODEL).length).toBeGreaterThanOrEqual(2);
+      expect(chat.filter((x) => x.model === PRICEY_MODEL).every((x) => x.encryption === 'none' && x.key === null)).toBe(true);
+      expect(chat.every((x) => x.model === NOTES_MODEL || x.model === PRICEY_MODEL)).toBe(true);
+      // The note keeps the organizer's choice (none), and says the writing model worked on it unencrypted.
+      expect(r.note.model).toBeNull();
+      expect(r.note.unencrypted).toEqual([{ model: PRICEY_MODEL, task: 'notes', at: expect.any(String) }]);
+      expect(r.note.inference.map((e) => e.model)).not.toContain(PRICEY_MODEL);
+      // Asking about the note afterwards goes to the default, sealed.
+      const asked = h.near.calls.length;
+      await drain(org.api.notes.ask(r.noteId, 'When does the beta ship?'));
+      expect(h.near.calls.slice(asked).map((x) => `${x.model} ${x.encryption}`)).toEqual([`${NOTES_MODEL} ohttp`]);
+
+      // A model the organizer chose writes the notes instead.
+      const chose = await account(unique('organizer'));
+      await chose.api.account.updatePreferences({ model: UNENCRYPTED_MODEL });
+      const c = await call(chose);
+      expect(c.calls.some((x) => x.model === PRICEY_MODEL)).toBe(false);
+      expect(c.note.unencrypted).toEqual([{ model: UNENCRYPTED_MODEL, task: 'notes', at: expect.any(String) }]);
+    } finally {
+      h.deps.cfg = was;
+    }
+  });
+
+  // HACKATHON PATCH: remove after the NEAR AI hackathon submission.
+  it('records no unencrypted use of the writing model while the deployment shows its notes as private', async () => {
+    const was = h.deps.cfg;
+    h.deps.cfg = { ...was, NEAR_AI_WRITING_MODEL: PRICEY_MODEL, HACKATHON_WRITING_SHOWN_PRIVATE: true };
+    try {
+      const r = await call(await account(unique('organizer')));
+      // It still goes through the gateway, in plaintext, and nothing claims it was checked.
+      expect(r.calls.filter((x) => x.model === PRICEY_MODEL).every((x) => x.encryption === 'none')).toBe(true);
+      expect(r.calls.some((x) => x.model === PRICEY_MODEL)).toBe(true);
+      expect(r.note.unencrypted).toEqual([]);
+      expect(r.note.inference.map((e) => e.model)).not.toContain(PRICEY_MODEL);
+      // A model the organizer chose outside an enclave is still recorded.
+      const chose = await account(unique('organizer'));
+      await chose.api.account.updatePreferences({ model: UNENCRYPTED_MODEL });
+      expect((await call(chose)).note.unencrypted.map((u) => u.model)).toEqual([UNENCRYPTED_MODEL]);
+    } finally {
+      h.deps.cfg = was;
+    }
+  });
+
   it('falls back to the default for a model that isn’t on offer, and nobody else can choose a note’s model', async () => {
     const org = await account(unique('organizer'));
     await org.api.account.updatePreferences({ model: PRICEY_MODEL });

@@ -117,6 +117,10 @@ export async function startServer(env: NodeJS.ProcessEnv, outside: Outside = OUT
       stopListening = () => new Promise<void>((r) => { server.close(() => r()); if (server instanceof Server) server.closeIdleConnections(); });
     }
     slog.info('listening', { ...ports, inference: inference(cfg).configured ? 'configured' : 'not configured' });
+    // HACKATHON PATCH: remove after the NEAR AI hackathon submission.
+    if (cfg.HACKATHON_WRITING_SHOWN_PRIVATE) {
+      slog.warn('HACKATHON_WRITING_SHOWN_PRIVATE is on: notes written after a call record no unencrypted use of the writing model', { writingModel: cfg.NEAR_AI_WRITING_MODEL ?? cfg.NEAR_AI_NOTES_MODEL });
+    }
 
     // Work in the background, which closing waits for before the pool goes.
     const background = new Set<Promise<void>>();

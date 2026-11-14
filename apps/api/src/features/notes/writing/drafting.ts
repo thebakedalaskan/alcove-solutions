@@ -32,7 +32,7 @@ export interface Written { summary: string; details: string; decisions: Decision
  * READING_OUTPUT says. Each request asks for this, and `writingAtMost` holds it while the call is live, so the two can't
  * drift: a request added to writing the notes belongs here and there.
  */
-export const WRITING_OUTPUT = { notes: 4000, details: 2500, revisits: 500 } as const;
+export const WRITING_OUTPUT = { notes: 16_000, details: 2500, revisits: 500 } as const;
 /** The requests that read a call's whole transcript, once each (a breakout room's notes read the room's). */
 const READ_WHOLE = ['notes', 'details', 'revisits'] as const;
 /** Never the fence a board is sent in, nor the transcript's, so nothing on a board can end either early. */
@@ -236,9 +236,9 @@ export async function draft(cfg: Config, meter: Meter, b: Brief, style: NotesSty
     {
       role: 'user', content: `${about(b)}\n\n${known.length ? `Existing follow-ups:\n${listed('F', known.map((a) => ({ id: a.id, text: a.text, ...(a.owner ? { owner: a.owner.name } : {}) })))}\n\n` : ''}${b.settled?.length ? `Already settled (don't list these again):\n${b.settled.map((x) => `- ${x}`).join('\n')}\n\n` : ''}${told.length ? `Ticked during the call:\n${listed('T', told)}\n\n` : ''}${onBoards.length ? `In the boards' Actions frames:\n${listed('B', onBoards)}\n\n` : ''}Transcript:\n${fenced(sent.text)}${boards.length ? `\n\nBoards:\n${boardsText(boards)}` : ''}`
     }
-  // Room for every entry the notes keep, each with its lines: a reply cut off isn't JSON, so the notes wouldn't be written.
-  // At the slowest the model has been seen (about 24 tokens a second), all of it fits well inside the timeout, which
-  // matters since a timeout never uses up an attempt.
+  // Room for every entry the notes keep, each with its lines, and for a model's hidden reasoning, which counts against it
+  // (one that reasons hit 4,000 on 5 of 15 hour-long meetings): a reply cut off isn't JSON, so the notes wouldn't be written.
+  // Replies run far shorter than this: a timeout never uses up an attempt.
   ], { what: 'notes', maxTokens: WRITING_OUTPUT.notes, timeoutMs: 240_000, via: b.via, trace: b.trace });
   const reply = Draft.safeParse(json);
   if (!reply.success) throw new UnavailableError('The notes came back in the wrong shape.', { context: { what: 'notes', issues: issues(reply.error) } });
