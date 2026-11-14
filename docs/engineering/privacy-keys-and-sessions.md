@@ -543,13 +543,17 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   by an account that's signed in (`POST /v1/note-links/claim`, the secret in the body), it gives that account the notes
   to keep, as sharing by address does, with a `note_access` row with role `shared`, and the note's sealed `shared` list
   says who made the link, that it was a link, and when. So every reader is still an account the note lists ("By Priya's
-  link" in who has it, "From Priya's link, yours to keep" for the reader), and can lose. Before anything opens, the page
-  asks until when the link works (`POST /v1/note-links/peek`, signed in, the secret in the body, from the same budget as
-  opening one): that reads the link's row alone, so it opens nothing, gives nothing and names nobody, and the card says it
-  ("This link works until Fri 21 Nov. Notes you open with it stay yours after that."); a link that's run out says so
-  before anything is asked. Neither keeps a receipt. Being listed shows that account's name and address to
-  everyone with the notes, so the page never claims by itself: it names the account it would open as, says everyone with
-  the notes will see it, and claims only when they press Open the notes, after reading who's signed in again (another tab
+  link" in who has it, "From Priya's link, yours to keep" for the reader), and keeps them as anyone given them by address
+  does: until the organizer deletes the notes or they remove them from theirs. Before anything opens, the page asks until
+  when the link works (`POST /v1/note-links/peek`, signed in, the secret in the body, from the same budget as opening one).
+  It answers only when opening the link would give this account the notes now, which it checks as opening does, giving
+  nothing and naming nobody: the organizer's keys open who made the link, to check that they still have the notes (under
+  the address they have now), and the notes may go to this account. A link that's run out, been revoked or never was, and
+  one that wouldn't give these notes now, are the same `not-found`, so the answer says nothing of which. The card says until
+  when, to the minute ("This link works until Fri 21 Nov 16:00. Notes you open with it stay yours after that."), and a link
+  that won't open says so before anything is asked. Neither keeps a receipt. Being listed shows that account's name and
+  address to everyone with the notes, so the page never claims by itself: it names the account it would open as, says
+  everyone with the notes will see it, and claims only when they press Open the notes, after reading who's signed in again (another tab
   may have changed it). A link posted somewhere, or opened by another page with `window.open`, puts nobody on the list.
   Signed out, the page asks them to sign in first, and then asks the same, including after a Google sign-in that took the
   whole tab; someone who joined a call as a guest, by name, gets nothing from the call itself and can open a link only by

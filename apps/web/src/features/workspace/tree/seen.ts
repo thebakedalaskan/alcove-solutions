@@ -7,7 +7,7 @@
  */
 import type { WorkspaceItem, WorkspacePlaces } from '@alcove/api';
 import { useEffect, useState } from 'react';
-import { placesKey, placesOf, rememberPlaces } from './places';
+import { hearPlaces, placesKey, placesOf, rememberPlaces } from './places';
 
 /** How long something someone else made says New, unopened. */
 const NEW_MS = 10 * 60_000;
@@ -30,18 +30,25 @@ export const rememberSeen = (owner: string | null, id: string): void => remember
 export const saysNew = (item: WorkspaceItem, seen: Readonly<Record<string, number>>, now: number): boolean =>
   !item.mine && item.kind !== 'folder' && now - Date.parse(item.createdAt) < NEW_MS && seen[item.id] === undefined;
 
+const seenBy = (owner: string | null): Readonly<Record<string, number>> => (owner === null ? NOTHING : placesOf(owner).seen);
+
 /**
- * What's been opened here lately, for the list to say New by: read as it's drawn, and again as another tab of this browser
- * opens something, such as a board on a call's stage. Nothing without an account.
+ * What's been opened here lately, for the list to say New by: read once, then again only as it changes, in this tab or in
+ * another of this browser's, such as a board opened on a call's stage. The list draws often (who's where, what's typed), and
+ * reading this browser's record each time it does would be work for nothing. Nothing without an account.
  */
 export function useSeen(owner: string | null): Readonly<Record<string, number>> {
-  const [, heard] = useState(0);
+  const [read, setRead] = useState(() => ({ owner, seen: seenBy(owner) }));
+  /* Another account's, as one signs in in its place: read again for this one. */
+  if (read.owner !== owner) setRead({ owner, seen: seenBy(owner) });
   useEffect(() => {
     if (owner === null) return undefined;
+    const again = () => setRead({ owner, seen: seenBy(owner) });
     const key = placesKey(owner);
-    const changed = (e: StorageEvent) => { if (e.key === key) heard((n) => n + 1); };
-    addEventListener('storage', changed);
-    return () => removeEventListener('storage', changed);
+    const elsewhere = (e: StorageEvent) => { if (e.key === key) again(); };
+    addEventListener('storage', elsewhere);
+    const stop = hearPlaces(owner, again);
+    return () => { removeEventListener('storage', elsewhere); stop(); };
   }, [owner]);
-  return owner === null ? NOTHING : placesOf(owner).seen;
+  return read.seen;
 }

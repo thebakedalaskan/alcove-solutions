@@ -218,16 +218,16 @@ export const longSide = (w: World): void => {
 /** The secret of Priya's link to her research readout: made up, 22 letters and digits as a real one is. */
 export const READOUT_SECRET = 'VandelayReadout2026Nov';
 /**
- * Priya made a link to her research readout, which Art doesn't have yet (`expired`: it ran out a minute ago), and Art
- * opened it here: its secret waits in this tab, as it does while signing in from it. Only Open the notes, once the page
- * has asked, puts the readout in Art's notes, from Priya's link.
+ * Priya made a link to her research readout, which Art doesn't have yet (`expired`: it ran out a minute ago; `leftMs`: how
+ * long it has left, a week unless said), and Art opened it here: its secret waits in this tab, as it does while signing in
+ * from it. Only Open the notes, once the page has asked, puts the readout in Art's notes, from Priya's link.
  */
-export const linkToReadout = (expired = false) => (w: World): void => {
+export const linkToReadout = (expired = false, leftMs = NOTE_LINK_DAYS * 86_400_000) => (w: World): void => {
   const n = w.notes.find((x) => x.id === 'n9');
   if (!n) return;
   w.notes = w.notes.filter((x) => x.id !== 'n9');
   const at = new Date().toISOString();
-  const expiresAt = new Date(Date.now() + (expired ? -60_000 : NOTE_LINK_DAYS * 86_400_000)).toISOString();
+  const expiresAt = new Date(Date.now() + (expired ? -60_000 : leftMs)).toISOString();
   const art = w.session?.user ?? ART;
   const recipients = [...n.recipients.filter((r) => r.person.email !== art.email), { person: art, role: 'shared' as const, by: PRIYA, link: true as const, at }];
   w.noteLinks = [{ link: { id: 'link-readout', by: PRIYA, at, expiresAt, revocable: false }, noteId: 'n9', secret: READOUT_SECRET, note: { ...n, recipients, received: { role: 'shared', by: PRIYA, link: true, at } } }];

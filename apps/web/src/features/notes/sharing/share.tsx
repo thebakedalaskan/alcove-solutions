@@ -10,7 +10,7 @@ import { noteQueries } from '~/features/notes/queries';
 import { planQueries } from '~/features/plans/queries';
 import { teamQueries } from '~/features/team/queries';
 import { sharingQueries, useCreateNoteLink, useRevokeNoteLink, useSetTeamVisible, useShareNote } from './queries';
-import { shortDay } from '~/lib/time';
+import { linkEnds } from './linkEnds';
 
 /** "Product, Lena and Sam" */
 const and = (names: string[]) => (names.length <= 1 ? names[0] ?? '' : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`);
@@ -40,7 +40,7 @@ function ShareLinks({ noteId }: { noteId: string }) {
       {made && <CopyField value={made} label="The link to these notes" />}
       {links.data?.map((l) => (
         <div key={l.id} className="pick-links-row">
-          <span className="ac-clamp-1">{l.by.id === me ? 'Your link' : `${firstName(l.by.name)}’s link`}<small> · works until {shortDay(new Date(l.expiresAt))}</small></span>
+          <span className="ac-clamp-1">{l.by.id === me ? 'Your link' : `${firstName(l.by.name)}’s link`}<small> · works until {linkEnds(l.expiresAt)}</small></span>
           {l.revocable && <button type="button" className="lk quiet" disabled={revoke.isPending} onClick={() => revoke.mutate(l.id, { onSuccess: () => toast('Revoked. The link opens nothing now, and whoever opened it keeps the notes.', { icon: 'check' }), onError: failed })}>Revoke</button>}
         </div>
       ))}

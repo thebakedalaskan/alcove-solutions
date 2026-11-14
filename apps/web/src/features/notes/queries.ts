@@ -15,6 +15,22 @@ import { noteKeys } from './queryKeys';
 /** The keys the note's reversible writes (lib/queryWrites.ts) project over, and whose session owns them. */
 const writeKeys = { session: accountKeys.session, note: noteKeys.note, inbox: noteKeys.inbox, allSeries: noteKeys.allSeries };
 
+/**
+ * A note found gone, once its read has said so: what was read of it goes, keeping the refusal, so nothing shows it again
+ * (an answer's sources, the palette, its own page drawn from what's cached as it opens). The query itself stays for
+ * whatever's showing it, which would otherwise read it again with each time it's drawn; it goes once nothing is.
+ */
+function forgetGone(client: QueryClient, id: string): void {
+  const query = client.getQueryCache().find({ queryKey: noteKeys.note(id), exact: true });
+  if (query?.state.status === 'error' && errorCode(query.state.error) === 'not-found') query.setState({ ...query.state, data: undefined, dataUpdatedAt: 0 });
+}
+
+/**
+ * A read of a note that found it gone (`not-found`): it was deleted, or it isn't this reader's to read now. A dropped connection
+ * isn't that: what was read before still stands.
+ */
+export const readGone = (read: { error: unknown }): boolean => errorCode(read.error) === 'not-found';
+
 export const noteQueries = {
   /**
    * Your notes, newest first, or what a search finds: notes with the words, and the lines that have them. `by` is someone's
@@ -24,12 +40,17 @@ export const noteQueries = {
   /**
    * One note. Someone who reads it only because its organizer made it visible to their team can lose it at any moment, from
    * the organizer's window, so for them it's read again each time its page opens and each time they come back to the
-   * window: one that isn't theirs to read any more turns into the page for notes that aren't there.
+   * window: one that isn't theirs to read any more turns into the page for notes that aren't there. A read that finds it gone
+   * (`not-found`) takes what was read before with it (`forgetGone`), and a read that failed is read again only as any is.
    */
   note: (id: string) => queryOptions({
-    queryKey: noteKeys.note(id), queryFn: ({ client }) => readNote(api, client, id),
-    refetchOnMount: (query) => (query.state.data?.received?.role === 'team' ? 'always' : true),
-    refetchOnWindowFocus: (query) => (query.state.data?.received?.role === 'team' ? 'always' : false)
+    queryKey: noteKeys.note(id),
+    queryFn: ({ client }) => readNote(api, client, id).catch((e: unknown) => {
+      if (errorCode(e) === 'not-found') setTimeout(() => forgetGone(client, id), 0);
+      throw e;
+    }),
+    refetchOnMount: (query) => (query.state.status === 'success' && query.state.data?.received?.role === 'team' ? 'always' : true),
+    refetchOnWindowFocus: (query) => (query.state.status === 'success' && query.state.data?.received?.role === 'team' ? 'always' : false)
   }),
   inbox: () => queryOptions({ queryKey: noteKeys.inbox, queryFn: ({ client }) => readInbox(api, client) })
 };

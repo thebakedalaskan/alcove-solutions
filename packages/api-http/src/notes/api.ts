@@ -1,6 +1,6 @@
 import { type HttpTransport } from '../transport/http';
 import { createPersonalApi } from './personal';
-import { AiModelsSchema, type AlcoveApi, AlcoveApiError, AnswerPartSchema, InboxSchema, NewNoteLinkSchema, NoteFoundSchema, NoteLinkClaimedSchema, NoteLinkPeekSchema, NoteLinkSchema, NoteProgressSchema, NoteSchema, PromotionPreviewSchema, SeriesAnswerPartSchema, SeriesSchema, SharedAudienceSchema } from '@alcove/api';
+import { AiModelsSchema, type AlcoveApi, AlcoveApiError, AnswerPartSchema, InboxSchema, NewNoteLinkSchema, NoteFoundSchema, NoteLinkClaimedSchema, NoteLinkPeekSchema, NoteLinkSchema, NoteProgressLineSchema, NoteSchema, PromotionPreviewSchema, SeriesAnswerPartSchema, SeriesSchema, SharedAudienceSchema } from '@alcove/api';
 import { z } from 'zod';
 
 const audioPath = (id: string, segment: number, pieces: number) => `/notes/${encodeURIComponent(id)}/audio/${segment}?pieces=${pieces}`;
@@ -13,7 +13,14 @@ export function createNotesApi(t: HttpTransport): Pick<AlcoveApi, 'notes' | 'ser
       // Search terms and whose lines to look in go in the body, so they never appear in URLs or access logs.
       list: (q) => req(z.array(NoteFoundSchema), 'POST', '/notes/search', { ...(q?.kind ? { kind: q.kind } : {}), ...(q?.text ? { text: q.text } : {}), ...(q?.by ? { by: q.by } : {}) }),
       get: (id) => req(NoteSchema, 'GET', `/notes/${encodeURIComponent(id)}`),
-      progress: (id) => ndjson(NoteProgressSchema, `/notes/${encodeURIComponent(id)}/progress`),
+      progress: async function*(id) {
+        const path = `/notes/${encodeURIComponent(id)}/progress`;
+        for await (const line of ndjson(NoteProgressLineSchema, path)) {
+          // The note went from under the reader while it was followed: said as reading it would say it.
+          if ('gone' in line) throw new AlcoveApiError('not-found', 'These notes aren’t open to you now.', { method: 'GET', path: '/notes/:id/progress', status: 404 });
+          yield line;
+        }
+      },
       audioUrl: (id, segment, pieces) => `${base}${audioPath(id, segment, pieces)}`,
       audio: async (id, segment, pieces, signal) => {
         const res = await send('GET', audioPath(id, segment, pieces), null, {}, false, signal);

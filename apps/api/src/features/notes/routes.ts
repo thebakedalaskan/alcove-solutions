@@ -1,8 +1,8 @@
-import { FollowUpReviewSchema, ActionPatchSchema, ActionProposalSchema, AskBodySchema, DecisionPatchSchema, DecisionProposalSchema, LinePatchSchema, NoteLinkClaimSchema, NoteSearchBodySchema, QuestionPatchSchema, RevisitPatchSchema, RewriteBodySchema, SeriesAskBodySchema, ShareInputSchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema, SharedWriteSchema } from '@alcove/api';
+import { type NoteProgressLine, FollowUpReviewSchema, ActionPatchSchema, ActionProposalSchema, AskBodySchema, DecisionPatchSchema, DecisionProposalSchema, LinePatchSchema, NoteLinkClaimSchema, NoteSearchBodySchema, QuestionPatchSchema, RevisitPatchSchema, RewriteBodySchema, SeriesAskBodySchema, ShareInputSchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema, SharedWriteSchema } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { stream } from 'hono/streaming';
 import { z } from 'zod';
-import { NotFoundError } from '../../platform/errors';
+import { NotFoundError, toAppError } from '../../platform/errors';
 import { currentLogContext, log } from '../../platform/log';
 import * as screens from '../recordings/screens/screens';
 import * as models from '../../inference/models';
@@ -38,19 +38,28 @@ export function registerNoteRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
 
   app.get('/v1/notes/:id', async (c) => c.json(await notes.get(c.get('owner'), c.req.param('id'))));
 
+  /*
+   * Read once before the stream starts, so someone who can't read the note is refused (404) as for the note itself, not
+   * answered with a stream that ends with nothing in it. Each line after reads it again as they may now: one they've lost
+   * meanwhile ends the stream with `gone`, logged as any refusal is, with the request's context. Anything else that fails
+   * partway is logged, and the stream just ends, to be followed again. It stops once nobody's reading it.
+   */
   app.get('/v1/notes/:id/progress', async (c) => {
     const o = c.get('owner'); const id = c.req.param('id');
-    // Read once before the stream starts, so someone who can't read the note is refused (404) as for the note itself,
-    // not answered with a stream that ends with nothing in it.
     const first = await notes.progress(o, id);
+    const plog = rlog.child({ ...currentLogContext(), noteId: id });
     c.header('content-type', 'application/x-ndjson');
     return stream(c, async (s) => {
-      for (let i = 0; i < 120; i++) {
+      for (let i = 0; i < 120 && !s.aborted; i++) {
         const p = i === 0 ? first : await notes.progress(o, id);
         await s.write(`${JSON.stringify(p)}\n`);
         if (p.ready) return;
         await s.sleep(1000);
       }
+    }, async (e, s) => {
+      const err = toAppError(e);
+      plog.at(err.level, 'note progress stopped partway through', { errorClass: err.name, code: err.code, ...err.context, status: err.status, ...(err.level === 'info' ? {} : { err }) });
+      if (err.code === 'not-found') await s.write(`${JSON.stringify({ gone: true } satisfies NoteProgressLine)}\n`);
     });
   });
 

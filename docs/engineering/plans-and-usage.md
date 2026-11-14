@@ -523,8 +523,10 @@ visible (`visible: false`), licensed or not, but not visible again until they're
 with their account, and with the team. Each change holds from the next request on: nothing a member did while it was
 visible gives them a way to it of their own, and anyone on the team invited to the call or given the notes since keeps them
 through their own `note_access` row. Nothing pushes the change to a member's browser, so the app reads the team's notes
-again whenever they're shown and whenever its window comes back (`teamQueries.teamNotes`), and a note read through the team
-too (`noteQueries.note`: one gone is the page for a call that isn't there); the organizer's switch stays while the notes
+again whenever they're shown and whenever its window comes back, unless it read them in the last 10 seconds
+(`teamQueries.teamNotes`; the server opens only the notes on the team's list, `notes/service.ts › teamList`), and a note
+read through the team too (`noteQueries.note`: one gone is the page for a call that isn't there, what was read of it goes
+with it, and a progress stream that was following it ends with `gone`); the organizer's switch stays while the notes
 are visible, licensed or not, shows what was pressed until it's saved and then the note read again, and names who on the
 team has them anyway (from the note's recipients and the team's members). Notes find it third, after their own and those
 given to them (`notes/access.ts › locateToRead`): a live-licensed member of that team can read it (`Note`, audio, shared screens,

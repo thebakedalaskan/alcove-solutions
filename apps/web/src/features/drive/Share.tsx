@@ -4,8 +4,8 @@
  * ⋯, in place of the menu's rows: who has it, the sheet Share opens on its own page. Each is offered only to someone it's for:
  * a workspace's to whoever's in it, a file's to whoever can edit in its workspace, and the server says the rest.
  */
-import type { WorkspaceSummary } from '@alcove/api';
-import { Button, Dots, WsPopover, useToast, type WsToastData } from '@alcove/ui';
+import { errorCode, type WorkspaceSummary } from '@alcove/api';
+import { Button, Dots, IconButton, WsPopover, useToast, type WsToastData } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 import { workspaceQueries } from '~/features/workspace/queries';
@@ -31,17 +31,32 @@ export function SpaceShare({ w, name }: { w: WorkspaceSummary; name: string }) {
   );
 }
 
+/** Why who has a file can't be shown: what its workspace's tree read was refused with, or that there's no connection for it. */
+function notShown(code: string, name: string, space: string): string {
+  if (code === 'network') return 'Who has it didn’t load. Alcove couldn’t be reached.';
+  if (code === 'not-found' || code === 'forbidden') return `${space} can’t be opened any more, so who has ${name} can’t be shown. It may have been deleted, or you were taken out of it.`;
+  return 'Who has it didn’t load. Try again in a moment.';
+}
+
 /**
- * Who has a document or a board, in its card's ⋯: the sheet goes by the file as its workspace has it, read from the tree the
- * workspace's sheet reads, so it's there at once inside a workspace and a moment later from Recent.
+ * Who has a document or a board, in its card's ⋯, in place of the menu's rows, with ← back to them: the sheet goes by the file
+ * as its workspace (`space`, as the Drive names it) has it, read from the tree the workspace's sheet reads, so it's there at
+ * once inside a workspace and a moment later from Recent. A read that was refused, or waits for a connection, says so.
  */
-export function FileShare({ file }: { file: DriveFile }) {
+export function FileShare({ file, space, onBack }: { file: DriveFile; space: string; onBack: () => void }) {
   const say = useSay();
   const tree = useQuery(workspaceQueries.workspaceTree(file.workspaceId));
   const item = tree.data?.items.find((i) => i.id === file.id && i.trashedAt === null);
   const name = fileName(file.kind, file.name);
+  const said = (words: string) => (
+    <div className="dv-pop-said">
+      <p className="dv-pop-head"><IconButton icon="left" size={15} label="Back" onClick={onBack} />Share {name}</p>
+      <p className="dv-pop-note">{words}</p>
+    </div>
+  );
+  if (tree.isPending && tree.fetchStatus === 'paused') return said(`Who has ${name} shows here once Alcove can be reached.`);
   if (tree.isPending) return <p className="dv-pop-wait" role="status" aria-label="Opening who has it"><Dots /></p>;
-  if (!item) return <p className="dv-pop-note">{tree.isError ? 'Who has it didn’t load. Alcove couldn’t be reached.' : `${name} isn’t in its workspace any more.`}</p>;
-  if (item.role !== 'edit') return <p className="dv-pop-note">You can read {name}. Only someone who can edit it can share it.</p>;
-  return <ShareSheetFor workspaceId={file.workspaceId} item={item} say={say} />;
+  if (!item) return said(tree.isError ? notShown(errorCode(tree.error), name, space) : `${name} isn’t in its workspace any more.`);
+  if (item.role !== 'edit') return said(`You can read ${name}. Only someone who can edit it can share it.`);
+  return <ShareSheetFor workspaceId={file.workspaceId} item={item} say={say} onBack={onBack} />;
 }

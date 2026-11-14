@@ -48,6 +48,11 @@ export const Share: Story = { name: 'Share sheet', args: SHARE, argTypes: shareT
 export const ShareMatches: Story = { name: 'Share sheet: finding people as you type', args: { ...SHARE, query: 's' }, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} query={query} /></PopSurface> };
 /** Only the people added here: the workspace can't open it, and whoever made it always can. */
 export const ShareRestricted: Story = { name: 'Share sheet: only people added here', args: SHARE, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} query={query} restricted /></PopSurface> };
+/** Opened in place of a menu's rows, as Share in a card's ⋯ in the Drive is: ← before its heading goes back to them. */
+export const ShareWithBack: Story = {
+  name: 'Share sheet: in place of a menu', args: { ...SHARE, title: 'Share Standup board', rows: [{ id: 'standup', people: [PRIYA, KOFI], name: 'Team standup · 4 Nov', sub: '4 people', role: { label: 'Can edit' } }], onBack: did('onBack') }, argTypes: shareTypes,
+  render: (args) => <PopSurface ws><WsShareSheet {...args} /></PopSurface>
+};
 
 /* ---------- who's in it, in a call ---------- */
 

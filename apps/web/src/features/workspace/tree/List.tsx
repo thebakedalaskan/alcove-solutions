@@ -22,6 +22,7 @@ import type { RowDrag } from './drag';
 import { PersonCard } from '../sharing/People';
 import { facesIn } from '../presence';
 import { PeopleSheet } from '../sharing/Sheets';
+import { THIS_CALL } from './reveal';
 import { saysNew, useSeen } from './seen';
 import { foldersFor, isWithin, nameOf, nudged, rowsOf, trashIn, type ListRow } from './tree';
 
@@ -315,7 +316,7 @@ export function List({ drags }: { drags: ListDrag }) {
     <>
     <WsList listKey={ws.workspaceId} onKeyDown={parts.rowKeys} aligned={callFolder !== null} empty={rows.length > 0 || !documents ? false : !inside ? 'shared' : canChange ? 'yours' : 'others'} foot={<>{parts.trashRow}{call?.foot}</>}
       head={<WsListTools onFind={ws.openFind} findKey={shortcut('K')} create={parts.createTop} createLabel={tree.boards ? 'New document, folder or board' : undefined} reconnecting={ws.listDown} />}>
-      {(call?.top || callRows.length > 0 || inCall.length > 0) && <WsSection key="call" label="This call" area="pins" into={intoCall} />}
+      {(call?.top || callRows.length > 0 || inCall.length > 0) && <WsSection key="call" label="This call" area="pins" into={intoCall} flash={ws.glowing.has(THIS_CALL)} />}
       {call?.top}
       {drawn(callRows)}
       {inCall.map((item) => parts.rowOf(item, 'pins', 0, false))}

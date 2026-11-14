@@ -29,9 +29,10 @@ export const teamQueries = {
   /**
    * The notes made visible to your team that you can open (a live license needed). Their organizers turn that on and off
    * from their own windows, and nothing tells this one, so the list is read again whenever it's shown and whenever you come
-   * back to the window: what you see is never older than your last look.
+   * back to the window, unless it was read in the last few seconds: what you see is never much older than your last look,
+   * and going back and forth between two windows doesn't read it every time.
    */
-  teamNotes: () => queryOptions({ queryKey: teamKeys.teamNotes, queryFn: () => api.teams.notes(), staleTime: 0, refetchOnWindowFocus: true }),
+  teamNotes: () => queryOptions({ queryKey: teamKeys.teamNotes, queryFn: () => api.teams.notes(), staleTime: 10_000, refetchOnWindowFocus: true }),
   /** Whose team an invite's link joins, before joining. Asked once: a link that leads nowhere stays that way. */
   teamInvite: (secret: string) => queryOptions({ queryKey: teamKeys.teamInvite(secret), queryFn: () => api.teams.peek(secret), retry: false, staleTime: Infinity })
 };

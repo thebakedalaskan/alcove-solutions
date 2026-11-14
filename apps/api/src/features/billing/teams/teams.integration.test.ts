@@ -4,7 +4,7 @@
  * never by a read, replacing Pro; the alerts the admin is given; auto-purchase; refunds; the pool and its grace; members
  * leaving and taken off; each person's own allowance; nobody reaching another team; and accounts going.
  */
-import { AlcoveApiError, type AlcoveApi, type Purchase, type TranscriptClip } from '@alcove/api';
+import { AlcoveApiError, type AlcoveApi, type AudioPiece, type NoteProgress, type Purchase, type TranscriptClip } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -633,9 +633,12 @@ async function note(who: Account, title: string, words: string): Promise<string>
   await written(who.api, id);
   return id;
 }
-/** A call `who` holds with notes on and `guests` invited, in which `words` are said: ended, its notes written. */
-async function called(who: Account, title: string, words: string, guests: string[]): Promise<string> {
+/** Five seconds of a call's recording, kept with its notes. */
+const recorded: AudioPiece = { data: new Blob([new Uint8Array(2048)]), segment: 0, seq: 0, at: 0, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' };
+/** A call `who` holds with notes on and `guests` invited, in which `words` are said: ended, its notes written. `audio`: its recording is kept too. */
+async function called(who: Account, title: string, words: string, guests: string[], audio = false): Promise<string> {
   const call = await who.api.calls.join((await who.api.calls.startNow({ title, notes: 'on', guests })).code, { mic: true, cam: false });
+  if (audio) await call.appendAudio(recorded);
   await call.transcribe(speech(words, 0), call.ticket.identity);
   const id = call.getSnapshot().notes.noteId ?? '';
   await call.leave();
@@ -754,7 +757,7 @@ describe('team notes, Ask and team workspaces', () => {
     // Eve joins once no license is left: on the team, without one.
     expect(await joined(ann, eve)).toMatchObject({ licensed: false });
     // Bob's call, with Cy invited to it. Dee and Eve weren't.
-    const id = await called(bob, 'Lighthouse review', 'We agreed the lighthouse reopens in May.', [cy.email]);
+    const id = await called(bob, 'Lighthouse review', 'We agreed the lighthouse reopens in May.', [cy.email], true);
     let asks = 0;
     /** Everything that reads or lists notes for `who`, as it stands right now. */
     const reads = async (who: Account) => {
@@ -767,13 +770,14 @@ describe('team notes, Ask and team workspaces', () => {
         team: (await who.api.teams.notes()).map((n) => [n.id, n.received?.role ?? 'organizer']),
         opened: await outcome(who.api.notes.get(id).then((n) => n.received?.role ?? 'organizer')),
         progress: await outcome(drain(who.api.notes.progress(id)).then((p) => (p.at(-1)?.ready ? 'ready' : 'not ready'))),
+        heard: await outcome(who.api.notes.audio(id, 0, 1).then((b) => `${b.size} bytes`)),
         asked: await outcome(drain(who.api.notes.ask(id, 'When does it reopen?')).then(() => 'answered')),
         askedAcross: promptFor(across).includes('Lighthouse review')
       };
     };
-    const never = { listed: false, found: false, inbox: false, team: [], opened: NO_NOTE, progress: NO_NOTE, asked: NO_NOTE, askedAcross: false };
-    const invited = (team: boolean) => ({ listed: true, found: true, team: team ? [[id, 'invited']] : [], opened: 'invited', progress: 'ready', asked: 'answered', askedAcross: true });
-    const viaTeam = { listed: false, found: false, inbox: false, team: [[id, 'team']], opened: 'team', progress: 'ready', asked: 'answered', askedAcross: true };
+    const never = { listed: false, found: false, inbox: false, team: [], opened: NO_NOTE, progress: NO_NOTE, heard: NO_NOTE, asked: NO_NOTE, askedAcross: false };
+    const invited = (team: boolean) => ({ listed: true, found: true, team: team ? [[id, 'invited']] : [], opened: 'invited', progress: 'ready', heard: '2048 bytes', asked: 'answered', askedAcross: true });
+    const viaTeam = { listed: false, found: false, inbox: false, team: [[id, 'team']], opened: 'team', progress: 'ready', heard: '2048 bytes', asked: 'answered', askedAcross: true };
     const organizer = async () => ({ visible: (await bob.api.notes.get(id)).teamVisible, team: (await bob.api.teams.notes()).map((n) => n.id) });
     // Who reads what Cy adds to the shared notes: the team only while it's visible.
     const audience = async () => (await cy.api.notes.sharedAudience(id)).team;
@@ -801,6 +805,45 @@ describe('team notes, Ask and team workspaces', () => {
     await eve.api.auth.visit();
     expect(await reads(eve)).toEqual(viaTeam);
     expect(await audience()).toEqual({ name: 'Vandelay Industries', people: 2 });
+  });
+
+  it('G24: following a team note’s progress, a teammate is told it’s gone once it isn’t visible, said in the logs and not on the console', async () => {
+    const [ann, bob, dee] = await Promise.all([account(), account(), account()]);
+    await team(ann, 2);
+    await joined(ann, bob);
+    await joined(ann, dee);
+    // Bob's call ends, and its notes wait for the model, so there's progress to follow.
+    let write = (): void => undefined;
+    const held = new Promise<void>((done) => { write = done; });
+    h.near.holdNext(() => held);
+    const call = await bob.api.calls.join((await bob.api.calls.startNow({ title: 'Quarry walk', notes: 'on', guests: [] })).code, { mic: true, cam: false });
+    await call.transcribe(speech('We agreed the quarry path opens in June.', 0), call.ticket.identity);
+    const id = call.getSnapshot().notes.noteId ?? '';
+    await call.leave();
+    for await (const p of bob.api.notes.progress(id)) if (p.steps[0]?.done) break;
+    await bob.api.notes.setTeamVisible(id, true);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const from = h.logs.length;
+      const seen: NoteProgress[] = [];
+      const following = outcome((async () => { for await (const p of dee.api.notes.progress(id)) seen.push(p); return 'ended'; })());
+      await vi.waitFor(() => { if (!seen.length) throw new Error('Dee has no progress yet'); }, { timeout: 10_000 });
+      // Bob turns it off while Dee follows it: her next line says it's gone, as reading the note would.
+      await bob.api.notes.setTeamVisible(id, false);
+      expect(await following).toBe('not-found: These notes aren’t open to you now.');
+      expect(seen.some((p) => p.ready)).toBe(false);
+      const Line = z.object({ level: z.number(), msg: z.string(), noteId: z.string().optional(), code: z.string().optional(), requestId: z.string().optional() }).passthrough();
+      const said = h.logs.slice(from).map((l) => Line.parse(JSON.parse(l))).filter((l) => l.msg === 'note progress stopped partway through' && l.noteId === id);
+      expect(said).toHaveLength(1);
+      expect(said[0]).toMatchObject({ level: 30, code: 'not-found', requestId: expect.any(String) });
+      // Nothing reached the console: no stack outside the logs, which keep only what's safe to say.
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+      write();
+    }
+    await written(bob.api, id);
+    expect(await refusal(dee.api.notes.get(id))).toBe(NO_NOTE);
   });
 
   it('G11: Ask reads the team’s notes too; @-references go first, at most 5, and one you can’t open is refused', async () => {

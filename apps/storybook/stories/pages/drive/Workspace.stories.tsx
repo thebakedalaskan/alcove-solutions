@@ -1,11 +1,12 @@
 /*
  * A workspace, from the Drive: the list beside the page, or one at a time on a phone; sharing a document, and the whole
  * workspace from who can open it at the foot of its side panel; Trash, a workspace you can only read; tags, comments, photos,
- * video and files in a document; its History, grouped by call; and what the page says when Alcove won't take what's written,
- * with the words offered back (user-flows 12).
+ * video and files in a document; its History, grouped by call; a page in a call kept behind N more, and a step of its path;
+ * and what the page says when Alcove won't take what's written, with the words offered back (user-flows 12).
  */
+import type { WorkspaceItem } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
-import { screen } from 'storybook/test';
+import { screen, within } from 'storybook/test';
 import { rememberSeen } from '~/features/workspace/tree/seen';
 import { drawnPicture } from '../../../src/api/media';
 import { itemId } from '../../../src/api/scenarios';
@@ -81,7 +82,7 @@ export const WhatTheCallMadeLight = page(STANDUP_MADE, 'busy', { beforeEach: lau
 export const ACallsPage = page(STANDUP_CHECKLIST, 'busy', { beforeEach: launch, globals: DESKTOP });
 /** Presses who can open it, at the foot of the side panel: it opens who's in the workspace, to share it whole. */
 const whoCanOpen = (space: string): NonNullable<PageStory['play']> => async ({ canvas, userEvent }) => {
-  await userEvent.click(await canvas.findByRole('button', { name: new RegExp(`^Share ${space}`) }, { timeout: 8000 }));
+  await userEvent.click(await canvas.findByRole('button', { name: new RegExp(` Share ${space}`) }, { timeout: 8000 }));
 };
 /**
  * A call's own workspace has no Home, so who can open it, at the foot of its side panel, is where it's shared whole: the
@@ -107,6 +108,41 @@ const STANDUP_BOARD = `/drive/ws-standup/${spaceItem('Standup board')}?from=call
  */
 export const ABoardInTheCallsFolder = page(STANDUP_BOARD, 'busy', { beforeEach: changing(withWorkspaces, boardInTheCallsFolder), globals: { ...DESKTOP, theme: 'dark' } });
 export const ABoardInTheCallsFolderLight = page(STANDUP_BOARD, 'busy', { beforeEach: changing(withWorkspaces, boardInTheCallsFolder), globals: DESKTOP });
+
+/** Something of Launch's, kept as anything in a workspace is: by nobody in particular, made `at`. */
+const keptIn = (name: string, kind: WorkspaceItem['kind'], at: string, parent: string | null, call: WorkspaceItem['call'] = null): WorkspaceItem => ({
+  id: spaceItem(name), kind, name, parent, by: null, mine: false, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, role: 'edit', call
+});
+/**
+ * Launch keeping seven planning calls, the five before October's with no notes for Art: the side panel lists five of them, then
+ * 2 more. The oldest's folder keeps a folder of press notes, with last summer's press list in it.
+ */
+function sevenPlannings(w: World): void {
+  const space = w.workspaces.find((s) => s.id === LAUNCH);
+  if (!space) return;
+  const earlier = (['29 Sep', '15 Sep', '1 Sep', '18 Aug', '4 Aug'] as const).map((day, i) => {
+    const at = iso(-36 - 14 * i, 16, 0);
+    return keptIn(`Launch planning · ${day}`, 'folder', at, null, { startedAt: at, on: false, here: false, noteId: null });
+  });
+  const oldest = earlier.at(-1)?.id ?? null;
+  space.items = [...space.items, ...earlier, keptIn('Press notes', 'folder', iso(-92, 17, 0), oldest), keptIn('Old press list', 'document', iso(-92, 17, 5), spaceItem('Press notes'))];
+}
+const OLD_PRESS_LIST = `/drive/${LAUNCH}/${spaceItem('Old press list')}`;
+/**
+ * A page in a call the side panel keeps behind "2 more": open, every call is listed, so its row is there. Press notes, on the
+ * path over the page, shows the folder where it is, open in that call's folder, lit, with the keyboard on it.
+ */
+export const AStepBehindMore = page(OLD_PRESS_LIST, 'busy', {
+  beforeEach: changing(withWorkspaces, sevenPlannings), globals: DESKTOP,
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Press Press notes on the path: the side panel shows it where it is, in the oldest planning call, lit', async () => {
+      const path = await canvas.findByRole('navigation', { name: 'Where you are' }, { timeout: 8000 });
+      await userEvent.click(await within(path).findByRole('button', { name: 'Press notes' }, { timeout: 8000 }));
+    });
+  }
+});
+/** Launch's Home, with its seven planning calls: five in the side panel, then 2 more. */
+export const SevenCallsKept = page(LAUNCH_HOME, 'busy', { beforeEach: changing(withWorkspaces, sevenPlannings), globals: { ...DESKTOP, theme: 'dark' } });
 /**
  * An agenda Art just made in Hiring sync's workspace, before its call tomorrow: its pages are For the call, and Ines is reading
  * it. It's Art's, so it never says New.
@@ -162,12 +198,13 @@ const share: PageStory['play'] = async ({ canvas, userEvent }) => {
 const withTeamSpace = (role: 'admin' | 'edit') => (w: World): void => {
   w.workspaces = [...w.workspaces, { id: 'ws-launch', name: 'Launch', role, inCall: false, people: 5, teamAccess: 'team', createdAt: iso(-6, 11, 0), call: null, items: [] }];
 };
-/** Opens People from the workspace's name at the top of its list. */
+/** Opens People from the workspace switcher, its name at the top of the side panel. */
 const teamPeople: PageStory['play'] = async ({ canvas, userEvent, step }) => {
-  await step('Press Launch at the top of its list, then People', async () => {
-    const named = await canvas.findAllByRole('button', { name: /^Launch/ }, { timeout: 8000 });
-    const top = named.find((b) => b.closest('.wt-head') !== null);
-    if (top) await userEvent.click(top);
+  await step('Press Launch, the switcher at the top of its side panel, then People', async () => {
+    const named = await canvas.findAllByRole('button', { name: /Launch/ }, { timeout: 8000 });
+    const top = named.find((b) => b.classList.contains('wf-switch'));
+    if (!top) throw new Error('The workspace switcher isn’t there.');
+    await userEvent.click(top);
     const people = await screen.findByRole('menuitem', { name: /^People/ }, { timeout: 5000 });
     // A menu takes no press until its rows have been still for a moment (WsMenu).
     await beat(800);

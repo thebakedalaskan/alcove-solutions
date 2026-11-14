@@ -55,6 +55,7 @@
 .wt-scroll:first-child { padding-top: 6px; }
 .wt-sec { padding: 12px 8px 6px; border-radius: 8px; font: 500 12px/1 var(--font-sans); color: var(--ink-3); user-select: none; }
 .wt-sec.is-into { background: var(--horizon-soft); color: var(--horizon); }
+.wt-sec.is-flash { animation: ws-flash 1.4s var(--ease-out); }
 .wt-r { position: relative; display: flex; align-items: center; height: 32px; padding-left: calc(var(--d) * 16px); border-radius: 9px; color: var(--ink-2); user-select: none; transition: background-color var(--duration-1); }
 .wt-r:hover { background: var(--sunk); }
 .wt-r.is-cur { background: var(--sunk); color: var(--ink); }
@@ -225,6 +226,8 @@ button.ws-step-b:focus-visible { outline-offset: -2px; }
 .wv-m p { overflow-wrap: anywhere; font-size: 14px; line-height: 1.4; color: var(--ink-2); }
 .wv-share { width: 340px; padding: 12px; display: grid; gap: 8px; }
 .wv-h b { overflow-wrap: anywhere; font: 600 15px/1.2 var(--font-sans); }
+.wv-h-back { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.wv-h-back .ac-icon-btn { flex: none; width: 28px; height: 28px; margin: -4px 0 -4px -6px; }
 .wv-h p { margin-top: 4px; font-size: 12.5px; line-height: 1.4; color: var(--ink-2); }
 .wv-f { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; border-radius: 10px; background: var(--sunk); color: var(--ink-3); font-size: 14px; }
 .wv-f input { flex: 1; min-width: 0; height: 30px; border: 0; padding: 0; background: none; color: var(--ink); font: 400 14px/1 var(--font-sans); outline: none; }
@@ -565,6 +568,8 @@ button.wf-seal .ac-i { margin-top: 0; }
 button.wf-seal > .ac-clamp-2 { min-width: 0; }
 button.wf-seal:hover, button.wf-seal[data-state="open"] { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink-2); }
 .wf-seal-go { flex: none; margin-left: auto; padding-left: 6px; font-weight: 600; color: var(--ink-2); transition: color var(--duration-1); }
+/* Which workspace Share shares, said to a screen reader after what's shown. */
+.wf-seal-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 button.wf-seal:hover .wf-seal-go, button.wf-seal[data-state="open"] .wf-seal-go { color: var(--ink); }
 
 /* The bar over the page: the way back and the path, then what's said about the page, and you at the far right. */
@@ -575,7 +580,7 @@ button.wf-seal:hover .wf-seal-go, button.wf-seal[data-state="open"] .wf-seal-go 
 .wf-back:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 7%, transparent); }
 .wf-sep { flex: none; color: var(--ink-3); }
 .wf-crumbs { --ws-path-h: 32px; --ws-step-x: 8px; --ws-step-r: 9px; }
-.wf-crumbs .ws-step-sep { width: 13px; height: 13px; margin: 0 2px; }
+.wf-crumbs .ws-step-sep { width: 13px; height: 13px; margin: 0 4px; }
 .wf-crumbs .ws-step.is-here .ws-step-b { font-weight: 600; }
 .wf-up { display: none; }
 .wf-end { flex: none; display: flex; align-items: center; gap: 8px; margin-left: auto; }

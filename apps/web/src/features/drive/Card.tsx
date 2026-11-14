@@ -17,8 +17,8 @@ export interface CardActions {
   onOpen: () => void;
   onFullScreen: () => void;
   onCopyLink: () => void;
-  /** Share: who has it, which takes the menu's place. */
-  share?: (() => ReactNode) | undefined;
+  /** Share: who has it, which takes the menu's place, with `back` to its rows. */
+  share?: ((back: () => void) => ReactNode) | undefined;
   onRename?: ((name: string) => void) | undefined;
   onTrash?: (() => void) | undefined;
 }
@@ -45,7 +45,7 @@ export function NameField({ name, label, onDone }: { name: string; label: string
 
 /**
  * A card's ⋯: Open, Open full screen, Share and Copy link, then Rename and Move to Trash for whoever can. Rename asks for the
- * name in the menu's place, and Share shows who has it there.
+ * name in the menu's place, and Share shows who has it there, each with ← back to the rows.
  */
 function More({ name, current, actions }: { name: string; current: string; actions: CardActions }) {
   const [open, setOpen] = useState(false);
@@ -70,7 +70,7 @@ function More({ name, current, actions }: { name: string; current: string; actio
           <input type="text" aria-label={`Rename ${name}`} value={typed} maxLength={200} autoFocus autoComplete="off" spellCheck={false} onFocus={(e) => e.currentTarget.select()}
             onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setInside(null); } }} />
         </form>
-      ) : inside === 'share' && share ? share() : <WsMenu label={`More for ${name}`} rows={rows} />}
+      ) : inside === 'share' && share ? share(() => setInside(null)) : <WsMenu label={`More for ${name}`} rows={rows} />}
     </WsPopover>
   );
 }

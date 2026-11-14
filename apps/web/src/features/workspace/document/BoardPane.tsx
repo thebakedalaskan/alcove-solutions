@@ -7,7 +7,8 @@
  * is, and goes when the connection's back; a board that goes from under someone says so in its place. More beside the tools
  * has what it has in a call: a picture kept in the board's files, a link to something in this workspace, a table, a mind map,
  * a comment and a template. On a phone the page is the phone's board: no tools beside it, + to add a sticky, and it opens
- * where it can be read.
+ * where it can be read. Share, on the head or at the foot of the side panel, closes whatever the board has open first: its
+ * menus, a tool's options, its pickers.
  */
 import { errorCode, firstName, type WorkspaceItem } from '@alcove/api';
 import type { BoardReply } from '@alcove/board';
@@ -16,6 +17,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { boardPictures, boardUpload, linkableIn } from '~/features/board/around';
 import type { BoardCommenting } from '~/features/board/people/comments';
+import type { BoardHandle } from '~/features/board/BoardSurface';
 import { BoardSurface } from '~/features/board/lazy';
 import type { BoardLinks } from '~/features/board/more/objects';
 import { useBoardPeople } from '~/features/board/people/people';
@@ -152,6 +154,14 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
   const [pop, setPop] = useState<Pop>(null);
   const [naming, setNaming] = useState<string | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
+  /* The board itself, to close what it has open over its sheet when Share opens over the page. */
+  const surface = useRef<BoardHandle>(null);
+  const closeOverRef = ws.closeOver;
+  useEffect(() => {
+    const close = () => { surface.current?.closeOver(); setPop(null); };
+    closeOverRef.current = close;
+    return () => { if (closeOverRef.current === close) closeOverRef.current = null; };
+  }, [closeOverRef]);
 
   const member = ws.sent.role !== null;
   const trashed = item.trashedAt !== null || status.trashed || status.refused === 'trashed';
@@ -253,15 +263,21 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
   if (!ready) return <WsDoc className="is-board"><PaneHead crumbs={where} save="quiet" />{status.closed === 'unavailable' ? <WsUnavailable /> : offline && <WsOfflineEmpty online={online} onTry={session.retry} />}</WsDoc>;
 
   const who = item.trashedBy ? firstName(item.trashedBy) : 'Someone';
-  /* Share on the head, as a document has it: the same sheet as Who can add to it, for whoever can say who has the board. */
-  const headShare: WsPop | undefined = canShare ? { open: pop === 'head', onOpenChange: (to) => setPop(to ? 'head' : null), content: pop === 'head' ? <ShareSheet item={item} /> : null } : undefined;
+  /*
+   * Share on the head, as a document has it: the same sheet as Who can add to it, for whoever can say who has the board. What
+   * the board has open goes first, so the sheet never opens over one of its menus.
+   */
+  const headShare: WsPop | undefined = canShare ? {
+    open: pop === 'head', content: pop === 'head' ? <ShareSheet item={item} /> : null,
+    onOpenChange: (to) => { if (to) surface.current?.closeOver(); setPop(to ? 'head' : null); }
+  } : undefined;
   return (
     <WsDoc className="is-board">
       <PaneHead crumbs={where} save="quiet" share={headShare} />
       <WsGoneBar what="board" who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} unsent={status.unsent} />
       <div ref={wrap} className="bpg">
         <Suspense>
-          <BoardSurface doc={session.doc} awareness={session.awareness} mode={readOnly ? 'pageRead' : phone ? 'pagePhone' : 'page'} name={name} naming={nameField}
+          <BoardSurface ref={surface} doc={session.doc} awareness={session.awareness} mode={readOnly ? 'pageRead' : phone ? 'pagePhone' : 'page'} name={name} naming={nameField}
             nameTitle={nameTitle} seal={standing.seal} sealIcon={standing.icon} sealTitle={standing.title} everyone={everyone} people={people} comments={commenting}
             pictures={pictures} upload={upload} workspace={toLink} links={links}
             onName={() => setPop((p) => (p === 'name' ? null : 'name'))} onSeal={() => setPop((p) => (p === 'seal' ? null : 'seal'))}

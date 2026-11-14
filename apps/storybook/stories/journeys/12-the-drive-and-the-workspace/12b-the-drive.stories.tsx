@@ -88,7 +88,7 @@ export const ShareAWorkspace: PageStory = {
     await step('Open it full screen. Who can open it, at the foot of its side panel, opens the same people, from any page of it', async () => {
       await userEvent.keyboard('{Escape}');
       await userEvent.click(await screen.findByRole('button', { name: 'Open full screen' }, SOON));
-      await userEvent.click(await screen.findByRole('button', { name: /^Share Team standup/ }, LATER));
+      await userEvent.click(await screen.findByRole('button', { name: /can open it Share Team standup/ }, LATER));
       await within(await sheet('People in Team standup · 4 Nov')).findByText('Aiko Tanaka', {}, SOON);
     });
   }

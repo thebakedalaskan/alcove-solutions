@@ -17,6 +17,10 @@ export interface NotesApi {
    */
   list(query?: { kind?: NoteKind | undefined; text?: string | undefined; by?: string | undefined }): Promise<NoteFound[]>;
   get(id: ID): Promise<Note>;
+  /**
+   * Where the notes are, about once a second until they're ready. It ends with `not-found` once the note isn't yours to read
+   * any more, as reading it would; a stream that just ends before the notes are ready is to be followed again.
+   */
   progress(id: ID): AsyncIterable<NoteProgress>;
   /**
    * URL of the first `pieces` of one decrypted audio segment, for a signed-in browser's audio element: it answers byte

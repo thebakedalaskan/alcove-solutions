@@ -332,7 +332,8 @@ its own page.
   - **Shared with you**: what's in workspaces you're not in.
   - **A workspace**: who's in it (their faces, "Priya, Kofi, Ines and you"), **Share** and **Open full screen**, both
     secondary; its folders as tiles with how many files each holds; the calls kept in it as rows with when and Open the call;
-    its files. A folder opens in the same place under the way back, its head without Share: a folder isn't shared on its own.
+    its files. A folder opens in the same place under the way back, its head without Share, while its workspace loads too: a
+    folder isn't shared on its own.
     Share is the whole workspace's, for anyone in it: who's in it, the people sheet its Home opens (an admin adds people by
     name or address and sets what each can do; anyone else reads who's in it, is told who to ask, "Only an admin can add
     people. Ask Priya.", and can leave).
@@ -352,8 +353,11 @@ its own page.
   the tree open to it (`DocumentBeside` from `features/workspace/Beside.tsx`: the workspace's own page for it, without its
   list); ⤢ in its head takes it full screen, and Share beside it says who has it, a board's as a document's. Its ⋯ has
   Open, Open full screen, Share (who has it, in the menu's place: the sheet Share opens on its own page, for someone in its
-  workspace who can edit there), Copy link, Rename (the name typed in the same menu; a document's title follows) and Move to
-  Trash, with Undo. A document or a board never moves between workspaces from here.
+  workspace who can edit there, with ← back to the rows as Rename has), Copy link, Rename (the name typed in the same menu; a
+  document's title follows) and Move to Trash, with Undo. When who has it can't be shown, Share says why in its place: its
+  workspace can't be opened any more (deleted, or you were taken out of it), Alcove couldn't be reached, or, with no
+  connection and nothing read yet, that it shows once Alcove can be reached. A document or a board never moves between
+  workspaces from here.
 - **New** offers Document, Board, Upload files and Workspace. Where you are says where it goes; on Recent, Shared with you
   or Trash the same menu asks which workspace, the ones you can make things in first, then the latest calls', then New
   workspace, named in place. Files are picked first, then where they go.
@@ -380,14 +384,17 @@ Any workspace opens full screen in Alcove's own evening, not as a stock editor: 
   (menus, drags, renaming, keys). A workspace made by hand: Home (shaded while you're on it), **Pages** with + on its
   heading (the tree with folders), and **Calls** (each call kept in it, ↗ to its page). A call's own workspace has no Home:
   **The call, today ↗** first, with what was made in the call under it (its folder), then **Pages** with + on its heading
-  (**For the call** before the call, when all of it is), then a series' **Earlier calls** by day, five, then N more. A row
+  (**For the call** before the call, when all of it is), then a series' **Earlier calls** by day, five, then N more (all of
+  them while what's open is in one of the rest, or a step of the path shows one). A row
   someone else made in the last ten minutes says New in `sun-text` until you open it, here, beside the Drive or in a call
   (a board on your stage too); what you made never does. What you've opened is kept in this browser for an hour
   (`features/workspace/tree/seen.ts`), so another device can still say New. At the foot, on a hairline: Trash, with a
   count only when something's in it, and who can open it beside the seal. For anyone in the workspace that line is a row
   ending in **Share**, which opens who's in it over the foot (`WsSide`'s `share`, the people sheet Home's Share opens): the
-  way to share the whole workspace from any page of it, and the only one for a call's own workspace, which has no Home.
-  Someone outside it, who has only what's shared with them, has the words alone.
+  way to share the whole workspace from any page of it, and the only one for a call's own workspace, which has no Home. Its
+  name is what it shows, then the workspace's name ("Priya, Kofi, Ines and you can open it Share Launch"), so it's told from
+  the bar's Share, which shares the page. Whatever a board has open over itself closes as it opens. Someone outside it, who
+  has only what's shared with them, has the words alone.
 - **The bar**: ← Drive or ← Calls; the path (below); Saved; who else is here, their faces and "Priya is here"
   (the words go under 1100px); Share (a secondary button: on Home the workspace's, on a document or a board that page's); ⋯;
   leave full screen; and you. Leaving goes back where it was opened from: the Drive at this workspace, or Calls.
@@ -395,11 +402,14 @@ Any workspace opens full screen in Alcove's own evening, not as a stock editor: 
   then the page, in bold here and in `ink` in a head, with chevrons between. Every step before the page can be pressed: the
   workspace's name goes Home, and a call's own workspace, which has none, goes to the call's own page once it has notes, else
   to the call's row in the side panel; a folder opens in the side panel, with the folders around it, its row lit and the
-  keyboard on it, the page staying as it is; a call's folder goes to the call's own page once it has notes. In a call a step
-  shows itself in the list, which comes out if it was away (the workspace and This call are its top), and beside the Drive's
-  tree the Drive goes to the workspace or the folder. A call's own workspace and its call's folder have one name, so they're
-  one step, which goes where the folder does. A long path gives up whole steps from its start, never squeezing one to a
-  letter: a folder's name stops at 180px, and the page keeps the line if it needs it.
+  keyboard on it, the page staying as it is, and every call kept here listed if it's in one behind N more; a call's folder
+  goes to the call's own page once it has notes. In a call a step shows itself in the list, which comes out if it was away,
+  over the page in a narrow window: the workspace and This call are its top, so the list goes there and This call's heading
+  lights up. Beside the Drive's tree the Drive goes to the workspace or the folder, and a call's folder goes where that
+  call's row in the Drive does: the call's own page once it has notes, else the place its row is in. A call's own workspace
+  and its call's folder have one name, so they're one step, which goes where the folder does. A long path gives up whole
+  steps from its start, never squeezing one to a letter: a folder's name stops at 180px, and the page keeps the line if it
+  needs it. Its chevrons sit as far from each step as the one after the way back.
 - **Home**: the workspace's name in Newsreader on the evening after sunset (`Horizon`, moment `note`, its clouds and chop
   left out), running up behind the bar, which stays clear until the page scrolls under it, and fading into the page. Then
   the line on what it's for (`WsAbout`: an admin presses it to write it in place, or "Say what this workspace is for"),
@@ -417,7 +427,8 @@ Any workspace opens full screen in Alcove's own evening, not as a stock editor: 
   Drive, and a page under ← and the workspace's name, which goes back to them. Share is in ⋯, and there's no leave full
   screen.
 - **Beside the Drive's tree**, a document is `DocumentBeside` (`features/workspace/Beside.tsx`): the same page without the
-  frame, its head with ⤢ to go full screen, and its path's steps taking the Drive to the workspace or the folder.
+  frame, its head with ⤢ to go full screen, and its path's steps taking the Drive to the workspace or the folder (or a call's
+  folder to the call, as above).
 
 ## Team
 
@@ -946,7 +957,9 @@ designed as the whiteboards canvas's page and its States board, and on a phone a
 - The board fills where a document would be, on the ground, under the workspace's head, which says where it is (the
   workspace and its folders, each of which can be pressed) and holds the list's button, and, for whoever can say who has the
   board, Share, as over a document: Who can add to it, the same sheet as under its name. Full screen it's the bar's Share;
-  beside the Drive's tree, the head's. Its tools are the call's dock turned on its side, made day.
+  beside the Drive's tree, the head's. Whatever the board has open (its bar's menus, a tool's options, the picker, Vote's
+  menu) closes as Share opens, there or at the foot of the side panel, so the sheet never opens over one of them
+  (`BoardHandle.closeOver`). Its tools are the call's dock turned on its side, made day.
 - Its bar is the page's head: the name, with everything about the board itself under it (Rename in its place, Saved in,
   Who can add to it, Copy link); the seal; Undo and Redo; how near you are and the map; More (the downloads and Night
   board); and at the end the faces of whoever else is on it and Start a call here, the one primary button.

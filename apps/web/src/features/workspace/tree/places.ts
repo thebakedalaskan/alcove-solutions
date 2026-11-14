@@ -28,9 +28,20 @@ export function placesOf(owner: string | null | undefined): WorkspacePlaces {
   }
 }
 
+/** Who in this tab hears an account's places change, as another tab hears it through `storage`. */
+const hearing = new Map<string, Set<() => void>>();
+/** Hears this tab change where `owner` was; the answer stops it. */
+export function hearPlaces(owner: string, heard: () => void): () => void {
+  const all = hearing.get(owner) ?? new Set<() => void>();
+  hearing.set(owner, all);
+  all.add(heard);
+  return () => { all.delete(heard); if (!all.size) hearing.delete(owner); };
+}
+
 export function rememberPlaces(owner: string | null | undefined, change: (was: WorkspacePlaces) => WorkspacePlaces): void {
   if (!owner) return;
-  try { localStorage.setItem(placesKey(owner), JSON.stringify(change(placesOf(owner)))); } catch (e) { plog.debug('this browser’s storage is unavailable', { err: e }); }
+  try { localStorage.setItem(placesKey(owner), JSON.stringify(change(placesOf(owner)))); } catch (e) { plog.debug('this browser’s storage is unavailable', { err: e }); return; }
+  for (const heard of [...hearing.get(owner) ?? []]) heard();
 }
 
 /** Whether you've tucked the list away, as you left it last: remembered as it changes. */

@@ -17,10 +17,10 @@ import { WaysIn, type Auth, type Busy } from '~/features/account/WaysIn';
 import { clearReturn, returnTo, takeReturnTo } from '~/features/account/afterSignIn';
 import { sessionOrOffline } from '~/features/account/guards';
 import { log } from '~/lib/log';
-import { shortDay } from '~/lib/time';
 import { accountQueries } from '~/features/account/queries';
 import { useGoogleSignIn, useSignIn } from '~/features/account/signIn';
 import { sharingQueries, useClaimNoteLink } from './queries';
+import { linkEnds } from './linkEnds';
 
 const llog = log.child({ component: 'note-link' });
 
@@ -137,7 +137,7 @@ export function NoteLinkPage() {
         <span className="rg-done"><Icon name="notes" size={24} /></span>
         <h1>Someone shared a call’s notes with you</h1>
         <p>Open them as <b>{who.email}</b>? Everyone who has them will see that you did.</p>
-        <p className="rg-sealed"><Icon name="clock" size={14} /><span>This link works until {shortDay(new Date(until))}. Notes you open with it stay yours after that.</span></p>
+        <p className="rg-sealed"><Icon name="clock" size={14} /><span>This link works until {linkEnds(until)}. Notes you open with it stay yours after that.</span></p>
         <Button variant="primary" size="lg" loading={opening.at === 'opening'} onClick={() => void open(who, until)}>
           {opening.at === 'opening' ? 'Opening the notes' : 'Open the notes'}
         </Button>

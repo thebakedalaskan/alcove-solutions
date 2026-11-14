@@ -24,7 +24,7 @@ import { isUnencrypted, useAiModels } from '~/features/notes/models';
 import { useMedia, useOnline, useSettled } from '~/lib/live';
 import { callName } from '~/lib/people';
 import { accountQueries } from '~/features/account/queries';
-import { isNoteSearch, noteQueries } from '~/features/notes/queries';
+import { isNoteSearch, noteQueries, readGone } from '~/features/notes/queries';
 import { teamQueries } from '~/features/team/queries';
 import { Answered } from './palette/Answered';
 import { keepInView } from './palette/keepInView';
@@ -56,7 +56,8 @@ const NO_CITES: Cite[] = [];
 const NO_WORDS: string[] = [];
 /** The notes an answer cites, as they're read: by ID, and whether any is still on its way. */
 const readOf = (results: UseQueryResult<Note>[]): { read: ReadonlyMap<string, Note>; pending: boolean } => ({
-  read: new Map(results.flatMap((r) => (r.data ? [[r.data.id, r.data] as const] : []))),
+  /* A note that's gone since (not the reader's any more) isn't read, whatever was read of it before. */
+  read: new Map(results.flatMap((r) => (r.data && !readGone(r) ? [[r.data.id, r.data] as const] : []))),
   pending: results.some((r) => r.isPending)
 });
 

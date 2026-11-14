@@ -84,8 +84,11 @@ export function SpaceSheet({ w, mark, at, actions }: { w: WorkspaceSummary; mark
       </>
     );
   }
-  /* The head is the same one once what's in the workspace has come, so Share, open on it by then, stays open. */
-  if (!tree.data) return <><SheetHead key="head" title={name} mark={mark} meta={meta} actions={top} /><p className="dv-loading"><Dots /></p></>;
+  /*
+   * The head is the same one once what's in the workspace has come, so Share, open on it by then, stays open. A folder's has
+   * no Share from the first: a folder isn't shared on its own, and its name comes with the tree.
+   */
+  if (!tree.data) return <><SheetHead key="head" title={name} mark={at.folder ? undefined : mark} meta={at.folder ? undefined : meta} actions={at.folder ? full : top} /><p className="dv-loading"><Dots /></p></>;
 
   const place = inPlace(items, folder?.id ?? null);
   const files = place.files.flatMap((i): DriveFile[] => { const f = fileOf(w.id, i); return f ? [f] : []; });

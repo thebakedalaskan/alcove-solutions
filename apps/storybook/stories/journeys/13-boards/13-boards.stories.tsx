@@ -175,20 +175,22 @@ export const AddToIt: PageStory = {
   name: '13.6 Add to it, one sticky after another',
   ...page(RETRO, 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Double-click under Went well, where nothing is yet: a sticky, ready to type', async () => {
-      // Under No rollbacks and clear of its frame: a sticky lands centred where it's double-clicked.
+    await step('Double-click in Went well, beside No rollbacks, where nothing is yet: a sticky, ready to type', async () => {
+      // Inside the frame, in the space under Pricing page shipped a week early: a sticky lands centred where it's double-clicked.
+      // Outside a frame, a double-click starts text, as the blank board says.
       const last = (await screen.findByText('No rollbacks', {}, SOON)).closest('[data-id]')?.getBoundingClientRect();
-      if (!last) throw new Error('No rollbacks isn’t on the board.');
+      const above = (await screen.findByText('Pricing page shipped a week early', {}, SOON)).closest('[data-id]')?.getBoundingClientRect();
+      if (!last || !above) throw new Error('Went well’s stickies aren’t on the board.');
       const board = await sheet('Launch retro');
-      await userEvent.pointer({ keys: '[MouseLeft][MouseLeft]', target: board, coords: { clientX: last.x + last.width / 2, clientY: last.bottom + last.height * 0.9 } });
+      await userEvent.pointer({ keys: '[MouseLeft][MouseLeft]', target: board, coords: { clientX: above.x + above.width / 2, clientY: last.y + last.height / 2 } });
       await screen.findByRole('textbox', { name: 'Edit this sticky' }, SOON);
     });
-    await step('Type it, then press Tab: the next sticky starts beside it', async () => {
+    await step('Type it, then press Tab: the next sticky starts after it, at the start of the next row as the frame runs out', async () => {
       await userEvent.keyboard('Name who writes the changelog');
       await userEvent.keyboard('{Tab}');
       await userEvent.keyboard('Keep the runbook in the workspace');
     });
-    await step('Esc when you’re done. Both stay, side by side', async () => {
+    await step('Esc when you’re done. Both stay', async () => {
       await userEvent.keyboard('{Escape}');
       await screen.findByText('Keep the runbook in the workspace', {}, SOON);
     });

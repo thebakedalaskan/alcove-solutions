@@ -54,9 +54,10 @@ export function ShareSheet({ item }: { item: WorkspaceItem }) {
 
 /**
  * Share, wherever it opens: in the document's workspace, or from a board's name in a call. `say` shows what it did. `pass`: the
- * call it's opened from, which is told of each change at once.
+ * call it's opened from, which is told of each change at once. `onBack`: it opened in place of a menu's rows (a card's ⋯ in the
+ * Drive), which ← goes back to.
  */
-export function ShareSheetFor({ workspaceId, item, say, pass }: { workspaceId: string; item: WorkspaceItem; say: (toast: WsToastData) => void; pass?: string | undefined }) {
+export function ShareSheetFor({ workspaceId, item, say, pass, onBack }: { workspaceId: string; item: WorkspaceItem; say: (toast: WsToastData) => void; pass?: string | undefined; onBack?: (() => void) | undefined }) {
   const name = nameOf(item);
   const share = useQuery(workspaceQueries.documentShare(workspaceId, item.id));
   const people = useQuery(workspaceQueries.workspacePeople(workspaceId)).data ?? [];
@@ -100,7 +101,7 @@ export function ShareSheetFor({ workspaceId, item, say, pass }: { workspaceId: s
   for (const e of entries) {
     rows.push({ id: e.id, people: [e.person], name: e.person.name, sub: e.kind === 'seat' ? 'Guest in this call' : addressUnder(e.person), role: roleOf(e.id, e.person.email, e.role, e.kind === 'seat') });
   }
-  return <WsShareSheet title={`Share ${name}`} query={adding.query} onQuery={adding.setQuery} onAdd={adding.onAdd} matches={adding.matches} rows={rows} />;
+  return <WsShareSheet title={`Share ${name}`} query={adding.query} onQuery={adding.setQuery} onAdd={adding.onAdd} matches={adding.matches} rows={rows} onBack={onBack} />;
 }
 
 /** Someone's row in the workspace's own sheet. An admin can change anyone; everyone else can only leave. */
@@ -124,13 +125,14 @@ export function PeopleSheet() {
 
 /**
  * Share for the workspace open here, where it's shown whole rather than one page of it (the foot of its side panel, full
- * screen): who's in it, in the people sheet. Nothing for someone who isn't in it, who can't read its people.
+ * screen): who's in it, in the people sheet. What the page has open over itself, such as a board's menus, closes as it opens.
+ * Nothing for someone who isn't in it, who can't read its people.
  */
 export function useSpaceShare(): WsPop | undefined {
   const ws = useWs();
   const [open, setOpen] = useState(false);
   if (ws.sent.role === null) return undefined;
-  return { open, onOpenChange: setOpen, content: open ? <PeopleSheet /> : null };
+  return { open, onOpenChange: (to) => { if (to) ws.closeOver.current?.(); setOpen(to); }, content: open ? <PeopleSheet /> : null };
 }
 
 /**

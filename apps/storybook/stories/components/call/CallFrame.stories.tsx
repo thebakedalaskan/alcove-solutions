@@ -106,11 +106,11 @@ const BOARD_MENU = (
 );
 const WORKSPACE_MENU = (
   <>
-    <Row icon="folders" label="Switch workspace" /><Row icon="search" label="Find in the workspace" k="⌘K" /><Row icon="people" label="Who’s in it" />
+    <Row icon="folders" label="Switch workspace" /><Row icon="search" label="Find in the workspace" k="⌘K" /><Row icon="addUser" label="Share workspace" />
     <Row icon="pen" label="Rename" /><Row icon="link" label="Copy link" />
   </>
 );
-/** The same menu for a guest: what a guest can use. */
+/** The same menu for a guest: what a guest can use. They aren't in the workspace, so it's who's in the call, not Share. */
 const GUEST_WORKSPACE_MENU = <><Row icon="search" label="Find in the workspace" k="⌘K" /><Row icon="people" label="Who’s in it" /></>;
 /** Who can edit it, after how it stands: everyone in the call, on the call's board or workspace. */
 const EVERYONE = { label: 'Everyone in the call can edit', onPress: did('Who’s in it') };
@@ -206,7 +206,7 @@ export const WorkspaceJustForYou: Story = {
   name: 'The workspace, only on your screen',
   args: { icon: 'folderOpen', name: 'Launch review · 4 Nov', label: 'Launch review · 4 Nov, only you see it', menu: menu('Launch review · 4 Nov', WORKSPACE_MENU), children: <WorkspaceBody /> }
 };
-/** Its name's menu: the workspace's one menu. For the organizer, Switch workspace, Find, Who's in it, Rename and Copy link. */
+/** Its name's menu: the workspace's one menu. For the organizer, Switch workspace, Find, Share workspace, Rename and Copy link. */
 export const WorkspaceMenu: Story = {
   name: 'The workspace, its menu open',
   args: { ...WorkspaceJustForYou.args, menu: menu('Launch review · 4 Nov', WORKSPACE_MENU, true) }

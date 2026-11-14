@@ -203,13 +203,14 @@ export function WsListTools({ onFind, findKey, create, createLabel = 'New docume
 
 /**
  * A heading in the list: This call, Documents, Pages. `into`: something's being dragged onto it. `add`: a + at its end that
- * opens what can be made under it (`WsNewMenu`), named `addLabel`.
+ * opens what can be made under it (`WsNewMenu`), named `addLabel`. `flash`: it lights up for a moment, as a row that arrives
+ * does, when the path over the page shows it.
  */
-export function WsSection({ label, area = 'tree', into = false, add, addLabel = 'New' }: {
-  label: ReactNode; area?: 'pins' | 'tree' | undefined; into?: boolean | undefined; add?: WsPop | undefined; addLabel?: string | undefined;
+export function WsSection({ label, area = 'tree', into = false, flash = false, add, addLabel = 'New' }: {
+  label: ReactNode; area?: 'pins' | 'tree' | undefined; into?: boolean | undefined; flash?: boolean | undefined; add?: WsPop | undefined; addLabel?: string | undefined;
 }) {
   return (
-    <div className={cn('wt-sec', into && 'is-into', add && 'has-add')} data-sec={area} role="presentation">
+    <div className={cn('wt-sec', into && 'is-into', flash && 'is-flash', add && 'has-add')} data-sec={area} role="presentation">
       <span>{label}</span>
       {add && (
         <WsPopover open={add.open} onOpenChange={add.onOpenChange} label={addLabel} anchor={

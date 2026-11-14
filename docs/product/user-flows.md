@@ -1116,15 +1116,18 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    for the call, named after it and the day (**Launch check-in · 5 Nov**), with the organizer and everyone invited in it.
    Everyone let in to the call can open it and edit it, guests too (step 3). Its bar says "Only on your screen" and, beside
    that, "Everyone in the call can edit", or "You can edit while you’re in the call" for a guest or anyone else not in the
-   workspace, which opens **Who’s in it**: the workspace's people, and everyone in the call. The workspace's name, on its
-   bar, is its one menu: **Switch workspace** for the organizer (step 2), **Find in the workspace**, **Who’s in it**,
-   **Rename** for an admin, and **Copy link**; a guest's has **Find in the workspace** and **Who’s in it**. The list's head
+   workspace, which opens who's in it: the workspace's people, and everyone in the call. The workspace's name, on its
+   bar, is its one menu: **Switch workspace** for the organizer (step 2), **Find in the workspace**, **Share workspace**
+   (the same sheet: an admin adds people there, anyone else in it is told who can; Share in the dock is presenting),
+   **Rename** for an admin, and **Copy link**; a guest's, or anyone else's who isn't in the workspace, has **Find in the
+   workspace** and **Who’s in it**, the people in the call. The list's head
    has only **Find** and **+**. At the top of the list is **This call**: the call's own folder in its home, named after the
    call and the day as a new home is, with **Notes**, **Follow-ups** and **Transcript**, then whatever's made in it, and
    what's been brought to the call. What you make during the call (**N**, **+**, **New document**) goes in This call. Over
    the page, its path runs from the workspace through This call and its folders to the document, and pressing a step shows
-   it in the list, the list coming out if it was away: the folder opens, lit, with the keyboard on it, and the page stays as
-   it is. A long path gives up whole steps from its start. A home for several calls has a folder for each, the newest
+   it in the list, the list coming out if it was away (over the page in a narrow window): the folder opens, lit, with the
+   keyboard on it, and the page stays as it is; the workspace and This call go to the list's top, where This call lights
+   up. A long path gives up whole steps from its start. A home for several calls has a folder for each, the newest
    first. Everyone sees the same workspace, late or back from a
    reload. It opens on this call's agenda, or the first thing brought to it, or with neither on what you had open there
    last. Anyone who can open a document can bring it from its row's menu (**Bring to this call**, **Take out of this
@@ -1650,13 +1653,16 @@ another call while in one; 7.7 the call ends while they're on its page; 7.8 alon
   it runs out, as anyone they're shared with does. The link alone opens nothing.
   Signed in, it asks first, because everyone with the notes will see who opened it: "Open them as
   kofi@vandelay.industries? Everyone who has them will see that you did.", with until when the link works and that the
-  notes stay theirs after that ("This link works until Fri 21 Nov. Notes you open with it stay yours after that."). Only
+  notes stay theirs after that, to the minute it stops ("This link works until Fri 21 Nov 16:00. Notes you open with it stay
+  yours after that.", or "16:00 today" on its last day). Only
   **Open the notes** gives that account the notes and opens them; **Not now** goes to Home with nothing given. Someone
   signed out is asked to sign in first (to a real account, unless the organizer's is a demo one), and is then asked the
   same: signing in never opens them by itself. The links that still work are listed there, **Your link** or **Priya's
-  link**, with until when each works, and whoever made one, or the organizer, can **Revoke** it: from then on it opens
-  nothing, and whoever it gave the notes to keeps them, which the toast says. A link that's run out or been revoked says
-  so before asking anything: to ask for a new one, and that whoever opened it before has the notes already. Notes
+  link**, with until when each works, to the minute ("works until tomorrow 16:00"), and whoever made one, or the organizer,
+  can **Revoke** it: from then on it opens nothing, and whoever it gave the notes to keeps them, which the toast says. A
+  link that's run out or been revoked says so before asking anything: to ask for a new one, and that whoever opened it
+  before has the notes already. So does one that wouldn't give this account the notes now, saying nothing of why: its
+  maker no longer has them, or the account is a demo one and the organizer's isn't. Notes
   from a link say **From Priya's link, yours to keep** beside their title (**From Priya's link** in lists), and **Who has
   these notes** says **By Priya's link**. Nothing counts down: there's no time left on notes someone has.
 - Someone else's notes say how you got them, beside their title: **From Priya’s call** when you were invited,
@@ -2206,10 +2212,12 @@ workspace shows the call's **Notes**, **Follow-ups** and **Transcript** as cards
 files**, which make one at its top, and in a series the calls before. **Trash** is one list across every workspace: where
 each thing was, who moved it there and when, how many days it has left, and **Restore** for whoever can edit it. Pressing a
 card opens it beside the tree, in its workspace, with the tree open to it; **⤢** takes it full screen, **Share** beside
-it says who has it, a board as a document, and a step of the path over it takes the Drive to the workspace or the folder.
-Its **⋯** has **Open**, **Open full screen**, **Share** (who has it, in the menu's place, for someone in its workspace who
-can edit there), **Copy link**, **Rename** (typed in the same menu; a document's title follows, for everyone) and **Move to
-Trash**, with **Undo**. The search at the top (**⌘K**) narrows
+it says who has it, a board as a document, and a step of the path over it takes the Drive to the workspace or the folder;
+a call's folder there goes where that call's row in the Drive does, to the call's own page once it has notes, else to the
+place its row is in. Its **⋯** has **Open**, **Open full screen**, **Share** (who has it, in the menu's place, for someone
+in its workspace who can edit there, with **←** back to the rows; when it can't be shown it says why: the workspace can't
+be opened any more, or Alcove can't be reached), **Copy link**, **Rename** (typed in the same menu; a document's title
+follows, for everyone) and **Move to Trash**, with **Undo**. The search at the top (**⌘K**) narrows
 everything by name as it's typed, the workspaces it names first. **New** makes a document, a board or files where you are;
 on Recent, Shared with you or Trash it asks which workspace in the same menu, with **New workspace** last, named in place.
 On a phone the tree becomes chips along the top of the sheet, New sits beside the search, and a document opens full screen.
@@ -2232,9 +2240,11 @@ workspace ("Priya, Kofi, Ines and you can open it"), which ends in **Share** for
 whole workspace is shared from there on any page of it, a call's own workspace too, which has no Home. The bar has
 **← Drive**, or **← Calls** when it was opened from a call, the path, how it's saving, who else is here ("Priya is here"),
 **Share** (on Home the workspace's, on a page that page's), **⋯**, **Leave full screen** and you. Every step of the path
-before the page goes there: the workspace to its Home, a folder open in the side panel with its row lit, and a call's
-folder, or a call's own workspace (which has no Home), to the call's own page once it has notes, else to the call's row in
-the side panel. A call's own workspace and its call's folder share a name, so the path says it once. Leaving goes back
+before the page goes there: the workspace to its Home, a folder open in the side panel with its row lit (every call kept
+here listed, when it's in one behind **N more**), and a call's folder, or a call's own workspace (which has no Home), to the
+call's own page once it has notes, else to the call's row in the side panel. A call's own workspace and its call's folder
+share a name, so the path says it once. Share, on the bar or at the foot of the side panel, closes whatever a board has
+open first. Leaving goes back
 where it came from: the Drive, at this workspace, or Calls. **Home** is the workspace's name on the evening after
 sunset; the line on what it's for, which an admin writes in place by pressing it (**Say what this workspace is for** until
 there is one), everyone in it reads, and nobody else is told of; who's in it; **Recently edited**, three large previews;
@@ -2386,7 +2396,7 @@ shows who's in this one in the same sheet as Share: an admin adds people by name
 someone: **Only an admin can add people. Ask Priya.** The same sheet is how a whole workspace is shared, wherever the
 workspace is shown whole: **Share** on its Home, **Share** beside **Open full screen** on its sheet in the Drive, who can
 open it at the foot of its side panel full screen (on any page of it, and for a call's own workspace, which has no Home),
-and in a call **Who’s in it**. A call's own workspace takes people beyond its invite the same way: an admin (the organizer,
+and in a call **Share workspace**, under its name. A call's own workspace takes people beyond its invite the same way: an admin (the organizer,
 to begin with) adds them, and they stay, whatever the invite does after. **Rename** (admins) and **New workspace** turn the
 name into a field: type, then **Enter**. A workspace always keeps an admin.
 

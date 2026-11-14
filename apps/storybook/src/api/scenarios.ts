@@ -117,6 +117,8 @@ function workspaces(): Space[] {
     },
     {
       id: 'ws-handbook', name: 'Company handbook', role: 'read', inCall: false, people: 38, teamAccess: null, createdAt: iso(-400, 9, 0), call: null,
+      // Nadia writes it and runs it: its admin, the one its people sheet says to ask, as its read-only bar does.
+      members: [NADIA, PRIYA, KOFI, THEO, INES],
       items: [item('Holidays', 'document', NADIA, 700, reading), item('Expenses', 'document', NADIA, 1300, reading), item('Working from home', 'document', NADIA, 2100, reading)]
     }
   ];

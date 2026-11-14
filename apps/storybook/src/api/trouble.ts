@@ -11,8 +11,11 @@ import { AlcoveApiError, type AlcoveApi } from '@alcove/api';
 import { pause } from './live';
 import { current, nextId, openedAs } from './state';
 
-/** failed: Alcove answered with an error. network: it couldn't be reached. hold: it hasn't answered, and won't while the story is open. */
-export type Trouble = 'failed' | 'network' | 'hold';
+/**
+ * failed: Alcove answered with an error. network: it couldn't be reached. gone: what was asked for isn't there for this person
+ * (`not-found`), as when they were taken out of a workspace. hold: it hasn't answered, and won't while the story is open.
+ */
+export type Trouble = 'failed' | 'network' | 'gone' | 'hold';
 type Calls<T> = { [K in keyof T & string]: T[K] extends (...args: never[]) => unknown ? K : never }[keyof T & string];
 /** One of the API's calls, as `part.call`: 'people.team', 'notes.list'. */
 export type ApiCall = { [N in keyof AlcoveApi & string]: `${N}.${Calls<AlcoveApi[N]>}` }[keyof AlcoveApi & string];
@@ -30,8 +33,9 @@ export const searched = (query: unknown): string => {
   return typeof query.text === 'string' ? query.text.trim() : '';
 };
 
-function failure(t: 'failed' | 'network'): AlcoveApiError {
+function failure(t: 'failed' | 'network' | 'gone'): AlcoveApiError {
   if (t === 'network') return new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.');
+  if (t === 'gone') return new AlcoveApiError('not-found', 'That doesn’t exist, or you don’t have access to it.', { requestId: nextId('sb-req'), status: 404 });
   return new AlcoveApiError('unavailable', 'Alcove couldn’t answer just now. Try again in a moment.', { requestId: nextId('sb-req'), status: 503 });
 }
 /** The trouble, after the moment any answer takes: an error, or a wait with no end. */

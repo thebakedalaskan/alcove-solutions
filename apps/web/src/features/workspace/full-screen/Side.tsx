@@ -9,18 +9,15 @@ import { firstName, type WorkspacePerson } from '@alcove/api';
 import { Logo, WsMark, WsRow, WsSection, WsSide } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useState, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { shortcut } from '~/lib/keys';
 import { useNow } from '~/lib/live';
 import { workspaceQueries } from '~/features/workspace/queries';
-import { beforeTheCall, callDay, callDayTitle, homeOf } from './calls';
+import { EARLIER, beforeTheCall, behindMore, callDay, callDayTitle, homeOf } from './calls';
 import { useWs } from '../context';
 import { CALL_ICON, useListParts, type ListDrag } from '../tree/List';
 import { rowsOf, type ListRow } from '../tree/tree';
 import { useSpaceShare } from '../sharing/Sheets';
-
-/** How many of a series' earlier calls show before "N more". */
-const EARLIER = 5;
 
 /** Who can open a workspace, in words, beside the seal at the foot. */
 export function whoCanOpen(people: readonly WorkspacePerson[] | undefined, count: number | null): string {
@@ -37,8 +34,8 @@ export function Side({ drags }: { drags: ListDrag }) {
   const navigate = useNavigate();
   const now = useNow(60_000);
   const parts = useListParts(drags);
-  const [allCalls, setAllCalls] = useState(false);
-  const { tree, sent } = ws;
+  /* Every call kept here, once "N more" is pressed, or a step of the path shows one of them. */
+  const { tree, sent, allCalls, showAllCalls } = ws;
   const { inside } = parts;
   const summary = useQuery({ ...workspaceQueries.workspaces(), enabled: ws.owner !== null }).data?.find((w) => w.id === ws.workspaceId);
   const people = useQuery({ ...workspaceQueries.workspacePeople(ws.workspaceId), enabled: inside }).data;
@@ -58,7 +55,9 @@ export function Side({ drags }: { drags: ListDrag }) {
     const inCall = row.draft ? row.depth > 0 && topIsCall : topIsCall;
     (!inCall ? pages : top === theCall ? calling : calls).push(row);
   }
-  const shownCalls = allCalls ? calls : (() => {
+  /* Every call, once asked for, or while what's open is in one of those after the first few: its row is always drawn. */
+  const everyCall = allCalls || (ws.at.kind === 'document' && behindMore(tree, ws.at.id, theCall));
+  const shownCalls = everyCall ? calls : (() => {
     let seen = 0;
     return calls.filter((r) => { if (!r.draft && r.depth === 0) seen++; return seen <= EARLIER; });
   })();
@@ -91,7 +90,7 @@ export function Side({ drags }: { drags: ListDrag }) {
         {pages.map((row) => rowOf(row))}
         {calls.length > 0 && <WsSection key="sec:calls" label={home ? 'Earlier calls' : 'Calls'} />}
         {shownCalls.map((row) => rowOf(row, callLabel(row)))}
-        {!allCalls && hidden > 0 && <WsRow key="place:more" id="place:more" kind="place" icon="more" name={`${hidden} more`} onOpen={() => setAllCalls(true)} />}
+        {!everyCall && hidden > 0 && <WsRow key="place:more" id="place:more" kind="place" icon="more" name={`${hidden} more`} onOpen={showAllCalls} />}
         {parts.dropLine}
       </WsSide>
       {parts.files}

@@ -330,6 +330,11 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, onExpand,
   const [renaming, setRenaming] = useState<string | null>(null);
   const [naming, setNaming] = useState<'new' | 'rename' | null>(null);
   const [blockInto, setBlockInto] = useState<string | null>(null);
+  /* Full screen, every call kept here in the side panel, once "N more" is pressed or a step of the path shows one of them. */
+  const [allCalls, setAllCalls] = useState(false);
+  const showAllCalls = useCallback(() => setAllCalls(true), []);
+  /* What the page has open over itself, which closes as something opens beside it (a board's menus). */
+  const closeOver = useRef<(() => void) | null>(null);
   /* Full screen the side panel and the page take turns from 860px down, as the app's own frame does; in a call, from 640px. */
   const phone = useMedia(mode === 'page' ? '(max-width: 860px)' : '(max-width: 640px)');
   const [phoneList, setPhoneList] = useState(at.kind === 'home');
@@ -410,7 +415,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, onExpand,
   const find = useFindKeys(asleep, call?.finding ?? false, call?.onFinding);
   /* A step of the path over the page shows where it is: the list comes out for it, over the page on a phone. */
   const reveal = useReveal({
-    mode, tree, callFolder, home, pane, openAll, light, go, onPlace,
+    mode, tree, callFolder, home, pane, openAll, light, go, onPlace, showAllCalls,
     showList: () => { if (phone) setPhoneList(true); else showInCall?.(); }
   });
   useWordsFollow(workspaceId, pass, view);
@@ -441,7 +446,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, onExpand,
   const ws: Ws = {
     mode, workspaceId, pass, call, sent: view.tree, here: view.here, others, present, following, follow, stopFollowing, items, tree, at, go, switchTo: onSwitch, owner, me,
     self: view.here.find((h) => h.isMe)?.person ?? me, actions, say, canChange, callFolder, madeIn, spaceName, spaceSave, listDown: view.status === 'reconnecting' ? { onTry: online ? store.retry : undefined } : null,
-    open, setOpen, reveal, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, expand: onExpand, frame, home, showPages: () => setPhoneList(true), naming, setNaming, justMade, openDoc, page, put, lastDocument, openFind: () => find.setFinding(true), pictures, ids
+    open, setOpen, reveal, glowing, allCalls, showAllCalls, closeOver, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, expand: onExpand, frame, home, showPages: () => setPhoneList(true), naming, setNaming, justMade, openDoc, page, put, lastDocument, openFind: () => find.setFinding(true), pictures, ids
   };
   const host = call ? { live: call.live, at, go, say, here: view.here, workspaceId, put, lastDocument, closed: call.closed, toggleList, showCall: () => reveal(null), ids, following, stopFollowing: () => stopFollowing() } : null;
   /* Full screen, a workspace's own Home is its page with nothing open; a call's own workspace has none, and opens on what the call made. */

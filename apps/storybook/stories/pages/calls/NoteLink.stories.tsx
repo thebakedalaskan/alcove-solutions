@@ -29,6 +29,8 @@ const openThem: PageStory['play'] = async ({ userEvent, step }) => {
 export const AsksFirst = page('/link', 'busy', aLink);
 export const AsksFirstNight = page('/link', 'busy', { ...aLink, globals: { theme: 'dark' } });
 export const AsksFirstPhone = phone(AsksFirst);
+/** On its last day it says the time it stops, today: a link runs out at the minute it was made, a week on. */
+export const AsksFirstOnItsLastDay = page('/link', 'busy', { beforeEach: changing(linkToReadout(false, 2 * 3_600_000)) });
 /** Open the notes: Priya's research readout joins Art's notes, from her link, to keep, and opens. */
 export const OpensTheNotes = page('/link', 'busy', { ...aLink, play: openThem });
 /** Signed out: one card says someone shared a call's notes, and to sign in to open them, to keep. Signing in asks first, too. */

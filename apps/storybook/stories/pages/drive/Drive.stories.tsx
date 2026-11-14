@@ -2,14 +2,18 @@
  * The Drive (docs/design/pages.md › The Drive, user-flows 12): the tree of places beside a sheet of large previews, in the
  * canvas's world (src/world/drive.ts): Recent by day, Shared with you, a workspace with its folders, calls and files, a
  * call's own workspace with the call and what it made, one Trash, what a search finds, and the first day. On a phone the
- * tree becomes chips. Share: a whole workspace's, at the head of its sheet; a file's, in its card's ⋯ and on its head beside
- * the tree.
+ * tree becomes chips. Share: a whole workspace's, at the head of its sheet; a file's, in its card's ⋯ (with its way back to
+ * the menu, and what it says when who has it can't be shown) and on its head beside the tree. A call's folder on the path
+ * over what's open beside the tree, and a folder's head while its workspace loads.
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
+import { setOnline } from '../../../src/browser';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../../src/page';
 import { driveId, withNothingYet, withTheDrive } from '../../../src/world/drive';
+import type { World } from '../../../src/world/world';
 import { pause } from '../../journeys/play';
+import { troubled } from '../changes';
 
 const meta = { title: 'Pages/Drive/Drive', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -37,6 +41,23 @@ const cardShare = (name: string): Play => async (ctx) => {
 /** Presses Share: at the head of a workspace's sheet, or on the head of what's open beside the tree. */
 const share: Play = async ({ userEvent }) => {
   await userEvent.click(await screen.findByRole('button', { name: 'Share' }, LATER));
+};
+/** Presses a step of the path over what's open beside the tree. */
+const pressStep = (name: string): Play => async ({ userEvent, step }) => {
+  await step(`Press ${name} on the path over the page`, async () => {
+    const path = await screen.findByRole('navigation', { name: 'Where this document is' }, LATER);
+    await userEvent.click(await within(path).findByRole('button', { name }, LATER));
+  });
+};
+/** Status page runbook, moved into the folder of Launch planning · 27 Oct, as anything can be. */
+const runbookInTheCall = (w: World): void => {
+  const space = w.workspaces.find((s) => s.id === 'dv-launch');
+  if (space) space.items = space.items.map((i) => (i.id === driveId('Status page runbook') ? { ...i, parent: driveId('Launch planning · 27 Oct') } : i));
+};
+/** The standup's checklist, moved into the folder of the standup before it, which Art has no notes of. */
+const checklistInAnEarlierStandup = (w: World): void => {
+  const space = w.workspaces.find((s) => s.id === 'dv-standup');
+  if (space) space.items = space.items.map((i) => (i.id === driveId('Launch checklist') ? { ...i, parent: driveId('Team standup · 3 Nov') } : i));
 };
 
 /** Recent: everything you can open, by the day it was last edited, as large previews. */
@@ -106,9 +127,48 @@ export const ACallsWorkspaceShare = page('/drive?ws=dv-standup', 'busy', { ...DR
 export const ACallsWorkspaceSharePhone = page('/drive?ws=dv-standup', 'busy', { ...DRIVE, globals: { ...PHONE, ...NIGHT }, play: share });
 /** In a workspace Art can only read: who's in it, and who to ask to add someone, as only an admin can. */
 export const ReadOnlyShare = page('/drive?ws=dv-handbook', 'busy', { ...DRIVE, play: share });
-/** Share, in a card's ⋯: who has it, in the menu's place, the same sheet as Share on its own page. */
+/** Share, in a card's ⋯: who has it, in the menu's place, the same sheet as Share on its own page, with ← back to the rows. */
 export const ACardsShare = page('/drive', 'busy', { ...DRIVE, play: cardShare('Standup board') });
 export const ACardsShareNight = page('/drive', 'busy', { ...DRIVE, globals: NIGHT, play: cardShare('Launch checklist') });
+/** ← in Share goes back to the card's menu: Copy link, Rename and the rest, without opening it again. */
+export const ACardsShareBack = page('/drive', 'busy', {
+  ...DRIVE,
+  play: async (ctx) => {
+    await cardShare('Standup board')(ctx);
+    await ctx.userEvent.click(await screen.findByRole('button', { name: 'Back' }, LATER));
+    await screen.findByRole('menuitem', { name: 'Copy link' }, LATER);
+  }
+});
+/** Its workspace can't be opened any more (Art was taken out of it, say): Share says so, not that Alcove couldn't be reached. */
+export const ACardsShareRefused = page('/drive', 'busy', {
+  beforeEach: changing(withTheDrive, troubled({ 'workspaces.get': (id) => (id === 'dv-standup' ? 'gone' : null) })), play: cardShare('Standup board')
+});
+/** The connection goes, and who has it was never read: it says it shows once Alcove can be reached, rather than waiting with dots. */
+export const ACardsShareOffline = page('/drive', 'busy', {
+  ...DRIVE,
+  play: async (ctx) => {
+    await cardMenu('Standup board')(ctx);
+    const row = await screen.findByRole('menuitem', { name: 'Share' }, LATER);
+    setOnline(false);
+    await pause(500);
+    await ctx.userEvent.click(row);
+  }
+});
+/**
+ * A document kept in a call's folder, beside the tree: the call on its path goes where the call's row in the Drive does, to the
+ * call's own page, once it has notes.
+ */
+export const ACallsFolderOnThePath = page(`/drive?ws=dv-launch&doc=${driveId('Status page runbook')}`, 'busy', {
+  beforeEach: changing(withTheDrive, runbookInTheCall), play: pressStep('Launch planning · 27 Oct')
+});
+/** One Art has no notes of: its row opens nothing, so the call on the path shows where its row is, its workspace. */
+export const ACallsFolderOnThePathNoNotes = page(`/drive?ws=dv-standup&doc=${driveId('Launch checklist')}`, 'busy', {
+  beforeEach: changing(withTheDrive, checklistInAnEarlierStandup), play: pressStep('Team standup · 3 Nov')
+});
+/** A folder's address, while its workspace loads: the head has Open full screen and no Share, as the folder's own will. */
+export const AFolderLoading = page(`/drive?ws=dv-launch&folder=${driveId('Research')}`, 'busy', {
+  beforeEach: changing(withTheDrive, troubled({ 'workspaces.get': 'hold' }))
+});
 /** Before a call: what's been made for it, and the ways to add to it. */
 export const ACallAhead = page('/drive?ws=dv-checkin', 'busy', DRIVE);
 

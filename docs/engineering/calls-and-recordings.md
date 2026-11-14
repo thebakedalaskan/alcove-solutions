@@ -2100,7 +2100,7 @@ and the page a call leaves you on (`session/CallOver.tsx`).
   face (or the kind's icon while nobody presents), the name as a menu of the kind's own commands, and a line: Only on your
   screen, You're presenting · 3 following (everyone else in your part of the call), You're presenting · a tab with sound
   (Starting to share… until LiveKit has it), or Priya is presenting. Beside it, on the workspace, who can edit it, which
-  opens Who's in it: Everyone in the call can edit, for its people, or You can edit while you're in the call, for a guest
+  opens who's in it: Everyone in the call can edit, for its people, or You can edit while you're in the call, for a guest
   or anyone else who isn't in the workspace. The board in the call says it too while everyone here can edit it
   (`CallBoard.open.everyone`): Everyone in the call can edit, You can edit while you're in the call for a guest, or Everyone
   in this room can edit on a room's own board, which opens Who can add to it for whoever has that. On the right, only what applies: Following Priya with Unfollow, or Follow
@@ -2120,8 +2120,9 @@ and the page a call leaves you on (`session/CallOver.tsx`).
   the same in Share itself (`ShareStopStep`), wherever what you present is: on your stage, a tile, or
   out of sight. The name menus: a board's Rename, Open where it's saved, Who can add to it, Copy link, Download as an
   image or as a PDF (`BoardHandle.saveImage`, `savePdf`) and Night board (`BoardMenuRows` in `boards/BoardStage.tsx`);
-  the workspace's, its one menu, Switch workspace (the organizer's), Find in the workspace, Who's in it, Rename (an
-  admin's) and Copy link, and for a guest Find in the workspace and Who's in it alone (`WorkspaceMenuRows`); someone
+  the workspace's, its one menu, Switch workspace (the organizer's), Find in the workspace, Share workspace (who's in it,
+  the people sheet), Rename (an admin's) and Copy link, and for a guest, or anyone else not in the workspace, Find in the
+  workspace and Who's in it (the people in the call) alone (`WorkspaceMenuRows`); someone
   else's screen's pointing, looking closer, its sound, its own window, Put on the board and Show beside
   (`ShareMenuRows`); and your own screen's Others can point at it, Clear marks and Change what you share, saying Read
   for the notes while it is (`MyShareMenuRows`), as its bar's line does. The organizer's name menu on someone else's

@@ -66,7 +66,8 @@ export interface WsSideProps extends WsTreeProps {
   sealed: string;
   /**
    * Share: who can open it is pressed to see who's in it, which opens over the foot (the people sheet: adding people, what each
-   * can do, leaving). Left out for someone who isn't in it, for whom it's only said.
+   * can do, leaving). Left out for someone who isn't in it, for whom it's only said. Its name is what it says, then the
+   * workspace's name, which only a screen reader says: "Priya, Kofi and you can open it Share Launch".
    */
   share?: WsPop | undefined;
 }
@@ -100,8 +101,8 @@ export function WsSide({ brand, space, onSearch, searchKeys, reconnecting, foot,
         {foot}
         {share ? (
           <WsPopover open={share.open} onOpenChange={share.onOpenChange} label={`People in ${space.name}`} side="top" anchor={
-            <button type="button" className="wf-seal" aria-label={`Share ${space.name}. ${sealed}`}>
-              <Icon name="sealed" size={13} /><span className="ac-clamp-2">{sealed}</span><span className="wf-seal-go" aria-hidden="true">Share</span>
+            <button type="button" className="wf-seal">
+              <Icon name="sealed" size={13} /><span className="ac-clamp-2">{sealed}</span>{' '}<span className="wf-seal-go">Share<span className="wf-seal-name"> {space.name}</span></span>
             </button>
           }>{share.content}</WsPopover>
         ) : <p className="wf-seal"><Icon name="sealed" size={13} /><span className="ac-clamp-2">{sealed}</span></p>}
