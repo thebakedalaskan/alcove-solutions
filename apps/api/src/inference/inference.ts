@@ -469,6 +469,32 @@ export type ChatModel =
   | { model: string; private: false; temperature: boolean; json: boolean };
 /** A model NEAR AI runs in its TEEs, at its own endpoint: every request to it is sealed to its attested key. */
 export type PrivateModel = Extract<ChatModel, { private: true }>;
+/** What a chat request asks for besides its model and messages, as it's sent. */
+export interface ChatSettings {
+  max_tokens: number;
+  temperature?: number;
+  response_format?: { type: 'json_object' };
+  chat_template_kwargs?: { enable_thinking: boolean };
+}
+/**
+ * One request to a chat model as it went and came back: what it was sent, its settings, and its reply's text before any
+ * JSON was taken out of it. Only the notes eval (features/notes/eval) asks for these, through `complete`'s `trace`; they
+ * hold content, so they're never logged: the eval writes them to its own results folder, which git ignores.
+ */
+export interface Exchange {
+  what: string;
+  model: string;
+  private: boolean;
+  sent: { messages: Message[]; settings: ChatSettings };
+  status: number;
+  reply: string | null;
+  finish: string | null;
+  promptTokens: number | null;
+  outputTokens: number | null;
+  ms: number;
+}
+export type Trace = (x: Exchange) => void;
+
 /** The default model, at its own endpoint. */
 export const defaultModel = (cfg: Keyless): PrivateModel => ({ model: cfg.NEAR_AI_NOTES_MODEL, private: true, url: cfg.NEAR_AI_NOTES_URL });
 
@@ -491,25 +517,36 @@ async function plainly(cfg: Ready, body: Uint8Array, o: { what: string; timeoutM
  * Asks a chat model (the default, or `o.via`) for one JSON object and returns it unparsed for the caller's schema,
  * with the verification it went to: null for an unencrypted model, which nothing verified. `meter` pays for it.
  */
-export async function complete(cfg: Config, meter: Meter, messages: Message[], o: { what: string; maxTokens: number; timeoutMs?: number; via?: ChatModel | undefined }): Promise<{ json: unknown; evidence: InferenceEvidence | null }> {
+export async function complete(cfg: Config, meter: Meter, messages: Message[], o: { what: string; maxTokens: number; timeoutMs?: number; via?: ChatModel | undefined; trace?: Trace | undefined }): Promise<{ json: unknown; evidence: InferenceEvidence | null }> {
   if (!ready(cfg)) throw notConnected(o.what);
   const via = o.via ?? defaultModel(cfg);
   const model = via.model;
   const timeoutMs = o.timeoutMs ?? 90_000;
   const text = textOf(messages);
   const images = imagesIn(messages);
+  // Built once, so what's sent and what the trace records are the same. A private model takes them all: thinking out loud
+  // first takes it a minute on a long call and isn't needed for notes. An unencrypted one gets only what its provider
+  // takes: some refuse a temperature, and some don't do JSON mode (the reply is read either way).
+  const settings: ChatSettings = via.private
+    ? { temperature: 0.2, max_tokens: o.maxTokens, response_format: { type: 'json_object' }, chat_template_kwargs: { enable_thinking: false } }
+    : { max_tokens: o.maxTokens, ...(via.temperature ? { temperature: 0.2 } : {}), ...(via.json ? { response_format: { type: 'json_object' as const } } : {}) };
+  const body = utf8(JSON.stringify({ model, messages, ...settings, stream: false }));
   const answer = (reply: { status: number; body: Uint8Array }, t0: number, requestBytes: number, answered: (u: Usage, reckoned: boolean) => void): unknown => {
     const ms = Math.round(performance.now() - t0);
-    if (reply.status !== 200) throw statusError(reply.status, { what: o.what, ms });
-    const r = Chat.safeParse(parsed(reply.body));
-    const choice = r.success ? r.data.choices[0] : undefined;
-    const usage = r.success ? r.data.usage : undefined;
+    const r = reply.status === 200 ? Chat.safeParse(parsed(reply.body)) : null;
+    const choice = r?.success ? r.data.choices[0] : undefined;
+    const usage = r?.success ? r.data.usage : undefined;
+    const context = { what: o.what, model, encrypted: via.private, ms, finish: choice?.finish_reason ?? null, promptTokens: usage?.prompt_tokens ?? null, outputTokens: usage?.completion_tokens ?? null };
+    o.trace?.({
+      what: o.what, model, private: via.private, sent: { messages, settings },
+      status: reply.status, reply: choice?.message.content ?? null, finish: context.finish, promptTokens: context.promptTokens, outputTokens: context.outputTokens, ms
+    });
+    if (!r) throw statusError(reply.status, { what: o.what, ms });
     // What it used is charged whatever came back: the model did the work. What it didn't say is reckoned.
     answered({
       input: usage?.prompt_tokens ?? tokensAbout(text), cached: usage?.prompt_tokens_details?.cached_tokens ?? 0,
       output: usage?.completion_tokens ?? tokensAbout(choice?.message.content ?? '')
     }, usage?.prompt_tokens === undefined || usage.completion_tokens === undefined);
-    const context = { what: o.what, model, encrypted: via.private, ms, finish: choice?.finish_reason ?? null, promptTokens: usage?.prompt_tokens ?? null, outputTokens: usage?.completion_tokens ?? null };
     const json = jsonIn(choice?.message.content ?? '');
     if (json === null) throw new UnavailableError('The notes service sent back something unexpected.', { context: { ...context, reply: r.success ? 'no-json' : 'unparseable' } });
     ilog.debug('notes model answered', { ...context, requestBytes, images });
@@ -517,20 +554,12 @@ export async function complete(cfg: Config, meter: Meter, messages: Message[], o
   };
   const most: Most = { input: tokensAtMost(text), images, output: o.maxTokens };
   if (!via.private) {
-    // Only what the provider takes: some refuse a temperature, and some don't do JSON mode (the reply is read either way).
-    const body = utf8(JSON.stringify({
-      model, messages, max_tokens: o.maxTokens, ...(via.temperature ? { temperature: 0.2 } : {}), ...(via.json ? { response_format: { type: 'json_object' } } : {}), stream: false
-    }));
     return paidFor(meter, model, most, async (answered) => {
       const t0 = performance.now();
       return { json: answer(await plainly(cfg, body, { what: o.what, timeoutMs }), t0, body.length, answered), evidence: null };
     });
   }
   const endpoint = via.url;
-  // Thinking out loud first takes the model a minute on a long call and isn't needed for notes.
-  const body = utf8(JSON.stringify({
-    model, messages, temperature: 0.2, max_tokens: o.maxTokens, response_format: { type: 'json_object' }, chat_template_kwargs: { enable_thinking: false }, stream: false
-  }));
   return paidFor(meter, model, most, (answered) => withVerified(cfg, model, 'notes', async (v) => {
     const t0 = performance.now();
     const reply = await sealed(cfg, v, endpoint, { path: '/v1/chat/completions', type: 'application/json', body, timeoutMs, what: o.what });

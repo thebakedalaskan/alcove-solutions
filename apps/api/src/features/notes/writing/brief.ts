@@ -3,7 +3,7 @@
  * what's written so far), and the follow-ups it's told of, which it names back by their labels.
  */
 import { isAcceptedFollowUp, type ActionItem, type CaptureGap, type Decision, type NoteKind, type Person, type RoomNote, type ScreenMoment, type TranscriptLine } from '@alcove/api';
-import { type ChatModel } from '../../../inference/inference';
+import { type ChatModel, type Trace } from '../../../inference/inference';
 import { type NoteManifest } from '../manifest';
 import type { PickWhy } from '../../recordings/screens/reading';
 import { oneLine, mmss } from '../../../inference/prompts';
@@ -57,6 +57,8 @@ export interface Brief {
   boards?: BriefBoard[] | undefined;
   /** The model chosen for this meeting (models.resolveModel); the default when not given. */
   via?: ChatModel | undefined;
+  /** Where draft's notes request and its reply go as they happen (not the full summary's, nor the comparison's): only the notes eval (features/notes/eval/run-cli.ts) sets it. */
+  trace?: Trace | undefined;
 }
 /** A board as the notes model reads it. */
 export interface BriefBoard { name: string; text: string; followUps: Known[] }
