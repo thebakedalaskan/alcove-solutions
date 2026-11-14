@@ -340,8 +340,11 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
   const together: StageTogether = {
     ...work.together, where: stage.on.includes('ws') ? work.together.where : NOWHERE, lit: work.lit, onFollow: work.act.follow, onStop: work.act.stopFollowing, onGo: work.act.goTo, onTag: work.act.tagIn, canTag: work.act.canTag
   };
-  /* Focus fills your window with what's on your stage: not on a phone, where it fills the screen already, nor with nothing open. */
-  const focusOffered = !phone && !stageRooms && stage.on.length > 0;
+  /*
+   * Focus fills your window with what's on your stage: not on a phone, where it fills the screen already, nor with nothing
+   * open, nor while you're alone in the call, with nobody to tuck away.
+   */
+  const focusOffered = !phone && !stageRooms && stage.on.length > 0 && others.length > 0;
   const focusOn = focusOffered && focus;
   const latestFocus = useRef(focusOn);
   latestFocus.current = focusOn;
