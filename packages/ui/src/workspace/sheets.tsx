@@ -6,6 +6,7 @@ import { cn } from '../foundation/cn';
 import { Icon, type IconName } from '../foundation/icon';
 import { andList, Avatar, Faces, type AvatarPerson } from '../foundation/people';
 import { Dots } from '../foundation/motion';
+import { stayForExtensions } from '../foundation/overlay';
 import { Button, Kbd, Segmented, type Choice } from '../foundation/primitives';
 import { WsMenu, WsPopover, type WsMenuRow } from './popover';
 import { canTakeFocus, firstName, focusedNow, useMove } from './shared';
@@ -294,7 +295,7 @@ export function WsShareSheet({ title, about, query = '', onQuery, onAdd, matches
       {onQuery && (
         <label className="wv-f">
           <Icon name="search" size={15} />
-          <input type="text" autoFocus placeholder="Add people by name or email" aria-label="Add people by name or email" autoComplete="off" spellCheck={false} value={query} onChange={(e) => onQuery(e.target.value)}
+          <input type="text" autoFocus placeholder="Add people by name or email" aria-label="Add people by name or email" autoComplete="off" spellCheck={false} data-1p-ignore value={query} onChange={(e) => onQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && onAdd) { e.preventDefault(); onAdd(); } }} />
         </label>
       )}
@@ -352,7 +353,7 @@ export function WsNameSheet({ name, onCommit }: { name: string; onCommit: (name:
       <div className="wv-h"><b>Rename this workspace</b></div>
       <label className="wv-f">
         <Icon name="pen" size={15} />
-        <input type="text" aria-label="Name this workspace" placeholder="Name this workspace" defaultValue={name} maxLength={120} autoFocus spellCheck={false}
+        <input data-1p-ignore type="text" aria-label="Name this workspace" placeholder="Name this workspace" defaultValue={name} maxLength={120} autoFocus spellCheck={false}
           onFocus={(e) => e.currentTarget.select()}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onCommit(e.currentTarget.value); } }} />
       </label>
@@ -394,7 +395,7 @@ export function WsFind<H extends WsFindHit>({ open, onOpenChange, query, onQuery
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
         <RDialog.Overlay className="ws-scrim" />
-        <RDialog.Content aria-describedby={undefined} className="ws-pop wv-find" onOpenAutoFocus={() => { back.current = focusedNow(); }}
+        <RDialog.Content aria-describedby={undefined} className="ws-pop wv-find" onInteractOutside={stayForExtensions} onOpenAutoFocus={() => { back.current = focusedNow(); }}
           onCloseAutoFocus={(e) => {
             // Landing on a line puts the caret there, and it's not to be taken away again.
             if (focusedNow()) e.preventDefault();
@@ -440,7 +441,7 @@ export function WsKeyboard({ open, onOpenChange, groups, note }: { open: boolean
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
         <RDialog.Overlay className="ws-scrim" />
-        <RDialog.Content aria-describedby={undefined} className="ws-pop wv-keys">
+        <RDialog.Content aria-describedby={undefined} className="ws-pop wv-keys" onInteractOutside={stayForExtensions}>
           <RDialog.Title className="sr-only">Keyboard</RDialog.Title>
           <Kbd className="wv-keys-esc">Esc</Kbd>
           <div className="ky">

@@ -57,7 +57,7 @@ export function NightRecorder({ keeps }: { keeps: boolean }) {
             </p>
           )}
         </div>
-        <input className="rec-name" type="text" value={name} placeholder={UNNAMED} aria-label="Name this recording" title="Name this recording" maxLength={160}
+        <input data-1p-ignore className="rec-name" type="text" value={name} placeholder={UNNAMED} aria-label="Name this recording" title="Name this recording" maxLength={160}
           autoComplete="off" spellCheck={false} enterKeyHint="go" onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); start(); } }} />
         <div className="rec-a">

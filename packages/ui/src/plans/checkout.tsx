@@ -242,7 +242,7 @@ export function TeamName({ label = 'Your team', hint = 'You’re its admin: you 
       <p className="ck-q"><span id={q}>{label}</span>{hint && <small>{hint}</small>}</p>
       <label className="ck-field">
         <span className="k">{field}</span>
-        <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} disabled={disabled} autoFocus={autoFocus}
+        <input data-1p-ignore type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} disabled={disabled} autoFocus={autoFocus}
           maxLength={maxLength} autoComplete="organization" spellCheck={false} />
       </label>
     </div>

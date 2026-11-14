@@ -1,6 +1,6 @@
 /*
- * SidebarNav: a group of the app's places in the side panel, which is dark in both themes: Home, Calls, Drive and Record
- * under Start a call, and Team and Agents at the foot. Each place is a router link with className="ac-nav-item" holding
+ * SidebarNav: a group of the app's places in the side panel, which is dark in both themes: Home, Calls, Drive, Record and
+ * Team under Start a call, and Agents at the foot. Each place is a router link with className="ac-nav-item" holding
  * NavItemContent: its icon, its name, and a count while something waits on you there (what's for you on Home, tags you
  * haven't seen in the Drive, recordings waiting to upload). Home's count is a link of its own (NavCount): pointing at it
  * says what's waiting, by For you's tabs, and pressing it lands on For you. The page you're on carries aria-current="page".
@@ -17,18 +17,18 @@ const WORK: Place[] = [
   { to: '/home', icon: 'home', label: 'Home', count: 2, says: 'For you: 1 to answer, 1 follow-up' },
   { to: '/calls', icon: 'calls', label: 'Calls' },
   { to: '/drive', icon: 'folderOpen', label: 'Drive', count: 1 },
-  { to: '/record', icon: 'recordDot', label: 'Record' }
+  { to: '/record', icon: 'recordDot', label: 'Record' },
+  { to: '/team', icon: 'people', label: 'Team' }
 ];
-/** On your own: nothing waits on Home, and a recording waits on this device to upload. */
+/** On your own: no Team, nothing waits on Home, and a recording waits on this device to upload. */
 const ALONE: Place[] = [
   { to: '/home', icon: 'home', label: 'Home' },
   { to: '/calls', icon: 'calls', label: 'Calls' },
   { to: '/drive', icon: 'folderOpen', label: 'Drive' },
   { to: '/record', icon: 'recordDot', label: 'Record', count: 1 }
 ];
-/** The foot: who works with you. Someone on their own has Agents alone. */
+/** The foot: Agents, which everyone has, someone on their own too. */
 const FOOT: Place[] = [
-  { to: '/team', icon: 'people', label: 'Team' },
   { to: '/agents', icon: 'agent', label: 'Agents' }
 ];
 
@@ -92,5 +92,7 @@ export const OnHome: Story = { name: 'On Home' };
 export const OnCalls: Story = { name: 'On Calls', args: { children: <Links places={WORK} start="/calls" /> } };
 /** Someone on their own. Record counts the recording waiting on this device to upload. */
 export const OnTheirOwn: Story = { name: 'On their own', args: { children: <Links places={ALONE} start="/home" /> } };
-/** The group at the foot of the panel, on Team: Team and Agents. */
-export const AtTheFoot: Story = { name: 'At the foot', args: { label: 'Team and agents', children: <Links places={FOOT} start="/team" /> } };
+/** On Team, under Record. */
+export const OnTeam: Story = { name: 'On Team', args: { children: <Links places={WORK} start="/team" /> } };
+/** The group at the foot of the panel, on Agents. */
+export const AtTheFoot: Story = { name: 'At the foot', args: { label: 'Agents', children: <Links places={FOOT} start="/agents" /> } };

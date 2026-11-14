@@ -435,7 +435,7 @@ export function PeopleView({ here, invited, asking, invites = false, ringing, ca
     <>
       <label className="ic-find">
         <Icon name="search" size={16} />
-        <input type="search" value={find} placeholder="Find someone" aria-label="Find someone in this call" autoComplete="off" spellCheck={false}
+        <input type="search" value={find} placeholder="Find someone" aria-label="Find someone in this call" autoComplete="off" spellCheck={false} data-1p-ignore
           onChange={(e) => setFind(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape' && find) { e.preventDefault(); e.stopPropagation(); setFind(''); } }} />
       </label>
       <div ref={actionFocus} className="ic-scroll ic-pad">

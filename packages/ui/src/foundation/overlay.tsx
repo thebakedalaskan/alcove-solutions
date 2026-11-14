@@ -7,6 +7,64 @@ import { Icon, type IconName } from './icon';
 const OFFSET = 8;
 const EDGE = 12;
 
+/** A frame a browser extension put on the page shows one of its own pages. */
+const EXTENSION_PAGE = /^(chrome|moz|safari-web|ms-browser)-extension:/;
+
+/**
+ * Whether `target` is, or is inside, what a browser extension drew on the page rather than Alcove: a password manager's
+ * button and menu in a field (1Password's are `com-1password-button` and `com-1password-menu`, behind closed shadow roots),
+ * Grammarly's, and the like. Those are custom elements, or frames showing the extension's own pages, and Alcove draws
+ * neither. 1Password moves focus into its menu as it opens, which to the page is focus leaving whatever was open, so
+ * everything that closes when you press or move focus outside it asks this first, and stays.
+ */
+export function extensionUi(target: EventTarget | null): boolean {
+  for (let at: Node | null = target instanceof Node ? target : null; at; at = at instanceof ShadowRoot ? at.host : at.parentNode) {
+    if (!(at instanceof Element)) continue;
+    if (at.localName.includes('-') || (at instanceof HTMLIFrameElement && EXTENSION_PAGE.test(at.src))) return true;
+  }
+  return false;
+}
+
+/** An overlay's `onInteractOutside`: a press in an extension's UI, or focus moving into it (`extensionUi`), doesn't close it. */
+export const stayForExtensions = (e: Event): void => { if (extensionUi(e.target)) e.preventDefault(); };
+
+/**
+ * The blur handler for something that closes as its field loses focus, such as the people listed under a field. Focus going
+ * into a browser extension's own UI (`extensionUi`) isn't leaving, so it waits: then the next press or focus anywhere but
+ * the field and what it opened (`inside`), or Escape, closes it, and it can't be left open with nothing in it focused.
+ * Until then nothing listens, so a press that doesn't take focus (the first touch of a scroll) never closes it.
+ */
+export function useCloseOnLeave(close: () => void, inside: (node: Node) => boolean): (e: { relatedTarget: EventTarget | null }) => void {
+  const latest = useRef({ close, inside });
+  latest.current = { close, inside };
+  const [waiting, setWaiting] = useState(false);
+  useEffect(() => {
+    if (!waiting) return undefined;
+    const elsewhere = (e: Event) => {
+      if (extensionUi(e.target)) return;
+      setWaiting(false);
+      if (!(e.target instanceof Node && latest.current.inside(e.target))) latest.current.close();
+    };
+    const escape = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setWaiting(false);
+      latest.current.close();
+    };
+    document.addEventListener('pointerdown', elsewhere, true);
+    document.addEventListener('focusin', elsewhere, true);
+    document.addEventListener('keydown', escape, true);
+    return () => {
+      document.removeEventListener('pointerdown', elsewhere, true);
+      document.removeEventListener('focusin', elsewhere, true);
+      document.removeEventListener('keydown', escape, true);
+    };
+  }, [waiting]);
+  return (e) => {
+    if (extensionUi(e.relatedTarget)) setWaiting(true);
+    else latest.current.close();
+  };
+}
+
 /**
  * A part of a page scoped to one theme (`.light` or `.dark` on it), such as your side of a call in the light theme while the
  * call around it is night: what opens from inside it (a popover, a list of choices) opens out of it, and takes the same theme.
@@ -26,7 +84,8 @@ export function ThemeScope({ theme, children }: { theme: 'light' | 'dark' | null
  * open it again. `caret` points it at its anchor, and it keeps pointing there when the panel slides to stay in the window.
  * `onCloseFocus` puts focus somewhere else when it closes: return true once it has, as a Modal's does. `within` keeps it
  * inside a part of the page rather than the window, such as the page beside the side panel. Escape closes it, unless
- * `onEscapeKeyDown` prevents that, as Sheet's does (your menu steps back one thing at a time before it closes).
+ * `onEscapeKeyDown` prevents that, as Sheet's does (your menu steps back one thing at a time before it closes). A press
+ * anywhere else, or focus moving out of it, closes it too, except into a browser extension's own UI (`extensionUi`).
  */
 export function Popover({ open, onOpenChange, anchor, children, align = 'start', side = 'bottom', stage = false, takeFocus = true, caret = false, onCloseFocus, onEscapeKeyDown, label, tip, within, className }: {
   open: boolean; onOpenChange: (open: boolean) => void; anchor: ReactNode; children: ReactNode;
@@ -54,6 +113,7 @@ export function Popover({ open, onOpenChange, anchor, children, align = 'start',
         <RPopover.Content side={side} align={align} sideOffset={OFFSET} collisionPadding={EDGE} collisionBoundary={within ?? []} aria-label={label} className={cn('ac-pop', stage && 'is-stage', scoped, className)}
           onOpenAutoFocus={takeFocus ? undefined : (e) => e.preventDefault()}
           onEscapeKeyDown={onEscapeKeyDown}
+          onInteractOutside={stayForExtensions}
           // Radix focuses the anchor right after this, synchronously, if it focuses it at all (not when it already has
           // focus, or after a click elsewhere), so the mark lasts only until then.
           onCloseAutoFocus={(e) => {
@@ -200,7 +260,7 @@ export function Select<T extends string>({ value, onChange, options, label, icon
       </RPopover.Trigger>
       <RPopover.Portal container={container}>
         <RPopover.Content ref={list} role="listbox" aria-label={label} side="bottom" align={align} sideOffset={OFFSET} collisionPadding={EDGE} hideWhenDetached
-          className={cn('ac-pop ac-select-list', stage && 'is-stage', scoped)} onKeyDown={onListKey}
+          className={cn('ac-pop ac-select-list', stage && 'is-stage', scoped)} onKeyDown={onListKey} onInteractOutside={stayForExtensions}
           onOpenAutoFocus={(e) => {
             e.preventDefault();
             const at = start.current ?? chosen;
@@ -256,7 +316,7 @@ export function Sheet({ open, onOpenChange, label, children, className, overlayC
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
         <RDialog.Overlay className={cn('ac-scrim', overlayClassName)} />
-        <RDialog.Content aria-describedby={undefined} className={cn('ac-sheet', className)} onEscapeKeyDown={onEscapeKeyDown}
+        <RDialog.Content aria-describedby={undefined} className={cn('ac-sheet', className)} onEscapeKeyDown={onEscapeKeyDown} onInteractOutside={stayForExtensions}
           onCloseAutoFocus={(e) => { focusBack(e); if (!e.defaultPrevented && onCloseFocus?.()) e.preventDefault(); }}>
           <RDialog.Title className="sr-only">{label}</RDialog.Title>
           {children}
@@ -300,7 +360,7 @@ export const Modal = forwardRef<HTMLDivElement, {
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
         <RDialog.Overlay className="ac-scrim" />
-        <RDialog.Content ref={ref} aria-describedby={undefined} className={cn('ac-modal', named ? null : scoped, className)}
+        <RDialog.Content ref={ref} aria-describedby={undefined} className={cn('ac-modal', named ? null : scoped, className)} onInteractOutside={stayForExtensions}
           onOpenAutoFocus={focusSelf || focusOn ? (e) => {
             if (!(e.currentTarget instanceof HTMLElement)) return;
             const first = focusSelf ? e.currentTarget : focusOn ? e.currentTarget.querySelector<HTMLElement>(focusOn) : null;

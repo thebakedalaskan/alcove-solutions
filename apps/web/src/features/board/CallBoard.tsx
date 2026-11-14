@@ -9,7 +9,7 @@
  */
 import type { DocSession } from '@alcove/api';
 import { readBoard } from '@alcove/board';
-import { BoardHeard, BoardPop, BoardTray, Icon, type BoardNaming, type IconName } from '@alcove/ui';
+import { BoardHeard, BoardPop, BoardTray, Icon, extensionUi, type BoardNaming, type IconName } from '@alcove/ui';
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { BoardIdeas } from '~/features/call/boards/callBoard';
 import { typing } from '~/lib/keys';
@@ -125,7 +125,10 @@ function IdeasTray({ ideas, onDone }: { ideas: BoardIdeas & { tray: NonNullable<
   );
 }
 
-/** A pop over the sheet that closes with Escape, or a press anywhere else but the button that opened it. Focus goes into it as it opens. */
+/**
+ * A pop over the sheet that closes with Escape, or a press anywhere else but the button that opened it and a browser
+ * extension's own UI, such as a password manager's menu over its field. Focus goes into it as it opens.
+ */
 function usePop(close: () => void, from: () => HTMLElement | null) {
   const ref = useRef<HTMLDivElement>(null);
   const latest = useRef({ close, from });
@@ -145,7 +148,7 @@ function usePop(close: () => void, from: () => HTMLElement | null) {
       latest.current.from()?.focus({ preventScroll: true });
     };
     const onPress = (e: PointerEvent) => {
-      if (!(e.target instanceof Node) || el.contains(e.target) || latest.current.from()?.contains(e.target)) return;
+      if (!(e.target instanceof Node) || el.contains(e.target) || latest.current.from()?.contains(e.target) || extensionUi(e.target)) return;
       // A menu it opened, like a role in Share, is drawn elsewhere on the page and is still part of it.
       if (e.target instanceof Element && e.target.closest('[data-radix-popper-content-wrapper]')) return;
       latest.current.close();

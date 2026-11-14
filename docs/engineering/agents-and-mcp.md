@@ -2,7 +2,7 @@
 
 Alcove exposes a remote MCP server at `$API_URL/mcp`. An agent acts with a person's explicitly granted permissions and their current Alcove access. Browser sessions and agent credentials are separate. This guide describes the implementation; it does not establish which commit is deployed.
 
-Agents have a page of their own, **Agents** (`/agents`), in the side panel after Team; on a phone it opens from **Settings › Connections**. Connecting an agent, making a token, changing what each can do, keeping one longer, disconnecting and what they did all live there. It shows the address before any connection exists: `agents.endpoint()` (`GET /v1/agents/endpoint`, signed in only, read by `q.agentEndpoint()`) returns the same `API_URL`-derived address that OAuth uses as its resource and that a new token's one-time view repeats. It is not a secret and grants nothing.
+Agents have a page of their own, **Agents** (`/agents`), at the foot of the side panel; on a phone it opens from **Settings › Connections**. Connecting an agent, making a token, changing what each can do, keeping one longer, disconnecting and what they did all live there. It shows the address before any connection exists: `agents.endpoint()` (`GET /v1/agents/endpoint`, signed in only, read by `q.agentEndpoint()`) returns the same `API_URL`-derived address that OAuth uses as its resource and that a new token's one-time view repeats. It is not a secret and grants nothing.
 
 ## Connect with OAuth
 

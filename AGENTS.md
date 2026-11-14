@@ -324,6 +324,16 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   with the mark of the row it will make, and who can). `AgentPermissions` (what an agent can do, as chips), `AgentDisclosure` and
   `AgentConsentFrame` (the sheet `/connect` signs you in on) sit beside them.
   A row's menu is an `IconButton` as the anchor of a `Popover` with a `tip`.
+- A popup closes on a press or focus outside it, but never for a browser extension's own UI (`extensionUi` in
+  `foundation/overlay.tsx`): a password manager's menu takes focus as it opens over a field, as 1Password's does, and that
+  isn't the person leaving. Every Radix layer in the kit asks it in `onInteractOutside` (`stayForExtensions` where that's
+  all it asks), and so does a popup with its own press handler (`extensionUi(e.target)`). One that closes as its field
+  loses focus takes its blur handler from `useCloseOnLeave`, which waits while focus is in an extension's UI and closes
+  on the next press, focus or Escape anywhere else, as the scheduler's Who field and the editor's link field do. A field
+  for finding people or naming something (a group, a call, a workspace), not signing in, carries `data-1p-ignore`, so
+  1Password doesn't offer to fill it; a guest's own name in the lobby doesn't, since filling it helps. In a `Modal` or
+  `Sheet`, Radix's focus trap still takes focus back from an extension's menu over a field, which is one more reason the
+  attribute matters there.
 - Colours, shadows, radii, fonts and easing come from the tokens in `packages/ui/src/styles.css`: light
   values on `:root`, dark on `.dark` and the night surfaces, `.stage` and `.ac-stage`, with the whole document going dark while a `.stage` or Record (`.rec`) is up so what's portalled out of it stays night (`.light` and `.dark` on any element scope one theme to that part of a page), with Tailwind utilities on the same names (`bg-ground`,
   `bg-surface`, `bg-frame`, `text-ink-2`, `bg-sun`, `text-sun-text`, `shadow-2`, `rounded-lg`,

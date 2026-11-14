@@ -218,7 +218,7 @@ function Recorder({ rec, media }: { rec: StageRecording; media: LocalMedia }) {
         </Popover>
       } right={!s.connected && !forgotten && <span className="rec-pill" role="status"><Icon name="wifiOff" size={15} />{awayWhy(s).pill}</span>} />
       <div className="rec-hold">
-        <input className="rec-name is-live" value={title} placeholder={UNNAMED} aria-label="Name these notes" title="Rename" maxLength={160} autoComplete="off" spellCheck={false}
+        <input data-1p-ignore className="rec-name is-live" value={title} placeholder={UNNAMED} aria-label="Name these notes" title="Rename" maxLength={160} autoComplete="off" spellCheck={false}
           onChange={(e) => setTitle(e.target.value)} onBlur={() => { const t = title.trim(); if (t && t !== s.title) rec.rename(t); else setTitle(s.title); }}
           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
         <p className="rec-time" role="timer" aria-label="Time recorded">{clock(s.elapsed)}</p>

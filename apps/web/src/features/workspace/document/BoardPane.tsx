@@ -9,7 +9,7 @@
  */
 import { errorCode, firstName, type WorkspaceItem } from '@alcove/api';
 import type { BoardReply } from '@alcove/board';
-import { BoardPop, Button, WsCantOpen, WsDoc, WsGoneBar, WsOfflineEmpty, WsPopover, WsUnavailable, wsToast, type AvatarPerson, type BoardNaming, type IconName } from '@alcove/ui';
+import { BoardPop, Button, WsCantOpen, WsDoc, WsGoneBar, WsOfflineEmpty, WsPopover, WsUnavailable, extensionUi, wsToast, type AvatarPerson, type BoardNaming, type IconName } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { boardPictures, boardUpload, linkableIn } from '~/features/board/around';
@@ -83,7 +83,8 @@ const POP_TOP = 62;
 const UNDER_PILL = 8;
 
 /**
- * A pop over the sheet: focus goes into it, and Escape, or a press anywhere but on it or the bar's name and seal, closes it.
+ * A pop over the sheet: focus goes into it, and Escape, or a press anywhere but on it, the bar's name and seal or a browser
+ * extension's own UI (a password manager's menu over a field), closes it.
  * Escape gives the keys back to what opened it, `opener` on the bar, so the board's keys go on working. It sits under the pill,
  * found again whenever `standing` changes, as that's when a pill comes or goes.
  */
@@ -114,7 +115,7 @@ function usePopOnSheet(close: () => void, opener: string, standing = '') {
       back?.focus({ preventScroll: true });
     };
     const onPress = (e: PointerEvent) => {
-      if (!(e.target instanceof Element) || el.contains(e.target) || e.target.closest('.bd-head .nm, .bd-head .sv')) return;
+      if (!(e.target instanceof Element) || el.contains(e.target) || e.target.closest('.bd-head .nm, .bd-head .sv') || extensionUi(e.target)) return;
       latest.current();
     };
     el.addEventListener('keydown', onKey);

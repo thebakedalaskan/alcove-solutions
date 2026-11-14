@@ -1,10 +1,10 @@
 /*
- * The side panel, beside every page and dark in both themes, in two groups. At the top, your work: Start a call, then
- * Home, Calls, Drive and Record, and what you've pinned under them. At the foot, who works with you (Team and Agents),
- * then a call that's about to start, with Join, the confidential-compute check and your plan: one row, with a short line
- * above it only while there's something to say. A count means something waits on you; Home's is a link of its own, which
- * says what's waiting when pointed at and lands on For you (features/home/landing.ts). Someone on their own, with no
- * company and no team, has no Team page. It can be hidden. At 860px and narrower the phone's top bar and tab bar (TabBar.tsx) take its place, and the plan
+ * The side panel, beside every page and dark in both themes, in two groups. At the top: Start a call, then Home, Calls,
+ * Drive, Record and Team, and what you've pinned under them. At the foot, Agents, then a call that's about to start, with
+ * Join, the confidential-compute check and your plan: one row, with a short line above it only while there's something to
+ * say. A count means something waits on you; Home's is a link of its own, which says what's waiting when pointed at and
+ * lands on For you (features/home/landing.ts). Someone on their own, with no company and no team, has no Team page. It can
+ * be hidden. At 860px and narrower the phone's top bar and tab bar (TabBar.tsx) take its place, and the plan
  * is said in Settings.
  */
 import type { MyTeam, Plan, PlanNotice, WorkspaceSummary } from '@alcove/api';
@@ -120,11 +120,11 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
         <button type="button" className={cn(buttonClass(), 'sb-new')} onClick={onNew} aria-label="Start a call" aria-haspopup="dialog" aria-keyshortcuts={inWorkspace(path) ? undefined : 'N'}>
           <span className="sb-new-ic"><Icon name="video" size={16} /></span><span>Start a call</span>{!inWorkspace(path) && <Kbd>N</Kbd>}
         </button>
-        <SidebarNav>{NAV.map(link)}</SidebarNav>
+        <SidebarNav>{places(NAV, team, mine).map(link)}</SidebarNav>
         <div className="sb-mid">
           <Pinned onPin={onPin} />
         </div>
-        <SidebarNav label="Team and agents" className="sb-low">{places(NAV_FOOT, team, mine).map(link)}</SidebarNav>
+        <SidebarNav label="Agents" className="sb-low">{NAV_FOOT.map(link)}</SidebarNav>
         {online && <AboutToStart home={path === '/home'} />}
         <Foot online={online} />
       </div>

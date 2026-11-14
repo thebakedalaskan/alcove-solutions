@@ -206,7 +206,7 @@ function NameField({ naming }: { naming: BoardNaming }) {
     if (keep) naming.onDone(); else naming.onCancel();
   };
   return (
-    <input ref={field} className="nm-in" aria-label="The board’s name" value={naming.value} maxLength={200} autoComplete="off" spellCheck={false} enterKeyHint="done"
+    <input data-1p-ignore ref={field} className="nm-in" aria-label="The board’s name" value={naming.value} maxLength={200} autoComplete="off" spellCheck={false} enterKeyHint="done"
       onChange={(e) => naming.onChange(e.target.value)} onBlur={() => finish(true)}
       onKeyDown={(e) => {
         e.stopPropagation();

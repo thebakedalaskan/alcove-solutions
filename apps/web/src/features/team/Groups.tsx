@@ -297,7 +297,7 @@ function NameLine({ name, problem, onDone }: { name: string; problem: (to: strin
   const close = (to: string | undefined, focusPen: boolean) => { if (closed.current) return; closed.current = true; onDone(to, focusPen); };
   return (
     <>
-      <input className="tp-name" autoFocus value={text} maxLength={MAX_GROUP_NAME} aria-label="Group name"
+      <input data-1p-ignore className="tp-name" autoFocus value={text} maxLength={MAX_GROUP_NAME} aria-label="Group name"
         aria-invalid={error !== undefined} aria-describedby={error ? said : undefined}
         onChange={(e) => { setText(e.target.value); setError(undefined); }}
         onKeyDown={(e) => {
@@ -336,7 +336,7 @@ function NewGroup({ groups, draft, onDraft, shown, onClose, onCreate }: {
     <article className="tp-o" aria-label="New group">
       <header className="tp-o-h">
         <div className="tp-o-n">
-          <input ref={named} className="tp-name" autoFocus value={name} maxLength={MAX_GROUP_NAME} placeholder="Name it, like Design" aria-label="New group’s name"
+          <input data-1p-ignore ref={named} className="tp-name" autoFocus value={name} maxLength={MAX_GROUP_NAME} placeholder="Name it, like Design" aria-label="New group’s name"
             aria-invalid={error !== undefined} aria-describedby={error ? said : undefined}
             onChange={(e) => { onDraft({ name: e.target.value, people }); setError(undefined); }}
             onKeyDown={(e) => {

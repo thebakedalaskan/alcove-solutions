@@ -35,7 +35,7 @@ function NameStep({ making, busy, onName, onBack }: { making: Making | null; bus
   return (
     <form className="dv-pop-name" onSubmit={(e) => { e.preventDefault(); if (name.trim()) onName(name.trim()); }}>
       <p className="dv-pop-head">{onBack && <IconButton icon="left" size={15} label="Back" type="button" onClick={onBack} />}{what}</p>
-      <input type="text" aria-label="Name this workspace" placeholder="Name this workspace" value={name} maxLength={120} autoFocus autoComplete="off" spellCheck={false}
+      <input data-1p-ignore type="text" aria-label="Name this workspace" placeholder="Name this workspace" value={name} maxLength={120} autoFocus autoComplete="off" spellCheck={false}
         onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape' && onBack) { e.preventDefault(); e.stopPropagation(); onBack(); } }} />
       <Button variant="primary" size="sm" type="submit" loading={busy} disabled={!name.trim()}>Make it</Button>
     </form>

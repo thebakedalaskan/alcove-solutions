@@ -48,8 +48,8 @@ export const BusyPhoneNight = { ...phone(Busy), globals: { viewport: { value: 'p
 /** Narrower than 1320px the widgets stack: For you, then Upcoming, then Recent notes. */
 export const BusyTablet = page('/home', 'busy', { globals: TABLET });
 /**
- * Eight minutes before the design review, on a wide screen: the foot of the side panel offers it with Join, under Team and
- * Agents, until Home's own line takes it at five minutes. Further off, the panel says nothing of the day: that's Upcoming.
+ * Eight minutes before the design review, on a wide screen: the foot of the side panel offers it with Join, under Agents,
+ * until Home's own line takes it at five minutes. Further off, the panel says nothing of the day: that's Upcoming.
  */
 export const AboutToStartOnHome = page('/home', 'call-soon', { globals: WIDE, parameters: { opening: { now: on(0, 10, 22) } } });
 export const AboutToStartOnHomeNight = page('/home', 'call-soon', { globals: { ...WIDE, ...NIGHT }, parameters: { opening: { now: on(0, 10, 22) } } });

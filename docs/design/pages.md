@@ -11,20 +11,20 @@ Storybook (`apps/storybook`, `stories/pages/`); the board it was designed as is 
 
 Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `packages/ui/src/shell/shell.css`).
 
-- **The side panel**, on the left, is dark in both themes, in two groups: your work at the top, and who works with you
-  at the foot. Board: [canvas/side-panel](canvas/side-panel/README.md). From the top:
+- **The side panel**, on the left, is dark in both themes, in two groups: the places at the top, and Agents at the foot.
+  Board: [canvas/side-panel](canvas/side-panel/README.md). From the top:
   - the logo, and a button to hide the panel
   - Start a call (N): a row like the places, its name in line with theirs and its camera in a warm circle. It's never
     filled or shaded, so the place you're on is the one shaded row
-  - Home, Calls, Drive and Record. A count says something waits on you there (what's for you on Home, tags you haven't
-    seen in the Drive, recordings waiting to upload), quiet, in `ink-3`, its digits centred in a column of its own at the
+  - Home, Calls, Drive, Record and Team (where your groups are, so the panel doesn't list them again), with Team hidden
+    for someone on their own. A count says something waits on you there (what's for you on Home, tags you haven't seen
+    in the Drive, recordings waiting to upload), quiet, in `ink-3`, its digits centred in a column of its own at the
     row's end (28px wide, 6px in), so counts line up. Home's is a link of its own, that column's cell over the row
     (`NavCount`): pointing at it lights it alone, in corners concentric with the row's, and its tooltip says what's in each
     of For you's tabs; pressing it lands on For you. Nothing counts a total
   - Pinned, once you've pinned something: no heading and no sentence before that. Its pin shows at the end of the heading
     while you point at the list, as an add button does. It scrolls between the places and the foot
-  - at the foot, Team (where your groups are, so the panel doesn't list them again) and Agents, with Team hidden for
-    someone on their own
+  - at the foot, Agents
   - a call about to start, from 10 minutes before until it ends: one row with a hairline round it, its cover, its name,
     "Starts in 4 min" or "Happening now" in `sun-text`, and Join, never filled. On Home it makes way while Home's own
     line offers the call (its last few minutes, and while it's going), so there's one Join at a time. The rest of the

@@ -4,7 +4,7 @@
  * stays in the text the whole time: keys reach these first, and pressing one never moves the caret. The one exception is
  * the calendar, which takes the keyboard for its arrow keys and gives it back to the text when it's done.
  */
-import { Avatar, Icon, MonthGrid, cn, type IconName } from '@alcove/ui';
+import { Avatar, Icon, MonthGrid, cn, extensionUi, useCloseOnLeave, type IconName } from '@alcove/ui';
 import { toggleMark } from 'prosemirror-commands';
 import { addColumn, addRow, removeColumn, removeRow, TableMap, type TableRect } from 'prosemirror-tables';
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
@@ -125,8 +125,8 @@ function ListMenu({ rt, rows, anchor, className, label, start, reset, caret, onC
         onClose();
       }
     };
-    /* Before the editor's own keys, and on a press anywhere else the menu goes. */
-    const onPress = (e: PointerEvent) => { if (!(e.target instanceof Element && e.target.closest('.ws-pop'))) onClose(); };
+    /* Before the editor's own keys, and on a press anywhere else the menu goes, but for one in a browser extension's own UI. */
+    const onPress = (e: PointerEvent) => { if (!(e.target instanceof Element && e.target.closest('.ws-pop')) && !extensionUi(e.target)) onClose(); };
     window.addEventListener('keydown', onKey, true);
     window.addEventListener('pointerdown', onPress, true);
     return () => {
@@ -348,6 +348,8 @@ function LinkField({ rt, menu }: { rt: EditorRuntime; menu: Extract<OpenMenu, { 
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { input.current?.focus(); input.current?.select(); }, []);
   const close = () => { rt.menu.set(null); rt.view?.focus(); };
+  /* Leaving the field puts it away; focus going into a browser extension's own UI over it isn't leaving (useCloseOnLeave). */
+  const leave = useCloseOnLeave(close, (n) => input.current?.closest('.ws-pop')?.contains(n) === true);
   return (
     <Popover anchor={menu.rect} className="wv-cmt wv-link" label="Link">
       <div className="in">
@@ -359,7 +361,7 @@ function LinkField({ rt, menu }: { rt: EditorRuntime; menu: Extract<OpenMenu, { 
             if (e.key === 'Enter') { e.preventDefault(); applyLink(rt, menu.words, value); }
             if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
           }}
-          onBlur={close}
+          onBlur={leave}
         />
         <button type="button" className="ws-send" aria-label="Add the link" onClick={() => applyLink(rt, menu.words, value)}><Icon name="check" size={15} /></button>
       </div>
@@ -375,7 +377,7 @@ function DateMenu({ rt, menu }: { rt: EditorRuntime; menu: Extract<OpenMenu, { k
   useEffect(() => {
     /* Before anything else hears Esc, wherever focus is in it, as the lists' keys do. */
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); putDateAway(rt, menu); } };
-    const onPress = (e: PointerEvent) => { if (!(e.target instanceof Element && e.target.closest('.ws-pop'))) rt.menu.set(null); };
+    const onPress = (e: PointerEvent) => { if (!(e.target instanceof Element && e.target.closest('.ws-pop')) && !extensionUi(e.target)) rt.menu.set(null); };
     window.addEventListener('keydown', onKey, true);
     window.addEventListener('pointerdown', onPress, true);
     return () => {

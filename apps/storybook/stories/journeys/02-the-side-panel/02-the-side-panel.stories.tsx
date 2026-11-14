@@ -142,15 +142,15 @@ export const HideTheSidePanel: PageStory = {
 };
 
 export const TheFoot: PageStory = {
-  name: '2.7 The foot: a call about to start, Team, and the notes left',
+  name: '2.7 Team under Record, and the foot: a call about to start and the notes left',
   ...page('/calls', 'call-soon'),
   play: async ({ userEvent, step }) => {
     const panel = async () => within(await screen.findByRole('complementary', { name: 'Side panel' }, SOON));
     await step('Four minutes before the design review, the foot of the panel offers it, with Join. Further off it says nothing', async () => {
       await (await panel()).findByRole('link', { name: 'Join Design review' }, SOON);
     });
-    await step('Click Team, at the foot. Your groups are on the Team page', async () => {
-      await userEvent.click(within((await panel()).getByRole('navigation', { name: 'Team and agents' })).getByRole('link', { name: 'Team' }));
+    await step('Click Team, under Record. Your groups are on the Team page', async () => {
+      await userEvent.click(within((await panel()).getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Team' }));
       await screen.findByRole('heading', { name: 'Team', level: 1 }, SOON);
     });
     await step('On Free, the foot says about how much of the period’s notes is left, over a meter, in the row the plan has. It opens Settings at your plan', async () => {

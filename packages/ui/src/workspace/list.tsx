@@ -119,7 +119,7 @@ export function WsSpaceField({ name, placeholder, onCommit, onCancel, mark }: Ws
   return (
     <div className="wt-space is-edit">
       {mark ?? <span className="wt-mark"><Icon name="folders" size={15} /></span>}
-      <input className="wt-in" type="text" aria-label="Name this workspace" placeholder={placeholder} defaultValue={name} maxLength={120} autoFocus onFocus={(e) => e.currentTarget.select()}
+      <input data-1p-ignore className="wt-in" type="text" aria-label="Name this workspace" placeholder={placeholder} defaultValue={name} maxLength={120} autoFocus onFocus={(e) => e.currentTarget.select()}
         onKeyDown={(e) => {
           e.stopPropagation();
           if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
@@ -327,7 +327,7 @@ export function WsRenameRow({ name, kind = 'document', depth = 0, placeholder = 
   return (
     <motion.div className="wt-r is-edit" style={{ '--d': depth }} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1, transition: move(1) }}>
       <Icon name={WS_ITEM_ICONS[kind]} size={16} />
-      <input className="wt-in" type="text" aria-label="Name" placeholder={placeholder} defaultValue={name} maxLength={200} autoFocus onFocus={(e) => e.currentTarget.select()}
+      <input data-1p-ignore className="wt-in" type="text" aria-label="Name" placeholder={placeholder} defaultValue={name} maxLength={200} autoFocus onFocus={(e) => e.currentTarget.select()}
         onKeyDown={(e) => {
           e.stopPropagation();
           if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
