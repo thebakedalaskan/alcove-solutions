@@ -17,9 +17,10 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
   - Start a call (N): a row like the places, its name in line with theirs and its camera in a warm circle. It's never
     filled or shaded, so the place you're on is the one shaded row
   - Home, Calls, Drive and Record. A count says something waits on you there (what's for you on Home, tags you haven't
-    seen in the Drive, recordings waiting to upload), quiet, in `ink-3` at the row's end. Home's is a link of its own over
-    the row's end (`NavCount`): pointing at it lights it alone, in corners concentric with the row's, and its tooltip says
-    what's in each of For you's tabs; pressing it lands on For you. Nothing counts a total
+    seen in the Drive, recordings waiting to upload), quiet, in `ink-3`, its digits centred in a column of its own at the
+    row's end (28px wide, 6px in), so counts line up. Home's is a link of its own, that column's cell over the row
+    (`NavCount`): pointing at it lights it alone, in corners concentric with the row's, and its tooltip says what's in each
+    of For you's tabs; pressing it lands on For you. Nothing counts a total
   - Pinned, once you've pinned something: no heading and no sentence before that. Its pin shows at the end of the heading
     while you point at the list, as an add button does. It scrolls between the places and the foot
   - at the foot, Team (where your groups are, so the panel doesn't list them again) and Agents, with Team hidden for

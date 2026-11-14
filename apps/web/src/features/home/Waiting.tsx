@@ -5,7 +5,7 @@
  * stays there, saying what you did, and Undo leaves it there too, so nothing moves under your pointer.
  */
 import {
-  errorMessage, firstName, isAcceptedFollowUp, mayDecide, proposerOf, type ActionPatch, type Changer, type DecisionPatch, type Inbox, type NoteReader,
+  errorCode, errorMessage, firstName, isAcceptedFollowUp, mayDecide, proposerOf, type ActionPatch, type Changer, type DecisionPatch, type Inbox, type NoteReader,
   type NoteSummary, type OpenAction, type PendingDecision, type Person
 } from '@alcove/api';
 import { Avatar, Faces, Icon, Popover, cn, useToast, type AvatarPerson } from '@alcove/ui';
@@ -52,8 +52,11 @@ export function useWaiting(items: Item[]) {
   const decide = useUpdateDecision();
   const act = useUpdateAction();
   const me = useQuery(accountQueries.session()).data?.user.email;
-  /* What you answered this visit, with the item as it was, so it stays where it is after the inbox lets go of it. */
-  const [answered, setAnswered] = useState<ReadonlyMap<string, { item: Item; outcome: Outcome }>>(new Map());
+  /*
+   * What you answered this visit, with the item as it was, so it stays where it is after the inbox lets go of it; and, with
+   * no outcome, what you tried to answer when the reply didn't come back, which may have been saved all the same.
+   */
+  const [answered, setAnswered] = useState<ReadonlyMap<string, { item: Item; outcome: Outcome | undefined }>>(new Map());
   /*
    * Items whose answer is on its way, as they were; several can be, when you answer one after another. They're kept too:
    * the inbox can let go of one before its answer comes back, and it mustn't drop out of its place meanwhile.
@@ -88,6 +91,9 @@ export function useWaiting(items: Item[]) {
       settle(item, answer === 'mine' ? 'taken' : answer);
     } catch (e) {
       toast(errorMessage(e), { icon: 'x' });
+      // Saved or not, the inbox may let go of it: it stays where it is, as it was, to answer again (answering twice changes
+      // nothing). A note that's gone takes its rows with it.
+      if (errorCode(e) !== 'not-found') setAnswered((m) => (m.has(item.key) ? m : new Map(m).set(item.key, { item, outcome: undefined })));
     } finally {
       mark(item, false);
     }

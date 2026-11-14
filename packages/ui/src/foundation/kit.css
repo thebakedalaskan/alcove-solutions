@@ -257,18 +257,19 @@
 .ac-card-head > span { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-3); }
 .ac-card-head a { display: inline-flex; align-items: center; gap: 4px; font: 600 13px/1 var(--font-sans); color: var(--ink-3); transition: color var(--duration-1); }
 .ac-card-head a:hover { color: var(--sun-text); }
-.ac-nav { display: grid; gap: 2px; }
-.ac-nav-item { display: flex; align-items: center; gap: 11px; height: 40px; padding: 0 12px; border-radius: 11px; color: var(--ink-2); font: 500 14.5px/1 var(--font-sans); text-decoration: none; transition: background-color var(--duration-1), color var(--duration-1); }
+.ac-nav { --nav-r: 11px; --count-in: 6px; display: grid; gap: 2px; }
+.ac-nav-item { display: flex; align-items: center; gap: 11px; height: 40px; padding: 0 12px; border-radius: var(--nav-r, 11px); color: var(--ink-2); font: 500 14.5px/1 var(--font-sans); text-decoration: none; transition: background-color var(--duration-1), color var(--duration-1); }
 .ac-nav-item:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
 .ac-nav-item[aria-current="page"] { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); }
-.ac-nav-item .count { margin-left: auto; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 /*
- * A place whose count is a link of its own (NavCount: Home's, to For you). The count sits where any count does, its digits
- * 12px in from the row's end, over the row: pointing at it lights it alone, with corners concentric with the row's.
+ * A count stands in a column of its own at the row's end, 6px in and at least 28px wide, its digits centred, so counts line
+ * up whatever their digits and whichever kind they are. A count that's a link of its own (NavCount: Home's, to For you) is
+ * that column's cell, over the row: pointing at it lights it alone, its corners concentric with the row's.
  */
-.ac-nav-place { --count-in: 6px; position: relative; display: grid; }
+.ac-nav-item .count { box-sizing: border-box; min-width: 28px; margin: 0 calc(var(--count-in, 6px) - 12px) 0 auto; padding: 0 var(--count-in, 6px); text-align: center; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.ac-nav-place { position: relative; display: grid; }
 .ac-nav-place > .ac-nav-item { padding-right: 52px; }
-.ac-nav-count { position: absolute; top: var(--count-in); right: var(--count-in); bottom: var(--count-in); display: grid; place-items: center; min-width: 28px; padding: 0 var(--count-in); border-radius: calc(11px - var(--count-in)); font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); text-decoration: none; transition: background-color var(--duration-1), color var(--duration-1); }
+.ac-nav-count { position: absolute; top: var(--count-in, 6px); right: var(--count-in, 6px); bottom: var(--count-in, 6px); box-sizing: border-box; display: grid; place-items: center; min-width: 28px; padding: 0 var(--count-in, 6px); border-radius: calc(var(--nav-r, 11px) - var(--count-in, 6px)); font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); text-decoration: none; transition: background-color var(--duration-1), color var(--duration-1); }
 .ac-nav-count:hover { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); }
 .ac-nav-count:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 

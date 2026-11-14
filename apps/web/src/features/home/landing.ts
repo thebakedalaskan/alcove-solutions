@@ -19,6 +19,8 @@ const GLOW_MS = 2000;
 export function useLandOnForYou(turn: () => HTMLElement | null): boolean {
   const hash = useRouterState({ select: (s) => s.location.hash });
   const navigate = useNavigate();
+  /* How many times it has landed this visit, and whether it's marked now. */
+  const [landings, setLandings] = useState(0);
   const [landed, setLanded] = useState(false);
   const turning = useRef(turn);
   useEffect(() => { turning.current = turn; });
@@ -34,15 +36,18 @@ export function useLandOnForYou(turn: () => HTMLElement | null): boolean {
       const glide = open.current && !matchMedia('(prefers-reduced-motion: reduce)').matches;
       box.scrollIntoView({ block: 'nearest', behavior: glide ? 'smooth' : 'auto' });
       turning.current()?.focus({ preventScroll: true });
-      setLanded(true);
+      setLandings((n) => n + 1);
     }
     void navigate({ to: '/home', replace: true, resetScroll: false, hashScrollIntoView: false });
   }, [hash, navigate]);
   useEffect(() => { open.current = true; }, []);
+  /* Each landing marks it afresh: off for a frame, so a glow that's still fading starts again, then on for a while. */
   useEffect(() => {
-    if (!landed) return;
+    if (!landings) return;
+    setLanded(false);
+    const frame = requestAnimationFrame(() => setLanded(true));
     const t = setTimeout(() => setLanded(false), GLOW_MS);
-    return () => clearTimeout(t);
-  }, [landed]);
+    return () => { cancelAnimationFrame(frame); clearTimeout(t); };
+  }, [landings]);
   return landed;
 }

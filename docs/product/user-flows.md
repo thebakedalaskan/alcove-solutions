@@ -207,7 +207,7 @@ visitors: a boat far out, stars after dark and now and then a shooting star. Wit
   - **Notes shared with you** in the last 7 days ("Aiko shared the notes from Board prep"): **Read** opens them.
   - What you answer stays where it is until you leave Home, saying what you did in a word or two: **Confirmed**, **Not
     decided**, **Disputed**, **In your follow-ups** or **Not yours**. **Undo** puts it back to be answered, still in its
-    place.
+    place. An answer whose reply doesn't come back says why in a toast, and the row stays where it is, to answer again.
 - **Follow-ups**: the ones you took on and haven't done, from every note you have, soonest first, with the rest after
   them. Each row has the box to tick, the words, the call it came from and when it's due. The due words count from when
   they were said: the last time the due date was changed, or else the call. A day ("today", "EOD", "tomorrow", "Friday",

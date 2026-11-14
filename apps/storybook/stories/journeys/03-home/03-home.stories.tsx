@@ -195,7 +195,7 @@ export const WhatsWaitingFromTheSidePanel: PageStory = {
   name: '3.10 What’s waiting, from the side panel',
   ...page('/home', 'busy', { globals: LAPTOP }),
   play: async ({ userEvent, step }) => {
-    const count = () => screen.findByRole('link', { name: /^For you:/ }, SOON);
+    const count = () => screen.findByRole('link', { name: /For you:/ }, SOON);
     await step('Home’s count in the side panel is everything waiting on you. Point at it: how much is in each of For you’s tabs', async () => {
       await userEvent.hover(await count());
     });

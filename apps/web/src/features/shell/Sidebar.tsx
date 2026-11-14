@@ -94,7 +94,10 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
   const team = useQuery(teamQueries.team()).data;
   const mine = useQuery(teamQueries.myTeam()).data;
   const path = useRouterState({ select: (s) => s.location.pathname });
-  /* A place, with its count at its end; a count that leads somewhere of its own (Home's, to For you) is a link of its own. */
+  /*
+   * A place, with its count at its end; a count that leads somewhere of its own (Home's, to For you) is a link of its own,
+   * which leaves no history behind when it's pressed on that place's own page.
+   */
   const link = (p: NavPlace) => {
     const count = p.count && counts[p.count];
     const row = <Link key={p.to} to={p.to} className="ac-nav-item" data-tour={p.tour}><NavItemContent icon={p.icon} label={p.label} count={count && !count.to ? count.n : undefined} /></Link>;
@@ -102,7 +105,7 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
     const { hash, says } = count.to;
     return (
       <NavCount key={p.to} row={row} n={count.n} says={says}
-        link={(props) => <Link {...props} to={p.to} hash={hash} hashScrollIntoView={false} activeOptions={{ includeHash: true }} />} />
+        link={(props) => <Link {...props} to={p.to} hash={hash} replace={path === p.to} hashScrollIntoView={false} activeOptions={{ includeHash: true }} />} />
     );
   };
   return (

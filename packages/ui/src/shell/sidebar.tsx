@@ -22,14 +22,15 @@ export interface NavCountLinkProps { className: string; 'aria-label': string; ch
 /**
  * A place whose count leads to what it counts, somewhere the place's own link doesn't go: Home's count, to For you under the
  * horizon. `row` is the place's link as ever, holding NavItemContent with no count. Over the row's end, where a count sits,
- * the count `n` is a link of its own: pointing at it says what it counts (`says`, also its name), and pressing it goes to
- * them. `link` renders that link as the app's router link with the props it's given, so it stays a link.
+ * the count `n` is a link of its own: pointing at it says what it counts (`says`), and pressing it goes to them. Its name is
+ * the number, then `says`, so it holds what's on the screen. `link` renders that link as the app's router link with the
+ * props it's given, so it stays a link.
  */
 export function NavCount({ row, n, says, link }: { row: ReactNode; n: number; says: string; link: (props: NavCountLinkProps) => ReactNode }) {
   return (
     <div className="ac-nav-place">
       {row}
-      <Tooltip label={says} side="right">{link({ className: 'ac-nav-count', 'aria-label': says, children: n })}</Tooltip>
+      <Tooltip label={says} side="right">{link({ className: 'ac-nav-count', 'aria-label': `${n}, ${says}`, children: n })}</Tooltip>
     </div>
   );
 }

@@ -9,10 +9,11 @@ const WEEK_MS = 7 * 86_400_000;
 export const sharedLately = (notes: readonly NoteSummary[], now: number) => notes.filter((n) => n.received?.role === 'shared' && now - new Date(n.received.at).getTime() < WEEK_MS);
 /**
  * How much is waiting on you, by For you's tabs before you answer anything: to answer (decisions, follow-ups the notes
- * suggest are yours, notes shared with you lately), and the follow-ups you took on. The side panel's Home counts both.
+ * suggest are yours, notes shared with you lately), and the follow-ups you took on and haven't ticked off, a tick still
+ * saving included. The side panel's Home counts both.
  */
 export function waitingCounts(inbox: Inbox, notes: readonly NoteSummary[], now: number): { ask: number; todo: number } {
-  const followUps = inbox.followUps.filter(isAcceptedFollowUp);
+  const followUps = inbox.followUps.filter((a) => isAcceptedFollowUp(a) && !a.done);
   const todo = followUps.filter((a) => a.takenOn).length;
   return { ask: inbox.decisions.length + followUps.length - todo + sharedLately(notes, now).length, todo };
 }
