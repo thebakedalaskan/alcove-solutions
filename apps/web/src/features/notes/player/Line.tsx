@@ -2,13 +2,13 @@
  * The call as a line, under its stage: play and where it's got to, then the line itself, its chapters as lengths with the one
  * you're in named above it, what was decided as rose diamonds on it (hollow until someone confirms it), follow-ups as blue
  * dots under it, a screen that was shared as a tinted length, stretches nothing was captured in as a pause, and the sun where
- * the recording has got to; then how long it is, its speed (a menu of speeds to pick from), the captions and full screen.
+ * the recording has got to; then how long it is, its speed (a menu of speeds to pick from), subtitles (filled while on) and full screen.
  * Pressing or dragging along it, or pressing a mark, moves the sun there, playing on if it was. While the call is still
  * being recorded, the line ends where it has got to, in the colour of recording. A call that kept no recording has the line
  * and no player.
  */
 import type { CaptureGap, Chapter, NoteAction, NoteDecision, ScreenShare } from '@alcove/api';
-import { Icon, IconButton, Select, Spinner, cn, type SelectOption } from '@alcove/ui';
+import { Icon, IconButton, Select, Spinner, Tooltip, cn, type SelectOption } from '@alcove/ui';
 import { useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { gapLabel } from '~/lib/capture';
 import { position } from '~/lib/time';
@@ -159,7 +159,12 @@ export function CallLine({ player, span, chapters, marks, shares, gaps, here, ed
       <span className="cd-end" title={hasAudio ? 'The recording is encrypted. Only the people who have these notes can play it.' : undefined}>{position(end)}</span>
       <span className="cd-ctl">
         {hasAudio && <Select value={String(player.rate)} onChange={(r) => player.setRate(Number(r))} options={SPEEDS} label="Speed" align="end" container={fullScreen} className="cd-speed" />}
-        {captions && <IconButton icon="captions" label={captions.on ? 'Hide captions' : 'Show captions'} size={17} on={captions.on} aria-pressed={captions.on} onClick={captions.toggle} />}
+        {/* Subtitles, named on hover, and filled while they're on. */}
+        {captions && (
+          <Tooltip label="Subtitles">
+            <IconButton icon={captions.on ? 'captionsOn' : 'captions'} label="Subtitles" title={undefined} size={17} on={captions.on} aria-pressed={captions.on} onClick={captions.toggle} />
+          </Tooltip>
+        )}
         {full && <IconButton icon={full.on ? 'shrink' : 'grow'} label={full.on ? 'Leave full screen' : 'Full screen'} size={17} onClick={full.toggle} />}
       </span>
     </div>
