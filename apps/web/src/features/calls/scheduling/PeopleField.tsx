@@ -6,7 +6,7 @@
  * can't be read, says on their token where they are, once you've said.
  */
 import { MAX_GUESTS, type Group, type Person, type PersonSuggestion, type Team } from '@alcove/api';
-import { Avatar, Faces, FlowNote, GhostArch, Icon, PersonToken, Popover, SchedField, SchedListHead, SchedListNote, SchedNote, SchedPersonOption, SchedPop, SchedRow, SchedTimes, cn, extensionUi } from '@alcove/ui';
+import { Avatar, Faces, FlowNote, GhostArch, Icon, PersonToken, Popover, SchedField, SchedListHead, SchedListNote, SchedNote, SchedPersonOption, SchedPop, SchedRow, SchedTimes, cn, useCloseOnLeave } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useId, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 import { byEmail, callName, fold, isEmail, sameEmail } from '~/lib/people';
@@ -166,6 +166,10 @@ export function PeopleField({ value, onChange, me, where, label = 'Add people' }
     clear();
   };
 
+  /* Leaving the field puts the list away; focus going into a browser extension's own UI over it isn't leaving (useCloseOnLeave). */
+  const leave = useCloseOnLeave(() => { setAdding(false); setHeld(null); },
+    (n) => input.current?.closest('.sc-people')?.contains(n) === true || document.getElementById(list)?.closest('.sc-pop')?.contains(n) === true);
+
   const [flag] = unread;
   const heldToken = tokens.find((t) => t.id === held);
   const applyFix = (u: Unread, email: string) => write({ unread: unread.filter((x) => x !== u), tokens: reaches(tokens, email) ? tokens : withList(tokens, [byEmail(email)]) });
@@ -178,13 +182,13 @@ export function PeopleField({ value, onChange, me, where, label = 'Add people' }
             /* Pressing anywhere in the field puts the cursor in it, as a text box would; the tokens are its content. */
             <SchedField open={open} onPress={() => { setAdding(true); input.current?.focus(); }}>
               {tokens.map((t) => <TokenView key={t.id} t={t} held={t.id === held} where={t.kind === 'person' && where && sameEmail(t.person, where) ? where : undefined} onRemove={() => drop(t.id)} />)}
-              {/* Finding people, not signing in: no password manager's offer on it, and focus going into one's UI isn't leaving. */}
+              {/* Finding people, not signing in: no 1Password offer on it, and focus going into an extension's UI isn't leaving. */}
               <input ref={input} type="text" value={query} autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} data-1p-ignore aria-label={label} enterKeyHint="next"
                 placeholder={tokens.length ? 'Add someone' : 'Add people'}
                 role="combobox" aria-expanded={open} aria-controls={open ? list : undefined} aria-autocomplete="list"
                 aria-activedescendant={open && lit ? `${list}-${shown.indexOf(lit)}` : undefined}
                 onChange={(e) => { setQuery(e.target.value); setActive(e.target.value.trim() ? 0 : -1); setHeld(null); }} onKeyDown={keys} onPaste={paste}
-                onFocus={() => setAdding(true)} onBlur={(e) => { if (extensionUi(e.relatedTarget)) return; setAdding(false); setHeld(null); }} />
+                onFocus={() => setAdding(true)} onBlur={leave} />
             </SchedField>
           )}>
           <SchedListHead>{typed ? 'People and groups' : tokens.length ? 'Add someone else' : team ? 'Often with you' : 'People you’ve met'}</SchedListHead>

@@ -191,7 +191,7 @@ export function RoomsSetup({ people, me, notes, boardName, onOpen }: {
               <div key={k} ref={(el) => { cols.current[k] = el; }} className={cn('ic-col', move && move.over === k && colOf(move.id) !== k && 'is-drop')}>
                 <div className="ch">
                   <Icon name="pen" size={13} />
-                  <input className="ic-rname" value={names[i] ?? ''} maxLength={24} aria-label="Room name"
+                  <input data-1p-ignore className="ic-rname" value={names[i] ?? ''} maxLength={24} aria-label="Room name"
                     onChange={(e) => setNames((x) => x.map((v, j) => (j === i ? e.target.value : v)))}
                     onBlur={() => setNames((x) => x.map((v, j) => (j === i && !v.trim() ? `Room ${k}` : v)))}
                     onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />

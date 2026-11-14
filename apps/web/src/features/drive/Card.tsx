@@ -28,7 +28,7 @@ export function NameField({ name, label, onDone }: { name: string; label: string
   const done = useRef(false);
   const finish = (to: string | null) => { if (done.current) return; done.current = true; onDone(to); };
   return (
-    <input className="dv-name" type="text" aria-label={label} defaultValue={name} maxLength={200} autoFocus autoComplete="off" spellCheck={false}
+    <input data-1p-ignore className="dv-name" type="text" aria-label={label} defaultValue={name} maxLength={200} autoFocus autoComplete="off" spellCheck={false}
       onFocus={(e) => e.currentTarget.select()}
       onKeyDown={(e) => {
         e.stopPropagation();

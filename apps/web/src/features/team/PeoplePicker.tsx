@@ -115,7 +115,7 @@ export function Picker({ title, cta, note, skip, preset, from, groups, after, on
             <button type="button" aria-label={`Remove ${p.name}`} onClick={(e) => { e.stopPropagation(); setSel((s) => s.filter((x) => !sameEmail(x, p))); input.current?.focus(); }}><Icon name="x" size={12} /></button>
           </span>
         ))}
-        <input ref={input} value={query} placeholder={sel.length || group ? 'Add another' : groups?.length ? 'Name, email or group' : 'Name or email'} autoComplete="off" spellCheck={false} aria-label={groups?.length ? 'Name, email or group' : 'Name or email'}
+        <input ref={input} value={query} placeholder={sel.length || group ? 'Add another' : groups?.length ? 'Name, email or group' : 'Name or email'} autoComplete="off" spellCheck={false} data-1p-ignore aria-label={groups?.length ? 'Name, email or group' : 'Name or email'}
           onChange={(e) => { setQuery(e.target.value); setAct(0); }}
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') { e.preventDefault(); setAct((a) => Math.min(offered.length + shown.length - 1, a + 1)); }

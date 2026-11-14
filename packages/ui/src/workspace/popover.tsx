@@ -46,7 +46,7 @@ function edges(): { top: number; right: number; bottom: number; left: number } {
 /**
  * What every menu and sheet in the workspace sits on, against what opened it (`anchor`, which it toggles) or against a
  * place (`at`: a point, or a function that says where a caret or a word is now). It flips to stay on screen, pops in
- * over 140 ms, closes on Esc or a click outside (but not one in a browser extension's own UI, such as a password
+ * over 140 ms, closes on Esc or a press or focus outside it (but not in a browser extension's own UI, such as a password
  * manager's menu: `extensionUi`), and puts focus back where it was, or leaves it where someone clicked.
  * On a phone it's a sheet at the bottom of the window. `takeFocus={false}` for one that opens while someone's typing.
  * `within` says what on the page `at` is part of (the words, a tag, a block): the popover follows it as what it's in

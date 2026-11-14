@@ -27,7 +27,7 @@ const ALONE: Place[] = [
   { to: '/drive', icon: 'folderOpen', label: 'Drive' },
   { to: '/record', icon: 'recordDot', label: 'Record', count: 1 }
 ];
-/** The foot: your agents, whoever you work with. */
+/** The foot: Agents, which everyone has, someone on their own too. */
 const FOOT: Place[] = [
   { to: '/agents', icon: 'agent', label: 'Agents' }
 ];

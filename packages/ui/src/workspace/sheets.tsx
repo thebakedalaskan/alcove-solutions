@@ -353,7 +353,7 @@ export function WsNameSheet({ name, onCommit }: { name: string; onCommit: (name:
       <div className="wv-h"><b>Rename this workspace</b></div>
       <label className="wv-f">
         <Icon name="pen" size={15} />
-        <input type="text" aria-label="Name this workspace" placeholder="Name this workspace" defaultValue={name} maxLength={120} autoFocus spellCheck={false}
+        <input data-1p-ignore type="text" aria-label="Name this workspace" placeholder="Name this workspace" defaultValue={name} maxLength={120} autoFocus spellCheck={false}
           onFocus={(e) => e.currentTarget.select()}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onCommit(e.currentTarget.value); } }} />
       </label>

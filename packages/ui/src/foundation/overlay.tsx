@@ -29,6 +29,43 @@ export function extensionUi(target: EventTarget | null): boolean {
 export const stayForExtensions = (e: Event): void => { if (extensionUi(e.target)) e.preventDefault(); };
 
 /**
+ * The blur handler for something that closes as its field loses focus, such as the people listed under a field. Focus going
+ * into a browser extension's own UI (`extensionUi`) isn't leaving, so it waits: then the next press or focus anywhere but
+ * the field and what it opened (`inside`), or Escape, closes it, and it can't be left open with nothing in it focused.
+ * Until then nothing listens, so a press that doesn't take focus (the first touch of a scroll) never closes it.
+ */
+export function useCloseOnLeave(close: () => void, inside: (node: Node) => boolean): (e: { relatedTarget: EventTarget | null }) => void {
+  const latest = useRef({ close, inside });
+  latest.current = { close, inside };
+  const [waiting, setWaiting] = useState(false);
+  useEffect(() => {
+    if (!waiting) return undefined;
+    const elsewhere = (e: Event) => {
+      if (extensionUi(e.target)) return;
+      setWaiting(false);
+      if (!(e.target instanceof Node && latest.current.inside(e.target))) latest.current.close();
+    };
+    const escape = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setWaiting(false);
+      latest.current.close();
+    };
+    document.addEventListener('pointerdown', elsewhere, true);
+    document.addEventListener('focusin', elsewhere, true);
+    document.addEventListener('keydown', escape, true);
+    return () => {
+      document.removeEventListener('pointerdown', elsewhere, true);
+      document.removeEventListener('focusin', elsewhere, true);
+      document.removeEventListener('keydown', escape, true);
+    };
+  }, [waiting]);
+  return (e) => {
+    if (extensionUi(e.relatedTarget)) setWaiting(true);
+    else latest.current.close();
+  };
+}
+
+/**
  * A part of a page scoped to one theme (`.light` or `.dark` on it), such as your side of a call in the light theme while the
  * call around it is night: what opens from inside it (a popover, a list of choices) opens out of it, and takes the same theme.
  */

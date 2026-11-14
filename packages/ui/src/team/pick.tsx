@@ -76,7 +76,7 @@ export function PickList({ label, placeholder = 'Name or email', query, onQuery,
     <>
       <label className="tp-find">
         <Icon name="search" size={18} />
-        {/* Finding people, not signing in: a password manager's offer to fill a name or an email doesn't belong on it. */}
+        {/* Finding people, not signing in: 1Password's offer to fill a name or an email doesn't belong on it. */}
         <input ref={input} value={query} placeholder={placeholder} autoComplete="off" spellCheck={false} data-1p-ignore aria-label={label} role="combobox" aria-expanded="true" aria-controls={id}
           aria-activedescendant={rows.length ? `${id}-${at}` : undefined}
           onChange={(e) => { onQuery(e.target.value); setAct(0); }}

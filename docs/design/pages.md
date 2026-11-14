@@ -12,8 +12,7 @@ Storybook (`apps/storybook`, `stories/pages/`); the board it was designed as is 
 Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `packages/ui/src/shell/shell.css`).
 
 - **The side panel**, on the left, is dark in both themes, in two groups: the places at the top, and Agents at the foot.
-  The board ([canvas/side-panel](canvas/side-panel/README.md)) still has Team at the foot; it sits under Record now. From
-  the top:
+  Board: [canvas/side-panel](canvas/side-panel/README.md). From the top:
   - the logo, and a button to hide the panel
   - Start a call (N): a row like the places, its name in line with theirs and its camera in a warm circle. It's never
     filled or shaded, so the place you're on is the one shaded row

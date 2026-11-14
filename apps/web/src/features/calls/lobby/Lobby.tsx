@@ -79,7 +79,7 @@ function LobbyName({ meeting, editable }: { meeting: Meeting; editable: boolean 
   if (editing && editable) {
     return (
       <div className="rg-name">
-        <input autoFocus defaultValue={saving ?? title} maxLength={160} aria-label="The call’s name" onFocus={(e) => e.currentTarget.select()} onKeyDown={keys}
+        <input data-1p-ignore autoFocus defaultValue={saving ?? title} maxLength={160} aria-label="The call’s name" onFocus={(e) => e.currentTarget.select()} onKeyDown={keys}
           onBlur={(e) => { if (!undo.current) save(e.currentTarget.value); undo.current = false; setEditing(false); }} />
       </div>
     );

@@ -4,7 +4,7 @@
  * stays in the text the whole time: keys reach these first, and pressing one never moves the caret. The one exception is
  * the calendar, which takes the keyboard for its arrow keys and gives it back to the text when it's done.
  */
-import { Avatar, Icon, MonthGrid, cn, extensionUi, type IconName } from '@alcove/ui';
+import { Avatar, Icon, MonthGrid, cn, extensionUi, useCloseOnLeave, type IconName } from '@alcove/ui';
 import { toggleMark } from 'prosemirror-commands';
 import { addColumn, addRow, removeColumn, removeRow, TableMap, type TableRect } from 'prosemirror-tables';
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
@@ -348,20 +348,8 @@ function LinkField({ rt, menu }: { rt: EditorRuntime; menu: Extract<OpenMenu, { 
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { input.current?.focus(); input.current?.select(); }, []);
   const close = () => { rt.menu.set(null); rt.view?.focus(); };
-  /*
-   * Leaving the field puts it away, and so does a press anywhere else: focus may have gone to a browser extension's own UI
-   * (a password manager's menu over the field), which isn't leaving it, and then no blur is left to hear.
-   */
-  useEffect(() => {
-    const onPress = (e: PointerEvent) => {
-      if (e.target instanceof Element && e.target.closest('.ws-pop')) return;
-      if (extensionUi(e.target)) return;
-      rt.menu.set(null);
-      rt.view?.focus();
-    };
-    window.addEventListener('pointerdown', onPress, true);
-    return () => window.removeEventListener('pointerdown', onPress, true);
-  }, [rt]);
+  /* Leaving the field puts it away; focus going into a browser extension's own UI over it isn't leaving (useCloseOnLeave). */
+  const leave = useCloseOnLeave(close, (n) => input.current?.closest('.ws-pop')?.contains(n) === true);
   return (
     <Popover anchor={menu.rect} className="wv-cmt wv-link" label="Link">
       <div className="in">
@@ -373,7 +361,7 @@ function LinkField({ rt, menu }: { rt: EditorRuntime; menu: Extract<OpenMenu, { 
             if (e.key === 'Enter') { e.preventDefault(); applyLink(rt, menu.words, value); }
             if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
           }}
-          onBlur={(e) => { if (!extensionUi(e.relatedTarget)) close(); }}
+          onBlur={leave}
         />
         <button type="button" className="ws-send" aria-label="Add the link" onClick={() => applyLink(rt, menu.words, value)}><Icon name="check" size={15} /></button>
       </div>
