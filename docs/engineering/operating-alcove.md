@@ -272,7 +272,7 @@ error's name, a system's code, or the error's class. Never a provider's message.
 
 - **Loops**, from this instance's memory. Each says whether a run is going now, when the last one started and ended and how
   long it took, whether it did its work and what it counted, when one last did, and its failures in the last hour by code: the
-  error's class, with another service's status when it names one (`InternalError:403`). The loops: `upkeep` every 5 minutes,
+  error's class, with another service's status when it names one (`InternalError:403`). The loops: `upkeep` every 5 minutes (its first a minute after start),
   and each of its steps as `upkeep:<step>` (`sessions`, `agents`, `agent activity`, `receipts`, `operator nonces`,
   `object deletes`, `orphaned objects`, `shared screens`, `notes`, `calls`, `drive exports`, `moves`, `note links`, `rings`,
   `live notes`, `attention`, `plans`, `carried top-ups`, `teams`); `deposits`, the top-up watcher, every 5 seconds;
