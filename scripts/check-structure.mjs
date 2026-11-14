@@ -51,9 +51,9 @@ const sourceHomes = {
   'packages/api-http/src': new Set(['transport', 'account', 'agents', 'meetings', 'calls', 'notes', 'recordings', 'workspaces', 'trust'])
 };
 /** The deliberate public entries: the only index files, and the only files that may `export *`. */
-const packageEntries = new Set(['packages/api/src/index.ts', 'packages/api-http/src/index.ts', 'packages/ui/src/index.ts', 'packages/board/src/index.ts']);
+const packageEntries = new Set(['packages/api/src/index.ts', 'packages/api-http/src/index.ts', 'packages/ui/src/index.ts', 'packages/board/src/index.ts', 'packages/mail/src/index.ts']);
 /** Folders whose files are counted and named by these rules. Routes follow TanStack Router's own naming. */
-const sourceRoots = ['apps/api/src', 'apps/web/src', 'apps/storybook/src', 'apps/storybook/stories', 'packages/api/src', 'packages/api-http/src', 'packages/board/src', 'packages/ui/src', 'infra/confidential-space'];
+const sourceRoots = ['apps/api/src', 'apps/web/src', 'apps/storybook/src', 'apps/storybook/stories', 'packages/api/src', 'packages/api-http/src', 'packages/board/src', 'packages/mail/src', 'packages/ui/src', 'infra/confidential-space'];
 const routes = 'apps/web/src/routes';
 /** The most files one folder holds directly. Past it, the folder is a list to scroll, not a map: group what belongs together. */
 const MAX_FILES = 20;

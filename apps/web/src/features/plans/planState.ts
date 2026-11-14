@@ -45,11 +45,12 @@ export function proEnding(plan: Plan, now = Date.now()): ProEnding | null {
 export const endsIn = (days: number): string => (days <= 0 ? 'Ends today' : days === 1 ? 'Ends tomorrow' : `Ends in ${days} days`);
 
 /**
- * Whether you're on a team without a live license: none was left for you, so you're on your own plan until its admin buys
- * more and you next open Alcove. Settings › Plan and the side panel's foot say so for as long as it's true, so a
- * `license-needed` notice is never shown as a notice of its own.
+ * Whether you're on a team on Team without a live license: none was left for you, so you're on your own plan until its admin
+ * buys more and you next open Alcove. Settings › Plan and the side panel's foot say so for as long as it's true, so a
+ * `license-needed` notice is never shown as a notice of its own. On a free team everyone is on their own plan, and nothing
+ * is said about licenses.
  */
-export const waitingForLicense = (plan: Plan): boolean => plan.team !== null && !plan.team.licensed;
+export const waitingForLicense = (plan: Plan): boolean => plan.team !== null && plan.team.tier === 'team' && !plan.team.licensed;
 
 /** A team's admin told its licenses are short: few left, or none when someone needed one. */
 export const licensesShort = (n: PlanNotice): boolean => n.kind === 'licenses-low' || n.kind === 'licenses-none';
@@ -71,23 +72,28 @@ export const paidFor = (n: PlanNotice, spaces: WorkspaceSummary[] | undefined): 
 /**
  * The plan's notices that still say something true, newest first, each kind once (its newest): the one rule Settings ›
  * Plan shows them by and the side panel's foot picks from. Pro renewed while on Pro; Pro ended while on Free. For a team's
- * admin with a license (without one, waiting for it says it): licenses low until more are bought (none bought since, so no
- * more are left than it counted), and none left while none is, said instead of low. A team license replacing Pro, while
- * on Team. That you pay for a workspace now, once for each workspace, while its files don't count against your storage yet
- * and you're still in it (`spaces`, the workspaces you're in, once they're read: its name is said from there). `team` is
- * the team as `teams.mine` gives it, once it's known.
+ * admin with a license (without one, waiting for it says it): licenses low while no more are spare than it counted
+ * (Alcove counts those left for whoever joins next, past one for each person on the team without a license), and never
+ * while the team buys a license for each person who joins; none left while none is, said instead of low. A team license
+ * replacing Pro, while on Team. Someone on your free team asking you, its admin, to upgrade it, while it's still free. That
+ * you pay for a workspace now, once for each workspace, while its files don't count against your storage yet and you're
+ * still in it (`spaces`, the workspaces you're in, once they're read: its name is said from there). `team` is the team as
+ * `teams.mine` gives it, once it's known.
  */
 export function noticesNow(plan: Plan, team?: MyTeam | null | undefined, spaces?: WorkspaceSummary[] | undefined, now = Date.now()): PlanNotice[] {
   const admin = plan.team?.role === 'admin' && !waitingForLicense(plan);
   const left = team?.licenses?.unconsumed;
+  const spare = teamLicenses(team)?.spare;
+  const buying = team?.licenses?.autoPurchase === true;
   const none = admin && (left === undefined || left === 0) && plan.notices.some((n) => n.kind === 'licenses-none');
   const holds = (n: PlanNotice): boolean => {
     switch (n.kind) {
       case 'pro-renewed': return plan.kind === 'pro';
       case 'pro-ended': return plan.kind === 'free';
-      case 'licenses-low': return admin && !none && (left === undefined || left <= (n.count ?? 0));
+      case 'licenses-low': return admin && !none && !buying && (spare === undefined || spare <= (n.count ?? 0));
       case 'licenses-none': return none;
       case 'license-replaced-pro': return plan.kind === 'team';
+      case 'upgrade-asked': return plan.team?.role === 'admin' && plan.team.tier === 'free';
       case 'workspace-payer': return (n.until === null || Date.parse(n.until) > now) && paidFor(n, spaces) !== undefined;
       case 'pro-ending': case 'license-needed': return false;
     }
@@ -108,6 +114,10 @@ export const noticesLike = (plan: Plan, n: PlanNotice): string[] => plan.notices
 /** How many licenses a short notice is about: how many are left now, once the team is known, else as many as it counted. */
 export const licensesLeft = (n: PlanNotice, team: MyTeam | null | undefined): number => teamLicenses(team)?.left ?? (n.kind === 'licenses-low' ? n.count ?? 0 : 0);
 
+/** Who asked the admin to upgrade, for an `upgrade-asked` notice: named from the team's members, never kept with the plan. */
+export const askedBy = (n: PlanNotice, team: MyTeam | null | undefined): Person | undefined =>
+  (n.memberId === null ? undefined : team?.members.find((m) => m.id === n.memberId)?.person);
+
 /** A team's admin, as `teams.mine` lists them. */
 export const teamAdmin = (team: MyTeam | null | undefined): Person | undefined => team?.members.find((m) => m.role === 'admin')?.person;
 
@@ -115,10 +125,11 @@ export const teamAdmin = (team: MyTeam | null | undefined): Person | undefined =
 export const waitsForLicense = (m: TeamMember): boolean => m.license.state !== 'live' && m.license.wanted !== null;
 
 /**
- * A team's licenses: how many are left to take, how many people have one now (`live`), how many there are (`of`, both), and
- * who's waiting for one.
+ * A team's licenses: how many are left to take, how many of those nobody has spoken for (`spare`: each person on the team
+ * without a live license takes one on their next visit), how many people have one now (`live`), how many there are (`of`,
+ * left and live), and who's waiting for one.
  */
-export interface TeamLicenses { left: number; live: number; of: number; waiting: TeamMember[] }
+export interface TeamLicenses { left: number; spare: number; live: number; of: number; waiting: TeamMember[] }
 /**
  * A team's licenses as its admin counts them (null for a member, who isn't shown them, and before the team is known). Settings
  * › Plan, checkout and the Team page all say "2 of 8 left" from this, so their numbers always agree.
@@ -127,7 +138,7 @@ export function teamLicenses(team: MyTeam | null | undefined): TeamLicenses | nu
   if (!team?.licenses) return null;
   const left = team.licenses.unconsumed;
   const live = team.members.filter((m) => m.license.state === 'live').length;
-  return { left, live, of: left + live, waiting: team.members.filter(waitsForLicense) };
+  return { left, spare: Math.max(0, left - (team.members.length - live)), live, of: left + live, waiting: team.members.filter(waitsForLicense) };
 }
 
 /**

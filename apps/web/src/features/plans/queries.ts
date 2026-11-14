@@ -1,6 +1,7 @@
 /* Plans' data: the plan and what's on offer, buying Pro, more notes and Team's licenses, and adding money. */
 import { errorCode, type Plan, type Purchase, type TopUp } from '@alcove/api';
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useCallback, useSyncExternalStore } from 'react';
 import { teamKeys } from '~/features/team/queryKeys';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
@@ -11,6 +12,48 @@ export const topUpOpen = (t: TopUp): boolean => t.state === 'waiting' || t.state
 
 /** The top-ups list's key, carrying its type, for reading what it held before. */
 const topUpsKey = queryOptions({ queryKey: planKeys.topUps, queryFn: (): Promise<TopUp[]> => api.plans.topUps() }).queryKey;
+/** One top-up's key, carrying its type, for the same. */
+const topUpKey = (id: string) => queryOptions({ queryKey: planKeys.topUp(id), queryFn: (): Promise<TopUp> => api.plans.topUp(id) }).queryKey;
+
+/* ---------- licenses a payment bought ---------- */
+
+const plog = log.child({ component: 'plans' });
+
+/** Whether a payment's licenses have been bought with it. */
+const boughtLicenses = (t: TopUp): boolean => t.purchase?.buys.kind === 'licenses' && t.purchase.outcome === 'bought';
+
+/**
+ * The payments this tab has seen buy licenses, by their ID: false while the visit after them is on its way, true once it's
+ * done. One visit for each, whichever read saw it first, and only for a purchase seen happening (still open, or not yet
+ * bought, in an earlier read): one bought before this tab looked was its visit's own business.
+ */
+const settles = new Map<string, boolean>();
+const settleWatchers = new Set<() => void>();
+const settleChanged = () => { for (const w of settleWatchers) w(); };
+
+/**
+ * A read of `t` after `was`, an earlier read of it in this tab (the list's or its own): when it shows its licenses bought just
+ * now, the admin is using Alcove, so it's a visit, which takes their own license if they have none, even with checkout
+ * closed (`licensesBought`). The plan and the team are read again after it.
+ */
+function settleOnce(qc: QueryClient, t: TopUp, was: TopUp | undefined): void {
+  if (!was || boughtLicenses(was) || !boughtLicenses(t) || settles.has(t.id)) return;
+  settles.set(t.id, false);
+  settleChanged();
+  void licensesBought(qc)
+    .then((p) => { if (p) qc.setQueryData(planKeys.plan, p); else void qc.invalidateQueries({ queryKey: planKeys.plan, exact: true }); })
+    .catch((e: unknown) => plog.warn('the plan wasn’t read after a payment bought licenses', { code: errorCode(e) }))
+    .finally(() => { settles.set(t.id, true); settleChanged(); });
+}
+
+/**
+ * Whether the visit after payment `id` bought licenses is still on its way: checkout says the licenses are being added until
+ * it's done, so Done says what's true. False for a payment with none on its way (or none at all).
+ */
+export function useLicensesSettling(id: string | null): boolean {
+  const watch = useCallback((changed: () => void) => { settleWatchers.add(changed); return () => { settleWatchers.delete(changed); }; }, []);
+  return useSyncExternalStore(watch, () => id !== null && settles.get(id) === false);
+}
 
 export const planQueries = {
   /** The plan: notes left, storage and the balance. Read again every minute, so notes left follows calls. */
@@ -24,16 +67,17 @@ export const planQueries = {
   topUpRoutes: () => queryOptions({ queryKey: planKeys.topUpRoutes, queryFn: () => api.plans.routes(), staleTime: 10 * 60_000, retry: false }),
   /**
    * Top-ups still open, and the last few finished; read again every 30 seconds while one is open, so a payment that
-   * settles with the sheet closed shows on Plan. A server that can't take payments answers unavailable:
-   * there's nothing to show.
+   * settles with the sheet closed shows on Plan. One that bought licenses is a visit then (`settleOnce`). A server that
+   * can't take payments answers unavailable: there's nothing to show.
    */
   topUps: () => queryOptions({
     queryKey: planKeys.topUps,
     queryFn: async ({ client }) => {
-      const was = client.getQueryData(topUpsKey)?.filter(topUpOpen) ?? [];
+      const before = client.getQueryData(topUpsKey) ?? [];
       const list = await api.plans.topUps();
       // One that was on its way has been added since: the balance catches up.
-      if (list.some((t) => t.state === 'credited' && was.some((w) => w.id === t.id))) void client.invalidateQueries({ queryKey: planKeys.plan });
+      if (list.some((t) => t.state === 'credited' && before.some((w) => w.id === t.id && topUpOpen(w)))) void client.invalidateQueries({ queryKey: planKeys.plan });
+      for (const t of list) settleOnce(client, t, before.find((w) => w.id === t.id) ?? client.getQueryData(topUpKey(t.id)));
       return list;
     },
     refetchInterval: (query) => (query.state.data?.some(topUpOpen) ? 30_000 : false),
@@ -41,14 +85,16 @@ export const planQueries = {
   }),
   /**
    * One top-up, read again every 5 seconds while money can still arrive. Once it has finished, the list catches up,
-   * and the balance too when money was added.
+   * and the balance too when money was added; licenses it bought are a visit (`settleOnce`).
    */
   topUp: (id: string) => queryOptions({
     queryKey: planKeys.topUp(id),
     queryFn: async ({ client }) => {
+      const was = client.getQueryData(topUpKey(id)) ?? client.getQueryData(topUpsKey)?.find((w) => w.id === id);
       const t = await api.plans.topUp(id);
       if (!topUpOpen(t)) void client.invalidateQueries({ queryKey: planKeys.topUps });
       if (t.state === 'credited') void client.invalidateQueries({ queryKey: planKeys.plan });
+      settleOnce(client, t, was);
       return t;
     },
     refetchInterval: (query) => (query.state.data && topUpOpen(query.state.data) ? 5000 : false)
@@ -57,13 +103,11 @@ export const planQueries = {
 
 /* ---------- buying Pro, more notes and Team's licenses ---------- */
 
-const plog = log.child({ component: 'plans' });
-
 /**
- * Licenses were just bought for the team you run (from the balance, or by a payment that bought them). You're using Alcove,
- * so it's a visit, which takes one of them for you when you have no live license (docs: Plans and usage › Team); then the
- * plan and the team are read again, so what's said next is what's true. A visit that isn't taken is logged and leaves yours
- * for your next one. Null when the plan couldn't be read again: it's read again as soon as anything asks.
+ * Licenses were just bought for the team you run (from the balance, or by a payment a read saw buy them, `settleOnce`).
+ * You're using Alcove, so it's a visit, which takes one of them for you when you have no live license (docs: Plans and usage
+ * › Team); then the plan and the team are read again, so what's said next is what's true. A visit that isn't taken is logged
+ * and leaves yours for your next one. Null when the plan couldn't be read again: it's read again as soon as anything asks.
  */
 async function licensesBought(qc: QueryClient): Promise<Plan | null> {
   try {
@@ -81,9 +125,10 @@ async function licensesBought(qc: QueryClient): Promise<Plan | null> {
 
 /**
  * Buys a purchase from the balance at the price (and, for more notes, the size) shown: Pro's months, packs of more notes for
- * this period, or licenses for the team you run, a period at a time or for a year (then it's a visit too, which takes yours
- * if you have none). Refused when the price changed (409, with the server's words), the balance is short, or you don't run
- * the team; either way the plan, offers and team are read again, so what's shown is what's true now. Null when it was
+ * this period, or licenses for the team you run, a period at a time or for a year, with buying one for each person who joins
+ * set in the same go when the purchase says (`autoPurchase`, null leaving it as it is); then it's a visit too, which takes
+ * yours if you have none. Refused when the price changed (409, with the server's words), the balance is short, or you don't
+ * run the team; either way the plan, offers and team are read again, so what's shown is what's true now. Null when it was
  * bought but the plan couldn't be read again.
  */
 export function useBuy() {
@@ -92,7 +137,7 @@ export function useBuy() {
     mutationFn: async (b: Purchase): Promise<Plan | null> => {
       if (b.kind === 'pro') return api.plans.buyPro(b.months, b.microUsdPerMonth);
       if (b.kind === 'hours') return api.plans.buyHours(b.packs, b.microUsdPerPack, b.minutesPerPack);
-      await api.teams.buyLicenses(b.count, b.microUsdPerLicense, b.periods);
+      await api.teams.buyLicenses(b.count, b.microUsdPerLicense, b.periods, b.autoPurchase ?? undefined);
       return licensesBought(qc);
     },
     // What's open on the plan (the side panel, Settings, a call's notes) follows at once.
@@ -105,15 +150,6 @@ export function useBuy() {
       void qc.invalidateQueries({ queryKey: planKeys.plan });
       if (b.kind === 'licenses') void qc.invalidateQueries({ queryKey: teamKeys.myTeam });
     }
-  });
-}
-
-/** A payment bought licenses for the team you run: the visit and the reads buying them from the balance makes. */
-export function useLicensesBought() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => licensesBought(qc),
-    onSuccess: (p) => { if (p) qc.setQueryData(planKeys.plan, p); else void qc.invalidateQueries({ queryKey: planKeys.plan, exact: true }); }
   });
 }
 

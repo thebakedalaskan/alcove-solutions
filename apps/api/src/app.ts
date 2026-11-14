@@ -26,7 +26,7 @@ import { registerRecordingRoutes } from './features/notes/room-recordings/routes
 import { registerNoteRoutes } from './features/notes/routes';
 import { registerWorkspaceRoutes } from './features/workspaces/routes';
 import { registerBillingRoutes } from './features/billing/routes';
-import { registerTeamRoutes } from './features/billing/teams/routes';
+import { registerTeamPublicRoutes, registerTeamRoutes } from './features/billing/teams/routes';
 import { createAttester, type Attester } from './tee/tee';
 import { migrationCheck } from './migrate';
 
@@ -51,6 +51,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined, attester:
   registerAccountOperatorRoutes(app, runtime);
   registerAuthRoutes(app, runtime);
   registerAccountPublicRoutes(app, runtime);
+  registerTeamPublicRoutes(app, runtime);
   registerDrivePublicRoutes(app, runtime);
   registerCallRoutes(app, runtime);
   registerWorkspaceReaderRoutes(app, runtime, workspaceCalls);

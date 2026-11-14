@@ -4,9 +4,9 @@
  * buttons and every fact line up and the plans compare row by row. Pro is lifted a little, never lit up: a raised card with
  * a warm edge. Under them, what every plan has and how paying works. Classes start with pl-.
  *
- * The rules these keep: one filled button per view (Get Pro on Free, Extend only when Pro is ending); prices are said once,
- * in their column, and the discount once, beside the choice that gives it; horizon for the discount, sun-text for what's
- * saved and for the plan you're on.
+ * The rules these keep: one filled button per view (Get Pro on Free, Extend only when Pro is ending, Start the team while its
+ * popover is open); prices are said once, in their column, and the discount once, beside the choice that gives it; horizon
+ * for the discount, sun-text for what's saved and for the plan you're on.
  */
 /* The horizon as the board has it, 262px down the page, with the 8px of the frame's edge above the page. */
 .pl { --hz: calc(8px + 262px); container-type: inline-size; }
@@ -76,6 +76,19 @@
 .pl-here { display: flex; align-items: center; justify-content: center; gap: 8px; height: 44px; border-radius: var(--radius-pill); box-shadow: inset 0 0 0 1px var(--line-control); font: 500 14px/1 var(--font-sans); color: var(--ink-2); }
 .pl-here .ac-i { flex: none; color: var(--sun-text); }
 .pl-here.is-quiet { box-shadow: none; font: 400 13.5px/18px var(--font-sans); text-align: center; }
+/* Under the button, a quiet line on what pressing it costs (Team's Start a team: free to start). */
+.pl-act-u { margin-top: 8px; font: 400 12.5px/17px var(--font-sans); color: var(--ink-2); text-align: center; text-wrap: balance; }
+/*
+ * Starting a team, in the popover Team's Start a team opens, as the team's Rename is: the name in its box, a line, why it
+ * wasn't started, then Cancel and Start the team at the end. `is-bare` stands in a window's step, whose foot has its buttons.
+ */
+.pl-start { display: grid; gap: 8px; width: min(360px, calc(100vw - 48px)); padding: 16px; }
+.pl-start.is-bare { width: auto; padding: 0; }
+.ck-note + .pl-start { margin-top: 20px; }
+.pl-start .ck-q { flex-wrap: wrap; margin-bottom: 8px; }
+.pl-start-h { font: 400 12.5px/17px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+.pl-start-x { font: 500 13px/18px var(--font-sans); color: var(--caution-text); }
+.pl-start-a { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 /* What a plan brings, one row each, on a hairline under the button: a subgrid of its own, so each row lines up too. */
 .pl-facts { grid-row: span var(--facts, 3); display: grid; grid-template-rows: subgrid; margin: 20px 0 0; padding: 16px 0 0; border-top: 1px solid var(--line); list-style: none; }
 .pl-fact { display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: 11px; align-content: start; padding-top: 11px; }

@@ -8,11 +8,12 @@ import { z } from 'zod';
 import type { Owner } from '../../platform/context';
 import { blindIndex } from '../../keys/crypto';
 import { bytea, rows } from '../../platform/db';
-import { COMPANY, MET, TEAM, inCompany } from '../profile/demo-directory';
-import { ValidationError } from '../../platform/errors';
+import { MET, TEAM, inCompany } from '../profile/demo-directory';
+import { companyOf, domainOf } from '../profile/companies';
 import { log } from '../../platform/log';
 import { indexKey } from '../../keys/owners';
-import { profile, updateProfile } from '../profile/profile';
+import { profile } from '../profile/profile';
+import { invitedOnYourTeam } from '../billing/teams/invitations';
 import { metEmails } from './calendar';
 import { all as allMeetings } from './service';
 import { personOf } from '../profile/portraits';
@@ -51,30 +52,23 @@ export async function search(o: Owner, query: string): Promise<PersonSuggestion[
   return out.map((p) => ({ person: personOf(p.email, p.name), source: p.source, onAlcove: p.listed || users.has(p.email) }));
 }
 
-/** Email domains of people who have no company: nothing ties their contacts together. `personal.example` is for trying Alcove on your own with a demo account. */
-const PERSONAL = new Set(['gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com', 'icloud.com', 'me.com', 'yahoo.com', 'aol.com', 'proton.me', 'protonmail.com', 'personal.example']);
-const domainOf = (email: string) => email.slice(email.lastIndexOf('@') + 1);
-const titled = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-
-/**
- * Whether someone signing in with this address has a company: the demo company's directory, or the colleagues at their work
- * domain. None at a personal address. Known from the address alone, without reading anyone's calls or calendar.
- */
-export const hasCompany = (email: string): boolean => inCompany(email) || !PERSONAL.has(domainOf(email));
-
 interface Candidate { email: string; name?: string | undefined; title?: string | undefined; onAlcove: boolean }
 
-/** Who is on the team: the demo directory, or the colleagues at your work domain from your calls and calendar. Null at a personal address. */
+/**
+ * Who is at your company: the demo directory, or the colleagues at your work domain from your calls and calendar. Null at a
+ * personal address. Its name is the company's (profile/companies.ts), as a team made for you takes it.
+ */
 async function candidates(o: Owner, mine: string): Promise<{ name: string; domain: string; people: Candidate[] } | null> {
-  if (inCompany(mine)) return { name: COMPANY.name, domain: COMPANY.domain, people: TEAM.filter((c) => c.email !== mine) };
-  if (!hasCompany(mine)) return null;
-  const domain = domainOf(mine);
+  const company = companyOf(mine);
+  if (!company) return null;
+  if (inCompany(mine)) return { ...company, people: TEAM.filter((c) => c.email !== mine) };
+  const { domain } = company;
   const seen = new Set<string>([mine]);
   const people: Candidate[] = [];
   const add = (raw: string) => { const email = raw.trim().toLowerCase(); if (domainOf(email) === domain && EMAIL.test(email) && !seen.has(email)) { seen.add(email); people.push({ email, onAlcove: false }); } };
   for (const m of await allMeetings(o)) for (const e of m.manifest.guests) add(e);
   for (const e of await metEmails(o)) add(e);
-  return { name: titled(domain.split('.')[0] ?? domain), domain, people };
+  return { ...company, people };
 }
 
 /** The addresses on your team: none at a personal address. Knowing them can take a calendar read of up to 4 seconds. */
@@ -82,29 +76,18 @@ export async function teammates(o: Owner): Promise<Set<string>> {
   return new Set(((await candidates(o, (await profile(o)).email))?.people ?? []).map((c) => c.email));
 }
 
-/** Your team; null at a personal address. */
+/**
+ * Your company page; null at a personal address. Someone `invited` has a live invitation to the team you're on (none while
+ * you're on no team).
+ */
 export async function team(o: Owner): Promise<Team | null> {
   const p = await profile(o);
   const t = await candidates(o, p.email);
   if (!t) return null;
-  const users = await onAlcove(o, t.people.map((c) => c.email));
+  const emails = t.people.map((c) => c.email);
+  const [users, invited] = await Promise.all([onAlcove(o, emails), invitedOnYourTeam(o, emails)]);
   return {
     name: t.name, domain: t.domain,
-    members: t.people.map((c) => ({ person: personOf(c.email, c.name), ...(c.title ? { title: c.title } : {}), onAlcove: c.onAlcove || users.has(c.email), invited: p.invited.includes(c.email) }))
+    members: t.people.map((c) => ({ person: personOf(c.email, c.name), ...(c.title ? { title: c.title } : {}), onAlcove: c.onAlcove || users.has(c.email), invited: invited.has(c.email) }))
   };
-}
-
-/** Invites people on your team. Only they can be invited this way. */
-export async function inviteToTeam(o: Owner, emails: string[]): Promise<Team> {
-  const p = await profile(o);
-  const t = await candidates(o, p.email);
-  const known = new Set((t?.people ?? []).map((c) => c.email));
-  const wanted = emails.map((e) => e.trim().toLowerCase());
-  const outside = wanted.filter((e) => !known.has(e));
-  if (!t || outside.length) throw new ValidationError('Only people on your team can be invited to it.', { context: { outside: outside.length } });
-  await updateProfile(o, (q) => ({ ...q, invited: [...new Set([...q.invited, ...wanted])] }));
-  plog.info('team invites sent', { count: wanted.length });
-  const out = await team(o);
-  if (!out) throw new ValidationError('You don’t have a team.');
-  return out;
 }

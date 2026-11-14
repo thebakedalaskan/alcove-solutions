@@ -7,7 +7,7 @@
  * account's row is made when it signs up, or the first time it's touched after the release that brought plans (on Free,
  * with time to get within Free's limits if it's over them).
  */
-import { PlanKindSchema, PlanNoticeKindSchema, type BalanceEntry, type Plan, type PlanKind, type PlanNoticeKind, type PlanOffers, type Purchase } from '@alcove/api';
+import { PlanKindSchema, PlanNoticeKindSchema, type BalanceEntry, type Plan, type PlanKind, type PlanNotice, type PlanOffers, type Purchase } from '@alcove/api';
 import { z } from 'zod';
 import type { Config } from '../../platform/config';
 import type { Deps } from '../../platform/context';
@@ -46,13 +46,21 @@ const Month = z.object({
 });
 type Month = z.infer<typeof Month>;
 /**
+ * The notices a plan keeps: every kind but `upgrade-asked`, which a team's admin is shown from what the team keeps
+ * (teams.ts › upgradeAsksFor), so this record never holds a kind the release before this one doesn't know: it reads the
+ * record too, with a list of its own, while a deploy rolls.
+ */
+const StoredNoticeKind = PlanNoticeKindSchema.exclude(['upgrade-asked']);
+export type StoredNoticeKind = z.infer<typeof StoredNoticeKind>;
+/**
  * `until`: Pro's end, for Pro's notices, or when a workspace's files start to count, for one's payment moving here (null
- * for a team's); `count`: how many licenses or months, where it says; `workspaceId`: the workspace whose payment moved,
- * its ID alone (its name is under its own keys, never here). A notice kept before either reads as null.
+ * for a team's); `count`: how many licenses, or months for a `license-replaced-pro` kept before amounts were; `microUsd`:
+ * how much went back to the balance, for `license-replaced-pro`; `workspaceId`: the workspace whose payment moved, its ID
+ * alone (its name is under its own keys, never here). A notice kept before any of them reads it as null.
  */
 const Notice = z.object({
-  id: z.string(), kind: PlanNoticeKindSchema, at: z.string(), until: z.string().nullable(), count: z.number().int().nullable().default(null),
-  workspaceId: z.string().nullable().default(null), dismissed: z.boolean()
+  id: z.string(), kind: StoredNoticeKind, at: z.string(), until: z.string().nullable(), count: z.number().int().nullable().default(null),
+  microUsd: z.number().int().nullable().default(null), workspaceId: z.string().nullable().default(null), dismissed: z.boolean()
 });
 /** More notes bought from the balance for one period (its plan and start): minutes added to that period's allowance alone. */
 const Hours = z.object({ plan: PlanKindSchema, from: z.string(), minutes: z.number().int() });
@@ -366,13 +374,14 @@ export async function save(d: Service, db: Db, ownerId: string, a: PlanAccount):
 export const withEntry = (a: PlanAccount, microUsd: number, label: string): PlanAccount =>
   ({ ...a, balanceMicroUsd: a.balanceMicroUsd + microUsd, history: [...a.history, { id: id128(), at: new Date().toISOString(), label, microUsd }].slice(-HISTORY) });
 /**
- * Something the owner is told (the latest NOTICES are kept): Pro's end (`until`), how many (`count`) for a team's, or the
- * workspace whose payment moved to them (`workspaceId`) and when its files start to count (`until`).
+ * Something the owner is told (the latest NOTICES are kept): Pro's end (`until`), how many (`count`) for a team's, what went
+ * back to the balance (`microUsd`), or the workspace whose payment moved to them (`workspaceId`) and when its files start to
+ * count (`until`).
  */
-export const withNotice = (a: PlanAccount, kind: PlanNoticeKind, now: number, about: { until?: string | undefined; count?: number | undefined; workspaceId?: string | undefined } = {}): PlanAccount =>
-  ({ ...a, notices: [...a.notices, { id: id128(), kind, at: new Date(now).toISOString(), until: about.until ?? null, count: about.count ?? null, workspaceId: about.workspaceId ?? null, dismissed: false }].slice(-NOTICES) });
+export const withNotice = (a: PlanAccount, kind: StoredNoticeKind, now: number, about: { until?: string | undefined; count?: number | undefined; microUsd?: number | undefined; workspaceId?: string | undefined } = {}): PlanAccount =>
+  ({ ...a, notices: [...a.notices, { id: id128(), kind, at: new Date(now).toISOString(), until: about.until ?? null, count: about.count ?? null, microUsd: about.microUsd ?? null, workspaceId: about.workspaceId ?? null, dismissed: false }].slice(-NOTICES) });
 /** Whether the owner has been told `kind` and hasn't dismissed it yet. */
-export const told = (a: PlanAccount, kind: PlanNoticeKind): boolean => a.notices.some((n) => n.kind === kind && !n.dismissed);
+export const told = (a: PlanAccount, kind: StoredNoticeKind): boolean => a.notices.some((n) => n.kind === kind && !n.dismissed);
 /**
  * Months that ended before the latest one that has go: nothing reads them. A month of a purchase with a month still to
  * come stays, so a refund counts every month of it that was had.
@@ -467,27 +476,59 @@ export function proOf(a: PlanAccount, l: Limits, now = Date.now()): Plan['pro'] 
     refundableMicroUsd: refundOf(a, l, now).microUsd
   };
 }
-/** The notices not dismissed, newest first. */
-export const noticesOf = (a: PlanAccount) =>
-  a.notices.filter((n) => !n.dismissed).reverse().map((n) => ({ id: n.id, kind: n.kind, at: n.at, until: n.until, count: n.count, workspaceId: n.workspaceId }));
+/** The notices the plan keeps that aren't dismissed, newest first. */
+export const noticesOf = (a: PlanAccount): PlanNotice[] =>
+  a.notices.filter((n) => !n.dismissed).reverse().map((n) => ({ id: n.id, kind: n.kind, at: n.at, until: n.until, count: n.count, microUsd: n.microUsd, workspaceId: n.workspaceId, memberId: null }));
 
 /**
- * A team license taken at `now` replaces Pro at once: the month running ends now (it isn't refunded), and every month that
- * hasn't started goes, with what refunding them would give back added to the balance (`refundOf`, as `refundPro`): what was
- * paid for them, less a month's price's difference on the months kept of a purchase at the lower price for a year or more
- * that's left shorter. Upkeep has nothing left to remind about or end. Says how many months were refunded (0: nothing
- * came back; null: there was no Pro to replace).
+ * What's left of Pro at `now`, as a team license taken then gives it back (docs: Plans and usage › Team › Pro and a license),
+ * for each purchase of it: its months that haven't started, at what was paid for them, and the month running by the part of
+ * it not yet used, its price × the time left of it ÷ its length, floored to the micro-USD; less, as `refundOf` takes it, the
+ * difference owed on a purchase at the lower price for a year or more that still has months to come and is left with fewer
+ * than `plan.pro.yearly_from_months` months had (a month's price as it was then, less what was paid, for each month begun),
+ * never below nothing for any purchase. A purchase with no months to come that's had fewer than `plan.pro.yearly_from_months`
+ * has paid a month's price for each of them (bought at it, or refunded, which took the difference then), so the rest of its
+ * running month is worth that, and nothing is owed again; but a month Alcove gave is worth nothing. In whole micro-USD,
+ * worked out exactly (the running month's part with bigints: its price × its milliseconds left outgrows a double's integers).
+ */
+export function restOfPro(a: PlanAccount, l: Limits, now: number): number {
+  const fromMonths = l.get('plan.pro.yearly_from_months');
+  const purchases = new Map<string, Month[]>();
+  for (const m of a.pro) purchases.set(m.purchase ?? m.id, [...(purchases.get(m.purchase ?? m.id) ?? []), m]);
+  let microUsd = 0;
+  for (const bought of purchases.values()) {
+    const toCome = bought.filter((m) => Date.parse(m.from) > now);
+    const later = toCome.reduce((n, m) => n + m.microUsd, 0);
+    const running = bought.find((m) => Date.parse(m.from) <= now && now < Date.parse(m.to));
+    const kept = bought.filter((m) => Date.parse(m.from) <= now);
+    const short = kept.length < fromMonths;
+    // What the running month was paid, as its rest gives it back: a month's price once that's what it cost.
+    const paid = !running ? 0 : toCome.length === 0 && short && running.microUsd > 0 ? (running.monthlyMicroUsd ?? running.microUsd) : running.microUsd;
+    const unused = running ? Number((BigInt(paid) * BigInt(Date.parse(running.to) - now)) / BigInt(Date.parse(running.to) - Date.parse(running.from))) : 0;
+    const owed = toCome.length > 0 && short ? kept.reduce((n, m) => n + Math.max(0, (m.monthlyMicroUsd ?? m.microUsd) - m.microUsd), 0) : 0;
+    microUsd += Math.max(0, later + unused - owed);
+  }
+  return microUsd;
+}
+
+/**
+ * A team license taken at `now` replaces Pro at once: the month running ends now, and every month that hasn't started goes,
+ * with what's left of it all added to the balance (`restOfPro`): the months that hadn't started and the rest of the one
+ * running, by the day, less what a year bought at the lower price owes for being kept shorter. Upkeep has nothing left to
+ * remind about or end. Says how much came back, in micro-USD (0: nothing did, as for months Alcove gave; null: there was
+ * no Pro to replace).
  */
 export function replacedByLicense(a: PlanAccount, l: Limits, now: number): { a: PlanAccount; refunded: number | null } {
   const running = runningAt(a, now);
-  const { months: later, microUsd } = refundOf(a, l, now);
+  const later = a.pro.filter((m) => Date.parse(m.from) > now);
   if (!running && !later.length) return { a, refunded: null };
+  const microUsd = restOfPro(a, l, now);
   const cut = new Date(now).toISOString();
   const pro = a.pro.filter((m) => m !== running && !later.includes(m)).concat(running ? [{ ...running, to: cut }] : []);
   const end = pro.at(-1)?.to ?? null;
   const next: PlanAccount = { ...a, pro, reminded: end, ended: end };
   if (microUsd <= 0) return { a: next, refunded: 0 };
-  return { a: withEntry(next, microUsd, `Refund: ${monthsOf(later.length)} of Pro, for a team license`), refunded: later.length };
+  return { a: withEntry(next, microUsd, 'Refund: the rest of Pro, for a team license'), refunded: microUsd };
 }
 
 /**

@@ -294,8 +294,8 @@ describe('what others can add', () => {
     await ann.api.plans.topUp(t.id);
     await ann.api.teams.buyLicenses(2, 40_000_000);
     await ann.api.auth.visit();
-    const link = (await ann.api.teams.invite()).link;
-    await bob.api.teams.join(link.slice(link.indexOf('#') + 1));
+    await ann.api.teams.invite([bob.email]);
+    await bob.api.teams.acceptInvitation((await bob.api.teams.invitations())[0]?.id ?? 'no invitation');
     const ours = await workspace(ann, 'Ours', [bob, cy]);
     await h.setLimit('media.others_day_bytes', MiB);
     expect(await upload(bob.api, ours, 2 * MiB)).toBe('succeeded');

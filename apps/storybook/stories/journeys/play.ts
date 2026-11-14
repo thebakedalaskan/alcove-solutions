@@ -24,10 +24,13 @@ export const LAPTOP = { viewport: { value: 'laptop', isRotated: false } };
 
 const says = (el: Element, text: string | RegExp) => (typeof text === 'string' ? (el.textContent ?? '').includes(text) : text.test(el.textContent ?? ''));
 
-/** The `role` (a tile, a row, an article) that says `text`: the innermost, when one holds another. */
-export function holding(role: Role, text: string | RegExp, wait = SOON): Promise<HTMLElement> {
+/**
+ * The `role` (a tile, a row, an article) that says `text`: the innermost, when one holds another. In `scope` (a section, say)
+ * when it's given.
+ */
+export function holding(role: Role, text: string | RegExp, wait = SOON, scope: Pick<typeof screen, 'queryAllByRole'> = screen): Promise<HTMLElement> {
   return waitFor(() => {
-    const all = screen.queryAllByRole(role).filter((el) => says(el, text));
+    const all = scope.queryAllByRole(role).filter((el) => says(el, text));
     const inner = all.find((el) => !all.some((other) => other !== el && el.contains(other)));
     if (!inner) throw new Error(`Nothing on the page (${String(role)}) says “${String(text)}” yet.`);
     return inner;
@@ -115,19 +118,6 @@ export function outage(start: () => () => void): { begin: () => () => void; end:
   let stop: (() => void) | null = null;
   const end = () => { stop?.(); stop = null; };
   return { begin: () => { end(); stop = start(); return end; }, end };
-}
-
-/**
- * Email can't open from Storybook: a `mailto:` link does everything the app does with it (marking people invited, say)
- * up to the browser handing the message to the mail app, which it doesn't. A story's `beforeEach`.
- */
-export function keepMail(): () => void {
-  const stop = (e: MouseEvent) => { if (e.target instanceof Element && e.target.closest('a[href^="mailto:"]')) e.preventDefault(); };
-  document.addEventListener('click', stop, true);
-  // A message the app writes itself goes by a link it clicks without putting it on the page.
-  const click = HTMLAnchorElement.prototype.click;
-  const unswap = swap(HTMLAnchorElement.prototype, 'click', function (this: HTMLAnchorElement) { if (!this.href.startsWith('mailto:')) click.call(this); });
-  return () => { document.removeEventListener('click', stop, true); unswap(); };
 }
 
 /**

@@ -1,25 +1,22 @@
 /*
  * Your account, as the stand-in answers for it (packages/api-http/src/account/api.ts is the real client's): signing in and
- * out, preferences, deleting it, people to find and invite, your invite link and other people's, your plan and paying for
- * it, a team, and the feature flags on for you.
+ * out, preferences, deleting it, people to find, your company, invite links (team-invitations.ts), your plan and paying for
+ * it, a team (teams.ts) and its invitations (team-invitations.ts), and the feature flags on for you.
  */
 import { AlcoveApiError, StartTopUpBodySchema, type AlcoveApi, type DemoProvider, type ID, type Patch, type Plan, type Preferences, type Purchase, type SignInResult, type TopUp } from '@alcove/api';
-import { artsLink, artsSecret } from '../../world/invite-links';
 import { personAt } from '../../world/people';
 import { boughtFromBalance, freshEntryId, PREVIEW_BASE_ADDRESS, PREVIEW_DEPOSIT_ADDRESS } from '../../world/plans/payments';
 import { withProMonths, withRenewal } from '../../world/plans/plans';
+import { directoryOf } from '../../world/plans/team-invitations';
 import { session as sessionFor, type World } from '../../world/world';
 import { forgetAgents } from '../agents/agents';
 import { answer, refused } from '../answer';
 import { me, nextId } from '../state';
 import { playPayment, refusalOf, settlePayments, shortOf } from './payments';
+import { invitationsApi, linksApi } from './team-invitations';
 import { teamsApi, visit } from './teams';
 
 const noPayments = () => new AlcoveApiError('unavailable', 'Top-ups aren’t available right now.', { requestId: nextId('sb-req') });
-const NOWHERE = 'This invite link doesn’t lead anywhere. Ask whoever sent it to copy it again from their Team page.';
-const NO_COMPANY = 'Only someone at a company has an invite link. Yours is a personal address.';
-/** Every invite link the world has, Art's own among them, as the server finds one by its secret. */
-const inviteLinks = (w: World) => [...(w.inviteLink ? [w.inviteLink] : []), ...(w.invites ?? [])];
 const paymentRoutes = (w: World) => { if (!w.payments.routes) throw noPayments(); return w.payments.routes; };
 const paymentIn = (w: World, id: string): TopUp => {
   paymentRoutes(w);
@@ -82,41 +79,13 @@ export const accountApi: Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'plans'
       const typed = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(q) && !hits.some((h) => h.person.email === q) ? [{ person: personAt(q), source: 'new' as const, onAlcove: false }] : [];
       return [...typed, ...hits].slice(0, 8);
     }),
-    team: () => answer((w) => w.team),
-    inviteToTeam: (emails: string[]) => answer((w) => {
-      if (!w.team) throw refused('invalid', 'You don’t have a team.');
-      const asked = emails.map((e) => e.trim().toLowerCase());
-      w.team = { ...w.team, members: w.team.members.map((m) => (asked.includes(m.person.email) ? { ...m, invited: true } : m)) };
-      return w.team;
-    }),
-    /* Only someone at a company has one, as on the server; it's the same on every ask until Art makes a new one. */
-    inviteLink: () => answer((w) => {
-      if (!w.team) throw refused('forbidden', NO_COMPANY);
-      w.inviteLink ??= artsLink();
-      return { link: new URL(`/invite#${w.inviteLink.secret}`, location.origin).href, joined: w.inviteLink.joined };
-    }),
-    /* The next generation: the link before leads nowhere, and who joined from it stays listed. */
-    newInviteLink: () => answer((w) => {
-      if (!w.team) throw refused('forbidden', NO_COMPANY);
-      const was = w.inviteLink ?? artsLink();
-      const generation = was.generation + 1;
-      w.inviteLink = { ...was, generation, secret: artsSecret(generation) };
-      return { link: new URL(`/invite#${w.inviteLink.secret}`, location.origin).href, joined: w.inviteLink.joined };
-    }),
-    /* Yours when it's Art's link and Art is signed in: the server knows by the account. */
-    peekInvite: (secret: string) => answer((w) => {
-      const found = inviteLinks(w).find((l) => l.secret === secret);
-      if (!found) throw refused('not-found', NOWHERE);
-      return { from: found.from, yours: found === w.inviteLink && w.session?.user.email === found.from.email };
-    }, 'anyone'),
-    /* An account made from someone's link counts once, never on your own: whoever sent it sees it on their Team page, not here. */
-    joinedByInvite: (secret: string) => answer((w) => {
-      const found = inviteLinks(w).find((l) => l.secret === secret);
-      if (!found) throw refused('not-found', NOWHERE);
-      const you = me();
-      if (found === w.inviteLink || found.joined.some((j) => j.person.email === you.email)) return;
-      found.joined = [{ person: { ...you, id: you.email }, at: new Date().toISOString() }, ...found.joined];
-    })
+    // Whether someone's invited is the team Art is on's to say: its invitations, as they stand now.
+    team: () => answer((w) => directoryOf(w)),
+    inviteLink: () => answer(linksApi.inviteLink),
+    newInviteLink: () => answer(linksApi.newInviteLink),
+    peekInvite: (secret: string) => answer((w) => linksApi.peekInvite(w, secret), 'anyone'),
+    /* The same answer for any token, signed in or not, as the server's: whether it stopped anything is nobody's to know. */
+    stopEmails: () => answer(() => undefined, 'anyone')
   },
   plans: {
     // The payments playing out catch up with the clock whenever the plan or a payment is read (account/payments.ts).
@@ -149,9 +118,10 @@ export const accountApi: Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'plans'
     }),
     routes: () => answer(paymentRoutes),
     buyHours: (packs, microUsdPerPack, minutesPerPack) => answer((w) => buyNow(w, { kind: 'hours', packs, microUsdPerPack, minutesPerPack })),
-    startTopUp: (routeId, microUsd, buys) => answer((w) => {
+    startTopUp: (routeId, microUsd, asked) => answer((w) => {
       const choices = paymentRoutes(w);
-      StartTopUpBodySchema.parse({ routeId, microUsd, buys: buys ?? null });
+      // What it buys as the server reads it: a licenses purchase without `autoPurchase` leaves auto-purchase as it is (null).
+      const { buys } = StartTopUpBodySchema.parse({ routeId, microUsd, buys: asked ?? null });
       const route = choices.routes.find((r) => r.id === routeId);
       if (!route) throw refused('invalid', 'That way to pay isn’t offered.');
       if (microUsd < Number(route.minimum) * 1_000_000) throw refused('invalid', `The least you can add with ${route.token} on ${route.chainName} is $${route.minimum}.`);
@@ -183,13 +153,20 @@ export const accountApi: Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'plans'
   teams: {
     mine: () => answer(teamsApi.mine),
     create: (name: string) => answer((w) => teamsApi.create(w, name)),
-    invite: () => answer(teamsApi.invite),
-    peek: (secret: string) => answer((w) => teamsApi.peek(w, secret)),
-    join: (secret: string) => answer((w) => teamsApi.join(w, secret)),
+    rename: (name: string) => answer((w) => teamsApi.rename(w, name)),
+    invite: (emails: string[]) => answer((w) => invitationsApi.invite(w, emails)),
+    resendInvitation: (id: ID) => answer((w) => invitationsApi.resendInvitation(w, id)),
+    cancelInvitation: (id: ID) => answer((w) => invitationsApi.cancelInvitation(w, id)),
+    invitations: () => answer(invitationsApi.invitations),
+    acceptInvitation: (id: ID, leave?: boolean | undefined) => answer((w) => invitationsApi.acceptInvitation(w, id, leave ?? false)),
+    putInvitationAside: (id: ID) => answer((w) => invitationsApi.putInvitationAside(w, id)),
+    join: (secret: string, leave?: boolean | undefined) => answer((w) => invitationsApi.join(w, secret, leave ?? false)),
+    askToUpgrade: () => answer(teamsApi.askToUpgrade),
     remove: (memberId: ID) => answer((w) => teamsApi.remove(w, memberId)),
     leave: () => answer(teamsApi.leave),
     delete: () => answer(teamsApi.delete),
-    buyLicenses: (count: number, microUsdPerLicense: number, periods?: number) => answer((w) => teamsApi.buyLicenses(w, count, microUsdPerLicense, periods ?? 1)),
+    buyLicenses: (count: number, microUsdPerLicense: number, periods?: number | undefined, autoPurchase?: boolean | undefined) =>
+      answer((w) => teamsApi.buyLicenses(w, count, microUsdPerLicense, periods ?? 1, autoPurchase ?? null)),
     refundLicenses: () => answer(teamsApi.refundLicenses),
     setAutoPurchase: (on: boolean) => answer((w) => teamsApi.setAutoPurchase(w, on)),
     notes: () => answer(teamsApi.notes)

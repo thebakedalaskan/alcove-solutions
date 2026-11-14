@@ -2,35 +2,39 @@
  * The checkout window (docs/design/pages.md › Checkout; the canvas's Checkout and PayMotion boards): what checkout.tsx has open, drawn with the kit's CheckoutWindow and its parts, at the
  * app's root (features/shell/AppRoot.tsx), so the call, Settings, Plans and any door open the same window.
  *
- * Choose how long (or how many hours, or how many of Team's licenses, a period at a time or for a year: a team you start is
- * named first, and made only as you pay, with you its admin). When the balance covers it, Buy with your balance takes it
- * from there at once.
+ * Choose how long (or how many hours, or how many of Team's licenses, a period at a time or for a year, for the team you
+ * run: upgrading a free one, or more for one on Team). When the balance covers it, Buy with your balance takes it from there
+ * at once.
  * Otherwise choose a network, and Get the address opens a top-up for what the balance is short of (raised to the
  * network's least, the rest staying in the balance) that buys it the moment it's added. From then on the window follows
  * that top-up, which planQueries.topUp reads every 5 seconds: waiting, less arrived, seen, bought, and every way it can go wrong, with
  * the parts Add money follows a payment with too (paying.tsx).
  * Closing leaves the payment running, and checkout opened on the same thing again opens that payment, not another.
  * Every price and limit is the server's; a price that changed in between is refused, read again and said. Licenses
- * bought are a visit too, which takes the buyer's own when they have none (docs: Plans and usage › Team).
+ * bought are a visit too, which takes the buyer's own when they have none (docs: Plans and usage › Team): from the balance
+ * at once, and by a payment as its reads see them bought (queries.ts), the window saying they're being added until then.
+ * Upgrading sets buying a license for each person who joins with the purchase, starting from what the team has now. A team
+ * is started on Plans (StartTeam.tsx), free; opened on Team with no team, the window starts one the same way, and its page
+ * opens.
  */
 import { errorCode, errorMessage, errorRequestId, type BalanceEntry, type MyTeam, type Plan, type PlanOffers, type Purchase, type TopUp, type TopUpRoute } from '@alcove/api';
 import {
   Avatar, Button, CheckoutAsk, CheckoutDone, CheckoutNote, CheckoutWindow, Dots, HoursPicker, LicensesLeft, LicensesPicker, MonthsPicker,
-  NetworkPicker, PaymentReceipt, RequestRef,
-  TeamInvite, TeamName, useTheme, useToast,
+  CheckoutTick, NetworkPicker, PaymentReceipt, PlanTeamStart, RequestRef, useTheme, useToast,
   type AvatarPerson, type CheckoutStage, type CheckoutSummaryData, type HoursOption, type LicensesOption, type LicensesTerm, type MonthsOption,
   type ReceiptLine, type SummaryLine
 } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useRouter, type AnyRouter } from '@tanstack/react-router';
+import { useId, useState, type ReactNode } from 'react';
 import { useNow, useOnline } from '~/lib/live';
 import { callName, someNames } from '~/lib/people';
 import { accountQueries } from '~/features/account/queries';
-import { teamQueries, useCreateTeam } from '~/features/team/queries';
-import { planQueries, topUpOpen, useBuy, useCancelTopUp, useLicensesBought, useStartTopUp } from './queries';
+import { teamQueries } from '~/features/team/queries';
+import { planQueries, topUpOpen, useBuy, useCancelTopUp, useLicensesSettling, useStartTopUp } from './queries';
+import { useStartTeam } from './StartTeam';
 import { fullDate, hm, longDay, shortDate } from '~/lib/time';
 import { plural, usd, usdCents } from '~/lib/words';
-import { useInvite } from '../team/invite';
 import type { CheckoutOpen } from './checkout';
 import { PayAdded, PayNow, PayOver, PaySeen, isOver, payingOf, useSeenWhileOpen, type Paying } from './paying';
 import { renews, teamLicenses } from './planState';
@@ -57,23 +61,24 @@ const FOLK = [18, 20, 17] as const;
 /* ---------- Team ---------- */
 
 /**
- * Whether the team you're on is still being started: there's none yet, or it's yours with nothing bought for it and nobody
- * ever licensed (made as a payment for its first licenses was opened). Starting one names it; Done says it's on Team.
+ * What checkout on Team is for, as it opened: upgrading the free team you run (`upgrade`: Done says it's on Team), buying
+ * more for one on Team or one you don't run (`more`), or, on no team, starting one (`start`).
  */
-const starts = (t: MyTeam | null): boolean =>
-  t === null || (t.role === 'admin' && (t.licenses?.unconsumed ?? 0) === 0 && t.members.every((m) => m.license.state === 'none'));
+type TeamCheckout = 'upgrade' | 'more' | 'start';
+const teamCheckout = (t: MyTeam | null): TeamCheckout => (t === null ? 'start' : t.role === 'admin' && t.tier === 'free' ? 'upgrade' : 'more');
 const isAre = (n: number) => (n === 1 ? 'is' : 'are');
-
+/** Who on a team has no live license: an upgrade is for them. */
+const unlicensed = (t: MyTeam | null): number => t?.members.filter((m) => m.license.state !== 'live').length ?? 0;
 /**
- * What Done says of the licenses a team was started with ("6 licenses for a year", when they're for more than a period):
- * whose they are, and when each is taken.
+ * What Done says once a free team's licenses are bought, from the team as it is after the visit buying them made (`t`):
+ * everyone has one when there's a license for each person on it (theirs, or one waiting for them) or one is bought for each
+ * person who joins (`auto`); otherwise how many of them have one.
  */
-function startedWith(count: number, periods: number, yoursTaken: boolean): string {
-  const bought = licensesWord(count, periods);
-  if (count === 1) return yoursTaken ? `${bought}, and it’s yours, taken now. Buy more for the people you invite.` : `${bought}: it’s taken when you or someone you invite next opens Alcove.`;
-  return yoursTaken
-    ? `${bought}, for you and the people you invite. Yours is taken now, and each of theirs when they next open Alcove.`
-    : `${bought}, for you and the people you invite. Each is taken when its person next opens Alcove.`;
+function upgradedSays(t: MyTeam | null, bought: number, auto: boolean): string {
+  const everyone = t?.members.length ?? bought;
+  const counts = teamLicenses(t);
+  const have = Math.min(everyone, Math.max(bought, counts?.of ?? 0));
+  return auto || have >= everyone ? 'Everyone has a license.' : `${have} of ${everyone} have one; buy more on Team.`;
 }
 /** What Done says once more licenses are bought: how many are left now, and whether the people waiting each get one. */
 function leftNow(t: MyTeam | null): string | null {
@@ -135,25 +140,20 @@ function described(buys: Purchase, offers: PlanOffers): { name: string; brief: s
 /** What Done says of a purchase, its receipt, and what's said on the page under it once the window closes (`toast`). */
 interface Done {
   title: string; lines: string[]; reminder: string | null; toast: string;
-  /** A team was just started: Done invites its people. */
-  invite: boolean;
   row: { title: string; sub: string; reference: string | null };
   receipt: { title: string; lines: ReceiptLine[]; total: string };
 }
 
 export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen; onClose: () => void; onCompare?: (() => void) | undefined }) {
   const forTeam = open.what.plan === 'team';
-  /* Done invites a just-started team's people: the same links as Team's Invite people. */
-  const invite = useInvite();
   const plan = useQuery(planQueries.plan());
   const offers = useQuery(planQueries.offers());
   const routes = useQuery(planQueries.topUpRoutes());
   const list = useQuery(planQueries.topUps());
   const me = useQuery(accountQueries.session()).data?.user ?? null;
   const signedIn = me?.name ?? null;
-  /* Team: the team you're on (if any), and the company the directory knows, for its name and its people. */
+  /* Team: the team you run, for its name and its people. */
   const team = useQuery({ ...teamQueries.myTeam(), enabled: forTeam });
-  const directory = useQuery({ ...teamQueries.team(), enabled: forTeam });
   const theme = useTheme().resolved;
   const online = useOnline();
   const now = useNow();
@@ -161,9 +161,10 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const buying = useBuy();
   const start = useStartTopUp();
   const cancel = useCancelTopUp();
-  const createTeam = useCreateTeam();
-  const settle = useLicensesBought();
-  const settleLicenses = settle.mutate;
+  /* On no team, the team is started here as on Plans, and its page opens: through the router, where there is one. */
+  const starting = useStartTeam();
+  const startForm = useId();
+  const router: AnyRouter | undefined = useRouter({ warn: false });
   const p = plan.data;
   const o = offers.data;
 
@@ -174,15 +175,20 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const [name, setName] = useState<string | null>(signedIn);
   if (name === null && signedIn !== null) setName(signedIn);
   /*
-   * Team, as it opened: starting one (Start a team, and Done says it's on Team), or its admin buying more (Buy licenses).
-   * Kept as it was, as `opened` is: the team made as you pay doesn't turn the window into another. Its name starts as the
-   * company's, where the directory knows it.
+   * Team, as it opened: upgrading a free team you run (Upgrade, and Done says it's on Team), buying more for one on Team
+   * (Buy licenses), or starting one. Kept as it was, as `opened` is: the licenses bought, or the team started, don't turn the
+   * window into another.
    */
-  const [starting, setStarting] = useState<boolean | null>(null);
-  if (forTeam && starting === null && team.isSuccess) setStarting(starts(team.data));
-  const [teamName, setTeamName] = useState<string | null>(null);
-  if (forTeam && teamName === null && team.isSuccess && !directory.isPending) setTeamName(team.data?.name ?? directory.data?.name ?? '');
-  const teamReady = !forTeam || (starting !== null && teamName !== null);
+  const [teamAs, setTeamAs] = useState<TeamCheckout | null>(null);
+  if (forTeam && teamAs === null && team.isSuccess) setTeamAs(teamCheckout(team.data));
+  const teamReady = !forTeam || teamAs !== null;
+  const upgrading = teamAs === 'upgrade';
+  /*
+   * Upgrading: whether a license is bought for each person who joins, set with the purchase. It starts as the team has it,
+   * until it's ticked or unticked here (`autoLater`).
+   */
+  const [autoLater, setAutoLater] = useState<boolean | null>(null);
+  const autoBuy = autoLater ?? team.data?.licenses?.autoPurchase ?? false;
 
   /* Where the window starts: on the payment it was opened on, on one already on its way for the same thing, or choosing. */
   const [view, setView] = useState<View | null>(open.topUpId ? { step: 'pay', id: open.topUpId } : null);
@@ -204,17 +210,11 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const t = payId !== null ? topUp.data : undefined;
   const paying = t ? payingOf(t, now) : null;
   /*
-   * Licenses a payment bought: the visit buying them makes (which takes yours when you have none), and the plan and team
-   * read again, once for each payment, before Done says what's true.
+   * Licenses a payment bought: the visit after them (which takes yours when you have none), and the plan and team read
+   * again, which the payment's reads make once for it (queries.ts), before Done says what's true.
    */
   const boughtLicenses = t && paying === 'bought' && t.purchase?.buys.kind === 'licenses' ? t.id : null;
-  const [settledFor, setSettledFor] = useState<string | null>(null);
-  useEffect(() => {
-    if (boughtLicenses === null || settledFor === boughtLicenses) return;
-    setSettledFor(boughtLicenses);
-    settleLicenses();
-  }, [boughtLicenses, settledFor, settleLicenses]);
-  const settling = boughtLicenses !== null && (settledFor !== boughtLicenses || settle.isPending);
+  const settling = useLicensesSettling(boughtLicenses);
 
   /*
    * What's chosen. The length, the number of hours and the number of licenses start where the door says (licenses, else
@@ -235,12 +235,18 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const [asking, setAsking] = useState(false);
   const [receipt, setReceipt] = useState(false);
 
-  /** Back to choosing what a payment was for, as it was: the same length, hours or licenses (for as long), on the same network. */
+  /**
+   * Back to choosing what a payment was for, as it was: the same length, hours or licenses (for as long, buying one for each
+   * person who joins or not), on the same network.
+   */
   const chooseAgain = (old: TopUp) => {
     const b = old.purchase?.buys;
     if (b?.kind === 'pro') { setMonths(b.months); setOther(!LENGTHS.some((m) => m === b.months)); }
     else if (b?.kind === 'hours') setPacks(b.packs);
-    else if (b?.kind === 'licenses') { setLicenses(b.count); setYearlyLicenses(b.periods > 1); setOther(!LICENSES.some((n) => n === b.count)); }
+    else if (b?.kind === 'licenses') {
+      setLicenses(b.count); setYearlyLicenses(b.periods > 1); setOther(!LICENSES.some((n) => n === b.count));
+      if (b.autoPurchase !== null) setAutoLater(b.autoPurchase);
+    }
     setRouteId(old.route.id);
     setAsking(false);
     setView({ step: 'choose' });
@@ -272,38 +278,41 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const chosenPacks = Math.min(hoursOffer?.maxPacks ?? 1, Math.max(1, packs));
 
   /*
-   * Team: the team you're on now, who's waiting for a license on it, and how many it has left. Starting one, the cards say
-   * what each number is for beside the people the app knows of (you, and those at your company on Alcove); buying more,
-   * beside who's waiting. Either starts on enough for them.
+   * Team: the team you run now, who's waiting for a license on it, and how many it has left. Upgrading, the cards say what
+   * each number is for beside the people on it without a license, and it starts on exactly that many (at least one); buying
+   * more, beside who's waiting.
    */
   const teamNow = team.data ?? null;
   /* How many are left of how many, and who's waiting: the same count Settings › Plan and the Team page say (plan-state). */
   const counts = teamLicenses(teamNow);
   const wanting = counts?.waiting ?? [];
   const left = counts?.left ?? 0;
-  const known = 1 + (directory.data?.members.filter((m) => m.onAlcove).length ?? 0);
+  const known = Math.max(1, unlicensed(teamNow));
   const maxLicenses = o?.team.maxLicenses ?? 1;
+  /* Upgrading sets buying one for each person who joins with the purchase; buying more leaves it as it is. */
+  const autoPurchase = upgrading ? autoBuy : null;
   /* For a year only while one is offered: a license's price a period, and the periods each runs. */
   const forYear = yearlyLicenses && !!o?.team.yearly;
   const terms = o ? licenseTerms(o, forYear) : null;
   /** What one license costs, for all its periods. */
   const each = terms ? terms.microUsdPerLicense * terms.periods : 0;
   const licenseCards = LICENSES.filter((n) => n <= maxLicenses);
-  const enough = starting === false ? wanting.length - left : known;
-  const firstCount = enough <= (licenseCards[0] ?? 1) ? licenseCards[0] ?? 1 : licenseCards.find((n) => n >= enough) ?? Math.min(enough, maxLicenses);
+  const enough = upgrading ? known : wanting.length - left;
+  const firstCount = upgrading ? Math.min(known, maxLicenses)
+    : enough <= (licenseCards[0] ?? 1) ? licenseCards[0] ?? 1 : licenseCards.find((n) => n >= enough) ?? Math.min(enough, maxLicenses);
   if (forTeam && licenses === null && teamReady && o) setLicenses(firstCount);
   const chosenLicenses = Math.min(maxLicenses, Math.max(1, licenses ?? firstCount));
   const licensesOther = other || !licenseCards.some((n) => n === chosenLicenses);
-  /** The name the team has, or is to have: what's typed until it's made. */
-  const named = (teamNow?.name ?? teamName ?? '').trim();
-  /** On someone else's team: only its admin buys its licenses (and you can't start another while you're on it). */
+  /** The team's name. */
+  const named = teamNow?.name ?? '';
+  /** On someone else's team: only its admin buys its licenses. */
   const notAdmin = kind === 'licenses' && teamNow !== null && teamNow.role !== 'admin';
-  /** Starting a team needs its name before anything is paid. */
-  const unnamed = kind === 'licenses' && teamNow === null && named === '';
+  /** On no team (as it opened, or since): licenses are for a team, so it's started here first, free, as on Plans. */
+  const noTeam = kind === 'licenses' && (teamNow === null || teamAs === 'start');
 
   const buys: Purchase | null = !o ? null
     : kind === 'pro' ? { kind: 'pro', months: chosenMonths, microUsdPerMonth: proPrice(o, chosenMonths) }
-    : kind === 'licenses' ? { kind: 'licenses', count: chosenLicenses, ...licenseTerms(o, forYear) }
+    : kind === 'licenses' ? { kind: 'licenses', count: chosenLicenses, ...licenseTerms(o, forYear), autoPurchase }
     : hoursOffer ? { kind: 'hours', packs: chosenPacks, microUsdPerPack: hoursOffer.microUsd, minutesPerPack: hoursOffer.minutes } : null;
   const cost = buys ? costOf(buys) : 0;
   const fromBalance = Math.min(balance, cost);
@@ -312,7 +321,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const paymentsOff = routes.isError || (routes.isSuccess && usdc.length === 0);
   const route = usdc.find((r) => r.id === routeId) ?? null;
   const send = need > 0 ? Math.max(need, route ? microOf(route.minimum) ?? 0 : 0) : 0;
-  const busy = buying.isPending || start.isPending || createTeam.isPending;
+  const busy = buying.isPending || start.isPending;
 
   /** When Pro would run to with `n` more months bought now: after the months already bought, or from now. */
   const proUntil = (n: number) => {
@@ -325,13 +334,15 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
     return after > (opened?.until ? Date.parse(opened.until) : 0) ? new Date(after) : proUntil(n);
   };
   const daysLeft = opened?.until ? Math.max(1, Math.ceil((Date.parse(opened.until) - now) / DAY)) : 0;
-  const teamFor = starting !== false ? `For ${named || 'your team'}, with you its admin` : `For ${named || 'your team'}, ${left ? left : 'none'} left now`;
+  const upgraded = view?.step === 'bought' || paying === 'bought';
+  const teamFor = upgrading ? `For ${named || 'your team'}${upgraded ? '' : ', on Free now'}` : `For ${named || 'your team'}, ${left ? left : 'none'} left now`;
   const forWhom = kind === 'hours' ? 'For this period' : kind === 'licenses' ? teamFor
     : extend ? `Added to the ${plural(daysLeft, 'day')} you have left` : name ? `For ${name}` : 'For you';
   const periodEnd = p ? new Date(p.period.to) : null;
 
   /* ---------- doing it ---------- */
-  const title = kind === 'hours' ? 'More notes' : kind === 'licenses' ? (starting !== false ? 'Start a team' : 'Buy licenses') : extend ? 'Extend Pro' : 'Get Pro';
+  const teamTitle = noTeam && view?.step === 'choose' ? 'Start a team' : upgrading ? 'Upgrade to Team' : 'Buy licenses';
+  const title = kind === 'hours' ? 'More notes' : kind === 'licenses' ? teamTitle : extend ? 'Extend Pro' : 'Get Pro';
   /** What paying for it says while the payment is awaited, as it's seen, and once it's done. */
   const wording = kind === 'hours'
     ? { close: 'You can close this. The hours are added as soon as your payment arrives.', seen: 'Adding your hours. This takes a minute or two.', last: 'Hours added', what: 'more notes' }
@@ -349,30 +360,20 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
     const code = errorCode(e);
     setSaid({ text: errorMessage(e), ref: code === 'conflict' || code === 'invalid' || code === 'forbidden' ? null : errorRequestId(e) ?? null, paid: false });
   };
-  /**
-   * The team licenses are for, made as you pay when you're starting one, with you its admin. False when it couldn't be
-   * made, and why is said ("You’re on a team already…"). Made once: pressing again after a refused payment buys for it.
-   */
-  const teamMade = async (b: Purchase): Promise<boolean> => {
-    if (b.kind !== 'licenses' || teamNow) return true;
-    try {
-      await createTeam.mutateAsync(named);
-      return true;
-    } catch (e) {
-      refused(e);
-      return false;
-    }
-  };
   const buy = (b: Purchase) => {
     setSaid(null);
     // Bought, but the plan couldn't be read again: what's here says it until it's read.
-    const done = (fresh: Plan | null) => { const after = fresh ?? p; if (after) setView({ step: 'bought', plan: after, buys: b, at: Date.now() }); };
-    void teamMade(b).then((made) => { if (made) buying.mutate(b, { onSuccess: done, onError: refused }); });
+    const done = (fresh: Plan | null) => {
+      const after = fresh ?? p;
+      if (after) setView({ step: 'bought', plan: after, buys: b, at: Date.now() });
+    };
+    buying.mutate(b, { onSuccess: done, onError: refused });
   };
   const getAddress = (r: TopUpRoute, microUsd: number, b: Purchase) => {
     setSaid(null);
-    void teamMade(b).then((made) => {
-      if (made) start.mutate({ routeId: r.id, microUsd, buys: b }, { onSuccess: (fresh) => setView({ step: 'pay', id: fresh.id }), onError: refused });
+    start.mutate({ routeId: r.id, microUsd, buys: b }, {
+      onSuccess: (fresh) => setView({ step: 'pay', id: fresh.id }),
+      onError: refused
     });
   };
   /**
@@ -411,11 +412,12 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
       told = extend ? `${heading}.` : `You’re on Pro until ${shortDate(until)}.`;
       lines.push(`Until ${fullDate(until)}.`);
     } else if (b.kind === 'licenses') {
-      // Said from the team and the plan as they are after the visit buying them made: whether yours was taken, what's left.
+      // Said from the team and the plan as they are after the visit buying them made: who has one, what's left, and who's
+      // still waiting. Buying one for each person who joins is what the purchase set it to, else what the team has.
       until = null;
-      heading = starting !== false ? `${named || 'Your team'} is on Team` : `${b.count} more ${b.count === 1 ? 'license' : 'licenses'}${licenseTerm(b.periods)}`;
-      told = starting !== false ? `${heading}.` : `${plural(b.count, 'license')}${licenseTerm(b.periods)} added to ${named || 'your team'}.`;
-      const line = starting !== false ? startedWith(b.count, b.periods, fresh?.team?.licensed === true || teamNow?.licensed === true) : leftNow(teamNow);
+      heading = upgrading ? `${named || 'Your team'} is on Team` : `${b.count} more ${b.count === 1 ? 'license' : 'licenses'}${licenseTerm(b.periods)}`;
+      told = upgrading ? `${heading}.` : `${plural(b.count, 'license')}${licenseTerm(b.periods)} added to ${named || 'your team'}.`;
+      const line = upgrading ? upgradedSays(teamNow, b.count, b.autoPurchase ?? teamNow?.licenses?.autoPurchase ?? false) : leftNow(teamNow);
       if (line) lines.push(line);
     } else {
       until = periodEnd;
@@ -432,7 +434,6 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
     const forOn = b.kind === 'licenses' ? named || null : name;
     return {
       title: heading, lines, toast: told,
-      invite: b.kind === 'licenses' && starting !== false,
       // Licenses run from when each is taken (a period, or a year's), and aren't renewed: there's nothing to remind. Pro
       // renews only when renewing will buy the next month (on, a month's price in the balance, no rise in price), as the
       // server says.
@@ -462,23 +463,28 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   /* ---------- what you're buying ---------- */
   const shown: Purchase | null = view?.step === 'bought' ? view.buys : t?.purchase?.buys ?? buys;
   const art = kind === 'pro' ? 'pro' : kind === 'licenses' ? 'team' : 'hours';
-  /* Who stands on Team's horizon: the team's people, else (a team just started) your company's on Alcove, else you. */
+  /* Who stands on Team's horizon: the team's people, else you. */
   const onIt: AvatarPerson[] = teamNow?.members.filter((m) => !m.you).map((m) => m.person) ?? [];
-  const atWork: AvatarPerson[] = directory.data?.members.filter((m) => m.onAlcove).map((m) => m.person) ?? [];
-  const folk = onIt.length ? onIt : atWork.length ? atWork : me ? [me] : [];
+  const folk = onIt.length ? onIt : me ? [me] : [];
   const people = kind === 'licenses' ? <>{folk.slice(0, 3).map((x, i) => <Avatar key={x.email ?? x.name} person={x} size={FOLK[i] ?? 18} />)}</> : undefined;
   let summary: CheckoutSummaryData = { art, people, name: kind === 'pro' ? 'Pro' : kind === 'licenses' ? 'Team' : 'More notes', sub: forWhom, brief: '', lines: [], total: null, foot: PRICED };
-  if (notAdmin && teamNow && view?.step === 'choose') {
+  const perLicense = o ? `Each license is one person for ${plural(o.periodDays, 'day')}.` : PRICED;
+  if (noTeam && view?.step === 'choose') {
+    // No team yet: it's started here, free, and nothing is priced.
+    summary = { ...summary, sub: 'Free to start. Licenses only when you upgrade.', foot: perLicense };
+  } else if (notAdmin && view?.step === 'choose') {
     // Someone else buys this team's licenses: nothing is priced here.
-    summary = { ...summary, sub: `For ${teamNow.name}`, foot: o ? `Each license is one person for ${plural(o.periodDays, 'day')}.` : PRICED };
+    summary = { ...summary, sub: teamNow ? `For ${teamNow.name}` : 'For a team of yours', foot: perLicense };
   } else if (o && shown) {
     const d = described(shown, o);
     const c = costOf(shown);
     const isDone = view?.step === 'bought' || paying === 'bought';
+    // How long a license runs is said once while choosing, beside its price (LicensesPicker's hint); paying and done, here.
     const until = shown.kind === 'pro'
       ? { lead: 'Pro until', day: fullDate(isDone ? boughtUntil(shown.months, view?.step === 'bought' ? view.plan : p) : proUntil(shown.months)) }
-      : shown.kind === 'licenses' ? { lead: shown.count === 1 ? 'It runs' : 'Each runs', day: `${licenseRuns(shown.periods, o.periodDays)} from when it’s taken` }
-      : periodEnd ? { lead: 'Until', day: fullDate(periodEnd) } : null;
+      : shown.kind === 'licenses'
+        ? view?.step === 'choose' ? null : { lead: shown.count === 1 ? 'It runs' : 'Each runs', day: `${licenseRuns(shown.periods, o.periodDays)} from when it’s taken` }
+        : periodEnd ? { lead: 'Until', day: fullDate(periodEnd) } : null;
     summary = { ...summary, name: d.name, brief: d.brief, lines: d.lines, until };
     if (t) {
       // A payment: what was asked of it, and what the balance gave beside it.
@@ -588,6 +594,25 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
         }
       }
     }
+  } else if (noTeam) {
+    // On no team: licenses are for a team, so it's started here first, free, as on Plans (StartTeam.tsx): its name filled in
+    // as there, and Start the team makes it and opens its page, where it's upgraded. Nothing is bought, so there are no steps.
+    step = null;
+    const toTeam = () => { onClose(); void router?.navigate({ to: '/team' }); };
+    body = (
+      <>
+        <CheckoutNote tone="info">Licenses are for a team, and you’re not on one yet.</CheckoutNote>
+        <PlanTeamStart bare id={startForm} label="Your team" value={starting.name} onChange={starting.rename} busy={starting.busy}
+          error={starting.refused} onStart={() => starting.start(toTeam)} />
+      </>
+    );
+    foot = (
+      <>
+        <Button variant="quiet" className="ck-push" onClick={onClose}>Close</Button>
+        {offline}
+        <Button type="submit" form={startForm} variant="primary" loading={starting.busy} disabled={starting.blank || !online}>Start the team</Button>
+      </>
+    );
   } else if (notAdmin && teamNow) {
     // On someone else's team: its admin buys its licenses, and you can't start another while you're on it. Nothing can be
     // bought here, so there are no steps, and it's said once, in one note: who buys them. A payment that couldn't buy them
@@ -599,9 +624,9 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   } else {
     // Choosing.
     const offLabel = pct !== null ? `${pct}% off` : null;
-    /** What a number of licenses is for, as its card says: beside the people the app knows of, or beside who's waiting. */
+    /** What a number of licenses is for, as its card says: beside the people on the team without one, or beside who's waiting. */
     const licensesFor = (n: number): string => {
-      if (starting !== false) return n === known ? `For the ${known} of you` : n > known ? `Room for ${n - known} more` : 'To start with';
+      if (upgrading) return n === known ? (known === 1 ? 'For you' : `For the ${known} of you`) : n > known ? `Room for ${n - known} more` : 'To start with';
       const spare = left + n - wanting.length;
       // Someone waiting is named on a card when their name fits on it beside the number.
       const one = wanting.length === 1 ? wanting[0] : undefined;
@@ -611,29 +636,28 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
       if (named1) return spare ? `${spare} spare after ${named1}’s` : `For ${named1}`;
       return spare ? `${wanting.length} waiting, ${spare} spare` : `For the ${wanting.length} waiting`;
     };
-    /** How long each license runs once it's taken: "30 days", or "a year". */
+    /** How long each license runs once it's taken: "30 days", or "a year", said once, beside its price. */
     const lasts = licenseRuns(terms?.periods ?? 1, o.periodDays);
-    const runs = `Each runs ${lasts} from when it’s taken.`;
     /* How long, over how many, while a license for a year is offered: Monthly, or Yearly with what it saves. */
     const teamOff = teamYearlyOff(o);
     const term: LicensesTerm | undefined = o.team.yearly
       ? { value: forYear ? 'year' : 'month', onChange: (v) => setYearlyLicenses(v === 'year'), off: teamOff !== null && teamOff >= 1 ? `${teamOff}% off` : null }
       : undefined;
-    const yours = starting !== false ? (
-      <TeamName value={teamNow?.name ?? teamName ?? ''} onChange={setTeamName} disabled={teamNow !== null} placeholder="Your company or team"
-        autoFocus={teamNow === null && !teamName} />
-    ) : teamNow && (
+    const yours = teamNow && (upgrading ? (
+      <LicensesLeft people={teamNow.members.map((m) => m.person)} title={`${teamNow.name}, on Free`}
+        sub={`${plural(teamNow.members.length, 'person', 'people')} on it, none with a license yet.`} />
+    ) : (
       <LicensesLeft people={teamNow.members.map((m) => m.person)}
         title={!counts || counts.of === 0 ? 'No licenses yet' : counts.left > 0 ? `${counts.left} of ${plural(counts.of, 'license')} left` : counts.live === 1 ? 'Its one license is taken' : `All ${counts.live} licenses taken`}
-        sub={wanting.length ? `${someNames(wanting.map((m) => m.person))} ${isAre(wanting.length)} waiting for one. ${runs}` : runs} />
-    );
+        sub={wanting.length ? `${someNames(wanting.map((m) => m.person))} ${isAre(wanting.length)} waiting for one.` : undefined} />
+    ));
     body = (
       <>
         {note}
         {kind === 'licenses' ? (
           <>
             {yours}
-            <LicensesPicker autoFocus={teamNow !== null || !!teamName} hint={`${usd(each)} each, one person for ${lasts}`} value={chosenLicenses} term={term}
+            <LicensesPicker autoFocus hint={`${usd(each)} each, one person for ${lasts}`} value={chosenLicenses} term={term}
               options={licenseCards.map((n): LicensesOption => ({ count: n, total: usd(n * each), sub: licensesFor(n) }))}
               onChange={(n) => { setLicenses(n); setOther(false); }}
               other={{
@@ -641,6 +665,10 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
                 onOpen: () => { setOther(true); setLicenses(Math.min(maxLicenses, chosenLicenses + 1)); },
                 onStep: (n) => { setOther(true); setLicenses(n); }
               }} />
+            {upgrading && (
+              <CheckoutTick checked={autoBuy} onChange={setAutoLater} label="Buy a license for each person who joins"
+                hint="From your balance, when someone needs one and none is left. You can turn it off on Team or in Settings." />
+            )}
           </>
         ) : kind === 'pro' ? (
           <MonthsPicker autoFocus label={extend ? 'How much longer' : 'How long'} value={chosenMonths} offLabel={offLabel}
@@ -673,18 +701,17 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
     // Away from Plans (and not over a call, which going to Plans would leave): from the welcome page, Plans is behind it.
     const compare = (kind === 'pro' || kind === 'licenses') && onCompare && open.from !== 'plans' && open.from !== 'welcome' && open.from !== 'call'
       && <Button variant="quiet" className="ck-push" onClick={onCompare}>Compare plans</Button>;
-    // A team being started is made as you pay: the button waits for that too.
-    const getting = start.isPending || (need > 0 && createTeam.isPending);
-    const takingIt = buying.isPending || (need <= 0 && createTeam.isPending);
+    const getting = start.isPending;
+    const takingIt = buying.isPending;
     foot = (
       <>
         {compare}
         {offline}
         {!buys ? close : need > 0 ? (
-          <Button variant="primary" loading={getting} disabled={!route || paymentsOff || !online || busy || unnamed}
+          <Button variant="primary" loading={getting} disabled={!route || paymentsOff || !online || busy}
             onClick={() => { if (route) getAddress(route, send, buys); }}>{getting ? 'Getting the address' : 'Get the address'}</Button>
         ) : (
-          <Button variant="primary" loading={takingIt} disabled={!online || busy || unnamed} onClick={() => buy(buys)}>
+          <Button variant="primary" loading={takingIt} disabled={!online || busy} onClick={() => buy(buys)}>
             {takingIt ? 'Buying' : 'Buy with your balance'}
           </Button>
         )}
@@ -693,8 +720,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   }
   if (done) {
     const d = done;
-    body = <CheckoutDone title={d.title} lines={d.lines} reminder={d.reminder} receipt={{ ...d.row, onOpen: () => setReceipt(true) }}
-      invite={d.invite ? <TeamInvite {...invite} bare /> : undefined} />;
+    body = <CheckoutDone title={d.title} lines={d.lines} reminder={d.reminder} receipt={{ ...d.row, onOpen: () => setReceipt(true) }} />;
   }
   /**
    * Closing the window from Done, however it's closed, says once on the page under it what was bought, in the server's dates

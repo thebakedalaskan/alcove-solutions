@@ -173,6 +173,12 @@
 .ck-team .who { flex: 1; min-width: 160px; }
 .ck-team .who b { display: block; font: 500 14.5px/20px var(--font-sans); color: var(--ink); }
 .ck-team .who small { display: block; font: 400 13px/18px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+/* Something buying it does as well: its box, then what it does and a line on it. */
+.ck-also { display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: start; column-gap: 12px; }
+.ck-also > .ac-check { margin-top: 1px; }
+.ck-also .who { cursor: default; }
+.ck-also .who b { display: block; font: 500 14.5px/20px var(--font-sans); color: var(--ink); }
+.ck-also .who small { display: block; font: 400 13px/18px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
 /* A calm sentence: caution for something to look at, info for what happens next. */
 .ck-note { display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: 10px; margin-top: 12px; padding: 11px 14px; border-radius: 12px; background: color-mix(in oklch, var(--caution) 13%, transparent); font: 400 13.5px/20px var(--font-sans); color: var(--ink); }
 .ck-note > .ac-i { margin-top: 1px; color: var(--caution); }
@@ -252,11 +258,6 @@
 .ck-receipt-row .ac-ref { grid-column: 2 / -1; justify-self: start; margin: 2px 0 0 -7px; }
 .ck-rem { display: flex; align-items: center; gap: 10px; margin-top: 14px; font: 400 13.5px/20px var(--font-sans); color: var(--ink-2); }
 .ck-rem .ac-i { flex: none; color: var(--sun-text); }
-/* A team just started: inviting its people, on a hairline under the receipt. */
-.ck-invite { display: grid; gap: 10px; justify-self: stretch; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
-.ck-invite .ck-q { margin: 0; }
-.ck-invite > .ac-btn { justify-self: start; }
-
 /* A question before something that can't be undone, in the foot, in place. */
 .ck-ask { display: grid; gap: 10px; width: 100%; }
 .ck-ask b { font: 600 14.5px/20px var(--font-sans); color: var(--ink); }

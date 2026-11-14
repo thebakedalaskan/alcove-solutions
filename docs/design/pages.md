@@ -17,8 +17,8 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
   - Start a call (N): a row like the places, its name in line with theirs and its camera in a warm circle. It's never
     filled or shaded, so the place you're on is the one shaded row
   - Home, Calls, Drive, Record and Team (where your groups are, so the panel doesn't list them again), with Team hidden
-    for someone on their own. A count says something waits on you there (what's for you on Home, tags you haven't seen
-    in the Drive, recordings waiting to upload), quiet, in `ink-3`, its digits centred in a column of its own at the
+    for someone on their own, with no team and no invitation to one. A count says something waits on you there (what's for
+    you on Home, tags you haven't seen in the Drive, recordings waiting to upload, invitations to a team not put aside), quiet, in `ink-3`, its digits centred in a column of its own at the
     row's end (28px wide, 6px in), so counts line up. Home's is a link of its own, that column's cell over the row
     (`NavCount`): pointing at it lights it alone, in corners concentric with the row's, and its tooltip says what's in each
     of For you's tabs; pressing it lands on For you. Nothing counts a total
@@ -38,8 +38,8 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
     12.5px line in ink-2, and a chevron, with no box and no glow. The line says what matters most: "Ends in N days ·
     Extend" in sun-text 600 with the sun half set (it opens checkout), "No notes left until 1 Dec" in caution, for a team's
     admin while its licenses run short "2 licenses left · Buy" in sun-text 600 (it opens checkout on Team), "About 40 min
-    of notes left" in sun-text, or "Until 4 Nov 2027" on Pro and the team's name on Team. On a team without a license
-    you're on your own plan, told so over it: "No team license yet" in caution, and under it who has been told ("Priya has
+    of notes left" in sun-text, or "Until 4 Nov 2027" on Pro and the team's name on Team. On a team on Team without a
+    license you're on your own plan, told so over it (on a free team nobody hears about licenses): "No team license yet" in caution, and under it who has been told ("Priya has
     been told"), or for an admin "Buy licenses, and one is yours"; on Free the notes left and the meter follow, then Free's
     row with Team. A payment for a plan on its way takes the row's place: dots and "Waiting for N USDC" in
     horizon ("Payment seen, adding licenses" for a team's), and the payment's row with Open. Anything else said (Pro renewed
@@ -435,15 +435,21 @@ Any workspace opens full screen in Alcove's own evening, not as a stock editor: 
 
 ## Team
 
-`routes/_app/team.tsx`, `features/team/`, `team/team.css` (`tp-`). Moment: `team`. Board: `Team.dc.html`.
+`routes/_app/team.tsx`, `features/team/` (its invitations in `features/team/invitations/`), `team/team.css` (`tp-`) and
+`team/invitations.css` (`ti-`). Moment: `team`. Board: `Team.dc.html`.
 
-The sun is low and to the left, behind the people.
+The sun is low and to the left, behind the people. The page is one evening (`Evening`, `tm`) whichever of its views it
+shows: the company's (`Company.tsx`), a team's (`OnTeam.tsx`) or the invitations to you (`Invitations.tsx`). The view rises
+with the page the first time; one taking another's place in it (Join, a first invitation starting the team, Leave team,
+Delete team) crossfades over --duration-2 on the soft curve: a still copy of the last fades out over the next
+(`leaveFading`), with nothing blank between, and the horizon and the sun move to where the next has them (`--hz`,
+`--hz-sun-x` and `--hz-sun-r`, registered so they can). The focus goes to the next view's heading.
 
-- **The sky.** Team at the top left. In the middle, the company's name (Newsreader) and Invite people (filled), with Copy
-  invite link beside it on the first day. Once anyone has made their account from your invite link, a quiet line under the
-  buttons says who: their faces, then "Aiko and Maya joined from your link" (`tp-joined`). If your link didn't load, the
-  same place says so in the page's trouble style, with a quiet Try again, or that invites need a connection
-  (`tp-why is-link`). A line there moves the horizon down by its height, so the heading keeps both its lines on a phone.
+- **The sky.** Team at the top left. In the middle, the company's name (Newsreader) and Invite people (filled, unless an
+  invitation to you is waiting, whose Join is), with Copy invite link beside it on the first day. If your link didn't load
+  then, a line under the buttons says so in the page's trouble style, with a quiet Try again, or that copying it needs a
+  connection (`tp-why is-link`). A line there moves the horizon down
+  by its height, so the heading keeps both its lines on a phone.
   Everyone stands in their arch on the horizon, with you in the middle:
   - someone not on Alcove yet is a dashed arch with their initial
   - the sun stands in an empty arch, or just past the end of the line
@@ -454,41 +460,96 @@ The sun is low and to the left, behind the people.
   - Ring (filled), which goes straight to the lobby
   - Schedule, which opens at When
   - Notes you both have
-  - for someone not on Alcove, Invite or Remind in place of Ring
-- **Invite people** opens a popover: the people to pick, then at its foot Copy link with a quiet arrow beside it, Make a new
-  link (`IconButton`, its tooltip), and Invite. The arrow asks in the list's place, with the kit's `TeamAsk`: "Make a new
-  link?", what happens to the old one, Make a new link in caution and Cancel (filled).
+  - for someone not on Alcove, Invite in place of Ring (on no team, it opens the sky's Invite people with them ticked)
+- **Invite people** opens a popover named for the team, "Invite people to Vandelay Industries": the people to pick (each
+  read as what picking does: "Invite Diego Ruiz"), then at its foot Copy link and a quiet labelled New link (for the
+  admin, or with no team), and Invite 3. On a company page with no team, one quiet line under the field, read with the field
+  and with Invite, says what inviting does: "Alcove emails them. This starts Vandelay Industries, a free team, with you as
+  its admin." Every Invite there (a row's, a popover's, Invite all, Invite everyone) opens Invite people with its people
+  ticked, a row's beside it, so that line is always seen before a team starts; its toast says it started ("Started
+  Vandelay Industries and invited Diego."). While an invitation to you waits there, nothing in it starts another team: it's
+  `JoinFirst`, in Priya's arch, "Priya invited you to Vandelay Industries." and "Join it, then invite people from its page.",
+  with Join Vandelay Industries (filled) at its foot; an Invite on a row goes to the invitation's card instead, its Join
+  focused.
+  Someone on the team isn't offered, and the list says why; someone invited has an Invited tag (`PickRow`'s `tag`), and
+  picked alone turns the button into Resend 1, unless it can't be sent again yet or it's someone else's, which the row says
+  under the name ("Sent today", "Invited by Priya") and can't be picked (`unavailable`). New link asks in the list's
+  place, with the kit's `TeamAsk`: "Make a new link?", what happens to the old one, Make a new link in caution and Cancel
+  (filled); Cancel or Escape comes back to the list as it was. What was sent, or why nothing was, is a toast ("Invited 20
+  people to Vandelay Industries. You can invite the other 5 tomorrow." past the day's invitations); no mail app opens.
+- **Invitations to you** stand where they're seen first, each a `JoinCard` (`level` 2, its title in Hanken Grotesk, 600
+  18/24) in `InvitationCards`: the team's faces, who invited you to which team, who's on it, then Not now and Join (filled).
+  With a company page and no team they're at the top of its water; with neither, they're the page, one under another on the
+  Team evening, newest first. On a team, one is an `InvitationNote` at the top of the team's water, with Join and Not now.
+  Not now folds the card away (height and opacity, --duration-2, easing in: `foldAway`, which takes its gap with it), and
+  its toast says until when it can be joined, with Undo. Put aside, each is an `InvitationRow` under Put aside with Join
+  still there (it takes the focus as it arrives): at the foot of the company page's water, on a surface under the cards on
+  the Team evening (as wide as the cards, 480px), or at the foot of a team's water. Joining while on another team asks in
+  place, on the card or the notice: what joining does, its answer in caution (Leave Vandelay Industries and join, Delete
+  Vandelay Industries and join; with two teams of one name, "Joining Priya's Vandelay Industries deletes yours…" and Delete
+  yours and join) and Stay; or, for an admin with others on their team, why they can't yet, in Join's place, with Not now.
 - **The water:**
   - **Groups** are tiles with the name, "4 people · 7 calls", faces, and a camera to start the group's call. A group opens in
     place to rename it, add or remove people, or delete it, with undo. New group is a tile of dashed arches.
-  - **Not on Alcove yet** lists each person with their title and meetings coming up, and Invite, or Invited with Remind.
-    "Invite all N" sits on the heading when more than one is left.
+  - **Not on Alcove yet** lists each person with their title and meetings coming up, and Invite. "Invite all N" sits on
+    the heading when more than one is left.
   - **Shared with groups** lists the notes shared with a group, who shared them and when.
-- **On a team** (`features/team/OnTeam.tsx`, the kit's `plans/team-plan.tsx` and `plans/team-plan.css`): the team's
-  name in the sky over how many are on it, and its people on the horizon, up to ten, each under their license, opening
-  their popover as on a company's line (`PersonPop`). On the water, its people as rows (role and license on each:
-  "Licensed until 12 Dec", "License ended", "Waiting for a license"), with Remove for the admin, asked in place under the
-  row, and at their foot Leave team for a member or Delete team for the admin once nobody else is on it; then the notes
-  made visible to the team, and the company page's groups and what's shared with them, which stay. Beside them, for the
-  admin: Licenses (how many are left and who's waiting, Buy licenses, filled while someone waits, which opens checkout on
-  Team, and buying one whenever it's needed) and invite links (Make an invite link, then Copy, and Make another). A member
-  without a live license is told first, at the top of the water. Not on a team, a quiet Start a team row on a company's
-  water opens checkout on Team (`features/team/StartTeam.tsx`).
+- **On a team** (`features/team/OnTeam.tsx` and `teamLine.ts`, the kit's `plans/team-plan.tsx` and `plans/team-plan.css`),
+  free or on Team: the team's name in the sky (Newsreader, at most 760px and never under the pen), with Rename beside it for
+  the admin (an `IconButton` whose popover has the name in a box and Rename), over its tier and how many are on it ("Free ·
+  3 people", read as it reads), or on Team "Team · 6 people · 5 with a license · 3 licenses left" for the admin and "Team ·
+  6 people · Priya is its admin" for everyone else. Under them, Invite people: filled until someone else is on a free team,
+  when the Free note's Upgrade is; on Team it's Invite people, unless someone is waiting for a license, when it's Buy
+  licenses. There's no Upgrade in the sky. Its people stand on the horizon, up to ten, each under their license on Team
+  (Until 12 Dec, Waiting, Ended, From next visit while one is left for them; on a free team nothing, or Joined today, or
+  Started today for the admin), opening their popover as on a company's line (`PersonPop`); then whoever's invited, in
+  dashed arches with Invited under them (`TeamLinePerson`'s `ghost`), and on your company's team the colleagues not on it,
+  further back (`back`: smaller, in the haze, until pointed at), so a company's line doesn't empty as it becomes a team's.
+  On a phone the line wraps and there's no further back. On a free team the water starts with what Free means, once, in
+  one quiet panel: "Vandelay Industries is on Free." (for its admin while someone's asked, "Kofi asked you to upgrade."),
+  what upgrading gives everyone on it, and the page's one Upgrade for the admin, or Ask Priya to upgrade for everyone else,
+  which says "Priya's been asked" once pressed (a team whose licenses ended says what it shared opens again when it's
+  upgraded). While the admin is alone on it the panel isn't there. Then its people as rows (role on each, and on Team their
+  license: "Licensed until 12 Dec", "License ended", "Waiting for a license"; on a free team, Joined today, Started 5 Oct),
+  with Remove for the admin, asked in place under the row ("Remove Kofi?", and that the team's link changes), and at their
+  foot Leave team for a member or Delete team for the admin once nobody else is on it; Invited, while anyone is, each
+  invitation a row with who, "Invited by Priya · 2 days ago", "Sent again today" once it has been, and "Runs out in 4 days"
+  in its last week, in the order the page opened with, and for whoever invited them and the admin Resend (Sent today or
+  Sent 3 times, disabled and in ink-2 by day, until it can go again) and Cancel, asked in place under the row with
+  `TeamAsk`; on your company's team (one you admin, or whose admin is at your company), At Vandelay Industries, not on the
+  team yet, colleagues not on it and not invited, each with Invite, and "Invite all N" on the heading; the notes made
+  visible to the team, which on a free team are an empty state saying they open once it's upgraded; and the company page's
+  groups and what's shared with them, which stay. Beside them, for the admin of a team on Team: Licenses (how many are left
+  and who's waiting, Buy licenses, filled while someone waits, which opens checkout on Team, and Buy a license for each
+  person who joins); on a free team whose admin has that on, the card stays, with the switch and without Buy licenses. A
+  member of a team on Team without a live license is told first, at the top of the water; on a free team nobody is told
+  anything about licenses.
   - The water is at most 1120px and centred under the team, though other pages run to `--page-max`: the TeamPlan board
     has it so, and it reads as one block under the line, while the page's title, search and you keep the page's width.
-  - Where the admin's cards would squeeze the people (the page under 1000px, as at 1024 with the side panel open), they
-    fold under the people, side by side, before the notes. On a phone they stand one under another there.
+  - Where the admin's Licenses would squeeze the people (the page under 1000px, as at 1024 with the side panel open), it
+    folds under the people, before the notes.
   - On a phone the line wraps, as the board's does, and never slides: its first row stands on the horizon and the rest
     on the water under it, the sun set off to the left.
-- **Joining** (`/team/join#…`, `features/team/Join.tsx`) is one card on the team's evening: whose team it is and what
-  joining gives you, Join (filled) and Not now; signed out, the ways in first, while the invite waits in the tab.
-- **An invite link** (`/invite#…`, `features/team/Invited.tsx`) is the same card on the same evening (`JoinEvening`,
-  `JoinCard`): signed out, whoever sent it in their arch, "Priya asked you to join them on Alcove", one plain line on what
-  Alcove is for, the ways in, and a quiet See what Alcove does at its foot. An account made there goes on to its arrival, as
-  from the welcome page. Signed in, You're on Alcove already with Go to Home (filled); your own link, This is your invite
-  link with Go to Team. Opening, a link that leads nowhere, no link, offline and a failure each have their own card.
-- Every number on the page is real: a group's calls are calls everyone in it was on. Someone on their own, with no
-  company and no team, has no Team page: its address goes Home.
+  - A question asked in place (`TeamAsk`: Remove, Cancel invitation, Leave team, Delete team, joining another team) is read
+    with what it means, comes into view as it opens, clear of a phone's tab bar, where its answers stand one over the other,
+    full width, the one that loses nothing first; answered or dismissed, the focus goes back to what opened it.
+- **The invite page** (`/invite#…`, `features/team/Invited.tsx`) is the same card on the team's evening (`JoinEvening`,
+  `JoinCard`), titled by what the link is: "Priya invited you to join Vandelay Industries" (an invitation's email), "Join
+  Vandelay Industries on Alcove" with the team's faces (a team's link), or "Jonas asked you to join them on Alcove" in their
+  arch (someone on no team yet), then who's on it. Signed out, one plain line on what Alcove is for, the ways in, and a
+  quiet See what Alcove does at its foot; an account made there joins at once and goes on to its arrival as from the
+  welcome page, but to Home rather than the plans, where a toast says "You're on Vandelay Industries." Signed in, Not now
+  (an invitation to you is put aside, with Undo, on the way Home) and Join (filled), which asks in place first while you're
+  on a team; your own link or your team's, This is your team's invite link with Copy link (filled) and Go to Team (quiet);
+  an invitation to the team you're on, "You're on Vandelay Industries already" with Go to Team. Opening, an invitation that
+  has ended, no link, offline and a failure each have their own card.
+- **Stopping invitation emails** (`/stop-email#…`, `features/team/invitations/StopEmails.tsx`) is one card on the evening too, public, with
+  no sign-in: "Stop invitation emails?" and its one filled button, Stop invitation emails, then "Alcove won't email you
+  invitations again." Its token leaves the address bar at once. Offline and a failure each say so on the card, in caution
+  with its mark (`JoinCard`'s `problem`, announced as it appears), with Try again.
+- **The phone's tab bar** has a small rose dot on Team while an invitation to you waits, read as "Team, 1 invitation".
+- Every number on the page is real: a group's calls are calls everyone in it was on. Someone with no company, no team and
+  no invitation has no Team page: its address goes Home.
 - The first day, loading, a failed load and offline each have their own look.
 
 ## Agents
@@ -626,8 +687,14 @@ The last of the light, with you in it, then seven groups. Change one thing and l
   licenses (someone waiting) already is. Pro renewed and Pro ended are `SettingNote`s with × at the top until dismissed, and
   so is a workspace whose payment moved to you because whoever paid left it: by the name you see it by (read from your
   workspaces, never kept with the plan), and the day its files start to count against your storage; ending is said once, in
-  warm, in the plan row. The second panel: Balance with Add money, then on Pro
-  Renew from balance and Refund. Add money opens a window over Settings (`features/settings/topup.tsx`, the kit's `Sheet`:
+  warm, in the plan row. A team's notices are `SettingNote`s at the top too (`PlanTeam.tsx`): licenses low ("2 licenses left
+  on Vandelay Industries…", held while no more are spare than Alcove counted, and never while a license is bought for each
+  person who joins), none left, a license that replaced Pro, and a member's ask to upgrade ("Kofi asked you to upgrade
+  Vandelay Industries."), which has no Upgrade of its own: for a team's admin, Licenses has the page's one, on a free team
+  beside what upgrading gives, and on Team says how many are left of how many and who's waiting, with Buy licenses. The
+  second panel: Balance with Add money, then on Pro Renew from balance and Refund; for a team's admin, Buy a license for each
+  person who joins (on Team, and on a free team while it's on, so it can be turned off) and the Refund of the licenses nobody
+  has taken. Add money opens a window over Settings (`features/settings/topup.tsx`, the kit's `Sheet`:
   560px, centred over the veiled page, and the width of a phone from its top), a small checkout of its own that shares
   checkout's paying flow: how much and the network, Get an address, then the payment followed with checkout's own parts and
   words (`features/plans/paying.tsx`: the status, the amount to send, the deposit address with its QR code and bold ends,
@@ -667,8 +734,14 @@ The last of the sunset, with the plans on the water: a page you compare on, so m
   last line. It follows the switch as Pro does: Yearly shows a license for a year's price a period, "$32 a person a month",
   "$384 a person for 12 months. You save $96."; Monthly a period's, "$40", "Each license is one person for 30 days. Or $32 a
   month for a year.". With no license for a year on offer (`offers.team.yearly` null), it's a period's on both sides. Its
-  button is secondary: Start a team, or Buy licenses for its admin, which open checkout on a year when Yearly is chosen; a
-  member gets a quiet line saying who buys them. While the prices wait, three waiting cards.
+  button is secondary. With no team it's Start a team, with a quiet line under it ("Free to start. Licenses only when you
+  upgrade.", `PlanCard`'s `under`), which opens the team's name in a popover anchored to it, as the team's Rename does, so
+  the cards don't stretch (`PlanTeamStart`: `TeamName`'s box, the company's name to start with, or "Art's team" at a
+  personal address, then Cancel and Start the team, filled, while Get Pro steps back to secondary) and starts it, free,
+  opening its page: nothing is bought. The welcome page's Start a team (`/plans?checkout=team`) and the plan choice's card
+  open the same popover.
+  For a free team's admin it's Upgrade, and on Team Buy licenses, which open checkout on a year when Yearly is chosen; a
+  member gets a quiet line saying who buys them ("Priya buys its licenses"). While the prices wait, three waiting cards.
 - **Under them:** On every plan, as chips, and the paying line with its wallet.
 - **States:** waiting cards, failed with Try again, offline. On a phone the cards stand one under another.
 - While you're here, the side panel's plan row is the place you're on: Free's row (Free plan · See plans), Pro's or Team's,
@@ -712,19 +785,30 @@ you're buying on the right, under its own small evening (`PlanWindow`) whose sun
 - **Motion** is one move a stage, transform and opacity only: waiting, the sun on its horizon and its glow breathing; seen,
   the sun lifts and the amount counts up; done, it clears the horizon and the sky warms. With reduced motion every stage
   shows at once and only the dots and glints fade.
-- **Team:** Start a team names it first (`TeamName`, the company's name to start with); Buy licenses shows the team's
-  people and who's waiting (`LicensesLeft`). Both choose with `LicensesPicker` (3, 6, 10 or 25, each saying what it's for,
-  and Another number). While a license for a year is offered, How long comes first: Monthly / Yearly · 20% off, on the
+- **Team:** for a team that exists, so nothing is named while buying. A free team's Upgrade (titled Upgrade to Team) shows
+  the team's people, "Vandelay Industries, on Free" and "3 people on it, none with a license yet." (`LicensesLeft`), and
+  starts on a license for everyone on it without one (at least 1, Another number when that isn't a card), with Buy a license
+  for each person who joins (`CheckoutTick`), which starts as the team has it and is set with the purchase as it goes
+  through (`buyLicenses`' `autoPurchase` from the balance, the payment's `Purchase.autoPurchase` with USDC; buying more sends
+  none, leaving it as it is); Buy licenses, on Team, shows the team's people and who's waiting (`LicensesLeft`). Both
+  choose with `LicensesPicker` (3, 6, 10 or 25, each saying what it's for, and Another number), whose hint is the one place
+  that says how long a license runs while choosing ("$40 each, one person for 30 days"). On no team (titled Start a team,
+  with no steps) a team is started here, free, as on Plans: "Licenses are for a team, and you’re not on one yet.", the
+  team's name (`PlanTeamStart`, `bare`, its heading Your team), and Close and Start the team in the foot, which makes it,
+  closes the window and opens its page; the summary says "Free to start. Licenses only when you upgrade."
+  While a license for a year is offered, How long comes first: Monthly / Yearly · 20% off, on the
   kit's `Segmented` (`LicensesPicker`'s `term`), on Yearly when Plans' switch was and on Monthly from anywhere else. A
   year's license is one person for 12 periods at the yearly price ("$384 each, one person for a year"), and the purchase
   carries its `periods`. The summary is Team's window with people on its horizon, its line "6 licenses for a year at $32 a
-  month" ($2,304, count × periods × price) or "6 licenses at $40", and each license runs 30 days, or a year, from when
-  it's taken. Done ("6 licenses for a year, for you and the people you invite…", "3 more licenses for a year"), the receipt
-  and the payments say "for a year". With none on offer, there's no How long and licenses are a period's. The team is
-  made only as you pay, and the app tells Alcove you're here as soon as the licenses are bought, so the admin's own
-  license is taken at once. Done has inviting under the receipt (`CheckoutDone`'s `invite`, a bare
-  `TeamInvite`) and no renewal reminder. Someone on another's team (a member, or an admin who stopped being one) has nothing
-  to buy here: the window has no steps (`CheckoutPanel`'s `step` is null) and says it once, in one note, who buys the
+  month" ($2,304, count × periods × price) or "6 licenses at $40", and once it's paying or done, that each license runs 30
+  days, or a year, from when it's taken. Done says "Vandelay Industries is on Team" and what happened for an upgrade:
+  "Everyone has a license." when there's one for each person on it, theirs or waiting for them, or one is bought for each
+  person who joins, else "2 of 3 have one; buy more on Team."; or "3 more licenses for a year"; the receipt and the payments
+  say "for a year". With none on offer, there's no How long and licenses are a period's. The app tells Alcove you're here as
+  soon as the licenses are bought, so the admin's own license is taken at once: from the balance, as it buys; by a payment,
+  once, whichever of the payment's reads sees it bought (even with the window closed), the window saying it's adding them
+  until that's done. Done has no renewal reminder. Someone on another's team (a member,
+  or an admin who stopped being one) has nothing to buy here: the window has no steps (`CheckoutPanel`'s `step` is null) and says it once, in one note, who buys the
   licenses, after what became of a payment that couldn't buy them (its money is in the balance), with Close.
 - **On a phone** it fills the screen, with what you're buying in one line at the top. Its foot keeps only the buttons, but
   offline, why the button waits ("You're offline…") is said on a line over them, as it is beside them on a wider screen.
@@ -1031,7 +1115,8 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
   records offline and sets, then the session notes rise. **What Alcove can see** (`SealedScene`) sits on its water.
 - **Plans** looks out of a cove of its own (seed 8) on the plans moment, the last of the sun on its horizon: Free, Pro and Team
   as small cards on the water, Pro raised with a warm edge, standing one under another below a tablet's width; then Start
-  free, Get Pro, which signs in and opens Plans with checkout on Pro, and Start a team, which signs in and opens it on Team.
+  free, Get Pro, which signs in and opens Plans with checkout on Pro, and Start a team, which signs in and opens Plans with
+  Start a team's popover open over Team's card, free.
   All three are secondary, though the Doors board fills Get Pro: the page's one filled button is its way in, and the last
   ask's Continue with Google comes into view with them as the page scrolls on. Its prices are kept beside it by hand, in the
   Plans page's words, since the server's offers need a session.

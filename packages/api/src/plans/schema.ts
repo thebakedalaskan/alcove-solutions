@@ -33,22 +33,29 @@ export type ProMonth = z.infer<typeof ProMonthSchema>;
  * - `licenses-low` (a team's admin): `count` licenses are left unconsumed, fewer than the team's low mark.
  * - `licenses-none` (a team's admin): a member needed a license and none was left (nor bought, with auto-purchase).
  * - `license-needed` (a member): there was no license to take, so they're on their own plan until the admin buys more.
- * - `license-replaced-pro` (a member): a team license replaced Pro; `count` unstarted months went back to the balance.
+ * - `license-replaced-pro` (a member): a team license replaced Pro; `microUsd` of it, the rest of Pro by the day, went
+ *   back to the balance (one from before then says `count` months, with `microUsd` null).
+ * - `upgrade-asked` (a free team's admin): `memberId` on the team asked them to upgrade it. The member's name is never kept
+ *   with the plan: the app says it from the team's members.
  * - `workspace-payer` (an admin of `workspaceId`): whoever paid for that workspace isn't in it any more, so its payment
  *   moved to this account, its longest-standing admin with an account. Its files count against this account's storage
  *   from `until`, the end of its grace (null: at once). The workspace's name is never kept with the plan: the app says it
  *   from the workspaces its reader is in.
  */
-export const PlanNoticeKindSchema = z.enum(['pro-ending', 'pro-renewed', 'pro-ended', 'licenses-low', 'licenses-none', 'license-needed', 'license-replaced-pro', 'workspace-payer']);
+export const PlanNoticeKindSchema = z.enum(['pro-ending', 'pro-renewed', 'pro-ended', 'licenses-low', 'licenses-none', 'license-needed', 'license-replaced-pro', 'upgrade-asked', 'workspace-payer']);
 export type PlanNoticeKind = z.infer<typeof PlanNoticeKindSchema>;
 export const PlanNoticeSchema = z.object({
   id: z.string(), kind: PlanNoticeKindSchema, at: ISODateSchema,
   /** Pro's end, for Pro's notices; when a workspace's files start to count, for `workspace-payer`; null for a team's. */
   until: ISODateSchema.nullable(),
-  /** How many, for `licenses-low` and `license-replaced-pro`; null otherwise. */
+  /** How many, for `licenses-low` (and `license-replaced-pro` from before amounts were kept); null otherwise. */
   count: z.number().int().nonnegative().nullable(),
+  /** How much went back to the balance, for `license-replaced-pro`; null otherwise. */
+  microUsd: MicroUsdSchema.nullable(),
   /** The workspace, for `workspace-payer`; null otherwise. */
-  workspaceId: IDSchema.nullable()
+  workspaceId: IDSchema.nullable(),
+  /** Who on the team asked, for `upgrade-asked` (a `TeamMember.id`); null otherwise. */
+  memberId: IDSchema.nullable()
 });
 export type PlanNotice = z.infer<typeof PlanNoticeSchema>;
 
@@ -107,7 +114,7 @@ export const PlanSchema = z.object({
   /** What the owner is told about their plan and hasn't dismissed, newest first. */
   notices: z.array(PlanNoticeSchema),
   /** The team you're on, if any. Whether you're licensed decides `kind`. */
-  team: z.object({ id: IDSchema, name: z.string(), role: z.enum(['admin', 'member']), licensed: z.boolean() }).nullable()
+  team: z.object({ id: IDSchema, name: z.string(), role: z.enum(['admin', 'member']), tier: z.enum(['free', 'team']), licensed: z.boolean() }).nullable()
 });
 export type Plan = z.infer<typeof PlanSchema>;
 
@@ -169,8 +176,10 @@ export const PurchaseSchema = z.discriminatedUnion('kind', [
   /**
    * Licenses for the team its buyer is the admin of, at the price a period they were shown for one, each for `periods`
    * periods (docs: Plans and usage › Team). Without `periods` (a payment opened before licenses for a year), one period.
+   * `autoPurchase`: what checkout's "Buy one for each person who joins later" said, set when the licenses are bought (a
+   * payment opened before it read as unchanged, `null`).
    */
-  z.object({ kind: z.literal('licenses'), count: z.number().int().min(1).max(100_000), microUsdPerLicense: MicroUsdSchema.min(0), periods: z.number().int().min(1).max(MAX_LICENSE_PERIODS).default(1) })
+  z.object({ kind: z.literal('licenses'), count: z.number().int().min(1).max(100_000), microUsdPerLicense: MicroUsdSchema.min(0), periods: z.number().int().min(1).max(MAX_LICENSE_PERIODS).default(1), autoPurchase: z.boolean().nullable().default(null) })
 ]);
 export type Purchase = z.infer<typeof PurchaseSchema>;
 export const RenewBodySchema = z.object({ renew: z.boolean() });

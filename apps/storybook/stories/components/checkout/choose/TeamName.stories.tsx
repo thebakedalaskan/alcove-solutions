@@ -5,13 +5,14 @@ import { did } from '../../../../src/component';
 import { Step } from '../parts';
 
 /**
- * Starting a team: its name, typed into a box with its label inside, under what starting it makes you. It starts as the
- * company's name where the directory knows it, and can't be changed once the team is made.
+ * A team's name, typed into a box with its label inside, under a heading and a word on it: starting one (PlanTeamStart, in the
+ * popover Plans' Team card opens and in checkout opened on Team with no team, the company's name to start with where the
+ * directory knows it) and renaming one (TeamRename).
  */
 const meta = {
   title: 'Components/Checkout/Choose/TeamName', component: TeamName, parameters: { layout: 'centered' },
-  args: { value: 'Vandelay Industries', onChange: did('onChange'), placeholder: 'Your company or team' },
-  argTypes: { value: { control: 'text' }, disabled: { control: 'boolean' }, hint: { control: 'text' }, placeholder: { control: 'text' } },
+  args: { value: 'Vandelay Industries', onChange: did('onChange'), label: 'Start a team', hint: 'It’s free', placeholder: 'Your company or team' },
+  argTypes: { value: { control: 'text' }, label: { control: 'text' }, disabled: { control: 'boolean' }, hint: { control: 'text' }, placeholder: { control: 'text' } },
   decorators: [(Story) => <Step><Story /></Step>],
   render: function Render(args) {
     const [, update] = useArgs<typeof args>();
@@ -24,8 +25,12 @@ type Story = StoryObj<typeof meta>;
 /** The company's name, from its directory. */
 export const Named: Story = {};
 export const NamedNight: Story = { globals: { theme: 'dark' } };
-/** Nobody's company known (a personal address): empty, waiting for one. */
+/** At a personal address: the name starts as yours. */
+export const AtAPersonalAddress: Story = { name: 'At a personal address', args: { value: 'Art’s team' } };
+/** Emptied: nothing to start yet. */
 export const Empty: Story = { args: { value: '' } };
-/** The team is made already (a payment for it was refused): its name is what it is. */
-export const Made: Story = { args: { disabled: true } };
+/** Renaming the team. */
+export const Renaming: Story = { args: { label: 'Rename team', hint: 'Everyone on it sees it' } };
+/** While its name is what it is. */
+export const Fixed: Story = { args: { disabled: true } };
 export const Phone: Story = { globals: { viewport: { value: 'phone' } } };

@@ -1,14 +1,18 @@
 /**
  * Team (docs: Plans and usage › Team), end to end: the real API over HTTP via @alcove/api-http, real Postgres and the object
- * store. Making a team and buying its licenses from the admin's balance; one-time invites; a license taken on a visit and
- * never by a read, replacing Pro; the alerts the admin is given; auto-purchase; refunds; the pool and its grace; members
- * leaving and taken off; each person's own allowance; nobody reaching another team; and accounts going.
+ * store. Making a team and buying its licenses from the admin's balance; a license taken on a visit and never by a read,
+ * replacing Pro and giving back the rest of it by the day; the alerts the admin is given, and none on a free team;
+ * auto-purchase; refunds; the pool and its grace; members leaving and taken off; each person's own allowance; renaming,
+ * and asking the admin to upgrade; nobody reaching another team; and accounts going. People get on a team here as anyone
+ * does, by invitation (invitations.integration.test.ts has the rest of that).
  */
 import { AlcoveApiError, type AlcoveApi, type AudioPiece, type NoteProgress, type Purchase, type TranscriptClip } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { openJson, sealJson, serviceKey, toJson, unb64u } from '../../../keys/crypto';
+import { openOwner } from '../../../keys/owners';
+import { profile, updateProfile } from '../../profile/profile';
 import type { LimitName } from '../../../platform/limits';
 import { maintain } from '../../../maintenance';
 import { speechWav } from '../../../testing/fakes/near';
@@ -79,8 +83,8 @@ const give = (who: Account, microUsd: number) => creditBySupport(h.deps, who.ema
  * A payment for `count` licenses, each for `periods` periods at `microUsdPerLicense` a period, which the fake 1Click settles
  * in full: what became of its purchase once it was added.
  */
-async function payFor(who: Account, count: number, microUsdPerLicense = LICENSE, periods = 1) {
-  const buys: Purchase = { kind: 'licenses', count, microUsdPerLicense, periods };
+async function payFor(who: Account, count: number, microUsdPerLicense = LICENSE, periods = 1, autoPurchase: boolean | null = null) {
+  const buys: Purchase = { kind: 'licenses', count, microUsdPerLicense, periods, autoPurchase };
   const total = count * periods * microUsdPerLicense;
   const t = await who.api.plans.startTopUp(BASE_USDC, total, buys);
   h.oneclick.set(t.address ?? '', 'SUCCESS', { depositedAmount: String(total), amountOut: String(total), intentHashes: [`intent-${t.id}`] });
@@ -96,12 +100,14 @@ async function team(who: Account, licenses = 0, name = 'Vandelay Industries') {
   return who.api.teams.buyLicenses(licenses, LICENSE);
 }
 const secretOf = (link: string) => link.slice(link.indexOf('#') + 1);
-/** `who` joins the admin's team through a link the admin made. */
+/** `who` joins the admin's team as anyone does: the admin invites their address, and they accept it in the app. */
 async function joined(admin: Account, who: Account) {
-  return who.api.teams.join(secretOf((await admin.api.teams.invite()).link));
+  await admin.api.teams.invite([who.email]);
+  const invitation = (await who.api.teams.invitations()).find((i) => i.from.email === admin.email);
+  if (!invitation) throw new Error('no invitation from the admin');
+  return who.api.teams.acceptInvitation(invitation.id);
 }
 const memberId = async (admin: Account, who: Account) => (await admin.api.teams.mine())?.members.find((m) => m.person.email === who.email)?.id ?? 'not on the team';
-const GONE = 'not-found: That link to join a team has been used or has expired. Ask the team’s admin for a new one.';
 const ADMIN_ONLY = 'forbidden: Only the team’s admin can do that.';
 const NO_TEAM = 'not-found: You’re not on a team.';
 
@@ -111,24 +117,27 @@ describe('making a team and its licenses', () => {
     await deposit(ann, 3 * LICENSE);
     const made = await ann.api.teams.create('Vandelay Industries');
     expect(made).toMatchObject({
-      name: 'Vandelay Industries', role: 'admin', licensed: false, storage: { usedBytes: 0, limitBytes: 0 },
+      name: 'Vandelay Industries', role: 'admin', tier: 'free', licensed: false, invitations: [], storage: { usedBytes: 0, limitBytes: 0 },
       members: [{ role: 'admin', you: true, person: { email: ann.email }, license: { state: 'none', until: null, wanted: null } }],
       licenses: { unconsumed: 0, refundableMicroUsd: 0, autoPurchase: false }
     });
     expect((await ann.api.teams.buyLicenses(3, LICENSE)).licenses).toEqual({ unconsumed: 3, refundableMicroUsd: 3 * LICENSE, autoPurchase: false });
     expect(await labels(ann)).toEqual(['Team, 3 licenses', 'Added, 120 USDC']);
-    // Buying isn't taking one, and neither is reading the session or the plan.
+    // Buying isn't taking one, and neither is reading the session or the plan; but the team is on Team as soon as its
+    // licenses are bought, waiting to be taken.
     await ann.api.auth.getSession();
-    expect(await ann.api.plans.plan()).toMatchObject({ kind: 'free', balance: { microUsd: 0 }, team: { id: made.id, name: 'Vandelay Industries', role: 'admin', licensed: false } });
+    expect(await ann.api.plans.plan()).toMatchObject({ kind: 'free', balance: { microUsd: 0 }, team: { id: made.id, name: 'Vandelay Industries', role: 'admin', tier: 'team', licensed: false } });
+    expect(await ann.api.teams.mine()).toMatchObject({ tier: 'team', licensed: false });
     await ann.api.auth.visit();
     const plan = await ann.api.plans.plan();
+    // The first license taken puts the team on Team.
     expect(plan).toMatchObject({
-      kind: 'team', team: { licensed: true }, notes: { minutesLeft: 3000, minutesPerPeriod: 3000, stopped: false },
+      kind: 'team', team: { tier: 'team', licensed: true }, notes: { minutesLeft: 3000, minutesPerPeriod: 3000, stopped: false },
       storage: { usedBytes: 0, limitBytes: 100 * GiB, fileBytes: 512 * MiB }, grace: null, over: { storage: false }
     });
     expect(Date.parse(plan.period.to) - Date.parse(plan.period.from)).toBe(30 * 86_400_000);
     expect(await ann.api.teams.mine()).toMatchObject({
-      licensed: true, storage: { limitBytes: 100 * GiB }, licenses: { unconsumed: 2, refundableMicroUsd: 2 * LICENSE },
+      tier: 'team', licensed: true, storage: { limitBytes: 100 * GiB }, licenses: { unconsumed: 2, refundableMicroUsd: 2 * LICENSE },
       members: [{ license: { state: 'live', until: plan.period.to, wanted: null } }]
     });
     // A visit with a live license takes nothing more.
@@ -152,38 +161,6 @@ describe('making a team and its licenses', () => {
     // One team each: its admin can't make another.
     expect(await refusal(ann.api.teams.create('Another'))).toBe('conflict: You’re on a team already. Leave it before making one.');
   });
-
-  it('G2: an invite works once; a second use, an expired one, a made-up one, or someone already on a team is refused', async () => {
-    await setLimit('team.invite_seconds', 60);
-    const ann = await account();
-    const bob = await account();
-    const cy = await account();
-    await team(ann, 2);
-    const { link, expiresAt } = await ann.api.teams.invite();
-    expect(link).toMatch(new RegExp(`^${h.deps.cfg.WEB_ORIGIN}/team/join#[A-Za-z0-9_-]{43}$`));
-    expect(Date.parse(expiresAt) - Date.now()).toBeGreaterThan(50_000);
-    // Only a hash of the secret is kept.
-    expect((await h.pool.query('SELECT count(*)::int AS n FROM team_invites WHERE secret_sha256 = $1', [Buffer.from(secretOf(link))])).rows[0]).toEqual({ n: 0 });
-    expect(await bob.api.teams.peek(secretOf(link))).toEqual({ name: 'Vandelay Industries', admin: expect.objectContaining({ email: ann.email }), expiresAt });
-    expect(await bob.api.teams.join(secretOf(link))).toMatchObject({ role: 'member', licensed: true, licenses: null });
-    expect(await refusal(cy.api.teams.join(secretOf(link)))).toBe(GONE);
-    expect(await refusal(cy.api.teams.peek(secretOf(link)))).toBe(GONE);
-    expect(await refusal(cy.api.teams.join(randomBytes(32).toString('base64url')))).toBe(GONE);
-    // Someone on a team already, the admin included, is refused, and the link still works for whoever it was meant for.
-    const next = await ann.api.teams.invite();
-    expect(await refusal(bob.api.teams.join(secretOf(next.link)))).toBe('conflict: You’re on a team already. Leave it before joining another.');
-    expect(await refusal(ann.api.teams.join(secretOf(next.link)))).toBe('conflict: You’re on a team already. Leave it before joining another.');
-    expect(await bob.api.teams.peek(secretOf(next.link))).toMatchObject({ name: 'Vandelay Industries' });
-    // Only the admin makes one.
-    expect(await refusal(bob.api.teams.invite())).toBe(ADMIN_ONLY);
-    // Expired: refused, and upkeep deletes it.
-    vi.useFakeTimers({ toFake: ['Date'], now: Date.parse(next.expiresAt) + 1000 });
-    expect(await refusal(cy.api.teams.join(secretOf(next.link)))).toBe(GONE);
-    await maintain(h.deps);
-    const teamId = (await ann.api.teams.mine())?.id;
-    expect((await h.pool.query('SELECT count(*)::int AS n FROM team_invites WHERE team_id = $1', [teamId])).rows[0]).toEqual({ n: 0 });
-    expect(await cy.api.teams.mine()).toBeNull();
-  });
 });
 
 describe('licenses', () => {
@@ -196,11 +173,12 @@ describe('licenses', () => {
     expect(await bob.api.plans.plan()).toMatchObject({ kind: 'team', team: { role: 'member', licensed: true }, notices: [] });
     expect(await joined(ann, cy)).toMatchObject({ licensed: false, members: [{}, {}, { you: true, license: { state: 'none', until: null, wanted: expect.any(String) } }] });
     expect(await cy.api.plans.plan()).toMatchObject({ kind: 'free', team: { licensed: false }, notices: [{ kind: 'license-needed', until: null, count: null }] });
-    expect((await ann.api.plans.plan()).notices).toMatchObject([{ kind: 'licenses-none', until: null, count: null }, { kind: 'licenses-low', count: 0 }]);
+    // The admin bought one, which was Bob's to take: never low, then none.
+    expect((await ann.api.plans.plan()).notices).toMatchObject([{ kind: 'licenses-none', until: null, count: null }]);
     // Coming back tells nobody twice.
     await cy.api.auth.visit();
     expect(await kinds(cy)).toEqual(['license-needed']);
-    expect(await kinds(ann)).toEqual(['licenses-none', 'licenses-low']);
+    expect(await kinds(ann)).toEqual(['licenses-none']);
     // Once the admin buys more, the next visit takes one.
     await give(ann, LICENSE);
     await ann.api.teams.buyLicenses(1, LICENSE);
@@ -209,20 +187,46 @@ describe('licenses', () => {
     expect((await cy.api.teams.mine())?.members.find((m) => m.you)?.license).toMatchObject({ state: 'live', wanted: null });
   });
 
-  it('G4: tells the admin once when fewer than 5 licenses are left, and again only once there have been 5 or more since', async () => {
+  it('G4: tells the admin once when fewer than 5 licenses are left for whoever joins next, past those spoken for, and again only once there have been 5 or more since', async () => {
     const ann = await account();
-    await team(ann, 6);
+    // Seven for a team of one, who hasn't taken hers: six for whoever joins.
+    await team(ann, 7);
     await joined(ann, await account());
     expect(await kinds(ann)).toEqual([]);
+    // The second to join leaves four past the admin's: fewer than five.
     await joined(ann, await account());
     expect((await ann.api.plans.plan()).notices).toMatchObject([{ kind: 'licenses-low', count: 4, until: null }]);
     await joined(ann, await account());
     expect(await kinds(ann)).toEqual(['licenses-low']);
-    // Back to 5, then below again.
+    // Back to 5 past hers, then below again.
     await give(ann, 2 * LICENSE);
-    expect((await ann.api.teams.buyLicenses(2, LICENSE)).licenses?.unconsumed).toBe(5);
+    expect((await ann.api.teams.buyLicenses(2, LICENSE)).licenses?.unconsumed).toBe(6);
     await joined(ann, await account());
     expect((await ann.api.plans.plan()).notices).toMatchObject([{ kind: 'licenses-low', count: 4 }, { kind: 'licenses-low', count: 4 }]);
+  });
+
+  it('G4′: an upgrade sized to the team tells its admin nothing is low as everyone takes theirs, by balance or by payment, nor ever while auto-purchase is on', async () => {
+    const ann = await account();
+    const [bob, cy, dee, eve] = await Promise.all([account(), account(), account(), account()]);
+    await team(ann);
+    await joined(ann, bob);
+    await joined(ann, cy);
+    // A license for each of the three, as checkout offers them: everyone takes theirs, and nothing is said.
+    await give(ann, 3 * LICENSE);
+    expect((await ann.api.teams.buyLicenses(3, LICENSE)).licenses?.unconsumed).toBe(3);
+    for (const who of [bob, cy, ann]) await who.api.auth.visit();
+    expect((await ann.api.teams.mine())?.members.map((m) => m.license.state)).toEqual(['live', 'live', 'live']);
+    expect(await kinds(ann)).toEqual([]);
+    // By payment, for the one who joins next, the same.
+    await joined(ann, dee);
+    expect((await payFor(ann, 1))?.outcome).toBe('bought');
+    await dee.api.auth.visit();
+    expect(await kinds(ann)).toEqual(['licenses-none']);
+    // With auto-purchase on, it buys for whoever joins, and nothing is ever low.
+    await ann.api.teams.setAutoPurchase(true);
+    await give(ann, LICENSE);
+    expect(await joined(ann, eve)).toMatchObject({ licensed: true });
+    expect(await kinds(ann)).toEqual(['licenses-none']);
   });
 
   it('G5: with auto-purchase on, buys a license from the admin’s balance when none is left, and says none are left when it can’t pay', async () => {
@@ -237,7 +241,8 @@ describe('licenses', () => {
     const after = await ann.api.plans.plan();
     expect(after.balance).toMatchObject({ microUsd: 0, history: [{ label: 'Team license, bought for a member', microUsd: -LICENSE }, {}] });
     expect(await joined(ann, cy)).toMatchObject({ licensed: false });
-    expect(await kinds(ann)).toEqual(['licenses-none', 'licenses-low']);
+    // Auto-purchase is on, so nothing is ever low: none could be bought.
+    expect(await kinds(ann)).toEqual(['licenses-none']);
     expect(await kinds(cy)).toEqual(['license-needed']);
     expect(await refusal(bob.api.teams.setAutoPurchase(false))).toBe(ADMIN_ONLY);
   });
@@ -272,7 +277,7 @@ describe('licenses', () => {
     await setLimit('plan.team.price_micro_usd', DEARER);
     expect(await joined(ann, eve)).toMatchObject({ licensed: false });
     expect(await ann.api.plans.plan()).toMatchObject({ balance: { microUsd: 3 * DEARER - 2 * DEARER - LOWER } });
-    expect(await kinds(ann)).toEqual(['licenses-none', 'licenses-low', 'licenses-none']);
+    expect(await kinds(ann)).toEqual(['licenses-none', 'licenses-none']);
   });
 
   it('G6: an ended license isn’t taken again by reading the session or the plan, only by a visit', async () => {
@@ -292,19 +297,29 @@ describe('licenses', () => {
     expect((await ann.api.teams.mine())?.licenses?.unconsumed).toBe(0);
   });
 
-  it('G7: a license replaces Pro at once: the running month is lost and the ones that haven’t started go back to the balance', async () => {
+  it('G7: a license replaces Pro at once, and gives back the months to come and the rest of the running one, by the day, exactly', async () => {
+    // Hour-long months, so the running one's part is easy to see: 3 months at $20 from `start`.
+    await setLimit('plan.period_seconds', 3600);
+    const start = Date.now();
+    vi.useFakeTimers({ toFake: ['Date'], now: start });
     const ann = await account();
     const bob = await account();
     await give(bob, 3 * PRICE);
     expect((await bob.api.plans.buyPro(3, PRICE)).pro.months).toHaveLength(3);
     await team(ann, 1);
+    // 20 minutes and a millisecond into the first month Bob joins, and takes the license: two months to come at $20 each,
+    // and $20 × the 2,399,999 ms left of the 3,600,000, floored to the micro-USD.
+    const at = start + 20 * 60_000 + 1;
+    vi.setSystemTime(at);
     await joined(ann, bob);
+    const rest = 2 * PRICE + Math.floor((PRICE * (3_600_000 - (at - start))) / 3_600_000);
+    expect(rest).toBe(53_333_327);
     const plan = await bob.api.plans.plan();
     expect(plan).toMatchObject({
-      kind: 'team', pro: { months: [], until: null, refundableMicroUsd: 0 }, balance: { microUsd: 2 * PRICE },
-      notices: [{ kind: 'license-replaced-pro', count: 2, until: null }]
+      kind: 'team', pro: { months: [], until: null, refundableMicroUsd: 0 }, balance: { microUsd: rest },
+      notices: [{ kind: 'license-replaced-pro', microUsd: rest, count: null, until: null, memberId: null }]
     });
-    expect(plan.balance.history[0]).toMatchObject({ label: 'Refund: 2 months of Pro, for a team license', microUsd: 2 * PRICE });
+    expect(plan.balance.history[0]).toEqual({ id: expect.any(String), at: new Date(at).toISOString(), label: 'Refund: the rest of Pro, for a team license', microUsd: rest });
     // While the license lasts Pro can't be bought, and upkeep has nothing to say about the Pro that's gone.
     expect(await refusal(bob.api.plans.buyPro(1, PRICE))).toBe('conflict: You’re on your team’s plan while your license lasts, so Pro can’t be bought now.');
     await h.pool.query('UPDATE plan_accounts SET due_at = now() WHERE owner_id = $1', [bob.session.ownerId]);
@@ -312,21 +327,35 @@ describe('licenses', () => {
     expect(await kinds(bob)).toEqual(['license-replaced-pro']);
   });
 
-  it('G7′: a license replacing a year of Pro bought at its lower price gives back what refunding it would: $172, not $176', async () => {
-    const ann = await account();
-    const bob = await account();
+  it('G7′: a license replacing a year of Pro bought at its lower price gives back the rest by the day, less what keeping it shorter owes, never below nothing', async () => {
+    await setLimit('plan.period_seconds', 3600);
+    const start = Date.now();
+    vi.useFakeTimers({ toFake: ['Date'], now: start });
+    const [ann, bob, cy, dee] = await Promise.all([account(), account(), account(), account()]);
+    await team(ann, 3);
+    // Bob's year at $16 a month, and a license half an hour into its first month: the 11 months to come at $16, and $8 of
+    // the one running, less the $4 more a month's price is on the one month had, since that's all that's left of the year.
     await give(bob, 12 * YEARLY);
-    // The 11 months to come at $16, less the $4 more a month's price is on the one kept, since that's all that's left of the year.
-    const back = 11 * YEARLY - (PRICE - YEARLY);
-    expect((await bob.api.plans.buyPro(12, YEARLY)).pro.refundableMicroUsd).toBe(back);
-    await team(ann, 1);
+    await bob.api.plans.buyPro(12, YEARLY);
+    vi.setSystemTime(start + 30 * 60_000);
     await joined(ann, bob);
-    const plan = await bob.api.plans.plan();
-    expect(plan).toMatchObject({
-      kind: 'team', pro: { months: [], until: null, refundableMicroUsd: 0 }, balance: { microUsd: back },
-      notices: [{ kind: 'license-replaced-pro', count: 11, until: null }]
-    });
-    expect(plan.balance.history[0]).toMatchObject({ label: 'Refund: 11 months of Pro, for a team license', microUsd: back });
+    const back = 11 * YEARLY + YEARLY / 2 - (PRICE - YEARLY);
+    expect(back).toBe(180_000_000);
+    expect(await bob.api.plans.plan()).toMatchObject({ kind: 'team', balance: { microUsd: back }, notices: [{ kind: 'license-replaced-pro', microUsd: back }] });
+    expect((await bob.api.plans.plan()).balance.history[0]).toMatchObject({ label: 'Refund: the rest of Pro, for a team license', microUsd: back });
+    // Cy's year, with a license half way through its eleventh month: one month to come and half of this one is $24, and the
+    // eleven months begun owe $44, so nothing comes back, and nothing is said in the history.
+    vi.setSystemTime(start);
+    await give(cy, 12 * YEARLY);
+    await cy.api.plans.buyPro(12, YEARLY);
+    vi.setSystemTime(start + 10.5 * 3_600_000);
+    await joined(ann, cy);
+    const plan = await cy.api.plans.plan();
+    expect(plan).toMatchObject({ kind: 'team', balance: { microUsd: 0 }, notices: [{ kind: 'license-replaced-pro', microUsd: 0 }] });
+    expect(plan.balance.history.map((e) => e.label)).toEqual(['Pro, 12 months', 'Added by support']);
+    // Dee has no Pro: her license replaces nothing, and she's told nothing about it.
+    await joined(ann, dee);
+    expect(await kinds(dee)).toEqual([]);
   });
 
   it('G8: an admin without a license still manages the team', async () => {
@@ -338,7 +367,7 @@ describe('licenses', () => {
     await ann.api.auth.visit();
     expect(await ann.api.plans.plan()).toMatchObject({ kind: 'free', team: { role: 'admin', licensed: false } });
     // The admin is told none are left, never to ask themselves.
-    expect(await kinds(ann)).toEqual(['licenses-none', 'licenses-low']);
+    expect(await kinds(ann)).toEqual(['licenses-none']);
     const mine = await ann.api.teams.mine();
     expect(mine).toMatchObject({ role: 'admin', licensed: false, licenses: { unconsumed: 0 } });
     expect(mine?.members.find((m) => m.you)?.license).toMatchObject({ state: 'none', wanted: expect.any(String) });
@@ -374,38 +403,40 @@ describe('licenses', () => {
     expect(await ann.api.teams.create('Again')).toMatchObject({ name: 'Again', licenses: { unconsumed: 0 } });
   });
 
-  it('G16: licenses bought with a payment are taken on a visit, refunded while nobody has, and tell the admin again when few or none are left', async () => {
+  it('G16: licenses bought with a payment are taken on a visit, refunded while nobody has, and tell the admin when none are left', async () => {
     await setLimit('team.low_licenses', 2);
     const ann = await account();
     const [bob, cy, dee] = await Promise.all([account(), account(), account()]);
     await team(ann);
-    // Bob joins with none to take: he stays on his own plan, and the admin is told none are left.
-    await joined(ann, bob);
-    expect(await kinds(ann)).toEqual(['licenses-none']);
+    // Bob joins a free team, which has none to take: he stays on his own plan, and nobody is told about licenses.
+    expect(await joined(ann, bob)).toMatchObject({ tier: 'free', licensed: false, members: [{}, { you: true, license: { state: 'none', wanted: null } }] });
+    expect(await kinds(ann)).toEqual([]);
+    expect(await kinds(bob)).toEqual([]);
     // The admin pays for three. Once the payment is added they're bought, and nobody has one yet.
-    expect(await payFor(ann, 3)).toEqual({ buys: { kind: 'licenses', count: 3, microUsdPerLicense: LICENSE, periods: 1 }, outcome: 'bought', why: null });
+    expect(await payFor(ann, 3)).toEqual({ buys: { kind: 'licenses', count: 3, microUsdPerLicense: LICENSE, periods: 1, autoPurchase: null }, outcome: 'bought', why: null });
     expect((await ann.api.teams.mine())?.licenses).toEqual({ unconsumed: 3, refundableMicroUsd: 3 * LICENSE, autoPurchase: false });
     expect(await labels(ann)).toEqual(['Team, 3 licenses', 'Added, 120 USDC']);
     expect(await bob.api.plans.plan()).toMatchObject({ kind: 'free', team: { licensed: false } });
-    // Bob's next visit takes one, the oldest; Cy joins and takes another, which leaves fewer than 2.
+    // Bob's next visit takes one, the oldest; Cy joins and takes another. Three for the two of them and Cy, as the admin
+    // bought them: nothing's low, as none was ever spare.
     await bob.api.auth.visit();
     expect(await bob.api.plans.plan()).toMatchObject({ kind: 'team', team: { licensed: true }, notes: { minutesLeft: 3000 } });
     expect((await ann.api.teams.mine())?.licenses?.unconsumed).toBe(2);
-    expect(await kinds(ann)).toEqual(['licenses-none']);
-    expect(await joined(ann, cy)).toMatchObject({ licensed: true });
-    expect((await ann.api.plans.plan()).notices).toMatchObject([{ kind: 'licenses-low', count: 1 }, { kind: 'licenses-none' }]);
+    expect(await kinds(ann)).toEqual([]);
+    expect(await joined(ann, cy)).toMatchObject({ tier: 'team', licensed: true });
+    expect(await kinds(ann)).toEqual([]);
     // The one nobody has taken goes back to the balance at what it cost.
     expect((await ann.api.teams.refundLicenses()).licenses).toEqual({ unconsumed: 0, refundableMicroUsd: 0, autoPurchase: false });
     expect(await ann.api.plans.plan()).toMatchObject({ balance: { microUsd: LICENSE, history: [{ label: 'Team licenses refunded, 1', microUsd: LICENSE }, {}, {}] } });
-    // Buying let the admin be told again: none left for Dee.
+    // The team is on Team now, so Dee, with none left for her, is told to ask, and the admin that none are left.
     await joined(ann, dee);
     expect(await kinds(dee)).toEqual(['license-needed']);
-    expect(await kinds(ann)).toEqual(['licenses-none', 'licenses-low', 'licenses-none']);
-    // Two more by payment: Dee's next visit takes one, and the admin is told again that few are left.
+    expect(await kinds(ann)).toEqual(['licenses-none']);
+    // Two more by payment: Dee's next visit takes one, and the other is the admin's.
     expect((await payFor(ann, 2))?.outcome).toBe('bought');
     await dee.api.auth.visit();
     expect(await dee.api.plans.plan()).toMatchObject({ kind: 'team', team: { licensed: true } });
-    expect((await ann.api.plans.plan()).notices).toMatchObject([{ kind: 'licenses-low', count: 1 }, { kind: 'licenses-none' }, { kind: 'licenses-low' }, { kind: 'licenses-none' }]);
+    expect(await kinds(ann)).toEqual(['licenses-none']);
   });
 });
 
@@ -462,7 +493,7 @@ describe('licenses for a year', () => {
     const ann = await account();
     const [bob, cy] = await Promise.all([account(), account()]);
     await team(ann, 1);
-    expect(await payFor(ann, 1, YEARLY_LICENSE, 12)).toEqual({ buys: { kind: 'licenses', count: 1, microUsdPerLicense: YEARLY_LICENSE, periods: 12 }, outcome: 'bought', why: null });
+    expect(await payFor(ann, 1, YEARLY_LICENSE, 12)).toEqual({ buys: { kind: 'licenses', count: 1, microUsdPerLicense: YEARLY_LICENSE, periods: 12, autoPurchase: null }, outcome: 'bought', why: null });
     expect(await labels(ann)).toEqual(['Team, 1 license for a year', 'Added, 384 USDC', 'Team, 1 license', 'Added by support']);
     expect((await ann.api.teams.mine())?.licenses).toEqual({ unconsumed: 2, refundableMicroUsd: LICENSE + 12 * YEARLY_LICENSE, autoPurchase: false });
     // The license for a period was bought first, so Bob takes it; Cy takes the year.
@@ -496,7 +527,7 @@ describe('licenses for a year', () => {
     await setLimit('plan.team.price_micro_usd', 60_000_000);
     await give(ann, 60_000_000);
     expect(await joined(ann, dee)).toMatchObject({ licensed: false });
-    expect(await kinds(ann)).toEqual(['licenses-none', 'licenses-low']);
+    expect(await kinds(ann)).toEqual(['licenses-none']);
     expect(await ann.api.plans.plan()).toMatchObject({ balance: { microUsd: 60_000_000 } });
   });
 
@@ -521,6 +552,140 @@ describe('licenses for a year', () => {
     expect((await bob.api.teams.mine())?.members.find((m) => m.you)?.license.until).toBe(plan.period.to);
     expect((await ann.api.teams.refundLicenses()).licenses).toEqual({ unconsumed: 0, refundableMicroUsd: 0, autoPurchase: false });
     expect((await ann.api.plans.plan()).balance).toMatchObject({ microUsd: 2 * LICENSE, history: [{ label: 'Team licenses refunded, 2', microUsd: 2 * LICENSE }, {}, {}] });
+  });
+});
+
+describe('licenses kept, capped and carried', () => {
+  const DAY = 86_400_000;
+  const wanted = (from: number) => h.logs.slice(from).flatMap((l) => { const r = z.object({ msg: z.string() }).passthrough().safeParse(JSON.parse(l)); return r.success && r.data.msg === 'team license wanted, none left' ? [r.data] : []; });
+  const theirs = async (who: Account) => (await who.api.teams.mine())?.members.find((m) => m.you)?.license;
+
+  it('G27: someone who leaves with a live license, or is taken off, has that one again if they’re back before it would have ended: none is taken or bought', async () => {
+    await setLimit('plan.period_seconds', 3600);
+    const ann = await account(unique('ann'));
+    const bob = await account();
+    // Auto-purchase on, with money for more: whatever is bought shows in the balance.
+    await team(ann, 1);
+    await ann.api.teams.setAutoPurchase(true);
+    await give(ann, 3 * LICENSE);
+    expect(await joined(ann, bob)).toMatchObject({ licensed: true });
+    const license = await theirs(bob);
+    const balance = (await ann.api.plans.plan()).balance.microUsd;
+    // He leaves, and is invited back: the same license, to the same end, and nothing taken or bought.
+    await bob.api.teams.leave();
+    expect(await bob.api.plans.plan()).toMatchObject({ kind: 'free', team: null });
+    expect(await joined(ann, bob)).toMatchObject({ licensed: true });
+    expect(await theirs(bob)).toEqual(license);
+    expect(await bob.api.plans.plan()).toMatchObject({ kind: 'team', team: { licensed: true } });
+    expect((await ann.api.plans.plan()).balance.microUsd).toBe(balance);
+    expect((await ann.api.teams.mine())?.licenses).toMatchObject({ unconsumed: 0 });
+    // Taken off, and back by the team's link: the same again. Meanwhile the team keeps whose it is, sealed with what it bought,
+    // by a keyed hash alone, never the account's ID.
+    await ann.api.teams.remove(await memberId(ann, bob));
+    const row = z.object({ team_id: z.string(), owner_id: z.string(), billing_ciphertext: z.instanceof(Uint8Array) })
+      .parse((await h.pool.query('SELECT team_id, owner_id, billing_ciphertext FROM teams WHERE admin_owner_id = $1', [ann.session.ownerId])).rows[0]);
+    const header = { v: 1 as const, kind: 'team-billing', ownerId: row.owner_id, teamId: row.team_id, keyVersion: '1' };
+    const sealed = openJson(serviceKey(unb64u(h.deps.cfg.KSERVICE, 32), 'accounting'), header, row.billing_ciphertext, z.looseObject({ kept: z.array(z.object({ who: z.string(), from: z.string(), until: z.string() })) }));
+    expect(sealed.kept).toEqual([{ who: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/), from: expect.any(String), until: license?.until }]);
+    expect(JSON.stringify(sealed)).not.toContain(bob.session.ownerId);
+    expect(await bob.api.teams.join(secretOf((await ann.api.people.inviteLink()).link))).toMatchObject({ licensed: true });
+    expect(await theirs(bob)).toEqual(license);
+    expect((await ann.api.plans.plan()).balance.microUsd).toBe(balance);
+    // He leaves again, and comes back after it would have ended: it's forgotten, and auto-purchase buys him one, as for anyone.
+    await bob.api.teams.leave();
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.parse(license?.until ?? '') + 60_000 });
+    expect(await joined(ann, bob)).toMatchObject({ licensed: true });
+    expect((await theirs(bob))?.until).not.toBe(license?.until);
+    expect((await ann.api.plans.plan()).balance.microUsd).toBe(balance - LICENSE);
+  });
+
+  it('G28: auto-purchase buys at most team.auto_purchase_per_day licenses for a team in a day (UTC): past it, whoever needs one is told to ask, and the admin that none are left', async () => {
+    await setLimit('team.auto_purchase_per_day', 2);
+    const ann = await account();
+    const [bob, cy, dee] = await Promise.all([account(), account(), account()]);
+    await team(ann);
+    await ann.api.teams.setAutoPurchase(true);
+    await give(ann, 5 * LICENSE);
+    expect(await joined(ann, bob)).toMatchObject({ licensed: true });
+    expect(await joined(ann, cy)).toMatchObject({ licensed: true });
+    // The third that day: none bought, though the balance has it, as when it's short.
+    const from = h.logs.length;
+    expect(await joined(ann, dee)).toMatchObject({ licensed: false });
+    expect(await kinds(dee)).toEqual(['license-needed']);
+    expect(await kinds(ann)).toEqual(['licenses-none']);
+    expect(wanted(from)).toEqual([expect.objectContaining({ buying: true, why: 'daily' })]);
+    expect((await ann.api.plans.plan()).balance.microUsd).toBe(3 * LICENSE);
+    // The next day (UTC), her visit buys hers.
+    const now = new Date();
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 1) });
+    await dee.api.auth.visit();
+    expect(await dee.api.plans.plan()).toMatchObject({ kind: 'team', team: { licensed: true } });
+    expect((await ann.api.plans.plan()).balance.microUsd).toBe(2 * LICENSE);
+  });
+
+  it('G7″: a license after a year of Pro at its lower price was refunded gives back the rest of the running month at what it cost by then, a month’s price, and owes nothing again', async () => {
+    // 30-day months, as Pro has: 12 at $16 (a month's price is $20) from `start`. Sessions are signed in again along the way,
+    // as they'd have run out.
+    const start = Date.now();
+    vi.useFakeTimers({ toFake: ['Date'], now: start });
+    const email = unique('bob');
+    let bob = await account(email);
+    await give(bob, 12 * YEARLY);
+    await bob.api.plans.buyPro(12, YEARLY);
+    // A day into the third month he refunds it: the nine months to come at $16, less the $4 more a month's price is on the
+    // three he's had, as kept for fewer than 12 they cost that: $132.
+    vi.setSystemTime(start + 61 * DAY);
+    bob = await account(email);
+    await bob.api.plans.refundPro();
+    expect((await bob.api.plans.plan()).balance).toMatchObject({ microUsd: 132_000_000, history: [{ label: 'Pro refunded, 9 months', microUsd: 132_000_000 }, {}, {}] });
+    // A week later, still in the third month, a license replaces what's left of it. The refund charged each month he had at a
+    // month's price, so the rest of this one, 22 of its 30 days, comes back at $20, and nothing is taken off for it again:
+    // $20 × 22/30, floored to the micro-USD. (Taken again, it would be $16 × 22/30 less $12: nothing.)
+    vi.setSystemTime(start + 68 * DAY);
+    bob = await account(email);
+    const ann = await account();
+    await team(ann, 1);
+    await joined(ann, bob);
+    const rest = Math.floor((PRICE * 22) / 30);
+    expect(rest).toBe(14_666_666);
+    expect(await bob.api.plans.plan()).toMatchObject({
+      kind: 'team', pro: { months: [], until: null }, balance: { microUsd: 132_000_000 + rest }, notices: [{ kind: 'license-replaced-pro', microUsd: rest }]
+    });
+    expect((await bob.api.plans.plan()).balance.history[0]).toMatchObject({ label: 'Refund: the rest of Pro, for a team license', microUsd: rest });
+  });
+
+  it('G29: checkout’s “Buy one for each person who joins later” is set with the licenses it buys, by balance or by payment; saying nothing, or buying nothing, leaves it as it is', async () => {
+    const ann = await account();
+    await team(ann);
+    await give(ann, 3 * LICENSE);
+    // Refused: nothing changes, auto-purchase included.
+    expect(await refusal(ann.api.teams.buyLicenses(4, LICENSE, 1, true))).toBe('conflict: Your balance is short of what 4 team licenses cost ($160). Add money first.');
+    expect((await ann.api.teams.mine())?.licenses?.autoPurchase).toBe(false);
+    expect((await ann.api.teams.buyLicenses(1, LICENSE, 1, true)).licenses).toEqual({ unconsumed: 1, refundableMicroUsd: LICENSE, autoPurchase: true });
+    expect((await ann.api.teams.buyLicenses(1, LICENSE)).licenses?.autoPurchase).toBe(true);
+    expect((await ann.api.teams.buyLicenses(1, LICENSE, 1, false)).licenses?.autoPurchase).toBe(false);
+    // By payment: set as its money buys them, in the same transaction.
+    expect(await payFor(ann, 1, LICENSE, 1, true)).toEqual({ buys: { kind: 'licenses', count: 1, microUsdPerLicense: LICENSE, periods: 1, autoPurchase: true }, outcome: 'bought', why: null });
+    expect((await ann.api.teams.mine())?.licenses).toEqual({ unconsumed: 4, refundableMicroUsd: 4 * LICENSE, autoPurchase: true });
+    // And a payment for licenses that saying nothing leaves it on.
+    expect((await payFor(ann, 1))?.outcome).toBe('bought');
+    expect((await ann.api.teams.mine())?.licenses?.autoPurchase).toBe(true);
+  });
+
+  it('G30: a team is on Team as soon as licenses are bought for it, before anyone takes one, as when a payment lands with nobody there', async () => {
+    const ann = await account();
+    const bob = await account();
+    await team(ann);
+    await joined(ann, bob);
+    expect((await bob.api.teams.mine())?.tier).toBe('free');
+    expect((await payFor(ann, 2))?.outcome).toBe('bought');
+    // Nobody has visited since: both read Team at once, and a member can't ask to upgrade it.
+    expect((await ann.api.teams.mine())?.tier).toBe('team');
+    expect(await bob.api.plans.plan()).toMatchObject({ kind: 'free', team: { tier: 'team', licensed: false } });
+    expect(await refusal(bob.api.teams.askToUpgrade())).toBe('conflict: Your team is on Team already.');
+    // Refunded before anyone took one, it's free again.
+    await ann.api.teams.refundLicenses();
+    expect((await bob.api.teams.mine())?.tier).toBe('free');
   });
 });
 
@@ -1018,6 +1183,53 @@ describe('team notes, Ask and team workspaces', () => {
   });
 });
 
+describe('what the release before this one stored', () => {
+  /** A record as the release before sealed it under the service's accounting key, read and written as it is in the clear. */
+  const accounting = () => serviceKey(unb64u(h.deps.cfg.KSERVICE, 32), 'accounting');
+
+  it('reads a team’s record with no asks in it, and a plan whose notice said months of Pro, as they were', async () => {
+    const ann = await account();
+    const ken = await account();
+    await team(ann);
+    await joined(ann, ken);
+    // What the team bought as the release before sealed it: no asks to upgrade.
+    const row = z.object({ team_id: z.string(), owner_id: z.string(), billing_ciphertext: z.instanceof(Uint8Array) })
+      .parse((await h.pool.query('SELECT team_id, owner_id, billing_ciphertext FROM teams WHERE admin_owner_id = $1', [ann.session.ownerId])).rows[0]);
+    const header = { v: 1 as const, kind: 'team-billing', ownerId: row.owner_id, teamId: row.team_id, keyVersion: '1' };
+    const { asks: _asks, ...older } = openJson(accounting(), header, row.billing_ciphertext, z.looseObject({ asks: z.array(z.unknown()) }));
+    await h.pool.query('UPDATE teams SET billing_ciphertext = $2 WHERE team_id = $1', [row.team_id, sealJson(accounting(), header, toJson(older))]);
+    expect((await ann.api.plans.plan()).notices).toEqual([]);
+    await ken.api.teams.askToUpgrade();
+    expect((await ann.api.plans.plan()).notices).toMatchObject([{ kind: 'upgrade-asked', memberId: await memberId(ann, ken) }]);
+    // A license that replaced Pro before amounts were kept: its notice says the months, and no amount.
+    const plan = z.object({ state_ciphertext: z.instanceof(Uint8Array) }).parse((await h.pool.query('SELECT state_ciphertext FROM plan_accounts WHERE owner_id = $1', [ken.session.ownerId])).rows[0]);
+    const planHeader = { v: 1 as const, kind: 'plan-account', ownerId: ken.session.ownerId, keyVersion: '1' };
+    const state = openJson(accounting(), planHeader, plan.state_ciphertext, z.looseObject({ notices: z.array(z.unknown()) }));
+    const notice = { id: 'OlderNotice00000000000', kind: 'license-replaced-pro', at: new Date().toISOString(), until: null, count: 2, workspaceId: null, dismissed: false };
+    await h.pool.query('UPDATE plan_accounts SET state_ciphertext = $2 WHERE owner_id = $1', [ken.session.ownerId, sealJson(accounting(), planHeader, toJson({ ...state, notices: [notice] }))]);
+    expect((await ken.api.plans.plan()).notices).toEqual([{ id: notice.id, kind: 'license-replaced-pro', at: notice.at, until: null, count: 2, microUsd: null, workspaceId: null, memberId: null }]);
+  });
+
+  it('keeps the colleagues a profile marked as invited, which the release before reads, through every save, and reads nothing of them', async () => {
+    const art = await account(`art.${Date.now().toString(36)}${(seq++).toString(36)}@vandelay.industries`);
+    const o = await openOwner(h.deps, art.session.ownerId, undefined);
+    await updateProfile(o, (p) => ({ ...p, invited: ['lena@vandelay.industries'] }));
+    // The company page says nobody's invited: that's a team's to say now.
+    expect((await art.api.people.team())?.members.some((m) => m.invited)).toBe(false);
+    await art.api.account.updatePreferences({ showSoloEvents: true });
+    expect((await profile(o)).invited).toEqual(['lena@vandelay.industries']);
+  });
+
+  it('ignores a stored value of the limit one-time links had, which is no limit now', async () => {
+    await h.pool.query("INSERT INTO service_limits (name, value) VALUES ('team.invite_seconds', 60) ON CONFLICT (name) DO UPDATE SET value = excluded.value");
+    const from = h.logs.length;
+    const ann = await account();
+    expect((await ann.api.teams.invite([unique()])).invited).toBe(1);
+    const ignored = h.logs.slice(from).flatMap((l) => { const r = z.object({ msg: z.literal('service limit ignored'), limit: z.string(), why: z.string() }).safeParse(JSON.parse(l)); return r.success ? [r.data] : []; });
+    expect(ignored).toEqual([expect.objectContaining({ limit: 'team.invite_seconds', why: 'not a limit' })]);
+  });
+});
+
 describe('nobody reaches another team', () => {
   it('I2: team, member and invite IDs from a request only work on the caller’s own team, as its admin', async () => {
     const [ann, bob, cy, dee, eve] = await Promise.all([account(), account(), account(), account(), account()]);
@@ -1031,25 +1243,26 @@ describe('nobody reaches another team', () => {
     expect((await cy.api.teams.mine())?.members.map((m) => m.person.email)).toEqual([cy.email, dee.email]);
     expect(await refusal(ann.api.teams.remove('AAAAAAAAAAAAAAAAAAAAAA'))).toBe('not-found: That person isn’t on your team.');
     // A member manages nothing, and sees nothing of the licenses or money.
-    const asBob = [() => bob.api.teams.remove(annId), () => bob.api.teams.invite(), () => bob.api.teams.buyLicenses(1, LICENSE), () => bob.api.teams.refundLicenses(), () => bob.api.teams.setAutoPurchase(true), () => bob.api.teams.delete()];
+    const asBob = [() => bob.api.teams.remove(annId), () => bob.api.teams.rename('Bob’s now'), () => bob.api.teams.buyLicenses(1, LICENSE), () => bob.api.teams.refundLicenses(), () => bob.api.teams.setAutoPurchase(true), () => bob.api.teams.delete()];
     for (const call of asBob) expect(await refusal(call())).toBe(ADMIN_ONLY);
     expect((await bob.api.teams.mine())?.licenses).toBeNull();
     // Someone on no team has no team to act on.
     expect(await eve.api.teams.mine()).toBeNull();
-    const asEve = [() => eve.api.teams.remove(deeId), () => eve.api.teams.invite(), () => eve.api.teams.leave(), () => eve.api.teams.delete(), () => eve.api.teams.buyLicenses(1, LICENSE)];
+    const asEve = [() => eve.api.teams.remove(deeId), () => eve.api.teams.rename('Eve’s'), () => eve.api.teams.leave(), () => eve.api.teams.delete(), () => eve.api.teams.buyLicenses(1, LICENSE), () => eve.api.teams.askToUpgrade()];
     for (const call of asEve) expect(await refusal(call())).toBe(NO_TEAM);
-    // Another account's notice is unknown.
-    const [low] = (await ann.api.plans.plan()).notices;
-    expect(low?.kind).toBe('licenses-low');
-    expect(await refusal(cy.api.plans.dismissNotice(low?.id ?? ''))).toMatch(/^not-found: /);
-    // An invite joins only the team it was made for.
+    // Another account's notice is unknown: the admin's, told none are left as she visits with Bob's taken.
+    await ann.api.auth.visit();
+    const [none] = (await ann.api.plans.plan()).notices;
+    expect(none?.kind).toBe('licenses-none');
+    expect(await refusal(cy.api.plans.dismissNotice(none?.id ?? ''))).toMatch(/^not-found: /);
+    // An invitation joins only the team it was made for.
     expect(await joined(cy, eve)).toMatchObject({ name: 'Theirs' });
     expect((await ann.api.teams.mine())?.members).toHaveLength(2);
   });
 });
 
 describe('a new address from the provider', () => {
-  it('I6: shows a member, and an invite’s admin, by the name and address they sign in with now, and keeps no hash of any address', async () => {
+  it('I6: shows a member, and the admin a team’s link is from, by the name and address they sign in with now, and keeps no hash of any address', async () => {
     const sub = `sub-${seq++}`;
     const old = unique('old');
     const fresh = unique('fresh');
@@ -1057,14 +1270,15 @@ describe('a new address from the provider', () => {
     const bob = await account();
     await team(ann, 1);
     await joined(ann, bob);
-    const { link } = await ann.api.teams.invite();
-    expect((await bob.api.teams.peek(secretOf(link))).admin).toMatchObject({ email: old, name: 'Ann Before' });
+    // Bob copies the team's link, which is Ann's, its admin's.
+    const { link } = await bob.api.people.inviteLink();
+    expect((await h.browser().api.people.peekInvite(secretOf(link))).from).toMatchObject({ email: old, name: 'Ann Before' });
     // Ann's provider gives her a new address and name: her next sign-in is the same account, and her team shows her as she is.
     const again = await withGoogle(fresh, sub, 'Ann After');
     expect(again.session.ownerId).toBe(ann.session.ownerId);
     expect((await bob.api.teams.mine())?.members.map((m) => [m.role, m.person.email, m.person.name])).toEqual([['admin', fresh, 'Ann After'], ['member', bob.email, bob.session.user.name]]);
     expect((await again.api.teams.mine())?.members.find((m) => m.you)?.person).toMatchObject({ email: fresh, name: 'Ann After' });
-    expect((await bob.api.teams.peek(secretOf(link))).admin).toMatchObject({ email: fresh, name: 'Ann After' });
+    expect((await h.browser().api.people.peekInvite(secretOf(link))).from).toMatchObject({ email: fresh, name: 'Ann After' });
     // Nothing of a member is in the clear but IDs, times and their role: no keyed hash of an address, the old one or the new.
     const columns = (await h.pool.query<{ name: string }>("SELECT column_name AS name FROM information_schema.columns WHERE table_name = 'team_members' AND table_schema = current_schema() ORDER BY ordinal_position")).rows.map((r) => r.name);
     expect(columns).toEqual(['member_id', 'team_id', 'account_owner_id', 'role', 'person_ciphertext', 'licensed_from', 'licensed_until', 'wanted_at', 'created_at']);

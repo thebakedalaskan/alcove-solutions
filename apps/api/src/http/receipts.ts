@@ -24,12 +24,14 @@ import type { HttpRuntime } from './runtime';
  * would say an account was rung for a day after the ring had gone. Saying a browser closed one of its live streams ends it,
  * which a retry can't do twice, and a receipt would be a row for every page someone closed. Making an agent's token keeps
  * none, as its answer is the token. Changing what an agent can do sets it outright, and its answer names the agent, which a
- * receipt would keep for a day after it was disconnected; disconnecting it keeps none either. A team's invite, and looking at
- * or using one, keep none: their answer or body holds the link's secret, which is kept nowhere but as a hash, and using it
- * twice is refused anyway. Your own invite link, making a new one, and saying your account was made from someone's, keep
- * none for the same reason: asking for the link again gives the same one, a new link answers with its secret (a retry makes
- * one more, and the one before still leads nowhere), and saying so twice counts once. (Seeing who a link is from comes
- * before receipts, as it takes no session.) Saying the app is in use (a visit) keeps none either: it takes a license at most once, and a
+ * receipt would keep for a day after it was disconnected; disconnecting it keeps none either. The invite link a Team page
+ * copies, and making a new one, keep none: its answer holds the link's secret, asking for the link again gives the same one,
+ * and a new link answers with its secret (a retry makes one more, and the one before still leads nowhere). (Seeing what a
+ * secret says, and stopping Alcove's emails, come before receipts, as they take no session.) Putting an invitation to a team
+ * aside keeps none: that's for whoever it's to alone to know, and the row a receipt is would say they did, by its route, for
+ * a day; putting it aside again changes nothing. A team's changes that answer with it (inviting, sending an invitation
+ * again, cancelling, accepting, joining, renaming) keep their receipts by IDs and counts alone (features/billing/teams/
+ * routes.ts › asKept). Saying the app is in use (a visit) keeps none either: it takes a license at most once, and a
  * receipt would be a row for every time someone opened Alcove. What a guest can reach of a
  * workspace comes before receipts altogether, so it isn't listed here: see the routes.
  */
@@ -42,7 +44,7 @@ const NO_RECEIPT = [
   /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines|links)(?:\/[^/]+)?|revisits\/[^/]+|share|rewrite)$/, /^\/v1\/note-links\/(?:peek|claim)$/, /^\/v1\/meetings\/[^/]+\/(?:answer|propose)$/, /^\/v1\/account$/, /^\/v1\/rings\/[^/]+\/answer$/,
   /^\/v1\/notes\/[^/]+\/(?:personal(?:\/[^/]+(?:\/(?:preview|add))?)?|additions(?:\/[^/]+)?)$/,
   /^\/v1\/workspaces\/[^/]+\/(?:documents\/[^/]+\/)?live\/end$/,
-  /^\/v1\/team\/(?:invite|peek|join)$/, /^\/v1\/team\/link(?:\/(?:peek|joined|new))?$/, /^\/v1\/session\/visit$/
+  /^\/v1\/team\/invitations\/[^/]+\/put-aside$/, /^\/v1\/team\/link(?:\/(?:peek|new))?$/, /^\/v1\/session\/visit$/
 ];
 
 const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));

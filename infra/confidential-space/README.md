@@ -116,6 +116,7 @@ it differs in:
   and `-secret-staging` hold placeholders that open nothing (the API won't start without a key and secret). Joining a
   call fails there, and its upkeep can't reach anyone's rooms.
 - **No NEAR AI**: recordings are kept, and their notes wait.
+- **No Resend key**: nothing is emailed, and invitations are there in the app as ever.
 - **Demo sign-in on and Google sign-in off** (Google's client doesn't list staging's callback), and **credit top-ups off**.
 
 ## What's signed
@@ -195,6 +196,27 @@ printf %s "$CLOUDFLARE_DNS_TOKEN" | gcloud --project=alcove-solutions secrets ve
 
 bootstrap-gcp.sh makes the secret, and setup.sh fails until it has a version, since the API can't start without it.
 Staging's is a second token, made the same way ([Staging](#staging)).
+
+## The Resend key
+
+Alcove emails each team invitation itself, through Resend (apps/api/src/platform/mail.ts), from
+`Alcove <invites@mail.alcove.solutions>`. The sending domain is the subdomain `mail.alcove.solutions`, so its records live
+under it and the root's email routing, SPF and DMARC stay as they are. In Resend: add the domain (region us-east-1) with
+open and click tracking off, add the records it lists to the zone (dns.sh's token can), and wait until it's verified. Then
+make an API key with **Sending access** for that domain alone, and add it as a version of the secret without printing it:
+
+```sh
+printf %s "$RESEND_API_KEY" | gcloud --project=alcove-solutions secrets versions add alcove-resend-api-key --data-file=-
+```
+
+Production's `SECRETS` maps it to `RESEND_API_KEY` (env.sh › `CS_RESEND_KEY_SECRET`), so setup.sh grants it to production's
+attested VMs alone and fails until it has a version, since the API can't start without a secret it's given. bootstrap-gcp.sh
+makes the secret. Production's has its version, version 1, and is granted to production's attested identity, its principal
+set ([The attestation policy](#the-attestation-policy)). `RESEND_API_URL` and `MAIL_FROM` aren't in the environment: their
+defaults are in the code. The key is optional: staging's `SECRETS` maps none (`CS_RESEND_KEY_SECRET=''`), and it starts and
+sends nothing. Without a key the API emails nothing and says so at info (`mail not sent: no provider`); invitations are made
+and shown in the app as ever. Resend keeps what it's sent for 30 days
+([Privacy, keys and sessions › Email](../../docs/engineering/privacy-keys-and-sessions.md)).
 
 ## First setup
 

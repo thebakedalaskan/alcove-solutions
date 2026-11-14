@@ -30,7 +30,8 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    doesn't wait for it), with who already uses Alcove, or **Invite them from Team** while nobody does. **Notes are
    written in confidential compute**, and only the people invited to a call get its notes. Then
    "You’re in" and the arch opens into Home, where the plans to choose from come first, once (16.20): the screen says
-   "Opening Plans" then, and "Opening Home" when Home is next. **Skip**,
+   "Opening Plans" then, and "Opening Home" when Home is next. An account made from an invitation or a team's link (10)
+   joins that team first and isn't shown the plans: Home says "You're on Vandelay Industries." **Skip**,
    **Escape** or **Enter** opens it straight away; with
    reduced motion the finished screen shows for a moment and Home follows. After that, signing in goes
    straight to Home. From the welcome page it sails out of the cove: the headlands go by, the horizon comes up to
@@ -69,8 +70,9 @@ Beside every page, dark in both themes, in two groups: the places at the top, an
 - **Start a call** (or **N**) opens flow 4.
 - **Home**, **Calls** (flow 8), **Drive**, every workspace, where you write together (flow 12), **Record**, where
   recording in the room starts (flow 9), and **Team** (flow 10), where your groups are. Someone on their own, at a
-  personal address, has no Team page. A count beside a place says something is waiting on you there: on Home, what's
-  for you; in the Drive, tags you haven't seen; on Record, recordings on this device waiting to upload. Nothing counts a
+  personal address, with no team and no invitation to one, has no Team page. A count beside a place says something is
+  waiting on you there: on Home, what's for you; in the Drive, tags you haven't seen; on Record, recordings on this device
+  waiting to upload; on Team, invitations to a team you haven't put aside. Nothing counts a
   total, such as every call or everyone on Team. Home's count is a link of its own: pointing at it says what's waiting in
   each of **For you**'s tabs ("For you: 3 to answer, 2 follow-ups"), and pressing it, from Home or any other page, brings
   **For you** into view on the tab where things wait, with focus there and its edge glowing for a moment (flow 3).
@@ -110,7 +112,7 @@ the shortcut is **Find** (flow 12), and **Search or ask** stays at the top right
 
 On a phone (860 px wide or narrower) a top bar takes its place, with the brand, search (not on Notes), **Start a call** (a plus) and
 you (your menu), and a tab bar runs along the bottom: **Home**, **Calls**, **Record** (raised), **Drive** and **Team**
-when you're on one. Agents isn't in it: on a phone it opens from **Settings → Connections** (flow 11). Offline, the same
+when there's a Team page (a company, a team, or an invitation to one). Agents isn't in it: on a phone it opens from **Settings → Connections** (flow 11). Offline, the same
 notice sits under the top bar.
 
 **Your menu** opens under you, at the top right of every page but Settings (where you stand on the horizon instead), and
@@ -466,8 +468,8 @@ send to anyone".
       to it reads that a time is being picked, isn't asked whether they're coming, and has **Pick a time**, which goes
       to its link.
 
-Alcove sends no emails of its own yet, so without a connected calendar nobody hears about the call, and calls
-started now don't go on the calendar: share the link. Everyone invited gets the notes (flow 7).
+Alcove sends no email about calls (only invitations to a team, flow 10), so without a connected calendar nobody hears
+about the call, and calls started now don't go on the calendar: share the link. Everyone invited gets the notes (flow 7).
 
 Storybook's journeys use these numbers: **4.1 Start now**, **4.2 Schedule a call**, **4.3 Pick a time on the week**,
 **4.4 Start from the week**, **4.5 Repeat a call**, **4.6 Let a guest pick**, **4.7 Move a call**, **4.8 Answer a request
@@ -1941,11 +1943,15 @@ a piece that reaches Alcove late, or twice, still lands where it was recorded, o
 
 ## 10. Team
 
-**Team** is your company, standing on the horizon: the company directory where there is one (the demo directory
-today), otherwise the people at your work email domain you have calls or calendar meetings with. A personal address
-(gmail.com, outlook.com, icloud.com and the like) has no company, so someone there has no Team page until they're on a
-team: nothing links to it, and its address goes Home. On a team, the page is the team's instead (16.17), and a company's
-page has a quiet **Start a team** while you're on none (16.15).
+**Team** is your company and your team. Your company stands on the horizon: the company directory where there is one
+(the demo directory today), otherwise the people at your work email domain you have calls or calendar meetings with. A
+team is free to start, and anyone at any address can be on it: one admin (whoever started it) and members, with you on
+one team at most. Team is in the side panel, and a phone's tab bar, while you have a company page, a team or an
+invitation to one, and its count is the invitations to you that you haven't put aside. A personal address (gmail.com,
+outlook.com, icloud.com and the like) has no company, so someone there with no team and no invitation has no Team page:
+nothing links to it, and its address goes Home. On a team, the page is the team's (A team's page, below); at a company
+with no team it's the company's, and the first invitation from it starts your team. What licenses add to a team is in
+flow 16 (16.15–16.21).
 
 - **The line**: the company's name in the middle of the sky, and everyone on the horizon in their arch. You stand in
   the middle, whoever you met most recently beside you, one to each side, and people not on Alcove yet at the ends,
@@ -1959,28 +1965,50 @@ page has a quiet **Start a team** while you're on none (16.15).
   **Last call** with the day. **Ring** starts a call and goes straight to the lobby with them picked. **Schedule** opens
   Start a call at **When**, with them picked. **Notes you both have** lists the latest five in the same popover: each
   opens its note, and **Open in Calls** lists them all (`/calls#with=<address>`: the address stays in the browser, since
-  a fragment is never sent to the web host). Someone not on Alcove yet has **Invite** in place of Ring, then **Remind**.
-  Your own arch has your address, the groups you're in and **Settings**.
+  a fragment is never sent to the web host). Someone not on Alcove yet has **Invite** in place of Ring. On a team it sends
+  their invitation at once; on a company page with no team, where inviting starts one, it opens Invite people with them
+  ticked, which says so before anything is sent. Your own arch has your address, the groups you're in and **Settings**.
 - **All 33 people**: past thirteen people a second button lists everyone, to search by name or address. Picking
   someone brings them forward on the line, past the 34 too, and opens their popover.
-- **Invite people**: tick colleagues who aren't on Alcove and haven't been asked (they step up on the line as you do),
-  or type anyone's whole address, which counts as it's typed; a comma, a space, Tab or **Enter** ticks it and clears the
-  line for the next, and **Enter** again finishes. **Invite** opens your own email with an invitation to them (a subject and your
-  invite link), and marks the people on your team invited. **Copy link** copies your invite link. Alcove sends no email itself.
-- **Your invite link** (`/invite#…`) is your own, the same every time until you make a new one, and its page says it's from
-  you. **Copy invite link**, **Copy link** and every invitation the page opens (Invite people's **Invite**, **Invite** and
-  **Remind** on a row or in someone's popover, **Invite all**, **Invite everyone**) carry it; it loads with the page, and
-  until it's there they wait rather than send anything else. If it doesn't load, the sky says so under the buttons, with
-  **Try again**; with no connection, that invites need one. Copying it says "Invite link copied. It says it's from you." (a
-  browser that won't copy shows the link to copy instead). Once anyone has made their account from it, the sky says so under
-  the buttons: their faces and "Aiko and Maya joined from your link" ("Aiko joined from your link" for one); nothing while
-  nobody has. Someone on a team has the team's page instead, and no invite link.
-- **Make a new link**: the arrow beside **Copy link** in Invite people asks in place first, "Make a new link? The link you've
-  sent stops working. People who joined from it stay listed.", with **Cancel** and **Make a new link**. The new one is
-  copied ("New invite link copied. The old one no longer works."), and the old one leads nowhere from then on.
-- **Not on Alcove yet**: the rest, each with their title and the same line about the two of you, or **Invited**, and in
-  the same place on every row **Invite**, or **Remind**, which opens your email again. **Invite all** asks everyone who
-  hasn't been asked at once. Nobody moves when they're invited. Five show before **Show all**.
+- **Invite people** opens a popover named for the team, "Invite people to Vandelay Industries" (on a company page with no
+  team, the name the team will take). Tick colleagues who aren't on the team (on the company's line they step up as you
+  do), or type anyone's whole address, at any domain, which counts as it's typed; a comma, a space, Tab or **Enter** ticks
+  it and clears the line for the next, and **Enter** again finishes. Each row is read as what picking it does ("Invite Diego
+  Ruiz"). Someone on the team isn't offered: typing them says "Kofi is on Vandelay Industries.", as your own address says
+  "That's you." Someone invited already has an **Invited** tag, and picking them sends theirs again (**Resend 1** while
+  they're the only one picked), when it's yours to send (you invited them, or you're the admin) and Alcove would send it
+  now; otherwise the row says why ("Sent today", "Sent 3 times", "Invited by Priya") and can't be picked, a typed address
+  as well as a row. **Invite 3** sends, and no mail app opens: Alcove emails each of them (The email, below), and anyone
+  already on Alcove finds it in the app too (Invitations to you, below). The toast says who, "Invited Priya, Lena and 1 other
+  to Vandelay Industries.", and never that an email went: one can wait for the next day, or not go at all to an address that
+  stopped Alcove's emails, which nobody is told. At most 50 go in one request. Past the day's 20, the first ones are invited
+  and the toast says how many can be tomorrow: "Invited 20 people to Vandelay Industries. You can invite the other 5
+  tomorrow."; with none of the day's left, the refusal is said in the server's words: "You've invited 20 people today.
+  Invite more tomorrow, or copy your link." On a company page with no team, one quiet line under the field (read with the
+  field and with Invite) says what inviting does, "Alcove emails them. This starts Vandelay Industries, a free team, with
+  you as its admin.", and it does: the team is made, free, with you its admin, the page becomes the team's (the focus on its
+  name), and the toast says so: "Started Vandelay Industries and invited Diego." So every **Invite** there (on a row, in
+  someone's popover, **Invite all**, **Invite everyone**) opens Invite people with its people ticked rather than sending: on a
+  row, beside it; in a popover, the sky's. While an invitation to you is waiting there (Invitations to you, below), nothing
+  offers to start another team: Invite people says "Priya invited you to Vandelay Industries. Join it, then invite people
+  from its page.", with **Join Vandelay Industries** in place of the list, and an Invite on a row goes to the invitation's
+  card, its Join focused. At the foot, **Copy link** copies the invite link, with **New link** beside it for the team's admin, or
+  with no team. On a team, every Invite sends at once.
+- **The invite link** (`/invite#…`) is the team's: one link, its admin's, the same every time until the admin makes a new
+  one, and everyone on the team copies that one. With no team it's your own, and whoever joins from it starts your team,
+  with you its admin, so it becomes the team's. A member's own link leads nowhere while they're on someone else's team,
+  and works again if they leave. **Copy invite link** and **Copy link** copy it; it loads with the page, and until it's
+  there they wait. On the first day, where **Copy invite link** stands in the sky, a link that doesn't load is said under
+  the buttons, with **Try again**, and with no connection, that copying it needs one. Copying it says so ("Invite link
+  copied. Whoever opens it can join Vandelay Industries.", or with no team "…It says it's from you."; a browser that won't
+  copy shows the link to copy instead).
+- **Make a new link**, for the team's admin or with no team: **New link** beside **Copy link** in Invite people asks in place
+  first ("Make a new link?", and that the old one stops working for everybody who has it), with **Cancel** and **Make a
+  new link**; Cancel, or Escape, goes back to the list as it was, whoever was ticked still ticked. The new one is copied ("New invite link copied. The old one no longer works."), and the old one leads
+  nowhere from then on, so one press shuts a link that went further than it should.
+- **Not on Alcove yet**: the rest, each with their title and the same line about the two of you, and in the same place on
+  every row **Invite**. **Invite all** invites everyone left at once (with no team, both open Invite people with them
+  ticked, as above). Five show before **Show all**.
 - **Groups**: a tile for each, with its people standing on the tile's bottom edge, how many there are, and how many calls
   had all of them. The camera starts a call with all of them without opening it. A tile opens in place, across the
   column: its people, each with × to take them out (a group keeps at least one);
@@ -2009,27 +2037,151 @@ arrives. If it doesn't load, the page says why (or that you're offline, and it c
 Your groups and notes load beside it: if your groups don't, their section says so, with **Try again**, and the rest of
 the page works.
 
-**Someone's invite link** is a page of its own (`/invite#…`), one card on the team's evening. Its secret is after the `#`,
-so no server sees it, and it leaves the address bar at once. Signed out, the card is from them: who asked you, in their arch
-("Priya asked you to join them on Alcove"), what Alcove is for, and the ways in, with **See what Alcove does** under them,
-which opens the welcome page. The link waits in the tab while you sign in, Google's way back included, and while you look at
-the welcome page: **Back** brings the card again, and signing in there comes back to it. An account made there tells whoever
-sent the link that you joined, and its first sign-in goes on as it would from the welcome page: the account is made on
-screen, then the plans, then Home, even if the link has stopped leading anywhere meanwhile. An account that was there already
-tells nobody, and the card says **You're on Alcove already**, with **Go to Home**, as it does for anyone signed in when they
-open the link. Opening your own link (Alcove knows your account) says it's yours ("This is your invite link. Send it to
-someone you'd like on Alcove."), with **Go to Team**. A link that leads nowhere (made up, copied only in part, replaced by a
-new one, or its sender deleted their account), no link at all, no connection and a failure each say so, and what to do.
-Coming back with **Back** from Google's own page leaves no "Waiting for Google…" behind, here or on an invite to a team.
+### A team's page
 
-Storybook's journeys use these numbers: **10.1 Ring someone**, **10.2 Schedule a call with someone**, **10.3 The notes you
-both have**, **10.4 Someone not on Alcove yet**, **10.5 Your own arch**, **10.6 Invite people**, **10.7 Or copy the invite
-link**, **10.8 Invite and Remind on a row**, **10.9 Invite everyone left**, **10.10 New group: name it, then fill it**,
-**10.11 A name that's taken, and a group half made**, **10.12 Open a group in place**, **10.13 Add and remove people**,
-**10.14 Start a call with all of them**, **10.15 Rename a group**, **10.16 Delete a group**, **10.17 Three people, and
-thirty**, **10.18 Find one person out of thirty**, **10.19 Nobody else here yet**, **10.20 The team doesn't load**,
-**10.21 Offline, and groups that don't load**, **10.22 Open someone's invite link and sign in** and **10.23 Make a new
-invite link**.
+On a team, Team is the team's page (`features/team/OnTeam.tsx`), the same whether it's free or on Team; 16.17 says what
+licenses add. Its name is in the sky, with **Rename** beside it for the admin: an icon button whose popover has the name in
+a box, and **Rename**; a long name wraps before it reaches the pen. Under the name, the tier and how many are on it: "Free ·
+3 people", or on Team "Team · 6 people · 5 with a license · 3 licenses left" for the admin and "Team · 6 people · Priya is
+its admin" for everyone else. Then **Invite people**, for everyone, the filled button until someone else is on a free
+team. Its people stand on the horizon, opening their popovers as on a company's line, with nothing under them on a free team
+but "Joined today" for someone who just has ("Started today" for the admin, who started it). After them, whoever's invited
+stands in a dashed arch with "Invited" under it (their popover has **Resend**, or why it can't be sent yet), and on your
+company's team the colleagues not on it stand further back, smaller and in the evening's haze until you reach for them
+(their popover has **Invite**), so a company's horizon doesn't empty when it becomes the team's page. A phone has no room
+further back: they're on the water.
+
+Switching between the company's page, a team's and the invitations to you happens in place, on the one evening: Join, a
+first invitation starting the team, Leave team and Delete team crossfade the page over a quarter of a second, the horizon
+and the sun moving to where the new view has them, with nothing blank between, and the focus goes to the new view's name.
+
+A free team's water starts with what Free means, once: "Vandelay Industries is on Free." and "Upgrading gives everyone on
+it a license: the team's notes and workspaces open to everyone, and storage is pooled.", with **Upgrade** for the admin,
+the page's one Upgrade, which opens checkout on Team (16.16) and is filled once someone else is on the team; while someone
+has asked the admin to upgrade, it says who: "Kofi asked you to upgrade." While the admin is alone on it, Free isn't
+explained at all, and there's no Upgrade on the page: inviting is the thing to do. Everyone else has **Ask Priya to
+upgrade** (16.21), which says "Priya's been asked" for 7 days once it's pressed. A team whose licenses ended says "Vandelay
+Industries is on Free." and "What it shared opens again when it's upgraded."; if it still buys a license for each person
+who joins, that switch stays beside the people for its admin (16.17), since it spends from the balance. Then, on either
+tier:
+
+- **The people**, as rows, each with their role and, on a free team, when they joined ("Joined today", "Joined 5 Oct";
+  "Started 5 Oct" for the admin); on Team, their license instead (16.17), after "Joined today" for someone who just has.
+  The admin's **Remove** asks in place, under the row ("Remove Kofi?", "They leave the team, and its invite link changes,
+  so share the new one with anyone still to join.", with **Remove Kofi** and **Keep Kofi**): taking someone off, like
+  deleting the team, makes the team's link a new one. At their foot, **Leave team** for a member, asked the same way, or
+  **Delete team** for the admin once nobody else is on it. On a phone a question's answers stand one over the other, the
+  one that loses nothing first, and it comes into view clear of the tab bar. Its answer that loses nothing, or Escape,
+  puts the focus back where the question was opened from.
+- **Invited**, under them: each invitation, newest first as the page opened (sending one again doesn't move it), with the
+  person as the directory knows them (or the address), "Invited by Priya · 2 days ago" ("Invited 2 days ago" for one you
+  sent), "Sent again today" once it's been sent again, and, in its last week, "Runs out in 4 days". Whoever invited them
+  and the admin have **Resend**, which sends it again and starts its 30 days again ("Sent Lena's invitation again."), at
+  most once a day and three times in 30 days, so until it can it says **Sent today** or **Sent 3 times**, as Alcove says
+  why, and can't be pressed; and **Cancel**, asked in place ("Cancel Lena's invitation?", "Their link stops working."),
+  with **Cancel invitation** and **Keep it**. An invitation ends when it's used, cancelled or runs out, and when whoever
+  sent it leaves the team or is taken off it; the admin can invite them again. With nobody invited the section isn't there.
+- **At Vandelay Industries, not on the team yet**, on your company's team (one you admin, or whose admin is at your
+  company; a team elsewhere isn't offered your colleagues): the colleagues not on it and not invited, each with
+  **Invite**, and **Invite all 4** on the heading.
+- **Visible to the team**: the notes made visible to the team (8.46), each opening its call's page. On a free team it
+  says they open once the team is upgraded, rather than standing empty.
+- Your groups and what's shared with them, as on the company's page.
+
+Nobody on a free team is told anything about licenses: "No team license yet" in the side panel, and the notice at the top
+of the water, are only for a team on Team with none left for you (16.19).
+
+### Invitations to you
+
+An invitation to one of your sign-in addresses is in the app as well as in its email. The app reads them when it opens,
+every minute while it's open and when its window comes back. Team shows while you have one, with the count of those you
+haven't put aside (on a phone, a small rose dot on Team in the tab bar, read as "Team, 1 invitation"), and each is a toast
+once in this browser, "Priya invited you to join Vandelay Industries", with **View**, which opens Team: two at a time, any
+more said as those go. With no team, each is a card there, newest first: the team's faces (who invited you first; the
+others' portraits drawn for them, never their addresses), "Priya invited you to join Vandelay Industries", "Kofi, Aiko and
+2 others are on it.", **Not now** and **Join Vandelay Industries** (filled).
+With a company page the cards stand at the top of its water; without one they're the page, on the Team evening. On a
+team, an invitation to another team is a notice at the top of the team's water: "Jonas invited you to join Weber
+Design.", with **Join Weber Design** and **Not now**.
+
+- **Join** puts you on the team at once, taking a license if there's one for you (16.18); the page is the team's, the
+  focus on its name, and the toast says "You're on Vandelay Industries."
+- **Not now** folds the card away and puts it aside: it leaves the count and stands quietly under **Put aside** (under the
+  cards, or at the foot of a team's water), its **Join** taking the focus, until it runs out. The toast says "Put aside.
+  You can join it from Team until 4 Dec.", with **Undo**, which brings the card back while the toast stands; Alcove is told
+  once Undo has had its moment. Nobody is told, and the team still lists it under Invited: whoever invites never learns
+  whether an address is on Alcove, on another team, or put it aside.
+- **Joining while you're on a team** asks in place first, on the card or the notice. A member reads "Joining Weber Design
+  takes you off Vandelay Industries.", with **Leave Vandelay Industries and join** and **Stay**. An admin alone on their
+  team reads "Joining Weber Design deletes Vandelay Industries, which only you are on, and its invitations.", with
+  **Delete Vandelay Industries and join** and **Stay**; licenses nobody took go back to their balance, as deleting does.
+  When both teams have one name (two teams at one company), the one you'd join is named by who invited you and yours is
+  "yours": "Joining Priya's Vandelay Industries deletes yours, which only you are on, and its invitations.", with **Delete
+  yours and join**. **Stay**, or Escape, puts the focus back on Join. An admin with others on their team reads "You admin
+  Vandelay Industries, and 5 others are on it. You can join Weber Design once you're the only one left.", in Join's place,
+  with **Not now**. Leaving and joining are one step, so nobody is ever between teams, and a live license on the team you
+  leave isn't refunded, as leaving never refunds it.
+- **While you're at a company and on no team**, nothing offers to start another team while an invitation waits: Invite
+  people says to join it first, and an Invite on a row goes to its card (Invite people, above).
+
+### The invite page
+
+An invite link (`/invite#…`) opens a page of its own, one card on the team's evening. Its secret is after the `#`, so no
+server sees it, and it leaves the address bar at once. It says what the link is: an invitation's own link, which only its email carries
+("Priya invited you to join Vandelay Industries"); a team's link, which anyone on the team may have shared ("Join
+Vandelay Industries on Alcove", with the team's faces); or the link of someone on no team yet ("Jonas asked you to join
+them on Alcove", in their arch: joining starts their team, with them its admin). Then who's on it: "Kofi, Aiko and 2
+others are on it." An invitation's link works once, for whoever opens it, at that address or another (people have more
+than one account).
+
+Signed out, the card adds what Alcove is for, "Alcove is for calls: each one gets its notes and a workspace of its own.",
+then the ways in, with **See what Alcove does** under them, which opens the welcome page. The link waits in the tab while
+you sign in, Google's way back included, and while you look at the welcome page: **Back** brings the card again, and
+signing in there comes back to it. A new account made from the card joins the team at once, since signing in from it
+said yes, and its first sign-in goes on as it would from the welcome page but without the plans (someone joining a team
+doesn't choose a plan, 16.20): the account is made on screen, then Home, with the toast "You're on Vandelay Industries."
+An account that was there already comes back to the card signed in.
+
+Signed in, **Not now** goes Home (an invitation's own link to you is put aside first, as on Team, the toast saying until
+when, with Undo) and **Join Vandelay Industries** (or **Join Jonas**; filled) joins, asking in place first while you're on
+a team (Invitations to you, above), then opens the team's page, with "You're on Vandelay Industries." Your own link, or
+your team's, says so ("This is your team's invite link", or "This is your invite link" with no team), with **Copy link**
+(filled) and **Go to Team**. An invitation to the team you're on already (someone passed you theirs) says "You're on
+Vandelay Industries already", with **Go to Team**: it never asks you to leave the team you're on to join it. A link that leads nowhere (used, cancelled, run out, replaced by a new one, or copied
+only in part) says "This invitation has ended" and "Ask whoever invited you to invite you again." (by name, while the
+page still knows who), with **Open Alcove**. No link at all, no connection and a failure each say so, and what to do.
+Coming back with **Back** from Google's own page leaves no "Waiting for Google…" behind.
+
+### The email, and stopping it
+
+Alcove sends each invitation itself, from Alcove's own address, with whoever invited you as the address a reply goes
+to. It's the team's evening, as an email can carry it: "Priya invited you to join Vandelay Industries", what Alcove is
+for, the team's faces in arches and who's on it, and **Join Vandelay Industries**, with the link written out under it
+for where a button doesn't work. Its foot says who invited you and from which address, that the invitation runs out in
+30 days and can be ignored if you weren't expecting it, then "Don't want invitations from Alcove? Stop them." Nothing in
+it is fetched from a server when it's opened, and no link in it is tracked. An address gets at most one invitation email
+a day from all of Alcove, and three from one team in 30 days; past those none goes, and on a busy day one waits for the
+next. Whatever becomes of the email, the invitation waits in the app for whoever signs in with that address.
+
+**Stop them** opens a public page, `/stop-email#…`, one card on the evening with no sign-in: "Stop invitation emails?"
+and **Stop invitation emails**, then "Alcove won't email you invitations again." Its token leaves the address bar at
+once; offline, and when something goes wrong, the card says so in caution, as it happens, with **Try again**. A mail app's own unsubscribe button
+does the same in one press. Invitations to that address are still made and still show in the app: only the emails stop,
+and nobody is told.
+
+Storybook's journeys use these numbers: **10.1 Ring someone**, **10.2 Schedule a call with someone**,
+**10.3 The notes you both have**, **10.4 Someone not on Alcove yet**, **10.5 Your own arch**, **10.6 Invite people**,
+**10.7 Or copy the invite link**, **10.8 Invite someone from their row**, **10.9 Invite everyone left**,
+**10.10 New group: name it, then fill it**, **10.11 A name that's taken, and a group half made**,
+**10.12 Open a group in place**, **10.13 Add and remove people**, **10.14 Start a call with all of them**,
+**10.15 Rename a group**, **10.16 Delete a group**, **10.17 Three people, and thirty**,
+**10.18 Find one person out of thirty**, **10.19 Nobody else here yet**, **10.20 The team doesn't load**,
+**10.21 Offline, and groups that don't load**, **10.22 Open a team's invite link and sign in**,
+**10.23 Make a new invite link**, **10.24 Invited, already on Alcove**, **10.25 New to Alcove, from the invitation's
+email**, **10.26 Not now**, **10.27 Resend and cancel an invitation**, **10.28 Upgrade from Free**,
+**10.29 Join while on a team**, **10.30 Ask the admin to upgrade**, **10.31 Rename the team**, **10.32 Invited, at your
+company**, **10.33 An invitation to the team you're on**, **10.34 Not now, from its link**, **10.35 Asked to upgrade, as
+its admin** and **10.36 Remove someone**.
 
 ## 11. Settings
 
@@ -2129,8 +2281,9 @@ notes on new calls while the oldest request fails.
   this one haven't started, **Refund**, asked in place. Then **Payments**: first what's on its way or needs a person, each
   opening checkout (a payment for a plan) or the add-money sheet, with a cancel while nothing has reached it; then the
   balance's latest changes, each with **Receipt**, a receipt to print. Without a server that takes payments the balance
-  has no **Add money**. On a team, the plan row says whose team it is and until when your license runs, with
-  **Open Team**, and Storage is the team's pool; its admin has the licenses too (16.18).
+  has no **Add money**. On a team license, the plan row says whose team it is and until when your license runs, with
+  **Open Team**, and Storage is the team's pool; its admin has the licenses too (16.18). On a free team your plan is your
+  own, and its admin is told there when someone asks them to upgrade it (16.21).
 - **Privacy**: what account and call information Alcove processes, then confidential compute: the time the hardware
   was verified when this browser could check it, **Not verified** and why when its check of the server didn't pass, or
   where your audio is opened and your notes are written. The **Privacy policy** explains how Alcove uses account and service
@@ -2736,8 +2889,8 @@ loses a payment on its way: the side panel and Settings show it, and opening it 
 
 **Plans** (`/plans`) is what each plan brings and what it costs: Free, Pro and Team side by side, on the last of the sunset.
 It's reached from the side panel's **Free plan · See plans** (16.7), Settings › Plan's **See plans**, checkout's **Compare plans**, and the welcome page's **Get Pro** and
-**Start a team** (16.13), which open it with checkout open on Pro (`/plans?checkout=pro`) or on Team (`?checkout=team`;
-`?checkout=hours` opens it on more notes); the address forgets it once checkout is open.
+**Start a team** (16.13), which open it with checkout open on Pro (`/plans?checkout=pro`; `?checkout=hours` opens it on
+more notes) or with Start a team's popover open over Team's card (16.15); the address forgets it once it's open.
 
 1. On Free, Settings › Plan's **See plans** opens Plans priced for a year: Pro is $16 a month, "$192 for 12 months. You save $48.", and **Get
    Pro** is the one filled button. Free's button area says **Your plan** with a tick.
@@ -2820,7 +2973,7 @@ notes; they don't carry into the next period. Done says "10 more hours of notes"
 Your plan is at the side panel's foot, under the confidential-compute check. On Free, about how much of the period's notes is
 left sits over a meter (warm under an hour, in caution once out) and opens Settings at your plan; under it, Free's row is the
 panel's way into Plans: **Free plan · See plans** opens Plans (16.1), **Free plan · Get Pro** opens checkout on Pro once notes
-are low or out, and on a team without a license **Free plan · Team** opens Team (16.19). On Pro or Team, the plan's own row
+are low or out, and on a team on Team with no license for you **Free plan · Team** opens Team (16.19). On Pro or Team, the plan's own row
 (its small sun, and until when, the team's name, or ending with **Extend**, 16.14) opens Settings at your plan. On Plans,
 whichever row it is is the place you're on.
 
@@ -2885,7 +3038,7 @@ a call. The side panel's number turns warm.
 
 The welcome page's **Plans**: Free, Pro and Team in a cove at the last of the sun, with what they cost (Team's for each person),
 their notes and storage, **Start free**, **Get Pro**, which signs in and then opens Plans with checkout open on Pro, and
-**Start a team**, which signs in and then opens it with checkout open on starting a team (16.15).
+**Start a team**, which signs in and then opens it with Start a team's popover open over Team's card (16.15).
 
 ### 16.14 Pro ending, renewed, ended
 
@@ -2900,72 +3053,103 @@ again, which lifts it at once.
 
 ### 16.15 Start a team
 
-A team is one admin (whoever starts it) and as many people as it has licenses for, and you're on one team at most. Team's card
-on Plans says what a license is (a price for each person, for a period: $40 for 30 days unless the limits say otherwise) and,
-on **Yearly**, what one for a year costs a month ($32, $384 a person for 12 months), and **Start a team** on it opens checkout
-on Team over the page, for a year while Plans is on **Yearly**; a company's Team page has the same as a quiet row while you're
-on none, opening on a month, and the welcome page's signs in first (16.13).
+A team is free to start: anyone at any address can be on it, with one admin (whoever starts it) and members, and you're on
+one team at most (flow 10). Team's card on Plans says what a license costs (a price for each person, for a period: $40 for
+30 days unless the limits say otherwise, and on **Yearly** what one for a year costs a month, $32, $384 a person for 12
+months), and with no team its **Start a team**, with a quiet line under it ("Free to start. Licenses only when you
+upgrade."), opens the team's name in a popover over the card, so the cards stay as they are: your company's name to start
+with, or at a personal address "Art's team", then **Cancel** and **Start the team**. Starting it makes the team, free, with
+you its admin, and opens its page, where **Invite people** is, and **Upgrade** once someone else is on it (flow 10, 16.16).
+Nothing is bought: licenses are for a team that exists. Checkout opened on Team with no team (a door or a link that leads
+there) starts one the same way, in its window: "Licenses are for a team, and you're not on one yet.", the team's name, and
+**Start the team**, which closes it and opens the team's page. The plan choice a new account sees is the same card (16.20),
+and the welcome page's **Start a team** signs in first, then opens Plans with the popover open (16.13). A team also starts
+by itself, named the same way, at your first invitation from a company's Team page, or when someone joins from your invite
+link (flow 10).
 
-1. The team's name, the company's to start with, with you its admin; how long, **Monthly** or **Yearly · 20% off** (while a
-   license for a year is offered); and how many licenses: one for each person, you included. A license for a year is one
-   person for 12 periods, $384 ("6 licenses for a year at $32 a month": $2,304); it runs a year from when it's taken, is
-   refunded in full while nobody has taken it, and isn't once it's taken.
-2. Pay from the balance, or with USDC on a network (16.2): the summary says exactly what to send. Getting the address makes the
-   team at once, with you its admin, and opens the payment for its licenses; the side panel waits for it as for Pro's.
-3. Once the payment is added, so are the licenses, with nothing to press: "{team} is on Team". Your license is taken then, and
-   each of the others when the person it's for next opens Alcove.
-4. **Done** has the way to invite them: a link for one person (16.17), and its receipt says what was bought ("Team, 6 licenses
-   for a year"), as Settings' payments do. Team is your plan on Plans from then, with **Buy licenses** on its card. A license
-   replaces Pro at once: the month running ends, and the months that haven't started go back to the balance, which you're
-   told.
+### 16.16 Upgrade a team
 
-### 16.16 Join a team by its link
+Upgrading is buying the team's licenses: each is one person for a period, bought from the admin's balance. The team is on
+Team from the first license bought, and the people licensed on it share what it shares: notes made visible to it, Ask
+across them, whole-team workspaces and its storage pool (8.46, flow 12's Team workspaces). A free team's admin has
+**Upgrade** in the note at the top of its water, beside what Free means, once someone else is on it (flow 10); on Team's
+card on Plans; and in Settings › Plan's Licenses, where a member's ask is said too (16.21). It opens checkout on Team for the
+team they have, with nothing to name.
 
-An invite is a page of its own (`/team/join#…`), one card on the team's evening. Its secret is after the `#`, so no server sees
-it, and it leaves the address bar at once. Signed out, it asks you to sign in first, there (Google's way back comes back to it),
-while the invite waits in the tab. Then it says whose team it is and what joining gives you (notes of your own, what the team
-shares, its storage), with **Join** and **Not now**: nothing happens until Join. Join takes one of the team's licenses for a
-period if one is left, and **Open Alcove** opens the team's page, with you on it under your license. A used or expired link, or
-being on a team already, is refused in Alcove's words.
+1. How many licenses, one for everyone on it without one to start with (at least 1), the price of one saying how long it
+   runs ("$40 each, one person for 30 days"), said there once; how long, **Monthly** or **Yearly · 20% off** (while a
+   license for a year is offered); and **Buy a license for each person who joins**, which starts as the team has it (off,
+   for a team that's never had it on) and is set with the purchase: from the balance at once, or as the payment's money
+   arrives. With it on, whoever needs a license when none is left gets one from the admin's balance. A license for a year
+   is one person for 12 periods, $384 ("6 licenses for a year at $32 a month": $2,304); it runs a year from when it's taken,
+   is refunded in full while nobody has taken it, and isn't once it's taken.
+2. Pay from the balance, or with USDC on a network (16.2): the summary says exactly what to send, and how long each license
+   runs once it's taken, and the side panel waits for it as for Pro's.
+3. Once the payment is added, so are the licenses, with nothing to press: whichever of the app's reads sees them bought takes
+   your own license then, once, even with checkout closed, and checkout says it's adding them until that's done. **Done**
+   says "Vandelay Industries is on Team" and what happened: "Everyone has a license." when there's one for each person on it
+   (theirs, or one waiting for them) or one is bought for each person who joins, else "2 of 3 have one; buy more on Team.";
+   its receipt says what was bought ("Team, 6 licenses for a year"), as Settings' payments do. Your license is taken then,
+   and each of the others when the person it's for next opens Alcove (16.18). Team is your plan on Plans from then, with
+   **Buy licenses** on its card. Buying licenses answers anyone who asked the admin to upgrade: their asks go.
+
+Joining a free team changes nobody's plan: someone on Pro stays on Pro, and pays for it as before. A license taken while on
+Pro replaces Pro at once, and what's left of Pro comes back to the balance: the months that haven't started, and the rest of
+the month running, by the day. Settings › Plan and the side panel say so: "Vandelay Industries covers your plan now. The rest
+of your Pro, $12.40, went back to your balance." ("Vandelay Industries covers your plan now, in place of Pro." when nothing
+comes back, for Pro Alcove gave), and the payments say "Refund: the rest of Pro, for a team license".
 
 ### 16.17 Your team: people, licenses and invites
 
-On a team, Team is the team's page: its name in the sky over how many are on it, and its people on the horizon, each under
-their license, opening their popover as on a company's line. On the water, everyone as a row with their role and license
-("Licensed until 12 Dec", "License ended", "Waiting for a license"); the admin's **Remove** asks in place, under the row (their
-license isn't refunded, they go back to Free, and notes they made visible to the team stay visible). At the foot, **Leave team**
-for a member, asked the same way, or for the admin **Delete team** once nobody else is on it, which refunds the licenses nobody
-took. Then the notes made visible to the team, each opening its call's page (8.46), and your groups and what's shared with them,
-as ever. Beside them, for the admin: **Licenses**, how many are left and who's waiting for one, with **Buy licenses** (filled
-while someone waits), which opens checkout on Team, month by month or for a year as 16.15, and buying one for a period from
-the balance whenever it's needed; and **Invite people**: **Make an invite link** makes a link that lets one person join, for
-a day, shown with **Copy**; each press of **Make another** makes a new one. A member without a live license is told first, at
-the top of the water, why the team's notes and workspaces aren't open to them.
+On Team, the team's page (flow 10) says who has a license. Its sky says how many are on it and, for the admin, how many have
+a license and how many are left ("Team · 6 people · 5 with a license · 3 licenses left"), or for everyone else who its admin
+is ("Team · 6 people · Priya is its admin"); its people stand on the horizon, each under their license ("Until 12 Dec",
+"Waiting", "Ended", or for the admin "From next visit" where one is left for them), opening their popover as on a
+company's line. On the water, everyone as a row with their role and license ("Licensed until 12 Dec", "License ended",
+"Waiting for a license", or "A license is taken the next time they open Alcove", as just after upgrading); the admin's **Remove** asks in place, under the row (their license isn't
+refunded, they go back to Free, and notes they made visible to the team stay visible). At the foot, **Leave team** for a
+member, asked the same way, or for the admin **Delete team** once nobody else is on it, which refunds the licenses nobody
+took. Then **Invited**, the colleagues not on the team yet, the notes made visible to the team, each opening its call's page
+(8.46), and your groups and what's shared with them, as on a free team. Beside them, for the admin: **Licenses**, how many
+are left and who's waiting for one, with **Buy licenses** (filled while someone waits, in Invite people's place), which
+opens checkout on Team, month by month or for a year as 16.16, and **Buy a license for each person who joins**, which buys
+one for a period from the balance whenever someone needs one and none is left, at most 10 for the team in a day. It stays
+beside the people for as long as it's on, on Free too, once the team's licenses have ended. Inviting is the same on either
+tier: **Invite people** emails
+each invitation, **Copy link** copies the team's one link, and Invited has **Resend** and **Cancel** (flow 10). Someone who
+joins takes a license as they join, if one is left. A member without a live license is told first, at the top of the water,
+why the team's notes and workspaces aren't open to them (16.19).
 
 ### 16.18 Licenses running low
 
 A license is taken when someone without a live one uses Alcove: when the app opens signed in, when a tab comes back after 30
 minutes or more away, or when they join. Nothing that reads in the background takes one. It runs a period from then, and an
-ended one is replaced only by the next visit. With fewer than five left, the team's admin is told: the side panel's Team row
-says how many, in warm, with **Buy** ("2 licenses left · Buy"), which opens checkout on Team over the page you're on, and
-Settings › Plan says it at the top ("2 licenses left on Vandelay Industries. Buy more so nobody is left without one.") until
-it's dismissed, when the row says the team's name again. In Settings, **Licenses** says how many are left of how many, with
-**Buy licenses**; **Buy one when it’s needed** buys a license from the admin's balance whenever someone needs one and none is
-left; and **Refund** gives back the licenses nobody has taken, asked in place.
+ended one is replaced only by the next visit. With fewer than five left for whoever joins next (past one for each person on
+the team without a license, who takes theirs on their next visit), the team's admin is told, unless a license is bought for
+each person who joins: the side panel's Team row says how many are left, in warm, with **Buy** ("2 licenses left · Buy"),
+which opens checkout on Team over the page you're on, and Settings › Plan says it at the top ("2 licenses left on Vandelay
+Industries. Buy more so nobody is left without one.") until it's dismissed, more are bought, or buying one for each person
+who joins is turned on, when the row says the team's name again. An upgrade sized to the team says nothing as everyone
+takes theirs. In Settings, **Licenses** says how many are left of how many, with **Buy licenses**; **Buy a license for each
+person who joins** buys one from the admin's balance whenever someone needs one and none is left; and **Refund** gives back
+the licenses nobody has taken, asked in place.
 
 ### 16.19 On a team without a license
 
-When none was left for you, you stay on your own plan, and the team's admin is told. The side panel says it over your own plan:
-"No team license yet" in caution, and under it who has been told ("Priya has been told"), or for the team's admin "Buy
-licenses, and one is yours". On Free your notes left and the meter stay under it, and Free's row is **Free plan · Team**, which
-opens Team. Settings › Plan says it once at the top, over your plan. The next time you open Alcove after the admin buys
-more, one is yours: your plan is Team, your license runs a period, and the side panel's foot is Team's row, over the team's name.
+On a team that's on Team, when none was left for you, you stay on your own plan, and the team's admin is told. The side
+panel says it over your own plan: "No team license yet" in caution, and under it who has been told ("Priya has been told"),
+or for the team's admin "Buy licenses, and one is yours". On Free your notes left and the meter stay under it, and Free's
+row is **Free plan · Team**, which opens Team. Settings › Plan says it once at the top, over your plan. The next time you
+open Alcove after the admin buys more, one is yours: your plan is Team, your license runs a period, and the side panel's
+foot is Team's row, over the team's name. On a free team none of this shows: nobody on it has a license to wait for, and
+everyone's on their own plan (flow 10).
 
 ### 16.20 Choose a plan
 
 The first time Home opens for an account, it opens on the plans instead, once: the plan choice, Plans in Home's place with a
 head of its own. That's every new account, after its arrival (1), and every account from before plans, the first time it opens
-Alcove normally after plans came.
+Alcove normally after plans came. An account made from an invite link joins its team instead and isn't shown them (flow 10):
+someone joining a team doesn't choose a plan.
 
 1. Someone with no notes yet reads **Choose a plan**: "Every plan has calls, workspaces and confidential compute. They differ in
    hours of notes and storage." Someone who has used Alcove reads **Alcove has plans now** and which plan they're on, in the
@@ -2973,12 +3157,13 @@ Alcove normally after plans came.
    when everything works as before instead.
 2. Under the head, Plans as ever: Monthly / Yearly, then Free, Pro and Team. The plan you're on leads straight on: **Continue on
    Free**, quiet, on Free's card (on Pro or Team, **Continue on Pro** or **Continue on Team** on theirs), goes to Home.
-3. **Get Pro** is the one filled button and opens checkout over the plans (16.2), as **Start a team** opens Team's (16.15). Once
-   what was bought is yours and checkout has closed, Home follows, with nothing more to choose. Closing checkout without buying
-   leaves the plans as they were.
+3. **Get Pro** is the one filled button and opens checkout over the plans (16.2). Once what was bought is yours and checkout
+   has closed, Home follows, with nothing more to choose. Closing checkout without buying leaves the plans as they were.
+   **Start a team** names the team in place on Team's card, as on Plans (16.15), and starting it opens the team's page
+   instead of Home.
 4. A new account's tour of Home (1, step 4) starts once Home is there, never over the plans.
-5. Only Home opens on them. A link to a call, a call's page, a join link, an agent's consent page, a public page or a team
-   invite is never interrupted, and nor is signing in from a call's link or for an agent: the plans wait for the next time Home
+5. Only Home opens on them. A link to a call, a call's page, a join link, an agent's consent page, a public page or an invite
+   link is never interrupted, and nor is signing in from a call's link or for an agent: the plans wait for the next time Home
    is reached. Signing in from the welcome page sails out of its cove onto them, as it would onto Home (1, step 3), the sun
    sinking to their last sliver; a new account's arrival says "Opening Plans" and its arch opens onto them.
 6. Once the plans have been on screen for a moment (the tab showing, nothing open over them), Alcove is told, and they aren't
@@ -2988,12 +3173,15 @@ Alcove normally after plans came.
 While the prices load, the cards wait in place and **Continue on Free** is already on Free's; offline it says the plans show once
 you're back, and when they don't load it says why, each with **Continue on Free** to go on.
 
-### 16.21 Team at the third invite
+### 16.21 Asked to upgrade
 
-On a company's Team page while you're on no team, the invite that makes three of you (you, everyone on Alcove and everyone
-invited) goes as ever, and Team is offered beside it, once for the account on this browser: "That makes 3 of you. Put everyone
-on one plan: Team, $40 a person a month." in the server's price, with **See Team**, which opens checkout on Team over the page
-(16.15). Leaving it is Not now: it goes by itself, and invites after it say nothing more. Nothing is offered on a team.
+On a free team, everyone but its admin has **Ask Priya to upgrade** at the top of the team's water (flow 10). It tells the
+admin once, and nobody else: for 7 days "Priya's been asked" stands in its place, and then it can be pressed again. The
+admin is told at the top of Settings › Plan until it's dismissed, "Kofi asked you to upgrade Vandelay Industries.", with
+**Upgrade** under it in Licenses, beside what upgrading gives, the page's one Upgrade, which opens checkout on Team for the
+team (16.16); on the team's page, the Free note says "Kofi asked you to upgrade." over its Upgrade (flow 10); and in one
+short line over the plan in the side panel; with browser notifications on and **Your plan** ticked (11.25), the browser says
+so too. Buying the team's licenses answers the ask: it goes.
 
-Storybook's journeys use **16.1–16.21** above. The addresses, payments and networks in it are made up; a real
-payment through 1Click needs a hand check with a wallet.
+Storybook's journeys use **16.1–16.21** above, by their headings. The addresses, teams, payments and networks in it are
+made up; a real payment through 1Click needs a hand check with a wallet.

@@ -14,6 +14,24 @@
   --tp-dash: color-mix(in oklch, var(--ink) 56%, transparent);
 }
 .dusk.tp .hz { --hz-sun-x: calc(var(--tp-sun-x, -2.85) * var(--u)); --hz-sun-r: calc(var(--tp-sun-r, .38) * var(--u)); }
+
+/*
+ * The Team page is one evening (`tm`) whichever view it shows (apps/web features/team/TeamPage.tsx): the company's (tp), a
+ * team's (tq) or the invitations to you (ti-page). Its view rises with the page the first time. Taking another's place in
+ * the page (Join, a first invitation, Leave team, Delete team) it fades in over --duration-2 on the soft curve while a still
+ * copy of the last fades out over it (leaveFading), and the horizon and the sun move to where the new view has them,
+ * registered here so they can.
+ */
+@property --hz-sun-x { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --hz-sun-r { syntax: "<length>"; inherits: true; initial-value: 48px; }
+.dusk.tm { transition: --hz var(--duration-2) var(--ease-soft); }
+.dusk.tm .hz { transition: --hz-sun-x var(--duration-2) var(--ease-soft), --hz-sun-r var(--duration-2) var(--ease-soft); }
+.dusk-in > .tm-view { animation: none; }
+.tm-view > * { animation: ac-rise var(--duration-3) var(--ease-out) both; animation-delay: calc(var(--d, 0) * 55ms); }
+.dusk-in > .tm-view.is-swap { animation: ac-fade var(--duration-2) var(--ease-soft) both; }
+.tm-view.is-swap > *, .tm-view.is-swap :is(.tp-fig, .tq-fig > *) { animation: none; }
+/* Each view's heading takes the focus as the page becomes it, for a screen reader to start from: it isn't something to press. */
+.tm-view :is(.tp-hero > h2, .tq-name > h2, .dusk-title)[tabindex="-1"]:focus { outline: none; }
 /* The water under the names stays clear, so the sun's light never runs through them. --far is how far out a glint is. */
 .tp .hz-glint { opacity: calc(var(--o) * clamp(0, (var(--far) - .3) * 100, 1)); }
 /* Where the sun sits over the section headings, its glitter stops short of them. */
@@ -29,17 +47,13 @@
 .tp-acts .ac-btn { height: 46px; padding: 0 22px; font-size: 15px; }
 .tp-acts .ac-btn.is-secondary { background: color-mix(in oklch, var(--ground) 64%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 16%, transparent); color: var(--ink); }
 .tp-acts .ac-btn.is-secondary:hover { background: color-mix(in oklch, var(--ground) 82%, transparent); }
-/* Who joined from your invite link, under the buttons: their faces, then their names. */
-.tp-joined { display: inline-flex; align-items: center; justify-content: center; gap: 10px; max-width: 100%; margin-top: 14px; font: 500 15px/1.35 var(--font-sans); color: var(--ink-2); text-wrap: balance; }
-.tp-joined .ac-faces { flex: none; }
-.tp-joined > span { min-width: 0; overflow-wrap: anywhere; }
-/* Why the invites wait for your link, under the buttons, with Try again when there's something to try. */
+/* Why Copy link waits, under the buttons, with Try again when there's something to try. */
 .tp-why.is-link { flex-wrap: wrap; justify-content: center; row-gap: 2px; max-width: 100%; margin-top: 12px; text-wrap: balance; }
 /*
- * A line under the buttons (who joined from your link, or why the invites wait) takes room of its own: the horizon moves
- * down by it, so the heading keeps both its lines and the people still stand on the horizon.
+ * That line takes room of its own: the horizon moves down by it, so the heading keeps both its lines and the people still
+ * stand on the horizon.
  */
-.tp:has(.tp-joined), .tp:has(.tp-why.is-link) { --hz: clamp(364px, calc(40vh + 42px), 512px); }
+.tp:has(.tp-why.is-link) { --hz: clamp(364px, calc(40vh + 42px), 512px); }
 
 /* The line. Everyone's feet are on the horizon, and their name is on the water just below it. */
 .tp-row { position: relative; display: flex; flex: none; align-items: flex-end; justify-content: center; margin: 0 0 calc(-1 * var(--name-h)); padding: 0; list-style: none; }
@@ -113,6 +127,8 @@
 .tp-find { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; color: var(--ink-3); }
 .tp-find input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: 400 15px/1 var(--font-sans); color: var(--ink); }
 .tp-find input::placeholder { color: var(--ink-3); }
+/* Said once under the field: Invite people starting a team, say. */
+.tp-pick-note { margin: -2px 12px 8px; font: 400 12.5px/17px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
 .tp-list { max-height: 228px; padding-top: 4px; overflow: hidden auto; overscroll-behavior: contain; border-top: 1px solid var(--line); scrollbar-color: var(--line-control) transparent; scrollbar-width: thin; }
 .tp-list.is-tall { max-height: 332px; }
 .tp-l { display: grid; grid-template-columns: 32px minmax(0, 1fr) 20px; column-gap: 12px; align-items: center; width: 100%; min-height: 52px; padding: 6px 10px; border-radius: var(--radius-sm); text-align: left; }
@@ -123,6 +139,11 @@
 .tp-ck { display: grid; place-items: center; width: 20px; height: 20px; border-radius: var(--radius-xs); box-shadow: inset 0 0 0 1.5px var(--line-control); color: transparent; }
 .tp-ck .ac-i { stroke-width: 2.6; }
 .tp-ck.is-on { background: var(--sun); box-shadow: none; color: var(--on-sun); }
+/* A row with a tag (Invited) has a column for it before its tick; one that can't be picked says why, and has no tick. */
+.tp-l.has-tag { grid-template-columns: 32px minmax(0, 1fr) auto 20px; }
+.tp-l-tag { padding: 1px 8px; border-radius: var(--radius-pill); background: var(--sunk); font: 500 11.5px/18px var(--font-sans); color: var(--ink-2); white-space: nowrap; }
+.tp-l.is-off { cursor: default; }
+.tp-ck.is-off { visibility: hidden; }
 .tp-pop-f { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; padding: 8px 6px 0; border-top: 1px solid var(--line); }
 .tp-pop-f .ac-btn[disabled] { opacity: .5; }
 /* Copy link, and making a new link beside it, at the foot's start. */
@@ -240,7 +261,6 @@
 @media (max-width: 860px) {
   /* The sea reaches under the tab bar, however short the page: the top bar and the room kept for the tab bar come off it. */
   .tp { --hz: 288px; --u0: 86px; --u: 86px; min-height: calc(100dvh - 136px - env(safe-area-inset-bottom, 0px)); }
-  .tp:has(.tp-joined) { --hz: 336px; }
   /* Its Try again can take a row of its own on a narrow phone. */
   .tp:has(.tp-why.is-link) { --hz: 364px; }
   .dusk.tp .hz { --hz-sun-x: calc(-1.72 * var(--u)); --hz-sun-r: 31px; }

@@ -275,7 +275,7 @@ error's name, a system's code, or the error's class. Never a provider's message.
   error's class, with another service's status when it names one (`InternalError:403`). The loops: `upkeep` every 5 minutes (its first a minute after start),
   and each of its steps as `upkeep:<step>` (`sessions`, `agents`, `agent activity`, `receipts`, `operator nonces`,
   `object deletes`, `orphaned objects`, `shared screens`, `notes`, `calls`, `drive exports`, `moves`, `note links`, `rings`,
-  `live notes`, `attention`, `plans`, `carried top-ups`, `teams`); `deposits`, the top-up watcher, every 5 seconds;
+  `live notes`, `attention`, `plans`, `carried top-ups`, `teams`, `team invitations`, `mail`, `mail days`); `deposits`, the top-up watcher, every 5 seconds;
   `overdue-calls`, ending calls at their longest, every 30 seconds; `notes-writer`, each pass of the writer, with each note's
   failed attempt counted by its code; and `certificates` (with `TLS_HOSTS`), `attestation` (inside a TEE) and
   `owners-rewrap` (while an old master is carried).
@@ -292,8 +292,9 @@ error's name, a system's code, or the error's class. Never a provider's message.
   | Object deletes | queued; failing; the most attempts; the oldest |
   | Top-ups | due a look, and how late the oldest is; open; open past their deadline with no answer; credited but not carried |
   | Plans and teams | due a look, and how late the oldest is; accounts with no plan |
+  | Mail | emails waiting to go (`mail_outbox`): all of them, due now, tried and not sent, the most tries one has had, and how long the oldest has waited, from the rows' times and tries alone |
   | Calls | live; past their longest, and how far past it the most overdue is; host away past the grace (its connection left over 25 seconds ago, by the row: `operator call` asks LiveKit whether one's host is really gone); with no room; ended in the last hour; and from one `ListRooms` (5 seconds): live calls over a minute old whose room is gone, and ended ones whose room is still up (`calls/operator/operator.ts` › `callsWork`) |
-  | Sweeps | sessions, agents' rows and team invites waiting to be swept |
+  | Sweeps | sessions, agents' rows and team invitations run out, waiting to be swept |
 
 - **Finals**, from the ring's list of work given up for good, which requests can't push out: notes finished without a
   summary, and Drive exports that failed for good, in the last day on this instance, as the line that says so names it

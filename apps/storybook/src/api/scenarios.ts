@@ -8,7 +8,7 @@ import {
   TopUpSchema, TopUpRoutesSchema, PlanOffersSchema, ISODateSchema, DriveExportChoiceSchema, DriveExportJobSchema, DriveFolderSchema, DriveSettingsSchema, FILE_TYPE, CalendarSchema,
   DocumentLibrarySchema, IncomingRingSchema, IntervalSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PlanSchema, PreferencesSchema, MentionNoticeSchema, SessionSchema, ShareEntrySchema, TeamSchema,
   WorkspaceMediaSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, type DocumentLibrary, type DocumentRole, type Group, type ItemCall, type MentionNotice, type NoteRoom, type NoteWorkedOn,
-  type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole, MyTeamSchema, type PlanNotice, InviteJoinedSchema, PersonSchema
+  type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole, MyTeamSchema, type PlanNotice, InvitationForYouSchema, InvitePeekSchema, InviteSecretSchema
 } from '@alcove/api';
 import { tileHintKey } from '~/features/call/layout/view';
 import { returnTo } from '~/features/account/afterSignIn';
@@ -17,7 +17,7 @@ import { openBrowser } from '../browser';
 import { busyCalls, busyEvents, soonCalls } from '../world/calls';
 import { connected, notConnected, writeNote, type NoteSpec } from '../world/build';
 import { iso, on, setClock } from '../world/clock';
-import { JOINED_FROM_ART, PRIYA_INVITE_SECRET, artsLink, priyasLink } from '../world/invite-links';
+import { PRIYA_INVITATION_SECRET, PRIYA_INVITE_SECRET, artsLink, priyasLink } from '../world/invite-links';
 import { clipOf, stillOf } from '../media/screens';
 import { PREFS, session, type BoardSpec, type Kept, type Opening, type Page, type Refused, type Space, type World } from '../world/world';
 import { FLOW, RETRO, roomBoard } from '../world/boards';
@@ -31,13 +31,14 @@ import { QUIET } from './empty';
 import { forgetKeptHere } from './recordings/kept';
 import { drawnPicture, forgetAudio } from './media';
 import { stopLive } from './standin';
-import { buyingWith, paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, PRO_YEAR, purchaseTopUp, raisePrices, TEAM_SIX, topUpOf, withPayments, type PaymentPlay } from '../world/plans/payments';
-import { carriedOver, freePlan, inGrace, newPlan, notesStopped, overLimits, proEnded, proEnding, proEndingPriceRose, proExtended, proGiven, proPlan, proRenewed, PRO_YEARLY_PRICE, withBalance, withNotesLeft } from '../world/plans/plans';
+import { buyingWith, paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, PRO_YEAR, purchaseTopUp, raisePrices, TEAM_THREE, topUpOf, withPayments, type PaymentPlay } from '../world/plans/payments';
+import { carriedOver, FREE, freePlan, inGrace, LICENSE_PRICE, newPlan, notesStopped, overLimits, PERIOD_MS, proEnded, proEnding, proEndingPriceRose, proExtended, proGiven, proPlan, proRenewed, PRO_YEARLY_PRICE, withBalance, withNotesLeft } from '../world/plans/plans';
 import { disconnectedDrive, withDriveExports } from '../world/drive-exports';
 import { homesOn } from '../world/call-page';
 import { calendars } from '../world/scheduling';
 import { withAgentConnections, withAgentEnding, withClaudeJustConnected } from './agents/agents';
-import { planWithTeam, priyasTeam, startedTeam, teamView, vandelayTeam, type TeamWorld } from '../world/plans/teams';
+import { anaInvitesArt, directoryOf, invitationOnTeam, invitationsFor, invitedToFreeTeam, invitedToVandelay, jonasInvitesArt, linksIn, peekOf, priyaInvitesArt, teamsIn, withLinks } from '../world/plans/team-invitations';
+import { adminOf, endedTeam, freeTeam, isLive, planWithTeam, priyasFreeTeam, priyasTeam, startedTeam, teamView, tierOf, vandelayTeam, type TeamWorld } from '../world/plans/teams';
 import { serve } from './state';
 import { forgetDocuments, summaryOf } from './workspaces/workspaces';
 
@@ -45,7 +46,9 @@ export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | '
   | 'plan-low' | 'plan-stopped' | 'plan-grace' | 'plan-over' | 'plan-balance' | 'plan-pro' | 'plan-pro-ending' | 'plan-pro-ending-price' | 'plan-pro-renewed' | 'plan-pro-ended'
   | 'plan-buying-pro' | 'plan-pro-extended' | 'plan-pro-given'
   | 'plan-waiting' | 'payment-short' | 'payment-over' | 'payment-refused' | 'payment-expired' | 'payment-failed'
-  | 'team-admin' | 'team-admin-low' | 'team-admin-none' | 'team-member' | 'team-member-unlicensed' | 'team-join' | 'no-team'
+  | 'team-admin' | 'team-admin-low' | 'team-admin-none' | 'team-member' | 'team-member-unlicensed' | 'no-team'
+  | 'team-free-admin' | 'team-free-member' | 'team-free-asked' | 'team-upgraded' | 'team-licenses-ended' | 'invited' | 'invited-personal'
+  | 'team-member-invited' | 'team-solo-admin-invited' | 'team-admin-invited'
   | 'team-buying' | 'plan-choice' | 'plan-choice-before';
 
 interface Scenario { title: string; about: string; make: () => { world: World; opening: Partial<Opening> } }
@@ -310,8 +313,8 @@ function busy(): World {
     mentions: structuredClone(TAGGED), media: files(), rings: [], writing: null,
     // The bandwidth flag is on here and off in every other scenario, so both answers are served.
     featureFlags: ['call.bandwidth_reduction'],
-    // Aiko and Maya came to Alcove from Art's own invite link this week.
-    inviteLink: artsLink(JOINED_FROM_ART)
+    // Art's own invite link: what Copy link copies from the company page, with Art on no team.
+    inviteLink: artsLink()
   };
 }
 
@@ -383,52 +386,121 @@ function onTheirOwn(): World {
 
 /* ---------- a team ---------- */
 
-/** The secret of the invite `team-join` opens. Made up: it joins nothing outside Storybook. */
-export const TEAM_INVITE_SECRET = 'VandelayInviteStorybook0001';
+/** The moment the team scenarios open on: the world is made before the clock is set to it. */
+const AFTERNOON = () => on(0, 16, 12).getTime();
 /**
- * The busy afternoon on Vandelay's team (src/world/plans/teams.ts): `team` as it stands, `admin` whether Art runs it, `change`
- * anything else, and the plan as the team makes it, with $180 in the balance.
+ * The busy afternoon on a team (src/world/plans/teams.ts), with payments taken and $180 in Art's balance: `team` as it stands,
+ * `change` anything else (who's invited, Art's notices), and the plan as the team makes it. A team on Team has Art's standup
+ * visible to it, and an admin's licenses were bought from Art's balance; on a free team nothing was bought and nothing is
+ * visible. While Art is licensed, Art's notes are a license's.
  */
 function onTeam(team: TeamWorld, change: (t: TeamWorld, w: World) => void = () => {}): World {
   const w = busy();
   withPayments(w);
+  const now = AFTERNOON();
+  const onTeamPlan = tierOf(team, now) === 'team';
   // The licenses are the admin's to buy: a member's balance never paid for any.
-  const admin = team.members.some((m) => m.person === ART && m.role === 'admin');
+  const bought = onTeamPlan && adminOf(team)?.person === ART;
   w.plan = {
     ...freePlan(),
     balance: {
       microUsd: 180_000_000,
-      history: admin
-        ? [{ id: 'sb-entry-1', at: iso(-12, 9, 0), label: 'Added, 300 USDC', microUsd: 300_000_000 }, { id: 'sb-entry-team', at: iso(-12, 9, 5), label: 'Team, 3 licenses', microUsd: -120_000_000 }]
+      history: bought
+        ? [{ id: 'sb-entry-team', at: iso(-12, 9, 5), label: 'Team, 3 licenses', microUsd: -120_000_000 }, { id: 'sb-entry-1', at: iso(-12, 9, 0), label: 'Added, 300 USDC', microUsd: 300_000_000 }]
         : [{ id: 'sb-entry-1', at: iso(-12, 9, 0), label: 'Added, 180 USDC', microUsd: 180_000_000 }]
     }
   };
   w.myTeam = team;
   change(team, w);
   // A team note of Art's own: the standup, visible to the team.
-  w.notes = w.notes.map((n) => (n.id === 'n2' ? { ...n, teamVisible: true } : n));
-  w.plan = { ...planWithTeam(w.plan, team, ART.email, on(0, 16, 12).getTime()), notes: { minutesLeft: 2380, minutesPerPeriod: 3000, stopped: false } };
+  if (onTeamPlan) w.notes = w.notes.map((n) => (n.id === 'n2' ? { ...n, teamVisible: true } : n));
+  const plan = planWithTeam(w.plan, team, ART.email, now);
+  const licensed = team.members.some((m) => m.person === ART && isLive(m, now));
+  w.plan = licensed ? { ...plan, notes: { minutesLeft: 2380, minutesPerPeriod: 3000, stopped: false } } : plan;
+  return w;
+}
+const teamNotice = (id: string, kind: PlanNotice['kind'], count: number | null, at = iso(0, 11, 20)): PlanNotice =>
+  ({ id, kind, at, until: null, count, microUsd: null, workspaceId: null, memberId: null });
+/** Kofi asked Art to upgrade Vandelay Industries' free team this morning at 11:20: the notice only its admin is told. */
+const kofiAsked = (w: World): void => {
+  const kofi = w.myTeam?.members.find((m) => m.person === KOFI);
+  if (kofi) w.plan = { ...w.plan, notices: [{ ...teamNotice('sb-notice-asked', 'upgrade-asked', null), memberId: kofi.id }, ...w.plan.notices] };
+};
+/**
+ * Art's free team as Art upgraded it today at 15:50: three licenses bought from the balance at a period's price, $120 of the
+ * $180, with auto-purchase on, and Art's own taken as Art bought them (buying is a visit). Priya and Kofi take theirs the next
+ * time they open Alcove. Who's invited stays as it was.
+ */
+function upgraded(): World {
+  const w = onTeam(freeTeam(), (t, w) => {
+    invitedToFreeTeam(w);
+    t.unconsumed = [{ microUsd: LICENSE_PRICE, periods: 1 }, { microUsd: LICENSE_PRICE, periods: 1 }];
+    t.autoPurchase = true;
+    t.members = t.members.map((m) => (m.person === ART ? { ...m, license: { from: iso(0, 15, 50), until: new Date(on(0, 15, 50).getTime() + PERIOD_MS).toISOString() } } : m));
+    w.plan = {
+      ...w.plan,
+      balance: {
+        microUsd: 60_000_000,
+        history: [{ id: 'sb-entry-team', at: iso(0, 15, 50), label: 'Team, 3 licenses', microUsd: -3 * LICENSE_PRICE }, ...w.plan.balance.history]
+      }
+    };
+  });
+  // A license's period began as it was taken, twenty minutes ago: hardly any of its notes used yet.
+  w.plan = { ...w.plan, notes: { minutesLeft: 3000, minutesPerPeriod: 3000, stopped: false } };
   return w;
 }
 /**
- * Priya's link to join Vandelay's team (which has licenses left, and Art isn't on) in the world, waiting in this tab as it
- * does while signing in from it: Storybook can't put a secret in the page's address. `expired`: it ran out a minute ago.
+ * Art's team a month after Art upgraded it (src/world/plans/teams.ts › endedTeam): Art's license ran out two days ago and
+ * Priya's and Kofi's yesterday, none was bought again, so it's free, with auto-purchase still on from the upgrade. Art bought
+ * the three from the balance, $120 of $300, and is on Free since Art's ran out: a fresh period from then. Art's standup stays
+ * visible to the team, closed with the rest of what it shared until it's upgraded again.
  */
-export const withTeamInvite = (expired = false) => (w: World): void => {
-  const team = vandelayTeam();
-  team.members = team.members.filter((m) => m.person !== ART).map((m) => (m.person === PRIYA ? { ...m, role: 'admin' } : m));
-  w.teamInvites = [{ secret: TEAM_INVITE_SECRET, expiresAt: new Date(Date.now() + (expired ? -60_000 : 4 * 3_600_000)).toISOString(), team, admin: PRIYA }];
-  returnTo({ to: 'team', secret: TEAM_INVITE_SECRET });
-};
-const teamNotice = (id: string, kind: PlanNotice['kind'], count: number | null, at = iso(0, 11, 20)): PlanNotice => ({ id, kind, at, until: null, count, workspaceId: null });
+function licensesEnded(): World {
+  const w = onTeam(endedTeam(), (_t, w) => {
+    w.plan = {
+      ...w.plan,
+      balance: {
+        microUsd: 180_000_000,
+        history: [
+          { id: 'sb-entry-team', at: iso(-32, 9, 5), label: 'Team, 3 licenses', microUsd: -3 * LICENSE_PRICE },
+          { id: 'sb-entry-1', at: iso(-32, 9, 0), label: 'Added, 300 USDC', microUsd: 300_000_000 }
+        ]
+      }
+    };
+    w.notes = w.notes.map((n) => (n.id === 'n2' ? { ...n, teamVisible: true } : n));
+  });
+  w.plan = { ...w.plan, period: { from: iso(-2, 9, 0), to: new Date(on(-2, 9, 0).getTime() + PERIOD_MS).toISOString() }, notes: { minutesLeft: 260, minutesPerPeriod: FREE.minutes, stopped: false } };
+  return w;
+}
 /**
- * Priya's invite link in the world, and a link's secret waiting in this tab as it does while signing in from its page
- * (/invite): Storybook can't put a secret in the page's address. `secret`: Priya's, or another (Art's own, or one that
- * leads nowhere). `arriving`: the account signed in was just made from it, as Google's way back to /ready says.
+ * Someone's invite link in the world, and its secret waiting in this tab as it does while signing in from its page (/invite):
+ * Storybook can't put a secret in the page's address. `secret`: Priya's (her team's link, with its people, wherever she runs
+ * one; it leads nowhere while she's on Art's), Jonas's (Weber Design's where the world has it, or "Jonas asked you to join
+ * them" while he's on no team), Art's own, or one that leads nowhere. `arriving`: the account signed in was just made from
+ * it, as Google's way back to /ready says.
  */
 export const withInviteLink = (secret = PRIYA_INVITE_SECRET, arriving = false) => (w: World): void => {
-  w.invites = [priyasLink()];
+  withLinks(w);
   returnTo({ to: 'invite', secret, ...(arriving ? { arriving } : {}) });
+};
+/**
+ * The same for an invitation's own link, from its email: Priya's invitation to art@vandelay.industries, to the team she's on
+ * (her own Vandelay Industries team, with its people, in a world where she's on none), in the world whatever the scenario,
+ * and `secret` waiting in this tab: its own, or `ENDED_INVITATION_SECRET`, which leads nowhere.
+ */
+export const withInvitationLink = (secret = PRIYA_INVITATION_SECRET, arriving = false) => (w: World): void => {
+  priyaInvitesArt(w);
+  returnTo({ to: 'invite', secret, ...(arriving ? { arriving } : {}) });
+};
+/**
+ * An invitation's own link to the team Art is on: Priya, on it with Art (`team-member`, `team-free-member`, `team-admin`),
+ * invited Sam at 10:05 today, and Sam passed its link to Art. It's in the world (in place of any invitation Sam had there), and
+ * its secret waits in this tab. Its page says it's an invitation to Art's own team (`yours`, with no `invitationId`: it isn't to
+ * Art), and joining by it is refused, `conflict`: "You’re on that team already."
+ */
+export const withInvitationToYourTeam = (w: World): void => {
+  const made = invitationOnTeam(w, { person: SAM, by: PRIYA, at: iso(0, 10, 5) });
+  returnTo({ to: 'invite', secret: made.secret });
 };
 
 /* ---------- the scenarios ---------- */
@@ -440,21 +512,28 @@ const paymentGoes = (title: string, about: string, play: PaymentPlay): Scenario 
 
 export const SCENARIOS: Record<ScenarioName, Scenario> = {
   'team-admin': {
-    title: 'A team, as its admin', about: 'Art runs Vandelay’s team: six people, Maya’s license ran out last week, three licenses left, auto-purchase off, $180 in the balance.',
-    make: () => ({ world: onTeam(vandelayTeam()), opening: {} })
+    title: 'A team, as its admin',
+    about: 'Art runs Vandelay’s team on Team: six people, Maya’s license ran out last week, three licenses left, auto-purchase off, $180 in the balance. Sam is invited (by Art, two days ago) and Lena (by Priya, 26 days ago: it runs out in 4 days).',
+    make: () => ({ world: onTeam(vandelayTeam(), (_t, w) => invitedToVandelay(w)), opening: {} })
+  },
+  'team-admin-invited': {
+    title: 'A team, as its admin, invited to another', about: 'The same, and Jonas invited Art to Weber Design at 14:30 today: Art can join it once nobody else is on Vandelay’s team.',
+    make: () => ({ world: onTeam(vandelayTeam(), (_t, w) => { invitedToVandelay(w); jonasInvitesArt(w, iso(0, 14, 30)); }), opening: {} })
   },
   'team-admin-low': {
-    title: 'Team licenses running low', about: 'Two licenses are left on Art’s team, and Art is told so.',
+    title: 'Team licenses running low', about: 'Art’s team as in team-admin, with two licenses left, one of them Maya’s when she’s next here, and Art is told so.',
     make: () => {
-      const world = onTeam(vandelayTeam(), (t) => { t.unconsumed = t.unconsumed.slice(1); });
-      world.plan = { ...world.plan, notices: [teamNotice('sb-notice-low', 'licenses-low', 2)] };
+      const world = onTeam(vandelayTeam(), (t, w) => { invitedToVandelay(w); t.unconsumed = t.unconsumed.slice(1); });
+      // Told as Alcove tells it: the one spare, past Maya's.
+      world.plan = { ...world.plan, notices: [teamNotice('sb-notice-low', 'licenses-low', 1)] };
       return { world, opening: {} };
     }
   },
   'team-admin-none': {
     title: 'No team licenses left', about: 'Maya came back this morning and needed a license, but none was left: Maya waits, and Art is told.',
     make: () => {
-      const world = onTeam(vandelayTeam(), (t) => {
+      const world = onTeam(vandelayTeam(), (t, w) => {
+        invitedToVandelay(w);
         t.unconsumed = [];
         t.members = t.members.map((m) => (m.person === MAYA ? { ...m, wanted: iso(0, 11, 20) } : m));
       });
@@ -465,6 +544,10 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
   'team-member': {
     title: 'On a team, licensed', about: 'Art is on Priya’s team with a live license: the team’s notes and workspaces are open to Art.',
     make: () => ({ world: onTeam(priyasTeam()), opening: {} })
+  },
+  'team-member-invited': {
+    title: 'On a team, invited to another', about: 'Art is on Priya’s team with a live license, and Jonas invited Art to Weber Design at 14:30 today: joining it takes Art off Priya’s.',
+    make: () => ({ world: onTeam(priyasTeam(), (_t, w) => jonasInvitesArt(w, iso(0, 14, 30))), opening: {} })
   },
   'team-member-unlicensed': {
     title: 'On a team, without a license', about: 'Art’s license ran out and there was none to take: Art is on Free, and told to ask Priya.',
@@ -477,13 +560,53 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
       return { world, opening: {} };
     }
   },
-  'team-join': {
-    title: 'An invite to a team', about: 'Art isn’t on a team, and has Priya’s link to join Vandelay’s, which has licenses left.',
-    make: () => { const world = busy(); withTeamInvite()(world); return { world, opening: {} }; }
-  },
   'no-team': {
-    title: 'Not on a team', about: 'The busy afternoon: Vandelay’s directory, and Start a team on the Team page.',
+    title: 'Not on a team', about: 'The busy afternoon with $60 and payments taken: Vandelay’s company page and Art on no team. Plans’ Start a team makes one, free, and so does inviting someone.',
     make: () => { const world = busy(); withPayments(world); world.plan = withBalance(); return { world, opening: {} }; }
+  },
+  'team-free-admin': {
+    title: 'A free team, as its admin',
+    about: 'Art runs Vandelay Industries’ free team: Art, Priya, and Kofi since 09:30 today. Nobody is licensed and nothing was bought. Sam is invited (by Art, two days ago), Lena (by Priya, 26 days ago: it runs out in 4 days), Diego (by Art yesterday, and sent again today: Resend waits until tomorrow) and Theo (by Art five days ago, and sent again the two days after: sent 3 times, as many as 30 days take). $180 in the balance, enough to upgrade it.',
+    make: () => ({ world: onTeam(freeTeam(), (_t, w) => invitedToFreeTeam(w)), opening: {} })
+  },
+  'team-free-member': {
+    title: 'A free team, as a member', about: 'Art is on Priya’s free Vandelay Industries team with Kofi and Aiko. Sam is invited (by Art, so Art can resend or cancel it) and Lena (by Priya: Art can’t).',
+    make: () => ({ world: onTeam(priyasFreeTeam(), (_t, w) => { invitedToVandelay(w); w.invites = [priyasLink()]; }), opening: {} })
+  },
+  'team-free-asked': {
+    title: 'A free team, asked to upgrade', about: 'Art’s free team as in team-free-admin, and Kofi asked Art to upgrade it at 11:20 today.',
+    make: () => ({ world: onTeam(freeTeam(), (_t, w) => { invitedToFreeTeam(w); kofiAsked(w); }), opening: {} })
+  },
+  'team-upgraded': {
+    title: 'A team, just upgraded', about: 'Art upgraded the free team at 15:50 today: three licenses from the balance at a period’s price, auto-purchase on, $60 left. Art’s license is taken; Priya’s and Kofi’s wait for their next visit. It’s on Team now.',
+    make: () => ({ world: upgraded(), opening: {} })
+  },
+  'team-licenses-ended': {
+    title: 'A team whose licenses ended', about: 'Art’s Vandelay Industries team a month after Art upgraded it: Art’s license ran out two days ago and Priya’s and Kofi’s yesterday, and none was bought again, so it’s free, with auto-purchase still on and $180 in the balance. Nobody takes one on a visit, as nothing is waiting. What it shared stays, closed until it’s upgraded again.',
+    make: () => ({ world: licensesEnded(), opening: {} })
+  },
+  'team-solo-admin-invited': {
+    title: 'Alone on a free team, invited to another', about: 'Art is the admin of a free Vandelay Industries team nobody else is on, and Jonas invited Art to Weber Design at 14:30 today: joining it deletes Art’s.',
+    make: () => ({ world: onTeam(startedTeam(freePlan().storage.usedBytes), (_t, w) => jonasInvitesArt(w, iso(0, 14, 30))), opening: {} })
+  },
+  invited: {
+    title: 'Invited to teams', about: 'The busy afternoon, on no team: Priya invited Art to her Vandelay Industries team at 10:05 today (Priya, Kofi, Aiko and Maya are on it), and Jonas invited Art to Weber Design three days ago, which Art put aside.',
+    make: () => {
+      const world = busy();
+      priyaInvitesArt(world);
+      jonasInvitesArt(world, iso(-3, 15, 0), true);
+      withLinks(world);
+      return { world, opening: {} };
+    }
+  },
+  'invited-personal': {
+    title: 'Invited to teams, at a personal address', about: 'Art on their own, with no company or team: Jonas invited Art to Weber Design at 09:40 today, and Ana invited Art to Souza Law yesterday, which Art put aside.',
+    make: () => {
+      const world = onTheirOwn();
+      jonasInvitesArt(world, iso(0, 9, 40));
+      anaInvitesArt(world, iso(-1, 11, 0), true);
+      return { world, opening: {} };
+    }
   },
   'plan-low': {
     title: 'Notes nearly out', about: 'Art is on Free with about 20 minutes of the period’s notes left, and the sun near the start of the line.',
@@ -590,7 +713,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
         drive: disconnectedDrive(), payments: paymentsOff(), session: session({ createdAt: iso(0, 16, 5) }), prefs: PREFS, team: teamOf(DIRECTORY.filter((c) => c.person !== INES && c.person !== AIKO).map((c): Colleague => ({ ...c, onAlcove: false, invited: false }))),
         // Past the plans, which a new account sees first (`plan-choice`), so Home is Home.
         notes: [], personal: {}, meetings: [], calendar: notConnected, plan: { ...newPlan(), choose: false }, documents: library(), workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null,
-        // Art's invite link, which nobody has joined from yet.
+        // Art's own invite link, with Art on no team.
         inviteLink: artsLink()
       },
       opening: { tourSeen: false }
@@ -658,13 +781,13 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     make: () => ({ world: { ...SCENARIOS['first-day'].make().world, session: null, plan: newPlan() }, opening: { tourSeen: false } })
   },
   'team-buying': {
-    title: 'Starting a team, paying', about: 'Art started Vandelay’s team from Plans and opened a payment of 240 USDC on Base for its first six licenses, then closed checkout: the team is Art’s, with nothing bought yet, and the payment waits.',
+    title: 'Upgrading a team, paying', about: 'Art’s free team (Art, Priya and Kofi), upgrading: Art opened a payment of 120 USDC on Base for three licenses at a period’s price, with Buy a license for each person who joins ticked, then closed checkout. Nothing is bought yet, and the payment waits; once it’s bought, so is auto-purchase on.',
     make: () => {
       const world = busy();
       withPayments(world, 'waits');
-      world.myTeam = startedTeam(world.plan.storage.usedBytes);
-      world.plan = planWithTeam(world.plan, world.myTeam, ART.email, on(0, 16, 12).getTime());
-      world.payments.topUps = [purchaseTopUp(PREVIEW_TOP_UP, TEAM_SIX, 240, iso(1, 16, 12))];
+      world.myTeam = freeTeam(world.plan.storage.usedBytes);
+      world.plan = planWithTeam(world.plan, world.myTeam, ART.email, AFTERNOON());
+      world.payments.topUps = [purchaseTopUp(PREVIEW_TOP_UP, TEAM_THREE, 120, iso(1, 16, 12))];
       return { world, opening: {} };
     }
   }
@@ -672,12 +795,18 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
 export const SCENARIO_NAMES = Object.keys(SCENARIOS).filter((k): k is ScenarioName => k in SCENARIOS);
 export const isScenario = (v: unknown): v is ScenarioName => typeof v === 'string' && v in SCENARIOS;
 
-/** Checks the world against the contract's own schemas, so a story never shows something the API could never send. */
+/**
+ * Checks the world against the contract's own schemas, so a story never shows something the API could never send: teams as
+ * their admin and Art see them, the invitations to Art, and what every link's and invitation's secret says.
+ */
 export function checked(w: World): World {
+  const viewer = w.session?.user ?? ART;
+  const secrets = [...linksIn(w).map((l) => l.secret), ...teamsIn(w).flatMap((t) => t.invitations.map((i) => i.secret))];
+  const others = (w.otherTeams ?? []).flatMap((t) => { const admin = adminOf(t); const seen = admin ? teamView(t, admin.person.email) : null; return seen ? [seen] : []; });
   const checks = [
     ['drive settings', DriveSettingsSchema.safeParse(w.drive.settings)], ['drive folders', DriveFolderSchema.array().safeParse(w.drive.folders)],
     ['drive jobs', DriveExportJobSchema.array().safeParse(w.drive.jobs)], ['drive overrides', DriveExportChoiceSchema.array().safeParse(Object.values(w.drive.overrides))],
-    ['session', SessionSchema.nullable().safeParse(w.session)], ['prefs', PreferencesSchema.safeParse(w.prefs)], ['team', TeamSchema.nullable().safeParse(w.team)],
+    ['session', SessionSchema.nullable().safeParse(w.session)], ['prefs', PreferencesSchema.safeParse(w.prefs)], ['company', TeamSchema.nullable().safeParse(directoryOf(w))],
     ['notes', NoteSchema.array().safeParse(w.notes)], ['meetings', MeetingSchema.array().safeParse(w.meetings)], ['calendar', CalendarSchema.safeParse(w.calendar)],
     ['calendars', IntervalSchema.array().safeParse(Object.values(w.calendars ?? {}).flat())],
     ['payment routes', TopUpRoutesSchema.nullable().safeParse(w.payments.routes)], ['top-ups', TopUpSchema.array().safeParse(w.payments.topUps)],
@@ -687,9 +816,10 @@ export function checked(w: World): World {
     ['shares', ShareEntrySchema.array().safeParse(Object.values(w.shares).flat())],
     ['drive', WorkspaceSummarySchema.array().safeParse(w.workspaces.map((x) => summaryOf(x, w.session?.user ?? ART)))], ['mentions', MentionNoticeSchema.array().safeParse(w.mentions)],
     ['media', WorkspaceMediaSchema.array().safeParse(w.media.map((m) => m.media))],
-    ['team', MyTeamSchema.nullable().safeParse(w.myTeam ? teamView(w.myTeam, w.session?.user.email ?? ART.email) : null)],
-    ['invite links', PersonSchema.array().safeParse([w.inviteLink, ...(w.invites ?? [])].flatMap((l) => (l ? [l.from] : [])))],
-    ['joined from invite links', InviteJoinedSchema.array().safeParse([w.inviteLink, ...(w.invites ?? [])].flatMap((l) => l?.joined ?? []))]
+    ['team', MyTeamSchema.nullable().safeParse(w.myTeam ? teamView(w.myTeam, viewer.email) : null)], ['other teams', MyTeamSchema.array().safeParse(others)],
+    ['invitations to you', InvitationForYouSchema.array().safeParse(invitationsFor(w, viewer.email))],
+    ['invite secrets', InviteSecretSchema.array().safeParse(secrets)],
+    ['what invite links say', InvitePeekSchema.array().safeParse(secrets.flatMap((s) => peekOf(w, s, w.session?.user.email ?? null) ?? []))]
   ] as const;
   const bad = checks.flatMap(([what, r]) => (r.success ? [] : [`${what}: ${r.error.issues.slice(0, 3).map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`]));
   if (bad.length) throw new Error(`The demo world doesn’t fit the contract. ${bad.join(' · ')}`);

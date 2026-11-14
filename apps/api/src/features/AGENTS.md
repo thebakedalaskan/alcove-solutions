@@ -19,9 +19,10 @@ and `docs/engineering/logging-and-errors.md`.
 - Colocate complete API/client integration flows here as `*.integration.test.ts`. Cross-feature/service-wide
   suites belong in `src/integration`; reusable fixtures belong in `src/testing` (fakes of outside services in `src/testing/fakes`). Preserve assertions, real
   Postgres/object-store usage and CI timing keys when moving a suite.
-- Shared homes: `platform` (config, context, db, objects, log, errors, limits, flags), `keys` (sealing, owner and server
-  keys, sessions, vault, call passes, media tokens), `tee`, `inference`, `providers` (Google, LiveKit), `http`, `live`
-  (the hub and document worker pool) and `edge`. They never import a feature; composition passes in what they need.
+- Shared homes: `platform` (config, context, db, objects, log, errors, limits, flags, the mail outbox), `keys` (sealing,
+  owner and server keys, sessions, vault, call passes, media tokens), `tee`, `inference`, `providers` (Google, LiveKit,
+  Resend), `http`, `live` (the hub and document worker pool) and `edge`. They never import a feature; composition passes in
+  what they need.
   Don't duplicate them per feature or hide them in an undifferentiated utils folder.
 - Moving source never changes SQL scope, persisted headers/key labels, schema defaults, migrations, physical
   deletion, safe logging/error contexts, authorization or receipt behavior. Re-read the privacy rules for any change

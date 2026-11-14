@@ -214,6 +214,9 @@ a.sb-said:hover, a.sb-left:hover { color: var(--ink); }
 .tab[aria-current="page"] { color: var(--ink); }
 .tab[aria-current="page"] .ac-i { color: var(--sun-text); }
 .tab:focus-visible { outline-offset: -2px; }
+/* Something waits on you there (an invitation to a team): a small rose dot at the icon's shoulder, ringed by the bar. */
+.tab-icon { position: relative; display: grid; }
+.tab-dot { position: absolute; top: -2px; right: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--rose); box-shadow: 0 0 0 2px var(--surface); }
 /* Record stands up out of the bar: a piece of the night recorder, its light in the night's rec (the dot is scoped .dark). */
 .tab-rec { display: grid; place-items: center; width: 56px; height: 56px; margin: -24px auto 2px; border-radius: 50%; background: var(--stage-tile); box-shadow: var(--shadow-2), inset 0 0 0 1px rgb(255 255 255 / 0.1); transition: transform var(--duration-1) var(--ease-out); }
 .tab-rec i { width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, color-mix(in srgb, var(--rec) 60%, var(--stage-ink)), var(--rec) 60%, color-mix(in srgb, var(--rec) 76%, var(--stage))); box-shadow: 0 0 14px 2px color-mix(in srgb, var(--rec) 45%, transparent); }

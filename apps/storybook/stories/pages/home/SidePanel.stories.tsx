@@ -2,17 +2,19 @@
  * The side panel's foot, by plan (docs/design/pages.md › The frame; the canvas's Side board): under the confidential-compute
  * check, one row. On Free, about how much of the period's notes is left over a meter; on Pro one calm row with its own small
  * sun and until when; ending, its sun half set and Extend; a payment for a plan on its way, what it's waiting for and Open.
- * Anything else said (Pro renewed or ended, Team replacing Pro, a workspace you pay for now) is one short line above until it's dismissed. On Plans a
- * paid plan's row is the place you're on. On Team (the canvas's team, teamLow and teamWait): the same calm row, Team over
- * the team's name; for its admin while licenses run short, how many are left and Buy, in warm; without a license, "No team
- * license yet" in caution over your own plan with who has been told (for an admin, that buying licenses gives them one),
- * then Free's notes left over its meter, and Free's row goes to Team. Each opens on Home, at a laptop's width, by day and
+ * Anything else said (Pro renewed or ended, Team replacing Pro and what came back, someone asking you to upgrade your free
+ * team, a workspace you pay for now) is one short line above until it's dismissed. On Plans a paid plan's row is the place
+ * you're on. On Team (the canvas's team, teamLow and teamWait): the same calm row, Team over the team's name; for its admin
+ * while licenses run short, how many are left and Buy, in warm; without a license, "No team license yet" in caution over your
+ * own plan with who has been told (for an admin, that buying licenses gives them one), then Free's notes left over its meter,
+ * and Free's row goes to Team. On a free team nobody hears about licenses. Team, among the places, counts the invitations to
+ * you not put aside, and shows for them even with no company and no team. Each opens on Home, at a laptop's width, by day and
  * by night (the panel itself is night in both).
  */
 import type { Meta } from '@storybook/react-vite';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../../src/page';
 import { purchaseAt } from '../../../src/world/plans/payments';
-import { adminWithoutLicense, paysForLaunch, replacedPro } from '../changes';
+import { adminWithoutLicense, paysForLaunch, replacedGivenPro, replacedPro, replacedProBefore } from '../changes';
 
 const meta = { title: 'Pages/Home/The side panel', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -82,5 +84,19 @@ export const TeamAdminNoLicense = page('/home', 'team-admin', { globals: LAPTOP,
 /** A team license replaced Pro: one short line above the row until it's dismissed in Settings. */
 export const TeamReplacedPro = page('/home', 'team-member', { globals: LAPTOP, beforeEach: changing(replacedPro) });
 export const TeamReplacedProNight = night(TeamReplacedPro);
+/** Pro Alcove gave, replaced: nothing came back, and the line says so plainly. */
+export const TeamReplacedGivenPro = page('/home', 'team-member', { globals: LAPTOP, beforeEach: changing(replacedGivenPro) });
+/** One from before amounts were kept: it says the months that went back, as it always did. */
+export const TeamReplacedProBefore = page('/home', 'team-member', { globals: LAPTOP, beforeEach: changing(replacedProBefore) });
+/** Kofi asked Art, the admin of a free team, to upgrade it: one short line, opening Settings › Plan, where Upgrade is. */
+export const UpgradeAsked = foot('/home', 'team-free-asked');
+export const UpgradeAskedNight = night(UpgradeAsked);
+/** On a free team, without a license: nothing about licenses, only your own plan. */
+export const FreeTeamMember = foot('/home', 'team-free-member');
+/** Invited to Vandelay Industries, on no team: Team among the places, with a count of 1. */
+export const Invited = foot('/home', 'invited');
+/** At a personal address, invited: Team shows (it wouldn't otherwise), with its count. */
+export const InvitedOnTheirOwn = foot('/home', 'invited-personal');
+export const InvitedOnTheirOwnNight = night(InvitedOnTheirOwn);
 /** On Plans, Team's row is the place you're on. */
 export const OnPlansTeam = foot('/plans', 'team-member');

@@ -1,16 +1,20 @@
 /*
- * Someone's invite link (docs/design/pages.md › Team, an invite link; docs/product/user-flows.md 10): one card on the team's
- * evening, saying who it's from. The link's secret is in its fragment, which no server sees, and it leaves the address bar at
- * once. Signed out, the card is theirs: who asked you, what Alcove is for, and the ways in, while the link waits in this tab
- * (features/account/afterSignIn.ts), Google's way back and a look at the welcome page included. An account made from the
- * card tells them it joined, then its first sign-in goes on as it would from the welcome page: the account arrives, then the
- * plans, then Home, whatever the link comes to by then. An account that was there already tells nobody, and the card says
- * so, with Go to Home, as it does for anyone signed in when they open the link. Your own link, which the server knows by
- * your account, says it's yours. A link that leads nowhere, no link at all, no connection and a failure each say so, and
- * what to do.
+ * The invite page (`/invite#…`; docs/design/pages.md › Team, the invite page; the design's 4.3 and 4.5): one card on the
+ * team's evening, for either kind of secret after the `#`: an invitation's own link, from its email ("Priya invited you to
+ * join Vandelay Industries"), or a team's link ("Join Vandelay Industries on Alcove"; "Jonas asked you to join them on Alcove"
+ * while Jonas is on no team yet). The secret is in the fragment, which no server sees, and it leaves the address bar at once.
+ *
+ * Signed out, the card is the invitation, with the ways in, while the link waits in this tab (features/account/afterSignIn.ts),
+ * Google's way back and a look at the welcome page included. An account made from the card has said yes by signing in from
+ * it, so it joins the team at once, isn't asked to choose a plan (someone joining a team doesn't), and goes on to its
+ * arrival as from the welcome page, onto Home, which says "You're on Vandelay Industries." An account from before, or anyone
+ * signed in, has Join and Not now (which puts an invitation to you aside, with Undo, as on Team, then goes Home); joining
+ * while on another team asks first, in place, and Stay puts the focus back on Join. Your own link, or your team's, says so,
+ * with Copy link; an invitation to the team you're on says you're on it already, and never asks you to leave it. An
+ * invitation used, cancelled or run out, a link replaced, no link, no connection and a failure each say so, and what to do.
  */
-import { InviteSecretSchema, errorCode, errorMessage, type DemoProvider, type InvitePeek, type Person } from '@alcove/api';
-import { Button, Dots, JoinCard, JoinEvening, buttonClass, useToast } from '@alcove/ui';
+import { InviteSecretSchema, errorCode, errorMessage, type DemoProvider, type InvitePeek, type MyTeam, type Person } from '@alcove/api';
+import { Button, Dots, JoinCard, JoinEvening, TeamAsk, buttonClass, useToast } from '@alcove/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
@@ -18,9 +22,15 @@ import { WaysIn, useRestored, type Auth, type Busy } from '~/features/account/Wa
 import { clearReturn, returnTo, takeReturnTo } from '~/features/account/afterSignIn';
 import { sessionOrOffline } from '~/features/account/guards';
 import { useGoogleSignIn, useSignIn } from '~/features/account/signIn';
+import { useChosePlans } from '~/features/plans/queries';
 import { log } from '~/lib/log';
 import { callName } from '~/lib/people';
-import { teamQueries, useJoinedByInvite } from './queries';
+import { UNDO_MS } from './invitations/aside';
+import { sayOnArrival } from './invitations/arrival';
+import { cantJoin, leaveAsk, leavingOf } from './invitations/leaving';
+import { WHAT_ALCOVE_IS, asideSaid, joinLabel, peekTitle, whoIsOn } from './invitations/words';
+import { useCopyInvite } from './People';
+import { teamQueries, useJoinTeam, useNotNow } from './queries';
 
 const ilog = log.child({ component: 'invite-link' });
 
@@ -45,25 +55,38 @@ function takeLink(): Taken | null {
 }
 
 type Opening =
-  | { at: 'checking' } | { at: 'sign-in'; from: Person } | { at: 'telling'; from: Person | null }
-  /** Signed in: an account from before, or your own link (`yours`). */
-  | { at: 'already'; from: Person } | { at: 'yours'; from: Person }
-  | { at: 'nowhere' } | { at: 'no-link' } | { at: 'unreachable' } | { at: 'failed'; message: string };
+  | { at: 'checking' } | { at: 'sign-in'; peek: InvitePeek }
+  /** An account just made from the card, joining its team before it arrives. */
+  | { at: 'arriving'; team: string | null }
+  /** Signed in: Join and Not now, with the team you're on now (`mine`), whose leaving joining asks about first. */
+  | { at: 'ask'; peek: InvitePeek; mine: MyTeam | null }
+  | { at: 'yours'; peek: InvitePeek }
+  /** It leads nowhere now: used, cancelled, run out or replaced. `from`, when the page still knows who sent it. */
+  | { at: 'ended'; from: Person | null }
+  | { at: 'no-link' } | { at: 'unreachable' } | { at: 'failed'; message: string };
 
 export function InvitedPage() {
   const [link] = useState(takeLink);
   const [opening, setOpening] = useState<Opening>({ at: 'checking' });
+  /* Leaving the team you're on, asked in place of Join. */
+  const [asking, setAsking] = useState(false);
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const tell = useJoinedByInvite();
+  const join = useJoinTeam();
+  const chose = useChosePlans();
   const signIn = useSignIn();
   const googleSignIn = useGoogleSignIn();
+  const notNow = useNotNow();
+  const copy = useCopyInvite();
   const toast = useToast();
   const [busy, setBusy] = useState<Busy>(null);
-  /** The account signed in was made from this card (or on Google's way back here): Try again still tells its sender. */
+  /* Join takes the focus back once Stay closes the question in its place. */
+  const back = useRef(false);
+  const joinRef = (el: HTMLButtonElement | null) => { if (el && back.current) { back.current = false; el.focus(); } };
+  /** The account signed in was made from this card (or on Google's way back here): Try again still joins it at once. */
   const madeHere = useRef(link?.arriving === true);
-  /** Who the link was from when it last said, for telling them. */
-  const from = useRef<Person | null>(null);
+  /** What the link said when it last said, for the card while an account is made from it. */
+  const said = useRef<InvitePeek | null>(null);
   // Back from Google's own page, this page can come back as it was left, waiting for Google.
   useRestored(() => setBusy(null));
 
@@ -71,41 +94,46 @@ export function InvitedPage() {
   const refused = (e: unknown) => {
     const code = errorCode(e);
     ilog.info('invite link not opened', { code });
-    setOpening(code === 'network' ? { at: 'unreachable' } : code === 'not-found' ? { at: 'nowhere' } : { at: 'failed', message: errorMessage(e) });
+    setOpening(code === 'network' ? { at: 'unreachable' } : code === 'not-found' ? { at: 'ended', from: said.current?.from ?? null } : { at: 'failed', message: errorMessage(e) });
   };
   /**
-   * An account just made from the link: whoever sent it is told, then its first sign-in goes on as from the welcome page,
-   * whatever that came to. The arrival is never skipped because the link stopped leading anywhere, or wasn't told.
+   * An account just made from the card joins its team at once, and isn't asked to choose a plan; then its first sign-in goes
+   * on as from the welcome page, onto Home, which says which team it's on. The arrival is never skipped because the link
+   * stopped leading anywhere or didn't join: then the plans are offered as they are to anyone new.
    */
   const arrive = async (secret: string) => {
-    setOpening({ at: 'telling', from: from.current });
+    setOpening({ at: 'arriving', team: said.current?.team?.name ?? null });
     try {
-      await tell.mutateAsync(secret);
+      const team = await join.mutateAsync({ secret, leave: false });
+      const name = team.name || said.current?.team?.name;
+      if (name) sayOnArrival(name);
+      await chose.mutateAsync().catch((e: unknown) => ilog.info('the plan choice wasn’t skipped', { code: errorCode(e) }));
     } catch (e) {
-      const code = errorCode(e);
-      if (code === 'not-found') ilog.info('invite link’s sender not told: the link leads nowhere now', { code });
-      else ilog.warn('invite link’s sender not told', { code });
+      ilog.info('a new account didn’t join from its invite', { code: errorCode(e) });
     }
     taken = null;
     await navigate({ to: '/ready', replace: true });
   };
   /**
-   * Who the link is from, and who's signed in: the card for them, or for you once you're in. `madeNow`: the account just
-   * signed in was made from this card, which tells its sender, and goes on to its arrival. Nothing else tells anyone.
+   * What the link is, and who's signed in: the card for them, or for you once you're in. `madeNow`: the account just signed in
+   * was made from this card, which joins its team at once.
    */
   const open = async (madeNow = false) => {
     if (madeNow) madeHere.current = true;
+    setAsking(false);
     if (!link) { setOpening({ at: 'no-link' }); return; }
-    setOpening({ at: 'checking' });
     if (madeHere.current) { await arrive(link.secret); return; }
+    setOpening({ at: 'checking' });
     let peek: InvitePeek;
-    try { peek = await qc.fetchQuery(teamQueries.invitedBy(link.secret)); }
+    try { peek = await qc.fetchQuery(teamQueries.peek(link.secret)); }
     catch (e) { refused(e); return; }
-    from.current = peek.from;
+    said.current = peek;
     const s = await sessionOrOffline(qc).catch(() => 'offline' as const);
     if (s === 'offline') { setOpening({ at: 'unreachable' }); return; }
-    if (!s) { setOpening({ at: 'sign-in', from: peek.from }); return; }
-    setOpening(peek.yours ? { at: 'yours', from: peek.from } : { at: 'already', from: peek.from });
+    if (!s) { setOpening({ at: 'sign-in', peek }); return; }
+    if (peek.yours) { setOpening({ at: 'yours', peek }); return; }
+    const mine = await qc.fetchQuery({ ...teamQueries.myTeam(), staleTime: 0 }).catch(() => null);
+    setOpening({ at: 'ask', peek, mine });
   };
   const started = useRef(false);
   useEffect(() => {
@@ -113,10 +141,44 @@ export function InvitedPage() {
     started.current = true;
     void open();
   });
-  // Leaving the page, by Go to Home or any other way, forgets the link here: opening it again asks again.
+  // Leaving the page, by Not now or any other way, forgets the link here: opening it again asks again.
   useEffect(() => () => { taken = null; }, []);
 
-  /* Signing in here stays here: a new account tells whoever sent the link, and one from before is told it's on Alcove. */
+  /** Join, once asked (or with nothing to ask): you're on the team, and its page opens, saying so. */
+  const joining = (peek: InvitePeek, leave: boolean) => {
+    if (!link) return;
+    join.mutate({ secret: link.secret, leave }, {
+      onSuccess: (t) => {
+        taken = null;
+        const name = t.name || peek.team?.name;
+        toast(name ? `You’re on ${name}.` : 'You’re on the team.', { icon: 'people' });
+        void navigate({ to: '/team', replace: true });
+      },
+      onError: (e) => {
+        const code = errorCode(e);
+        ilog.info('not joined from an invite link', { code, leave });
+        if (code === 'not-found') { setOpening({ at: 'ended', from: peek.from }); return; }
+        // On a team this page didn't know of (joined from another tab), or on this one already: the link is looked at
+        // again, as who's signed in is now, and the card is the one for that.
+        if (code === 'conflict' && !leave) { toast(errorMessage(e), { icon: 'x' }); void open(); return; }
+        setAsking(false);
+        toast(errorMessage(e), { icon: 'x' });
+      }
+    });
+  };
+  /** Not now: an invitation to you is put aside, as on Team, with Undo; then Home. */
+  const notNowGo = (peek: InvitePeek) => {
+    const id = peek.invitationId;
+    taken = null;
+    void navigate({ to: '/home' });
+    if (id === null) return;
+    notNow.aside(id, (e) => { ilog.info('an invitation not put aside', { code: errorCode(e) }); toast(errorMessage(e), { icon: 'x' }); });
+    // Until when it can still be joined is the invitations' to say: read once it's put aside, and said with Undo.
+    const say = (expires: string | null) => toast(asideSaid(expires), { icon: 'check', ms: UNDO_MS, topic: `aside ${id}`, action: { label: 'Undo', onClick: () => { notNow.undo(id); } } });
+    void qc.fetchQuery(teamQueries.invitations()).then((list) => say(list.find((i) => i.id === id)?.expiresAt ?? null), () => say(null));
+  };
+
+  /* Signing in here stays here: a new account joins at once, and one from before is asked. */
   const auth: Auth = {
     busy, leaving: false,
     google: () => {
@@ -145,60 +207,89 @@ export function InvitedPage() {
   const keep = () => { if (link) returnTo({ to: 'invite', secret: link.secret }); };
 
   const alcove = <Link to="/home" className={buttonClass()}>Open Alcove</Link>;
-  if (opening.at === 'checking' || opening.at === 'telling') {
-    const told = opening.at === 'telling' ? opening.from : null;
+  if (opening.at === 'checking' || opening.at === 'arriving') {
+    const team = opening.at === 'arriving' ? opening.team : null;
     return (
       <JoinEvening>
-        <p className="tj-wait" role="status"><Dots /> {opening.at === 'checking' ? 'Opening the invite' : told ? `Telling ${callName(told)} you joined` : 'Opening Alcove'}</p>
+        <p className="tj-wait" role="status"><Dots /> {opening.at === 'checking' ? 'Opening the invitation' : team ? `Joining ${team}` : 'Opening Alcove'}</p>
       </JoinEvening>
     );
   }
-  if (opening.at === 'sign-in') {
-    const { from: sender } = opening;
+  if (opening.at === 'sign-in' || opening.at === 'ask' || opening.at === 'yours') {
+    const { peek } = opening;
+    const faces = peek.team?.faces.length ? peek.team.faces : [peek.from];
+    const on = peek.team ? whoIsOn(peek.team, peek.kind === 'invitation' ? peek.from : null) : '';
+    if (opening.at === 'yours') {
+      /* An invitation to the team you're on: there's nothing to join. */
+      if (peek.kind === 'invitation') {
+        return (
+          <JoinEvening>
+            <JoinCard faces={faces} title={peekTitle(peek)} line={on || undefined}
+              actions={<Link to="/team" className={buttonClass({ variant: 'primary' })}>Go to Team</Link>} />
+          </JoinEvening>
+        );
+      }
+      const here = link ? new URL(`/invite#${link.secret}`, location.origin).href : null;
+      return (
+        <JoinEvening>
+          <JoinCard faces={faces} title={peekTitle(peek)}
+            line={peek.team ? `Send it to someone you’d like on ${peek.team.name}.` : 'Send it to someone you’d like on a team with you: joining from it starts one, with you as its admin.'}
+            actions={(
+              <>
+                <Link to="/team" className={buttonClass({ variant: 'quiet' })}>Go to Team</Link>
+                {here && <Button variant="primary" icon="link" onClick={() => void copy(here, { team: peek.team?.name })}>Copy link</Button>}
+              </>
+            )} />
+        </JoinEvening>
+      );
+    }
+    if (opening.at === 'sign-in') {
+      return (
+        <JoinEvening>
+          <JoinCard faces={faces} title={peekTitle(peek)} line={[on, peek.team ? WHAT_ALCOVE_IS : `${WHAT_ALCOVE_IS} Sign in to get started.`].filter((x) => x !== '').join(' ')}
+            actions={<WaysIn auth={auth} layout="hero" />}
+            foot={<Link to="/welcome" className={buttonClass({ variant: 'quiet', size: 'sm' })} onClick={keep}>See what Alcove does</Link>} />
+        </JoinEvening>
+      );
+    }
+    const leaving = leavingOf(opening.mine);
+    const name = peek.team?.name ?? callName(peek.from);
+    const ask = asking ? leaveAsk(leaving, { name, from: peek.from }) : null;
+    const blocked = cantJoin(leaving, name);
     return (
       <JoinEvening>
-        <JoinCard faces={[sender]} title={`${callName(sender)} asked you to join them on Alcove`}
-          line="Alcove is for calls: each one gets its notes and a workspace of its own. Sign in to get started."
-          actions={<WaysIn auth={auth} layout="hero" />}
-          foot={<Link to="/welcome" className={buttonClass({ variant: 'quiet', size: 'sm' })} onClick={keep}>See what Alcove does</Link>} />
+        <JoinCard faces={faces} title={peekTitle(peek)} line={on || undefined} note={blocked}
+          ask={ask ? <TeamAsk title={ask.title} text={ask.text} confirm={ask.confirm} keep={ask.keep} busy={join.isPending} onConfirm={() => joining(peek, true)} onKeep={() => { back.current = true; setAsking(false); }} /> : undefined}
+          actions={(
+            <>
+              <Button variant={blocked === null ? 'quiet' : 'secondary'} onClick={() => notNowGo(peek)}>Not now</Button>
+              {blocked === null && (
+                <Button ref={joinRef} variant="primary" loading={join.isPending}
+                  onClick={() => { if (leaving.kind === 'none') joining(peek, false); else setAsking(true); }}><span className="ac-clamp-1">{joinLabel(peek)}</span></Button>
+              )}
+            </>
+          )} />
       </JoinEvening>
     );
   }
-  if (opening.at === 'already') {
-    const { from: sender } = opening;
+  if (opening.at === 'ended') {
     return (
       <JoinEvening>
-        <JoinCard faces={[sender]} title="You’re on Alcove already" line={`${callName(sender)}’s link is for someone new to Alcove, so there’s nothing to do here.`}
-          actions={<Link to="/home" className={buttonClass({ variant: 'primary' })}>Go to Home</Link>} />
-      </JoinEvening>
-    );
-  }
-  if (opening.at === 'yours') {
-    return (
-      <JoinEvening>
-        <JoinCard faces={[opening.from]} title="This is your invite link" line="Send it to someone you’d like on Alcove."
-          actions={<Link to="/team" className={buttonClass({ variant: 'primary' })}>Go to Team</Link>} />
-      </JoinEvening>
-    );
-  }
-  if (opening.at === 'nowhere') {
-    return (
-      <JoinEvening>
-        <JoinCard title="This invite link doesn’t lead anywhere"
-          line="Part of it may be missing, it may have been replaced by a new one, or whoever sent it isn’t on Alcove any more. Ask them to send it again." actions={alcove} />
+        <JoinCard title="This invitation has ended"
+          line={opening.from ? `Ask ${callName(opening.from)} to invite you again.` : 'Ask whoever invited you to invite you again.'} actions={alcove} />
       </JoinEvening>
     );
   }
   if (opening.at === 'no-link') {
     return (
       <JoinEvening>
-        <JoinCard title="There’s no invite here" line="Open the whole link you were sent: the part after # says who it’s from." actions={alcove} />
+        <JoinCard title="There’s no invitation here" line="Open the whole link you were sent: the part after # says who it’s from." actions={alcove} />
       </JoinEvening>
     );
   }
   return (
     <JoinEvening>
-      <JoinCard title={opening.at === 'unreachable' ? 'Can’t reach Alcove' : 'The invite didn’t open'}
+      <JoinCard title={opening.at === 'unreachable' ? 'Can’t reach Alcove' : 'The invitation didn’t open'}
         line={opening.at === 'unreachable' ? 'Check this device’s connection, then try again.' : opening.message}
         actions={<Button variant="primary" icon="retry" onClick={() => void open()}>Try again</Button>} />
     </JoinEvening>

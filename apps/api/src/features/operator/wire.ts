@@ -92,6 +92,8 @@ const QueuesAnswer = z.discriminatedUnion('ok', [
     deposits: z.object({ due: Count, lagS: Lag, open: Count, unanswered: Count, creditedNotCarried: Count }),
     plans: z.object({ due: Count, lagS: Lag, accountsWithout: Count }),
     teams: z.object({ due: Count, lagS: Lag }),
+    /** Email waiting to go (platform/mail.ts): how much, how much is due, how much has failed once or more, the most tries, and the oldest. */
+    mail: z.object({ waiting: Count, due: Count, failing: Count, highestAttempt: Count, oldestS: Lag }),
     /** The calls feature's own count (features/calls/operator/operator.ts › callsWork). */
     calls: CallsWorkAnswer,
     sweeps: z.object({ sessions: Count, agentRows: Count, invites: Count })

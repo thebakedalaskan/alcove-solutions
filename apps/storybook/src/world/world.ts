@@ -5,11 +5,11 @@ import { DEFAULT_NOTIFICATION_PREFERENCES, DEFAULT_SOUND_PREFERENCES } from '@al
  * every page reads it from here again.
  */
 import type {
-  Calendar, DocRefusal, DocumentLibrary, FeatureFlagName, IncomingRing, Interval, InviteJoined, Meeting, MentionNotice, MoveIn, MoveMedia, Note, NoteLink, Person, PersonalEntry, Plan, Preferences, Session,
+  Calendar, DocRefusal, DocumentLibrary, FeatureFlagName, IncomingRing, Interval, Meeting, MentionNotice, MoveIn, MoveMedia, Note, NoteLink, Person, PersonalEntry, Plan, Preferences, Session,
   ShareEntry, Team, WorkspaceMedia, WorkspaceSummary, WorkspaceTree
 } from '@alcove/api';
 import type { PaymentsWorld } from './plans/payments';
-import type { TeamInviteWorld, TeamWorld } from './plans/teams';
+import type { TeamWorld } from './plans/teams';
 import type { DriveWorld } from './drive-exports';
 import type * as Y from 'yjs';
 import type { BlockJSON } from '~/features/workspace/editor/types';
@@ -132,13 +132,27 @@ export interface World {
   trouble?: Troubles | undefined;
   /** A call being moved to this device, which this browser holds the claim to (/move). */
   move?: MoveSpec | undefined;
-  /** The team you're on (src/world/plans/teams.ts), if any: not `team`, which is your company's directory. */
+  /**
+   * The team you're on (src/world/plans/teams.ts), if any, with who's invited to it: not `team`, which is your company's
+   * directory.
+   */
   myTeam?: TeamWorld | null | undefined;
-  /** Links to join a team that still work, by their secret. */
-  teamInvites?: TeamInviteWorld[] | undefined;
-  /** Art's own invite link (`people.inviteLink`) and who joined Alcove from it: made when it's first asked for, if a scenario has none. */
+  /**
+   * Teams Art isn't on (src/world/plans/team-invitations.ts): those that invited Art, whose invitations to Art are among their
+   * own, and those an invite link a story opens leads to. Joining one makes it `myTeam`; a team Art leaves comes back here.
+   */
+  otherTeams?: TeamWorld[] | undefined;
+  /**
+   * When Art invited someone to a team or sent an invitation again, newest first: Alcove takes 20 a day, and inviting more
+   * than are left invites the first of them (src/world/plans/team-invitations.ts › invitedToday).
+   */
+  invitedByYou?: string[] | undefined;
+  /**
+   * Art's own invite link (`people.inviteLink`): the team's while Art runs it, or Art's alone with no team. Made when it's first
+   * asked for, if a scenario has none.
+   */
   inviteLink?: InviteLinkWorld | undefined;
-  /** Other people's invite links a story opens at /invite, by their secret. */
+  /** Other people's invite links (src/world/invite-links.ts): a team's is its admin's, which everyone on it copies. */
   invites?: InviteLinkWorld[] | undefined;
   /** The feature flags on for whoever's here. None unless a scenario switches one on. */
   featureFlags?: FeatureFlagName[] | undefined;
@@ -152,10 +166,11 @@ export interface World {
 }
 
 /**
- * Someone's own invite link: its secret and generation (one more for each new link), who it's from (as anyone else sees them,
- * known by their address), and who joined Alcove from it, or a link before it, newest first.
+ * Someone's own invite link: its secret and generation (one more for each new link), and who it's from (as anyone else sees
+ * them, known by their address). Where it leads is where they are: the team they run, nowhere while they're on someone
+ * else's, or a team made for them when someone joins from it while they're on none.
  */
-export interface InviteLinkWorld { secret: string; generation: number; from: Person; joined: InviteJoined[] }
+export interface InviteLinkWorld { secret: string; generation: number; from: Person }
 
 /**
  * A link to someone's notes: what everyone with them sees of it, its secret, and the note it's to. `note` is the note as

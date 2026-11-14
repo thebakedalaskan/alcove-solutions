@@ -27,18 +27,24 @@ export const NOTES: TeamNote[] = [
   { id: 'tn-launch', title: 'Launch planning', by: LENA, byName: 'Lena', when: 'Tue 27 Oct' }
 ];
 
-/** The team's evening in a box, its horizon `sky` down: what's given stands on the horizon, its names on the water under it. */
-export function TeamEvening({ sky = 170, children }: { sky?: number; children: ReactNode }) {
+/**
+ * The team's evening in a box, its horizon `sky` down: what's given stands on the horizon, its names on the water under it.
+ * `places`: how wide the line is, in places (the page's `--tq-n`), so the sun stands just past its start.
+ */
+export function TeamEvening({ sky = 170, places = LINE.length, children }: { sky?: number; places?: number | undefined; children: ReactNode }) {
   return (
-    <div className="tq relative isolate overflow-hidden rounded-[var(--radius-lg)]" style={{ '--hz': `${sky}px`, '--tq-n': LINE.length, paddingBottom: 72 }}>
+    <div className="tq relative isolate overflow-hidden rounded-[var(--radius-lg)]" style={{ '--hz': `${sky}px`, '--tq-n': places, paddingBottom: 72 }}>
       <Horizon moment="team" only={{ kind: null }} />
       <div className="flex flex-col justify-end" style={{ height: sky }}>{children}</div>
     </div>
   );
 }
 
-/** Stands the story on the team's horizon. */
-export const onTheHorizon: Decorator = (Story) => <TeamEvening><Story /></TeamEvening>;
+/** Stands the story on the team's horizon, as many places wide as `parameters.places` says (the team's own six, unless it does). */
+export const onTheHorizon: Decorator = (Story, c) => {
+  const places: unknown = c.parameters['places'];
+  return <TeamEvening places={typeof places === 'number' ? places : undefined}><Story /></TeamEvening>;
+};
 
 /** The team's water, at the width of the page's main column, or of its side column (`side`). */
 export const onTheWater = (side = false): Decorator => function Water(Story) {

@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import * as deposits from './top-ups/deposits';
 import { offersOf, planOf } from './plan-view';
 import { buyHours, buyPro, chose, dismissNotice, refundPro, setRenew } from './plans';
+import { dismissUpgradeAsk } from './teams/teams';
 import { body } from '../../http/body';
 import { type Env } from '../../http/context';
 import type { HttpRuntime } from '../../http/runtime';
@@ -39,9 +40,11 @@ export function registerBillingRoutes(app: Hono<Env>, runtime: HttpRuntime): voi
     await setRenew(d, c.get('owner').ownerId, renew);
     return c.json(await planOf(d, c.get('owner').ownerId));
   });
+  // A free team's admin is told who asked them to upgrade it from what the team keeps: those are the team's to dismiss.
   app.post('/v1/plan/notices/:id/dismiss', async (c) => {
-    await dismissNotice(d, c.get('owner').ownerId, c.req.param('id'));
-    return c.json(await planOf(d, c.get('owner').ownerId));
+    const { ownerId } = c.get('owner');
+    if (!(await dismissUpgradeAsk(d, ownerId, c.req.param('id')))) await dismissNotice(d, ownerId, c.req.param('id'));
+    return c.json(await planOf(d, ownerId));
   });
   app.get('/v1/plan/routes', async (c) => c.json(await deposits.routes(d)));
   app.post('/v1/plan/top-ups', async (c) => {

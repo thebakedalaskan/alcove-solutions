@@ -18,8 +18,10 @@ import { useLayoutEffect, useState } from 'react';
 import { forgetPictures } from '~/features/call/media/backgrounds/backgrounds';
 import { forgetNotified } from '~/features/notifications/notified';
 import { forgetHourLeft } from '~/features/plans/hourLeft';
-import { forgetTeamOffer } from '~/features/plans/teamOffer';
 import { forgetAccount } from '~/features/record/offline';
+import { forgetAside, tellAside } from '~/features/team/invitations/aside';
+import { forgetInvitationsSaid } from '~/features/team/invitations/toasts';
+import { forgetUpgradeAsked } from '~/features/team/Tier';
 import { uploads } from '~/features/record/uploads';
 import { forgetWords } from '~/features/workspace/find/words';
 import { forgetEdits, keptDocuments } from '~/features/workspace/offline/keep';
@@ -36,17 +38,19 @@ import { accountKeys } from './queryKeys';
 
 /**
  * Signed out (or the account deleted) on this device: whatever it kept for the account goes too, the recordings
- * waiting to upload among it (features/record/offline.ts; anyone else's stay), its notifications, those showing too, and
- * the words of its workspaces this tab held for Find.
+ * waiting to upload among it (features/record/offline.ts; anyone else's stay), its notifications, those showing too, the
+ * words of its workspaces this tab held for Find, and any invitation put aside here that Alcove wasn't told of yet.
  */
 async function forgetHere(owner: string | undefined, deleted: boolean) {
   forgetWords();
+  forgetAside();
   // The mutation captured this account before its request. A session refresh may already have cleared the cache.
   if (owner) {
     announceSignOut(owner, deleted);
     forgetPlaces(owner);
     forgetHourLeft(owner);
-    forgetTeamOffer(owner);
+    forgetInvitationsSaid(owner);
+    forgetUpgradeAsked(owner);
   }
   await forgetNotified();
   if (!owner) return;
@@ -72,6 +76,8 @@ export function useSignOut(leave: () => Promise<void>) {
     networkMode: 'always',
     mutationFn: async () => {
       const owner = qc.getQueryData(accountQueries.session().queryKey)?.ownerId;
+      // An invitation put aside a moment ago, its Undo still offered, is put aside while the session still holds.
+      await tellAside();
       await api.auth.signOut();
       return owner;
     },

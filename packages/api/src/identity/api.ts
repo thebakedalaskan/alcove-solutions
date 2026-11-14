@@ -1,5 +1,6 @@
 import { type Patch } from '../client';
-import { type InviteLink, type InvitePeek } from './invite-links';
+import { type InvitePeek } from '../teams/schema';
+import { type InviteLink } from './invite-links';
 import { type PersonSuggestion, type Team } from './people';
 import { type Preferences } from './preferences';
 import { type Session, type SignInResult } from './session';
@@ -40,28 +41,27 @@ export interface AccountApi {
 export interface PeopleApi {
   /** Colleagues, people you've had calls with, and any email address typed in full. */
   search(query: string): Promise<PersonSuggestion[]>;
-  /** Your company and who in it uses Alcove; null for personal accounts. */
-  team(): Promise<Team | null>;
-  /** Invites colleagues to Alcove. */
-  inviteToTeam(emails: string[]): Promise<Team>;
   /**
-   * Your own invite link, the same every time, and who joined Alcove from it, newest first: what the Team page copies and
-   * its invitations carry. Only at a company: refused for someone with no company directory.
+   * Your company and who in it uses Alcove; null for personal accounts. `members[].invited`: there's a live invitation for
+   * them to the team you're on.
+   */
+  team(): Promise<Team | null>;
+  /**
+   * Your own invite link, the same every time until you make a new one: what Copy link copies. Whoever opens it can join your
+   * team. Refused for someone with neither a company page nor a team.
    */
   inviteLink(): Promise<InviteLink>;
-  /**
-   * A new invite link in place of yours: the one you've sent leads nowhere from then on, and who joined from it stays
-   * listed. Refused for someone with no company directory.
-   */
+  /** A new invite link in place of yours: the one you've sent leads nowhere from then on. */
   newInviteLink(): Promise<InviteLink>;
   /**
-   * Who an invite link is from, signed in or not, and whether it's yours. A made-up link, one made again since and one whose
-   * sender has gone are the same `not-found`.
+   * What a secret after `/invite#` says, signed in or not: an invitation's own link or someone's invite link, who it's from,
+   * the team it joins, and whether it's your own link. Anything that leads nowhere (made up, used, cancelled, run out, made
+   * again since, or its sender gone) is the same `not-found`.
    */
   peekInvite(secret: string): Promise<InvitePeek>;
   /**
-   * Says your account was made from this invite link, so whoever sent it sees you joined. It counts once, for an account
-   * made in the last hour, and never on your own link: otherwise it changes nothing. `not-found` for a link that leads nowhere.
+   * Stops Alcove's invitation emails to the address a token after `/stop-email#` was sent to, signed in or not: from then on its
+   * invitations are still made, and shown in the app, but never emailed. Nobody is told. The same answer for any token.
    */
-  joinedByInvite(secret: string): Promise<void>;
+  stopEmails(token: string): Promise<void>;
 }

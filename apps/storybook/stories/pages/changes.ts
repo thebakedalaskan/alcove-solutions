@@ -292,7 +292,7 @@ export const adminWithoutLicense = (w: World): void => {
   t.members = t.members.map((m) => (m.person === ART ? { ...m, license: { from: iso(-32, 9, 0), until: iso(-2, 9, 0) }, wanted: iso(0, 9, 5) } : m));
   // On Free, what Art stores counts against Art's own storage again, not the team's.
   const free = planWithTeam(w.plan, t, ART.email);
-  w.plan = { ...free, storage: { ...free.storage, usedBytes: Math.round(2.1 * 2 ** 30) }, notices: [{ id: 'sb-notice-none', kind: 'licenses-none', at: iso(0, 9, 5), until: null, count: null, workspaceId: null }] };
+  w.plan = { ...free, storage: { ...free.storage, usedBytes: Math.round(2.1 * 2 ** 30) }, notices: [{ id: 'sb-notice-none', kind: 'licenses-none', at: iso(0, 9, 5), until: null, count: null, microUsd: null, workspaceId: null, memberId: null }] };
 };
 /**
  * Whoever paid for Launch left it this morning, so its payment moved to Art, its longest-standing admin with an account: he
@@ -302,14 +302,25 @@ export const adminWithoutLicense = (w: World): void => {
  */
 export const paysForLaunch = (w: World): void => {
   if (!w.workspaces.some((s) => s.id === LAUNCH)) withWorkspaces(w);
-  w.plan = { ...w.plan, notices: [{ id: 'sb-notice-paying', kind: 'workspace-payer', at: iso(0, 9, 40), until: iso(15, 9, 40), count: null, workspaceId: LAUNCH }, ...w.plan.notices] };
+  w.plan = { ...w.plan, notices: [{ id: 'sb-notice-paying', kind: 'workspace-payer', at: iso(0, 9, 40), until: iso(15, 9, 40), count: null, microUsd: null, workspaceId: LAUNCH, memberId: null }, ...w.plan.notices] };
 };
-/** Art's team license replaced Pro this morning: the two months that hadn't started went back to Art's balance. */
+/**
+ * Art's team license replaced Pro this morning: the rest of Pro, by the day, went back to Art's balance, $12.40, and the
+ * notice says how much.
+ */
 export const replacedPro = (w: World): void => {
   const at = iso(0, 9, 5);
   w.plan = {
     ...w.plan,
-    balance: { microUsd: w.plan.balance.microUsd + 40_000_000, history: [{ id: 'sb-entry-replaced', at, label: 'Refund: 2 months of Pro, for a team license', microUsd: 40_000_000 }, ...w.plan.balance.history] },
-    notices: [{ id: 'sb-notice-replaced', kind: 'license-replaced-pro', at, until: null, count: 2, workspaceId: null }]
+    balance: { microUsd: w.plan.balance.microUsd + 12_400_000, history: [{ id: 'sb-entry-replaced', at, label: 'Refund: the rest of Pro, for a team license', microUsd: 12_400_000 }, ...w.plan.balance.history] },
+    notices: [{ id: 'sb-notice-replaced', kind: 'license-replaced-pro', at, until: null, count: null, microUsd: 12_400_000, workspaceId: null, memberId: null }]
   };
+};
+/** The same, for Pro Alcove gave: nothing came back, and the notice says the team covers the plan in place of Pro. */
+export const replacedGivenPro = (w: World): void => {
+  w.plan = { ...w.plan, notices: [{ id: 'sb-notice-replaced', kind: 'license-replaced-pro', at: iso(0, 9, 5), until: null, count: null, microUsd: 0, workspaceId: null, memberId: null }] };
+};
+/** A notice from before amounts were kept: it counts the months that went back, and says so as it always did. */
+export const replacedProBefore = (w: World): void => {
+  w.plan = { ...w.plan, notices: [{ id: 'sb-notice-replaced', kind: 'license-replaced-pro', at: iso(0, 9, 5), until: null, count: 2, microUsd: null, workspaceId: null, memberId: null }] };
 };

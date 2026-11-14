@@ -2,9 +2,10 @@
  * Plans: the last of the sunset, with the plans on the water under it (user-flows 16, the canvas's Plans board). Free, Pro and
  * Team side by side, their rows lined up, priced for a year (Yearly · 20% off, the default) or month by month; Pro lifted with a
  * warm edge, its button the page's one filled button on Free and while Pro is ending. Team is licenses, $32 a person a month for
- * a year or $40 a month at a time: Start a team off one, Buy licenses for its admin, and who buys them for a member; while a
- * team license is yours, Pro isn't sold, and says so. Get Pro, Extend, Start a team and Buy licenses open checkout over the
- * page, on a year when Yearly is chosen. The prices wait in place while
+ * a year or $40 a month at a time: Start a team off one (free, named in a popover from its card, with a quiet line under it
+ * until it's pressed: Free to start. Licenses only when you upgrade.), Upgrade for a free team's admin,
+ * Buy licenses for the admin of a team on Team, and who buys them for a member; while a team license is yours, Pro isn't sold,
+ * and says so. Get Pro, Extend, Upgrade and Buy licenses open checkout over the page, on a year when Yearly is chosen. The prices wait in place while
  * they're on their way, and say so when they don't come. The plan choice (16.20) is Plans opened by itself once, in Home's
  * place: a head of its own, and the plan you're on leads straight on.
  */
@@ -62,30 +63,43 @@ export const ProEndingPhone = phone(ProEnding);
  * Team is licenses, a person for a period at a time or for a year at the lower price, as the sky says, with the people at the end
  * of its name's row: off a team (every story above), the people at Vandelay on Alcove and Start a team.
  */
-/** Start a team, on Team's card, on Yearly: checkout opens over Plans on starting one, with licenses for a year. */
-export const StartATeam = page('/plans', 'payments', {
-  play: async ({ canvas, userEvent, step }) => {
-    await step('Press Start a team, on Team’s card', async () => {
-      await userEvent.click(await canvas.findByRole('button', { name: 'Start a team' }, { timeout: 8000 }));
-    });
-  }
-});
+/** Presses Start a team, on Team's card, and its popover opens over the card. */
+const startingATeam: NonNullable<PageStory['play']> = async ({ canvas, userEvent, step }) => {
+  await step('Press Start a team, on Team’s card', async () => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Start a team' }, { timeout: 8000 }));
+    await screen.findByRole('form', { name: 'Start a team' }, { timeout: 8000 });
+  });
+};
+/**
+ * Start a team, pressed: its name in a popover over Team's card, the company's to start with, then Cancel and Start the
+ * team, the page's one filled button while it's open. It's free.
+ */
+export const StartATeam = page('/plans', 'busy', { play: startingATeam });
 export const StartATeamNight = night(StartATeam);
-/** Monthly, then Start a team: checkout opens on licenses a period at a time, $40 each. */
-export const StartATeamMonthly = page('/plans', 'payments', {
+export const StartATeamPhone = phone(StartATeam);
+/** At a personal address: the name starts as Art's own team's. */
+export const StartATeamOnTheirOwn = page('/plans', 'on-their-own', { play: startingATeam });
+/** It wasn't started: why, in the server's words, under its name in the popover. */
+export const StartATeamRefused = page('/plans', 'busy', {
+  beforeEach: changing(troubled({ 'teams.create': 'failed' })),
   play: async (context) => {
-    await monthByMonth(context);
-    await context.step('Press Start a team, on Team’s card', async () => {
-      await context.userEvent.click(await context.canvas.findByRole('button', { name: 'Start a team' }, { timeout: 8000 }));
+    await startingATeam(context);
+    await context.step('Press Start the team', async () => {
+      await context.userEvent.click(within(await screen.findByRole('form', { name: 'Start a team' }, { timeout: 8000 })).getByRole('button', { name: 'Start the team' }));
     });
   }
 });
 /**
- * Back from signing in with the welcome page's Start a team (`/plans?checkout=team`): checkout is open over Plans on starting
- * one as the page opens, and the address forgets it.
+ * Back from signing in with the welcome page's Start a team (`/plans?checkout=team`): Start a team's popover is open over
+ * Team's card as the page opens, and the address forgets it.
  */
-export const StartATeamFromTheWelcomePage = page('/plans?checkout=team', 'payments');
+export const StartATeamFromTheWelcomePage = page('/plans?checkout=team', 'busy');
 export const StartATeamFromTheWelcomePagePhone = phone(StartATeamFromTheWelcomePage);
+/** A free team's admin: Upgrade on Team's card, which opens checkout on Team for it. */
+export const FreeTeamAdmin = page('/plans', 'team-free-admin');
+export const FreeTeamAdminNight = night(FreeTeamAdmin);
+/** A member of a free team: who buys its licenses. */
+export const FreeTeamMember = page('/plans', 'team-free-member');
 /**
  * Vandelay's admin, licensed: Team is Art's plan, with Buy licenses. Pro isn't sold while the license lasts, and its card says so
  * where Get Pro would be. Nothing is filled.
@@ -97,7 +111,7 @@ export const TeamAdminPhone = phone(TeamAdmin);
 export const TeamAdminMonthly = page('/plans', 'team-admin', { play: monthByMonth });
 /**
  * No license for a year on offer (as it ships at first): Team is $40 a person on Yearly too, with nothing about a year, while Pro
- * keeps its yearly price; Start a team opens checkout on a period's licenses.
+ * keeps its yearly price; a free team's Upgrade opens checkout on a period's licenses.
  */
 export const TeamYearOff = page('/plans', 'payments', { beforeEach: changing(noTeamYear) });
 export const TeamYearOffNight = night(TeamYearOff);

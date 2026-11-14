@@ -497,7 +497,7 @@ describe('Pro', () => {
     const renewed = await ann.api.plans.plan();
     expect(renewed).toMatchObject({ kind: 'pro', balance: { microUsd: 0 }, pro: { until: new Date(end + 3_600_000).toISOString(), renew: true } });
     expect(renewed.pro.months.map((m) => m.from)).toEqual([new Date(end - 3_600_000).toISOString(), new Date(end).toISOString()]);
-    expect(renewed.notices).toEqual([{ id: expect.any(String), kind: 'pro-renewed', at: expect.any(String), until: new Date(end + 3_600_000).toISOString(), count: null, workspaceId: null }]);
+    expect(renewed.notices).toEqual([{ id: expect.any(String), kind: 'pro-renewed', at: expect.any(String), until: new Date(end + 3_600_000).toISOString(), count: null, microUsd: null, workspaceId: null, memberId: null }]);
     expect(renewed.balance.history[0]).toMatchObject({ label: 'Pro, renewed for a month', microUsd: -PRICE });
     // Once: upkeep again changes nothing, and past the old end the new month is a fresh period.
     await upkeepAt(ann, end - 200_000);
@@ -640,11 +640,11 @@ describe('Pro', () => {
     await give(ann, LICENSE);
     await ann.api.teams.create('Vandelay Industries');
     await ann.api.teams.buyLicenses(1, LICENSE);
-    const { link } = await ann.api.teams.invite();
+    await ann.api.teams.invite([bob.email]);
     // His month ends, and before upkeep comes he joins the team. Joining is a visit, so he takes the license; no month of
     // Pro is running, so it has nothing to replace.
     vi.useFakeTimers({ toFake: ['Date'], now: end + 60_000 });
-    expect(await bob.api.teams.join(link.slice(link.indexOf('#') + 1))).toMatchObject({ licensed: true });
+    expect(await bob.api.teams.acceptInvitation((await bob.api.teams.invitations())[0]?.id ?? 'no invitation')).toMatchObject({ licensed: true });
     const from = h.logs.length;
     await upkeepAt(bob, end + 120_000);
     // Upkeep buys nothing under the license, and tells nothing: Pro's end is handled.

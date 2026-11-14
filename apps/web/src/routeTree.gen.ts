@@ -18,6 +18,7 @@ import { Route as LinkRouteImport } from './routes/link'
 import { Route as MoveRouteImport } from './routes/move'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ReadyRouteImport } from './routes/ready'
+import { Route as StopEmailRouteImport } from './routes/stop-email'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as AppAgentsRouteImport } from './routes/_app/agents'
 import { Route as AppHomeRouteImport } from './routes/_app/home'
@@ -28,7 +29,6 @@ import { Route as AppTeamRouteImport } from './routes/_app/team'
 import { Route as CallCodeRouteImport } from './routes/call.$code'
 import { Route as JoinCodeRouteImport } from './routes/join.$code'
 import { Route as RecordLiveRouteImport } from './routes/record.live'
-import { Route as TeamJoinRouteImport } from './routes/team.join'
 import { Route as AppCallsIndexRouteImport } from './routes/_app/calls.index'
 import { Route as AppCallsNoteIdRouteImport } from './routes/_app/calls.$noteId'
 import { Route as AppDriveIndexRouteImport } from './routes/_app/drive.index'
@@ -82,6 +82,11 @@ const ReadyRoute = ReadyRouteImport.update({
   path: '/ready',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StopEmailRoute = StopEmailRouteImport.update({
+  id: '/stop-email',
+  path: '/stop-email',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WelcomeRoute = WelcomeRouteImport.update({
   id: '/welcome',
   path: '/welcome',
@@ -130,11 +135,6 @@ const JoinCodeRoute = JoinCodeRouteImport.update({
 const RecordLiveRoute = RecordLiveRouteImport.update({
   id: '/record/live',
   path: '/record/live',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const TeamJoinRoute = TeamJoinRouteImport.update({
-  id: '/team/join',
-  path: '/team/join',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppCallsIndexRoute = AppCallsIndexRouteImport.update({
@@ -191,6 +191,7 @@ export interface FileRoutesByFullPath {
   '/move': typeof MoveRoute
   '/privacy': typeof PrivacyRoute
   '/ready': typeof ReadyRoute
+  '/stop-email': typeof StopEmailRoute
   '/welcome': typeof WelcomeRoute
   '/agents': typeof AppAgentsRoute
   '/home': typeof AppHomeRoute
@@ -201,7 +202,6 @@ export interface FileRoutesByFullPath {
   '/call/$code': typeof CallCodeRoute
   '/join/$code': typeof JoinCodeRoute
   '/record/live': typeof RecordLiveRoute
-  '/team/join': typeof TeamJoinRoute
   '/calls/$noteId': typeof AppCallsNoteIdRoute
   '/drive/$workspaceId': typeof AppDriveWorkspaceIdRouteWithChildren
   '/calls/': typeof AppCallsIndexRoute
@@ -220,6 +220,7 @@ export interface FileRoutesByTo {
   '/move': typeof MoveRoute
   '/privacy': typeof PrivacyRoute
   '/ready': typeof ReadyRoute
+  '/stop-email': typeof StopEmailRoute
   '/welcome': typeof WelcomeRoute
   '/agents': typeof AppAgentsRoute
   '/home': typeof AppHomeRoute
@@ -230,7 +231,6 @@ export interface FileRoutesByTo {
   '/call/$code': typeof CallCodeRoute
   '/join/$code': typeof JoinCodeRoute
   '/record/live': typeof RecordLiveRoute
-  '/team/join': typeof TeamJoinRoute
   '/calls/$noteId': typeof AppCallsNoteIdRoute
   '/calls': typeof AppCallsIndexRoute
   '/drive': typeof AppDriveIndexRoute
@@ -250,6 +250,7 @@ export interface FileRoutesById {
   '/move': typeof MoveRoute
   '/privacy': typeof PrivacyRoute
   '/ready': typeof ReadyRoute
+  '/stop-email': typeof StopEmailRoute
   '/welcome': typeof WelcomeRoute
   '/_app/agents': typeof AppAgentsRoute
   '/_app/home': typeof AppHomeRoute
@@ -260,7 +261,6 @@ export interface FileRoutesById {
   '/call/$code': typeof CallCodeRoute
   '/join/$code': typeof JoinCodeRoute
   '/record/live': typeof RecordLiveRoute
-  '/team/join': typeof TeamJoinRoute
   '/_app/calls/$noteId': typeof AppCallsNoteIdRoute
   '/_app/drive/$workspaceId': typeof AppDriveWorkspaceIdRouteWithChildren
   '/_app/calls/': typeof AppCallsIndexRoute
@@ -281,6 +281,7 @@ export interface FileRouteTypes {
     | '/move'
     | '/privacy'
     | '/ready'
+    | '/stop-email'
     | '/welcome'
     | '/agents'
     | '/home'
@@ -291,7 +292,6 @@ export interface FileRouteTypes {
     | '/call/$code'
     | '/join/$code'
     | '/record/live'
-    | '/team/join'
     | '/calls/$noteId'
     | '/drive/$workspaceId'
     | '/calls/'
@@ -310,6 +310,7 @@ export interface FileRouteTypes {
     | '/move'
     | '/privacy'
     | '/ready'
+    | '/stop-email'
     | '/welcome'
     | '/agents'
     | '/home'
@@ -320,7 +321,6 @@ export interface FileRouteTypes {
     | '/call/$code'
     | '/join/$code'
     | '/record/live'
-    | '/team/join'
     | '/calls/$noteId'
     | '/calls'
     | '/drive'
@@ -339,6 +339,7 @@ export interface FileRouteTypes {
     | '/move'
     | '/privacy'
     | '/ready'
+    | '/stop-email'
     | '/welcome'
     | '/_app/agents'
     | '/_app/home'
@@ -349,7 +350,6 @@ export interface FileRouteTypes {
     | '/call/$code'
     | '/join/$code'
     | '/record/live'
-    | '/team/join'
     | '/_app/calls/$noteId'
     | '/_app/drive/$workspaceId'
     | '/_app/calls/'
@@ -370,11 +370,11 @@ export interface RootRouteChildren {
   MoveRoute: typeof MoveRoute
   PrivacyRoute: typeof PrivacyRoute
   ReadyRoute: typeof ReadyRoute
+  StopEmailRoute: typeof StopEmailRoute
   WelcomeRoute: typeof WelcomeRoute
   CallCodeRoute: typeof CallCodeRoute
   JoinCodeRoute: typeof JoinCodeRoute
   RecordLiveRoute: typeof RecordLiveRoute
-  TeamJoinRoute: typeof TeamJoinRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -440,6 +440,13 @@ declare module '@tanstack/react-router' {
       path: '/ready'
       fullPath: '/ready'
       preLoaderRoute: typeof ReadyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/stop-email': {
+      id: '/stop-email'
+      path: '/stop-email'
+      fullPath: '/stop-email'
+      preLoaderRoute: typeof StopEmailRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/welcome': {
@@ -510,13 +517,6 @@ declare module '@tanstack/react-router' {
       path: '/record/live'
       fullPath: '/record/live'
       preLoaderRoute: typeof RecordLiveRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/team/join': {
-      id: '/team/join'
-      path: '/team/join'
-      fullPath: '/team/join'
-      preLoaderRoute: typeof TeamJoinRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/calls/': {
@@ -633,11 +633,11 @@ const rootRouteChildren: RootRouteChildren = {
   MoveRoute: MoveRoute,
   PrivacyRoute: PrivacyRoute,
   ReadyRoute: ReadyRoute,
+  StopEmailRoute: StopEmailRoute,
   WelcomeRoute: WelcomeRoute,
   CallCodeRoute: CallCodeRoute,
   JoinCodeRoute: JoinCodeRoute,
   RecordLiveRoute: RecordLiveRoute,
-  TeamJoinRoute: TeamJoinRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

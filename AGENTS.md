@@ -11,6 +11,7 @@ packages/ui         The design system: tokens, components, illustrations. Everyt
 packages/api        The contract: zod schemas, the AlcoveApi interface, wire shapes. No implementation.
 packages/api-http   The browser client: REST, NDJSON, audio uploads, live sessions.
 packages/board      The shape of a board's Y.Doc and the logic the app and API share. No React.
+packages/mail       The emails Alcove sends: subject, HTML, text and inline pictures from plain data. No I/O.
 infra/              Deployment guide and GCP bootstrap; confidential-space/ sets up, builds, signs and deploys the image to
                     Confidential Space (and is a small workspace package, for verify-server.ts). .github/ holds CI,
                     deploy, the monthly image refresh and the branch ruleset.
@@ -217,7 +218,8 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   links), `IconButton`, `ProviderButton`, `NotesSign`, `Chip`, `GroupChip`, `SealedBadge` and `SealedButton`
   (the badge that opens what was checked), `Notice` (with an × when it can be dismissed), `useToast` (a toast, from the `ToastProvider` at the app's root),
   `Avatar` and `Faces` (the arch), `GhostArch` (an empty arch where a person will be), `PickList` (people to find and press
-  in a popover: one, or several with ticks), `CallTile`, `FloatingCall` (the compact call's picture, controls and attention, with no media ownership), `CallDock` with `DockButton` (its `word` is said beside the icon,
+  in a popover: one, or several with ticks; `note`, a quiet line under its field, said once and read with it; a row's `tag`
+  (Invited), `unavailable` (why it can't be picked, under its name) and `label` (what picking it does)), `CallTile`, `FloatingCall` (the compact call's picture, controls and attention, with no media ownership), `CallDock` with `DockButton` (its `word` is said beside the icon,
   for Share, the one control the dock names), `CallTopGroup`, `CallTopButton` and `CallTopRule` (the top right's group, its
   buttons and hairlines), `CallTimerButton`, `CallTimerCard`, `CallTimerLength` and `CallTimerRun` (the call's one countdown for everyone: its button, and Timer for everyone, the popover it opens, with the lengths to start one, then Pause, +1 min and Stop),
   `CallMoreGrid` and `CallMoreTile` (More's grid on a phone), `CallMenuChips` (equal choices in a row inside a call's menu, such as Back in), `ChatTabs`, `ChatMessage` (Slack-like, with the bar of reactions, Reply in thread and Message privately over its corner),
@@ -271,23 +273,35 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   (in `drive/files.tsx`) show a file as a large preview: a document's first lines, a board, a PDF, photos, or a
   shared screen with play, on a call's page and in the Drive.
   For plans: `PlanCards` and `PlanCard` (the plans side by side, their rows lined up by subgrid; `lifted` for Pro's raised
-  card with its warm edge, `waiting` while the prices come), `PlanHere` ("Your plan", nothing to press; `quiet` for Free's
+  card with its warm edge, `waiting` while the prices come, `under` for a quiet line under its button), `PlanHere` ("Your plan", nothing to press; `quiet` for Free's
   line on another plan), `PlanCycle` (Monthly / Yearly · 20% off on the sky), `PlanSunset` (the last sliver of the sun,
-  drawn through `Evening`'s and `Horizon`'s `sky`), `EveryPlan` and `PayingLine`. Checkout, one window over any page, is in
+  drawn through `Evening`'s and `Horizon`'s `sky`), `PlanTeamStart` (starting a team, free: its name in `TeamName`'s box,
+  then Cancel and Start the team, in the popover Team's Start a team opens; `bare`, without buttons of its own, in checkout
+  opened on Team with no team, whose foot submits it by its `id`), `EveryPlan` and `PayingLine`. Checkout, one window over any page, is in
   `plans/checkout.tsx`: `CheckoutWindow` (on `Modal`, in your theme over a call; `receipt` for the receipt alone) with
-  `CheckoutPanel`, `CheckoutSteps`, `MonthsPicker`, `HoursPicker`, `NetworkPicker`, `TeamName` (a team being started, its name
-  in a box with its label inside), `LicensesPicker` (how many of Team's licenses, Another number up to the most one purchase
-  buys, and How long, Monthly / Yearly · 20% off on `Segmented`, over them while a year is offered: its `term`), `LicensesLeft` (the team's people, how many licenses are left and who's waiting), `PlanWindow` (what you're buying
+  `CheckoutPanel`, `CheckoutSteps`, `MonthsPicker`, `HoursPicker`, `NetworkPicker`, `TeamName` (a team's name in a box with its
+  label inside, under a heading: starting one, in `PlanTeamStart`, renaming one), `LicensesPicker` (how many of Team's licenses, Another number up to the most one purchase
+  buys, and How long, Monthly / Yearly · 20% off on `Segmented`, over them while a year is offered: its `term`), `LicensesLeft` (the team's people, how many licenses are left and who's waiting), `CheckoutTick` (something buying it does
+  as well, ticked or not: upgrading's Buy a license for each person who joins), `PlanWindow` (what you're buying
   under its own small evening, whose sun rises with the payment), `CheckoutSummary`, `PayStatus`, `PayAmount`, `PayAddress`
   (the QR code with the USDC mark, the address with its ends in bold), `PayArrived`, `PayTrack` (checkout's Pay step and
-  Settings' Add money follow a payment with these, through the app's `features/plans/paying.tsx`), `CheckoutDone` (`invite`
-  for a team just started), `CheckoutAsk`,
+  Settings' Add money follow a payment with these, through the app's `features/plans/paying.tsx`), `CheckoutDone`, `CheckoutAsk`,
   `CheckoutNote`, `CheckoutBig`, `CheckoutLine`, `PaymentReceipt` (one payment as paper, alone on the page when printed) and
   `ReceiptWindow` (a receipt over Settings).
-  Team on a plan and joining a team by its link are in `plans/team-plan.tsx`: `TeamLine` (the team on the horizon, each
-  under their license), `TeamSection`, `TeamRows`, `TeamPersonRow`, `TeamAsk` (Remove, Leave or Delete asked in place, and Make a new link in a company's Invite people),
-  `TeamFoot`, `TeamNotesList` (what's visible to the team), `LicensesCard`, `TeamInvite` (a one-time link with Copy; `bare` for
-  under checkout Done's heading), `TeamStartRow` (a quiet Start a team on a company's page), `JoinCard` and `JoinEvening`.
+  A team's page and joining a team are in `plans/team-plan.tsx`: `TeamTier` (under the name in the sky: Free · 3 people, or
+  Team with its small sun), `TeamRename` (the admin's rename, in the popover its pen opens), `TeamLine` (the team on the
+  horizon, each under their license on Team, then whoever's invited in dashed arches, `ghost`, and colleagues not on it
+  further back, `back`), `TeamTierNote` (what Free means, once, at the top of a free team's water, with the page's one
+  Upgrade or Ask to upgrade, or `done` once asked), `TeamSection`, `TeamRows`, `TeamPersonRow`, `TeamAsk` (Remove, Leave or
+  Delete asked in place, Make a new link in Invite people, and leaving a team to join another; its answers one over the
+  other on a phone, clear of the tab bar), `TeamFoot`, `TeamNotesList` (what's visible to the team), `LicensesCard` (without
+  Buy licenses, `onBuy` left out, for a free team buying a license for each person who joins), `JoinCard` (an invitation or
+  anything about joining, as one card: `ask` in place of what to do, `note` for why you can't join yet, `problem` for what
+  went wrong, in caution, `level` 2 on the Team page, its title in the face you read) and `JoinEvening`. Invitations on
+  the Team page are in `team/invitations.tsx`: `InvitationCards` (the cards for invitations to you, one under another),
+  `InvitationNote` (an invitation to another team at the top of your team's water), `InvitationRow` (an invitation as a
+  row: someone invited to your team, with Resend and Cancel, or one of yours put aside, with Join) and `JoinFirst` (Invite
+  people while an invitation to you waits on a company page: join that first, with its Join).
   The workspace kit is in `workspace/`, every part stateless, taking plain data and handlers: `WsPane` holds
   `WsList` (`WsListHead`, or `WsListTools` in a call, where the frame's bar names the workspace; `WsSection` with `add` and `flash`,
   `WsRow` with the kinds `place` and `call` and their `tag` and `out`, `WsRenameRow`, `WsDropLine`, `WsTrashRow`; the rows
@@ -344,7 +358,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `team/team.css` (its classes start with `tp-`); Calls in `calls/calls.css` (`cs-`); the Drive in `drive/drive.css` (`dv-`); a call's page in `notes/note.css` (`cd-`, with the
   transcript line still `nd-l`); a file's large preview in `drive/files.css` (`fc-`);
   Settings in `settings/settings.css` (its classes start with `set-`); Agents in `agents/agents.css` (`ag-`, beside the
-  `ac-agent-` chips and consent sheet); Plans in `plans/plans.css` (`pl-`); checkout in `plans/checkout.css` (`ck-`); the doors into checkout in `plans/plan-doors.css` (`pd-`); Team on a plan in `plans/team-plan.css` (`tq-` the page, `tj-` joining); Record in `record/record.css` (its classes
+  `ac-agent-` chips and consent sheet); Plans in `plans/plans.css` (`pl-`); checkout in `plans/checkout.css` (`ck-`); the doors into checkout in `plans/plan-doors.css` (`pd-`); a team's page in `plans/team-plan.css` (`tq-` the page, `tj-` joining); invitations on the Team page in `team/invitations.css` (`ti-`); Record in `record/record.css` (its classes
   start with `rec-`); Start a call in `calls/flow.css` (`cf-`); the scheduler in `calls/scheduler.css` (`sc-`); the week,
   on Calls and while scheduling, in `calls/calls-week.css` (`cw-`); the organizer's
   lobby, ringing and the page for picking a time in `calls/ringing.css` (`rg-`); the workspace in `workspace/workspace.css`
@@ -380,7 +394,8 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `stage-raised`, `stage-ink`, `stage-ink-2`, `stage-sun` for what's chosen on night controls whatever theme is round them,
   and whoever speaks gets the `speak` ring. People appear in the arch, never a circle.
 - Motion: use `motion/react` and the shared helpers (`CountUp`, `Words`, `CheckDraw`, `Dots`, `Reveal`,
-  `RevealGroup`, the `EASE` curves) with the `duration-*` and `ease-*` tokens. Respect reduced motion; the global stylesheet already shortens CSS
+  `RevealGroup`, `foldAway` (something leaving a column, its gap with it), `leaveFading` (a still copy of what's replaced,
+  fading out over what replaces it: one view crossfading into another), the `EASE` curves) with the `duration-*` and `ease-*` tokens. Respect reduced motion; the global stylesheet already shortens CSS
   animations.
 - Every list or page needs a designed empty state (`EmptyState`, which draws `EmptyArch` by default),
   not blank space.

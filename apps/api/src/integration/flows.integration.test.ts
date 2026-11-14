@@ -1112,20 +1112,18 @@ describe('people and team', () => {
     expect((await art.api.people.search('jordan.lee@harbourline.example'))[0]).toMatchObject({ source: 'new', onAlcove: true });
   });
 
-  it('shows the company directory and invites colleagues', async () => {
-    const art = h.browser();
-    await art.api.auth.signIn('microsoft');
+  it('shows the company directory, and who in it is invited to the team you’re on', async () => {
+    const art = await account(unique('art').replace('@tests.example', '@vandelay.industries'));
     const team = await art.api.people.team();
     expect(team).toMatchObject({ name: 'Vandelay Industries', domain: 'vandelay.industries' });
     expect(team?.members.map((m) => [m.person.name, m.onAlcove, m.invited])).toEqual([['Theo Martin', true, false], ['Kofi Asante', true, false], ['Sam Ortiz', false, false], ['Lena Fischer', false, false], ['Aiko Tanaka', true, false], ['Maya Chen', true, false]]);
-    const after = await art.api.people.inviteToTeam(['sam@vandelay.industries', 'lena@vandelay.industries']);
-    expect(after.members.filter((m) => m.invited).map((m) => m.person.name)).toEqual(['Sam Ortiz', 'Lena Fischer']);
-    expect((await art.api.people.inviteToTeam([' SAM@Vandelay.Industries '])).members.find((m) => m.person.email === 'sam@vandelay.industries')?.invited).toBe(true);
-    expect(code(await art.api.people.inviteToTeam(['someone@elsewhere.example']).catch((e: unknown) => e))).toBe('invalid');
+    // Inviting makes the team the company page names, and anyone at any address can be invited to it.
+    expect((await art.api.teams.invite(['sam@vandelay.industries', 'lena@vandelay.industries', 'someone@elsewhere.example'])).team).toMatchObject({ name: 'Vandelay Industries', tier: 'free' });
+    expect((await art.api.people.team())?.members.filter((m) => m.invited).map((m) => m.person.name)).toEqual(['Sam Ortiz', 'Lena Fischer']);
+    expect((await art.api.teams.invite([' SAM@Vandelay.Industries '])).invited).toBe(1);
 
     const outsider = await account();
     expect(await outsider.api.people.team()).toMatchObject({ domain: 'tests.example', members: [] });
-    expect(code(await outsider.api.people.inviteToTeam(['sam@vandelay.industries']).catch((e: unknown) => e))).toBe('invalid');
   });
 
   it('reads a busy calendar newest first, so the recent colleagues are on the team', async () => {
@@ -1166,20 +1164,20 @@ describe('people and team', () => {
       ['ann@acme.example', false, false], ['cara@acme.example', false, false], ['eve@acme.example', false, false]
     ]);
 
-    // Once Ann signs in, she is on Alcove; inviting marks the invite, and only people on the team can be invited.
+    // Once Ann signs in, she is on Alcove; inviting someone makes the team, and says who's invited to it.
     await viaGoogle(h.browser(), ann);
     const after = await b.api.people.team();
     expect(after?.members.find((m) => m.person.email === 'ann@acme.example')).toMatchObject({ onAlcove: true, invited: false });
-    const invited = await b.api.people.inviteToTeam(['cara@acme.example']);
-    expect(invited.members.filter((m) => m.invited).map((m) => m.person.email)).toEqual(['cara@acme.example']);
-    expect(code(await b.api.people.inviteToTeam(['bob@other.example']).catch((e: unknown) => e))).toBe('invalid');
+    expect((await b.api.teams.invite(['cara@acme.example', 'bob@other.example'])).team).toMatchObject({ name: 'Acme', tier: 'free' });
+    expect((await b.api.people.team())?.members.filter((m) => m.invited).map((m) => m.person.email)).toEqual(['cara@acme.example']);
 
     // Someone at a personal address has no team, and nobody else's colleagues leak across accounts.
     const gmail = h.browser();
     await viaGoogle(gmail, { sub: `g-team-gmail-${seq++}`, email: `someone.${seq}@gmail.com`, name: 'Some One' });
     await gmail.api.meetings.create({ title: 'Friends', startsAt: soon, durationMinutes: 30, guests: ['pal@gmail.com'], notes: 'off' });
     expect(await gmail.api.people.team()).toBeNull();
-    expect(code(await gmail.api.people.inviteToTeam(['pal@gmail.com']).catch((e: unknown) => e))).toBe('invalid');
+    // Inviting someone there makes a team named for whoever invites.
+    expect((await gmail.api.teams.invite(['pal@gmail.com'])).team).toMatchObject({ name: 'Some’s team', role: 'admin' });
 
     // A demo account can be someone on their own too: personal.example belongs to nobody.
     const solo = h.browser();
@@ -3395,13 +3393,12 @@ describe('deleting an account', () => {
     await b.api.drive.setForNote(callNote, { enabled: true, destinationId: driveFolder, formats: ['notes-markdown'] });
     // A link she made to her call's notes goes with them, and so with her.
     await b.api.notes.createLink(callNote);
-    // Her own invite link goes with her, with Kofi, who joined from it, and so does saying her new account came from Ann's.
-    const lenasLink = (await b.api.people.inviteLink()).link;
-    await kofi.api.people.joinedByInvite(lenasLink.slice(lenasLink.indexOf('#') + 1));
-    const annsLink = (await ann.api.people.inviteLink()).link;
-    await b.api.people.joinedByInvite(annsLink.slice(annsLink.indexOf('#') + 1));
-    expect((await ann.api.people.inviteLink()).joined.map((j) => j.person.email)).toEqual([lena.email]);
-    expect((await b.api.people.inviteLink()).joined.map((j) => j.person.email)).toEqual([kofi.session.user.email]);
+    // Her own invite link goes with her, and so does a row of who joined from it, as the release before this one can still
+    // write one while a deploy is under way (this one reads none). So do the team she makes by inviting Kofi, her invitation,
+    // and her day's count of them.
+    await b.api.people.inviteLink();
+    await h.pool.query('INSERT INTO invite_link_joins (owner_id, joiner_index, who_ciphertext) VALUES ($1, $2, $3)', [ownerId, randomBytes(32), randomBytes(64)]);
+    const lenasTeam = (await b.api.teams.invite([kofi.session.user.email])).team.id;
     // A timer preset as the previous release can still write one while a deploy is under way: nothing in this release does.
     await h.pool.query('INSERT INTO timer_presets (owner_id, preset_id, ciphertext) VALUES ($1, $2, $3)', [ownerId, randomBytes(16).toString('base64url'), randomBytes(64)]);
     // So can its credits row, which nothing in this release reads or writes.
@@ -3413,7 +3410,7 @@ describe('deleting an account', () => {
       'call_private_messages', 'call_rings', 'calls', 'content_jobs', 'deposits', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts',
       'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'invite_link_joins', 'invite_links', 'items', 'media_others_days', 'media_upload_days', 'meeting_access',
       'note_access', 'note_additions', 'note_links', 'object_gc', 'operations', 'owners', 'personal_notes', 'plan_accounts', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings',
-      'revisions', 'screen_frames', 'screen_pieces', 'screen_shares', 'screen_videos', 'sessions', 'team_notes', 'teams', 'timer_presets', 'transcript_clips', 'transcript_translations',
+      'revisions', 'screen_frames', 'screen_pieces', 'screen_shares', 'screen_videos', 'sessions', 'team_invitation_days', 'team_notes', 'teams', 'timer_presets', 'transcript_clips', 'transcript_translations',
       'workspace_authors', 'workspace_calls', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions',
       'workspaces'
     ]);
@@ -3474,8 +3471,9 @@ describe('deleting an account', () => {
     // the store refused waits in object_gc, by its ID, until maintenance deletes it.
     expect(await counts()).toEqual({ ...Object.fromEntries(tables.map((t) => [t, 0])), object_gc: 1 });
     expect(await givenToHer()).toBe(0);
-    // Nor does Ann's invite link say she joined from it any more.
-    expect((await ann.api.people.inviteLink()).joined).toEqual([]);
+    // Her team went with her, and the invitation she made with it.
+    expect((await h.pool.query('SELECT (SELECT count(*) FROM teams WHERE team_id = $1) + (SELECT count(*) FROM team_invitations WHERE team_id = $1) AS n', [lenasTeam])).rows[0]).toEqual({ n: '0' });
+    expect(await kofi.api.teams.invitations()).toEqual([]);
     const stored = (id: string) => h.objects.get(id).then(() => true, () => false);
     expect(await Promise.all(objects.map(stored))).toEqual(objects.map((id) => id === refused));
     await maintain(h.deps);
@@ -3703,7 +3701,7 @@ interface CanaryFlow {
   canaries: string[];
   /** Session cookies, a move's code, a link's secret and a file's token, as the canary's browsers got them: more may come. */
   secrets: string[];
-  /** A team invite's secret, an agent's token and two invite links' secrets. */
+  /** An invitation's secret, an agent's token, two invite links' secrets and a stop token. */
   credentials: string[];
 }
 
@@ -4056,28 +4054,42 @@ describe('privacy at rest', () => {
     expect(await c.api.plans.topUp(topUp.id)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
     expect((await c.api.plans.plan()).balance.history.map((e) => e.label)).toEqual(['10 more hours of notes', 'Added, 25 USDC']);
 
-    // A team: its name and who's on it sealed under its own key, what it bought (`team-billing`) under the service's, and
-    // an invite's secret only as a hash, in rows and nowhere in the logs. Its license is bought with a payment, so what the
-    // payment buys (the `deposit` record's purchase) and the balance's line for it stay sealed too.
+    // A team: its name and who's on it sealed under its own key, what it bought (`team-billing`) under the service's, who's
+    // invited (`team-invitation`) under its own key again, found by a blind index of the address, and an invitation's link's
+    // secret only as a hash, in rows and nowhere in the logs. The email each invitation is sent as waits in the outbox
+    // sealed under a key of its own, and goes to Resend, which sees it as it is. Its license is bought with a payment, so
+    // what the payment buys (the `deposit` record's purchase) and the balance's line for it stay sealed too.
     await c.api.teams.create('CANARY-TEAM name of the merger crew');
-    const licensed = await c.api.plans.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 40_000_000, { kind: 'licenses', count: 1, microUsdPerLicense: 40_000_000, periods: 1 });
+    const licensed = await c.api.plans.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 40_000_000, { kind: 'licenses', count: 1, microUsdPerLicense: 40_000_000, periods: 1, autoPurchase: true });
     h.oneclick.set(licensed.address ?? '', 'SUCCESS', { depositedAmount: '40000000', amountOut: '40000000', intentHashes: ['canary-intent-hash-license'] });
     expect(await c.api.plans.topUp(licensed.id)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
     expect((await c.api.plans.plan()).balance.history.map((e) => e.label).slice(0, 2)).toEqual(['Team, 1 license', 'Added, 40 USDC']);
     await c.api.teams.setAutoPurchase(true);
     await c.api.auth.visit();
-    const joining = await c.api.teams.invite();
-    await invitee.api.teams.join(joining.link.slice(joining.link.indexOf('#') + 1));
-    const teamInvite = await c.api.teams.invite();
-    const teamSecret = teamInvite.link.slice(teamInvite.link.indexOf('#') + 1);
-    expect(await invitee.api.teams.peek(teamSecret)).toMatchObject({ name: 'CANARY-TEAM name of the merger crew', admin: { email: 'canary-person@canary.example' } });
+    await c.api.teams.invite([scribeEmail, 'canary-invitee@canary.example']);
+    await invitee.api.teams.acceptInvitation((await invitee.api.teams.invitations())[0]?.id ?? 'no invitation');
+    await until(async () => h.resend.sent.some((e) => e.to.includes('canary-invitee@canary.example')), 'the canary invitation’s email');
+    const sentInvitation = h.resend.sent.find((e) => e.to.includes('canary-invitee@canary.example'));
+    const teamSecret = /\/invite#([A-Za-z0-9_-]{43})/.exec(sentInvitation?.text ?? '')?.[1] ?? 'no secret';
+    const stopToken = /\/stop-email#([A-Za-z0-9_-]{43})/.exec(sentInvitation?.text ?? '')?.[1] ?? 'no token';
+    // Resend is sent the email as it is: who it's to, who asked, the team, and the links.
+    expect(sentInvitation).toMatchObject({ reply_to: 'canary-person@canary.example', subject: expect.stringContaining('CANARY-TEAM') });
+    expect(await h.browser().api.people.peekInvite(teamSecret)).toMatchObject({ kind: 'invitation', from: { email: 'canary-person@canary.example' }, team: { name: 'CANARY-TEAM name of the merger crew' } });
     expect((await c.api.teams.mine())?.members.map((m) => m.person.email)).toEqual(['canary-person@canary.example', scribeEmail]);
+    expect((await c.api.teams.mine())?.invitations.map((i) => i.person.email)).toEqual(['canary-invitee@canary.example']);
+    // An email waiting to go, as one past the day's emails waits: sealed in its row.
+    await setLimit(h.pool, 'mail.per_day', 0);
+    await c.api.teams.invite(['canary-waiting@canary.example']);
+    await until(async () => (await h.pool.query('SELECT 1 FROM mail_outbox')).rowCount === 1, 'the canary email to wait');
     const teamRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM teams x`)).rows[0]?.all ?? '');
     expect(teamRows).toContain('billing_ciphertext');
+    for (const table of ['team_invitations', 'mail_sends', 'mail_outbox']) {
+      expect(String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM ${table} x`)).rows[0]?.all ?? ''), table).not.toBe('');
+    }
 
     // An invite link: its secret is worked out each time and never kept, only its hash; who it's from is sealed under a key
-    // made from the secret, and who joined under the sender's own keys, in rows and nowhere in the logs. A new link replaces
-    // the old one's hash, and keeps who joined.
+    // made from the secret, in rows and nowhere in the logs. Someone joining from it makes the team of its owner (on none),
+    // named for them; a new link replaces the old one's hash.
     const inviter = tapped();
     await inviter.api.auth.signIn('sso', { email: 'canary-inviter@canary.example' });
     const inviteLink = await inviter.api.people.inviteLink();
@@ -4085,13 +4097,10 @@ describe('privacy at rest', () => {
     expect((await h.browser().api.people.peekInvite(inviteSecret)).from).toMatchObject({ name: 'Canary Inviter', email: 'canary-inviter@canary.example' });
     const inviteJoiner = tapped();
     await inviteJoiner.api.auth.signIn('sso', { email: 'canary-joiner@canary.example' });
-    await inviteJoiner.api.people.joinedByInvite(inviteSecret);
+    expect(await inviteJoiner.api.teams.join(inviteSecret)).toMatchObject({ name: 'Canary', members: [{ person: { name: 'Canary Inviter' } }, { person: { name: 'Canary Joiner' } }] });
     const newInvite = await inviter.api.people.newInviteLink();
     const newInviteSecret = newInvite.link.slice(newInvite.link.indexOf('#') + 1);
-    expect(newInvite.joined.map((j) => [j.person.name, j.person.email])).toEqual([['Canary Joiner', 'canary-joiner@canary.example']]);
     expect((await h.browser().api.people.peekInvite(newInviteSecret)).from).toMatchObject({ name: 'Canary Inviter' });
-    const inviteRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM invite_link_joins x`)).rows[0]?.all ?? '');
-    expect(inviteRows).toContain('who_ciphertext');
 
     // A live question stays present for the sweep: ending a call physically deletes its attention record.
     const attentionCall = await c.api.calls.join((await c.api.calls.startNow({ notes: 'off' })).code, { mic: false, cam: false });
@@ -4141,7 +4150,7 @@ describe('privacy at rest', () => {
       'CANARY-CUE', 'as you can see the chart', 'CANARY-VIDEO', 'Person’s screen', 'CANARY-LIVEQUESTION', 'private launch',
       'canary-deposit-address', 'Credits added', 'canary-intent-hash', 'more hours of notes', 'microUsdPerPack', 'minutesPerPack',
       'CANARY-TEAM', 'merger crew', 'Team, 1 license', '"autoPurchase"', '"pool"', 'microUsdPerLicense', 'CANARY-AGENT',
-      'canary-inviter', 'Canary Inviter', 'canary-joiner', 'Canary Joiner',
+      'canary-inviter', 'Canary Inviter', 'canary-joiner', 'Canary Joiner', 'canary-invitee', 'canary-waiting', 'Canary invited you',
       proposedTime, 'CANARY-HOLD', 'canary-hold-guest', ...holdIds
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
@@ -4193,7 +4202,8 @@ describe('privacy at rest', () => {
     }
     for (const enc of encodings(moveCode)) expect(rowsText.includes(enc), 'a move code in rows').toBe(false);
     for (const enc of encodings(noteLink.secret)) expect(rowsText.includes(enc), 'a note link’s secret in rows').toBe(false);
-    for (const enc of encodings(teamSecret)) expect(rowsText.includes(enc) || logText.includes(enc), 'a team invite’s secret in rows or logs').toBe(false);
+    for (const enc of encodings(teamSecret)) expect(rowsText.includes(enc) || logText.includes(enc), 'an invitation’s secret in rows or logs').toBe(false);
+    for (const enc of encodings(stopToken)) expect(rowsText.includes(enc) || logText.includes(enc), 'a stop token in rows or logs').toBe(false);
     for (const secret of [inviteSecret, newInviteSecret]) for (const enc of encodings(secret)) expect(rowsText.includes(enc) || logText.includes(enc), 'an invite link’s secret in rows or logs').toBe(false);
     // Logs are built to leave the confidential VM: no email address of anyone, ever, and no client address.
     expect(logText.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g) ?? []).toEqual([]);
@@ -4206,6 +4216,8 @@ describe('privacy at rest', () => {
     }
     expect(logText).not.toContain(m.code);
 
+    // The canary email waited as long as the rows were read: it can go now.
+    await h.pool.query("DELETE FROM service_limits WHERE name = 'mail.per_day'");
     // For the sweep of operator routes after this: the canary account, still signed in, what it made, and what it kept private.
     const given = (xs: (string | null | undefined)[]) => xs.flatMap((x) => (x ? [x] : []));
     const joined = [call, boardHost, ideasCall, roomsHost, sync, attentionCall];
@@ -4221,7 +4233,7 @@ describe('privacy at rest', () => {
       logs: { from: flowFrom, to: h.logs.length },
       canaries,
       secrets,
-      credentials: [teamSecret, helper.token, inviteSecret, newInviteSecret]
+      credentials: [teamSecret, helper.token, inviteSecret, newInviteSecret, stopToken]
     };
     // Then every operator route, called as support would with the canary's IDs: none says what it kept private.
     await sweepOperatorRoutes(flow);

@@ -3,17 +3,19 @@
  * plans on the water under it. On the sky, Monthly or Yearly when a year costs less (Pro's, or a team license's), with the
  * last sliver of the sun on the horizon under it; on the water, Free, Pro and Team side by side, their rows lined up; then
  * what every plan has and how paying works. Every number is the server's: the offers, the plan you're on, and the team
- * you're on. Get Pro and Extend open checkout over the page, on a year when Yearly is chosen; Start a team and Buy licenses
- * open it on Team, on licenses for a year when Yearly is chosen too. While a team license is yours, Pro waits: the server
- * doesn't sell it then. Reached from the side panel's foot, Settings › Plan, checkout's Compare plans, and the welcome page's
- * Get Pro and Start a team, which open checkout as the page opens. Opened by itself once, in Home's place, it's the plan choice
- * (PlanChoice.tsx): a head of its own, and the plan you're on leads straight on. Here or there, once the plans have been on
- * screen while the server says they haven't been shown, it's told (choice.ts).
+ * you're on. Get Pro and Extend open checkout over the page, on a year when Yearly is chosen. Start a team names one in a
+ * popover from Team's card, free (StartTeam.tsx), and goes to its page; a free team's admin has Upgrade, and one on Team Buy
+ * licenses, which open checkout on Team, on licenses for a year when Yearly is chosen too. While a team license is yours,
+ * Pro waits: the server doesn't sell it then. Reached from the side panel's foot, Settings › Plan, checkout's Compare plans,
+ * and the welcome page's Get Pro and Start a team, which open checkout, or Start a team's popover, as the page opens. Opened by
+ * itself once, in Home's place, it's the plan choice (PlanChoice.tsx): a head of its own, and the plan you're on leads
+ * straight on. Here or there, once the plans have been on screen while the server says they haven't been shown, it's told
+ * (choice.ts).
  */
 import { errorCode, errorMessage, type CheckoutParam, type MyTeam, type Person, type Plan, type PlanBrings, type PlanOffers } from '@alcove/api';
 import { Button, EmptyState, Evening, EveryPlan, Faces, PayingLine, PlanCard, PlanCards, PlanCycle, PlanHere, PlanSunset, cn, type IconName, type PlanCycleChoice, type PlanFact } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import { useNow, useOnline } from '~/lib/live';
 import { callName } from '~/lib/people';
 import { teamQueries } from '~/features/team/queries';
@@ -23,6 +25,7 @@ import { plural, roomLabel, usd } from '~/lib/words';
 import { useCheckout } from './checkout';
 import { usePlansSeen } from './choice';
 import { PLAN_NAMES, endsIn, proEnding } from './planState';
+import { StartTeam } from './StartTeam';
 import { teamYearlyOff, yearlyOff } from './purchase';
 import { hoursOfNotes, perPeriod, periodHours } from './words';
 
@@ -110,19 +113,20 @@ const atATime = (maxMonths: number): string => (maxMonths > 1 ? `for 1 to ${maxM
 /* ---------- the page ---------- */
 
 /**
- * Opens checkout once as the page opens, on what the address asked for (`?checkout=pro`, `?checkout=team`: the welcome page's
- * Get Pro and Start a team after signing in), then takes it out of the address (`done`). It owns nothing that needs undoing:
- * checkout is the provider's.
+ * Opens what the address asked for once as the page opens (`?checkout=pro`, `?checkout=team`: the welcome page's Get Pro and
+ * Start a team after signing in): checkout on Pro or more notes, or Start a team's popover on Team's card (`startTeam`, as
+ * starting one is free). Then takes it out of the address (`done`). It owns nothing that needs undoing: checkout is the
+ * provider's.
  */
-function useCheckoutFromAddress(what: CheckoutParam | undefined, done: (() => void) | undefined): void {
+function useCheckoutFromAddress(what: CheckoutParam | undefined, done: (() => void) | undefined, startTeam: () => void): void {
   const { open } = useCheckout();
   const opened = useRef(false);
   useEffect(() => {
     if (!what || opened.current) return;
     opened.current = true;
-    open({ plan: what }, 'welcome');
+    if (what === 'team') startTeam(); else open({ plan: what }, 'welcome');
     done?.();
-  }, [what, open, done]);
+  }, [what, open, done, startTeam]);
 }
 
 /** The plan choice's own (PlanChoice.tsx): its head, in place of the page's title, and the way on from the plan you're on. */
@@ -154,8 +158,11 @@ export function Plans({ opening, onOpened, first, evening }: {
   const now = useNow(60_000);
   const { open } = useCheckout();
   const [cycle, setCycle] = useState<PlanCycleChoice>('year');
+  /* Start a team's popover, open over Team's card. */
+  const [naming, setNaming] = useState(false);
+  const startTeam = useCallback(() => setNaming(true), []);
   const water = useRef<HTMLDivElement>(null);
-  useCheckoutFromAddress(opening, onOpened);
+  useCheckoutFromAddress(opening, onOpened, startTeam);
 
   const o = offers.data;
   const p = plan.data;
@@ -196,7 +203,8 @@ export function Plans({ opening, onOpened, first, evening }: {
           ? <Offered offers={o} plan={p} yearly={cycle === 'year' ? yearly : null} teamYearly={cycle === 'year' ? teamYearly : null} now={now}
               team={p.team ? team.data ?? null : null} people={onTeam.length ? onTeam : atWork} go={go}
               onBuy={(months) => open({ plan: 'pro', months }, 'plans')}
-              onTeam={() => open({ plan: 'team', yearly: cycle === 'year' && teamYearly !== null }, 'plans')} />
+              onTeam={() => open({ plan: 'team', yearly: cycle === 'year' && teamYearly !== null }, 'plans')}
+              start={<StartTeam naming={naming} onNaming={setNaming} />} naming={naming} />
           : trouble === 'offline'
             ? <EmptyState className="pl-none" title="You’re offline" action={go}>The plans show here when you’re back online.</EmptyState>
             : trouble === 'failed'
@@ -223,17 +231,22 @@ export function Plans({ opening, onOpened, first, evening }: {
  * team license's for a year, when they're the ones shown. Free's button area says it's your plan; on another plan, that
  * Free is where you're back to. Pro's button is the page's one filled button on Free, and on Pro only while it's ending; on
  * a team license it isn't sold, and says so. Team is licenses, a price a person a period, or a year's at its lower price,
- * its people at the end of its name's row (`people`): off a team, Start a team; its admin buys them; a member is told who
+ * its people at the end of its name's row (`people`): off a team, Start a team (`start`), with a quiet line under it saying
+ * it's free until it's upgraded; a free team's admin upgrades it, and one on Team's admin buys more; a member is told who
  * does, and it's their plan while they're licensed. `go`: the plan choice's way on, on the plan you're on, in place of what
  * it would have.
  */
-function Offered({ offers: o, plan: p, yearly, teamYearly, now, team, people, go, onBuy, onTeam }: {
+function Offered({ offers: o, plan: p, yearly, teamYearly, now, team, people, go, onBuy, onTeam, start, naming }: {
   offers: PlanOffers; plan: Plan; yearly: NonNullable<PlanOffers['pro']['yearly']> | null;
   teamYearly: NonNullable<PlanOffers['team']['yearly']> | null; now: number;
   /** The team you're on, as you see it, once it's read (null off a team, or until then). */
   team: MyTeam | null; people: Person[];
   go: ReactNode;
   onBuy: (months: number) => void; onTeam: () => void;
+  /** Start a team, for someone on none. */
+  start: ReactNode;
+  /** Start a team's popover is open: its Start the team is the one filled button, so Get Pro steps back. */
+  naming: boolean;
 }) {
   const onFree = p.kind === 'free';
   const onPro = p.kind === 'pro';
@@ -258,13 +271,14 @@ function Offered({ offers: o, plan: p, yearly, teamYearly, now, team, people, go
   const proAction = onTeamPlan
     ? <PlanHere quiet>Not while you’re on your team’s plan</PlanHere>
     : (
-      <Button variant={onFree || ending !== null ? 'primary' : 'secondary'} onClick={() => onBuy(yearly ? yearly.fromMonths : 1)}>
+      <Button variant={(onFree || ending !== null) && !naming ? 'primary' : 'secondary'} onClick={() => onBuy(yearly ? yearly.fromMonths : 1)}>
         {onPro ? 'Extend' : 'Get Pro'}
       </Button>
     );
-  const teamAction = p.team && p.team.role !== 'admin'
-    ? <PlanHere quiet>{admin ? `${callName(admin.person)} buys its licenses` : 'Its admin buys its licenses'}</PlanHere>
-    : <Button variant="secondary" onClick={onTeam}>{p.team ? 'Buy licenses' : 'Start a team'}</Button>;
+  const teamAction = !p.team ? start
+    : p.team.role !== 'admin'
+      ? <PlanHere quiet>{admin ? `${callName(admin.person)} buys its licenses` : 'Its admin buys its licenses'}</PlanHere>
+      : <Button variant="secondary" onClick={onTeam}>{p.team.tier === 'free' ? 'Upgrade' : 'Buy licenses'}</Button>;
   return (
     <>
       <PlanCards>
@@ -280,7 +294,7 @@ function Offered({ offers: o, plan: p, yearly, teamYearly, now, team, people, go
         <PlanCard kind="team" {...TEAM} people={people.length ? <Faces people={people.slice(0, 4)} size={22} max={4} /> : undefined}
           chip={onTeamPlan ? 'Your plan' : undefined}
           price={usd(perLicense)} per={`a person ${perPeriod(o.periodDays)}`} bill={teamBill} save={teamSave}
-          action={onTeamPlan ? go ?? teamAction : teamAction}
+          action={onTeamPlan ? go ?? teamAction : teamAction} under={p.team ? undefined : 'Free to start. Licenses only when you upgrade.'}
           facts={teamFactsOf(o.team, files)} more="Licenses start when people open Alcove. Unused ones can be refunded." />
       </PlanCards>
       <EveryPlan items={EVERY} />
