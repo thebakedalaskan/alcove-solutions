@@ -41,7 +41,11 @@ clog.warn('object delete failed; queued for retry', { objectId, err: e });
   `level`, and beside it the `severity` Cloud Logging files it under (`DEBUG`, `INFO`, `WARNING`, `ERROR`), so an API line at
   error is an error there too).
 - **Lifecycle.** Startup, migrations, listening, maintenance runs, `SIGTERM`/`SIGINT` shutdown (server and
-  pool closed), unhandled rejections and uncaught exceptions are all logged.
+  pool closed), unhandled rejections and uncaught exceptions are all logged. Each step of a start says how it went as it
+  ends, `boot step` at info, or error when it failed: `step` (`google-cloud` inside a TEE, then `config`, `database`,
+  `migrations`, `keys`, `objects`, and `edge` with `TLS_HOSTS` or else `listening`), `ms`, `ok`, and the error's
+  `errorClass` and `code`. A failed step is followed by `refused to start` with the error. `operator release` shows the
+  steps of the start that's serving, so a slow start shows too ([Operating Alcove](operating-alcove.md)).
 
 ### Where production logs are
 
@@ -63,6 +67,47 @@ included. That's why the environment carries no secrets ([Settings](../../infra/
 The production image has no SSH and shows nothing of a failed workload but its exit, so these lines are what there is.
 The load balancer keeps no request logs, so client addresses aren't logged there either. The migration job still runs
 on Cloud Run, and logs there.
+
+Operators also read each instance's recent failures from inside it, without Cloud Logging, through the signed operator
+routes: `operator errors`, `operator request <id>` and `operator work`, read from the ring below
+([Operating Alcove](operating-alcove.md), whose runbooks hold the Cloud Logging queries for each case).
+
+### The ring and the audit line
+
+Each instance keeps, in memory (`platform/recent.ts`), the lines that say something went wrong: every warn and error line,
+and every request's own line once it's refused or failed (`request refused`, `request failed`). The logger feeds it as it
+writes, after scrubbing, so every feature's failures are there, background work's included, with no counting of their
+own. Each line is reduced to fields that hold no free text: the time and level, `component`, `msg` (with anything a
+terminal would act on replaced), the request's `requestId` and the `route` it matched, its method and template
+(`GET /v1/notes/:id`) from the routes registered, never the path that was sent, which holds whatever the client typed and,
+for a photo, a token that shows someone's face; `status`, the error's class and code, `upstreamStatus` and `what` (from the
+line, or its error's context), `final` (below), and the IDs among the line's fields (`ownerId`, `callId`, `noteId`,
+`jobId`, `depositId`, `recordingId`, `grantId`). Nothing else is kept, so it holds less than the log. A request is one line
+there: its error's line isn't kept, and what it says (its class, code, upstream status and IDs) is on the request's own
+line, in Cloud Logging too, beside the route.
+
+What anyone can send can't push out what the server says about itself:
+
+- requests' own lines and every other warn and error line are kept apart, the newest 5,000 of each;
+- what's logged while answering one client's requests, and by the work they start, is kept up to that client's share, 120
+  lines a minute, and only counted past it (`notKept.overShare` in `operator errors`); the client's address is held in
+  memory for that, never logged;
+- a request that matched no route isn't kept at all, only counted (`notKept.unrouted`);
+- a line that says a piece of work was given up for good names its kind as `final` (`notes-without-summary` from the writer,
+  `drive-export-failed` from the exporter), and is kept a third time, in a list of the newest 1,000 that only such lines
+  reach, whatever their client's share: `operator work`'s finals are read from it.
+
+A logger made with `{ ring: false }` never feeds it, whatever its lines say: the browser's telemetry is logged that way,
+since its fields could claim any component or request ID, and so are the audit line below and a request's error line. It's
+this process's memory alone, gone with a restart. `operator errors` counts it, saying when a window reaches back further
+than what it still holds, `operator request <id>` gives one request's lines, and `operator work` gives its finals.
+
+Every operator request, allowed or refused, logs one audit line, `operator call` (component `operator`): at warn when the
+signed-request check refused it (it has a `why`), at error when it failed, and otherwise at info, a handler's ordinary
+refusal included. It says the key's ID and scope, the route's template (never the IDs in its path), the outcome, status
+and code, how long it took, the action's reason, where its nonce was checked, and on a refusal of the request itself,
+`why`. Never its body, nonce or signature, and it isn't in the ring: anyone can send an unsigned request. An action's own line, with the IDs it acted on, carries the same request ID
+([Operating Alcove › The audit line](operating-alcove.md#the-audit-line)).
 
 ## Errors: `apps/api/src/platform/errors.ts`
 
@@ -87,6 +132,10 @@ and optional `context` (logged, never sent) and `cause` (logged with its stack).
 throw new ConflictError('Notes aren’t recording right now.', { context: { callId, notes: state.notes.status } });
 throw new KeyError('This key can’t open that data.', { cause: err, context: { scopeId } });
 ```
+
+- The error line's `status` is always the status Alcove answered with, written after the context, so a context can't
+  change it. Another service's answer (NEAR AI, Google, Cloud KMS, 1Click, Cloudflare) is the context's `upstreamStatus`,
+  and a record's own state is `state`, never `status`.
 
 - The database layer wraps every failed query in `DatabaseError` with the statement's first words and
   the Postgres error code. A connection that goes while it's in use (Postgres ended it, or it dropped on the way) is a
@@ -117,6 +166,9 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   (30 a minute together) per person in a call, and `ring` (20 a minute) per organizer, `ring answer` and `rings` (30 a minute each) per
   account, `calls` (30 a minute) per account on everything that makes one, and `open rings` when a process holds all
   the streams of rings it takes, and `media piece` (600 a minute) and `media` (240 a minute, each file's URL asked for and each piece opened) per person.
+  Operator routes have their own: `operator` (60 a minute per client address, before a signature is checked),
+  `operator reads` (120 a minute) and `operator writes` (20 a minute) per operator key, and `operator finds` (20 an hour
+  per key on each instance: finding accounts by address).
   Past what a process takes on at once, a file's upload or read logs `pieces arriving` or `files being read`. Google sign-in
   goes back to the welcome screen with `signin=busy` instead.
 - Every tab holds a stream of rings and opens a new one every few minutes, so `GET /v1/rings` is logged at debug, like
@@ -164,11 +216,14 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   a flag; `feature flags not read; keeping what was in force` at warn. Each `feature-flags` command logs what it changed with the flag,
   group and counts, and `feature flags refused` at warn for a refusal. A flagged endpoint refusing logs at info with its `featureFlag`. No
   address or hash is ever logged.
-- Support's `billing` command (`service: 'alcove-billing'`) logs `balance added by support` at info with the owner and the
-  top-up it was named by, and `top-up added by support` with that top-up's ID and state; a refusal (nobody found, more than
-  one account, a top-up still watched, an amount that isn't one) logs `billing refused` at warn with its `code` or `why`, and
-  anything else `billing failed` at error. Never an amount, and never what was typed, which may be an address
-  ([Plans and usage › Support](plans-and-usage.md#support)).
+- Support's billing commands log `balance added by support` at info (`component: 'billing-support'`) with the owner and the
+  top-up it was named by, and `top-up added by support` with that top-up's ID and state, whether they ran from the `billing`
+  command line (`service: 'alcove-billing'`) or through the operator route, inside the API. On the command line a refusal
+  (nobody found, more than one account, a top-up still watched, an amount that isn't one) logs `billing refused` at warn
+  with its `code` or `why`, and anything else `billing failed` at error; through the route it's the request's own error
+  line and `request refused`, beside the `operator call` line. Asking 1Click about a top-up for support logs
+  `top-up checked by support` with the owner, the top-up and its state before and after. Never an amount, and never what
+  was typed, which may be an address ([Plans and usage › Support](plans-and-usage.md#support)).
 - Start-up waits for the database (`component: 'db'`). Each try that fails is `database not reachable yet; trying again`
   at warn, with `attempt`, `code` (Postgres's or the system's, `connect-timeout` when pg gave up on it after 10 s, or
   `connection-ended`), `tookMs` and `retryInMs`, and once a later try gets through, `database reached` at info with
@@ -198,10 +253,14 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   unread`), with the note's and the frame's IDs only.
 - NEAR AI's failures become `ValidationError` (`400`, `413`, `422`), `InternalError` (`401`, `403`) or
   `UnavailableError` (unreachable, timed out, an unreadable reply, or any other status such as `429` or
-  `5xx`), with the operation, status and timing as context. Evidence that doesn't check out is an
+  `5xx`), with the operation, the status NEAR AI answered (`upstreamStatus`) and timing as context. Evidence that doesn't check out is an
   `UnverifiedError` (an `UnavailableError`, logged at error, or warn when a service couldn't be reached), with
   the model, the task and the check that failed; the notes worker waits on it instead of counting an attempt
-  ([Notes and inference › Models and requests](notes-and-inference.md#models-and-requests)).
+  ([Notes and inference › Models and requests](notes-and-inference.md#models-and-requests)). So a revoked key, an
+  account out of credit and an outage at NEAR AI read apart: `operator errors` groups lines by their upstream status, and
+  `operator work` counts the writer's failures as the class and that status (`InternalError:403`). `operator checks` probes
+  each private model with one fixed request, logged `operator probe` with the model, `upstreamStatus`, whether the reply
+  opened, and how long it took; a check that fails logs `operator check failed` at warn with its name and code.
 
 ## Browser: `apps/web/src/lib/log.ts`
 
@@ -211,7 +270,17 @@ logged at debug: being signed out is an ordinary state.
 
 - Screens can show a failed request's ID to the person it happened to, as a reference to quote (`RequestRef`
   from `@alcove/ui`, which copies it on press): the join page does for every refusal and for a card it can't
-  read. It's random, so it finds the request's log lines and says nothing about anyone.
+  read, and so do the page that didn't load (`RouteError`) and a call's page or a call ahead that's gone. It's
+  random, so it finds the request's log lines and says nothing about anyone. A failure said in a toast goes
+  through `toastFailure` (`apps/web/src/lib/failed.ts`), which adds **Copy reference** when the error has a
+  request ID; Settings, Plans, Start a call, scheduling (moving a calendar meeting to Alcove among it), a call
+  ahead and a call's page say theirs that way, and the other screens' toasts don't yet. A request that never
+  reached the API has no ID, so it has no reference.
+- A payment's reference is its top-up's ID, which finds the top-up and nothing else: checkout's Pay step and
+  Settings' Add money show it from the start (`RequestRef`), and Done's receipt row shows it whole.
+- Support looks a request's reference up with `operator request <reference>`, on the instance that served it while its
+  ring holds it, and otherwise in Cloud Logging; and a payment's with `operator topup <reference>`
+  ([Operating Alcove](operating-alcove.md)). A call is named by the address of its page, never the join link.
 - Console shows `debug`+ in development and `warn`+ in production. Set `localStorage["alcove:log"] =
   "debug"` to see everything in a deployed app. `recentLogs()` holds the last 200 entries.
 - `warn` and `error` are batched to `POST /v1/telemetry` (at most 20 per request, 30 per minute, sent on
@@ -244,8 +313,9 @@ about what anyone said, wrote or who they are.
   content-like fields and cuts strings to 300 characters.
 - A second backstop scrubs every string on its way out, wherever it came from (messages, fields,
   browser reports, errors and their causes): email addresses become `[email]`, bearer and basic
-  credentials `Bearer [redacted]`, signed tokens (JWTs) `[token]`, and a file's URL, whole or cut short,
-  `/v1/media/[token]`. Errors are serialized with their
+  credentials `Bearer [redacted]`, signed tokens (JWTs) `[token]`, a file's URL, whole or cut short,
+  `/v1/media/[token]`, and a sign-in photo's, `/v1/photos/[token]`; a request's own path masks both tokens, a
+  call's code and a calendar event's ID. Errors are serialized with their
   whole cause chain before scrubbing, so nothing is lost for debugging. Postgres's own explanations that
   echo a row (`Failing row contains (…)`, `Key (…)=(…)`) are replaced by `[row hidden]`; the code
   (`pgCode`) and the statement's static text stay.

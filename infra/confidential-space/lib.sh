@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# What setup.sh, build.sh, sign.sh, deploy.sh and dns.sh share. Sourced, never run.
+# What setup.sh, build.sh, sign.sh, deploy.sh, dns.sh and job.sh share. Sourced, never run.
 #
 # Every command that changes something goes through cs_run, which in a dry run (CS_DRY_RUN=true, set by --dry-run) prints
 # it instead, quoted so it can be pasted. Commands that only read still run in a dry run, so it shows what would change

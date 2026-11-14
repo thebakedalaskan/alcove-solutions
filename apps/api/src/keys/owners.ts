@@ -10,6 +10,7 @@
  * before the TEE does, so nothing a TEE couldn't open is ever written there.
  */
 import { z } from 'zod';
+import type { Config } from '../platform/config';
 import type { Deps, Owner } from '../platform/context';
 import { b64u, equalBytes, openKey, ownerRootWrapKey, ownerWrapKey, random, rootCheck, sealKey, unb64u, type KeyVersion } from './crypto';
 import { bytea, exec, maybeOne, type Db } from '../platform/db';
@@ -21,8 +22,8 @@ const olog = log.child({ component: 'owners' });
 const ROOT_SCOPE = 'owner-root';
 /** The master key now: inside a TEE, the TEE's own, which wraps root_envelope_v2; outside one, KMASTER. */
 export const masterKey = (d: Pick<Deps, 'cfg'>): Uint8Array => unb64u(d.cfg.KMASTER, 32);
-/** The key the blind indexes are keyed by. */
-export const indexKey = (d: Pick<Deps, 'cfg'>): Uint8Array => unb64u(d.cfg.INDEX_KEY, 32);
+/** The key the blind indexes are keyed by: all it reads of the settings, so support's command line has it where KMASTER is set. */
+export const indexKey = (d: { cfg: Pick<Config, 'INDEX_KEY'> }): Uint8Array => unb64u(d.cfg.INDEX_KEY, 32);
 /** The master from before the TEE, while one is held: it wraps root_envelope. Outside a TEE it's KMASTER itself. */
 export const legacyMasterKey = (d: Pick<Deps, 'cfg'>): Uint8Array | undefined => (d.cfg.LEGACY_KMASTER === undefined ? undefined : unb64u(d.cfg.LEGACY_KMASTER, 32));
 /** The master root_envelope_v2 is wrapped under: only inside a TEE. */

@@ -1,7 +1,8 @@
-import { Button, CheckoutDone, Chip, CheckoutLine, CheckoutNote, CheckoutPanel, PayAddress, PayAmount, PayArrived, PayStatus, PayTrack, type CheckoutStage } from '@alcove/ui';
+import { Button, CheckoutDone, Chip, CheckoutLine, CheckoutNote, CheckoutPanel, PayAddress, PayAmount, PayArrived, PayStatus, PayTrack, RequestRef, type CheckoutStage } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useEffect, useState, type ReactNode } from 'react';
 import { did } from '../../../../src/component';
+import { PREVIEW_TOP_UP } from '../../../../src/world/plans/payments';
 import { PREVIEW_BASE_ADDRESS, PRO_YEAR_SUMMARY } from '../parts';
 
 /**
@@ -30,7 +31,7 @@ function stepOf(stage: CheckoutStage, count: boolean, pm: number): { step: 1 | 2
     return {
       step: 3, foot: <Button variant="primary">Done</Button>,
       body: <CheckoutDone title="You’re on Pro" lines={['Until Saturday 30 October 2027.']} reminder="Nothing renews by itself. Alcove reminds you before it ends."
-        receipt={{ title: '192.00 USDC on Base', sub: '4 Nov 2026 · Pro, 12 months', reference: 'k3Fq9xZ2', onOpen: did('onReceipt') }} pm={pm} />
+        receipt={{ title: '192.00 USDC on Base', sub: '4 Nov 2026 · Pro, 12 months', reference: PREVIEW_TOP_UP, onOpen: did('onReceipt') }} pm={pm} />
     };
   }
   if (stage === 'seen') {
@@ -42,6 +43,7 @@ function stepOf(stage: CheckoutStage, count: boolean, pm: number): { step: 1 | 2
           <PayArrived amount="192.00" value={192} chainName="Base" count={count} pm={pm} />
           <CheckoutLine>Starting Pro. This takes a minute or two.</CheckoutLine>
           <PayTrack steps={['Sent', 'Seen on Base', 'Pro starts']} />
+          <RequestRef id={PREVIEW_TOP_UP} className="ck-ref" />
         </>
       )
     };
@@ -54,6 +56,7 @@ function stepOf(stage: CheckoutStage, count: boolean, pm: number): { step: 1 | 2
         <PayAmount amount="192.00" chain="base" chainName="Base" />
         <PayAddress address={PREVIEW_BASE_ADDRESS} chainName="Base" tag="new" walletHref={null} listening />
         <CheckoutNote>Only send USDC on Base. Anything else may be lost. Sending from an exchange? Add its withdrawal fee on top.</CheckoutNote>
+        <RequestRef id={PREVIEW_TOP_UP} className="ck-ref" />
       </>
     )
   };

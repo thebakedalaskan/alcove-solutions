@@ -4,10 +4,10 @@ Read root `AGENTS.md`, `docs/engineering/folder-ownership.md`, `docs/engineering
 and `docs/engineering/logging-and-errors.md`.
 
 - The owners, lowest first: `profile`, `billing`, `workspaces`, `meetings`, `recordings`, `notes`, `calls`, `agents`,
-  `account`. A feature imports only those before it (tests are exempt). When code needs something from a feature after
-  it, take it as an argument from the caller, move the piece down to the feature that owns its data, or compose the flow
-  in `account`, `app.ts`, `start.ts` or `maintenance.ts`. Add an owner only with an updated map, these rules and the
-  structure check. Never recreate `modules/`.
+  `account`, `operator`. A feature imports only those before it (tests are exempt). When code needs something from a
+  feature after it, take it as an argument from the caller, move the piece down to the feature that owns its data, or
+  compose the flow in `account`, `app.ts`, `start.ts` or `maintenance.ts`. Add an owner only with an updated map, these
+  rules and the structure check. Never recreate `modules/`.
 - A feature with several responsibilities has a subfolder for each (calls: boards, workspace, notes, chat, attention,
   ringing, timers, moves, mls). A folder holds at most 20 files, integration suites included. Files are kebab-case.
 - Feature HTTP registration belongs with the feature. `app.ts` composes registrars and shared HTTP infrastructure;
@@ -34,3 +34,12 @@ and `docs/engineering/logging-and-errors.md`.
   Preserve the public OAuth/MCP registration phase and each tool's scope/owner enforcement; never colocate them under calls.
 - A new feature shown to some people first goes behind a feature flag: `requireFeatureFlag(await featureFlagsFor(d, owner), name)` in each of
   its handlers ([docs/engineering/feature-flags.md](../../../../docs/engineering/feature-flags.md)).
+- What an operator may see or do about a feature, from outside the enclave, is that feature's own, in its `operator/`
+  subfolder: its lookups and actions, with their answers' schemas, in `operator/operator.ts`, and its routes in
+  `operator/routes.ts`, each registered with `operatorRoute()` (`http/operator.ts`), which checks the signed request,
+  the key's scope and, for an action, its reason before the handler runs. `app.ts` composes the registrars before the
+  signed-in routes. An operator route takes IDs in its path and an address only in its body, answers and logs only IDs,
+  states, codes, counts, sizes and times, opens a sealed record only to count what's in it, and is covered by the
+  operator suites' refusal and privacy sweeps. The service-wide routes, the reports and the CLI are the `operator`
+  feature's, last in the order because they read every feature's operator view; what features and shared homes need of
+  them lives below (`keys/operator-keys.ts`, `platform/runs.ts`, `platform/recent.ts`).

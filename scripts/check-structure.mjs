@@ -34,13 +34,14 @@ const callHomes = {
 /**
  * The server's features, lowest first. A feature imports only features before it here; a flow that needs one later in
  * the list takes it as an argument from whoever composes it, or is composed above the features (app.ts, start.ts,
- * maintenance.ts and the CLIs). `profile` is who someone is, which everything shows; `account` is an account's whole life
- * (signing in, its sessions, deleting it), which reaches into everything, so it comes last.
+ * maintenance.ts and the CLIs). `profile` is who someone is, which everything shows; `account` is an account's whole
+ * life (signing in, its sessions, deleting it), which reaches into everything; `operator` is operating the service from
+ * outside the enclave, whose reports and CLI read every feature's own operator view, so it comes after them all.
  */
-const serverOrder = ['profile', 'billing', 'workspaces', 'meetings', 'recordings', 'notes', 'calls', 'agents', 'account'];
+const serverOrder = ['profile', 'billing', 'workspaces', 'meetings', 'recordings', 'notes', 'calls', 'agents', 'account', 'operator'];
 const serverHomes = new Set(serverOrder);
-/** apps/api/src itself holds only what composes the features and what the build runs. */
-const serverRoot = new Set(['app.ts', 'server.ts', 'start.ts', 'maintenance.ts', 'migrate.ts', 'migrate-cli.ts', 'limits-cli.ts', 'feature-flags-cli.ts', 'billing-cli.ts']);
+/** apps/api/src itself holds only what composes the features and what the build runs: the operator's CLI and checks job too. */
+const serverRoot = new Set(['app.ts', 'server.ts', 'start.ts', 'maintenance.ts', 'migrate.ts', 'migrate-cli.ts', 'limits-cli.ts', 'feature-flags-cli.ts', 'billing-cli.ts', 'operator-cli.ts', 'operator-job.ts']);
 /** Shared server homes: the features build on these, and these never import a feature. */
 const serverShared = new Set(['platform', 'keys', 'tee', 'inference', 'providers', 'http', 'live', 'edge']);
 const contractRoot = new Set(['index.ts', 'client.ts', 'errors.ts', 'format.ts', 'search.ts']);

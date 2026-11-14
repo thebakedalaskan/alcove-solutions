@@ -1,7 +1,8 @@
 /**
  * End-to-end flows against the real API, Postgres and object store (see AGENTS.md: integration
  * tests only). Each test signs in through the API like the web app does. Leakage checks plant
- * canaries and confirm they never reach database rows, stored objects or logs in plaintext.
+ * canaries and confirm they never reach database rows, stored objects or logs in plaintext, nor
+ * any operator route's answer, each called with the canary account's IDs.
  */
 import { DEFAULT_NOTIFICATION_PREFERENCES, DEFAULT_SOUND_PREFERENCES, AlcoveApiError, OPERATION_HEADER, REQUEST_ID_HEADER, firstName, type AlcoveApi, type AnswerPart, type AudioPiece, type CallSession, type CallState, type NoteProgress, type TranscriptClip } from '@alcove/api';
 import { createHttpApi, type ClientEvent } from '@alcove/api-http';
@@ -9,12 +10,20 @@ import { z } from 'zod';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { addObject, boardText, newId, readBoard, tableCell } from '@alcove/board';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { createApp } from '../app';
+import { AccountAnswer, AccountFound, SignedOut } from '../features/account/operator/operator';
+import { DepositRecord } from '../features/billing/top-ups/deposits';
 import { standing } from '../features/billing/meter/meter';
+import { TopUpAnswer, TopUpCheckAnswer } from '../features/billing/operator/operator';
 import { opensAccounting } from '../features/billing/plans';
-import { setLimit } from '../platform/limits';
+import { CallAnswer } from '../features/calls/operator/operator';
+import { ExportsRetryAnswer, NoteAnswer } from '../features/notes/operator/operator';
+import { limitsNow, setLimit } from '../platform/limits';
 import { loadConfig, loadEnv } from '../platform/config';
-import { b64u, openJson, sealJson, signInAttemptKey, unb64u } from '../keys/crypto';
-import { masterKey } from '../keys/owners';
+import { b64u, blindIndex, openJson, sealJson, serviceKey, signInAttemptKey, unb64u } from '../keys/crypto';
+import { RequestAnswer } from '../features/operator/wire';
+import { LinesAnswer } from '../http/operator';
+import { indexKey, masterKey } from '../keys/owners';
 import { resolveKeys } from '../keys/server-keys';
 import { cookieName } from '../keys/sessions';
 import { fakeKms } from '../testing/fakes/kms';
@@ -3539,7 +3548,7 @@ describe('deleting an account', () => {
     expect(h.google.calendar(who.sub)).toHaveLength(2);
     const lines = loggedFor(mo.ownerId);
     expect(lines.find((l) => l.msg === 'calendar events not cancelled')).toMatchObject({ level: 40, cancelled: 0, notCancelled: 2, err: { type: 'UnavailableError', code: 'unavailable', message: 'Google Calendar isn’t connected.' } });
-    expect(lines.find((l) => l.msg === 'google grant not revoked')).toMatchObject({ level: 40, status: 400, googleError: 'invalid_token' });
+    expect(lines.find((l) => l.msg === 'google grant not revoked')).toMatchObject({ level: 40, upstreamStatus: 400, googleError: 'invalid_token' });
     expect(lines.find((l) => l.msg === 'account deleted')).toMatchObject({ calendarCancelled: 0, calendarNotCancelled: 2 });
     expect(JSON.stringify(lines)).not.toContain(mo.token);
     expect(JSON.stringify(lines).match(EMAIL) ?? []).toEqual([]);
@@ -3660,9 +3669,43 @@ describe('the shared demo account', () => {
   });
 });
 
+/**
+ * What the canary flow leaves for the sweep of operator routes after it: the canary account, still signed in, and the IDs of
+ * what it made; where its log lines are; and what must never be said back.
+ */
+interface CanaryFlow {
+  browser: Browser;
+  ownerId: string;
+  email: string;
+  /** Its calls' runs, ended and still on, by their own IDs; meetings, one ahead and a series among them; the notes its calls took. */
+  calls: string[];
+  meetings: string[];
+  notes: string[];
+  /** The note its first call took, written, with no Drive export. */
+  note: string;
+  /** A room recording's note, which no call took. */
+  roomNote: string;
+  /** Top-ups paid and credited. */
+  topUps: string[];
+  /** Its calls' codes, each of which lets anyone in. */
+  codes: string[];
+  /** Its log lines, h.logs from `from` to `to`. */
+  logs: { from: number; to: number };
+  canaries: string[];
+  /** Session cookies, a move's code, a link's secret and a file's token, as the canary's browsers got them: more may come. */
+  secrets: string[];
+  /** A team invite's secret and an agent's token. */
+  credentials: string[];
+}
+
 describe('privacy at rest', () => {
+  // bytea renders as hex; our records embed base64url; check every encoding a plaintext bug could produce.
+  const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
+  let flow: CanaryFlow | undefined;
+
   // It touches every kind of stored record, a shared screen published in the call's room among them: it takes a while.
   it('keeps names, emails, titles, guests, chat, groups and audio out of rows, objects and logs in any encoding', async () => {
+    const flowFrom = h.logs.length;
     // Watch the wire for the session cookies a browser receives, so the logs can be checked for them too.
     const secrets: string[] = [];
     /** A browser whose session and sign-in cookies are collected, to check none of them reach the logs. */
@@ -4053,8 +4096,6 @@ describe('privacy at rest', () => {
     const dump = await h.pool.query(`SELECT string_agg(t, ' ') AS all FROM (${everyTable.map((t) => `SELECT row_to_json(x)::text AS t FROM ${t} x`).join(' UNION ALL ')}) q`);
     expect(String(dump.rows[0]?.all ?? '')).toContain('body_ciphertext');
     const rowsText = `${String(dump.rows[0]?.all ?? '')} ${live}`;
-    // bytea renders as hex; our records embed base64url; check every encoding a plaintext bug could produce.
-    const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
     const canaries = [
       'CANARY-PRIVATE-MESSAGE', 'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
       'CANARY-BREAKOUT', 'CANARY-BROADCAST', 'CANARY-GROUP', 'canary-member', 'CANARY-ASKED', 'canary-rung', 'CANARY-ROOMTALK', 'merger moves', 'canary-scribe', 'CANARY-LIVENOTE',
@@ -4135,7 +4176,184 @@ describe('privacy at rest', () => {
       expect(logText.includes(t), 'a refresh token in logs').toBe(false);
     }
     expect(logText).not.toContain(m.code);
-  }, 90_000);
+
+    // For the sweep of operator routes after this: the canary account, still signed in, what it made, and what it kept private.
+    const given = (xs: (string | null | undefined)[]) => xs.flatMap((x) => (x ? [x] : []));
+    const joined = [call, boardHost, ideasCall, roomsHost, sync, attentionCall];
+    flow = {
+      browser: c, ownerId: session.ownerId, email: 'canary-person@canary.example',
+      calls: joined.map((s) => s.ticket.callId),
+      meetings: given([m.id, series.id, ended?.meetingId]),
+      notes: given([settledNote.id, ideasEnded?.pendingNoteId, synced?.pendingNoteId]),
+      note: settledNote.id,
+      roomNote,
+      topUps: [topUp.id, licensed.id],
+      codes: given([m.code, series.code, invitation.code, ...joined.map((s) => s.getSnapshot().code)]),
+      logs: { from: flowFrom, to: h.logs.length },
+      canaries,
+      secrets,
+      credentials: [teamSecret, helper.token]
+    };
+    // Then every operator route, called as support would with the canary's IDs: none says what it kept private.
+    await sweepOperatorRoutes(flow);
+  }, 210_000);
+
+  /**
+   * Every operator route, called as support would with the canary flow's IDs, in the same test as the flow, since CI may run
+   * a long block's tests on different runners: none says what it kept private. Each call lookup waits up to 5 s on LiveKit,
+   * and the checks up to 10 s, so the test is given a while.
+   */
+  async function sweepOperatorRoutes(f: CanaryFlow): Promise<void> {
+    const c = f.browser;
+    // Made for the sweep, as the canary: a top-up opened through the 1Click stand-in and still waiting, for an amount nothing else
+    // says; and a call that isn't stuck, its host just in it.
+    const opened = await c.api.plans.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 31_415_926);
+    const freshCode = (await c.api.calls.startNow({ notes: 'off' })).code;
+    const fresh = await c.api.calls.join(freshCode, { mic: false, cam: false });
+    const freshCall = fresh.ticket.callId;
+
+    const sweepFrom = h.logs.length;
+    const reason = 'SUP-8801';
+    const called = new Set<string>();
+    const answers: string[] = [];
+    /** Each operator request's ID, to find the lines it logged. */
+    const asked = new Set<string>();
+    /** One operator route, signed with the write key: its template, the IDs its path takes, a query, and a POST's body. */
+    const ask = async (method: 'GET' | 'POST', route: string, o: { ids?: Record<string, string>; query?: string; body?: unknown } = {}) => {
+      const path = route.replace(/:([A-Za-z]+)/g, (_param: string, name: string) => {
+        const id = o.ids?.[name];
+        if (id === undefined) throw new Error(`${route} takes ${name}`);
+        return id;
+      });
+      called.add(`${method} ${route}`);
+      const res = method === 'GET' ? await h.operator.write.get(`${path}${o.query ?? ''}`) : await h.operator.write.post(path, o.body ?? {});
+      asked.add(res.headers.get(REQUEST_ID_HEADER) ?? '');
+      const text = await res.text();
+      answers.push(text);
+      const body: unknown = JSON.parse(text);
+      return { status: res.status, body };
+    };
+
+    // A call that isn't stuck: looked up, then neither ended nor its room closed. First, within seconds of its start, as its
+    // host's grace is 25 s and nobody here is in its room.
+    const looked = CallAnswer.parse((await ask('GET', '/v1/operator/calls/:id', { ids: { id: freshCall } })).body);
+    expect(looked.runs).toEqual([expect.objectContaining({ callId: freshCall, state: 'live', signals: { overdue: false, hostGone: false, roomGone: false, noRoom: false, roomLeftUp: false } })]);
+    expect((await ask('POST', '/v1/operator/calls/:callId/end', { ids: { callId: freshCall }, body: { reason } })).status).toBe(409);
+    expect((await ask('POST', '/v1/operator/calls/:callId/room/close', { ids: { callId: freshCall }, body: { reason } })).status).toBe(409);
+    await fresh.leave();
+
+    // The service's own: who's asking, the release, live checks, background work and what's failing. None of it is anyone's.
+    for (const route of ['/v1/operator/whoami', '/v1/operator/release', '/v1/operator/checks', '/v1/operator/work']) expect((await ask('GET', route)).status, route).toBe(200);
+    expect((await ask('GET', '/v1/operator/errors', { query: '?minutes=240' })).status).toBe(200);
+
+    // The account: whether it can sign in, where its plan stands, what happened to its top-ups, and one asked about again.
+    expect(AccountAnswer.parse((await ask('GET', '/v1/operator/accounts/:accountId', { ids: { accountId: f.ownerId } })).body)).toMatchObject({ accountId: f.ownerId, keys: { opens: true } });
+    for (const who of [f.ownerId, ...f.topUps]) expect(LinesAnswer.parse((await ask('POST', '/v1/operator/billing', { body: { words: ['show', who] } })).body).lines.length, who).toBeGreaterThan(0);
+    for (const reference of [...f.topUps, opened.id]) expect(TopUpAnswer.parse((await ask('GET', '/v1/operator/topups/:reference', { ids: { reference } })).body)).toMatchObject({ reference, accountId: f.ownerId });
+    expect(TopUpCheckAnswer.parse((await ask('POST', '/v1/operator/topups/:reference/check', { ids: { reference: opened.id }, body: { reason } })).body)).toMatchObject({ before: 'waiting', after: 'waiting', watched: true });
+
+    // Its calls by their runs', their meetings' and their notes' IDs, ended and still on; a room recording's note, which no call
+    // took; each note's writing; and the first call's note retried, written and sent nowhere, so nothing waits and nothing's done.
+    const lookups: [string, CallAnswer['matchedAs']][] = [
+      ...f.calls.map((id): [string, 'call'] => [id, 'call']), ...f.meetings.map((id): [string, 'meeting'] => [id, 'meeting']), ...f.notes.map((id): [string, 'note'] => [id, 'note'])
+    ];
+    for (const [id, matchedAs] of lookups) {
+      const r = await ask('GET', '/v1/operator/calls/:id', { ids: { id } });
+      expect(r.status, `${matchedAs} ${id}`).toBe(200);
+      expect(CallAnswer.parse(r.body).matchedAs).toBe(matchedAs);
+    }
+    expect((await ask('GET', '/v1/operator/calls/:id', { ids: { id: f.roomNote } })).status).toBe(404);
+    for (const noteId of [...f.notes, f.roomNote]) expect(NoteAnswer.parse((await ask('GET', '/v1/operator/notes/:noteId', { ids: { noteId } })).body).noteId).toBe(noteId);
+    expect((await ask('POST', '/v1/operator/notes/:noteId/retry', { ids: { noteId: f.note }, body: { reason } })).status).toBe(409);
+    expect(ExportsRetryAnswer.parse((await ask('POST', '/v1/operator/notes/:noteId/exports/retry', { ids: { noteId: f.note }, body: { reason } })).body)).toMatchObject({ noteId: f.note, retried: 0 });
+
+    // Flags and limits, listed, and a limit set to the value it has.
+    expect((await ask('POST', '/v1/operator/feature-flags', { body: { words: ['list'] } })).status).toBe(200);
+    expect(LinesAnswer.parse((await ask('POST', '/v1/operator/limits', { body: { words: ['list'] } })).body).lines.length).toBeGreaterThan(0);
+    const most = String((await limitsNow(h.deps)).get('call.max_people'));
+    expect(LinesAnswer.parse((await ask('POST', '/v1/operator/limits', { body: { words: ['set', 'call.max_people', most], reason } })).body).lines).toEqual([expect.stringContaining(`is ${most} now; it was ${most}.`)]);
+
+    // The canary flow's requests this instance's ring holds, those refused or failed and those that warned: as many as the
+    // client's 60 operator requests a minute leave room for.
+    const flowLines = h.logs.slice(f.logs.from, f.logs.to).flatMap((l) => { const r = LogLine.safeParse(JSON.parse(l)); return r.success ? [r.data] : []; });
+    const ringed = [...new Set(flowLines.flatMap((l) => {
+      const id = l['requestId'];
+      return typeof id === 'string' && (l.msg === 'request refused' || l.msg === 'request failed' || l.level >= 40) ? [id] : [];
+    }))].slice(0, 10);
+    expect(ringed.length).toBeGreaterThan(0);
+    let held = 0;
+    for (const requestId of ringed) {
+      const r = await ask('GET', '/v1/operator/requests/:requestId', { ids: { requestId } });
+      // Each is this instance's, unless its ring has moved on past it.
+      expect([200, 404], requestId).toContain(r.status);
+      if (r.status === 200) held += RequestAnswer.parse(r.body).lines.length;
+    }
+    expect(held).toBeGreaterThan(0);
+
+    // The account found by the address it signs in with, as support finds one; then signed out everywhere, last of all.
+    expect(AccountFound.parse((await ask('POST', '/v1/operator/accounts/find', { body: { email: f.email, reason } })).body)).toMatchObject({ found: 1, accountId: f.ownerId });
+    expect(SignedOut.parse((await ask('POST', '/v1/operator/accounts/:accountId/sessions/end', { ids: { accountId: f.ownerId }, body: { reason } })).body).ended).toBeGreaterThanOrEqual(1);
+
+    // Every operator route the app registers was called, and nothing else: a route added later can't miss this sweep.
+    const registered = createApp(h.deps).routes.flatMap((r) => (r.path.startsWith('/v1/operator/') && (r.method === 'GET' || r.method === 'POST') ? [`${r.method} ${r.path}`] : []));
+    expect([...called].sort()).toEqual([...new Set(registered)].sort());
+
+    // What none of it may say. The top-ups' sealed values, opened here as the API opens them: addresses, memos, amounts, quotes,
+    // the provider's references and what was bought; and this one's amount as anyone would write it.
+    const sealed = ['31415926', '31.415926'];
+    const Sealed = z.object({ record_ciphertext: z.instanceof(Uint8Array) });
+    const Quote = z.looseObject({ signature: z.string(), correlationId: z.string() });
+    for (const depositId of [...f.topUps, opened.id]) {
+      const row = Sealed.parse((await h.pool.query('SELECT record_ciphertext FROM deposits WHERE deposit_id = $1', [depositId])).rows[0]);
+      const rec = openJson(serviceKey(unb64u(h.deps.cfg.KSERVICE, 32), 'accounting'), { v: 1, kind: 'deposit', ownerId: f.ownerId, depositId, keyVersion: '1' }, row.record_ciphertext, DepositRecord);
+      const quote = Quote.parse(rec.quote);
+      const bought = rec.purchase ? JSON.stringify(rec.purchase.buys).match(/\d{5,}/g) ?? [] : [];
+      for (const value of [rec.address, rec.memo, rec.asked, rec.minAmountIn, rec.seenMicroUsd, rec.settled?.sentMicroUsd, rec.settled?.outMicroUsd, rec.settled?.addedMicroUsd,
+        rec.settled?.providerRef, rec.purchase?.why, quote.signature, quote.correlationId, ...bought]) if (typeof value === 'string') sealed.push(value);
+    }
+    // The address it signs in with, hashed as sign-in hashes it; and its calls' rooms, LiveKit's key to them.
+    const key = indexKey(h.deps);
+    const index = Buffer.from(blindIndex(key, 'email', f.email));
+    key.fill(0);
+    const rooms = z.array(z.object({ room_name: z.string() })).parse((await h.pool.query('SELECT room_name FROM calls WHERE owner_id = $1 AND room_name IS NOT NULL', [f.ownerId])).rows).map((r) => r.room_name);
+    expect(rooms.length).toBeGreaterThan(0);
+
+    const said = answers.join('\n');
+    const logged = h.logs.slice(sweepFrom).join('');
+    // Every canary in every encoding, but the key that marks a team's license pool in a row: `checks` counts the database's own
+    // pool of connections under the same name.
+    for (const canary of f.canaries.filter((x) => x !== '"pool"')) {
+      for (const enc of encodings(canary)) {
+        expect(said.includes(enc), `${canary} as ${enc} in an operator’s answer`).toBe(false);
+        expect(logged.includes(enc), `${canary} as ${enc} in the log since the sweep began`).toBe(false);
+      }
+    }
+    const never: [string, string][] = [
+      ['the canary’s address', f.email],
+      ...[index.toString('hex'), index.toString('base64'), index.toString('base64url')].map((x): [string, string] => ['its address’s keyed hash', x]),
+      ...sealed.map((x): [string, string] => [`a top-up’s sealed ${x}`, x]),
+      ...[...f.codes, freshCode].map((x): [string, string] => ['a call’s code', x]),
+      ...[...f.secrets, ...f.credentials].map((x): [string, string] => ['a secret', x])
+    ];
+    for (const [what, value] of never.filter(([, value]) => value.length >= 5)) {
+      expect(said.includes(value), `${what} in an operator’s answer`).toBe(false);
+      expect(logged.includes(value), `${what} in the log since the sweep began`).toBe(false);
+    }
+    for (const room of rooms) expect(said.includes(room), 'a call’s room in an operator’s answer').toBe(false);
+    // Nobody's address at all, nor one the log had to scrub on its way into the ring.
+    const address = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+    expect(said.match(address) ?? []).toEqual([]);
+    expect(said).not.toContain('[email]');
+    expect(logged.match(address) ?? []).toEqual([]);
+    // The log scrubs an address on its way out, so one an operator request tried to log is there as [email]: its lines have none.
+    const theirs = h.logs.slice(sweepFrom).filter((l) => {
+      const line = LogLine.safeParse(JSON.parse(l));
+      const id = line.success ? line.data['requestId'] : undefined;
+      return typeof id === 'string' && asked.has(id);
+    });
+    expect(theirs.length).toBeGreaterThanOrEqual(answers.length);
+    expect(theirs.join('\n')).not.toContain('[email]');
+  }
 });
 
 describe('confidential computing', () => {

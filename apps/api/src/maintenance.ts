@@ -17,10 +17,12 @@
  *  - deletes team invites that expired, and reckons the storage pool of each team whose license ended or whose grace did;
  *  - takes away what an upload left when its browser went, a day on, and forgets uploads counted before yesterday;
  *  - deletes agent connections and credentials that ran out, and what agents did after 30 days or past each connection's
- *    newest 1,000.
+ *    newest 1,000;
+ *  - forgets operators' nonces after 10 minutes, long after the minute a signed request is good for.
  *
  * Each step stands alone: one that fails is logged and the rest still run, so a sweep that keeps failing can't stop
- * notes being written or Drive exports going.
+ * notes being written or Drive exports going. Each run, and each step in it, is recorded for operators (platform/runs.ts):
+ * `upkeep`, and `upkeep:<step>`.
  */
 import { z } from 'zod';
 import type { Deps } from './platform/context';
@@ -45,18 +47,34 @@ import { work as exportToDrive } from './features/notes/drive-exports/worker';
 import { upkeep as plansUpkeep } from './features/billing/plans';
 import { upkeep as teamsUpkeep } from './features/billing/teams/teams';
 import { creditCarried } from './features/billing/top-ups/deposits';
+import { sweepNonces } from './http/operator';
+import { tracked } from './platform/runs';
 import { sweepSessions } from './keys/sessions';
 
 const mlog = log.child({ component: 'maintenance' });
 
 const ORPHAN_AGE_MS = 24 * 60 * 60_000;
 
+/** What a step's result counts: its number, or each number in it. */
+const countsOf = (result: unknown): Record<string, number> => {
+  if (typeof result === 'number') return { count: result };
+  if (typeof result !== 'object' || result === null) return {};
+  return Object.fromEntries(Object.entries(result).filter((e): e is [string, number] => typeof e[1] === 'number'));
+};
+/** One step of upkeep, recorded as a run of its own (`upkeep:<what>`), which counts its result or says how it failed. */
+const recorded = <T>(what: string, run: () => Promise<T>): Promise<T> => tracked(`upkeep:${what}`, run, countsOf);
+
 /** One step of upkeep: whatever goes wrong in it is logged, and it counts nothing; the steps after it still run. */
 async function step<T>(what: string, run: () => Promise<T>, none: T): Promise<T> {
-  try { return await run(); } catch (e) { mlog.error('upkeep step failed; the rest of upkeep goes on', { what, err: e }); return none; }
+  try { return await recorded(what, run); } catch (e) { mlog.error('upkeep step failed; the rest of upkeep goes on', { what, err: e }); return none; }
 }
 
-export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs?: number; uploadAgeMs?: number } = {}) {
+/** One run of upkeep, recorded as `upkeep` with what each step counted (platform/runs.ts): runs can overlap. */
+export function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs?: number; uploadAgeMs?: number } = {}) {
+  return tracked('upkeep', () => allSteps(d, opts), countsOf);
+}
+
+async function allSteps(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs?: number; uploadAgeMs?: number }) {
   /* What's old enough to go is as old as it was when upkeep started: the sweeps before one don't move its line. */
   const started = Date.now();
   const sessions = await step('sessions', () => sweepSessions(d), 0);
@@ -64,6 +82,7 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   // After the connections: what one that ran out did has gone with it.
   const agentActivity = await step('agent activity', () => sweepAgentActivity(d), 0);
   const receipts = await step('receipts', () => exec(d.pool, `DELETE FROM operations WHERE completed_at < now() - interval '24 hours'`), 0);
+  const operatorNonces = await step('operator nonces', () => sweepNonces(d), 0);
 
   const retried = await step('object deletes', () => deleteQueued(d), 0);
 
@@ -84,14 +103,14 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   // Teams: invites that expired, and pools that shrank as a license ended, or whose grace ended.
   const teams = await step('teams', () => teamsUpkeep(d).then((r) => r.invites + r.teams), 0);
   // Neither stops the other, or what comes next time: each logs what went wrong and says it did nothing.
-  const quietly = (what: string, sweep: () => Promise<number>) => sweep().catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what, err: e }); return 0; });
+  const quietly = (what: string, sweep: () => Promise<number>) => recorded(what, sweep).catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what, err: e }); return 0; });
   const trash = await quietly('trash', () => sweepTrash(d, opts.trashAgeMs, started));
   // Seats, and the workspaces calls were open to, counted apart: each is a row of its own kind.
-  const ended = await sweepSeats(d, workspaceCalls).catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what: 'seats', err: e }); return { seats: 0, workspaces: 0 }; });
+  const ended = await recorded('seats', () => sweepSeats(d, workspaceCalls)).catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what: 'seats', err: e }); return { seats: 0, workspaces: 0 }; });
   const uploads = await quietly('uploads', () => sweepUploads(d, opts.uploadAgeMs, started));
   const uploadDays = await quietly('upload days', () => pruneUploadDays(d));
   const mentions = await quietly('mentions', () => sweepMentions(d));
-  return { driveExports, sessions, agents, agentActivity, receipts, retried, orphans, videos, notes, calls, moves, noteLinks, rings, liveNotes, attention, plans, carried, teams, trash, seats: ended.seats, callWorkspaces: ended.workspaces, uploads, uploadDays, mentions };
+  return { driveExports, sessions, agents, agentActivity, receipts, operatorNonces, retried, orphans, videos, notes, calls, moves, noteLinks, rings, liveNotes, attention, plans, carried, teams, trash, seats: ended.seats, callWorkspaces: ended.workspaces, uploads, uploadDays, mentions };
 }
 
 /** Deletes objects older than `cutoff` (ms) that no row points at: writes whose SQL commit failed. */

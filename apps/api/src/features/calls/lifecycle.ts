@@ -31,6 +31,7 @@ import { workspaceCalls } from './workspace/seats';
 import { seatEnded } from '../workspaces/access';
 import * as writer from '../notes/writing/writer';
 import { log } from '../../platform/log';
+import { failureCode, tracked } from '../../platform/runs';
 import { closeRooms, hostNotices, load, roomsChanged, roomsClosedBetween, save, secondsIn, settle, sharesEnd, tenthsIn, type Row, type Stored, withPerson } from './state';
 import { MlsRow, appendMls, openMls } from './mls/mls-log';
 import { hereIn, knownIn, knownUntil, personFor, seatKey, seatOf, speakersIn, type Viewer } from './participants';
@@ -332,6 +333,13 @@ export const HANDOFF_MS = 10_000;
  */
 export const HOST_GRACE_MS = 25_000;
 
+/**
+ * How old a live call is before LiveKit not having its room says anything: a room this new may not exist yet. Upkeep
+ * (reconcile), an operator's look at a call (stuckSignals) and the work report's count of rooms gone
+ * (calls/operator/operator.ts › callsWork) all wait this long.
+ */
+export const ROOM_GRACE_MS = 60_000;
+
 /** How long after LiveKit says someone left before asking it whether they're really gone. */
 const LEFT_CHECK_MS = 3_000;
 
@@ -444,7 +452,7 @@ export async function reconcile(d: Deps, now = Date.now()): Promise<number> {
 }
 
 async function reconcilePage(d: Deps, live: LiveCall[], now: number): Promise<number> {
-  const rooms = await d.livekit.existingRooms(live.flatMap((c) => (now - c.started_at.getTime() > 60_000 ? [c.room_name] : [])));
+  const rooms = await d.livekit.existingRooms(live.flatMap((c) => (now - c.started_at.getTime() > ROOM_GRACE_MS ? [c.room_name] : [])));
   let ended = 0;
   // Each call on its own: one that can't be handed on or ended this time never holds up the others.
   for (const c of live) {
@@ -460,7 +468,7 @@ async function reconcilePage(d: Deps, live: LiveCall[], now: number): Promise<nu
 /** Upkeep of one live call: who reached the room, a hand-off once its host is gone, or its end. True when it ended. */
 async function reconcileCall(d: Deps, c: LiveCall, rooms: ReadonlySet<string>, now: number): Promise<boolean> {
   const since = c.host_left_at ?? c.host_joined_at;
-  const roomGone = now - c.started_at.getTime() > 60_000 && !rooms.has(c.room_name);
+  const roomGone = now - c.started_at.getTime() > ROOM_GRACE_MS && !rooms.has(c.room_name);
   let hostGone = !roomGone && since !== null && now - since.getTime() > (c.host_left_at ? HANDOFF_MS : HOST_GRACE_MS);
   let connected: Set<string> | undefined;
   if (hostGone) {
@@ -506,13 +514,14 @@ export async function endOverdue(d: Deps): Promise<number> {
   }
   return ended;
 }
-/** Ends calls at their longest every 30 seconds, one pass at a time, until stopped. */
+/** Ends calls at their longest every 30 seconds, one pass at a time, until stopped. Each pass is a run operators see (`overdue-calls`). */
 export function startEndingOverdue(d: Deps): () => void {
   let running = false;
   const timer = setInterval(() => {
     if (running) return;
     running = true;
-    endOverdue(d).catch((err: unknown) => clog.error('ending calls at their longest failed', { err })).finally(() => { running = false; });
+    tracked('overdue-calls', () => endOverdue(d), (ended) => ({ ended }))
+      .catch((err: unknown) => clog.error('ending calls at their longest failed', { err })).finally(() => { running = false; });
   }, 30_000);
   timer.unref();
   return () => clearInterval(timer);
@@ -546,4 +555,139 @@ async function standInFor(d: Deps, c: LiveCall, connected: ReadonlySet<string>, 
     if (r.result === 'handed') await tellRoom(o, r.room, c.call_id, { call: true, log: true });
     return r.result;
   });
+}
+
+/* ---------- a call that won't end: what an operator sees of it, and ending it (features/calls/operator/routes.ts) ---------- */
+
+/** Someone connected to a call's LiveKit room, by identity, and whether they publish anything. */
+export interface Occupant { identity: string; publishing: boolean }
+/** LiveKit's word on a call's room: who's in it, or `gone` when LiveKit has no room by that name. */
+export type RoomSeen = { occupants: Occupant[] } | 'gone';
+
+/** How long LiveKit has to answer what an operator asks of calls' rooms: who's in one (roomSeen), or which are up (roomsUp). */
+const ROOM_ASK_MS = 5_000;
+/** How long after a call ends its room still up is a sign of trouble, and LiveKit is asked about it. */
+export const LEFT_UP_MS = 3_600_000;
+
+/** LiveKit's answer to `ask`, or 'late' once ROOM_ASK_MS has gone; what it throws goes on up. A late answer is left to itself. */
+async function inTime<T>(ask: () => Promise<T>): Promise<T | 'late'> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<'late'>((resolve) => { timer = setTimeout(() => resolve('late'), ROOM_ASK_MS); });
+  try {
+    return await Promise.race([ask(), late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * LiveKit's word on a call's room, given ROOM_ASK_MS: undefined when it couldn't say, in time or at all, which is logged.
+ * Never while a row is held, and never the room's name, which is LiveKit's key to its dashboards.
+ */
+export async function roomSeen(d: Deps, callId: string, roomName: string): Promise<RoomSeen | undefined> {
+  try {
+    const said = await inTime(() => d.livekit.occupants(roomName));
+    if (said === 'late') {
+      clog.warn('LiveKit didn’t say in time what it has of a call’s room', { callId, ms: ROOM_ASK_MS });
+      return undefined;
+    }
+    return said === null ? 'gone' : { occupants: said };
+  } catch (e) {
+    clog.warn('LiveKit couldn’t be asked about a call’s room', { callId, err: e });
+    return undefined;
+  }
+}
+
+/**
+ * Which of these rooms LiveKit has, asked once (ListRooms) and given ROOM_ASK_MS; or why it didn't say, as a code
+ * (failureCode; `timeout` when it ran out of time), which is logged. Never while a row is held, and no room's name in what
+ * it says or logs.
+ */
+export async function roomsUp(d: Deps, roomNames: string[]): Promise<{ ok: true; up: ReadonlySet<string> } | { ok: false; code: string }> {
+  try {
+    const said = await inTime(() => d.livekit.existingRooms(roomNames));
+    if (said === 'late') {
+      clog.warn('LiveKit didn’t say in time which calls’ rooms are up', { rooms: roomNames.length, ms: ROOM_ASK_MS });
+      return { ok: false, code: 'timeout' };
+    }
+    return { ok: true, up: said };
+  } catch (e) {
+    const code = failureCode(e);
+    clog.warn('LiveKit couldn’t be asked which calls’ rooms are up', { rooms: roomNames.length, code, err: e });
+    return { ok: false, code };
+  }
+}
+
+/**
+ * The signs of a call that won't end, from its row and LiveKit's word on its room (`room`; undefined when LiveKit couldn't
+ * say, which says nothing either way), as upkeep reads them (reconcile, endOverdue):
+ * - `overdue`: live, and it has run as long as a call can (`call.max_seconds`, `longestS`);
+ * - `hostGone`: live, and the connection that hosts left, or never reached the room, more than HOST_GRACE_MS ago, isn't in its
+ *   room, and isn't moving to another device (`movingUntil`, from its sealed state);
+ * - `roomGone`: live, more than a minute old (ROOM_GRACE_MS), and LiveKit has no room for it;
+ * - `noRoom`: live, and it has no room at all, so nobody can be in it;
+ * - `roomLeftUp`: it ended within the last hour (LEFT_UP_MS), and LiveKit still has its room.
+ */
+export interface StuckSignals { overdue: boolean; hostGone: boolean; roomGone: boolean; noRoom: boolean; roomLeftUp: boolean }
+export function stuckSignals(row: Pick<Row, 'state' | 'started_at' | 'ended_at' | 'room_name' | 'host_identity' | 'host_joined_at' | 'host_left_at'>,
+  o: { room: RoomSeen | undefined; longestS: number; movingUntil: number | null; now: number }): StuckSignals {
+  const live = row.state === 'live';
+  const occupants = o.room === undefined || o.room === 'gone' ? null : o.room.occupants;
+  const since = row.host_left_at ?? row.host_joined_at;
+  const host = row.host_identity;
+  return {
+    overdue: live && o.now - row.started_at.getTime() >= o.longestS * 1000,
+    hostGone: live && host !== null && since !== null && o.now - since.getTime() > HOST_GRACE_MS && (o.movingUntil ?? 0) <= o.now
+      && occupants !== null && !occupants.some((p) => p.identity === host),
+    roomGone: live && row.room_name !== null && o.now - row.started_at.getTime() > ROOM_GRACE_MS && o.room === 'gone',
+    noRoom: live && row.room_name === null,
+    roomLeftUp: !live && row.ended_at !== null && o.now - row.ended_at.getTime() <= LEFT_UP_MS && occupants !== null
+  };
+}
+
+/**
+ * Whether a call is stuck, as an operator may end one: past its longest, its room gone or never made, or its host gone past
+ * the grace with nobody in its room. A host gone with people still in the room is upkeep's to hand on to one of them.
+ */
+export const isStuck = (s: StuckSignals, room: RoomSeen | undefined): boolean =>
+  s.overdue || s.noRoom || s.roomGone || (s.hostGone && room !== undefined && room !== 'gone' && room.occupants.length === 0);
+
+/**
+ * Ends a call an operator found stuck, and only one that is (isStuck), as it ends when its host leaves: everyone's
+ * disconnected, breakout rooms close into the notes, the recording stops and its notes are written. LiveKit is asked first,
+ * never while the row is held. Then, holding the row (endCall's `unless`), the call must still be live and still stuck: past
+ * its longest by its own row, or else as LiveKit said, which holds only while nothing about the call has changed since (its
+ * version). 'not-live' when no live call has that ID. 'unanswered' when LiveKit was asked about the call's room and didn't
+ * say, and by its own row the call isn't stuck: only LiveKit's word could make it so (its room gone, or its host not in it),
+ * so nothing is done, as for a call that isn't stuck. Once it has ended, the organizer's keys go with the call's last work,
+ * which runs on after this, as when upkeep ends a call; otherwise they're wiped here.
+ */
+export async function endStuckCall(d: Deps, callId: string): Promise<'ended' | 'not-stuck' | 'not-live' | 'unanswered'> {
+  const found = await maybeOne(d.pool, z.object({ owner_id: z.string() }), `SELECT owner_id FROM calls WHERE call_id = $1 AND state = 'live' LIMIT 1`, [callId]);
+  if (!found) return 'not-live';
+  const o = await openOwner(d, found.owner_id, undefined);
+  let ended = false;
+  try {
+    const { row, state } = await load(o, o.pool, callId);
+    if (row.state !== 'live') return 'not-live';
+    const room = row.room_name === null ? undefined : await roomSeen(d, callId, row.room_name);
+    // Why a call that isn't ended wasn't: it isn't stuck, or LiveKit didn't say whether it is.
+    const notEnded = row.room_name !== null && room === undefined ? 'unanswered' : 'not-stuck';
+    const longestS = (await limitsNow(d)).get('call.max_seconds');
+    const movingUntil = state.moving?.until ?? null;
+    const seen = stuckSignals(row, { room, longestS, movingUntil, now: Date.now() });
+    if (!isStuck(seen, room)) return notEnded;
+    const held: { outcome: 'not-live' | 'not-stuck' | 'unanswered' } = { outcome: notEnded };
+    const end = await endCall(o, callId, (r) => {
+      if (r.state !== 'live') { held.outcome = 'not-live'; return true; }
+      const now = stuckSignals(r, { room, longestS, movingUntil, now: Date.now() });
+      return !(now.overdue || (r.version === row.version && isStuck(now, room)));
+    });
+    if (!end) return held.outcome;
+    ended = true;
+    clog.info('stuck call ended by an operator', { callId, meetingId: end.meetingId, noteId: end.pendingNoteId, ...seen });
+    return 'ended';
+  } finally {
+    if (!ended) { o.root.fill(0); o.wrapKey.fill(0); }
+  }
 }

@@ -8,9 +8,10 @@ export const MEDIA_READS_A_MINUTE = 240;
 
 /**
  * A small fixed-window limiter: at most `max` hits per key in each window. Unauthenticated requests
- * are keyed by client address; the ones that cost inference by account.
+ * are keyed by client address; the ones that cost inference by account. A budget only one route spends may be made where
+ * that route is registered, once for each app, as finding accounts by address is (features/account/operator/routes.ts).
  */
-function rateLimit(max: number, windowMs: number) {
+export function rateLimit(max: number, windowMs: number) {
   const hits = new Map<string, { n: number; until: number }>();
   return (key: string, what = 'request', cost = 1) => {
     const now = Date.now();
@@ -27,8 +28,13 @@ export function createHttpLimits() {
 
   const attestLimiter = rateLimit(30, 60_000);
 
-  /** Switching feature flags through the operator route, per client address. */
-  const operatorLimiter = rateLimit(30, 60_000);
+  /** Operator routes (http/operator.ts), per client address, before any work: a request's signature is checked only after. */
+  const operatorLimiter = rateLimit(60, 60_000);
+
+  /** Each operator key's own, once its request checks out: what it reads, and what it changes, apart. */
+  const operatorReadLimiter = rateLimit(120, 60_000);
+
+  const operatorWriteLimiter = rateLimit(20, 60_000);
 
   /*
    * Speech and questions go to NEAR AI. A browser sends a clip every few seconds while someone talks: in a call the
@@ -215,5 +221,5 @@ export function createHttpLimits() {
    * names the notes and calls on it, opening the keys of whoever else's they are.
    */
   const agentActivityLimiter = rateLimit(60, 60_000);
-  return { limiter, telemetryLimiter, attestLimiter, operatorLimiter, speechLimiter, voiceLimiter, askLimiter, guestAskLimiter, noteChangeLimiter, callLimiter, pickLimiter, cardLimiter, chatLimiter, rejoinLimiter, askNotesLimiter, othersPointLimiter, nudgeLimiter, statusLimiter, followUpLimiter, notesWatchLimiter, ideasWatchLimiter, sortLimiter, followUpsLimiter, spaceLimiter, moveLimiter, moveOpenLimiter, moveCheckLimiter, moveSecretCheckLimiter, moveSecretChangeLimiter, captionLimiter, videoLimiter, shareLimiter, momentLimiter, makeLimiter, busyLimiter, ringLimiter, ringAnswerLimiter, ringStreamLimiter, personalLimiter, carryLimiter, treeLimiter, liveLimiter, workspaceLimiter, workspaceListLimiter, documentLiveLimiter, updateLimiter, updateBytesLimiter, versionLimiter, awarenessLimiter, presenceLimiter, searchLimiter, previewLimiter, mentionLimiter, idsLimiter, presenterLimiter, pieceLimiter, mediaLimiter, topUpLimiter, topUpCheckLimiter, agentActivityLimiter };
+  return { limiter, telemetryLimiter, attestLimiter, operatorLimiter, operatorReadLimiter, operatorWriteLimiter, speechLimiter, voiceLimiter, askLimiter, guestAskLimiter, noteChangeLimiter, callLimiter, pickLimiter, cardLimiter, chatLimiter, rejoinLimiter, askNotesLimiter, othersPointLimiter, nudgeLimiter, statusLimiter, followUpLimiter, notesWatchLimiter, ideasWatchLimiter, sortLimiter, followUpsLimiter, spaceLimiter, moveLimiter, moveOpenLimiter, moveCheckLimiter, moveSecretCheckLimiter, moveSecretChangeLimiter, captionLimiter, videoLimiter, shareLimiter, momentLimiter, makeLimiter, busyLimiter, ringLimiter, ringAnswerLimiter, ringStreamLimiter, personalLimiter, carryLimiter, treeLimiter, liveLimiter, workspaceLimiter, workspaceListLimiter, documentLiveLimiter, updateLimiter, updateBytesLimiter, versionLimiter, awarenessLimiter, presenceLimiter, searchLimiter, previewLimiter, mentionLimiter, idsLimiter, presenterLimiter, pieceLimiter, mediaLimiter, topUpLimiter, topUpCheckLimiter, agentActivityLimiter };
 }

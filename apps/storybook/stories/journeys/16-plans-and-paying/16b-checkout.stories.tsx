@@ -34,14 +34,14 @@ export const GetProWithUsdc: CheckoutStory = {
     await step('Choose the network to send USDC on. The summary says exactly what to send', async () => {
       await userEvent.click(await choice('Pay with USDC on', 'Base'));
     });
-    await step('Get the address: the exact amount, a QR code and an address made for this one payment, open for a day', async () => {
+    await step('Get the address: the exact amount, a QR code and an address made for this one payment, open for a day, and its reference for support', async () => {
       await userEvent.click(await pressable('button', 'Get the address', SOON, await win()));
       await says('Waiting for your payment');
     });
     await step('The payment is sent from a wallet. Alcove sees it arrive, the amount counts up and the sun lifts: nothing to press', async () => {
       await says('Payment seen');
     });
-    await step('Pro is on: the sun clears the horizon and the tick draws in. Receipt opens a receipt to print', async () => {
+    await step('Pro is on: the sun clears the horizon and the tick draws in, with the payment’s reference whole on the receipt’s row. Receipt opens a receipt to print', async () => {
       await says('You’re on Pro');
       await userEvent.click(await pressable('button', 'Receipt', SOON, await win()));
       await says('Receipt');

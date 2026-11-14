@@ -43,11 +43,16 @@ RUN pnpm install --frozen-lockfile \
 
 FROM node:24-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c
 ARG ALCOVE_COMMIT=dev
+# Who can operate this image from outside the enclave: each operator's Ed25519 public key, read:<key> or write:<key>,
+# comma-separated (env.sh's CS_OPERATOR_KEYS, passed by build.sh). Built in, so the image's digest, which Confidential Space
+# attests and cosign signs, says who can operate, and no instance template can add a key: it isn't in allow_env_override
+# below. Empty, the API has no operator routes.
+ARG OPERATOR_KEYS=
 # Not secret, and never may be: in Confidential Space every variable of the container's environment is in its attestation
 # token's claims, which the launcher logs. Secrets come from Secret Manager at startup. HTTP_PORT and HTTPS_PORT are the
 # ports EXPOSEd below, where the load balancer sends 80 and 443; they're used only when TLS_HOSTS is set.
 ENV NODE_ENV=production API_HOST=0.0.0.0 ALCOVE_COMMIT=$ALCOVE_COMMIT FFMPEG_PATH=/app/bin/ffmpeg WEB_DIR=/app/web \
-    HTTP_PORT=8080 HTTPS_PORT=8443
+    HTTP_PORT=8080 HTTPS_PORT=8443 OPERATOR_KEYS=$OPERATOR_KEYS
 WORKDIR /app
 COPY --from=build /repo/apps/api/dist ./dist
 COPY --from=build /repo/apps/api/migrations ./migrations
@@ -66,7 +71,9 @@ USER node
 EXPOSE 8080/tcp 8443/tcp
 # Confidential Space's launch policy. The container's logs may go to Cloud Logging on the production image. The operator
 # may set exactly these variables (tee-env-*), all names and flags, listed in infra/confidential-space/env.sh; the
-# launcher refuses to start the image with any other, so deploy.sh checks the list before it rolls anything out.
+# launcher refuses to start the image with any other, so deploy.sh checks the list before it rolls anything out. And
+# ALCOVE_JOB, which only job.sh sets, on a VM of its own: ALCOVE_JOB=checks runs the checks job, code already in this image,
+# in the server's place (entrypoint.sh).
 LABEL "tee.launch_policy.log_redirect"="always"
-LABEL "tee.launch_policy.allow_env_override"="TEE,GCP_PROJECT,KMS_MASTER_KEY,WIF_PROVIDER,SECRETS,LEGACY_SECRETS,RETIRE_LEGACY_KMASTER,CLOUDSQL_INSTANCE,TLS_HOSTS,ACME_DIRECTORY,CLOUDFLARE_ZONE,WEB_ORIGIN,API_URL,LIVEKIT_URL,OBJECTS_ENDPOINT,OBJECTS_BUCKET,GOOGLE_SIGNUP_MODE,DEMO_AUTH_ENABLED,NEAR_AI_BASE_URL,TREASURY_INTENTS_ACCOUNT,OPERATOR_TOKEN_SHA256,LOG_FORMAT,LOG_LEVEL"
+LABEL "tee.launch_policy.allow_env_override"="TEE,GCP_PROJECT,KMS_MASTER_KEY,WIF_PROVIDER,SECRETS,LEGACY_SECRETS,RETIRE_LEGACY_KMASTER,CLOUDSQL_INSTANCE,TLS_HOSTS,ACME_DIRECTORY,CLOUDFLARE_ZONE,WEB_ORIGIN,API_URL,LIVEKIT_URL,OBJECTS_ENDPOINT,OBJECTS_BUCKET,GOOGLE_SIGNUP_MODE,DEMO_AUTH_ENABLED,NEAR_AI_BASE_URL,TREASURY_INTENTS_ACCOUNT,LOG_FORMAT,LOG_LEVEL,ALCOVE_JOB"
 ENTRYPOINT ["/app/bin/entrypoint"]

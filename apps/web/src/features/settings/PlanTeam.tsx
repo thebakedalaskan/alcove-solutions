@@ -12,6 +12,7 @@ import { Link } from '@tanstack/react-router';
 import { useRef, useState, type ReactNode } from 'react';
 import { useCheckout } from '~/features/plans/checkout';
 import { PLAN_NAMES, licensesLeft, teamAdmin, waitingForLicense, type TeamLicenses } from '~/features/plans/planState';
+import { toastFailure } from '~/lib/failed';
 import { callName } from '~/lib/people';
 import { useRefundLicenses, useSetAutoPurchase } from '~/features/team/queries';
 import { dayFullMonth, longDay } from '~/lib/time';
@@ -151,7 +152,7 @@ export function AutoBuy({ plan, offers, canAdd, on }: { plan: Plan; offers: Plan
   const state = useSaveState();
   const toast = useToast();
   const set = (to: boolean) => {
-    void saving(AUTO_BUY, () => auto.mutateAsync(to)).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' }));
+    void saving(AUTO_BUY, () => auto.mutateAsync(to)).catch((e: unknown) => toastFailure(toast, e));
   };
   const price = offers?.team.microUsdPerLicense;
   const short = on && price !== undefined && plan.balance.microUsd < price;

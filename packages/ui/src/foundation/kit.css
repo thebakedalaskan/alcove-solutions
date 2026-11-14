@@ -337,9 +337,9 @@
 .ac-more .lk { display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 8px; border-radius: var(--radius-sm); font: 500 13.5px/1 var(--font-sans); color: var(--ink-2); }
 .ac-more .lk:hover { color: var(--ink); }
 .ac-more .lk:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-/* A failed request's reference: quiet and monospace, copied on press. */
+/* A reference to quote, a failed request's or a payment's: quiet and monospace, copied on press. A long one wraps, whole. */
 .ac-ref { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 7px; border-radius: var(--radius-xs); color: var(--ink-3); font: 500 12px/1.3 var(--font-sans); transition: background-color var(--duration-1), color var(--duration-1); }
-.ac-ref code { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 500 12px/1.3 var(--font-mono); color: var(--ink-2); }
+.ac-ref code { min-width: 0; overflow-wrap: anywhere; text-align: left; font: 500 12px/1.3 var(--font-mono); color: var(--ink-2); }
 .ac-ref:hover { background: var(--sunk); color: var(--ink-2); }
 .ac-ref:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 /* A long value to copy exactly (CopyField): the whole value over up to two lines, its copy button beside it. */
@@ -483,6 +483,8 @@
 .ac-empty { display: grid; justify-items: center; gap: 10px; padding: 28px 16px 22px; text-align: center; }
 .ac-empty b { font: 480 22px/1.2 var(--font-display); letter-spacing: -.015em; color: var(--ink); }
 .ac-empty p { margin: 0; max-width: 24em; font-size: 14px; line-height: 1.5; color: var(--ink-3); }
+/* A reference under what went wrong (the page that didn't load): a line of its own, centred. */
+.ac-empty p .ac-ref { display: flex; width: fit-content; margin: 6px auto 0; }
 .ac-empty .ac-empty-act { margin-top: 8px; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
 .ac-arch-art .rim { fill: none; stroke: var(--line-control); stroke-dasharray: 3 4; }
 .ac-arch-art .well { fill: var(--sunk); }
