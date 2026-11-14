@@ -549,6 +549,13 @@
 .wf-foot .wt-trash { height: 32px; font-size: 14px; color: var(--ink-2); }
 .wf-seal { display: flex; align-items: flex-start; gap: 7px; padding: 6px 10px 0; font: 500 12px/1.35 var(--font-sans); color: var(--ink-3); }
 .wf-seal .ac-i { margin-top: 1px; color: var(--sun-text); }
+/* Who can open it, for someone in it: a row like Trash's that opens who's in it, Share at its end. */
+button.wf-seal { width: 100%; min-height: 32px; align-items: center; padding: 6px 10px; border-radius: 9px; text-align: left; transition: background-color var(--duration-1), color var(--duration-1); }
+button.wf-seal .ac-i { margin-top: 0; }
+button.wf-seal > .ac-clamp-2 { min-width: 0; }
+button.wf-seal:hover, button.wf-seal[data-state="open"] { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink-2); }
+.wf-seal-go { flex: none; margin-left: auto; padding-left: 6px; font-weight: 600; color: var(--ink-2); transition: color var(--duration-1); }
+button.wf-seal:hover .wf-seal-go, button.wf-seal[data-state="open"] .wf-seal-go { color: var(--ink); }
 
 /* The bar over the page: the way back and the path, then what's said about the page, and you at the far right. */
 .wf-bar { position: relative; display: flex; align-items: center; gap: 8px; height: 100%; padding: 0 14px 0 18px; border-bottom: 1px solid var(--line); background: var(--ground); transition: background-color var(--duration-2) var(--ease-out), border-color var(--duration-2) var(--ease-out); }
@@ -627,6 +634,7 @@ button.wf-from:hover { background: color-mix(in srgb, var(--ink) 13%, transparen
   .wf-side { padding: 6px 12px calc(12px + env(safe-area-inset-bottom, 0px)); }
   .wf-side .wt-r, .wf-side .wt-open, .wf-side .wt-tw { height: 44px; }
   .wf-side .wt-open { font-size: 15px; }
+  button.wf-seal { min-height: 44px; font-size: 13px; }
   .wf-brand { display: none; }
   .wf-bar { padding: 0 8px 0 10px; }
   .wf-sep, .wf-crumb { display: none; }

@@ -2,14 +2,16 @@
  * A board on its own page, beside the list. The board's bar is the page's head: its name, with everything about the board
  * itself under it, and its seal, which says how it's saving. Reconnecting and Couldn't save take the pill at the top of the
  * sheet too, as in a call. Someone who can only look has no tools, and the seal says View only. Who else is here sits at the
- * end of the bar, beside Start a call here. What's done offline is kept on this device, as a document's is, and goes when
- * the connection's back; a board that goes from under someone says so in its place. More beside the tools has what it has in a
- * call: a picture kept in the board's files, a link to something in this workspace, a table, a mind map, a comment and a
- * template. On a phone the page is the phone's board: no tools beside it, + to add a sticky, and it opens where it can be read.
+ * end of the bar, beside Start a call here. The head over it, the workspace's, has Share, as a document's does, for whoever
+ * can say who has the board: the sheet Who can add to it opens. What's done offline is kept on this device, as a document's
+ * is, and goes when the connection's back; a board that goes from under someone says so in its place. More beside the tools
+ * has what it has in a call: a picture kept in the board's files, a link to something in this workspace, a table, a mind map,
+ * a comment and a template. On a phone the page is the phone's board: no tools beside it, + to add a sticky, and it opens
+ * where it can be read.
  */
 import { errorCode, firstName, type WorkspaceItem } from '@alcove/api';
 import type { BoardReply } from '@alcove/board';
-import { BoardPop, Button, WsCantOpen, WsDoc, WsGoneBar, WsOfflineEmpty, WsPopover, WsUnavailable, extensionUi, wsToast, type AvatarPerson, type BoardNaming, type IconName } from '@alcove/ui';
+import { BoardPop, Button, WsCantOpen, WsDoc, WsGoneBar, WsOfflineEmpty, WsPopover, WsUnavailable, extensionUi, wsToast, type AvatarPerson, type BoardNaming, type IconName, type WsPop } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { boardPictures, boardUpload, linkableIn } from '~/features/board/around';
@@ -57,8 +59,11 @@ function useStartHere(workspaceId: string, item: WorkspaceItem, name: string): (
   }, [flow, qc, workspaceId, item.id, item.role, name]);
 }
 
-/** What's open from the bar: the menu under the name, what the seal says, or the share sheet. */
-type Pop = 'name' | 'seal' | 'share' | null;
+/**
+ * What's open from the bar: the menu under the name, what the seal says, or the share sheet, from Who can add to it under the
+ * name (`share`) or from Share on the head over the board (`head`).
+ */
+type Pop = 'name' | 'seal' | 'share' | 'head' | null;
 
 /** "Rename, share or copy a link": what the menu under the name lets this person do, for its tip. */
 function nameTip(doing: readonly string[]): string {
@@ -251,9 +256,11 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
   if (!ready) return <WsDoc className="is-board"><PaneHead crumbs={where} save="quiet" />{status.closed === 'unavailable' ? <WsUnavailable /> : offline && <WsOfflineEmpty online={online} onTry={session.retry} />}</WsDoc>;
 
   const who = item.trashedBy ? firstName(item.trashedBy) : 'Someone';
+  /* Share on the head, as a document has it: the same sheet as Who can add to it, for whoever can say who has the board. */
+  const headShare: WsPop | undefined = canShare ? { open: pop === 'head', onOpenChange: (to) => setPop(to ? 'head' : null), content: pop === 'head' ? <ShareSheet item={item} /> : null } : undefined;
   return (
     <WsDoc className="is-board">
-      <PaneHead crumbs={where} save="quiet" />
+      <PaneHead crumbs={where} save="quiet" share={headShare} />
       <WsGoneBar what="board" who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} unsent={status.unsent} />
       <div ref={wrap} className="bpg">
         <Suspense>

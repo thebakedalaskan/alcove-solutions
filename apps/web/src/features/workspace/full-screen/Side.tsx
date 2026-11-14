@@ -17,6 +17,7 @@ import { beforeTheCall, callDay, callDayTitle, homeOf } from './calls';
 import { useWs } from '../context';
 import { CALL_ICON, useListParts, type ListDrag } from '../tree/List';
 import { rowsOf, type ListRow } from '../tree/tree';
+import { useSpaceShare } from '../sharing/Sheets';
 
 /** How many of a series' earlier calls show before "N more". */
 const EARLIER = 5;
@@ -41,6 +42,8 @@ export function Side({ drags }: { drags: ListDrag }) {
   const { inside } = parts;
   const summary = useQuery({ ...workspaceQueries.workspaces(), enabled: ws.owner !== null }).data?.find((w) => w.id === ws.workspaceId);
   const people = useQuery({ ...workspaceQueries.workspacePeople(ws.workspaceId), enabled: inside }).data;
+  /* Who can open it, at the foot, opens who's in it: the way to share the whole workspace from any page of it, a call's own too. */
+  const share = useSpaceShare();
   const home = homeOf(summary, tree);
 
   /* Every row of the tree, in its section: the call a call's workspace is for, the calls kept in it, and everything else. */
@@ -77,7 +80,7 @@ export function Side({ drags }: { drags: ListDrag }) {
         space={{ name: ws.spaceName, mark: <WsMark name={ws.spaceName} call={home !== null} />, picker: parts.picker, naming: parts.namingField, saveState: ws.spaceSave }}
         onSearch={ws.openFind} searchKeys={shortcut('K')} reconnecting={ws.listDown}
         listKey={ws.workspaceId} onKeyDown={parts.rowKeys} empty={items > 0 ? false : !inside ? 'shared' : ws.canChange ? 'yours' : 'others'}
-        foot={parts.trashRow} sealed={whoCanOpen(people, sent.people)}>
+        foot={parts.trashRow} sealed={whoCanOpen(people, sent.people)} share={share}>
         {home ? (
           calling.length > 0
             ? calling.map((row) => (row.draft ? parts.draftRow(row.depth) : parts.rowOf(row.item, 'tree', row.depth, row.open, row.depth === 0 ? { label: `The call, ${callDay(home.at, new Date(now))}`, place: true } : {})))

@@ -1,11 +1,12 @@
 /*
- * The who-has-it sheets, which look the same: Share on a document (the workspace's people, anyone it's shared with, and closing
- * it to the workspace); the people in a workspace, from the name at the top of the list, and in a call from Who's in it, with
- * whoever else is in the call; and for someone in the call who isn't in the workspace, who can't read its people, the people
- * in the call.
+ * The who-has-it sheets, which look the same: Share on a document or a board (the workspace's people, anyone it's shared with,
+ * and closing it to the workspace); the people in a workspace, wherever the workspace is shown whole (Share on its Home and
+ * on its sheet in the Drive, who can open it at the foot of its side panel, People under its name, and in a call Who's in it,
+ * with whoever else is in the call); and for someone in the call who isn't in the workspace, who can't read its people, the
+ * people in the call.
  */
 import { errorCode, errorMessage, firstName, type DocumentRole, type Person, type PersonSuggestion, type TeamAccess, type WorkspaceItem, type WorkspacePerson, type WorkspaceRole } from '@alcove/api';
-import { WsShareSheet, wsToast, type WsShareMatch, type WsShareRole, type WsShareRow, type WsToastData } from '@alcove/ui';
+import { WsShareSheet, wsToast, type WsPop, type WsShareMatch, type WsShareRole, type WsShareRow, type WsToastData } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useSettled } from '~/lib/live';
@@ -121,6 +122,29 @@ export function PeopleSheet() {
   return <PeopleSheetFor workspaceId={ws.workspaceId} name={ws.spaceName} admin={ws.sent.role === 'admin'} say={ws.say} teamAccess={ws.sent.teamAccess} />;
 }
 
+/**
+ * Share for the workspace open here, where it's shown whole rather than one page of it (the foot of its side panel, full
+ * screen): who's in it, in the people sheet. Nothing for someone who isn't in it, who can't read its people.
+ */
+export function useSpaceShare(): WsPop | undefined {
+  const ws = useWs();
+  const [open, setOpen] = useState(false);
+  if (ws.sent.role === null) return undefined;
+  return { open, onOpenChange: setOpen, content: open ? <PeopleSheet /> : null };
+}
+
+/**
+ * Who to ask, for someone in a workspace who can't add people to it: only its admins can, by first name ("Ask Priya or Kofi").
+ * Undefined until its people are known.
+ */
+function askAnAdmin(people: readonly WorkspacePerson[]): string | undefined {
+  const admins = people.filter((p) => p.role === 'admin' && !p.isMe).map((p) => firstName(p.person.name) || p.person.email);
+  const [only, ...more] = admins;
+  if (only === undefined) return undefined;
+  const who = more.length === 0 ? only : admins.length <= 3 ? `${admins.slice(0, -1).join(', ')} or ${admins.at(-1) ?? ''}` : `${admins.slice(0, 2).join(', ')} or another admin`;
+  return `Only an admin can add people. Ask ${who}.`;
+}
+
 /** Someone in a call, as Who's in it lists them, as you may know them: `guest`, they came in with the link, by name alone. */
 export interface InTheCall { person: Person; isMe: boolean; organizer: boolean; guest: boolean }
 
@@ -137,10 +161,10 @@ function onceEach(people: readonly InTheCall[]): InTheCall[] {
 const youIn = (p: InTheCall) => (p.isMe ? `${p.person.name} (you)` : p.person.name);
 
 /**
- * Who's in a workspace and what they can do, wherever it's asked: an admin changes anyone, and anyone else can leave. In a call
- * that opens it to everyone in it, `call` has who's in the call, and whoever of them isn't in the workspace is under its people:
- * they can edit it while they're in the call. On a team's workspace (`teamAccess`), who's in it too: the whole team, or only the
- * people added, which its admins change.
+ * Who's in a workspace and what they can do, wherever it's asked: an admin adds people and changes anyone; anyone else reads
+ * who's in it, is told who to ask to add someone, and can leave. In a call that opens it to everyone in it, `call` has who's in
+ * the call, and whoever of them isn't in the workspace is under its people: they can edit it while they're in the call. On a
+ * team's workspace (`teamAccess`), who's in it too: the whole team, or only the people added, which its admins change.
  */
 export function PeopleSheetFor({ workspaceId, name, admin, say, call, teamAccess = null }: {
   workspaceId: string; name: string; admin: boolean; say: (toast: WsToastData) => void; call?: readonly InTheCall[] | undefined; teamAccess?: TeamAccess | null | undefined;
@@ -167,7 +191,7 @@ export function PeopleSheetFor({ workspaceId, name, admin, say, call, teamAccess
   const also = read && call ? onceEach(call).filter((c) => !c.person.email || !members.has(c.person.email.toLowerCase())).map((c): WsShareRow => ({
     id: `call:${c.person.id}`, people: [c.person], name: youIn(c), sub: 'Can edit while they’re in the call', tag: c.guest ? 'Guest' : undefined
   })) : [];
-  return <WsShareSheet title={`People in ${name}`} rows={rows} team={team} inCall={also} {...(admin ? { query: adding.query, onQuery: adding.setQuery, onAdd: adding.onAdd, matches: adding.matches } : {})} />;
+  return <WsShareSheet title={`People in ${name}`} about={admin ? undefined : askAnAdmin(people)} rows={rows} team={team} inCall={also} {...(admin ? { query: adding.query, onQuery: adding.setQuery, onAdd: adding.onAdd, matches: adding.matches } : {})} />;
 }
 
 /**

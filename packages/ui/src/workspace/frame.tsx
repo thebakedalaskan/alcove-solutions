@@ -64,13 +64,19 @@ export interface WsSideProps extends WsTreeProps {
   foot?: ReactNode;
   /** Who can open the workspace, beside the seal: "Priya, Kofi, Ines and you can open it". */
   sealed: string;
+  /**
+   * Share: who can open it is pressed to see who's in it, which opens over the foot (the people sheet: adding people, what each
+   * can do, leaving). Left out for someone who isn't in it, for whom it's only said.
+   */
+  share?: WsPop | undefined;
 }
 
 /**
  * The side panel: the logo, the workspace switcher, Search, then the rows (Home or the call first, then each section), and at
- * the foot Trash and who can open it. Dark in both themes. On a phone it's the workspace's pages, the width of the screen.
+ * the foot Trash and who can open it, which opens who's in it. Dark in both themes. On a phone it's the workspace's pages, the
+ * width of the screen.
  */
-export function WsSide({ brand, space, onSearch, searchKeys, reconnecting, foot, sealed, label = 'This workspace', ...tree }: WsSideProps) {
+export function WsSide({ brand, space, onSearch, searchKeys, reconnecting, foot, sealed, share, label = 'This workspace', ...tree }: WsSideProps) {
   return (
     <nav className="wf-side dark" aria-label={label}>
       <div className="wf-brand">{brand}</div>
@@ -92,7 +98,13 @@ export function WsSide({ brand, space, onSearch, searchKeys, reconnecting, foot,
       <WsTree label={label} {...tree} />
       <div className="wf-foot">
         {foot}
-        <p className="wf-seal"><Icon name="sealed" size={13} /><span className="ac-clamp-2">{sealed}</span></p>
+        {share ? (
+          <WsPopover open={share.open} onOpenChange={share.onOpenChange} label={`People in ${space.name}`} side="top" anchor={
+            <button type="button" className="wf-seal" aria-label={`Share ${space.name}. ${sealed}`}>
+              <Icon name="sealed" size={13} /><span className="ac-clamp-2">{sealed}</span><span className="wf-seal-go" aria-hidden="true">Share</span>
+            </button>
+          }>{share.content}</WsPopover>
+        ) : <p className="wf-seal"><Icon name="sealed" size={13} /><span className="ac-clamp-2">{sealed}</span></p>}
       </div>
     </nav>
   );

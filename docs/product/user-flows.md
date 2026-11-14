@@ -2195,15 +2195,17 @@ time, five until **Show N more**; and **Trash**. Pressing the row of the workspa
 opens it; going anywhere else opens the workspace you go to. Recent is everything you can open, the most recently edited first, by day,
 as pictures or a list: each card shows what the file is (a document's first lines as it is now, a board, photos, a PDF),
 where it is (**From Team standup**, **For Launch check-in**, **In Launch**, **Shared with you**) and who touched it last and
-when. A workspace on the sheet shows who's in it, its folders, the calls kept in it with **Open the call**, its files, and
-**Open full screen**; a card inside it doesn't say which workspace again. A call's own workspace shows the call's **Notes**,
-**Follow-ups** and **Transcript** as cards, for whoever has its notes, then its **Files** (**For the call** before it),
-everything in it wherever it is, with **New document**, **New board** and **Upload files**, which make one at its top, and
-in a series the calls before. **Trash** is one list across every workspace: where
+when. A workspace on the sheet shows who's in it, its folders, the calls kept in it with **Open the call**, its files,
+**Share** and **Open full screen**; a card inside it doesn't say which workspace again. **Share** there is the whole
+workspace's, for anyone in it, a call's own workspace too: who's in it, the sheet **People** shows (below). A call's own
+workspace shows the call's **Notes**, **Follow-ups** and **Transcript** as cards, for whoever has its notes, then its
+**Files** (**For the call** before it), everything in it wherever it is, with **New document**, **New board** and **Upload
+files**, which make one at its top, and in a series the calls before. **Trash** is one list across every workspace: where
 each thing was, who moved it there and when, how many days it has left, and **Restore** for whoever can edit it. Pressing a
-card opens it beside the tree, in its workspace, with the tree open to it; **⤢** takes it full screen. Its **⋯** has
-**Open**, **Open full screen**, **Copy link**, **Rename** (typed in the same menu; a document's title follows, for everyone)
-and **Move to Trash**, with **Undo**. The search at the top (**⌘K**) narrows
+card opens it beside the tree, in its workspace, with the tree open to it; **⤢** takes it full screen, and **Share** beside
+it says who has it, a board as a document. Its **⋯** has **Open**, **Open full screen**, **Share** (who has it, in the
+menu's place, for someone in its workspace who can edit there), **Copy link**, **Rename** (typed in the same menu; a
+document's title follows, for everyone) and **Move to Trash**, with **Undo**. The search at the top (**⌘K**) narrows
 everything by name as it's typed, the workspaces it names first. **New** makes a document, a board or files where you are;
 on Recent, Shared with you or Trash it asks which workspace in the same menu, with **New workspace** last, named in place.
 On a phone the tree becomes chips along the top of the sheet, New sits beside the search, and a document opens full screen.
@@ -2212,15 +2214,21 @@ Journey **12.2** opens a workspace: under Workspaces, **Launch** shows its folde
 **Open full screen** takes it full screen. Journey **12.3** picks up where you left off: Recent's **Launch checklist** opens
 beside the tree, in the workspace it lives in, Team standup's, and **⤢** gives it the whole screen. Journey **12.4** is the
 first day: the Drive is Recent, Shared with you, New workspace and Trash, with one empty state; **New document** asks for a
-workspace to put it in, named in the same menu, and the document opens in it, beside the tree.
+workspace to put it in, named in the same menu, and the document opens in it, beside the tree. Journey **12.7** shares a
+whole workspace: under From calls, **Team standup**'s **Share** shows the organizer and everyone invited; typing **Aiko** and
+**Enter** adds Aiko, beyond the invite; full screen, who can open it at the foot of the side panel opens the same people,
+Aiko among them. Journey **12.8** shares a file from the Drive: on Recent, the **Standup board**'s **⋯** has **Share**, and
+an address typed there gives that board, and nothing else in the workspace, to someone outside it.
 
 **A workspace, full screen.** Any workspace opens full screen, in a frame of its own in place of the app's: a side panel,
 dark in both themes, beside the page, with one bar over the page. The side panel has the logo (Home), the workspace
 switcher, **Search** (Find, **⌘K**), then **Home** and **Pages**, the tree with its folders, and **Calls**, the calls kept in
 it, each opening its call. **Trash** is at the foot, with a count only when something's in it, and who can open the
-workspace ("Priya, Kofi, Ines and you can open it"). The bar has **← Drive**, or **← Calls** when it was opened from a call,
-the path, how it's saving, who else is here ("Priya is here"), **Share**, **⋯**, **Leave full screen** and you. Leaving
-goes back where it came from: the Drive, at this workspace, or Calls. **Home** is the workspace's name on the evening after
+workspace ("Priya, Kofi, Ines and you can open it"), which ends in **Share** for anyone in it and opens who's in it: the
+whole workspace is shared from there on any page of it, a call's own workspace too, which has no Home. The bar has
+**← Drive**, or **← Calls** when it was opened from a call, the path, how it's saving, who else is here ("Priya is here"),
+**Share** (on Home the workspace's, on a page that page's), **⋯**, **Leave full screen** and you. Leaving goes back where
+it came from: the Drive, at this workspace, or Calls. **Home** is the workspace's name on the evening after
 sunset; the line on what it's for, which an admin writes in place by pressing it (**Say what this workspace is for** until
 there is one), everyone in it reads, and nobody else is told of; who's in it; **Recently edited**, three large previews;
 and its calls, the next one first, for whoever organizes it. A call's own workspace has no Home: it opens on what the call
@@ -2327,11 +2335,14 @@ this?** answers beside the words, from every note you have, or in a call from wh
 how long it has left: things stay for 30 days. **Restore** puts something back in its folder, or at the top if the folder
 has gone, and **Delete forever** asks once, then deletes it for everyone. A document in Trash still opens, to read.
 
-**Sharing.** **Share** at the top of a document shows who has it: the workspace, and anyone it's shared with beyond it,
-each with what they can do. Typing a name or an address finds people (**Enter** adds the first, or an address nobody
-knows); they can edit, and their row changes that to **Can read** or takes them off. The workspace's row can close the
-document to **Only people added here**: then it opens only for whoever made it and the people listed, and it's gone from
-everyone else's list. Someone it's shared with who isn't in the workspace sees that document alone.
+**Sharing.** **Share** at the top of a document or a board shows who has it: the workspace, and anyone it's shared with
+beyond it, each with what they can do. Typing a name or an address finds people (**Enter** adds the first, or an address
+nobody knows); they can edit, and their row changes that to **Can read** or takes them off. The workspace's row can close
+the document to **Only people added here**: then it opens only for whoever made it and the people listed, and it's gone from
+everyone else's list. Someone it's shared with who isn't in the workspace sees that document alone. Share is there for
+someone in the workspace who can edit what's open, and so is **Share** in its card's **⋯** in the Drive; whoever can only
+read it, or has it only through a call, isn't offered it. A whole workspace is shared from who's in it (**Workspaces**,
+below).
 
 **Who's here.** Faces on a row and at the top of a document show who has it open, live, and go when they do. Pressing a face
 opens their card: where they are, in the words you may know (a document you can't open is **A document you can’t open**, never
@@ -2364,8 +2375,13 @@ read can open a thread and has nothing to press.
 
 **Workspaces.** The switcher at the top of the side panel (in a call, the name at the top of the list) lists your workspaces with who's in each, and opens another. **People**
 shows who's in this one in the same sheet as Share: an admin adds people by name or address and sets each to **Admin**,
-**Can edit** or **Can read**, or removes them; anyone can leave. **Rename** (admins) and **New workspace** turn the name
-into a field: type, then **Enter**. A workspace always keeps an admin.
+**Can edit** or **Can read**, or removes them; anyone can leave. Anyone else in it reads who's in it and is told who can add
+someone: **Only an admin can add people. Ask Priya.** The same sheet is how a whole workspace is shared, wherever the
+workspace is shown whole: **Share** on its Home, **Share** beside **Open full screen** on its sheet in the Drive, who can
+open it at the foot of its side panel full screen (on any page of it, and for a call's own workspace, which has no Home),
+and in a call **Who’s in it**. A call's own workspace takes people beyond its invite the same way: an admin (the organizer,
+to begin with) adds them, and they stay, whatever the invite does after. **Rename** (admins) and **New workspace** turn the
+name into a field: type, then **Enter**. A workspace always keeps an admin.
 
 **When things go wrong.** At the top of every document one quiet word says how it stands: **Saved**, **Saving…**,
 **Reconnecting** or **Couldn’t save**.
@@ -2484,7 +2500,9 @@ and the sheet offers **Back to the board** in its middle, which shows everything
 **Under its name.** Pressing the board's name offers **Rename**, where the name becomes a field in its place (**Enter**
 keeps it, **Esc** puts it back); **Saved in** the workspace, which shows it in the list; **Who can add to it**, the
 workspace's share sheet, where the board can be shared beyond the workspace or closed to **Only people added here**; and
-**Copy link**. Its tip says which of these are yours to do. Pressing the seal says how the board stands, in the seal's own
+**Copy link**. Its tip says which of these are yours to do. **Share**, on the head over the board as over a document (the
+bar full screen, the head beside the Drive's tree), opens the same sheet, for whoever can say who has the board; on a phone
+it's under the name. Pressing the seal says how the board stands, in the seal's own
 word: sealed, where it's saved and how it's encrypted in storage; or **Reconnecting**, **Couldn’t save** or **View only**,
 with what that means, under the pill and never over it. Escape, or **Copy link**, gives the keys back to the board.
 

@@ -1,9 +1,9 @@
 /*
- * A call's own workspace on the sheet, beside the tree: the call's name, who's in it, when, and Open full screen; then the
- * call itself, as three cards (its Notes, its Follow-ups and its Transcript, each a picture of what it says), for whoever
- * has its notes; then its files, wherever they are in it, ending in the dashed ways to make another, at its top; and in a
- * series, the calls before this one. Before the call there are no notes yet: what's been made for it, and the ways to add
- * an agenda.
+ * A call's own workspace on the sheet, beside the tree: the call's name, who's in it, when, Share (who's in it: the call's
+ * organizer and everyone invited, and whoever its admins add) and Open full screen; then the call itself, as three cards (its
+ * Notes, its Follow-ups and its Transcript, each a picture of what it says), for whoever has its notes; then its files,
+ * wherever they are in it, ending in the dashed ways to make another, at its top; and in a series, the calls before this one.
+ * Before the call there are no notes yet: what's been made for it, and the ways to add an agenda.
  */
 import { errorCode, type Note, type WorkspaceItem, type WorkspaceSummary } from '@alcove/api';
 import { Button, Dots, EmptyState, Faces, FileCard, Icon, cn, type IconName } from '@alcove/ui';
@@ -17,6 +17,7 @@ import { callLength, noteAt } from '~/lib/time';
 import { plural } from '~/lib/words';
 import { canEdit, type DriveActions } from './actions';
 import { MakeTiles } from './New';
+import { SpaceShare } from './Share';
 import { CallKept } from './Space';
 import { FileList, Section, SheetHead } from './Sheet';
 import { callTitle, fileOf, isAhead, type DriveFile } from './places';
@@ -81,6 +82,7 @@ export function CallSheet({ w, actions }: { w: WorkspaceSummary; actions: DriveA
   const title = callTitle(w);
   const when = w.call ? noteAt(w.call.at) : null;
   const full = <Button variant="secondary" size="sm" className="dv-full" onClick={() => actions.openFull(w.id)}><Icon name="grow" size={16} />Open full screen</Button>;
+  const top = <><SpaceShare w={w} name={w.name ?? title} />{full}</>;
   const meta = <p>{people.length > 0 && <Faces people={people.map((p) => p.person)} size={22} max={5} />}<span>{['This call’s own workspace', when].filter(Boolean).join(' · ')}</span></p>;
 
   if (tree.isError) {
@@ -95,7 +97,7 @@ export function CallSheet({ w, actions }: { w: WorkspaceSummary; actions: DriveA
       </>
     );
   }
-  if (!tree.data) return <><SheetHead title={title} meta={meta} actions={full} /><p className="dv-loading"><Dots /></p></>;
+  if (!tree.data) return <><SheetHead title={title} meta={meta} actions={top} /><p className="dv-loading"><Dots /></p></>;
 
   const files = items.filter((i) => i.kind !== 'folder' && i.trashedAt === null).sort((a, b) => b.editedAt.localeCompare(a.editedAt))
     .flatMap((i): DriveFile[] => { const f = fileOf(w.id, i); return f ? [f] : []; });
@@ -103,7 +105,7 @@ export function CallSheet({ w, actions }: { w: WorkspaceSummary; actions: DriveA
   const tiles = canEdit(w.role) && <MakeTiles target={target} actions={actions} />;
   return (
     <>
-      <SheetHead title={title} meta={meta} actions={full} />
+      <SheetHead title={title} meta={meta} actions={top} />
       {!ahead && note.data && <Section label="This call"><ThisCall note={note.data} me={me} /></Section>}
       {!ahead && noteId && note.isPending && <Section label="This call"><p className="dv-loading"><Dots /></p></Section>}
       {/* Everything in it, made in the call or not: what's made here goes at its top. Before the call, all of it is for the call. */}

@@ -296,9 +296,9 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `WsReadOnlyBar`, `WsVersionBar`, `WsVersionFailed`, `WsScroll`, `WsPage`, `WsDocBy`, `WsTemplates`, `WsTail`, `WsTrash`,
   `WsEmpty`, `WsPickDocument`, `WsCantOpen`, `WsUnavailable`, `WsOfflineEmpty`, `WsNoAccess`, `WsLostSpace`), with
   `WsHistory` beside it. `WsPane`'s `beside` is one document beside the Drive's tree. A workspace full screen is `WsFrame`
-  (in `workspace/frame.tsx`): `WsSide` (its side panel, with `WsMark` and `WsSpaceField`), `WsBar` (its top bar,
-  with `hereLine`), and its Home's `WsHomeBand`, `WsAbout`, `WsPeopleLine` and `WsHomeSection`, with `WsDocMeta` over a
-  document.
+  (in `workspace/frame.tsx`): `WsSide` (its side panel, with `WsMark` and `WsSpaceField`; who can open it, at its foot,
+  ends in Share and opens who's in it, its `share`), `WsBar` (its top bar, with `hereLine`), and its Home's `WsHomeBand`,
+  `WsAbout`, `WsPeopleLine` and `WsHomeSection`, with `WsDocMeta` over a document.
   Anything that opens sits on `WsPopover` (a sheet on a phone by itself, and it hands focus back): `WsMenu` and its
   `WsNewMenu`, `WsRowMenu`, `WsDocMenu`, `WsMovePicker`, `WsSpacePicker`, `WsAskMenu`, `WsAskAnswer`; `WsPersonCard`, `WsMentionPrompt`,
   `WsCommentCompose`, `WsCommentThread`, `WsShareSheet`, `WsSwitchSheet`, `WsNameSheet`, `WsDeleteAsk`, `WsDiscardAsk`, `WsUploadPicker`. The call's

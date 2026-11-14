@@ -266,15 +266,19 @@ export function useRestoreVersion(workspaceId: string, documentId: string, pass?
     }
   });
 }
-/** Who's in a workspace: adding someone, changing what they can do, and taking them out, or yourself. */
+/**
+ * Who's in a workspace: adding someone, changing what they can do, and taking them out, or yourself. Your workspaces say how
+ * many are in each, so they're read again too; and leaving takes the workspace and what's in it out of the Drive at once.
+ */
 export function useWorkspacePeople(workspaceId: string) {
   const qc = useQueryClient();
-  const reread = () => qc.invalidateQueries({ queryKey: workspaceKeys.workspacePeople(workspaceId) });
+  const reread = () => Promise.all([qc.invalidateQueries({ queryKey: workspaceKeys.workspacePeople(workspaceId) }), qc.invalidateQueries({ queryKey: workspaceKeys.workspaces, exact: true })]);
+  const gone = () => Promise.all([reread(), ...[workspaceKeys.workspaceTree(workspaceId), workspaceKeys.documents].map((queryKey) => qc.invalidateQueries({ queryKey }))]);
   const w = api.workspaces;
   return {
     add: useMutation({ mutationFn: (v: { email: string; role: WorkspaceRole }) => w.addPerson(workspaceId, v.email, v.role), onSuccess: reread }),
     setRole: useMutation({ mutationFn: (v: { id: string; role: WorkspaceRole }) => w.setRole(workspaceId, v.id, v.role), onSuccess: reread }),
-    remove: useMutation({ mutationFn: (id: string) => w.removePerson(workspaceId, id), onSuccess: reread })
+    remove: useMutation({ mutationFn: (id: string) => w.removePerson(workspaceId, id), onSuccess: gone })
   };
 }
 

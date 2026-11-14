@@ -330,10 +330,14 @@ its own page.
   - **Recent**: everything you can open, the most recently edited first, by day (Today, Yesterday, Earlier this week, Last
     week, Earlier), 24 at a time with Show more. Pictures or a list, a switch at the head's right, remembered in this browser.
   - **Shared with you**: what's in workspaces you're not in.
-  - **A workspace**: who's in it (their faces, "Priya, Kofi, Ines and you"), **Open full screen**; its folders as tiles with
-    how many files each holds; the calls kept in it as rows with when and Open the call; its files. A folder opens in the
-    same place under the way back.
-  - **A call's own workspace**: the call's name, "This call's own workspace", when and who; **This call**: its Notes,
+  - **A workspace**: who's in it (their faces, "Priya, Kofi, Ines and you"), **Share** and **Open full screen**, both
+    secondary; its folders as tiles with how many files each holds; the calls kept in it as rows with when and Open the call;
+    its files. A folder opens in the same place under the way back, its head without Share: a folder isn't shared on its own.
+    Share is the whole workspace's, for anyone in it: who's in it, the people sheet its Home opens (an admin adds people by
+    name or address and sets what each can do; anyone else reads who's in it, is told who to ask, "Only an admin can add
+    people. Ask Priya.", and can leave).
+  - **A call's own workspace**: the call's name, "This call's own workspace", when and who, with the same **Share** (the
+    organizer and everyone invited, and whoever its admins add) and **Open full screen**; **This call**: its Notes,
     Follow-ups and Transcript as cards, each a picture of what it says (the gist with a decision's rose diamond and your
     follow-up's dot; who has what to do; the first lines said), for whoever has its notes; **Files** (For the call, before
     it), everything in it wherever it is, ending in the dashed New document, New board and Upload files, which make one at
@@ -346,9 +350,10 @@ its own page.
   Under it the name with its kind's icon, then where it is and who touched it last ("From Team standup · Kofi, 10:12"): a
   card inside a workspace doesn't say which again. Pressing it opens it beside the tree, in the workspace it lives in, with
   the tree open to it (`DocumentBeside` from `features/workspace/Beside.tsx`: the workspace's own page for it, without its
-  list); ⤢ in its head takes it full screen. Its ⋯ has Open, Open full screen, Copy link, Rename (the name typed in the same
-  menu; a document's title follows) and Move to Trash, with Undo. A document or a board never moves between workspaces from
-  here.
+  list); ⤢ in its head takes it full screen, and Share beside it says who has it, a board's as a document's. Its ⋯ has
+  Open, Open full screen, Share (who has it, in the menu's place: the sheet Share opens on its own page, for someone in its
+  workspace who can edit there), Copy link, Rename (the name typed in the same menu; a document's title follows) and Move to
+  Trash, with Undo. A document or a board never moves between workspaces from here.
 - **New** offers Document, Board, Upload files and Workspace. Where you are says where it goes; on Recent, Shared with you
   or Trash the same menu asks which workspace, the ones you can make things in first, then the latest calls', then New
   workspace, named in place. Files are picked first, then where they go.
@@ -378,10 +383,14 @@ Any workspace opens full screen in Alcove's own evening, not as a stock editor: 
   someone else made in the last ten minutes says New in `sun-text` until you open it, here, beside the Drive or in a call
   (a board on your stage too); what you made never does. What you've opened is kept in this browser for an hour
   (`features/workspace/tree/seen.ts`), so another device can still say New. At the foot, on a hairline: Trash, with a
-  count only when something's in it, and who can open it beside the seal.
+  count only when something's in it, and who can open it beside the seal. For anyone in the workspace that line is a row
+  ending in **Share**, which opens who's in it over the foot (`WsSide`'s `share`, the people sheet Home's Share opens): the
+  way to share the whole workspace from any page of it, and the only one for a call's own workspace, which has no Home.
+  Someone outside it, who has only what's shared with them, has the words alone.
 - **The bar**: ← Drive or ← Calls; the path (the workspace's name goes Home, then its folders, then the page in bold);
-  Saved; who else is here, their faces and "Priya is here" (the words go under 1100px); Share (a secondary button); ⋯;
-  leave full screen; and you. Leaving goes back where it was opened from: the Drive at this workspace, or Calls.
+  Saved; who else is here, their faces and "Priya is here" (the words go under 1100px); Share (a secondary button: on Home
+  the workspace's, on a document or a board that page's); ⋯; leave full screen; and you. Leaving goes back where it was
+  opened from: the Drive at this workspace, or Calls.
 - **Home**: the workspace's name in Newsreader on the evening after sunset (`Horizon`, moment `note`, its clouds and chop
   left out), running up behind the bar, which stays clear until the page scrolls under it, and fading into the page. Then
   the line on what it's for (`WsAbout`: an admin presses it to write it in place, or "Say what this workspace is for"),
@@ -926,7 +935,9 @@ for someone who can only look, or `pagePhone` on a phone), `board/board.css` (`b
 designed as the whiteboards canvas's page and its States board, and on a phone as its phone board.
 
 - The board fills where a document would be, on the ground, under the workspace's head, which says where it is (the
-  workspace and its folders) and holds the list's button. Its tools are the call's dock turned on its side, made day.
+  workspace and its folders) and holds the list's button, and, for whoever can say who has the board, Share, as over a
+  document: Who can add to it, the same sheet as under its name. Full screen it's the bar's Share; beside the Drive's tree,
+  the head's. Its tools are the call's dock turned on its side, made day.
 - Its bar is the page's head: the name, with everything about the board itself under it (Rename in its place, Saved in,
   Who can add to it, Copy link); the seal; Undo and Redo; how near you are and the map; More (the downloads and Night
   board); and at the end the faces of whoever else is on it and Start a call here, the one primary button.

@@ -113,9 +113,17 @@ export function peopleIn(id: string): WorkspacePerson[] {
   const team = members.map((person, i): WorkspacePerson => ({ id: `wp-${i}`, person, role: mine !== 'admin' && i === 0 ? 'admin' : 'edit', since, isMe: false }));
   return [{ id: 'wp-me', person: me(), role: mine, since, isMe: true }, ...team];
 }
+/** Someone added by name or address: among its people from then on, as an admin's Share sheet shows at once. */
 export function addPerson(id: string, email: string, _role: WorkspaceRole): { id: string } {
-  treeOf(id);
-  return { id: `wp-${personAt(email).email}` };
+  const space = treeOf(id);
+  const person = personAt(email);
+  const there = peopleIn(id).find((p) => p.person.email.toLowerCase() === person.email.toLowerCase());
+  if (there) return { id: there.id };
+  const members = space.members ?? (current().team?.members ?? []).filter((m) => m.onAlcove).map((m) => m.person);
+  space.members = [...members, person];
+  space.people = (space.people ?? members.length + 1) + 1;
+  for (const live of watching) live.refresh(id);
+  return { id: `wp-${members.length}` };
 }
 
 /**

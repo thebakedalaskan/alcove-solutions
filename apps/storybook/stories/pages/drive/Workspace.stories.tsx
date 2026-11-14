@@ -1,7 +1,8 @@
 /*
- * A workspace, from the Drive: the list beside the page, or one at a time on a phone; sharing, Trash, a workspace you can
- * only read; tags, comments, photos, video and files in a document; its History, grouped by call; and what the page says
- * when Alcove won't take what's written, with the words offered back (user-flows 12).
+ * A workspace, from the Drive: the list beside the page, or one at a time on a phone; sharing a document, and the whole
+ * workspace from who can open it at the foot of its side panel; Trash, a workspace you can only read; tags, comments, photos,
+ * video and files in a document; its History, grouped by call; and what the page says when Alcove won't take what's written,
+ * with the words offered back (user-flows 12).
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
@@ -78,6 +79,20 @@ export const WhatTheCallMade = page(STANDUP_MADE, 'busy', { beforeEach: launch, 
 export const WhatTheCallMadeLight = page(STANDUP_MADE, 'busy', { beforeEach: launch, globals: DESKTOP });
 /** What the call made, opened full screen from the Drive: the way back says Drive. */
 export const ACallsPage = page(STANDUP_CHECKLIST, 'busy', { beforeEach: launch, globals: DESKTOP });
+/** Presses who can open it, at the foot of the side panel: it opens who's in the workspace, to share it whole. */
+const whoCanOpen = (space: string): NonNullable<PageStory['play']> => async ({ canvas, userEvent }) => {
+  await userEvent.click(await canvas.findByRole('button', { name: new RegExp(`^Share ${space}`) }, { timeout: 8000 }));
+};
+/**
+ * A call's own workspace has no Home, so who can open it, at the foot of its side panel, is where it's shared whole: the
+ * organizer and everyone invited, and anyone its admin adds by name or address.
+ */
+export const WhoCanOpenIt = page(STANDUP_MADE, 'busy', { beforeEach: launch, globals: DESKTOP, play: whoCanOpen('Team standup') });
+export const WhoCanOpenItNight = page(STANDUP_MADE, 'busy', { beforeEach: launch, globals: { ...DESKTOP, theme: 'dark' }, play: whoCanOpen('Team standup') });
+/** On a phone it's at the foot of the workspace's pages, and opens as a sheet. */
+export const WhoCanOpenItPhone = page(STANDUP_MADE, 'busy', { beforeEach: launch, globals: { ...PHONE, theme: 'dark' }, play: whoCanOpen('Team standup') });
+/** Launch's, from any page of it: the same people as Share on its Home. */
+export const WhoCanOpenItFromAPage = page(LAUNCH_PLAN_PAGE, 'busy', { beforeEach: launch, globals: WIDE, play: whoCanOpen('Launch') });
 /**
  * An agenda Art just made in Hiring sync's workspace, before its call tomorrow: its pages are For the call, and Ines is reading
  * it. It's Art's, so it never says New.
@@ -154,6 +169,8 @@ export const TeamWorkspacePeopleNotAdmin = page(at('ws-launch'), 'team-member', 
 
 /** Product, which Art runs: the launch plan open beside the list. */
 export const ADocument = page(PLAN, 'busy');
+/** The handbook, which Art can only read: who's in it, from the foot of its side panel, and who to ask to add someone. */
+export const WhoCanOpenItReadOnly = page(at('ws-handbook', 'Holidays'), 'busy', { play: whoCanOpen('Company handbook') });
 const renameWorkspace: NonNullable<PageStory['play']> = async ({ canvas, userEvent, step }) => {
   await step('12. Rename the workspace; its requested name shows while saving', async () => {
     await userEvent.click(await canvas.findByRole('button', { name: 'Product' }));

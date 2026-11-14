@@ -2,12 +2,14 @@
  * The Drive (docs/design/pages.md › The Drive, user-flows 12): the tree of places beside a sheet of large previews, in the
  * canvas's world (src/world/drive.ts): Recent by day, Shared with you, a workspace with its folders, calls and files, a
  * call's own workspace with the call and what it made, one Trash, what a search finds, and the first day. On a phone the
- * tree becomes chips.
+ * tree becomes chips. Share: a whole workspace's, at the head of its sheet; a file's, in its card's ⋯ and on its head beside
+ * the tree.
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../../src/page';
 import { driveId, withNothingYet, withTheDrive } from '../../../src/world/drive';
+import { pause } from '../../journeys/play';
 
 const meta = { title: 'Pages/Drive/Drive', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -24,6 +26,17 @@ type Play = NonNullable<PageStory['play']>;
 /** Opens a card's ⋯. */
 const cardMenu = (name: string): Play => async ({ userEvent }) => {
   await userEvent.click(await screen.findByRole('button', { name: `More for ${name}` }, LATER));
+};
+/** Opens a card's ⋯, then Share, once the menu has been still a moment (a menu takes no press before). */
+const cardShare = (name: string): Play => async (ctx) => {
+  await cardMenu(name)(ctx);
+  const row = await screen.findByRole('menuitem', { name: 'Share' }, LATER);
+  await pause(500);
+  await ctx.userEvent.click(row);
+};
+/** Presses Share: at the head of a workspace's sheet, or on the head of what's open beside the tree. */
+const share: Play = async ({ userEvent }) => {
+  await userEvent.click(await screen.findByRole('button', { name: 'Share' }, LATER));
 };
 
 /** Recent: everything you can open, by the day it was last edited, as large previews. */
@@ -78,6 +91,24 @@ export const ACallsWorkspaceFoldedNight = page('/drive?ws=dv-standup', 'busy', {
 /** A document open beside the tree, in the workspace it lives in, with ⤢ to give it the whole screen. */
 export const ADocumentBesideTheTree = page(`/drive?ws=dv-standup&doc=${driveId('Launch checklist')}`, 'busy', DRIVE);
 export const ADocumentBesideTheTreeNight = page(`/drive?ws=dv-standup&doc=${driveId('Launch checklist')}`, 'busy', { ...DRIVE, globals: NIGHT });
+/** A board open beside the tree: its head has Share, as a document's does, which opens who can add to it. */
+export const ABoardBesideTheTree = page(`/drive?ws=dv-standup&doc=${driveId('Standup board')}`, 'busy', DRIVE);
+export const ABoardBesideTheTreeShare = page(`/drive?ws=dv-standup&doc=${driveId('Standup board')}`, 'busy', { ...DRIVE, globals: NIGHT, play: share });
+
+/* ---------- sharing ---------- */
+
+/** Share, beside Open full screen at the head of a workspace's sheet: who's in it, and for its admin, adding people. */
+export const AWorkspacesShare = page('/drive?ws=dv-launch', 'busy', { ...DRIVE, play: share });
+export const AWorkspacesShareNight = page('/drive?ws=dv-launch', 'busy', { ...DRIVE, globals: NIGHT, play: share });
+export const AWorkspacesSharePhone = page('/drive?ws=dv-launch', 'busy', { ...DRIVE, globals: PHONE, play: share });
+/** A call's own workspace: its organizer and everyone invited, and whoever its admins add, beyond the invite too. */
+export const ACallsWorkspaceShare = page('/drive?ws=dv-standup', 'busy', { ...DRIVE, play: share });
+export const ACallsWorkspaceSharePhone = page('/drive?ws=dv-standup', 'busy', { ...DRIVE, globals: { ...PHONE, ...NIGHT }, play: share });
+/** In a workspace Art can only read: who's in it, and who to ask to add someone, as only an admin can. */
+export const ReadOnlyShare = page('/drive?ws=dv-handbook', 'busy', { ...DRIVE, play: share });
+/** Share, in a card's ⋯: who has it, in the menu's place, the same sheet as Share on its own page. */
+export const ACardsShare = page('/drive', 'busy', { ...DRIVE, play: cardShare('Standup board') });
+export const ACardsShareNight = page('/drive', 'busy', { ...DRIVE, globals: NIGHT, play: cardShare('Launch checklist') });
 /** Before a call: what's been made for it, and the ways to add to it. */
 export const ACallAhead = page('/drive?ws=dv-checkin', 'busy', DRIVE);
 
