@@ -3,7 +3,6 @@
  * TABS (and, for a count, a line in useCounts). `tour` is the hook the tour of Home finds a place by
  * (features/onboarding/Tour.tsx).
  */
-import type { MyTeam, Team } from '@alcove/api';
 import type { IconName } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { FOR_YOU } from '~/features/home/landing';
@@ -59,7 +58,10 @@ const forYouSays = ({ ask, todo }: { ask: number; todo: number }): string =>
 export const inWorkspace = (path: string): boolean => path.startsWith('/drive/');
 
 export interface NavPlace { to: Place; icon: IconName; label: string; count?: Counter | undefined; tour?: string | undefined }
-/** The side panel's places under Start a call: your own work, then Team, where your groups are. */
+/**
+ * The side panel's places under Start a call: your own work, then Team, where your groups are. Everyone has Team: your
+ * company's or your team's page, the invitations to you, or, on your own, starting a team.
+ */
 export const NAV: readonly NavPlace[] = [
   { to: '/home', icon: 'home', label: 'Home', count: 'home' },
   { to: '/calls', icon: 'calls', label: 'Calls', tour: 'calls' },
@@ -71,23 +73,6 @@ export const NAV: readonly NavPlace[] = [
 export const NAV_FOOT: readonly NavPlace[] = [
   { to: '/agents', icon: 'agent', label: 'Agents', tour: 'agents' }
 ];
-
-/** What decides whether there's a Team page: a company around you, a team you're on, or an invitation to one. */
-export interface PlacesKnown { company: Team | null | undefined; mine: MyTeam | null | undefined; invited: number | undefined }
-/** What the places depend on, as it's known now. Invitations that couldn't be read count as none. */
-export function usePlacesKnown(): PlacesKnown {
-  const company = useQuery(teamQueries.team()).data;
-  const mine = useQuery(teamQueries.myTeam()).data;
-  const invitations = useQuery(teamQueries.invitations());
-  return { company, mine, invited: invitations.isError ? 0 : invitations.data?.length };
-}
-/**
- * The places someone has: on your own, with no company around you, no team and no invitation to one, there's no Team page.
- * A team of your own, or an invitation, makes one even without a company. Until all three are known they're all there, so
- * nothing appears late.
- */
-export const places = <P extends { to: Place }>(all: readonly P[], { company, mine, invited }: PlacesKnown): readonly P[] =>
-  (company === null && mine === null && invited === 0 ? all.filter((p) => p.to !== '/team') : all);
 
 export interface Tab { to: Place; icon: IconName; label: string; raised?: boolean | undefined; tour?: string | undefined }
 /**

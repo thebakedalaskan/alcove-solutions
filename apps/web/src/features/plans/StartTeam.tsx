@@ -6,7 +6,7 @@
  * (`?checkout=team`). Checkout opened on Team with no team starts one the same way, in its window (`useStartTeam`, in
  * CheckoutHost.tsx). Nothing is bought here.
  */
-import { errorCode, errorMessage, firstName } from '@alcove/api';
+import { errorCode, errorMessage } from '@alcove/api';
 import { Button, PlanTeamStart, Popover } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { accountQueries } from '~/features/account/queries';
 import { teamQueries, useCreateTeam } from '~/features/team/queries';
 import { log } from '~/lib/log';
+import { ownTeamName } from '~/lib/people';
 
 const slog = log.child({ component: 'plans' });
 
@@ -39,7 +40,7 @@ export function useStartTeam(): StartingTeam {
   const create = useCreateTeam();
   const [typed, setTyped] = useState<string | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
-  const name = typed ?? company?.name ?? (me ? `${firstName(me.name)}’s team` : '');
+  const name = typed ?? company?.name ?? (me ? ownTeamName(me) : '');
   return {
     name, blank: name.trim() === '', busy: create.isPending, refused,
     rename: (v) => { setTyped(v); setRefused(null); },

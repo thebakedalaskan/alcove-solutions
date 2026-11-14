@@ -69,8 +69,8 @@ Beside every page, dark in both themes, in two groups: the places at the top, an
 
 - **Start a call** (or **N**) opens flow 4.
 - **Home**, **Calls** (flow 8), **Drive**, every workspace, where you write together (flow 12), **Record**, where
-  recording in the room starts (flow 9), and **Team** (flow 10), where your groups are. Someone on their own, at a
-  personal address, with no team and no invitation to one, has no Team page. A count beside a place says something is
+  recording in the room starts (flow 9), and **Team** (flow 10), where your groups are. Everyone has Team, someone on
+  their own at a personal address too, who starts a team there. A count beside a place says something is
   waiting on you there: on Home, what's for you; in the Drive, tags you haven't seen; on Record, recordings on this device
   waiting to upload; on Team, invitations to a team you haven't put aside. Nothing counts a
   total, such as every call or everyone on Team. Home's count is a link of its own: pointing at it says what's waiting in
@@ -111,8 +111,8 @@ its own search, so there's none at the top right, and the shortcut goes to the l
 the shortcut is **Find** (flow 12), and **Search or ask** stays at the top right without it.
 
 On a phone (860 px wide or narrower) a top bar takes its place, with the brand, search (not on Notes), **Start a call** (a plus) and
-you (your menu), and a tab bar runs along the bottom: **Home**, **Calls**, **Record** (raised), **Drive** and **Team**
-when there's a Team page (a company, a team, or an invitation to one). Agents isn't in it: on a phone it opens from **Settings → Connections** (flow 11). Offline, the same
+you (your menu), and a tab bar runs along the bottom: **Home**, **Calls**, **Record** (raised), **Drive** and **Team**.
+Agents isn't in it: on a phone it opens from **Settings → Connections** (flow 11). Offline, the same
 notice sits under the top bar.
 
 **Your menu** opens under you, at the top right of every page but Settings (where you stand on the horizon instead), and
@@ -1946,12 +1946,12 @@ a piece that reaches Alcove late, or twice, still lands where it was recorded, o
 **Team** is your company and your team. Your company stands on the horizon: the company directory where there is one
 (the demo directory today), otherwise the people at your work email domain you have calls or calendar meetings with. A
 team is free to start, and anyone at any address can be on it: one admin (whoever started it) and members, with you on
-one team at most. Team is in the side panel, and a phone's tab bar, while you have a company page, a team or an
-invitation to one, and its count is the invitations to you that you haven't put aside. A personal address (gmail.com,
-outlook.com, icloud.com and the like) has no company, so someone there with no team and no invitation has no Team page:
-nothing links to it, and its address goes Home. On a team, the page is the team's (A team's page, below); at a company
-with no team it's the company's, and the first invitation from it starts your team. What licenses add to a team is in
-flow 16 (16.15–16.21).
+one team at most. Team is in the side panel, and a phone's tab bar, for everyone, and its count is the invitations to you
+that you haven't put aside. On a team, the page is the team's (A team's page, below); at a company with no team it's the
+company's, and the first invitation from it starts your team. A personal address (gmail.com, outlook.com, icloud.com and
+the like) has no company, so there, with no team, the page is the invitations to you while one waits (Invitations to you,
+below), and otherwise starts a team of your own (On your own, below). What licenses add to a team is in flow 16
+(16.15–16.21).
 
 - **The line**: the company's name in the middle of the sky, and everyone on the horizon in their arch. You stand in
   the middle, whoever you met most recently beside you, one to each side, and people not on Alcove yet at the ends,
@@ -2037,6 +2037,27 @@ arrives. If it doesn't load, the page says why (or that you're offline, and it c
 Your groups and notes load beside it: if your groups don't, their section says so, with **Try again**, and the rest of
 the page works.
 
+### On your own
+
+At a personal address, with no team and no invitation waiting, Team starts one (`features/team/OnYourOwn.tsx`), on the
+same evening as a company's first day: **Start your team**, "Invite people by email, or name your team first. It's free:
+licenses only when you want to share notes and workspaces.", with **Invite people** (filled) and **Name your team**, and
+you on the horizon beside empty arches, the sun in one of them.
+
+- **Invite people** is the same popover as a company page's, named for the team it starts, "Invite people to Art's team"
+  (your first name's, as Alcove names a team it makes at a personal address), with its one quiet line, "Alcove emails
+  them. This starts Art's team, a free team, with you as its admin." Nobody's there to tick, so its field takes whole
+  addresses, and there's no **Copy link** or **New link** until there's a team. **Invite 1** starts the team, free, with
+  you its admin, the page becomes the team's (the focus on its name), and the toast says so: "Started Art's team and
+  invited Priya."
+- **Name your team** opens the team's name in a popover over the button, as Rename does: "Art's team" to start with, "It's
+  free", then **Cancel** and **Start the team**, which makes it by that name, free, with you its admin, and the page becomes
+  the team's. A name it won't take is said in place.
+- Under the water, your groups, what's shared with them, and the invitations you put aside, each with **Join**.
+
+While the invitations to you are on their way, or didn't load, the page waits for them, or says why with **Try again**,
+rather than offer to start a team past one that may be waiting.
+
 ### A team's page
 
 On a team, Team is the team's page (`features/team/OnTeam.tsx`), the same whether it's free or on Team; 16.17 says what
@@ -2100,7 +2121,9 @@ once in this browser, "Priya invited you to join Vandelay Industries", with **Vi
 more said as those go. With no team, each is a card there, newest first: the team's faces (who invited you first; the
 others' portraits drawn for them, never their addresses), "Priya invited you to join Vandelay Industries", "Kofi, Aiko and
 2 others are on it.", **Not now** and **Join Vandelay Industries** (filled).
-With a company page the cards stand at the top of its water; without one they're the page, on the Team evening. On a
+With a company page the cards stand at the top of its water; without one they're the page, on the Team evening, until
+none waits: putting the last aside leaves the page to start a team of your own (On your own, above), with them under **Put
+aside**. On a
 team, an invitation to another team is a notice at the top of the team's water: "Jonas invited you to join Weber
 Design.", with **Join Weber Design** and **Not now**.
 
@@ -2181,7 +2204,7 @@ Storybook's journeys use these numbers: **10.1 Ring someone**, **10.2 Schedule a
 email**, **10.26 Not now**, **10.27 Resend and cancel an invitation**, **10.28 Upgrade from Free**,
 **10.29 Join while on a team**, **10.30 Ask the admin to upgrade**, **10.31 Rename the team**, **10.32 Invited, at your
 company**, **10.33 An invitation to the team you're on**, **10.34 Not now, from its link**, **10.35 Asked to upgrade, as
-its admin** and **10.36 Remove someone**.
+its admin**, **10.36 Remove someone** and **10.37 On your own, invite a friend by email**.
 
 ## 11. Settings
 
@@ -3064,8 +3087,8 @@ Nothing is bought: licenses are for a team that exists. Checkout opened on Team 
 there) starts one the same way, in its window: "Licenses are for a team, and you're not on one yet.", the team's name, and
 **Start the team**, which closes it and opens the team's page. The plan choice a new account sees is the same card (16.20),
 and the welcome page's **Start a team** signs in first, then opens Plans with the popover open (16.13). A team also starts
-by itself, named the same way, at your first invitation from a company's Team page, or when someone joins from your invite
-link (flow 10).
+by itself, named the same way, at your first invitation from the Team page, a company's or your own (where **Name your
+team** starts it as this does), or when someone joins from your invite link (flow 10).
 
 ### 16.16 Upgrade a team
 

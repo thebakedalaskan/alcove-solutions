@@ -3,9 +3,9 @@
  * Drive, Record and Team, and what you've pinned under them. At the foot, Agents, then a call that's about to start, with
  * Join, the confidential-compute check and your plan: one row, with a short line above it only while there's something to
  * say. A count means something waits on you; Home's is a link of its own, which says what's waiting when pointed at and
- * lands on For you (features/home/landing.ts); Team's, the invitations to you not put aside. Someone on their own, with no
- * company, no team and no invitation, has no Team page. It can be hidden. At 860px and narrower the phone's top bar and tab bar (TabBar.tsx) take its place, and the plan
- * is said in Settings.
+ * lands on For you (features/home/landing.ts); Team's, the invitations to you not put aside. Everyone has Team, someone on
+ * their own too, who starts a team there. It can be hidden. At 860px and narrower the phone's top bar and tab bar
+ * (TabBar.tsx) take its place, and the plan is said in Settings.
  */
 import type { MyTeam, Plan, PlanNotice, WorkspaceSummary } from '@alcove/api';
 import { ArchThumb, Dots, Icon, IconButton, Kbd, Logo, Meter, NavCount, NavItemContent, SidebarNav, SunMark, buttonClass, cn, coverFor } from '@alcove/ui';
@@ -33,7 +33,7 @@ import { workspaceQueries } from '~/features/workspace/queries';
 import { trustQuery, trustLine, unverifiedBecause, verifiedAt } from '~/lib/trust';
 import { dayMonth, hm, shortDate } from '~/lib/time';
 import { plural, usdCents } from '~/lib/words';
-import { NAV, NAV_FOOT, inWorkspace, places, useCounts, usePlacesKnown, type NavPlace } from './places';
+import { NAV, NAV_FOOT, inWorkspace, useCounts, type NavPlace } from './places';
 
 const KEY = 'alcove-side-panel';
 const slog = log.child({ component: 'shell' });
@@ -91,7 +91,6 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
 }) {
   const online = useOnline();
   const counts = useCounts();
-  const known = usePlacesKnown();
   const path = useRouterState({ select: (s) => s.location.pathname });
   /*
    * A place, with its count at its end; a count that leads somewhere of its own (Home's, to For you) is a link of its own,
@@ -119,7 +118,7 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
         <button type="button" className={cn(buttonClass(), 'sb-new')} onClick={onNew} aria-label="Start a call" aria-haspopup="dialog" aria-keyshortcuts={inWorkspace(path) ? undefined : 'N'}>
           <span className="sb-new-ic"><Icon name="video" size={16} /></span><span>Start a call</span>{!inWorkspace(path) && <Kbd>N</Kbd>}
         </button>
-        <SidebarNav>{places(NAV, known).map(link)}</SidebarNav>
+        <SidebarNav>{NAV.map(link)}</SidebarNav>
         <div className="sb-mid">
           <Pinned onPin={onPin} />
         </div>

@@ -6,13 +6,14 @@
  * Invite people says to join it first, with its Join, and an Invite on a row goes to its card. Someone invited already shows
  * Invited, and picking them sends theirs again when it's yours to send and Alcove would send it now; otherwise it says why.
  * Copy link copies the team's invite link (yours while you're on no team), and beside it the admin, or someone on no team,
- * can make a new one in its place, asked first.
+ * can make a new one in its place, asked first. Someone on their own, with no company page and no team, invites by address
+ * alone: nobody to tick, and no link to copy until inviting has started the team (named for them, "Art’s team").
  */
-import { errorCode, errorMessage, firstName, type InvitationForYou, type MyTeam, type Person, type Team, type TeamInvitation } from '@alcove/api';
+import { errorCode, errorMessage, type InvitationForYou, type MyTeam, type Person, type Team, type TeamInvitation } from '@alcove/api';
 import { Avatar, Button, GhostArch, JoinFirst, PickList, Popover, TeamAsk, useToast, type ButtonVariant, type PickRow } from '@alcove/ui';
 import { createContext, useContext, useEffect, useId, useState, type ReactNode } from 'react';
 import { log } from '~/lib/log';
-import { byEmail, callName, fold, isEmail, sameEmail, typedIn } from '~/lib/people';
+import { byEmail, callName, fold, isEmail, ownTeamName, sameEmail, typedIn } from '~/lib/people';
 import { useInviteLink, useNewInviteLink } from './queries';
 import { addressOnly, byMeetings, callLine, listed, type Meets, type Member } from './data';
 import { invitationOf, resendable, useSendInvitations } from './invitations/send';
@@ -25,9 +26,9 @@ const NOBODY: readonly Person[] = [];
 /** Said on what waits for the invite link, in the moment before it's here. */
 export const LINK_ON_ITS_WAY = 'Getting your invite link';
 
-/** The team's name, or the name inviting will give it: the company's, or, at a personal address, yours. */
+/** The team's name, or the name inviting will give it: the company's, or, at a personal address, yours ("Art’s team"). */
 export const teamNameFor = (mine: MyTeam | null | undefined, company: Team | null | undefined, me: Person): string =>
-  mine?.name ?? company?.name ?? `${firstName(me.name)}’s team`;
+  mine?.name ?? company?.name ?? ownTeamName(me);
 
 /** What inviting does on the Team page, as the page knows it (TeamPage.tsx). */
 export interface Inviting {
@@ -205,7 +206,11 @@ function InviteList({ ctx, seed, onSeeded, asking, onAsking, onClose }: {
         )} />
     );
   }
-  /* Only the team's admin makes a new link for it; on no team, it's yours. */
+  /*
+   * A link to copy, with a company page or a team: someone on their own has none until there's a team (useInviteLink). Only
+   * the team's admin makes a new link for it; on no team, it's yours.
+   */
+  const linked = !!mine || company !== undefined;
   const renew = !mine || mine.role === 'admin';
   const note = mine ? undefined : `Alcove emails them. This starts ${name}, a free team, with you as its admin.`;
   return (
@@ -216,11 +221,13 @@ function InviteList({ ctx, seed, onSeeded, asking, onAsking, onClose }: {
       onFinish={finish}
       foot={(
         <>
-          <span className="tp-pop-fl">
-            <Button variant="quiet" size="sm" icon="link" disabled={!link} title={link ? undefined : LINK_ON_ITS_WAY}
-              onClick={() => { if (!link) return; onClose(); void copy(link, { team: mine?.name }); }}>Copy link</Button>
-            {renew && <Button variant="quiet" size="sm" disabled={!link} onClick={() => onAsking(true)}>New link</Button>}
-          </span>
+          {linked && (
+            <span className="tp-pop-fl">
+              <Button variant="quiet" size="sm" icon="link" disabled={!link} title={link ? undefined : LINK_ON_ITS_WAY}
+                onClick={() => { if (!link) return; onClose(); void copy(link, { team: mine?.name }); }}>Copy link</Button>
+              {renew && <Button variant="quiet" size="sm" disabled={!link} onClick={() => onAsking(true)}>New link</Button>}
+            </span>
+          )}
           <Button variant={going.length ? 'primary' : 'secondary'} size="sm" icon="send" disabled={!going.length} loading={busy} onClick={finish}
             aria-describedby={note ? noteId : undefined}>
             {!going.length ? 'Invite' : onlyAgain ? `Resend ${going.length}` : `Invite ${going.length}`}

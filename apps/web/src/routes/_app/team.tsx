@@ -1,7 +1,7 @@
 /*
- * Team (features/team/TeamPage.tsx): your team's page while you're on one; otherwise your company standing on the horizon,
- * with the invitations to you at the top of its water; otherwise the invitations to you. Someone on their own with none of
- * those has no Team page: nothing links here, and its address goes Home.
+ * Team (features/team/TeamPage.tsx), for everyone: your team's page while you're on one; otherwise your company standing on
+ * the horizon, with the invitations to you at the top of its water; otherwise the invitations to you; and, on your own with
+ * none waiting, starting a team of your own, by inviting people or naming it first.
  */
 import { GroupParamSchema } from '@alcove/api';
 import { createFileRoute } from '@tanstack/react-router';
