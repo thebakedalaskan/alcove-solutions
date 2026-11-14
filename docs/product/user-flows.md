@@ -1121,8 +1121,11 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    **Rename** for an admin, and **Copy link**; a guest's has **Find in the workspace** and **Who’s in it**. The list's head
    has only **Find** and **+**. At the top of the list is **This call**: the call's own folder in its home, named after the
    call and the day as a new home is, with **Notes**, **Follow-ups** and **Transcript**, then whatever's made in it, and
-   what's been brought to the call. What you make during the call (**N**, **+**, **New document**) goes in This call. A
-   home for several calls has a folder for each, the newest first. Everyone sees the same workspace, late or back from a
+   what's been brought to the call. What you make during the call (**N**, **+**, **New document**) goes in This call. Over
+   the page, its path runs from the workspace through This call and its folders to the document, and pressing a step shows
+   it in the list, the list coming out if it was away: the folder opens, lit, with the keyboard on it, and the page stays as
+   it is. A long path gives up whole steps from its start. A home for several calls has a folder for each, the newest
+   first. Everyone sees the same workspace, late or back from a
    reload. It opens on this call's agenda, or the first thing brought to it, or with neither on what you had open there
    last. Anyone who can open a document can bring it from its row's menu (**Bring to this call**, **Take out of this
    call**), or by dropping its row on This call. Pressing
@@ -2202,10 +2205,11 @@ workspace shows the call's **Notes**, **Follow-ups** and **Transcript** as cards
 **Files** (**For the call** before it), everything in it wherever it is, with **New document**, **New board** and **Upload
 files**, which make one at its top, and in a series the calls before. **Trash** is one list across every workspace: where
 each thing was, who moved it there and when, how many days it has left, and **Restore** for whoever can edit it. Pressing a
-card opens it beside the tree, in its workspace, with the tree open to it; **⤢** takes it full screen, and **Share** beside
-it says who has it, a board as a document. Its **⋯** has **Open**, **Open full screen**, **Share** (who has it, in the
-menu's place, for someone in its workspace who can edit there), **Copy link**, **Rename** (typed in the same menu; a
-document's title follows, for everyone) and **Move to Trash**, with **Undo**. The search at the top (**⌘K**) narrows
+card opens it beside the tree, in its workspace, with the tree open to it; **⤢** takes it full screen, **Share** beside
+it says who has it, a board as a document, and a step of the path over it takes the Drive to the workspace or the folder.
+Its **⋯** has **Open**, **Open full screen**, **Share** (who has it, in the menu's place, for someone in its workspace who
+can edit there), **Copy link**, **Rename** (typed in the same menu; a document's title follows, for everyone) and **Move to
+Trash**, with **Undo**. The search at the top (**⌘K**) narrows
 everything by name as it's typed, the workspaces it names first. **New** makes a document, a board or files where you are;
 on Recent, Shared with you or Trash it asks which workspace in the same menu, with **New workspace** last, named in place.
 On a phone the tree becomes chips along the top of the sheet, New sits beside the search, and a document opens full screen.
@@ -2227,8 +2231,11 @@ it, each opening its call. **Trash** is at the foot, with a count only when some
 workspace ("Priya, Kofi, Ines and you can open it"), which ends in **Share** for anyone in it and opens who's in it: the
 whole workspace is shared from there on any page of it, a call's own workspace too, which has no Home. The bar has
 **← Drive**, or **← Calls** when it was opened from a call, the path, how it's saving, who else is here ("Priya is here"),
-**Share** (on Home the workspace's, on a page that page's), **⋯**, **Leave full screen** and you. Leaving goes back where
-it came from: the Drive, at this workspace, or Calls. **Home** is the workspace's name on the evening after
+**Share** (on Home the workspace's, on a page that page's), **⋯**, **Leave full screen** and you. Every step of the path
+before the page goes there: the workspace to its Home, a folder open in the side panel with its row lit, and a call's
+folder, or a call's own workspace (which has no Home), to the call's own page once it has notes, else to the call's row in
+the side panel. A call's own workspace and its call's folder share a name, so the path says it once. Leaving goes back
+where it came from: the Drive, at this workspace, or Calls. **Home** is the workspace's name on the evening after
 sunset; the line on what it's for, which an admin writes in place by pressing it (**Say what this workspace is for** until
 there is one), everyone in it reads, and nobody else is told of; who's in it; **Recently edited**, three large previews;
 and its calls, the next one first, for whoever organizes it. A call's own workspace has no Home: it opens on what the call
@@ -2245,7 +2252,7 @@ Journey **12.5** works on a page: from Launch's Home, **Launch plan** opens with
 it; a to-do ticks, and the callout's count in the margin opens its comments; the path's **Launch** goes back to Home.
 Journey **12.6** is what a call made: this morning's standup, on its page, has **Open its workspace**; the standup's own
 workspace opens on what's in it, with the call first in its list, then its **Pages**, and the standups before it after;
-**Standup board** opens full screen.
+**Standup board** opens full screen, and **Team standup · 4 Nov**, on the path, goes back to the call's page.
 
 **A call's folder.** At the top of a call's home is the call's folder, named after it and the day. In a call it holds its
 **Notes**, **Follow-ups** and **Transcript**: while you're in the call they're its live pages, and once it's over they open

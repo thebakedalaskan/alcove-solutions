@@ -93,6 +93,20 @@ export const WhoCanOpenItNight = page(STANDUP_MADE, 'busy', { beforeEach: launch
 export const WhoCanOpenItPhone = page(STANDUP_MADE, 'busy', { beforeEach: launch, globals: { ...PHONE, theme: 'dark' }, play: whoCanOpen('Team standup') });
 /** Launch's, from any page of it: the same people as Share on its Home. */
 export const WhoCanOpenItFromAPage = page(LAUNCH_PLAN_PAGE, 'busy', { beforeEach: launch, globals: WIDE, play: whoCanOpen('Launch') });
+/** The standup board, kept in the call's own folder, as what's made in a call is. */
+function boardInTheCallsFolder(w: World): void {
+  const home = w.workspaces.find((s) => s.id === 'ws-standup');
+  const folder = home?.items.find((i) => i.kind === 'folder' && i.call?.noteId === 'n2');
+  if (!home || !folder) return;
+  home.items = home.items.map((i) => (i.id === spaceItem('Standup board') ? { ...i, parent: folder.id } : i));
+}
+const STANDUP_BOARD = `/drive/ws-standup/${spaceItem('Standup board')}?from=calls`;
+/**
+ * The standup board in the call's own folder, opened from Calls. The call's workspace and its folder have one name, so the
+ * path says it once, ← Calls › Team standup · 4 Nov › Standup board, and pressing it opens the call's own page.
+ */
+export const ABoardInTheCallsFolder = page(STANDUP_BOARD, 'busy', { beforeEach: changing(withWorkspaces, boardInTheCallsFolder), globals: { ...DESKTOP, theme: 'dark' } });
+export const ABoardInTheCallsFolderLight = page(STANDUP_BOARD, 'busy', { beforeEach: changing(withWorkspaces, boardInTheCallsFolder), globals: DESKTOP });
 /**
  * An agenda Art just made in Hiring sync's workspace, before its call tomorrow: its pages are For the call, and Ines is reading
  * it. It's Art's, so it never says New.

@@ -107,6 +107,11 @@ export interface WorkspaceProps {
   mode: 'page' | 'call' | 'beside';
   /** ⤢ on a document shown `beside`: the same document, full screen. */
   onExpand?: (() => void) | undefined;
+  /**
+   * Shown `beside`: a step of the path over the document was pressed, so the page it's beside shows where that is, the
+   * workspace (null) or one of its folders. The Drive goes there.
+   */
+  onPlace?: ((folder: string | null) => void) | undefined;
   /** As a `page`: where it was opened from, which ← and leaving full screen go back to. */
   frame?: WorkspaceFrame | undefined;
   workspaceId: string;
@@ -204,6 +209,14 @@ export interface Ws {
   /** The folders open in the list. */
   open: ReadonlySet<string>;
   setOpen: (id: string, open: boolean) => void;
+  /**
+   * Shows where something is, as a step of the path over the page asks: the workspace itself (null), or one of its folders,
+   * opened in the list with the folders around it, its row lit and the keyboard on it, while the page stays as it is. In a
+   * call the list comes out for it, and the workspace and This call are its top. Full screen the workspace's name goes to its
+   * Home, and a call's folder, or a call's own workspace (which has no Home), to the call's own page once it has notes, and
+   * otherwise to its row. Beside another page, that page shows it (`WorkspaceProps.onPlace`).
+   */
+  reveal: (folder: string | null) => void;
   /** Rows that glow, 1.4 s: just made, or just moved. */
   glowing: ReadonlySet<string>;
   /** The document a block is being dragged onto, which lights up. */

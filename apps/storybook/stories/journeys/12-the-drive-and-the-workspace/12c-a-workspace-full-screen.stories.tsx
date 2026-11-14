@@ -73,5 +73,11 @@ export const WhatTheCallMade: PageStory = {
         if (!document.querySelector('.wf-path')?.textContent?.includes('Standup board')) throw new Error('The board isn’t open yet.');
       }, SOON);
     });
+    await step('The call’s workspace, on the path, goes back to the call’s page: it has no Home, and the call has notes', async () => {
+      const named = await screen.findAllByRole('button', { name: 'Team standup · 4 Nov' }, SOON);
+      const crumb = named.find((b) => b.closest('.wf-path') !== null);
+      if (crumb) await userEvent.click(crumb);
+      await screen.findByRole('link', { name: /^Open its workspace/ }, LATER);
+    });
   }
 };

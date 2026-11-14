@@ -366,8 +366,9 @@ its own page.
 ## A workspace, full screen
 
 `routes/_app/drive.$workspaceId*.tsx`, `features/workspace/` (`Frame.tsx`, `Side.tsx`, `Bar.tsx`, `Home.tsx`, `Origin.tsx`;
-the editor and the rest of the workspace as in a call), `workspace/frame.tsx`, `workspace/workspace.css` (`wf-`)
-and `workspace/workspace-editor.css`. Moment: `note`, on Home. Board: `Workspace.dc.html` (the Calls and Drive canvas).
+the path in `Head.tsx` and `tree/reveal.ts`; the editor and the rest of the workspace as in a call), `workspace/frame.tsx`,
+`workspace/workspace.css` (`wf-`, and `ws-path` for the path) and `workspace/workspace-editor.css`. Moment: `note`, on Home.
+Board: `Workspace.dc.html` (the Calls and Drive canvas).
 
 Any workspace opens full screen in Alcove's own evening, not as a stock editor: a frame of its own in place of the app's
 (`_app.tsx` gives way, keeping its guards and hosts), its side panel beside the page and one bar over the page. The Drive's
@@ -387,10 +388,18 @@ Any workspace opens full screen in Alcove's own evening, not as a stock editor: 
   ending in **Share**, which opens who's in it over the foot (`WsSide`'s `share`, the people sheet Home's Share opens): the
   way to share the whole workspace from any page of it, and the only one for a call's own workspace, which has no Home.
   Someone outside it, who has only what's shared with them, has the words alone.
-- **The bar**: ← Drive or ← Calls; the path (the workspace's name goes Home, then its folders, then the page in bold);
-  Saved; who else is here, their faces and "Priya is here" (the words go under 1100px); Share (a secondary button: on Home
-  the workspace's, on a document or a board that page's); ⋯; leave full screen; and you. Leaving goes back where it was
-  opened from: the Drive at this workspace, or Calls.
+- **The bar**: ← Drive or ← Calls; the path (below); Saved; who else is here, their faces and "Priya is here"
+  (the words go under 1100px); Share (a secondary button: on Home the workspace's, on a document or a board that page's); ⋯;
+  leave full screen; and you. Leaving goes back where it was opened from: the Drive at this workspace, or Calls.
+- **The path** (`WsPath`), here and in the head over a page in a call or beside the Drive's tree: the workspace, its folders,
+  then the page, in bold here and in `ink` in a head, with chevrons between. Every step before the page can be pressed: the
+  workspace's name goes Home, and a call's own workspace, which has none, goes to the call's own page once it has notes, else
+  to the call's row in the side panel; a folder opens in the side panel, with the folders around it, its row lit and the
+  keyboard on it, the page staying as it is; a call's folder goes to the call's own page once it has notes. In a call a step
+  shows itself in the list, which comes out if it was away (the workspace and This call are its top), and beside the Drive's
+  tree the Drive goes to the workspace or the folder. A call's own workspace and its call's folder have one name, so they're
+  one step, which goes where the folder does. A long path gives up whole steps from its start, never squeezing one to a
+  letter: a folder's name stops at 180px, and the page keeps the line if it needs it.
 - **Home**: the workspace's name in Newsreader on the evening after sunset (`Horizon`, moment `note`, its clouds and chop
   left out), running up behind the bar, which stays clear until the page scrolls under it, and fading into the page. Then
   the line on what it's for (`WsAbout`: an admin presses it to write it in place, or "Say what this workspace is for"),
@@ -408,7 +417,7 @@ Any workspace opens full screen in Alcove's own evening, not as a stock editor: 
   Drive, and a page under ← and the workspace's name, which goes back to them. Share is in ⋯, and there's no leave full
   screen.
 - **Beside the Drive's tree**, a document is `DocumentBeside` (`features/workspace/Beside.tsx`): the same page without the
-  frame, its head with ⤢ to go full screen.
+  frame, its head with ⤢ to go full screen, and its path's steps taking the Drive to the workspace or the folder.
 
 ## Team
 
@@ -935,9 +944,9 @@ for someone who can only look, or `pagePhone` on a phone), `board/board.css` (`b
 designed as the whiteboards canvas's page and its States board, and on a phone as its phone board.
 
 - The board fills where a document would be, on the ground, under the workspace's head, which says where it is (the
-  workspace and its folders) and holds the list's button, and, for whoever can say who has the board, Share, as over a
-  document: Who can add to it, the same sheet as under its name. Full screen it's the bar's Share; beside the Drive's tree,
-  the head's. Its tools are the call's dock turned on its side, made day.
+  workspace and its folders, each of which can be pressed) and holds the list's button, and, for whoever can say who has the
+  board, Share, as over a document: Who can add to it, the same sheet as under its name. Full screen it's the bar's Share;
+  beside the Drive's tree, the head's. Its tools are the call's dock turned on its side, made day.
 - Its bar is the page's head: the name, with everything about the board itself under it (Rename in its place, Saved in,
   Who can add to it, Copy link); the seal; Undo and Redo; how near you are and the map; More (the downloads and Night
   board); and at the end the faces of whoever else is on it and Start a call here, the one primary button.

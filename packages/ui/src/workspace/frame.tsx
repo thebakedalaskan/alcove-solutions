@@ -4,13 +4,13 @@
  * and handlers; the app composes them (apps/web/src/features/workspace/full-screen/Frame.tsx). The rows in the side panel are the list's
  * own (`WsRow`, `WsSection`, `WsTrashRow`), on the panel's dark. Classes `wf-` in workspace.css.
  */
-import { Fragment, useEffect, useRef, type KeyboardEvent, type ReactNode, type Ref } from 'react';
+import { useEffect, useRef, type KeyboardEvent, type ReactNode, type Ref } from 'react';
 import { cn } from '../foundation/cn';
 import { Horizon } from '../evening/horizon';
 import { Icon } from '../foundation/icon';
 import { Avatar, Faces, type AvatarPerson } from '../foundation/people';
 import { Button, IconButton, Kbd } from '../foundation/primitives';
-import { WsSaveState, type WsFace, type WsSave } from './document';
+import { WsPath, WsSaveState, type WsCrumb, type WsFace, type WsSave } from './document';
 import { WsSpaceField, WsTree, type WsNaming, type WsTreeProps } from './list';
 import { WsPopover, type WsPop } from './popover';
 
@@ -110,16 +110,13 @@ export function WsSide({ brand, space, onSearch, searchKeys, reconnecting, foot,
   );
 }
 
-/** A step on the bar's path: the workspace, a folder, the page. One you can press goes there. */
-export interface WsCrumb { label: string; onClick?: (() => void) | undefined }
-
 /** Who else is here, on the bar: their faces, each opening their card, and the words for it ("Priya is here"). */
 export interface WsHere { faces: WsFace[]; line: string }
 
 export interface WsBarProps {
   /** Where the workspace was opened from, which pressing it goes back to: ← Drive or ← Calls. */
   back: { label: string; onClick: () => void };
-  /** The path after it: the workspace, its folders, and the page you're on, last. */
+  /** The path after it (`WsPath`): the workspace, its folders, and the page you're on, last, each step before it going there. */
   crumbs?: readonly WsCrumb[] | undefined;
   /** A phone's way back to the workspace's pages from a page: ← and the workspace's name. Left out on the pages themselves. */
   up?: { label: string; onClick: () => void } | undefined;
@@ -142,20 +139,10 @@ export interface WsBarProps {
 export function WsBar({ back, crumbs = [], up, save, here, share, more, moreLabel = 'More', onExit, me }: WsBarProps) {
   return (
     <header className={cn('wf-bar', up && 'has-up')}>
-      <nav className="wf-path" aria-label="Where you are">
+      <div className="wf-path">
         <button type="button" className="wf-back" onClick={back.onClick} title={`Back to ${back.label}`}><Icon name="left" size={16} /><span>{back.label}</span></button>
-        {crumbs.map((c, i) => {
-          const last = i === crumbs.length - 1;
-          return (
-            <Fragment key={i}>
-              <Icon name="chevron" size={13} className="wf-sep" />
-              {c.onClick && !last
-                ? <button type="button" className="wf-crumb" onClick={c.onClick}><span className="ac-clamp-1">{c.label}</span></button>
-                : <span className={cn('wf-crumb', last && 'is-last')} aria-current={last ? 'page' : undefined}><span className="ac-clamp-1">{c.label}</span></span>}
-            </Fragment>
-          );
-        })}
-      </nav>
+        {crumbs.length > 0 && <><Icon name="chevron" size={13} className="wf-sep" /><WsPath crumbs={crumbs} label="Where you are" className="wf-crumbs" /></>}
+      </div>
       {up && <button type="button" className="wf-up" onClick={up.onClick}><Icon name="left" size={17} /><span className="ac-clamp-1">{up.label}</span></button>}
       <div className="wf-end">
         {save && save !== 'quiet' && <WsSaveState state={save} />}

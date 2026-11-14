@@ -10,7 +10,7 @@ import { useEffect, useState, type ComponentProps } from 'react';
 import { useArgs } from 'storybook/preview-api';
 import { Box, Stack, did } from '../../../src/component';
 import { AIKO } from '../../../src/world/people';
-import { DocOf, ListOf, PageText, TEXT, VERSIONS, first, useToasts, useWorkspace } from './parts';
+import { DocOf, ListOf, PageText, TEXT, VERSIONS, first, pathOf, useToasts, useWorkspace } from './parts';
 
 const meta = {
   title: 'Components/Workspace/Playing and history',
@@ -111,7 +111,7 @@ function History(args: ComponentProps<typeof WsHistory> & { update: (next: Parti
       <Box width="100%" height={560}>
         <WsPane>
           <WsDoc>
-            <WsDocHead crumbs={['Product', 'Launch plan']} save="saved" onToggleList={did('onToggleList')} />
+            <WsDocHead crumbs={pathOf('Product', 'Launch plan')} save="saved" onToggleList={did('onToggleList')} />
             <WsScroll>
               <WsFade id={args.selected}>
                 <WsPage>

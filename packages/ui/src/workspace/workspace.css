@@ -98,12 +98,24 @@
 .wd { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; background: var(--surface); container-type: inline-size; }
 .wd-head { flex: none; display: flex; align-items: center; gap: 6px; height: 52px; padding: 0 10px; }
 .wd-ib { width: 32px; height: 32px; color: var(--ink-3); }
-/* Laid out from the document back: a folder that doesn't fit whole wraps onto a line that's cut off, so nothing is ever squeezed to a letter. */
-.wd-crumbs { flex: 1; min-width: 0; height: 17px; display: flex; flex-flow: row-reverse wrap; justify-content: flex-end; align-content: flex-start; align-items: center; gap: 4px; overflow: hidden; color: var(--ink-3); font: 500 13px/1 var(--font-sans); white-space: nowrap; }
-.wd-crumbs .cw { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
-/* A long path gives up its folders first: where you are stays readable. */
-.wd-crumbs .c { min-width: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
-.wd-crumbs .is-last .c { color: var(--ink); max-width: none; }
+/*
+ * A path (WsPath), laid out from where you are back: a step that doesn't fit whole wraps onto a line that's cut off, so nothing
+ * is ever squeezed to a letter, and a long path gives up its first steps. It's one step tall (`--ws-path-h`); the head or the
+ * bar it's in says how big its steps are. It clips rather than hides, so nothing can scroll the cut-off line into view. Its
+ * classes are its own (`ws-step`): the week's `.cw` once spread a head's steps out.
+ */
+.ws-path { flex: 1; min-width: 0; height: var(--ws-path-h); display: flex; flex-flow: row-reverse wrap; justify-content: flex-end; align-content: flex-start; align-items: center; overflow: hidden; overflow: clip; white-space: nowrap; }
+.ws-step { flex: none; display: flex; align-items: center; min-width: 0; max-width: 100%; height: var(--ws-path-h); }
+.ws-step-b { display: inline-flex; align-items: center; min-width: 0; height: 100%; padding: 0 var(--ws-step-x); border-radius: var(--ws-step-r); }
+.ws-step-b .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
+/* A long path gives up its folders first: a folder's name stops at 180px, and where you are takes the line if it must. */
+.ws-step:not(.is-here) .t { max-width: 180px; }
+.ws-step.is-here .ws-step-b { color: var(--ink); }
+button.ws-step-b { transition: background-color var(--duration-1), color var(--duration-1); }
+button.ws-step-b:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 7%, transparent); }
+button.ws-step-b:focus-visible { outline-offset: -2px; }
+.ws-step-sep { flex: none; color: var(--ink-3); }
+.wd-crumbs { --ws-path-h: 28px; --ws-step-x: 6px; --ws-step-r: 7px; color: var(--ink-3); font: 500 13px/1 var(--font-sans); }
 .wd-save { flex: none; display: inline-flex; align-items: center; gap: 5px; margin-right: 4px; font: 500 12px/1 var(--font-sans); color: var(--ink-3); }
 .wd-save.is-offline, .wd-save.is-failed { color: var(--caution); }
 .wd-save.is-live { color: var(--rec); gap: 6px; }
@@ -417,10 +429,9 @@
 .wl-r:hover .ws-put, .wl-line:hover .ws-put, .tx-l:hover .ws-put, .ws-put:focus-visible { opacity: 1; }
 .ws-put:hover { background: var(--line); color: var(--ink); }
 
-/* A narrow document: the page gives up its margins first, then the path. */
+/* A narrow document: the page gives up its margins, and the head its Saved. The path gives up what doesn't fit, as it always does. */
 @container (max-width: 640px) {
   .wd-page { padding-left: 46px; padding-right: 22px; }
-  .wd-crumbs .cw:not(.is-last) { display: none; }
   .wd-save:not(.is-failed) { display: none; }
   .wl { padding-left: 24px; padding-right: 22px; }
   .wl-due { display: none; }
@@ -462,7 +473,6 @@
   .wd-head { height: 48px; padding: 0 6px; }
   .wd.is-bare > .wd-head { display: flex; }
   .wd-head .ac-btn, .wd-save:not(.is-failed) { display: none; }
-  .wd-crumbs .cw:not(.is-last) { display: none; }
   .wd-page { padding: 6px 22px 12px; }
   .wd:has(> .wd-off, > .wd-gone, > .wd-ro) .wd-page { padding-top: 18px; }
   .wd-title { font-size: 31px; }
@@ -561,13 +571,12 @@ button.wf-seal:hover .wf-seal-go, button.wf-seal[data-state="open"] .wf-seal-go 
 .wf-bar { position: relative; display: flex; align-items: center; gap: 8px; height: 100%; padding: 0 14px 0 18px; border-bottom: 1px solid var(--line); background: var(--ground); transition: background-color var(--duration-2) var(--ease-out), border-color var(--duration-2) var(--ease-out); }
 .wf.is-home:not(.is-scrolled) .wf-bar { background: transparent; border-bottom-color: transparent; }
 .wf-path { flex: 1 1 auto; display: flex; align-items: center; gap: 4px; min-width: 0; font: 500 14px/1 var(--font-sans); color: var(--ink-2); }
-.wf-back, .wf-crumb { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 32px; padding: 0 8px; border-radius: 9px; white-space: nowrap; transition: background-color var(--duration-1), color var(--duration-1); }
-.wf-back { flex: none; }
-.wf-crumb { flex: 0 1 auto; }
-.wf-crumb > span { min-width: 0; line-height: 1.3; }
-button.wf-back:hover, button.wf-crumb:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 7%, transparent); }
-.wf-crumb.is-last { font-weight: 600; color: var(--ink); }
-.wf-sep { color: var(--ink-3); }
+.wf-back { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 8px; border-radius: 9px; white-space: nowrap; transition: background-color var(--duration-1), color var(--duration-1); }
+.wf-back:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.wf-sep { flex: none; color: var(--ink-3); }
+.wf-crumbs { --ws-path-h: 32px; --ws-step-x: 8px; --ws-step-r: 9px; }
+.wf-crumbs .ws-step-sep { width: 13px; height: 13px; margin: 0 2px; }
+.wf-crumbs .ws-step.is-here .ws-step-b { font-weight: 600; }
 .wf-up { display: none; }
 .wf-end { flex: none; display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .wf-end .wd-save { margin-right: 2px; }
@@ -637,7 +646,7 @@ button.wf-from:hover { background: color-mix(in srgb, var(--ink) 13%, transparen
   button.wf-seal { min-height: 44px; font-size: 13px; }
   .wf-brand { display: none; }
   .wf-bar { padding: 0 8px 0 10px; }
-  .wf-sep, .wf-crumb { display: none; }
+  .wf-sep, .wf-crumbs { display: none; }
   .wf-bar.has-up .wf-path { display: none; }
   .wf-up { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 40px; padding: 0 8px; margin-right: auto; border-radius: 9px; font: 600 15px/1 var(--font-sans); color: var(--ink); }
   .wf-here, .wf-share, .wf-exit, .wf-end .wd-save:not(.is-failed):not(.is-offline) { display: none; }

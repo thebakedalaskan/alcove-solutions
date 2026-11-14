@@ -28,14 +28,11 @@ import { log } from '~/lib/log';
 import { workspaceQueries, useSortStickies } from '~/features/workspace/queries';
 import { focusRow } from '../tree/actions';
 import { useWs, type Ws } from '../context';
-import { PaneHead } from '../Head';
+import { PaneHead, pathTo } from '../Head';
 import { canKeepEdits } from '../offline/keep';
 import { useBackOnline, useOpensAgain, useSession, useTriesWhenShown, type Opened } from '../opened';
 import { ShareSheet } from '../sharing/Sheets';
-import { folderName, foldersAbove, nameOf } from '../tree/tree';
-
-/** Where a board is: its workspace and the folders it's in. Its own name is on its bar, below. */
-const crumbsAbove = (ws: Ws, item: WorkspaceItem): string[] => [...(ws.sent.name === null ? [] : [ws.spaceName]), ...foldersAbove(ws.tree, item.id).map((f) => folderName(f, ws.callFolder))];
+import { nameOf } from '../tree/tree';
 
 const blog = log.child({ component: 'board-page' });
 
@@ -138,7 +135,7 @@ export function BoardPane({ item }: { item: WorkspaceItem }) {
   const ws = useWs();
   const { opened, reopen } = useSession(ws, item.id);
   const online = useOnline();
-  if (!opened) return <WsDoc className="is-board"><PaneHead crumbs={crumbsAbove(ws, item)} save="quiet" />{!online && <WsOfflineEmpty />}</WsDoc>;
+  if (!opened) return <WsDoc className="is-board"><PaneHead crumbs={pathTo(ws, item, ws.mode === 'page' ? nameOf(item) : null)} save="quiet" />{!online && <WsOfflineEmpty />}</WsDoc>;
   return <OpenedBoard key={opened.round} ws={ws} item={item} opened={opened} reopen={reopen} />;
 }
 
@@ -243,12 +240,12 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
   // Whatever the bar opened goes with what it was about.
   useEffect(() => { if (readOnly) setNaming(null); }, [readOnly]);
 
-  /* Full screen the bar's path ends with the board; beside the list its own bar says its name. */
-  const where = ws.mode === 'page' ? [...crumbsAbove(ws, item), name] : crumbsAbove(ws, item);
+  /* Full screen the bar's path ends with the board; beside the list its own bar says its name, and the path ends above it. */
+  const where = pathTo(ws, item, ws.mode === 'page' ? name : null);
   if (gone) {
     return (
       <WsDoc>
-        <PaneHead crumbs={ws.sent.name === null ? [] : [ws.spaceName]} save="quiet" />
+        <PaneHead crumbs={ws.sent.name === null ? [] : [{ label: ws.spaceName }]} save="quiet" />
         <WsCantOpen what="board" action={<Button size="sm" onClick={() => ws.go({ kind: 'home' }, { replace: true })}>Back to {ws.spaceName}</Button>} />
       </WsDoc>
     );

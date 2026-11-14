@@ -1,5 +1,6 @@
 /*
- * A document's side of the pane (WsDoc). Its head (WsDocHead) has the path, the quiet word that says it's saved
+ * A document's side of the pane (WsDoc). Its head (WsDocHead) has the path (WsPath: each step before the document shows
+ * where it is, and a long path gives up whole steps from its start), the quiet word that says it's saved
  * (WsSaveState), who's in it, Share and ⋯. Bars drop in under the head: you're
  * following someone (WsFollowBar), the connection dropped (WsOfflineBar), someone moved it to Trash (WsGoneBar), or you
  * can only read it (WsReadOnlyBar). Under them it scrolls (WsScroll), with the page in it (WsPage): whose it is
@@ -8,7 +9,7 @@
  */
 import {
   WsArch, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsEmpty, WsFollowBar, WsGoneBar, WsMovePicker, WsNoAccess, WsOfflineBar,
-  WsPage, WsPane, WsPersonCard, WsReadOnlyBar, WsSaveState, WsScroll, WsTail, WsTemplates, WsToasts, wsToast,
+  WsPage, WsPane, WsPath, WsPersonCard, WsReadOnlyBar, WsSaveState, WsScroll, WsTail, WsTemplates, WsToasts, wsToast,
   type WsFace, type WsPop, type WsSave
 } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -16,7 +17,7 @@ import { useState, type ComponentProps, type ReactNode } from 'react';
 import { TEMPLATES } from '~/features/workspace/editor/templates';
 import { Box, Row, Stack, did } from '../../../src/component';
 import { ART, KOFI, PRIYA } from '../../../src/world/people';
-import { CALL, DocOf, FIRST_LINE, NotesLive, PRODUCT_ITEMS, PageText, ShareFor, TEMPLATE_LINES, TEXT, first, useToasts, useWorkspace, type Line } from './parts';
+import { CALL, DocOf, FIRST_LINE, NotesLive, PRODUCT_ITEMS, PageText, ShareFor, TEMPLATE_LINES, TEXT, first, pathOf, useToasts, useWorkspace, type Line } from './parts';
 
 const SAVES: WsSave[] = ['saved', 'saving', 'offline', 'failed', 'live', 'quiet'];
 const plan = TEXT.get('plan');
@@ -51,7 +52,7 @@ function NewPage({ height = 640 }: { height?: number | undefined }) {
     <Box width="100%" height={height}>
       <WsPane>
         <WsDoc>
-          <WsDocHead crumbs={['Product', 'Untitled']} save={lines ? 'saving' : 'saved'} onToggleList={did('onToggleList')} />
+          <WsDocHead crumbs={pathOf('Product', 'Untitled')} save={lines ? 'saving' : 'saved'} onToggleList={did('onToggleList')} />
           <WsScroll>
             <WsPage>
               <PageText title="" by={ART} edited="Edited just now" lines={lines ?? [FIRST_LINE]}
@@ -67,7 +68,7 @@ function NewPage({ height = 640 }: { height?: number | undefined }) {
 const meta = {
   title: 'Components/Workspace/Document',
   component: WsDoc,
-  subcomponents: { WsDocHead, WsSaveState, WsFollowBar, WsOfflineBar, WsGoneBar, WsReadOnlyBar, WsScroll, WsPage, WsDocBy, WsTail, WsTemplates, WsArch, WsEmpty, WsNoAccess },
+  subcomponents: { WsDocHead, WsPath, WsSaveState, WsFollowBar, WsOfflineBar, WsGoneBar, WsReadOnlyBar, WsScroll, WsPage, WsDocBy, WsTail, WsTemplates, WsArch, WsEmpty, WsNoAccess },
   parameters: { layout: 'padded' },
   args: { children: null },
   argTypes: { children: { table: { disable: true } }, className: { table: { disable: true } } }
@@ -89,7 +90,7 @@ export const NewDocument: Story = { name: 'Document: a new page', render: () => 
 type HeadStory = StoryObj<typeof WsDocHead>;
 type Part = 'faces' | 'share' | 'more';
 const headTypes: HeadStory['argTypes'] = { save: { control: 'inline-radio', options: SAVES }, crumbs: { control: 'object' }, faces: { control: false } };
-const HEAD = { crumbs: ['Product', 'Launch plan'], save: 'saved', onToggleList: did('onToggleList') } satisfies ComponentProps<typeof WsDocHead>;
+const HEAD = { crumbs: pathOf('Product', 'Launch plan'), save: 'saved', onToggleList: did('onToggleList') } satisfies ComponentProps<typeof WsDocHead>;
 
 /** The head over the top of its page. `parts`: what it has. `opened`: the popover that's open to begin with. */
 function HeadIn({ args, parts, opened: startOpened = null, width = '100%' }: {
@@ -99,7 +100,7 @@ function HeadIn({ args, parts, opened: startOpened = null, width = '100%' }: {
   const [moving, setMoving] = useState(false);
   const close = () => { setOpened(null); setMoving(false); };
   const pop = (key: string, content: ReactNode): WsPop => ({ open: opened === key, onOpenChange: (to) => { setOpened(to ? key : null); setMoving(false); }, content });
-  const name = args.crumbs[args.crumbs.length - 1] ?? 'Untitled';
+  const name = args.crumbs[args.crumbs.length - 1]?.label ?? 'Untitled';
   const has = (p: Part) => parts.includes(p);
   const faces: WsFace[] = has('faces') ? [PRIYA, KOFI].map((p) => ({ person: p, card: pop(`face:${first(p)}`, <WsPersonCard person={p} where={name} onFollow={close} onStop={close} onTag={close} />) })) : [];
   const more = moving
@@ -135,9 +136,33 @@ export const HeadFace: HeadStory = { name: 'Head: someone’s card open', args: 
 /** In the app: Share and ⋯ only. */
 export const HeadInTheApp: HeadStory = { name: 'Head: in the app', args: HEAD, argTypes: headTypes, render: headed(['share', 'more']) };
 /** One of the call's pages: no Share or ⋯, and Live while notes are on. */
-export const HeadLivePage: HeadStory = { name: 'Head: a page of the call', args: { ...HEAD, crumbs: [CALL.title, 'Notes'], save: 'live' }, argTypes: headTypes, render: headed([]) };
-/** A narrow document gives up the path but the last name, then Saved, then the faces. */
-export const HeadNarrow: HeadStory = { name: 'Head: a narrow document', args: { ...HEAD, crumbs: ['Product', 'Research', 'Interview notes'] }, argTypes: headTypes, render: headed(IN_A_CALL, { width: 440 }) };
+export const HeadLivePage: HeadStory = { name: 'Head: a page of the call', args: { ...HEAD, crumbs: pathOf(CALL.title, 'Notes'), save: 'live' }, argTypes: headTypes, render: headed([]) };
+/** A narrow document gives up whole steps of the path from its start, the document's name last; then Saved, then the faces. */
+export const HeadNarrow: HeadStory = { name: 'Head: a narrow document', args: { ...HEAD, crumbs: pathOf('Product', 'Research', 'Interview notes') }, argTypes: headTypes, render: headed(IN_A_CALL, { width: 440 }) };
+
+/** A document in a folder of This call, in the call's own workspace: the path from the workspace to the document. */
+const LONG = pathOf('Kofi’s call · 4 Nov', 'This call', 'Press and partners', 'Embargo times');
+/**
+ * A long path in a call, with the room to say all of it: the workspace, This call, the folder and the document, a chevron
+ * between each. Each step before the document shows where it is in the list. At this width a teammate once saw the steps
+ * spread across the head with no chevrons, and the document's name half under the head's edge.
+ */
+export const HeadLongPath: HeadStory = { name: 'Head: a long path', args: { ...HEAD, crumbs: LONG }, argTypes: headTypes, render: headed(IN_A_CALL, { width: 900 }) };
+/** The same path in a narrower document: whole steps leave from its start. The organizer once saw only the name, in the middle. */
+export const HeadLongPathNarrower: HeadStory = { name: 'Head: a long path, narrower', args: { ...HEAD, crumbs: LONG }, argTypes: headTypes, render: headed(IN_A_CALL, { width: 560 }) };
+/** The long path as the document narrows, from a wide one to a phone's: what's left is always the end of it, never cut. */
+export const HeadLongPathWidths: Story = {
+  name: 'Head: a long path, as it narrows',
+  render: () => (
+    <Stack>
+      {[1040, 860, 720, 560, 420, 340].map((w) => (
+        <Box key={w} width={w} height={52}>
+          <WsPane><WsDoc><WsDocHead crumbs={LONG} save="saved" onToggleList={did('onToggleList')} share={{ open: false, onOpenChange: did('onShare'), content: null }} /></WsDoc></WsPane>
+        </Box>
+      ))}
+    </Stack>
+  )
+};
 
 /* ---------- saved ---------- */
 
@@ -152,7 +177,7 @@ export const SaveEvery: Story = {
     <Stack>
       {SAVES.map((s) => (
         <Box key={s} width={720} height={52}>
-          <WsPane><WsDoc><WsDocHead crumbs={s === 'live' || s === 'quiet' ? [CALL.title, 'Notes'] : ['Product', 'Launch plan']} save={s} onToggleList={did('onToggleList')} /></WsDoc></WsPane>
+          <WsPane><WsDoc><WsDocHead crumbs={s === 'live' || s === 'quiet' ? pathOf(CALL.title, 'Notes') : pathOf('Product', 'Launch plan')} save={s} onToggleList={did('onToggleList')} /></WsDoc></WsPane>
         </Box>
       ))}
     </Stack>
@@ -176,7 +201,7 @@ function BarFrame({ children, follow = false }: { children: ReactNode; follow?: 
     <Box width="100%" height={420}>
       <WsPane following={follow}>
         <WsDoc>
-          <WsDocHead crumbs={['Product', 'Launch checklist']} save="saved" onToggleList={did('onToggleList')} />
+          <WsDocHead crumbs={pathOf('Product', 'Launch checklist')} save="saved" onToggleList={did('onToggleList')} />
           {children}
           <WsScroll><ChecklistPage /></WsScroll>
         </WsDoc>
@@ -249,7 +274,7 @@ function Scrolling() {
     <Box width="100%" height={460}>
       <WsPane>
         <WsDoc>
-          <WsDocHead crumbs={['Product', 'Launch plan']} save="saved" onToggleList={did('onToggleList')} />
+          <WsDocHead crumbs={pathOf('Product', 'Launch plan')} save="saved" onToggleList={did('onToggleList')} />
           <WsScroll onWheel={did('onWheel')}>
             <WsPage><PageText title="Launch plan" by={plan?.by} edited={plan?.edited} lines={lines} after={<WsTail onClick={() => { did('onClick')(); tail(); }} />} /></WsPage>
           </WsScroll>
@@ -297,7 +322,7 @@ function EmptyFrame(args: ComponentProps<typeof WsEmpty>) {
     <Box width="100%" height={640}>
       <WsPane>
         <WsDoc>
-          <WsDocHead crumbs={[args.space]} save="quiet" onToggleList={did('onToggleList')} />
+          <WsDocHead crumbs={[{ label: args.space }]} save="quiet" onToggleList={did('onToggleList')} />
           <WsEmpty space={args.space} onDocument={() => { args.onDocument?.(); setWriting(true); }} onFolder={args.onFolder} />
         </WsDoc>
       </WsPane>

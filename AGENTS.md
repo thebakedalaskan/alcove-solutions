@@ -291,7 +291,8 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   The workspace kit is in `workspace/`, every part stateless, taking plain data and handlers: `WsPane` holds
   `WsList` (`WsListHead`, or `WsListTools` in a call, where the frame's bar names the workspace; `WsSection` with `add`,
   `WsRow` with the kinds `place` and `call` and their `tag` and `out`, `WsRenameRow`, `WsDropLine`, `WsTrashRow`; the rows
-  themselves are `WsTree`) and `WsDoc` (`WsDocHead` with
+  themselves are `WsTree`) and `WsDoc` (`WsDocHead` with `WsPath` (the path, also on `WsBar`: whole steps leave from its
+  start when it's long, and each step before the page is a button that shows where it is),
   `WsSaveState`, `WsFollowBar`, `WsOfflineBar`, `WsUnsavedBar` (with `WsRescue` for what didn't reach Alcove), `WsGoneBar`,
   `WsReadOnlyBar`, `WsVersionBar`, `WsVersionFailed`, `WsScroll`, `WsPage`, `WsDocBy`, `WsTemplates`, `WsTail`, `WsTrash`,
   `WsEmpty`, `WsPickDocument`, `WsCantOpen`, `WsUnavailable`, `WsOfflineEmpty`, `WsNoAccess`, `WsLostSpace`), with

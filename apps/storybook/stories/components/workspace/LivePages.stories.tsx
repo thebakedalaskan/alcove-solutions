@@ -10,7 +10,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { Box, did } from '../../../src/component';
 import { ART, KOFI, PRIYA } from '../../../src/world/people';
-import { CALL, DECIDED, FOLLOW_UPS, LINES, NotesLive, SPEAKING, SUMMARY, first, useToasts } from './parts';
+import { CALL, DECIDED, FOLLOW_UPS, LINES, NotesLive, SPEAKING, SUMMARY, first, pathOf, useToasts } from './parts';
 
 /**
  * One of the call's pages in the document's place: its head says where it is, and Live while notes are on. `end`: it
@@ -23,7 +23,7 @@ function LiveFrame({ name, save = 'live', end = false, children }: { name: strin
     <Box width="100%" height={600}>
       <WsPane>
         <WsDoc>
-          <WsDocHead crumbs={[CALL.title, name]} save={save} onToggleList={did('onToggleList')} />
+          <WsDocHead crumbs={pathOf(CALL.title, name)} save={save} onToggleList={did('onToggleList')} />
           <WsScroll ref={scroller}>{children}</WsScroll>
         </WsDoc>
       </WsPane>

@@ -13,7 +13,7 @@ import {
   Avatar, Button, FollowUpEditor, type FollowUpValues, Icon, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsEmpty, WsFade, WsFollowBar, WsFollowUps, WsHistory, WsList, WsListHead, WsListTools, WsMovePicker,
   WsNewMenu, WsNotesPage, WsPage, WsPersonCard, WsRenameRow, WsRow, WsRowMenu, WsScroll, WsSection, WsShareSheet,
   WsSpacePicker, WsTail, WsTemplates, WsTranscript, cn, wsToast,
-  type IconName, type WsDecision, type WsFace, type WsFolderChoice, type WsFollowing, type WsFollowUp, type WsPop, type WsPoint, type WsSaid,
+  type IconName, type WsCrumb, type WsDecision, type WsFace, type WsFolderChoice, type WsFollowing, type WsFollowUp, type WsPop, type WsPoint, type WsSaid,
   type WsSave, type WsShareMatch, type WsShareRow, type WsSpaceChoice, type WsToastData, type WsVersion
 } from '@alcove/ui';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
@@ -28,6 +28,8 @@ export const first = (p: { name: string }): string => p.name.split(' ')[0] ?? p.
 
 /** The call these stories happen in: Priya's Launch check-in, which began at 16:00. Art, Kofi, Aiko and Maya are in it. */
 export const CALL = { title: 'Launch check-in', organizer: PRIYA };
+/** A path for a head: each step before the last says in Actions that it was pressed, where the app shows where it is. */
+export const pathOf = (...labels: string[]): WsCrumb[] => labels.map((label, i) => (i < labels.length - 1 ? { label, onClick: () => did('onStep')(label) } : { label }));
 
 /** Someone in the call from outside the company, who can't open the workspace. */
 export const GUEST = JONAS;
@@ -342,6 +344,13 @@ export function useWorkspace({ call, start = 'plan', space: startSpace = 'ws-pro
   });
   const go = (id: string, area: At['area'] = 'tree') => { setAt({ id, area }); setOpened(null); setHistory(null); onGo?.(id); };
   const twist = (id: string) => setFolders((now) => toggled(now, id));
+  /** A step of the path over the page: the folder opens in the list, with the folders around it, and its row lights up. */
+  const reveal = (id: string | null) => {
+    did('onReveal')(id);
+    if (id === null) return;
+    setFolders((now) => new Set([...now, ...above(id).map((f) => f.id), id]));
+    setFlash(id);
+  };
   const add = (kind: Kind, parent: string | null, name: string, after?: string): string => {
     made.current += 1;
     const id = `new-${made.current}`;
@@ -450,7 +459,7 @@ export function useWorkspace({ call, start = 'plan', space: startSpace = 'ws-pro
 
   return {
     call, toasts, say, space, spaceName, shown, texts, folders, at, brought, opened, naming, flash, history,
-    itemOf, nameOf, above, pop, picker, go, twist, newDocument, newFolder, rename, named, duplicate, moveTo, toggleCall, copyLink, exported, trash,
+    itemOf, nameOf, above, pop, picker, go, twist, reveal, newDocument, newFolder, rename, named, duplicate, moveTo, toggleCall, copyLink, exported, trash,
     fillFrom, switchTo, cancelNaming: () => setNaming(null), open: (o: Opened | null) => setOpened(o), setHistory
   };
 }
@@ -647,7 +656,7 @@ export function DocOf({ ws, save = 'saved', quiet = false, following = null, onF
   if (live) {
     return (
       <WsDoc>
-        <WsDocHead crumbs={[CALL.title, live.name]} save={quiet ? 'quiet' : 'live'} onToggleList={onToggleList} onExpand={onExpand} />
+        <WsDocHead crumbs={[{ label: CALL.title, onClick: () => ws.reveal(null) }, { label: live.name }]} save={quiet ? 'quiet' : 'live'} onToggleList={onToggleList} onExpand={onExpand} />
         <WsFollowBar following={following} onStop={stop} />
         <WsScroll onWheel={following ? stop : undefined}>
           <WsFade id={live.id}>{live.id === '$notes' ? <NotesLive /> : live.id === '$followups' ? <FollowUpsLive /> : <TranscriptLive />}</WsFade>
@@ -659,7 +668,7 @@ export function DocOf({ ws, save = 'saved', quiet = false, following = null, onF
   if (!item) {
     return (
       <WsDoc>
-        <WsDocHead crumbs={[ws.spaceName]} save="quiet" onToggleList={onToggleList} onExpand={onExpand} />
+        <WsDocHead crumbs={[{ label: ws.spaceName }]} save="quiet" onToggleList={onToggleList} onExpand={onExpand} />
         <WsEmpty space={ws.spaceName} onDocument={() => ws.newDocument(null)} onFolder={() => ws.newFolder(null)} />
       </WsDoc>
     );
@@ -674,7 +683,8 @@ export function DocOf({ ws, save = 'saved', quiet = false, following = null, onF
   return (
     <>
       <WsDoc>
-        <WsDocHead crumbs={[ws.spaceName, ...ws.above(item.id).map((f) => f.name), name]} save={save} faces={faces} onToggleList={onToggleList} onExpand={onExpand}
+        <WsDocHead crumbs={[{ label: ws.spaceName, onClick: () => ws.reveal(null) }, ...ws.above(item.id).map((f) => ({ label: f.name, onClick: () => ws.reveal(f.id) })), { label: name }]} save={save} faces={faces}
+          onToggleList={onToggleList} onExpand={onExpand}
           share={ws.pop('share', <ShareFor title={`Share ${name}`} />)}
           more={ws.pop('more', moving
             ? <WsMovePicker name={name} space={ws.spaceName} folders={foldersFor(ws, item.id)} onRoot={() => ws.moveTo(item.id, null)} onFolder={(f) => ws.moveTo(item.id, f)} />

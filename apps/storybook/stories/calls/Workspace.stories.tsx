@@ -4,7 +4,7 @@
  * live Notes, Follow-ups and Transcript and what's made in the call, which lands there. Its one menu, on its name: the
  * organizer's Switch workspace and switching, Find, Who's in it, Rename and Copy link. Following someone, a tag and a comment;
  * Find and History; presenting it, with everyone following, and Play for everyone; a guest's workspace; a follow-up added by
- * hand; and the toasts. Everyone else's browser is the script's: where they are in the workspace, and what they present and play.
+ * hand; the path over the page, the organizer's and a teammate's; and the toasts. Everyone else's browser is the script's: where they are in the workspace, and what they present and play.
  */
 import { DEFAULT_NOTES_CHOICES, type CallSession } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
@@ -533,6 +533,52 @@ export const NotesTurnedOff = inCall({
   }
 });
 export const NotesTurnedOffPhone = phone(NotesTurnedOff);
+
+/* ---------- the path over the page ---------- */
+
+/**
+ * A folder in This call and a document in it, made as anyone makes them: New at the top of the list, then the folder's +. The
+ * path over the page then runs from the workspace to the document, a chevron between each step. Pressing the folder on it
+ * shows the folder in the list, lit, with the keyboard on it, and the page stays as it is.
+ */
+const longPath = (home: string): Play => async (c) => {
+  await openWorkspace(c);
+  await c.step('Press New at the top of the list, then New folder, and name it: it goes in This call', async () => {
+    await c.userEvent.click(await within(await frameOf(home)).findByRole('button', { name: 'New document or folder' }, { timeout: 10000 }));
+    const folder = await screen.findByRole('menuitem', { name: /^New folder/ }, { timeout: 5000 });
+    await settle();
+    await c.userEvent.click(folder);
+    await c.userEvent.keyboard('Press and partners{Enter}');
+  });
+  await c.step('Its +, then New document, and name it: the path runs from the workspace to it', async () => {
+    const row = (await rowIn(/^Press and partners$/)).closest<HTMLElement>('[role="treeitem"]');
+    if (!row) throw new Error('The folder’s row isn’t there.');
+    await c.userEvent.hover(row);
+    await c.userEvent.click(await within(row).findByRole('button', { name: 'Add inside Press and partners' }));
+    const doc = await screen.findByRole('menuitem', { name: /^New document/ }, { timeout: 5000 });
+    await settle();
+    await c.userEvent.click(doc);
+    await settle();
+    await c.userEvent.keyboard('Embargo times');
+  });
+  await c.step('Press Press and partners on the path: the list shows the folder, lit, with the keyboard on it', async () => {
+    const path = await screen.findByRole('navigation', { name: 'Where this document is' }, { timeout: 8000 });
+    await c.userEvent.click(await within(path).findByRole('button', { name: 'Press and partners' }, { timeout: 8000 }));
+  });
+};
+/**
+ * The design review is Art's, and its home is new: Design review · 4 Nov › This call › Press and partners › Embargo times. With
+ * Notes open beside it the document is narrow, and the path gives up whole steps from its start, never the document's name.
+ */
+export const ALongPath = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, { play: longPath('Design review · 4 Nov'), name: 'A long path, the organizer’s' });
+export const ALongPathPhone = phone(ALongPath);
+/**
+ * Priya's check-in, with Art invited: the home is hers, and Art is in it as a teammate, so the path is the same as hers, here
+ * in a wide window with room for all of it.
+ */
+export const ALongPathTeammate = inCall({ scenario: 'busy', call: { ...CHECK_IN, code: 'lch-chck-pth' }, script: { here: CHECKING_IN } }, {
+  play: longPath('Launch check-in · 4 Nov'), name: 'A long path, a teammate’s', globals: { viewport: { value: 'wide', isRotated: false } }
+});
 
 /* ---------- a workspace made in the call, and a name twice ---------- */
 
