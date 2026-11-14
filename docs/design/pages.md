@@ -587,7 +587,8 @@ The last of the light, with you in it, then seven groups. Change one thing and l
   (while it's on), and that Pro ends with the month running now, with Keep them filled (the answer that loses nothing), as a
   team's Refund of its licenses asks. Then Payments (`SettingPayments`, `PaymentRow`): first what's on its way or needs a person, then
   the balance's latest changes, each with Receipt opening `PaymentReceipt`, paper in both themes and alone on the page when
-  printed. Buying is checkout's, never this page's. Controls drop under their words on a phone. The code is
+  printed. A change that moved no money, such as "Pro, 3 months, given by Alcove", says its day alone and has no Receipt.
+  Buying is checkout's, never this page's. Controls drop under their words on a phone. The code is
   `features/settings/Plan.tsx`, with `features/plans/planState.ts`, which the side panel's foot and Plans share.
 - **Sign out** signs you out at once. Only when recordings haven't uploaded does it ask first: the sky grows to hold the
   question, it says they'll be deleted, and Stay signed in is the filled answer. Signing out (from here or your menu), the

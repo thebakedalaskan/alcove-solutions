@@ -139,6 +139,7 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `plan-pro-ended` | Pro ended two days ago: back on Free, over its storage with 14.2 GB, in the grace, with a `pro-ended` notice |
 | `plan-buying-pro` | Art is on Free and has opened a payment of 192 USDC on Base for a year of Pro at the yearly price, then closed checkout: it waits for the payment, in the side panel and in Settings › Plan |
 | `plan-pro-extended` | Pro extended by a year yesterday, paid with 192 USDC on Base at the yearly price: the month running, twelve after it to refund, $5 left |
+| `plan-pro-given` | Three months of Pro given by Alcove's support yesterday: the month running and two after it, nothing to refund, and "Pro, 3 months, given by Alcove" in the payments with no receipt; $5 in the balance, as it was |
 | `team-admin` | Art runs Vandelay's team: six people, Maya's license ended last week, three licenses left, auto-purchase off, $180 in the balance |
 | `team-admin-low` | The same with two licenses left: a `licenses-low` notice |
 | `team-admin-none` | None left, and Maya waiting for one: a `licenses-none` notice |

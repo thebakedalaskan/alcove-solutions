@@ -307,6 +307,19 @@ export const proExtended = (): Plan => {
 };
 
 /**
+ * Pro given by Alcove: support gave Art three months yesterday, as the server gives them (apps/api/src/features/billing/
+ * operator/operator.ts › givePlan): the month running since then and two after it, each paid nothing, so there's nothing to
+ * refund; renewing off; and its line in the payments, which moved no money, so it has no receipt. The balance is as it was.
+ */
+export const proGiven = (): Plan => {
+  const history: BalanceEntry[] = [
+    { id: 'sb-entry-given', at: iso(-1, 14, 30), label: 'Pro, 3 months, given by Alcove', microUsd: 0 },
+    { id: 'sb-entry-1', at: iso(-24, 9, 55), label: 'Added, 5 USDC', microUsd: 5_000_000 }
+  ];
+  return withProMonths({ ...freePlan(), balance: { microUsd: 5_000_000, history } }, monthsFrom(on(-1, 14, 30).getTime(), 3, 0), AFTERNOON());
+};
+
+/**
  * Pro's month ends with renewing on and a month's price in the balance: a month is bought from it, after the last, and
  * its owner is told it renewed.
  */

@@ -2739,7 +2739,9 @@ On Pro, Settings › Plan says until when, with **Extend**. Turn on **Renew from
 ($40.00)** asks in place: what goes back to the balance, that renewing from it turns off (while it's on), and that Pro ends
 when the month running now does. **Refund $40.00** returns the months that haven't started to the balance, and the toast says
 what came back; "Pro refunded, 2 months" is first in the payments. A refund turns **Renew from balance** off, so the months
-given back aren't bought again. **Receipt** opens a payment's receipt over the page as paper, with **Print**.
+given back aren't bought again. **Receipt** opens a payment's receipt over the page as paper, with **Print**. Time Alcove's
+support gave you ("Pro, 3 months, given by Alcove") is in the payments with its day and no receipt, since nothing was paid,
+and refunding gives nothing back for it.
 
 ### 16.9 Notes run out in a call
 

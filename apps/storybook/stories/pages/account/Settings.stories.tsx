@@ -384,6 +384,13 @@ export const ProEndingPriceRoseNight = night(ProEndingPriceRose);
 /** Pro extended by a year with a payment yesterday: until a year on, the twelve months to refund, and the payment with its receipt. */
 export const ProExtended = page('/settings#plan', 'plan-pro-extended');
 export const ProExtendedNight = night(ProExtended);
+/**
+ * Three months of Pro given by Alcove's support: until when, nothing to refund (nothing was paid for them), and "Pro, 3
+ * months, given by Alcove" in the payments with its day alone and no receipt, since no money moved.
+ */
+export const ProGiven = page('/settings#plan', 'plan-pro-given');
+export const ProGivenNight = night(ProGiven);
+export const ProGivenPhone = phone(ProGiven);
 /** A month was bought from the balance a week before Pro was to end: said at the top until it's dismissed. */
 export const ProRenewed = page('/settings#plan', 'plan-pro-renewed');
 export const ProRenewedNight = night(ProRenewed);
