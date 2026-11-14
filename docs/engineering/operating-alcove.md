@@ -66,7 +66,7 @@ Send the `For env.sh` line, which is public, to whoever reviews env.sh. A pull r
 
 ```bash
 CS_OPERATOR_KEYS=(
-  # Support's tickets: top-ups, credits, finding an account by its address
+  # Support's tickets: top-ups, credits, plans given, finding an account by its address
   write:1rZ2NNJMx0Yf5I9izqHzyCCG8HBupTvYEc7dRrO0kzQ
 )
 ```
@@ -92,8 +92,9 @@ in anyone else's hands is revoked instead.
 
 1. A pull request removes its line from `CS_OPERATOR_KEYS`. Merge it. It's in force once the new VM serves, about 15
    minutes after the merge. Until then the key still works, within its scope and the caps every key has: $1,000 a credit
-   and $2,000 a day, 20 accounts found by address an hour, 20 actions and 120 reads a minute. A deploy that's stuck holds
-   the revocation back too ([runbook 6](#6-a-deploy-is-stuck)).
+   and $2,000 a day; 12 months of Pro, or 25 licenses each for 12 months, a grant, and five grants a day; 20 accounts found
+   by address an hour; 20 actions and 120 reads a minute. A deploy that's stuck holds the revocation back too
+   ([runbook 6](#6-a-deploy-is-stuck)).
 2. `operator release` lists the keys in force (`Operator keys`) on the instance that answers: the key's ID is gone from it.
 3. Delete the kept templates whose image lists it. Rolling back onto one would bring the key back
    ([Rolling back](../../infra/confidential-space/README.md#rolling-back)). deploy.sh keeps the newest five, and every one
@@ -191,6 +192,7 @@ An action's own line carries the IDs it acted on, under the same request ID:
 | Action | Its line |
 | --- | --- |
 | `billing credit` | `balance added by support` (`ownerId`, `depositId`), and `top-up added by support` when a top-up's reference named it |
+| `plan grant` | `plan given by support` (`ownerId`; `teamId` for a team's licenses, null for Pro; `kind`, `pro` or `team`; `months`; `licenses`, null for Pro). Never an amount |
 | `topup check` | `top-up checked by support` (`ownerId`, `depositId`, the state it `was` and its `state` now) |
 | `account find` | `account found by address` (`found`: how many; never the address, hashed or not) |
 | `account sign-out` | `account signed out everywhere by support` (`ownerId`, `ended`) |
@@ -206,9 +208,9 @@ Cloud Logging keeps both, as it keeps every line ([Logging and errors](logging-a
 ## The routes
 
 Every answer says which instance answered, as `instance` (its host name, and the `x-alcove-instance` header) and when, as
-`at`, but for the three command routes, which answer `{ lines }`: what their command line prints. What an instance knows from
-memory (its start, its loops, its recent failures, its last checks) is its own. Production runs one VM, two during a
-rollout, and the load balancer picks which one answers, keeping a client on one VM while it can. The answers' schemas are in
+`at`, but for the command routes, which answer `{ lines }`: what their command line prints, or what a grant gave. What an
+instance knows from memory (its start, its loops, its recent failures, its last checks) is its own. Production runs one
+VM, two during a rollout, and the load balancer picks which one answers, keeping a client on one VM while it can. The answers' schemas are in
 `features/operator/wire.ts`, `features/operator/checks.ts`, each feature's `operator/operator.ts` and, for `{ lines }`,
 `http/operator.ts`, and the CLI parses answers with them.
 
@@ -312,6 +314,7 @@ further back than that is said to be cut short. The CLI says both.
 | Route | Scope | Takes | Answers |
 | --- | --- | --- | --- |
 | `POST /v1/operator/billing` | `show` reads; `credit` is an action | `{ words, reason }`: `billing`'s words, the account named only by a top-up's reference or its ID | `{ lines }`: what `billing` prints ([Plans and usage › Support](plans-and-usage.md#support)) |
+| `POST /v1/operator/plans/grant` | write | `{ words, reason }`: an account's ID, then `pro <months>` (1 to 12) or `team <licenses> <months>` (1 to 25 licenses, each for 1 to 12 months), as `plan grant` takes them | `{ lines }`: what was given, and for Pro the day it runs to now ([runbook 8](#8-give-someone-a-plan-for-a-while)) |
 | `GET /v1/operator/topups/:reference` | read | a top-up's reference, its 22 characters as checkout shows them | its account's ID, provider and state; when it was opened and its deadline, to the hour, and whether that has passed; whether it's still watched, and when it's next and was last asked about. Then, from its sealed record, opened inside: whether anything was seen arriving, whether it settled, a doubt's code, whether its provider has gone unanswered since the deadline, and what it was to buy and how that went. Never an amount, its address or memo, the quote, or the provider's reference |
 | `POST /v1/operator/topups/:reference/check` | write | `{ reason }` | its state before and after asking its provider now, as the person's own checkout asks, under the watcher's lock, whether it's still watched, and `asked`: `answered`, or why its provider wasn't asked (`recently`, within the last 5 seconds, whose answer stands; `unwatched`; `no-provider`). A provider that didn't answer is a `503`, the top-up as it was. One that isn't watched any more is refused, `409` |
 | `GET /v1/operator/accounts/:accountId` | read | a person's account ID, its 43 characters; a workspace's or a team's reads as nobody's | the day it was made; its root key's envelopes (`v2`, `v1`) and whether it opens here, or the error's class and its most specific code, when it has one; its last sign-in, its sessions by provider (live, the newest started, last seen) and those ended but not swept; each agent connection's ID, times, live refresh tokens and credentials kept against their most, and how many are live of 50; its plan's kind, or `none` for an account from before plans that hasn't had one made yet (looking makes none), or null when it doesn't open here. Times to the hour |
@@ -326,6 +329,13 @@ and the key's day is counted there, so the bound holds whichever instance answer
 credit of the day is refused, `403`. Named by an account's ID, a ticket adds money to that account once: a second credit with
 the same reason, whatever its case, is refused, `409`. Money can't leave through any route: a credit adds to an Alcove balance, which
 buys only Alcove's plans.
+
+A grant gives at most 12 months of Pro, or 25 licenses each for 12 months; more is refused, `400`. A key gives at most five
+grants a day (UTC), counted in `operator_grants`, which every instance shares, as a keyed hash of the account and the
+ticket and the key's ID, never what was given: a key's sixth of the day is refused, `403`. A ticket gives an account a plan
+once: a second grant with the same reason, whatever its case or what it gives, is refused, `409`, "That ticket already gave
+this account a plan. Nothing was given." A grant is never money: nothing is added to the balance, a refund gives nothing
+back for it, and it has no receipt ([Plans and usage › Support](plans-and-usage.md#support)).
 
 ### Calls and notes
 
@@ -394,6 +404,8 @@ sending anything.
 | `topup check <reference> --reason <ref>` | `POST topups/:reference/check` | asks its provider about it now |
 | `billing show <reference or account id>` | `POST billing` | where an account's plan stands |
 | `billing credit <reference or account id> <usd> --reason <ref>` | `POST billing` | adds dollars as support |
+| `plan grant <account id> pro <months> --reason <ref>` | `POST plans/grant` | gives months of Pro, as Alcove, after any it has |
+| `plan grant <account id> team <licenses> <months> --reason <ref>` | `POST plans/grant` | gives licenses, each for that many months, to the team the account is the admin of |
 | `limits list` | `POST limits` | the limits in force, their defaults and bounds |
 | `limits set <name> <value> --reason <ref>` | `POST limits` | changes a limit within its bounds |
 | `feature-flags <words…> [--reason <ref>]` | `POST feature-flags` | what `feature-flags` takes; a change, or asking whether an address is in a group, needs a write key and a reason |
@@ -409,7 +421,8 @@ What it refuses before sending anything:
 - A join link (`/join/…`, `/call/…`) or a call's code (`abc-defg-hij`): either lets anyone into the call. Ask for the address
   of the call's page (`/calls/<note id>`) or of the call ahead (`/calls/upcoming/<meeting id>`) instead. `call` and `note`
   take either, pasted whole, and keep only the ID.
-- An address in place of an ID, for `billing` and `account`: `account find` turns an address into an account's ID.
+- An address in place of an ID, for `billing`, `account` and `plan grant`, which takes an account's ID alone: `account find`
+  turns an address into an account's ID.
 - A call ahead's address for `note`, which has no note yet; and an address for `call end` or `call room close`, which take
   one run's own call ID, which `call <address>` gives.
 - An action without `--reason`, or with one that isn't a ticket's reference. Feature flags' words don't say on this machine
@@ -689,3 +702,45 @@ When the log isn't enough, the checks job runs every start step on a VM of its o
 carrying on past failures, then the live checks, prints the report and deletes the VM:
 `infra/confidential-space/job.sh production checks`. It needs 4 vCPUs of the quota free, so not while a rollout holds two
 VMs ([The checks job](../../infra/confidential-space/README.md#the-checks-job)).
+
+### 8. Give someone a plan for a while
+
+When support makes something good with time on a plan rather than money: months of Pro, or licenses for a team. Alcove
+gives it, and no money moves. Name the account by its ID: `operator account find --reason SUP-1182` turns the address it
+signs in with into one.
+
+```sh
+operator billing show <account id>
+operator plan grant <account id> pro 3 --reason SUP-1182
+operator plan grant <account id> team 5 3 --reason SUP-1182
+```
+
+- **`billing show` first:** its plan, its license (Pro isn't given over a live team license, whose plan is in force: `409`)
+  and its team and role (licenses go only to a team it's the admin of).
+- **Pro** (`pro <months>`, 1 to 12): the months go after any it has, back to back, as months bought do, or from now on Free,
+  each a period long, and end any grace. It says the day Pro runs to now. The person's Settings › Plan says until when, and
+  its payments say "Pro, 3 months, given by Alcove", with no receipt. Renewing, when it's on, carries on after them at a
+  month's price as it was when they were given.
+- **Team** (`team <licenses> <months>`, up to 25 licenses, each for 1 to 12 months): licenses for the team the account is the
+  admin of, each taken by someone on it without one on their next visit and live for that many months from then, as
+  licenses bought are. An account that's no team's admin is refused, `409`: they start a team first (Start a team, on Team
+  or Plans), then it's given. Auto-purchase goes on buying at what a license last cost the team, which a grant doesn't
+  change. The admin's payments say "Team, 5 licenses for 3 months, given by Alcove".
+- **Once a ticket:** the same ticket for the same account is refused, `409`, whatever it gives, so sending it again after a
+  lost answer gives nothing more. A grant that's refused (over its most, no team, a live license) uses up neither the
+  ticket nor the key's day.
+- **At most** 12 months of Pro or 25 licenses each for 12 months a grant, and five grants a key a day (UTC). More takes
+  more than one grant, each under a ticket of its own.
+- **Never money:** nothing is added to the balance, and a refund gives nothing back for it: a refund of months or licenses
+  among which some were given gives back what was paid for the rest, and takes the given ones with it, and one of given
+  ones alone is refused, with nothing changed. To make something good in money, `operator billing credit`
+  ([runbook 3](#3-a-payment-didnt-arrive-or-arrived-twice)).
+- **No route takes a grant back.** What was given runs its course, unless its owner refunds what they bought, which takes
+  what was given and hasn't started with it.
+
+Each grant's line, under its request's ID:
+
+```sh
+gcloud --configuration=alcove logging read 'resource.type="gce_instance" AND logName="projects/alcove-solutions/logs/confidential-space-launcher" AND jsonPayload.message:"\"msg\":\"plan given by support\""' \
+  --freshness=30d --format='value(timestamp, jsonPayload.message)'
+```
