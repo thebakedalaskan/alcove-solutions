@@ -285,7 +285,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `CheckoutNote`, `CheckoutBig`, `CheckoutLine`, `PaymentReceipt` (one payment as paper, alone on the page when printed) and
   `ReceiptWindow` (a receipt over Settings).
   Team on a plan and joining a team by its link are in `plans/team-plan.tsx`: `TeamLine` (the team on the horizon, each
-  under their license), `TeamSection`, `TeamRows`, `TeamPersonRow`, `TeamAsk` (Remove, Leave or Delete asked in place),
+  under their license), `TeamSection`, `TeamRows`, `TeamPersonRow`, `TeamAsk` (Remove, Leave or Delete asked in place, and Make a new link in a company's Invite people),
   `TeamFoot`, `TeamNotesList` (what's visible to the team), `LicensesCard`, `TeamInvite` (a one-time link with Copy; `bare` for
   under checkout Done's heading), `TeamStartRow` (a quiet Start a team on a company's page), `JoinCard` and `JoinEvening`.
   The workspace kit is in `workspace/`, every part stateless, taking plain data and handlers: `WsPane` holds
