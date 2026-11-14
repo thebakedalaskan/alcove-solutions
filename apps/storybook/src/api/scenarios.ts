@@ -31,7 +31,7 @@ import { forgetKeptHere } from './recordings/kept';
 import { drawnPicture, forgetAudio } from './media';
 import { stopLive } from './standin';
 import { buyingWith, paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, PRO_YEAR, purchaseTopUp, raisePrices, TEAM_SIX, topUpOf, withPayments, type PaymentPlay } from '../world/plans/payments';
-import { carriedOver, freePlan, inGrace, newPlan, notesStopped, overLimits, proEnded, proEnding, proEndingPriceRose, proExtended, proPlan, proRenewed, PRO_YEARLY_PRICE, withBalance, withNotesLeft } from '../world/plans/plans';
+import { carriedOver, freePlan, inGrace, newPlan, notesStopped, overLimits, proEnded, proEnding, proEndingPriceRose, proExtended, proGiven, proPlan, proRenewed, PRO_YEARLY_PRICE, withBalance, withNotesLeft } from '../world/plans/plans';
 import { disconnectedDrive, withDriveExports } from '../world/drive-exports';
 import { homesOn } from '../world/call-page';
 import { calendars } from '../world/scheduling';
@@ -42,7 +42,7 @@ import { forgetDocuments, summaryOf } from './workspaces/workspaces';
 
 export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'agents-ending' | 'agents-just-connected' | 'drive-connected' | 'payments'
   | 'plan-low' | 'plan-stopped' | 'plan-grace' | 'plan-over' | 'plan-balance' | 'plan-pro' | 'plan-pro-ending' | 'plan-pro-ending-price' | 'plan-pro-renewed' | 'plan-pro-ended'
-  | 'plan-buying-pro' | 'plan-pro-extended'
+  | 'plan-buying-pro' | 'plan-pro-extended' | 'plan-pro-given'
   | 'plan-waiting' | 'payment-short' | 'payment-over' | 'payment-refused' | 'payment-expired' | 'payment-failed'
   | 'team-admin' | 'team-admin-low' | 'team-admin-none' | 'team-member' | 'team-member-unlicensed' | 'team-join' | 'no-team'
   | 'team-buying' | 'plan-choice' | 'plan-choice-before';
@@ -528,6 +528,10 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
   'plan-pro-extended': {
     title: 'Pro, extended', about: 'Art extended Pro by a year yesterday, paid with 192 USDC on Base at the yearly price: the month running and twelve after it, $5 left.',
     make: () => { const world = busy(); withPayments(world); world.plan = proExtended(); return { world, opening: {} }; }
+  },
+  'plan-pro-given': {
+    title: 'Pro, given by Alcove', about: 'Alcove’s support gave Art three months of Pro yesterday: the month running and two after it, nothing to refund since nothing was paid for them, and their line in the payments with no receipt. The balance is as it was, $5.',
+    make: () => { const world = busy(); withPayments(world); world.plan = proGiven(); return { world, opening: {} }; }
   },
   payments: {
     title: 'Adding money', about: 'Art can add money to their balance with a stablecoin; every payment address is an invalid Storybook preview. A payment opened to buy something is seen, added and bought a few seconds apart.',

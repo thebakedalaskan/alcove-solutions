@@ -45,6 +45,7 @@ account's AI meter keeps the period it's in ([Pro › The plan in force](#pro)).
 | A team license for a year, 12 periods at a lower price a period, from the balance or by payment | Working (server; see [Team](#team)) |
 | Team notes, Ask across them, team workspaces (server; see [Team](#team)) | Working. Ask's `refs` (@-references) work on the server; the app's Ask, main's palette, has no way to add them |
 | Picking a plan at first sign-in | Working. `Plan.choose` is true for every account until the app says the plans were shown (`POST /v1/plan/chosen`, `PlansApi.chose()`); an account from before plans is shown them once. In the app it's the plan choice: Home opens on Plans once, in its place (`apps/web/src/features/plans/PlanChoice.tsx`), and only Home, never a deep link (decided in `features/plans/choice.ts`). Once the plans have been on screen there or on Plans, the app says so, quietly trying again if that fails ([user-flows 16.20](../product/user-flows.md#1620-choose-a-plan)) |
+| Pro or team licenses given by Alcove for a while, by support, with no money involved | Working (server and operator CLI; see [Support](#support)) |
 | Withdrawing the balance | Not built, and not planned yet |
 
 ## Notes: the AI allowance
@@ -321,7 +322,9 @@ first keeps its price. A month that has started isn't refunded; with none to ref
 to refund that hasn’t started…"), and when nothing would come back (two months left of a year, say) it's `conflict` too
 ("Refunding now would give nothing back…"), with nothing changed. `Plan.pro.refundableMicroUsd` says what a refund would
 add, by the same rule. Each month keeps the purchase it was one of, so the record keeps every month of a purchase that has a
-month still to come; the rest of the months that have ended go, as before. A refund turns renewing off (`Plan.pro.renew`
+month still to come; the rest of the months that have ended go, as before. A month Alcove gave ([Support](#support)) was
+paid nothing, so it gives back nothing and goes with the rest; with only those to refund, it's `conflict` ("Refunding now
+would give nothing back: nothing was paid for the months that haven’t started."). A refund turns renewing off (`Plan.pro.renew`
 false, logged `pro renewing set` with `why: refund`): otherwise upkeep would buy back what was just given back, at the
 reminder or at the end, paid for by the refund itself. Pro then ends when the month running now does, with `pro-ended`
 (and `pro-ending` first, at each reminder that hasn't come yet), unless its owner turns renewing on again or buys more
@@ -424,7 +427,9 @@ before buying."), refused with nothing changed when the balance is short (`confl
 team licenses cost ($80). Add money first.": what they cost, never the balance, as for Pro). The history says "Team, 3
 licenses", or "Team, 1 license"; logged `team licenses bought` with the owner, team, count and periods.
 `POST /v1/team/licenses/refund` returns every unconsumed license at what it cost ("Team licenses refunded, 2"): its price a
-period for each of its periods, so one for a year nobody took gives back all $384. A taken one isn't refunded.
+period for each of its periods, so one for a year nobody took gives back all $384, and one Alcove gave ([Support](#support))
+nothing. A taken one isn't refunded, and when nothing would come back it's `conflict` ("Refunding now would give nothing
+back: nothing was paid for the licenses nobody has taken."), with nothing changed.
 
 **A license for a year** (`offers.team.yearly`, `{ periods, microUsdPerLicense }`) is one person for
 `plan.team.yearly_periods` (12) periods at `plan.team.yearly_price_micro_usd` ($32, 20% off $40) a period: $384. It's
@@ -627,6 +632,40 @@ Two more operator routes are support's, for a top-up named by its reference (`fe
   (`answered`), or why not (`recently`, `unwatched`, `no-provider`). One 1Click didn't answer is a `503`, as it was. One
   nothing watches any more is refused (`409`, "That top-up isn’t watched any more."). It never runs the watcher's pass,
   which takes anyone's due top-ups.
+
+**A plan for a while, given by Alcove** (`operator plan grant`, `POST /v1/operator/plans/grant`, a `write` key and a reason;
+`features/billing/operator/operator.ts › givePlan`): support makes something good with time on a plan instead of money. The
+account is named by its ID alone, never an address or a top-up's reference ([Operating Alcove › runbook 8](operating-alcove.md#8-give-someone-a-plan-for-a-while)).
+It's bought as a purchase from the balance is, by the purchase's own rules, from nobody's balance at nothing
+(`plans.ts › purchase` and `teams.ts › licensesBought` with the source `alcove`): there's no second way to add months or
+licenses.
+
+- `plan grant <account id> pro <months>` (1 to 12): months of Pro, after the last month bought that hasn't ended or from
+  now, back to back, each a period, ending any grace. Each keeps what was paid for it, nothing, and a month's price as it was
+  then (`monthlyMicroUsd`), so renewing after them goes by that, as after a month bought then. Refused while a team license
+  is live (`409`, "That account is on its team’s plan while its license lasts, so Pro can’t be given now."), as buying Pro is.
+- `plan grant <account id> team <licenses> <months>` (1 to 25 licenses, each for 1 to 12 months, a length that needs no
+  offer): licenses for the team the account is the admin of, unconsumed until someone on it without one takes one on a
+  visit, oldest first, each live for its months from then; the admin is told again when few or none are left, as after a
+  purchase. Each keeps what was paid for it, nothing. What a license last cost the team, which auto-purchase goes by, isn't
+  changed, so auto-purchase neither buys at nothing nor stops buying. An account that's no team's admin is refused (`409`:
+  "That account isn’t a team’s admin, so there’s no team to give licenses to. They start a team first, then licenses can be
+  given to it. Nothing was given.").
+- The history says who gave it: "Pro, 3 months, given by Alcove", "Team, 5 licenses for 3 months, given by Alcove", at $0.
+  Settings › Plan's payments show it with its day and no receipt, since no money moved; nothing changes in the contract.
+- It's never money. The balance doesn't change, and a refund gives back what was paid: given months and licenses give back
+  nothing. Pro refunded with months bought and given that haven't started gives back what the bought ones cost and takes
+  the given ones too; with only given ones it's refused, `conflict`, "Refunding now would give nothing back: nothing was
+  paid for the months that haven’t started." Licenses likewise ("…nothing was paid for the licenses nobody has taken.").
+  A license that replaces given Pro gives nothing back for it, and a team deleted with only given licenses left adds no
+  line to the history. Nothing withdraws a balance.
+- One ticket gives an account a plan once: `operator_grants` keeps a keyed hash of the account and the ticket's reference,
+  whatever its case (`blindIndex`'s `operator-grant`), and the key's ID, never what was given, in the grant's own
+  transaction, so a second grant with the same ticket for the same account, whatever it gives, is refused (`409`, "That
+  ticket already gave this account a plan. Nothing was given."). A key gives at most five a day (UTC), counted there for
+  every instance (`403`); one key's grants wait on each other on a lock on its ID. A grant over its most is `400`. A refused
+  grant uses up neither its ticket nor the day. Logged `plan given by support` with the owner, the team, the kind, the
+  months and the licenses.
 
 ## Adding money
 
@@ -945,3 +984,18 @@ sealed records, the contract and the limits.
   allowance. So none was sold while the previous release still served, licenses for a year shipped switched off
   (`plan.team.yearly_price_micro_usd` defaulted to 0), and the release after it, deployed once that one served alone, turned
   them on by setting the default to $32. No row is needed.
+
+**Plans given by Alcove** (after the operator routes and their `0035_operator.sql`, the previous release for them):
+
+- `0036_operator_grants.sql` adds one table, `operator_grants`, which the previous release never reads or writes, and takes
+  no lock on any table there is.
+- No stored or contract shape changes. A grant is months of Pro and team licenses at a price of nothing, which the records
+  hold already: a `plan-account` month with `microUsd` 0 (and its `purchase` and `monthlyMicroUsd`, a month's price then), a
+  `team-billing` license with `microUsd` 0 (and its `periods`), and a history entry with `microUsd` 0 and its label. What
+  the previous release wrote reads as it did; what this one gives reads there as months and licenses bought for nothing,
+  which its refunds give nothing back for and its renewing and auto-purchase go on from as before.
+- While both serve, an instance of the previous release has no grant route (`404`), and nothing is given by it: send the
+  grant again, with the same ticket, which it didn't use. That release refunds Pro with only given months left with the
+  words about the yearly price, and refunds licenses that were only given for nothing, with a $0 line, rather than
+  refusing them.
+- A tab opened before the deploy shows a given line as "+$0.00" with a Receipt until it reloads.

@@ -4251,6 +4251,8 @@ describe('privacy at rest', () => {
     for (const who of [f.ownerId, ...f.topUps]) expect(LinesAnswer.parse((await ask('POST', '/v1/operator/billing', { body: { words: ['show', who] } })).body).lines.length, who).toBeGreaterThan(0);
     for (const reference of [...f.topUps, opened.id]) expect(TopUpAnswer.parse((await ask('GET', '/v1/operator/topups/:reference', { ids: { reference } })).body)).toMatchObject({ reference, accountId: f.ownerId });
     expect(TopUpCheckAnswer.parse((await ask('POST', '/v1/operator/topups/:reference/check', { ids: { reference: opened.id }, body: { reason } })).body)).toMatchObject({ before: 'waiting', after: 'waiting', watched: true });
+    // A license given as Alcove to the team the account is the admin of: what's said back is IDs and counts.
+    expect(LinesAnswer.parse((await ask('POST', '/v1/operator/plans/grant', { body: { words: [f.ownerId, 'team', '1', '1'], reason } })).body).lines).toEqual([expect.stringContaining('as “given by Alcove”')]);
 
     // Its calls by their runs', their meetings' and their notes' IDs, ended and still on; a room recording's note, which no call
     // took; each note's writing; and the first call's note retried, written and sent nowhere, so nothing waits and nothing's done.

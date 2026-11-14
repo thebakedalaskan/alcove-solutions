@@ -23,7 +23,7 @@ import { log } from '../../../platform/log';
 import { createOwner, lockOwner, openRootKey } from '../../../keys/owners';
 import { publish, TREE_NOTICE } from '../../../live/hub';
 import { personOf } from '../../profile/portraits';
-import { accountOf, leftTeam, purchase, refusedError, replacedByLicense, save, told, withEntry, withNotice, type Accounting, type PlanAccount, type Purchased } from '../plans';
+import { accountOf, leftTeam, purchase, refusedError, replacedByLicense, save, told, withEntry, withNotice, type Accounting, type PlanAccount, type Purchased, type Source } from '../plans';
 
 const tlog = log.child({ component: 'teams' });
 /** How many teams upkeep looks at each time. */
@@ -446,7 +446,8 @@ export async function deleteTeam(o: Owner): Promise<void> {
     const l = await limitsNow(o, c);
     const microUsd = costOf(b.licenses);
     await changePlan(o, c, o.ownerId, (a) => {
-      const refunded = b.licenses.length ? withEntry(a, microUsd, `Team licenses refunded, ${b.licenses.length}`) : a;
+      // Licenses Alcove gave go with the team and give back nothing: with only those, there's no line for it.
+      const refunded = microUsd > 0 ? withEntry(a, microUsd, `Team licenses refunded, ${b.licenses.length}`) : a;
       return isLive(m, now) ? leftTeam(refunded, l, now) : refunded;
     });
     await deleteTeamIn(c, t);
@@ -469,12 +470,13 @@ export async function adminsTeam(c: Db, ownerId: string): Promise<TeamRow | null
  * Buys licenses for `t`, the team `ownerId` is the admin of, from their balance, in the caller's transaction: the team's
  * row locked first, by the caller (`asAdmin`, `adminsTeam`), then their plan's, here (plans.ts › purchase), so buys and
  * takes at once never spend the same money or license twice. Refused with nothing changed as anything bought from the
- * balance is, and when `t` is null: they're no team's admin. What POST /v1/team/licenses does, and what a payment opened to
- * buy licenses does once its money is added (deposits.ts). They wait unconsumed, oldest first, for members to take on a
- * visit, are refunded until then, and let the admin be told again when few or none are left.
+ * balance is, and when `t` is null: they're no team's admin. What POST /v1/team/licenses does, what a payment opened to buy
+ * licenses does once its money is added (deposits.ts), and, at nothing, what Alcove gives a team (`source`, support's
+ * grant). They wait unconsumed, oldest first, for members to take on a visit, are refunded until then at what was paid for
+ * them, and let the admin be told again when few or none are left.
  */
-export async function licensesBought(d: Service, c: Db, t: TeamRow | null, ownerId: string, buys: Extract<Purchase, { kind: 'licenses' }>): Promise<Purchased> {
-  const r = await purchase(d, c, ownerId, buys, { admin: t !== null });
+export async function licensesBought(d: Service, c: Db, t: TeamRow | null, ownerId: string, buys: Extract<Purchase, { kind: 'licenses' }>, source: Source = 'balance'): Promise<Purchased> {
+  const r = await purchase(d, c, ownerId, buys, { admin: t !== null }, source);
   if (!r.bought || !t) return r;
   const b = openBilling(d, t);
   const { count, microUsdPerLicense, periods } = buys;
@@ -482,9 +484,11 @@ export async function licensesBought(d: Service, c: Db, t: TeamRow | null, owner
   const l = await limitsNow(d, c);
   // Auto-purchase buys a license for one period, so it goes by what one cost: bought for a year at its lower price, by a
   // license's price for a period as it was then (as Pro's renewing goes by a month's price after a year at the lower one).
-  const lastMicroUsd = periods === 1 ? microUsdPerLicense : l.get('plan.team.price_micro_usd');
+  // Nothing, for licenses Alcove gives, is no price the team paid: it goes by what it went by before.
+  const lastMicroUsd = source === 'alcove' ? b.lastMicroUsd : periods === 1 ? microUsdPerLicense : l.get('plan.team.price_micro_usd');
   await saveBilling(d, c, t, { ...b, licenses, none: false, low: b.low && licenses.length < l.get('team.low_licenses'), lastMicroUsd });
-  tlog.info('team licenses bought', { ownerId, teamId: t.team_id, count, periods });
+  // What Alcove gives says so on support's own line (billing/operator/operator.ts).
+  if (source === 'balance') tlog.info('team licenses bought', { ownerId, teamId: t.team_id, count, periods });
   return r;
 }
 
@@ -503,7 +507,8 @@ export async function buyLicenses(o: Owner, count: number, microUsdPerLicense: n
 
 /**
  * Admin only: every unconsumed license back to their balance, at what was paid for it: its price a period for each of its
- * periods, so one for a year gives back the whole year. One someone has taken isn't refunded.
+ * periods, so one for a year gives back the whole year, and one Alcove gave goes with them and gives back nothing. One
+ * someone has taken isn't refunded, and nothing is when nothing would come back.
  */
 export async function refundLicenses(o: Owner): Promise<MyTeam> {
   await tx(o.pool, async (c) => {
@@ -511,6 +516,7 @@ export async function refundLicenses(o: Owner): Promise<MyTeam> {
     const b = openBilling(o, t);
     if (!b.licenses.length) throw conflict('There’s no license to refund that nobody has taken. A license someone has taken isn’t refunded.', { ownerId: o.ownerId, teamId: t.team_id });
     const microUsd = costOf(b.licenses);
+    if (microUsd <= 0) throw conflict('Refunding now would give nothing back: nothing was paid for the licenses nobody has taken.', { ownerId: o.ownerId, teamId: t.team_id, why: 'unpaid' });
     await changePlan(o, c, o.ownerId, (a) => withEntry(a, microUsd, `Team licenses refunded, ${b.licenses.length}`));
     await saveBilling(o, c, t, { ...b, licenses: [] });
     tlog.info('team licenses refunded', { ownerId: o.ownerId, teamId: t.team_id, count: b.licenses.length, microUsd });

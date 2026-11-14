@@ -240,7 +240,8 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `ThemeScope` (one theme for a part of a page, such as your side of a call, so what opens from it takes that theme too),
   `BackgroundModal` (Background's window: a big live preview of you beside the choices) with `BackgroundPicker` (what shows behind someone on camera, in groups: Blur, Pictures, Colours and Yours, with `SCENE_PICTURES`), and `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
   For starting and scheduling a call: `FlowView`, `FlowHead`, `FlowBody`, `FlowFoot`, `FlowNote`, `SwitchLine`,
-  `NotesSwitches` (whether a call writes notes, and what they keep), `ScopeBar` (this call, or this and later calls),
+  `NotesSwitches` (whether a call writes notes, and what they keep: `KeepSwitches`, which the organizer's lobby opens
+  alone under What the notes keep), `ScopeBar` (this call, or this and later calls),
   `WayCard`, `PersonToken` (with `state` and `place`), `QuadFaces`, `Flood` and `useSmoothHeight`,
   with `NoNotesLeft` (no notes left this period where a call with notes starts or is scheduled: until when, in caution, the
   ways on under it). Start a call asks Start now or Schedule for later, and scheduling happens on Calls: one sheet, the week
