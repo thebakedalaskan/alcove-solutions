@@ -1,33 +1,40 @@
 /*
  * Asking people onto Alcove: Invite people, Invite and Remind on someone, and the lists of who hasn't come yet. Alcove
- * sends no email itself: each of these opens your own mail app with an invitation, and marks them invited.
+ * sends no email itself: each of these opens your own mail app with an invitation, and marks them invited. Every
+ * invitation carries your own invite link, whose page says it's from you (features/team/Invited.tsx), and so does Copy
+ * link: until the link is here, they wait. Beside Copy link, a new link takes the place of the one you've sent, asked first.
  */
-import { errorMessage, type Person, type Team } from '@alcove/api';
-import { Button, GhostArch, Icon, PickList, Popover, buttonClass, cn, useToast, type ButtonVariant, type PickRow } from '@alcove/ui';
+import { errorCode, errorMessage, type Person, type Team } from '@alcove/api';
+import { Button, GhostArch, Icon, IconButton, PickList, Popover, TeamAsk, buttonClass, cn, useToast, type ButtonVariant, type PickRow } from '@alcove/ui';
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { useTeamAtThirdInvite } from '~/features/plans/teamDoor';
 import { log } from '~/lib/log';
 import { byEmail, callName, fold, isEmail, sameEmail, someNames, typedIn } from '~/lib/people';
-import { useInviteTeam } from './queries';
+import { useInviteLink as useOwnLink, useInviteTeam, useNewInviteLink } from './queries';
 import { addressOnly, byMeetings, callLine, listed, type Meets, type Member } from './data';
 import { useOpen, usePop } from './open';
 
 const tlog = log.child({ component: 'team' });
 
-/** Where people sign in: the address Copy invite link copies, and the one in every invitation. */
-const signInPage = () => `${location.origin}/welcome`;
+/**
+ * Your own invite link, once it's here (null until then): the address Copy invite link copies, and the one in every
+ * invitation.
+ */
+const useInviteLink = (): string | null => useOwnLink().data?.link ?? null;
 
 /**
- * An email from your own mail app, to `people`, asking them to sign in to Alcove; `again` for a reminder. Addresses keep
- * their @, everything else is encoded.
+ * An email from your own mail app, to `people`, asking them onto Alcove with your invite link; `again` for a reminder.
+ * Addresses keep their @, everything else is encoded.
  */
-function invitation(people: Person[], again = false): string {
+function invitation(people: Person[], link: string, again = false): string {
   const to = people.map((p) => encodeURIComponent(p.email).replace(/%40/g, '@')).join(',');
   const subject = again ? 'A reminder: join me on Alcove' : 'Join me on Alcove';
-  const body = `I use Alcove for our calls and their notes. Sign in with your work account here: ${signInPage()}`;
+  const body = `I use Alcove for our calls and their notes. Sign in with your work account here: ${link}`;
   return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 const OPENS = 'Opens your email with an invitation';
+/** Said on what waits for your invite link, in the moment before it's here. */
+export const LINK_ON_ITS_WAY = 'Getting your invite link';
 /** Opens an email in your mail app: as following a link does, without leaving the page. */
 function openEmail(href: string) {
   const a = document.createElement('a');
@@ -35,16 +42,19 @@ function openEmail(href: string) {
   a.click();
 }
 
-/** Copies the sign-in page's address, or shows it when the browser won't copy. */
+/**
+ * Copies your invite link and says so, or shows it when the browser won't copy. `made`: it's a new link just made, so the
+ * one before no longer works, which it says either way.
+ */
 export function useCopyInvite() {
   const toast = useToast();
-  return async () => {
+  return async (link: string, made = false) => {
     try {
-      await navigator.clipboard.writeText(signInPage());
-      toast('Invite link copied. It opens the page to sign in.', { icon: 'link' });
+      await navigator.clipboard.writeText(link);
+      toast(made ? 'New invite link copied. The old one no longer works.' : 'Invite link copied. It says it’s from you.', { icon: 'link' });
     } catch (e) {
-      tlog.info('invite link shown instead of copied', { err: e });
-      toast(<>Copy this link: <b>{signInPage()}</b></>, { icon: 'link', ms: 8000 });
+      tlog.info('invite link shown instead of copied', { err: e, made });
+      toast(<>{made ? 'The old link no longer works. Copy the new one: ' : 'Copy this link: '}<b>{link}</b></>, { icon: 'link', ms: 8000 });
     }
   };
 }
@@ -70,21 +80,27 @@ function useMarkInvited() {
   };
 }
 
-/** A link that opens your email with an invitation to `people` (`remind`: a reminder), and marks them invited. */
+/**
+ * A link that opens your email with an invitation to `people` (`remind`: a reminder), and marks them invited. Until your
+ * invite link is here it's the same button, waiting, so no invitation goes without it.
+ */
 export function InviteLink({ people, remind = false, variant = 'secondary', size = 'sm', icon = false, className, children }: {
   people: Person[]; remind?: boolean | undefined; variant?: ButtonVariant | undefined; size?: 'sm' | 'md' | undefined; icon?: boolean | undefined; className?: string | undefined; children: ReactNode;
 }) {
   const mark = useMarkInvited();
   const toast = useToast();
+  const link = useInviteLink();
+  const said = <>{icon && <Icon name="mail" size={16} />}{children}</>;
+  if (!link) return <Button variant={variant} size={size} className={className} disabled title={LINK_ON_ITS_WAY}>{said}</Button>;
   return (
-    <a href={invitation(people, remind)} className={cn(buttonClass({ variant, size }), className)} title={OPENS}
+    <a href={invitation(people, link, remind)} className={cn(buttonClass({ variant, size }), className)} title={OPENS}
       onClick={() => { if (remind) toast(`Your email opens with a reminder to ${names(people)}.`, { icon: 'mail' }); else mark(people); }}>
-      {icon && <Icon name="mail" size={16} />}{children}
+      {said}
     </a>
   );
 }
 
-/** Invite people: tick colleagues who aren't on Alcove yet, or type anyone's address, and your email opens with an invitation to them. Or copy the link to sign in. */
+/** Invite people: tick colleagues who aren't on Alcove yet, or type anyone's address, and your email opens with an invitation to them. Or copy your invite link. */
 export function InvitePeople({ me, team, meets, now, anchor }: { me: Person; team: Team; meets: (email: string) => Meets; now: Date; anchor: ReactNode }) {
   const pop = usePop('invite');
   return (
@@ -100,6 +116,9 @@ function InviteList({ me, team, meets, now, onClose }: { me: Person; team: Team;
   const [picked, setPicked] = useState<Person[]>([]);
   const mark = useMarkInvited();
   const copy = useCopyInvite();
+  const link = useInviteLink();
+  /* Make a new link? is asked in the list's place, which comes back as it was. */
+  const [asking, setAsking] = useState(false);
   const typed = typedIn(query);
   const whole = isEmail(typed);
   const asked = [...team.members.filter((m) => !m.onAlcove && !m.invited)].sort(byMeetings(meets));
@@ -127,11 +146,12 @@ function InviteList({ me, team, meets, now, onClose }: { me: Person; team: Team;
   }, [picked, showPicked]);
 
   const send = () => {
-    if (!going.length) return;
-    openEmail(invitation(going));
+    if (!going.length || !link) return;
+    openEmail(invitation(going, link));
     mark(going.filter((p) => known(p.email)), going.filter((p) => !known(p.email)));
     onClose();
   };
+  if (asking) return <NewLinkAsk onKeep={() => setAsking(false)} onMade={onClose} />;
   return (
     <PickList label="Name or email" query={query} onQuery={setQuery} address={whole ? typed : undefined} rows={shown} ticks
       none={yours ? 'That’s you.' : someone ? `${callName(someone.person)} ${someone.onAlcove ? 'is on Alcove' : 'has been asked'}.`
@@ -139,9 +159,30 @@ function InviteList({ me, team, meets, now, onClose }: { me: Person; team: Team;
       onPress={(r) => setPicked((now) => (now.some((p) => sameEmail(p, r.person)) ? now.filter((p) => !sameEmail(p, r.person)) : [...now, r.person]))}
       onFinish={send}
       foot={<>
-        <Button variant="quiet" size="sm" icon="link" onClick={() => { onClose(); void copy(); }}>Copy link</Button>
-        <Button variant={going.length ? 'primary' : 'secondary'} size="sm" icon="mail" disabled={!going.length} title={OPENS} onClick={send}>{going.length ? `Invite ${going.length}` : 'Invite'}</Button>
+        <span className="tp-pop-fl">
+          <Button variant="quiet" size="sm" icon="link" disabled={!link} title={link ? undefined : LINK_ON_ITS_WAY} onClick={() => { if (!link) return; onClose(); void copy(link); }}>Copy link</Button>
+          <IconButton icon="retry" size={16} label="Make a new link" disabled={!link} onClick={() => setAsking(true)} />
+        </span>
+        <Button variant={going.length ? 'primary' : 'secondary'} size="sm" icon="mail" disabled={!going.length || !link} title={link ? OPENS : LINK_ON_ITS_WAY} onClick={send}>{going.length ? `Invite ${going.length}` : 'Invite'}</Button>
       </>} />
+  );
+}
+
+/**
+ * Make a new link?, asked in place in the popover: the link you've sent stops working, and who joined from it stays listed.
+ * Yes makes it, copies it and says the old one no longer works; Cancel, or Escape, goes back to the list as it was.
+ */
+function NewLinkAsk({ onKeep, onMade }: { onKeep: () => void; onMade: () => void }) {
+  const renew = useNewInviteLink();
+  const copy = useCopyInvite();
+  const toast = useToast();
+  return (
+    <TeamAsk className="tp-ask" title="Make a new link?" text="The link you’ve sent stops working. People who joined from it stay listed."
+      confirm="Make a new link" keep="Cancel" busy={renew.isPending} onKeep={onKeep}
+      onConfirm={() => renew.mutate(undefined, {
+        onSuccess: (made) => { onMade(); void copy(made.link, true); },
+        onError: (e) => { tlog.info('invite link not made again', { code: errorCode(e) }); toast(errorMessage(e), { icon: 'x' }); }
+      })} />
   );
 }
 

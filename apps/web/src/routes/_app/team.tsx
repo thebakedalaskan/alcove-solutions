@@ -18,13 +18,18 @@ export const Route = createFileRoute('/_app/team')({
   },
   /*
    * The team gets a moment, so it comes up with the page, and no longer: from your calendar it can take seconds, and
-   * empty arches wait on the line until it's here. Your groups and notes load beside it, as Settings' parts do: if the
-   * team or one of them doesn't load, the page says so where it would have been and the rest stays usable.
+   * empty arches wait on the line until it's here. Your invite link follows them, once there's a company to invite people
+   * to and no team of your own (whose page never shows it), so an invitation opened from the page has it. Your groups and
+   * notes load beside them, as Settings' parts do: if the team or one of them doesn't load, the page says so where it would
+   * have been and the rest stays usable.
    */
   loader: async ({ context: { queryClient: qc } }) => {
     if (!navigator.onLine) return;
+    const team = qc.ensureQueryData(teamQueries.team());
+    const mine = qc.ensureQueryData(teamQueries.myTeam());
+    const link = Promise.all([team, mine]).then(([t, m]) => (t && m === null ? qc.ensureQueryData(teamQueries.inviteLink()) : null));
     await Promise.race([
-      Promise.allSettled([qc.ensureQueryData(teamQueries.team()), qc.ensureQueryData(teamQueries.myTeam()), qc.ensureQueryData(accountQueries.prefs()), qc.ensureQueryData(noteQueries.notes())]),
+      Promise.allSettled([team, mine, link, qc.ensureQueryData(accountQueries.prefs()), qc.ensureQueryData(noteQueries.notes())]),
       new Promise((r) => setTimeout(r, 1200))
     ]);
   },

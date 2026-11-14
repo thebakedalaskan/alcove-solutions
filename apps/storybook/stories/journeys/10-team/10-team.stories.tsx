@@ -1,11 +1,15 @@
-/* Journeys on the Team page (docs/product/user-flows.md › 10. Team), from the canvas's Team board (docs/design/canvas/data-team.js). */
+/*
+ * Journeys on the Team page (docs/product/user-flows.md › 10. Team), from the canvas's Team board (docs/design/canvas/data-team.js),
+ * and opening someone's invite link.
+ */
 import { AlcoveApiError } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
+import { withInviteLink } from '../../../src/api/scenarios';
 import { standIn } from '../../../src/api/standin';
 import { isOnline, setOnline } from '../../../src/browser';
-import { page, pages, type PageArgs, type PageStory } from '../../../src/page';
-import { away, holding, keepMail, LATER, outage, SOON, swap, unreachable } from '../play';
+import { changing, page, pages, type PageArgs, type PageStory } from '../../../src/page';
+import { away, holding, keepMail, LATER, outage, pressable, SOON, swap, unreachable } from '../play';
 
 const meta = { title: 'Journeys/10 Team', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -144,9 +148,9 @@ export const CopyTheInviteLink: PageStory = {
       await userEvent.click(await screen.findByRole('button', { name: 'Invite people' }, LATER));
       await userEvent.click(within(await screen.findByRole('dialog', { name: 'Invite people' }, SOON)).getByRole('button', { name: 'Copy link' }));
     });
-    await step('The popover closes, and the link to sign in is on your clipboard', async () => {
+    await step('The popover closes, and your own invite link is on your clipboard. Its page says it’s from you', async () => {
       // A browser that won't copy for the page shows the link to copy instead.
-      await screen.findByText(/^(Invite link copied\. It opens the page to sign in\.|Copy this link:)/, {}, SOON);
+      await screen.findByText(/^(Invite link copied\. It says it’s from you\.|Copy this link:)/, {}, SOON);
       await away('dialog', 'Invite people');
     });
   }
@@ -437,6 +441,50 @@ export const OfflineAndGroups: PageStory = {
     await step('If only your groups fail, their section says so. The rest of the page works', async () => {
       await within(await groups()).findByText('Your groups didn’t load.', {}, LATER);
       await screen.findByRole('region', { name: 'Not on Alcove yet' }, SOON);
+    });
+  }
+};
+
+export const OpenAnInviteLink: PageStory = {
+  name: '10.22 Open someone’s invite link and sign in',
+  ...page('/invite', 'first-sign-in'),
+  beforeEach: changing(withInviteLink()),
+  play: async ({ userEvent, step }) => {
+    await step('Priya’s invite link opens on one card: Priya in her arch, what Alcove is for, and the ways in', async () => {
+      await screen.findByRole('heading', { name: 'Priya asked you to join them on Alcove', level: 1 }, LATER);
+    });
+    await step('Continue with Microsoft. The account is new, so Priya’s Team page will say you joined', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Continue with Microsoft' }, SOON));
+    });
+    await step('Then the first sign-in goes on as from the welcome page: the account is made on screen', async () => {
+      await screen.findByRole('dialog', { name: 'Creating your account' }, LATER);
+    });
+    await step('“You’re in”, and the arch opens on the plans to choose from, then Home', async () => {
+      await screen.findByRole('dialog', { name: /^You’re in/ }, LATER);
+      await screen.findByRole('heading', { name: 'Choose a plan', level: 1 }, LATER);
+    });
+  }
+};
+
+export const MakeANewInviteLink: PageStory = {
+  name: '10.23 Make a new invite link',
+  ...page('/team', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Open Invite people. Beside Copy link, the arrow makes a new link', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Invite people' }, LATER));
+      await userEvent.click(await pressable('button', 'Make a new link', SOON, within(await screen.findByRole('dialog', { name: 'Invite people' }, SOON))));
+    });
+    await step('It asks in place first: the link you’ve sent stops working, and people who joined from it stay listed', async () => {
+      await within(await screen.findByRole('dialog', { name: 'Invite people' })).findByRole('group', { name: 'Make a new link?' }, SOON);
+    });
+    await step('Make a new link. It’s on your clipboard, and the old one no longer works', async () => {
+      await userEvent.click(within(await screen.findByRole('group', { name: 'Make a new link?' })).getByRole('button', { name: 'Make a new link' }));
+      // A browser that won't copy for the page shows the new link to copy instead.
+      await screen.findByText(/^(New invite link copied\. The old one no longer works\.|The old link no longer works\. Copy the new one:)/, {}, SOON);
+      await away('dialog', 'Invite people');
+    });
+    await step('Aiko and Maya, who joined from the old one, are still listed under the buttons', async () => {
+      await screen.findByText('Aiko and Maya joined from your link', {}, SOON);
     });
   }
 };

@@ -5,32 +5,34 @@
  * with), and notes shared with groups. Nobody else here yet, it asks you to bring them. Someone on their own has no team,
  * so no Team page: nothing links here, and its address goes Home. On a team the page is the team's (OnTeam.tsx), with your
  * groups still on its water; on none, a quiet row starts one (StartTeam.tsx). `group` is one of your groups to show open
- * (from its tile, or the address), or NEW_GROUP to make one.
+ * (from its tile, or the address), or NEW_GROUP to make one. Copy invite link copies your own invite link, whose page says
+ * it's from you, and once anyone has joined from it the sky says who, under the buttons.
  */
-import { NEW_GROUP, errorCode, errorMessage, type NoteSummary, type Team } from '@alcove/api';
-import { Button, Evening, Icon, cn } from '@alcove/ui';
+import { NEW_GROUP, errorCode, errorMessage, type NoteSummary, type Person, type Team } from '@alcove/api';
+import { Button, Evening, Faces, Icon, cn } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useNow, useOnline } from '~/lib/live';
-import { sameEmail } from '~/lib/people';
+import { sameEmail, someNames } from '~/lib/people';
 import { accountQueries } from '~/features/account/queries';
 import { callQueries } from '~/features/calls/list/queries';
 import { calendarQueries } from '~/features/calls/scheduling/queries';
 import { noteQueries } from '~/features/notes/queries';
-import { teamQueries } from './queries';
+import { teamQueries, useInviteLink } from './queries';
 import { byMeetings, byRecency, knownPeople, meetings, shownOf, type Member } from './data';
 import { Groups, NO_DRAFT, readyToMake, type Draft } from './Groups';
 import { blanks, inLine, lineOf, sunOf, you } from './line';
 import { OnTeam } from './OnTeam';
 import { personPop, useOpen } from './open';
-import { InvitePeople, NotOnAlcove, PeopleYouMeet, useCopyInvite } from './People';
+import { InvitePeople, LINK_ON_ITS_WAY, NotOnAlcove, PeopleYouMeet, useCopyInvite } from './People';
 import { AllPeople, PeopleLine, type Between } from './PeopleLine';
 import { SharedWithGroups } from './Shared';
 import { StartTeam } from './StartTeam';
 
 const NO_NOTES: NoteSummary[] = [];
 const NOBODY: ReadonlySet<string> = new Set();
+const NO_ONE: Person[] = [];
 /** How many empty arches wait on the line for the team, and how many stand beside you on the first day. */
 const WAITING = 6;
 const FIRST_DAY = 4;
@@ -50,6 +52,8 @@ export function TeamPage({ group }: { group: string | undefined }) {
   const team = useQuery({ ...teamQueries.team(), retryOnMount: false });
   /* The team you're on, if you're on one: then the page is the team's. */
   const mine = useQuery(teamQueries.myTeam()).data;
+  /* Your own invite link and who joined from it, once there's a company and no team of your own. The loader asks for it too. */
+  const invite = useInviteLink();
   const prefs = useQuery(accountQueries.prefs()).data;
   const notes = useQuery(noteQueries.notes()).data ?? NO_NOTES;
   const calls = useQuery(callQueries.upcoming()).data ?? [];
@@ -88,6 +92,10 @@ export function TeamPage({ group }: { group: string | undefined }) {
   const sun = sunOf(line);
   /* One filled button: an open popover has its own, and so does a group ready to be made, while its editor's open. */
   const filled = open === undefined && !(group === NEW_GROUP && readyToMake(draft));
+  const link = invite.data;
+  const joined = link?.joined.map((j) => j.person) ?? NO_ONE;
+  /* Without your link nothing can be sent: the page says why where the invites are, and they wait. Never another address. */
+  const linkTrouble = !here || mine !== null || link ? undefined : !online ? 'offline' : invite.isError ? 'failed' : undefined;
 
   const groups = <Groups open={group} onOpen={openGroup} notes={notes} person={person} shown={shown} draft={draft} onDraft={setDraft} />;
   const shared = <SharedWithGroups notes={notes} me={me} now={now} />;
@@ -103,13 +111,26 @@ export function TeamPage({ group }: { group: string | undefined }) {
           {trouble && <p className="tp-why"><Icon name={trouble === 'offline' ? 'wifiOff' : 'alert'} size={18} />{trouble === 'offline' ? 'Your team shows here when you’re back.' : errorMessage(team.error)}</p>}
           <div className="tp-acts">
             {here && <InvitePeople me={me} team={here} meets={meets} now={now} anchor={<Button variant={filled ? 'primary' : 'secondary'} size="lg" icon="addUser">Invite people</Button>} />}
-            {first && <Button size="lg" icon="link" onClick={() => void copy()}>Copy invite link</Button>}
+            {first && (
+              <Button size="lg" icon="link" disabled={!link} title={link ? undefined : LINK_ON_ITS_WAY}
+                onClick={() => { if (link) void copy(link.link); }}>Copy invite link</Button>
+            )}
             {here && line.recedes && (
               <AllPeople me={me} team={here} onFind={(email) => { setForward(email); setOpen(() => personPop(email)); }}
                 anchor={<Button size="lg" icon="people">All {line.n} people</Button>} />
             )}
             {trouble && <Button variant="primary" size="lg" icon="retry" onClick={() => void team.refetch()}>Try again</Button>}
           </div>
+          {here && mine === null && joined.length > 0 && (
+            <p className="tp-joined"><Faces people={joined} size={26} max={4} /><span>{someNames(joined)} joined from your link</span></p>
+          )}
+          {linkTrouble === 'offline' && <p className="tp-why is-link"><Icon name="wifiOff" size={18} />Invites need a connection.</p>}
+          {linkTrouble === 'failed' && (
+            <p className="tp-why is-link">
+              <Icon name="alert" size={18} />Your invite link didn’t load.
+              <Button variant="quiet" size="sm" icon="retry" onClick={() => void invite.refetch()}>Try again</Button>
+            </p>
+          )}
         </section>
         <PeopleLine line={line} sun={sun} company={here?.name} waiting={!here && !trouble} between={between} />
       </div>

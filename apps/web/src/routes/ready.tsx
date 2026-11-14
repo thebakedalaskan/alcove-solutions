@@ -13,11 +13,12 @@ import { trustQuery } from '~/lib/trust';
  * plans come first: features/plans/choice.ts); then, once that screen covers the page, Home loads behind it
  * (and doesn't show through it as it fades in over the welcome page), and the arch opens into it.
  * The team is only asked for: a Google work account's can take a few seconds to put together, and the
- * screen doesn't wait for it.
+ * screen doesn't wait for it. An account made from someone's invite link goes back to its page first, which tells them and
+ * comes back here (requireAccount's `arriving`).
  */
 export const Route = createFileRoute('/ready')({
   beforeLoad: async ({ context: { queryClient: qc }, preload }) => {
-    await requireAccount(qc, preload);
+    await requireAccount(qc, preload, true);
     void qc.prefetchQuery(trustQuery());
     void qc.prefetchQuery(teamQueries.team());
     await Promise.allSettled([qc.ensureQueryData(calendarQueries.calendar()), qc.ensureQueryData(callQueries.upcoming()), qc.ensureQueryData(planQueries.plan())]);

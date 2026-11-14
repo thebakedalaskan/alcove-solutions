@@ -1932,9 +1932,19 @@ page has a quiet **Start a team** while you're on none (16.15).
   someone brings them forward on the line, past the 34 too, and opens their popover.
 - **Invite people**: tick colleagues who aren't on Alcove and haven't been asked (they step up on the line as you do),
   or type anyone's whole address, which counts as it's typed; a comma, a space, Tab or **Enter** ticks it and clears the
-  line for the next, and **Enter** again finishes. **Invite** opens your own email with an invitation to them (a subject and the link to
-  sign in), and marks the people on your team invited. **Copy link** copies the address of the page to sign in. Alcove
-  sends no email itself.
+  line for the next, and **Enter** again finishes. **Invite** opens your own email with an invitation to them (a subject and your
+  invite link), and marks the people on your team invited. **Copy link** copies your invite link. Alcove sends no email itself.
+- **Your invite link** (`/invite#…`) is your own, the same every time until you make a new one, and its page says it's from
+  you. **Copy invite link**, **Copy link** and every invitation the page opens (Invite people's **Invite**, **Invite** and
+  **Remind** on a row or in someone's popover, **Invite all**, **Invite everyone**) carry it; it loads with the page, and
+  until it's there they wait rather than send anything else. If it doesn't load, the sky says so under the buttons, with
+  **Try again**; with no connection, that invites need one. Copying it says "Invite link copied. It says it's from you." (a
+  browser that won't copy shows the link to copy instead). Once anyone has made their account from it, the sky says so under
+  the buttons: their faces and "Aiko and Maya joined from your link" ("Aiko joined from your link" for one); nothing while
+  nobody has. Someone on a team has the team's page instead, and no invite link.
+- **Make a new link**: the arrow beside **Copy link** in Invite people asks in place first, "Make a new link? The link you've
+  sent stops working. People who joined from it stay listed.", with **Cancel** and **Make a new link**. The new one is
+  copied ("New invite link copied. The old one no longer works."), and the old one leads nowhere from then on.
 - **Not on Alcove yet**: the rest, each with their title and the same line about the two of you, or **Invited**, and in
   the same place on every row **Invite**, or **Remind**, which opens your email again. **Invite all** asks everyone who
   hasn't been asked at once. Nobody moves when they're invited. Five show before **Show all**.
@@ -1965,6 +1975,28 @@ While the team is on its way, empty arches wait on the line beside you, and ever
 arrives. If it doesn't load, the page says why (or that you're offline, and it comes back by itself), with **Try again**.
 Your groups and notes load beside it: if your groups don't, their section says so, with **Try again**, and the rest of
 the page works.
+
+**Someone's invite link** is a page of its own (`/invite#…`), one card on the team's evening. Its secret is after the `#`,
+so no server sees it, and it leaves the address bar at once. Signed out, the card is from them: who asked you, in their arch
+("Priya asked you to join them on Alcove"), what Alcove is for, and the ways in, with **See what Alcove does** under them,
+which opens the welcome page. The link waits in the tab while you sign in, Google's way back included, and while you look at
+the welcome page: **Back** brings the card again, and signing in there comes back to it. An account made there tells whoever
+sent the link that you joined, and its first sign-in goes on as it would from the welcome page: the account is made on
+screen, then the plans, then Home, even if the link has stopped leading anywhere meanwhile. An account that was there already
+tells nobody, and the card says **You're on Alcove already**, with **Go to Home**, as it does for anyone signed in when they
+open the link. Opening your own link (Alcove knows your account) says it's yours ("This is your invite link. Send it to
+someone you'd like on Alcove."), with **Go to Team**. A link that leads nowhere (made up, copied only in part, replaced by a
+new one, or its sender deleted their account), no link at all, no connection and a failure each say so, and what to do.
+Coming back with **Back** from Google's own page leaves no "Waiting for Google…" behind, here or on an invite to a team.
+
+Storybook's journeys use these numbers: **10.1 Ring someone**, **10.2 Schedule a call with someone**, **10.3 The notes you
+both have**, **10.4 Someone not on Alcove yet**, **10.5 Your own arch**, **10.6 Invite people**, **10.7 Or copy the invite
+link**, **10.8 Invite and Remind on a row**, **10.9 Invite everyone left**, **10.10 New group: name it, then fill it**,
+**10.11 A name that's taken, and a group half made**, **10.12 Open a group in place**, **10.13 Add and remove people**,
+**10.14 Start a call with all of them**, **10.15 Rename a group**, **10.16 Delete a group**, **10.17 Three people, and
+thirty**, **10.18 Find one person out of thirty**, **10.19 Nobody else here yet**, **10.20 The team doesn't load**,
+**10.21 Offline, and groups that don't load**, **10.22 Open someone's invite link and sign in** and **10.23 Make a new
+invite link**.
 
 ## 11. Settings
 

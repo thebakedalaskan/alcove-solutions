@@ -5,7 +5,7 @@ import { DEFAULT_NOTIFICATION_PREFERENCES, DEFAULT_SOUND_PREFERENCES } from '@al
  * every page reads it from here again.
  */
 import type {
-  Calendar, DocRefusal, DocumentLibrary, FeatureFlagName, IncomingRing, Interval, Meeting, MentionNotice, MoveIn, MoveMedia, Note, NoteLink, Person, PersonalEntry, Plan, Preferences, Session,
+  Calendar, DocRefusal, DocumentLibrary, FeatureFlagName, IncomingRing, Interval, InviteJoined, Meeting, MentionNotice, MoveIn, MoveMedia, Note, NoteLink, Person, PersonalEntry, Plan, Preferences, Session,
   ShareEntry, Team, WorkspaceMedia, WorkspaceSummary, WorkspaceTree
 } from '@alcove/api';
 import type { PaymentsWorld } from './plans/payments';
@@ -136,6 +136,10 @@ export interface World {
   myTeam?: TeamWorld | null | undefined;
   /** Links to join a team that still work, by their secret. */
   teamInvites?: TeamInviteWorld[] | undefined;
+  /** Art's own invite link (`people.inviteLink`) and who joined Alcove from it: made when it's first asked for, if a scenario has none. */
+  inviteLink?: InviteLinkWorld | undefined;
+  /** Other people's invite links a story opens at /invite, by their secret. */
+  invites?: InviteLinkWorld[] | undefined;
   /** The feature flags on for whoever's here. None unless a scenario switches one on. */
   featureFlags?: FeatureFlagName[] | undefined;
   /** Links to notes that still work, with their secrets: none unless a story makes one. */
@@ -146,6 +150,12 @@ export interface World {
    */
   streamsDown?: string[] | undefined;
 }
+
+/**
+ * Someone's own invite link: its secret and generation (one more for each new link), who it's from (as anyone else sees them,
+ * known by their address), and who joined Alcove from it, or a link before it, newest first.
+ */
+export interface InviteLinkWorld { secret: string; generation: number; from: Person; joined: InviteJoined[] }
 
 /**
  * A link to someone's notes: what everyone with them sees of it, its secret, and the note it's to. `note` is the note as

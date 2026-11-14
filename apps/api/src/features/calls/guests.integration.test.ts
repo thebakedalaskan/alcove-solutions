@@ -636,8 +636,9 @@ describe('what a guest’s pass reaches', () => {
     // Every route of the API, from its own route table: anything outside the call routes and the public ones needs an account.
     // The new device's side of a move is public too: it has no account, and the move's secret in the body is what it holds.
     const MOVES = ['/v1/moves/claim', '/v1/moves/status', '/v1/moves/ready', '/v1/moves/arrive', '/v1/moves/cancel'];
-    // A file's URL is public too: its token says who's asking, and it answers for nobody else, a pass included.
-    const PUBLIC = new Set(['/health', '/healthz', '/hooks/livekit', '/v1/telemetry', '/v1/attestation', '/v1/feature-flags', '/v1/session', '/v1/auth/sign-in', '/v1/auth/google', '/v1/auth/google/callback', '/v1/calls/:code/card', '/v1/calls/:code/join', '/v1/media/:token', '/v1/calls/:code/pick', ...MOVES]);
+    // A file's URL is public too: its token says who's asking, and it answers for nobody else, a pass included. So is who an
+    // invite link is from: the link's secret in the body is what it holds, and it says nothing about any call.
+    const PUBLIC = new Set(['/health', '/healthz', '/hooks/livekit', '/v1/telemetry', '/v1/attestation', '/v1/feature-flags', '/v1/session', '/v1/auth/sign-in', '/v1/auth/google', '/v1/auth/google/callback', '/v1/calls/:code/card', '/v1/calls/:code/join', '/v1/media/:token', '/v1/calls/:code/pick', '/v1/team/link/peek', ...MOVES]);
     // OAuth discovery and callbacks are public; each validates its own inputs and credentials, never a call pass. Operator
     // routes take only a signed request, so a pass is refused there like on any route that needs an account.
     // Match methods and paths exactly so another endpoint cannot inherit this exception by sharing a prefix.

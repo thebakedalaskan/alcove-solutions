@@ -3395,6 +3395,13 @@ describe('deleting an account', () => {
     await b.api.drive.setForNote(callNote, { enabled: true, destinationId: driveFolder, formats: ['notes-markdown'] });
     // A link she made to her call's notes goes with them, and so with her.
     await b.api.notes.createLink(callNote);
+    // Her own invite link goes with her, with Kofi, who joined from it, and so does saying her new account came from Ann's.
+    const lenasLink = (await b.api.people.inviteLink()).link;
+    await kofi.api.people.joinedByInvite(lenasLink.slice(lenasLink.indexOf('#') + 1));
+    const annsLink = (await ann.api.people.inviteLink()).link;
+    await b.api.people.joinedByInvite(annsLink.slice(annsLink.indexOf('#') + 1));
+    expect((await ann.api.people.inviteLink()).joined.map((j) => j.person.email)).toEqual([lena.email]);
+    expect((await b.api.people.inviteLink()).joined.map((j) => j.person.email)).toEqual([kofi.session.user.email]);
     // A timer preset as the previous release can still write one while a deploy is under way: nothing in this release does.
     await h.pool.query('INSERT INTO timer_presets (owner_id, preset_id, ciphertext) VALUES ($1, $2, $3)', [ownerId, randomBytes(16).toString('base64url'), randomBytes(64)]);
     // So can its credits row, which nothing in this release reads or writes.
@@ -3404,7 +3411,7 @@ describe('deleting an account', () => {
     expect(tables).toEqual([
       'agent_activity', 'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'ai_meters', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes',
       'call_private_messages', 'call_rings', 'calls', 'content_jobs', 'deposits', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts',
-      'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'items', 'media_others_days', 'media_upload_days', 'meeting_access',
+      'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'invite_link_joins', 'invite_links', 'items', 'media_others_days', 'media_upload_days', 'meeting_access',
       'note_access', 'note_additions', 'note_links', 'object_gc', 'operations', 'owners', 'personal_notes', 'plan_accounts', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings',
       'revisions', 'screen_frames', 'screen_pieces', 'screen_shares', 'screen_videos', 'sessions', 'team_notes', 'teams', 'timer_presets', 'transcript_clips', 'transcript_translations',
       'workspace_authors', 'workspace_calls', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions',
@@ -3467,6 +3474,8 @@ describe('deleting an account', () => {
     // the store refused waits in object_gc, by its ID, until maintenance deletes it.
     expect(await counts()).toEqual({ ...Object.fromEntries(tables.map((t) => [t, 0])), object_gc: 1 });
     expect(await givenToHer()).toBe(0);
+    // Nor does Ann's invite link say she joined from it any more.
+    expect((await ann.api.people.inviteLink()).joined).toEqual([]);
     const stored = (id: string) => h.objects.get(id).then(() => true, () => false);
     expect(await Promise.all(objects.map(stored))).toEqual(objects.map((id) => id === refused));
     await maintain(h.deps);
@@ -3694,7 +3703,7 @@ interface CanaryFlow {
   canaries: string[];
   /** Session cookies, a move's code, a link's secret and a file's token, as the canary's browsers got them: more may come. */
   secrets: string[];
-  /** A team invite's secret and an agent's token. */
+  /** A team invite's secret, an agent's token and two invite links' secrets. */
   credentials: string[];
 }
 
@@ -4066,6 +4075,24 @@ describe('privacy at rest', () => {
     const teamRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM teams x`)).rows[0]?.all ?? '');
     expect(teamRows).toContain('billing_ciphertext');
 
+    // An invite link: its secret is worked out each time and never kept, only its hash; who it's from is sealed under a key
+    // made from the secret, and who joined under the sender's own keys, in rows and nowhere in the logs. A new link replaces
+    // the old one's hash, and keeps who joined.
+    const inviter = tapped();
+    await inviter.api.auth.signIn('sso', { email: 'canary-inviter@canary.example' });
+    const inviteLink = await inviter.api.people.inviteLink();
+    const inviteSecret = inviteLink.link.slice(inviteLink.link.indexOf('#') + 1);
+    expect((await h.browser().api.people.peekInvite(inviteSecret)).from).toMatchObject({ name: 'Canary Inviter', email: 'canary-inviter@canary.example' });
+    const inviteJoiner = tapped();
+    await inviteJoiner.api.auth.signIn('sso', { email: 'canary-joiner@canary.example' });
+    await inviteJoiner.api.people.joinedByInvite(inviteSecret);
+    const newInvite = await inviter.api.people.newInviteLink();
+    const newInviteSecret = newInvite.link.slice(newInvite.link.indexOf('#') + 1);
+    expect(newInvite.joined.map((j) => [j.person.name, j.person.email])).toEqual([['Canary Joiner', 'canary-joiner@canary.example']]);
+    expect((await h.browser().api.people.peekInvite(newInviteSecret)).from).toMatchObject({ name: 'Canary Inviter' });
+    const inviteRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM invite_link_joins x`)).rows[0]?.all ?? '');
+    expect(inviteRows).toContain('who_ciphertext');
+
     // A live question stays present for the sweep: ending a call physically deletes its attention record.
     const attentionCall = await c.api.calls.join((await c.api.calls.startNow({ notes: 'off' })).code, { mic: false, cam: false });
     await until(async () => attentionCall.crypto.getSnapshot().status === 'in', 'the live question author in the call’s group');
@@ -4114,6 +4141,7 @@ describe('privacy at rest', () => {
       'CANARY-CUE', 'as you can see the chart', 'CANARY-VIDEO', 'Person’s screen', 'CANARY-LIVEQUESTION', 'private launch',
       'canary-deposit-address', 'Credits added', 'canary-intent-hash', 'more hours of notes', 'microUsdPerPack', 'minutesPerPack',
       'CANARY-TEAM', 'merger crew', 'Team, 1 license', '"autoPurchase"', '"pool"', 'microUsdPerLicense', 'CANARY-AGENT',
+      'canary-inviter', 'Canary Inviter', 'canary-joiner', 'Canary Joiner',
       proposedTime, 'CANARY-HOLD', 'canary-hold-guest', ...holdIds
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
@@ -4166,6 +4194,7 @@ describe('privacy at rest', () => {
     for (const enc of encodings(moveCode)) expect(rowsText.includes(enc), 'a move code in rows').toBe(false);
     for (const enc of encodings(noteLink.secret)) expect(rowsText.includes(enc), 'a note link’s secret in rows').toBe(false);
     for (const enc of encodings(teamSecret)) expect(rowsText.includes(enc) || logText.includes(enc), 'a team invite’s secret in rows or logs').toBe(false);
+    for (const secret of [inviteSecret, newInviteSecret]) for (const enc of encodings(secret)) expect(rowsText.includes(enc) || logText.includes(enc), 'an invite link’s secret in rows or logs').toBe(false);
     // Logs are built to leave the confidential VM: no email address of anyone, ever, and no client address.
     expect(logText.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g) ?? []).toEqual([]);
     expect(logText.match(/\b10\.1\.\d{1,3}\.\d{1,3}\b/g) ?? []).toEqual([]);
@@ -4192,7 +4221,7 @@ describe('privacy at rest', () => {
       logs: { from: flowFrom, to: h.logs.length },
       canaries,
       secrets,
-      credentials: [teamSecret, helper.token]
+      credentials: [teamSecret, helper.token, inviteSecret, newInviteSecret]
     };
     // Then every operator route, called as support would with the canary's IDs: none says what it kept private.
     await sweepOperatorRoutes(flow);

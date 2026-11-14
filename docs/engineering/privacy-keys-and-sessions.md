@@ -51,8 +51,10 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | `Kwrap` | `HKDF(Kowner, salt=ownerId, "alcove/owner-wrap/v1")` | Derived per request; wraps revision and recording keys |
 | `Krecord` | 32 random bytes per item revision | `revisions.key_envelope`, wrapped under `Kwrap` with scope `revision:<id>` |
 | `Krec` | 32 random bytes per recording | `recordings.key_envelope`, wrapped under `Kwrap` with scope `recording:<id>`; seals the recording's audio pieces, its kept shares' video and the frames taken from it |
-| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `document-clients:<id>` (who each Yjs client in a document belongs to, as keyed hashes), `document-deletes:<id>` (a keyed hash of what each row of its log deletes, so the same deletes again cost nothing), `call:<id>` (call state), `call-asks:<id>` (16 bits of a keyed hash of the network each ask to join came from, kept beside the ask in the call's state so one network can't fill the host's list: different in every call, and shared by about one network in 65,536, so it never says which), `call-attention:<id>` (ordered hands, explicit questions, votes, nudges for their one recipient, statuses and audience-bound notification cues), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `call-notes:<id>` (the call's shared live notes), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered, and the times they asked to move it to), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them), `screen-share:<recordingId>` (whose each share in a call was) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes), `note-links:<noteId>` (who made each link to a note's notes, and when). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note), `presenter-notes:<documentId>` (what they kept beside a whole document or board with an earlier release, which nothing opens now), `presenter-frame-notes:<boardId>` (what they keep beside each frame of a board, and the keyed hash that says which frame) and `promotion:<noteId>` (the seal on a preview of adding to the shared notes, and on the box for writing straight into them); and, under a workspace's root, `workspace` (its name, tree and line on what it's for, who its people and shares are, and carets and presence on their way between instances), `workspace-person` (what someone's known by in it, a keyed hash of how access knows them), `document:<id>` (what a document or board holds) and `media:<id>` (a file: what's said about it, and its pieces) | Derived per request, or per job in the notes worker |
+| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `document-clients:<id>` (who each Yjs client in a document belongs to, as keyed hashes), `document-deletes:<id>` (a keyed hash of what each row of its log deletes, so the same deletes again cost nothing), `call:<id>` (call state), `call-asks:<id>` (16 bits of a keyed hash of the network each ask to join came from, kept beside the ask in the call's state so one network can't fill the host's list: different in every call, and shared by about one network in 65,536, so it never says which), `call-attention:<id>` (ordered hands, explicit questions, votes, nudges for their one recipient, statuses and audience-bound notification cues), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `call-notes:<id>` (the call's shared live notes), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered, and the times they asked to move it to), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them), `screen-share:<recordingId>` (whose each share in a call was) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes), `note-links:<noteId>` (who made each link to a note's notes, and when). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note), `presenter-notes:<documentId>` (what they kept beside a whole document or board with an earlier release, which nothing opens now), `presenter-frame-notes:<boardId>` (what they keep beside each frame of a board, and the keyed hash that says which frame) `promotion:<noteId>` (the seal on a preview of adding to the shared notes, and on the box for writing straight into them) and `invite-link-joins` (who joined Alcove from the account's invite links, and when); and, under a workspace's root, `workspace` (its name, tree and line on what it's for, who its people and shares are, and carets and presence on their way between instances), `workspace-person` (what someone's known by in it, a keyed hash of how access knows them), `document:<id>` (what a document or board holds) and `media:<id>` (a file: what's said about it, and its pieces) | Derived per request, or per job in the notes worker |
 | Operation keys | `HKDF(Kowner, salt=ownerId, "alcove/operation-commit/v1")` and `"…/operation-result/v1"` | Derived per request |
+| Invite link secret | `HKDF(Kowner, salt=ownerId, "alcove/invite-link-secret/v1/<generation>")`, 32 bytes as base64url (43 characters): an account's own [invite link](#invite-links), `<web app>/invite#<secret>`, where `<generation>` is the link's (`invite_links.generation`, 0 for the first, one more for each new link) in decimal | Never stored: worked out again each time its owner asks for the link, so it's the same on every ask until they make a new one. Only its SHA-256 is kept (`invite_links.secret_sha256`), and a new link replaces it |
+| Invite link key | `HKDF(secret's 32 bytes, "alcove/invite-link/v1")` | Derived per request from the link's secret; seals who the link is from, so whoever holds the link, or its owner, can open it. Who joined from it is sealed under its owner's own keys (state key `invite-link-joins`), never this one |
 | Index key | `HKDF(KMASTER, "alcove/index/v1")` of the master the database's first accounts were made under: outside a TEE, `KMASTER`'s; inside one, carried in the server keys (the old master's, or the TEE master's for a database that started in the TEE) | Keys the [blind indexes](#blind-indexes), so changing the master changes none of them |
 | Photo token key | `HKDF(KMASTER, "alcove/photo-token/v1")` of the master the database's first accounts were made under, carried in the server keys like the index key | Seals the provider URL in a [photo's URL](#what-leaves-the-browser), which notes keep (who spoke), so changing the master breaks none of them |
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
@@ -64,7 +66,8 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 
 All derivations are HKDF-SHA-256 with 32-byte outputs, but the TLS and ACME account keys', 48 bytes reduced to a P-256 key
 (1 to n-1, as FIPS 186-5 makes a key from extra random bits). `salt=ownerId` means the ID's 32 decoded bytes; the
-index, photo token, server keys, sign-in attempt, media token, TLS, ACME account and accounting keys use an empty salt.
+index, photo token, server keys, sign-in attempt, media token, TLS, ACME account, accounting and invite link keys use an
+empty salt.
 
 ## Records and envelopes
 
@@ -129,6 +132,8 @@ piece of a file is sealed on the one core every call runs on. A `media-piece` is
 | `team-name` | state key `team` under the team's own owner | team (its name) |
 | `team-member` | state key `team` under the team's own owner | team, member (their name and address, as their account has them: a sign-in that brings new ones seals them again) |
 | `team-billing` | accounting key | team's owner, team (its unconsumed licenses and what each cost, auto-purchase and what a license last cost the team, the alerts its admin has had, its pool as last reckoned and its grace), opened without anyone signed in so upkeep can reckon the pool |
+| `invite-link-from` | invite link key | the link's owner and its generation (who it's from: their name, address and photo, as their profile had them when they last asked for the link or signed in with new ones), opened without anyone signed in by whoever has the link |
+| `invite-link-join` | the link's owner's state key `invite-link-joins` | the link's owner, and the joiner's `invite-joiner` index (who joined from any of the owner's links: their name, address and photo as they were then, and when they joined) |
 | `ai-meter` | accounting key | owner (the period's AI allowance in dollars, what's been spent by kind, what requests in flight and live calls hold, and when it ran out) |
 | `deposit` | accounting key | owner, deposit (a top-up's route, address, amounts and the provider's quote, and what it was opened to buy and how that went), opened without anyone signed in so the watcher can add it |
 | `sign-in-attempt` | sign-in attempt key | provider (`google`); the owner is empty, as nobody is signed in yet |
@@ -166,6 +171,7 @@ before still finds its row.
 | `flag-email` | The email address, trimmed and lower-cased | `feature_flag_group_members.email_index`, `feature_flag_person_grants.email_index` | Whom a [feature flag](feature-flags.md) is on for. Its own purpose, so a row joins to no account or share: an operator who switches a flag for an address through the API, and reads the database, learns nothing of whose account it is |
 | `addition-author` | The account's owner ID | `note_additions.author_index` | Taking everything an account added to the shared notes out of everyone's notes when it's deleted |
 | `note-link-maker` | The account's owner ID | `note_links.maker_index` | Taking out the links an account made to a note when it removes the note from theirs, and every link it made when it's deleted |
+| `invite-joiner` | The account's owner ID | `invite_link_joins.joiner_index` | Taking out every join an account said, on anyone's invite link, when it's deleted, opening nothing |
 | `call-seat` | A call's ID and someone's seat in it | `document_access.principal_index` | Who a document is shared with in a call. Only the API can work one out, from a call pass; it's different in every call |
 | `call-workspace` | A call's ID and the ID of a workspace it uses | `workspace_calls.call_index` | Which workspaces a call [opens to everyone in it](#who-can-open-a-workspace). Everyone let in carries the one for the workspace the call uses now, worked out by the API from their pass and the call's state; it's different for every call and workspace, and the same for everyone in a call, so it's what the call opens to them and never who they are |
 | `upload-guest` | The person a guest's call pass names, random for each person in each call | `media_guest_upload_days.guest_index` | Counting what a guest uploads in a day, on every instance and after a restart. It can't be matched to a call, a seat or a name |
@@ -217,6 +223,38 @@ The hash is deterministic, so equal values show the same person across rows and 
    opened in `root_envelope` alone, as before the TEE. The request works on its own copies (`Owner.root`,
    `Owner.wrapKey`). No key is cached between requests. Reading someone else's note opens their account the same way,
    after the access check, and so does the notes worker for each job.
+
+### Invite links
+
+Someone at a company (a company directory: the demo company's, or a work domain's; nobody at a personal address) has an
+invite link of their own, `<web app>/invite#<secret>`, which the Team page copies and its invitations carry
+(`apps/api/src/features/meetings/invite-links.ts`, migration `0037_invite_links.sql`).
+
+- **The secret is never stored.** It's `HKDF(Kowner, salt=ownerId, "alcove/invite-link-secret/v1/<generation>")`, worked
+  out again each time its owner asks for the link (`POST /v1/team/link`), so the link is the same every time until they make
+  a new one, and only its owner can make it. `invite_links` keeps one row for each account: the secret's SHA-256, the link's
+  `generation` and who it's from (name, address and photo), sealed under `HKDF(secret, "alcove/invite-link/v1")`
+  (`invite-link-from`, its header binding the owner and the generation). It's sealed again when that has changed: as its
+  owner asks for the link, or as a sign-in brings them a new name, address or photo, a new address alone included. The
+  secret travels only in the link's fragment, which browsers never send, and in POST bodies.
+- **A new link on demand.** `POST /v1/team/link/new` takes the next generation, with the account's row held: the row's hash
+  and sealed sender are replaced, so the link before leads nowhere (`404 not-found`, as one that never was), and who joined
+  stays listed.
+- **Who it's from, for anyone with the link.** `POST /v1/team/link/peek { secret }` takes no session: it finds the row by
+  the secret's hash and opens who it's from with the key the secret makes, as anyone else sees them (by their address, never
+  their account's ID), and says `yours` when the session it's sent with, if there is one, is the link's owner's. A made-up
+  link, one made again since and one whose owner has gone are the same `404 not-found`. It's limited to 60 a minute per
+  client address.
+- **Who joined, for its owner alone.** An account made from the link's page says so (`POST /v1/team/link/joined { secret }`):
+  it counts once for each sender, from any of their links, for an account made in the last hour (`owners.created_at`), and
+  never on your own link. A link that leads nowhere is `404 not-found`; everything else answers `204` the same way, counted
+  or not. Who joined (their name, address and photo then) and when are sealed under the sender's own keys, state key
+  `invite-link-joins` (`invite-link-join`), opened for this by the sender's root as a team's key is, so the link alone opens
+  none of them. `invite_link_joins` keeps the sender's owner ID, the `invite-joiner` index of the joiner's account and the
+  record, and no time: the list is sorted, newest first, once it's opened.
+- **Nothing readable in a column**: the rows hold the secret's hash, the owner's ID, the generation, a keyed hash of the
+  joiner and ciphertext. Logs say what a join came to (`joined`, `own-link`, `not-new`, `said-already`) by the account's ID
+  alone, never the secret, a name or an address. None of the four routes keeps a receipt: their answer or body holds a secret.
 
 ## Sessions
 
@@ -907,6 +945,9 @@ decides.
   Your own notes and what's added to the shared notes keep none either, so nothing you delete or take back stays
   in a receipt for a day; the app doesn't resend them, and doing so can add an entry twice, never lose one. Making,
   revoking and opening a link to notes keep none: making one answers with its secret, and opening one again changes nothing.
+  Your own invite link, making a new one, seeing who one is from and saying you joined from one keep none either: their
+  answer or body holds a link's secret, asking for the link again gives the same one, a retried new link only makes one
+  more, and saying you joined twice counts once.
   Deleting the account keeps none either: its receipts go with it, and a retry finds the session gone
   (`401 unauthenticated`).
   What's for people in a workspace keeps a receipt, because a retry mustn't make a second workspace, item or copy, and
@@ -924,7 +965,7 @@ decides.
   dropping whatever the client sent; behind a front end that appends it, entries before the last came from the client and
   count for nothing). Browser reports: 60 a minute per client
   address. A call's card: 600 a minute per client address (every pre-join reads it every 4 s or so while it
-  waits); joining by link: 120; picking one of the times a call offers: 30. Transcript clips: 240 a minute per account, calls and room recordings together,
+  waits); joining by link: 120; picking one of the times a call offers: 30; seeing who an invite link is from: 60. Transcript clips: 240 a minute per account, calls and room recordings together,
   and 40 a minute for each voice in a call.
   Pieces of a shared screen's video: 60 a minute per person in a call, and
   30 a minute for starting and ending shares. Asking for notes in a call: 10 a minute per person. Saying whether others may
@@ -1098,6 +1139,7 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 | Workspaces | That a workspace exists, how many people and documents it has and when each came, each one's role, that a document is shared and whether with an address or a seat in which call, how often it changes (`version`), when the oldest thing in its Trash went there, and that someone was tagged in a document and when, until they've heard. How many files it has, when each came, how big each is, and which documents share one. Never a name, a folder, how the tree is arranged, or what a file is called or is. `presenter_notes`, which nothing writes now, shows which accounts kept notes on which documents with an earlier release, and so that those accounts could open them: one row each, of a size, and never what they say. `presenter_frame_notes` shows the same for boards, and how many frames of each someone keeps notes beside, never which frames or what they say. Which calls use which workspaces, and what was worked on in them, is sealed in the meeting, the call and the note, except while a call goes on: then `workspace_calls` shows, by the call's ID, each workspace it has opened to everyone in it, and since when, until it ends |
 | Documents | When each update was made and roughly how big it was and how many pieces it held, until it compacts, so when a document was being worked on and how hard; how big its state and versions are, how many versions it has and when each was kept; how many Yjs clients have written to it, which is about how many sessions, and how much each wrote, with nothing to link two clients to each other or to anyone. A board started from a template has the server's client for it, 2, with how much the template wrote, so which template it started from, and the row stays if a version from before it takes the board's place. Never a word, a title, a mention or a comment, nor anything on a board. Carets and presence pass through Postgres's notice queue sealed, as notices of a size and at a time, each naming the workspace and, for a caret, the document |
 | Plans and money | Which account pays for each workspace (`workspaces.payer_owner_id`), so which account is the longest-standing admin with an account of each, usually whoever made a shared workspace, or organized a call it's the home of; while payment for one has moved from someone who left it, until when its grace runs and how many bytes it held then (`payer_grace_until`, `payer_grace_bytes`), so roughly when someone left a workspace they paid for; how many bytes each account stores (`owners.stored_bytes`, and those of the workspaces it pays for); when upkeep next looks at each plan account (`plan_accounts.due_at`: a grace ending, or Pro about to end or ending, so roughly when an account's Pro ends); and that a top-up exists, whose it is, its state and when it's next checked. Never a balance, an allowance, what was spent or on which kind of request, a history, an amount, an address or a quote: those are sealed under `Kservice`'s accounting key, which can't open owner content, and the API process opens them for any account because it holds `KSERVICE` |
+| Invite links | Which accounts have asked for their invite link (`invite_links`, by owner ID), how often each made a new one (its `generation`), and when it was made and last changed. How many accounts joined from each sender's links (`invite_link_joins`, by the sender's owner ID), and, as a joiner's `invite-joiner` index is the same on every row, how many senders one account joined from; never who joined, or when. |
 | Object store | Object count, sizes and timing: a recording writes about one object every 5 seconds, a share kept for the notes about one every 5 seconds while it's going, then one per 4 MiB of its joined video once the call is over, and a file one for every 4 MiB |
 | Uploads | How many bytes each account uploaded to workspaces each day, today and yesterday, and each guest in a call, under a blind index that can't be matched to the call, the seat or a name. A file's row says which workspace it's in, how big it is and when it came, and not who uploaded it, but on a quiet day an account's bytes can be matched to one file's size and time, which shows that account uploaded it. And the service's limits, which are numbers and nothing of anyone's |
 | A file's URL | Readable by anyone who sees it, but only opaque IDs: the account or the call, seat and organizer asking, the workspace, document and file, and when it runs out. Alcove keeps it out of its logs, but a browser shows it to whoever opens a file by itself |
@@ -1176,7 +1218,11 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   conflict`, with nothing done); and its `owners` row,
   from which everything else keyed by the account cascades: its identity (subject and email indexes), every
   session in every browser, its profile (pins and groups with it), its Google connection (the refresh token),
-  its receipts, notes jobs, plan account, AI meter, top-ups and what it uploaded each day. Then the API drops the Google access token it held in memory,
+  its receipts, notes jobs, plan account, AI meter, top-ups, what it uploaded each day, and its [invite link](#invite-links)
+  and everyone who joined from it (so the link leads nowhere from then on). That it joined from anyone else's invite link
+  goes in the same transaction, found by `invite_link_joins.joiner_index`, opening nobody's keys; a join being said at that
+  moment holds the account's row, so the deletion waits for it and takes it too. A release from before invite links
+  deletes an account without that step, as one may during a deploy or after a rollback: upkeep then takes those joins. Then the API drops the Google access token it held in memory,
   closes the LiveKit rooms of its calls still going (which takes everyone out of them, as ending a call does),
   and deletes the audio and shared-screen objects; failures are queued in `object_gc`, which keeps only the object's ID and
   the deleted account's ID until maintenance deletes it. Only then is Google asked to revoke the refresh token,
@@ -1247,7 +1293,9 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   `object_gc`, removes objects older than 24 hours that no recording piece, piece or chunk of shared-screen video, frame or piece of a file
   references, removes rings a day after they ran out, in a call that went on that long, deletes for good what's been in
   a workspace's Trash for 30 days, ends seats, and what calls opened to everyone in them, whose call is over, removes live
-  notes of calls that have ended, and takes away what an upload left when its browser went, a day on.
+  notes of calls that have ended, takes away what an upload left when its browser went, a day on, and deletes the joins on
+  invite links said by accounts that are gone: it reads the joins' `invite-joiner` indexes first, then every account's,
+  so a join is only taken once its account has gone.
 
 ## Moving to confidential computing
 

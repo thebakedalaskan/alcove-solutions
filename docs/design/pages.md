@@ -403,8 +403,12 @@ Any workspace opens full screen in Alcove's own evening, not as a stock editor: 
 
 The sun is low and to the left, behind the people.
 
-- **The sky.** Team at the top left. In the middle, the company's name (Newsreader) and Invite people (filled). Everyone
-  stands in their arch on the horizon, with you in the middle:
+- **The sky.** Team at the top left. In the middle, the company's name (Newsreader) and Invite people (filled), with Copy
+  invite link beside it on the first day. Once anyone has made their account from your invite link, a quiet line under the
+  buttons says who: their faces, then "Aiko and Maya joined from your link" (`tp-joined`). If your link didn't load, the
+  same place says so in the page's trouble style, with a quiet Try again, or that invites need a connection
+  (`tp-why is-link`). A line there moves the horizon down by its height, so the heading keeps both its lines on a phone.
+  Everyone stands in their arch on the horizon, with you in the middle:
   - someone not on Alcove yet is a dashed arch with their initial
   - the sun stands in an empty arch, or just past the end of the line
   - past 13 people the far ones recede, with the sun behind them, and step forward when you point at them; "All N people"
@@ -415,6 +419,9 @@ The sun is low and to the left, behind the people.
   - Schedule, which opens at When
   - Notes you both have
   - for someone not on Alcove, Invite or Remind in place of Ring
+- **Invite people** opens a popover: the people to pick, then at its foot Copy link with a quiet arrow beside it, Make a new
+  link (`IconButton`, its tooltip), and Invite. The arrow asks in the list's place, with the kit's `TeamAsk`: "Make a new
+  link?", what happens to the old one, Make a new link in caution and Cancel (filled).
 - **The water:**
   - **Groups** are tiles with the name, "4 people · 7 calls", faces, and a camera to start the group's call. A group opens in
     place to rename it, add or remove people, or delete it, with undo. New group is a tile of dashed arches.
@@ -439,6 +446,11 @@ The sun is low and to the left, behind the people.
     on the water under it, the sun set off to the left.
 - **Joining** (`/team/join#…`, `features/team/Join.tsx`) is one card on the team's evening: whose team it is and what
   joining gives you, Join (filled) and Not now; signed out, the ways in first, while the invite waits in the tab.
+- **An invite link** (`/invite#…`, `features/team/Invited.tsx`) is the same card on the same evening (`JoinEvening`,
+  `JoinCard`): signed out, whoever sent it in their arch, "Priya asked you to join them on Alcove", one plain line on what
+  Alcove is for, the ways in, and a quiet See what Alcove does at its foot. An account made there goes on to its arrival, as
+  from the welcome page. Signed in, You're on Alcove already with Go to Home (filled); your own link, This is your invite
+  link with Go to Team. Opening, a link that leads nowhere, no link, offline and a failure each have their own card.
 - Every number on the page is real: a group's calls are calls everyone in it was on. Someone on their own, with no
   company and no team, has no Team page: its address goes Home.
 - The first day, loading, a failed load and offline each have their own look.

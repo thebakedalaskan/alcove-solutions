@@ -4,7 +4,11 @@ import { screen, within } from 'storybook/test';
 import { setOnline } from '../../../src/browser';
 import { phone } from '../../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../../src/page';
-import { keepMail, SOON } from '../../journeys/play';
+import { iso } from '../../../src/world/clock';
+import { artsLink } from '../../../src/world/invite-links';
+import { JONAS } from '../../../src/world/people';
+import type { World } from '../../../src/world/world';
+import { keepMail, pressable, SOON } from '../../journeys/play';
 import { troubled } from '../changes';
 
 const meta = { title: 'Pages/Team/Team', ...pages } satisfies Meta<PageArgs>;
@@ -20,6 +24,47 @@ const opening = (who: RegExp, said: string): NonNullable<PageStory['play']> => a
 export const Busy = page('/team', 'busy');
 export const BusyPhone = phone(Busy);
 export const FirstDay = page('/team', 'first-day');
+
+/** Only Aiko has joined from Art's invite link. */
+const oneJoined = (w: World): void => { if (w.inviteLink) w.inviteLink.joined = w.inviteLink.joined.slice(0, 1); };
+/** Jonas, who works elsewhere, made his account from Art's link this morning, though nobody at Vandelay is on Alcove yet. */
+const jonasJoined = (w: World): void => { w.inviteLink = artsLink([{ person: JONAS, at: iso(0, 9, 30) }]); };
+/** Aiko and Maya made their accounts from Art's invite link: their faces, and "Aiko and Maya joined from your link", under the buttons. */
+export const JoinedFromYourLink = page('/team', 'busy');
+export const JoinedFromYourLinkNight: PageStory = { ...JoinedFromYourLink, globals: { theme: 'dark' } };
+export const JoinedFromYourLinkPhone = phone(JoinedFromYourLink);
+/** One person: "Aiko joined from your link". */
+export const OneJoinedFromYourLink = page('/team', 'busy', { beforeEach: changing(oneJoined) });
+/** The first day, with Copy invite link beside Invite people, and someone from elsewhere joined from it already. */
+export const FirstDaySomeoneJoined = page('/team', 'first-day', { beforeEach: changing(jonasJoined) });
+export const FirstDaySomeoneJoinedPhone = phone(FirstDaySomeoneJoined);
+/** Your invite link hasn't come yet: Copy invite link and every Invite wait for it, rather than send anything without it. */
+export const InviteLinkOnItsWay = page('/team', 'first-day', { beforeEach: changing(troubled({ 'people.inviteLink': 'hold' })) });
+/** Your invite link didn't load: the invites wait, and the sky says why under the buttons, with Try again. */
+export const InviteLinkDidntLoad = page('/team', 'first-day', { beforeEach: changing(troubled({ 'people.inviteLink': 'failed' })) });
+export const InviteLinkDidntLoadNight: PageStory = { ...InviteLinkDidntLoad, globals: { theme: 'dark' } };
+export const InviteLinkDidntLoadPhone = phone(InviteLinkDidntLoad);
+/** The connection went before your invite link came: the invites need one, and wait for it. */
+export const InvitesNeedAConnection = page('/team', 'busy', {
+  beforeEach: changing(troubled({ 'people.inviteLink': 'hold' })),
+  play: async ({ canvas, step }) => {
+    await step('The team is here, then the connection goes, with your invite link still on its way', async () => {
+      await canvas.findByRole('button', { name: 'Invite people' }, SOON);
+      setOnline(false);
+    });
+  }
+});
+/** Make a new link?, asked in place in Invite people: the link you've sent stops working, and who joined from it stays listed. */
+export const MakeANewLink = page('/team', 'busy', {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Press Invite people, then the arrow beside Copy link: Make a new link', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'Invite people' }, SOON));
+      await userEvent.click(await pressable('button', 'Make a new link', SOON, within(await screen.findByRole('dialog', { name: 'Invite people' }, SOON))));
+    });
+  }
+});
+export const MakeANewLinkNight: PageStory = { ...MakeANewLink, globals: { theme: 'dark' } };
+export const MakeANewLinkPhone = phone(MakeANewLink);
 export const Lots = page('/team', 'lots');
 /** A group open, from its tile under the water. */
 export const AGroup = page('/team?group=g-product', 'busy');

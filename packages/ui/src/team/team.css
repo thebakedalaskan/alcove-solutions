@@ -24,11 +24,22 @@
 .tp-hero { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; padding: 0 0 6px; text-align: center; }
 .tp-hero h2 { font: 400 clamp(36px, 3.8vw, 56px)/1.1 var(--font-display); letter-spacing: -.012em; color: var(--ink); text-wrap: balance; overflow-wrap: anywhere; }
 .tp-why { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; font: 500 15px/1.3 var(--font-sans); color: var(--ink-2); }
-.tp-why .ac-i { flex: none; color: var(--caution); }
+.tp-why > .ac-i { flex: none; color: var(--caution); }
 .tp-acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; }
 .tp-acts .ac-btn { height: 46px; padding: 0 22px; font-size: 15px; }
 .tp-acts .ac-btn.is-secondary { background: color-mix(in oklch, var(--ground) 64%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 16%, transparent); color: var(--ink); }
 .tp-acts .ac-btn.is-secondary:hover { background: color-mix(in oklch, var(--ground) 82%, transparent); }
+/* Who joined from your invite link, under the buttons: their faces, then their names. */
+.tp-joined { display: inline-flex; align-items: center; justify-content: center; gap: 10px; max-width: 100%; margin-top: 14px; font: 500 15px/1.35 var(--font-sans); color: var(--ink-2); text-wrap: balance; }
+.tp-joined .ac-faces { flex: none; }
+.tp-joined > span { min-width: 0; overflow-wrap: anywhere; }
+/* Why the invites wait for your link, under the buttons, with Try again when there's something to try. */
+.tp-why.is-link { flex-wrap: wrap; justify-content: center; row-gap: 2px; max-width: 100%; margin-top: 12px; text-wrap: balance; }
+/*
+ * A line under the buttons (who joined from your link, or why the invites wait) takes room of its own: the horizon moves
+ * down by it, so the heading keeps both its lines and the people still stand on the horizon.
+ */
+.tp:has(.tp-joined), .tp:has(.tp-why.is-link) { --hz: clamp(364px, calc(40vh + 42px), 512px); }
 
 /* The line. Everyone's feet are on the horizon, and their name is on the water just below it. */
 .tp-row { position: relative; display: flex; flex: none; align-items: flex-end; justify-content: center; margin: 0 0 calc(-1 * var(--name-h)); padding: 0; list-style: none; }
@@ -114,6 +125,11 @@
 .tp-ck.is-on { background: var(--sun); box-shadow: none; color: var(--on-sun); }
 .tp-pop-f { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; padding: 8px 6px 0; border-top: 1px solid var(--line); }
 .tp-pop-f .ac-btn[disabled] { opacity: .5; }
+/* Copy link, and making a new link beside it, at the foot's start. */
+.tp-pop-fl { display: flex; align-items: center; gap: 2px; }
+.tp-pop-fl .ac-icon-btn { width: 32px; height: 32px; color: var(--ink-3); }
+/* Make a new link?, asked in the list's place: the popover is its card. */
+.tp-pop .tq-ask.tp-ask { margin: 0; padding: 10px 10px 4px; background: transparent; }
 .tp-priv { display: inline-flex; align-items: center; gap: 7px; padding-left: 6px; font: 400 13px/1 var(--font-sans); color: var(--ink-3); }
 .tp-none { padding: 14px 10px; font: 400 14px/20px var(--font-sans); color: var(--ink-3); }
 
@@ -224,6 +240,9 @@
 @media (max-width: 860px) {
   /* The sea reaches under the tab bar, however short the page: the top bar and the room kept for the tab bar come off it. */
   .tp { --hz: 288px; --u0: 86px; --u: 86px; min-height: calc(100dvh - 136px - env(safe-area-inset-bottom, 0px)); }
+  .tp:has(.tp-joined) { --hz: 336px; }
+  /* Its Try again can take a row of its own on a narrow phone. */
+  .tp:has(.tp-why.is-link) { --hz: 364px; }
   .dusk.tp .hz { --hz-sun-x: calc(-1.72 * var(--u)); --hz-sun-r: 31px; }
   /* The line slides, so a sun behind it would be cut into slices: it stands in its empty arch instead and slides too. */
   .tp[data-line="long"] .hz-sun { display: none; }
@@ -262,5 +281,9 @@
   .tp-r-s { grid-area: s; }
   .tp-r-m { display: none; }
   .tp-r .ac-btn { grid-area: b; }
+}
+/* A narrow phone keeps the sky's two buttons side by side, so neither the heading nor a line under them loses its room. */
+@media (max-width: 400px) {
+  .tp-acts .ac-btn { padding: 0 14px; }
 }
 @keyframes tp-sheet { from { transform: translateY(24px); } }

@@ -24,6 +24,7 @@ import { queueDelete } from '../../platform/objects';
 import { open as openPlan, tellPayers } from '../billing/plans';
 import { forgetMembership, memberChanged, refuseDeletingAdmin } from '../billing/teams/teams';
 import { forgetAccess, grantToRevoke, release, revokeGrant, unreachable, withdraw } from '../meetings/calendar';
+import { forgetJoins, senderChanged } from '../meetings/invite-links';
 import { create as createMeeting, findUpcoming } from '../meetings/service';
 import { deleteOwnNote } from '../notes/service';
 import { collect } from '../workspaces/uploads/media';
@@ -81,7 +82,7 @@ export async function signIn(d: Deps, { provider, who }: SignIn): Promise<{ owne
       }
       // Their team shows them as their provider has them now, name and address, from this sign-in on.
       await memberChanged(d, c, existing.owner_id, { name: who.name, email: who.email });
-      return { ownerId: existing.owner_id, isNew: false };
+      return { ownerId: existing.owner_id, isNew: false, emailChanged };
     }
     if (provider === 'google' && d.cfg.GOOGLE_SIGNUP_MODE === 'testers' && !d.cfg.GOOGLE_SIGNUP_TESTERS.includes(who.email)) {
       throw new GoogleSignupInviteRequiredError();
@@ -92,23 +93,25 @@ export async function signIn(d: Deps, { provider, who }: SignIn): Promise<{ owne
     const p: Profile = { name: who.name, email: who.email, ...(who.photoUrl ? { photoUrl: who.photoUrl } : {}), sample: who.sample, preferences: DEFAULT_PREFERENCES, invited: [] };
     await createItem(o, c, 'profile', p);
     await openPlan(d, c, ownerId);
-    return { ownerId, isNew: true };
+    return { ownerId, isNew: true, emailChanged: false };
   });
 
   const { id, session } = await openSession(d, found.ownerId, provider);
   const owner = await openOwner(d, found.ownerId, session);
-  if (!found.isNew) await refreshProfile(owner, who);
+  // The invite link's page follows them too: an address that changed is in the profile already, written above.
+  if (!found.isNew && (await refreshProfile(owner, who) || found.emailChanged)) await senderChanged(owner);
   if (who.sample) await seedCalendar(owner);
   alog.info(found.isNew ? 'account created' : 'signed in', { ownerId: found.ownerId, provider });
   return { owner, sessionId: id, isNew: found.isNew };
 }
 
-/** The provider is where someone's name, email and photo are kept; Alcove follows it. */
-async function refreshProfile(o: Owner, who: Identity): Promise<void> {
+/** The provider is where someone's name, email and photo are kept; Alcove follows it. Says whether anything changed. */
+async function refreshProfile(o: Owner, who: Identity): Promise<boolean> {
   const p = await profile(o);
-  if (p.name === who.name && p.email === who.email && p.photoUrl === who.photoUrl) return;
+  if (p.name === who.name && p.email === who.email && p.photoUrl === who.photoUrl) return false;
   await updateProfile(o, (x) => ({ name: who.name, email: who.email, ...(who.photoUrl ? { photoUrl: who.photoUrl } : {}), sample: x.sample, preferences: x.preferences, invited: x.invited }));
   alog.info('profile updated from provider', { ownerId: o.ownerId });
+  return true;
 }
 
 /** The sample calendar for demo accounts: when nothing of theirs is coming up, the demo day is put on it. */
@@ -140,7 +143,8 @@ const REVOKE_MS = 3_000;
  * opened); its access to the notes other people gave its address and what it answered on their calls (unless another
  * account signs in with that address too); its place in every workspace and on every document given to that
  * address, and in feature flags' groups and grants, on the same condition, and what its calls gave people's seats in workspaces; and the account's row, which takes its own notes on anyone's notes, sign-in identity, sessions, profile (pins and groups with it),
- * Google connection, receipts, notes jobs, plan and AI allowance with it; its place on a team, and the team it's the admin
+ * Google connection, receipts, notes jobs, plan and AI allowance with it, and its invite link with everyone who joined from
+ * it; that it joined from anyone's invite link (a row found by a keyed hash, as its additions are); its place on a team, and the team it's the admin
  * of once nobody else is on it (refused until then). Then the LiveKit rooms of its calls still
  * going are closed, which takes everyone in them out, as ending a call does; the audio and shared-screen
  * objects, and those of any file that went from a workspace, are deleted, and any the store refuses wait in object_gc
@@ -202,7 +206,9 @@ export async function deleteAccount(o: Owner): Promise<void> {
     const added = await takeAllBack(o, c);
     // And every link it made to anyone's notes: they hand on only what their maker has.
     const links = await forgetAllMade(o, c);
-    return { meetings, notes: notes.length, objects, frames, received, answers, rings, featureFlags, added, links, rooms, workspaces, team };
+    // And that it joined from anyone's invite link. Its own link went with its row, and who joined from it with that.
+    const inviteJoins = await forgetJoins(o, c);
+    return { meetings, notes: notes.length, objects, frames, received, answers, rings, featureFlags, added, links, inviteJoins, rooms, workspaces, team };
   });
   if (!gone) { alog.info('account already deleted', { ownerId: o.ownerId }); return; }
   forgetAccess(o.ownerId);
@@ -216,7 +222,7 @@ export async function deleteAccount(o: Owner): Promise<void> {
   await revokeGrant(o, refreshToken, AbortSignal.timeout(REVOKE_MS));
   alog.info('account deleted', {
     ownerId: o.ownerId, calendarCancelled: calendar.cancelled, calendarKept: calendar.kept, calendarNotCancelled: calendar.notCancelled,
-    meetings: gone.meetings, notes: gone.notes, received: gone.received, answers: gone.answers, rings: gone.rings, featureFlags: gone.featureFlags, added: gone.added, links: gone.links, objects: gone.objects.length, frames: gone.frames, rooms: gone.rooms.length,
+    meetings: gone.meetings, notes: gone.notes, received: gone.received, answers: gone.answers, rings: gone.rings, featureFlags: gone.featureFlags, added: gone.added, links: gone.links, inviteJoins: gone.inviteJoins, objects: gone.objects.length, frames: gone.frames, rooms: gone.rooms.length,
     workspaces: gone.workspaces.workspaces, workspacesDeleted: gone.workspaces.deleted, leftTeam: gone.team.left, teamDeleted: gone.team.teamDeleted, ms: Math.round(performance.now() - t0)
   });
 }
