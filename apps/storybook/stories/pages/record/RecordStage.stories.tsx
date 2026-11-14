@@ -7,7 +7,7 @@ import { screen } from 'storybook/test';
 import { sessions } from '~/features/call/session/handoff';
 import { phone } from '../../../src/call';
 import { changing, page, pages, type PageArgs } from '../../../src/page';
-import { recordsOnlyOnline } from '../changes';
+import { recordsOnlyOnline, recordsReduced } from '../changes';
 
 const meta = { title: 'Pages/Record/Record stage', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -18,6 +18,8 @@ const named = changing(() => { sessions.roomTitle = 'Cold store walkthrough'; })
 /** Recording: for its first moments it's listening, and reminds you to tell the room. What's said comes up as it's heard. */
 export const Recording = page('/record/live', 'busy', { beforeEach: named });
 export const RecordingPhone = phone(Recording);
+/** Transcription is running at reduced quality: once lines come up, the status line under the voice says so, in caution. */
+export const ReducedQuality = page('/record/live', 'busy', { beforeEach: [recordsReduced, named] });
 /** Paused: nothing is heard until it resumes. */
 export const Paused = page('/record/live', 'busy', {
   beforeEach: named,

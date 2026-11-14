@@ -123,7 +123,12 @@ export const NoteManifest = z.preprocess(carryModel, z.object({
   /** The model for these notes (the organizer's choice in the call, or when writing them again), or null for the default model. */
   model: ModelIdSchema.nullable().default(null),
   /** Every time a model outside a secure enclave was sent something for these notes. */
-  unencrypted: z.array(UnencryptedUseSchema).default([])
+  unencrypted: z.array(UnencryptedUseSchema).default([]),
+  /**
+   * Some of what was said was transcribed without Whisper's detail (transcripts' `reduced`), saved when the recording
+   * stops, so the transcript says its quality was reduced. False in a note stored before.
+   */
+  transcriptReduced: z.boolean().default(false)
 }));
 export type NoteManifest = z.infer<typeof NoteManifest>;
 
@@ -154,7 +159,7 @@ export function blankNote(o: { kind: NoteKind; title: string; startedAt: Date; r
     kind: o.kind, title: o.title, startedAt: o.startedAt.toISOString(), duration: 0, recordingId: o.recordingId,
     ...(o.meetingId ? { meetingId: o.meetingId } : {}), invited: o.invited, shared: [],
     status: 'recording', summary: '', details: '', decisions: [], questions: [], actions: [], chapters: [], gaps: [], screens: [], transcript: null, rooms: [], suggestedQuestions: [], writtenAt: null, workedOn: [],
-    breakouts: [], inference: [], keep: o.keep ?? KEEP_ALL, recorded: null, segmentSeconds: [], revisits: [], ticked: [], model: null, unencrypted: []
+    breakouts: [], inference: [], keep: o.keep ?? KEEP_ALL, recorded: null, segmentSeconds: [], revisits: [], ticked: [], model: null, unencrypted: [], transcriptReduced: false
   };
 }
 /** Creates the note item first, then its recording, in one transaction. */
@@ -220,7 +225,7 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
     segmentSeconds: Array.from({ length: audio.reduce((n, s) => Math.max(n, s.index + 1), 0) }, (_, i) => audio.find((s) => s.index === i)?.seconds ?? 0),
     // In a call, each line keeps whoever said it; a room recording names nobody.
     transcript: transcripts.spoken(heard, speakerOf), rooms: sections, actions: [...n.actions, ...carried.flatMap((a) => (sections.some((r) => r.id === a.room) ? [] : [a.action]))],
-    inference: heardBy, ticked, workedOn
+    inference: heardBy, ticked, workedOn, transcriptReduced: all.some((l) => l.reduced === true)
   }));
   await transcripts.clear(o, db, noteId);
   await grant(o, db, noteId, next.invited, 'invited');

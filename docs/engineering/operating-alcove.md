@@ -264,7 +264,7 @@ error's name, a system's code, or the error's class. Never a provider's message.
 | `database` | `SELECT 1` | the pool: connections open, idle, waiting, and the most it opens |
 | `objects` | a `HeadBucket` on the object store | nothing |
 | `livekit` | `ListRooms`, on a client of its own with 5 seconds and no failover | how many rooms are open |
-| `near-ai:speech`, `near-ai:notes` | Fetches the default model's evidence afresh and checks it, apart from the verifications requests use. Then one fixed request with nothing of anyone's in it, sealed to the key that evidence vouched for: a second of quiet noise to transcribe, or a chat asking for `{"ok":true}`. Alcove pays for them, and no one's plan is metered | the model; the evidence (ok, how long, the check that failed, the TCB status, how many GPUs); the probe (ok, how long, the HTTP status inside the sealed reply, whether it timed out). `not-connected` without a NEAR AI key |
+| `near-ai:speech`, `near-ai:notes` | Fetches the default model's evidence afresh and checks it, apart from the verifications requests use. Then one fixed request with nothing of anyone's in it, sealed to the key that evidence vouched for: a second of quiet noise to transcribe, or a chat asking for `{"ok":true}`. Alcove pays for them, and no one's plan is metered | the model; the evidence (ok, how long, the check that failed, the TCB status, how many GPUs); the probe (ok, how long, the HTTP status inside the sealed reply, whether it timed out). `not-connected` without a NEAR AI key. `near-ai:speech` says `detail-refused` when NEAR AI refuses Whisper's detail (a `502` with `upstream_usage_missing` inside the sealed reply: [runbook 2](#2-notes-arent-being-written)) |
 | `oneclick` | 1Click's list of tokens, which says nothing about anyone | how many of the routes Alcove allows it offers (`no-routes` when none), whether a partner key is set, whether top-ups are on |
 | `google` | Google's discovery document and key set, then its token endpoint with a code Google never issued: `invalid_grant` means the client ID and secret are good, `invalid_client` that they aren't | whether Google takes the client (`ok`, `refused`, `not-set`), the step that failed, the sign-up mode and how many testers (never who), how many keys, and how far this clock is behind Google's |
 
@@ -503,6 +503,24 @@ What `near-ai:notes` says, and what happens to notes meanwhile:
 | evidence ok, probe timed out | the model is slow or stuck | A request that timed out once sent uses an attempt, since the model may have done the work |
 | evidence refused, with its check | the model's evidence doesn't check out, and nothing is sent: `collateral-unavailable` and `gpu-unavailable` mean Intel's or NVIDIA's service couldn't be reached; any other code names the check that failed ([Notes and inference › Verified private inference](notes-and-inference.md#verified-private-inference)) | Each job waits, tried again every 5 minutes, using no attempt |
 | `not-connected` | no NEAR AI key in this environment | Recordings are kept, and nothing is transcribed or written |
+
+`near-ai:speech` says `detail-refused` when the evidence checks out and the probe, which asks for Whisper's detail as every clip
+does first, is answered `502 upstream_usage_missing`: NEAR AI's billing can't read a duration from a detailed reply, so
+every clip is refused and nothing is transcribed ([Notes and inference › When NEAR AI refuses Whisper's detail](notes-and-inference.md#when-near-ai-refuses-whispers-detail)).
+Nothing in Alcove's key, evidence or configuration is wrong, and nothing here fixes it: the fix is NEAR AI's. Meanwhile
+the feature flag `transcript.speech_fallback` lets clips go without the detail, as one line each with no confidence or
+language, with the transcript saying its quality is reduced. Whoever pays for a clip must have it, so switch it on for
+everyone (and off to have clips fail as before):
+
+```sh
+operator feature-flags everyone transcript.speech_fallback on --reason INC-77
+operator feature-flags everyone transcript.speech_fallback off --reason INC-77
+```
+
+It takes effect within 30 seconds ([Feature flags](feature-flags.md#in-production)). With it on, the API logs
+`speech detail refused` (at warn, once for each ten minutes of refusals) and sends clips plain for those ten minutes, then
+asks for the detail again; a detailed answer ends that on its own, so once `near-ai:speech` passes the flag can stay on
+until the fallback is deleted. With it off, clips fail as before and the recordings are kept.
 
 A new NEAR AI key is a new version of the secret `alcove-near-ai-api-key`, which the API reads when it starts: the next
 deploy or refresh takes it ([Refreshing](../../infra/confidential-space/README.md#refreshing)).

@@ -10,6 +10,7 @@ import { UNENCRYPTED_MODEL } from '../../src/api/call/script';
 import { attested, type Broken } from '../../src/api/trust/attestation';
 import { standIn } from '../../src/api/standin';
 import type { Troubles } from '../../src/api/trouble';
+import { startReduced } from '../../src/api/recordings/api';
 import { keepHere, type KeptSpec } from '../../src/api/recordings/kept';
 import type { World } from '../../src/world/world';
 import { calendarEvent, changer, connected, notConnected, writeNote } from '../../src/world/build';
@@ -138,6 +139,14 @@ export const writtenUnencrypted = (w: World): void => {
     ? { ...n, model: UNENCRYPTED_MODEL, unencrypted: [{ model: UNENCRYPTED_MODEL, task: 'notes' as const, at: iso(0, 10, 5) }, { model: UNENCRYPTED_MODEL, task: 'screens' as const, at: iso(0, 10, 4) }] }
     : n));
 };
+
+/** The team standup's transcript was made at reduced quality: no detail on how sure each word was, so its Transcript says so once. */
+export const transcribedReduced = (w: World): void => {
+  w.notes = w.notes.map((n) => (n.id === 'n2' ? { ...n, transcriptReduced: true } : n));
+};
+
+/** Recording in the room runs at reduced quality: a story's `beforeEach`, put back when the next story opens. */
+export const recordsReduced = (): (() => void) => swap(standIn.recordings, 'start', startReduced);
 
 /** The standup's suggested questions are long ones, which wrap to more than one row of chips above the ask bar. */
 export const longSuggestions = (w: World): void => {

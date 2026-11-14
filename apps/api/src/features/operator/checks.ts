@@ -166,7 +166,8 @@ function nearAi(cfg: Keyless, name: 'near-ai:speech' | 'near-ai:notes') {
       throw e;
     }
     detail.probe = { ok: probe.readable, ms: probe.ms, status: probe.status, timedOut: false };
-    return probe.readable ? null : probe.status === 200 ? 'unreadable-reply' : String(probe.status);
+    // NEAR AI refusing Whisper's detail reads as its own code: clips get through only where the fallback is on.
+    return probe.readable ? null : probe.refused === 'detail' ? 'detail-refused' : probe.status === 200 ? 'unreadable-reply' : String(probe.status);
   });
 }
 

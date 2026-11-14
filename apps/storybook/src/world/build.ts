@@ -47,6 +47,8 @@ export interface NoteSpec {
   details?: string | undefined;
   chapters?: readonly (readonly [string, string, string])[] | undefined;
   said?: readonly Said[] | undefined;
+  /** Some of the transcript was made at reduced quality, without the detail that says how sure each word was. */
+  reduced?: boolean | undefined;
   decisions?: readonly DecisionSpec[] | undefined;
   questions?: readonly QuestionSpec[] | undefined;
   actions?: readonly ActionSpec[] | undefined;
@@ -171,6 +173,7 @@ export function writeNote(s: NoteSpec, me: Person = ART): Note {
     shares: status === 'ready' ? [...(s.shares ?? [])] : [],
     model: null,
     unencrypted: [],
+    transcriptReduced: s.reduced ?? false,
     transcript: status === 'recording' ? null : readable,
     rooms: [],
     additions: [],

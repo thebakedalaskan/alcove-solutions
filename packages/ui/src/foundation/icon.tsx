@@ -16,9 +16,21 @@ import {
   CircleOff, Droplet, Droplets, BellRing, Bot, Coffee, Ear, Gauge, Headphones, SmilePlus, Layers, MessagesSquare, VenetianMask,
   FileCheck, FilePen, HandHelping, Inbox, Laptop, MessageSquareLock, PhoneIncoming, Share2, ListVideo,
   BookOpen, CalendarCheck, Plug, Sparkle, SquareTerminal, Terminal, Unplug, SunMoon,
-  File as FileIcon, Wallet, Printer, ReceiptText
+  File as FileIcon, Wallet, Printer, ReceiptText, createLucideIcon
 } from 'lucide-react';
 import { cn } from './cn';
+
+/**
+ * Captions on: Lucide's Captions frame filled, its four lines cut out of it, so they show whatever is behind. Lucide has
+ * no filled one, and filling its own would cover the lines. The frame is its rectangle as stroked (1.8 wide), and each
+ * line its stroke with round ends.
+ */
+const CaptionsOn = createLucideIcon('captions-on', [['path', {
+  key: 'frame', fill: 'currentColor', stroke: 'none', fillRule: 'evenodd',
+  d: 'M5 4.1H19A2.9 2.9 0 0 1 21.9 7V17A2.9 2.9 0 0 1 19 19.9H5A2.9 2.9 0 0 1 2.1 17V7A2.9 2.9 0 0 1 5 4.1Z'
+    + 'M7 14.1H11A0.9 0.9 0 0 1 11 15.9H7A0.9 0.9 0 0 1 7 14.1Z' + 'M15 14.1H17A0.9 0.9 0 0 1 17 15.9H15A0.9 0.9 0 0 1 15 14.1Z'
+    + 'M7 10.1H9A0.9 0.9 0 0 1 9 11.9H7A0.9 0.9 0 0 1 7 10.1Z' + 'M13 10.1H17A0.9 0.9 0 0 1 17 11.9H13A0.9 0.9 0 0 1 13 10.1Z'
+}]]);
 
 /* One icon family: Lucide, 1.8 stroke, round caps and joins, sized by the caller. Filled glyphs say so. */
 const ICONS = {
@@ -33,7 +45,7 @@ const ICONS = {
   ask: MessageCircleQuestion, share: Share, send: Send, room: Radio, server: Server, hand: Hand, mail: Mail,
   addUser: UserPlus, signOut: LogOut, door: DoorOpen, rooms: Split, layout: PanelsTopLeft, grid: LayoutGrid, translate: Languages,
   sealed: ShieldCheck, external: ArrowUpRight, arrowUp: ArrowUp, swap: ArrowLeftRight, phone: Smartphone, plane: Plane, wifi: Wifi, pin: Pin, pinOff: PinOff,
-  captions: Captions, up: ChevronUp, reset: RotateCcw, history: HistoryIcon,
+  captions: Captions, captionsOn: CaptionsOn, up: ChevronUp, reset: RotateCcw, history: HistoryIcon,
   spotlight: Focus, grow: Maximize2, shrink: Minimize2, notesPen: NotebookPen, globe: Globe, window: AppWindow, monitor: Monitor,
   stopShare: MonitorOff, grip: GripVertical, shuffle: Shuffle, timer: Timer, noise: AudioLines, resize: MoveDiagonal2, transcript: FileText,
   sendLine: SendHorizontal, eye: Eye, hash: Hash, chevronsUpDown: ChevronsUpDown, panel: PanelLeft, wifiOff: WifiOff, recordDot: CircleDot,

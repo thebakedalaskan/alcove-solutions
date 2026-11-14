@@ -360,6 +360,8 @@ export const CallStateSchema = z.object({
    * of the call you're in now only. What's said in one breakout room never shows in another, or in the main room.
    */
   transcript: z.array(TranscriptLineSchema),
+  /** Some of those lines were transcribed at reduced quality, while NEAR AI refused Whisper's detail. Its lines aren't marked one by one. */
+  transcriptReduced: z.boolean(),
   /** The shared live notes of the part of the call you're in, written only from what you may read. Nothing for someone waiting to be let in. */
   liveNotes: LiveNotesSchema,
   /** The workspace the call uses, as you may know it. Nothing that names anything for someone waiting to be let in, or who can't open it. */

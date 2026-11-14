@@ -35,7 +35,9 @@ export const RoomRecordingStateSchema = z.object({
   status: z.enum(['recording', 'paused', 'stopped']),
   recording: RecordingProgressSchema,
   /** What's been said so far, transcribed as the recording goes: the latest lines, oldest first. */
-  transcript: z.array(TranscriptLineSchema)
+  transcript: z.array(TranscriptLineSchema),
+  /** Some of those lines were transcribed at reduced quality, while NEAR AI refused Whisper's detail. Its lines aren't marked one by one. */
+  transcriptReduced: z.boolean()
 });
 
 export type RoomRecordingState = z.infer<typeof RoomRecordingStateSchema>;

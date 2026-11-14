@@ -276,6 +276,11 @@ export const NoteSchema = NoteSummarySchema.extend({
    * once the notes are written, and until then for everyone but the organizer.
    */
   transcript: z.array(TranscriptLineSchema).nullable(),
+  /**
+   * Some of what was said, in the main room or a breakout room, was transcribed at reduced quality: without Whisper's
+   * detail, while NEAR AI refused it. Its lines aren't marked one by one; the transcript says so once.
+   */
+  transcriptReduced: z.boolean(),
   /** Each breakout room's own section, in the order the rooms closed. Empty for a call without rooms and for room recordings. */
   rooms: z.array(NoteRoomSchema).default([]),
   /** What people added from their own notes, oldest first. Everyone with the notes reads them. */

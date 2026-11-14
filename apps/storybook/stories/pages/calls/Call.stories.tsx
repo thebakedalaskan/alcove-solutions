@@ -15,7 +15,7 @@ import { FOLLOW_UP_NOTE, withFollowUpProposals } from '../../../src/world/follow
 import { FOR_JONAS } from '../../../src/world/invitations';
 import { DESIGN_CRIT, HIRING_SYNC, withDesignCrit, withHiringSync } from '../../../src/world/scheduling';
 import { STATES, inEveryState } from '../../../src/world/states';
-import { aQuestionAdded, fromALink, invited, longSide, longSuggestions, teamNoteTakenBack, troubled, writtenUnencrypted } from '../changes';
+import { aQuestionAdded, fromALink, invited, longSide, longSuggestions, teamNoteTakenBack, transcribedReduced, troubled, writtenUnencrypted } from '../changes';
 
 const meta = { title: 'Pages/Calls/A call', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -85,6 +85,8 @@ export const AScreenThatWontPlay = page('/calls/n2?at=560&tab=notes', 'busy', { 
 export const Transcript = page('/calls/n2?tab=transcript', 'busy');
 export const TranscriptNight = page('/calls/n2?tab=transcript', 'busy', { globals: night });
 export const TranscriptPhone = phone(Transcript);
+/** Part of the transcript was made at reduced quality: its lines carry no marks of their own, so one caution notice says so above them. */
+export const TranscriptReduced = page('/calls/n2?tab=transcript', 'busy', { beforeEach: changing(transcribedReduced) });
 /** Finding "flag" in the transcript: only the lines that say it, and how many. */
 export const FindingInTheTranscript = page('/calls/n2?tab=transcript', 'busy', {
   play: async ({ canvas, userEvent, step }) => {

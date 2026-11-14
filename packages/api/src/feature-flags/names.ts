@@ -5,7 +5,8 @@
  */
 export const FEATURE_FLAGS = {
   'call.bandwidth_reduction': 'Calls download less: small camera tiles at 180p, cameras’ 720p at 1 Mbps and microphones as speech.',
-  'call.screen_share_quality': 'Shared screens stay sharp and move more smoothly: up to 30 fps, one full-size VP9 copy (VP8 while anyone can’t decode VP9).'
+  'call.screen_share_quality': 'Shared screens stay sharp and move more smoothly: up to 30 fps, one full-size VP9 copy (VP8 while anyone can’t decode VP9).',
+  'transcript.speech_fallback': 'While NEAR AI refuses Whisper’s detail, clips are transcribed without it (no segments, language or confidence), and the transcript says its quality is reduced.'
 } as const satisfies Record<string, string>;
 export type FeatureFlagName = keyof typeof FEATURE_FLAGS;
 export const isFeatureFlagName = (name: string): name is FeatureFlagName => Object.hasOwn(FEATURE_FLAGS, name);

@@ -104,13 +104,16 @@ class KeyRefused extends Error {
 /**
  * An answer's status as Alcove's error: what was sent was unreadable, the key was refused, or the service is busy or down.
  * The status NEAR AI answered goes in the context as `upstreamStatus`, so a revoked key, an account out of credit and an
- * outage there don't read alike: the error's own status is the one Alcove answers with.
+ * outage there don't read alike: the error's own status is the one Alcove answers with. NEAR AI refusing Whisper's detail
+ * (`refused: 'detail'`, see detailRefused) is busy too, but answered: the model's verification holds, so the next request
+ * doesn't check its evidence all over again, as it would after an UnansweredError (withVerified).
  */
 function statusError(status: number, context: Record<string, string | number>): AppError {
   const said = { ...context, upstreamStatus: status };
   if (status === 400 || status === 413 || status === 422) return new ValidationError('The notes service couldn’t read that.', { context: said });
   if (status === 401 || status === 403) return new InternalError('The notes service turned Alcove away.', { context: said });
-  return new UnansweredError('Alcove’s notes service is busy. Try again in a moment.', { context: said });
+  const busy = 'Alcove’s notes service is busy. Try again in a moment.';
+  return context['refused'] === 'detail' ? new UnavailableError(busy, { context: said }) : new UnansweredError(busy, { context: said });
 }
 
 /**
@@ -198,9 +201,10 @@ export interface Heard { start: number; end: number; text: string; unsure: boole
  * What a clip is sent with besides its audio. `language`: the call's language, once its clips agree on it
  * (Whisper's code for it), so a short or accented clip isn't taken for another language. `prompt`: who's in
  * the call and what was said just before (see speechPrompt), so names are spelled right and a clip cut
- * mid-sentence carries on from it.
+ * mid-sentence carries on from it. `fallback`: whether whoever pays for the clip may have it transcribed without
+ * Whisper's detail while NEAR AI refuses it (see plainUntil), asked only then.
  */
-export interface SpeechContext { language?: string | undefined; prompt?: SpeechPrompt | undefined }
+export interface SpeechContext { language?: string | undefined; prompt?: SpeechPrompt | undefined; fallback?: (() => Promise<boolean>) | undefined }
 /**
  * A prompt as Whisper takes it (`text`), and the names that open it, in its order. What Whisper says back of them at the
  * start of a clip is taken off it (keepSpeech).
@@ -283,6 +287,46 @@ const Transcription = z.object({ text: z.string().default(''), language: z.strin
 const WINDOW_MS = 30_000;
 const WINDOW_TOKENS = 1_500;
 const WINDOW_OUTPUT = 448;
+
+/**
+ * What Whisper is asked to send back: everything it knows of a clip (`verbose_json`: its segments, how sure it was of
+ * each, the language it heard), or its words alone (`json`), all a clip gets while NEAR AI refuses the detail.
+ */
+type SpeechFormat = 'verbose_json' | 'json';
+/** A transcription request's multipart body: a clip, or a probe, and what it's sent with. */
+async function speechForm(cfg: Keyless, format: SpeechFormat, wav: Uint8Array, name: string, o: { language?: string | undefined; prompt?: string | undefined } = {}): Promise<{ type: string; body: Uint8Array }> {
+  const form = new FormData();
+  form.set('model', cfg.NEAR_AI_STT_MODEL);
+  form.set('response_format', format);
+  form.set('temperature', '0');
+  if (o.language) form.set('language', o.language);
+  if (o.prompt) form.set('prompt', o.prompt);
+  form.set('file', new Blob([wav.slice()], { type: 'audio/wav' }), name);
+  const multipart = new Request(new URL('/v1/audio/transcriptions', cfg.NEAR_AI_STT_URL), { method: 'POST', body: form });
+  return { type: multipart.headers.get('content-type') ?? 'multipart/form-data', body: new Uint8Array(await multipart.arrayBuffer()) };
+}
+
+/** An error NEAR AI answers in its own words: `type` says which. */
+const Refused = z.object({ error: z.object({ type: z.string() }) });
+/**
+ * NEAR AI refusing Whisper's detail. Its private endpoint bills a transcription by the `usage` Whisper sends back, which
+ * only a `json` reply carries, so since 14 Nov it has answered every `verbose_json` request 502 upstream_usage_missing,
+ * under evidence that checks out. Nothing a request says changes that: it refuses any form field it doesn't know.
+ */
+function detailRefused(reply: { status: number; body: Uint8Array }): boolean {
+  if (reply.status !== 502) return false;
+  const r = Refused.safeParse(parsed(reply.body));
+  return r.success && r.data.error.type === 'upstream_usage_missing';
+}
+/**
+ * Until when clips that may go without the detail (SpeechContext's `fallback`) go as `json` without asking for it first,
+ * by speech endpoint and model: for PLAIN_FOR_MS since NEAR AI last refused it one of them. Then the next asks for the
+ * detail again: a detailed answer ends the wait, another refusal starts it over. A clip that can't go without the detail
+ * always asks for it, and fails when it's refused. Operator probes neither read nor set it.
+ */
+const plainUntil = new Map<string, number>();
+const PLAIN_FOR_MS = 10 * 60_000;
+const plainId = (cfg: Keyless) => `${cfg.NEAR_AI_STT_URL}|${cfg.NEAR_AI_STT_MODEL}`;
 
 /**
  * What Whisper is known to "hear" in silence and noise: closing lines from the videos it was trained on,
@@ -400,27 +444,42 @@ function keepSpeech(segments: z.infer<typeof Segment>[], prompt: SpeechPrompt | 
  * Transcribes one clip of 16 kHz mono WAV, sealed to the speech model's verified key, and says which
  * verification it went to. `language` is the language Whisper picked for the clip itself (none was sent),
  * when there was enough confident speech in it to go by; otherwise null. `meter` pays for it.
+ *
+ * `reduced`: the clip was transcribed without Whisper's detail, because NEAR AI refuses it and `context.fallback` allowed
+ * that. Its words come back as one line over the whole clip, with no language and nothing to say how sure Whisper was, so
+ * none of its words are marked unsure and the filters that read Whisper's confidence don't apply.
  */
-export async function transcribe(cfg: Config, meter: Meter, wav: Uint8Array, durationMs: number, context: SpeechContext = {}): Promise<{ heard: Heard[]; language: string | null; evidence: InferenceEvidence }> {
+export async function transcribe(cfg: Config, meter: Meter, wav: Uint8Array, durationMs: number, context: SpeechContext = {}): Promise<{ heard: Heard[]; language: string | null; evidence: InferenceEvidence; reduced: boolean }> {
   if (!ready(cfg)) throw notConnected('transcribe');
   const language = context.language && LANGUAGE_CODE.test(context.language) ? context.language : undefined;
   const prompt = context.prompt?.text.trim() ? { ...context.prompt, text: endWithin(context.prompt.text.trim(), PROMPT_BYTES) } : undefined;
-  const form = new FormData();
-  form.set('model', cfg.NEAR_AI_STT_MODEL);
-  form.set('response_format', 'verbose_json');
-  form.set('temperature', '0');
-  if (language) form.set('language', language);
-  if (prompt) form.set('prompt', prompt.text);
-  form.set('file', new Blob([wav.slice()], { type: 'audio/wav' }), 'clip.wav');
-  const multipart = new Request(new URL('/v1/audio/transcriptions', cfg.NEAR_AI_STT_URL), { method: 'POST', body: form });
-  const body = new Uint8Array(await multipart.arrayBuffer());
+  const ask = (format: SpeechFormat) => speechForm(cfg, format, wav, 'clip.wav', { language, prompt: prompt?.text });
+  // Built once, when it's first sent: a clip that goes plain at once never asks for the detail.
+  let detailedForm: ReturnType<typeof ask> | undefined;
+  const detailed = () => (detailedForm ??= ask('verbose_json'));
   const t0 = performance.now();
   const windows = Math.max(1, Math.ceil(durationMs / WINDOW_MS));
   const told = prompt ? tokensAtMost(prompt.text) : 0;
+  const id = plainId(cfg);
+  const mayFallBack = async () => (await context.fallback?.()) === true;
   return paidFor(meter, cfg.NEAR_AI_STT_MODEL, { input: windows * WINDOW_TOKENS + told, images: 0, output: windows * WINDOW_OUTPUT }, (answered) => withVerified(cfg, cfg.NEAR_AI_STT_MODEL, 'transcript', async (v) => {
-    const reply = await sealed(cfg, v, cfg.NEAR_AI_STT_URL, { path: '/v1/audio/transcriptions', type: multipart.headers.get('content-type') ?? 'multipart/form-data', body, timeoutMs: 20_000, what: 'transcribe' });
+    const send = (form: { type: string; body: Uint8Array }) => sealed(cfg, v, cfg.NEAR_AI_STT_URL, { path: '/v1/audio/transcriptions', type: form.type, body: form.body, timeoutMs: 20_000, what: 'transcribe' });
+    // While NEAR AI refuses the detail, a clip that may go without it goes plain at once: asking first would be refused.
+    let reduced = (plainUntil.get(id) ?? 0) > Date.now() && await mayFallBack();
+    let form = await (reduced ? ask('json') : detailed());
+    let reply = await send(form);
+    const refused = !reduced && detailRefused(reply);
+    // Handled here, not thrown: withVerified would take the refusal for a model in trouble and verify it all over again.
+    if (refused && await mayFallBack()) {
+      if ((plainUntil.get(id) ?? 0) <= Date.now()) ilog.warn('speech detail refused', { model: v.model, code: 'upstream_usage_missing', plainForMs: PLAIN_FOR_MS });
+      plainUntil.set(id, Date.now() + PLAIN_FOR_MS);
+      reduced = true;
+      form = await ask('json');
+      reply = await send(form);
+    } else if (!reduced && reply.status === 200) plainUntil.delete(id);
     const ms = Math.round(performance.now() - t0);
-    if (reply.status !== 200) throw statusError(reply.status, { what: 'transcribe', ms });
+    // A refusal of the detail where the clip can't go without it fails as before, saying why.
+    if (reply.status !== 200) throw statusError(reply.status, { what: 'transcribe', ms, ...(refused && !reduced ? { refused: 'detail' } : {}) });
     const r = Transcription.safeParse(parsed(reply.body));
     const said = r.success ? r.data.usage ?? null : null;
     const input = said?.input_tokens ?? said?.prompt_tokens;
@@ -439,10 +498,10 @@ export async function transcribe(cfg: Config, meter: Meter, wav: Uint8Array, dur
     // Which language is neither logged nor kept readable: only whether one was sent, found, and the prompt's size. Of
     // the names said back from the prompt, only whether they were taken off.
     ilog.debug('clip transcribed', {
-      model: v.model, bytes: wav.length, requestBytes: body.length, durationMs, segments: segments.length, kept: heard.length, unsure: heard.filter((h) => h.unsure).length, ms,
-      languageSent: Boolean(language), languageFound: detected !== null, promptBytes: prompt ? utf8(prompt.text).length : 0, namesTrimmed
+      model: v.model, bytes: wav.length, requestBytes: form.body.length, durationMs, segments: segments.length, kept: heard.length, unsure: heard.filter((h) => h.unsure).length, ms,
+      languageSent: Boolean(language), languageFound: detected !== null, promptBytes: prompt ? utf8(prompt.text).length : 0, namesTrimmed, reduced
     });
-    return { heard, language: detected, evidence: v.evidence };
+    return { heard, language: detected, evidence: v.evidence, reduced };
   }));
 }
 
@@ -628,22 +687,25 @@ function quietNoise(): Uint8Array<ArrayBuffer> {
 
 /**
  * What a probe found: the HTTP status inside the model's sealed reply, whether a 200 read as that model's kind of answer,
- * and how long the model took.
+ * how long the model took, and `refused`: the speech model refusing Whisper's detail (detailRefused), which clips get
+ * around only where the fallback is on.
  */
-export interface Probe { status: number; readable: boolean; ms: number }
+export interface Probe { status: number; readable: boolean; ms: number; refused?: 'detail' | undefined }
 
 /**
  * Sends one probe sealed to the key `v` vouched for, as every request to the model is, and opens the reply. It's metered
  * to no one (Alcove pays for probes), never retried, and never sent again to another key: it says how the model answers
  * now. Throws as a request does when no reply came back or the reply couldn't be opened.
  */
-async function probe(cfg: Ready, v: Verified, endpoint: string, o: { path: string; type: string; body: Uint8Array; timeoutMs: number }, readable: (body: Uint8Array) => boolean): Promise<Probe> {
+async function probe(cfg: Ready, v: Verified, endpoint: string, o: { path: string; type: string; body: Uint8Array; timeoutMs: number }, readable: (body: Uint8Array) => boolean,
+  refused: (reply: { status: number; body: Uint8Array }) => Probe['refused'] = () => undefined): Promise<Probe> {
   const t0 = performance.now();
   const ms = () => Math.round(performance.now() - t0);
   try {
     const reply = await sealed(cfg, v, endpoint, { ...o, what: 'probe' });
-    const found = { status: reply.status, readable: reply.status === 200 && readable(reply.body), ms: ms() };
-    ilog.at(found.readable ? 'info' : 'warn', 'operator probe', { model: v.model, upstreamStatus: found.status, readable: found.readable, ms: found.ms });
+    const why = refused(reply);
+    const found: Probe = { status: reply.status, readable: reply.status === 200 && readable(reply.body), ms: ms(), ...(why ? { refused: why } : {}) };
+    ilog.at(found.readable ? 'info' : 'warn', 'operator probe', { model: v.model, upstreamStatus: found.status, readable: found.readable, ms: found.ms, refused: why ?? null });
     return found;
   } catch (e) {
     const error = e instanceof KeyRefused ? e.error : e;
@@ -670,16 +732,13 @@ export async function probeNotes(cfg: Keyless, via: PrivateModel, v: Verified, t
   });
 }
 
-/** Whether the speech model answers, for operator checks: one second of quiet noise, sealed to the key `v` vouched for. */
+/**
+ * Whether the speech model answers, for operator checks: one second of quiet noise, sealed to the key `v` vouched for,
+ * asking for Whisper's detail as every clip does first.
+ */
 export async function probeSpeech(cfg: Keyless, v: Verified, timeoutMs: number): Promise<Probe> {
   if (!ready(cfg)) throw notConnected('probe');
-  const form = new FormData();
-  form.set('model', cfg.NEAR_AI_STT_MODEL);
-  form.set('response_format', 'verbose_json');
-  form.set('temperature', '0');
-  form.set('file', new Blob([quietNoise()], { type: 'audio/wav' }), 'probe.wav');
-  const multipart = new Request(new URL('/v1/audio/transcriptions', cfg.NEAR_AI_STT_URL), { method: 'POST', body: form });
-  const body = new Uint8Array(await multipart.arrayBuffer());
-  return probe(cfg, v, cfg.NEAR_AI_STT_URL, { path: '/v1/audio/transcriptions', type: multipart.headers.get('content-type') ?? 'multipart/form-data', body, timeoutMs },
-    (b) => Transcription.safeParse(parsed(b)).success);
+  const form = await speechForm(cfg, 'verbose_json', quietNoise(), 'probe.wav');
+  return probe(cfg, v, cfg.NEAR_AI_STT_URL, { path: '/v1/audio/transcriptions', type: form.type, body: form.body, timeoutMs },
+    (b) => Transcription.safeParse(parsed(b)).success, (reply) => (detailRefused(reply) ? 'detail' : undefined));
 }

@@ -849,6 +849,9 @@ time, slides in on the right.
   which opens the rooms on their side. Each row in the call has **Message privately** and **⋯** (a nudge, how loud they
   are for you, and whoever hosts' controls), and **Copy link** sits at its foot. Locking the call and pointing at shared
   screens are in the call's settings, not in the list.
+- **Reduced quality**, first in the Transcript tab, over the lines: while some of what's been transcribed was made without
+  the detail that says how sure each word was (the transcription service can be refused it), a caution notice says "Transcription is running at reduced quality right now. Some words, especially names, may be wrong." Lines aren't marked one by
+  one, and without that detail none of them is dotted as unsure. It goes when no line shown was made that way.
 - **Chat, like Slack.** Messages sit on the panel without boxes; a run from one person within five minutes sits under
   one arch, name and time, and the others' times show in the margin as you point at them. Point at a message (or reach it
   with the keyboard) for a small bar over its top right corner: three quick reactions, the rest from the smiley, **Reply in
@@ -1197,7 +1200,8 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    still to do. They fill in as people talk. With notes off they go quiet and say why they're
    empty, and the organizer can turn notes on from there while anyone else asks; if something's written already it stays, and a line
    says what's holding the notes back. **Notes** is the summary and what's been decided so far, and a time opens the transcript at
-   that moment. **Transcript** is the whole call so far, with who's talking at the end, and finds any word. Notes and Transcript
+   that moment. **Transcript** is the whole call so far, with who's talking at the end, and finds any word; when some of it was made at
+   reduced quality it says "Transcription is running at reduced quality right now. Some words, especially names, may be wrong." above the lines, after any line saying what's holding the notes back. Notes and Transcript
    open on your side, beside the document, from the button on their row, and **Open**, at the top of the Notes panel, goes the
    other way.
    - **Follow-ups** is a stable shared checklist: what people added or accepted, and the to-dos with a person and a date in the
@@ -1782,6 +1786,9 @@ another call while in one; 7.7 the call ends while they're on its page; 7.8 alon
   offers show the choice. Meanwhile everyone still reads, asks about and confirms the notes as they were, marked
   **Being written again**. While they're written again the organizer can **Cancel**, which leaves the notes as they
   were, with the AI model they had; what was being written is thrown away.
+- A transcript with lines made at reduced quality says so once, under the tools and above its lines, in a caution notice:
+  "This transcript was made while transcription was running at reduced quality, so some words, especially names, may be wrong." The lines aren't marked one by one, and those made that way aren't
+  dotted as unsure. It covers the main room and every breakout room's, and notes written before this existed don't have it.
 - A call with breakout rooms has each room under the chapter it was in, in **How it went**: the room's name, who was in it
   and for how long, and inside, its own summary, decisions, open questions, follow-ups and chapters, written from what was
   said in that room alone. A room where nothing was said says so. The Transcript says which room you were in, and with whom,
@@ -1893,7 +1900,9 @@ last moment of the evening, and the recorder stands on the horizon where the sun
   It starts recording the microphone straight away, in 5-second encrypted pieces: the orb fills with colour, your voice
   runs across the water, and what's said comes up under it a few seconds later, without naming who spoke. The last three
   lines show, fading as they get older; scrolling up reads back the rest, with **Latest** to return. Words it couldn't
-  hear well are dotted. For the first moments, and until the first words, the reminder to let everyone here know stays
+  hear well are dotted. While some of what's said was made at reduced quality, the line under the voice says
+  "Transcription is running at reduced quality right now. Some words, especially names, may be wrong." once nothing more urgent is said there (it comes after the reminder, a connection that's away, and what's
+  behind on the way up). For the first moments, and until the first words, the reminder to let everyone here know stays
   under the voice, connection or not. Rename by editing the title, pause and resume, then **Finish and write notes** (the
   orb sets, and the note opens) or **Home › Discard recording** (nothing is kept, and you're back on Record). A finish that
   fails says so, and **Finish** can be pressed again; it never records again after that.

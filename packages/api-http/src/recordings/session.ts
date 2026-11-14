@@ -21,7 +21,7 @@ export class HttpRecording extends Live<RoomRecordingState> implements RoomRecor
   pause = () => this.act({ type: 'pause' }, (s) => ({ ...s, status: 'paused' }));
   resume = () => this.act({ type: 'resume' }, (s) => ({ ...s, status: 'recording' }));
   appendAudio = async (p: AudioPiece) => { const s = await this.t.audio(this.state.id, p); this.set({ ...this.state, recording: s.recording }); };
-  transcribe = async (c: TranscriptClip) => { const s = await this.t.transcribe(this.state.id, c); this.set({ ...this.state, transcript: s.transcript }); };
+  transcribe = async (c: TranscriptClip) => { const s = await this.t.transcribe(this.state.id, c); this.set({ ...this.state, transcript: s.transcript, transcriptReduced: s.transcriptReduced }); };
   stop = async () => { this.stopTicking(); this.set({ ...this.state, status: 'stopped' }); return this.t.stop(this.state.id); };
   discard = async () => { this.stopTicking(); this.set({ ...this.state, status: 'stopped' }); await this.t.discard(this.state.id); };
 }

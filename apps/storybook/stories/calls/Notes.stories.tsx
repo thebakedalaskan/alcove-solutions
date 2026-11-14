@@ -40,6 +40,8 @@ export const MarkAMoment = {
 /** The live transcript, Notes' second tab, each line a moment after it's said. */
 export const Transcript = inCall({ scenario: 'call-soon', call: REVIEW, script: LATE }, { play: reach('Notes', { tab: 'Transcript' }) });
 export const TranscriptPhone = phone(Transcript);
+/** Transcription is running at reduced quality: one caution notice above the lines, since none is marked on its own. */
+export const TranscriptReduced = inCall({ scenario: 'call-soon', call: REVIEW, script: { ...LATE, transcriptReduced: true } }, { play: reach('Notes', { tab: 'Transcript' }) });
 /** Bookmarks the transcript's second line, as a person would: pointing at it, then its bookmark. */
 const bookmarkALine: NonNullable<PageStory['play']> = async ({ userEvent, step }) => {
   await step('Bookmark a line in your own notes', async () => {

@@ -329,12 +329,15 @@ export function Sheet({ open, onOpenChange, label, children, className, overlayC
 export function TooltipProvider({ children }: { children: ReactNode }) {
   return <RTooltip.Provider delayDuration={300}>{children}</RTooltip.Provider>;
 }
-/** A tooltip over what it names, or under it; left or right of something tall, such as a seam, beside its middle. */
-export function Tooltip({ label, children, side = 'top' }: { label: ReactNode; children: ReactNode; side?: 'top' | 'bottom' | 'left' | 'right' }) {
+/**
+ * A tooltip over what it names, or under it; left or right of something tall, such as a seam, beside its middle.
+ * `container`: where it's drawn, when that isn't the page, such as an element in full screen, outside which nothing shows.
+ */
+export function Tooltip({ label, children, side = 'top', container }: { label: ReactNode; children: ReactNode; side?: 'top' | 'bottom' | 'left' | 'right'; container?: Element | null | undefined }) {
   return (
     <RTooltip.Root>
       <RTooltip.Trigger asChild>{children}</RTooltip.Trigger>
-      <RTooltip.Portal><RTooltip.Content side={side} sideOffset={8} className="ac-tip">{label}</RTooltip.Content></RTooltip.Portal>
+      <RTooltip.Portal container={container}><RTooltip.Content side={side} sideOffset={8} className="ac-tip">{label}</RTooltip.Content></RTooltip.Portal>
     </RTooltip.Root>
   );
 }

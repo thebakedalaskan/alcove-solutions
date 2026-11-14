@@ -14,7 +14,10 @@
  * the language Whisper picked for it when it picked one surely, and whether it asked Whisper what its speaker speaks.
  *
  * Nothing is presented as surer than it was heard: a line keeps whether Whisper was unsure of its words, and a line
- * heard on two people's microphones at once is shown with its speaker in doubt (see `crosstalk`).
+ * heard on two people's microphones at once is shown with its speaker in doubt (see `crosstalk`). A clip transcribed
+ * without Whisper's detail, while NEAR AI refuses it and the `transcript.speech_fallback` flag is on for whoever pays for
+ * it, is kept as `reduced`: its lines aren't marked one by one, but whatever shows them says the transcript's quality
+ * was reduced, and so does the note.
  */
 import { InferenceEvidenceSchema, type AudioSegment, type InferenceEvidence, type Speaker, type TranscriptLine } from '@alcove/api';
 import { z } from 'zod';
@@ -22,6 +25,7 @@ import type { Owner } from '../../platform/context';
 import { b64u, id128, mac, openJson, sealJson, stateKey, toJson, utf8 } from '../../keys/crypto';
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../platform/db';
 import { speechPrompt, transcribe, type Meter, type SpeechContext } from '../../inference/inference';
+import { featureFlagsFor } from '../../platform/feature-flags';
 import { log } from '../../platform/log';
 import { findItem } from '../../keys/vault';
 import { profile } from '../profile/profile';
@@ -49,9 +53,10 @@ const Line = z.object({
 export type Line = z.infer<typeof Line>;
 /**
  * A line as read back: the segment of the recording its clip was part of, and whether the same words were heard on
- * someone else's microphone at the same moment (`alsoHeard`, see `crosstalk`), so who said them is in doubt.
+ * someone else's microphone at the same moment (`alsoHeard`, see `crosstalk`), so who said them is in doubt, and
+ * whether its clip was transcribed without Whisper's detail (`reduced`).
  */
-export type HeardLine = Line & { segment: number; alsoHeard?: true | undefined };
+export type HeardLine = Line & { segment: number; alsoHeard?: true | undefined; reduced?: true | undefined };
 const Stored = z.object({
   segment: z.number(), lines: z.array(Line), evidence: InferenceEvidenceSchema,
   /** In a call, whose speech the clip was (a participant ID), even when none of it survived the filter. */
@@ -61,13 +66,16 @@ const Stored = z.object({
   /**
    * The clip asked Whisper what its speaker speaks: it went without the call's language, and Whisper was sure of its
    * language or it was long enough to tell (RECHECK_MS). Heard at length but unsure is how Whisper hears accented speech.
+   * A reduced clip never asks: without Whisper's detail it names no language, however long it is.
    */
-  asked: z.boolean().optional()
+  asked: z.boolean().optional(),
+  /** Transcribed without Whisper's detail (inference's `reduced`). False in a clip kept before the fallback. */
+  reduced: z.boolean().default(false)
 });
 type Stored = z.infer<typeof Stored>;
 /** Recording order: segment by segment, then by when in the recording. */
 const inOrder = (a: Pick<HeardLine, 'segment' | 'at'>, b: Pick<HeardLine, 'segment' | 'at'>) => a.segment - b.segment || a.at - b.at;
-const heardLines = (c: Stored): HeardLine[] => c.lines.map((l) => ({ ...l, segment: c.segment }));
+const heardLines = (c: Stored): HeardLine[] => c.lines.map((l) => ({ ...l, segment: c.segment, ...(c.reduced ? { reduced: true as const } : {}) }));
 
 /** The newest clips a clip's context is read from: its prompt, and the evidence for the call's language. */
 const RECENT = 20;
@@ -118,14 +126,17 @@ export async function hear(o: Owner, meter: Meter, t: Target, clip: Clip, by?: H
   // With the call's language only, a prompt of who's in the call and the words said before (see languageFor), in
   // the same part of the call, as the server placed this clip: a breakout room's words go to Whisper only with that
   // room's clips, and back.
-  const context: SpeechContext = callIn ? { language: callIn, prompt: speechPrompt(await peopleIn(o, t.noteId), wordsBefore(recent, { segment: clip.segment, at }, by?.room)) } : {};
-  const { heard, language, evidence } = await transcribe(o.cfg, meter, clip.wav, clip.durationMs, context);
+  // Whoever pays for the clip (the organizer, or whoever records) decides whether it may go without Whisper's detail,
+  // asked only once NEAR AI refuses it.
+  const fallback = async () => (await featureFlagsFor(o, o)).has('transcript.speech_fallback');
+  const context: SpeechContext = callIn ? { language: callIn, prompt: speechPrompt(await peopleIn(o, t.noteId), wordsBefore(recent, { segment: clip.segment, at }, by?.room)), fallback } : { fallback };
+  const { heard, language, evidence, reduced } = await transcribe(o.cfg, meter, clip.wav, clip.durationMs, context);
   const lines: Line[] = heard.map((x) => ({
     id: id128(), at: Math.round((at + x.start) * 10) / 10, end: Math.round((at + x.end) * 10) / 10, text: x.text,
     ...(by ? { speaker: by.speaker, ...(by.room ? { room: by.room } : {}), ...(by.readers ? { readers: by.readers } : {}), when: Math.round(by.began + x.start * 1000) } : {}),
     ...(x.unsure ? { unsure: true as const } : {})
   }));
-  const stored: Stored = { segment: clip.segment, lines, evidence, ...(by ? { speaker: by.speaker } : {}), ...(language ? { language } : {}), ...(!context.language && (language || clip.durationMs >= RECHECK_MS) ? { asked: true } : {}) };
+  const stored: Stored = { segment: clip.segment, lines, evidence, ...(by ? { speaker: by.speaker } : {}), ...(language ? { language } : {}), ...(!context.language && !reduced && (language || clip.durationMs >= RECHECK_MS) ? { asked: true } : {}), reduced };
   const kept = await tx(o.pool, async (c) => {
     // Stopping takes this row's lock to move the transcript into the note. Sharing it here means
     // a clip either lands before the move, or sees the recording stopped and stays out.
@@ -136,7 +147,7 @@ export async function hear(o: Owner, meter: Meter, t: Target, clip: Clip, by?: H
       [o.ownerId, t.noteId, tag, sealJson(key(o, t.noteId), header(o, t.noteId, tag), toJson(stored))]);
     return 'kept' as const;
   });
-  if (kept === 'kept') tlog.debug('clip transcribed into the live transcript', { ...ctx, lines: lines.length });
+  if (kept === 'kept') tlog.debug('clip transcribed into the live transcript', { ...ctx, lines: lines.length, reduced });
   else tlog.info('clip arrived after the recording stopped; dropped', { ...ctx, lines: lines.length });
 }
 
