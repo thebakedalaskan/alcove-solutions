@@ -1,7 +1,7 @@
 /*
  * The page's side of the matte's model (segmenterWorker.ts): starts the worker, hands it one frame at a time and takes each
- * mask back. While a frame is with the worker, the matte draws the frames after it with the mask it has, so a slow model
- * makes the edge follow a moment later and never holds up the page.
+ * mask back. The matte draws that frame when its mask comes back and lets the frames in between go, so a slow model lowers
+ * the frame rate and never holds up the page.
  */
 import type { SegmenterAnswer, SegmenterAsk } from './segmenterWorker';
 
@@ -18,7 +18,7 @@ const STALLED_FRAMES = 30;
 function isAnswer(v: unknown): v is SegmenterAnswer {
   if (typeof v !== 'object' || v === null || !('kind' in v)) return false;
   if (v.kind === 'ready') return true;
-  if (v.kind === 'mask') return 'mask' in v && v.mask instanceof Float32Array && 'seq' in v && typeof v.seq === 'number';
+  if (v.kind === 'mask') return 'mask' in v && (v.mask === null || v.mask instanceof Float32Array) && 'seq' in v && typeof v.seq === 'number';
   return v.kind === 'failed' && 'message' in v && typeof v.message === 'string';
 }
 
@@ -32,8 +32,11 @@ export class Segmenter {
   private pending: { seq: number; since: number; waited: number } | null = null;
   private stopped = false;
 
-  /** `onMask` gets each frame's mask, MASK_W×MASK_H, top row first; `onFailure` once, if it stops after it was ready. */
-  constructor(private readonly onMask: (mask: Float32Array) => void, private readonly onFailure: (error: Error) => void) {
+  /**
+   * `onMask` gets each frame's mask, MASK_W×MASK_H, top row first, or null when the reading came back empty; `onFailure` once,
+   * if it stops after it was ready.
+   */
+  constructor(private readonly onMask: (mask: Float32Array | null) => void, private readonly onFailure: (error: Error) => void) {
     this.ready = new Promise<void>((resolve, reject) => { this.started = { resolve, reject }; });
     // Whoever awaits it hears a failure; it's never left unhandled when nobody does (stopped while it started).
     this.ready.catch(() => undefined);
@@ -78,7 +81,6 @@ export class Segmenter {
     if (this.stopped || !isAnswer(data)) return;
     if (data.kind === 'ready') { this.started?.resolve(); this.started = null; return; }
     if (data.kind === 'failed') { this.stop(new Error(data.message)); return; }
-    // A mask for a frame sent before a restart is still this camera's: it's taken all the same.
     if (this.pending?.seq === data.seq) this.pending = null;
     this.onMask(data.mask);
   }

@@ -17,10 +17,10 @@ import { FilesetResolver, ImageSegmenter } from '@mediapipe/tasks-vision';
 export type SegmenterAsk =
   | { kind: 'start'; wasm: string; model: string; touch: boolean }
   | { kind: 'frame'; image: ImageBitmap; at: number; seq: number };
-/** To the page: ready to segment (shaders compiled), one frame's mask, or why it stopped. */
+/** To the page: ready to segment (shaders compiled), one frame's mask (null: the reading came back empty), or why it stopped. */
 export type SegmenterAnswer =
   | { kind: 'ready' }
-  | { kind: 'mask'; mask: Float32Array; seq: number }
+  | { kind: 'mask'; mask: Float32Array | null; seq: number }
   | { kind: 'failed'; message: string };
 
 /** The model's own input size, and the mask's. */
@@ -55,13 +55,21 @@ async function loadFactory(loader: string): Promise<void> {
   Reflect.set(self, 'ModuleFactory', factory);
 }
 
-/** How sure the model is that each pixel of `image` is the person: everything but the background, hair included. */
-function personIn(s: ImageSegmenter, image: ImageBitmap, at: number): Float32Array {
-  const got: { mask: Float32Array | null } = { mask: null };
+/**
+ * How sure the model is that each pixel of `image` is the person: everything but the background, hair included. Null when
+ * the reading came back empty: a readback the GPU didn't write leaves zeros, which would say everything is the person.
+ */
+function personIn(s: ImageSegmenter, image: ImageBitmap, at: number): Float32Array | null {
+  const got: { read: boolean; mask: Float32Array | null } = { read: false, mask: null };
   // Background, hair, body skin, face skin, clothes, other. The masks only live inside this callback, so it's copied out
   // (by the `map`).
-  s.segmentForVideo(image, at, (result) => { got.mask = result.confidenceMasks?.[0]?.getAsFloat32Array().map((v) => 1 - v) ?? null; });
-  if (!got.mask) throw new Error('The segmenter gave no mask.');
+  s.segmentForVideo(image, at, (result) => {
+    const background = result.confidenceMasks?.[0]?.getAsFloat32Array();
+    if (!background) return;
+    got.read = true;
+    got.mask = background.some((v) => v !== 0) ? background.map((v) => 1 - v) : null;
+  });
+  if (!got.read) throw new Error('The segmenter gave no mask.');
   return got.mask;
 }
 
@@ -73,10 +81,13 @@ async function start(wasm: string, model: string, touch: boolean): Promise<void>
   const simd = await FilesetResolver.isSimdSupported();
   const name = simd ? 'vision_wasm_internal' : 'vision_wasm_nosimd_internal';
   await loadFactory(`${wasm}/${name}.js`);
+  // Its own canvas: losing its graphics context stops it, rather than leave readings nobody can trust.
+  const canvas = new OffscreenCanvas(1, 1);
+  canvas.addEventListener('webglcontextlost', () => fail(new Error('The background model’s graphics context was lost.')));
   // No loader path: the factory is already where MediaPipe looks, so it doesn't try importScripts.
   const s = await ImageSegmenter.createFromOptions({ wasmLoaderPath: '', wasmBinaryPath: `${wasm}/${name}.wasm` }, {
     baseOptions: { modelAssetPath: model, delegate: 'GPU' },
-    canvas: new OffscreenCanvas(1, 1),
+    canvas,
     runningMode: 'VIDEO',
     outputConfidenceMasks: true,
     outputCategoryMask: false
@@ -108,7 +119,7 @@ self.onmessage = (e: MessageEvent<unknown>) => {
   try {
     if (!s) throw new Error('The segmenter isn’t ready.');
     const mask = personIn(s, ask.image, ask.at);
-    answer({ kind: 'mask', mask, seq: ask.seq }, [mask.buffer]);
+    answer({ kind: 'mask', mask, seq: ask.seq }, mask ? [mask.buffer] : []);
   } catch (err) {
     fail(err);
   } finally {

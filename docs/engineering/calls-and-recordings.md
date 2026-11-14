@@ -2791,9 +2791,10 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   your own. Alcove's matte (`matte.ts`, drawn by `matteGl.ts`) runs MediaPipe's multiclass selfie segmenter
   (256×256, which counts hair as the person) on this device and LiveKit's `ProcessorWrapper` (`@livekit/track-processors`) makes a new track of what
   it draws. The segmenter runs in a worker of its own (`segmenter.ts` starts it, `segmenterWorker.ts` is the worker), on
-  a WebGL2 canvas of the worker's: the page hands it one frame at a time, made small and the right way up, and draws the
-  frames in between with the mask it last gave, so compiling the model's shaders (seconds, the first time on a phone) and
-  waiting on the GPU for each mask never hold up the page. Where LiveKit reads frames off a playing element (WebKit, so
+  a WebGL2 canvas of the worker's: the page hands it one frame at a time, made small and the right way up, and draws that
+  frame when its own mask comes back, letting the frames that arrive meanwhile go. Compiling the model's shaders (seconds,
+  the first time on a phone) and waiting on the GPU for each mask never hold up the page, and a slow model lowers the frame
+  rate rather than lay an old mask over a newer picture. Where LiveKit reads frames off a playing element (WebKit, so
   every browser on an iPhone) the rest of the work runs on the page's own thread, and with the model there too, choosing a
   background froze the screen. The worker is a module worker, which has no `importScripts`: it imports MediaPipe's
   WebAssembly loader (a classic script) as a module, takes its factory from the loader's AMD `define`, gives it a `dbg` (its
@@ -2810,9 +2811,10 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   loads stops its input and output at once, closes the transformer, and releases the media queue. Late initialization and
   image/model results are fenced and disposed. Starting (downloading the model the first time and compiling its shaders)
   that takes over 30 seconds, or loading code or a picture over 15, fails closed too, without blocking a later explicit
-  Off choice or camera restart; so does a worker that stops, or leaves a frame unanswered for 10 seconds and 30 frames
-  drawn (counting frames too, so a phone that put the page to sleep doesn't count the sleep). WebGL context
-  loss is a processing failure.
+  Off choice or camera restart; so does a worker that stops or loses its graphics context, or leaves a frame unanswered for
+  10 seconds and 30 frames (counting frames too, so a phone that put the page to sleep doesn't count the sleep). A reading
+  that comes back empty (a readback the GPU didn't write leaves zeros, which would say everything is the person) isn't
+  drawn, and 30 in a row fail closed. WebGL context loss is a processing failure.
   Support detection loads the processing code without a camera; the 16 MB model loads only when an effect is actually used
   (the service worker doesn't keep either), and the
   model (`public/mediapipe`) and its WebAssembly (served by a plugin in `vite.config.ts`, the version of

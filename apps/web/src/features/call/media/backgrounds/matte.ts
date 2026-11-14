@@ -6,10 +6,11 @@
  * Each frame:
  * 1. MediaPipe's multiclass selfie segmenter (256×256, on this device) gives how sure it is that each pixel is
  *    background, and the person is everything else, hair included, which the plain selfie models lost against a
- *    background of a similar colour. It runs in a worker of its own (segmenter.ts), one frame at a time, so compiling
- *    its shaders and waiting on the GPU never hold up the page; the frames in between are drawn with the mask it last
- *    gave. Where LiveKit reads frames off a playing element (WebKit: every browser on an iPhone) all of this runs on the
- *    page's own thread, and the model there froze the screen for seconds as a background was chosen.
+ *    background of a similar colour. It runs in a worker of its own (segmenter.ts), so compiling its shaders and waiting
+ *    on the GPU never hold up the page: where LiveKit reads frames off a playing element (WebKit: every browser on an
+ *    iPhone) all of this runs on the page's own thread, and the model there froze the screen for seconds as a background
+ *    was chosen. One frame at a time goes to it, and that frame is drawn when its own mask comes back; the frames that
+ *    arrive meanwhile are let go, so a slow model lowers the frame rate and never lays an old mask over a new picture.
  * 2. That's smoothed over time: where it changes a little (the model being unsure) it moves slowly, so the edge
  *    settles; where it changes a lot (someone moving) it follows at once, so nothing trails.
  * 3. matteGl.ts sizes it up to the frame along the camera's own colour edges, and lays the person over the blurred
@@ -45,6 +46,8 @@ const EDGES: Edges = { colorSigma: 0.1, lo: 0.3, hi: 0.6 };
 const BLUR_SIGMA = { mild: 7, strong: 14 } as const;
 /** How many frames between debug lines with the time each took. */
 const REPORT_EVERY = 300;
+/** Readings in a row that come back empty (nothing read back from the GPU) before the matte counts as failed. */
+const BLANKS = 30;
 
 const smoothstep = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
@@ -62,6 +65,13 @@ export class Matte extends VideoTransformer<MatteOptions> {
   private readonly budget: FrameBudget;
   /** The mask as it's settled so far, MASK_W×MASK_H. */
   private steady: Float32Array | null = null;
+  /**
+   * The frame with the model, waiting in `source` to be drawn over when its mask comes back: where it goes, its time and size,
+   * and how long the page has spent on it so far.
+   */
+  private waiting: { controller: TransformStreamDefaultController<VideoFrame>; timestamp: number; width: number; height: number; cameraHeight: number; spent: number } | null = null;
+  /** Empty readings in a row. */
+  private blanks = 0;
   private picture: { path: string; bitmap: ImageBitmap } | null = null;
   private failed = false;
   private closed = false;
@@ -129,39 +139,70 @@ export class Matte extends VideoTransformer<MatteOptions> {
       return;
     }
     const started = performance.now();
-    if (!this.budget.take(started)) { frame.close(); return; }
-    let output: VideoFrame | null = null;
+    // While the model has a frame, the ones that arrive are let go: `source` holds that frame until its mask is back.
+    if (this.segmenter.busy(started) || !this.budget.take(started)) { frame.close(); return; }
     try {
       const camera = this.upright(frame);
       const { width, height } = this.budget.size(camera.width, camera.height);
-      if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
       if (this.source.width !== width || this.source.height !== height) { this.source.width = width; this.source.height = height; }
       this.sourceCtx.drawImage(camera.image, 0, 0, width, height);
-      // The model reads the same upright picture that's drawn, so the mask lines up with it: this frame, unless it's still
-      // reading an earlier one.
-      if (!this.segmenter.busy(started)) {
-        this.smallCtx.drawImage(this.source, 0, 0, MASK_W, MASK_H);
-        this.segmenter.send(this.small.transferToImageBitmap(), started);
-      }
-      const steady = this.steady;
-      // Until the first mask there's nothing to draw: never the camera without its background.
-      if (!steady) return;
-      const look = this.options.look;
-      // Keep the chosen blur's visible spread at every processing resolution.
-      const sigma = ('blur' in look ? BLUR_SIGMA[look.blur] : 14) * height / Math.max(camera.height, 1);
-      this.draw.draw(this.source, steady, MASK_W, MASK_H, width, height, sigma, EDGES);
-      output = new VideoFrame(canvas, { timestamp: frame.timestamp });
-      controller.enqueue(output);
-      output = null;
-      const finished = performance.now();
-      this.budget.measured(finished - started, finished);
-      this.timed(finished - started);
+      // The model reads the same upright picture that's drawn, so the mask lines up with it.
+      this.smallCtx.drawImage(this.source, 0, 0, MASK_W, MASK_H);
+      this.waiting = { controller, timestamp: frame.timestamp, width, height, cameraHeight: camera.height, spent: performance.now() - started };
+      this.segmenter.send(this.small.transferToImageBitmap(), started);
     } catch (e) {
-      output?.close();
+      this.waiting = null;
       this.fail(e);
     } finally {
       frame.close();
     }
+  }
+
+  /**
+   * The model's reading of the frame in `source` (null: it came back empty): folded into the settled mask, which that frame
+   * is drawn with and sent. Until the first mask nothing is drawn, so the camera never goes out without its background.
+   */
+  private masked(reading: Float32Array | null): void {
+    const w = this.waiting;
+    this.waiting = null;
+    if (this.closed || this.failed) return;
+    if (!reading) {
+      // Nothing read back from the GPU says everything is the person: that frame isn't drawn, and if it keeps happening the
+      // matte has failed.
+      this.blanks += 1;
+      if (this.blanks >= BLANKS) this.fail(new Error('The background model’s readings came back empty.'));
+      return;
+    }
+    this.blanks = 0;
+    const steady = this.settle(reading);
+    const canvas = this.canvas;
+    if (!w || !canvas || !this.draw || !this.source) return;
+    const started = performance.now();
+    let output: VideoFrame | null = null;
+    try {
+      if (canvas.width !== w.width || canvas.height !== w.height) { canvas.width = w.width; canvas.height = w.height; }
+      const look = this.options.look;
+      // Keep the chosen blur's visible spread at every processing resolution.
+      const sigma = ('blur' in look ? BLUR_SIGMA[look.blur] : 14) * w.height / Math.max(w.cameraHeight, 1);
+      this.draw.draw(this.source, steady, MASK_W, MASK_H, w.width, w.height, sigma, EDGES);
+      output = new VideoFrame(canvas, { timestamp: w.timestamp });
+    } catch (e) {
+      output?.close();
+      this.fail(e);
+      return;
+    }
+    try {
+      w.controller.enqueue(output);
+    } catch (e) {
+      // The track it went to has ended: nobody is reading it any more, which isn't the matte failing.
+      output.close();
+      mlog.debug('a drawn frame had nowhere to go', { err: e });
+      return;
+    }
+    const finished = performance.now();
+    const ms = w.spent + (finished - started);
+    this.budget.measured(ms, finished);
+    this.timed(ms);
   }
 
   /** A selected background never falls back to an unprocessed camera frame. Report once, then discard frames. */
@@ -237,10 +278,12 @@ export class Matte extends VideoTransformer<MatteOptions> {
     this.source = new OffscreenCanvas(canvas.width, canvas.height);
     this.sourceCtx = this.source.getContext('2d');
     this.steady = null;
+    this.waiting = null;
+    this.blanks = 0;
     this.failed = false;
     if (!this.segmenter) {
-      // Ready once its shaders are compiled, so the first frame is answered at once. Masks fold into the settled one.
-      const segmenter = new Segmenter((mask) => { if (!this.closed && this.segmenter === segmenter) this.steady = this.settle(mask); }, (error) => this.fail(error));
+      // Ready once its shaders are compiled, so the first frame is answered at once.
+      const segmenter = new Segmenter((reading) => { if (this.segmenter === segmenter) this.masked(reading); }, (error) => this.fail(error));
       this.segmenter = segmenter;
       try { await segmenter.ready; } catch (e) { if (this.segmenter === segmenter) this.segmenter = null; throw e; }
       if (this.closed) throw new Error('The background was stopped.');
@@ -278,6 +321,7 @@ export class Matte extends VideoTransformer<MatteOptions> {
     this.source = null;
     this.sourceCtx = null;
     this.steady = null;
+    this.waiting = null;
   }
 }
 
