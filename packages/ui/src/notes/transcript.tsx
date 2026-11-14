@@ -95,7 +95,7 @@ export function UnsureKey({ words, speaker, className }: { words: boolean; speak
 export function reducedWords(when: 'now' | 'then'): string {
   return when === 'now'
     ? 'Transcription is running at reduced quality right now. Some words, especially names, may be wrong.'
-    : 'Part of this transcript was made while transcription was running at reduced quality, so some words, especially names, may be wrong.';
+    : 'Transcript was made while transcription was running at reduced quality, so some words, especially names, may be wrong.';
 }
 /** The notice above a transcript some of which was made at reduced quality (reducedWords). */
 export function TranscriptReduced({ when, className }: { when: 'now' | 'then'; className?: string | undefined }) {
