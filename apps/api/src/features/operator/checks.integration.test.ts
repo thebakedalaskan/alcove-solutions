@@ -124,7 +124,7 @@ describe('live checks from inside', () => {
     ]));
 
     // The notes model was asked the same fixed thing as ever, with nothing of anyone's in it, and none of it is in the log:
-    // neither what it was asked nor the speech model's second of silence.
+    // neither what it was asked nor the speech model's second of quiet noise.
     const prompts = h.near.prompts.slice(asked.prompts);
     const instructions = h.near.instructions.slice(asked.instructions);
     expect(prompts).toEqual(['Reply with {"ok":true} and nothing else.']);
