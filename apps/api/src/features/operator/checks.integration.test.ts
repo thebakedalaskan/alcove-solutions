@@ -358,4 +358,21 @@ describe('live checks from inside', () => {
       h.closeCalls();
     }
   });
+
+  it('says NEAR AI refused Whisper’s detail, as it did from 14 Nov, in its own code', async () => {
+    h.near.refuseSpeechDetail(true);
+    try {
+      const s = await instance();
+      let a: ChecksAnswer;
+      try { a = await checks(s.read); } finally { await s.close(); }
+      // The evidence checked out, and the probe, which asks for the detail as every clip does first, came back 502.
+      const speech = check(a, 'near-ai:speech');
+      expect(speech).toMatchObject({ ok: false, code: 'detail-refused' });
+      expect(speech.detail.evidence).toMatchObject({ ok: true, check: null });
+      expect(speech.detail.probe).toEqual({ ok: false, ms: expect.any(Number), status: 502, timedOut: false });
+      expect(check(a, 'near-ai:notes')).toMatchObject({ ok: true, code: null });
+    } finally {
+      h.near.refuseSpeechDetail(false);
+    }
+  });
 });

@@ -6,7 +6,7 @@
  * correct it, bookmark it for you alone, or start a decision or a follow-up from it.
  */
 import type { Note, NoteRoom, TranscriptLine } from '@alcove/api';
-import { EmptyState, Icon, IconButton, UnsureKey, cn } from '@alcove/ui';
+import { EmptyState, Icon, IconButton, TranscriptReduced, UnsureKey, cn } from '@alcove/ui';
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { listNames, sameEmail } from '~/lib/people';
 import { position } from '~/lib/time';
@@ -136,6 +136,7 @@ export function TranscriptPane({ note, me, player, here, onSeek, focus, pane, sc
         </label>
         {onDownload && <IconButton icon="download" label="Download the transcript" onClick={onDownload} />}
       </div>
+      {note.transcriptReduced && <TranscriptReduced when="then" className="cd-reduced" />}
       {(unsure.words || unsure.speaker) && <UnsureKey words={unsure.words} speaker={unsure.speaker} className="cd-key" />}
       {down && !words.length && <button type="button" className="cd-start" onClick={() => pane.current?.scrollTo({ top: 0, behavior: 'smooth' })}><Icon name="arrowUp" size={14} />From the start</button>}
       {found === 0 && <p className="cd-quiet">Nothing said has those words.</p>}

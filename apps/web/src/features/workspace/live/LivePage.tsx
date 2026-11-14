@@ -4,7 +4,7 @@
  * nothing to show and notes off, it says why it's empty and what to do about it.
  */
 import { firstName, type CallState, type CatchUpItem } from '@alcove/api';
-import { Button, Notice, WsDoc, WsDocHead, WsFollowBar, WsNotesOff, WsNotesPage, WsScroll, WsTranscript, type WsDecision, type WsSaid } from '@alcove/ui';
+import { Button, Notice, TranscriptReduced, WsDoc, WsDocHead, WsFollowBar, WsNotesOff, WsNotesPage, WsScroll, WsTranscript, type WsDecision, type WsSaid } from '@alcove/ui';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useFollow } from '~/features/call/notes/LiveLines';
 import { organizerName } from '~/features/call/notes/Capture';
@@ -95,8 +95,10 @@ function TranscriptPage({ host, state, line }: { host: LiveHost; state: CallStat
   }), [state, words, flash]);
   if (state.transcript.length === 0 && modeHere(state) === 'off') return <Off live={live} state={state} />;
   const talking = notesOnHere(state) && speaking && !words ? { person: speaking, name: firstName(speaking.name) } : null;
+  // What holds the notes back comes first; then that some of these lines were made at reduced quality.
+  const notice = heldBack(state, host.live) ?? (state.transcriptReduced && state.transcript.length > 0 ? <TranscriptReduced when="now" /> : null);
   return (
-    <WsTranscript query={query} onQuery={setQuery} lines={lines} now={talking} notice={heldBack(state, host.live)}
+    <WsTranscript query={query} onQuery={setQuery} lines={lines} now={talking} notice={notice}
       put={put ? { target: put.target, onPut: (id) => { const l = state.transcript.find((x) => x.id === id); if (l) put.line(l); } } : undefined} />
   );
 }

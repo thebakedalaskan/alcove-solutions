@@ -37,7 +37,7 @@ export async function view(o: Owner, recordingId: string): Promise<RoomRecording
   const heard = r.state === 'stopped' ? [] : (await transcripts.lines(o, o.pool, r.note_item_id)).slice(-LIVE_TRANSCRIPT_LINES);
   return {
     id: recordingId, noteId: r.note_item_id, title: note.manifest.title, startedAt: r.started_at.toISOString(), elapsed: p.seconds, status: r.state, recording: p,
-    transcript: transcripts.spoken(heard)
+    transcript: transcripts.spoken(heard), transcriptReduced: heard.some((l) => l.reduced === true)
   };
 }
 

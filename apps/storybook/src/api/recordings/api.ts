@@ -13,13 +13,16 @@ export function stopRecordings(): void {
   recordings.clear();
 }
 
+async function begin(input: RoomRecordingInput | undefined, reduced: boolean): Promise<RoomRecording> {
+  await answer(() => null);
+  const recording = new ScriptedRecording(input ?? {}, reduced);
+  recordings.add(recording);
+  return recording;
+}
+
 export const recordingsApi: Pick<AlcoveApi, 'recordings'> = {
-  recordings: {
-    start: async (input?: RoomRecordingInput): Promise<RoomRecording> => {
-      await answer(() => null);
-      const recording = new ScriptedRecording(input ?? {});
-      recordings.add(recording);
-      return recording;
-    }
-  }
+  recordings: { start: (input?: RoomRecordingInput) => begin(input, false) }
 };
+
+/** Starts a recording whose transcription runs at reduced quality: what a story swaps in for `start` (`swap` in the journeys' play.ts). */
+export const startReduced = (input?: RoomRecordingInput): Promise<RoomRecording> => begin(input, true);

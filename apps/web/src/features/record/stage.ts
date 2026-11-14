@@ -28,6 +28,8 @@ export interface StageState {
   elapsed: number;
   /** What Alcove has transcribed so far: the latest lines. */
   transcript: TranscriptLine[];
+  /** Some of those lines were transcribed at reduced quality (RoomRecordingState's `transcriptReduced`). */
+  transcriptReduced: boolean;
   /** This browser has a connection. */
   online: boolean;
   /** What's recorded reaches Alcove now: it started there, there's a connection, and sending works. */
@@ -97,7 +99,7 @@ export class StageRecording implements LiveStore<StageState> {
   private constructor(readonly id: string, private readonly owner: string, private startedAt: string, title: string, private release: Release | null) {
     this.live = navigator.onLine;
     this.state = {
-      title, status: 'recording', elapsed: 0, transcript: [], online: navigator.onLine, connected: false, keeping: release !== null, account: 'here',
+      title, status: 'recording', elapsed: 0, transcript: [], transcriptReduced: false, online: navigator.onLine, connected: false, keeping: release !== null, account: 'here',
       held: null, ending: false, heard: null
     };
     const sink: RoomSink = {
@@ -276,7 +278,10 @@ export class StageRecording implements LiveStore<StageState> {
       }
       this.server = r;
       this.startedAt = there.startedAt;
-      this.unfollow = r.subscribe(() => { const t = r.getSnapshot().transcript; if (t !== this.state.transcript) this.set({ transcript: t }); });
+      this.unfollow = r.subscribe(() => {
+        const { transcript, transcriptReduced } = r.getSnapshot();
+        if (transcript !== this.state.transcript || transcriptReduced !== this.state.transcriptReduced) this.set({ transcript, transcriptReduced });
+      });
       // What's kept here carries on with this recording from now on, from Alcove's own start.
       if (this.release) void updateKept(this.id, { server: there.id, startedAt: there.startedAt }).catch((e: unknown) => slog.warn('couldn’t note where the recording is on Alcove', { id: this.id, err: e }));
       // Renamed or paused here before it got there: Alcove's copy follows.

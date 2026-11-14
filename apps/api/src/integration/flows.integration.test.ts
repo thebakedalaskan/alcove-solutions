@@ -1640,10 +1640,10 @@ describe('live transcript and written notes', () => {
     ];
     for (const [i, words] of said.entries()) await call.transcribe(speech(words, 0, i * 4), call.ticket.identity);
     // Until three clips agree on a language, Whisper picks it for each, from the sound alone.
-    const unsure = { language: null, prompt: null };
+    const unsure = { language: null, prompt: null, format: 'verbose_json' };
     expect(sent().slice(0, 3)).toEqual([unsure, unsure, unsure]);
     // Then each clip goes in the call's language, with who's in the call and the words said before it.
-    expect(sent()[3]).toEqual({ language: 'en', prompt: `${names} ${said.slice(0, 3).join(' ')}` });
+    expect(sent()[3]).toEqual({ language: 'en', prompt: `${names} ${said.slice(0, 3).join(' ')}`, format: 'verbose_json' });
     // As many of those words as fit, from the newest.
     const late = sent()[8]?.prompt ?? '';
     expect(late.startsWith(`${names} `) && late.endsWith(said[7] ?? '-')).toBe(true);
@@ -1669,7 +1669,7 @@ describe('live transcript and written notes', () => {
     const rec = await other.api.recordings.start({ title: 'Design crit' });
     const room = ['Sam will tidy the spacing by Friday.', 'The header stays dark for now.', 'Jo checks the icons on Monday.', 'Can we ship it on Friday?'];
     for (const [i, words] of room.entries()) await rec.transcribe(speech(words, 0, i * 4));
-    expect(h.near.transcriptions.at(-1)).toEqual({ language: 'en', prompt: `${other.session.user.name}. ${room.slice(0, 3).join(' ')}` });
+    expect(h.near.transcriptions.at(-1)).toEqual({ language: 'en', prompt: `${other.session.user.name}. ${room.slice(0, 3).join(' ')}`, format: 'verbose_json' });
     // A short reply that says back what was just said is kept: people agree to things that way.
     await rec.transcribe(speech('Ship it on Friday.', 0, 16));
     expect(h.near.transcriptions.at(-1)?.prompt?.endsWith('Can we ship it on Friday?')).toBe(true);

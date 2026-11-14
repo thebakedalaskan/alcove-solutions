@@ -11,7 +11,8 @@
  *
  * Speech is "recognised" from a marker a test writes into the WAV samples (see `speechWav`), so a test
  * decides exactly what was said and in which language; a clip without one is heard the way Whisper hears
- * silence. Each transcription's language and prompt are kept, so tests can see what a clip was sent with. The
+ * silence. Each transcription's language, prompt and format are kept, so tests can see what a clip was sent with. Whisper
+ * answers in the format asked for: `verbose_json` with its segments, `json` with its words and the seconds it heard. The
  * catalog (/v1/models) lists the notes model, a second model that takes images (`VISION_MODEL`, attested on its own
  * machine and served at its own endpoint, a second port the registry of endpoints names), one that's listed the
  * same way but whose evidence never checks out (`UNVERIFIED_VISION_MODEL`), and models that can't be offered. Moments to look at a shared screen are picked from cues in the transcript (see `notesReply`); a frame is
@@ -103,8 +104,11 @@ export interface FakeNear {
    * turned thinking off, null when it said nothing of it.
    */
   chats: { model: string; key: string | null; system: string; images: number; temperature: boolean; maxTokens: number | null; thinking: number | null }[];
-  /** What each clip was transcribed with besides its audio, once opened, oldest first: the language it named and its prompt, or null. */
-  transcriptions: { language: string | null; prompt: string | null }[];
+  /**
+   * What each clip was transcribed with besides its audio, once opened, oldest first: the language it named and its prompt,
+   * or null, and the format it asked for (`verbose_json` for Whisper's detail, `json` for its words alone).
+   */
+  transcriptions: { language: string | null; prompt: string | null; format: string }[];
   /** The models' attested signing keys right now, hex. */
   keys(): Record<Task, string>;
   /** The hashes of the configurations the quotes measure. */
@@ -133,6 +137,12 @@ export interface FakeNear {
   cachedNext(tokens: number): void;
   /** The next transcription says what it used, as NEAR AI may: tokens in and out. */
   speechUsageNext(usage: { input: number; output: number }): void;
+  /**
+   * From now on Whisper's own endpoint refuses its detail, as NEAR AI's did from 14 Nov: every `verbose_json` request opens
+   * and is answered 502 upstream_usage_missing inside the sealed reply, under evidence that checks out, and `json` is
+   * answered as ever. False: the detail comes back. The plaintext gateway never refused it.
+   */
+  refuseSpeechDetail(on: boolean): void;
   /** The next request for a call's full summary comes back in the wrong shape (the notes are written as usual). */
   failDetailsNext(): void;
   /**
@@ -209,7 +219,7 @@ function speechIn(wav: Buffer): { words: string; language: string; sure: boolean
 }
 
 /** Whisper's answer to a multipart transcription request. */
-async function transcription(contentType: string, body: Uint8Array, calls: FakeNear['calls'], heard: FakeNear['transcriptions'], path: string, encryption: 'ohttp' | 'none', key: string | null, usage: { input: number; output: number } | null): Promise<{ status: number; body: unknown }> {
+async function transcription(contentType: string, body: Uint8Array, calls: FakeNear['calls'], heard: FakeNear['transcriptions'], path: string, encryption: 'ohttp' | 'none', key: string | null, usage: { input: number; output: number } | null, refuseDetail = false): Promise<{ status: number; body: unknown }> {
   const form = await new Request('http://fake', { method: 'POST', headers: { 'content-type': contentType }, body: new Uint8Array(body) }).formData();
   const file = form.get('file');
   const model = str(form.get('model'));
@@ -217,7 +227,9 @@ async function transcription(contentType: string, body: Uint8Array, calls: FakeN
   const wav = Buffer.from(await file.arrayBuffer());
   calls.push({ path, model, bytes: wav.length, encryption, key });
   const asked = { language: str(form.get('language')) || null, prompt: str(form.get('prompt')) || null };
-  heard.push(asked);
+  // OpenAI's default, as NEAR AI's Whisper takes it.
+  const format = str(form.get('response_format')) || 'json';
+  heard.push({ ...asked, format });
   if (wav.subarray(0, 4).toString('ascii') !== 'RIFF') return { status: 400, body: { error: { message: 'Unsupported audio format' } } };
   // Like NEAR AI's Whisper, only Whisper's language codes name a language ("english" doesn't).
   if (asked.language && !/^[a-z]{2,3}$/.test(asked.language)) return { status: 400, body: { error: { message: `Unsupported language: ${asked.language}` } } };
@@ -229,6 +241,11 @@ async function transcription(contentType: string, body: Uint8Array, calls: FakeN
     id: i, seek: 0, start: i * 2, end: Math.min(seconds, i * 2 + 1.8), text: x.text, tokens: [], temperature: 0,
     avg_logprob: x.unclear ? -0.8 : speech?.sure === false ? -0.45 : -0.2, compression_ratio: 1.1, no_speech_prob: null
   }));
+  // NEAR AI bills a transcription by the `usage` Whisper sends back, which only its `json` reply carries.
+  if (refuseDetail && format === 'verbose_json') {
+    return { status: 502, body: { error: { message: 'Upstream response did not include billable audio duration', type: 'upstream_usage_missing', param: null, code: null } } };
+  }
+  if (format === 'json') return { status: 200, body: { text: said.map((x) => x.text).join(''), usage: { type: 'duration', seconds: Math.ceil(seconds) }, id: `trans-${randomUUID()}` } };
   // The language it was told, or the one it hears.
   return {
     status: 200,
@@ -634,6 +651,8 @@ export async function startFakeNear(): Promise<FakeNear> {
   let tampered: { how: Tamper; of: 'model' | 'gateway' } | null = null;
   /** The models refusing every request, and with what status (refuseModel). */
   const refusing = new Map<Task, number>();
+  /** Whisper's own endpoint refuses its detail (refuseSpeechDetail). */
+  let detailRefused = false;
   let ohttpIds = 1;
   const lie = (of: 'model' | 'gateway') => (tampered?.of === of ? tampered.how : undefined);
 
@@ -788,7 +807,7 @@ export async function startFakeNear(): Promise<FakeNear> {
       // model's attested key signed opens a request, so what opens was sealed to that attested key.
       if (req.method === 'POST' && url.pathname === '/direct/whisper/ohttp') {
         return direct(res, req, body, 'transcript', async (inner) => (inner.method === 'POST' && inner.path === '/v1/audio/transcriptions'
-          ? transcription(inner.headers.get('content-type') ?? '', inner.body, calls, transcriptions, inner.path, 'ohttp', hex(models.transcript.key), takeSpeechUsage()) : { status: 404, body: { error: { message: 'Not found' } } }));
+          ? transcription(inner.headers.get('content-type') ?? '', inner.body, calls, transcriptions, inner.path, 'ohttp', hex(models.transcript.key), takeSpeechUsage(), detailRefused) : { status: 404, body: { error: { message: 'Not found' } } }));
       }
       if (req.method === 'POST' && url.pathname === '/direct/glm/ohttp') {
         return direct(res, req, body, 'notes', async (inner) => (inner.method === 'POST' && inner.path === '/v1/chat/completions'
@@ -903,6 +922,7 @@ export async function startFakeNear(): Promise<FakeNear> {
     holdCatalogNext(then) { catalogHold = then; },
     cachedNext(tokens) { cached = tokens; },
     speechUsageNext(usage) { speechUsage = usage; },
+    refuseSpeechDetail(on) { detailRefused = on; },
     failDetailsNext() { detailsFailing = true; },
     refuseModel(task, status) { if (status === null) refusing.delete(task); else refusing.set(task, status); },
     slowNext(ms, only) { slow = ms; slowOnly = only; },

@@ -4,11 +4,14 @@
  * store and main's fake NEAR AI. Words the speech model was unsure of, and lines heard on two people's microphones at
  * once, are marked live, in catch-up and in the notes; the organizer corrects any line and the people who said them
  * their own words, in revisions that say who changed what; questions read the corrected transcript; and the organizer
- * has the notes written again from it, keeping what people settled.
+ * has the notes written again from it, keeping what people settled. While NEAR AI refuses Whisper's detail, clips whose
+ * payer has the fallback on are transcribed without it, and the transcript says once that its quality was reduced.
  */
 import { AlcoveApiError, type AlcoveApi, type AnswerPart, type AudioPiece, type CallSession, type CallState, type Note, type NoteProgress, type TranscriptClip, type TranscriptLine } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { indexKey } from '../../keys/owners';
+import { flagHash, grantPerson } from '../../platform/feature-flags';
 import { speechWav } from '../../testing/fakes/near';
 import { startHarness, type Harness } from '../../testing/harness';
 import { standing } from '../billing/meter/meter';
@@ -110,6 +113,7 @@ describe('a transcript that says what it isn’t sure of', () => {
       [them, 'Yes, we can ship the release on Friday.', null]
     ];
     expect(marked(host.getSnapshot().transcript)).toEqual(heard);
+    expect(host.getSnapshot().transcriptReduced).toBe(false);
     // Everyone in the call sees the same.
     expect(marked((await settle(kofi, (x) => x.transcript.length === heard.length)).transcript)).toEqual(heard);
 
@@ -126,7 +130,7 @@ describe('a transcript that says what it isn’t sure of', () => {
     await written(org.api, noteId);
     const note = await org.api.notes.get(noteId);
     expect(marked(note.transcript ?? [])).toEqual(heard);
-    expect(note).toMatchObject({ status: 'ready', writingAgain: false });
+    expect(note).toMatchObject({ status: 'ready', writingAgain: false, transcriptReduced: false });
     expect(note.writtenAt).not.toBeNull();
     const draft = h.near.prompts.at(-1) ?? '';
     expect(draft).toContain('Transcript:');
@@ -383,5 +387,98 @@ describe('a transcript that says what it isn’t sure of', () => {
     expect(note.decisions.map((d) => d.text)).toEqual(['We agreed to ship on Monday.']);
     expect(note.writtenAt).not.toBeNull();
     expect(await spent()).toBeGreaterThan(unusable);
+  });
+});
+
+describe('a transcript made while NEAR AI refuses Whisper’s detail', () => {
+  /** The fallback, on for whoever pays for the clips: the organizer of a call, or whoever records. */
+  const fallbackFor = (email: string) => grantPerson(h.pool, 'transcript.speech_fallback', flagHash(indexKey(h.deps), email));
+  afterEach(async () => {
+    h.near.refuseSpeechDetail(false);
+    h.near.refuseModel('transcript', null);
+    await h.pool.query('DELETE FROM feature_flag_person_grants; DELETE FROM feature_flag_group_grants; DELETE FROM feature_flag_group_members; DELETE FROM feature_flag_groups; DELETE FROM feature_flags_everyone');
+  });
+  /** The formats the clips sent since `from` asked Whisper for. */
+  const formats = (from: number) => h.near.transcriptions.slice(from).map((t) => t.format);
+
+  // Clips stop asking for the detail for a while once NEAR AI refuses it, for every test in this file at once. So what's
+  // asserted holds whether or not a test before this one was refused: what came back, and that a second clip didn't ask.
+  it('without the fallback, a clip fails as it did, and nothing is said to be reduced', async () => {
+    const org = await account(unique('recorder'));
+    h.near.refuseSpeechDetail(true);
+    const rec = await org.api.recordings.start({ title: 'Refused' });
+    await rec.appendAudio(piece('refused', 0, 0));
+    const from = h.near.transcriptions.length;
+    expect(code(await rec.transcribe(speech('We ship on Friday.', 0, 0)).catch((e: unknown) => e))).toBe('unavailable');
+    expect(formats(from)).toEqual(['verbose_json']);
+    expect(rec.getSnapshot()).toMatchObject({ transcript: [], transcriptReduced: false });
+    const { pendingNoteId } = await rec.stop();
+    await written(org.api, pendingNoteId);
+    expect(await org.api.notes.get(pendingNoteId)).toMatchObject({ transcript: [], transcriptReduced: false });
+  });
+
+  it('with the fallback, a call’s clips are transcribed without it, unmarked, and the call and its notes say once that quality was reduced', async () => {
+    const email = unique('organizer');
+    const org = await account(email);
+    await fallbackFor(email);
+    const kofiEmail = invitee('kofi');
+    const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [kofiEmail] });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const kofi = await (await account(kofiEmail)).api.calls.join(c, { mic: true, cam: false });
+    await inGroup(kofi);
+    await settle(host, (x) => x.capture.mode === 'on' && x.participants.some((p) => p.id === kofi.ticket.identity));
+    await host.appendAudio(piece('reduced', 0, 0));
+    const me = org.session.user.name;
+    h.near.refuseSpeechDetail(true);
+
+    // Refused the detail, the clip goes again without it, in the same request; or straight away, if a clip was refused just before.
+    let from = h.near.transcriptions.length;
+    await host.transcribe(speech('We agreed the budget is final. // ~the vendor wants eighty something', 0, 0), host.ticket.identity);
+    expect(['verbose_json,json', 'json']).toContain(formats(from).join());
+    // One line over the whole clip, its words unmarked: nothing said how sure Whisper was, and nothing was dropped for it.
+    expect(marked(host.getSnapshot().transcript)).toEqual([[me, 'We agreed the budget is final. the vendor wants eighty something', null]]);
+    expect(host.getSnapshot().transcriptReduced).toBe(true);
+    // Everyone in the call is told.
+    expect((await settle(kofi, (x) => x.transcript.length === 1)).transcriptReduced).toBe(true);
+
+    // The next clip doesn't ask for the detail first, only to be refused again. It goes without the call's language or a
+    // prompt: no clip without the detail can say what the call is in.
+    from = h.near.transcriptions.length;
+    await host.transcribe(speech('That works for me.', 0, 5000), kofi.ticket.identity);
+    expect(h.near.transcriptions.slice(from)).toEqual([{ language: null, prompt: null, format: 'json' }]);
+
+    // The notes keep the lines as they were heard, and that some were made at reduced quality.
+    const noteId = (await host.leave())?.pendingNoteId ?? '';
+    await written(org.api, noteId);
+    const note = await org.api.notes.get(noteId);
+    expect(note.transcriptReduced).toBe(true);
+    expect(marked(note.transcript ?? [])).toEqual([[me, 'We agreed the budget is final. the vendor wants eighty something', null], ['Kofi', 'That works for me.', null]]);
+  });
+
+  it('with the fallback, a room recording’s clips are too, and its note says so', async () => {
+    const email = unique('recorder');
+    const org = await account(email);
+    await fallbackFor(email);
+    h.near.refuseSpeechDetail(true);
+    const rec = await org.api.recordings.start({ title: 'Reduced room' });
+    await rec.appendAudio(piece('reduced-room', 0, 0));
+    await rec.transcribe(speech('Sam will tidy the spacing by Friday.', 0, 0));
+    expect(rec.getSnapshot()).toMatchObject({ transcriptReduced: true });
+    expect(rec.getSnapshot().transcript.map((l) => [l.text, l.unsure ?? null])).toEqual([['Sam will tidy the spacing by Friday.', null]]);
+    const { pendingNoteId } = await rec.stop();
+    await written(org.api, pendingNoteId);
+    expect(await org.api.notes.get(pendingNoteId)).toMatchObject({ transcriptReduced: true });
+  });
+
+  it('with the fallback, a clip the speech model refuses for any other reason fails as it did', async () => {
+    const email = unique('recorder');
+    const org = await account(email);
+    await fallbackFor(email);
+    h.near.refuseModel('transcript', 502);
+    const rec = await org.api.recordings.start({ title: 'Down' });
+    await rec.appendAudio(piece('down', 0, 0));
+    expect(code(await rec.transcribe(speech('Nobody hears this.', 0, 0)).catch((e: unknown) => e))).toBe('unavailable');
+    expect(rec.getSnapshot()).toMatchObject({ transcript: [], transcriptReduced: false });
   });
 });

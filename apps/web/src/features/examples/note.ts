@@ -44,7 +44,7 @@ export function exampleNote(me: Person): Note {
       { at: 510, title: 'The launch date', summary: 'Moves to the 18th.' },
       { at: 960, title: 'New screens', summary: 'Kofi, by Wednesday.' }
     ],
-    screens: [], shares: [], model: null, unencrypted: [], transcript: [], rooms: [], additions: [], writtenAt: started.toISOString(), writingAgain: false, audio: [], kept: { transcript: true, recording: true }, inference: [],
+    screens: [], shares: [], model: null, unencrypted: [], transcript: [], transcriptReduced: false, rooms: [], additions: [], writtenAt: started.toISOString(), writingAgain: false, audio: [], kept: { transcript: true, recording: true }, inference: [],
     workedOn: [],
     suggestedQuestions: ['What did we decide?', 'What do I need to do?', 'Draft a follow-up'],
     home: null

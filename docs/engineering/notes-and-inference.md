@@ -207,9 +207,9 @@ sequenceDiagram
       A->>D: clip tag already stored? then skip
       A->>D: the note's people, and its newest 20 clips: the call's language, the words said before
       Note over A: the speech model verified (or verify it now)
-      A->>N: POST /ohttp: /audio/transcriptions (verbose_json, language, prompt), sealed to Whisper's attested key
+      A->>N: POST /ohttp: /audio/transcriptions (verbose_json, language, prompt; json while NEAR AI refuses the detail), sealed to Whisper's attested key
       N-->>A: timed segments with confidence scores, and the language, sealed
-      A->>D: one sealed transcript_clips row: the lines that survived the filter, the verification, the language Whisper picked
+      A->>D: one sealed transcript_clips row: the lines that survived the filter, the verification, the language Whisper picked, whether it was reduced
       A-->>B: call or recording state with the latest 200 lines
     end
 ```
@@ -336,7 +336,8 @@ sequenceDiagram
    ends, whether Whisper was unsure of its words, the part of the call it was said in and, while rooms were open,
    who may read it; its segment, whose speech it was (in a
    call), the evidence of the verification it was sent to, the language Whisper picked for it if it was sure
-   (`language`, a code such as `en`) and whether it asked Whisper what its speaker speaks (`asked`) are one
+   (`language`, a code such as `en`), whether it asked Whisper what its speaker speaks (`asked`) and whether it
+   was transcribed at reduced quality (`reduced`, [below](#when-near-ai-refuses-whispers-detail)) are one
    `transcript_clips` row, sealed under the state key `transcript:<noteId>` (record kind `transcript-clip`; the
    header binds the owner, the note and the tag). The insert holds a share lock on the recording row. A clip
    that arrives after the recording stopped is dropped, because its note is already finished. A clip's prompt
@@ -373,6 +374,42 @@ sequenceDiagram
     says why on hover or focus and to screen readers, and explains the dots once above the transcript, in the call
     and in the note.
 
+### When NEAR AI refuses Whisper's detail
+
+Since 14 Nov 2026, NEAR AI's private Whisper endpoint has answered every `verbose_json` transcription with
+`502 upstream_usage_missing` ("Upstream response did not include billable audio duration"), inside the sealed reply and
+under evidence that checks out. Its billing reads `usage.seconds`, which only a `json` reply carries, and it refuses any
+form field it doesn't know, so Alcove can't supply a duration. The fix is NEAR AI's; until then a feature flag,
+`transcript.speech_fallback` ([Feature flags](feature-flags.md)), lets a clip go without the detail
+(`transcribe`, `speechForm` and `detailRefused` in `apps/api/src/inference/inference.ts`):
+
+- **Whose flag.** The flag is read, only once a clip has been refused or while clips are going without the detail, for
+  whoever pays for the clip: the call's organizer, or whoever is recording a room (`fallback` in `SpeechContext`, read in
+  `hear` in `transcripts.ts`; `inference/` takes the question as an argument and never imports flags). With it off for
+  them, a refused clip fails as before (`503 unavailable`), its error's context saying `refused: 'detail'`.
+- **The resend.** A clip answered `502 upstream_usage_missing` is sent again as `json` in the same verification, which is
+  not re-verified: the refusal is handled inside the request, not thrown. Only that status and type count. A refused
+  `502` is never charged; the `json` answer is metered like any clip, its cost estimated from the clip's 30-second
+  windows, since a `json` reply's `usage` isn't the shape the meter reads.
+- **For ten minutes.** Once a clip whose payer has the flag goes without the detail, for `PLAIN_FOR_MS` (10 minutes), such
+  clips go as `json` straight away, without asking for the detail first; clips whose payer hasn't still ask, and fail. Then one asks again: a detailed `200` ends the wait, another refusal starts
+  it over. The wait is kept in memory by speech endpoint and model, so each API instance finds it out on its own, and
+  it's logged (`speech detail refused`) once when it starts. Operator probes neither read nor set it.
+- **What a `json` reply loses.** Segments: one line per clip (2.5 to 10 seconds in a call). Confidence: no unsure dots,
+  and Whisper's low-confidence and looping segments are no longer dropped, though the text filters (step 6) still run.
+  Language: none is detected, so the call's language never settles (step 5) and no prompt of names and context is sent.
+- **Said, not marked.** Each such clip is stored `reduced`. Its lines aren't marked one by one: the live views say so
+  once (`CallState.transcriptReduced`, `RoomRecordingState.transcriptReduced`, true while any line shown was made so), and
+  so does the note (`Note.transcriptReduced`, saved in the manifest when the recording stops, from every part of the
+  call). Every transcript screen shows the same notice (`TranscriptReduced` in `@alcove/ui`).
+- **What was stored.** Older clips and notes read as not reduced (`.default(false)`), so there's no migration; a manifest
+  the previous release rewrites during a deploy drops the mark.
+- **Seeing it.** The operator check `near-ai:speech` says `detail-refused` when its probe, which always asks for the
+  detail, is refused this way ([Operating Alcove › Notes aren't being written](operating-alcove.md#2-notes-arent-being-written)).
+
+When NEAR AI answers detailed transcriptions again, the fallback and the flag are deleted. The stored marker and the notice
+stay, for the clips and notes already made.
+
 ## When the recording stops
 
 `POST /v1/live/calls/:id/leave` and `POST /v1/recordings/:id/stop` call `finishRecording`
@@ -386,7 +423,8 @@ sequenceDiagram
    a call each line keeps who said it, and the main room's lines are the note's transcript, while each breakout
    room's go into that room's section ([Breakout rooms](#breakout-rooms)); in a room recording nobody is
    named; each keeps what the transcript couldn't vouch for; with the verifications they went to as `inference`. A call's gaps go into the manifest too (`gaps`:
-   every stretch with notes off or paused, when, and where it falls in the recording). Then the `transcript_clips` rows, and any `transcript_translations` made for captions, are
+   every stretch with notes off or paused, when, and where it falls in the recording), and `transcriptReduced`: whether any clip,
+   in the main room or a breakout room, was transcribed at reduced quality. Then the `transcript_clips` rows, and any `transcript_translations` made for captions, are
    deleted. A call's breakout rooms are written into the manifest too, in recording time, and kept with the note,
    so its chapters include them every time the notes are written.
 3. Everyone invited gets a `note_access` row.
@@ -1919,8 +1957,10 @@ skips picking one; notes for a short
 call are written in about 4 s with thinking disabled (about 48 s with it on, which is why everything but the notes
 written after a call keeps it off); a
 question is answered in about 1.5 to 3.5 s. Oblivious HTTP adds a few milliseconds; the first verification of
-a model adds about 1.3 s to its first request. NEAR AI answers pure
-digital silence with `502`, which Alcove reports as `503 unavailable`; the browser doesn't send silence.
+a model adds about 1.3 s to its first request. The browser doesn't send
+silence. An operator probe of a second of quiet noise once drew a `502` that looked like NEAR AI refusing silence: it was
+the refusal of Whisper's detail ([above](#when-near-ai-refuses-whispers-detail)), which every clip drew, and which Alcove
+reports as `503 unavailable`.
 NEAR AI offers no other speech model: `openai/whisper-large-v3` is the only one it lists and the only one
 it attests, so there is no faster or larger one to move to on the same verified path. On synthetic
 meetings (macOS voices saying names, numbers and jargon, clean, noisy, quiet, reverberant and over

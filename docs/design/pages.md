@@ -278,6 +278,8 @@ right what came of it, in tabs, each its own scroll area. A series has no page o
     was about, what was shared then, and each breakout room under the chapter it was in.
   - **Transcript:** find, its own download, what was said by chapter, the line being played lit and followed as it plays
     (unless you've scrolled), From the start once you're down it, and which breakout room you were in, with the others.
+    When part of it was made at reduced quality, a caution Notice (`TranscriptReduced`, `then`) says so once, under the
+    tools and over the lines, above the key to the dots (`.cd-reduced`); the lines aren't marked one by one.
   - **Your notes:** only you read them; write, bookmark a line or keep an answer.
 - **Ask about this call** sits at the foot of the right column, Only you. Its suggestions show at the end of what's read,
   and while it's pointed at or in use; the wheel over them still scrolls what's read.
@@ -290,7 +292,8 @@ right what came of it, in tabs, each its own scroll area. A series has no page o
   end.
 - **States, each with its own look:** still recording, being written (each step ticked off), written again, unwritten,
   nothing said, no transcript or recording (nothing to play back), breakout rooms, disputed, a room recording, the
-  example, and a call that's gone (what went, and Back to Calls).
+  example, a transcript with some of it made at reduced quality (the Transcript tab's caution Notice), and a call that's
+  gone (what went, and Back to Calls).
 
 **Before the call** the same page waits for it. The stage has everyone invited in arches with how each answered (its
 organizer sees everyone's, dimming who hasn't answered; anyone else sees their own), and "Join shows here five minutes
@@ -571,6 +574,9 @@ phone's bars and anything that opens stay night.
   - the recorder fills with red as you record, and the microphone's level runs across the water
   - three fading lines of what's being said. Scroll up to read back; Latest returns to the newest line
   - a status pill says what it's doing
+  - when some of what's said was made at reduced quality, the status line says so in `caution` (`reducedWords`, `now`, with
+    the alert icon). It's the lowest-priority thing the line says: only once the reminder, a lost connection and words
+    behind on the way up have nothing to say
   - in the first moments it says it's listening and reminds you to tell the room
   - offline, it says the recording is saved on this device
   - if Finish fails, it says so, and Finish can be pressed again
@@ -831,6 +837,10 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   The notes take their colours by kind, as the note does afterwards: the summary first, Decided in rose with diamonds,
   Follow-ups in horizon with boxes, and what the call suggests dashed under them, with Add and ×, two at a time and still
   while you point at them. Every tab but Ask ends in Note to self, with the bookmark beside it, for you alone.
+  When some of the transcript was made at reduced quality, the Transcript tab opens with a caution Notice
+  (`TranscriptReduced`, `now`) first in `.ic-tr`, above the lines, inside the tab and not in the bars that also sit over
+  Notes; the workspace's Transcript page (`WsTranscript`) has the same notice, after anything that's holding the
+  notes back, which comes first.
 - **The frame.** A screen, a board and the workspace each sit in one frame with one bar. On the left, the presenter's face
   (or the kind's icon while nobody presents), the name as a menu of the kind's own commands, and a line that says whose it
   is. On the right, only what applies: following or Follow, Present, focus, Stop sharing (with Close, on your own screen),

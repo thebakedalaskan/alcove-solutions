@@ -6,7 +6,7 @@
  * when the connection is back. `owner`: the account it records for, signed in or signed in here last.
  */
 import { clock, errorMessage } from '@alcove/api';
-import { Button, Horizon, Icon, Popover, RecorderSun, Spinner, buttonClass, cn, useRaisedToasts, useToast, useVoice, type IconName } from '@alcove/ui';
+import { Button, Horizon, Icon, Popover, RecorderSun, Spinner, buttonClass, cn, reducedWords, useRaisedToasts, useToast, useVoice, type IconName } from '@alcove/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -123,7 +123,8 @@ const REMINDER: Say = { text: 'Listening. Let everyone here know it’s recordin
 /**
  * What's said under the voice, one thing at a time: why it stopped by itself, a finish that failed, a microphone that isn't
  * working, that it's paused, then the reminder for the first moments, even with no connection, and only after them that
- * it's saving here or why the words are behind. Until the first words the reminder stays.
+ * it's saving here, why the words are behind, or that some of them were made at reduced quality. Until the first words
+ * the reminder stays.
  */
 function sayOf(s: StageState, trouble: Trouble | undefined, paused: boolean, finishing: boolean): Say | null {
   if (s.held === 'forgotten') return { text: 'You signed out on this device, so this recording can’t be kept. Nothing more is recorded.', icon: 'alert', warn: true };
@@ -135,6 +136,7 @@ function sayOf(s: StageState, trouble: Trouble | undefined, paused: boolean, fin
   if (!s.ending && s.elapsed < REMINDER_S) return REMINDER;
   if (s.keeping && !s.connected) return { text: `Saved on this device. ${awayWhy(s).saved}`, sub: 'What’s said now is written out then.', icon: 'hardDrive' };
   if (s.heard) return { text: s.heard, icon: 'clock' };
+  if (s.transcriptReduced && s.transcript.length) return { text: reducedWords('now'), icon: 'alert', warn: true };
   return s.transcript.length || s.ending ? null : REMINDER;
 }
 

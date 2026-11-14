@@ -73,7 +73,7 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
   if (!v.inCall) {
     return {
       ...base, attention: { place: 'main', hands: [], questions: [], nudges: [], cues: [], latest: 0, serverNow: end.toISOString() }, participants: [], waiting: [], ringing: [], leaving: [], spotlight: null, breakouts: { open: null, held: [] }, capture: anonymousCapture(s, row, await models.isPrivate(o.cfg, s.notes.model)), notes: { everOn: false, noteId: null, segmentStartedAt: null, recording: { segment: 0, pieces: 0, seconds: 0 }, keepsRecording: meeting.manifest.choices.keepRecording },
-      host: { id: null, standIn: false, organizer: { id: 'organizer', name: '', email: '' }, next: [] }, transcript: [], liveNotes: NO_NOTES, workspace: PRIVATE, board: boards.NO_BOARD, timer: null, notices: [], shares: []
+      host: { id: null, standIn: false, organizer: { id: 'organizer', name: '', email: '' }, next: [] }, transcript: [], transcriptReduced: false, liveNotes: NO_NOTES, workspace: PRIVATE, board: boards.NO_BOARD, timer: null, notices: [], shares: []
     };
   }
   const rooms = settle(s, row, end.getTime());
@@ -132,6 +132,7 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
     notes: { everOn: s.notes.everOn, noteId: s.notes.noteId, segmentStartedAt: s.notes.everOn ? new Date(row.started_at.getTime() + s.notes.segmentFrom * 1000).toISOString() : null, recording: { segment: s.notes.segment, pieces: segs.reduce((n, g) => n + g.pieces, 0), seconds: segs.reduce((n, g) => n + g.seconds, 0) }, keepsRecording: meeting.manifest.choices.keepRecording },
     // Lines stay inside their segment once it's over, so what was said before a pause is shown before it.
     transcript: transcripts.spoken(transcripts.placed(heard, segs, s.notes.status === 'on' ? s.notes.segment : undefined), speakersIn(rooms, organizer, v), roomsIn(rooms)),
+    transcriptReduced: heard.some((l) => l.reduced === true),
     liveNotes: await notesFor(v, db, row, rooms, viewing, where, invited),
     workspace,
     board: await boardFor(v, rooms, viewing, where, row, invited),

@@ -22,11 +22,12 @@ const EVERY_MS = 6500;
 export class ScriptedRecording extends Snapshots<RoomRecordingState> implements RoomRecording {
   private said = 0;
 
-  constructor(input: RoomRecordingInput) {
+  /** `reduced`: transcription runs at reduced quality, without the detail that says how sure each word was. */
+  constructor(input: RoomRecordingInput, reduced = false) {
     const id = nextId('rec');
     const noteId = nextId('room');
     const startedAt = input.startedAt ?? new Date().toISOString();
-    super({ id, noteId, title: input.title ?? '', startedAt, elapsed: 0, status: 'recording', recording: { segment: 0, pieces: 0, seconds: 0 }, transcript: [] });
+    super({ id, noteId, title: input.title ?? '', startedAt, elapsed: 0, status: 'recording', recording: { segment: 0, pieces: 0, seconds: 0 }, transcript: [], transcriptReduced: reduced });
     current().notes.unshift(writeNote({ id: noteId, kind: 'room', status: 'recording', title: input.title ?? '', startedAt, minutes: 0, organizer: me(), excerpt: '' }, me()));
     this.every(1000, () => {
       if (this.getSnapshot().status !== 'recording') return;
@@ -65,6 +66,7 @@ export class ScriptedRecording extends Snapshots<RoomRecordingState> implements 
       id: s.noteId, kind: 'room' as const, title, startedAt: s.startedAt, minutes: Math.max(1, Math.round(s.elapsed / 60)), organizer: me(),
       excerpt: 'The cold store alarm stays on paper until Friday. The handover stays in Portuguese.',
       summary: 'A walk round the floor: the cold store alarm is the sensor, not the door, so a paper log runs until Friday. The new racking goes into loading bay two on Monday, and the handover stays in Portuguese for the night shift.',
+      reduced: s.transcriptReduced,
       said: s.transcript.map((l) => ({ at: `${Math.floor(l.at / 60)}:${String(Math.floor(l.at % 60)).padStart(2, '0')}`, text: l.text })),
       suggestions: [{ id: `${s.noteId}-a1`, text: 'Check the paper log against the sensor’s record', owner: me(), due: 'Friday' }]
     };

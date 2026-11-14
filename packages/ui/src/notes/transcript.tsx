@@ -1,12 +1,14 @@
 /*
- * A note's transcript: one spoken line (TranscriptLine), what the transcript can't vouch for in it (Unsure), and the quiet
- * key under a transcript that says what its dotted marks mean (UnsureKey). The line is styled in note.css (`nd-l`), the
- * marks in foundation/kit.css (`ac-unsure`).
+ * A note's transcript: one spoken line (TranscriptLine), what the transcript can't vouch for in it (Unsure), the quiet
+ * key under a transcript that says what its dotted marks mean (UnsureKey), and the notice over a transcript some of which
+ * was made at reduced quality (TranscriptReduced). The line is styled in note.css (`nd-l`), the marks in
+ * foundation/kit.css (`ac-unsure`).
  */
 import { useEffect, useRef, type MouseEvent, type ReactNode } from 'react';
 import { cn } from '../foundation/cn';
 import { Tooltip } from '../foundation/overlay';
 import { Avatar, type AvatarPerson } from '../foundation/people';
+import { Notice } from '../foundation/primitives';
 
 /** What in a line has a press, or a tip, of its own: its time, its tools, a marker. Words it isn't sure of are still words. */
 const OWN_PRESS = 'a, button, input, textarea, select, label, [role="button"], .nd-lx, [tabindex]:not(.ac-unsure)';
@@ -83,4 +85,19 @@ export function UnsureKey({ words, speaker, className }: { words: boolean; speak
       {speaker && <>A <span className="ac-unsure">dotted</span> name was heard on more than one microphone.</>}
     </p>
   );
+}
+
+/**
+ * What's said over a transcript some of which was made at reduced quality, without the detail that says how sure each
+ * word was: `now` while it's being made (a call, Record), `then` once it's in the notes. Its lines carry no marks of
+ * their own, so this is said once, above them. The Record stage says `now` in its own status line.
+ */
+export function reducedWords(when: 'now' | 'then'): string {
+  return when === 'now'
+    ? 'Transcription is running at reduced quality right now. Some words, especially names, may be wrong.'
+    : 'Part of this transcript was made while transcription was running at reduced quality, so some words, especially names, may be wrong.';
+}
+/** The notice above a transcript some of which was made at reduced quality (reducedWords). */
+export function TranscriptReduced({ when, className }: { when: 'now' | 'then'; className?: string | undefined }) {
+  return <Notice tone="caution" icon="alert" className={cn('ac-reduced', className)}>{reducedWords(when)}</Notice>;
 }

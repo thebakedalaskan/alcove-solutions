@@ -5,7 +5,7 @@
  * everyone's or yours, ticked by anyone, with a line to add one. Transcript (WsTranscript) is the call so far, what's
  * being said at the end, and a field to find a line. With notes off the three pages stay and say so (WsNotesOff).
  */
-import { Button, FollowUpEditor, type FollowUpValues, WsDoc, WsDocHead, WsFollowUps, WsNotesOff, WsNotesPage, WsPane, WsScroll, WsToasts, WsTranscript, wsToast, type WsFollowUp, type WsSave } from '@alcove/ui';
+import { Button, FollowUpEditor, TranscriptReduced, type FollowUpValues, WsDoc, WsDocHead, WsFollowUps, WsNotesOff, WsNotesPage, WsPane, WsScroll, WsToasts, WsTranscript, wsToast, type WsFollowUp, type WsSave } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { Box, did } from '../../../src/component';
@@ -129,6 +129,8 @@ const transcriptTypes: TranscriptStory['argTypes'] = { lines: { control: false }
 const transcript: TranscriptStory['render'] = (args) => <Transcript key={args.query} {...args} />;
 /** The call so far, and Priya saying something right now at the end. The arrow on a line quotes it in Launch plan. */
 export const TranscriptPage: TranscriptStory = { name: 'Transcript: the call so far', args: TRANSCRIPT, argTypes: transcriptTypes, render: transcript };
+/** Transcription is running at reduced quality: one caution notice above the lines, since none is marked on its own. */
+export const TranscriptReducedQuality: TranscriptStory = { name: 'Transcript: reduced quality', args: { ...TRANSCRIPT, notice: <TranscriptReduced when="now" /> }, argTypes: { ...transcriptTypes, notice: { control: false } }, render: transcript };
 /** Finding a word keeps the lines that have it. */
 export const TranscriptFound: TranscriptStory = { name: 'Transcript: finding', args: { ...TRANSCRIPT, query: 'legal' }, argTypes: transcriptTypes, render: transcript };
 export const TranscriptNothingFound: TranscriptStory = { name: 'Transcript: nothing matches', args: { ...TRANSCRIPT, query: 'warehouse photos' }, argTypes: transcriptTypes, render: transcript };

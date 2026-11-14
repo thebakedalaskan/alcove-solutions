@@ -997,7 +997,8 @@ export class HttpCall extends Live<CallState> implements CallSession {
     // Merged only within one part of the call: an answer from before this browser moved adds nothing.
     if (place !== this.place) return;
     const byId = new Map([...this.state.transcript, ...s.transcript].map((l) => [l.id, l]));
-    this.set({ ...this.state, transcript: [...byId.values()].sort((a, b) => a.at - b.at).slice(-LIVE_TRANSCRIPT_LINES) });
+    // Lines made at reduced quality are among these as soon as the answer says so; the next refresh says it of exactly those shown.
+    this.set({ ...this.state, transcript: [...byId.values()].sort((a, b) => a.at - b.at).slice(-LIVE_TRANSCRIPT_LINES), transcriptReduced: this.state.transcriptReduced || s.transcriptReduced });
   };
   catchUp = (range: CatchUpRange) => this.t.catchUp(this.state.callId, range);
   askSoFar = (question: string, range: CatchUpRange) => this.t.askSoFar(this.state.callId, question, range);

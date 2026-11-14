@@ -201,6 +201,8 @@ export interface CallScript {
   notes?: 'on' | 'off' | 'paused' | undefined;
   /** The AI model the call's notes use: the default unless this says otherwise. */
   model?: string | null | undefined;
+  /** The call's transcript is being made at reduced quality, without the detail that says how sure each word was. */
+  transcriptReduced?: boolean | undefined;
   /** The conversation: a line every `every` seconds (4.5 unless it says), from `from` seconds in (2 unless it says). */
   talk?: { lines: readonly Line[]; from?: number | undefined; every?: number | undefined } | undefined;
   /** What happens, when. */

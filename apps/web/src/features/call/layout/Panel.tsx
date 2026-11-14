@@ -7,7 +7,7 @@
  * end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
 import { clock, errorMessage, notesAreOn, type CallAsker, type CallState, type CallStatus, type CatchUpItem, type CallSession, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
-import { Avatar, Button, Dots, EmptyState, Faces, Icon, IconButton, Tabs, TimeChip, Unencrypted, WsPutArrow, cn, useToast, type IconName } from '@alcove/ui';
+import { Avatar, Button, Dots, EmptyState, Faces, Icon, IconButton, Tabs, TimeChip, TranscriptReduced, Unencrypted, WsPutArrow, cn, useToast, type IconName } from '@alcove/ui';
 import type { StageTogether } from '../stage/Stage';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
@@ -356,6 +356,8 @@ export function TranscriptView({ state, me, marks, put, controls, problems }: {
     <>
       <NotesBars state={state} controls={controls} problems={problems} capture />
       <div className="ic-tr">
+        {/* Said once over the lines, which aren't marked one by one: some were made at reduced quality. */}
+        {state.transcriptReduced && state.transcript.length > 0 && <TranscriptReduced when="now" />}
         {state.transcript.length ? <CallLines lines={state.transcript} gaps={c.gaps} me={me} marks={marks} quote={put ? { target: put.target, onQuote: put.line } : null} when={(at) => lineClock(state, at)} /> : on && (
           <EmptyState title="Nothing said yet">
             {!state.capture.room ? 'What’s said appears here a few seconds later.'

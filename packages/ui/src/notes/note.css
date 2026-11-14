@@ -327,6 +327,8 @@ button.cd-mk:focus-visible { box-shadow: 0 0 0 2px var(--focus); }
 .cd-start { position: sticky; top: 4px; z-index: 3; display: flex; align-items: center; gap: 6px; width: max-content; height: 30px; margin: 0 auto 6px; padding: 0 12px 0 10px; border-radius: var(--radius-pill); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line), var(--shadow-1); font: 500 13px/1 var(--font-sans); color: var(--ink-2); }
 .cd-start:hover { color: var(--ink); }
 .cd-key { margin: 4px 0 2px; font: 400 13px/1.4 var(--font-sans); color: var(--ink-3); }
+/* Some of the transcript was made at reduced quality: said once, under the tools and over the lines. */
+.cd-reduced { margin: 6px 0 4px; }
 .cd-said-g { margin-top: 8px; }
 .cd-said-h { display: flex; gap: 10px; margin: 16px 0 4px; font: 600 13px/1.2 var(--font-sans); color: var(--ink-2); }
 .cd-said-h span { color: var(--sun-text); font-variant-numeric: tabular-nums; }

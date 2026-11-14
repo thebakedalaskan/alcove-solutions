@@ -194,7 +194,7 @@ export async function get(o: Owner, id: string): Promise<Note> {
   const { decisions, questions, actions, suggestions, rooms } = entriesOf(read);
   return {
     ...summaryOf(l, organizer, who, await teamVisible(l), seriesId), recipients: who, summary: m.summary, decisions, questions, actions, suggestions, chapters: m.chapters,
-    gaps: m.gaps, screens: m.screens, transcript: read.transcript, rooms, additions: await additions.of(l, o.ownerId), writtenAt: m.writtenAt, writingAgain,
+    gaps: m.gaps, screens: m.screens, transcript: read.transcript, transcriptReduced: m.transcriptReduced, rooms, additions: await additions.of(l, o.ownerId), writtenAt: m.writtenAt, writingAgain,
     details: m.details, suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), kept: m.keep, inference: m.inference, workedOn: await workedOnFor(o, m.workedOn, everyoneWith(m, organizer.email)),
     shares: m.keep.recording ? await screens.shareIntervals(l.owner, m.recordingId, m.segmentSeconds) : [], model: m.model, unencrypted: m.unencrypted,
     home: await homeFor(o, id, call?.workspaceId ?? null)
