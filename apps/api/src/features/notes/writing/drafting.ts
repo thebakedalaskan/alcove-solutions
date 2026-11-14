@@ -257,7 +257,7 @@ export async function draft(cfg: Config, meter: Meter, b: Brief, style: NotesSty
     return { d: reply.data, evidence };
   };
   // The default model thinks first, once: if that request times out, is cut off or comes back unusable, the notes are
-  // asked for again at once without thinking, so they take at most about 10½ minutes. Nothing asked after it thinks.
+  // asked for again at once without thinking, so they take at most 860 s (620, then 240). Nothing asked after it thinks.
   const via = b.via ?? defaultModel(cfg);
   const effort = !style.brief && !style.quick && via.private && thinksWith(cfg, via.model) ? cfg.NEAR_AI_NOTES_EFFORT : 0;
   let thought: Awaited<ReturnType<typeof ask>> | undefined;

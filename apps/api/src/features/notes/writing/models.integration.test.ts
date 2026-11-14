@@ -94,7 +94,8 @@ describe('choosing the AI model', () => {
     const org = await account(unique('organizer'));
     await org.api.account.updatePreferences({ model: UNENCRYPTED_MODEL });
     const logsFrom = h.logs.length;
-    const r = await call(org);
+    // With thinking on, so that the notes not thinking is the gateway model's doing.
+    const r = await configured({ NEAR_AI_NOTES_EFFORT: 100 }, () => call(org));
     // The call, and its card for anyone with the link, say the AI isn't private; which model is the call's own business.
     expect(r.capture).toMatchObject({ model: UNENCRYPTED_MODEL, modelPrivate: false });
     expect(r.card.capture).toMatchObject({ model: null, modelPrivate: false });
@@ -152,6 +153,11 @@ describe('choosing the AI model', () => {
 /** The notes' own requests among `chats`, and everything else asked. */
 const notesOf = (chats: typeof h.near.chats) => chats.filter((x) => x.system.startsWith('You write the notes'));
 const restOf = (chats: typeof h.near.chats) => chats.filter((x) => !x.system.startsWith('You write the notes'));
+/** For `holdNext`: the notes model gets a new key while the notes' own request is answered; any other request passes it on. */
+const rotateOnNotes = async (): Promise<void> => {
+  if (notesOf(h.near.chats.slice(-1)).length) h.near.rotate('notes');
+  else h.near.holdNext(rotateOnNotes);
+};
 /** Runs `fn` with the server's settings changed by `patch`, then as they were. */
 async function configured<T>(patch: Partial<typeof h.deps.cfg>, fn: () => Promise<T>): Promise<T> {
   const was = h.deps.cfg;
@@ -218,8 +224,13 @@ describe('thinking first (NEAR_AI_NOTES_EFFORT)', () => {
       const org = await account(unique('organizer'));
       const logsFrom = h.logs.length;
       h.near.failNext(1, how, 'notes');
+      // Cut off while the model's key changes: the thinking request isn't sent again to the new key, and only the request
+      // without thinking goes there.
+      const was = h.near.keys().notes;
+      if (how === 'dropped') h.near.holdNext(rotateOnNotes);
       const r = await configured({ NEAR_AI_NOTES_EFFORT: 100 }, () => call(org));
       expect(notesOf(r.chats).map((x) => [x.thinking, x.maxTokens]), how).toEqual([[100, 64_000], [0, 4000]]);
+      if (how === 'dropped') expect(notesOf(r.chats).map((x) => x.key)).toEqual([was, h.near.keys().notes]);
       expect(r.note.summary, how).not.toBe('');
       expect(r.note.inference.map((e) => e.model), how).toContain(NOTES_MODEL);
       expect(h.logs.slice(logsFrom).some((l) => l.includes('"msg":"notes not written thinking first; asking again without"')), how).toBe(true);

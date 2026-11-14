@@ -62,7 +62,7 @@ const WITHOUT_SUMMARY = {
 /** The kind of work given up for good that those lines say they are. */
 const FINAL = 'notes-without-summary';
 const ATTEMPTS = 3;
-/** A worker that dies mid-job frees it after this. A running job renews it all through (HEARTBEAT_MS), however long its notes take (up to about 10½ minutes thinking first). */
+/** A worker that dies mid-job frees it after this. A running job renews it all through (HEARTBEAT_MS), however long its notes take (up to 860 s for each part's notes, thinking first). */
 const LEASE_SECONDS = 300;
 /** How often a running job renews its lease, whatever step it's on (joining video, taking frames, waiting on a model). */
 const HEARTBEAT_MS = (LEASE_SECONDS / 3) * 1000;

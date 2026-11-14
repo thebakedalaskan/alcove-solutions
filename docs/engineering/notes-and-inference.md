@@ -505,7 +505,8 @@ Thinking is `complete`'s `think` option in `inference.ts`; only `draft` in `draf
   request's timeout, so a request allowed longer goes by undici's own `fetch` with an agent that sets no limit of its
   own; every other request goes as before.
 - **Once, then without.** If the thinking request times out, is closed, or comes back unusable (anything that fails it),
-  the notes are asked for again at once without thinking (4,000 tokens, 240 s), so they take about 10½ minutes at most.
+  the notes are asked for again at once without thinking (4,000 tokens, 240 s), so each part's notes take 860 s at most.
+  A call's breakout rooms are written before its own notes, up to three at once, so a call with rooms can take twice that.
   A connection NEAR AI closes reads as a key the model may no longer hold: the thinking request isn't sent again to a
   new key, and the request without thinking is verified afresh and goes to whatever key the model holds then. An
   attempt after a failed one (`brief`) and a job that waited for the model (`quick`, from the job's `waiting` state)
@@ -513,8 +514,9 @@ Thinking is `complete`'s `think` option in `inference.ts`; only `draft` in `draf
 - **Paid for.** Thinking is output, charged at the model's price like the rest (about 2¢ more for a call at the most
   effort). While a call is live, what it holds for its notes (`writingAtMost`) holds 64,000 tokens for each part's notes
   instead of 4,000.
-- **Waiting for them.** The page a call leaves you on says notes take a few minutes, that they'll be in Calls and
-  Alcove tells you when they're ready, and says they're still being written only after 12 minutes.
+- **Waiting for them.** The page a call leaves you on says notes can take a few minutes and that they'll be in Calls
+  when they're ready. It follows their [progress](#progress) again each time the stream ends, and says they're still
+  being written only after 15 minutes.
 
 On 10 real calls at the most effort, the notes took about 5 minutes after a 10-minute call, 2½ to 9½ at the extremes.
 
@@ -2010,9 +2012,10 @@ Tests run with thinking off (`NEAR_AI_NOTES_EFFORT=0` in the harness), so what a
 attempt at the notes does. `thinking first (NEAR_AI_NOTES_EFFORT)` in
 `apps/api/src/features/notes/writing/models.integration.test.ts` turns it on: the notes of a call and of its breakout
 room think at 100 with 64,000 tokens while catching up, asking in and after the call and the full summary don't; at
-`0` the notes don't think; a thinking request closed with no answer, or answered in prose, is asked again at once
-without thinking and the notes are saved; a job that waited for the model doesn't think again; and a model the
-organizer chose through the gateway is never asked to.
+`0` the notes don't think; a thinking request closed with no answer while the model's key changes, or answered in prose,
+is asked again at once without thinking (the first to the new key, never the thinking request again) and the notes are
+saved; a job that waited for the model doesn't think again; and a model the organizer chose through the gateway is
+never asked to, with thinking on.
 
 The `live transcript and written notes` flows in `apps/api/src/integration/flows.integration.test.ts` cover a call and
 a room recording, retried and silent clips, notes off and on again, what each clip is sent with (nothing
