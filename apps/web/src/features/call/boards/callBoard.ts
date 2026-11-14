@@ -29,6 +29,7 @@ import { usePersonIds } from '~/features/workspace/sharing/ids';
 import { canKeepEdits } from '~/features/workspace/offline/keep';
 import { useOpensAgain } from '~/features/workspace/opened';
 import { openDocument } from '~/features/workspace/session';
+import { rememberSeen } from '~/features/workspace/tree/seen';
 import { api } from '~/lib/api';
 import { captureHere } from '~/lib/capture';
 import { log } from '~/lib/log';
@@ -418,6 +419,9 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
   const drawnPass = mineDrawn ? undefined : pass;
   const workspaceId = drawnOpen?.workspaceId ?? null;
   const documentId = drawnOpen?.documentId ?? null;
+  /* A board on your stage that you can open has been opened: its workspace's list, full screen, stops saying it's New. */
+  const seenHere = (onStage || mineDrawn) && drawnOpen?.role ? documentId : null;
+  useEffect(() => { if (seenHere) rememberSeen(owner, seenHere); }, [owner, seenHere]);
   const pictures = useMemo<BoardPictures>(() => (workspaceId && documentId ? boardPictures(workspaceId, documentId, drawnPass) : () => Promise.reject(new Error('no board'))), [workspaceId, documentId, drawnPass]);
   /* A picture put on the board is kept in its document, as a picture of a screen is, for whoever can add to it. */
   const canAdd = drawnOpen?.role === 'edit';

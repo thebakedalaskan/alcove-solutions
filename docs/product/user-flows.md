@@ -2182,8 +2182,9 @@ as pictures or a list: each card shows what the file is (a document's first line
 where it is (**From Team standup**, **For Launch check-in**, **In Launch**, **Shared with you**) and who touched it last and
 when. A workspace on the sheet shows who's in it, its folders, the calls kept in it with **Open the call**, its files, and
 **Open full screen**; a card inside it doesn't say which workspace again. A call's own workspace shows the call's **Notes**,
-**Follow-ups** and **Transcript** as cards, for whoever has its notes, then what the call made, with **New document**,
-**New board** and **Upload files**, and in a series the calls before. **Trash** is one list across every workspace: where
+**Follow-ups** and **Transcript** as cards, for whoever has its notes, then its **Files** (**For the call** before it),
+everything in it wherever it is, with **New document**, **New board** and **Upload files**, which make one at its top, and
+in a series the calls before. **Trash** is one list across every workspace: where
 each thing was, who moved it there and when, how many days it has left, and **Restore** for whoever can edit it. Pressing a
 card opens it beside the tree, in its workspace, with the tree open to it; **⤢** takes it full screen. Its **⋯** has
 **Open**, **Open full screen**, **Copy link**, **Rename** (typed in the same menu; a document's title follows, for everyone)
@@ -2208,17 +2209,20 @@ goes back where it came from: the Drive, at this workspace, or Calls. **Home** i
 sunset; the line on what it's for, which an admin writes in place by pressing it (**Say what this workspace is for** until
 there is one), everyone in it reads, and nobody else is told of; who's in it; **Recently edited**, three large previews;
 and its calls, the next one first, for whoever organizes it. A call's own workspace has no Home: it opens on what the call
-made, with **The call, today ↗** first in its list (opening the call's page), then **Made in the call** (**For the call**
-before it), then in a series **Earlier calls**. A page says under its title the call it came from, as a chip that opens
-it, who made it and when it was last edited; a quote from a call says who said it, in which call, and its **▶** moment
-opens the call there; and something made in the last ten minutes says **New** in the list. On a phone the workspace's pages
-come first, under **← Drive**, and a page has **←** and the workspace's name to go back to them.
+made, with **The call, today ↗** first in its list (opening the call's page), what was made in the call under it, then
+**Pages**, where **+** makes something (**For the call** before the call, when everything in it is), then in a series
+**Earlier calls**. A page says under its title the call it came from, as a chip that opens it, who made it and when it was
+last edited; a quote from a call says who said it, in which call, and its **▶** moment opens the call there; and something
+someone else made in the last ten minutes says **New** in the list until you open it, full screen, beside the Drive or in
+a call, a board on your stage included, and stays gone after a reload. What you made never says New. This browser keeps
+what you opened, so another device can still say New for those ten minutes. On a phone the workspace's pages come first,
+under **← Drive**, and a page has **←** and the workspace's name to go back to them.
 
 Journey **12.5** works on a page: from Launch's Home, **Launch plan** opens with the call it came from and Priya writing in
 it; a to-do ticks, and the callout's count in the margin opens its comments; the path's **Launch** goes back to Home.
 Journey **12.6** is what a call made: this morning's standup, on its page, has **Open its workspace**; the standup's own
-workspace opens on what it made, with the call first in its list and the standups before it after; **Standup board** opens
-full screen.
+workspace opens on what's in it, with the call first in its list, then its **Pages**, and the standups before it after;
+**Standup board** opens full screen.
 
 **A call's folder.** At the top of a call's home is the call's folder, named after it and the day. In a call it holds its
 **Notes**, **Follow-ups** and **Transcript**: while you're in the call they're its live pages, and once it's over they open

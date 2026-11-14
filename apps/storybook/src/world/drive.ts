@@ -28,7 +28,7 @@ interface Shape { parent?: string | null; role?: DocumentRole; trashed?: { at: s
 const DRAWN: PortraitStyle = { skin: '#C68A62', hair: '#2A1B12', style: 'short', shirt: '#4B3C9E', bg: '#E2E7FF' };
 function item(name: string, kind: WorkspaceItem['kind'], by: Person | null, at: string, o: Shape = {}): WorkspaceItem {
   return {
-    id: driveId(name), kind, name, parent: o.parent ?? null, by: by ? { name: by.name, portrait: by.portrait ?? DRAWN } : null,
+    id: driveId(name), kind, name, parent: o.parent ?? null, by: by ? { name: by.name, portrait: by.portrait ?? DRAWN } : null, mine: by?.email === ART.email,
     createdAt: at, editedAt: at, trashedAt: o.trashed?.at ?? null, trashedBy: o.trashed?.by.name ?? null, restricted: false, role: o.role ?? 'edit', call: o.call ?? null
   };
 }

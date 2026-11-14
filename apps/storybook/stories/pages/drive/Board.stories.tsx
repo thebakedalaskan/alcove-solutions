@@ -50,7 +50,7 @@ const BLANK_ID = itemId('Untitled board');
 const blank = (w: World): void => {
   const product = w.workspaces.find((s) => s.id === 'ws-product');
   const at = iso(0, 16, 11);
-  if (product) product.items = [...product.items, { id: BLANK_ID, kind: 'board', name: 'Untitled board', parent: null, by: ART.portrait ? { name: ART.name, portrait: ART.portrait } : null, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, role: 'edit', call: null }];
+  if (product) product.items = [...product.items, { id: BLANK_ID, kind: 'board', name: 'Untitled board', parent: null, by: ART.portrait ? { name: ART.name, portrait: ART.portrait } : null, mine: true, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, role: 'edit', call: null }];
   w.boards[BLANK_ID] = {};
 };
 

@@ -1110,8 +1110,9 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   closed. A fresh authenticated session can reopen access, while a session response started before revocation cannot.
   Existing JPEG records, keys and their authenticated headers read unchanged; no database version upgrade is needed.
 - **Where you were in your workspaces** (`localStorage` `alcove.workspace.<ownerId>`, `WorkspacePlacesSchema`): the IDs of
-  the workspace and documents last open, what was opened recently in each, the folders left open, and whether the list is
-  hidden. Nothing readable. Signing out, or deleting the account, on this browser deletes it.
+  the workspace and documents last open, what was opened recently in each, the folders left open, whether the list is
+  hidden, and when each document or board was opened in the last hour (`seen`, so what someone else made stops saying New;
+  older ones go as the next is kept). Nothing readable. Signing out, or deleting the account, on this browser deletes it.
 - **What Find looks through** is in the tab's memory and nowhere else: the words of what you can open, for this session
   ([In a browser](data-and-storage.md#in-a-browser)). Signing out or in lets go of it, and so does losing what it's from.
   What's typed into Find never leaves the browser.

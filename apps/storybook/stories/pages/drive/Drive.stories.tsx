@@ -62,7 +62,7 @@ export const AFolder = page(`/drive?ws=dv-launch&folder=${driveId('Research')}`,
 /** A workspace you can only read. */
 export const ReadOnly = page('/drive?ws=dv-handbook', 'busy', DRIVE);
 
-/** A call's own workspace: the call's Notes, Follow-ups and Transcript, what it made, and the standup before. */
+/** A call's own workspace: the call's Notes, Follow-ups and Transcript, its files with the ways to make more, and the standup before. */
 export const ACallsWorkspace = page('/drive?ws=dv-standup', 'busy', DRIVE);
 export const ACallsWorkspaceNight = page('/drive?ws=dv-standup', 'busy', { ...DRIVE, globals: NIGHT });
 export const ACallsWorkspacePhone = page('/drive?ws=dv-standup', 'busy', { ...DRIVE, globals: { ...PHONE, ...NIGHT } });

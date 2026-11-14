@@ -335,8 +335,9 @@ its own page.
     same place under the way back.
   - **A call's own workspace**: the call's name, "This call's own workspace", when and who; **This call**: its Notes,
     Follow-ups and Transcript as cards, each a picture of what it says (the gist with a decision's rose diamond and your
-    follow-up's dot; who has what to do; the first lines said), for whoever has its notes; **Made in the call** (For the call,
-    before it), ending in the dashed New document, New board and Upload files; and in a series, Earlier calls.
+    follow-up's dot; who has what to do; the first lines said), for whoever has its notes; **Files** (For the call, before
+    it), everything in it wherever it is, ending in the dashed New document, New board and Upload files, which make one at
+    its top; and in a series, Earlier calls.
   - **Trash**: across every workspace, a row each with where it was, who moved it and when, the days it has left, and
     Restore for whoever can edit it. Deleting for good is in each workspace's own Trash.
 - **A card** is the kit's `FileCard` at its large size. Its picture is what the file is: a document's first lines as it is
@@ -372,8 +373,11 @@ Any workspace opens full screen in Alcove's own evening, not as a stock editor: 
   workspaces, People, Rename, New workspace, named in place); Search (Find, ⌘K); then the rows, which are the list's own
   (menus, drags, renaming, keys). A workspace made by hand: Home (shaded while you're on it), **Pages** with + on its
   heading (the tree with folders), and **Calls** (each call kept in it, ↗ to its page). A call's own workspace has no Home:
-  **The call, today ↗** first, **Made in the call** (**For the call** before it), then a series' **Earlier calls** by day,
-  five, then N more. A row made in the last ten minutes says New in `sun-text`. At the foot, on a hairline: Trash, with a
+  **The call, today ↗** first, with what was made in the call under it (its folder), then **Pages** with + on its heading
+  (**For the call** before the call, when all of it is), then a series' **Earlier calls** by day, five, then N more. A row
+  someone else made in the last ten minutes says New in `sun-text` until you open it, here, beside the Drive or in a call
+  (a board on your stage too); what you made never does. What you've opened is kept in this browser for an hour
+  (`features/workspace/tree/seen.ts`), so another device can still say New. At the foot, on a hairline: Trash, with a
   count only when something's in it, and who can open it beside the seal.
 - **The bar**: ← Drive or ← Calls; the path (the workspace's name goes Home, then its folders, then the page in bold);
   Saved; who else is here, their faces and "Priya is here" (the words go under 1100px); Share (a secondary button); ⋯;

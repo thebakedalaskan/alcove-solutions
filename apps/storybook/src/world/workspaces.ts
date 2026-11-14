@@ -3,14 +3,14 @@
  * by hand for the launch on the 18th, with its plan (Priya writing in it), its board, its press folder and the planning calls
  * kept in it, the next one included; what this morning's standup made in its own workspace, and the standups before it; and
  * Hiring sync's workspace before its call tomorrow, with an agenda just made in it. A story puts them in its world with
- * `withWorkspaces`. Everyone is made up.
+ * `withWorkspaces`, and what's just been made in Launch, for what's new to Art, with `withJustMade`. Everyone is made up.
  */
 import type { Meeting, Note, WorkspaceItem } from '@alcove/api';
 import type { BlockJSON } from '~/features/workspace/editor/types';
 import type { Page, Space, World } from './world';
 import { call, writeNote, type NoteSpec } from './build';
 import { homesOn } from './call-page';
-import { iso } from './clock';
+import { fromNow, iso } from './clock';
 import { AIKO, ART, INES, KOFI, MAYA, PRIYA } from './people';
 
 /** An ID for something in these workspaces, from its name: 22 characters, none the same as the busy world's own. */
@@ -31,7 +31,8 @@ interface Shape { parent?: string | undefined; by?: typeof ART | undefined; tras
 function item(name: string, kind: WorkspaceItem['kind'], made: string, edited: string, o: Shape = {}): WorkspaceItem {
   const by = o.by?.portrait ? { name: o.by.name, portrait: o.by.portrait } : null;
   return {
-    id: spaceItem(name), kind, name, parent: o.parent ?? null, by, createdAt: made, editedAt: edited, trashedAt: o.trashed?.at ?? null, trashedBy: o.trashed?.by.name ?? null,
+    id: spaceItem(name), kind, name, parent: o.parent ?? null, by, mine: o.by?.email === ART.email, createdAt: made, editedAt: edited,
+    trashedAt: o.trashed?.at ?? null, trashedBy: o.trashed?.by.name ?? null,
     restricted: false, role: 'edit', call: o.noteId === undefined ? null : { startedAt: made, on: false, here: false, noteId: o.noteId }
   };
 }
@@ -193,4 +194,38 @@ export function withWorkspaces(w: World): void {
   homesOn(notes, w.workspaces);
   w.notes = [...w.notes, ...notes].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   w.meetings = [...w.meetings, NEXT_PLANNING];
+}
+
+/* ---------- what's new to Art ---------- */
+
+/** What's just been made in Launch: Kofi's pricing FAQ, Art's launch tweet and Priya's press quotes. */
+const JUST_MADE: [string, Page][] = [
+  ['Pricing FAQ', { blocks: [
+    heading('What people ask'),
+    bullet(['Is the team plan monthly now? Yes, from the 18th, beside the yearly price.']),
+    bullet(['Do the free minutes change? No: everyone keeps theirs, every month.']),
+    bullet(['Where are notes written? In confidential compute, as before.'])
+  ] }],
+  ['Launch tweet', { blocks: [line('From the 18th: free minutes of notes every month for everyone, and a monthly team plan.')] }],
+  ['Press quotes', { blocks: [heading('From Priya'), bullet(['“The launch moved to the 18th so support has a full week with the article.”']), bullet(['“Notes are written in confidential compute, so nobody else can read them.”'])] }]
+];
+/** Priya's press quotes, which Art opened here a minute ago: a story keeps that in this browser, as opening them would. */
+export const JUST_OPENED = spaceItem('Press quotes');
+
+/**
+ * What's just been made in Launch, at the end of its pages, as anything new lands: Kofi's pricing FAQ three minutes ago, which
+ * Art hasn't opened; Art's own launch tweet two minutes ago; and Priya's press quotes six minutes ago (`JUST_OPENED`). Put in a
+ * story's world after `withWorkspaces`.
+ */
+export function withJustMade(w: World): void {
+  const launch = w.workspaces.find((s) => s.id === LAUNCH);
+  if (!launch) return;
+  const ago = (minutes: number) => fromNow(-minutes * 60_000);
+  launch.items = [
+    ...launch.items,
+    item('Pricing FAQ', 'document', ago(3), ago(1), { by: KOFI }),
+    item('Launch tweet', 'document', ago(2), ago(2), { by: ART }),
+    item('Press quotes', 'document', ago(6), ago(5), { by: PRIYA })
+  ];
+  for (const [name, page] of JUST_MADE) w.pages[spaceItem(name)] = page;
 }

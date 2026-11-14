@@ -251,7 +251,7 @@ export interface WsRowProps {
   current?: boolean | undefined;
   /** A count beside the name, such as open follow-ups. Zero shows nothing. */
   count?: number | undefined;
-  /** A word at the row's end, in the colour of what's new: "New" for something just made. */
+  /** A word at the row's end, in the colour of what's new: "New" for something someone else just made, until it's opened. */
   tag?: string | undefined;
   /** It opens somewhere else than this workspace's page: ↗ at its end. */
   out?: boolean | undefined;

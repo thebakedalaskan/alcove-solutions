@@ -22,6 +22,7 @@ import type { RowDrag } from './drag';
 import { PersonCard } from '../sharing/People';
 import { facesIn } from '../presence';
 import { PeopleSheet } from '../sharing/Sheets';
+import { saysNew, useSeen } from './seen';
 import { foldersFor, isWithin, nameOf, nudged, rowsOf, trashIn, type ListRow } from './tree';
 
 /** Who's in a workspace, in the words under its name. */
@@ -100,9 +101,6 @@ function useHead(onNaming: (n: 'new' | 'rename') => void) {
 /** A row's look, where the list draws it as something other than its name: a call's folder, full screen. */
 export interface RowAs { label?: string | undefined; place?: boolean | undefined }
 
-/** How long something made says it's new, full screen. */
-const NEW_MS = 10 * 60_000;
-
 /**
  * Everything the rows of a workspace need, wherever they're listed (the call's list here, a full screen's side panel in
  * Side.tsx): the menu under the workspace's name and naming it, each row's menu and +, renaming in place, the keys, a drag's
@@ -112,6 +110,8 @@ export function useListParts(drags: ListDrag) {
   const ws = useWs();
   const navigate = useNavigate();
   const now = useNow(60_000);
+  /* Full screen, what someone else just made says New until it's opened, here or anywhere else in this browser (seen.ts). */
+  const seen = useSeen(ws.mode === 'page' ? ws.owner : null);
   const { tree, sent, actions, canChange } = ws;
   const [menu, setMenu] = useState<RowMenu | null>(null);
   /** Plus: at the top of the list (null), or on a folder. */
@@ -254,9 +254,11 @@ export function useListParts(drags: ListDrag) {
     const first = faces[0];
     const asCall = ws.mode === 'page' && item.call !== null;
     const kids = (tree.kids.get(item.id)?.length ?? 0) > 0;
+    /* What's on the page is being opened now, before it's kept as seen. */
+    const onPage = ws.at.kind === 'document' && ws.at.id === item.id;
     return (
       <WsRow key={key} id={item.id} name={as.label ?? nameOf(item)} kind={as.place ? 'place' : asCall ? 'call' : item.kind} icon={asCall ? CALL_ICON : undefined} depth={depth} open={open} area={area} faces={faces}
-        out={asCall && item.call?.noteId !== null} tag={ws.mode === 'page' && !folder && now - Date.parse(item.createdAt) < NEW_MS ? 'New' : undefined}
+        out={asCall && item.call?.noteId !== null} tag={ws.mode === 'page' && !onPage && saysNew(item, seen, now) ? 'New' : undefined}
         facesCard={first && { open: card === key, onOpenChange: (to) => setCard(to ? key : null), content: card === key ? <PersonCard person={first} onDone={() => setCard(null)} /> : null }}
         current={currentIn(area, item.id)} flash={ws.glowing.has(item.id) || (area === 'pins' && justBrought.has(item.id))}
         into={(drag?.spot?.kind === 'place' && drag.spot.into === item.id) || (area === 'tree' && ws.blockInto === item.id)} ghosted={drag?.id === item.id}

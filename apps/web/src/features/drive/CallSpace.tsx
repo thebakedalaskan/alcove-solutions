@@ -1,8 +1,9 @@
 /*
  * A call's own workspace on the sheet, beside the tree: the call's name, who's in it, when, and Open full screen; then the
  * call itself, as three cards (its Notes, its Follow-ups and its Transcript, each a picture of what it says), for whoever
- * has its notes; then what the call made, ending in the dashed ways to make something more for it; and in a series, the
- * calls before this one. Before the call there are no notes yet: what's been made for it, and the ways to add an agenda.
+ * has its notes; then its files, wherever they are in it, ending in the dashed ways to make another, at its top; and in a
+ * series, the calls before this one. Before the call there are no notes yet: what's been made for it, and the ways to add
+ * an agenda.
  */
 import { errorCode, type Note, type WorkspaceItem, type WorkspaceSummary } from '@alcove/api';
 import { Button, Dots, EmptyState, Faces, FileCard, Icon, cn, type IconName } from '@alcove/ui';
@@ -96,7 +97,7 @@ export function CallSheet({ w, actions }: { w: WorkspaceSummary; actions: DriveA
   }
   if (!tree.data) return <><SheetHead title={title} meta={meta} actions={full} /><p className="dv-loading"><Dots /></p></>;
 
-  const made = items.filter((i) => i.kind !== 'folder' && i.trashedAt === null).sort((a, b) => b.editedAt.localeCompare(a.editedAt))
+  const files = items.filter((i) => i.kind !== 'folder' && i.trashedAt === null).sort((a, b) => b.editedAt.localeCompare(a.editedAt))
     .flatMap((i): DriveFile[] => { const f = fileOf(w.id, i); return f ? [f] : []; });
   const target = { workspaceId: w.id, folder: null };
   const tiles = canEdit(w.role) && <MakeTiles target={target} actions={actions} />;
@@ -105,10 +106,11 @@ export function CallSheet({ w, actions }: { w: WorkspaceSummary; actions: DriveA
       <SheetHead title={title} meta={meta} actions={full} />
       {!ahead && note.data && <Section label="This call"><ThisCall note={note.data} me={me} /></Section>}
       {!ahead && noteId && note.isPending && <Section label="This call"><p className="dv-loading"><Dots /></p></Section>}
-      <Section label={ahead ? 'For the call' : 'Made in the call'}>
-        {made.length === 0 && !tiles
+      {/* Everything in it, made in the call or not: what's made here goes at its top. Before the call, all of it is for the call. */}
+      <Section label={ahead ? 'For the call' : 'Files'}>
+        {files.length === 0 && !tiles
           ? <p className="dv-quiet">Nothing yet.</p>
-          : <FileList files={made} spaces={[w]} actions={actions} list={false} inside tail={tiles} />}
+          : <FileList files={files} spaces={[w]} actions={actions} list={false} inside tail={tiles} />}
       </Section>
       {calls.length > 1 && (
         <Section label="Earlier calls">

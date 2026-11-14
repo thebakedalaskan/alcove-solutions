@@ -51,7 +51,7 @@ export function useTreeActions(input: ActionsInput): TreeActions {
     const made = (id: string, kind: WorkspaceItem['kind'], name: string, parent: string | null): WorkspaceItem => {
       const at = new Date().toISOString();
       const { me } = s();
-      return { id, kind, name, parent, by: me?.portrait ? { name: me.name, portrait: me.portrait } : null, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, role: 'edit', call: null };
+      return { id, kind, name, parent, by: me?.portrait ? { name: me.name, portrait: me.portrait } : null, mine: true, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, role: 'edit', call: null };
     };
     /** Makes a document's title say `name`, on the page if it's open, and otherwise opened just for that. */
     const writeTitle = async (id: string, name: string, source: ActionsInput) => {

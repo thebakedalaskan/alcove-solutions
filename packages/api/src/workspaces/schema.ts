@@ -69,6 +69,8 @@ export const WorkspaceItemSchema = z.object({
   parent: IDSchema.nullable(),
   /** Who made it, when someone in particular did. */
   by: ItemAuthorSchema.nullable(),
+  /** You made it, by the address it keeps of whoever did, which is never sent: a guest in a call, with none, is never told so. */
+  mine: z.boolean(),
   createdAt: ISODateSchema,
   editedAt: ISODateSchema,
   /** When it went to Trash, on its own or with a folder it's in; null when it's in the tree. */
@@ -213,14 +215,16 @@ export const PersonIdsSchema = z.object({ ids: z.record(z.string(), z.string()) 
 
 /**
  * Where someone was, remembered in this browser, per account, by ID only: the document they last had open in each workspace
- * and the ones before it, which folders they left open, and whether they tucked the list away.
+ * and the ones before it, which folders they left open, whether they tucked the list away, and what they opened lately.
  */
 export const WorkspacePlacesSchema = z.object({
   documents: z.record(z.string(), z.string()),
   /** What was opened in each workspace, the newest first, for Find before anything's typed. */
   recent: z.record(z.string(), z.array(z.string())).default({}),
   folders: z.record(z.string(), z.array(z.string())),
-  listOff: z.boolean()
+  listOff: z.boolean(),
+  /** When each document or board was last opened here, by its ID, for the last hour: what someone else made says New until then. */
+  seen: z.record(z.string(), z.number()).default({})
 });
 
 export type WorkspacePlaces = z.infer<typeof WorkspacePlacesSchema>;

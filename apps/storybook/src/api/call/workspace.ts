@@ -35,7 +35,7 @@ export abstract class CallWithWorkspace extends CallWithStage {
     const name = homeName(this.meeting.title, s.startedAt);
     const now = new Date().toISOString();
     const folder: WorkspaceItem = {
-      id: nextId('folder').padEnd(22, '0'), kind: 'folder', name, parent: null, by: null, createdAt: now, editedAt: now, trashedAt: null, trashedBy: null,
+      id: nextId('folder').padEnd(22, '0'), kind: 'folder', name, parent: null, by: null, mine: false, createdAt: now, editedAt: now, trashedAt: null, trashedBy: null,
       restricted: false, role: 'edit', call: { startedAt: s.startedAt, on: true, here: true, noteId: null }
     };
     const chosen = this.meeting.workspaceId ? w.workspaces.find((x) => x.id === this.meeting.workspaceId) : undefined;

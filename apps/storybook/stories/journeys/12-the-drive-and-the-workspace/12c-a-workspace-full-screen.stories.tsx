@@ -61,11 +61,11 @@ export const WhatTheCallMade: PageStory = {
     await step('This morning’s standup, on its page. Open its workspace', async () => {
       await userEvent.click(await screen.findByRole('link', { name: /^Open its workspace/ }, LATER));
     });
-    await step('A call’s own workspace has no Home: it opens on what the call made, with the call first in its list', async () => {
+    await step('A call’s own workspace has no Home: it opens on what’s in it, with the call first in its list', async () => {
       await within(await side()).findByRole('button', { name: /^The call, today/ }, LATER);
       await screen.findByRole('button', { name: /^From Team standup/ }, LATER);
     });
-    await step('Then what it made, then the standups before. Click Standup board', async () => {
+    await step('Then its pages, then the standups before. Click Standup board', async () => {
       await userEvent.click(await within(await side()).findByRole('button', { name: 'Standup board' }, SOON));
     });
     await step('The board, full screen in the call’s workspace, under the way back to where it was opened from', async () => {

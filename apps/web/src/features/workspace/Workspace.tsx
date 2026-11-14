@@ -39,6 +39,7 @@ import { LiveHostContext } from './live/host';
 import { LivePage } from './live/LivePage';
 import { useSending } from './live/useSending';
 import { openedIn, placesOf, rememberPlaces, useOwnListOff } from './tree/places';
+import { seenIn } from './tree/seen';
 import { othersIn, usePresence } from './presence';
 import { TrashPage } from './tree/TrashPage';
 import { arrivals, documentsIn, foldersAbove, nameOf, treeOf, type Tree } from './tree/tree';
@@ -256,7 +257,7 @@ function useLanding({ mode, at, documentId, empty, sent, tree, owner, workspaceI
 
 /**
  * What follows the document that's open: a document just made is only opening while it's the one open, and what's open stays
- * remembered, with its folders open around it.
+ * remembered, with its folders open around it, and stops saying New (tree/seen.ts).
  */
 function useOpenDocument({ documentId, item, tree, owner, workspaceId, justMade, openAll }: {
   documentId: string | null;
@@ -269,7 +270,7 @@ function useOpenDocument({ documentId, item, tree, owner, workspaceId, justMade,
 }): void {
   useEffect(() => { if (justMade.current !== null && justMade.current !== documentId) justMade.current = null; }, [documentId]);
   useEffect(() => {
-    if (documentId) rememberPlaces(owner, (p) => openedIn(p, workspaceId, documentId));
+    if (documentId) rememberPlaces(owner, (p) => seenIn(openedIn(p, workspaceId, documentId), documentId, Date.now()));
   }, [owner, workspaceId, documentId]);
   const inFolders = item ? foldersAbove(tree, item.id).map((f) => f.id).join() : '';
   useEffect(() => { if (inFolders) openAll(inFolders.split(',')); }, [inFolders, openAll]);

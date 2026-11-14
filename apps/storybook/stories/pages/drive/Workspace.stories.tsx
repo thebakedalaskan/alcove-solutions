@@ -5,12 +5,14 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
+import { rememberSeen } from '~/features/workspace/tree/seen';
 import { drawnPicture } from '../../../src/api/media';
 import { itemId } from '../../../src/api/scenarios';
 import { caretAtEnd, changing, page, pages, type PageArgs, type PageStory } from '../../../src/page';
 import type { World } from '../../../src/world/world';
 import { iso } from '../../../src/world/clock';
-import { HIRING_SYNC, LAUNCH, spaceItem, withWorkspaces } from '../../../src/world/workspaces';
+import { ME_ID } from '../../../src/world/people';
+import { HIRING_SYNC, JUST_OPENED, LAUNCH, spaceItem, withJustMade, withWorkspaces } from '../../../src/world/workspaces';
 import { troubled } from '../changes';
 
 const meta = { title: 'Pages/Drive/Workspace', ...pages } satisfies Meta<PageArgs>;
@@ -68,16 +70,45 @@ export const APageThread = page(LAUNCH_PLAN_PAGE, 'busy', {
   }
 });
 /**
- * A call's own workspace, opened from the call: it has no Home, so it opens on what the call made, with the call itself first
- * in its list, then what it made, then the standups before it.
+ * A call's own workspace, opened from the call: it has no Home, so it opens on what's in it, with the call itself first in its
+ * list (anything made in the call is under its row), then the workspace's own Pages, where + makes something, then the
+ * standups before it.
  */
 export const WhatTheCallMade = page(STANDUP_MADE, 'busy', { beforeEach: launch, globals: { ...DESKTOP, theme: 'dark' } });
 export const WhatTheCallMadeLight = page(STANDUP_MADE, 'busy', { beforeEach: launch, globals: DESKTOP });
 /** What the call made, opened full screen from the Drive: the way back says Drive. */
 export const ACallsPage = page(STANDUP_CHECKLIST, 'busy', { beforeEach: launch, globals: DESKTOP });
-/** An agenda just made in Hiring sync's workspace, before its call tomorrow: it's for the call, and Ines is reading it. */
+/**
+ * An agenda Art just made in Hiring sync's workspace, before its call tomorrow: its pages are For the call, and Ines is reading
+ * it. It's Art's, so it never says New.
+ */
 export const AnAgendaJustMade = page(AGENDA_PAGE, 'busy', { beforeEach: launch, globals: { ...DESKTOP, theme: 'dark' } });
 export const AnAgendaJustMadePhone = page(AGENDA_PAGE, 'busy', { beforeEach: launch, globals: PHONE });
+
+/** Launch with what's just been made in it, and Priya's press quotes opened in this browser a minute ago. */
+const justMade = changing(withWorkspaces, withJustMade, () => { rememberSeen(ME_ID, JUST_OPENED); });
+/**
+ * What's new to Art, full screen: Kofi's pricing FAQ, made three minutes ago, says New until it's opened. Art's own launch
+ * tweet never does, and nor do Priya's press quotes, which Art has opened.
+ */
+export const WhatsNew = page(LAUNCH_HOME, 'busy', { beforeEach: justMade, globals: DESKTOP });
+export const WhatsNewNight = page(LAUNCH_HOME, 'busy', { beforeEach: justMade, globals: { ...DESKTOP, theme: 'dark' } });
+export const WhatsNewWide = page(LAUNCH_HOME, 'busy', { beforeEach: justMade, globals: WIDE });
+/** On a phone, among the workspace's pages. */
+export const WhatsNewPhone = page(LAUNCH_HOME, 'busy', { beforeEach: justMade, globals: { ...PHONE, theme: 'dark' } });
+/** Opening Kofi's FAQ takes its New away, and it stays away back on Home. */
+export const WhatsNewOpened = page(LAUNCH_HOME, 'busy', {
+  beforeEach: justMade, globals: DESKTOP,
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Open Pricing FAQ, which says New', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: /^Pricing FAQ/ }, { timeout: 8000 }));
+    });
+    await step('Back to Home: it doesn’t say New any more', async () => {
+      await beat(600);
+      await userEvent.click(await canvas.findByRole('button', { name: 'Home' }));
+    });
+  }
+});
 /** A moment, as a person takes one. */
 const beat = (ms: number) => new Promise<void>((done) => { setTimeout(done, ms); });
 /** Holds a finger on the first block of this kind until its menu opens: a phone has no handles to press. */

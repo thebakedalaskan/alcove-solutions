@@ -73,7 +73,7 @@ function edit(id: string, change: (items: WorkspaceItem[]) => WorkspaceItem[]): 
 export function createItem(id: string, input: ItemInput): { id: string } {
   const now = new Date().toISOString();
   const item: WorkspaceItem = {
-    id: nextId('item').padEnd(22, '0'), kind: input.kind, name: input.name ?? '', parent: input.parent ?? null, by: authorOf(),
+    id: nextId('item').padEnd(22, '0'), kind: input.kind, name: input.name ?? '', parent: input.parent ?? null, by: authorOf(), mine: true,
     createdAt: now, editedAt: now, trashedAt: null, trashedBy: null, restricted: false, role: 'edit', call: null
   };
   edit(id, (items) => place([...items, item], item, { parent: item.parent, ...(input.after !== undefined ? { after: input.after } : {}) }));

@@ -1,8 +1,9 @@
 /*
  * A workspace's side panel, full screen: the Alcove logo, the workspace switcher, Search, then Home and its Pages, with the
- * calls kept in it under Calls; or, for a call's own workspace, the call first ("The call, today ↗"), then what it made, then
- * a series' earlier calls. Trash and who can open it at the foot. Its rows are the list's own (List.tsx): every menu, drag,
- * rename and key works here as it does there.
+ * calls kept in it under Calls; or, for a call's own workspace, the call first ("The call, today ↗", holding what was made in
+ * it), then the workspace's own Pages (For the call, before it), where + makes something, then a series' earlier calls. Trash
+ * and who can open it at the foot. Its rows are the list's own (List.tsx): every menu, drag, rename and key works here as it
+ * does there.
  */
 import { firstName, type WorkspacePerson } from '@alcove/api';
 import { Logo, WsMark, WsRow, WsSection, WsSide } from '@alcove/ui';
@@ -63,8 +64,12 @@ export function Side({ drags }: { drags: ListDrag }) {
   const rowOf = (row: ListRow, label?: string | undefined): ReactElement => (row.draft ? parts.draftRow(row.depth) : parts.rowOf(row.item, 'tree', row.depth, row.open, row.depth === 0 && label ? { label } : {}));
   const callLabel = (row: ListRow): string | undefined => (!row.draft && row.depth === 0 && home && row.item.call ? callDayTitle(row.item.call.startedAt, new Date(now)) : undefined);
 
+  /*
+   * What's at the top, outside the calls' folders, and where + puts what it makes. In a call's own workspace that's all for the
+   * call until it starts; from then on what the call makes is in its folder, under its row, and the rest is the workspace's own.
+   */
   const before = home !== null && beforeTheCall(home, now);
-  const made = home ? (before ? 'For the call' : 'Made in the call') : inside ? 'Pages' : 'Shared with you';
+  const pagesLabel = before ? 'For the call' : inside ? 'Pages' : 'Shared with you';
   const items = pages.length + calls.length + calling.length;
   return (
     <>
@@ -79,7 +84,7 @@ export function Side({ drags }: { drags: ListDrag }) {
             : <WsRow key="place:call" id="place:call" kind="place" icon={CALL_ICON} name={`${home.title}, ${callDay(home.at, new Date(now))}`} out
               onOpen={() => { void navigate({ to: '/calls' }); }} />
         ) : inside && <WsRow key="place:home" id="place:home" kind="place" icon="home" name="Home" current={ws.at.kind === 'home'} onOpen={() => ws.go({ kind: 'home' })} />}
-        <WsSection key="sec:pages" label={made} add={parts.createTop} addLabel={tree.boards ? 'New document, folder or board' : 'New document or folder'} />
+        <WsSection key="sec:pages" label={pagesLabel} add={parts.createTop} addLabel={tree.boards ? 'New document, folder or board' : 'New document or folder'} />
         {pages.map((row) => rowOf(row))}
         {calls.length > 0 && <WsSection key="sec:calls" label={home ? 'Earlier calls' : 'Calls'} />}
         {shownCalls.map((row) => rowOf(row, callLabel(row)))}

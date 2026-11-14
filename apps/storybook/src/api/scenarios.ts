@@ -63,7 +63,8 @@ interface ItemShape { parent?: string | null; role?: DocumentRole; restricted?: 
 function item(name: string, kind: WorkspaceItem['kind'], by: Person, hoursAgo: number, o: ItemShape = {}): WorkspaceItem {
   const at = hoursBefore(hoursAgo);
   return {
-    id: itemId(name), kind, name, parent: o.parent ?? null, by: by.portrait ? { name: by.name, portrait: by.portrait } : null, createdAt: o.made === undefined ? at : hoursBefore(o.made), editedAt: at,
+    id: itemId(name), kind, name, parent: o.parent ?? null, by: by.portrait ? { name: by.name, portrait: by.portrait } : null, mine: by.email === ART.email,
+    createdAt: o.made === undefined ? at : hoursBefore(o.made), editedAt: at,
     trashedAt: o.trashed ? hoursBefore(o.trashed.hoursAgo) : null, trashedBy: o.trashed?.by.name ?? null, restricted: o.restricted ?? false, role: o.role ?? 'edit',
     call: o.call ?? null
   };
