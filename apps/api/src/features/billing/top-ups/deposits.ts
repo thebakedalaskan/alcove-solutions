@@ -18,7 +18,8 @@ import {
 } from './provider';
 import { LIMITS, limitsNow } from '../../../platform/limits';
 import { buyerOf, credit, dollars, purchase, refusalOf, refusedError } from '../plans';
-import { adminsTeam, licensesBought, type TeamRow } from '../teams/teams';
+import { adminsTeam, licensesBought } from '../teams/teams';
+import { type TeamRow } from '../teams/team-records';
 
 const dlog = log.child({ component: 'deposits' });
 /** IDs are 22 characters of base64url; anything else names nothing. */
@@ -52,12 +53,15 @@ const units = z.string().regex(/^\d+$/);
  * the price and size they were shown, or licenses at the price a period they were shown, each for `periods` periods. Kept as
  * a record's own shape, not the contract's, so a bound the contract changes never stops a record from opening. One kept
  * without a pack's size reads as a pack of the default size; licenses kept without `periods` (opened before licenses for a
- * year) read as licenses for one period, which is what they were.
+ * year) read as licenses for one period, which is what they were. Licenses carry what checkout's "Buy one for each person
+ * who joins later" said (`autoPurchase`), set with them once they're bought (teams.ts › licensesBought): one kept without it,
+ * opened before it was asked, reads as null and leaves auto-purchase as it is. The release before this one reads past it,
+ * and a record it saves drops it, which leaves auto-purchase as it is too.
  */
 const Buys = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('pro'), months: z.number().int(), microUsdPerMonth: z.number().int() }),
   z.object({ kind: z.literal('hours'), packs: z.number().int(), microUsdPerPack: z.number().int(), minutesPerPack: z.number().int().default(LIMITS['plan.hours.pack_minutes'].default) }),
-  z.object({ kind: z.literal('licenses'), count: z.number().int(), microUsdPerLicense: z.number().int(), periods: z.number().int().default(1) })
+  z.object({ kind: z.literal('licenses'), count: z.number().int(), microUsdPerLicense: z.number().int(), periods: z.number().int().default(1), autoPurchase: z.boolean().nullable().default(null) })
 ]);
 
 /**

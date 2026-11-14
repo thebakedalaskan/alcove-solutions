@@ -2,8 +2,9 @@
  * An account's plan as its owner sees it (docs: Plans and usage): notes as time, about what's left of the period's AI
  * allowance once what's been spent is taken off, at what an hour of notes is reckoned at (a period's minutes include more
  * bought for it); storage against the plan's limit (on Team, the team's pool), with any grace; the balance; the months of
- * Pro bought and what the owner is told about them and their team's licenses; the team they're on; and the plans on
- * offer. The allowance itself, in dollars, never leaves the server.
+ * Pro bought and what the owner is told about them and their team's licenses (and, as a free team's admin, who asked them
+ * to upgrade it, which the team keeps); the team they're on; and the plans on offer. The allowance itself, in dollars,
+ * never leaves the server.
  */
 import type { Plan, PlanOffers } from '@alcove/api';
 import type { Deps } from '../../platform/context';
@@ -11,7 +12,7 @@ import { limitsNow } from '../../platform/limits';
 import { storageOf, storageState } from './meter/held';
 import { minutesOf, standing } from './meter/meter';
 import { accountOf, freeBrings, historyOf, hoursOf, noticesOf, proBrings, proOf, teamBrings, teamYearlyOf, yearlyOf } from './plans';
-import { teamOf } from './teams/teams';
+import { teamOf, upgradeAsksFor } from './teams/teams';
 
 /** How many of the balance's latest changes are shown. */
 const SHOWN = 20;
@@ -35,7 +36,7 @@ export async function planOf(d: Pick<Deps, 'cfg' | 'pool'>, ownerId: string): Pr
     balance: { microUsd: a.balanceMicroUsd, history: historyOf(a).slice(0, SHOWN) },
     choose: a.choose,
     pro: proOf(a, l, now),
-    notices: noticesOf(a),
+    notices: [...noticesOf(a), ...await upgradeAsksFor(d, ownerId, now)].sort((x, y) => Date.parse(y.at) - Date.parse(x.at)),
     team: await teamOf(d, ownerId, now)
   };
 }

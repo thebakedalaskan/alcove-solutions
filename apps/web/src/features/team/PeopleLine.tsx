@@ -2,22 +2,26 @@
  * The people, standing on the horizon. Each opens a popover under their arch with everything about them, so nothing has
  * to sit under every arch: Ring goes straight to the lobby and rings them as you join, Schedule opens at When with them
  * picked, and the notes you both have list in the same popover. Someone not on Alcove yet is an empty arch, with Invite
- * in place of Ring. Past thirteen people the line recedes, and the list of everyone finds whoever's too far away to read.
+ * in place of Ring, which sends them an invitation to your team; while you're on none it opens Invite people with them
+ * ticked, where starting the team is said first (or, with an invitation to you waiting, goes to it). Past thirteen people
+ * the line recedes, and the list of everyone finds whoever's too far away to read.
  */
 import { errorMessage, type NoteSummary, type Person, type Team } from '@alcove/api';
 import { Avatar, Button, GhostArch, Icon, IconButton, PickList, Popover, PopoverClose, buttonClass, cn, useToast, type PickRow, type TeamArchButton } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
-import { cloneElement, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { cloneElement, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useFloodToCall } from '~/features/calls/flow/parts';
 import { useCallFlow } from '~/features/calls/flow/context';
 import { callName, fold } from '~/lib/people';
 import { useStartNow } from '~/features/calls/list/queries';
 import { noteDay } from '~/lib/time';
 import { plural } from '~/lib/words';
-import { addressOnly, callLine, listed, notesWith, type Meets } from './data';
+import { addressOnly, callLine, listed, notesWith, type Meets, type Member } from './data';
+import { invitationOf, resendable } from './invitations/send';
+import { resendWaits } from './invitations/words';
 import type { Arch, Line, Sun } from './line';
 import { personPop, useOpen, usePop } from './open';
-import { InviteLink } from './People';
+import { InviteButton, InvitingContext } from './People';
 
 /** What people's popovers read. */
 export interface Between { notes: NoteSummary[]; meets: (email: string) => Meets; now: Date; inGroups: number }
@@ -151,8 +155,8 @@ function About({ arch: a, person, between, ring, onLeave }: { arch: Arch; person
       <div className="tp-pop-a">
         {a.me ? <Link to="/settings" className={buttonClass()}><Icon name="settings" size={18} />Settings</Link> : (
           <>
-            {a.ghost
-              ? <InviteLink people={[person]} remind={invited} variant="primary" size="md" icon>{invited ? 'Remind' : 'Invite'}</InviteLink>
+            {a.ghost || a.invite
+              ? <InviteThem person={person} invited={invited} lead={lead} onLeave={onLeave} />
               : <Button variant="primary" icon="phoneCall" autoFocus={lead} onClick={(e) => { ring(e.currentTarget, person.email); onLeave(); }}>Ring</Button>}
             <Button icon="cal" aria-haspopup="dialog" onClick={() => { onLeave(); flow.start({ people: [person], later: true }); }}>Schedule</Button>
           </>
@@ -165,6 +169,27 @@ function About({ arch: a, person, between, ring, onLeave }: { arch: Arch; person
       )}
     </>
   );
+}
+
+/**
+ * Invite, in someone's popover: on a team it sends their invitation (or theirs again, as Resend). On no team, where inviting
+ * starts one, it opens the sky's Invite people with them ticked, which says so first; with an invitation to you waiting, it
+ * goes to that invitation's card instead.
+ */
+function InviteThem({ person, invited, lead, onLeave }: { person: Person; invited: boolean; lead: boolean; onLeave: () => void }) {
+  const ctx = useContext(InvitingContext);
+  const { inviteWith } = useOpen();
+  if (ctx && !ctx.mine) {
+    const waiting = ctx.waiting;
+    return (
+      <Button variant="primary" icon="mail" autoFocus={lead} aria-haspopup={waiting ? undefined : 'dialog'}
+        onClick={() => { if (waiting) { onLeave(); ctx.toCard(waiting); } else inviteWith([person]); }}>Invite</Button>
+    );
+  }
+  /* Someone invited already: Resend, or why it can't be sent again yet (Sent today, Sent 3 times), or that it's someone else's. */
+  const asked = invited ? invitationOf(ctx?.mine, person.email) : undefined;
+  const label = !asked ? (invited ? 'Resend' : 'Invite') : resendable(asked) ? 'Resend' : !asked.manage ? 'Invited' : resendWaits(asked, Date.now()) ?? 'Resend';
+  return <InviteButton people={[person]} name={person.email} variant="primary" size="md" icon onSent={onLeave}>{label}</InviteButton>;
 }
 
 /** Everyone in one list you can search, once the line recedes. Picking someone brings them forward and opens their popover. */
@@ -192,14 +217,21 @@ function AllList({ me, team, onFind }: { me: Person; team: Team; onFind: (email:
 }
 
 /**
- * Someone's popover around an arch that isn't on the company's line: the team's, on a plan (features/team/OnTeam.tsx). It's
- * the same popover, with Ring, Schedule and the notes you both have, and the arch takes the focus back as it closes.
+ * Someone's popover around an arch that isn't on the company's line: the team's (features/team/OnTeam.tsx). It's the same
+ * popover, with Ring, Schedule and the notes you both have, and the arch takes the focus back as it closes. Someone invited
+ * (`invited`) has Resend in Ring's place, and a colleague not on the team (`colleague`) Invite.
  */
-export function PersonPop({ person, me = false, between, anchor }: { person: Person; me?: boolean | undefined; between: Between; anchor: TeamArchButton }) {
+export function PersonPop({ person, me = false, invited = false, colleague, between, anchor }: {
+  person: Person; me?: boolean | undefined; invited?: boolean | undefined; colleague?: Member | undefined; between: Between; anchor: TeamArchButton;
+}) {
   const { ring, flood } = useRing();
   const pop = usePop(personPop(person.email));
   const arch = useRef<HTMLButtonElement>(null);
-  const standing: Arch = { key: person.email, person, me, ghost: false, d: 0, k: 1, far: false, haze: 0, z: 1, px: 0 };
+  const member: Member | undefined = invited ? { person, onAlcove: false, invited: true } : colleague;
+  const standing: Arch = {
+    key: person.email, person, me, member, ghost: invited || colleague?.onAlcove === false, invite: colleague?.onAlcove === true,
+    d: 0, k: 1, far: false, haze: 0, z: 1, px: 0
+  };
   return (
     <>
       <Popover {...pop} side="bottom" align="center" caret label={listed(person)} className="tp-pop is-person" anchor={cloneElement(anchor, { ref: arch })}>

@@ -5,9 +5,9 @@ import { teamQueries } from '~/features/team/queries';
 
 /*
  * Everything in the frame (features/shell/AppFrame.tsx): the side panel beside Home, Calls, a call, the Drive, Record, Team and
- * Settings, for someone signed in, or signed in here while there's no connection. Whether there's a Team page (a company or a
- * team of your own) is asked as the frame opens, without waiting for it, so the side panel usually knows before it shows
- * and Team doesn't stand under Record for a moment for someone on their own.
+ * Settings, for someone signed in, or signed in here while there's no connection. Whether there's a Team page (a company, a
+ * team of your own, or an invitation to one) is asked as the frame opens, without waiting for it, so the side panel usually
+ * knows before it shows and Team doesn't stand under Record for a moment for someone on their own.
  */
 export const Route = createFileRoute('/_app')({
   beforeLoad: ({ context, preload }) => requireAccount(context.queryClient, preload),
@@ -15,6 +15,7 @@ export const Route = createFileRoute('/_app')({
     if (!navigator.onLine) return;
     void qc.prefetchQuery(teamQueries.team());
     void qc.prefetchQuery(teamQueries.myTeam());
+    void qc.prefetchQuery(teamQueries.invitations());
   },
   component: Shell
 });

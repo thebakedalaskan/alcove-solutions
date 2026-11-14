@@ -114,6 +114,9 @@ done
 # The Cloudflare token the API in Confidential Space orders its certificates with, and dns.sh changes records with.
 # Only the attested production VMs read it (infra/confidential-space/setup.sh), never the Cloud Run runtime account.
 ensure_secret alcove-cloudflare-dns-token
+# Resend's send-only key for mail.alcove.solutions, which invitation emails go out with. Only the attested production VMs
+# read it (infra/confidential-space/setup.sh).
+ensure_secret alcove-resend-api-key
 # No server keys here: the API in Confidential Space makes its own master and keeps it wrapped by Cloud KMS
 # (infra/confidential-space/README.md). The KMASTER and KSERVICE from before it were retired on 2026-11-13.
 
@@ -168,6 +171,9 @@ Optional Google provider credentials and the newline-separated tester roster for
 A Cloudflare API token for the zone, a custom token with Zone › DNS › Edit and Zone › Zone › Read on alcove.solutions
 alone (Cloudflare › My Profile › API Tokens), which Confidential Space's setup needs:
   printf %s "\$CLOUDFLARE_DNS_TOKEN" | gcloud --project="$PROJECT_ID" secrets versions add alcove-cloudflare-dns-token --data-file=-
+Resend's send-only API key for the verified domain mail.alcove.solutions (open and click tracking off), which invitation
+emails go out with; Confidential Space's setup grants it to production's attested VMs and the API won't start without it:
+  printf %s "\$RESEND_API_KEY" | gcloud --project="$PROJECT_ID" secrets versions add alcove-resend-api-key --data-file=-
 Then set up Confidential Space, where the API and web app run: infra/confidential-space/README.md › First setup.
 Set DEPLOY_ENABLED=true as a repository variable only after the remaining infrastructure is configured.
 OUT

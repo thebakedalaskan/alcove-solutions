@@ -1,23 +1,29 @@
 /*
- * Journeys on the Team page (docs/product/user-flows.md › 10. Team), from the canvas's Team board (docs/design/canvas/data-team.js),
- * and opening someone's invite link.
+ * Journeys on the Team page at your company, on no team yet (docs/product/user-flows.md › 10. Team), from the canvas's Team
+ * board (docs/design/canvas/data-team.js): the company on the horizon and everyone's popover, inviting people (which starts
+ * your team, free, and makes the page the team's), the invite link, your groups, and what goes wrong. The invitations to you
+ * and the invite page are 10b-invitations; a team's own page is 10c-a-teams-page. No mail app opens: Alcove emails each
+ * invitation, which the stand-in takes as the server would, and the email itself is the hand-off.
  */
 import { AlcoveApiError } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
-import { withInviteLink } from '../../../src/api/scenarios';
 import { standIn } from '../../../src/api/standin';
 import { isOnline, setOnline } from '../../../src/browser';
-import { changing, page, pages, type PageArgs, type PageStory } from '../../../src/page';
-import { away, holding, keepMail, LATER, outage, pressable, SOON, swap, unreachable } from '../play';
+import { page, pages, type PageArgs, type PageStory } from '../../../src/page';
+import { away, holding, LAPTOP, LATER, outage, pressable, SOON, swap, unreachable } from '../play';
 
-const meta = { title: 'Journeys/10 Team', ...pages } satisfies Meta<PageArgs>;
+const meta = { title: 'Journeys/10 Team/Your company', ...pages, globals: LAPTOP } satisfies Meta<PageArgs>;
 export default meta;
 
 /** Someone standing on the horizon, by the name their arch is known by. */
 const arch = async (name: string) => within(await screen.findByRole('list', { name: /^People at / }, LATER)).getByRole('button', { name });
 /** Someone's popover, open under their arch. */
 const popover = (name: string) => screen.findByRole('dialog', { name }, SOON);
+/** Invite people's popover, named for the team inviting starts. */
+const inviting = () => screen.findByRole('dialog', { name: 'Invite people to Vandelay Industries' }, SOON);
+/** Who's invited, on the team's page once inviting has started it. */
+const invited = () => screen.findByRole('region', { name: 'Invited' }, LATER);
 /** The Groups section under the water. */
 const groups = () => screen.findByRole('region', { name: 'Groups' }, SOON);
 /** A group open across the column. */
@@ -87,18 +93,26 @@ export const NotesYouBothHave: PageStory = {
 export const SomeoneNotOnAlcove: PageStory = {
   name: '10.4 Someone not on Alcove yet',
   ...page('/team', 'busy'),
-  beforeEach: keepMail,
   play: async ({ userEvent, step }) => {
     await step('An empty arch is someone not on Alcove yet. Click it', async () => {
       await userEvent.click(await arch('Sam Ortiz, not on Alcove yet'));
     });
     await step('The same popover, with Invite in place of Ring', async () => {
-      await within(await popover('Sam Ortiz')).findByRole('link', { name: 'Invite' }, SOON);
+      await within(await popover('Sam Ortiz')).findByRole('button', { name: 'Invite' }, SOON);
     });
-    await step('Invite opens your own email. Now it offers Remind', async () => {
-      await userEvent.click(within(await popover('Sam Ortiz')).getByRole('link', { name: 'Invite' }));
-      await screen.findByText('Your email opens with an invitation to Sam.', {}, SOON);
-      await within(await popover('Sam Ortiz')).findByRole('link', { name: 'Remind' }, SOON);
+    await step('Invite. Art is on no team, and inviting starts one: Invite people opens with Sam ticked, saying so before anything is sent', async () => {
+      await userEvent.click(within(await popover('Sam Ortiz')).getByRole('button', { name: 'Invite' }));
+      const invite = await inviting();
+      await within(invite).findByText('Alcove emails them. This starts Vandelay Industries, a free team, with you as its admin.', {}, SOON);
+      await within(invite).findByRole('option', { name: /Sam Ortiz/, selected: true }, SOON);
+    });
+    await step('Invite 1. No mail app opens: Alcove sends Sam the invitation, and the toast says the team started', async () => {
+      await userEvent.click(await pressable('button', 'Invite 1', SOON, within(await inviting())));
+      await screen.findByText('Started Vandelay Industries and invited Sam.', {}, SOON);
+    });
+    await step('The page is the team’s, its name taking the focus: Sam stands on its horizon invited, and is under Invited, with Resend and Cancel', async () => {
+      await within(await invited()).findByRole('button', { name: 'Cancel Sam Ortiz’s invitation' }, SOON);
+      await within(await screen.findByRole('list', { name: 'People on Vandelay Industries' }, SOON)).findByRole('button', { name: 'Sam Ortiz, invited' }, SOON);
     });
   }
 };
@@ -119,23 +133,24 @@ export const YourOwnArch: PageStory = {
 export const InvitePeople: PageStory = {
   name: '10.6 Invite people',
   ...page('/team', 'busy'),
-  beforeEach: keepMail,
   play: async ({ userEvent, step }) => {
     await step('Click Invite people, the one filled button', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Invite people' }, LATER));
     });
-    await step('A popover opens under it and takes the filled button. Pick people, or type a whole address', async () => {
-      const invite = await screen.findByRole('dialog', { name: 'Invite people' }, SOON);
-      await userEvent.click(await within(invite).findByRole('option', { name: /^Sam Ortiz/ }, SOON));
+    await step('A popover opens under it, named for the team inviting starts, and says once what inviting does. Pick colleagues, or type anyone’s whole address', async () => {
+      const invite = await inviting();
+      await within(invite).findByText('Alcove emails them. This starts Vandelay Industries, a free team, with you as its admin.', {}, SOON);
+      await userEvent.click(await within(invite).findByRole('option', { name: /^Invite Sam Ortiz/ }, SOON));
       await userEvent.type(within(invite).getByRole('combobox', { name: 'Name or email' }), 'lena@vandelay.industries');
     });
-    await step('Invite 2 opens your own email to both of them', async () => {
-      await userEvent.click(within(await screen.findByRole('dialog', { name: 'Invite people' })).getByRole('button', { name: 'Invite 2' }));
-      await screen.findByText(/^Your email opens with an invitation to (Sam and Lena|Lena and Sam)\./, {}, SOON);
+    await step('Invite 2. No mail app opens: Alcove emails each of them, and the toast says who, and that the team started', async () => {
+      await userEvent.click(within(await inviting()).getByRole('button', { name: 'Invite 2' }));
+      await screen.findByText('Started Vandelay Industries and invited Sam and Lena.', {}, SOON);
     });
-    await step('They move to Invited, with Remind', async () => {
-      await within(await holding('listitem', 'Sam Ortiz')).findByRole('link', { name: 'Remind' }, SOON);
-      await within(await holding('listitem', 'Lena Fischer')).findByRole('link', { name: 'Remind' }, SOON);
+    await step('That started Vandelay Industries, free, with Art its admin: the page is the team’s now, with Sam and Lena under Invited', async () => {
+      const list = await invited();
+      await within(list).findByText('Sam Ortiz', {}, SOON);
+      await within(list).findByText('Lena Fischer', {}, SOON);
     });
   }
 };
@@ -144,36 +159,43 @@ export const CopyTheInviteLink: PageStory = {
   name: '10.7 Or copy the invite link',
   ...page('/team', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Click Copy link in the same popover', async () => {
+    await step('Click Copy link at the foot of the same popover', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Invite people' }, LATER));
-      await userEvent.click(within(await screen.findByRole('dialog', { name: 'Invite people' }, SOON)).getByRole('button', { name: 'Copy link' }));
+      await userEvent.click(await pressable('button', 'Copy link', SOON, within(await inviting())));
     });
-    await step('The popover closes, and your own invite link is on your clipboard. Its page says it’s from you', async () => {
+    await step('The popover closes, and Art’s own invite link is on the clipboard: its page says it’s from Art, and whoever joins from it starts Art’s team', async () => {
       // A browser that won't copy for the page shows the link to copy instead.
       await screen.findByText(/^(Invite link copied\. It says it’s from you\.|Copy this link:)/, {}, SOON);
-      await away('dialog', 'Invite people');
+      await away('dialog', 'Invite people to Vandelay Industries');
     });
   }
 };
 
-export const InviteAndRemindOnARow: PageStory = {
-  name: '10.8 Invite and Remind on a row',
+export const InviteFromTheirRow: PageStory = {
+  name: '10.8 Invite someone from their row',
   ...page('/team', 'busy'),
-  beforeEach: keepMail,
   play: async ({ userEvent, step }) => {
-    await step('Invite sits in the same column on every row', async () => {
-      await userEvent.click(within(await holding('listitem', 'Sam Ortiz', LATER)).getByRole('link', { name: 'Invite' }));
+    await step('Not on Alcove yet lists the rest of the company, with Invite in the same place on every row. Invite Sam', async () => {
+      const yet = await screen.findByRole('region', { name: 'Not on Alcove yet' }, LATER);
+      await userEvent.click(within(await holding('listitem', 'Sam Ortiz', SOON, within(yet))).getByRole('button', { name: 'Invite' }));
     });
-    await step('Your email opens. The row says Invited, and the button says Remind', async () => {
-      await screen.findByText('Your email opens with an invitation to Sam.', {}, SOON);
-      const sam = await holding('listitem', /Sam Ortiz.*Invited/);
-      await within(sam).findByRole('link', { name: 'Remind' }, SOON);
+    await step('With no team, inviting starts one, so Invite people opens beside the row with Sam ticked, and says so first', async () => {
+      const invite = await inviting();
+      await within(invite).findByText('Alcove emails them. This starts Vandelay Industries, a free team, with you as its admin.', {}, SOON);
+      await within(invite).findByRole('option', { name: /Sam Ortiz/, selected: true }, SOON);
     });
-    await step('Remind, for someone you’ve asked already', async () => {
-      await userEvent.click(within(await holding('listitem', 'Diego Ruiz')).getByRole('link', { name: 'Remind' }));
+    await step('Invite 1. Alcove emails Sam, and that starts the team: the page is Vandelay Industries’ now, with Sam under Invited', async () => {
+      await userEvent.click(await pressable('button', 'Invite 1', SOON, within(await inviting())));
+      await screen.findByText('Started Vandelay Industries and invited Sam.', {}, SOON);
+      await within(await invited()).findByText('Sam Ortiz', {}, SOON);
     });
-    await step('Your email opens with a reminder', async () => {
-      await screen.findByText('Your email opens with a reminder to Diego.', {}, SOON);
+    await step('Everyone at Vandelay not on the team yet is listed under it, on Alcove or not, each with Invite in the same place. On a team, Invite sends at once. Invite Priya', async () => {
+      const yet = await screen.findByRole('region', { name: 'At Vandelay Industries, not on the team yet' }, SOON);
+      await userEvent.click(within(await holding('listitem', 'Priya Raman', SOON, within(yet))).getByRole('button', { name: 'Invite' }));
+    });
+    await step('Priya is invited too, and moves to Invited. She’s on Alcove, so she finds it in the app as well as in its email', async () => {
+      await screen.findByText('Invited Priya to Vandelay Industries.', {}, SOON);
+      await within(await invited()).findByText('Priya Raman', {}, SOON);
     });
   }
 };
@@ -181,15 +203,18 @@ export const InviteAndRemindOnARow: PageStory = {
 export const InviteEveryoneLeft: PageStory = {
   name: '10.9 Invite everyone left',
   ...page('/team', 'busy'),
-  beforeEach: keepMail,
   play: async ({ userEvent, step }) => {
-    await step('Invite all asks everyone who hasn’t been asked', async () => {
-      await userEvent.click(await screen.findByRole('link', { name: 'Invite all 2' }, LATER));
+    await step('Invite all 3, on Not on Alcove yet’s heading: with no team, Invite people opens with all three ticked, saying it starts one', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Invite all 3' }, LATER));
+      await within(await inviting()).findByRole('button', { name: 'Invite 3' }, SOON);
     });
-    await step('One email to all of them. Every row moves to Remind', async () => {
-      await screen.findByText(/^Your email opens with an invitation to (Lena and Sam|Sam and Lena)\./, {}, SOON);
-      await within(await holding('listitem', 'Lena Fischer')).findByRole('link', { name: 'Remind' }, SOON);
-      await within(await holding('listitem', 'Sam Ortiz')).findByRole('link', { name: 'Remind' }, SOON);
+    await step('Invite 3. Alcove emails each of them, and the toast says who, and that the team started', async () => {
+      await userEvent.click(await pressable('button', 'Invite 3', SOON, within(await inviting())));
+      await screen.findByText(/^Started Vandelay Industries and invited .+ and 1 other\.$/, {}, SOON);
+    });
+    await step('All three are under Invited, on the team’s page, and stand on its horizon in dashed arches', async () => {
+      const list = await invited();
+      for (const who of ['Lena Fischer', 'Sam Ortiz', 'Diego Ruiz']) await within(list).findByText(who, {}, SOON);
     });
   }
 };
@@ -389,7 +414,7 @@ export const NobodyElseYet: PageStory = {
   ...page('/team', 'first-day'),
   play: async ({ userEvent, step }) => {
     await step('You stand beside empty arches for the people you meet most, with the sun in one of them', async () => {
-      await screen.findByRole('heading', { name: 'Bring your team to Alcove', level: 1 }, LATER);
+      await screen.findByRole('heading', { name: 'Bring your team to Alcove', level: 2 }, LATER);
       await screen.findByRole('region', { name: 'People you meet most' }, SOON);
     });
     await step('A group opens in its own column here: the name and the tools on one line, the two buttons on the next', async () => {
@@ -411,7 +436,7 @@ export const TeamDoesNotLoad: PageStory = {
   beforeEach: teamDown.begin,
   play: async ({ userEvent, step }) => {
     await step('It says why, with Try again. Groups and notes load on their own, so they still work', async () => {
-      await screen.findByRole('heading', { name: 'Your team didn’t load', level: 1 }, LATER);
+      await screen.findByRole('heading', { name: 'Your team didn’t load', level: 2 }, LATER);
       await within(await groups()).findByRole('button', { name: 'Open Leads' }, SOON);
     });
     await step('Trying again. Empty arches wait on the line', async () => {
@@ -431,9 +456,9 @@ export const OfflineAndGroups: PageStory = {
   play: async ({ step }) => {
     await step('Offline, it says so, and comes back by itself', async () => {
       // The connection goes while the team is on its way, and comes back.
-      await screen.findByRole('heading', { name: 'Your team', level: 1 }, LATER);
+      await screen.findByRole('heading', { name: 'Your team', level: 2 }, LATER);
       setOnline(false);
-      await screen.findByRole('heading', { name: 'You’re offline', level: 1 }, SOON);
+      await screen.findByRole('heading', { name: 'You’re offline', level: 2 }, SOON);
       teamUnreachable.end();
       setOnline(true);
       await screen.findByRole('list', { name: 'People at Vandelay Industries' }, LATER);
@@ -445,46 +470,28 @@ export const OfflineAndGroups: PageStory = {
   }
 };
 
-export const OpenAnInviteLink: PageStory = {
-  name: '10.22 Open someone’s invite link and sign in',
-  ...page('/invite', 'first-sign-in'),
-  beforeEach: changing(withInviteLink()),
-  play: async ({ userEvent, step }) => {
-    await step('Priya’s invite link opens on one card: Priya in her arch, what Alcove is for, and the ways in', async () => {
-      await screen.findByRole('heading', { name: 'Priya asked you to join them on Alcove', level: 1 }, LATER);
-    });
-    await step('Continue with Microsoft. The account is new, so Priya’s Team page will say you joined', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Continue with Microsoft' }, SOON));
-    });
-    await step('Then the first sign-in goes on as from the welcome page: the account is made on screen', async () => {
-      await screen.findByRole('dialog', { name: 'Creating your account' }, LATER);
-    });
-    await step('“You’re in”, and the arch opens on the plans to choose from, then Home', async () => {
-      await screen.findByRole('dialog', { name: /^You’re in/ }, LATER);
-      await screen.findByRole('heading', { name: 'Choose a plan', level: 1 }, LATER);
-    });
-  }
-};
-
 export const MakeANewInviteLink: PageStory = {
   name: '10.23 Make a new invite link',
   ...page('/team', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Open Invite people. Beside Copy link, the arrow makes a new link', async () => {
+    await step('Open Invite people and tick Sam. Beside Copy link, New link makes a new one: for the team’s admin, or with no team, as here', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Invite people' }, LATER));
-      await userEvent.click(await pressable('button', 'Make a new link', SOON, within(await screen.findByRole('dialog', { name: 'Invite people' }, SOON))));
+      await userEvent.click(await within(await inviting()).findByRole('option', { name: /^Invite Sam Ortiz/ }, SOON));
+      await userEvent.click(await pressable('button', 'New link', SOON, within(await inviting())));
     });
-    await step('It asks in place first: the link you’ve sent stops working, and people who joined from it stay listed', async () => {
-      await within(await screen.findByRole('dialog', { name: 'Invite people' })).findByRole('group', { name: 'Make a new link?' }, SOON);
+    await step('It asks in place first: the link you’ve sent stops working, for everybody who has it', async () => {
+      await within(await inviting()).findByRole('group', { name: 'Make a new link?' }, SOON);
     });
-    await step('Make a new link. It’s on your clipboard, and the old one no longer works', async () => {
-      await userEvent.click(within(await screen.findByRole('group', { name: 'Make a new link?' })).getByRole('button', { name: 'Make a new link' }));
+    await step('Escape goes back to the list as it was, Sam still ticked', async () => {
+      await userEvent.keyboard('{Escape}');
+      await within(await inviting()).findByRole('option', { name: /Sam Ortiz/, selected: true }, SOON);
+    });
+    await step('New link again, then Make a new link. It’s on your clipboard, and the old one leads nowhere from now on, so one press shuts a link that went further than it should', async () => {
+      await userEvent.click(await pressable('button', 'New link', SOON, within(await inviting())));
+      await userEvent.click(within(await screen.findByRole('group', { name: 'Make a new link?' }, SOON)).getByRole('button', { name: 'Make a new link' }));
       // A browser that won't copy for the page shows the new link to copy instead.
       await screen.findByText(/^(New invite link copied\. The old one no longer works\.|The old link no longer works\. Copy the new one:)/, {}, SOON);
-      await away('dialog', 'Invite people');
-    });
-    await step('Aiko and Maya, who joined from the old one, are still listed under the buttons', async () => {
-      await screen.findByText('Aiko and Maya joined from your link', {}, SOON);
+      await away('dialog', 'Invite people to Vandelay Industries');
     });
   }
 };

@@ -12,6 +12,7 @@ import { useLive } from '~/lib/live';
 import { plural } from '~/lib/words';
 import { waitingCounts } from '~/features/notes/inbox';
 import { noteQueries } from '~/features/notes/queries';
+import { teamQueries } from '~/features/team/queries';
 import { workspaceQueries } from '~/features/workspace/queries';
 import type { FileRoutesByTo } from '~/routeTree.gen';
 
@@ -23,10 +24,10 @@ const TAGS_MS = 60_000;
 
 /**
  * What a place in the side panel can count. A count says something is waiting on you: what's for you on Home, tags you
- * haven't seen in the Drive, and recordings on this device waiting to upload. A total (every call, everyone on the team,
- * every agent) never waits on you, so nothing counts one.
+ * haven't seen in the Drive, recordings on this device waiting to upload, and invitations to a team you haven't put aside.
+ * A total (every call, everyone on the team, every agent) never waits on you, so nothing counts one.
  */
-export type Counter = 'home' | 'drive' | 'record';
+export type Counter = 'home' | 'drive' | 'record' | 'team';
 /**
  * A place's count: how many, and for one that leads somewhere the place's own link doesn't (`to`), where and what it says.
  * Home's leads to For you, under Home's horizon, and says what's in each of its tabs.
@@ -38,13 +39,15 @@ export function useCounts(): Record<Counter, Count | undefined> {
   const inbox = useQuery(noteQueries.inbox()).data;
   const tags = useQuery({ ...workspaceQueries.mentions(), refetchInterval: TAGS_MS }).data?.length ?? 0;
   const kept = useLive(uploads);
+  const invited = useQuery(teamQueries.invitations()).data?.filter((i) => !i.putAside).length ?? 0;
   const waiting = kept.list.filter((k) => k.status === 'waiting' || k.status === 'uploading' || k.status === 'refused').length;
   const forYou = inbox ? waitingCounts(inbox, notes ?? [], Date.now()) : { ask: 0, todo: 0 };
   const home = forYou.ask + forYou.todo;
   return {
     home: home ? { n: home, to: { hash: FOR_YOU, says: forYouSays(forYou) } } : undefined,
     drive: tags ? { n: tags } : undefined,
-    record: waiting ? { n: waiting } : undefined
+    record: waiting ? { n: waiting } : undefined,
+    team: invited ? { n: invited } : undefined
   };
 }
 
@@ -62,19 +65,29 @@ export const NAV: readonly NavPlace[] = [
   { to: '/calls', icon: 'calls', label: 'Calls', tour: 'calls' },
   { to: '/drive', icon: 'folderOpen', label: 'Drive', count: 'drive', tour: 'drive' },
   { to: '/record', icon: 'recordDot', label: 'Record', count: 'record', tour: 'record' },
-  { to: '/team', icon: 'people', label: 'Team' }
+  { to: '/team', icon: 'people', label: 'Team', count: 'team' }
 ];
 /** The places at the side panel's foot, above the check: your agents. */
 export const NAV_FOOT: readonly NavPlace[] = [
   { to: '/agents', icon: 'agent', label: 'Agents', tour: 'agents' }
 ];
 
+/** What decides whether there's a Team page: a company around you, a team you're on, or an invitation to one. */
+export interface PlacesKnown { company: Team | null | undefined; mine: MyTeam | null | undefined; invited: number | undefined }
+/** What the places depend on, as it's known now. Invitations that couldn't be read count as none. */
+export function usePlacesKnown(): PlacesKnown {
+  const company = useQuery(teamQueries.team()).data;
+  const mine = useQuery(teamQueries.myTeam()).data;
+  const invitations = useQuery(teamQueries.invitations());
+  return { company, mine, invited: invitations.isError ? 0 : invitations.data?.length };
+}
 /**
- * The places someone has: on your own, with no company around you (`company`) and no team on a plan (`mine`), there's no Team
- * page. A team of your own has one even without a company. Until both are known they're all there, so nothing appears late.
+ * The places someone has: on your own, with no company around you, no team and no invitation to one, there's no Team page.
+ * A team of your own, or an invitation, makes one even without a company. Until all three are known they're all there, so
+ * nothing appears late.
  */
-export const places = <P extends { to: Place }>(all: readonly P[], company: Team | null | undefined, mine: MyTeam | null | undefined): readonly P[] =>
-  (company === null && mine === null ? all.filter((p) => p.to !== '/team') : all);
+export const places = <P extends { to: Place }>(all: readonly P[], { company, mine, invited }: PlacesKnown): readonly P[] =>
+  (company === null && mine === null && invited === 0 ? all.filter((p) => p.to !== '/team') : all);
 
 export interface Tab { to: Place; icon: IconName; label: string; raised?: boolean | undefined; tour?: string | undefined }
 /**

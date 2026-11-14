@@ -7,7 +7,8 @@
  *  - joins shared screens' video that is still in pieces once the share's tail is over (replay doesn't need the notes service);
  *  - writes notes still waiting (after a restart, or once a retry is due);
  *  - deletes moves to other devices, and links to call notes, that ran out;
- *  - deletes what accounts a release before this one deleted said of joining someone's invite link;
+ *  - deletes every row of who joined from someone's invite link, which nothing reads now and the release before can still
+ *    write while a deploy rolls, so nobody's name or address outlasts their account there;
  *  - deletes rings a day after they ran out, in calls that went on that long;
  *  - deletes for good what's been in a workspace's Trash for 30 days, ends seats whose call is over and closes what such a
  *    call opened to everyone in it, and lets go of tags nobody came back for in 30 days;
@@ -15,7 +16,9 @@
  *  - settles who pays for workspaces nobody does, gives accounts from before plans their plan, ends graces that are
  *    over, renews Pro from the balance or tells its owner Pro is ending or has ended, and adds as dollars, once each, the
  *    top-ups a release before plans settled, paid before this one or while it deployed;
- *  - deletes team invites that expired, and reckons the storage pool of each team whose license ended or whose grace did;
+ *  - reckons the storage pool of each team whose license ended or whose grace did; deletes team invitations that ran out,
+ *    what their limits no longer count, and the one-time links to a team a release before this one made once they ran out;
+ *  - sends the email that's due, gives up on what's past its tries, and forgets the days before yesterday's count of it;
  *  - takes away what an upload left when its browser went, a day on, and forgets uploads counted before yesterday;
  *  - deletes agent connections and credentials that ran out, and what agents did after 30 days or past each connection's
  *    newest 1,000;
@@ -38,7 +41,6 @@ import { sweep as sweepAttention } from './features/calls/attention/attention';
 import { pruneUploadDays, sweepUploads } from './features/workspaces/uploads/media';
 import { sweep as sweepMoves } from './features/calls/moves/moves';
 import { sweep as sweepNoteLinks } from './features/notes/links/links';
-import { sweepJoins as sweepInviteJoins } from './features/meetings/invite-links';
 import { sweep as sweepRings } from './features/calls/ringing/rings';
 import { sweepMentions } from './features/workspaces/mentions';
 import { sweepSeats, sweepTrash } from './features/workspaces/service';
@@ -48,6 +50,8 @@ import { work } from './features/notes/writing/writer';
 import { work as exportToDrive } from './features/notes/drive-exports/worker';
 import { upkeep as plansUpkeep } from './features/billing/plans';
 import { upkeep as teamsUpkeep } from './features/billing/teams/teams';
+import { upkeep as invitationsUpkeep } from './features/billing/teams/invitations';
+import { pruneMailDays, sendMail } from './platform/mail';
 import { creditCarried } from './features/billing/top-ups/deposits';
 import { sweepNonces } from './http/operator';
 import { tracked } from './platform/runs';
@@ -96,15 +100,22 @@ async function allSteps(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs?: numb
   const driveExports = await step('drive exports', () => exportToDrive(d), 0);
   const moves = await step('moves', () => sweepMoves(d), 0);
   const noteLinks = await step('note links', () => sweepNoteLinks(d), 0);
-  const inviteJoins = await step('invite joins', () => sweepInviteJoins(d), 0);
+  // Who joined from someone's invite link (invite_link_joins), as the release before kept it: nothing reads it, and a later
+  // release drops the table. Its rows go as they come, so a joiner's name and address go with their account here too.
+  const inviteJoins = await step('invite joins', () => exec(d.pool, 'DELETE FROM invite_link_joins'), 0);
   const rings = await step('rings', () => sweepRings(d), 0);
   const liveNotes = await step('live notes', () => sweepLiveNotes(d), 0);
   const attention = await step('attention', () => sweepAttention(d), 0);
   // Plans: who pays for each workspace, every account's plan, graces that ended, Pro renewed, ending or ended, and top-ups paid for before plans.
   const plans = await step('plans', () => plansUpkeep(d).then((r) => r.settled + r.carried + r.due), 0);
   const carried = await step('carried top-ups', () => creditCarried(d), 0);
-  // Teams: invites that expired, and pools that shrank as a license ended, or whose grace ended.
-  const teams = await step('teams', () => teamsUpkeep(d).then((r) => r.invites + r.teams), 0);
+  // Teams: pools that shrank as a license ended, or whose grace ended; invitations that ran out, what their limits count, and
+  // the one-time links to a team the release before this one may still make while a deploy rolls, once they've run out.
+  const teams = await step('teams', () => teamsUpkeep(d).then((r) => r.teams), 0);
+  const invitations = await step('team invitations', () => invitationsUpkeep(d).then((r) => r.invitations + r.sends + r.days + r.oneTime), 0);
+  // Email: what's due, as right after what asked for it (platform/mail.ts), and the day's count before yesterday.
+  const mail = await step('mail', () => sendMail(d).then((r) => r.sent + r.retried + r.dropped), 0);
+  const mailDays = await step('mail days', () => pruneMailDays(d), 0);
   // Neither stops the other, or what comes next time: each logs what went wrong and says it did nothing.
   const quietly = (what: string, sweep: () => Promise<number>) => recorded(what, sweep).catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what, err: e }); return 0; });
   const trash = await quietly('trash', () => sweepTrash(d, opts.trashAgeMs, started));
@@ -113,7 +124,7 @@ async function allSteps(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs?: numb
   const uploads = await quietly('uploads', () => sweepUploads(d, opts.uploadAgeMs, started));
   const uploadDays = await quietly('upload days', () => pruneUploadDays(d));
   const mentions = await quietly('mentions', () => sweepMentions(d));
-  return { driveExports, sessions, agents, agentActivity, receipts, operatorNonces, retried, orphans, videos, notes, calls, moves, noteLinks, inviteJoins, rings, liveNotes, attention, plans, carried, teams, trash, seats: ended.seats, callWorkspaces: ended.workspaces, uploads, uploadDays, mentions };
+  return { driveExports, sessions, agents, agentActivity, receipts, operatorNonces, retried, orphans, videos, notes, calls, moves, noteLinks, inviteJoins, rings, liveNotes, attention, plans, carried, teams, invitations, mail, mailDays, trash, seats: ended.seats, callWorkspaces: ended.workspaces, uploads, uploadDays, mentions };
 }
 
 /** Deletes objects older than `cutoff` (ms) that no row points at: writes whose SQL commit failed. */

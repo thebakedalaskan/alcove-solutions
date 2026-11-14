@@ -39,24 +39,27 @@ export const HOURS_SUMMARY: CheckoutSummaryData = {
   until: { lead: 'Until', day: 'Saturday 21 November 2026' }, foot: 'Priced in US dollars. 1 USDC is 1 dollar, so you send exactly the total.'
 };
 
-/** Who stands on Team's horizon: three of the people at Vandelay on Alcove. */
+/** Who stands on Team's horizon: the others on Vandelay's free team, and one more at Vandelay. */
 export const TEAM_FOLK = <><Avatar person={PRIYA} size={18} /><Avatar person={KOFI} size={20} /><Avatar person={AIKO} size={17} /></>;
-/** Starting Vandelay's team with six licenses, on Free with nothing in the balance: 240 USDC to send. */
-export const TEAM_SUMMARY: CheckoutSummaryData = {
-  art: 'team', people: TEAM_FOLK, name: 'Team', sub: 'For Vandelay Industries, with you its admin', brief: '6 licenses',
-  lines: [{ label: '6 licenses at $40', value: '$240' }], total: { value: '240.00', unit: 'USDC' },
+/**
+ * Upgrading Vandelay's free team (Art, Priya and Kofi): three licenses, paid with USDC, 120 to send. How long each runs is
+ * said here once the payment is on its way; while choosing, the price of one says it.
+ */
+export const UPGRADE_SUMMARY: CheckoutSummaryData = {
+  art: 'team', people: TEAM_FOLK, name: 'Team', sub: 'For Vandelay Industries, on Free now', brief: '3 licenses',
+  lines: [{ label: '3 licenses at $40', value: '$120' }], total: { value: '120.00', unit: 'USDC' },
   until: { lead: 'Each runs', day: '30 days from when it’s taken' }, foot: 'Priced in US dollars. 1 USDC is 1 dollar, so you send exactly the total.'
 };
-/** Three more licenses for the team Art runs, from a balance of $180. */
+/** Three more licenses for the team Art runs, from a balance of $180, while choosing them. */
 export const MORE_LICENSES_SUMMARY: CheckoutSummaryData = {
-  ...TEAM_SUMMARY, sub: 'For Vandelay Industries, none left now', brief: '3 licenses',
-  lines: [{ label: '3 licenses at $40', value: '$120' }], total: { value: '$120' }, foot: 'Paid from your balance: $180 now, $60 after.'
+  ...UPGRADE_SUMMARY, sub: 'For Vandelay Industries, none left now', brief: '3 licenses',
+  lines: [{ label: '3 licenses at $40', value: '$120' }], total: { value: '$120' }, until: null, foot: 'Paid from your balance: $180 now, $60 after.'
 };
 
-/** The numbers of licenses starting a team offers, beside the six people at Vandelay on Alcove. */
-export const START_LICENSES: LicensesOption[] = [
-  { count: 3, total: '$120', sub: 'To start with' }, { count: 6, total: '$240', sub: 'For the 6 of you' },
-  { count: 10, total: '$400', sub: 'Room for 4 more' }, { count: 25, total: '$1,000', sub: 'Room for 19 more' }
+/** The numbers of licenses upgrading offers, beside the three on Vandelay's free team without one. */
+export const UPGRADE_LICENSES: LicensesOption[] = [
+  { count: 3, total: '$120', sub: 'For the 3 of you' }, { count: 6, total: '$240', sub: 'Room for 3 more' },
+  { count: 10, total: '$400', sub: 'Room for 7 more' }, { count: 25, total: '$1,000', sub: 'Room for 22 more' }
 ];
 /** The same numbers as its admin buys more, with all five taken and Maya waiting for one. */
 export const MORE_LICENSES: LicensesOption[] = [

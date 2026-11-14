@@ -34,6 +34,9 @@ importers:
       '@alcove/board':
         specifier: workspace:*
         version: link:../../packages/board
+      '@alcove/mail':
+        specifier: workspace:*
+        version: link:../../packages/mail
       '@aws-sdk/client-s3':
         specifier: ^3.1161.0
         version: 3.1161.0
@@ -149,6 +152,9 @@ importers:
       '@alcove/board':
         specifier: workspace:*
         version: link:../../packages/board
+      '@alcove/mail':
+        specifier: workspace:*
+        version: link:../../packages/mail
       '@alcove/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -394,6 +400,12 @@ importers:
       zod:
         specifier: ^4.6.7
         version: 4.6.7
+    devDependencies:
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
+  packages/mail:
     devDependencies:
       typescript:
         specifier: ^7.0.2

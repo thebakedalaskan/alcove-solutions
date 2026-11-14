@@ -25,6 +25,8 @@ export const TEAM_FACTS: PlanFact[] = [
 export const MORE_NOTES = 'Out of notes before the period ends? 10 more hours are $15.';
 /** Team's last line. */
 export const LICENSES_TAKEN = 'Licenses start when people open Alcove. Unused ones can be refunded.';
+/** Under Team's Start a team, off a team. */
+export const START_FREE = 'Free to start. Licenses only when you upgrade.';
 
 /** The last of the sun, as Plans draws it on its sky. */
 export const SUNSET = <PlanSunset />;

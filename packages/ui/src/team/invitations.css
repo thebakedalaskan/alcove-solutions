@@ -1,0 +1,69 @@
+/*
+ * Invitations on the Team page (team/invitations.tsx): the cards for invitations to you, an invitation to another team at
+ * the top of your team's water, and an invitation as a row (someone invited to your team, or one of yours put aside).
+ * Classes start with ti-.
+ *
+ * The rules these keep: one filled button per view (Join, on the newest card; Keep in a question); caution only for a
+ * question's way to lose something; an invitation as a row reads like the team's own rows, over the same hairlines. What
+ * holds the cards and notes is a column of flex, not grid, so one folding away (Not now) takes its gap with it.
+ */
+
+/* The cards, one under another and centred, on the evening or at the top of a company page's water. */
+.ti-cards { display: flex; flex-direction: column; align-items: center; gap: 16px; min-width: 0; }
+.ti-cards > .tj-card { width: min(480px, 100%); }
+
+/* An invitation as a row: their arch, what it is and a line under it, and what you can do at its end. */
+.ti-row { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; column-gap: 12px; min-height: 60px; padding: 10px 0; border-top: 1px solid var(--line); list-style: none; }
+.ti-row > .ac-avatar, .ti-row > .ac-ghost { justify-self: start; }
+.ti-t { min-width: 0; }
+.ti-t b { display: block; font: 500 14.5px/20px var(--font-sans); color: var(--ink); }
+.ti-t small { display: block; font: 400 13px/18px var(--font-sans); color: var(--ink-2); text-wrap: pretty; font-variant-numeric: tabular-nums; }
+.ti-a { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px; margin-right: -2px; }
+/* Resend once it's been sent: still in its place and not to be pressed, read as easily as the line beside it. */
+.ti-a .ac-btn:disabled { opacity: 1; color: var(--ink-2); }
+.dark .ti-a .ac-btn:disabled { color: var(--ink-3); }
+
+/* Invite people while an invitation to you waits: who invited you, join it first, and its Join at the foot. */
+.ti-first { display: grid; grid-template-columns: 36px minmax(0, 1fr); align-items: start; column-gap: 12px; padding: 12px 10px 0; }
+.ti-first > .ac-avatar { justify-self: start; }
+.ti-first .ti-t b { font-weight: 600; text-wrap: balance; }
+.ti-first .ti-t small { margin-top: 2px; }
+.ti-first-a { grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-top: 14px; padding: 8px 0 0; border-top: 1px solid var(--line); }
+
+/* An invitation to another team, at the top of your team's water. */
+.ti-note { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; column-gap: 12px; row-gap: 10px; padding: 14px 16px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--shadow-1); }
+.ti-note > .ac-avatar { justify-self: start; }
+.ti-note .ti-t b { font-weight: 600; }
+.ti-note .ti-why { margin-top: 2px; }
+.ti-ask { grid-column: 1 / -1; }
+.ti-ask > .tq-ask { margin-top: 0; }
+
+@media (max-width: 860px) {
+  .ti-row { grid-template-columns: 36px minmax(0, 1fr); row-gap: 8px; }
+  .ti-row > .ti-a { grid-column: 2; justify-content: flex-start; margin: 0 0 0 -10px; }
+  .ti-row > span[aria-hidden="true"]:last-child { display: none; }
+  .ti-note { grid-template-columns: 36px minmax(0, 1fr); }
+  .ti-note > .ti-a { grid-column: 2; justify-content: flex-start; }
+}
+
+/* On a company page: the cards stand at the top of its water, under the names on the horizon, with the sections after. */
+.ti-water { margin-top: calc(var(--name-h, 40px) + 26px); }
+.ti-water + .tp-grid { margin-top: 28px; }
+/* On a team: its notes, one under another, at the top of its water. */
+.ti-notes { display: flex; flex-direction: column; gap: 12px; }
+
+/* The Team page while you're invited and on no team: the cards on the team's evening, the first over the horizon. */
+.ti-page { --hz: clamp(420px, 60vh, 560px); }
+.ti-page-in { display: flex; flex-direction: column; align-items: center; gap: 28px; margin-top: 56px; }
+.ti-page-in > .ti-cards { align-self: stretch; }
+.ti-page-in > .ti-aside { width: min(480px, 100%); padding: 4px 18px 2px; border-radius: var(--radius-lg); background: color-mix(in oklch, var(--surface) 90%, transparent); box-shadow: 0 0 0 1px var(--line); }
+.ti-page-in > .ti-aside > .tq-h { margin: 12px 0 4px; }
+/* On a company page, Put aside stays in the main column, beside what's shared with groups. */
+@media (min-width: 1181px) { .tp-grid > .ti-aside { grid-column: 1 / span 8; } }
+.ti-page-in > .tj-wait { margin-top: 96px; }
+.ti-none.ac-empty { margin-top: 72px; padding: 24px; border-radius: var(--radius-lg); background: color-mix(in oklch, var(--surface) 86%, transparent); }
+
+@media (max-width: 860px) {
+  .ti-page { --hz: 330px; }
+  .ti-page-in { margin-top: 24px; gap: 22px; }
+}

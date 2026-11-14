@@ -139,16 +139,16 @@ describe('through the operator route', () => {
 
   it('shows an account by a top-up’s reference or its ID, as the command line does, with why Pro renews, its license and team, notes and storage', async () => {
     const ann = await account();
-    // Ann runs a team, with one invite out, and is on a month of Pro from money support added, renewing it but short of the next.
+    // Ann runs a team, with one invitation out, and is on a month of Pro from money support added, renewing it but short of the next.
     await ann.api.teams.create('Vandelay Industries');
-    await ann.api.teams.invite();
+    await ann.api.teams.invite([unique()]);
     expect(linesOf(await route(op.write, ['credit', ann.session.ownerId, '20'], 'SUP-2001'))).toEqual([ADDED(ann.session.ownerId)]);
     await ann.api.plans.buyPro(1, PRICE);
     await ann.api.plans.setRenew(true);
     const failed = await failedTopUp(ann, 5_000_000);
     const want = [
       `Account ${ann.session.ownerId}`, `Top-up ${failed.id}: failed`, 'Plan: pro; renewing Pro on', 'Renewal: short', 'Months of Pro not over: 1', 'License: none',
-      'Team: admin; members 1; licenses 0; open invites 1', 'Balance: doesn’t cover a month of Pro', 'Changes to the balance kept: 2', 'Notices waiting: none',
+      'Team: admin; members 1; licenses 0; invitations out 1', 'Balance: doesn’t cover a month of Pro', 'Changes to the balance kept: 2', 'Notices waiting: none',
       'Notes: running', 'Storage: within', 'Top-ups: 1 failed'
     ];
     // A read key shows it, by the top-up's reference, and the command line prints the same where production's job runs it.
@@ -159,19 +159,22 @@ describe('through the operator route', () => {
     // By the account's ID: the same, but for the top-up it wasn't named by.
     expect(linesOf(await route(op.read, ['show', ann.session.ownerId]))).toEqual(want.filter((l) => !l.startsWith('Top-up ')));
 
-    // Bob joins the team and takes the license Ann bought: a member, licensed until his period ends; Ann is told licenses are low.
+    // Bob joins the team and takes the license Ann bought: a member, licensed until his period ends. It was spoken for, as Ann
+    // had none, so she isn't told licenses are low: her next visit finds none left, and she's told that.
     const bob = await account();
     expect(linesOf(await route(op.write, ['credit', ann.session.ownerId, '40'], 'SUP-2002'))).toEqual([ADDED(ann.session.ownerId)]);
     await ann.api.teams.buyLicenses(1, LICENSE);
-    await bob.api.teams.join((await ann.api.teams.invite()).link.split('#')[1] ?? '');
+    await ann.api.teams.invite([bob.email]);
+    await bob.api.teams.acceptInvitation((await bob.api.teams.invitations())[0]?.id ?? 'no invitation');
     await bob.api.auth.visit();
     const until = (await bob.api.plans.plan()).period.to.slice(0, 10);
     expect(linesOf(await route(op.read, ['show', bob.session.ownerId]))).toEqual([
       `Account ${bob.session.ownerId}`, 'Plan: team; renewing Pro off', 'Renewal: none', 'Months of Pro not over: 0', `License: member until ${until}`,
-      'Team: member; members 2; licenses 1; open invites 1', 'Balance: doesn’t cover a month of Pro', 'Changes to the balance kept: 0', 'Notices waiting: none',
+      'Team: member; members 2; licenses 1; invitations out 1', 'Balance: doesn’t cover a month of Pro', 'Changes to the balance kept: 0', 'Notices waiting: none',
       'Notes: running', 'Storage: within', 'Top-ups: none'
     ]);
-    expect(linesOf(await route(op.read, ['show', ann.session.ownerId]))).toContain('Notices waiting: licenses-low 1');
+    await ann.api.auth.visit();
+    expect(linesOf(await route(op.read, ['show', ann.session.ownerId]))).toContain('Notices waiting: licenses-none 1');
 
     // With no notes left in the period, they've stopped.
     const carol = await account();
@@ -467,7 +470,10 @@ describe('a plan given through the operator route', () => {
   const NO_TEAM = 'That account isn’t a team’s admin, so there’s no team to give licenses to. They start a team first, then licenses can be given to it. Nothing was given.';
   const TICKET_GAVE = 'That ticket already gave this account a plan. Nothing was given.';
   const A_DAYS_GRANTS = 'A key gives plans at most 5 times a day (UTC), and this one has already today. Nothing was given.';
-  const joinTeam = async (who: Account, admin: Account) => { await who.api.teams.join((await admin.api.teams.invite()).link.split('#')[1] ?? ''); };
+  const joinTeam = async (who: Account, admin: Account) => {
+    await admin.api.teams.invite([who.email]);
+    await who.api.teams.acceptInvitation((await who.api.teams.invitations())[0]?.id ?? 'no invitation');
+  };
 
   it('gives Pro after the months bought, back to back as a purchase’s go, for nothing: given by Alcove in the history, nothing added, and renewing still buying after it', async () => {
     const ann = await account();

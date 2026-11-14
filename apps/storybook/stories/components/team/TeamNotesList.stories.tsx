@@ -30,6 +30,11 @@ export const More: Story = { name: 'Show more', args: { foot: <ShowMore all={fal
 export const NoneYet: Story = { name: 'None yet', args: { notes: [] } };
 /** Without a license, as the team's admin: not open to you yet. */
 export const NotOpen: Story = { name: 'Not open yet', args: { notes: [], empty: { title: 'Not open to you yet', line: 'The notes people here make visible open while you have a license.' } } };
+/** On a free team: what they'd hold, and that they open once it's upgraded, never a blank. */
+export const OnFree: Story = {
+  name: 'On Free',
+  args: { notes: [], empty: { title: 'These open on Team', line: 'Notes people make visible to the team, and its whole-team workspaces, open to everyone on it once Vandelay Industries is upgraded.' } }
+};
 /** They didn't load: why, and Try again. */
 export const DidntLoad: Story = {
   name: 'Didn’t load',

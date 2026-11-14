@@ -33,8 +33,19 @@ export const Profile = z.object({
   /** A demo account, with a sample calendar and company directory. */
   sample: z.boolean(),
   preferences: z.preprocess(carryModel, StoredPreferences),
-  /** Colleagues this person has invited to Alcove. */
-  invited: z.array(z.string())
+  /**
+   * Colleagues this person marked as invited to Alcove, before invitations were a team's (features/billing/teams/invitations.ts).
+   * Nothing reads it: it's kept as it is on every save because the release before this one requires it, and runs beside this
+   * one while a deploy rolls. A later release takes it out.
+   */
+  invited: z.array(z.string()).default([]),
+  /**
+   * The invitations to a team this person put aside (Not now: features/billing/teams/invitations.ts), by their IDs: theirs
+   * alone, so nobody else learns it, and forgotten once each is no invitation to them any more. A profile from before reads
+   * with none; the release before this one reads past it, and a profile it saves drops it, so what was put aside comes back
+   * into the count, which is all that's lost.
+   */
+  putAside: z.array(z.string()).default([])
 });
 export type Profile = z.infer<typeof Profile>;
 

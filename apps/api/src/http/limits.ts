@@ -221,5 +221,14 @@ export function createHttpLimits() {
    * names the notes and calls on it, opening the keys of whoever else's they are.
    */
   const agentActivityLimiter = rateLimit(60, 60_000);
-  return { limiter, telemetryLimiter, attestLimiter, operatorLimiter, operatorReadLimiter, operatorWriteLimiter, speechLimiter, voiceLimiter, askLimiter, guestAskLimiter, noteChangeLimiter, callLimiter, pickLimiter, cardLimiter, chatLimiter, rejoinLimiter, askNotesLimiter, othersPointLimiter, nudgeLimiter, statusLimiter, followUpLimiter, notesWatchLimiter, ideasWatchLimiter, sortLimiter, followUpsLimiter, spaceLimiter, moveLimiter, moveOpenLimiter, moveCheckLimiter, moveSecretCheckLimiter, moveSecretChangeLimiter, captionLimiter, videoLimiter, shareLimiter, momentLimiter, makeLimiter, busyLimiter, ringLimiter, ringAnswerLimiter, ringStreamLimiter, personalLimiter, carryLimiter, treeLimiter, liveLimiter, workspaceLimiter, workspaceListLimiter, documentLiveLimiter, updateLimiter, updateBytesLimiter, versionLimiter, awarenessLimiter, presenceLimiter, searchLimiter, previewLimiter, mentionLimiter, idsLimiter, presenterLimiter, pieceLimiter, mediaLimiter, topUpLimiter, topUpCheckLimiter, agentActivityLimiter };
+
+  /**
+   * A secret after `/invite#`, per client address: seeing what it says (public) and joining by it share it, so neither is a
+   * way round the other. A secret is 256 random bits, so this only keeps it calm.
+   */
+  const inviteSecretLimiter = rateLimit(60, 60_000);
+
+  /** Stopping Alcove's emails, per client address: public, and a mail app's one-click comes from its own servers. */
+  const mailStopLimiter = rateLimit(60, 60_000);
+  return { inviteSecretLimiter, mailStopLimiter, limiter, telemetryLimiter, attestLimiter, operatorLimiter, operatorReadLimiter, operatorWriteLimiter, speechLimiter, voiceLimiter, askLimiter, guestAskLimiter, noteChangeLimiter, callLimiter, pickLimiter, cardLimiter, chatLimiter, rejoinLimiter, askNotesLimiter, othersPointLimiter, nudgeLimiter, statusLimiter, followUpLimiter, notesWatchLimiter, ideasWatchLimiter, sortLimiter, followUpsLimiter, spaceLimiter, moveLimiter, moveOpenLimiter, moveCheckLimiter, moveSecretCheckLimiter, moveSecretChangeLimiter, captionLimiter, videoLimiter, shareLimiter, momentLimiter, makeLimiter, busyLimiter, ringLimiter, ringAnswerLimiter, ringStreamLimiter, personalLimiter, carryLimiter, treeLimiter, liveLimiter, workspaceLimiter, workspaceListLimiter, documentLiveLimiter, updateLimiter, updateBytesLimiter, versionLimiter, awarenessLimiter, presenceLimiter, searchLimiter, previewLimiter, mentionLimiter, idsLimiter, presenterLimiter, pieceLimiter, mediaLimiter, topUpLimiter, topUpCheckLimiter, agentActivityLimiter };
 }

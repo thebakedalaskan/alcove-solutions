@@ -66,8 +66,8 @@ export const WhatAlcoveCanSee = at('privacy', 'What Alcove can see');
 /**
  * Plans, in a cove at night with the last of the sun: Free, Pro and Team as small cards, Team priced for each person, then Start
  * free, Get Pro and Start a team, all secondary: the last ask's Continue with Google, the page's filled button, comes into view
- * with them. Get Pro and Start a team sign in, then open Plans with checkout on Pro or on Team (Pages › Plans › Start a team
- * from the welcome page).
+ * with them. Get Pro and Start a team sign in, then open Plans with checkout on Pro, or with Team's card naming a team, free
+ * (Pages › Plans › Start a team from the welcome page).
  */
 export const Plans = at('plans', 'Plans');
 /** On a phone the three plans stand one under another, the ways in under them. */

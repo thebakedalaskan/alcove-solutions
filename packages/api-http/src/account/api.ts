@@ -1,5 +1,5 @@
 import { type HttpTransport } from '../transport/http';
-import { type AlcoveApi, FeatureFlagsSchema, InviteLinkSchema, InvitePeekSchema, MyTeamSchema, NoteSummarySchema, PersonSuggestionSchema, PlanOffersSchema, PlanSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamInvitePeekSchema, TeamInviteSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema } from '@alcove/api';
+import { type AlcoveApi, FeatureFlagsSchema, InvitationForYouSchema, InvitationsMadeSchema, InviteLinkSchema, InvitePeekSchema, MyTeamSchema, NoteSummarySchema, PersonSuggestionSchema, PlanOffersSchema, PlanSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema } from '@alcove/api';
 import { z } from 'zod';
 
 export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'plans' | 'teams' | 'featureFlags'> {
@@ -26,13 +26,12 @@ export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'ac
       // The query goes in the body so it never appears in URLs or access logs.
       search: (query) => req(z.array(PersonSuggestionSchema), 'POST', '/people/search', { query }),
       team: () => req(TeamSchema.nullable(), 'GET', '/team'),
-      inviteToTeam: (emails) => req(TeamSchema, 'POST', '/team/invites', { emails }),
-      // Your own invite link answers with its secret, and the other two take one: always in a body, never in a URL.
+      // Your own invite link answers with its secret, and the peek takes one: always in a body, never in a URL.
       inviteLink: () => req(InviteLinkSchema, 'POST', '/team/link', {}),
       newInviteLink: () => req(InviteLinkSchema, 'POST', '/team/link/new', {}),
       peekInvite: (secret) => req(InvitePeekSchema, 'POST', '/team/link/peek', { secret }),
-      // Answered with nothing (204), whether it counted or not.
-      joinedByInvite: async (secret) => { await send('POST', '/team/link/joined', JSON.stringify({ secret }), { 'content-type': 'application/json' }); }
+      // Answered with nothing (204), whatever the token: whether it stopped anything is nobody's to know.
+      stopEmails: async (token) => { await send('POST', '/mail/stop', JSON.stringify({ token }), { 'content-type': 'application/json' }); }
     },
     plans: {
       plan: () => req(PlanSchema, 'GET', '/plan'),
@@ -49,18 +48,24 @@ export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'ac
       cancelTopUp: (id) => req(TopUpSchema, 'POST', `/plan/top-ups/${encodeURIComponent(id)}/cancel`),
       topUps: () => req(z.array(TopUpSchema), 'GET', '/plan/top-ups')
     },
-    // A team's own routes are under /team/ with names of their own: GET /team, POST /team/invites and /team/link are the people directory's.
+    // A team's own routes are under /team/ with names of their own: GET /team and /team/link… are the people directory's.
     teams: {
       mine: () => req(MyTeamSchema.nullable(), 'GET', '/team/mine'),
       create: (name) => req(MyTeamSchema, 'POST', '/team/new', { name }),
-      invite: () => req(TeamInviteSchema, 'POST', '/team/invite', {}),
-      // An invite's secret goes in the body, never in a URL, so no log can keep it.
-      peek: (secret) => req(TeamInvitePeekSchema, 'POST', '/team/peek', { secret }),
-      join: (secret) => req(MyTeamSchema, 'POST', '/team/join', { secret }),
+      rename: (name) => req(MyTeamSchema, 'PUT', '/team/name', { name }),
+      invite: (emails) => req(InvitationsMadeSchema, 'POST', '/team/invitations', { emails }),
+      resendInvitation: (id) => req(MyTeamSchema, 'POST', `/team/invitations/${encodeURIComponent(id)}/resend`, {}),
+      cancelInvitation: (id) => req(MyTeamSchema, 'DELETE', `/team/invitations/${encodeURIComponent(id)}`),
+      invitations: () => req(z.array(InvitationForYouSchema), 'GET', '/team/invitations'),
+      acceptInvitation: (id, leave = false) => req(MyTeamSchema, 'POST', `/team/invitations/${encodeURIComponent(id)}/accept`, { leave }),
+      putInvitationAside: async (id) => { await req(z.unknown(), 'POST', `/team/invitations/${encodeURIComponent(id)}/put-aside`, {}); },
+      // An invitation's or an invite link's secret goes in the body, never in a URL, so no log can keep it.
+      join: (secret, leave = false) => req(MyTeamSchema, 'POST', '/team/join', { secret, leave }),
+      askToUpgrade: async () => { await req(z.unknown(), 'POST', '/team/upgrade-ask', {}); },
       remove: (memberId) => req(MyTeamSchema, 'DELETE', `/team/members/${encodeURIComponent(memberId)}`),
       leave: async () => { await req(z.unknown(), 'POST', '/team/leave', {}); },
       delete: async () => { await req(z.unknown(), 'DELETE', '/team/mine'); },
-      buyLicenses: (count, microUsdPerLicense, periods = 1) => req(MyTeamSchema, 'POST', '/team/licenses', { count, microUsdPerLicense, periods }),
+      buyLicenses: (count, microUsdPerLicense, periods = 1, autoPurchase) => req(MyTeamSchema, 'POST', '/team/licenses', { count, microUsdPerLicense, periods, ...(autoPurchase === undefined ? {} : { autoPurchase }) }),
       refundLicenses: () => req(MyTeamSchema, 'POST', '/team/licenses/refund', {}),
       setAutoPurchase: (on) => req(MyTeamSchema, 'PUT', '/team/auto-purchase', { on }),
       notes: () => req(z.array(NoteSummarySchema), 'GET', '/team/notes')

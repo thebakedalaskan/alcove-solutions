@@ -1193,7 +1193,7 @@ const LICENSE = 40_000_000;
 /** A team license for a year: 12 periods at $32 each. */
 const YEARLY_LICENSE = 32_000_000;
 /** Licenses for the buyer's team, at a license's price a period, each for `periods` periods: one, or a year's 12. */
-const licenses = (count: number, microUsdPerLicense = LICENSE, periods = 1): Purchase => ({ kind: 'licenses', count, microUsdPerLicense, periods });
+const licenses = (count: number, microUsdPerLicense = LICENSE, periods = 1): Purchase => ({ kind: 'licenses', count, microUsdPerLicense, periods, autoPurchase: null });
 /** Why a purchase isn't made when its payment settles after its top-up was cancelled, expired or failed. */
 const LATE = 'Your payment arrived after its address closed, so nothing was bought. It’s in your balance.';
 /** What a request came to: its code and message when it was refused. */
@@ -1208,7 +1208,6 @@ async function within(ms: number, p: Promise<string>): Promise<string> {
   }
 }
 const labels = async (api: AlcoveApi) => (await api.plans.plan()).balance.history.map((e) => e.label);
-const secretOf = (link: string) => link.slice(link.indexOf('#') + 1);
 
 describe('top-ups that buy', () => {
   afterEach(async () => { await h.resetLimits(); });
@@ -1543,7 +1542,8 @@ describe('top-ups that buy', () => {
     const ann = await admin();
     const bob = await account();
     const cy = await account();
-    await bob.api.teams.join(secretOf((await ann.api.teams.invite()).link));
+    await ann.api.teams.invite([bob.session.user.email]);
+    await bob.api.teams.acceptInvitation((await bob.api.teams.invitations())[0]?.id ?? 'no invitation');
     const quotes = h.oneclick.quotes.length;
     // A member of a team, and someone on none.
     const notAdmin = 'conflict: Only a team’s admin buys its licenses.';

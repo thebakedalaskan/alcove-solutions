@@ -4,12 +4,14 @@
  * fact line up across them and they compare row by row. Pro is lifted a little, never lit up: a raised card with a warm edge.
  * Over them on the sky, Monthly or Yearly (PlanCycle), and behind it the last sliver of the sun (PlanSunset, which Plans draws
  * on the evening, since its moment has no sun of its own). Under them, what every plan has (EveryPlan) and how paying works
- * (PayingLine). Everything here is stateless, taking plain data and handlers. plans/plans.css (`pl-`).
+ * (PayingLine). Team's Start a team opens the team's name in a popover (PlanTeamStart), which checkout also shows when it's
+ * opened on Team with no team. Everything here is stateless, taking plain data and handlers. plans/plans.css (`pl-`).
  */
 import { Children, useId, type ReactNode } from 'react';
 import { cn } from '../foundation/cn';
 import { Icon, type IconName } from '../foundation/icon';
-import { Chip } from '../foundation/primitives';
+import { Button, Chip } from '../foundation/primitives';
+import { TeamName } from './checkout';
 
 /** Whether there's something to show: not nothing, false or an empty string. */
 const has = (x: ReactNode): boolean => x !== undefined && x !== null && x !== false && x !== '';
@@ -60,6 +62,8 @@ export interface PlanCardShown extends PlanCardBase {
   chip?: ReactNode;
   /** A button the width of the card, or PlanHere. */
   action: ReactNode;
+  /** A quiet line under the button, on what pressing it costs: "Free to start. Licenses only when you upgrade." */
+  under?: ReactNode;
   facts: readonly PlanFact[];
   /** A last line under the facts, quiet. */
   more?: ReactNode;
@@ -104,14 +108,14 @@ export function PlanCard(props: PlanCardProps) {
       </article>
     );
   }
-  const { price, per, bill, save, chip, action, facts, more } = props;
+  const { price, per, bill, save, chip, action, under, facts, more } = props;
   return (
     <article className={cn('pl-card', `is-${kind}`, lifted && 'is-lifted', className)} aria-labelledby={h}>
       {head(chip)}
       <p className="pl-sub">{sub}</p>
       <p className="pl-price"><b>{price}</b>{per !== undefined && <span className="per">{per}</span>}</p>
       <p className="pl-bill">{bill}{has(save) && <> <span className="save">{save}</span></>}</p>
-      <div className="pl-act">{action}</div>
+      <div className="pl-act">{action}{has(under) && <p className="pl-act-u">{under}</p>}</div>
       <ul className="pl-facts" style={{ '--facts': facts.length }}>
         {facts.map((f, i) => (
           <li key={i} className="pl-fact">
@@ -131,6 +135,44 @@ export function PlanCard(props: PlanCardProps) {
  */
 export function PlanHere({ quiet = false, children = 'Your plan' }: { quiet?: boolean | undefined; children?: ReactNode }) {
   return <p className={cn('pl-here', quiet && 'is-quiet')}>{!quiet && <Icon name="check" size={17} />}{children}</p>;
+}
+
+/**
+ * Starting a team, in the popover Team's Start a team opens on Plans: its name in TeamName's box (the company's to start
+ * with), that it's free and yours to run, why it wasn't made if it wasn't, then Cancel and Start the team (filled). Enter
+ * starts it. `bare` is the same in a window whose foot holds its buttons (checkout, opened on Team with no team): it has none
+ * of its own, and the foot's Start the team submits it by its `id`.
+ */
+export function PlanTeamStart({ value, onChange, onStart, onCancel, busy = false, error, label = 'Start a team', bare = false, id, className }: {
+  value: string;
+  onChange: (name: string) => void;
+  onStart: () => void;
+  /** Cancel, beside Start the team. A `bare` one has neither. */
+  onCancel?: (() => void) | undefined;
+  busy?: boolean | undefined;
+  /** Why it wasn't started, in the server's words. */
+  error?: ReactNode;
+  /** The heading over its name: "Start a team" in its popover, "Your team" under a window's own title. */
+  label?: string | undefined;
+  bare?: boolean | undefined;
+  /** The form's ID, for a submit button outside it (`bare`). */
+  id?: string | undefined;
+  className?: string | undefined;
+}) {
+  const blank = value.trim() === '';
+  return (
+    <form id={id} className={cn('pl-start', bare && 'is-bare', className)} aria-label="Start a team" onSubmit={(e) => { e.preventDefault(); if (!blank && !busy) onStart(); }}>
+      <TeamName label={label} hint="It’s free" value={value} onChange={onChange} autoFocus />
+      <p className="pl-start-h">You’re its admin, and you invite people from its page.</p>
+      {has(error) && <p className="pl-start-x" role="alert">{error}</p>}
+      {!bare && (
+        <div className="pl-start-a">
+          {onCancel && <Button variant="quiet" size="sm" disabled={busy} onClick={onCancel}>Cancel</Button>}
+          <Button type="submit" variant="primary" size="sm" loading={busy} disabled={blank}>Start the team</Button>
+        </div>
+      )}
+    </form>
+  );
 }
 
 /* ---------- the sky ---------- */

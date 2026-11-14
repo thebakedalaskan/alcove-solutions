@@ -73,6 +73,7 @@
 @import "./board/board.css";
 @import "./plans/plans.css";
 @import "./plans/checkout.css";
+@import "./team/invitations.css";
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* `.light` and `.dark` also scope a theme to part of a page, whatever the page's own theme is. */

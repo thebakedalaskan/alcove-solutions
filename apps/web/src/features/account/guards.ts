@@ -65,11 +65,11 @@ export function onSessionAnswer(qc: QueryClient, then: () => void): () => void {
 /**
  * The signed-in account, or off to the welcome screen to sign in. Signing in that started on a page with somewhere to come
  * back to goes there, wherever Google's way back landed (./afterSignIn.ts): a call's join page, Agents for an agent's
- * request, where it asks, Plans with checkout open for Get Pro or Start a team on the welcome page, or the page of a link to
- * someone's notes, of an invite to a team or of someone's invite link, which asks before anything opens. A preload (a link
- * hovered) never uses one up. `arriving`: this is /ready, where Google's way back lands for an account it just made, so an
- * invite link's page is told so, to tell whoever sent it (features/team/Invited.tsx). Without a connection, someone signed in
- * on this device carries on offline.
+ * request, where it asks, Plans with Get Pro's checkout or Start a team open as the welcome page chose, or the page of a
+ * link to someone's notes, or of an invitation's or a team's invite link, which asks before anything opens. A preload (a link
+ * hovered) never uses one up. `arriving`: this is /ready, where Google's way back lands for an account it just made, so the
+ * invite page is told so, to join its team at once (features/team/Invited.tsx). Without a connection, someone signed in on
+ * this device carries on offline.
  */
 export async function requireAccount(qc: QueryClient, preload = false, arriving = false): Promise<{ account: Account }> {
   const s = await sessionOrOffline(qc);
@@ -80,9 +80,8 @@ export async function requireAccount(qc: QueryClient, preload = false, arriving 
   }
   if (!s) throw redirect({ to: '/welcome' });
   const back = preload ? null : keptReturn();
-  // A link's page and an invite's take their own secret, which never goes in a URL; the rest are used up here.
+  // A link's page and the invite page take their own secret, which never goes in a URL; the rest are used up here.
   if (back?.to === 'link') throw redirect({ to: '/link', replace: true });
-  if (back?.to === 'team') throw redirect({ to: '/team/join', replace: true });
   if (back?.to === 'invite') {
     if (arriving && !back.arriving) returnTo({ ...back, arriving: true });
     throw redirect({ to: '/invite', replace: true });

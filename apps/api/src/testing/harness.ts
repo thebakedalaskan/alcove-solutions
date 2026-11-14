@@ -1,8 +1,8 @@
 /*
  * Boots the real API against a clean test database and bucket, with a stand-in Google to sign in
  * through, a stand-in NEAR AI Cloud to transcribe and write notes (with stand-ins for the Intel and
- * NVIDIA services that vouch for it, under test roots) and a stand-in 1Click to add money with,
- * and gives tests "browsers":
+ * NVIDIA services that vouch for it, under test roots), a stand-in 1Click to add money with and a stand-in Resend that
+ * Alcove's email goes to, and gives tests "browsers":
  * each with its own cookie jar, sending the web app's Origin, talking through @alcove/api-http. And operators, signing
  * requests with a read key and a write key the server lists (testing/operator.ts).
  */
@@ -29,6 +29,7 @@ import { startFakeGoogle, type FakeGoogle, type GoogleUser, type Spoil } from '.
 import { fakeKms } from './fakes/kms';
 import { startFakeNear, type FakeNear } from './fakes/near';
 import { startFakeOneClick, type FakeOneClick } from './fakes/oneclick';
+import { startFakeResend, type FakeResend } from './fakes/resend';
 import { signedClient, makeOperatorKey, type SignedClient, type TestKey } from './operator';
 
 // An HTTPS web origin, so the API applies its production cookie rules (__Host- names, Secure) over the test transport.
@@ -86,6 +87,8 @@ export interface Harness {
   near: FakeNear;
   /** The NEAR Intents 1Click that quotes deposit addresses for credit top-ups. */
   oneclick: FakeOneClick;
+  /** The Resend Alcove's email is sent through: what it was asked, and what it sent. */
+  resend: FakeResend;
   /**
    * Operators: clients signing requests to this server with a `read` key and a `write` key, both of which it lists
    * (operatorKeys), and those keys with the audience they sign for (its API_URL's origin), to sign for a second server too.
@@ -152,6 +155,7 @@ export async function startHarness(): Promise<Harness> {
   const google = await startFakeGoogle();
   const near = await startFakeNear();
   const oneclick = await startFakeOneClick();
+  const resend = await startFakeResend();
   // The bucket follows the test database (alcove_test → alcove-test), so runs against different test
   // databases, as from parallel worktrees, never sweep each other's objects.
   const bucket = name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
@@ -170,6 +174,8 @@ export async function startHarness(): Promise<Harness> {
     NEAR_AI_NOTES_EFFORT: '0',
     // 1Click, paying the treasury for credit top-ups.
     ...oneclick.settings,
+    // Resend, sending Alcove's email.
+    ...resend.settings,
     // Sign-in photos come from the stand-in Google here, as they come from lh3.googleusercontent.com in production.
     PHOTO_HOSTS: 'googleusercontent.com,127.0.0.1',
     // A limit a test sets is in force on its next request, and gone once the test is: tests that look at the window set their own.
@@ -198,7 +204,7 @@ export async function startHarness(): Promise<Harness> {
   const streams: { close(): void }[] = [];
   const closeCalls = () => { for (const s of [...calls.splice(0), ...streams.splice(0)]) s.close(); };
   return {
-    baseUrl, pool, objects, deps, logs, google, near, oneclick, operator,
+    baseUrl, pool, objects, deps, logs, google, near, oneclick, resend, operator,
     browser(o = {}) {
       const f = o.fetch ?? cookieFetch(ORIGIN);
       // Calls keep up with their keys and notes quickly here; browsers wait 1.5 s between checks while nothing nudges them, and 5 s between looks at the notes.
@@ -232,6 +238,7 @@ export async function startHarness(): Promise<Harness> {
       await google.close();
       await near.close();
       await oneclick.close();
+      await resend.close();
       await pool.end();
     }
   };

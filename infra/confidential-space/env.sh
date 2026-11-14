@@ -119,6 +119,8 @@ cs_env() {
       CS_GOOGLE_AUTH="${ALCOVE_GOOGLE_AUTH_ENABLED:-true}"
       CS_GOOGLE_SIGNUP_MODE="${ALCOVE_GOOGLE_SIGNUP_MODE:-testers}"
       CS_NEAR_AI="${ALCOVE_NEAR_AI_ENABLED:-true}"
+      # Resend's send-only key for mail.alcove.solutions, which invitation emails go out with (apps/api/src/platform/mail.ts).
+      CS_RESEND_KEY_SECRET=alcove-resend-api-key
       CS_TREASURY_ACCOUNT=alcove-treasury.near
       # Who can operate production from outside the enclave (apps/api/src/http/operator.ts): each operator's own Ed25519 public
       # key, read:<public key> or write:<public key>, one an entry, with a comment saying what the key is for, never whose it
@@ -165,6 +167,8 @@ cs_env() {
       CS_GOOGLE_SIGNUP_MODE=testers
       # No NEAR AI key of its own: recordings are kept, and their notes wait.
       CS_NEAR_AI=false
+      # No Resend key: nothing is emailed, and invitations are there in the app as ever.
+      CS_RESEND_KEY_SECRET=''
       # Credit top-ups stay off: they'd watch production's treasury.
       CS_TREASURY_ACCOUNT=''
       # Who can operate staging, as production's list says (read:<public key> or write:<public key>, one an entry, each with
@@ -220,6 +224,8 @@ cs_secrets() {
     "CLOUDFLARE_API_TOKEN=$CS_ACME_TOKEN_SECRET"
   )
   if [[ "$CS_NEAR_AI" == true ]]; then CS_SECRETS+=(NEAR_AI_API_KEY=alcove-near-ai-api-key); fi
+  # Email goes out through Resend with this key, where the environment has one (production's alone).
+  if [[ -n "$CS_RESEND_KEY_SECRET" ]]; then CS_SECRETS+=("RESEND_API_KEY=$CS_RESEND_KEY_SECRET"); fi
   if [[ "$CS_GOOGLE_AUTH" == true ]]; then
     CS_SECRETS+=(GOOGLE_CLIENT_ID=alcove-google-client-id GOOGLE_CLIENT_SECRET=alcove-google-client-secret)
     if [[ "$CS_GOOGLE_SIGNUP_MODE" == testers ]]; then CS_SECRETS+=(GOOGLE_SIGNUP_TESTERS=alcove-google-signup-testers); fi

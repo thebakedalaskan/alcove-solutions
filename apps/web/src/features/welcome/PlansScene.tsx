@@ -2,7 +2,8 @@
  * Plans, on the welcome page (docs/product/user-flows.md 16.13): the cove at night with the last of the sun on its horizon,
  * Free, Pro and Team on its water as small cards with what each costs and brings, and the ways in under them: Start free, the
  * sign-in the page already has; Get Pro, which signs in and then opens Plans with checkout on Pro; and Start a team, which
- * does the same with checkout on Team (features/account/afterSignIn.ts carries either through sign-in, wherever Google's way back lands).
+ * signs in and then opens Plans with Team's card naming a team, free (features/account/afterSignIn.ts carries either through
+ * sign-in, wherever Google's way back lands).
  * All three are secondary: the welcome page's one filled button is its way in, Continue with Google, and the last ask's comes
  * into view with them as the page scrolls on.
  */

@@ -1,7 +1,7 @@
 /*
  * Checkout: one window over wherever you were, with what you're buying beside every step (the canvas's Checkout and
  * PayMotion boards, docs/design/canvas/plans/). The step is on the left: choose how long, how many hours or how many of
- * Team's licenses (a team being started is named first, and one buying more says who's waiting), and the network to send
+ * Team's licenses (upgrading a free team, the people on it without one; buying more, who's waiting), and the network to send
  * USDC on; pay, with the exact amount, the address made for this one payment and how it stands; then done. What you're
  * buying is on the right, under a small evening of its own whose sun rises as the payment lands. On a phone the window
  * fills the screen, with what you're buying as one line at the top.
@@ -20,7 +20,7 @@ import { Icon, type IconName } from '../foundation/icon';
 import { CheckDraw, CountUp, Dots } from '../foundation/motion';
 import { Modal, ThemeScope } from '../foundation/overlay';
 import { Faces, type AvatarPerson } from '../foundation/people';
-import { Button, CopyField, IconButton, RequestRef, Segmented, buttonClass } from '../foundation/primitives';
+import { Button, Check, CopyField, IconButton, RequestRef, Segmented, buttonClass } from '../foundation/primitives';
 import { QrCode } from '../foundation/qr';
 
 /** Which small evening a purchase is drawn as: Pro's sunset, Team's with its people, more notes' last light. */
@@ -229,10 +229,11 @@ export function LicensesPicker({ label = 'How many licenses', hint, options, val
 }
 
 /**
- * The team being started: its name, typed into a box with its label inside, under what starting it makes you. `disabled`
- * once the team is made, when its name is what it is.
+ * A team's name, typed into a box with its label inside, under a heading and a word on it: naming a team as it's started
+ * (PlanTeamStart, in the popover Plans' Team card opens, or in checkout opened on Team with no team) and renaming one
+ * (TeamRename). `disabled` while its name is what it is.
  */
-export function TeamName({ label = 'Your team', hint = 'You’re its admin: you buy its licenses and invite people.', field = 'Its name', value, onChange, placeholder, disabled = false, autoFocus = false, maxLength = 120 }: {
+export function TeamName({ label = 'Your team', hint, field = 'Its name', value, onChange, placeholder, disabled = false, autoFocus = false, maxLength = 120 }: {
   label?: string | undefined; hint?: string | undefined; field?: string | undefined; value: string; onChange: (name: string) => void;
   placeholder?: string | undefined; disabled?: boolean | undefined; autoFocus?: boolean | undefined; maxLength?: number | undefined;
 }) {
@@ -258,6 +259,21 @@ export function LicensesLeft({ people, title, sub, className }: { people: Avatar
     <div className={cn('ck-sec ck-team', className)}>
       {people.length > 0 && <Faces people={people} size={30} max={5} />}
       <p className="who"><b>{title}</b>{sub && <small>{sub}</small>}</p>
+    </div>
+  );
+}
+
+/**
+ * Something buying it does as well, ticked or not, as a row in the window: a box, what it does, and a line on it (upgrading
+ * a team: "Buy a license for each person who joins", set with the purchase as it goes through).
+ */
+export function CheckoutTick({ checked, onChange, label, hint, disabled = false }: {
+  checked: boolean; onChange: (on: boolean) => void; label: string; hint?: ReactNode; disabled?: boolean | undefined;
+}) {
+  return (
+    <div className="ck-sec ck-also">
+      <Check checked={checked} onChange={onChange} label={label} disabled={disabled} />
+      <p className="who" aria-hidden="true" onClick={() => { if (!disabled) onChange(!checked); }}><b>{label}</b>{hint && <small>{hint}</small>}</p>
     </div>
   );
 }
@@ -327,7 +343,7 @@ export interface CheckoutSummaryData {
   name: string;
   /**
    * Who it's for, or what it adds to: "For Art Vandelay", "Added to the 6 days you have left", "For this period", "For
-   * Vandelay Industries, with you its admin".
+   * Vandelay Industries, on Free now".
    */
   sub: string;
   /** What the phone's one line says under the name: "12 months · 20% off", "6 licenses". */
@@ -365,7 +381,7 @@ export function CheckoutSummary({ summary: s, rise = 'rest', className }: { summ
 /* ---------- the window ---------- */
 
 export interface CheckoutPanelProps {
-  /** "Get Pro", "Extend Pro", "More notes", "Start a team", "Buy licenses". */
+  /** "Get Pro", "Extend Pro", "More notes", "Upgrade to Team", "Buy licenses" (and "Start a team", opened on Team with no team). */
   title: string;
   /** Where it is in Choose, Pay and Done; null when there's nothing to buy here (someone else buys it), and no steps. */
   step: 1 | 2 | 3 | null;
@@ -562,19 +578,13 @@ export interface ReceiptRowData { title: string; sub: string; reference: string 
 
 /**
  * Done: a tick that draws in (`CheckDraw`, 0.5 s, slowed by `pm`) as its circle pops, what you have now in Newsreader, a line
- * or two on it, the receipt's row, and a reminder that nothing renews by itself. A team just started has inviting its people
- * under the receipt (`invite`, under its heading and what an invite does: `inviteTitle`, `inviteHint`).
+ * or two on it, the receipt's row, and a reminder that nothing renews by itself.
  */
-export function CheckoutDone({ title, lines, receipt, reminder, invite, inviteTitle = 'Invite your team', inviteHint = 'Each link lets one person join, for a day. A license is taken when they next open Alcove.', pm = 1 }: {
+export function CheckoutDone({ title, lines, receipt, reminder, pm = 1 }: {
   title: string; lines: string[]; receipt: ReceiptRowData | null; reminder: string | null;
-  /** What invites people: a link to make, then the link with Copy. Nothing shows without it. */
-  invite?: ReactNode;
-  inviteTitle?: string | undefined;
-  inviteHint?: string | undefined;
   /** Slows the tick's drawing by this much, with the window's other moves. */
   pm?: number | undefined;
 }) {
-  const q = useId();
   const reduce = useReducedMotion() === true;
   /* The tick draws itself as Done opens; with reduced motion it's simply there. */
   const [drawn, setDrawn] = useState(false);
@@ -592,12 +602,6 @@ export function CheckoutDone({ title, lines, receipt, reminder, invite, inviteTi
           <span><b>{receipt.title}</b><small>{receipt.sub}</small></span>
           <Button variant="secondary" size="sm" icon="download" onClick={receipt.onOpen}>Receipt</Button>
           {receipt.reference && <RequestRef id={receipt.reference} />}
-        </div>
-      )}
-      {invite !== undefined && invite !== null && invite !== false && (
-        <div className="ck-invite" role="group" aria-labelledby={q}>
-          <p className="ck-q"><span id={q}>{inviteTitle}</span><small>{inviteHint}</small></p>
-          {invite}
         </div>
       )}
       {reminder && <p className="ck-rem"><Icon name="clock" size={18} />{reminder}</p>}

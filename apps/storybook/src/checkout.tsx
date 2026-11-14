@@ -11,7 +11,7 @@
 import { ThemeProvider, ToastProvider, TooltipProvider } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { RouterProvider } from '@tanstack/react-router';
+import { RouterContextProvider, RouterProvider } from '@tanstack/react-router';
 import { useState } from 'react';
 import type { CheckoutFrom, CheckoutOpen } from '~/features/plans/checkout';
 import { CheckoutHost } from '~/features/plans/CheckoutHost';
@@ -20,7 +20,7 @@ import { routerAt } from './app';
 import type { PageArgs } from './page';
 
 export interface CheckoutArgs extends PageArgs {
-  /** What it opens on: Pro, more notes for this period, or Team (starting one, or its admin buying licenses). */
+  /** What it opens on: Pro, more notes for this period, or Team (its admin upgrading a free team, or buying more licenses). */
   plan: 'pro' | 'hours' | 'team';
   /** The months of Pro it starts on (Plans' Monthly opens on 1); none: the yearly length when there is one. */
   months?: number | undefined;
@@ -45,22 +45,27 @@ function openFrom(a: CheckoutArgs): CheckoutOpen {
   return { what, from: a.from, topUpId: a.topUpId ?? null };
 }
 
-/** The app at `path`, with checkout open over it as `open` says, until it's closed. */
+/**
+ * The app at `path`, with checkout open over it as `open` says, until it's closed. It's in the app's router as it is in the
+ * app, so what it opens (a team's page, once one is started in it) opens behind it.
+ */
 function CheckoutOver({ path, open }: { path: string; open: CheckoutOpen }) {
   const [router] = useState(() => routerAt(path));
   const [shown, setShown] = useState<CheckoutOpen | null>(open);
   return (
     <>
       <RouterProvider router={router} />
-      <QueryClientProvider client={router.options.context.queryClient}>
-        <ThemeProvider>
-          <TooltipProvider>
-            <ToastProvider>
-              {shown && <CheckoutHost open={shown} onClose={() => setShown(null)} onCompare={() => { setShown(null); router.history.push('/plans'); }} />}
-            </ToastProvider>
-          </TooltipProvider>
-        </ThemeProvider>
-      </QueryClientProvider>
+      <RouterContextProvider router={router}>
+        <QueryClientProvider client={router.options.context.queryClient}>
+          <ThemeProvider>
+            <TooltipProvider>
+              <ToastProvider>
+                {shown && <CheckoutHost open={shown} onClose={() => setShown(null)} onCompare={() => { setShown(null); router.history.push('/plans'); }} />}
+              </ToastProvider>
+            </TooltipProvider>
+          </ThemeProvider>
+        </QueryClientProvider>
+      </RouterContextProvider>
     </>
   );
 }

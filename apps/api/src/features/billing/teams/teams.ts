@@ -1,38 +1,54 @@
 /*
- * Teams (docs: Plans and usage › Team): one team for each account, made by its admin, who buys licenses for it from their
- * own balance, or with a payment that buys them once it's added (deposits.ts). A member without a live license takes one
- * when they visit (they sign in, or the app says it's being used:
- * `POST /v1/session/visit`); none is ever taken by a read. A live license puts its member on Team for the periods it was
- * bought for, `plan.period_seconds` each (one, or a year's 12; features/billing/plans.ts › planNow), replacing any Pro they
- * had, with storage from the team's pool:
- * `plan.team.storage_bytes` for each live license, counting what every licensed member stores.
+ * Teams (docs: Plans and usage › Team): one team for each account, free to make, with its maker as its admin and anyone
+ * else, at any address, as a member (people get on one by invitation or by its link: ./joining.ts). Its tier is never
+ * stored: `team` while anyone on it holds a live license or licenses bought for it wait to be taken, `free` otherwise. The admin buys licenses for it from their own
+ * balance, or with a payment that buys them once it's added (deposits.ts). A member without a live license takes one when
+ * they visit (they sign in, or the app says it's being used: `POST /v1/session/visit`); none is ever taken by a read. A live
+ * license puts its member on Team for the periods it was bought for, `plan.period_seconds` each (one, or a year's 12;
+ * features/billing/plans.ts › planNow), replacing any Pro they had, with storage from the team's pool:
+ * `plan.team.storage_bytes` for each live license, counting what every licensed member stores. On a free team everyone
+ * stays on their own plan, and what a team shares stays closed.
  *
- * A team is an owner of its own, like a workspace: its key seals its name and who's on it. What it bought (its unconsumed
- * licenses and what each cost), auto-purchase, the alerts its admin has been given and its pool's grace are a
- * `team-billing` record under Kservice's accounting key. Every change is made with the team's row locked first, then
- * the plans of whoever it touches, so takes and purchases at once on any instance never spend a license or money twice.
+ * A team is an owner of its own, like a workspace: its key seals its name and who's on it (./team-records.ts). What it
+ * bought (its unconsumed licenses and what each cost), auto-purchase and what it bought today, the alerts its admin has been
+ * given, its pool's grace, who asked its admin to upgrade it, and the licenses of people who left it while theirs ran (kept
+ * for them, by a keyed hash, until they'd have ended) are a `team-billing` record under Kservice's accounting key. Every
+ * change is made with the team's row locked first, then the plans of whoever it touches, so takes and purchases at once on
+ * any instance never spend a license or money twice.
  */
-import type { MyTeam, Person, Purchase, TeamInvite, TeamInvitePeek, TeamLicense, TeamMember } from '@alcove/api';
+import type { MyTeam, Person, PlanNotice, Purchase, TeamLicense, TeamMember, TeamTier } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../../../platform/context';
-import { b64u, id128, openJson, random, sealJson, serviceKey, sha, stateKey, toJson, unb64u, utf8 } from '../../../keys/crypto';
+import { b64u, id128, keptLicenseKey, mac, openJson, sealJson, serviceKey, toJson, unb64u, utf8 } from '../../../keys/crypto';
 import { bigintText, bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../../platform/db';
 import { ConflictError, ForbiddenError, NotFoundError, conflict } from '../../../platform/errors';
 import { limitsNow, type Limits } from '../../../platform/limits';
 import { log } from '../../../platform/log';
-import { createOwner, lockOwner, openRootKey } from '../../../keys/owners';
+import { lockOwner } from '../../../keys/owners';
 import { publish, TREE_NOTICE } from '../../../live/hub';
 import { personOf } from '../../profile/portraits';
 import { accountOf, leftTeam, purchase, refusedError, replacedByLicense, save, told, withEntry, withNotice, type Accounting, type PlanAccount, type Purchased, type Source } from '../plans';
+import { invitationsOf } from './invitations';
+import { remadeIn } from './invite-links';
+import { anyLive, isLive, makeTeam, MEMBER, MemberRow, membersOf, membership, nameIn, sealedName, sealedWho, TEAM, TeamRow, teamKeyOf, teamRow, whoIn, withTeam, close, type Service } from './team-records';
 
 const tlog = log.child({ component: 'teams' });
 /** How many teams upkeep looks at each time. */
 const BATCH = 100;
 
-type Service = Pick<Deps, 'cfg' | 'pool'>;
-
 /* ---------- records ---------- */
 
+/**
+ * Someone on a free team who asked its admin to upgrade it: who (their member ID, never their name), when, and whether the
+ * admin dismissed what they were told. The admin's `upgrade-asked` notices are made from these as their plan is read.
+ */
+const Ask = z.object({ id: z.string(), memberId: z.string(), at: z.string(), dismissed: z.boolean() });
+/**
+ * A live license someone left the team with (they left, or were taken off): theirs again if they're back on it before it
+ * would have ended (`until`), from when it began (`from`), instead of taking or buying another. Kept by a keyed hash of the
+ * team and their account (`who`: keptFor), never their account's ID, and forgotten once it would have ended.
+ */
+const Kept = z.object({ who: z.string(), from: z.string(), until: z.string() });
 /** What a team bought and what its admin has been told, sealed under Kservice's accounting key. */
 const Billing = z.object({
   /**
@@ -43,6 +59,11 @@ const Billing = z.object({
   licenses: z.array(z.object({ id: z.string(), microUsd: z.number().int(), periods: z.number().int().default(1) })),
   /** Whether a license is bought from the admin's balance when a member needs one and none is left. */
   autoPurchase: z.boolean(),
+  /**
+   * How many auto-purchase bought on `day` (UTC), for `team.auto_purchase_per_day`. A record kept before it reads as none
+   * bought; the release before this one reads past it, and one it saves drops it, which starts the day's count again.
+   */
+  autoBought: z.object({ day: z.string(), count: z.number().int().nonnegative() }).nullable().default(null),
   /**
    * What a license last cost the team: the last bought, by its admin or by auto-purchase (bought for a year, a license's
    * price for a period then, since auto-purchase buys for a period); before any was, the price when auto-purchase was
@@ -58,10 +79,21 @@ const Billing = z.object({
    * before it shrank, until `until`). A grace that has run out is kept until the team is within its pool again, so it's
    * only given once for each time it's over.
    */
-  pool: z.object({ bytes: z.number().int().nonnegative(), grace: z.object({ until: z.string(), storageBytes: z.number().int() }).nullable() })
+  pool: z.object({ bytes: z.number().int().nonnegative(), grace: z.object({ until: z.string(), storageBytes: z.number().int() }).nullable() }),
+  /**
+   * Who asked the admin to upgrade, at most one each (their latest), until licenses are bought. A record kept before asks
+   * reads with none; the release before this one reads past them (it doesn't know them), and one it saves drops them.
+   */
+  asks: z.array(Ask).default([]),
+  /**
+   * The live licenses of people who left (`Kept`), until each would have ended. A record kept before reads with none; the
+   * release before this one reads past them, and one it saves drops them: whoever comes back then takes a license as anyone
+   * joining does.
+   */
+  kept: z.array(Kept).default([])
 });
 type Billing = z.infer<typeof Billing>;
-const fresh = (): Billing => ({ licenses: [], autoPurchase: false, lastMicroUsd: null, low: false, none: false, pool: { bytes: 0, grace: null } });
+const fresh = (): Billing => ({ licenses: [], autoPurchase: false, autoBought: null, lastMicroUsd: null, low: false, none: false, pool: { bytes: 0, grace: null }, asks: [], kept: [] });
 /** What unconsumed licenses cost, which is what refunding them gives back: each its price a period for each of its periods. */
 const costOf = (licenses: Billing['licenses']) => licenses.reduce((n, x) => n + x.periods * x.microUsd, 0);
 
@@ -69,42 +101,28 @@ const billingKey = (d: Pick<Accounting, 'cfg'>) => serviceKey(unb64u(d.cfg.KSERV
 const billingHeader = (t: Pick<TeamRow, 'owner_id' | 'team_id'>) => ({ v: 1 as const, kind: 'team-billing', ownerId: t.owner_id, teamId: t.team_id, keyVersion: '1' });
 const sealBilling = (d: Pick<Deps, 'cfg'>, t: Pick<TeamRow, 'owner_id' | 'team_id'>, b: Billing) => sealJson(billingKey(d), billingHeader(t), toJson(b));
 const openBilling = (d: Pick<Accounting, 'cfg'>, t: TeamRow) => openJson(billingKey(d), billingHeader(t), t.billing_ciphertext, Billing);
+/** What a team made now starts with: nothing bought, nothing told. */
+export const freshBilling = (d: Pick<Deps, 'cfg'>, t: Pick<TeamRow, 'owner_id' | 'team_id'>): Uint8Array => sealBilling(d, t, fresh());
 
-/** The team's own key: its name and who's on it. */
-/** The key a team's own records are sealed under, derived from its root, for one request: zeroed when it's done. */
-interface TeamKey { ownerId: string; key: Uint8Array }
-const teamKeyFrom = (ownerId: string, root: Uint8Array): TeamKey => ({ ownerId, key: stateKey(root, ownerId, 'team') });
-const Named = z.object({ name: z.string() });
-const nameHeader = (team: TeamKey, teamId: string) => ({ v: 1 as const, kind: 'team-name', ownerId: team.ownerId, teamId });
-const Who = z.object({ name: z.string(), email: z.string() });
-const memberHeader = (team: TeamKey, teamId: string, memberId: string) => ({ v: 1 as const, kind: 'team-member', ownerId: team.ownerId, teamId, memberId });
-const nameIn = (team: TeamKey, t: TeamRow) => openJson(team.key, nameHeader(team, t.team_id), t.name_ciphertext, Named).name;
-const whoIn = (team: TeamKey, m: MemberRow) => openJson(team.key, memberHeader(team, m.team_id, m.member_id), m.person_ciphertext, Who);
-
-const TeamRow = z.object({ team_id: z.string(), owner_id: z.string(), admin_owner_id: z.string(), name_ciphertext: bytea, billing_ciphertext: bytea });
-export type TeamRow = z.infer<typeof TeamRow>;
-const TEAM = 'team_id, owner_id, admin_owner_id, name_ciphertext, billing_ciphertext';
-const MemberRow = z.object({
-  member_id: z.string(), team_id: z.string(), account_owner_id: z.string(), role: z.enum(['admin', 'member']), person_ciphertext: bytea,
-  licensed_from: timestamp.nullable(), licensed_until: timestamp.nullable(), wanted_at: timestamp.nullable(), created_at: timestamp
-});
-type MemberRow = z.infer<typeof MemberRow>;
-const MEMBER = 'member_id, team_id, account_owner_id, role, person_ciphertext, licensed_from, licensed_until, wanted_at, created_at';
-
-const membership = (db: Db, ownerId: string, lock = false) =>
-  maybeOne(db, MemberRow, `SELECT ${MEMBER} FROM team_members WHERE account_owner_id = $1${lock ? ' FOR UPDATE' : ''}`, [ownerId]);
-const teamRow = (db: Db, teamId: string, lock = false) =>
-  maybeOne(db, TeamRow, `SELECT ${TEAM} FROM teams WHERE team_id = $1${lock ? ' FOR UPDATE' : ''}`, [teamId]);
-const isLive = (m: Pick<MemberRow, 'licensed_from' | 'licensed_until'>, now: number) =>
-  m.licensed_from !== null && m.licensed_until !== null && m.licensed_from.getTime() <= now && now < m.licensed_until.getTime();
-
-/** A team's key, for one request. A team whose row was just read is there unless it was deleted since. */
-async function teamKeyOf(d: Service, t: Pick<TeamRow, 'owner_id' | 'team_id'>): Promise<TeamKey> {
-  const root = await openRootKey(d, t.owner_id);
-  if (!root) throw new NotFoundError('That team no longer exists.', { context: { teamId: t.team_id } });
-  try { return teamKeyFrom(t.owner_id, root); } finally { root.fill(0); }
+/** Who a kept license is for, in a team's record: a keyed hash of the team and their account, under a key from Kservice. */
+function keptFor(d: Pick<Accounting, 'cfg'>, teamId: string, ownerId: string): string {
+  const key = keptLicenseKey(unb64u(d.cfg.KSERVICE, 32));
+  try { return b64u(mac(key, utf8(`${teamId}\u0000${ownerId}`))); } finally { key.fill(0); }
 }
-const close = (team: TeamKey) => { team.key.fill(0); };
+/** Kept licenses that would still be running at `now`: the rest are forgotten whenever the record is saved. */
+const stillKept = (b: Billing, now: number): Billing => ({ ...b, kept: b.kept.filter((k) => Date.parse(k.until) > now) });
+
+/**
+ * A team's tier, never stored: `team` while anyone on it holds a live license at `now`, or licenses bought for it wait to be
+ * taken (so a team upgraded while nobody's there to take one is on Team at once); `free` otherwise.
+ */
+export async function tierOf(d: Pick<Accounting, 'cfg'>, db: Db, t: TeamRow, now = Date.now()): Promise<TeamTier> {
+  return openBilling(d, t).licenses.length > 0 || (await anyLive(db, t.team_id, now)) ? 'team' : 'free';
+}
+/** How many on a team hold no live license at `now`: those its unconsumed licenses are for already, as they'll take one. */
+async function waitingFor(db: Db, teamId: string, now: number): Promise<number> {
+  return (await maybeOne(db, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM team_members WHERE team_id = $1 AND NOT coalesce(licensed_from <= $2 AND licensed_until > $2, false)', [teamId, new Date(now)]))?.n ?? 0;
+}
 
 /* ---------- the pool ---------- */
 
@@ -154,7 +172,7 @@ async function settle(d: Service, c: Db, t: TeamRow, b: Billing, l: Limits, now:
     grace = { until: new Date(now + l.get('plan.grace_seconds') * 1000).toISOString(), storageBytes: Math.max(b.pool.bytes, live.usedBytes) };
     tlog.info('team pool grace began', { teamId: t.team_id, licenses: live.licenses, poolBytes: bytes, storedBytes: live.usedBytes });
   }
-  const next: Billing = { ...b, pool: { bytes, grace } };
+  const next: Billing = { ...stillKept(b, now), pool: { bytes, grace } };
   const ends = await maybeOne(c, z.object({ at: timestamp.nullable() }), 'SELECT min(licensed_until) AS at FROM team_members WHERE team_id = $1 AND licensed_until > $2', [t.team_id, new Date(now)]);
   const due = [ends?.at?.getTime(), grace && Date.parse(grace.until) > now ? Date.parse(grace.until) : undefined].filter((x): x is number => x !== undefined);
   await exec(c, 'UPDATE teams SET billing_ciphertext = $2, due_at = $3, version = version + 1 WHERE team_id = $1', [t.team_id, sealBilling(d, t, next), due.length ? new Date(Math.min(...due)) : null]);
@@ -162,7 +180,7 @@ async function settle(d: Service, c: Db, t: TeamRow, b: Billing, l: Limits, now:
 }
 /** Saves what a team bought without touching its pool. */
 const saveBilling = (d: Service, c: Db, t: TeamRow, b: Billing) =>
-  exec(c, 'UPDATE teams SET billing_ciphertext = $2, version = version + 1 WHERE team_id = $1', [t.team_id, sealBilling(d, t, b)]);
+  exec(c, 'UPDATE teams SET billing_ciphertext = $2, version = version + 1 WHERE team_id = $1', [t.team_id, sealBilling(d, t, stillKept(b, Date.now()))]);
 
 /** Changes an account's plan, in the caller's transaction: its row locked after the team's. */
 async function changePlan(d: Service, c: Db, ownerId: string, change: (a: PlanAccount) => PlanAccount): Promise<void> {
@@ -173,7 +191,7 @@ async function changePlan(d: Service, c: Db, ownerId: string, change: (a: PlanAc
 /* ---------- who may ---------- */
 
 /** The caller's place on a team, refused when they're on none. */
-async function mustBeOn(db: Db, ownerId: string, lock = false): Promise<MemberRow> {
+export async function mustBeOn(db: Db, ownerId: string, lock = false): Promise<MemberRow> {
   const m = await membership(db, ownerId, lock);
   if (!m) throw new NotFoundError('You’re not on a team.', { context: { ownerId } });
   return m;
@@ -190,13 +208,28 @@ async function asAdmin(c: Db, ownerId: string): Promise<{ m: MemberRow; t: TeamR
 
 /* ---------- a license, taken on a visit ---------- */
 
+/** A license live for `ownerId` from now replaces any Pro they had, giving back what's left of it. Says how much came back (null: no Pro). */
+async function replacesPro(d: Service, c: Db, ownerId: string, l: Limits, now: number): Promise<number | null> {
+  let refunded: number | null = null;
+  await changePlan(d, c, ownerId, (a) => {
+    const r = replacedByLicense(a, l, now);
+    refunded = r.refunded;
+    return r.refunded === null ? r.a : withNotice(r.a, 'license-replaced-pro', now, { microUsd: r.refunded });
+  });
+  return refunded;
+}
+
 /**
  * Someone is using Alcove (a sign-in, or the app loading or coming back after a while): a member of a team without a live
- * license takes one. One that's unconsumed, the oldest bought, live for the periods it was bought for (a year's, for a
- * license for a year); or, with auto-purchase on, the price no higher than a license last cost the team and the admin's
- * balance enough, one for a period bought then; otherwise none, and they stay on their own plan, told to ask their admin,
- * who's told none are left. Taking one replaces any Pro the member had, and tells the admin when fewer than
- * `team.low_licenses` are left. Nothing happens for anyone on no team, or with a live license.
+ * license gets one. First, one they left the team with while it ran, if they're back before it would have ended: theirs
+ * again, as it was. Otherwise one that's unconsumed, the oldest bought, live for the periods it was bought for (a year's,
+ * for a license for a year); or, with auto-purchase on, the price no higher than a license last cost the team, fewer than
+ * `team.auto_purchase_per_day` bought for it today (UTC), and the admin's balance enough, one for a period bought then.
+ * Otherwise none: on a team that's on Team (or one whose admin has auto-purchase on) they stay on their own plan, told to
+ * ask their admin, who's told none are left; on a free team nobody needs one, so nothing is told or wanted. Taking one
+ * replaces any Pro the member had, giving back what's left of it, and tells the admin when fewer than `team.low_licenses`
+ * are left for anyone who joins (those on it without one have theirs spoken for already), unless auto-purchase is on.
+ * Nothing happens for anyone on no team, or with a live license.
  */
 export async function visit(d: Service, ownerId: string): Promise<void> {
   const seen = await membership(d.pool, ownerId);
@@ -209,26 +242,46 @@ export async function visit(d: Service, ownerId: string): Promise<void> {
     const l = await limitsNow(d, c);
     let b = openBilling(d, t);
     const ctx = { teamId: t.team_id, memberId: m.member_id };
+    // Back on the team before the license they left with would have ended: it's theirs again, from when it began.
+    const who = keptFor(d, t.team_id, ownerId);
+    const kept = b.kept.find((k) => k.who === who && Date.parse(k.until) > now);
+    if (kept) {
+      await exec(c, 'UPDATE team_members SET licensed_from = $2, licensed_until = $3, wanted_at = NULL WHERE member_id = $1', [m.member_id, new Date(kept.from), new Date(kept.until)]);
+      const refunded = await replacesPro(d, c, ownerId, l, now);
+      await settle(d, c, t, { ...b, kept: b.kept.filter((k) => k.who !== who) }, l, now);
+      tlog.info('team license given back', { ...ctx, proReplaced: refunded !== null, microUsdRefunded: refunded ?? 0 });
+      return;
+    }
     let bought = false;
-    // Why none was bought, when none was left: auto-purchase is off, a license costs more than it last did, or the
-    // admin's balance is short of it.
-    let why: 'off' | 'price' | 'short' = 'off';
+    // Why none was bought, when none was left: auto-purchase is off, a license costs more than it last did, it has bought
+    // its most for the team today, or the admin's balance is short of it.
+    let why: 'off' | 'price' | 'daily' | 'short' = 'off';
     const [first, ...rest] = b.licenses;
     if (first) b = { ...b, licenses: rest };
     else if (b.autoPurchase) {
       const price = l.get('plan.team.price_micro_usd');
+      const day = new Date(now).toISOString().slice(0, 10);
+      const today = b.autoBought?.day === day ? b.autoBought.count : 0;
       // A higher price is never taken without the admin seeing it (D3): they're told none are left, and see it as they buy.
       if (b.lastMicroUsd === null || price > b.lastMicroUsd) why = 'price';
+      // Whatever the balance, it buys no more than this for one team in a day: a link that went too far can't empty it.
+      else if (today >= l.get('team.auto_purchase_per_day')) why = 'daily';
       else {
         const admin = await accountOf(d, c, t.admin_owner_id, true);
         if (admin.balanceMicroUsd >= price) {
           await save(d, c, t.admin_owner_id, withEntry(admin, -price, 'Team license, bought for a member'));
-          b = { ...b, lastMicroUsd: price };
+          b = { ...b, lastMicroUsd: price, autoBought: { day, count: today + 1 } };
           bought = true;
         } else why = 'short';
       }
     }
     if (!first && !bought) {
+      // A free team isn't on Team, so nobody on it needs a license: nobody is told about one (docs: Plans and usage › Team),
+      // unless its admin has auto-purchase on, and so means everyone on it to have one.
+      if (!b.autoPurchase && !(await anyLive(c, t.team_id, now))) {
+        tlog.debug('team visit on a free team: no license to take', { ...ctx, buying: b.autoPurchase, why });
+        return;
+      }
       await exec(c, 'UPDATE team_members SET wanted_at = $2 WHERE member_id = $1', [m.member_id, new Date(now)]);
       // The admin manages the team whatever: they're told none are left, not to ask themselves.
       if (m.role !== 'admin') await changePlan(d, c, ownerId, (a) => (told(a, 'license-needed') ? a : withNotice(a, 'license-needed', now)));
@@ -244,148 +297,106 @@ export async function visit(d: Service, ownerId: string): Promise<void> {
     const periods = first?.periods ?? 1;
     const until = now + periods * l.get('plan.period_seconds') * 1000;
     await exec(c, 'UPDATE team_members SET licensed_from = $2, licensed_until = $3, wanted_at = NULL WHERE member_id = $1', [m.member_id, new Date(now), new Date(until)]);
-    let refunded: number | null = null;
-    await changePlan(d, c, ownerId, (a) => {
-      const r = replacedByLicense(a, l, now);
-      refunded = r.refunded;
-      return r.refunded === null ? r.a : withNotice(r.a, 'license-replaced-pro', now, { count: r.refunded });
-    });
+    const refunded = await replacesPro(d, c, ownerId, l, now);
     const left = b.licenses.length;
-    if (left < l.get('team.low_licenses') && !b.low) {
-      await changePlan(d, c, t.admin_owner_id, (a) => withNotice(a, 'licenses-low', now, { count: left }));
+    // What's left for whoever joins next: those on it without a license will take theirs, so the alert is about the rest.
+    const spare = left - (await waitingFor(c, t.team_id, now));
+    if (!b.autoPurchase && spare < l.get('team.low_licenses') && !b.low) {
+      await changePlan(d, c, t.admin_owner_id, (a) => withNotice(a, 'licenses-low', now, { count: Math.max(0, spare) }));
       b = { ...b, low: true };
     }
     await settle(d, c, t, b, l, now);
-    tlog.info('team license taken', { ...ctx, bought, periods, left, proReplaced: refunded !== null, monthsRefunded: refunded ?? 0 });
+    tlog.info('team license taken', { ...ctx, bought, periods, left, spare, proReplaced: refunded !== null, microUsdRefunded: refunded ?? 0 });
   });
 }
 
-/* ---------- making, joining and leaving ---------- */
-
-/** Someone on a team as its key seals them: their name and address, as their account has them. */
-const sealedWho = (team: TeamKey, teamId: string, memberId: string, who: { name: string; email: string }) =>
-  sealJson(team.key, memberHeader(team, teamId, memberId), toJson({ name: who.name, email: who.email }));
-
-/** Someone on a team, sealed under its key: their name and address, and nothing in the clear but IDs and their role. */
-async function addMember(c: Db, team: TeamKey, teamId: string, accountId: string, who: { name: string; email: string }, role: 'admin' | 'member'): Promise<string> {
-  const memberId = id128();
-  await exec(c, 'INSERT INTO team_members (member_id, team_id, account_owner_id, role, person_ciphertext) VALUES ($1,$2,$3,$4,$5)', [
-    memberId, teamId, accountId, role, sealedWho(team, teamId, memberId, who)
-  ]);
-  return memberId;
-}
+/* ---------- making, renaming and leaving ---------- */
 
 /**
  * Someone signed in with a name or address their provider changed: what their team shows of them follows it, in the sign-in's
- * transaction, so nobody on the team, nor anyone shown its admin on an invite, sees an address they've left. Nothing for
+ * transaction, so nobody on the team, nor anyone shown its admin on a link, sees an address they've left. Nothing for
  * someone on no team, or whose team has them as they are.
  */
 export async function memberChanged(d: Service, c: Db, ownerId: string, who: { name: string; email: string }): Promise<void> {
   const m = await membership(c, ownerId);
   const t = m && await teamRow(c, m.team_id);
   if (!m || !t) return;
-  const team = await teamKeyOf(d, t);
-  try {
+  const changed = await withTeam(d, t, async (team) => {
     const was = whoIn(team, m);
-    if (was.name === who.name && was.email === who.email) return;
+    if (was.name === who.name && was.email === who.email) return false;
     await exec(c, 'UPDATE team_members SET person_ciphertext = $2 WHERE member_id = $1', [m.member_id, sealedWho(team, m.team_id, m.member_id, who)]);
-  } finally { close(team); }
-  tlog.info('team member’s name or address changed', { teamId: m.team_id, memberId: m.member_id });
+    return true;
+  }, c);
+  if (changed) tlog.info('team member’s name or address changed', { teamId: m.team_id, memberId: m.member_id });
 }
 
-/** Makes a team with its maker as the admin. Refused while they're on one. */
+/**
+ * Makes a team, free, with its maker as the admin, in the caller's transaction, which holds the maker's account: refused while
+ * they're on one. Says its ID. What `POST /v1/team/new` does, and inviting someone or being joined from your link with no team.
+ */
+export async function createIn(d: Deps, c: Db, admin: { ownerId: string; who: Pick<Person, 'name' | 'email'> }, name: string): Promise<string> {
+  if (await membership(c, admin.ownerId)) throw conflict('You’re on a team already. Leave it before making one.', { ownerId: admin.ownerId });
+  const { teamId } = await makeTeam(d, c, { ownerId: admin.ownerId, who: { name: admin.who.name, email: admin.who.email } }, name, (t) => freshBilling(d, t));
+  tlog.info('team created', { ownerId: admin.ownerId, teamId });
+  return teamId;
+}
+
+/** Makes a team, free, with its maker as the admin. Refused while they're on one. */
 export async function create(o: Owner, me: Pick<Person, 'name' | 'email'>, name: string): Promise<MyTeam> {
-  const teamId = id128();
   await tx(o.pool, async (c) => {
     // One at a time for an account, so two at once can't both make it a team.
     await lockOwner(o, c);
-    if (await membership(c, o.ownerId)) throw conflict('You’re on a team already. Leave it before making one.', { ownerId: o.ownerId });
-    const { ownerId, root } = await createOwner(o, c);
-    const team = teamKeyFrom(ownerId, root);
-    root.fill(0);
-    try {
-      await exec(c, 'INSERT INTO teams (team_id, owner_id, admin_owner_id, name_ciphertext, billing_ciphertext) VALUES ($1,$2,$3,$4,$5)', [
-        teamId, ownerId, o.ownerId, sealJson(team.key, nameHeader(team, teamId), toJson({ name })), sealBilling(o, { owner_id: ownerId, team_id: teamId }, fresh())
-      ]);
-      await addMember(c, team, teamId, o.ownerId, me, 'admin');
-    } finally { close(team); }
+    await createIn(o, c, { ownerId: o.ownerId, who: me }, name);
   });
-  tlog.info('team created', { ownerId: o.ownerId, teamId });
   return requireTeam(o, o.ownerId);
 }
 
-/** Admin only: a one-time link to join, for `team.invite_seconds`. Only a hash of its secret is kept. */
-export async function invite(o: Owner): Promise<TeamInvite> {
-  const m = await mustBeOn(o.pool, o.ownerId);
-  if (m.role !== 'admin') throw new ForbiddenError('Only the team’s admin can do that.', { context: { ownerId: o.ownerId, teamId: m.team_id } });
-  const secret = b64u(random(32));
-  const expiresAt = new Date(Date.now() + (await limitsNow(o)).get('team.invite_seconds') * 1000);
-  await exec(o.pool, 'INSERT INTO team_invites (secret_sha256, team_id, expires_at) VALUES ($1,$2,$3)', [sha(utf8(secret)), m.team_id, expiresAt]);
-  tlog.info('team invite made', { ownerId: o.ownerId, teamId: m.team_id });
-  return { link: `${o.cfg.WEB_ORIGIN}/team/join#${secret}`, expiresAt: expiresAt.toISOString() };
-}
-
-const gone = (context: Record<string, string>) => new NotFoundError('That link to join a team has been used or has expired. Ask the team’s admin for a new one.', { context });
-const InviteRow = z.object({ team_id: z.string(), expires_at: timestamp });
-
-/** Whose team an invite's link joins. A used, expired or made-up link is the same `not-found`. */
-export async function peek(d: Service, secret: string): Promise<TeamInvitePeek> {
-  const i = await maybeOne(d.pool, InviteRow, 'SELECT team_id, expires_at FROM team_invites WHERE secret_sha256 = $1', [sha(utf8(secret))]);
-  if (!i || i.expires_at.getTime() <= Date.now()) throw gone({ why: i ? 'expired' : 'unknown' });
-  const t = await teamRow(d.pool, i.team_id);
-  const admin = t && await maybeOne(d.pool, MemberRow, `SELECT ${MEMBER} FROM team_members WHERE team_id = $1 AND role = 'admin'`, [t.team_id]);
-  if (!t || !admin) throw gone({ why: 'team-gone' });
-  const team = await teamKeyOf(d, t);
-  try {
-    const who = whoIn(team, admin);
-    return { name: nameIn(team, t), admin: personOf(who.email, who.name), expiresAt: i.expires_at.toISOString() };
-  } finally { close(team); }
-}
-
-/** Joins the team an invite is for, using it up, and takes a license if there's one (joining is a visit). */
-export async function join(o: Owner, me: Pick<Person, 'name' | 'email'>, secret: string): Promise<MyTeam> {
-  const teamId = await tx(o.pool, async (c) => {
-    await lockOwner(o, c);
-    // Someone on a team already leaves the link as it was, for whoever it was meant for.
-    if (await membership(c, o.ownerId)) throw conflict('You’re on a team already. Leave it before joining another.', { ownerId: o.ownerId });
-    const i = await maybeOne(c, InviteRow, 'SELECT team_id, expires_at FROM team_invites WHERE secret_sha256 = $1 FOR UPDATE', [sha(utf8(secret))]);
-    if (!i || i.expires_at.getTime() <= Date.now()) throw gone({ ownerId: o.ownerId, why: i ? 'expired' : 'unknown' });
-    await exec(c, 'DELETE FROM team_invites WHERE secret_sha256 = $1', [sha(utf8(secret))]);
-    const t = await teamRow(c, i.team_id);
-    if (!t) throw gone({ ownerId: o.ownerId, why: 'team-gone' });
-    const team = await teamKeyOf(o, t);
-    try { await addMember(c, team, t.team_id, o.ownerId, me, 'member'); } finally { close(team); }
-    return t.team_id;
+/** Admin only: names the team again. */
+export async function rename(o: Owner, name: string): Promise<MyTeam> {
+  await tx(o.pool, async (c) => {
+    const { t } = await asAdmin(c, o.ownerId);
+    await withTeam(o, t, (team) => exec(c, 'UPDATE teams SET name_ciphertext = $2, version = version + 1 WHERE team_id = $1', [t.team_id, sealedName(team, t.team_id, name)]), c);
+    tlog.info('team renamed', { ownerId: o.ownerId, teamId: t.team_id });
   });
-  tlog.info('team joined', { ownerId: o.ownerId, teamId });
-  await visit(o, o.ownerId);
   return requireTeam(o, o.ownerId);
 }
 
 /**
  * Takes someone off their team, in the caller's transaction with the team's row locked. A live license isn't refunded:
- * they're on Free from now, with `plan.grace_seconds` held to a team's storage for a person. Notes they made visible to
- * the team stay so; the team's workspaces they pay for stop being the team's (`leftWith`). The pool is reckoned without them.
+ * they're on Free from now, with `plan.grace_seconds` held to a team's storage for a person, and the team keeps it for them
+ * until it would have ended (`Kept`), so coming back gives them that one again rather than another. Notes they made visible
+ * to the team stay so; the team's workspaces they pay for stop being the team's (`leftWith`); the invitations they made go
+ * with them (`team_invitations.invited_by`), their links leading nowhere from then. The pool is reckoned without them.
  */
-async function drop(d: Service, c: Db, t: TeamRow, m: MemberRow, why: 'removed' | 'left'): Promise<void> {
+export async function drop(d: Service, c: Db, t: TeamRow, m: MemberRow, why: 'removed' | 'left'): Promise<void> {
   const now = Date.now();
   const l = await limitsNow(d, c);
+  const invitations = await exec(c, 'DELETE FROM team_invitations WHERE invited_by = $1', [m.member_id]);
   await exec(c, 'DELETE FROM team_members WHERE member_id = $1', [m.member_id]);
   const licensed = isLive(m, now);
   if (licensed) await changePlan(d, c, m.account_owner_id, (a) => leftTeam(a, l, now));
-  await settle(d, c, t, openBilling(d, t), l, now);
+  const b = openBilling(d, t);
+  const who = keptFor(d, t.team_id, m.account_owner_id);
+  const kept = licensed && m.licensed_from && m.licensed_until ? [{ who, from: m.licensed_from.toISOString(), until: m.licensed_until.toISOString() }] : [];
+  await settle(d, c, t, { ...b, kept: [...b.kept.filter((k) => k.who !== who), ...kept] }, l, now);
   const workspaces = await leftWith(c, t.team_id, m.account_owner_id);
-  tlog.info(why === 'removed' ? 'team member removed' : 'team member left', { teamId: t.team_id, memberId: m.member_id, licensed, workspaces });
+  tlog.info(why === 'removed' ? 'team member removed' : 'team member left', { teamId: t.team_id, memberId: m.member_id, licensed, workspaces, invitations });
 }
 
-/** Admin only: takes someone off the team. The admin can't take themselves off. */
+/**
+ * Admin only: takes someone off the team. The admin can't take themselves off. The team's link (the admin's) is made again in
+ * the same transaction, so the one they copied leads nowhere: they can't put themselves back on with it.
+ */
 export async function remove(o: Owner, memberId: string): Promise<MyTeam> {
   await tx(o.pool, async (c) => {
+    // The admin's account before the team's row, as joining by their link takes them: the link is made again below.
+    await lockOwner(o, c);
     const { t } = await asAdmin(c, o.ownerId);
     const m = await maybeOne(c, MemberRow, `SELECT ${MEMBER} FROM team_members WHERE member_id = $1 AND team_id = $2 FOR UPDATE`, [memberId, t.team_id]);
     if (!m) throw new NotFoundError('That person isn’t on your team.', { context: { ownerId: o.ownerId, teamId: t.team_id } });
     if (m.role === 'admin') throw conflict('You can’t take yourself off your own team. Delete the team once nobody else is on it.', { ownerId: o.ownerId, teamId: t.team_id });
     await drop(o, c, t, m, 'removed');
+    await remadeIn(o, c, 'removed');
   });
   return requireTeam(o, o.ownerId);
 }
@@ -427,7 +438,7 @@ async function teamWorkspacesMoved(c: Db, teamId: string): Promise<void> {
 
 /**
  * Deletes a team, in the caller's transaction with its row locked: its workspaces stop being the team's (whoever was in one
- * only through the team isn't any more), and its row, members, invites and notes made visible to it go with its owner row.
+ * only through the team isn't any more), and its row, members, invitations and notes made visible to it go with its owner row.
  */
 async function deleteTeamIn(c: Db, t: TeamRow): Promise<void> {
   await teamWorkspacesMoved(c, t.team_id);
@@ -435,23 +446,98 @@ async function deleteTeamIn(c: Db, t: TeamRow): Promise<void> {
   await exec(c, 'DELETE FROM owners WHERE owner_id = $1', [t.owner_id]);
 }
 
-/** Admin only, once nobody else is on it: deletes the team, refunding its unconsumed licenses to the admin's balance. */
+/** How many on a team aren't `m`. */
+export async function othersOn(c: Db, t: Pick<TeamRow, 'team_id'>, m: Pick<MemberRow, 'member_id'>): Promise<number> {
+  return (await maybeOne(c, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM team_members WHERE team_id = $1 AND member_id <> $2', [t.team_id, m.member_id]))?.n ?? 0;
+}
+
+/**
+ * Deletes a team its admin `m` is alone on, in the caller's transaction with its row locked, refunding its unconsumed licenses
+ * to the admin's balance at what was paid for them; a live license of theirs isn't, and they're on Free from now, as anyone
+ * leaving a team with one is. Says what was refunded.
+ */
+export async function deleteAlone(d: Service, c: Db, t: TeamRow, m: MemberRow): Promise<{ licenses: number; microUsd: number }> {
+  const b = openBilling(d, t);
+  const now = Date.now();
+  const l = await limitsNow(d, c);
+  const microUsd = costOf(b.licenses);
+  await changePlan(d, c, m.account_owner_id, (a) => {
+    // Licenses Alcove gave go with the team and give back nothing: with only those, there's no line for it.
+    const refunded = microUsd > 0 ? withEntry(a, microUsd, `Team licenses refunded, ${b.licenses.length}`) : a;
+    return isLive(m, now) ? leftTeam(refunded, l, now) : refunded;
+  });
+  await deleteTeamIn(c, t);
+  return { licenses: b.licenses.length, microUsd };
+}
+
+/**
+ * Admin only, once nobody else is on it: deletes the team, refunding its unconsumed licenses to the admin's balance. Its link
+ * (the admin's) is made again in the same transaction, so the deleted team's leads nowhere, not even to a team made anew.
+ */
 export async function deleteTeam(o: Owner): Promise<void> {
   await tx(o.pool, async (c) => {
+    await lockOwner(o, c);
     const { m, t } = await asAdmin(c, o.ownerId);
-    const others = await maybeOne(c, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM team_members WHERE team_id = $1 AND member_id <> $2', [t.team_id, m.member_id]);
-    if ((others?.n ?? 0) > 0) throw conflict('Take everyone else off the team first: a team can be deleted once nobody else is on it.', { ownerId: o.ownerId, teamId: t.team_id, members: others?.n ?? 0 });
-    const b = openBilling(o, t);
+    const others = await othersOn(c, t, m);
+    if (others > 0) throw conflict('Take everyone else off the team first: a team can be deleted once nobody else is on it.', { ownerId: o.ownerId, teamId: t.team_id, members: others });
+    const r = await deleteAlone(o, c, t, m);
+    await remadeIn(o, c, 'deleted');
+    tlog.info('team deleted', { ownerId: o.ownerId, teamId: t.team_id, licensesRefunded: r.licenses, microUsd: r.microUsd });
+  });
+}
+
+/* ---------- asking the admin to upgrade ---------- */
+
+/**
+ * Someone on a free team asks its admin to upgrade it: the admin is told, as a plan notice (`upgradeAsksFor`), once for each
+ * of them every `team.upgrade_ask_seconds`; asking again sooner changes nothing. The admin can't ask, nor anyone on a team
+ * that's on Team already. The ask is kept with what the team bought, by member ID alone.
+ */
+export async function askToUpgrade(o: Owner): Promise<void> {
+  const r = await tx(o.pool, async (c) => {
+    const was = await mustBeOn(c, o.ownerId);
+    if (was.role === 'admin') throw conflict('You’re the team’s admin: upgrade it from its page.', { ownerId: o.ownerId, teamId: was.team_id });
+    const t = await teamRow(c, was.team_id, true);
+    const m = await membership(c, o.ownerId);
+    if (!t || !m || m.team_id !== t.team_id) throw new NotFoundError('You’re not on a team.', { context: { ownerId: o.ownerId } });
     const now = Date.now();
-    const l = await limitsNow(o, c);
-    const microUsd = costOf(b.licenses);
-    await changePlan(o, c, o.ownerId, (a) => {
-      // Licenses Alcove gave go with the team and give back nothing: with only those, there's no line for it.
-      const refunded = microUsd > 0 ? withEntry(a, microUsd, `Team licenses refunded, ${b.licenses.length}`) : a;
-      return isLive(m, now) ? leftTeam(refunded, l, now) : refunded;
-    });
-    await deleteTeamIn(c, t);
-    tlog.info('team deleted', { ownerId: o.ownerId, teamId: t.team_id, licensesRefunded: b.licenses.length, microUsd });
+    if ((await tierOf(o, c, t, now)) === 'team') throw conflict('Your team is on Team already.', { ownerId: o.ownerId, teamId: t.team_id });
+    const b = openBilling(o, t);
+    const asked = b.asks.find((a) => a.memberId === m.member_id);
+    const again = (await limitsNow(o, c)).get('team.upgrade_ask_seconds') * 1000;
+    if (asked && Date.parse(asked.at) + again > now) return { teamId: t.team_id, memberId: m.member_id, told: false };
+    // Only those still on the team are kept, and each one's latest.
+    const here = new Set((await membersOf(c, t.team_id)).map((x) => x.member_id));
+    const asks = [...b.asks.filter((a) => a.memberId !== m.member_id && here.has(a.memberId)), { id: id128(), memberId: m.member_id, at: new Date(now).toISOString(), dismissed: false }];
+    await saveBilling(o, c, t, { ...b, asks });
+    return { teamId: t.team_id, memberId: m.member_id, told: true };
+  });
+  tlog.info('team upgrade asked', { ownerId: o.ownerId, ...r });
+}
+
+/**
+ * What a free team's admin is told of the asks to upgrade it, as plan notices (`upgrade-asked`), newest first: each not
+ * dismissed, from someone still on it, while it's free. The name is the app's to say, from the team's members by `memberId`.
+ */
+export async function upgradeAsksFor(d: Accounting, ownerId: string, now = Date.now()): Promise<PlanNotice[]> {
+  const t = await maybeOne(d.pool, TeamRow, `SELECT ${TEAM} FROM teams WHERE admin_owner_id = $1`, [ownerId]);
+  if (!t) return [];
+  const b = openBilling(d, t);
+  if (!b.asks.some((a) => !a.dismissed) || (await tierOf(d, d.pool, t, now)) === 'team') return [];
+  const here = new Set((await membersOf(d.pool, t.team_id)).map((m) => m.member_id));
+  return b.asks.filter((a) => !a.dismissed && here.has(a.memberId)).sort((x, y) => Date.parse(y.at) - Date.parse(x.at))
+    .map((a): PlanNotice => ({ id: a.id, kind: 'upgrade-asked', at: a.at, until: null, count: null, microUsd: null, workspaceId: null, memberId: a.memberId }));
+}
+
+/** Its admin dismissed an `upgrade-asked` notice. Says whether `noticeId` was one: otherwise it's the plan's own to dismiss. */
+export async function dismissUpgradeAsk(d: Service, ownerId: string, noticeId: string): Promise<boolean> {
+  return tx(d.pool, async (c) => {
+    const t = await adminsTeam(c, ownerId);
+    if (!t) return false;
+    const b = openBilling(d, t);
+    if (!b.asks.some((a) => a.id === noticeId)) return false;
+    await saveBilling(d, c, t, { ...b, asks: b.asks.map((a) => (a.id === noticeId ? { ...a, dismissed: true } : a)) });
+    return true;
   });
 }
 
@@ -473,7 +559,11 @@ export async function adminsTeam(c: Db, ownerId: string): Promise<TeamRow | null
  * balance is, and when `t` is null: they're no team's admin. What POST /v1/team/licenses does, what a payment opened to buy
  * licenses does once its money is added (deposits.ts), and, at nothing, what Alcove gives a team (`source`, support's
  * grant). They wait unconsumed, oldest first, for members to take on a visit, are refunded until then at what was paid for
- * them, and let the admin be told again when few or none are left.
+ * them, and let the admin be told again when none are left. `buys.autoPurchase`, when it says (checkout's "Buy one for each
+ * person who joins later"), sets auto-purchase with them, in the same transaction, so it's on exactly when they're bought.
+ * Bought, they're what the team's on (it's on Team from now: `tierOf`), so whoever asked the admin to upgrade it is answered,
+ * and their asks go. Licenses left beyond those spoken for by people on the team without one, fewer than `team.low_licenses`,
+ * are what the admin chose: they aren't told those are low until there have been that many or more again.
  */
 export async function licensesBought(d: Service, c: Db, t: TeamRow | null, ownerId: string, buys: Extract<Purchase, { kind: 'licenses' }>, source: Source = 'balance'): Promise<Purchased> {
   const r = await purchase(d, c, ownerId, buys, { admin: t !== null }, source);
@@ -481,25 +571,33 @@ export async function licensesBought(d: Service, c: Db, t: TeamRow | null, owner
   const b = openBilling(d, t);
   const { count, microUsdPerLicense, periods } = buys;
   const licenses = [...b.licenses, ...Array.from({ length: count }, () => ({ id: id128(), microUsd: microUsdPerLicense, periods }))];
+  const now = Date.now();
   const l = await limitsNow(d, c);
+  const autoPurchase = buys.autoPurchase ?? b.autoPurchase;
   // Auto-purchase buys a license for one period, so it goes by what one cost: bought for a year at its lower price, by a
   // license's price for a period as it was then (as Pro's renewing goes by a month's price after a year at the lower one).
-  // Nothing, for licenses Alcove gives, is no price the team paid: it goes by what it went by before.
-  const lastMicroUsd = source === 'alcove' ? b.lastMicroUsd : periods === 1 ? microUsdPerLicense : l.get('plan.team.price_micro_usd');
-  await saveBilling(d, c, t, { ...b, licenses, none: false, low: b.low && licenses.length < l.get('team.low_licenses'), lastMicroUsd });
+  // Nothing, for licenses Alcove gives, is no price the team paid: it goes by what it went by before, or, turned on with
+  // them, by a license's price now, as turning it on before any was bought does.
+  const lastMicroUsd = source === 'alcove'
+    ? (autoPurchase && b.lastMicroUsd === null ? l.get('plan.team.price_micro_usd') : b.lastMicroUsd)
+    : periods === 1 ? microUsdPerLicense : l.get('plan.team.price_micro_usd');
+  const spare = licenses.length - (await waitingFor(c, t.team_id, now));
+  await saveBilling(d, c, t, { ...b, licenses, autoPurchase, none: false, low: spare < l.get('team.low_licenses'), lastMicroUsd, asks: [] });
   // What Alcove gives says so on support's own line (billing/operator/operator.ts).
-  if (source === 'balance') tlog.info('team licenses bought', { ownerId, teamId: t.team_id, count, periods });
+  if (source === 'balance') tlog.info('team licenses bought', { ownerId, teamId: t.team_id, count, periods, asks: b.asks.length });
+  if (autoPurchase !== b.autoPurchase) tlog.info('team auto-purchase set', { ownerId, teamId: t.team_id, on: autoPurchase, why: 'bought' });
   return r;
 }
 
 /**
  * Admin only: buys `count` licenses from their balance at `microUsdPerLicense` a period, the price they were shown, each for
- * `periods` periods: one at a license's price, or a year's at the yearly price.
+ * `periods` periods: one at a license's price, or a year's at the yearly price. `autoPurchase`, when given, is set with
+ * them (`licensesBought`).
  */
-export async function buyLicenses(o: Owner, count: number, microUsdPerLicense: number, periods: number): Promise<MyTeam> {
+export async function buyLicenses(o: Owner, count: number, microUsdPerLicense: number, periods: number, autoPurchase: boolean | null = null): Promise<MyTeam> {
   await tx(o.pool, async (c) => {
     const { t } = await asAdmin(c, o.ownerId);
-    const r = await licensesBought(o, c, t, o.ownerId, { kind: 'licenses', count, microUsdPerLicense, periods });
+    const r = await licensesBought(o, c, t, o.ownerId, { kind: 'licenses', count, microUsdPerLicense, periods, autoPurchase });
     if (!r.bought) throw refusedError(r.refusal, { ownerId: o.ownerId, teamId: t.team_id, kind: 'licenses', count, periods });
   });
   return requireTeam(o, o.ownerId);
@@ -547,7 +645,10 @@ const licenseOf = (m: MemberRow, now: number): TeamLicense => ({
   wanted: m.wanted_at?.toISOString() ?? null
 });
 
-/** The team an account is on, as it sees it: licenses and money only for its admin. Null on none. */
+/**
+ * The team an account is on, as it sees it: its tier, who's on it, who's been invited (every member sees them), and licenses
+ * and money only for its admin. Null on none.
+ */
 export async function mine(d: Service, ownerId: string): Promise<MyTeam | null> {
   const me = await membership(d.pool, ownerId);
   if (!me) return null;
@@ -556,7 +657,7 @@ export async function mine(d: Service, ownerId: string): Promise<MyTeam | null> 
   const now = Date.now();
   const l = await limitsNow(d);
   const b = openBilling(d, t);
-  const everyone = await rows(d.pool, MemberRow, `SELECT ${MEMBER} FROM team_members WHERE team_id = $1 ORDER BY created_at, member_id`, [t.team_id]);
+  const everyone = await membersOf(d.pool, t.team_id);
   const team = await teamKeyOf(d, t);
   try {
     const members = everyone.map((m): TeamMember => {
@@ -565,26 +666,27 @@ export async function mine(d: Service, ownerId: string): Promise<MyTeam | null> 
     });
     const pool = poolView(b, await licensedNow(d.pool, t.team_id, now), l, now);
     return {
-      id: t.team_id, name: nameIn(team, t), role: me.role, licensed: isLive(me, now), members,
+      // On Team while anyone holds a live license, or licenses bought wait to be taken (`tierOf`).
+      id: t.team_id, name: nameIn(team, t), role: me.role, tier: pool.licenses > 0 || b.licenses.length > 0 ? 'team' : 'free', licensed: isLive(me, now), members,
+      invitations: await invitationsOf(d, d.pool, team, t, me, everyone, l, now),
       storage: { usedBytes: pool.usedBytes, limitBytes: pool.heldBytes },
       licenses: me.role === 'admin' ? { unconsumed: b.licenses.length, refundableMicroUsd: costOf(b.licenses), autoPurchase: b.autoPurchase } : null
     };
   } finally { close(team); }
 }
-async function requireTeam(d: Service, ownerId: string): Promise<MyTeam> {
+export async function requireTeam(d: Service, ownerId: string): Promise<MyTeam> {
   const t = await mine(d, ownerId);
   if (!t) throw new NotFoundError('You’re not on a team.', { context: { ownerId } });
   return t;
 }
 
-/** The team an account is on, as its plan says it: which, its name, their role, and whether they're licensed. */
-export async function teamOf(d: Service, ownerId: string, now = Date.now()): Promise<{ id: string; name: string; role: 'admin' | 'member'; licensed: boolean } | null> {
+/** The team an account is on, as its plan says it: which, its name, their role, its tier, and whether they're licensed. */
+export async function teamOf(d: Service, ownerId: string, now = Date.now()): Promise<{ id: string; name: string; role: 'admin' | 'member'; tier: 'free' | 'team'; licensed: boolean } | null> {
   const me = await membership(d.pool, ownerId);
   const t = me && await teamRow(d.pool, me.team_id);
   if (!me || !t) return null;
-  const team = await teamKeyOf(d, t);
-  try { return { id: t.team_id, name: nameIn(team, t), role: me.role, licensed: isLive(me, now) }; }
-  finally { close(team); }
+  const tier = await tierOf(d, d.pool, t, now);
+  return withTeam(d, t, (team) => ({ id: t.team_id, name: nameIn(team, t), role: me.role, tier, licensed: isLive(me, now) }));
 }
 
 /**
@@ -608,8 +710,7 @@ export async function teamReaders(d: Service, db: Db, teamId: string, listed: Ui
   const n = await maybeOne(db, z.object({ n: z.number() }), `SELECT count(*)::int AS n FROM team_members m
     WHERE m.team_id = $1 AND m.licensed_from <= $2 AND m.licensed_until > $2
       AND NOT EXISTS (SELECT 1 FROM identities i WHERE i.owner_id = m.account_owner_id AND i.email_index = ANY($3::bytea[]))`, [teamId, new Date(now), listed]);
-  const team = await teamKeyOf(d, t);
-  try { return { name: nameIn(team, t), people: n?.n ?? 0 }; } finally { close(team); }
+  return withTeam(d, t, (team) => ({ name: nameIn(team, t), people: n?.n ?? 0 }));
 }
 
 /**
@@ -638,10 +739,10 @@ export async function refuseDeletingAdmin(db: Db, ownerId: string): Promise<void
 
 /**
  * An account being deleted, in its deletion's transaction: the admin's empty team goes with it (refused while anyone else
- * is on it); a member's place goes, the team's workspaces they paid for stop being the team's (`leftWith`), and their team's
- * pool is reckoned without them by upkeep. The team's row is locked before the member's, as a visit and every other change
- * to a team lock them, so a visit at the same moment waits for this or this for it, and the two never deadlock. Nobody joins a
- * team meanwhile: the deletion holds the account's own row, which joining needs. Says what went.
+ * is on it); a member's place goes, with the invitations they made, the team's workspaces they paid for stop being the team's
+ * (`leftWith`), and their team's pool is reckoned without them by upkeep. The team's row is locked before the member's, as a
+ * visit and every other change to a team lock them, so a visit at the same moment waits for this or this for it, and the two
+ * never deadlock. Nobody joins a team meanwhile: the deletion holds the account's own row, which joining needs. Says what went.
  */
 export async function forgetMembership(c: Db, ownerId: string): Promise<{ left: boolean; teamDeleted: boolean }> {
   const seen = await membership(c, ownerId);
@@ -655,6 +756,7 @@ export async function forgetMembership(c: Db, ownerId: string): Promise<{ left: 
     if (t) await deleteTeamIn(c, t);
     return { left: true, teamDeleted: t !== undefined };
   }
+  await exec(c, 'DELETE FROM team_invitations WHERE invited_by = $1', [m.member_id]);
   await exec(c, 'DELETE FROM team_members WHERE member_id = $1', [m.member_id]);
   await exec(c, 'UPDATE teams SET due_at = $2 WHERE team_id = $1', [m.team_id, new Date()]);
   await leftWith(c, m.team_id, ownerId);
@@ -664,11 +766,10 @@ export async function forgetMembership(c: Db, ownerId: string): Promise<{ left: 
 /* ---------- upkeep ---------- */
 
 /**
- * Upkeep for teams: deletes invites that have expired, and looks at every team that's due (a license ended, so its pool
- * shrank; a grace ending): reckons its pool and when it's next due. Says how many invites went and teams it looked at.
+ * Upkeep for teams: looks at every team that's due (a license ended, so its pool shrank; a grace ending): reckons its pool
+ * and when it's next due. Says how many it looked at. Invitations' upkeep is their own (./invitations.ts).
  */
-export async function upkeep(d: Service): Promise<{ invites: number; teams: number }> {
-  const invites = await exec(d.pool, 'DELETE FROM team_invites WHERE expires_at <= $1', [new Date()]);
+export async function upkeep(d: Service): Promise<{ teams: number }> {
   let teams = 0;
   for (;;) {
     const one = await tx(d.pool, async (c) => {
@@ -681,5 +782,5 @@ export async function upkeep(d: Service): Promise<{ invites: number; teams: numb
     if (!one) break;
     if (++teams >= BATCH) break;
   }
-  return { invites, teams };
+  return { teams };
 }

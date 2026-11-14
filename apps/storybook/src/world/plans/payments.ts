@@ -84,13 +84,18 @@ export function raisePrices(w: World): void {
 /**
  * `buys` bought from the balance, as the server buys it once its checks pass: the plan pays for it (and has Pro's months or
  * more notes), and licenses go to the team Art runs, not taken by anyone yet, each with what it cost and how many periods it
- * runs once taken. `entry` is the balance's line for it.
+ * runs once taken. Licenses set auto-purchase as checkout's "Buy a license for each person who joins" said (`autoPurchase`;
+ * null leaves it as it was), and answer whoever asked Art to upgrade: the team's ask and Art's `upgrade-asked` notices go.
+ * `entry` is the balance's line for it. From the balance (`teams.buyLicenses`) or by a payment once it's added, the same.
  */
 export function boughtFromBalance(w: World, buys: Purchase, entry: string, now = Date.now()): void {
   w.plan = buyFromBalance(w.plan, buys, entry, now);
   // Months of Pro bought at the price in force: what renewing goes by from now on.
   if (buys.kind === 'pro') w.payments.proMonthly = w.payments.offers.pro.microUsdPerMonth;
-  if (buys.kind === 'licenses' && w.myTeam) addLicenses(w.myTeam, buys.count, buys.microUsdPerLicense * buys.periods, buys.periods);
+  if (buys.kind !== 'licenses' || !w.myTeam) return;
+  addLicenses(w.myTeam, buys.count, buys.microUsdPerLicense * buys.periods, buys.periods);
+  if (buys.autoPurchase !== null) w.myTeam.autoPurchase = buys.autoPurchase;
+  w.plan = { ...w.plan, notices: w.plan.notices.filter((n) => n.kind !== 'upgrade-asked') };
 }
 
 /** No team license for a year on offer, as the release that brings them ships at first: a license is a period's alone. */
@@ -146,10 +151,17 @@ export function purchaseTopUp(id: string, buys: Purchase, asked: number, expires
 
 /** A year of Pro at the yearly price: what most of the checkout's stories are buying. */
 export const PRO_YEAR: Purchase = { kind: 'pro', months: 12, microUsdPerMonth: 16_000_000 };
-/** Six licenses at $40, for the six people at Vandelay on Alcove: what starting Art's team buys, a period at a time. */
-export const TEAM_SIX: Purchase = { kind: 'licenses', count: 6, microUsdPerLicense: PLAN_OFFERS.team.microUsdPerLicense, periods: 1 };
+/** Six licenses at $40, for the six people on Vandelay's team: $240, a period at a time. Auto-purchase stays as it is. */
+export const TEAM_SIX: Purchase = { kind: 'licenses', count: 6, microUsdPerLicense: PLAN_OFFERS.team.microUsdPerLicense, periods: 1, autoPurchase: null };
 /** The same six for a year, at $32 a period: $2,304. */
-export const TEAM_SIX_YEAR: Purchase = { kind: 'licenses', count: 6, ...LICENSE_YEAR };
+export const TEAM_SIX_YEAR: Purchase = { kind: 'licenses', count: 6, ...LICENSE_YEAR, autoPurchase: null };
+/**
+ * Three licenses at $40, one for each person on Art's free team (Art, Priya and Kofi): what upgrading it buys, $120, with "Buy
+ * one for each person who joins later" ticked, so auto-purchase is on once they're bought.
+ */
+export const TEAM_THREE: Purchase = { kind: 'licenses', count: 3, microUsdPerLicense: PLAN_OFFERS.team.microUsdPerLicense, periods: 1, autoPurchase: true };
+/** The same three for a year, at $32 a period: $1,152. */
+export const TEAM_THREE_YEAR: Purchase = { kind: 'licenses', count: 3, ...LICENSE_YEAR, autoPurchase: true };
 /** Why a purchase whose price went up before its payment arrived wasn't bought, as the server says it. */
 const priceChanged = (buys: Purchase): string => (buys.kind === 'pro' ? 'The price of Pro changed before your payment arrived. It’s in your balance.'
   : buys.kind === 'hours' ? 'The price of more notes changed before your payment arrived. It’s in your balance.'

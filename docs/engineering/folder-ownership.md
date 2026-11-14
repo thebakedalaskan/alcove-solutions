@@ -51,8 +51,11 @@ Tests (`*.integration.test.ts`) sit above everything and may import any feature.
 Each feature imports only those before it. When code needs something from a feature after it, it takes it as an
 argument from the caller, or the piece moves down to the feature that owns its data, or the flow is composed above.
 
-1. **profile**: who someone is (the profile record, `me`, preferences, portraits and photos), which every feature shows.
-2. **billing**: plans, the AI allowance (`meter/`), storage, teams and licenses (`teams/`), top-ups (`top-ups/`).
+1. **profile**: who someone is (the profile record, `me`, preferences, portraits and photos, and their company, known from
+   their address alone: `companies.ts`), which every feature shows.
+2. **billing**: plans, the AI allowance (`meter/`), storage, teams (`teams/`: a team and its licenses in `teams.ts`, its
+   rows and sealed records in `team-records.ts`, `invitations.ts`, `joining.ts`, and the team's link in
+   `invite-links.ts`), top-ups (`top-ups/`).
 3. **workspaces**: the tree, access, documents (`documents/`), uploads, the library, boards' presenter notes, mentions,
    and a document's live room (`live/`). It knows nothing of calls: calls hands it what it needs about seats.
 4. **meetings**: the schedule, invitations, the calendar, repeats, the people directory and the demo company's week.
@@ -75,9 +78,9 @@ argument from the caller, or the piece moves down to the feature that owns its d
 | Location | Owns |
 | --- | --- |
 | `apps/api/src` | Composition and build entries only: `app.ts` (middleware and feature registrars, in their phases), `start.ts`, `server.ts`, `maintenance.ts`, `migrate.ts`, the CLIs (the operator's, `operator-cli.ts`, among them) and the checks job (`operator-job.ts`, which the image runs instead of the server when an API won't start). esbuild's outputs and the migrations URL depend on these paths. |
-| `apps/api/src/platform` | Configuration, the request context (`Deps`, `Owner`), the database, objects, logging (with the ring of recent failures it feeds operators, `recent.ts`), each loop's runs and what this instance last learned (`runs.ts`), errors, limits and their commands, feature flags and theirs, time zones. |
+| `apps/api/src/platform` | Configuration, the request context (`Deps`, `Owner`), the database, objects, logging (with the ring of recent failures it feeds operators, `recent.ts`), each loop's runs and what this instance last learned (`runs.ts`), errors, limits and their commands, feature flags and theirs, time zones, and the email Alcove sends, through its sealed outbox (`mail.ts`). |
 | `apps/api/src/keys` | Sealing (`crypto.ts`), owner and server keys, sessions, the vault, signed call passes and media tokens, and operators' keys and the requests they sign (`operator-keys.ts`, which the operator CLI shares). |
-| `apps/api/src/tee`, `inference`, `providers` | Confidential Space and its images; NEAR AI with Oblivious HTTP and model attestation; Google and LiveKit. |
+| `apps/api/src/tee`, `inference`, `providers` | Confidential Space and its images; NEAR AI with Oblivious HTTP and model attestation; Google, LiveKit, and Resend (`resend.ts`), which sends Alcove's email. |
 | `apps/api/src/http`, `live`, `edge` | Request infrastructure, with checking operators' signed requests and registering every operator route (`http/operator.ts`); the realtime hub and document worker pool (a feature hands it its tasks); TLS, certificates and the web app's files. |
 | `apps/api/src/features` | The ten features above, each with its HTTP registration and integration suites. |
 | `apps/api/src/integration`, `testing` | Cross-feature suites; the harness and fakes of outside services (`testing/fakes/`). |
@@ -88,6 +91,7 @@ argument from the caller, or the piece moves down to the feature that owns its d
 | `packages/api-http/src` | The HTTP client, by feature, with `transport/` and `trust/`; `index.ts` composes it. |
 | `packages/ui/src` | The design system, by area, each component beside its CSS (see `packages/ui/AGENTS.md`). |
 | `packages/board` | A board's Y.Doc shape and the logic the app and API share. |
+| `packages/mail` | The emails Alcove sends, each built from plain data into its subject, HTML, text and inline pictures, with no I/O: the API sends them and Storybook shows the same thing (`apps/storybook/stories/emails`). `src/index.ts` is its entry; `src/look.ts` is how every email looks; `scripts/draw-images.mjs` draws its pictures into `assets/` and, base64, into the generated `src/images.ts`. |
 | `apps/storybook` | Stories by area, journeys by user-flows section, and the stand-in API by feature (see `apps/storybook/README.md`). |
 
 ## The web app's features
@@ -115,7 +119,9 @@ move/           moving a call to another device
 notes/          a call's page: follow-ups/, player/, sharing/, personal/, series/, and the parts other pages show
 notifications/  delivery, permission, pausing, preferences, sounds, and their controls
 onboarding/     a new account's arrival, the tour, sailing out to Home
-plans/ record/ settings/ shell/ team/ welcome/
+plans/ record/ settings/ shell/ welcome/
+team/           Team: a team's page and your company's, groups, Invite people, the invite page; invitations/ (the ones
+                to you, who's invited to your team, sending them, and what they say)
 workspace/      a workspace: tree/, document/, find/, uploads/, offline/, sharing/, full-screen/, live/, editor/
 ```
 

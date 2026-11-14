@@ -29,8 +29,8 @@ clog.warn('object delete failed; queued for retry', { objectId, err: e });
 | Level | Use for |
 | --- | --- |
 | `debug` | Every query and object call with timing, request starts, audio pieces, transcript clips and NEAR AI replies (sizes, counts, timings), people searches |
-| `info` | Things that happened: sign-ins, accounts created and deleted, sessions opened and ended, Google connected, calls placed on or changed in a calendar, calls started and ended, notes jobs queued, notes written, questions answered, notes shared or deleted, ordinary refusals (400, 401, 404, 409) |
-| `warn` | Something is off but handled: forbidden requests, keys that can't open data, rate limits and services not connected yet or busy, notes retried after a failed attempt, calendar changes that didn't reach Google (the call is kept), calls a deleted account's Google Calendar didn't cancel and grants Google didn't revoke (the deletion goes ahead), retries, slow queries (>250 ms), slow object calls (>1 s) |
+| `info` | Things that happened: sign-ins, accounts created and deleted, sessions opened and ended, Google connected, calls placed on or changed in a calendar, calls started and ended, notes jobs queued, notes written, questions answered, notes shared or deleted, teams made and joined, invitations made, emails sent, ordinary refusals (400, 401, 404, 409) |
+| `warn` | Something is off but handled: forbidden requests, keys that can't open data, rate limits and services not connected yet or busy, notes retried after a failed attempt, calendar changes that didn't reach Google (the call is kept), calls a deleted account's Google Calendar didn't cancel and grants Google didn't revoke (the deletion goes ahead), an email given up on after all its tries, retries, slow queries (>250 ms), slow object calls (>1 s) |
 | `error` | We failed: 5xx, integrity failures, lost data, a Google sign-in that failed on our side, notes finished without a summary after their last attempt, maintenance failures, uncaught exceptions |
 
 - **Context.** The request middleware sets `requestId`, `method` and `path` with AsyncLocalStorage; the
@@ -159,7 +159,8 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
 - Zod failures become a `ValidationError` that reports field paths and issue codes only (no values),
   logged at info.
 - Rate limits answer `503 unavailable` ("Too many attempts. Wait a minute and try again.") and log the
-  limit's name: `sign-in` (30 a minute) and `telemetry` (60 a minute) per client address, `transcribe`
+  limit's name: `sign-in` (30 a minute), `telemetry` (60 a minute), `invite secret` (60 a minute: seeing what a secret
+  after `/invite#` says and joining a team by one, together) and `mail stop` (60 a minute) per client address, `transcribe`
   (240 a minute, calls and room recordings together; 40 for each voice in a call), `ask` (20 a minute, writing a note's notes again included) and `carry-over` (60 a minute) per account, and
   `guest ask` and `guest catch-up` (6 a minute per guest: the organizer pays for them),
   `request-notes` (10 a minute), `others-point` (20 a minute), `screen-video` (60 a minute), and `share` and `share-ended`
@@ -199,6 +200,54 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
 - A purchase refused as it's asked for (`409 conflict`: a price that changed, a balance short of it; `400 invalid`: more
   than one purchase buys) is an ordinary refusal at info, with the owner, what it buys and `why`. Its words say what it
   costs, never the balance, since a refusal's message is its log line's.
+- Teams log under `component: 'teams'`, their invitations under `team-invitations` and invite links under `invite-links`,
+  by IDs and counts, never an address, a name or a team's name ([Plans and usage › Team](plans-and-usage.md#team)):
+  `team created`, `team renamed`, `team deleted` (`why: 'joining-another'` when its admin, alone on it, joined another),
+  `team member left` and `team member removed` (with how many `invitations` went with them), `team invitations made` (the
+  team, the inviter's member ID, how many were invited (`count`), made new (`made`) and invited again (`again`), how many
+  new ones this team's own sends held the email of (`held`), how many were left out past the day's invitations (`over`),
+  and how many are on the team `already`), `team invitation resent`, `team invitation cancelled`, `team invitation put
+  aside` (and `put-aside invitations forgotten` at debug, with how many, as reading the list forgets those that are no
+  invitation to the caller any more), `team invitation accepted` (what became of the team they `left`) and `team joined
+  from a link` (the same, with its `kind`, `link` or `invitation`, whether they were on it `already`, by its link alone,
+  as an invitation refuses them, and whether a team was `made` for it), `team upgrade asked` (whether the admin was
+  `told`), and `invite link made`, `invite link updated` and `invite link made again` (with the `generation`, and `why`,
+  `removed` or `deleted`, when taking someone off the team or deleting it made it again). A visit's license logs, at
+  info, `team license taken` (whether auto-purchase `bought` it, its `periods`, how many are `left` unconsumed and how
+  many of those are `spare` past the people on the team without one, and whether it replaced Pro, `proReplaced`, with what
+  came back, `microUsdRefunded`), `team license given back` (one they left the team with, theirs again, with
+  `proReplaced` and `microUsdRefunded`), or `team license wanted, none left` (whether auto-purchase is on, `buying`, and
+  `why` none was bought: `off`; `price`, a license dearer than one last cost the team; `daily`,
+  `team.auto_purchase_per_day` bought for it today already; or `short`, the admin's balance). `team licenses bought` says
+  how many asks to upgrade the team it answered (`asks`), and `team auto-purchase set` says `on`, with `why: 'bought'`
+  when licenses bought set it. A team's refusals never name a team or a person, since an error's message is its log
+  line's: "You’re on a team already. Leave it to join this one.", "You admin your team, and 3 others are on it. You can
+  join another once nobody else is on yours.", "That’s you."; the app has the names. Each is an ordinary refusal at info.
+  Joining your own team by an invitation is `409 conflict`, "You’re on that team already." (`why: 'on-it'`), and the
+  invitation is left for whoever it's for; inviting once you've been taken off the team meanwhile, "You’re not on that
+  team any more." (`why: 'off-the-team'`); and what inviting, sending again, cancelling, accepting or joining still runs
+  into past the rows they hold, a row made or gone under it (Postgres's 23505 or 23503, as `pgCode`), "Someone changed
+  the team at the same moment. Try again." (`why: 'race'`), never a 500. Inviting goes up to what's left of the day's
+  invitations, in the order asked, and counts the rest as `over`; with none left today for an address that counts, it's
+  a `409`, "You’ve invited 20 people today. Invite more tomorrow, or copy your link." (the larger of today's count and
+  the limit), with `limit: 'team.invitations_per_day'` and the counts (`made`, `most`, `asked`), and nothing changed.
+  Sending one again with none left is refused the same way.
+- Email logs under `component: 'mail'`, by the outbox row's ID (`mailId`) and which try it was (`attempts`), never an
+  address or a word of an email ([Privacy › Email](privacy-keys-and-sessions.md#email)). Resend's HTTP status is
+  `upstreamStatus` and its name for an error `upstreamError`, as another service's are: `status` is only ever what Alcove
+  answered. `mail sent` at info, with Resend's status and its own ID for the email (`resendId`); `mail retried` at info,
+  with Resend's status, its error's name and how long until the next try (`afterMs`); `mail dropped` with `why`, decided
+  as the sender claims it, never in the request that asked for it: `held` (this team's own `mail.address_per_team` held
+  it back as the invitation was made), `stopped` (its mailbox stopped Alcove's emails) or `address` (its mailbox has had
+  `mail.address_per_day` emails in the last 24 hours, from all of Alcove), each at info, or `unreadable` (its record
+  didn't open, at error); and once it's been tried, `refused` (Resend refused it, at error, with its status and its
+  error's name) or `tries` (all 8 tried, at warn). A mailbox is an address in its canonical form
+  (`platform/mail.ts › canonicalAddress`), so every way of writing one shares its caps and its stop. `mail not sent: no
+  provider` at info, without `RESEND_API_KEY`; `mail waits for tomorrow: the day’s emails have gone` at info, with how
+  many wait (`waiting`) and `mail.per_day` (`most`); and `mail not sent now; upkeep sends it` at warn when sending right
+  after a commit failed. An email sent right after the request that asked for it is sent in that request's log context,
+  so its lines carry the request's ID. `mail stop asked` (at info) says only what came of it, `outcome`: `stopped`,
+  `already` or `refused`; never the token.
 - An upload refused by a storage limit is an ordinary refusal at info: `402 plan-limit` for an account's storage that's full,
   or, for someone other than whoever pays, for the room kept for the payer's notes (`why: 'kept for notes'`, with
   `reserveBytes`); `409 conflict` for a day used up, theirs or what they can add to someone else's storage

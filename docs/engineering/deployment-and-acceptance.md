@@ -15,7 +15,7 @@ own verification.
 | API | `tsx watch` on `:8787`, proxied at `/api` | Google Cloud Confidential Space on Intel TDX: managed instance group `alcove-api` (one c3-standard-4 VM, `us-central1-a`) behind a regional external proxy Network Load Balancer, `alcove-api-ip`, for `api.alcove.solutions`. TLS ends in the VM ([Confidential Space runbook](../../infra/confidential-space/README.md)) |
 | Database | Postgres 17 in Docker | Cloud SQL `alcove-db`, Postgres 17 Enterprise; SSL, 03:00 UTC daily backup window, seven retained backups, PITR; reached through the Cloud SQL Auth Proxy in the image |
 | Objects | RustFS in Docker | Private Cloudflare R2 `alcove-objects`, accessed through the API |
-| Secrets | `.env`, gitignored | GCP Secret Manager: database, storage, LiveKit and Cloudflare DNS credentials; optional inference and Google credentials; the keys from before Confidential Space, until they're retired. Only an attested, signed image may read them, or use the Cloud KMS key that wraps the master, except that the keyless migration job reads the database URL and the project's Owners can do both ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing), [runbook › Known limits](../../infra/confidential-space/README.md#known-limits)) |
+| Secrets | `.env`, gitignored | GCP Secret Manager: database, storage, LiveKit and Cloudflare DNS credentials; optional inference and Google credentials; Resend's send-only key, production's alone; the keys from before Confidential Space, until they're retired. Only an attested, signed image may read them, or use the Cloud KMS key that wraps the master, except that the keyless migration job reads the database URL and the project's Owners can do both ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing), [runbook › Known limits](../../infra/confidential-space/README.md#known-limits)) |
 | DNS | Localhost | GoDaddy registrar; Cloudflare nameservers `johnny.ns.cloudflare.com` and `maleah.ns.cloudflare.com`; DNS-only records |
 
 Run locally with `pnpm install && pnpm dev`. The [runbook](../../infra/README.md) contains bootstrap,
@@ -208,7 +208,18 @@ Google provider credentials have a separate deployment switch. With `GOOGLE_AUTH
 secret resources, and `infra/confidential-space/setup.sh` lets the attested identity read them; credential versions are
 populated separately. An installation without them sets the flag false and needs no Google secret values; the Google
 button then explains that sign-in isn't set up. The API also needs `API_URL`, its public base URL, from which the
-Google redirect URI is built.
+Google redirect URI is built, and the one-click unsubscribe URL every invitation email carries.
+
+Email goes out through Resend with `RESEND_API_KEY`, a send-only key for the sending domain, `mail.alcove.solutions`. In
+production it's the Secret Manager secret `alcove-resend-api-key`, which production's `SECRETS` names
+(`infra/confidential-space/env.sh`): it has a version, version 1, and is granted to production's attested identity alone,
+so only its attested VMs read it, and the API doesn't start while a secret `SECRETS` names has no version
+([Confidential Space runbook › The Resend key](../../infra/confidential-space/README.md#the-resend-key)). The migration
+job doesn't need it. The key is optional. Without it (staging's `SECRETS` names none, and staging starts; `.env.example`
+leaves it empty) nothing is emailed: each email is dropped as it falls due, with `mail not sent: no provider` at info, and
+invitations are made and shown in the app as ever. `RESEND_API_URL` (`https://api.resend.com`) and `MAIL_FROM`
+(`Alcove <invites@mail.alcove.solutions>`) have their defaults in the code and aren't set in the TEE's environment; the
+tests point `RESEND_API_URL` at their stand-in ([Privacy › Email](privacy-keys-and-sessions.md#email)).
 
 The load balancer in front of the VMs keeps no request logs, because raw URLs can contain call codes or OAuth callback
 queries. The GCP `_Default` sink still excludes the request logs of Cloud Run's `alcove-api`, for the same reason; the
@@ -262,8 +273,15 @@ everywhere within a minute.
 | `call.max_people` | 100 | 2 | 1,000 | The most people in a call at once. Asking to be let in takes no place: someone who asked is let in only while there's room. |
 | `call.asks_per_address` | 10 | 1 | 1,000 | The most asks to join one call waiting at once from one network (an address, or an IPv6 /64), so nobody can fill its host's list of them. |
 | `team.max_licenses` | 500 | 1 | 100,000 | The most team licenses one purchase buys. |
-| `team.low_licenses` | 5 | 0 | 100,000 | Unconsumed licenses below which a team's admin is told they're running low. |
-| `team.invite_seconds` | 1 d | 1 m | 30 d | How long a link to join a team works, once. |
+| `team.low_licenses` | 5 | 0 | 100,000 | Unconsumed licenses, past those spoken for by people on the team without one, below which a team's admin is told they're running low (never while auto-purchase is on). |
+| `team.auto_purchase_per_day` | 10 | 0 | 100,000 | The most licenses auto-purchase buys for one team in a day (UTC): past it, whoever needs one is told to ask the admin, who's told none are left, as when the balance is short. |
+| `team.invitation_seconds` | 30 d | 1 h | 365 d | How long an invitation to join a team lasts, from when it was made or last sent again. Also the window `mail.address_per_team` counts in. |
+| `team.invitation_resend_seconds` | 1 d | 0 | 30 d | How long after an invitation was sent it can be sent again. |
+| `team.invitations_per_day` | 20 | 0 | 10,000 | The most invitations one account makes, and sends again, in a day (UTC). |
+| `team.upgrade_ask_seconds` | 7 d | 0 | 90 d | How long after someone on a free team asked its admin to upgrade it they can ask again. |
+| `mail.per_day` | 90 | 0 | 1,000,000 | The most emails Alcove sends in a day (UTC), all of them: past it, the rest wait for the next day. Resend's free plan sends 100 a day. |
+| `mail.address_per_day` | 1 | 0 | 100 | The most invitation emails one mailbox is sent in 24 hours, from all of Alcove, however its address is written: past it, invitations are made without one. |
+| `mail.address_per_team` | 3 | 0 | 100 | The most times one team sends one mailbox an invitation in `team.invitation_seconds`, however its address is written, cancelling and inviting again included: past it, it can't be sent again until the oldest is that old. |
 | `workspaces.max_made` | 1,000 | 1 | 100,000 | The most workspaces one account makes, to stop one from making them without end. |
 | `media.account_day_bytes` | 20 GiB | 0 | 200 GiB | What one person uploads in a day (UTC), in every workspace. |
 | `media.others_day_bytes` | 2 GiB | 0 | 200 GiB | What someone signed in adds in a day (UTC) to another account's storage, through the workspaces it pays for. Someone licensed on the same team adds to its pool as to their own. |
@@ -272,7 +290,11 @@ everywhere within a minute.
 | `workspaces.payer_grace_seconds` | 15 d | 0 | 90 d | When payment for a workspace moves to one of its admins because whoever paid for it left: how long until the files it held then count against their storage. |
 
 Zero is a value: none. A file size or a day's uploads at 0 stops every upload, with "Files can’t be uploaded right now."; storage
-at 0 says storage is full; notes at 0 brings none. Every plan's file limit has the same ceiling, 512 MiB
+at 0 says storage is full; notes at 0 brings none. `team.invitations_per_day` at 0 refuses every invitation;
+`team.auto_purchase_per_day` at 0 stops auto-purchase buying any, as a short balance does; `mail.per_day` at 0 sends no
+email, and everything waits; `mail.address_per_day` or `mail.address_per_team` at 0 makes invitations without emailing
+them; and `team.invitation_resend_seconds` or `team.upgrade_ask_seconds` at 0 lets an invitation be sent, or an upgrade
+asked for, again at once. Every plan's file limit has the same ceiling, 512 MiB
 (`WHOLE_DOWNLOAD_BYTES`), the most that can be read whole for now: a whole file is read in one response, which is cut at
 280 seconds, so it takes about 15 Mbit/s to download 512 MiB in one answer. A file limit can be lowered without a deploy,
 not raised past that; Pro's and Team's 2 GiB wait for downloads that pick up where they stopped. Slower, a download picks
@@ -291,7 +313,9 @@ counts its periods from when it began, at the length in force.
 
 `media.file_bytes` and `media.workspace_bytes` are gone: a file's size and what's stored are each plan's now, and storage is
 counted for each account, not each workspace. A row for either is ignored with `service limit ignored` at warn, and what it
-said isn't carried over to `plan.free.file_bytes` or `plan.free.storage_bytes`. Delete the row.
+said isn't carried over to `plan.free.file_bytes` or `plan.free.storage_bytes`. Delete the row. So is `team.invite_seconds`,
+with the one-time links to join a team it timed: a row for it is ignored the same way, and carried over to nothing. Delete
+it too.
 
 In production, through the API itself: the operator CLI signs each request with an operator's own key
 (`POST /v1/operator/limits`, [Operating Alcove](operating-alcove.md)). Listing reads; setting one takes a `write` key and a
@@ -374,7 +398,7 @@ live transcript and written notes.
 | Journey | Existing coverage or remaining requirement |
 | --- | --- |
 | Microsoft and SSO demo sign-in; one account per sign-in subject; several sessions; sign-out; sessions survive a restart; Secure host-only cookies | API integration tests |
-| People search, the company directory and team invites | API integration tests |
+| People search, the company directory, invitations to a team and the team's link | API integration tests |
 | Schedule, edit, change notes, cancel; a retried mutation applies once | API integration tests |
 | Instant call with notes on, off and on again, chat, screen sharing and mic state; leave; play the recording | API integration tests (audio bytes match exactly); real-browser check with fake media |
 | A call without notes leaves no note | API integration tests |
@@ -401,7 +425,8 @@ live transcript and written notes.
 | Browser notifications: in a production build a reminder, notes ready and a share go through the service worker, one tab shows them (the next takes over when it closes), each once, a burst as one, a reminder survives a sleep, and a click opens the right page in the right window | Verified by hand with headless Chrome against a production build (`notificationclick` dispatched in the worker, since headless Chrome has no notification to click); verify a real click on each release |
 | The model code NEAR AI runs pinned to published provenance | **Not implemented**: the OS image is pinned, but its compose manager starts model code NEAR AI chooses |
 | Multi-party end-to-end encrypted calls: keys only in browsers, commits only from the browser that hosts (the organizer's, or a stand-in's), a new key with every join and leave, chat unreadable to the server and to later joiners, media unreadable without the key (LiveKit included), asking to join, no names to LiveKit | API integration tests against a real LiveKit server, with MLS clients and encrypted media; verify two browsers on each release |
-| Invitation emails from Alcove | **Not implemented** (with a connected Google Calendar, Google sends the invitations) |
+| Invitation emails to a team: every invitation written as an email alike and sent after it commits, the sender deciding as it sends whether it goes; tried again under one idempotency key, given up on, a day's limit, one mailbox's caps and its stop shared by every way of writing its address, stopping them from the email's page or its one-click unsubscribe, nothing sent without a key or once the invitation has ended; names in it never read as links | API integration tests against a local Resend stand-in; on each release that touches them, send one from production to a real inbox and check it in Resend (`delivered`) and by eye |
+| Invitation emails to a call from Alcove | **Not implemented** (with a connected Google Calendar, Google sends the invitations) |
 | Attested confidential compute, with the master key released only to it | **Working** since 2026-11-13: production runs in Confidential Space and reports `tee: confidential-space`, every account's root key is wrapped under the TEE's master, and the keys from before it are retired and deleted. Every deploy and monthly refresh checks the server through the load balancer with `infra/confidential-space/verify-server.ts` (the attestation token and the image's signed entry in Rekor, as the app checks them; the TLS key the server presents is the attested one; the commit and image deployed). Staging tries a release first, its first start included, on its own empty database with nothing of production's ([Confidential Space runbook › Staging](../../infra/confidential-space/README.md#staging)). The project's Owners can still use the Cloud KMS key that wraps the master, and every use is in Cloud KMS's audit log ([Known limits](../../infra/confidential-space/README.md#known-limits)). See [Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing) |
 
 The public beta uses verified Google sign-in. The API and website disable demo sign-in in production.
