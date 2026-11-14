@@ -520,7 +520,8 @@ operator feature-flags everyone transcript.speech_fallback off --reason INC-77
 It takes effect within 30 seconds ([Feature flags](feature-flags.md#in-production)). With it on, the API logs
 `speech detail refused` (at warn, once for each ten minutes of refusals) and sends clips plain for those ten minutes, then
 asks for the detail again; a detailed answer ends that on its own, so once `near-ai:speech` passes the flag can stay on
-until the fallback is deleted. With it off, clips fail as before and the recordings are kept.
+until the fallback is deleted. With it off, clips fail as before and the recordings are kept: whoever's browser sends
+them sees "Transcription isn't available right now, so what's said won't be in the transcript or the notes".
 
 A new NEAR AI key is a new version of the secret `alcove-near-ai-api-key`, which the API reads when it starts: the next
 deploy or refresh takes it ([Refreshing](../../infra/confidential-space/README.md#refreshing)).

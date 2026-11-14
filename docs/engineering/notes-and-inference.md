@@ -222,7 +222,12 @@ sequenceDiagram
    voice in them are dropped, and the rest are sent one at a time, in order, with a few retries. Measured
    against NEAR AI's Whisper, longer pauses or minimums (500 to 700 ms, 3.5 to 5 seconds) changed the word
    error rate by less than a point, as the prompt carries a sentence across clips, and showed captions
-   0.6 to 1.3 seconds later. A lost clip costs a line of transcript, never the recording. Turning notes
+   0.6 to 1.3 seconds later. A lost clip costs a line of transcript, never the recording. When the speech
+   model is busy, down, out of reach or answers in a way that can't be read, the clip's error says so in words of its
+   own, shown over the call's notes by the browser that heard it, or on the Record stage while what's said can't be kept
+   on the device: "Transcription isn't available right now, so what's said won't be in the transcript or the notes. It
+   picks up again as soon as it can." (`TRANSCRIPTION_DOWN` in `inference.ts`). Evidence that doesn't check out says so
+   as for any request ([What is checked](#what-is-checked)). Turning notes
    off or leaving sends the last audio and speech first; pausing a call's notes drops whatever wasn't sent
    ([Calls and recordings › What's captured](calls-and-recordings.md#whats-captured)).
 2. **The request.** `POST /v1/live/calls/:id/transcribe` or `POST /v1/recordings/:id/transcribe`. The body
@@ -386,7 +391,8 @@ form field it doesn't know, so Alcove can't supply a duration. The fix is NEAR A
 - **Whose flag.** The flag is read, only once a clip has been refused or while clips are going without the detail, for
   whoever pays for the clip: the call's organizer, or whoever is recording a room (`fallback` in `SpeechContext`, read in
   `hear` in `transcripts.ts`; `inference/` takes the question as an argument and never imports flags). With it off for
-  them, a refused clip fails as before (`503 unavailable`), its error's context saying `refused: 'detail'`.
+  them, a refused clip fails as before (`503 unavailable`), its error's context saying `refused: 'detail'`, and its
+  message what any clip that can't be transcribed says ([The live transcript](#the-live-transcript)).
 - **The resend.** A clip answered `502 upstream_usage_missing` is sent again as `json` in the same verification, which is
   not re-verified: the refusal is handled inside the request, not thrown. Only that status and type count. A refused
   `502` is never charged; the `json` answer is metered like any clip, its cost estimated from the clip's 30-second
