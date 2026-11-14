@@ -9,8 +9,8 @@ import { api } from '~/lib/api';
 import { log } from '~/lib/log';
 
 const flog = log.child({ component: 'follow-notes' });
-/** How long the notes can take before they're said to be slow. */
-const SLOW_MS = 90_000;
+/** How long the notes can take before they're said to be slow: the model thinks first, which can take up to about 10½ minutes. */
+const SLOW_MS = 12 * 60_000;
 
 /** The note `noteId` being written, followed while `on`: the progress so far, and whether it's stuck. */
 export function useFollowNotes(noteId: string | null, on: boolean): { progress: NoteProgress | null; stuck: boolean } {

@@ -1529,14 +1529,14 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
 
    | What happened | Title | The line | Notes | Buttons |
    |---|---|---|---|---|
-   | You ended it, notes on | {Title} has ended | {n} min with {names} (alone: {n} min) | Being written (step, who gets them), then the summary's first lines with decided and follow-up counts | **Open the notes** (then **Read the notes**), Go to Home |
+   | You ended it, notes on | {Title} has ended | {n} min with {names} (alone: {n} min) | Being written (step; Notes take a few minutes. You don't need to wait here: they'll be in Calls, and Alcove tells you when they're ready; who gets them), then the summary's first lines with decided and follow-up counts | **Open the notes** (then **Read the notes**), Go to Home |
    | You ended it, no notes | {Title} has ended | {n} min with {names} (alone: {n} min) | No notes were taken. | **Go to Home** |
    | Whoever hosts ended it, you get the notes | {Title} has ended | {n} min with {names} | Being written, then written | **Open the notes**, Go to Home |
    | Whoever hosts ended it, you don't (a guest) | {Title} has ended | {Organizer} can share the notes with you. | none | none |
    | You left, it goes on | You left {Title} | {names} are still in it, and how long it's run (ticking) | As notes were when you left, only if you get them: Notes are on. You get them when it ends. / Notes are paused. You get what was written when it ends. / Notes are off. You get what was written when it ends. | **Rejoin** (J), Go to Home (a guest: Rejoin only) |
    | You hosted, and left it with someone | You left {Title} | {Name} is hosting until you're back (standing in for the organizer: until {Organizer} is back) | the same | **Rejoin**, Go to Home |
    | You left, and it ended while you're here | {Title} has ended | It ended after you left. | Being written (if you get them) | **Open the notes**, Go to Home (a guest: none) |
-   | The notes take long, or their progress can't be followed | | | Still being written. They'll be in Calls when they're ready. You don't need to wait here. | as above |
+   | The notes take over 12 minutes, or their progress can't be followed | | | Still being written. They'll be in Calls when they're ready. You don't need to wait here. | as above |
 
    The page keeps up while you're on it: the notes turn from being written into their first lines, a call you left
    turns into the ended page within about 15 seconds of it ending, and how long it's run ticks while it goes on. Who's

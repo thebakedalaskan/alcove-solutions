@@ -66,6 +66,7 @@
 .co-step { display: flex; align-items: center; gap: 9px; margin-top: 12px; padding-left: 48px; color: var(--stage-ink-2); font: 500 13.5px/1.4 var(--font-sans); }
 .co-step .ac-dots { flex: none; gap: 3px; }
 .co-step .ac-dots i { width: 4px; height: 4px; }
+.co-wait { margin-top: 8px; padding-left: 48px; color: var(--stage-ink-2); font: 500 13.5px/1.4 var(--font-sans); }
 .co-who { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid rgb(255 255 255 / .07); color: var(--stage-ink-2); font: 500 13.5px/1.4 var(--font-sans); }
 .co-who .ac-faces { flex: none; }
 .co-who .ac-faces .ac-avatar { --ring: var(--stage-tile); }
@@ -106,7 +107,7 @@
   .co-t { font-size: 34px; }
   .co-m { font-size: 15px; }
   .co-panel { margin-top: 24px; padding: 14px; }
-  .co-step, .co-sum, .co-chips { padding-left: 0; }
+  .co-step, .co-wait, .co-sum, .co-chips { padding-left: 0; }
   .co-acts { flex-direction: column; flex-wrap: nowrap; width: 100%; gap: 10px; margin-top: auto; padding: 24px 0 max(22px, env(safe-area-inset-bottom, 0px)); }
   .co-acts .ac-btn { width: 100%; }
   .co-acts .ac-btn .kb { display: none; }

@@ -277,6 +277,7 @@ function Said({ notes, modelPrivate }: { notes: CallOverNotes; modelPrivate: boo
             <span className="co-nt"><b>Notes are being written</b><small>{modelPrivate ? 'In confidential compute' : <>By an unencrypted AI model<Unencrypted compact /></>}</small></span>
           </div>
           <p className="co-step" role="status"><Dots />{notes.step}</p>
+          <p className="co-wait">Notes take a few minutes. You don’t need to wait here: they’ll be in Calls, and Alcove tells you when they’re ready.</p>
           {(notes.who || notes.faces.length > 0) && (
             <div className="co-who">{notes.faces.length > 0 && <Faces people={notes.faces} size={22} max={4} />}<span>{notes.who}</span></div>
           )}

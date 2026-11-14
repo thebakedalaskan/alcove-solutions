@@ -62,7 +62,7 @@ const WITHOUT_SUMMARY = {
 /** The kind of work given up for good that those lines say they are. */
 const FINAL = 'notes-without-summary';
 const ATTEMPTS = 3;
-/** Longer than the slowest draft (four minutes) and checking the model first; a worker that dies mid-job frees it after this. */
+/** A worker that dies mid-job frees it after this. A running job renews it all through (HEARTBEAT_MS), however long its notes take (up to about 10½ minutes thinking first). */
 const LEASE_SECONDS = 300;
 /** How often a running job renews its lease, whatever step it's on (joining video, taking frames, waiting on a model). */
 const HEARTBEAT_MS = (LEASE_SECONDS / 3) * 1000;
@@ -71,7 +71,7 @@ const RETRY_SECONDS = [20, 90];
 /** How long a job waits before trying the notes model again, when its evidence didn't check out or it didn't answer. */
 const VERIFY_AGAIN_SECONDS = 300;
 
-const Claimed = z.object({ owner_id: z.string(), job_id: z.string(), revision_id: z.string(), job_ciphertext: bytea, attempt: z.number(), tried: z.number() });
+const Claimed = z.object({ owner_id: z.string(), job_id: z.string(), revision_id: z.string(), job_ciphertext: bytea, attempt: z.number(), tried: z.number(), waited: z.boolean() });
 type Claimed = z.infer<typeof Claimed>;
 /** The organizer stopped the notes being written again (notes.cancelRewrite): the job isn't there any more. */
 class Cancelled extends Error {}
@@ -88,16 +88,19 @@ export function claimableNotes(t: string): string {
   return `(${t}.lease_until IS NULL OR ${t}.lease_until < now())`;
 }
 
-/** The next job that's due, leased to this worker. `tried` is how many attempts came before this one. */
+/**
+ * The next job that's due, leased to this worker. `tried` is how many attempts came before this one, and `waited` whether
+ * the last one waited for the notes model (VERIFY_AGAIN_SECONDS).
+ */
 async function claim(d: Deps, ownerId: string | null): Promise<Claimed | undefined> {
   return maybeOne(d.pool, Claimed, `
     WITH due AS (
-      SELECT q.owner_id, q.job_id, q.attempt FROM content_jobs q
+      SELECT q.owner_id, q.job_id, q.attempt, q.state FROM content_jobs q
       WHERE q.kind = 'notes' AND ${claimableNotes('q')} AND ($1::text IS NULL OR q.owner_id = $1)
       ORDER BY q.lease_until NULLS FIRST LIMIT 1 FOR UPDATE SKIP LOCKED)
     UPDATE content_jobs j SET state = 'writing', lease_until = now() + make_interval(secs => $2), attempt = LEAST(j.attempt + 1, $3)
     FROM due WHERE j.owner_id = due.owner_id AND j.job_id = due.job_id
-    RETURNING j.owner_id, j.job_id, j.revision_id, j.job_ciphertext, j.attempt, due.attempt AS tried`, [ownerId, LEASE_SECONDS, ATTEMPTS]);
+    RETURNING j.owner_id, j.job_id, j.revision_id, j.job_ciphertext, j.attempt, due.attempt AS tried, due.state = 'waiting' AS waited`, [ownerId, LEASE_SECONDS, ATTEMPTS]);
 }
 
 type Item = { text: string; at?: number | undefined; changes: Change[] };
@@ -178,7 +181,7 @@ async function writeRooms(o: Owner, meter: Meter, m: NoteManifest, organizer: Pe
   return { rooms, written: rooms.filter((x) => 'notes' in x).length, evidence: rooms.flatMap((x) => ('notes' in x && x.notes.evidence ? [x.notes.evidence] : [])) };
 }
 
-/** How many breakout rooms' notes are written at once: each is a request of up to four minutes. */
+/** How many breakout rooms' notes are written at once: each is a request of up to four minutes, or about ten thinking first. */
 const ROOMS_AT_ONCE = 3;
 /** `fn` over `xs`, at most `cap` at a time, in their order. The first failure stops what hasn't started, and is thrown. */
 async function inTurns<T, R>(xs: readonly T[], cap: number, fn: (x: T) => Promise<R>): Promise<R[]> {
@@ -490,8 +493,10 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
       // call's notes and each breakout room's.
       const organizer = await me(o);
       const { notesLanguage: language } = (await profile(o)).preferences;
-      // After an attempt that didn't work, which may have been cut off, ask for less rather than the same again.
-      const style: NotesStyle = { language, brief: job.tried > 0 };
+      // After an attempt that didn't work, which may have been cut off, ask for less rather than the same again. After one
+      // that waited for the notes model, which may have been thinking for ten minutes first, ask without thinking: only
+      // the first attempt thinks (drafting.ts › draft).
+      const style: NotesStyle = { language, brief: job.tried > 0, quick: job.waited };
       // The boards open for everyone in the call, as they are now, for the notes of the part each was open in: only those
       // everyone the note went to can open, because one summary goes to them all, the people it was shared with since included.
       const boards = boardsIn(await boardsToRead(o, note.manifest.workedOn, everyoneWith(note.manifest, organizer.email), at));

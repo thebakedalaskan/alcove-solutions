@@ -13,7 +13,8 @@ import { z } from 'zod';
 import type { Config } from '../../../platform/config';
 import { b64u, id128, sha, utf8 } from '../../../keys/crypto';
 import { UnavailableError } from '../../../platform/errors';
-import { complete, type Meter, type Most } from '../../../inference/inference';
+import { log } from '../../../platform/log';
+import { complete, defaultModel, type Meter, type Most, type Thinking } from '../../../inference/inference';
 import { changeOf } from '../../recordings/screens/screen-grid';
 import { without, unfenced, DOUBT, SAID_ONLY, Refs, Ref, oneLine, fenced, issues, fold, clip, lineFor, refsOf, spoken } from '../../../inference/prompts';
 import { SMALL_TALK, type BriefBoard, type Brief, about, listed, NOBODY, called, labelsOf, writtenText, roomSummaries } from './brief';
@@ -33,6 +34,15 @@ export interface Written { summary: string; details: string; decisions: Decision
  * drift: a request added to writing the notes belongs here and there.
  */
 export const WRITING_OUTPUT = { notes: 4000, details: 2500, revisits: 500 } as const;
+/**
+ * The room the notes request has when the default model thinks first (NEAR_AI_NOTES_EFFORT): thinking counts against
+ * the reply, and at the most effort it has taken 31,298 tokens and 579 s. The timeout is a little over the 10 minutes
+ * after which NEAR AI was seen to close a request, so theirs decides.
+ */
+export const THINKING = { maxTokens: 64_000, timeoutMs: 620_000 } as const;
+/** Whether the notes written after a call or a recording think first with `model`: only the default does, while NEAR_AI_NOTES_EFFORT is on. */
+export const thinksWith = (cfg: Config, model: string): boolean => cfg.NEAR_AI_NOTES_EFFORT > 0 && model === cfg.NEAR_AI_NOTES_MODEL;
+const dlog = log.child({ component: 'notes' });
 /** The requests that read a call's whole transcript, once each (a breakout room's notes read the room's). */
 const READ_WHOLE = ['notes', 'details', 'revisits'] as const;
 /** Never the fence a board is sent in, nor the transcript's, so nothing on a board can end either early. */
@@ -40,9 +50,10 @@ const unboarded = (s: string) => without(/<\s*\/?\s*board\s*>/gi)(unfenced(s));
 
 /**
  * How someone wants their notes written: the language. `brief` is for after an attempt that didn't work, which may have been
- * cut off: the model is asked for fewer entries, so a call with a lot in it still gets notes.
+ * cut off: the model is asked for fewer entries, so a call with a lot in it still gets notes. `quick` is for after the
+ * notes waited for the model, which may have been thinking: it doesn't think first, nor does it after a brief one.
  */
-export interface NotesStyle { language: NotesLanguage; brief?: boolean | undefined }
+export interface NotesStyle { language: NotesLanguage; brief?: boolean | undefined; quick?: boolean | undefined }
 
 const LANGUAGE_NAMES: Record<Exclude<NotesLanguage, 'call'>, string> = {
   en: 'English', es: 'Spanish', fr: 'French', de: 'German', pt: 'Portuguese', it: 'Italian', nl: 'Dutch', ja: 'Japanese', zh: 'Chinese', ko: 'Korean', hi: 'Hindi', ar: 'Arabic'
@@ -231,18 +242,33 @@ export async function draft(cfg: Config, meter: Meter, b: Brief, style: NotesSty
   const known = (b.followUps ?? []).filter((a) => a.review !== 'accepted' || a.changeOf === null);
   const boards = b.boards ?? [];
   const onBoards = boards.flatMap((x) => x.followUps).slice(0, MAX_BOARD_FOLLOW_UPS).map((x) => ({ ...x, text: unboarded(x.text) }));
-  const { json, evidence } = await complete(cfg, meter, [
-    { role: 'system', content: `${notesPrompt(style, told.length > 0, boards.length > 0)}${known.length ? EXISTING_FOLLOW_UPS_RULE : ''}` },
-    {
-      role: 'user', content: `${about(b)}\n\n${known.length ? `Existing follow-ups:\n${listed('F', known.map((a) => ({ id: a.id, text: a.text, ...(a.owner ? { owner: a.owner.name } : {}) })))}\n\n` : ''}${b.settled?.length ? `Already settled (don't list these again):\n${b.settled.map((x) => `- ${x}`).join('\n')}\n\n` : ''}${told.length ? `Ticked during the call:\n${listed('T', told)}\n\n` : ''}${onBoards.length ? `In the boards' Actions frames:\n${listed('B', onBoards)}\n\n` : ''}Transcript:\n${fenced(sent.text)}${boards.length ? `\n\nBoards:\n${boardsText(boards)}` : ''}`
+  const ask = async (think?: Thinking) => {
+    const { json, evidence } = await complete(cfg, meter, [
+      { role: 'system', content: `${notesPrompt(style, told.length > 0, boards.length > 0)}${known.length ? EXISTING_FOLLOW_UPS_RULE : ''}` },
+      {
+        role: 'user', content: `${about(b)}\n\n${known.length ? `Existing follow-ups:\n${listed('F', known.map((a) => ({ id: a.id, text: a.text, ...(a.owner ? { owner: a.owner.name } : {}) })))}\n\n` : ''}${b.settled?.length ? `Already settled (don't list these again):\n${b.settled.map((x) => `- ${x}`).join('\n')}\n\n` : ''}${told.length ? `Ticked during the call:\n${listed('T', told)}\n\n` : ''}${onBoards.length ? `In the boards' Actions frames:\n${listed('B', onBoards)}\n\n` : ''}Transcript:\n${fenced(sent.text)}${boards.length ? `\n\nBoards:\n${boardsText(boards)}` : ''}`
+      }
+    // Room for every entry the notes keep, each with its lines: a reply cut off isn't JSON, so the notes wouldn't be written.
+    // At the slowest the model has been seen (about 24 tokens a second), all of it fits well inside the timeout. Thinking
+    // first, it has THINKING's room instead.
+    ], { what: 'notes', maxTokens: WRITING_OUTPUT.notes, timeoutMs: 240_000, via: b.via, trace: b.trace, think });
+    const reply = Draft.safeParse(json);
+    if (!reply.success) throw new UnavailableError('The notes came back in the wrong shape.', { context: { what: 'notes', issues: issues(reply.error) } });
+    return { d: reply.data, evidence };
+  };
+  // The default model thinks first, once: if that request times out, is cut off or comes back unusable, the notes are
+  // asked for again at once without thinking, so they take at most about 10½ minutes. Nothing asked after it thinks.
+  const via = b.via ?? defaultModel(cfg);
+  const effort = !style.brief && !style.quick && via.private && thinksWith(cfg, via.model) ? cfg.NEAR_AI_NOTES_EFFORT : 0;
+  let thought: Awaited<ReturnType<typeof ask>> | undefined;
+  if (effort > 0) {
+    try {
+      thought = await ask({ effort, ...THINKING });
+    } catch (e) {
+      dlog.warn('notes not written thinking first; asking again without', { model: via.model, effort, err: e });
     }
-  // Room for every entry the notes keep, each with its lines: a reply cut off isn't JSON, so the notes wouldn't be written.
-  // At the slowest the model has been seen (about 24 tokens a second), all of it fits well inside the timeout, which
-  // matters since a timeout never uses up an attempt.
-  ], { what: 'notes', maxTokens: WRITING_OUTPUT.notes, timeoutMs: 240_000, via: b.via, trace: b.trace });
-  const reply = Draft.safeParse(json);
-  if (!reply.success) throw new UnavailableError('The notes came back in the wrong shape.', { context: { what: 'notes', issues: issues(reply.error) } });
-  const d = reply.data;
+  }
+  const { d, evidence } = thought ?? await ask();
   const attached = attachments(shown, b.lines, { grids, why: b.why });
   const nOf = new Map(shown.map((m, i) => [m.id, i + 1]));
   // Something about a screen that isn't attached points at its share's attached screen before it, which shows the
@@ -389,16 +415,18 @@ const SPOKEN_CHARS = 18;
  * allowance holds it until the notes are written (features/billing/meter/meter.ts): the notes and their details from the
  * transcript (up to MAX_TRANSCRIPT_CHARS), a section for each breakout room, the moments picked from what was shared and a
  * frame read, with the one before it, for every SECONDS_PER_SCREEN_FRAME of sharing (MAX_SCREEN_FRAMES at most), and
- * comparing its decisions with the series'. Every request at the most it asks for back (WRITING_OUTPUT).
+ * comparing its decisions with the series'. Every request at the most it asks for back (WRITING_OUTPUT; THINKING's room
+ * for each part's notes when they think first, `thinking`, as thinksWith says).
  */
-export function writingAtMost(o: { seconds: number; rooms: number; shareSeconds: number }): Most {
+export function writingAtMost(o: { seconds: number; rooms: number; shareSeconds: number; thinking: boolean }): Most {
   const chars = Math.min(Math.ceil(o.seconds * SPOKEN_CHARS), MAX_TRANSCRIPT_CHARS);
   const transcript = Math.ceil(chars / 4) + PROMPT_TOKENS;
   const frames = o.shareSeconds > 0 ? Math.min(MAX_SCREEN_FRAMES, Math.ceil(o.shareSeconds / SECONDS_PER_SCREEN_FRAME)) : 0;
   const picks = frames ? Math.max(1, Math.ceil(chars / PICK_CHARS)) : 0;
+  const notes = o.thinking ? THINKING.maxTokens : WRITING_OUTPUT.notes;
   return {
     input: transcript * (READ_WHOLE.length + o.rooms + picks) + frames * READ_TOKENS,
     images: frames * 2,
-    output: READ_WHOLE.reduce((n, r) => n + WRITING_OUTPUT[r], 0) + WRITING_OUTPUT.notes * o.rooms + READING_OUTPUT.pickMoments * picks + READING_OUTPUT.readScreen * frames
+    output: READ_WHOLE.reduce((n, r) => n + (r === 'notes' ? notes : WRITING_OUTPUT[r]), 0) + notes * o.rooms + READING_OUTPUT.pickMoments * picks + READING_OUTPUT.readScreen * frames
   };
 }

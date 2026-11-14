@@ -6,7 +6,7 @@ import { ConflictError, ForbiddenError, PlanLimitError, UnavailableError, Valida
 import type { Meter, Most } from '../../../inference/inference';
 import { meterFor, notesBlocked, NOTES_ROOM, ranOut, reckonAgain, type Bill, type Spend } from '../../billing/meter/meter';
 import { mayStore, storageOf } from '../../billing/meter/held';
-import { writingAtMost } from '../../notes/writing/drafting';
+import { thinksWith, writingAtMost } from '../../notes/writing/drafting';
 import { me } from '../../profile/profile';
 import { appendPiece, createRecording, setRecordingState, type Piece } from '../../recordings/audio';
 import * as capture from './capture';
@@ -72,7 +72,8 @@ function writingSoFar(o: Owner, row: Row, s: Stored, nowMs: number): { model: st
   const seconds = capture.recorded(s.notes.history, s.notes.offline, at, at);
   const rooms = (s.breakouts.open?.rooms.length ?? 0) + s.breakouts.held.reduce((n, h) => n + h.rooms.length, 0);
   const shareSeconds = s.shares.filter((x) => x.keep && x.recorded).reduce((n, x) => n + Math.max(0, (x.until ?? at) - x.from), 0);
-  return { model: s.notes.model ?? o.cfg.NEAR_AI_NOTES_MODEL, most: writingAtMost({ seconds, rooms, shareSeconds }) };
+  const model = s.notes.model ?? o.cfg.NEAR_AI_NOTES_MODEL;
+  return { model, most: writingAtMost({ seconds, rooms, shareSeconds, thinking: thinksWith(o.cfg, model) }) };
 }
 
 /**

@@ -469,7 +469,8 @@ account.
   failure: notes that keep timing out are finished without a summary after three, and notes written again stay as they
   were, instead of being charged again every five minutes without end. A draft can take the model
   well over a minute (about 24 tokens a second at its slowest, up to 4,000 of them, which is 167 seconds), so it gets
-  four minutes, and the job's lease five.
+  four minutes; thinking first it gets 620 s ([Thinking first](#thinking-first)). The job's lease is five minutes,
+  renewed all through the attempt. A job that waited doesn't think first when it's tried again.
 - **Retries.** A failed attempt (NEAR AI refusing the request, a reply that won't open, or one that isn't the
   expected JSON) puts the job back to `queued`, due 20 seconds later after the first failure and 90 seconds
   after the second, with a timer that starts the worker again then. An attempt after a failed one asks the model for
@@ -488,6 +489,34 @@ account.
   notes stopped, and may cost more than what was left. Writing them again is refused like anything else, and the notes
   stay as they were. Notes that couldn't be written are paid for when the organizer has them written after all
   ([Plans and usage](plans-and-usage.md)).
+
+### Thinking first
+
+The notes written after a call or a recording, the call's and each breakout room's, ask the default model to think
+before it answers, at `NEAR_AI_NOTES_EFFORT` (100 unless set; `0` turns it off): `chat_template_kwargs` carries
+`enable_thinking: true` and `reasoning_effort`, the way NEAR AI's private DeepSeek takes it. Nothing else thinks: the full
+summary, comparing with a series, picking and reading shared screens, live notes, catching up, asking, boards, documents
+and the operators' probe all send `enable_thinking: false`. A model an organizer chose is sent what it always is.
+Thinking is `complete`'s `think` option in `inference.ts`; only `draft` in `drafting.ts` passes it.
+
+- **Room.** Thinking counts against the reply, so the request asks for up to 64,000 tokens (at the most effort, a reply
+  has taken 31,298) and waits 620 s, a little over the 10 minutes after which NEAR AI was seen to close a request, so
+  theirs decides (`THINKING`). Node's `fetch` gives up on a reply whose headers take over 300 s, whatever the
+  request's timeout, so a request allowed longer goes by undici's own `fetch` with an agent that sets no limit of its
+  own; every other request goes as before.
+- **Once, then without.** If the thinking request times out, is closed, or comes back unusable (anything that fails it),
+  the notes are asked for again at once without thinking (4,000 tokens, 240 s), so they take about 10½ minutes at most.
+  A connection NEAR AI closes reads as a key the model may no longer hold: the thinking request isn't sent again to a
+  new key, and the request without thinking is verified afresh and goes to whatever key the model holds then. An
+  attempt after a failed one (`brief`) and a job that waited for the model (`quick`, from the job's `waiting` state)
+  don't think either, so every request after a thinking one is without.
+- **Paid for.** Thinking is output, charged at the model's price like the rest (about 2¢ more for a call at the most
+  effort). While a call is live, what it holds for its notes (`writingAtMost`) holds 64,000 tokens for each part's notes
+  instead of 4,000.
+- **Waiting for them.** The page a call leaves you on says notes take a few minutes, that they'll be in Calls and
+  Alcove tells you when they're ready, and says they're still being written only after 12 minutes.
+
+On 10 real calls at the most effort, the notes took about 5 minutes after a 10-minute call, 2½ to 9½ at the extremes.
 
 ## Breakout rooms
 
@@ -1845,6 +1874,7 @@ shows the default as "<name> (default)".
 | `NEAR_AI_STT_URL` | `https://whisper-large-v3.completions.near.ai` | The speech model's own endpoint, where clips go by Oblivious HTTP |
 | `NEAR_AI_NOTES_MODEL` | `deepseek-ai/DeepSeek-V4.1-Flash-1017` | The default model: everything after transcription when no other is chosen |
 | `NEAR_AI_NOTES_URL` | `https://deepseek-v4-1-flash.completions.near.ai` | The default model's own endpoint, where chat goes by Oblivious HTTP |
+| `NEAR_AI_NOTES_EFFORT` | `100` | How hard the default model thinks before it writes the notes after a call or a recording, 1 to 100; `0` turns thinking off ([Thinking first](#thinking-first)) |
 | `NEAR_AI_MAX_INPUT_PRICE` | `1` | The most a model's input may cost, in US dollars per million tokens, to be offered as a choice |
 | `NEAR_AI_ENDPOINTS_URL` | `https://completions.near.ai/endpoints` | NEAR AI's registry of the models it runs itself, and where |
 | `INTEL_PCS_URL` | `https://api.trustedservices.intel.com` | Intel's collateral for TDX quotes |
@@ -1863,6 +1893,7 @@ verified against. The measured OS images aren't configuration at all.
 | Verify a model | `GET /attestation/report`, as in [What is checked](#what-is-checked); then Intel's collateral and `POST {NVIDIA_NRAS_URL}/v3/attest/gpu` with the GPU evidence unchanged | 20 s, 15 s, 30 s |
 | Transcribe a clip | `POST {NEAR_AI_STT_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/audio/transcriptions`, multipart: `model`, `response_format=verbose_json`, `temperature=0`, once the call's language is known `language` (Whisper's code for it, such as `en`: NEAR AI refuses names) and `prompt` (names and the words before, at most 371 bytes), `file` (`clip.wav`, `audio/wav`), with the bearer key | 20 s |
 | Write notes | `POST {NEAR_AI_NOTES_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/chat/completions`, JSON: `model`, a system and a user message, `temperature` 0.2, `max_tokens` 4,000, `response_format: {"type": "json_object"}`, `chat_template_kwargs: {"enable_thinking": false}`, `stream: false`, with the bearer key | 240 s |
+| Write notes after a call or a recording, thinking first | The same, from the default model while `NEAR_AI_NOTES_EFFORT` is on, with `max_tokens` 64,000 and `chat_template_kwargs: {"enable_thinking": true, "reasoning_effort": 100}` (the setting); sent once, and if it fails, asked again at once as above ([Thinking first](#thinking-first)) | 620 s |
 | Chat with an unencrypted model | `POST {NEAR_AI_BASE_URL}/chat/completions` over TLS, the same JSON without `chat_template_kwargs`, `temperature` and `response_format` only as the catalog lists them, with the bearer key | The same as the request it stands for |
 | Write the full summary | The same as writing notes, with `max_tokens` 2,500, after the notes | 180 s |
 | Pick the moments of shared screens to look at | The same as writing notes, with `max_tokens` 6,000 | 180 s |
@@ -1883,7 +1914,8 @@ first ([How long a verification holds](#how-long-a-verification-holds)).
 Measured on NEAR AI Cloud in November 2026: a clip of a few seconds is transcribed and answered through
 the API in about 0.29 s at the median, or 0.25 s once the call's language is sent, as Whisper then
 skips picking one; notes for a short
-call are written in about 4 s with thinking disabled (about 48 s with it on, which is why it's off); a
+call are written in about 4 s with thinking disabled (about 48 s with it on, which is why everything but the notes
+written after a call keeps it off); a
 question is answered in about 1.5 to 3.5 s. Oblivious HTTP adds a few milliseconds; the first verification of
 a model adds about 1.3 s to its first request. NEAR AI answers pure
 digital silence with `502`, which Alcove reports as `503 unavailable`; the browser doesn't send silence.
@@ -1964,14 +1996,23 @@ clip without words with Whisper's favourite hallucination, writes notes (open qu
 transcript it was sent, answers a question across notes from the lines of each note it was sent, citing each
 by its note and second and adding a note it wasn't sent, as a model can make one up, answers a question
 across a series from the calls it was sent, "translates" captions by tagging each line with the language, and
-can fail its next replies (down, or prose instead of JSON), take its time over the next one (`slowNext`), or hold
-its next answer until something a test does has happened (`holdNext`): a test that needs something to happen while
-the model answers holds it, rather than racing a slow answer.
+can fail its next replies (down, prose instead of JSON, or the connection closed with no answer), take its time over
+the next one (`slowNext`), or hold its next answer until something a test does has happened (`holdNext`): a test that
+needs something to happen while the model answers holds it, rather than racing a slow answer.
 It keeps every request body as it arrived, and with each request with content, the attested key of the model
-whose OHTTP key opened it; its evidence can be made to lie in each way [What is checked](#what-is-checked)
+whose OHTTP key opened it, and with each chat request, the tokens it asked for and how hard it asked the model to
+think (`chats`); its evidence can be made to lie in each way [What is checked](#what-is-checked)
 refuses (on the gateway's report or a model's), Intel and NVIDIA can be made unreachable, out of date or
 wrongly chained, its endpoints can refuse what was sealed to them or seal their replies wrong, and its models'
 keys can change.
+
+Tests run with thinking off (`NEAR_AI_NOTES_EFFORT=0` in the harness), so what a test makes a request do is what one
+attempt at the notes does. `thinking first (NEAR_AI_NOTES_EFFORT)` in
+`apps/api/src/features/notes/writing/models.integration.test.ts` turns it on: the notes of a call and of its breakout
+room think at 100 with 64,000 tokens while catching up, asking in and after the call and the full summary don't; at
+`0` the notes don't think; a thinking request closed with no answer, or answered in prose, is asked again at once
+without thinking and the notes are saved; a job that waited for the model doesn't think again; and a model the
+organizer chose through the gateway is never asked to.
 
 The `live transcript and written notes` flows in `apps/api/src/integration/flows.integration.test.ts` cover a call and
 a room recording, retried and silent clips, notes off and on again, what each clip is sent with (nothing

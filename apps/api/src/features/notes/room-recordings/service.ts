@@ -16,7 +16,7 @@ import { remove } from '../service';
 import { NoteManifest, blankNote, createNoteWithRecording, finishRecording, updateNote } from '../manifest';
 import * as transcripts from '../../recordings/transcripts';
 import * as writer from '../writing/writer';
-import { writingAtMost } from '../writing/drafting';
+import { thinksWith, writingAtMost } from '../writing/drafting';
 import { meterFor, notesBlocked, NOTES_ROOM } from '../../billing/meter/meter';
 import { requireRoom, roomContext, roomOf } from '../../billing/meter/held';
 import { log } from '../../../platform/log';
@@ -128,7 +128,7 @@ export async function transcribe(o: Owner, recordingId: string, clip: transcript
   const { seconds } = await progress(o, recordingId, 0);
   const meter = meterFor(o, {
     payer: o.ownerId, spend: 'transcript', whose: 'yours', source: { kind: 'recording', id: recordingId },
-    reserve: { model: o.cfg.NEAR_AI_NOTES_MODEL, most: writingAtMost({ seconds, rooms: 0, shareSeconds: 0 }) }
+    reserve: { model: o.cfg.NEAR_AI_NOTES_MODEL, most: writingAtMost({ seconds, rooms: 0, shareSeconds: 0, thinking: thinksWith(o.cfg, o.cfg.NEAR_AI_NOTES_MODEL) }) }
   });
   await transcripts.hear(o, meter, { recordingId, noteId: r.note_item_id }, clip);
   return view(o, recordingId);
