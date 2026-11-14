@@ -124,7 +124,12 @@ cs_env() {
       # key, read:<public key> or write:<public key>, one an entry, with a comment saying what the key is for, never whose it
       # is. `pnpm --filter @alcove/server operator keygen` makes one and says its line. Most keys should be read. The list is
       # built into the image (CS_BUILD_ARGS), so adding or removing a key is a reviewed pull request and a deploy.
-      CS_OPERATOR_KEYS=()
+      CS_OPERATOR_KEYS=(
+        # Everyday diagnostics: release, checks, work, errors, lookups
+        read:NeSertfkxPToLYLTpiJvtSlMj5MdGEGL0BOjNPDrJEs
+        # Support's tickets and fixes: credits, plans given, limits, retries, flags, ending calls, finding an account
+        write:aEkhWg4HScK_5S-pWVKALDLbZGqOP0sPHzRfaqkH42k
+      )
       # The KMASTER and KSERVICE from before Confidential Space, which production's accounts were made under, were carried
       # (carry: the API read them once, LEGACY_SECRETS, and re-wrapped every account under its own master), then retired on
       # 2026-11-13, once all 28 accounts had moved and the user confirmed the switch: every deploy forgets the old master
