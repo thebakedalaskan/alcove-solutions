@@ -11,6 +11,10 @@
     "feature-flags": "tsx --env-file=../../.env src/feature-flags-cli.ts",
     "billing": "tsx --env-file=../../.env src/billing-cli.ts",
     "operator": "tsx src/operator-cli.ts",
+    "eval:notes": "tsx --env-file=../../.env src/features/notes/eval/run-cli.ts",
+    "eval:notes:compare": "tsx src/features/notes/eval/compare-cli.ts",
+    "eval:notes:judge-check": "tsx --env-file=../../.env src/features/notes/eval/judge-check-cli.ts",
+    "eval:notes:label": "tsx src/features/notes/eval/label-cli.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "build": "esbuild src/server.ts src/migrate-cli.ts src/limits-cli.ts src/feature-flags-cli.ts src/billing-cli.ts src/operator-job.ts live/doc-worker=src/features/workspaces/documents/worker.ts --bundle --platform=node --target=node24 --format=esm --outdir=dist --outbase=src --sourcemap --banner:js=\"import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);\"",
@@ -40,6 +44,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
     "@livekit/rtc-ffi-bindings": "0.13.1",
     "@livekit/rtc-node": "^1.2.1",
     "@modelcontextprotocol/client": "2.4.0",
