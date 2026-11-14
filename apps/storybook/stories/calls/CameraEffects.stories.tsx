@@ -1,7 +1,7 @@
 /** Camera effects on the real LocalMedia pipeline, with the story browser's drawn room, never a personal camera. */
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
-import { atTheDoor, inCall, light, phone, plays } from '../../src/call';
+import { MORE, atTheDoor, inCall, light, phone, plays } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { REVIEW } from './talk';
 
@@ -16,7 +16,7 @@ const openBackground: NonNullable<PageStory['play']> = async ({ canvas, userEven
   const camera = canvas.queryByRole('button', { name: 'Camera and background' });
   if (camera) await userEvent.click(camera);
   else {
-    await userEvent.click(await canvas.findByRole('button', { name: 'More: board, workspace, notes, chat, people' }));
+    await userEvent.click(await canvas.findByRole('button', { name: MORE }));
     await userEvent.click(await screen.findByRole('button', { name: 'Settings' }));
   }
   await userEvent.click(await screen.findByRole('button', { name: /^Background/ }));

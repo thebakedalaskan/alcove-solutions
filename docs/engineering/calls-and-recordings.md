@@ -2790,7 +2790,16 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   three of Alcove's pictures (balloons, beach, office; drawn in `packages/ui/src/backgrounds`), or up to six of
   your own. Alcove's matte (`matte.ts`, drawn by `matteGl.ts`) runs MediaPipe's multiclass selfie segmenter
   (256×256, which counts hair as the person) on this device and LiveKit's `ProcessorWrapper` (`@livekit/track-processors`) makes a new track of what
-  it draws. The segmenter gives how sure it is that each pixel is the person; that's smoothed over time (slowly where
+  it draws. The segmenter runs in a worker of its own (`segmenter.ts` starts it, `segmenterWorker.ts` is the worker), on
+  a WebGL2 canvas of the worker's: the page hands it one frame at a time, made small and the right way up, and draws that
+  frame when its own mask comes back, letting the frames that arrive meanwhile go. Compiling the model's shaders (seconds,
+  the first time on a phone) and waiting on the GPU for each mask never hold up the page, and a slow model lowers the frame
+  rate rather than lay an old mask over a newer picture. Where LiveKit reads frames off a playing element (WebKit, so
+  every browser on an iPhone) the rest of the work runs on the page's own thread, and with the model there too, choosing a
+  background froze the screen. The worker is a module worker, which has no `importScripts`: it imports MediaPipe's
+  WebAssembly loader (a classic script) as a module, takes its factory from the loader's AMD `define`, gives it a `dbg` (its
+  own debug printer is declared in a way strict mode loses) and a stand-in `document` that answers MediaPipe's one question
+  of it (whether the page has touch events) as the page's would. The segmenter gives how sure it is that each pixel is the person; that's smoothed over time (slowly where
   it only wavers, at once where someone moves, so a still edge doesn't shimmer and a moving one doesn't trail), then
   sized up to the frame along the camera's own colour edges (a joint bilateral upsample), and the person is laid over
   the room blurred without them in it, or a picture cut to fill; `LocalMedia` keeps the camera's own track (`camSource()`, for
@@ -2800,8 +2809,12 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   drawn the camera turns off and says so. A failure while processing frames discards those frames and turns the
   camera off too: the unprocessed camera is never a fallback. Turning the camera off or leaving while the model
   loads stops its input and output at once, closes the transformer, and releases the media queue. Late initialization and
-  image/model results are fenced and disposed. A download or update stalled for 15 seconds fails closed too, without
-  blocking a later explicit Off choice or camera restart. WebGL context loss is a processing failure.
+  image/model results are fenced and disposed. Starting (downloading the model the first time and compiling its shaders)
+  that takes over 30 seconds, or loading code or a picture over 15, fails closed too, without blocking a later explicit
+  Off choice or camera restart; so does a worker that stops or loses its graphics context, or leaves a frame unanswered for
+  10 seconds and 30 frames (counting frames too, so a phone that put the page to sleep doesn't count the sleep). A reading
+  that comes back empty (a readback the GPU didn't write leaves zeros, which would say everything is the person) isn't
+  drawn, and 30 in a row fail closed. WebGL context loss is a processing failure.
   Support detection loads the processing code without a camera; the 16 MB model loads only when an effect is actually used
   (the service worker doesn't keep either), and the
   model (`public/mediapipe`) and its WebAssembly (served by a plugin in `vite.config.ts`, the version of

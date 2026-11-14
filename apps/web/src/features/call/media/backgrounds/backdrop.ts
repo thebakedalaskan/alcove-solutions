@@ -1,9 +1,9 @@
 /*
  * Puts something else behind someone on camera: blur, or a picture. Alcove's matte (matte.ts) finds the person in
- * each frame (MediaPipe's selfie segmenter, on this device) and draws the rest over, and LiveKit's ProcessorWrapper
- * makes a track of it, before anything is encrypted or sent. Its code is loaded only once someone picks a
- * background, and the model and its WebAssembly come from Alcove's own origin (vite.config.ts, public/mediapipe):
- * nothing is fetched from anywhere else.
+ * each frame (MediaPipe's selfie segmenter, on this device, in a worker of its own) and draws the rest over, and
+ * LiveKit's ProcessorWrapper makes a track of it, before anything is encrypted or sent. Its code is loaded only once
+ * someone picks a background, and the model and its WebAssembly come from Alcove's own origin (vite.config.ts,
+ * public/mediapipe): nothing is fetched from anywhere else.
  */
 import type { ProcessorWrapper } from '@livekit/track-processors';
 import type { Look, Matte, MatteOptions } from './matte';
@@ -11,6 +11,13 @@ import type { BackgroundQuality } from './frameBudget';
 import { log } from '~/lib/log';
 
 const blog = log.child({ component: 'backdrop' });
+/** How long a step may take before the background gives up and fails closed: loading code, or a picture. */
+const STEP_MS = 15_000;
+/**
+ * How long starting may take: downloading the model (16 MB) and its WebAssembly the first time, and compiling the model's
+ * shaders, which takes seconds on a phone. It's in a worker, so the page goes on meanwhile, and Off stops it at any moment.
+ */
+const START_MS = 30_000;
 
 export type { Look } from './matte';
 type Processor = ProcessorWrapper<MatteOptions, Matte>;
@@ -85,7 +92,7 @@ export class Backdrop {
         void initializing.finally(async () => {
           if (this.stopped || this.active?.processor !== processor) await this.dispose(processor);
         }).catch((e: unknown) => blog.warn('background initialization or late cleanup failed', { err: e }));
-        await this.wait(initializing);
+        await this.wait(initializing, START_MS);
       }
       const active = this.active;
       if (this.stopped) throw new Error('The background was stopped.');
@@ -103,10 +110,10 @@ export class Backdrop {
   }
 
   /** Off and a stalled download both release the media queue immediately; late model/bitmap work has its own disposal fence. */
-  private wait<T>(work: Promise<T>): Promise<T> {
+  private wait<T>(work: Promise<T>, ms = STEP_MS): Promise<T> {
     const interrupted = new Promise<never>((_resolve, reject) => {
       this.cancelWait = () => reject(new Error('The background was stopped.'));
-      this.deadline = setTimeout(() => reject(new Error('The background took too long to prepare.')), 15_000);
+      this.deadline = setTimeout(() => reject(new Error('The background took too long to prepare.')), ms);
     });
     return Promise.race([work, interrupted]).finally(() => {
       clearTimeout(this.deadline);

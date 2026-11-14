@@ -48,24 +48,29 @@ const TEAM = { name: 'Team', sub: 'For a company' } as const;
 /** "About 5 hours": what a period brings is an estimate, so it's said to the hour. */
 const aboutHours = (minutes: number): string => `About ${periodHours(minutes)}`;
 
-/** What a plan brings, one line each: notes (and, on Free, when they come back), storage, and the largest file. */
-function factsOf(a: PlanBrings, periodDays: number, back: boolean): PlanFact[] {
+/** The largest file a plan takes, said only while the plans differ in it: the same line on every card says nothing. */
+const largestFile = (a: PlanBrings, differ: boolean): PlanFact[] => (differ ? [{ icon: 'file', text: `Files up to ${roomLabel(a.fileBytes)}` }] : []);
+/** Whether the plans' largest files differ: the limits can set each plan's, and they're usually the same. */
+const filesDiffer = (o: PlanOffers): boolean => o.free.fileBytes !== o.pro.fileBytes || o.pro.fileBytes !== o.team.fileBytes;
+
+/** What a plan brings, one line each: notes (and, on Free, when they come back), storage, and the largest file when it differs. */
+function factsOf(a: PlanBrings, periodDays: number, back: boolean, files: boolean): PlanFact[] {
   return [
     { icon: 'notes', text: `${aboutHours(a.notesMinutes)} of notes ${perPeriod(periodDays)}`, sub: back ? `Back to ${hoursOfNotes(a.notesMinutes)} on the 1st of each period` : undefined },
     { icon: 'hardDrive', text: `${roomLabel(a.storageBytes)} of storage` },
-    { icon: 'file', text: `Files up to ${roomLabel(a.fileBytes)}` }
+    ...largestFile(a, files)
   ];
 }
 
 /**
- * What a license brings its person, one line each: their notes, their share of the team's storage, the largest file, and
- * what the team shares.
+ * What a license brings its person, one line each: their notes, their share of the team's storage, the largest file when
+ * it differs, and what the team shares.
  */
-function teamFactsOf(a: PlanBrings): PlanFact[] {
+function teamFactsOf(a: PlanBrings, files: boolean): PlanFact[] {
   return [
     { icon: 'notes', text: `${aboutHours(a.notesMinutes)} of notes each` },
     { icon: 'hardDrive', text: `${roomLabel(a.storageBytes)} each, shared by the team` },
-    { icon: 'file', text: `Files up to ${roomLabel(a.fileBytes)}` },
+    ...largestFile(a, files),
     { icon: 'people', text: 'Notes and workspaces the team shares' }
   ];
 }
@@ -249,6 +254,7 @@ function Offered({ offers: o, plan: p, yearly, teamYearly, now, team, people, go
     ? `You save ${usd((o.team.microUsdPerLicense - teamYearly.microUsdPerLicense) * teamYearly.periods)}.`
     : teamOffered ? `Or ${usd(teamOffered.microUsdPerLicense)} ${perPeriod(o.periodDays)} for ${yearWords(teamOffered.periods)}.` : undefined;
   const admin = team?.members.find((m) => m.role === 'admin');
+  const files = filesDiffer(o);
   const proAction = onTeamPlan
     ? <PlanHere quiet>Not while you’re on your team’s plan</PlanHere>
     : (
@@ -264,18 +270,18 @@ function Offered({ offers: o, plan: p, yearly, teamYearly, now, team, people, go
       <PlanCards>
         <PlanCard kind="free" {...FREE} price={usd(0)} bill="Nothing to pay."
           action={onFree ? go ?? <PlanHere /> : <PlanHere quiet>Where you’re back to if a plan ends</PlanHere>}
-          facts={factsOf(o.free, o.periodDays, true)} more={moreNotes(o.hours)} />
+          facts={factsOf(o.free, o.periodDays, true, files)} more={moreNotes(o.hours)} />
         <PlanCard kind="pro" {...PRO} lifted
           chip={onPro ? (ending ? endsIn(ending.days) : 'Your plan') : undefined}
           price={usd(perMonth)} per="a month"
           bill={yearly ? `${usd(perMonth * yearly.fromMonths)} for ${yearly.fromMonths} months.` : 'For as many months as you choose.'} save={save}
           action={onPro ? go ?? proAction : proAction}
-          facts={factsOf(o.pro, o.periodDays, false)} />
+          facts={factsOf(o.pro, o.periodDays, false, files)} />
         <PlanCard kind="team" {...TEAM} people={people.length ? <Faces people={people.slice(0, 4)} size={22} max={4} /> : undefined}
           chip={onTeamPlan ? 'Your plan' : undefined}
           price={usd(perLicense)} per={`a person ${perPeriod(o.periodDays)}`} bill={teamBill} save={teamSave}
           action={onTeamPlan ? go ?? teamAction : teamAction}
-          facts={teamFactsOf(o.team)} more="Licenses start when people open Alcove. Unused ones can be refunded." />
+          facts={teamFactsOf(o.team, files)} more="Licenses start when people open Alcove. Unused ones can be refunded." />
       </PlanCards>
       <EveryPlan items={EVERY} />
       <PayingLine>
