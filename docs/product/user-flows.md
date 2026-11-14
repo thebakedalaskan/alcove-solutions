@@ -70,7 +70,9 @@ Beside every page, dark in both themes, in two groups: your work at the top, and
 - **Home**, **Calls** (flow 8), **Drive**, every workspace, where you write together (flow 12), and **Record**, where
   recording in the room starts (flow 9). A count beside a place says something is waiting on you there: on Home, what's
   for you; in the Drive, tags you haven't seen; on Record, recordings on this device waiting to upload. Nothing counts a
-  total, such as every call or everyone on Team.
+  total, such as every call or everyone on Team. Home's count is a link of its own: pointing at it says what's waiting in
+  each of **For you**'s tabs ("For you: 3 to answer, 2 follow-ups"), and pressing it, from Home or any other page, brings
+  **For you** into view on the tab where things wait, with focus there and its edge glowing for a moment (flow 3).
 - **Pinned**, under them, once you've pinned a note: the notes you pinned, in the order you pinned them, up to 8. A pinned
   note that was deleted, or that you removed from your notes, isn't listed. A call's page pins its notes; the pin at the end
   of the heading, which shows while you point at Pinned, opens the palette to pick notes to pin or unpin, and with 8 pinned
@@ -186,8 +188,11 @@ visitors: a boat far out, stars after dark and now and then a shooting star. Wit
   minutes before until then, the call at the foot of the side panel offers **Join**, as on every page, and it makes way
   for this line while the line is there.
 - **For you** holds what's yours in two tabs, **To answer** and **Follow-ups**, each with how many are open; the side
-  panel's **Home** shows the two together. It opens on **To answer** when anything's there, else on **Follow-ups** when
-  anything's there, else on **To answer**. Each tab shows its first five, then **Show N more**.
+  panel's **Home** shows the two together, and pressing that count lands here, on **To answer** when anything's open there,
+  else on **Follow-ups**. It opens on **To answer** when anything's there, else on **Follow-ups** when anything's there,
+  else on **To answer**. Each tab shows its first five, then **Show N more**. Every row keeps the place it had when Home
+  opened until you leave Home, so answering, ticking or undoing never moves a row; something new while you're there goes
+  where it falls among the rest.
 - **To answer**: what needs an answer from you, newest first, a row each with its kind, its words, the faces of whoever
   was on the call (a microphone for a room recording) and the answer at the right. A row's words open its note at the
   moment they were said, when the notes know it, and the call's name is the row's tooltip. What a decision or follow-up
@@ -201,7 +206,8 @@ visitors: a boat far out, stars after dark and now and then a shooting star. Wit
     gives it back to you, taken on).
   - **Notes shared with you** in the last 7 days ("Aiko shared the notes from Board prep"): **Read** opens them.
   - What you answer stays where it is until you leave Home, saying what you did in a word or two: **Confirmed**, **Not
-    decided**, **Disputed**, **In your follow-ups** or **Not yours**.
+    decided**, **Disputed**, **In your follow-ups** or **Not yours**. **Undo** puts it back to be answered, still in its
+    place. An answer whose reply doesn't come back says why in a toast, and the row stays where it is, to answer again.
 - **Follow-ups**: the ones you took on and haven't done, from every note you have, soonest first, with the rest after
   them. Each row has the box to tick, the words, the call it came from and when it's due. The due words count from when
   they were said: the last time the due date was changed, or else the call. A day ("today", "EOD", "tomorrow", "Friday",
@@ -283,7 +289,8 @@ Inviting your team is on the Team page (flow 10).
 
 Storybook's journeys use these numbers: **3.1 Start a call now**, **3.2 Schedule a call**, **3.3 A call is about to
 start**, **3.4 Move a meeting to Alcove**, **3.5 Clear what’s waiting**, **3.6 Tick off a follow-up**, **3.7 Your
-first day**, **3.8 See your own events** and **3.9 A week of only your own events**.
+first day**, **3.8 See your own events**, **3.9 A week of only your own events** and **3.10 What’s waiting, from the
+side panel**.
 
 ## 4. Start or schedule a call
 

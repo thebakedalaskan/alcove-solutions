@@ -46,18 +46,20 @@ export function Card({ title, aside, children, className, style, label }: {
  * more, and keeps the foot there once everything shows: a quiet toggle, as Upcoming's count of events with only you on them.
  * `foot` sits at the card's foot, under the body and before that. `bare` leaves the card out: the head and what's under it sit
  * on the page, as a row of cards does. `body` makes the body something more than a list (a tab's panel). The heading can take
- * focus (`headingRef`), for when the row that had it goes.
+ * focus (`headingRef`), for when the row that had it goes. `id` lets a link name it, and `landed` says one just did: a ring in
+ * the horizon's blue goes round it and fades, so the eye finds it.
  */
-export function Widget({ icon, title, end, foot, footEnd, more, bare = false, headingRef, body, className, children }: {
+export function Widget({ icon, title, end, foot, footEnd, more, bare = false, headingRef, body, id, landed = false, className, children }: {
   icon: IconName; title: string; end?: ReactNode; foot?: ReactNode; footEnd?: ReactNode;
   more?: { count: number; onShow: () => void } | undefined;
   bare?: boolean | undefined; headingRef?: Ref<HTMLHeadingElement> | undefined;
   body?: Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'className'> | undefined;
+  id?: string | undefined; landed?: boolean | undefined;
   className?: string | undefined; children: ReactNode;
 }) {
   const h = useId();
   return (
-    <section className={cn('ac-widget', bare && 'is-bare', className)} aria-labelledby={h}>
+    <section id={id} className={cn('ac-widget', bare && 'is-bare', className)} aria-labelledby={h} data-landed={landed ? '' : undefined}>
       <header className="ac-widget-h">
         <span className="ac-widget-ic" aria-hidden="true"><Icon name={icon} size={15} /></span>
         <h2 id={h} ref={headingRef} tabIndex={-1}>{title}</h2>

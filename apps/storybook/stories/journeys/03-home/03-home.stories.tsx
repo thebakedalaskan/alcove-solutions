@@ -1,16 +1,17 @@
 /*
  * Journeys on Home (docs/product/user-flows.md › 3. Home), as the canvas's Home board draws them
- * (docs/design/canvas/home/water.js, AH.HW.JOURNEYS), and 3.8 and 3.9 as Upcoming's own canvas does
- * (docs/design/canvas/upcoming). Asking your notes from Search or ask is the side panel's (2.4), and
- * Start a call's modal is flow 4's. Google's pages can't open in Storybook, so connecting the calendar plays up to the
- * hand-off; Home as Google sends you back to it is in Pages/Home/Home (Back from Google, Google didn't allow).
+ * (docs/design/canvas/home/water.js, AH.HW.JOURNEYS), 3.8 and 3.9 as Upcoming's own canvas does
+ * (docs/design/canvas/upcoming), and 3.10, the side panel's Home count landing on For you. Asking your notes from Search
+ * or ask is the side panel's (2.4), and Start a call's modal is flow 4's. Google's pages can't open in Storybook, so
+ * connecting the calendar plays up to the hand-off; Home as Google sends you back to it is in Pages/Home/Home (Back from
+ * Google, Google didn't allow).
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { notConnected } from '../../../src/world/build';
 import { page, pages, type PageArgs, type PageStory } from '../../../src/page';
 import { onlyOwnEvents, yourMeeting } from '../../pages/changes';
-import { before, holding, LATER, SOON } from '../play';
+import { before, holding, LAPTOP, LATER, SOON } from '../play';
 
 const meta = { title: 'Journeys/3 Home', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -104,6 +105,10 @@ export const ClearWhatsWaiting: PageStory = {
     await step('The row stays where it is and says Confirmed, with Undo. Nothing jumps', async () => {
       await within(await holding('listitem', 'Orders placed before the move ship from the old warehouse.')).findByRole('button', { name: 'Undo' }, SOON);
     });
+    await step('Undo. It’s back to Confirm, still in its place: every row keeps the place it had when Home opened', async () => {
+      await userEvent.click(within(await holding('listitem', 'Orders placed before the move ship from the old warehouse.')).getByRole('button', { name: 'Undo' }));
+      await within(await holding('listitem', 'Orders placed before the move ship from the old warehouse.')).findByRole('button', { name: 'Confirm' }, SOON);
+    });
     await step('Take one on with I’ll do it, or the ✕ for Not mine', async () => {
       await userEvent.click(within(await holding('listitem', 'Book the movers for the 14th')).getByRole('button', { name: 'I’ll do it' }));
       await userEvent.click(within(await holding('listitem', 'List which suppliers move with us')).getByRole('button', { name: 'Not mine' }));
@@ -182,6 +187,27 @@ export const AWeekOfYourOwnEvents: PageStory = {
     });
     await step('Your week, quietly, in its days, with Show 4 more. The count at the foot hides it again', async () => {
       await within(await widget('Upcoming')).findByRole('button', { name: '12 with only you' }, SOON);
+    });
+  }
+};
+
+export const WhatsWaitingFromTheSidePanel: PageStory = {
+  name: '3.10 What’s waiting, from the side panel',
+  ...page('/home', 'busy', { globals: LAPTOP }),
+  play: async ({ userEvent, step }) => {
+    const count = () => screen.findByRole('link', { name: /For you:/ }, SOON);
+    await step('Home’s count in the side panel is everything waiting on you. Point at it: how much is in each of For you’s tabs', async () => {
+      await userEvent.hover(await count());
+    });
+    await step('Click it. For you comes into view, on To answer, and its edge glows for a moment', async () => {
+      await userEvent.click(await count());
+      await screen.findByRole('tab', { name: /^To answer/, selected: true }, SOON);
+    });
+    await step('From any other page it does the same: Home opens on For you', async () => {
+      await userEvent.click(within(screen.getByRole('complementary', { name: 'Side panel' })).getByRole('link', { name: 'Calls' }));
+      await screen.findByRole('heading', { name: 'Calls', level: 1 }, SOON);
+      await userEvent.click(await count());
+      await screen.findByRole('tab', { name: /^To answer/, selected: true }, SOON);
     });
   }
 };

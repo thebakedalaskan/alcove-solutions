@@ -3,7 +3,7 @@
  * then `end`, what the head holds after it (tabs, or a quiet button at its end). Its body. And, only while the list in it
  * is longer than it shows, a foot with Show N more; `footEnd` sits at that foot's end, and keeps the foot once everything
  * shows. `foot` sits at the card's foot, under the body. `bare` leaves the card out: the head and what's under it sit on the
- * page, as Home's Recent notes does.
+ * page, as Home's Recent notes does. `id` lets a link name it, and `landed` says one just did.
  */
 import { EmptyRows, Hatch, Icon, NoteCard, Widget, coverFor } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -24,7 +24,7 @@ const meta = {
   component: Widget,
   args: { icon: 'cal', title: 'Upcoming', children: list(ROWS) },
   argTypes: {
-    title: { control: 'text' }, bare: { control: 'boolean' },
+    title: { control: 'text' }, bare: { control: 'boolean' }, landed: { control: 'boolean' }, id: { control: false },
     icon: { control: false }, end: { control: false }, foot: { control: false }, footEnd: { control: false }, more: { control: false }, body: { control: false },
     headingRef: { control: false }, className: { control: false }, children: { control: false }
   },
@@ -57,6 +57,11 @@ export const WithAFoot: Story = {
     foot: <div className="ac-body-s" style={{ padding: '14px 18px', borderTop: '1px solid var(--line)', color: 'var(--ink-2)' }}>See your other meetings here</div>
   }
 };
+/**
+ * Landed on: a link named it, as Home's count in the side panel names For you. A ring in the horizon's blue goes round it and
+ * fades over 1.8s as the eye finds it, with reduced motion too. Switch `landed` off and on to see it again.
+ */
+export const Landed: Story = { args: { icon: 'inbox', title: 'For you', id: 'for-you', landed: true } };
 /** Nothing in it yet: a small drawing, a title and one line, in the middle of the body. */
 export const Empty: Story = {
   args: {
