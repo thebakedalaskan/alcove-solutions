@@ -553,9 +553,8 @@ const PROBE_MESSAGES: Message[] = [
 const PROBE_TOKENS = 16;
 
 /**
- * One second of 16 kHz mono 16-bit quiet noise, as WAV: what the speech model hears from a probe. Not digital silence,
- * which no call ever sends and NEAR AI's speech model answers with a 502 (14 Nov, while real clips transcribed): a fixed,
- * seeded hiss about 50 dB down, so every probe sends the same second and nothing of anyone's.
+ * One second of 16 kHz mono 16-bit quiet noise, as WAV: what the speech model hears from a probe. A fixed, seeded hiss
+ * about 50 dB down, closer to what a call sends than digital silence, the same in every probe and nothing of anyone's.
  */
 function quietNoise(): Uint8Array<ArrayBuffer> {
   const samples = 16_000;
