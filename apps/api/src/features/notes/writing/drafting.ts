@@ -40,6 +40,16 @@ export const WRITING_OUTPUT = { notes: 4000, details: 2500, revisits: 500 } as c
  * after which NEAR AI was seen to close a request, so theirs decides.
  */
 export const THINKING = { maxTokens: 64_000, timeoutMs: 620_000 } as const;
+/**
+ * A part whose transcript as sent (`sent.text`, shared screens included) is over 18,000 characters, about 2,300 words or
+ * 6,000 tokens, thinks at no more than 75. Characters stand in for tokens, which can't be counted before sending. At the
+ * most effort, the eval's long cases (20,000 characters and more) mostly ran into NEAR AI's 10-minute cut; at 75 they
+ * mostly didn't, and the notes were as good.
+ */
+const LONG_TRANSCRIPT = { chars: 18_000, effort: 75 } as const;
+/** How hard the notes think about a transcript of `chars` characters: NEAR_AI_NOTES_EFFORT, at most LONG_TRANSCRIPT's effort when it's long. */
+const notesEffort = (cfg: Config, chars: number): number =>
+  chars > LONG_TRANSCRIPT.chars ? Math.min(cfg.NEAR_AI_NOTES_EFFORT, LONG_TRANSCRIPT.effort) : cfg.NEAR_AI_NOTES_EFFORT;
 /** Whether the notes written after a call or a recording think first with `model`: only the default does, while NEAR_AI_NOTES_EFFORT is on. */
 export const thinksWith = (cfg: Config, model: string): boolean => cfg.NEAR_AI_NOTES_EFFORT > 0 && model === cfg.NEAR_AI_NOTES_MODEL;
 const dlog = log.child({ component: 'notes' });
@@ -259,7 +269,7 @@ export async function draft(cfg: Config, meter: Meter, b: Brief, style: NotesSty
   // The default model thinks first, once: if that request times out, is cut off or comes back unusable, the notes are
   // asked for again at once without thinking, so they take at most 860 s (620, then 240). Nothing asked after it thinks.
   const via = b.via ?? defaultModel(cfg);
-  const effort = !style.brief && !style.quick && via.private && thinksWith(cfg, via.model) ? cfg.NEAR_AI_NOTES_EFFORT : 0;
+  const effort = !style.brief && !style.quick && via.private && thinksWith(cfg, via.model) ? notesEffort(cfg, sent.text.length) : 0;
   let thought: Awaited<ReturnType<typeof ask>> | undefined;
   if (effort > 0) {
     try {

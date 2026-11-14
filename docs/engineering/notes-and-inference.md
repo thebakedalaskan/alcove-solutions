@@ -537,8 +537,8 @@ account.
 ### Thinking first
 
 The notes written after a call or a recording, the call's and each breakout room's, ask the default model to think
-before it answers, at `NEAR_AI_NOTES_EFFORT` (100 unless set; `0` turns it off): `chat_template_kwargs` carries
-`enable_thinking: true` and `reasoning_effort`, the way NEAR AI's private DeepSeek takes it. Nothing else thinks: the full
+before it answers, at `NEAR_AI_NOTES_EFFORT` (100 unless set, at most 75 for a long transcript; `0` turns it off):
+`chat_template_kwargs` carries `enable_thinking: true` and `reasoning_effort`, the way NEAR AI's private DeepSeek takes it. Nothing else thinks: the full
 summary, comparing with a series, picking and reading shared screens, live notes, catching up, asking, boards, documents
 and the operators' probe all send `enable_thinking: false`. A model an organizer chose is sent what it always is.
 Thinking is `complete`'s `think` option in `inference.ts`; only `draft` in `drafting.ts` passes it.
@@ -548,6 +548,12 @@ Thinking is `complete`'s `think` option in `inference.ts`; only `draft` in `draf
   theirs decides (`THINKING`). Node's `fetch` gives up on a reply whose headers take over 300 s, whatever the
   request's timeout, so a request allowed longer goes by undici's own `fetch` with an agent that sets no limit of its
   own; every other request goes as before.
+- **Long transcripts.** A part whose transcript as sent, shared screens included, is over 18,000 characters (about 2,300
+  words, or 6,000 tokens) thinks at no more than 75 (`LONG_TRANSCRIPT` in `drafting.ts`). Each breakout room goes by its
+  own transcript, so a short room of a long call still thinks at the setting. A setting under 75 stays as set.
+  Characters stand in for tokens, which can't be counted before sending, so a call in Chinese or Japanese, about three
+  times denser, says more before it switches. At 100, the eval's long cases ran into NEAR AI's 10-minute cut on 60–88%
+  of runs, and at 75 on 17%, with notes no worse.
 - **Once, then without.** If the thinking request times out, is closed, or comes back unusable (anything that fails it),
   the notes are asked for again at once without thinking (4,000 tokens, 240 s), so each part's notes take 860 s at most.
   A call's breakout rooms are written before its own notes, up to three at once, so a call with rooms can take twice that.
@@ -1920,7 +1926,7 @@ shows the default as "<name> (default)".
 | `NEAR_AI_STT_URL` | `https://whisper-large-v3.completions.near.ai` | The speech model's own endpoint, where clips go by Oblivious HTTP |
 | `NEAR_AI_NOTES_MODEL` | `deepseek-ai/DeepSeek-V4.1-Flash-1017` | The default model: everything after transcription when no other is chosen |
 | `NEAR_AI_NOTES_URL` | `https://deepseek-v4-1-flash.completions.near.ai` | The default model's own endpoint, where chat goes by Oblivious HTTP |
-| `NEAR_AI_NOTES_EFFORT` | `100` | How hard the default model thinks before it writes the notes after a call or a recording, 1 to 100; `0` turns thinking off ([Thinking first](#thinking-first)) |
+| `NEAR_AI_NOTES_EFFORT` | `100` | How hard the default model thinks before it writes the notes after a call or a recording, 1 to 100, at most 75 for a transcript over 18,000 characters; `0` turns thinking off ([Thinking first](#thinking-first)) |
 | `NEAR_AI_MAX_INPUT_PRICE` | `1` | The most a model's input may cost, in US dollars per million tokens, to be offered as a choice |
 | `NEAR_AI_ENDPOINTS_URL` | `https://completions.near.ai/endpoints` | NEAR AI's registry of the models it runs itself, and where |
 | `INTEL_PCS_URL` | `https://api.trustedservices.intel.com` | Intel's collateral for TDX quotes |
@@ -1939,7 +1945,7 @@ verified against. The measured OS images aren't configuration at all.
 | Verify a model | `GET /attestation/report`, as in [What is checked](#what-is-checked); then Intel's collateral and `POST {NVIDIA_NRAS_URL}/v3/attest/gpu` with the GPU evidence unchanged | 20 s, 15 s, 30 s |
 | Transcribe a clip | `POST {NEAR_AI_STT_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/audio/transcriptions`, multipart: `model`, `response_format=verbose_json`, `temperature=0`, once the call's language is known `language` (Whisper's code for it, such as `en`: NEAR AI refuses names) and `prompt` (names and the words before, at most 371 bytes), `file` (`clip.wav`, `audio/wav`), with the bearer key | 20 s |
 | Write notes | `POST {NEAR_AI_NOTES_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/chat/completions`, JSON: `model`, a system and a user message, `temperature` 0.2, `max_tokens` 4,000, `response_format: {"type": "json_object"}`, `chat_template_kwargs: {"enable_thinking": false}`, `stream: false`, with the bearer key | 240 s |
-| Write notes after a call or a recording, thinking first | The same, from the default model while `NEAR_AI_NOTES_EFFORT` is on, with `max_tokens` 64,000 and `chat_template_kwargs: {"enable_thinking": true, "reasoning_effort": 100}` (the setting); sent once, and if it fails, asked again at once as above ([Thinking first](#thinking-first)) | 620 s |
+| Write notes after a call or a recording, thinking first | The same, from the default model while `NEAR_AI_NOTES_EFFORT` is on, with `max_tokens` 64,000 and `chat_template_kwargs: {"enable_thinking": true, "reasoning_effort": 100}` (the setting, at most 75 for a transcript over 18,000 characters); sent once, and if it fails, asked again at once as above ([Thinking first](#thinking-first)) | 620 s |
 | Chat with an unencrypted model | `POST {NEAR_AI_BASE_URL}/chat/completions` over TLS, the same JSON without `chat_template_kwargs`, `temperature` and `response_format` only as the catalog lists them, with the bearer key | The same as the request it stands for |
 | Write the full summary | The same as writing notes, with `max_tokens` 2,500, after the notes | 180 s |
 | Pick the moments of shared screens to look at | The same as writing notes, with `max_tokens` 6,000 | 180 s |
@@ -2057,9 +2063,10 @@ keys can change.
 Tests run with thinking off (`NEAR_AI_NOTES_EFFORT=0` in the harness), so what a test makes a request do is what one
 attempt at the notes does. `thinking first (NEAR_AI_NOTES_EFFORT)` in
 `apps/api/src/features/notes/writing/models.integration.test.ts` turns it on: the notes of a call and of its breakout
-room think at 100 with 64,000 tokens while catching up, asking in and after the call and the full summary don't; at
-`0` the notes don't think; a thinking request closed with no answer while the model's key changes, or answered in prose,
-is asked again at once without thinking (the first to the new key, never the thinking request again) and the notes are
+room think with 64,000 tokens while catching up, asking in and after the call and the full summary don't. The call's
+notes, whose transcript is over 18,000 characters, think at 75, and its short breakout room's at 100. A long recording
+at a setting of 50 thinks at 50. At `0` the notes don't think; a thinking request closed with no answer while the
+model's key changes, or answered in prose, is asked again at once without thinking (the first to the new key, never the thinking request again) and the notes are
 saved; a job that waited for the model doesn't think again; and a model the organizer chose through the gateway is
 never asked to, with thinking on.
 
