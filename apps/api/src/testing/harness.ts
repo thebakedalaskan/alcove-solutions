@@ -165,6 +165,9 @@ export async function startHarness(): Promise<Harness> {
     GOOGLE_ISSUER: google.issuer, GOOGLE_API_URL: google.issuer, GOOGLE_CLIENT_ID: google.clientId, GOOGLE_CLIENT_SECRET: google.clientSecret,
     // NEAR AI, and the stand-in Intel and NVIDIA roots its evidence is checked against.
     ...near.settings,
+    // The notes don't think first unless a test turns it on (writing/models.integration.test.ts): what a test makes a
+    // request do is then what one attempt at the notes does.
+    NEAR_AI_NOTES_EFFORT: '0',
     // 1Click, paying the treasury for credit top-ups.
     ...oneclick.settings,
     // Sign-in photos come from the stand-in Google here, as they come from lh3.googleusercontent.com in production.

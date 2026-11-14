@@ -20,6 +20,7 @@
  * (probeNotes, probeSpeech), sealed to its attested key like any other and paid for by Alcove, not by anyone's plan.
  */
 import type { InferenceEvidence } from '@alcove/api';
+import { Agent, fetch as fetchLong } from 'undici';
 import { z } from 'zod';
 import type { Config, Keyless } from '../platform/config';
 import { equalBytes, fromUtf8, utf8 } from '../keys/crypto';
@@ -83,6 +84,18 @@ type Ready = Keyless & { NEAR_AI_API_KEY: string };
 export const ready = (cfg: Keyless): cfg is Ready => !!cfg.NEAR_AI_API_KEY;
 const notConnected = (what: string) => new UnavailableError('Alcove’s notes service isn’t connected on this server.', { context: { what } });
 
+/**
+ * Node's `fetch` gives up on a reply whose headers take more than 300 s to come, whatever the request's own timeout. A
+ * request allowed longer (a model thinking first) goes by undici's own `fetch` with an agent that sets no limit of its
+ * own, so the request's timeout decides. Every other request goes as it always has.
+ */
+const NODE_WAITS_MS = 300_000;
+const waitsLong = new Agent({ headersTimeout: 0, bodyTimeout: 0 });
+const post = (url: string, init: { headers: Record<string, string>; body: Uint8Array<ArrayBuffer>; timeoutMs: number }) => {
+  const sent = { method: 'POST', headers: init.headers, body: init.body, signal: AbortSignal.timeout(init.timeoutMs) };
+  return init.timeoutMs > NODE_WAITS_MS ? fetchLong(url, { ...sent, dispatcher: waitsLong }) : fetch(url, sent);
+};
+
 /** The model didn't open a request sealed to the key it vouched for (it rotated, or another instance answered): verify again and retry once. */
 class KeyRefused extends Error {
   constructor(readonly error: AppError) { super(error.message); }
@@ -113,10 +126,10 @@ async function sealed(cfg: Ready, v: Verified, endpoint: string, o: { path: stri
   }));
   const t0 = performance.now();
   try {
-    let res: Response;
+    let res: Awaited<ReturnType<typeof post>>;
     try {
-      res = await fetch(`${endpoint.replace(/\/$/, '')}/ohttp`, {
-        method: 'POST', headers: { 'content-type': 'message/ohttp-req', accept: 'message/ohttp-res' }, body: new Uint8Array(request.wire), signal: AbortSignal.timeout(o.timeoutMs)
+      res = await post(`${endpoint.replace(/\/$/, '')}/ohttp`, {
+        headers: { 'content-type': 'message/ohttp-req', accept: 'message/ohttp-res' }, body: new Uint8Array(request.wire), timeoutMs: o.timeoutMs
       });
     } catch (e) {
       const timedOut = e instanceof DOMException && e.name === 'TimeoutError';
@@ -143,9 +156,10 @@ async function sealed(cfg: Ready, v: Verified, endpoint: string, o: { path: stri
 
 /**
  * Runs a request with the model's verification. If the model no longer takes its key, verifies again
- * and, if the key changed, sends the request once more, to the new key.
+ * and, if the key changed, sends the request once more, to the new key. A request sent `once` isn't sent again: the
+ * caller asks again its own way, and that request verifies afresh.
  */
-async function withVerified<T>(cfg: Ready, model: string, task: Task, run: (v: Verified) => Promise<T>): Promise<T> {
+async function withVerified<T>(cfg: Ready, model: string, task: Task, run: (v: Verified) => Promise<T>, once = false): Promise<T> {
   const v = await verified(cfg, model, task);
   try {
     return await run(v);
@@ -154,6 +168,7 @@ async function withVerified<T>(cfg: Ready, model: string, task: Task, run: (v: V
     if (e instanceof UnansweredError) { forget(cfg, v); throw e; }
     if (!(e instanceof KeyRefused)) throw e;
     forget(cfg, v);
+    if (once) throw e.error;
     let again: Verified;
     try {
       again = await verified(cfg, model, task);
@@ -469,16 +484,47 @@ export type ChatModel =
   | { model: string; private: false; temperature: boolean; json: boolean };
 /** A model NEAR AI runs in its TEEs, at its own endpoint: every request to it is sealed to its attested key. */
 export type PrivateModel = Extract<ChatModel, { private: true }>;
+/** What a chat request asks for besides its model and messages, as it's sent. */
+export interface ChatSettings {
+  max_tokens: number;
+  temperature?: number;
+  response_format?: { type: 'json_object' };
+  chat_template_kwargs?: { enable_thinking: boolean; reasoning_effort?: number };
+}
+/**
+ * A private model thinking before it answers (`complete`'s `think`): how hard, from 1 to 100, and the room its thinking
+ * takes, which counts against its reply: what it may write, and how long it may take.
+ */
+export interface Thinking { effort: number; maxTokens: number; timeoutMs: number }
+/**
+ * One request to a chat model as it went and came back: what it was sent, its settings, and its reply's text before any
+ * JSON was taken out of it. Only the notes eval (features/notes/eval) asks for these, through `complete`'s `trace`; they
+ * hold content, so they stay in the process and are never logged.
+ */
+export interface Exchange {
+  what: string;
+  model: string;
+  private: boolean;
+  sent: { messages: Message[]; settings: ChatSettings };
+  status: number;
+  reply: string | null;
+  finish: string | null;
+  promptTokens: number | null;
+  outputTokens: number | null;
+  ms: number;
+}
+export type Trace = (x: Exchange) => void;
+
 /** The default model, at its own endpoint. */
 export const defaultModel = (cfg: Keyless): PrivateModel => ({ model: cfg.NEAR_AI_NOTES_MODEL, private: true, url: cfg.NEAR_AI_NOTES_URL });
 
 /** An unencrypted model's answer, through NEAR AI's gateway over TLS: nothing seals it, and nothing vouches for what reads it. */
 async function plainly(cfg: Ready, body: Uint8Array, o: { what: string; timeoutMs: number }): Promise<{ status: number; body: Uint8Array }> {
   const t0 = performance.now();
-  let res: Response;
+  let res: Awaited<ReturnType<typeof post>>;
   try {
-    res = await fetch(`${cfg.NEAR_AI_BASE_URL.replace(/\/$/, '')}/chat/completions`, {
-      method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json', authorization: `Bearer ${cfg.NEAR_AI_API_KEY}` }, body: new Uint8Array(body), signal: AbortSignal.timeout(o.timeoutMs)
+    res = await post(`${cfg.NEAR_AI_BASE_URL.replace(/\/$/, '')}/chat/completions`, {
+      headers: { 'content-type': 'application/json', accept: 'application/json', authorization: `Bearer ${cfg.NEAR_AI_API_KEY}` }, body: new Uint8Array(body), timeoutMs: o.timeoutMs
     });
   } catch (e) {
     const timedOut = e instanceof DOMException && e.name === 'TimeoutError';
@@ -490,52 +536,59 @@ async function plainly(cfg: Ready, body: Uint8Array, o: { what: string; timeoutM
 /**
  * Asks a chat model (the default, or `o.via`) for one JSON object and returns it unparsed for the caller's schema,
  * with the verification it went to: null for an unencrypted model, which nothing verified. `meter` pays for it.
+ * With `think`, a private model thinks first, with the room `think` gives it, and the request is sent once: a model that
+ * no longer takes its key isn't sent it again, so whatever the caller asks next is all that goes.
  */
-export async function complete(cfg: Config, meter: Meter, messages: Message[], o: { what: string; maxTokens: number; timeoutMs?: number; via?: ChatModel | undefined }): Promise<{ json: unknown; evidence: InferenceEvidence | null }> {
+export async function complete(cfg: Config, meter: Meter, messages: Message[], o: { what: string; maxTokens: number; timeoutMs?: number; via?: ChatModel | undefined; trace?: Trace | undefined; think?: Thinking | undefined }): Promise<{ json: unknown; evidence: InferenceEvidence | null }> {
   if (!ready(cfg)) throw notConnected(o.what);
   const via = o.via ?? defaultModel(cfg);
   const model = via.model;
-  const timeoutMs = o.timeoutMs ?? 90_000;
+  const think = via.private ? o.think : undefined;
+  const maxTokens = think?.maxTokens ?? o.maxTokens;
+  const timeoutMs = think?.timeoutMs ?? o.timeoutMs ?? 90_000;
   const text = textOf(messages);
   const images = imagesIn(messages);
+  // Built once, so what's sent and what the trace records are the same. A private model takes them all, and thinks out
+  // loud first only when asked to (`think`): it takes minutes on a long call. An unencrypted one gets only what its
+  // provider takes: some refuse a temperature, and some don't do JSON mode (the reply is read either way).
+  const settings: ChatSettings = via.private
+    ? { temperature: 0.2, max_tokens: maxTokens, response_format: { type: 'json_object' }, chat_template_kwargs: think ? { enable_thinking: true, reasoning_effort: think.effort } : { enable_thinking: false } }
+    : { max_tokens: maxTokens, ...(via.temperature ? { temperature: 0.2 } : {}), ...(via.json ? { response_format: { type: 'json_object' as const } } : {}) };
+  const body = utf8(JSON.stringify({ model, messages, ...settings, stream: false }));
   const answer = (reply: { status: number; body: Uint8Array }, t0: number, requestBytes: number, answered: (u: Usage, reckoned: boolean) => void): unknown => {
     const ms = Math.round(performance.now() - t0);
-    if (reply.status !== 200) throw statusError(reply.status, { what: o.what, ms });
-    const r = Chat.safeParse(parsed(reply.body));
-    const choice = r.success ? r.data.choices[0] : undefined;
-    const usage = r.success ? r.data.usage : undefined;
+    const r = reply.status === 200 ? Chat.safeParse(parsed(reply.body)) : null;
+    const choice = r?.success ? r.data.choices[0] : undefined;
+    const usage = r?.success ? r.data.usage : undefined;
+    const context = { what: o.what, model, encrypted: via.private, ms, finish: choice?.finish_reason ?? null, promptTokens: usage?.prompt_tokens ?? null, outputTokens: usage?.completion_tokens ?? null };
+    o.trace?.({
+      what: o.what, model, private: via.private, sent: { messages, settings },
+      status: reply.status, reply: choice?.message.content ?? null, finish: context.finish, promptTokens: context.promptTokens, outputTokens: context.outputTokens, ms
+    });
+    if (!r) throw statusError(reply.status, { what: o.what, ms });
     // What it used is charged whatever came back: the model did the work. What it didn't say is reckoned.
     answered({
       input: usage?.prompt_tokens ?? tokensAbout(text), cached: usage?.prompt_tokens_details?.cached_tokens ?? 0,
       output: usage?.completion_tokens ?? tokensAbout(choice?.message.content ?? '')
     }, usage?.prompt_tokens === undefined || usage.completion_tokens === undefined);
-    const context = { what: o.what, model, encrypted: via.private, ms, finish: choice?.finish_reason ?? null, promptTokens: usage?.prompt_tokens ?? null, outputTokens: usage?.completion_tokens ?? null };
     const json = jsonIn(choice?.message.content ?? '');
     if (json === null) throw new UnavailableError('The notes service sent back something unexpected.', { context: { ...context, reply: r.success ? 'no-json' : 'unparseable' } });
     ilog.debug('notes model answered', { ...context, requestBytes, images });
     return json;
   };
-  const most: Most = { input: tokensAtMost(text), images, output: o.maxTokens };
+  const most: Most = { input: tokensAtMost(text), images, output: maxTokens };
   if (!via.private) {
-    // Only what the provider takes: some refuse a temperature, and some don't do JSON mode (the reply is read either way).
-    const body = utf8(JSON.stringify({
-      model, messages, max_tokens: o.maxTokens, ...(via.temperature ? { temperature: 0.2 } : {}), ...(via.json ? { response_format: { type: 'json_object' } } : {}), stream: false
-    }));
     return paidFor(meter, model, most, async (answered) => {
       const t0 = performance.now();
       return { json: answer(await plainly(cfg, body, { what: o.what, timeoutMs }), t0, body.length, answered), evidence: null };
     });
   }
   const endpoint = via.url;
-  // Thinking out loud first takes the model a minute on a long call and isn't needed for notes.
-  const body = utf8(JSON.stringify({
-    model, messages, temperature: 0.2, max_tokens: o.maxTokens, response_format: { type: 'json_object' }, chat_template_kwargs: { enable_thinking: false }, stream: false
-  }));
   return paidFor(meter, model, most, (answered) => withVerified(cfg, model, 'notes', async (v) => {
     const t0 = performance.now();
     const reply = await sealed(cfg, v, endpoint, { path: '/v1/chat/completions', type: 'application/json', body, timeoutMs, what: o.what });
     return { json: answer(reply, t0, body.length, answered), evidence: v.evidence };
-  }));
+  }, think !== undefined));
 }
 
 /** Asks a chat model for one JSON object, as `complete` does, for answers nothing keeps (questions, catching up). */

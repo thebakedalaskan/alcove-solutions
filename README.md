@@ -285,8 +285,8 @@ files [near the end of this page](#where-to-look-in-the-code).
 4. Talk for half a minute, with a decision and a to-do in it. Open **Notes** at the top right: your lines appear under
    **Transcript**, labelled **You**, and the **Notes** tab fills in within about 30 seconds. Point at the shield beside
    **Notes on**: it says what’s sealed, when the hardware was checked, and that Alcove can’t read the call.
-5. Press **Leave**: when you’re alone, it ends the call at once, and the call’s ended page opens. Within about a minute
-   the note is written; press **Read the notes** (it says **Open the notes** while they’re being written) to see the
+5. Press **Leave**: when you’re alone, it ends the call at once, and the call’s ended page opens. Within a few minutes
+   (the notes model thinks first) the note is written; press **Read the notes** (it says **Open the notes** while they’re being written) to see the
    summary, with any decisions and follow-ups. Under the title, press **Written in confidential compute** to see which
    NEAR AI model did each task and when its hardware evidence was checked.
 6. Press <kbd>⌘</kbd> <kbd>K</kbd> (<kbd>Ctrl</kbd> <kbd>K</kbd> on Windows and Linux), type a question about the call

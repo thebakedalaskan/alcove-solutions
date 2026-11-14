@@ -469,7 +469,8 @@ account.
   failure: notes that keep timing out are finished without a summary after three, and notes written again stay as they
   were, instead of being charged again every five minutes without end. A draft can take the model
   well over a minute (about 24 tokens a second at its slowest, up to 4,000 of them, which is 167 seconds), so it gets
-  four minutes, and the job's lease five.
+  four minutes; thinking first it gets 620 s ([Thinking first](#thinking-first)). The job's lease is five minutes,
+  renewed all through the attempt. A job that waited doesn't think first when it's tried again.
 - **Retries.** A failed attempt (NEAR AI refusing the request, a reply that won't open, or one that isn't the
   expected JSON) puts the job back to `queued`, due 20 seconds later after the first failure and 90 seconds
   after the second, with a timer that starts the worker again then. An attempt after a failed one asks the model for
@@ -488,6 +489,36 @@ account.
   notes stopped, and may cost more than what was left. Writing them again is refused like anything else, and the notes
   stay as they were. Notes that couldn't be written are paid for when the organizer has them written after all
   ([Plans and usage](plans-and-usage.md)).
+
+### Thinking first
+
+The notes written after a call or a recording, the call's and each breakout room's, ask the default model to think
+before it answers, at `NEAR_AI_NOTES_EFFORT` (100 unless set; `0` turns it off): `chat_template_kwargs` carries
+`enable_thinking: true` and `reasoning_effort`, the way NEAR AI's private DeepSeek takes it. Nothing else thinks: the full
+summary, comparing with a series, picking and reading shared screens, live notes, catching up, asking, boards, documents
+and the operators' probe all send `enable_thinking: false`. A model an organizer chose is sent what it always is.
+Thinking is `complete`'s `think` option in `inference.ts`; only `draft` in `drafting.ts` passes it.
+
+- **Room.** Thinking counts against the reply, so the request asks for up to 64,000 tokens (at the most effort, a reply
+  has taken 31,298) and waits 620 s, a little over the 10 minutes after which NEAR AI was seen to close a request, so
+  theirs decides (`THINKING`). Node's `fetch` gives up on a reply whose headers take over 300 s, whatever the
+  request's timeout, so a request allowed longer goes by undici's own `fetch` with an agent that sets no limit of its
+  own; every other request goes as before.
+- **Once, then without.** If the thinking request times out, is closed, or comes back unusable (anything that fails it),
+  the notes are asked for again at once without thinking (4,000 tokens, 240 s), so each part's notes take 860 s at most.
+  A call's breakout rooms are written before its own notes, up to three at once, so a call with rooms can take twice that.
+  A connection NEAR AI closes reads as a key the model may no longer hold: the thinking request isn't sent again to a
+  new key, and the request without thinking is verified afresh and goes to whatever key the model holds then. An
+  attempt after a failed one (`brief`) and a job that waited for the model (`quick`, from the job's `waiting` state)
+  don't think either, so every request after a thinking one is without.
+- **Paid for.** Thinking is output, charged at the model's price like the rest (about 2¢ more for a call at the most
+  effort). While a call is live, what it holds for its notes (`writingAtMost`) holds 64,000 tokens for each part's notes
+  instead of 4,000.
+- **Waiting for them.** The page a call leaves you on says notes can take a few minutes and that they'll be in Calls
+  when they're ready. It follows their [progress](#progress) again each time the stream ends, and says they're still
+  being written only after 15 minutes.
+
+On 10 real calls at the most effort, the notes took about 5 minutes after a 10-minute call, 2½ to 9½ at the extremes.
 
 ## Breakout rooms
 
@@ -1639,13 +1670,26 @@ selection's and a board's in `apps/api/src/features/workspaces/documents/asking.
   one), up to four `regions` (`{label, box: [left, top, right, bottom]}` in fractions of the frame) and `relevance`
   (`key`, `supporting`, `unrelated`).
 - **Writing notes.** One JSON object: `summary` (substance first; two or three plain sentences, for every note: the
-  full summary is the longer account), `decisions` (something only suggested isn't one),
-  `questions` (what someone asked that the meeting didn't answer or settle), `actions` (text that starts with a verb,
+  full summary is the longer account), `decisions` (something only suggested isn't one, nor something
+  said only on a line marked "(unclear)" unless someone then agrees to it or says it again), `questions` (what someone
+  asked that the meeting didn't answer or settle, checked against the summary and decisions just written), `actions` (text that starts with a verb,
   an owner as the transcript names them or null, and a due date as it was said or null), `chapters` (two to six, each
-  with the `line` it starts at), three `suggestedQuestions`, and `screens` (for each shared screen given in full in the transcript, a
+  with the `line` it starts at, a summary of at most 30 words, and `later`: when a later part of the meeting changes or
+  answers something the chapter shows as chosen, set or open, one sentence starting "Later," that says what it becomes,
+  never about a paused stretch; the code adds it to the end of the chapter's summary, so a chapter read alone doesn't
+  show as final what changes later), three `suggestedQuestions`, and `screens` (for each shared screen given in full in the transcript, a
   sentence or two on what it shows and what was said about it then), with `screen`, `part` and `sure` on any
   decision, question, follow-up or chapter about something on a screen, and `lines` and `against` on each
-  decision, question and follow-up: the numbers of the lines it comes from, and of any that cut against it.
+  decision, question and follow-up: the numbers of the lines it comes from, and of any that cut against it. Each
+  decision, question and follow-up ends with `keep`, which the model gives after looking through the transcript to its
+  end: `yes`, or why it doesn't belong in the notes (`aside`: a joke or passing remark nobody took up, or a how-to
+  answered on the spot; `done`: done, found or answered in the meeting, or said not to matter; `maybe`: only floated,
+  hedged or put off; `personal`: personal or social chat; `twice`: a decision that's only a job someone takes on, or a
+  question someone takes on finding out, which its follow-up holds). The code leaves out every entry with a reason,
+  before the limits below count, except a follow-up that is a board's sticky, a tick or a change to an existing one;
+  `yes`, a missing label or one it doesn't know keeps the entry. Measured on 13 November against the same prompt
+  without it (5 runs of the eval's 24 cases each), quality held at 93% and the never-list breaks fell from 27 to 11:
+  answered questions and filler go, while a task written as both a decision and a follow-up mostly stays.
   The prompt says what it writes is only proposed, and never to say someone agreed to what they didn't say. It also says
   how many of each the notes keep (12 decisions, 12 questions, 20 follow-ups) and to describe up to 8 screens, the ones
   people talked about most when there are more, so the model doesn't spend its tokens on entries that would be dropped: a
@@ -1655,8 +1699,9 @@ selection's and a board's in `apps/api/src/features/workspaces/documents/asking.
   2,500 tokens and came back cut off; told the limits, it finished in about 2,500, with all 44 entries pointing at lines.
   With 30 shared screens on top, asking for 12 descriptions ran out of 4,000 tokens in one run of three; asking for 8, none
   of eight runs did, the longest at 3,581. How many it describes varies from run to run. Only the key screens are
-  given to it, each with what it reads, shows and (for a change) what changed. In the language the call was held in,
-  or the one chosen in settings (English, Spanish, French, German, Portuguese, Italian, Dutch, Japanese,
+  given to it, each with what it reads, shows and (for a change) what changed. In the language the call was held in
+  (a line or two in another language, such as a stock phrase Whisper writes over silence, doesn't decide it, here or
+  in the full summary), or the one chosen in settings (English, Spanish, French, German, Portuguese, Italian, Dutch, Japanese,
   Chinese, Korean, Hindi or Arabic); only the summary's length changes with the setting. The choices are the
   organizer's for a call and the recorder's for a room recording, read from their profile with keys opened for
   that job and wiped after it (the log says the language code and length, nothing else). Using only what the
@@ -1759,7 +1804,10 @@ Replies are checked before anything is kept:
   stricter, as there's nothing behind its lists: a reply without words in its summary and all four lists fails.
 - Follow-up owners are matched to the organizer and the people invited, by name, by address name or by first
   name. Words such as "unknown" or "the team" mean no owner; anyone else keeps the name the model gave.
-- Lengths are capped: a summary of 1,500 characters; at most 12 decisions, 12 open questions, 20
+- An open question is dropped, before the limits below count, when a follow-up that starts with asking or finding out
+  ("Ask", "Check", "Find out", "Confirm", "Chase", "Follow up", "Talk to", "Speak to", "Email", "Message" or "Call",
+  English only) cites one of its lines, since that follow-up already holds it.
+- Lengths are capped: a summary of 1,500 characters; a chapter's summary, with its `later` sentence, of 300; at most 12 decisions, 12 open questions, 20
   follow-ups, 8 chapters and 3 suggested questions. A chapter starts at the line it names, which must
   be one that was sent (one without is dropped), and chapters are de-duplicated by that time; a cited moment is a line
   that was sent. A cite across notes must name a note that was sent and a line of it that was, and is kept once. During a call, a line number must be one of the lines
@@ -1828,6 +1876,7 @@ shows the default as "<name> (default)".
 | `NEAR_AI_STT_URL` | `https://whisper-large-v3.completions.near.ai` | The speech model's own endpoint, where clips go by Oblivious HTTP |
 | `NEAR_AI_NOTES_MODEL` | `deepseek-ai/DeepSeek-V4.1-Flash-1017` | The default model: everything after transcription when no other is chosen |
 | `NEAR_AI_NOTES_URL` | `https://deepseek-v4-1-flash.completions.near.ai` | The default model's own endpoint, where chat goes by Oblivious HTTP |
+| `NEAR_AI_NOTES_EFFORT` | `100` | How hard the default model thinks before it writes the notes after a call or a recording, 1 to 100; `0` turns thinking off ([Thinking first](#thinking-first)) |
 | `NEAR_AI_MAX_INPUT_PRICE` | `1` | The most a model's input may cost, in US dollars per million tokens, to be offered as a choice |
 | `NEAR_AI_ENDPOINTS_URL` | `https://completions.near.ai/endpoints` | NEAR AI's registry of the models it runs itself, and where |
 | `INTEL_PCS_URL` | `https://api.trustedservices.intel.com` | Intel's collateral for TDX quotes |
@@ -1846,6 +1895,7 @@ verified against. The measured OS images aren't configuration at all.
 | Verify a model | `GET /attestation/report`, as in [What is checked](#what-is-checked); then Intel's collateral and `POST {NVIDIA_NRAS_URL}/v3/attest/gpu` with the GPU evidence unchanged | 20 s, 15 s, 30 s |
 | Transcribe a clip | `POST {NEAR_AI_STT_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/audio/transcriptions`, multipart: `model`, `response_format=verbose_json`, `temperature=0`, once the call's language is known `language` (Whisper's code for it, such as `en`: NEAR AI refuses names) and `prompt` (names and the words before, at most 371 bytes), `file` (`clip.wav`, `audio/wav`), with the bearer key | 20 s |
 | Write notes | `POST {NEAR_AI_NOTES_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/chat/completions`, JSON: `model`, a system and a user message, `temperature` 0.2, `max_tokens` 4,000, `response_format: {"type": "json_object"}`, `chat_template_kwargs: {"enable_thinking": false}`, `stream: false`, with the bearer key | 240 s |
+| Write notes after a call or a recording, thinking first | The same, from the default model while `NEAR_AI_NOTES_EFFORT` is on, with `max_tokens` 64,000 and `chat_template_kwargs: {"enable_thinking": true, "reasoning_effort": 100}` (the setting); sent once, and if it fails, asked again at once as above ([Thinking first](#thinking-first)) | 620 s |
 | Chat with an unencrypted model | `POST {NEAR_AI_BASE_URL}/chat/completions` over TLS, the same JSON without `chat_template_kwargs`, `temperature` and `response_format` only as the catalog lists them, with the bearer key | The same as the request it stands for |
 | Write the full summary | The same as writing notes, with `max_tokens` 2,500, after the notes | 180 s |
 | Pick the moments of shared screens to look at | The same as writing notes, with `max_tokens` 6,000 | 180 s |
@@ -1866,7 +1916,8 @@ first ([How long a verification holds](#how-long-a-verification-holds)).
 Measured on NEAR AI Cloud in November 2026: a clip of a few seconds is transcribed and answered through
 the API in about 0.29 s at the median, or 0.25 s once the call's language is sent, as Whisper then
 skips picking one; notes for a short
-call are written in about 4 s with thinking disabled (about 48 s with it on, which is why it's off); a
+call are written in about 4 s with thinking disabled (about 48 s with it on, which is why everything but the notes
+written after a call keeps it off); a
 question is answered in about 1.5 to 3.5 s. Oblivious HTTP adds a few milliseconds; the first verification of
 a model adds about 1.3 s to its first request. NEAR AI answers pure
 digital silence with `502`, which Alcove reports as `503 unavailable`; the browser doesn't send silence.
@@ -1947,14 +1998,24 @@ clip without words with Whisper's favourite hallucination, writes notes (open qu
 transcript it was sent, answers a question across notes from the lines of each note it was sent, citing each
 by its note and second and adding a note it wasn't sent, as a model can make one up, answers a question
 across a series from the calls it was sent, "translates" captions by tagging each line with the language, and
-can fail its next replies (down, or prose instead of JSON), take its time over the next one (`slowNext`), or hold
-its next answer until something a test does has happened (`holdNext`): a test that needs something to happen while
-the model answers holds it, rather than racing a slow answer.
+can fail its next replies (down, prose instead of JSON, or the connection closed with no answer), take its time over
+the next one (`slowNext`), or hold its next answer until something a test does has happened (`holdNext`): a test that
+needs something to happen while the model answers holds it, rather than racing a slow answer.
 It keeps every request body as it arrived, and with each request with content, the attested key of the model
-whose OHTTP key opened it; its evidence can be made to lie in each way [What is checked](#what-is-checked)
+whose OHTTP key opened it, and with each chat request, the tokens it asked for and how hard it asked the model to
+think (`chats`); its evidence can be made to lie in each way [What is checked](#what-is-checked)
 refuses (on the gateway's report or a model's), Intel and NVIDIA can be made unreachable, out of date or
 wrongly chained, its endpoints can refuse what was sealed to them or seal their replies wrong, and its models'
 keys can change.
+
+Tests run with thinking off (`NEAR_AI_NOTES_EFFORT=0` in the harness), so what a test makes a request do is what one
+attempt at the notes does. `thinking first (NEAR_AI_NOTES_EFFORT)` in
+`apps/api/src/features/notes/writing/models.integration.test.ts` turns it on: the notes of a call and of its breakout
+room think at 100 with 64,000 tokens while catching up, asking in and after the call and the full summary don't; at
+`0` the notes don't think; a thinking request closed with no answer while the model's key changes, or answered in prose,
+is asked again at once without thinking (the first to the new key, never the thinking request again) and the notes are
+saved; a job that waited for the model doesn't think again; and a model the organizer chose through the gateway is
+never asked to, with thinking on.
 
 The `live transcript and written notes` flows in `apps/api/src/integration/flows.integration.test.ts` cover a call and
 a room recording, retried and silent clips, notes off and on again, what each clip is sent with (nothing
@@ -2177,6 +2238,73 @@ note and a call kept before boards were noted; and bringing a board to a call: S
 (someone else's board, a made-up ID and the same one twice refused in the same words), the next call in the series bringing
 what this one brought and the board made in it, and a board scheduled with a call brought to it without opening. The leakage flow sends a board's sticky to the notes model and back as a
 follow-up, and finds it in no row, object or log line, nor on the wire.
+
+## Evaluating the notes
+
+The tests use a stand-in model, so they show the notes are written, kept and shown, not whether they are any good. The
+notes eval (`apps/api/src/features/notes/eval`) measures that against the real notes model. It isn't a test: it runs
+by hand, never in CI, and costs real money (about three dollars for the whole set at five runs, mostly the judge
+reading the long cases).
+
+```
+pnpm --filter @alcove/server eval:notes:judge-check [--case owners]
+pnpm --filter @alcove/server eval:notes --label baseline [--runs 5] [--case owners] [--concurrency 4]
+pnpm --filter @alcove/server eval:notes:compare <baseline folder> <variant folder>
+pnpm --filter @alcove/server eval:notes:label <eval folder> [--size 60]
+```
+
+- **Cases** (`cases.ts`). Made-up Vandelay meetings, each written to check one thing notes get wrong: suggestions taken
+  for decisions, a decision overturned later in the call, who owns what, `(unclear)` lines, an instruction read out in the
+  meeting, a room recording, answered and open questions, a call with nothing in it, notes paused, a call in Spanish and
+  due dates. Each lists the decisions, open questions and follow-ups correct notes hold (with the line each was said on,
+  and a follow-up's owner and due date), what may also appear, and what must never appear. Real meetings are never used.
+  Some are written in the cadence of real calls: fragments, filler, many unclear lines, misheard words, people talking
+  over each other and Whisper's stock phrases over silence. The long ones (`long-cases.ts`) run about 45 minutes with 15
+  to 25 expected items each, some of them longer versions of short cases.
+- **Held-back cases** (`heldout.ts`). Eight more cases live outside the repository, in `~/.alcove-eval/heldout.json`
+  (or `NOTES_EVAL_HELDOUT`) with their judge-check plants, so whoever tunes the notes prompt never reads them. They're
+  run and scored with the rest, but a run's full record of one goes beside that file, reports show only their numbers,
+  and the comparison shows them apart: a change that helps the repository's cases and not these fits the cases it was
+  tuned on. Without the file the eval runs the repository's cases alone.
+- **A run.** Each case goes to `draft` as a `Brief` (`brief.ts`), several times, since the model answers differently
+  each time. `Brief.trace` collects every request to the notes model, with exactly the settings it was sent, and its
+  reply as they went (`Exchange` in `inference/inference.ts`); nothing else sets it, and it is never logged. The eval's
+  own `Meter` pays for the requests: it charges no one and adds up what they'd cost at the prices NEAR AI lists
+  (`inference/models.ts`), which the report gives beside the judge's cost. The eval holds no keys and needs no database.
+  When the service doesn't answer, or answers with a status other than 200, the run waits and tries again, as production
+  waits these out, and after three tries is "not run", left out of the scores. When the model answers but its reply
+  can't be used as notes, the run is an unusable reply: the model's failure, counted as a rate, not tried again.
+- **Judging** (`judge.ts`). A stronger model, Claude Sonnet 5.5 at medium effort through Anthropic's API
+  (`ANTHROPIC_API_KEY` or `ant auth login`), says which expected item each note item states, whether it repeats an
+  earlier one, whether a follow-up's due date matches, whether anything on the never list appears and whether the
+  notes are in the right language. It gives a few words of reason before each answer, since it writes its answer in
+  order and would otherwise decide before reasoning. It reads each chapter on its own, as someone skimming would: a
+  chapter that shows something as settled or open that changes later in the meeting breaks the never list, unless the
+  chapter says it changes later. Owners and line citations are checked
+  in code. `JUDGE` names the model, its effort and its price together. A refusal, or a verdict from any other model,
+  leaves the run not judged: runs judged by different models or at different effort can't be compared.
+- **Checking the judge** (`judge-check-cli.ts`). Before an eval leans on the judge, it grades notes whose right verdict
+  is known: each case's answer key, which it must find right throughout, and the answer key with each never item
+  planted in turn, which it must flag. Only the judge is called. This shows it's wired up and reads the never list;
+  whether it grades real notes as a person would takes reading its verdicts on an eval's runs.
+- **Checking the judge by hand** (`label-cli.ts`). Writes `labels.html` into an eval's folder: a worksheet that asks a
+  sample of the questions the judge answered about that eval's notes (which expected item a note item states, a repeat,
+  a due date, a never item), one at a time, and shows the judge's answer only after yours. It counts where you differ
+  and which way: a judge kinder than you inflates the scores, a stricter one deflates them. The sample leans on the calls
+  that cost notes points, gives long meetings twice a short one's share, and is the same every time for the same eval.
+  Nothing is sent anywhere; the answers stay in the browser, or in a file it saves.
+- **Scores** (`score.ts`). Quality is F1, from 0 to 1, of the expected items the notes found against how much of what
+  they listed is expected or acceptable, so notes can't score well by listing little. Owners, due dates and citations
+  are reported beside it. Violations (a never item stated, or the wrong language) are counted run by run, apart from
+  quality, as a gate a change mustn't fail. Each case gets its mean quality over the runs with a 95% confidence interval.
+- **Comparing** (`compare-cli.ts`). A change is judged by pairing two evals case by case: each case's value in the
+  variant minus its value in the baseline, and the mean of those differences with its interval. The overall intervals
+  are across cases that differ on purpose, so two of them overlapping says little. Running the baseline twice and
+  comparing the two shows what no change looks like.
+- **Results.** In `.evals/notes/<time>-<label>/` at the repository's root, which git ignores: `report.md` (scores, and
+  what went wrong how often), `summary.json` (every run's scores, which the comparison reads), and each run in full
+  (what the notes model was sent and replied, the notes, the judge's request and answer, the score). The report names
+  the commit and fingerprints the system prompt and settings the notes model was actually sent.
 
 ## What's kept, and for how long
 

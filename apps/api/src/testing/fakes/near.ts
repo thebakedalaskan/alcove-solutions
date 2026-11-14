@@ -73,8 +73,11 @@ export type Tamper =
 export type Task = 'transcript' | 'notes' | 'vision';
 /** What a model refusing (refuseModel) says in its error, as a provider's message can say anything: never repeated by Alcove. */
 export const REFUSAL = 'Key ak-vandelay-7781 was revoked for Vandelay Industries; balance $0.00';
-/** How a reply can fail: the service down, prose instead of JSON, empty notes, or a reply that ran out of tokens part way. */
-export type Failure = 'down' | 'prose' | 'stub' | 'cut-off' | 'empty' | 'partial' | 'lines';
+/**
+ * How a reply can fail: the service down, prose instead of JSON, empty notes, a reply that ran out of tokens part way, or
+ * the connection closed with no answer, as NEAR AI closes a request after about ten minutes.
+ */
+export type Failure = 'down' | 'prose' | 'stub' | 'cut-off' | 'empty' | 'partial' | 'lines' | 'dropped';
 
 export interface FakeNear {
   /** What the API is configured with to use this NEAR AI, and the stand-in Intel and NVIDIA that vouch for it. */
@@ -94,8 +97,12 @@ export interface FakeNear {
   /** The system messages the notes model was sent, in the same order as `prompts`. */
   instructions: string[];
   /** Every chat request, once opened, oldest first: the model it named, the attested key it was sealed to, its system message, and how many images it carried. */
-  /** Each chat request: the model, the key it was sealed to (null in plaintext), its instructions, its images, and whether it set a temperature. */
-  chats: { model: string; key: string | null; system: string; images: number; temperature: boolean }[];
+  /**
+   * Each chat request: the model, the key it was sealed to (null in plaintext), its instructions, its images, whether it set
+   * a temperature, the tokens it asked for at most, and how hard it asked the model to think first: its effort, 0 when it
+   * turned thinking off, null when it said nothing of it.
+   */
+  chats: { model: string; key: string | null; system: string; images: number; temperature: boolean; maxTokens: number | null; thinking: number | null }[];
   /** What each clip was transcribed with besides its audio, once opened, oldest first: the language it named and its prompt, or null. */
   transcriptions: { language: string | null; prompt: string | null }[];
   /** The models' attested signing keys right now, hex. */
@@ -113,7 +120,7 @@ export interface FakeNear {
   /**
    * The next `n` chat replies fail: the service is down, the model answers in prose instead of JSON, with the shape and
    * nothing in it, with an empty object, with an object that has a summary and nothing else that's any use, with every
-   * point's lines in the wrong shape, or runs out of tokens part way. With `only`, just the requests with that in their
+   * point's lines in the wrong shape, runs out of tokens part way, or closes the connection with no answer. With `only`, just the requests with that in their
    * prompt fail, and count: one part of a note goes wrong while the rest is written. `only` 'notes' means the notes' own
    * request, whatever it holds, so what reads a screen goes on working.
    */
@@ -677,7 +684,7 @@ export async function startFakeNear(): Promise<FakeNear> {
   }
 
   /** A model's own endpoint: opens what was sealed to its OHTTP key, answers, and seals the answer. */
-  async function direct(res: ServerResponse, req: IncomingMessage, body: Buffer, task: Task, handle: (inner: ReturnType<typeof parseRequest>) => Promise<{ status: number; body: unknown }>) {
+  async function direct(res: ServerResponse, req: IncomingMessage, body: Buffer, task: Task, handle: (inner: ReturnType<typeof parseRequest>) => Promise<{ status: number; body: unknown } | null>) {
     const own = models[task].ohttp;
     // As NEAR AI's endpoints answer a request sealed to a key they don't hold.
     const refused = () => send(res, 400, { error: { message: 'OHTTP decapsulation failed: a problem occurred with HPKE: Failed to open ciphertext' } });
@@ -694,11 +701,15 @@ export async function startFakeNear(): Promise<FakeNear> {
     const refusal = refusing.get(task);
     if (refusal !== undefined) return respond(refusal, { error: { message: REFUSAL, type: 'authentication_error' } });
     const out = await handle(inner);
+    if (out === null) { req.socket.destroy(); return; }
     return respond(out.status, out.body);
   }
 
-  /** What a chat model answers a chat request, as JSON. A model's own endpoint serves that model alone (`only`). */
-  async function chat(body: Uint8Array, path: string, encryption: 'ohttp' | 'none', key: string | null, only?: string): Promise<{ status: number; body: unknown }> {
+  /**
+   * What a chat model answers a chat request, as JSON, or null when the connection is to be closed with no answer. A
+   * model's own endpoint serves that model alone (`only`).
+   */
+  async function chat(body: Uint8Array, path: string, encryption: 'ohttp' | 'none', key: string | null, only?: string): Promise<{ status: number; body: unknown } | null> {
     const parsed: unknown = JSON.parse(Buffer.from(body).toString('utf8'));
     const o = typeof parsed === 'object' && parsed !== null ? parsed : {};
     const model = 'model' in o ? str(o.model) : '';
@@ -720,7 +731,11 @@ export async function startFakeNear(): Promise<FakeNear> {
     calls.push({ path, model, bytes: body.length, encryption, key });
     prompts.push(user);
     instructions.push(system);
-    chats.push({ model, key, system, images: sent.length, temperature: 'temperature' in o });
+    const kwargs = 'chat_template_kwargs' in o && typeof o.chat_template_kwargs === 'object' && o.chat_template_kwargs !== null ? o.chat_template_kwargs : null;
+    // Thinking with no effort named thinks at the model's own default, 50.
+    const thinking = kwargs === null || !('enable_thinking' in kwargs) ? null
+      : kwargs.enable_thinking !== true ? 0 : 'reasoning_effort' in kwargs && typeof kwargs.reasoning_effort === 'number' ? kwargs.reasoning_effort : 50;
+    chats.push({ model, key, system, images: sent.length, temperature: 'temperature' in o, maxTokens: 'max_tokens' in o && typeof o.max_tokens === 'number' ? o.max_tokens : null, thinking });
     if (slow && (slowOnly === undefined || user.includes(slowOnly))) { const ms = slow; slow = 0; await new Promise((r) => setTimeout(r, ms)); }
     if (holding) { const then = holding; holding = null; await then(); }
     let content: string;
@@ -728,6 +743,7 @@ export async function startFakeNear(): Promise<FakeNear> {
     const notes = system.startsWith('You write the notes');
     if (failing > 0 && (failingOnly === undefined || (failingOnly === 'notes' ? notes : user.includes(failingOnly)))) {
       failing--;
+      if (failure === 'dropped') return null;
       if (failure === 'down') return { status: 503, body: { error: { message: 'Service unavailable' } } };
       if (failure === 'cut-off') { finish = 'length'; content = JSON.stringify(notesReply(model, system, user, sent, memory)).slice(0, 60); }
       else content = failure === 'stub'
@@ -829,6 +845,7 @@ export async function startFakeNear(): Promise<FakeNear> {
       }
       if (req.method === 'POST' && url.pathname === '/v1/chat/completions') {
         const c = await chat(body, url.pathname, 'none', null);
+        if (c === null) { req.socket.destroy(); return; }
         return send(res, c.status, c.body);
       }
       send(res, 404, { error: { message: 'Not found' } });
