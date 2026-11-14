@@ -1785,7 +1785,7 @@ another call while in one; 7.7 the call ends while they're on its page; 7.8 alon
   **Being written again**. While they're written again the organizer can **Cancel**, which leaves the notes as they
   were, with the AI model they had; what was being written is thrown away.
 - A transcript with lines made at reduced quality says so once, under the tools and above its lines, in a caution notice:
-  "Transcript was made while transcription was running at reduced quality, so some words, especially names, may be wrong." The lines aren't marked one by one, and those made that way aren't
+  "This transcript was made while transcription was running at reduced quality, so some words, especially names, may be wrong." The lines aren't marked one by one, and those made that way aren't
   dotted as unsure. It covers the main room and every breakout room's, and notes written before this existed don't have it.
 - A call with breakout rooms has each room under the chapter it was in, in **How it went**: the room's name, who was in it
   and for how long, and inside, its own summary, decisions, open questions, follow-ups and chapters, written from what was
