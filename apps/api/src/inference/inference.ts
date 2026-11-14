@@ -552,8 +552,12 @@ const PROBE_MESSAGES: Message[] = [
 ];
 const PROBE_TOKENS = 16;
 
-/** One second of 16 kHz mono 16-bit silence, as WAV: what the speech model hears from a probe. */
-function silence(): Uint8Array<ArrayBuffer> {
+/**
+ * One second of 16 kHz mono 16-bit quiet noise, as WAV: what the speech model hears from a probe. Not digital silence,
+ * which no call ever sends and NEAR AI's speech model answers with a 502 (14 Nov, while real clips transcribed): a fixed,
+ * seeded hiss about 50 dB down, so every probe sends the same second and nothing of anyone's.
+ */
+function quietNoise(): Uint8Array<ArrayBuffer> {
   const samples = 16_000;
   const wav = new Uint8Array(new ArrayBuffer(44 + samples * 2));
   const v = new DataView(wav.buffer);
@@ -561,6 +565,12 @@ function silence(): Uint8Array<ArrayBuffer> {
   ascii(0, 'RIFF'); v.setUint32(4, 36 + samples * 2, true); ascii(8, 'WAVE');
   ascii(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 16_000, true); v.setUint32(28, 32_000, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
   ascii(36, 'data'); v.setUint32(40, samples * 2, true);
+  // A linear congruential generator, seeded the same each time: ±100 of 32767.
+  let x = 0x2545f491;
+  for (let i = 0; i < samples; i++) {
+    x = (Math.imul(x, 1103515245) + 12345) >>> 0;
+    v.setInt16(44 + i * 2, ((x >>> 16) % 201) - 100, true);
+  }
   return wav;
 }
 
@@ -608,14 +618,14 @@ export async function probeNotes(cfg: Keyless, via: PrivateModel, v: Verified, t
   });
 }
 
-/** Whether the speech model answers, for operator checks: one second of silence, sealed to the key `v` vouched for. */
+/** Whether the speech model answers, for operator checks: one second of quiet noise, sealed to the key `v` vouched for. */
 export async function probeSpeech(cfg: Keyless, v: Verified, timeoutMs: number): Promise<Probe> {
   if (!ready(cfg)) throw notConnected('probe');
   const form = new FormData();
   form.set('model', cfg.NEAR_AI_STT_MODEL);
   form.set('response_format', 'verbose_json');
   form.set('temperature', '0');
-  form.set('file', new Blob([silence()], { type: 'audio/wav' }), 'probe.wav');
+  form.set('file', new Blob([quietNoise()], { type: 'audio/wav' }), 'probe.wav');
   const multipart = new Request(new URL('/v1/audio/transcriptions', cfg.NEAR_AI_STT_URL), { method: 'POST', body: form });
   const body = new Uint8Array(await multipart.arrayBuffer());
   return probe(cfg, v, cfg.NEAR_AI_STT_URL, { path: '/v1/audio/transcriptions', type: multipart.headers.get('content-type') ?? 'multipart/form-data', body, timeoutMs },
