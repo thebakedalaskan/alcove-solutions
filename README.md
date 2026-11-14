@@ -217,6 +217,20 @@ any time.
 > them longer; refresh tokens rotate (a reused one revokes the connection), and every tool call an agent completes is
 > listed for you alone for 30 days. [Agents and MCP →](docs/engineering/agents-and-mcp.md)
 
+### Bring your team
+
+<img src="docs/readme/teams.gif" alt="On the Team page, Art invites Priya and Kofi: the popover says sending starts Vandelay Industries, a free team, and the page becomes the team's, with them standing on the horizon as invited. Then the email Priya gets from Alcove, with one button to join." width="100%">
+
+Invite anyone, at any address, and they're on your team. Alcove emails each of them an invitation, and someone who's
+already on Alcove finds it in the app too: Team appears in their side panel, and its page opens on the invitation. A team
+is free to start; give everyone on it a license to share its notes, workspaces and storage.
+
+> **How it works.** Invitations are sealed under the team's own key, and an account finds the ones for it through a blind
+> index of its sign-in addresses, so Alcove never keeps a readable list of who's invited. The email goes from
+> `mail.alcove.solutions` through Resend with tracking off and nothing fetched when it's opened: its pictures travel inside
+> it, and its link keeps its secret after the `#`, which browsers never send. An address is emailed at most once a day,
+> and every email has a one-click way to stop them. [Plans and usage › Team →](docs/engineering/plans-and-usage.md#team)
+
 ### Pay with USDC
 
 <img src="docs/readme/checkout.gif" alt="Checkout: a year of Pro, paid in USDC on NEAR to a one-off address shown as a QR code; the payment is seen, arrives, and Pro begins." width="100%">
