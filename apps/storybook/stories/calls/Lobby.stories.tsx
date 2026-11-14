@@ -8,7 +8,7 @@ import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
 import { at } from '../../src/api/call/script';
 import { atTheDoor, phone } from '../../src/call';
-import { page, pages, type PageArgs } from '../../src/page';
+import { page, pages, type PageArgs, type PageStory } from '../../src/page';
 import { iso } from '../../src/world/clock';
 import { AIKO, CHECK_IN, CHECK_IN_TALK, DIEGO, KOFI, MAYA, PREP, PRIYA, REVIEW, STARTED } from './talk';
 
@@ -22,6 +22,29 @@ export const StartedNowPhone = phone(StartedNow);
 /** The design review, four minutes away: its time, who's invited, and notes, which can still be switched. */
 export const Scheduled = atTheDoor({ scenario: 'call-soon', call: REVIEW });
 export const ScheduledPhone = phone(Scheduled);
+
+/** Opens What the notes keep, under Notes. */
+const openWhatTheNotesKeep: NonNullable<PageStory['play']> = async ({ userEvent, step }) => {
+  await step('Open What the notes keep', async () => {
+    await userEvent.click(await screen.findByRole('button', { name: 'What the notes keep' }, { timeout: 10_000 }));
+  });
+};
+/**
+ * What the notes keep opens in place under Notes, with the switches scheduling has: the transcript, the recording and shared
+ * screens, each saved as it's switched, then who writes the notes. Join waits for anything still saving.
+ */
+export const WhatTheNotesKeep = atTheDoor({ scenario: 'call-soon', call: REVIEW }, { play: openWhatTheNotesKeep });
+export const WhatTheNotesKeepPhone = phone(WhatTheNotesKeep);
+/** Scheduled to keep neither the transcript nor the recording: shut, What the notes keep says what won't be kept. */
+export const KeepingLess = atTheDoor({
+  scenario: 'call-soon',
+  call: { id: 'm-keepless', title: 'Offer review', startsAt: iso(0, 10, 30), minutes: 30, code: 'ofr-revw-kls', guests: [MAYA], choices: { keepTranscript: false, keepRecording: false, allowScreens: true } }
+});
+/** The same, opened: both switches are off, and each says what happens instead. */
+export const KeepingLessOpen = atTheDoor({
+  scenario: 'call-soon',
+  call: { id: 'm-keepless-open', title: 'Offer review', startsAt: iso(0, 10, 30), minutes: 30, code: 'ofr-revw-klo', guests: [MAYA], choices: { keepTranscript: false, keepRecording: false, allowScreens: true } }
+}, { play: openWhatTheNotesKeep });
 
 /**
  * The microphone's picker opens its menu: each microphone once, Your system's choice under the one the computer uses, a tick

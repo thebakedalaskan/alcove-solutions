@@ -60,13 +60,20 @@ const supplier: NoteSpec = {
 /** A two-minute call with Kofi where nobody said anything while notes were on. */
 const quiet: NoteSpec = { id: 'n-quiet', title: 'Quick sync', startedAt: iso(0, 14, 50), minutes: 2, organizer: ART, invited: [KOFI], excerpt: '', summary: '' };
 
-/** A call set up to keep neither its transcript nor its recording: only the notes written from them are left. */
+/**
+ * A call set up to keep neither its transcript nor its recording: only the notes written from them are left. What they
+ * say still points at the lines it came from, which went with the transcript, so nothing says it lacks backing.
+ */
 const offer: NoteSpec = {
   id: 'n-unkept', title: 'Offer review', startedAt: iso(-1, 17, 0), minutes: 30, organizer: ART, invited: [INES], kept: { transcript: false, recording: false },
   excerpt: 'The offer goes out on Friday, with the start date left open.',
   summary: 'Ines and Art agree the offer goes out on Friday, with the start date left open so the candidate can finish their notice.',
-  decisions: [{ id: 'n-unkept-d1', text: 'The offer goes out on Friday.', state: 'confirmed', by: INES }],
-  actions: [{ id: 'n-unkept-a1', text: 'Send the offer letter', owner: ART, takenOn: true, due: 'Friday' }]
+  said: [
+    { at: '12:40', who: INES, text: 'Let’s send the offer on Friday and leave the start date open.' },
+    { at: '24:10', who: ART, text: 'I’ll send the offer letter.' }
+  ],
+  decisions: [{ id: 'n-unkept-d1', text: 'The offer goes out on Friday.', at: '12:40', state: 'confirmed', by: INES }],
+  actions: [{ id: 'n-unkept-a1', text: 'Send the offer letter', at: '24:10', owner: ART, takenOn: true, due: 'Friday' }]
 };
 
 /** The launch go/no-go: Priya confirmed the date, and Kofi says it wasn't decided, so Art, who organized it, settles it. */

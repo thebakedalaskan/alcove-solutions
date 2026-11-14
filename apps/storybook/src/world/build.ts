@@ -88,27 +88,35 @@ export function writeNote(s: NoteSpec, me: Person = ART): Note {
     text: l.text,
     ...(l.unsure ? { unsure: l.unsure === 'words' ? { words: true } : { speaker: true } } : {})
   }));
+  const kept = s.kept ?? { transcript: true, recording: true };
+  // The transcript as it can still be read: a call set not to keep it lost it once its notes were written.
+  const readable = kept.transcript || status !== 'ready' ? transcript : [];
   const groundsOf = (e: Entry): string[] => {
     if (e.at === undefined) return [];
     const at = mmss(e.at);
     const line = transcript.find((l) => l.at === at);
     return line ? [line.id] : [];
   };
-  const evidenceOf = (lines: string[]): NoteEvidence => {
-    const moments = transcript.filter((l) => lines.includes(l.id))
+  /*
+   * What backs an entry, as the API has it (backing.ts): read from the transcript as it can be read now. With none kept,
+   * what an entry pointed at is out of reach, which isn't nothing having backed it.
+   */
+  const evidenceOf = (e: Entry, lines: string[]): NoteEvidence => {
+    const moments = readable.filter((l) => lines.includes(l.id))
       .map((l) => ({ kind: 'line' as const, id: l.id, at: l.at, ...(l.speaker ? { speaker: l.speaker } : {}), text: l.text, against: false, corrected: false, ...(l.unsure ? { unsure: l.unsure } : {}) }));
-    return { moments, flags: moments.length ? (moments.every((m) => m.unsure) ? ['unsure'] : []) : ['missing'] };
+    const missing = readable.length > 0 || (!lines.length && e.at === undefined);
+    return { moments, flags: moments.length ? (moments.every((m) => m.unsure) ? ['unsure'] : []) : missing ? ['missing'] : [] };
   };
   const settled = written ?? ended;
   const decisions: NoteDecision[] = (s.decisions ?? []).map((d) => {
     const lines = groundsOf(d);
     const changes: Change[] = d.by && d.state !== 'proposed' ? [{ by: changer(d.by, roleOf(d.by)), at: addMinutes(settled, 9), what: d.state }] : [];
-    return { id: d.id, text: d.text, ...(d.at ? { at: mmss(d.at) } : {}), state: d.state, lines, against: [], disputes: [], changes, evidence: evidenceOf(lines) };
+    return { id: d.id, text: d.text, ...(d.at ? { at: mmss(d.at) } : {}), state: d.state, lines, against: [], disputes: [], changes, evidence: evidenceOf(d, lines) };
   });
   const questions: NoteQuestion[] = (s.questions ?? []).map((q) => {
     const lines = groundsOf(q);
     const changes: Change[] = q.answered ? [{ by: changer(q.answered, roleOf(q.answered)), at: addMinutes(settled, 20), what: 'answered' }] : [];
-    return { id: q.id, text: q.text, ...(q.at ? { at: mmss(q.at) } : {}), state: q.answered ? 'answered' : 'open', lines, against: [], changes, evidence: evidenceOf(lines) };
+    return { id: q.id, text: q.text, ...(q.at ? { at: mmss(q.at) } : {}), state: q.answered ? 'answered' : 'open', lines, against: [], changes, evidence: evidenceOf(q, lines) };
   });
   const makeActions = (specs: readonly ActionSpec[], review: 'accepted' | 'suggested'): NoteAction[] => specs.map((a) => {
     const lines = groundsOf(a);
@@ -123,7 +131,7 @@ export function writeNote(s: NoteSpec, me: Person = ART): Note {
       ...(a.at ? { at: mmss(a.at) } : {}), done: a.done ?? false, lines, against: [], changes, from: a.board ? 'board' : null
     };
     // What's backed by a board needn't be backed by anything said, as the API has it (backing.ts).
-    const evidence = evidenceOf(lines);
+    const evidence = evidenceOf(a, lines);
     return { ...item, evidence: a.board ? { ...evidence, flags: evidence.flags.filter((f) => f !== 'missing') } : evidence };
   });
   const actions = makeActions(s.actions ?? [], 'accepted');
@@ -139,7 +147,6 @@ export function writeNote(s: NoteSpec, me: Person = ART): Note {
     : sharedToMe ? { role: 'shared', by: sharedToMe.by, ...(sharedToMe.group ? { group: sharedToMe.group } : {}), at: sharedToMe.at }
       : { role: 'invited', by: s.organizer, at: ended };
   const seconds = s.minutes * 60;
-  const kept = s.kept ?? { transcript: true, recording: true };
   return {
     id: s.id, kind, status, title: s.title, startedAt: s.startedAt, duration: status === 'recording' ? 0 : seconds,
     people: recipients.map((r) => r.person),
@@ -164,7 +171,7 @@ export function writeNote(s: NoteSpec, me: Person = ART): Note {
     shares: status === 'ready' ? [...(s.shares ?? [])] : [],
     model: null,
     unencrypted: [],
-    transcript: status === 'recording' ? null : kept.transcript || status !== 'ready' ? transcript : [],
+    transcript: status === 'recording' ? null : readable,
     rooms: [],
     additions: [],
     writtenAt: written,

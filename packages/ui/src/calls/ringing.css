@@ -22,6 +22,20 @@
 .rg-notes b { display: block; font: 600 14px/1.25 var(--font-sans); }
 .rg-notes small { display: block; font-size: 12.5px; line-height: 1.4; color: var(--stage-ink-2); }
 .rg-notes .kept { grid-column: 2 / -1; display: grid; gap: 2px; padding-top: 2px; font-size: 12.5px; line-height: 1.4; color: var(--stage-ink-2); }
+/*
+ * What the notes keep, under Notes while they're on: a quiet fold that opens in place to the switches scheduling has
+ * (KeepSwitches), lined up with Notes' own switch. Shut, it says what won't be kept.
+ */
+.rg-keep { grid-column: 2 / -1; display: grid; gap: 2px; min-width: 0; margin-top: -2px; }
+.rg-keep-h { display: inline-flex; align-items: center; gap: 5px; justify-self: start; height: 28px; margin-left: -8px; padding: 0 8px; border-radius: 8px; font: 500 13px/1 var(--font-sans); color: var(--stage-ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
+.rg-keep-h:hover, .rg-keep-h[aria-expanded="true"] { background: rgb(255 255 255 / 0.07); color: var(--stage-ink); }
+.rg-keep-h:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+.rg-keep-h .chev { flex: none; transition: transform var(--duration-2) var(--ease-out); }
+.rg-keep-h[aria-expanded="true"] .chev { transform: rotate(180deg); }
+.rg-keep .kept { grid-column: auto; }
+.rg-keep-b { display: grid; gap: 6px; padding-top: 2px; animation: rg-open var(--duration-2) var(--ease-out) both; }
+.rg-keep-b .cf-sw small { color: var(--stage-ink-2); }
+.rg-keep-b .cf-sealed { margin-top: 4px; color: var(--stage-ink-2); }
 .rg-k { font: 500 13px/18px var(--font-sans); color: var(--stage-ink-2); }
 .rg-arches { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; }
 .rg-arch { position: relative; display: grid; justify-items: center; gap: 6px; width: 58px; min-width: 0; border-radius: 12px; font: 500 12px/1.1 var(--font-sans); color: var(--stage-ink-2); }
@@ -165,6 +179,7 @@ button.rg-time:focus-visible { outline: 2px solid var(--focus); outline-offset: 
 .rg-gcard > .ways { display: grid; gap: 10px; width: 100%; }
 
 @keyframes rg-rise { from { opacity: 0; transform: translateY(8px); } }
+@keyframes rg-open { from { opacity: 0; transform: translateY(-4px); } }
 @keyframes rg-pop { from { opacity: 0; transform: translateY(4px) scale(.96); } }
 @keyframes rg-ripple { from { transform: scale(1); opacity: .8; } to { transform: scale(1.5); opacity: 0; } }
 

@@ -733,6 +733,34 @@ describe('what a call keeps unless it’s told otherwise', () => {
     expect(revisions.filter((r) => r.text.includes(CANARY)).length).toBeGreaterThan(1);
   });
 
+  it('keeps only what its lobby was switched to, for a call started now', async () => {
+    const org = await account(unique('organizer'));
+    const { code: c } = await org.api.calls.startNow({ notes: 'on' });
+    const meeting = await org.api.meetings.byCode(c);
+    if (!meeting) throw new Error('the call isn’t there');
+    expect(meeting.choices).toEqual(DEFAULT_NOTES_CHOICES);
+    // What the notes keep, switched in the lobby before joining: each switch saves the whole set.
+    const choices: NotesChoices = { keepTranscript: false, keepRecording: false, allowScreens: true };
+    expect(await org.api.meetings.update(meeting.id, { choices })).toMatchObject({ instant: true, notes: 'on', choices });
+    expect(await h.browser().api.calls.card(c)).toMatchObject({ choices });
+
+    const call = await org.api.calls.join(c, { mic: true, cam: false });
+    // Once it's started, what it keeps is settled: the lobby is read-only, and so is the API.
+    expect(await fails(org.api.meetings.update(meeting.id, { choices: DEFAULT_NOTES_CHOICES }))).toEqual(['conflict', 'Only a call that hasn’t started can be changed.']);
+    await call.appendAudio(piece('lobby', 0, 0));
+    await call.transcribe(speech(SAID, 0, 0), call.ticket.identity);
+    const noteId = await noteOf(call);
+    expect(await org.api.notes.get(noteId)).toMatchObject({ audio: [], kept: { transcript: false, recording: false } });
+    await written(org.api, noteId);
+
+    // Only the notes are left: nothing to play back, and nothing said to read again.
+    const note = await org.api.notes.get(noteId);
+    expect(note).toMatchObject({ status: 'ready', transcript: [], audio: [], kept: { transcript: false, recording: false } });
+    expect(note.decisions.map((d) => d.text)).toEqual([DECIDED]);
+    expect(await piecesOf(org.session.ownerId)).toEqual([]);
+    expect((await revisionsOf(org.session.ownerId, noteId)).some((r) => r.text.includes(CANARY))).toBe(false);
+  });
+
   it('keeps room recordings whole', async () => {
     const org = await account(unique('organizer'));
     const rec = await org.api.recordings.start({ title: 'In the room' });
