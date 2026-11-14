@@ -321,7 +321,8 @@ const FIRST = 5;
 /**
  * The payments: what's on its way first, each opening where it's being paid (checkout for a plan or notes, the add-money
  * sheet for money alone), with a cancel while nothing has reached it; then the balance's latest changes, newest first, each
- * with its receipt.
+ * with its receipt. One that moved no money, such as months of Pro given by Alcove, says its day alone and has no receipt:
+ * nothing was paid or added.
  */
 function Payments({ topUps, history, add, onAddMoney }: {
   topUps: TopUp[]; history: BalanceEntry[]; add: { current: HTMLButtonElement | null }; onAddMoney: (topUpId: string | null) => void;
@@ -370,10 +371,12 @@ function Payments({ topUps, history, add, onAddMoney }: {
         const day = shortDate(new Date(e.at));
         // Money added in USDC shows its mark; anything else, USDT added before only USDC was taken included, the coins.
         const usdc = /\bUSDC\b/.test(e.label);
+        // Given by Alcove, it cost nothing and added nothing: there's no money to give a receipt for.
+        const paid = e.microUsd !== 0;
         return (
           <PaymentRow key={`${e.id} ${e.at}`} mark={usdc ? <CryptoMark name="usdc" /> : <Icon name="coins" size={18} />} label={e.label}
-            detail={`${e.microUsd >= 0 ? '+' : '−'}${usdCents(Math.abs(e.microUsd))} · ${day}`}
-            actions={<Button variant="quiet" size="sm" icon="download" aria-label={`Receipt for ${e.label}, ${day}`} onClick={() => setReceipt(e)}>Receipt</Button>} />
+            detail={paid ? `${e.microUsd > 0 ? '+' : '−'}${usdCents(Math.abs(e.microUsd))} · ${day}` : day}
+            actions={paid ? <Button variant="quiet" size="sm" icon="download" aria-label={`Receipt for ${e.label}, ${day}`} onClick={() => setReceipt(e)}>Receipt</Button> : undefined} />
         );
       })}
       {more > 1 && <ShowMore all={all} more={more} onToggle={() => setAll((a) => !a)} />}
