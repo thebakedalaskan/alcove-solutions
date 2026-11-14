@@ -1,14 +1,14 @@
 /* What the list and the page of a workspace share, and what `<Workspace />` takes from whatever it's in. */
 import type { HomeOf } from './full-screen/calls';
 import type { PersonIds } from './sharing/ids';
-import type { ItemPlace, Person, WorkspaceHere, WorkspaceItem, WorkspaceTree, WorkspaceWhere } from '@alcove/api';
+import type { ItemPlace, Person, WorkspaceHere, WorkspaceItem, WorkspaceTree } from '@alcove/api';
 import type { WsToastData } from '@alcove/ui';
 import { createContext, useContext, type ReactNode, type RefObject } from 'react';
 import type { Doc } from 'yjs';
 import type { Pictures } from './uploads/pictures';
 import type { VideoPlay } from './editor/types';
 import type { Following, StopFollowing } from './follow';
-import type { Someone } from './presence';
+import type { SaidPlace, Someone } from './presence';
 import type { EditorHandle } from './editor/types';
 import type { LiveCall, LivePageId, LivePut } from './live/types';
 import type { Tree } from './tree/tree';
@@ -30,6 +30,8 @@ export interface CallTogether {
   where: Readonly<Record<string, string>>;
   /** Who's in a document you can open, so Go there is on offer. */
   reachable: readonly string[];
+  /** Who's following you, as each of them says: whoever presents counts them. */
+  followers: readonly string[];
 }
 /**
  * What the call can ask of the workspace: follow someone or stop, go to where they are, and tag them in the document
@@ -75,6 +77,11 @@ export interface WorkspaceCall {
   invited: readonly Person[];
   /** Tells the tiles what to show. */
   onTogether: (together: CallTogether) => void;
+  /**
+   * You went your own way in it: you went somewhere, or pressed, scrolled or typed in a page. While you follow whoever presents
+   * it, that's you working on your own, whether or not they'd been anywhere to follow yet.
+   */
+  onOwn: () => void;
   /** Someone in the call was just tagged: their tile lights up. */
   onTagged: (connection: string) => void;
   /** Where the call reaches the workspace, for Follow on a tile. */
@@ -168,7 +175,7 @@ export interface Ws {
   /** Everyone else here, each once. */
   others: readonly Someone[];
   /** Says where this browser is. */
-  present: (where: WorkspaceWhere) => void;
+  present: (where: SaidPlace) => void;
   /** Who you're following, if anyone. */
   following: Following | null;
   follow: (person: string) => void;

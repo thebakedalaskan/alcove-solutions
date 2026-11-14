@@ -338,7 +338,7 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
   // Where people are in the workspace is for the people list and their cards while it's on your stage; put away, only the
   // presented workspace's tile says where its presenter is (presenting.ts).
   const together: StageTogether = {
-    ...work.together, where: stage.on.includes('ws') ? work.together.where : NOWHERE, lit: work.lit, onFollow: work.act.follow, onStop: work.act.stopFollowing, onGo: work.act.goTo, onTag: work.act.tagIn, canTag: work.act.canTag
+    ...work.together, where: stage.on.includes('ws') ? work.together.where : NOWHERE, lit: work.lit, onFollow: work.act.follow, onStop: () => work.act.stopFollowing(), onGo: work.act.goTo, onTag: work.act.tagIn, canTag: work.act.canTag
   };
   /*
    * Focus fills your window with what's on your stage: not on a phone, where it fills the screen already, nor with nothing
@@ -520,8 +520,8 @@ export function InCall({ session, onOver, returning = false }: { session: CallSe
   /* ---------- what's on your stage, each in its frame (frame.tsx), and what's presented that isn't, as tiles ---------- */
   const place: FramePlace = {
     focused: focusOn, focus: focusOffered ? { on: focusOn, onToggle: toggleFocus } : null, phone,
-    // Everyone else in your part of the call follows what you present; with one thing on your stage, closing it clears the stage.
-    followers: Math.max(0, area.onStage.length - 1), clears: stage.on.length <= 1
+    // With one thing on your stage, closing it clears the stage.
+    clears: stage.on.length <= 1
   };
   /** The organizer's, on someone else's board or workspace: it closes for everyone. */
   const closeTheirs = () => {

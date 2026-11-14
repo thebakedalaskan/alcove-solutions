@@ -218,6 +218,17 @@ sends nothing. Without a key the API emails nothing and says so at info (`mail n
 and shown in the app as ever. Resend keeps what it's sent for 30 days
 ([Privacy, keys and sessions › Email](../../docs/engineering/privacy-keys-and-sessions.md)).
 
+### The sender's logo (BIMI)
+
+Mail apps that support BIMI show Alcove's mark beside invitations from `mail.alcove.solutions`. The logo is
+`apps/web/public/bimi.svg`, served at `https://alcove.solutions/bimi.svg`: SVG Tiny Portable/Secure (`version="1.2"
+baseProfile="tiny-ps"`, a `<title>`, square, a solid background, no clipping, scripts or outside references), the mark
+drawn from the favicon. The DNS record, in Cloudflare, is a TXT at `default._bimi.alcove.solutions`:
+`v=BIMI1; l=https://alcove.solutions/bimi.svg;`. It counts only because the domain's DMARC is enforced (`p=quarantine`, which
+`mail.alcove.solutions` inherits). Yahoo and AOL show it as it is; Gmail and Apple Mail also want a mark certificate (a VMC,
+which needs a registered trademark, or a CMC, which needs the logo in public use for a year), whose PEM URL then goes in
+the record's `a=`.
+
 ## First setup
 
 Production, once: done on 2026-11-13, and kept as the record of how. Use the `alcove` gcloud configuration

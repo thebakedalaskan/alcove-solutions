@@ -1,5 +1,5 @@
 /* How people are named in sentences across the app, and how names and addresses are read. */
-import { firstName, type Person } from '@alcove/api';
+import { TeamNameSchema, firstName, type Person } from '@alcove/api';
 import { joined, joinedSome } from './words';
 
 type Named = { name: string; email: string };
@@ -35,6 +35,17 @@ const nameInAddress = (email: string) => {
 };
 /** Someone's first name; with only an address to go on, the name in it, or the address itself ("r.okoye@…"). */
 export const callName = (p: Named) => (p.name && p.name !== p.email && !isEmail(p.name) ? firstName(p.name) : nameInAddress(p.email));
+/**
+ * What Alcove calls the team it makes for someone at a personal address, word for word as the server names it
+ * (apps/api/src/features/profile/companies.ts › teamNameFor): "Art’s team", by the first word of their name, or of the
+ * name in their address ("priya.raman@…" is Priya) when their name is blank or only the address, no longer than a team's
+ * name can be.
+ */
+export function ownTeamName(p: Named): string {
+  const name = p.name.trim() && p.name.trim() !== p.email ? p.name.trim()
+    : (p.email.split('@')[0] ?? p.email).split(/[._-]+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || p.email;
+  return `${name.split(/\s+/)[0] ?? name}’s team`.slice(0, TeamNameSchema.maxLength ?? undefined);
+}
 /** "Theo", "Theo and Priya", "Theo, Priya and Kofi" */
 export const listNames = (people: Named[]): string => joined(people.map(callName));
 /** Up to `max` names, then how many more: "Priya, Inès, Kofi and 2 more". One more is named instead. */

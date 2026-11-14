@@ -732,7 +732,10 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     title: 'Plans, new to an account from before them', about: 'Art has used Alcove for weeks, and the release that brought plans put the account on Free two days ago: the busy afternoon, and Home opens on the plans, once. Payments are taken.',
     make: () => { const world = busy(); withPayments(world); world.plan = carriedOver(); return { world, opening: {} }; }
   },
-  'on-their-own': { title: 'Someone on their own', about: 'Art at a personal address: no team, no groups, recordings and calls with people Art meets.', make: () => ({ world: onTheirOwn(), opening: {} }) },
+  'on-their-own': {
+    title: 'Someone on their own', about: 'Art at a personal address: no company page, no team, no groups, recordings and calls with people Art meets. Team starts a team: inviting someone by email, or naming it first, makes Art’s team.',
+    make: () => ({ world: onTheirOwn(), opening: {} })
+  },
   offline: {
     title: 'Offline', about: 'The busy afternoon, opened with no connection by someone signed in on this browser: Record works, every other page says it’s offline.',
     make: () => ({ world: busy(), opening: { browser: { online: false }, signedInHere: true } })

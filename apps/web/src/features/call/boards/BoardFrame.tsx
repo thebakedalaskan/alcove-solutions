@@ -154,7 +154,7 @@ export function BoardFrame({ id, box, place, session, state, me, board, run, the
     me: 'It stays in the call, and Board opens it again.', everyone: boardWhere ? `It leaves the call for everyone, and stays saved in ${boardWhere}.` : 'It leaves the call for everyone, and stays saved.'
   };
   const bar: FrameBar = {
-    icon: 'presentation', name: boardOpen?.name ?? 'Board', by: byOf(p), followers: place.followers, phone: place.phone, focus: place.focus, clears: place.clears, access,
+    icon: 'presentation', name: boardOpen?.name ?? 'Board', by: byOf(p), followers: board.followers.length, phone: place.phone, focus: place.focus, clears: place.clears, access,
     follow: p && !p.mine ? { on: stage.following('board'), where: pager?.part || 'the board', onToggle: () => stage.setFollow('board', !stage.following('board')) } : null,
     present: canPresent ? { onPress: present.now, busy: present.busy, ask: present.ask ?? undefined } : null,
     onClose: () => closing.closeThing(id), ask: p?.mine ? closing.askFor(id, place.phone) : id === 'board' && !p && closable ? boardAsk : null,

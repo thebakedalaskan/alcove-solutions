@@ -7,7 +7,7 @@ import { AlcoveApiError, type BreakoutBoardMode, type CallBoard, type CallPartic
 import { BOARD_VIEW_WIDTH, readBoard, roomFrameId } from '@alcove/board';
 import { reading } from '~/features/board/slides';
 import { nextId } from '../state';
-import { boardDoc, onTheBoard } from '../workspaces/workspaces';
+import { boardDoc, onTheBoard, type OnTheBoard } from '../workspaces/workspaces';
 import { CallWithChat } from './chat';
 
 /** How many times as wide as it's tall someone else presenting a board has their sheet: a laptop's stage. */
@@ -18,7 +18,7 @@ const PRESENTERS_SHEET = 1.8;
  * workspace everyone views; by whom, by their seat, which holds across their reconnections, as the server's person does; and
  * which presentation it is.
  */
-type Presented = { kind: 'board'; by: CallSeat; key: string; id: string; section: number } | { kind: 'workspace'; by: CallSeat; key: string };
+export type Presented = { kind: 'board'; by: CallSeat; key: string; id: string; section: number } | { kind: 'workspace'; by: CallSeat; key: string };
 
 export abstract class CallWithStage extends CallWithChat {
   /**
@@ -67,6 +67,8 @@ export abstract class CallWithStage extends CallWithChat {
   /** Whoever presents it, on the connection they're on now: none while they're reloading. */
   protected presenterOf(p: Presented): CallParticipant | undefined { return this.getSnapshot().participants.find((x) => x.seat === p.by.seat); }
   protected isMine(p: Presented): boolean { return p.by.seat === this.me.seat; }
+  /** You present the workspace now. */
+  protected youPresentTheWorkspace(): boolean { return [...this.presented.values()].some((p) => p.kind === 'workspace' && this.isMine(p)); }
   /** Whether someone other than `seat` presents the board open at `at`, there or in a room that shares it, while they're here. */
   protected presentedByOthers(at: string, seat: string): boolean {
     const open = this.boards.get(at)?.at;
@@ -161,17 +163,22 @@ export abstract class CallWithStage extends CallWithChat {
   }
   /**
    * Who's on the board where you are now, as its awareness says them to whoever has it open: someone else presenting it with their
-   * view on the frame they're on, as their browser says it, which is what everyone following them sees.
+   * view on the frame they're on, as their browser says it, which is what everyone following them sees. While you present it,
+   * everyone else on it where you are follows you, and says so (`withPresenter`), which your bar counts.
    */
   protected sayWhoIsOn(): void {
     const at = this.hereAt();
     if (!at) return;
     const shown = this.presentersView(at);
-    onTheBoard(at.documentId, this.getSnapshot().participants.flatMap((p) => {
+    const now = this.presented.get(this.crypto.getSnapshot().place);
+    const withYou = now?.kind === 'board' && this.isMine(now);
+    const place = this.whereIs(this.getSnapshot().participants.find((p) => p.isMe)?.id ?? '');
+    onTheBoard(at.documentId, this.getSnapshot().participants.flatMap((p, i): OnTheBoard[] => {
       if (p.isMe) return [];
       if (shown && p.seat === shown.seat) return [{ callIdentity: p.id, person: p.person, at: shown.at, view: shown.view }];
-      const point = this.onIt.get(p.id);
-      return point ? [{ callIdentity: p.id, person: p.person, at: point }] : [];
+      // Following you, they're on it whether or not they've pointed at anything yet: their pointers rest along its foot.
+      const point = this.onIt.get(p.id) ?? (withYou && this.whereIs(p.id) === place ? { x: 160 + i * 140, y: 620 } : undefined);
+      return point ? [{ callIdentity: p.id, person: p.person, at: point, withPresenter: withYou }] : [];
     }));
   }
   /**

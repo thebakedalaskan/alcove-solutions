@@ -188,6 +188,8 @@ export class ScriptedCall extends CallWithHosting implements CallSession {
       case 'host-back': this.hostBack(); return;
       case 'goes-to': {
         const p = this.find(b.who);
+        // Going somewhere while you present the workspace is going their own way: they don't follow you any more.
+        if (p && this.youPresentTheWorkspace()) this.ownWay.add(p.id);
         if (p) { this.where.set(p.id, { document: b.document, typing: b.typing ?? false, page: b.page ?? null }); this.sayWhere(); }
         return;
       }

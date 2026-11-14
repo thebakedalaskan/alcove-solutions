@@ -16,8 +16,8 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
   - the logo, and a button to hide the panel
   - Start a call (N): a row like the places, its name in line with theirs and its camera in a warm circle. It's never
     filled or shaded, so the place you're on is the one shaded row
-  - Home, Calls, Drive, Record and Team (where your groups are, so the panel doesn't list them again), with Team hidden
-    for someone on their own, with no team and no invitation to one. A count says something waits on you there (what's for
+  - Home, Calls, Drive, Record and Team (where your groups are, so the panel doesn't list them again), Team for everyone,
+    someone on their own too, who starts a team there. A count says something waits on you there (what's for
     you on Home, tags you haven't seen in the Drive, recordings waiting to upload, invitations to a team not put aside), quiet, in `ink-3`, its digits centred in a column of its own at the
     row's end (28px wide, 6px in), so counts line up. Home's is a link of its own, that column's cell over the row
     (`NavCount`): pointing at it lights it alone, in corners concentric with the row's, and its tooltip says what's in each
@@ -439,9 +439,10 @@ Any workspace opens full screen in Alcove's own evening, not as a stock editor: 
 `team/invitations.css` (`ti-`). Moment: `team`. Board: `Team.dc.html`.
 
 The sun is low and to the left, behind the people. The page is one evening (`Evening`, `tm`) whichever of its views it
-shows: the company's (`Company.tsx`), a team's (`OnTeam.tsx`) or the invitations to you (`Invitations.tsx`). The view rises
-with the page the first time; one taking another's place in it (Join, a first invitation starting the team, Leave team,
-Delete team) crossfades over --duration-2 on the soft curve: a still copy of the last fades out over the next
+shows: the company's (`Company.tsx`), a team's (`OnTeam.tsx`), the invitations to you (`Invitations.tsx`), or, on your own
+with none waiting, starting a team (`OnYourOwn.tsx`). The view rises with the page the first time; one taking another's
+place in it (Join, a first invitation or a name starting the team, putting the last invitation aside, Leave team, Delete
+team) crossfades over --duration-2 on the soft curve: a still copy of the last fades out over the next
 (`leaveFading`), with nothing blank between, and the horizon and the sun move to where the next has them (`--hz`,
 `--hz-sun-x` and `--hz-sun-r`, registered so they can). The focus goes to the next view's heading.
 
@@ -480,7 +481,7 @@ Delete team) crossfades over --duration-2 on the soft curve: a still copy of the
 - **Invitations to you** stand where they're seen first, each a `JoinCard` (`level` 2, its title in Hanken Grotesk, 600
   18/24) in `InvitationCards`: the team's faces, who invited you to which team, who's on it, then Not now and Join (filled).
   With a company page and no team they're at the top of its water; with neither, they're the page, one under another on the
-  Team evening, newest first. On a team, one is an `InvitationNote` at the top of the team's water, with Join and Not now.
+  Team evening, newest first, while one waits (with all of them put aside, the page is On your own's, below). On a team, one is an `InvitationNote` at the top of the team's water, with Join and Not now.
   Not now folds the card away (height and opacity, --duration-2, easing in: `foldAway`, which takes its gap with it), and
   its toast says until when it can be joined, with Undo. Put aside, each is an `InvitationRow` under Put aside with Join
   still there (it takes the focus as it arrives): at the foot of the company page's water, on a surface under the cards on
@@ -488,6 +489,16 @@ Delete team) crossfades over --duration-2 on the soft curve: a still copy of the
   place, on the card or the notice: what joining does, its answer in caution (Leave Vandelay Industries and join, Delete
   Vandelay Industries and join; with two teams of one name, "Joining Priya's Vandelay Industries deletes yours…" and Delete
   yours and join) and Stay; or, for an admin with others on their team, why they can't yet, in Join's place, with Not now.
+- **On your own** (`OnYourOwn.tsx`), at a personal address with no team and no invitation waiting: a company's first day,
+  with Start your team (Newsreader) in the middle of the sky and one line under it, "Invite people by email, or name your
+  team first. It's free: licenses only when you want to share notes and workspaces." (`tp-lede`: 16/24 in ink-2, at most
+  540px, balanced; the horizon moves down by its height, as a `tp-why is-link` line moves it), then Invite people (filled)
+  and Name your team (with the pen). You stand on the horizon between four empty arches, the sun in one of them. Invite
+  people's popover is named for the team it starts, "Invite people to Art's team" (Alcove's own name for a team made at a
+  personal address: `ownTeamName` in `lib/people.ts`, word for word as the server's), says what inviting does under the
+  field, and has nobody to tick and no Copy link or New link: Invite stands alone at the end of its foot. Name your team
+  opens the kit's `PlanTeamStart`, headed Name your team, in a popover over its button, as Rename's is. Either one starts
+  the team and crossfades the page into the team's. Under the water, groups, what's shared with them, and Put aside.
 - **The water:**
   - **Groups** are tiles with the name, "4 people · 7 calls", faces, and a camera to start the group's call. A group opens in
     place to rename it, add or remove people, or delete it, with undo. New group is a tile of dashed arches.
