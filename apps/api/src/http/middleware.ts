@@ -72,6 +72,13 @@ const MEDIA_PIECES = /^\/v1\/workspaces\/[^/]+\/documents\/[^/]+\/media\/[^/]+\/
 const OPERATOR = /^\/v1\/operator\//;
 
 /**
+ * Stopping Alcove's emails: besides the app's own page, a mail app's one-click unsubscribe (RFC 8058) posts here from its
+ * own servers, with no Origin of the app's and a form's body (`List-Unsubscribe=One-Click`). It takes no cookie and changes
+ * nothing of anyone's but what its token names, so another site's page has nothing to gain by sending it.
+ */
+const MAIL_STOP = /^\/v1\/mail\/stop$/;
+
+/**
  * Reads what's left of a request that was answered before all of it arrived, as a refused piece is, once the answer has
  * gone, and drops it, so the connection is ready for the next request. The Node adapter means to do this itself, but the
  * request's body stream keeps the request paused. So on its own the adapter reads one chunk and closes the connection
@@ -138,14 +145,16 @@ export function registerMiddleware(app: Hono<Env>, runtime: HttpRuntime): void {
   app.use('/v1/*', async (c, next) => {
     if (!MUTATING.has(c.req.method)) return next();
     const origin = c.req.header('origin');
-    if (origin !== d.cfg.WEB_ORIGIN && !OPERATOR.test(c.req.path)) throw new ForbiddenError('Requests must come from the Alcove app.', { context: { origin: origin ?? 'none' } });
+    const stop = MAIL_STOP.test(c.req.path);
+    if (origin !== d.cfg.WEB_ORIGIN && !OPERATOR.test(c.req.path) && !stop) throw new ForbiddenError('Requests must come from the Alcove app.', { context: { origin: origin ?? 'none' } });
     const type = (c.req.header('content-type') ?? '').toLowerCase();
     const hasBody = c.req.header('content-length') !== '0' && c.req.header('content-length') !== undefined;
     const image = type.startsWith('image/jpeg') && MEDIA_PREVIEW.test(c.req.path);
     const video = type.startsWith('video/') && VIDEO.test(c.req.path);
     const update = type.startsWith(DOC_UPDATE_TYPE) && DOC_UPDATES.test(c.req.path);
     const fileBytes = type.startsWith('application/octet-stream') && MEDIA_PIECES.test(c.req.path);
-    if (hasBody && !type.startsWith('application/json') && !type.startsWith('audio/') && !image && !video && !update && !fileBytes) throw new ValidationError('Unsupported content type.', { context: { contentType: type.slice(0, 60) } });
+    const form = stop && (type.startsWith('application/x-www-form-urlencoded') || type.startsWith('multipart/form-data'));
+    if (hasBody && !type.startsWith('application/json') && !type.startsWith('audio/') && !image && !video && !update && !fileBytes && !form) throw new ValidationError('Unsupported content type.', { context: { contentType: type.slice(0, 60) } });
     return next();
   });
 

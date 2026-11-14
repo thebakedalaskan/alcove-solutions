@@ -3,15 +3,16 @@
  * it in place. On Team, the plan row says whose team it is and until when your license runs, with Open Team; your notes are
  * your own, and Storage is the team's pool. On a team without a license, a note at the top says you're on your own plan
  * until one is yours. A team's notices are said in plain words. Its admin has the licenses (how many are left, who's
- * waiting, Buy licenses), and in what they pay with, buying one when it's needed and refunding those nobody has taken. The
- * team is `teams.mine`'s, read beside the plan; the rules are plan-state's.
+ * waiting, Buy licenses, or on a free team what upgrading gives with Upgrade), and in what they pay with, buying a license
+ * for each person who joins (on Team, and on a free team while it's on) and refunding those nobody has taken. The team is
+ * `teams.mine`'s, read beside the plan; the rules are plan-state's.
  */
 import { errorMessage, type MyTeam, type Plan, type PlanNotice, type PlanOffers, type TeamMember } from '@alcove/api';
 import { Button, SettingFoot, SettingNote, SettingRow, SettingStep, Switch, buttonClass, useToast, type IconName } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { useRef, useState, type ReactNode } from 'react';
 import { useCheckout } from '~/features/plans/checkout';
-import { PLAN_NAMES, licensesLeft, teamAdmin, waitingForLicense, type TeamLicenses } from '~/features/plans/planState';
+import { PLAN_NAMES, askedBy, licensesLeft, teamAdmin, waitingForLicense, type TeamLicenses } from '~/features/plans/planState';
 import { toastFailure } from '~/lib/failed';
 import { callName } from '~/lib/people';
 import { useRefundLicenses, useSetAutoPurchase } from '~/features/team/queries';
@@ -19,14 +20,20 @@ import { dayFullMonth, longDay } from '~/lib/time';
 import { plural, roomLabel, usdCents } from '~/lib/words';
 import { useSaveState, useSaving } from './save';
 
+/** Buying a license from the admin's balance whenever someone needs one: its one name, here, in checkout and on Team. */
+const AUTO_BUY = 'Buy a license for each person who joins';
+
 /** The admin by their first name, as a member's plan says who buys the licenses. */
 const adminName = (team: MyTeam | null | undefined, otherwise: string): string => {
   const admin = teamAdmin(team);
   return admin ? callName(admin) : otherwise;
 };
 
-/** What a team's notice says at the top of Plan, and its icon; null for Pro's and a workspace's, which Plan says itself. */
-export function teamNoticeSays(n: PlanNotice, plan: Plan, team: MyTeam | null | undefined): { icon: IconName; text: string } | null {
+/**
+ * What a team's notice says at the top of Plan, its icon, and whether it's about upgrading (`upgrade`: Upgrade at its end,
+ * unless the Licenses row has it); null for Pro's and a workspace's, which Plan says itself.
+ */
+export function teamNoticeSays(n: PlanNotice, plan: Plan, team: MyTeam | null | undefined): { icon: IconName; text: string; upgrade?: boolean } | null {
   const name = plan.team?.name ?? team?.name ?? 'your team';
   switch (n.kind) {
     case 'licenses-low': {
@@ -35,13 +42,26 @@ export function teamNoticeSays(n: PlanNotice, plan: Plan, team: MyTeam | null | 
     }
     case 'licenses-none': return {
       icon: 'people',
-      text: `Someone on ${name} needed a license and none was left. ${team?.licenses?.autoPurchase ? 'Buy more so they have one.' : 'Buy more, or turn on buying one when it’s needed.'}`
+      text: `Someone on ${name} needed a license and none was left. ${team?.licenses?.autoPurchase ? 'Buy more so they have one.' : `Buy more, or turn on “${AUTO_BUY}”.`}`
     };
-    case 'license-replaced-pro': return { icon: 'swap', text: `Your team license replaced Pro.${n.count ? ` ${plural(n.count, 'month')} that hadn’t started went back to your balance.` : ''}` };
+    case 'license-replaced-pro': return { icon: 'swap', text: replacedPro(n, name) };
+    case 'upgrade-asked': {
+      const who = askedBy(n, team);
+      return { icon: 'people', text: who ? `${callName(who)} asked you to upgrade ${name}.` : `Someone on ${name} asked you to upgrade it.`, upgrade: true };
+    }
     // Waiting for a license is said by the note about it, for as long as it's true.
     case 'license-needed': return null;
     case 'pro-ending': case 'pro-renewed': case 'pro-ended': case 'workspace-payer': return null;
   }
+}
+
+/**
+ * A team license replacing Pro, as Plan says it: what came back to the balance, by the day ("The rest of your Pro, $12.40,
+ * went back to your balance."), or that nothing did, for Pro Alcove gave; one from before amounts were kept says the months.
+ */
+function replacedPro(n: PlanNotice, team: string): string {
+  if (n.microUsd !== null) return n.microUsd > 0 ? `${team} covers your plan now. The rest of your Pro, ${usdCents(n.microUsd)}, went back to your balance.` : `${team} covers your plan now, in place of Pro.`;
+  return `Your team license replaced Pro.${n.count ? ` ${plural(n.count, 'month')} that hadn’t started went back to your balance.` : ''}`;
 }
 
 /**
@@ -128,10 +148,17 @@ function whoWaits(waiting: TeamMember[]): string {
 
 /**
  * A team's licenses, for its admin: how many are left of how many, and who's waiting for one, in warm. Buy licenses opens
- * checkout on Team, filled while someone waits.
+ * checkout on Team, filled while someone waits. A free team has none: what upgrading gives, with Upgrade, which opens
+ * checkout on Team for it, the page's one Upgrade (someone asking for it is said at the top, without one of its own).
  */
-export function Licenses({ licenses, offers }: { licenses: TeamLicenses; offers: PlanOffers | undefined }) {
+export function Licenses({ licenses, offers, team }: { licenses: TeamLicenses; offers: PlanOffers | undefined; team: MyTeam }) {
   const checkout = useCheckout();
+  if (team.tier === 'free') {
+    return (
+      <SettingRow label="Licenses" help={`${team.name} is on Free. Upgrading gives everyone on it a license: the team’s notes and workspaces open to everyone, and storage is pooled.`}
+        control={<Button variant="secondary" size="sm" onClick={() => checkout.open({ plan: 'team' }, 'settings')}>Upgrade</Button>} />
+    );
+  }
   const { left, of, waiting } = licenses;
   const count = of === 0 ? 'None bought yet' : left === 0 ? `None of ${of} left` : `${left} of ${of} left`;
   // A license runs a period from when it's taken, or a year's periods when it was bought for a year.
@@ -143,9 +170,10 @@ export function Licenses({ licenses, offers }: { licenses: TeamLicenses; offers:
   );
 }
 
-const AUTO_BUY = 'Buy one when it’s needed';
-
-/** A team's admin buying a license from their balance when someone needs one and none is left: kept as it's switched. */
+/**
+ * A team's admin buying a license from their balance when someone needs one and none is left: kept as it's switched. Shown
+ * on Team, and on a free team while it's on (upgrading sets it), so it can be turned off.
+ */
 export function AutoBuy({ plan, offers, canAdd, on }: { plan: Plan; offers: PlanOffers | undefined; canAdd: boolean; on: boolean }) {
   const auto = useSetAutoPurchase();
   const saving = useSaving();

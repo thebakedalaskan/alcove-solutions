@@ -38,7 +38,7 @@ src/api/call/             a call played from its script (script.ts says who's he
                           are answered): the server's side, a responsibility per file (base.ts says how they stack), what's
                           left going when you leave (going-on.ts), its private messages and notifications
 src/world/                the demo world, in the contract's types (world.ts): people, notes, calls, the demo clock; plans/ the
-                          plan, payments and a team
+                          plan, payments, a team, and the invitations to it and to Art (team-invitations.ts)
 src/world/boards.ts       the boards in it, written by the board package's own writes: in-memory for board stories, and into
                           the stand-in's workspaces for the board's page
 src/media/livekit.ts      a scripted room in place of LiveKit: microphones, speaking, shares, your connection
@@ -111,8 +111,8 @@ Product, then the follow-ups from the retro board's Actions frame.
 
 | Name | What it is |
 |---|---|
-| `busy` | Wednesday afternoon at Vandelay Industries: a day of notes, things waiting on you, a design sync at 17:30, and two photos and a file in the Product workspace's Launch plan. Priya's, Kofi's, Maya's, Aiko's and Ines's calendars say when they're busy from tomorrow to next Tuesday (`calendars`, src/world/scheduling.ts). Aiko and Maya joined Alcove from Art's invite link this week (src/world/invite-links.ts) |
-| `first-day` | Art has just signed in and carried on with Free: no notes or calls, a team not on Alcove yet, no calendar access, and an invite link nobody has joined from yet |
+| `busy` | Wednesday afternoon at Vandelay Industries: a day of notes, things waiting on you, a design sync at 17:30, and two photos and a file in the Product workspace's Launch plan. Priya's, Kofi's, Maya's, Aiko's and Ines's calendars say when they're busy from tomorrow to next Tuesday (`calendars`, src/world/scheduling.ts). Art is on no team: the company page, and Art's own invite link (src/world/invite-links.ts) |
+| `first-day` | Art has just signed in and carried on with Free: no notes or calls, a team not on Alcove yet, no calendar access, and Art's own invite link |
 | `on-their-own` | Art at a personal address: no team, no groups, recordings and calls with people Art meets |
 | `offline` | The busy afternoon opened with no connection, signed in on this browser: Record works, the rest says offline |
 | `writing` | Just after the pricing follow-up: its notes are written over a few seconds; a walkthrough records elsewhere |
@@ -141,14 +141,23 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `plan-buying-pro` | Art is on Free and has opened a payment of 192 USDC on Base for a year of Pro at the yearly price, then closed checkout: it waits for the payment, in the side panel and in Settings › Plan |
 | `plan-pro-extended` | Pro extended by a year yesterday, paid with 192 USDC on Base at the yearly price: the month running, twelve after it to refund, $5 left |
 | `plan-pro-given` | Three months of Pro given by Alcove's support yesterday: the month running and two after it, nothing to refund, and "Pro, 3 months, given by Alcove" in the payments with no receipt; $5 in the balance, as it was |
-| `team-admin` | Art runs Vandelay's team: six people, Maya's license ended last week, three licenses left, auto-purchase off, $180 in the balance |
+| `team-admin` | Art runs Vandelay's team on Team: six people, Maya's license ended last week, three licenses left, auto-purchase off, $180 in the balance. Invited: Sam (by Art, two days ago) and Lena (by Priya, 26 days ago: it runs out in 4 days), src/world/plans/team-invitations.ts |
 | `team-admin-low` | The same with two licenses left: a `licenses-low` notice |
-| `team-admin-none` | None left, and Maya waiting for one: a `licenses-none` notice |
+| `team-admin-none` | The same with none left, and Maya waiting for one: a `licenses-none` notice |
 | `team-member` | Art on Priya's team with a live license: the team's notes (`tn-roadmap`, `tn-onboarding`) and Art's standup visible to it |
 | `team-member-unlicensed` | Art's license ended with none to take: on Free, with a `license-needed` notice |
-| `team-join` | Art isn't on a team and has Priya's link to join (stories add it to the tab with `withTeamInvite()`) |
-| `no-team` | The busy afternoon with $60 and payments: Start a team on Team |
-| `team-buying` | Art started Vandelay's team from Plans and opened a payment of 240 USDC on Base for its first six licenses, then closed checkout: the team is Art's with nothing bought yet, and the payment waits, in the side panel and in checkout |
+| `team-member-invited` | `team-member`, and Jonas invited Art to Weber Design at 14:30 today: joining it takes Art off Priya's team |
+| `team-admin-invited` | `team-admin`, and Jonas's invitation to Weber Design: Art can't join it while others are on Vandelay's team |
+| `team-free-admin` | Art runs Vandelay Industries' free team: Art, Priya, and Kofi (joined today at 09:30); nobody licensed, nothing bought. Invited: Sam (by Art, two days ago), Lena (by Priya, 26 days ago: it runs out in 4 days), Diego (by Art yesterday, sent again today: Resend waits, `recent`) and Theo (by Art five days ago, sent again the two days after: sent 3 times, `most`, until 30 days after the first). Payments taken, $180 in the balance, enough to upgrade it |
+| `team-free-member` | Art on Priya's free Vandelay Industries team, with Kofi and Aiko: Sam is invited by Art (Art can resend or cancel it), Lena by Priya (Art can't). Copy link copies Priya's, the team's |
+| `team-free-asked` | `team-free-admin`, with an `upgrade-asked` notice: Kofi asked Art to upgrade it at 11:20 today |
+| `team-upgraded` | Art upgraded the free team at 15:50 today: three licenses from the balance at a period's price, auto-purchase on, $60 left. Art's license is taken; Priya's and Kofi's wait for their next visit. It's on Team |
+| `team-licenses-ended` | Art's Vandelay Industries team a month after Art upgraded it: Art's license ran out two days ago, Priya's and Kofi's yesterday, and none was bought again, so it's free, with auto-purchase still on and $180 in the balance (nobody takes one on a visit: nothing waits). What it shared stays, closed until it's upgraded again |
+| `team-solo-admin-invited` | Art alone on a free Vandelay Industries team, its admin, and Jonas's invitation to Weber Design: joining it deletes Art's team |
+| `invited` | The busy afternoon on no team, with two invitations to Art: Priya's to her Vandelay Industries team at 10:05 today (Priya, Kofi, Aiko and Maya are on it; its email's link is `PRIYA_INVITATION_SECRET`), and Jonas's to Weber Design three days ago, put aside. Priya's and Jonas's invite links lead to their teams |
+| `invited-personal` | `on-their-own` (no company, no team), invited by Jonas to Weber Design at 09:40 today, and by Ana to Souza Law yesterday, put aside |
+| `no-team` | The busy afternoon with $60 and payments taken, Art on no team: Plans' Start a team makes one, free, and so does inviting someone |
+| `team-buying` | Art's free team (Art, Priya and Kofi), upgrading: Art opened a payment of 120 USDC on Base for three licenses at a period's price with Buy a license for each person who joins ticked (`TEAM_THREE`, `autoPurchase: true`; `PREVIEW_TOP_UP`) and closed checkout; nothing is bought yet, and the payment waits, in the side panel and in checkout. Once it's bought, auto-purchase is on |
 | `agents-connected` | Art has Claude signed in (it booked the onboarding review 4 minutes ago) and Cursor signed in to read, and a Weekly digest personal token, with three weeks of what they did |
 | `agents-ending` | The same three agents, with Cursor's access ending tomorrow |
 | `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, the plans to choose from, Art's first day, and Home's tour |
@@ -280,8 +289,9 @@ that says something, and the waits.
 
 The interactions panel steps back and forth through it. What Storybook can't play (Google's sign-in, an email, a second
 person) plays up to the hand-off, and the stand-in plays the other side: a scenario, a script in `src/api/`, or, in the
-journey's `beforeEach`, `before()` for what its world needs, `outage()` for what goes wrong (a part that doesn't load, the
-server saying no) and `keepMail` for a `mailto:` link, which goes as far as handing the message to the mail app. A journey
+journey's `beforeEach`, `before()` for what its world needs and `outage()` for what goes wrong (a part that doesn't load,
+the server saying no). An invitation's email is Alcove's to send, so a journey plays from its link (`withInvitationLink()`
+puts one in the tab, as `withInviteLink()` does a team's), and the email itself is under **Emails**. A journey
 through a call uses the call's own: `atTheDoor()`, `rung()` and `inCall()` from `src/call.ts`.
 
 ## Add a board story
@@ -553,18 +563,21 @@ Pro, Extend, Add 10 hours, a waiting payment's Open), in every stage: choosing (
 a network's least above what's needed, part of it from the balance, the balance covering it, payments off, a price that
 changed, offline, extending, more notes), then paying (waiting, Cancel payment asking first, less arrived, seen, done, more
 arrived, refused, expired, cancelled, failed, the receipt), and closed from Done, with the toast that says what was bought
-(**Bought And Closed**), in both themes and on a phone. Team has the same: Start a team
-(its name, how many licenses, from the balance or a payment, unnamed, a changed price, payments off, offline), its first
-licenses' payment (`team-buying`) waiting, seen, bought, refused and expired, and its admin's Buy licenses (`team-admin-*`:
-who's waiting, from the balance, bought, with a payment), a member, and an admin who stopped being one (before buying, or while their payment was on its way), with nothing to buy and no steps. The stand-in plays
+(**Bought And Closed**), in both themes and on a phone. Team has the same for a team that exists (a team is started free, on
+Plans): a free team's Upgrade (`team-free-admin`: a license for each of the three on it, Buy one for each person who joins
+later, ticked or not, from the balance or a payment, another number, a changed price, offline, for a year, and Done's
+"Vandelay Industries is on Team"), the upgrade's payment (`team-buying`) waiting, seen, bought, refused and expired, and its
+admin's Buy licenses on Team (`team-admin-*`: who's waiting, from the balance, bought, with a payment), a member, an admin
+who stopped being one (before buying, or while their payment was on its way), and someone on no team, with nothing to buy
+and no steps. The stand-in plays
 a payment opened to buy something by itself (`src/api/account/payments.ts`): seen, then added and bought, a step every 5 seconds
 from when it was opened, or as the `payment-*` scenarios say; nothing runs on a timer, so nothing carries into the next
 story. `purchaseAt()` and `playsOut()` put one where a story needs it. Every address is a made-up preview no wallet takes.
 **Components / Checkout** has each part of the kit's window, and **Pay / Paying, in motion**, the canvas's player, with Slow
 motion and Play again. Section 16's journeys are under **Journeys / 16 Plans and paying**: **Plans** (16.1, from the side panel to Plans),
 **Checkout** (16.2 to 16.6), **Your plan** (16.7, 16.8 and 16.14, in the side panel and Settings), **Where checkout
-shows** (16.9 to 16.13, the doors, and 16.21), **Team** (16.15, starting a team from Plans), **Your team** (16.16 and
-16.17), **Team in Settings** (16.18 and 16.19) and **The plan choice** (16.20:
+shows** (16.9 to 16.13, the doors), **Team** (16.15, starting a team on Plans, free), **Your team** (16.16, upgrading a
+team, and 16.17), **Team in Settings** (16.18, 16.19 and 16.21, asked to upgrade) and **The plan choice** (16.20:
 a new account's arrival onto the plans, saying "Opening Plans", Continue on Free, then Home and its tour; Get Pro from them, paid,
 then Home; and signing in from the welcome page, sailing out of its cove onto them).
 

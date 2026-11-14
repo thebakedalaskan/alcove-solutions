@@ -51,23 +51,27 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | `Kwrap` | `HKDF(Kowner, salt=ownerId, "alcove/owner-wrap/v1")` | Derived per request; wraps revision and recording keys |
 | `Krecord` | 32 random bytes per item revision | `revisions.key_envelope`, wrapped under `Kwrap` with scope `revision:<id>` |
 | `Krec` | 32 random bytes per recording | `recordings.key_envelope`, wrapped under `Kwrap` with scope `recording:<id>`; seals the recording's audio pieces, its kept shares' video and the frames taken from it |
-| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `document-clients:<id>` (who each Yjs client in a document belongs to, as keyed hashes), `document-deletes:<id>` (a keyed hash of what each row of its log deletes, so the same deletes again cost nothing), `call:<id>` (call state), `call-asks:<id>` (16 bits of a keyed hash of the network each ask to join came from, kept beside the ask in the call's state so one network can't fill the host's list: different in every call, and shared by about one network in 65,536, so it never says which), `call-attention:<id>` (ordered hands, explicit questions, votes, nudges for their one recipient, statuses and audience-bound notification cues), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `call-notes:<id>` (the call's shared live notes), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered, and the times they asked to move it to), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them), `screen-share:<recordingId>` (whose each share in a call was) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes), `note-links:<noteId>` (who made each link to a note's notes, and when). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note), `presenter-notes:<documentId>` (what they kept beside a whole document or board with an earlier release, which nothing opens now), `presenter-frame-notes:<boardId>` (what they keep beside each frame of a board, and the keyed hash that says which frame) `promotion:<noteId>` (the seal on a preview of adding to the shared notes, and on the box for writing straight into them) and `invite-link-joins` (who joined Alcove from the account's invite links, and when); and, under a workspace's root, `workspace` (its name, tree and line on what it's for, who its people and shares are, and carets and presence on their way between instances), `workspace-person` (what someone's known by in it, a keyed hash of how access knows them), `document:<id>` (what a document or board holds) and `media:<id>` (a file: what's said about it, and its pieces) | Derived per request, or per job in the notes worker |
+| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `document-clients:<id>` (who each Yjs client in a document belongs to, as keyed hashes), `document-deletes:<id>` (a keyed hash of what each row of its log deletes, so the same deletes again cost nothing), `call:<id>` (call state), `call-asks:<id>` (16 bits of a keyed hash of the network each ask to join came from, kept beside the ask in the call's state so one network can't fill the host's list: different in every call, and shared by about one network in 65,536, so it never says which), `call-attention:<id>` (ordered hands, explicit questions, votes, nudges for their one recipient, statuses and audience-bound notification cues), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `call-notes:<id>` (the call's shared live notes), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered, and the times they asked to move it to), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them), `screen-share:<recordingId>` (whose each share in a call was) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes), `note-links:<noteId>` (who made each link to a note's notes, and when). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note), `presenter-notes:<documentId>` (what they kept beside a whole document or board with an earlier release, which nothing opens now), `presenter-frame-notes:<boardId>` (what they keep beside each frame of a board, and the keyed hash that says which frame) `promotion:<noteId>` (the seal on a preview of adding to the shared notes, and on the box for writing straight into them) and `invite-link-joins` (who joined Alcove from the account's invite links, and when, as an earlier release kept it: nothing opens it now); under a team's root, `team` (its name, who's on it, and who's invited to it); and, under a workspace's root, `workspace` (its name, tree and line on what it's for, who its people and shares are, and carets and presence on their way between instances), `workspace-person` (what someone's known by in it, a keyed hash of how access knows them), `document:<id>` (what a document or board holds) and `media:<id>` (a file: what's said about it, and its pieces) | Derived per request, or per job in the notes worker |
 | Operation keys | `HKDF(Kowner, salt=ownerId, "alcove/operation-commit/v1")` and `"…/operation-result/v1"` | Derived per request |
-| Invite link secret | `HKDF(Kowner, salt=ownerId, "alcove/invite-link-secret/v1/<generation>")`, 32 bytes as base64url (43 characters): an account's own [invite link](#invite-links), `<web app>/invite#<secret>`, where `<generation>` is the link's (`invite_links.generation`, 0 for the first, one more for each new link) in decimal | Never stored: worked out again each time its owner asks for the link, so it's the same on every ask until they make a new one. Only its SHA-256 is kept (`invite_links.secret_sha256`), and a new link replaces it |
-| Invite link key | `HKDF(secret's 32 bytes, "alcove/invite-link/v1")` | Derived per request from the link's secret; seals who the link is from, so whoever holds the link, or its owner, can open it. Who joined from it is sealed under its owner's own keys (state key `invite-link-joins`), never this one |
+| Invite link secret | `HKDF(Kowner, salt=ownerId, "alcove/invite-link-secret/v1/<generation>")`, 32 bytes as base64url (43 characters): an account's own [invite link](#invite-links), `<web app>/invite#<secret>`, which is its team's while it's the team's admin, where `<generation>` is the link's (`invite_links.generation`, 0 for the first, one more for each new link) in decimal | Never stored: worked out again each time the link is asked for (by its owner, or by anyone on the team it's the admin of), so it's the same on every ask until they make a new one. Only its SHA-256 is kept (`invite_links.secret_sha256`), and a new link replaces it |
+| Invite link key | `HKDF(secret's 32 bytes, "alcove/invite-link/v1")` | Derived per request from the link's secret; seals who the link is from, so whoever holds the link, or its owner, can open it |
+| Team invitation secret | `HKDF(the team's Kowner, salt=the team's ownerId, "alcove/team-invitation-secret/v1/<invitationId>")`, 32 bytes as base64url (43 characters): an [invitation's](#invitations) own link, `<web app>/invite#<secret>` | Never stored: worked out again each time the invitation is sent, so every email of it carries the same link. Only its SHA-256 is kept (`team_invitations.secret_sha256`) |
 | Index key | `HKDF(KMASTER, "alcove/index/v1")` of the master the database's first accounts were made under: outside a TEE, `KMASTER`'s; inside one, carried in the server keys (the old master's, or the TEE master's for a database that started in the TEE) | Keys the [blind indexes](#blind-indexes), so changing the master changes none of them |
 | Photo token key | `HKDF(KMASTER, "alcove/photo-token/v1")` of the master the database's first accounts were made under, carried in the server keys like the index key | Seals the provider URL in a [photo's URL](#what-leaves-the-browser), which notes keep (who spoke), so changing the master breaks none of them |
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
 | Media token key | `HKDF(KMASTER, "alcove/media-token/v1")` | Derived per use; signs the token in [a file's URL](#files) |
-| `Kservice` | 32 bytes: `KSERVICE` from the environment outside a TEE; inside one, carried in the server keys (the old `KSERVICE`, checked to open accounts' plans and their credits from before plans before it's sealed there, or 32 random bytes made in the TEE for a database that started there) | Derives the accounting key `HKDF(Kservice, "alcove/service/accounting/v1")`, which seals plans, AI meters, teams' billing and top-ups; cannot open owner content |
+| `Kservice` | 32 bytes: `KSERVICE` from the environment outside a TEE; inside one, carried in the server keys (the old `KSERVICE`, checked to open accounts' plans and their credits from before plans before it's sealed there, or 32 random bytes made in the TEE for a database that started there) | Derives the accounting key `HKDF(Kservice, "alcove/service/accounting/v1")`, which seals plans, AI meters, teams' billing and top-ups; derives the mail outbox, mail stop and kept-license keys too (below); cannot open owner content |
+| Mail outbox key | `HKDF(Kservice, "alcove/mail-outbox/v1")` | Derived per use; seals each [email waiting to go](#email) (`mail`), opened without anyone signed in so the outbox can send it |
+| Mail stop key | `HKDF(Kservice, "alcove/mail-stop/v1")` | Derived per use; makes and checks the tokens that [stop Alcove's emails](#stopping-emails) to an address. Nothing it makes is kept but a blind index of a token's first half |
+| Kept-license key | `HKDF(Kservice, "alcove/team-kept-license/v1")` | Derived per use; names, inside a team's sealed `team-billing` record, someone who left the team while their license ran (`kept`): `HMAC-SHA-256(key, teamId ‖ 0x00 ‖ ownerId)`, as base64url, so the record keeps no account's ID |
 | Device keys | 256-bit AES-GCM, made in the browser the first time a room recording, an edit, or a camera background picture is kept there (`crypto.subtle.generateKey`, not extractable): one for each, so an old tab holding one database never has to give way to another's | That browser's IndexedDB (`alcove-offline`, `alcove-edits`, `alcove-backgrounds`), never sent anywhere; seal what [this device keeps](#on-this-device), and each is deleted with the last of what it seals |
 | Call MLS keys | Made in each browser in a call (an MLS key package and its private keys for each group it joins, then that group's secrets: one group for the main room and, while breakout rooms are open, one for each room), with each sender's media key per epoch `MLS-Exporter("alcove/call-media/v1", identity, 32)` from its group | Only in the browsers in the call, in memory: each browser holds its own part of the call's, the host's (the organizer's, or a stand-in's while the organizer is away) every part's. Never sent to the API or LiveKit ([Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption)) |
 | Call data keys | `HKDF(media key, "alcove/call-data/v1")` for each sender and epoch: seal what browsers send each other through LiveKit (pointers and marks on shared screens, React's emoji (`react/1`), `board-shot/1`, telling someone a picture of their share went on the board, and `codecs/1`, a browser saying it can't decode VP9) | Only in the browsers in the call, in memory ([Calls and recordings › Pointing at shared screens](calls-and-recordings.md#how-it-travels)) |
 
 All derivations are HKDF-SHA-256 with 32-byte outputs, but the TLS and ACME account keys', 48 bytes reduced to a P-256 key
 (1 to n-1, as FIPS 186-5 makes a key from extra random bits). `salt=ownerId` means the ID's 32 decoded bytes; the
-index, photo token, server keys, sign-in attempt, media token, TLS, ACME account, accounting and invite link keys use an
-empty salt.
+index, photo token, server keys, sign-in attempt, media token, TLS, ACME account, accounting, mail outbox, mail stop,
+kept-license and invite link keys use an empty salt.
 
 ## Records and envelopes
 
@@ -131,9 +135,11 @@ piece of a file is sealed on the one core every call runs on. A `media-piece` is
 | `plan-account` | accounting key | owner (the plan, the balance in dollars and its history, any grace, the months of Pro bought, renewing, the notices about Pro, the owner's team's licenses and a workspace whose payment moved to them (its ID, never its name), and more notes bought for a period) |
 | `team-name` | state key `team` under the team's own owner | team (its name) |
 | `team-member` | state key `team` under the team's own owner | team, member (their name and address, as their account has them: a sign-in that brings new ones seals them again) |
-| `team-billing` | accounting key | team's owner, team (its unconsumed licenses and what each cost, auto-purchase and what a license last cost the team, the alerts its admin has had, its pool as last reckoned and its grace), opened without anyone signed in so upkeep can reckon the pool |
+| `team-invitation` | state key `team` under the team's own owner | team's owner, team, invitation (the address it's to, and when it was made) |
+| `team-billing` | accounting key | team's owner, team (its unconsumed licenses and what each cost, auto-purchase, how many it bought for the team today and what a license last cost the team, the alerts its admin has had, its pool as last reckoned and its grace, who on it asked its admin to upgrade it (each one's member ID, when, and whether the admin dismissed it), and the live licenses of people who left it, until each would have ended (when it began and ends, and whose, as the [kept-license key](#key-inventory)'s hash of the team and their account)), opened without anyone signed in so upkeep can reckon the pool |
 | `invite-link-from` | invite link key | the link's owner and its generation (who it's from: their name, address and photo, as their profile had them when they last asked for the link or signed in with new ones), opened without anyone signed in by whoever has the link |
-| `invite-link-join` | the link's owner's state key `invite-link-joins` | the link's owner, and the joiner's `invite-joiner` index (who joined from any of the owner's links: their name, address and photo as they were then, and when they joined) |
+| `invite-link-join` | the link's owner's state key `invite-link-joins` | the link's owner, and the joiner's `invite-joiner` index (who joined from any of the owner's links: their name, address and photo as they were then, and when they joined). An earlier release's: nothing writes or opens one now |
+| `mail` | mail outbox key | mail (one email waiting to go: who it's to, the reply-to, its subject, both bodies, its headers, its inline pictures, and the send it's of, `sendId`, null when its team's own limits held it back); the owner is empty |
 | `ai-meter` | accounting key | owner (the period's AI allowance in dollars, what's been spent by kind, what requests in flight and live calls hold, and when it ran out) |
 | `deposit` | accounting key | owner, deposit (a top-up's route, address, amounts and the provider's quote, and what it was opened to buy and how that went), opened without anyone signed in so the watcher can add it |
 | `sign-in-attempt` | sign-in attempt key | provider (`google`); the owner is empty, as nobody is signed in yet |
@@ -171,7 +177,11 @@ before still finds its row.
 | `flag-email` | The email address, trimmed and lower-cased | `feature_flag_group_members.email_index`, `feature_flag_person_grants.email_index` | Whom a [feature flag](feature-flags.md) is on for. Its own purpose, so a row joins to no account or share: an operator who switches a flag for an address through the API, and reads the database, learns nothing of whose account it is |
 | `addition-author` | The account's owner ID | `note_additions.author_index` | Taking everything an account added to the shared notes out of everyone's notes when it's deleted |
 | `note-link-maker` | The account's owner ID | `note_links.maker_index` | Taking out the links an account made to a note when it removes the note from theirs, and every link it made when it's deleted |
-| `invite-joiner` | The account's owner ID | `invite_link_joins.joiner_index` | Taking out every join an account said, on anyone's invite link, when it's deleted, opening nothing |
+| `invite-joiner` | The account's owner ID | `invite_link_joins.joiner_index` | An earlier release's, for taking out every join an account said on anyone's invite link when it was deleted. Nothing makes or reads one now |
+| `team-invitee` | The email address, trimmed and lower-cased | `team_invitations.invitee_index` | Finding the [invitations](#invitations) to the address someone signs in with (and whether one whose link they open is to them), and an address's invitation on a team. A purpose of its own, never the `email` index, so the table joins `identities` (or any other table) only with the index key: an operator reading it can't tell which invited addresses are on Alcove |
+| `mail-address` | An address in its canonical form ([Email](#email)): trimmed and lower-cased, a `+tag` dropped from its name, and at `gmail.com` and `googlemail.com` the dots in its name dropped and the domain `gmail.com` | `mail_sends.address_index` | Counting what's sent to one mailbox, however its address is written: how often one team sent it an invitation, and how many emails it's had in a day from all of Alcove. A purpose of its own, never `team-invitee` or `email`, so a row joins to no other table without the index key |
+| `mail-sender` | A team's ID | `mail_sends.sender_index` | Which sends were one team's, for its cap on one mailbox, with no team's ID in the row: it joins to nothing without the index key |
+| `mail-stop` | The first half of an address's [stop token](#stopping-emails) (a 16-byte keyed hash of the address's canonical form), as base64url | `mail_stops.address_index` | Whether an address, written any way, stopped Alcove's emails, found by working its token out again: never from the address itself, so the row joins to nothing |
 | `call-seat` | A call's ID and someone's seat in it | `document_access.principal_index` | Who a document is shared with in a call. Only the API can work one out, from a call pass; it's different in every call |
 | `call-workspace` | A call's ID and the ID of a workspace it uses | `workspace_calls.call_index` | Which workspaces a call [opens to everyone in it](#who-can-open-a-workspace). Everyone let in carries the one for the workspace the call uses now, worked out by the API from their pass and the call's state; it's different for every call and workspace, and the same for everyone in a call, so it's what the call opens to them and never who they are |
 | `upload-guest` | The person a guest's call pass names, random for each person in each call | `media_guest_upload_days.guest_index` | Counting what a guest uploads in a day, on every instance and after a restart. It can't be matched to a call, a seat or a name |
@@ -226,35 +236,102 @@ The hash is deterministic, so equal values show the same person across rows and 
 
 ### Invite links
 
-Someone at a company (a company directory: the demo company's, or a work domain's; nobody at a personal address) has an
-invite link of their own, `<web app>/invite#<secret>`, which the Team page copies and its invitations carry
-(`apps/api/src/features/meetings/invite-links.ts`, migration `0037_invite_links.sql`).
+A team has one invite link, `<web app>/invite#<secret>`: its admin's, which everyone on the team copies. Someone at a
+company (a company directory: the demo company's, or a work domain's; nobody at a personal address) who's on no team has
+one of their own, and whoever joins from it makes their team then, with them as its admin
+(`apps/api/src/features/billing/teams/invite-links.ts`, migration `0037_invite_links.sql`;
+[Plans and usage › Team](plans-and-usage.md#team)). Whoever opens it, new to Alcove or not, can join the team it leads to.
 
-- **The secret is never stored.** It's `HKDF(Kowner, salt=ownerId, "alcove/invite-link-secret/v1/<generation>")`, worked
-  out again each time its owner asks for the link (`POST /v1/team/link`), so the link is the same every time until they make
-  a new one, and only its owner can make it. `invite_links` keeps one row for each account: the secret's SHA-256, the link's
-  `generation` and who it's from (name, address and photo), sealed under `HKDF(secret, "alcove/invite-link/v1")`
-  (`invite-link-from`, its header binding the owner and the generation). It's sealed again when that has changed: as its
-  owner asks for the link, or as a sign-in brings them a new name, address or photo, a new address alone included. The
+- **The secret is never stored.** It's `HKDF(Kowner, salt=ownerId, "alcove/invite-link-secret/v1/<generation>")` of the
+  link's owner, worked out again each time the link is asked for (`POST /v1/team/link`), so it's the same every time until
+  a new one is made. A member asking for their team's is given its admin's: that request opens the admin's keys for it, as
+  a team's are opened. `invite_links` keeps one row for each account whose link has been asked for: the secret's SHA-256,
+  the link's `generation` and who it's from (name, address and photo), sealed under `HKDF(secret, "alcove/invite-link/v1")`
+  (`invite-link-from`, its header binding the owner and the generation). It's sealed again when that has changed: as the
+  link is asked for, or as a sign-in brings its owner a new name, address or photo, a new address alone included. The
   secret travels only in the link's fragment, which browsers never send, and in POST bodies.
 - **A new link on demand.** `POST /v1/team/link/new` takes the next generation, with the account's row held: the row's hash
-  and sealed sender are replaced, so the link before leads nowhere (`404 not-found`, as one that never was), and who joined
-  stays listed.
-- **Who it's from, for anyone with the link.** `POST /v1/team/link/peek { secret }` takes no session: it finds the row by
+  and sealed sender are replaced, so the link before leads nowhere (`404 not-found`, as one that never was). On a team only
+  its admin makes one, since it's everyone's (`403 forbidden` for a member).
+- **Made again with the team.** Taking someone off a team, deleting it, and its admin deleting it to join another make its
+  link (the admin's) again, in the same transaction and the same way (`invite-links.ts › remadeIn`), holding the admin's
+  account before the team's row, as joining by a link does: the link someone taken off copied, and a deleted team's, lead
+  nowhere from then, even to a team made anew for its admin. Nothing is made for an account that never asked for a link.
+- **Where it leads** is worked out from its owner as they are now: to their team while they're its admin; nowhere while
+  they're a member of someone else's (it works again if they leave); and, while they're on no team, to a team made for them
+  as someone joins if they're at a company, or nowhere if they aren't. Joining holds both accounts, in the order of their
+  IDs, and reads the link again before it changes anything, so a link made again, or whose owner moved, meanwhile leads
+  nowhere.
+- **What it says, for anyone with the link.** `POST /v1/team/link/peek { secret }` needs no session: it finds the row by
   the secret's hash and opens who it's from with the key the secret makes, as anyone else sees them (by their address, never
-  their account's ID), and says `yours` when the session it's sent with, if there is one, is the link's owner's. A made-up
-  link, one made again since and one whose owner has gone are the same `404 not-found`. It's limited to 60 a minute per
-  client address.
-- **Who joined, for its owner alone.** An account made from the link's page says so (`POST /v1/team/link/joined { secret }`):
-  it counts once for each sender, from any of their links, for an account made in the last hour (`owners.created_at`), and
-  never on your own link. A link that leads nowhere is `404 not-found`; everything else answers `204` the same way, counted
-  or not. Who joined (their name, address and photo then) and when are sealed under the sender's own keys, state key
-  `invite-link-joins` (`invite-link-join`), opened for this by the sender's root as a team's key is, so the link alone opens
-  none of them. `invite_link_joins` keeps the sender's owner ID, the `invite-joiner` index of the joiner's account and the
-  record, and no time: the list is sorted, newest first, once it's opened.
-- **Nothing readable in a column**: the rows hold the secret's hash, the owner's ID, the generation, a keyed hash of the
-  joiner and ciphertext. Logs say what a join came to (`joined`, `own-link`, `not-new`, `said-already`) by the account's ID
-  alone, never the secret, a name or an address. None of the four routes keeps a receipt: their answer or body holds a secret.
+  their account's ID), with the team it joins at a glimpse ([Invitations](#invitations)). A secret that isn't a link's is
+  read as an invitation's next. Sent with a session, it opens that account's keys too, and says `yours` when the link is
+  the account's own or its team's, or the invitation is to the team it's on; and it says an invitation's own ID
+  (`invitationId`) only to an account that signs in with the address the invitation is to (its profile address's
+  `team-invitee` index is the invitation's), so Not now can put it aside. For anyone else, and for any link, it's null. A
+  made-up link, one made again since, one that leads nowhere and one whose owner has gone are the same `404 not-found`.
+  Seeing what a secret says and joining by one (`POST /v1/team/join`) share one limit, 60 a minute for each client
+  address.
+- **Who joined isn't kept.** Someone who joins from a link is on the team, which is all its owner sees. `invite_link_joins`,
+  where an earlier release kept who joined Alcove from someone's links (sealed under the sender's own keys, state key
+  `invite-link-joins`, records of kind `invite-link-join`, each found by the joiner's `invite-joiner` index), is no longer
+  read, and every upkeep pass deletes all its rows (the release before can still write one while a deploy rolls), so a
+  joiner's name, address and photo don't outlast the deploy there. A later release drops the table.
+- **Nothing readable in a column**: the rows hold the secret's hash, the owner's ID, the generation and ciphertext. Logs
+  say `invite link made`, `invite link updated` and `invite link made again` with the account's ID and the generation (and,
+  made again with its team, `why`: `removed` or `deleted`), never the secret, a name or an address. Asking for the link and
+  making a new one keep no receipt, as their answer holds the secret; joining by one keeps a receipt of the team by IDs and
+  counts alone, whose commitment is a MAC of the body, never the secret ([Requests](#requests)).
+
+### Invitations
+
+Someone on a team asks one address to join it ([Plans and usage › Team](plans-and-usage.md#team);
+`apps/api/src/features/billing/teams/invitations.ts`, migration `0038_team_invitations.sql`).
+
+- **Sealed under the team's key.** An invitation is a `team_invitations` row whose `ciphertext` is a `team-invitation`
+  record under the team's state key `team`, as its name and members are, its header binding the team's owner, the team and
+  the invitation. It holds the address the invitation is to and when it was made. Nothing else about who's invited is kept.
+- **Its link's secret is worked out, never kept.** It's `HKDF(the team's Kowner, salt=the team's ownerId,
+  "alcove/team-invitation-secret/v1/<invitationId>")`, so every email of an invitation carries the same link,
+  `<web app>/invite#<secret>`, and only its SHA-256 is a column (`secret_sha256`, unique), which finds the row for whoever
+  opens the link. Anyone holding it can use it once: it needn't be the address it was sent to, since people have more than
+  one. Nobody on its team already can (`409 conflict`, "You’re on that team already."), by its link or in the app, and it's
+  left as it is for whoever it's for. Using it, cancelling it, its running out and its inviter leaving the team all delete
+  the row, so the link leads nowhere from then. Like an invite link's, it travels only in the link's fragment and in POST
+  bodies (`POST /v1/team/link/peek` reads it, `POST /v1/team/join` uses it).
+- **Found by a blind index of its own.** `invitee_index` is the address's `team-invitee` index, never its `email` index,
+  so nobody reading the database can join invitations to `identities` to learn which invited addresses have accounts. An
+  account is shown the invitations to the address it signs in with (its profile's) by that index, and accepting one checks
+  it; joining by a secret checks the secret instead. The same index is how the peek tells an account an invitation is to
+  it ([Invite links](#invite-links)).
+- **What else a row shows.** Its team; who invited them (`invited_by`, their member ID, which cascades, so what someone
+  asked goes when they're off the team); and when the team last sent it and when it runs out. What a team sent each
+  mailbox, for the caps on one address, is kept apart from the invitation and from the team, in `mail_sends`
+  ([Email](#email)), so neither cancelling and inviting again nor deleting the team takes it. `team_invitation_days` keeps
+  how many invitations each account made and sent again each UTC day (the owner, the day and a count), today and
+  yesterday, and goes with the account.
+- **Not now is theirs alone.** Putting an invitation aside (`POST /v1/team/invitations/:id/put-aside`) checks it's to the
+  caller and adds its ID to their own sealed profile (`putAside`), never to the invitation, so no column, nobody on its
+  team and no receipt (the route keeps none: [Requests](#requests)) says they did. Reading their invitations
+  (`GET /v1/team/invitations`) forgets the IDs of any that's no invitation to them any more: used, cancelled, run out, or
+  to an address they've left (`put-aside invitations forgotten`, at debug, with the account's ID and how many).
+- **A glimpse names nobody's address.** What an invitation or a team's link shows someone not on the team (`TeamGlimpse`)
+  is the team's name, how many are on it, and up to 4 of its people, who asked first, by name and portrait, each by their
+  member ID with their address left empty. The portrait Alcove draws for someone without a photo is picked by a hash of
+  their address, which anyone could check a guessed address against, so a glimpse picks each portrait by the member's ID
+  instead, which names nobody. Who asked (the invitation's sender, or the admin whose link it is) is shown with their
+  address, as the sender of any link is, and so looks as they do everywhere.
+- **Nothing is said back.** Inviting answers how many were invited, how many were on the team already and how many went
+  past what was left of the inviter's invitations for the day (`over`), and nothing else: never whether an email went,
+  whether an address has an account or is on another team, or whether an invitation was put aside. Every invitation made
+  or sent again is written and queued as an email alike, and whether it goes is decided as it's sent ([Email](#email)), so
+  neither the answer nor how long it takes says. What the team's people see of an invitation (when it was first made, when
+  it can be sent again and why not before, and how many times the team has sent it) is the team's own doing alone. One
+  that was used, cancelled or ran out is the same `not-found` as one that never was.
+- **Logs** say `team invitations made`, `team invitation resent`, `team invitation cancelled`, `team invitation put
+  aside`, `team invitation accepted` and `team joined from a link`, by IDs and counts: never an address, a name or a
+  team's name. A refusal's words name no team and nobody ("You’re on a team already. Leave it to join this one."), since an
+  error's message is its log line's.
 
 ## Sessions
 
@@ -392,6 +469,105 @@ transcript or meeting. See [Agents and MCP](agents-and-mcp.md) for the complete 
   (an occurrence's ID begins with its recurring event's, so logged paths, the server's and the browser's,
   show `/v1/calendar/events/:id`, and a refused adopt's error names no event). Only Google's error code
   (such as `invalid_grant`) is.
+
+## Email
+
+Alcove sends one kind of email of its own: an [invitation](#invitations) to join a team. It goes from the API, never the
+browser, through Resend (`apps/api/src/platform/mail.ts`, `apps/api/src/providers/resend.ts`, migration
+`0038_team_invitations.sql`), and is built from plain data by `packages/mail`. Nothing in it is fetched from a server when
+it's opened: its pictures are attached inline, and it loads no fonts. People's and teams' names in it are whatever someone
+typed, so each has a zero-width space (U+200B) after every `.`, `:` and `@`, in the subject, the HTML and the text: no mail
+app makes a link of `example.com` in a name, and it reads the same. The subject says at most 40 characters of the team's
+name (39 and "…"), and the body has it whole. The link and the inviter's address in the foot are as they are.
+
+- **An outbox, sealed.** Whatever asks for an email writes it to `mail_outbox` in its own transaction (`queueMail`), so a
+  slow or failing Resend never fails what asked for it: every invitation made or sent again, alike, whatever will become
+  of it. Each row is one email, sealed under the mail outbox key, `HKDF(Kservice, "alcove/mail-outbox/v1")`, as a `mail`
+  record whose header binds the row's `mail_id` (the owner is empty): who it's to, the reply-to, the subject, both bodies,
+  its headers, its inline pictures, and the send it's of (`sendId`, its `mail_sends` row; null when its team's own
+  `mail.address_per_team` held a new invitation's email back, so it never goes). Who it's from is `MAIL_FROM`, not kept
+  with it. The row's clear columns are its ID, the invitation it's of (`invitation_id`), when it's next due
+  (`send_after`), how many sends it has had (`attempts`) and when it was made. It goes with its invitation, unsent: an
+  invitation used, cancelled, run out or gone with whoever made it while its email waits (past the day's limit, or put
+  off while Resend was busy) is never emailed after, so nothing of it, the inviter's name and address included, is sent
+  once it has ended. Sending an invitation again replaces an email of it that's still waiting: only the latest goes.
+- **One mailbox's caps, by keyed hashes.** One team sends one mailbox an invitation at most `mail.address_per_team` (3)
+  times in `team.invitation_seconds` (30 days), and no mailbox is emailed more than `mail.address_per_day` (1) in 24 hours
+  from all of Alcove. A mailbox is an address in its canonical form (`mail.ts › canonicalAddress`): trimmed and
+  lower-cased, a `+tag` dropped from its name at any domain, and at `gmail.com` and `googlemail.com` the dots in its name
+  dropped and the domain `gmail.com`, so `Sam.Vandelay+work@googlemail.com` is `samvandelay@gmail.com`, and every way of
+  writing one shares its caps and its [stop](#stopping-emails). The email still goes to the address exactly as it was
+  typed, and the app finds invitations by the address itself (`team-invitee`). Each send a team makes (a new invitation or
+  one invited again, while its sends to the mailbox allow it, or Resend) is a row in `mail_sends`, written in the request:
+  its ID, the mailbox's `mail-address` index, the team's `mail-sender` index (a keyed hash of its ID, so the row names no
+  team), when, and when an email of it went (`emailed_at`). It has no owner and no key to `teams`, so a team's deletion
+  takes none of it: what a mailbox had in the day still counts, though a team made anew has an ID, and a count, of its
+  own. Upkeep deletes rows older than `team.invitation_seconds`, or a day if that's longer. `mail.address_per_team` is the
+  team's own doing, so it's decided in the request, and it's what the team is told (when an invitation can be sent again,
+  why not before, and how many times it has been); `mail.address_per_day` is decided by the sender.
+- **Sent after the commit, and by upkeep.** Once the transaction that wrote it commits, the API sends what's due at once,
+  without holding up the request's answer (`kickMail`), and every upkeep pass sends what's due too (`sendMail`, up to 100 a
+  pass). A pass stops once Resend is busy, failing or not answering, so it isn't asked again at once: what's left goes when
+  its time comes. A row is claimed for 5 minutes first (`FOR UPDATE SKIP LOCKED`, then `send_after` moved on), so two instances never
+  send it at once, and one whose instance went mid-send is tried again after that. Each send carries the row's ID as its
+  `Idempotency-Key`, so a send tried again after an answer that never came is sent once.
+- **Whether it goes is decided as it's sent**, never in the request, so nothing in a request's path, its answer or how
+  long it takes, depends on it. Claiming a row, the sender deletes it without sending: when there's no `RESEND_API_KEY`
+  (`mail not sent: no provider`, at info, and invitations are there in the app as ever); when its record doesn't open
+  (`mail dropped`, `why: unreadable`, at error); when its team held it back (`sendId` null: `why: held`); when its mailbox
+  stopped Alcove's emails (`why: stopped`); and when its mailbox has had `mail.address_per_day` emails in the last 24
+  hours, this one's own earlier try aside (`why: address`), each at info. That count is taken under an advisory lock on
+  the mailbox, so two claims at once never both take its last place in the day. One that goes counts against the day's
+  emails (below), and takes its mailbox's place as it's claimed (`emailed_at`): kept while it's tried again, since Resend
+  may have sent it, and given back if it's given up on.
+- **What comes of a send.** Sent (a 2xx): the row is deleted. Resend busy, failing or not answering (a 429, a 5xx, a
+  network failure, or 15 seconds with no answer): tried again 1, 5 and 15 minutes later, then 1, 2, 4 and 8 hours later, or
+  later still when Resend's `retry-after` says so: 8 tries in all, over about 15 hours, then dropped at warn. Refused (any
+  other status): dropped at error, with Resend's name for why (such as `validation_error`).
+- **A day's emails.** At most `mail.per_day` (90) go in a UTC day, all of Alcove's, counted in `mail_days` (a day and a
+  count; upkeep keeps today and yesterday) as each is claimed, and given back for one that didn't go. Past it, everything
+  due waits for the next UTC day (`mail waits for tomorrow: the day’s emails have gone`, at info, with how many wait).
+- **Deleted once sent or dropped.** Nothing of an email is kept once it's sent, given up on or dropped: its row goes, and
+  what stays is its send in `mail_sends`, keyed hashes and times. Logs carry its ID, which try it was, Resend's HTTP status
+  and its name for an error, why one was dropped, and once it's sent Resend's own ID for it (`resendId`, which names nobody
+  and finds it in Resend's dashboard): never an address or a word of what it says. Resend's own words for an error never
+  leave `resend.ts`: they may quote the address.
+
+### Stopping emails
+
+- **The token.** Every invitation email carries a token for the address it's sent to: the first 16 bytes of an HMAC of the
+  address's canonical form ([Email](#email)) under the mail stop key, `HKDF(Kservice, "alcove/mail-stop/v1")`, then 16
+  bytes that check it (an HMAC of those first 16 under the same key), as base64url: 43 characters (`mail.ts › stopToken`).
+  It's the same in every email to that mailbox, however its address is written, and names nobody, and only Alcove can make
+  one, so nobody can stop someone else's emails. The email carries it in its foot, as a link to
+  `<web app>/stop-email#<token>` (in the fragment, which browsers never send), and in its `List-Unsubscribe` header, with
+  `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058), as `<API_URL>/v1/mail/stop?token=<token>`.
+- **Kept by a blind index.** `mail_stops` keeps a stopped mailbox as `blindIndex('mail-stop', <the token's first half, as
+  base64url>)` and when, never the address, and for good: stopping doesn't run out. Whether an address stopped is found by
+  working its token out again, so every way of writing it finds the one row.
+- **`POST /v1/mail/stop`** takes no session and keeps no receipt. It's the one route outside `/v1/operator/` that needs no
+  `Origin`, and the one that takes a form's body, since a mail app's one-click comes from its own servers; it takes no
+  cookie, and changes nothing but whether the address its token names is emailed. It reads the token from the URL (a mail app's
+  one-click) or from a JSON body, `{ token }` (the app's `/stop-email` page), and answers `204` whatever the token: valid or
+  not, stopped already or not. Only what came of it is logged: `mail stop asked`, with `outcome` (`stopped`, `already` or
+  `refused`). A token in the URL never reaches a log, since logged paths never carry a query. `GET /v1/mail/stop`, which a
+  mail app that opens the link in a browser sends, stops nothing: it redirects (`303`) to the app's `/stop-email#<token>`,
+  where no server sees the token. Both are limited to 60 a minute for each client address.
+- **What stopping does.** A mailbox that stopped is never emailed an invitation again, however its address is written:
+  its invitations are still made, and still shown in the app, and nobody is told. The sender checks as it claims each
+  email ([Email](#email)), so one waiting when its address stopped never goes (`mail dropped`, `why: stopped`, at info).
+
+### Resend
+
+Resend is a processor: it sends each email Alcove gives it, and sees what's in it.
+
+- **What it sees.** The recipient, as the address was typed; the inviter's name and address, in the email's foot and as
+  its Reply-To; the team's name and how many are on it; the first names of up to two others on it and the initials of up
+  to four; the invitation's link; and the address's stop link and stop URL, with its token. It keeps them for 30 days.
+- **How it's reached.** By `fetch` from the API (`POST <RESEND_API_URL>/emails`), with a send-only key for the sending
+  domain (`RESEND_API_KEY`, [Deployment and acceptance](deployment-and-acceptance.md)), and its answers are parsed with
+  zod: only its status, its error's name, its ID for the email and when to try again are taken from them. Open and click tracking are off, and
+  nothing in the email is wrapped, so every link goes straight to Alcove.
 
 ## Who can see a call
 
@@ -941,9 +1117,11 @@ decides.
   (`403 forbidden` otherwise) and a JSON or audio body (`400 invalid` otherwise), or for a piece of a shared screen's video WebM or MP4, and
   for a piece of a file bytes (`application/octet-stream`), on those routes alone. This blocks blind cross-site
   POSTs that `SameSite=Strict` would still allow from sibling ports or subdomains. CORS answers only
-  `WEB_ORIGIN`, with credentials. The one exception is under `/v1/operator/` (`http/operator.ts`): operators call it
+  `WEB_ORIGIN`, with credentials. One exception is under `/v1/operator/` (`http/operator.ts`): operators call it
   with the operator CLI, each request signed with the operator's own key, never a cookie, so no Origin is needed there,
-  and its body must still be JSON.
+  and its body must still be JSON. The other is `POST /v1/mail/stop`, which a mail app's one-click unsubscribe posts to
+  from its own servers, with a form's body: it takes no cookie, and changes nothing but whether the address its token
+  names is emailed ([Stopping emails](#stopping-emails)).
 - **Idempotency.** Signed-in mutations carry `x-alcove-operation` (Id128). The receipt stores an HMAC
   commitment of method, path and exact body bytes, plus the JSON response sealed under the operation-result
   key. A retry gets the same response; a different request under the same ID is `409 conflict`. Receipts may
@@ -960,9 +1138,19 @@ decides.
   Your own notes and what's added to the shared notes keep none either, so nothing you delete or take back stays
   in a receipt for a day; the app doesn't resend them, and doing so can add an entry twice, never lose one. Making,
   revoking and opening a link to notes keep none: making one answers with its secret, and opening one again changes nothing.
-  Your own invite link, making a new one, seeing who one is from and saying you joined from one keep none either: their
-  answer or body holds a link's secret, asking for the link again gives the same one, a retried new link only makes one
-  more, and saying you joined twice counts once.
+  The invite link a Team page copies and making a new one keep none either: their answer holds the link's secret, asking
+  for it again gives the same one, and a retried new link only makes one more. Seeing what a secret after `/invite#`
+  says, and stopping Alcove's emails, come before receipts, as neither needs a session. Putting an invitation to a team
+  aside (Not now) keeps none: it's for whoever it's to alone to know, and a receipt's clear method and time would say they
+  did, for a day; doing it again changes nothing. Inviting, sending an invitation again, cancelling one, accepting one,
+  joining a team by a secret (an invitation's own link, or a team's) and renaming the team keep a receipt, so a retry
+  never invites, sends or joins twice, but of the team by IDs and counts alone (`teams/routes.ts › asKept`), as a call's
+  receipt keeps the call without its documents (below): the team's name, the name and address of everyone on it or
+  invited to it, and who invited each are left empty, and its IDs, roles, licenses, dates, counts and money are as they
+  were. Anyone on it or invited can be gone within the receipt's day, and a receipt filed under someone else mustn't name
+  them; a retry answers with it, and the app reads the team again for its names. Joining's commitment is the HMAC of its
+  request, body and all, under the account's operation-commit key, never the secret itself. The team's other changes
+  (making it, taking someone off, licenses and auto-purchase) keep their whole answer.
   Deleting the account keeps none either: its receipts go with it, and a retry finds the session gone
   (`401 unauthenticated`).
   What's for people in a workspace keeps a receipt, because a retry mustn't make a second workspace, item or copy, and
@@ -980,7 +1168,7 @@ decides.
   dropping whatever the client sent; behind a front end that appends it, entries before the last came from the client and
   count for nothing). Browser reports: 60 a minute per client
   address. A call's card: 600 a minute per client address (every pre-join reads it every 4 s or so while it
-  waits); joining by link: 120; picking one of the times a call offers: 30; seeing who an invite link is from: 60. Transcript clips: 240 a minute per account, calls and room recordings together,
+  waits); joining by link: 120; picking one of the times a call offers: 30; seeing what a secret after `/invite#` says and joining a team by one: 60 together; stopping Alcove's emails: 60. Transcript clips: 240 a minute per account, calls and room recordings together,
   and 40 a minute for each voice in a call.
   Pieces of a shared screen's video: 60 a minute per person in a call, and
   30 a minute for starting and ending shares. Asking for notes in a call: 10 a minute per person. Saying whether others may
@@ -1017,7 +1205,9 @@ decides.
   A move's code travels in a link's fragment, which browsers never send, and then in POST bodies, like the claim
   that replaces it; only their SHA-256 is stored. So does a link to a call's notes: its secret is in the fragment and
   the POST that opens it, and only its SHA-256 is stored. While someone signs in with Google from it, it waits in that
-  tab's sessionStorage, for ten minutes at most, never in a URL.
+  tab's sessionStorage, for ten minutes at most, never in a URL. An invite link's secret, and an invitation's, travel the
+  same way. A stop token is in the one-click URL's query (`/v1/mail/stop?token=…`), as RFC 8058 has it: it names nobody,
+  and logs never keep it, since logged paths never carry a query; the email's own link carries it in a fragment.
   Logs hold IDs, codes, states, counts and timings: never content, emails, bodies, keys, session IDs, call
   codes, Google event IDs or the Google callback's query. The privacy test checks the debug-level log for canaries, session and
   sign-in attempt cookies, and Google refresh tokens ([Logging and errors](logging-and-errors.md)).
@@ -1155,7 +1345,9 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 | Workspaces | That a workspace exists, how many people and documents it has and when each came, each one's role, that a document is shared and whether with an address or a seat in which call, how often it changes (`version`), when the oldest thing in its Trash went there, and that someone was tagged in a document and when, until they've heard. How many files it has, when each came, how big each is, and which documents share one. Never a name, a folder, how the tree is arranged, or what a file is called or is. `presenter_notes`, which nothing writes now, shows which accounts kept notes on which documents with an earlier release, and so that those accounts could open them: one row each, of a size, and never what they say. `presenter_frame_notes` shows the same for boards, and how many frames of each someone keeps notes beside, never which frames or what they say. Which calls use which workspaces, and what was worked on in them, is sealed in the meeting, the call and the note, except while a call goes on: then `workspace_calls` shows, by the call's ID, each workspace it has opened to everyone in it, and since when, until it ends |
 | Documents | When each update was made and roughly how big it was and how many pieces it held, until it compacts, so when a document was being worked on and how hard; how big its state and versions are, how many versions it has and when each was kept; how many Yjs clients have written to it, which is about how many sessions, and how much each wrote, with nothing to link two clients to each other or to anyone. A board started from a template has the server's client for it, 2, with how much the template wrote, so which template it started from, and the row stays if a version from before it takes the board's place. Never a word, a title, a mention or a comment, nor anything on a board. Carets and presence pass through Postgres's notice queue sealed, as notices of a size and at a time, each naming the workspace and, for a caret, the document |
 | Plans and money | Which account pays for each workspace (`workspaces.payer_owner_id`), so which account is the longest-standing admin with an account of each, usually whoever made a shared workspace, or organized a call it's the home of; while payment for one has moved from someone who left it, until when its grace runs and how many bytes it held then (`payer_grace_until`, `payer_grace_bytes`), so roughly when someone left a workspace they paid for; how many bytes each account stores (`owners.stored_bytes`, and those of the workspaces it pays for); when upkeep next looks at each plan account (`plan_accounts.due_at`: a grace ending, or Pro about to end or ending, so roughly when an account's Pro ends); and that a top-up exists, whose it is, its state and when it's next checked. Never a balance, an allowance, what was spent or on which kind of request, a history, an amount, an address or a quote: those are sealed under `Kservice`'s accounting key, which can't open owner content, and the API process opens them for any account because it holds `KSERVICE` |
-| Invite links | Which accounts have asked for their invite link (`invite_links`, by owner ID), how often each made a new one (its `generation`), and when it was made and last changed. How many accounts joined from each sender's links (`invite_link_joins`, by the sender's owner ID), and, as a joiner's `invite-joiner` index is the same on every row, how many senders one account joined from; never who joined, or when. |
+| Invite links | Which accounts' invite links have been asked for (`invite_links`, by owner ID), how often each was made again (its `generation`), and when it was made and last changed. Until a later release drops it, `invite_link_joins` still shows what an earlier release kept: how many accounts joined from each sender's links (by the sender's owner ID), and, as a joiner's `invite-joiner` index is the same on every row, how many senders one account joined from; never who joined, or when. |
+| Invitations | How many invitations each team has out, when each was last sent and when it runs out, and which member made each (`invited_by`); how many invitations each account made each day. Through the `team-invitee` index, which joins to nothing but itself: the same address invited by several teams. Through `mail_sends`, whose `mail-address` and `mail-sender` hashes join to nothing but themselves: how many times one sender sent one mailbox an invitation and when, the same mailbox sent to by several, and whether and when an email of each went (`emailed_at`). An invitation's `sent_at` is its latest send's time to the millisecond, so while the invitation is there that send can be matched to it, and its sender to the team. Never an address, a name or a team's name, nor whether anyone put an invitation aside, which is sealed in their own profile |
+| Email | How many emails wait to go (one for every invitation made or sent again, whether or not it will go), which invitation each is of (so which team's), when each was made and is next due, and how many tries it has had (`mail_outbox`); how many went each day (`mail_days`); how many addresses stopped Alcove's emails, and when each did (`mail_stops`, by a blind index that joins to nothing). Never an address, a subject or a word of an email |
 | Object store | Object count, sizes and timing: a recording writes about one object every 5 seconds, a share kept for the notes about one every 5 seconds while it's going, then one per 4 MiB of its joined video once the call is over, and a file one for every 4 MiB |
 | Uploads | How many bytes each account uploaded to workspaces each day, today and yesterday, and each guest in a call, under a blind index that can't be matched to the call, the seat or a name. A file's row says which workspace it's in, how big it is and when it came, and not who uploaded it, but on a quiet day an account's bytes can be matched to one file's size and time, which shows that account uploaded it. And the service's limits, which are numbers and nothing of anyone's |
 | A file's URL | Readable by anyone who sees it, but only opaque IDs: the account or the call, seat and organizer asking, the workspace, document and file, and when it runs out. Alcove keeps it out of its logs, but a browser shows it to whoever opens a file by itself |
@@ -1165,6 +1357,7 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 | NEAR AI's gateway and operators | Alcove's API key on attestation requests, which models are verified when, the size and timing of every sealed request, and the server's address; never the content, the request's parameters or the key inside the seal. A deployment NEAR AI chooses to run in an attested VM on a measured dstack image passes. |
 | Intel and NVIDIA | Intel's certification service: which platform (FMSPC) each quote came from, when Alcove verifies. NVIDIA's attestation service: each model's GPU evidence (certificates and measurements). No content. |
 | Google | For Google accounts, each sign-in. With the calendar connected, every scheduled call's title, time, guests, join link and whether notes are on, as an ordinary calendar event that Google sends to the guests, and whose availability is asked for when finding a time, by address. |
+| Resend | Every invitation email, whole, and when it was sent: its recipient, the inviter's name and address (as its Reply-To too), the team's name and how many are on it, the first names of up to two others on it and the initials of up to four, the invitation's link, and the address's stop link and token. It keeps them for 30 days. Tracking is off, so it never sees whether an email was opened or a link pressed ([Email › Resend](#resend)) |
 | Cloudflare | As the domain's DNS (DNS-only: no traffic passes through it), the names asked for and by which resolvers. The web app is served by the API, inside the TEE, so page loads don't reach Cloudflare. As the object store (R2): what the object store row shows. |
 | The load balancer | Each connection's address, port and timing, and how many bytes go each way: TLS ends inside the TEE, behind it, so nothing it carries is readable to it. |
 | Sigstore's public log (Rekor) | The API asking for its own release's entry, from the VM's address, each time it renews its attestation token: which build runs, which the log publishes anyway. No browser asks it. |
@@ -1229,16 +1422,20 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   own note does (shared-screen frames included), so everyone loses it; its `note_access` rows as a reader (found by its profile address's email index), so it's off every
   note other people gave it, unless another account still signs in with that address; what it answered on other
   people's calls, on the same condition (the invites stay: they're those organizers', who put the address on them); the
-  rings to its address in other people's calls; its place on a team, and the team it's the admin of, with that team's
-  own owner row, members, invites and `team_notes` (the admin of a team anyone else is on is refused first, `409
-  conflict`, with nothing done); and its `owners` row,
+  rings to its address in other people's calls; its place on a team, with the invitations it made there, and the team
+  it's the admin of, with that team's own owner row, members, invitations and `team_notes` (the admin of a team anyone
+  else is on is refused first, `409 conflict`, with nothing done); and its `owners` row,
   from which everything else keyed by the account cascades: its identity (subject and email indexes), every
   session in every browser, its profile (pins and groups with it), its Google connection (the refresh token),
-  its receipts, notes jobs, plan account, AI meter, top-ups, what it uploaded each day, and its [invite link](#invite-links)
-  and everyone who joined from it (so the link leads nowhere from then on). That it joined from anyone else's invite link
-  goes in the same transaction, found by `invite_link_joins.joiner_index`, opening nobody's keys; a join being said at that
-  moment holds the account's row, so the deletion waits for it and takes it too. A release from before invite links
-  deletes an account without that step, as one may during a deploy or after a rollback: upkeep then takes those joins. Then the API drops the Google access token it held in memory,
+  its receipts, notes jobs, plan account, AI meter, top-ups, what it uploaded each day, how many invitations it made each
+  day, its [invite link](#invite-links) (so the link leads nowhere from then on), and what an earlier release kept in
+  `invite_link_joins` of who joined from its links. Invitations to its address stay, as the invites to calls do: they're
+  their teams', and an address that stopped Alcove's emails stays stopped (`mail_stops` names no account). So do the sends
+  its team made, in `mail_sends`, keyed hashes that name no team or account, until upkeep takes them
+  (`team.invitation_seconds` after each, or a day if that's longer), and a license it left a team with, in that team's
+  record by a keyed hash, until it would have ended. What an earlier release kept of its own joining someone's invite
+  link, in that sender's `invite_link_joins` (its name, address and photo then, sealed under the sender's keys), goes at
+  the next upkeep pass, which deletes every row of that table. Then the API drops the Google access token it held in memory,
   closes the LiveKit rooms of its calls still going (which takes everyone out of them, as ending a call does),
   and deletes the audio and shared-screen objects; failures are queued in `object_gc`, which keeps only the object's ID and
   the deleted account's ID until maintenance deletes it. Only then is Google asked to revoke the refresh token,
@@ -1309,9 +1506,18 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   `object_gc`, removes objects older than 24 hours that no recording piece, piece or chunk of shared-screen video, frame or piece of a file
   references, removes rings a day after they ran out, in a call that went on that long, deletes for good what's been in
   a workspace's Trash for 30 days, ends seats, and what calls opened to everyone in them, whose call is over, removes live
-  notes of calls that have ended, takes away what an upload left when its browser went, a day on, and deletes the joins on
-  invite links said by accounts that are gone: it reads the joins' `invite-joiner` indexes first, then every account's,
-  so a join is only taken once its account has gone.
+  notes of calls that have ended, takes away what an upload left when its browser went, a day on, deletes team
+  invitations that ran out, the sends (`mail_sends`) and daily counts their limits no longer need, and the one-time links
+  to a team the release before made (`team_invites`) once they've run out, sends the email that's due and gives up on
+  what's past its tries, and forgets the days before yesterday's count of email sent.
+- **An invitation to a team** goes when it's used (with any other to the same address on that team), cancelled or run
+  out, with its team, and, in the transaction that takes them off it, when whoever made it leaves the team, is taken off
+  it or deletes their account: its link leads nowhere from then, and an email of it still waiting to go goes with it,
+  unsent. Joining another team with `leave` takes the joiner off theirs the same way, or deletes it if they were its admin
+  alone on it. Whoever put it aside keeps its ID in their profile until they next read their invitations, which forgets
+  it.
+- **An email** is deleted from the outbox once it's sent, given up on or dropped as it's claimed, or with its invitation,
+  so nothing of it stays with Alcove but its send in `mail_sends`: keyed hashes and times, until upkeep takes them.
 
 ## Moving to confidential computing
 
@@ -1359,7 +1565,8 @@ What's in the code (`apps/api/src/keys/server-keys.ts`, `config.ts`, `gcp.ts`, `
   secrets, each with the secret it's in (`DATABASE_URL=alcove-database-url,…`), and may name only these: `DATABASE_URL`,
   the object store's keys (`OBJECTS_ACCESS_KEY`, `OBJECTS_SECRET_KEY`), LiveKit's (`LIVEKIT_API_KEY`,
   `LIVEKIT_API_SECRET`), NEAR AI's (`NEAR_AI_API_KEY`), the Google client (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`),
-  Google's tester list (`GOOGLE_SIGNUP_TESTERS`) and the Cloudflare token (`CLOUDFLARE_API_TOKEN`). Anything else (where
+  Google's tester list (`GOOGLE_SIGNUP_TESTERS`), the Cloudflare token (`CLOUDFLARE_API_TOKEN`) and Resend's key
+  (`RESEND_API_KEY`). Anything else (where
   Google sign-in goes, what inference is checked against) is the environment's, which the image's launch policy limits and
   the attestation shows, so a secret can't change it unseen. Each is read at start from Secret Manager in `GCP_PROJECT` as
   the attested identity, trimmed, and given to the configuration beside the environment, never put in it (`start.ts`).

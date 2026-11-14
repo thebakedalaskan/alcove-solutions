@@ -78,13 +78,13 @@ export function sameTerms(a: Purchase, b: Purchase): boolean {
 
 /**
  * The same purchase on today's terms, or null when it isn't offered any more: more notes switched off, or licenses for a year
- * when none is (or a year is as many periods no more).
+ * when none is (or a year is as many periods no more). Licenses keep what they set buying one for each person who joins to.
  */
 export function repriced(offers: PlanOffers, buys: Purchase): Purchase | null {
   if (buys.kind === 'pro') return { kind: 'pro', months: buys.months, microUsdPerMonth: proPrice(offers, buys.months) };
   if (buys.kind === 'licenses') {
     const terms = licenseTerms(offers, buys.periods > 1);
-    return terms.periods === buys.periods ? { kind: 'licenses', count: buys.count, ...terms } : null;
+    return terms.periods === buys.periods ? { kind: 'licenses', count: buys.count, ...terms, autoPurchase: buys.autoPurchase } : null;
   }
   return offers.hours ? { kind: 'hours', packs: buys.packs, microUsdPerPack: offers.hours.microUsd, minutesPerPack: offers.hours.minutes } : null;
 }

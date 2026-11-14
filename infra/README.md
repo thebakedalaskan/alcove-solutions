@@ -47,8 +47,10 @@ The project must already exist and have billing linked. The script enables APIs 
   `alcove-livekit-api-key`, `alcove-livekit-api-secret`, optional `alcove-near-ai-api-key`, and optional Google
   provider entries `alcove-google-client-id`, `alcove-google-client-secret` and `alcove-google-signup-testers`.
   `alcove-cloudflare-dns-token` holds the Cloudflare token
-  ([The Cloudflare token](confidential-space/README.md#the-cloudflare-token) says how to make it); only Confidential
-  Space's attested production VMs read it. The keys from before Confidential Space, `alcove-kmaster` and
+  ([The Cloudflare token](confidential-space/README.md#the-cloudflare-token) says how to make it), and
+  `alcove-resend-api-key` Resend's send-only key for invitation emails
+  ([The Resend key](confidential-space/README.md#the-resend-key)); only Confidential Space's attested production VMs read
+  them. The keys from before Confidential Space, `alcove-kmaster` and
   `alcove-kservice`, were retired and deleted on 2026-11-13 ([The old keys](confidential-space/README.md#the-old-keys)).
 - Runtime account `alcove-api@alcove-solutions.iam.gserviceaccount.com`, which runs the migration job, with Cloud SQL
   access and `alcove-database-url` alone. Cloud Run's API service ran as it until 2026-11-13. The deploy account

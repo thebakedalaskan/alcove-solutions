@@ -3,9 +3,10 @@
  * place, for every new account and, once, for every account from before plans. Where and when it shows is choice.ts's.
  * Its head says what it's for in the page's own type, a title and one line: to someone with no notes yet, how the plans
  * differ; to someone who has used Alcove, that it has plans now and which one they're on. The plan you're on leads straight
- * on, to Home. Get Pro and Start a team open checkout over it, as Plans does, and once what was bought is yours and checkout
- * has closed, Home follows with no other question. Signed in from the welcome page, it takes Home's sail out of the cove,
- * onto its own last sliver of sun. Every number is the server's.
+ * on, to Home. Get Pro opens checkout over it, as Plans does, and once what was bought is yours and checkout has closed,
+ * Home follows with no other question; Start a team names one in a popover from Team's card, as on Plans, free, and goes to
+ * its page. Signed in from the welcome page, it takes Home's sail out of the cove, onto its own last sliver of sun. Every
+ * number is the server's.
  */
 import type { Plan, PlanBrings, PlanOffers } from '@alcove/api';
 import { useQuery } from '@tanstack/react-query';

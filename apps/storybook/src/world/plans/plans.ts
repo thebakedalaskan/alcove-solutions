@@ -197,7 +197,7 @@ export function withProMonths(plan: Plan, months: ProMonth[], now = Date.now()):
   };
 }
 
-const notice = (id: string, kind: PlanNotice['kind'], at: string, until: string): PlanNotice => ({ id, kind, at, until, count: null, workspaceId: null });
+const notice = (id: string, kind: PlanNotice['kind'], at: string, until: string): PlanNotice => ({ id, kind, at, until, count: null, microUsd: null, workspaceId: null, memberId: null });
 /** The demo afternoon the Pro scenarios open on: the world is made before the clock is set to it. */
 const AFTERNOON = () => on(0, 16, 12).getTime();
 

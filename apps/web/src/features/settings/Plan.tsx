@@ -8,7 +8,7 @@
  * dismissed. The second panel is what you pay with: the balance with Add money (topup.tsx), renewing from it and refunding
  * the months that haven't started (on Pro), then the payments: what's on its way, each opening where it's being paid, and
  * what the balance took in and paid for, each with its receipt. Team's parts (its plan row, waiting for a license, its
- * notices, and for its admin the licenses, buying one when it's needed and refunding them) are PlanTeam.tsx's.
+ * notices, and for its admin the licenses, buying a license for each person who joins and refunding them) are PlanTeam.tsx's.
  */
 import { errorMessage, type BalanceEntry, type MyTeam, type Plan, type PlanNotice, type PlanOffers, type TopUp } from '@alcove/api';
 import {
@@ -55,7 +55,7 @@ export function PlanGroup({ plan }: { plan: Plan }) {
           control={<SettingFact icon="hardDrive" tone={plan.grace?.storage || plan.over.storage ? 'no' : undefined}>{roomLabel(plan.storage.usedBytes)} of {roomLabel(plan.storage.limitBytes)}</SettingFact>} />
         {plan.kind === 'team' ? <TeamStorageNote plan={plan} team={team} room={<MakeRoom lead={plan.over.storage && !waiting} />} /> : <Limits plan={plan} quiet={waiting} />}
         <MoreNotes plan={plan} offers={offers} />
-        {licenses && <Licenses licenses={licenses} offers={offers} />}
+        {licenses && team && <Licenses licenses={licenses} offers={offers} team={team} />}
       </SettingsPanel>
       <Paying plan={plan} offers={offers} canAdd={canAdd} team={team} onAddMoney={(topUpId) => setSheet({ open: true, topUpId })} />
       <AddMoneySheet open={sheet.open} topUpId={sheet.topUpId} onOpenChange={(o) => setSheet((s) => ({ ...s, open: o }))} />
@@ -68,10 +68,12 @@ export function PlanGroup({ plan }: { plan: Plan }) {
 /**
  * What the plan's owner was told, at the top until dismissed (plan-state's noticesNow): Pro renewed or ended, a team's
  * (PlanTeam.tsx), and that you pay for a workspace now, named from the workspaces you're in. Dismissing one dismisses those
- * it stood for too, and leaves focus on the next, or on the plan.
+ * it stood for too, and leaves focus on the next, or on the plan. Someone asking the admin to upgrade is said with Upgrade
+ * only while the panel has no Licenses row, whose Upgrade is beside what upgrading gives: one Upgrade on the page.
  */
 function Notices({ plan, team }: { plan: Plan; team: MyTeam | null | undefined }) {
   const dismiss = useDismissPlanNotice();
+  const checkout = useCheckout();
   const toast = useToast();
   // The workspaces you're in, read only while a notice names one: the plan keeps its ID, never its name.
   const spaces = useQuery({ ...workspaceQueries.workspaces(), enabled: plan.notices.some(payingNow) }).data;
@@ -95,7 +97,8 @@ function Notices({ plan, team }: { plan: Plan; team: MyTeam | null | undefined }
       );
     }
     return (
-      <SettingNote key={n.id} icon={teams?.icon ?? (n.kind === 'pro-renewed' ? 'repeat' : 'info')} onDismiss={() => close(n)} dismissLabel="Dismiss this notice">
+      <SettingNote key={n.id} icon={teams?.icon ?? (n.kind === 'pro-renewed' ? 'repeat' : 'info')} onDismiss={() => close(n)} dismissLabel="Dismiss this notice"
+        action={teams?.upgrade && team !== undefined && !team?.licenses ? <Button size="sm" onClick={() => checkout.open({ plan: 'team' }, 'settings')}>Upgrade</Button> : undefined}>
         {teams ? teams.text : n.kind === 'pro-renewed'
           ? 'Pro renewed from your balance, for another month.'
           : n.until === null ? 'Pro ended. Nothing was deleted: you’re back on Free.' : `Pro ended on ${longDay(new Date(n.until))}. Nothing was deleted: you’re back on Free.`}
@@ -234,7 +237,8 @@ function Paying({ plan, offers, canAdd, team, onAddMoney }: {
         control={<><SettingFact>{usd(plan.balance.microUsd)}</SettingFact>{canAdd && <Button ref={add} size="sm" icon="plus" onClick={() => onAddMoney(null)}>Add money</Button>}</>} />
       {onPro && <Renew plan={plan} offers={offers} canAdd={canAdd} />}
       {onPro && <Refund plan={plan} />}
-      {licenses && <AutoBuy plan={plan} offers={offers} canAdd={canAdd} on={licenses.autoPurchase} />}
+      {/* On Team, and whenever it's on: on a free team it's set by upgrading, and turned off here. */}
+      {licenses && (team?.tier === 'team' || licenses.autoPurchase) && <AutoBuy plan={plan} offers={offers} canAdd={canAdd} on={licenses.autoPurchase} />}
       {licenses && <RefundLicenses left={licenses.unconsumed} back={licenses.refundableMicroUsd} auto={licenses.autoPurchase} />}
       {(topUps.length > 0 || history.length > 0) && <Payments topUps={topUps} history={history} add={add} onAddMoney={onAddMoney} />}
     </SettingsPanel>

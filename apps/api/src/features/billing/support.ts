@@ -24,6 +24,7 @@ import { closedBySupport } from './top-ups/deposits';
 import { storageOf, storageState } from './meter/held';
 import { standing } from './meter/meter';
 import { credit, hasPlan, planNow, proOf, type Accounting } from './plans';
+import { upgradeAsksFor } from './teams/teams';
 
 const slog = log.child({ component: 'billing-support' });
 /**
@@ -157,7 +158,7 @@ export async function creditBySupport(d: Support, who: string, microUsd: number,
 }
 
 const TopUps = z.object({ state: TopUpStateSchema, n: z.number().int() });
-/** An account's place on a team, and its team's counts: everyone on it, live licenses, and invites that haven't expired. */
+/** An account's place on a team, and its team's counts: everyone on it, live licenses, and invitations that haven't run out. */
 const Place = z.object({ role: z.enum(['admin', 'member']), licensed_until: timestamp.nullable(), members: z.number().int(), licenses: z.number().int(), invites: z.number().int() });
 /** The day a time falls on (UTC), as a log may hold it: 2026-11-13. */
 const dayOf = (at: Date) => at.toISOString().slice(0, 10);
@@ -181,11 +182,11 @@ export async function standingOf(d: Accounting, n: Named): Promise<string[]> {
     SELECT m.role, m.licensed_until,
       (SELECT count(*)::int FROM team_members x WHERE x.team_id = m.team_id) AS members,
       (SELECT count(*)::int FROM team_members x WHERE x.team_id = m.team_id AND x.licensed_from <= now() AND x.licensed_until > now()) AS licenses,
-      (SELECT count(*)::int FROM team_invites i WHERE i.team_id = m.team_id AND i.expires_at > now()) AS invites
+      (SELECT count(*)::int FROM team_invitations i WHERE i.team_id = m.team_id AND i.expires_at > now()) AS invites
     FROM team_members m WHERE m.account_owner_id = $1`, [n.ownerId]);
   const account = [`Account ${n.ownerId}`, ...(topUp && n.depositId !== null ? [`Top-up ${n.depositId}: ${topUp.state}`] : [])];
   const license = `License: ${place?.licensed_until ? `${place.role} until ${dayOf(place.licensed_until)}` : 'none'}`;
-  const team = place ? [`Team: ${place.role}; members ${place.members}; licenses ${place.licenses}; open invites ${place.invites}`] : [];
+  const team = place ? [`Team: ${place.role}; members ${place.members}; licenses ${place.licenses}; invitations out ${place.invites}`] : [];
   const held = `Top-ups: ${topUps.length ? topUps.map((t) => `${t.n} ${t.state}`).join(', ') : 'none'}`;
   if (!(await hasPlan(d.pool, n.ownerId))) return [...account, 'Plan: none yet; it’s made on Free when the account is next used, or by upkeep', license, ...team, held];
   const l = await limitsNow(d);
@@ -193,7 +194,7 @@ export async function standingOf(d: Accounting, n: Named): Promise<string[]> {
   const notes = await standing(d, d.pool, n.ownerId);
   const storage = storageState(await storageOf(d, d.pool, n.ownerId, now));
   const waiting = new Map<PlanNoticeKind, number>();
-  for (const x of a.notices) if (!x.dismissed) waiting.set(x.kind, (waiting.get(x.kind) ?? 0) + 1);
+  for (const x of [...a.notices.filter((x) => !x.dismissed), ...await upgradeAsksFor(d, n.ownerId, now)]) waiting.set(x.kind, (waiting.get(x.kind) ?? 0) + 1);
   return [
     ...account,
     `Plan: ${p.kind}; renewing Pro ${a.renew ? 'on' : 'off'}`,

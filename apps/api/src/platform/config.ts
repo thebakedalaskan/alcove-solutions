@@ -156,6 +156,15 @@ const EnvSchema = z.object({
   TREASURY_INTENTS_ACCOUNT: optional,
   /** 1Click's API. Tests point it at their stand-in. */
   ONECLICK_BASE_URL: z.string().url().default('https://1click.chaindefuser.com'),
+  /**
+   * Resend, which sends the email Alcove sends (platform/mail.ts): a send-only key for the sending domain. A secret: inside a
+   * TEE it comes through SECRETS. Without it nothing is emailed, and invitations are there in the app as ever.
+   */
+  RESEND_API_KEY: optional,
+  /** Resend's API. Tests point it at their stand-in. */
+  RESEND_API_URL: z.string().url().default('https://api.resend.com'),
+  /** Who Alcove's emails are from, as Resend takes it: a name and an address at the sending domain. */
+  MAIL_FROM: z.string().min(3).max(200).default('Alcove <invites@mail.alcove.solutions>'),
   /** Intel's Provisioning Certification Service: the TCB info, QE identity and revocation lists a TDX quote is checked against. */
   INTEL_PCS_URL: z.string().url().default(INTEL_PCS),
   /** The root every TDX quote and Intel collateral must chain to: Intel's SGX Root CA. Tests set their own. */
@@ -229,7 +238,7 @@ export const SETTING_NAMES: readonly string[] = Object.keys(EnvSchema.shape).fil
  */
 const SECRET_SETTINGS = [
   'DATABASE_URL', 'OBJECTS_ACCESS_KEY', 'OBJECTS_SECRET_KEY', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET', 'NEAR_AI_API_KEY',
-  'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_SIGNUP_TESTERS', 'CLOUDFLARE_API_TOKEN'
+  'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_SIGNUP_TESTERS', 'CLOUDFLARE_API_TOKEN', 'RESEND_API_KEY'
 ] as const satisfies readonly (keyof Settings)[];
 type SecretName = (typeof SECRET_SETTINGS)[number];
 const isSecretName = (name: string): name is SecretName => SECRET_SETTINGS.some((s) => s === name);

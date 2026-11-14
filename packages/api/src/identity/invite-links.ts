@@ -1,32 +1,21 @@
-import { ISODateSchema } from '../shared/ids';
 import { z } from '../shared/zod';
-import { PersonSchema } from './people';
 
 /* ---------- your own invite link (docs: Privacy, keys and sessions › Invite links) ---------- */
 
 /**
- * An invite link's secret: 32 bytes as base64url, 43 characters. Only ever in the link's fragment
- * (`<web app>/invite#<secret>`), which browsers never send, and in POST bodies. The server keeps only its hash.
+ * The secret after `/invite#`: 32 bytes as base64url, 43 characters, for both kinds of link there, your own invite link and
+ * an invitation's own (from its email). Only ever in the link's fragment, which browsers never send, and in POST bodies. The
+ * server keeps only its hash.
  */
 export const InviteSecretSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 
-/** A link's secret, in a body: to see who it's from, or to say your account was made from it. */
+/** A link's secret, in a body: to see who it's from and which team it joins (`InvitePeek`, teams/schema.ts). */
 export const InviteSecretBodySchema = z.object({ secret: InviteSecretSchema });
 
-/** Someone whose account was made from your invite link, and when they said so. */
-export const InviteJoinedSchema = z.object({ person: PersonSchema, at: ISODateSchema });
-
-export type InviteJoined = z.infer<typeof InviteJoinedSchema>;
-
 /**
- * Your own invite link, the same every time it's asked for until you make a new one, and who joined Alcove from it, from
- * this link or one before it, newest first.
+ * Your own invite link, the same every time it's asked for until you make a new one. Whoever opens it can join your team,
+ * new to Alcove or not: the team you're on, or one made for you then if you're on none.
  */
-export const InviteLinkSchema = z.object({ link: z.string().url(), joined: z.array(InviteJoinedSchema) });
+export const InviteLinkSchema = z.object({ link: z.string().url() });
 
 export type InviteLink = z.infer<typeof InviteLinkSchema>;
-
-/** What an invite link says to whoever opens it, signed in or not: who it's from, and whether it's yours (signed in as its owner). */
-export const InvitePeekSchema = z.object({ from: PersonSchema, yours: z.boolean() });
-
-export type InvitePeek = z.infer<typeof InvitePeekSchema>;

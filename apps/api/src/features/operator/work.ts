@@ -91,18 +91,27 @@ const plans = (db: Db) => one(db, z.object({ due: n, lag_s: age, accounts_withou
     (SELECT count(DISTINCT i.owner_id)::int FROM identities i WHERE NOT EXISTS (SELECT 1 FROM plan_accounts p WHERE p.owner_id = i.owner_id)) AS accounts_without
   FROM plan_accounts`);
 
+/**
+ * Email waiting to go (platform/mail.ts): every row, those due now, those a send has failed on (or is under way), the most tries
+ * one has had, and how long the oldest has waited. Counted from the rows' times and tries, never what's sealed in them.
+ */
+const mail = (db: Db) => one(db, z.object({ waiting: n, due: n, failing: n, highest_attempt: n, oldest_s: age }), `
+  SELECT count(*)::int AS waiting, count(*) FILTER (WHERE send_after <= now())::int AS due, count(*) FILTER (WHERE attempts > 0)::int AS failing,
+    coalesce(max(attempts), 0)::int AS highest_attempt, ${secondsSince('min(created_at)')} AS oldest_s
+  FROM mail_outbox`);
+
 /** Teams due a look by upkeep, and how late the oldest is. */
 const teams = (db: Db) => one(db, z.object({ due: n, lag_s: age }), `
   SELECT count(*) FILTER (WHERE due_at <= now())::int AS due, ${secondsSince('min(due_at) FILTER (WHERE due_at <= now())')} AS lag_s FROM teams`);
 
 /**
  * What upkeep's sweeps will remove, by what each sweep removes: sessions ended (keys/sessions.ts › sessionEnded), agents' rows
- * run out (agents/service.ts › AGENT_ROWS), and team invites expired.
+ * run out (agents/service.ts › AGENT_ROWS), and team invitations run out (`invites`).
  */
 const sweeps = (db: Db) => one(db, z.object({ sessions: n, agent_rows: n, invites: n }), `
   SELECT (SELECT count(*)::int FROM sessions s WHERE ${sessionEnded('s')}) AS sessions,
     ${AGENT_ROWS.map((table) => `(SELECT count(*)::int FROM ${table} WHERE expires_at <= now())`).join(' + ')} AS agent_rows,
-    (SELECT count(*)::int FROM team_invites WHERE expires_at <= now()) AS invites`);
+    (SELECT count(*)::int FROM team_invitations WHERE expires_at <= now()) AS invites`);
 
 /**
  * Every queue, one count at a time, so a report takes one of the pool's connections at most, and none after `signal` says
@@ -118,6 +127,7 @@ async function queues(d: Deps, signal: AbortSignal): Promise<Queues> {
   const dp = await next(deposits);
   const pl = await next(plans);
   const tm = await next(teams);
+  const ml = await next(mail);
   const sw = await next(sweeps);
   signal.throwIfAborted();
   return {
@@ -129,6 +139,7 @@ async function queues(d: Deps, signal: AbortSignal): Promise<Queues> {
     deposits: { due: dp.due, lagS: dp.lag_s, open: dp.open, unanswered: dp.unanswered, creditedNotCarried: dp.credited_not_carried },
     plans: { due: pl.due, lagS: pl.lag_s, accountsWithout: pl.accounts_without },
     teams: { due: tm.due, lagS: tm.lag_s },
+    mail: { waiting: ml.waiting, due: ml.due, failing: ml.failing, highestAttempt: ml.highest_attempt, oldestS: ml.oldest_s },
     calls: await callsWork(d),
     sweeps: { sessions: sw.sessions, agentRows: sw.agent_rows, invites: sw.invites }
   };

@@ -67,6 +67,7 @@ export * from './board/board';
 
 /* The rest of the app's pages. */
 export * from './team/pick';
+export * from './team/invitations';
 export * from './plans/plans';
 export * from './plans/checkout';
 export * from './plans/plan-doors';

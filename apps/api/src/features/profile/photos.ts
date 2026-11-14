@@ -35,7 +35,7 @@ function allowed(cfg: Config, raw: string): URL | undefined {
  * The URL the app uses for a stored photo: the app's own image (a path like /people/…) as it is, a
  * provider photo through Alcove, and nothing for anything else.
  */
-export function photoUrl(d: Deps, stored: string | undefined): string | undefined {
+export function photoUrl(d: Pick<Deps, 'cfg'>, stored: string | undefined): string | undefined {
   if (!stored) return undefined;
   if (stored.startsWith('/') && !stored.startsWith('//')) return stored;
   if (!allowed(d.cfg, stored)) return undefined;

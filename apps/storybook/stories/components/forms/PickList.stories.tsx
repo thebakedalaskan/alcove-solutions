@@ -1,9 +1,11 @@
 /*
  * PickList: people to find and press, inside a popover, as Team has it. A line to type in, then rows with their arches:
  * someone not on Alcove yet stands in an empty one. Without `ticks` pressing someone is the whole thing (finding someone
- * on the Team page); with `ticks` it picks several and the popover's foot finishes (inviting people, adding to a group).
- * ↑ and ↓ move, Enter presses; a comma, a space or Tab after a whole address ticks it. Who's found is the caller's: here
- * the stories filter the company's directory the way the Team page does.
+ * on the Team page); with `ticks` it picks several and the popover's foot finishes (inviting people, adding to a group). A
+ * quiet line under the field says once what finishing does beyond the obvious (`note`): inviting starts a team. A row
+ * can carry a tag (Invited), and one that can't be picked says why under its name. ↑ and ↓ move, Enter presses; a comma, a
+ * space or Tab after a whole address ticks it. Who's found is the caller's: here the stories filter the company's directory
+ * the way the Team page does.
  */
 import type { Person } from '@alcove/api';
 import { Button, Icon, PickList, Popover, type PickRow } from '@alcove/ui';
@@ -62,12 +64,12 @@ function Invite(args: Args) {
   const toggle = (r: PickRow) => { args.onPress(r); setPicked((now) => (now.some((p) => sameEmail(p, r.person)) ? now.filter((p) => !sameEmail(p, r.person)) : [...now, r.person])); };
   const send = () => { if (going.length) { args.onFinish?.(); setPicked([]); setOpen(false); } };
   return (
-    <Popover open={open} onOpenChange={setOpen} align="center" caret label="Invite people" className="tp-pop is-list"
+    <Popover open={open} onOpenChange={setOpen} align="center" caret label="Invite people to Vandelay Industries" className="tp-pop is-list"
       anchor={<Button size="sm" icon="addUser">Invite people</Button>}>
       <PickList {...args} query={query} onQuery={setQuery} address={whole ? typed : undefined} rows={shown} onPress={toggle} onFinish={send}
         foot={<>
           <Button variant="quiet" size="sm" icon="link">Copy link</Button>
-          <Button variant={going.length ? 'primary' : 'secondary'} size="sm" icon="mail" disabled={!going.length} onClick={send}>{going.length ? `Invite ${going.length}` : 'Invite'}</Button>
+          <Button variant={going.length ? 'primary' : 'secondary'} size="sm" icon="send" disabled={!going.length} onClick={send}>{going.length ? `Invite ${going.length}` : 'Invite'}</Button>
         </>} />
     </Popover>
   );
@@ -83,7 +85,7 @@ const meta = {
   },
   argTypes: {
     query: { control: 'text', description: 'What’s on the line when the story opens' },
-    rows: { control: false }, foot: { control: false }, address: { control: false }, none: { control: 'text' }
+    rows: { control: false }, foot: { control: false }, address: { control: false }, none: { control: 'text' }, note: { control: 'text' }
   },
   decorators: [(Story) => <div style={{ minHeight: 560, paddingTop: 8 }}><Story /></div>],
   render: (args) => <Find {...args} />
@@ -105,6 +107,33 @@ export const PickSeveral: Story = {
 };
 /** A whole address typed counts as it's typed: its row is ticked, and finishing takes it without pressing Enter first. */
 export const AnAddressTyped: Story = { ...PickSeveral, name: 'An address typed', args: { ...PickSeveral.args, query: 'jonas@weber.design' } };
+/** On a company page with no team: inviting starts one, said once under the field. */
+export const StartingATeam: Story = {
+  ...PickSeveral, name: 'Starting a team',
+  args: { ...PickSeveral.args, note: 'Alcove emails them. This starts Vandelay Industries, a free team, with you as its admin.' }
+};
+/**
+ * Invite people on a team, with people invited already: each shows Invited. Lena's can be sent again, so ticking her sends it
+ * again; Diego's was sent today and Sam's is Priya's to send, so they say why, can't be ticked, and are read as unavailable.
+ * Each row is read as what pressing it does ("Invite Ines Moreau", "Resend Lena Fischer’s invitation").
+ */
+export const InvitedAlready: Story = {
+  name: 'Invited already',
+  args: {
+    label: 'Name or email', placeholder: 'Name or email', ticks: true, tall: false,
+    rows: [
+      ...DIRECTORY.filter((c) => c.person.email.startsWith('ines')).map((c): PickRow => ({ key: c.person.email, name: c.person.name, sub: c.title, person: c.person, label: `Invite ${c.person.name}` })),
+      ...DIRECTORY.filter((c) => !c.onAlcove).map((c): PickRow => {
+        const first = c.person.name.split(' ')[0] ?? c.person.name;
+        const why = first === 'Diego' ? 'Sent today' : first === 'Sam' ? 'Invited by Priya' : undefined;
+        return { key: c.person.email, name: c.person.name, sub: c.title, person: c.person, ghost: true, tag: 'Invited', unavailable: why, on: first === 'Lena', label: why ? c.person.name : `Resend ${c.person.name}’s invitation` };
+      })
+    ],
+    foot: <><Button variant="quiet" size="sm" icon="link">Copy link</Button><Button variant="primary" size="sm" icon="send">Resend 1</Button></>
+  },
+  render: (args) => <div className="ac-pop tp-pop is-list sbc-pop"><PickList {...args} /></div>
+};
+export const InvitedAlreadyNight: Story = { ...InvitedAlready, name: 'Invited already, night', globals: { theme: 'dark' } };
 /** Adding people to a group, on a popover's surface: one ticked, and the foot says who sees the group. */
 export const AddingToAGroup: Story = {
   name: 'Adding to a group',

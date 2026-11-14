@@ -18,8 +18,11 @@ const NAMED = 13;
 const MOST = 34;
 const NEAR = 2;
 
-/** Who's in an arch: you, a member of your team, or nobody yet (`person` left out). */
-export interface Someone { key: string; person?: Person | undefined; member?: Member | undefined; me?: boolean | undefined; ghost: boolean }
+/**
+ * Who's in an arch: you, someone at your company, or nobody yet (`person` left out). `invite`: someone on Alcove who isn't on
+ * the team the page is (a colleague further back on its line), whose popover offers Invite in place of Ring.
+ */
+export interface Someone { key: string; person?: Person | undefined; member?: Member | undefined; me?: boolean | undefined; ghost: boolean; invite?: boolean | undefined }
 export interface Arch extends Someone { d: number; k: number; far: boolean; haze: number; z: number; px: number }
 export interface Line { arches: Arch[]; gap: number; width: number; n: number; recedes: boolean }
 

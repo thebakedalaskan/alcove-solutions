@@ -1,17 +1,17 @@
 /*
  * PlanCard: one plan, a light card on the water. Its name (with a warm chip on the plan you're on, and for Team its people
  * as small arches), who it's for, its price in the display face and what that bills (what a year saves, warm), the one thing
- * to do the card's width (or PlanHere where you already are), then what it brings, one fact a row, and a quiet last line.
- * `lifted` is Pro's: raised, with a warm edge along its top. `waiting`: the prices are on their way, and quiet bars hold
- * their places, but for what can be done already (the plan choice's way on). Side by side in PlanCards, every row lines up
- * with the other cards'.
+ * to do the card's width (or PlanHere where you already are) with a quiet line under it when it needs one (`under`), then
+ * what it brings, one fact a row, and a quiet last line. `lifted` is Pro's: raised, with a warm edge along its top.
+ * `waiting`: the prices are on their way, and quiet bars hold their places, but for what can be done already (the plan
+ * choice's way on). Side by side in PlanCards, every row lines up with the other cards'.
  */
-import { Button, Faces, PlanCard, PlanHere, type PlanCardShown } from '@alcove/ui';
+import { Button, Faces, PlanCard, PlanHere, PlanTeamStart, Popover, type PlanCardShown } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { did } from '../../../src/component';
 import { AIKO, KOFI, MAYA, PRIYA } from '../../../src/world/people';
-import { FREE_FACTS, LICENSES_TAKEN, MORE_NOTES, PRO_FACTS, TEAM_FACTS, onTheWater } from './parts';
+import { FREE_FACTS, LICENSES_TAKEN, MORE_NOTES, PRO_FACTS, START_FREE, TEAM_FACTS, onTheWater } from './parts';
 
 /** A plan as it's shown, or `waiting` for its prices (with `wayOn` in its button's place, if anything): one or the other. */
 type CardArgs = Omit<PlanCardShown, 'waiting'> & { waiting?: boolean | undefined; wayOn?: ReactNode };
@@ -35,7 +35,7 @@ const meta = {
   argTypes: {
     kind: { control: 'inline-radio', options: ['free', 'pro', 'team'] },
     name: { control: 'text' }, sub: { control: 'text' }, price: { control: 'text' }, per: { control: 'text' },
-    bill: { control: 'text' }, save: { control: 'text' }, chip: { control: 'text' }, more: { control: 'text' },
+    bill: { control: 'text' }, save: { control: 'text' }, chip: { control: 'text' }, more: { control: 'text' }, under: { control: 'text' },
     lifted: { control: 'boolean' }, waiting: { control: 'boolean' },
     action: { control: false }, wayOn: { control: false }, facts: { control: false }, people: { control: false }, className: { control: false }
   }
@@ -69,25 +69,52 @@ export const FreeOnPro: Story = {
   args: { ...Free.args, action: <PlanHere quiet>Where you’re back to if a plan ends</PlanHere> }
 };
 /**
+ * Team's Start a team and the popover it opens over the card, as Plans has them: the team's name, the company's to start
+ * with, and Start the team (PlanTeamStart). Pressing the button again, Cancel or Escape closes it.
+ */
+function StartATeam({ opens = true, error }: { opens?: boolean | undefined; error?: string | undefined }) {
+  const [open, setOpen] = useState(opens);
+  const [name, setName] = useState('Vandelay Industries');
+  return (
+    <Popover open={open} onOpenChange={setOpen} align="center" caret label="Start a team" anchor={<Button variant="secondary">Start a team</Button>}>
+      <PlanTeamStart value={name} onChange={setName} error={error} onCancel={() => setOpen(false)} onStart={did('onStart')} />
+    </Popover>
+  );
+}
+
+/**
  * Team: licenses, one person for 30 days each, whichever way the prices are shown; the people it's for as small arches at the
- * end of its name's row, and Start a team off a team.
+ * end of its name's row. Off a team, Start a team, with a quiet line under it: it's free until it's upgraded.
  */
 export const Team: Story = {
   args: {
     kind: 'team', name: 'Team', sub: 'For a company', lifted: false, price: '$40', per: 'a person a month',
     bill: 'Each license is one person for 30 days.', save: undefined, people: <Faces people={[PRIYA, KOFI, AIKO, MAYA]} size={22} max={4} />,
-    action: <Button variant="secondary" onClick={did('onStartATeam')}>Start a team</Button>, facts: TEAM_FACTS, more: LICENSES_TAKEN
+    action: <StartATeam opens={false} />, under: START_FREE, facts: TEAM_FACTS, more: LICENSES_TAKEN
   }
+};
+/** Start a team, pressed: its name in a popover over the card, the company's to start with, and Start the team. */
+export const StartingATeam: Story = { name: 'Team, starting one', args: { ...Team.args, action: <StartATeam /> } };
+export const StartingATeamNight: Story = { ...StartingATeam, name: 'Team, starting one, night', globals: { theme: 'dark' } };
+/** It wasn't started: why, in the server's words, in the popover. */
+export const StartingATeamRefused: Story = {
+  name: 'Team, not started',
+  args: { ...Team.args, action: <StartATeam error="You’re on a team already. Leave it before making one." /> }
+};
+/** Team, as a free team's admin: Upgrade. */
+export const TeamFreeAdmin: Story = {
+  name: 'Team, a free team’s admin',
+  args: { ...Team.args, under: undefined, action: <Button variant="secondary" onClick={did('onUpgrade')}>Upgrade</Button> }
 };
 /** Team, as its admin: it's your plan while you're licensed, and Buy licenses. */
 export const TeamAdmin: Story = {
   name: 'Team, its admin',
-  args: { ...Team.args, chip: 'Your plan', action: <Button variant="secondary" onClick={did('onBuyLicenses')}>Buy licenses</Button> }
+  args: { ...Team.args, under: undefined, chip: 'Your plan', action: <Button variant="secondary" onClick={did('onBuyLicenses')}>Buy licenses</Button> }
 };
 /** Team, as a member: who buys its licenses, in a quiet line where the button would be. */
 export const TeamMember: Story = {
   name: 'Team, a member',
-  args: { ...Team.args, chip: 'Your plan', action: <PlanHere quiet>Priya buys its licenses</PlanHere> }
+  args: { ...Team.args, under: undefined, chip: 'Your plan', action: <PlanHere quiet>Priya buys its licenses</PlanHere> }
 };
 /** Its prices on their way: the name and who it's for, and bars where the rest will be, breathing. */
 export const Waiting: Story = { args: { waiting: true } };

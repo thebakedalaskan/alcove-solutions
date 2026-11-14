@@ -74,10 +74,11 @@ function workLines(body: unknown): string[] {
       ['Top-ups', `${q.deposits.due} due a look, lag ${seconds(q.deposits.lagS)}; ${q.deposits.open} open; ${q.deposits.unanswered} past their deadline unanswered; ${q.deposits.creditedNotCarried} credited, not carried`],
       ['Plans', `${q.plans.due} due, lag ${seconds(q.plans.lagS)}; ${q.plans.accountsWithout} accounts with no plan`],
       ['Teams', `${q.teams.due} due, lag ${seconds(q.teams.lagS)}`],
+      ['Mail', `${q.mail.waiting} waiting, ${q.mail.due} due now, ${q.mail.failing} tried and not sent, most tries ${q.mail.highestAttempt}, the oldest ${seconds(q.mail.oldestS)}`],
       ['Calls', `${q.calls.live} live, ${q.calls.overdue} past their longest (the most overdue by ${seconds(q.calls.mostLateS)}), ${q.calls.hostAway} host away past the grace, ${q.calls.noRoom} with no room; `
         + `${q.calls.endedLastHour} ended in the hour; `
         + (q.calls.livekit === null ? `${q.calls.roomGone ?? 0} rooms gone, ${q.calls.roomLeftUp ?? 0} rooms left up` : `LiveKit didn’t say which rooms are up: ${q.calls.livekit}`)],
-      ['Sweeps', `${q.sweeps.sessions} sessions, ${q.sweeps.agentRows} agents' rows, ${q.sweeps.invites} invites to sweep`]
+      ['Sweeps', `${q.sweeps.sessions} sessions, ${q.sweeps.agentRows} agents' rows, ${q.sweeps.invites} invitations to sweep`]
     );
   }
   for (const f of a.finals) {

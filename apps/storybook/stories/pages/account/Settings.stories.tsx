@@ -10,7 +10,7 @@ import { changing, page, pages, type PageArgs, type PageStory } from '../../../s
 import { addToBalance, boughtFromBalance, freshEntryId, TEAM_SIX_YEAR, withTopUp } from '../../../src/world/plans/payments';
 import { withDriveJustConnected, withDriveReconnect } from '../../../src/world/drive-exports';
 import type { World } from '../../../src/world/world';
-import { adminWithoutLicense, checkFails, keptHere, mayaWaits, noCalendar, notAttested, paysForLaunch, replacedPro, sharedDemo, troubled, unencryptedDefault } from '../changes';
+import { adminWithoutLicense, checkFails, keptHere, mayaWaits, noCalendar, notAttested, paysForLaunch, replacedGivenPro, replacedPro, replacedProBefore, sharedDemo, troubled, unencryptedDefault } from '../changes';
 
 const meta = { title: 'Pages/Account/Settings', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -441,23 +441,29 @@ export const NoLicensesLeft = page('/settings#plan', 'team-admin-none');
 export const NoLicensesLeftNight = night(NoLicensesLeft);
 /** Buy licenses opens checkout on Team, over Settings. */
 export const BuyLicenses = page('/settings#plan', 'team-admin-none', { play: pressing('Buy licenses', 'Press Buy licenses') });
-/** Buy one when it's needed is on: someone who needs a license gets one from the balance. */
-export const BuyOneWhenNeeded = page('/settings#plan', 'team-admin', { beforeEach: changing((w) => { if (w.myTeam) w.myTeam.autoPurchase = true; }) });
+/** Buy a license for each person who joins is on: someone who needs a license gets one from the balance. */
+export const BuyingForEachWhoJoins = page('/settings#plan', 'team-admin', { beforeEach: changing((w) => { if (w.myTeam) w.myTeam.autoPurchase = true; }) });
 /** On, with $10 in the balance: short of a license, so none would be bought. */
-export const BuyOneWhenNeededShort = page('/settings#plan', 'team-admin', {
+export const BuyingForEachWhoJoinsShort = page('/settings#plan', 'team-admin', {
   beforeEach: changing((w) => {
     if (w.myTeam) w.myTeam.autoPurchase = true;
     w.plan = { ...w.plan, balance: { ...w.plan.balance, microUsd: 10_000_000 } };
   })
 });
 /** Turning it on saves at once, and Saved shows beside it. */
-export const BuyOneWhenNeededSaved = page('/settings#plan', 'team-admin', {
+export const BuyingForEachWhoJoinsSaved = page('/settings#plan', 'team-admin', {
   play: async ({ canvas, userEvent, step }) => {
-    await step('Turn on Buy one when it’s needed', async () => {
-      await userEvent.click(await canvas.findByRole('switch', { name: 'Buy one when it’s needed' }, { timeout: 8000 }));
+    await step('Turn on Buy a license for each person who joins', async () => {
+      await userEvent.click(await canvas.findByRole('switch', { name: 'Buy a license for each person who joins' }, { timeout: 8000 }));
     });
   }
 });
+/**
+ * A team whose licenses ended, still buying a license for each person who joins: on Free, the switch stays, as upgrading set
+ * it, so it can be turned off; Licenses says what upgrading gives, with Upgrade.
+ */
+export const LicensesEndedBuyingStill = page('/settings#plan', 'team-licenses-ended');
+export const LicensesEndedBuyingStillNight = night(LicensesEndedBuyingStill);
 /** Refund asks in place: what goes back to the balance, and what happens when someone needs one then. */
 export const RefundLicensesAsked = page('/settings#plan', 'team-admin', { play: pressing('Refund', 'Ask to refund the licenses nobody has taken') });
 export const RefundLicensesAskedNight = night(RefundLicensesAsked);
@@ -474,6 +480,18 @@ export const AdminWithoutALicense = page('/settings#plan', 'team-admin', { befor
 export const AdminWithoutALicenseNight = night(AdminWithoutALicense);
 /** A license replaced Pro: two months that hadn't started went back to the balance, said at the top until it's dismissed. */
 export const LicenseReplacedPro = page('/settings#plan', 'team-member', { beforeEach: changing(replacedPro) });
+/** Pro Alcove gave, replaced by the team's license: nothing came back, "…covers your plan now, in place of Pro." */
+export const LicenseReplacedGivenPro = page('/settings#plan', 'team-member', { beforeEach: changing(replacedGivenPro) });
+/** A notice from before amounts were kept: the months that hadn't started, as it always said. */
+export const LicenseReplacedProBefore = page('/settings#plan', 'team-member', { beforeEach: changing(replacedProBefore) });
+/**
+ * Kofi asked Art to upgrade Vandelay Industries, a free team Art runs: said at the top, without a button of its own, since
+ * Licenses has the page's one Upgrade, beside what upgrading gives.
+ */
+export const UpgradeAsked = page('/settings#plan', 'team-free-asked');
+export const UpgradeAskedNight: PageStory = { ...UpgradeAsked, globals: { theme: 'dark' } };
+/** A member of a free team: your own plan, and nothing about licenses. */
+export const OnAFreeTeam = page('/settings#plan', 'team-free-member');
 export const LicenseReplacedProNight = night(LicenseReplacedPro);
 
 export const AddMoneyPicker = page('/settings#plan', 'payments', {

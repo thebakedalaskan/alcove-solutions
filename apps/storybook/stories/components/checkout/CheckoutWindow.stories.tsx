@@ -1,4 +1,7 @@
-import { CheckoutDone, CheckoutLine, CheckoutNote, CheckoutWindow, Button, MonthsPicker, NetworkPicker, PayAddress, PayAmount, PayArrived, PayStatus, PayTrack, RequestRef, type CheckoutStage } from '@alcove/ui';
+import {
+  CheckoutDone, CheckoutLine, CheckoutNote, CheckoutWindow, Button, MonthsPicker, NetworkPicker, PayAddress, PayAmount, PayArrived, PayStatus, PayTrack, PlanTeamStart, RequestRef,
+  type CheckoutStage
+} from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import type { ReactNode } from 'react';
 import { did } from '../../../src/component';
@@ -73,3 +76,24 @@ export const NothingToBuy: Story = {
 };
 export const NothingToBuyNight: Story = { ...NothingToBuy, globals: { theme: 'dark' } };
 export const NothingToBuyPhone: Story = { ...NothingToBuy, globals: { viewport: { value: 'phone' } } };
+/**
+ * Opened on Team with no team: licenses are for a team, so it's started here first, free, as on Plans. No steps, since
+ * nothing is bought: the team's name (PlanTeamStart, `bare`), then Close and Start the team, which makes it and opens its
+ * page, where it's upgraded.
+ */
+export const StartATeam: Story = {
+  name: 'Start a team',
+  args: {
+    title: 'Start a team', step: null, stage: 'choose',
+    summary: { art: 'team', people: TEAM_FOLK, name: 'Team', sub: 'Free to start. Licenses only when you upgrade.', brief: '', lines: [], total: null, foot: 'Each license is one person for 30 days.' },
+    children: (
+      <>
+        <CheckoutNote tone="info">Licenses are for a team, and you’re not on one yet.</CheckoutNote>
+        <PlanTeamStart bare id="sb-start-team" label="Your team" value="Vandelay Industries" onChange={did('onChange')} onStart={did('onStart')} />
+      </>
+    ),
+    foot: <><Button variant="quiet" className="ck-push" onClick={did('onClose')}>Close</Button><Button type="submit" form="sb-start-team" variant="primary">Start the team</Button></>
+  }
+};
+export const StartATeamNight: Story = { ...StartATeam, name: 'Start a team, night', globals: { theme: 'dark' } };
+export const StartATeamPhone: Story = { ...StartATeam, name: 'Start a team, phone', globals: { viewport: { value: 'phone' } } };

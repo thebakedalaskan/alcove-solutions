@@ -46,8 +46,8 @@ live in the kit and how to add one.
   call's live pages, toasts, full screen (`ws-`, `wt-`, `wd-`, `wm-`, `wv-`, `wp-`, `wh-`, `wl-`, `wf-`), and a
   document's blocks in `workspace-editor.css` (`wb-`).
 - `board/`: the board's parts (`bz-`, `bd-`, `bf-`, `bo-`, `bc-`, `bs-`, `bx-`, `bfly-`, `bp-`, `bpg-`, `bl-`, `pc-`).
-- `team/`: the Team page, and `PickList`, which began there (`tp-`).
-- `plans/`: Plans (`pl-`), checkout (`ck-`), the doors into checkout (`pd-`), and Team on a plan and joining a team
+- `team/`: the Team page, and `PickList`, which began there (`tp-`); invitations on it (`ti-`).
+- `plans/`: Plans (`pl-`), checkout (`ck-`), the doors into checkout (`pd-`), and a team's page and joining a team
   (`tq-`, `tj-`).
 - `settings/`: Settings' parts (`set-`) and Google Drive exports (`ac-drive-`).
 - `agents/`: Agents, and what an agent asks for when it connects (`ag-`, `ac-agent-`).

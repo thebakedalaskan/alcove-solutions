@@ -3,8 +3,8 @@
  * Drive, Record and Team, and what you've pinned under them. At the foot, Agents, then a call that's about to start, with
  * Join, the confidential-compute check and your plan: one row, with a short line above it only while there's something to
  * say. A count means something waits on you; Home's is a link of its own, which says what's waiting when pointed at and
- * lands on For you (features/home/landing.ts). Someone on their own, with no company and no team, has no Team page. It can
- * be hidden. At 860px and narrower the phone's top bar and tab bar (TabBar.tsx) take its place, and the plan
+ * lands on For you (features/home/landing.ts); Team's, the invitations to you not put aside. Someone on their own, with no
+ * company, no team and no invitation, has no Team page. It can be hidden. At 860px and narrower the phone's top bar and tab bar (TabBar.tsx) take its place, and the plan
  * is said in Settings.
  */
 import type { MyTeam, Plan, PlanNotice, WorkspaceSummary } from '@alcove/api';
@@ -15,7 +15,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import { aheadShown, joinable, whenLine } from '~/features/calls/list/ahead';
 import { useCheckout } from '~/features/plans/checkout';
 import {
-  PLAN_NAMES, endsIn, licensesLeft, licensesShort, noticesNow, notesLeft, notesLow, notesOut, notesShare, paidFor, payingNow, proEnding, teamAdmin,
+  PLAN_NAMES, askedBy, endsIn, licensesLeft, licensesShort, noticesNow, notesLeft, notesLow, notesOut, notesShare, paidFor, payingNow, proEnding, teamAdmin,
   waitingForLicense
 } from '~/features/plans/planState';
 import { checkoutFor, payable, purchaseName, restToSend, settlingPurchase, tokensShort, waitingPurchase } from '~/features/plans/purchase';
@@ -32,8 +32,8 @@ import { teamQueries } from '~/features/team/queries';
 import { workspaceQueries } from '~/features/workspace/queries';
 import { trustQuery, trustLine, unverifiedBecause, verifiedAt } from '~/lib/trust';
 import { dayMonth, hm, shortDate } from '~/lib/time';
-import { plural } from '~/lib/words';
-import { NAV, NAV_FOOT, inWorkspace, places, useCounts, type NavPlace } from './places';
+import { plural, usdCents } from '~/lib/words';
+import { NAV, NAV_FOOT, inWorkspace, places, useCounts, usePlacesKnown, type NavPlace } from './places';
 
 const KEY = 'alcove-side-panel';
 const slog = log.child({ component: 'shell' });
@@ -91,8 +91,7 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
 }) {
   const online = useOnline();
   const counts = useCounts();
-  const team = useQuery(teamQueries.team()).data;
-  const mine = useQuery(teamQueries.myTeam()).data;
+  const known = usePlacesKnown();
   const path = useRouterState({ select: (s) => s.location.pathname });
   /*
    * A place, with its count at its end; a count that leads somewhere of its own (Home's, to For you) is a link of its own,
@@ -120,7 +119,7 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
         <button type="button" className={cn(buttonClass(), 'sb-new')} onClick={onNew} aria-label="Start a call" aria-haspopup="dialog" aria-keyshortcuts={inWorkspace(path) ? undefined : 'N'}>
           <span className="sb-new-ic"><Icon name="video" size={16} /></span><span>Start a call</span>{!inWorkspace(path) && <Kbd>N</Kbd>}
         </button>
-        <SidebarNav>{places(NAV, team, mine).map(link)}</SidebarNav>
+        <SidebarNav>{places(NAV, known).map(link)}</SidebarNav>
         <div className="sb-mid">
           <Pinned onPin={onPin} />
         </div>
@@ -308,14 +307,23 @@ function FreeRow({ plan, waiting, on }: { plan: Plan; waiting: boolean; on: bool
 const licensesLeftWords = (left: number): string => (left === 0 ? 'No licenses left' : `${plural(left, 'license')} left`);
 
 /**
- * A notice in one short line, its news in bold: Pro renewed or ended, a team license replacing Pro, a team's licenses, and
- * a workspace you pay for now, by its name, held to two lines however long that is.
+ * A notice in one short line, its news in bold: Pro renewed or ended, a team license replacing Pro (and what came back), a
+ * team's licenses, someone on your free team asking you to upgrade it, and a workspace you pay for now, by its name, held to
+ * two lines however long that is.
  */
 function Said({ notice, plan, team, spaces }: { notice: PlanNotice; plan: Plan; team: MyTeam | null | undefined; spaces: WorkspaceSummary[] | undefined }) {
   const on = plan.team ? ` on ${plan.team.name}` : '';
   switch (notice.kind) {
     case 'pro-renewed': return <><b>Pro renewed</b> from your balance</>;
-    case 'license-replaced-pro': return notice.count ? <><b>Team replaced Pro.</b> {plural(notice.count, 'month')} refunded</> : <><b>Team replaced Pro</b></>;
+    case 'license-replaced-pro': {
+      // What came back, by the day; one from before amounts were kept says the months.
+      if (notice.microUsd !== null) return notice.microUsd > 0 ? <><b>Team replaced Pro.</b> {usdCents(notice.microUsd)} back</> : <><b>Team replaced Pro</b></>;
+      return notice.count ? <><b>Team replaced Pro.</b> {plural(notice.count, 'month')} refunded</> : <><b>Team replaced Pro</b></>;
+    }
+    case 'upgrade-asked': {
+      const who = askedBy(notice, team);
+      return <span className="ac-clamp-2"><b>{who ? `${callName(who)} asked you to upgrade` : 'You were asked to upgrade'}</b> {plan.team?.name}</span>;
+    }
     case 'licenses-low': case 'licenses-none': return <><b>{licensesLeftWords(licensesLeft(notice, team))}</b>{on}</>;
     case 'pro-ended': return <><b>Pro ended.</b> Nothing was deleted.</>;
     case 'workspace-payer': {

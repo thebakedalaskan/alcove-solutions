@@ -34,7 +34,7 @@ export const currentLogContext = (): Record<string, Value> => ({ ...store.getSto
 
 const REDACT = ['secret', 'root', 'wrapKey', 'key', 'krec', 'password', 'cookie', 'authorization', 'sessionId', 'body', 'plaintext', 'NEAR_AI_API_KEY', 'KMASTER', 'KSERVICE',
   'INDEX_KEY', 'PHOTO_KEY', 'LEGACY_KMASTER', 'LEGACY_KSERVICE', 'indexKey', 'photoKey', 'kservice', 'legacyKmaster', 'DATABASE_URL', 'OBJECTS_SECRET_KEY',
-  'LIVEKIT_API_SECRET', 'GOOGLE_CLIENT_SECRET', 'CLOUDFLARE_API_TOKEN', 'privateKeyPem', 'subjectToken', 'access_token']
+  'LIVEKIT_API_SECRET', 'GOOGLE_CLIENT_SECRET', 'CLOUDFLARE_API_TOKEN', 'RESEND_API_KEY', 'privateKeyPem', 'subjectToken', 'access_token']
   .flatMap((k) => [k, `*.${k}`, `ctx.${k}`]);
 
 export interface LogOptions { level?: Level | 'silent'; format?: 'json' | 'pretty'; destination?: DestinationStream; service?: string }

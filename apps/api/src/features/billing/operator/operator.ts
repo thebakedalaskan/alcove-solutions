@@ -263,7 +263,7 @@ export async function givePlan(d: Pick<Deps, 'cfg' | 'pool'>, words: string[], o
     if (!t) {
       throw conflict('That account isn’t a team’s admin, so there’s no team to give licenses to. They start a team first, then licenses can be given to it. Nothing was given.', { ...said, why: 'no team' });
     }
-    const r = await licensesBought(d, c, t, ownerId, { kind: 'licenses', count: grant.licenses, microUsdPerLicense: 0, periods: grant.months }, 'alcove');
+    const r = await licensesBought(d, c, t, ownerId, { kind: 'licenses', count: grant.licenses, microUsdPerLicense: 0, periods: grant.months, autoPurchase: null }, 'alcove');
     if (!r.bought) throw refusedGrant(r.refusal, said);
     return {
       teamId: t.team_id,

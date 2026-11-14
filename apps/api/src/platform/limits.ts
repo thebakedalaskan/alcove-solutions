@@ -49,7 +49,8 @@ const WHOLE_DOWNLOAD_BYTES = 512 * MiB;
  * Every limit there is (docs: Plans and usage, and Deployment › Changing a limit): each plan's notes, storage and files, Pro's and
  * a team license's price and Pro's lower price for a year or more, the most months or licenses one purchase buys and when
  * Pro's end is told; more notes for a period, their price and the most bought at once; when a team's admin is told licenses
- * are low and how long an invite works; what an hour of notes is reckoned at, when AI stops and when an organizer is told
+ * are low and how many auto-purchase buys for one in a day, how long an invitation lasts, how often it's sent and how many one account makes in a day, and how often someone
+ * can ask to upgrade; how many emails go in a day, and to one address; what an hour of notes is reckoned at, when AI stops and when an organizer is told
  * it's close, and how much of it guests in one call may spend; how long a plan's period and its grace last; the longest call,
  * the most people in one, and how many asks to join it one network may have waiting; what one person uploads in a day,
  * everywhere, and what others add in a day to an account's storage, what's kept of it for the account's own notes, and how
@@ -93,8 +94,15 @@ export const LIMITS = {
   'call.max_people': { default: 100, floor: 2, ceiling: 1_000, unit: 'count', measures: 'The most people in a call at once. Asking to be let in takes no place: someone who asked is let in only while there’s room.' },
   'call.asks_per_address': { default: 10, floor: 1, ceiling: 1_000, unit: 'count', measures: 'The most asks to join one call waiting at once from one network (an address, or an IPv6 /64), so nobody can fill its host’s list of them.' },
   'team.max_licenses': { default: 500, floor: 1, ceiling: 100_000, unit: 'count', measures: 'The most team licenses one purchase buys.' },
-  'team.low_licenses': { default: 5, floor: 0, ceiling: 100_000, unit: 'count', measures: 'Unconsumed licenses below which a team’s admin is told they’re running low.' },
-  'team.invite_seconds': { default: DAY, floor: MINUTE, ceiling: 30 * DAY, unit: 'seconds', measures: 'How long a link to join a team works, once.' },
+  'team.low_licenses': { default: 5, floor: 0, ceiling: 100_000, unit: 'count', measures: 'Unconsumed licenses, past those spoken for by people on the team without one, below which a team’s admin is told they’re running low (never while auto-purchase is on).' },
+  'team.auto_purchase_per_day': { default: 10, floor: 0, ceiling: 100_000, unit: 'count', measures: 'The most licenses auto-purchase buys for one team in a day (UTC): past it, whoever needs one is told to ask the admin, who’s told none are left, as when the balance is short.' },
+  'team.invitation_seconds': { default: 30 * DAY, floor: HOUR, ceiling: 365 * DAY, unit: 'seconds', measures: 'How long an invitation to join a team lasts, from when it was made or last sent again. Also the window mail.address_per_team counts in.' },
+  'team.invitation_resend_seconds': { default: DAY, floor: 0, ceiling: 30 * DAY, unit: 'seconds', measures: 'How long after an invitation was sent it can be sent again.' },
+  'team.invitations_per_day': { default: 20, floor: 0, ceiling: 10_000, unit: 'count', measures: 'The most invitations one account makes, and sends again, in a day (UTC).' },
+  'team.upgrade_ask_seconds': { default: 7 * DAY, floor: 0, ceiling: 90 * DAY, unit: 'seconds', measures: 'How long after someone on a free team asked its admin to upgrade it they can ask again.' },
+  'mail.per_day': { default: 90, floor: 0, ceiling: 1_000_000, unit: 'count', measures: 'The most emails Alcove sends in a day (UTC), all of them: past it, the rest wait for the next day. Resend’s free plan sends 100 a day.' },
+  'mail.address_per_day': { default: 1, floor: 0, ceiling: 100, unit: 'count', measures: 'The most invitation emails one mailbox (an address in its canonical form: case, +tags and Gmail’s dots aside) is sent in 24 hours, from all of Alcove: past it, invitations are made without one.' },
+  'mail.address_per_team': { default: 3, floor: 0, ceiling: 100, unit: 'count', measures: 'The most times one team sends one mailbox (an address in its canonical form) an invitation in team.invitation_seconds, cancelling and inviting again included: past it, it can’t be sent again until the oldest is that old.' },
   'workspaces.max_made': { default: 1_000, floor: 1, ceiling: 100_000, unit: 'count', measures: 'The most workspaces one account makes, to stop one from making them without end.' },
   'media.account_day_bytes': { default: 20 * GiB, floor: 0, ceiling: 200 * GiB, unit: 'bytes', measures: 'What one person uploads in a day (UTC), in every workspace.' },
   'media.others_day_bytes': { default: 2 * GiB, floor: 0, ceiling: 200 * GiB, unit: 'bytes', measures: 'What someone signed in adds in a day (UTC) to another account’s storage, through the workspaces it pays for: four of Free’s largest files. Someone licensed on the same team adds to its pool as to their own.' },

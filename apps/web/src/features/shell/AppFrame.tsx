@@ -23,6 +23,8 @@ import { OfflinePage } from './OfflinePage';
 import { Palette, type PaletteStart } from './Palette';
 import { inWorkspace } from './places';
 import { useSignedOutElsewhere } from '~/features/account/signedOutElsewhere';
+import { useSaidOnArrival } from '~/features/team/invitations/arrival';
+import { useInvitationToasts } from '~/features/team/invitations/toasts';
 import { Offline, Sidebar, useSidePanel } from './Sidebar';
 import { PhoneTop, TabBar } from './TabBar';
 import { TopActions } from './TopActions';
@@ -56,6 +58,8 @@ export function AppFrame({ account }: { account: Account }) {
   useKeptEdits(ownerOf(account));
   useSignedOutElsewhere(ownerOf(account));
   useVisits(ownerOf(account), account.offline);
+  useInvitationToasts(account.offline ? null : ownerOf(account), account.offline);
+  useSaidOnArrival();
   /* Offline, everything is read again once the connection is back, or once Alcove answers a session check that was late. */
   useEffect(() => {
     if (!account.offline) return;

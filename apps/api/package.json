@@ -24,6 +24,7 @@
     "@alcove/api": "workspace:*",
     "@alcove/api-http": "workspace:*",
     "@alcove/board": "workspace:*",
+    "@alcove/mail": "workspace:*",
     "@aws-sdk/client-s3": "^3.1161.0",
     "@hono/node-server": "^2.1.6",
     "@modelcontextprotocol/server": "2.4.0",

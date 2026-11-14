@@ -1,4 +1,4 @@
-import { Button, CheckoutDone } from '@alcove/ui';
+import { CheckoutDone } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { did } from '../../../src/component';
 import { PREVIEW_TOP_UP } from '../../../src/world/plans/payments';
@@ -9,8 +9,7 @@ const FROM_BALANCE = 'Q8vT2mLxR5nW3kPz7JdHsA';
 
 /**
  * Done: the tick pops and draws, what you have now, the receipt's row with its reference whole on a line of its own (the
- * payment's, or the balance's line for it; pressing it copies it, to give support), and that nothing renews by itself. A
- * team just started has inviting its people under the receipt: `invite`, under its heading and what an invite does.
+ * payment's, or the balance's line for it; pressing it copies it, to give support), and that nothing renews by itself.
  */
 const meta = {
   title: 'Components/Checkout/CheckoutDone', component: CheckoutDone, parameters: { layout: 'centered' },
@@ -50,18 +49,24 @@ export const MoreNotes: Story = {
   globals: { theme: 'dark' }
 };
 export const Phone: Story = { globals: { viewport: { value: 'phone' } } };
-/** A team started: whose licenses they are, and when each is taken. Licenses aren't renewed, so there's no reminder. */
-export const TeamStarted: Story = {
+/**
+ * A free team upgraded, a license bought for each of the three on it: everyone has one, each taken as they next open Alcove.
+ * Licenses aren't renewed, so there's no reminder.
+ */
+export const TeamUpgraded: Story = {
   args: {
-    title: 'Vandelay Industries is on Team', reminder: null,
-    lines: ['6 licenses, for you and the people you invite. Yours is taken now, and each of theirs when they next open Alcove.'],
-    receipt: { title: '240.00 USDC on Base', sub: '4 Nov 2026 · Team, 6 licenses', reference: PREVIEW_TOP_UP, onOpen: did('onOpen') }
+    title: 'Vandelay Industries is on Team', reminder: null, lines: ['Everyone has a license.'],
+    receipt: { title: '120.00 USDC on Base', sub: '4 Nov 2026 · Team, 3 licenses', reference: PREVIEW_TOP_UP, onOpen: did('onOpen') }
   }
 };
-/** With inviting its people, the slot under the receipt: here, a link to make. */
-export const TeamStartedInviting: Story = {
-  args: { ...TeamStarted.args, invite: <Button variant="secondary" icon="link" onClick={did('onMakeLink')}>Make an invite link</Button> },
-  globals: { theme: 'dark' }
+export const TeamUpgradedNight: Story = { ...TeamUpgraded, globals: { theme: 'dark' } };
+/** Upgraded with fewer licenses than people, and none bought as they join: how many of everyone have one. */
+export const TeamUpgradedShort: Story = {
+  name: 'Team upgraded, short',
+  args: {
+    title: 'Vandelay Industries is on Team', reminder: null, lines: ['2 of 3 have one; buy more on Team.'],
+    receipt: { title: '$80 from your balance', sub: '4 Nov 2026 · Team, 2 licenses', reference: FROM_BALANCE, onOpen: did('onOpen') }
+  }
 };
 /** More licenses for the team, from the balance: how many are left now, and who gets one. */
 export const MoreLicenses: Story = {

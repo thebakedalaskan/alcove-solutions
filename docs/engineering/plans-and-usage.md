@@ -25,7 +25,9 @@ license's for a year, with how many periods that is; the most
 months of Pro one purchase buys and how long before Pro ends its owner is told; more notes for a period, their price and
 the most bought at once; the most workspaces one account makes; what an hour of notes is reckoned at; when AI stops and
 when an organizer is told it's close; how much of an organizer's allowance guests in one call spend; how long a period
-and a grace last; a call's longest, its most people, and how many asks to join it one network may have waiting. A period's length changes from each account's next period: each
+and a grace last; a call's longest, its most people, and how many asks to join it one network may have waiting; how long
+an invitation to a team lasts, how often it's sent and how many one account makes in a day, and how often someone on a
+free team can ask its admin to upgrade it; and how many emails Alcove sends in a day, and to one address. A period's length changes from each account's next period: each
 account's AI meter keeps the period it's in ([Pro › The plan in force](#pro)).
 
 ## Status
@@ -42,6 +44,7 @@ account's AI meter keeps the period it's in ([Pro › The plan in force](#pro)).
 | Pro for a year or more at a lower price; more notes for a period | Working (server; see [Pro](#pro) and [More notes](#more-notes)) |
 | A payment that buys what it was for (Pro, more notes or a team's licenses) once it's added | Working (server; see [A payment that buys](#a-payment-that-buys)) |
 | Teams, licenses, visits, alerts, the pool (server; see [Team](#team)) | Working |
+| Free teams: made by an invitation or a link, invitations emailed through Resend and seen in the app, the team's one link, asking the admin to upgrade, and the rest of Pro given back by the day when a license replaces it | Working (server; see [Team](#team)) |
 | A team license for a year, 12 periods at a lower price a period, from the balance or by payment | Working (server; see [Team](#team)) |
 | Team notes, Ask across them, team workspaces (server; see [Team](#team)) | Working. Ask's `refs` (@-references) work on the server; the app's Ask, main's palette, has no way to add them |
 | Picking a plan at first sign-in | Working. `Plan.choose` is true for every account until the app says the plans were shown (`POST /v1/plan/chosen`, `PlansApi.chose()`); an account from before plans is shown them once. In the app it's the plan choice: Home opens on Plans once, in its place (`apps/web/src/features/plans/PlanChoice.tsx`), and only Home, never a deep link (decided in `features/plans/choice.ts`). Once the plans have been on screen there or on Plans, the app says so, quietly trying again if that fails ([user-flows 16.20](../product/user-flows.md#1620-choose-a-plan)) |
@@ -412,20 +415,42 @@ so more bought on Free don't reach it, and none reach the period after the one t
 
 ## Team
 
-A team (`features/billing/teams/teams.ts`, routes in `teams/routes.ts`) is made by one account, its **admin**, who keeps its
-settings whether licensed or not. An account is on one team at most. Its people are `team_members` rows; its name and
-who's on it are sealed under the team's own key (it's an owner, as a workspace is), and what it bought under `Kservice`
-(`team-billing`). Every change locks the team's row first, then the plans it touches, so takes and purchases at once on
-any instance never spend a license or money twice.
+A team (`features/billing/teams/`: the team and its licenses in `teams.ts`, its rows and sealed records in
+`team-records.ts`, `invitations.ts`, `joining.ts` and `invite-links.ts`; routes in `teams/routes.ts`) is free to make, and
+anyone at any address can be on it. The account that made it is its **admin**, who keeps its settings whether licensed or
+not; everyone else on it is a member. An account is on one team at most. Its people are `team_members` rows; its name,
+who's on it and who's invited are sealed under the team's own key (it's an owner, as a workspace is), and what it bought
+under `Kservice` (`team-billing`). Every change locks the team's row first, then the plans it touches, so takes and
+purchases at once on any instance never spend a license or money twice.
 
-**Licenses** are bought by the admin from their own balance (`POST /v1/team/licenses { count, microUsdPerLicense, periods }`),
+Its **tier** is never stored: `team` while anyone on it holds a live license, or licenses bought for it wait to be taken,
+and `free` otherwise (`teams.ts › tierOf`; `MyTeam.tier`, `Plan.team.tier`). On a free team everyone stays on their own
+plan, Free or Pro, for their own notes and storage, and they see each other on the Team page. What a team shares opens only
+for someone live-licensed on it (below), so upgrading is buying licenses, and the team is on Team from the moment they're
+bought: a payment that lands while nobody's there to take one reads Team at once, and a team whose licenses are all refunded
+before anyone took one is free again.
+
+**Making a team.** `POST /v1/team/new { name }` makes one, buying nothing, with its maker as its admin; someone on a team
+already is refused (`conflict`, "You’re on a team already. Leave it before making one."). Someone on no team also makes
+one with their first invitation, and someone joining from their link makes one for them (both below), with them as its
+admin either way. A team made for someone is named for their company page (`profile/companies.ts › teamNameFor`): the
+demo directory's name ("Vandelay Industries"), or a work domain's first label, titled ("Lumen" at `lumen.example`); at a
+personal address, "<first name>’s team" ("Sam’s team": the first word of their name, or of one made from their address
+when that's all there is), at most 120 characters. The admin renames it (`PUT /v1/team/name { name }` → `MyTeam`, logged
+`team renamed`); anyone else is `forbidden` ("Only the team’s admin can do that.").
+
+**Licenses** are bought by the admin from their own balance (`POST /v1/team/licenses { count, microUsdPerLicense,
+periods, autoPurchase }`),
 or with a payment that buys them once it's added ([A payment that buys](#a-payment-that-buys)), through the same code
 (`teams.ts › licensesBought`, on the terms in `plans.ts › termsOf`): 1 to `team.max_licenses` (500) at a time ("Buy 1 to
 500 licenses at a time."), each for one period (`periods` 1, the default) at `plan.team.price_micro_usd` ($40), or for a
 year (below), at the price shown (a changed one is `conflict`, "The price of a team license has changed. Look at it again
 before buying."), refused with nothing changed when the balance is short (`conflict`, "Your balance is short of what 2
 team licenses cost ($80). Add money first.": what they cost, never the balance, as for Pro). The history says "Team, 3
-licenses", or "Team, 1 license"; logged `team licenses bought` with the owner, team, count and periods.
+licenses", or "Team, 1 license"; logged `team licenses bought` with the owner, team, count and periods. `autoPurchase`
+(checkout's "Buy one for each person who joins later"; a payment's `Purchase.autoPurchase` alike) sets auto-purchase in
+the transaction that buys them, only if they're bought, and left out or null leaves it as it is (logged `team auto-purchase
+set`, `why: 'bought'`, when it changes). Licenses bought, by any means, answer every ask to upgrade the team (below).
 `POST /v1/team/licenses/refund` returns every unconsumed license at what it cost ("Team licenses refunded, 2"): its price a
 period for each of its periods, so one for a year nobody took gives back all $384, and one Alcove gave ([Support](#support))
 nothing. A taken one isn't refunded, and when nothing would come back it's `conflict` ("Refunding now would give nothing
@@ -452,13 +477,22 @@ live for its periods × `plan.period_seconds` from then (`licensed_from`, `licen
 that has ended is only replaced by a visit.
 On a visit:
 
-1. An unconsumed license is taken, the oldest bought, live for the periods it was bought for: one, or a year's 12.
-2. None left, with auto-purchase on (`PUT /v1/team/auto-purchase { on }`), the price no higher than a license last cost
-   the team, and the admin's balance enough: one for a period is bought at `plan.team.price_micro_usd` ("Team license,
-   bought for a member") and taken. Auto-purchase never buys a license for a year.
-3. Otherwise none is: the member stays on their own plan and is told `license-needed` (ask your admin; never the admin
-   themselves), `wanted_at` is set, and the admin is told `licenses-none`, once until more are bought. Logged `team license
-   wanted, none left`, with why none was bought: `off`, `price` or `short`.
+1. A license they left the team with while it ran (they left, were taken off, or left to join another team), if they're
+   back on it, by any way in, before it would have ended: theirs again, as it was (`licensed_from`, `licensed_until`),
+   instead of another, and nothing is taken or bought. The team keeps it for them until then (`kept` in its `team-billing`
+   record, by a keyed hash of the team and their account, never the account's ID), and forgets it after. Logged `team
+   license given back`.
+2. An unconsumed license is taken, the oldest bought, live for the periods it was bought for: one, or a year's 12.
+3. None left, with auto-purchase on (`PUT /v1/team/auto-purchase { on }`), the price no higher than a license last cost
+   the team, fewer than `team.auto_purchase_per_day` (10) bought for the team that UTC day (`autoBought` in its record),
+   and the admin's balance enough: one for a period is bought at `plan.team.price_micro_usd` ("Team license, bought for a
+   member") and taken. Auto-purchase never buys a license for a year.
+4. Otherwise none is. On a team that's on Team, or whose admin has auto-purchase on, the member stays on their own plan
+   and is told `license-needed` (ask your admin; never the admin themselves), `wanted_at` is set, and the admin is told
+   `licenses-none`, once until more are bought. Logged `team license wanted, none left`, with why none was bought: `off`,
+   `price`, `daily` (the day's most bought already: a link that went too far can't empty the admin's balance) or `short`.
+   A free team with auto-purchase off tells nobody anything about licenses on a visit: nobody on it needs one, so nothing
+   is set or told (`team visit on a free team: no license to take`, at debug).
 
 Auto-purchase follows renewing's rule ([Pro](#pro)): a higher price is never taken from the balance without the admin
 seeing it. What a license last cost the team is kept in its `team-billing` record: the last bought, by the admin (from
@@ -470,14 +504,33 @@ Once the price is higher, auto-purchase buys nothing and the admin is told `lice
 new price themselves, as checkout shows it, it's what auto-purchase goes by. A lower price is bought, and becomes what it
 goes by.
 
-A license taken replaces Pro at once: the running month ends then (not refunded), every month that hasn't started goes,
-and the balance gets back what refunding them would give ([Refunds](#pro): what was paid, less a month's price's
-difference on the months kept of a year or more that's left shorter, so a year replaced in its first month gives back
-$172, not $176; "Refund: 11 months of Pro, for a team license"), and the member is told `license-replaced-pro` with how
-many (none, and no line in the history, when nothing comes back). Pro can't be bought while a license is live
-(`conflict`). When a take leaves fewer than `team.low_licenses` (5) unconsumed, the admin is told `licenses-low` with how
-many are left, once until there are 5 or more again. These notices are in `Plan.notices` with Pro's (`until` null,
-`count` where it says), shown and notified as Pro's are.
+**Pro and a license.** Joining a team changes nothing about anyone's plan: on Pro they stay on Pro, and pay for it as
+before, until they take a license. A license taken replaces Pro at once: the month running ends then, every month that
+hasn't started goes, and what's left of Pro goes back to the balance (`plans.ts › restOfPro`, from `replacedByLicense`).
+For each purchase of Pro that's its months that haven't started, at what was paid for them, and the month running by the
+part of it not yet used, its price × the time left of it ÷ its length, floored to the micro-USD; less, as `refundOf` takes
+it, what a purchase at the lower price for a year or more owes while it still has months to come and is left with fewer
+than `plan.pro.yearly_from_months` months begun (a month's price as it was then, less what was paid, for each month begun:
+[Refunds](#pro)); and never below nothing for any purchase. A purchase with no months to come and fewer than
+`plan.pro.yearly_from_months` begun has paid a month's price for each of them (it was bought at it, or a refund took the
+difference then), so the rest of its running month is reckoned at that price, and nothing is owed again; a month Alcove
+gave is worth nothing. It's worked out in whole micro-USD, the running month's part with bigints, since its price × its
+milliseconds left outgrows a double's integers. Three months at $20, replaced 10 days into the first of 30, give back
+$53.333333: $40 for the two to come and $13.333333 for the 20 days left. A year at $16 a month replaced half way through
+its first month gives back $180: 11 months at $16 and $8 of the one running, less the $4 more a month's price is on the
+one month begun. The same year replaced half way through its eleventh month gives back nothing ($24, less $44 owed). The
+same year refunded a day into its third month gives back $132 (nine months at $16, less $4 for each of the three begun),
+and a license a week later gives back the rest of that month at $20, what it had cost by then: $14.666666 for its 22 days
+left of 30, with nothing taken off again. Months Alcove gave ([Support](#support)) give back nothing. The history says
+"Refund: the rest of Pro, for a team
+license", and the member is told `license-replaced-pro` with what came back (`microUsd`: 0, and no line in the history,
+when nothing did). One told before this release says how many months went back instead (`count`, with `microUsd` null).
+Pro can't be bought while a license is live (`conflict`). Licenses spoken for by people on the team without one (the
+admin included) aren't spare: when a take leaves fewer than `team.low_licenses` (5) spare, the unconsumed less those, the
+admin is told `licenses-low` with how many (`count`, never below 0), once until there have been 5 or more again, and never
+while auto-purchase is on. Buying counts as their being told when it leaves fewer than 5 spare, since they chose how many:
+an upgrade sized to the team says nothing as everyone takes theirs. These notices are in `Plan.notices` with Pro's
+(`until` null, `count` and `microUsd` where they say), shown and notified as Pro's are.
 
 **On Team** the plan's kind is `team`, its period the license's, its notes `plan.team.notes_minutes` (3,000) for each
 member, metered as their own (a new license is a fresh period, with all of it). A license for a year is that many periods
@@ -491,25 +544,162 @@ it gets `plan.grace_seconds`, held to the pool as it was; upkeep reckons it at e
 the grace, uploads and notes stop while it's over, as for an account; it isn't given again until the team has been within
 its pool. Free's periods after a license count from its end.
 
-**Invites** (`POST /v1/team/invite`, admin only) are one-time links, `{WEB_ORIGIN}/team/join#<secret>`, for
-`team.invite_seconds` (1 day). Only a SHA-256 of the secret is kept (`team_invites`), deleted when it's used and by upkeep
-once expired; the secret travels only in POST bodies, and invites, peeks and joins keep no receipt. `POST /v1/team/peek`
-says whose team it is; `POST /v1/team/join` joins and takes a license (it's a visit). A used, expired or made-up link is
-the same `not-found`; someone on a team already is `conflict`, and the link is left for whoever it was for.
+**Invitations** (`invitations.ts`; `joining.ts › invite`). Anyone on a team invites addresses to it:
+`POST /v1/team/invitations { emails }` → `InvitationsMade { team, invited, already, over }`, whole addresses at any domain,
+1 to 50 at once (more is `invalid`), compared trimmed and lower-cased. Someone on no team makes their team this way, as its
+admin, in the same transaction. Their own address is refused before anything changes (`invalid`, "That’s you."). An address
+on the team already is counted in `already`; one invited already is invited again, which refreshes its invitation (from
+whoever asked this time, its 30 days from now, sent again) once its sends allow, and leaves it as it is until then; anyone
+else gets an invitation. `invited` counts all of those. What's made and what's sent again count against the inviter's
+`team.invitations_per_day` (20 a UTC day, kept in `team_invitation_days`), in the order asked: as many as are left of it
+today are invited, and the rest are `over`, with nothing done for them (one invited already that can't be sent again yet
+counts nothing, and is in `invited` as it is). Only a request with none left today is refused, with nothing changed and no
+team made (`conflict`, "You’ve invited 20 people today. Invite more tomorrow, or copy your link.", saying the larger of
+today's count and the limit). The team's row is held for it (`FOR UPDATE`), so two people inviting one address at once make
+one invitation, and the inviter's place is read again once it's held: someone taken off the team meanwhile invites nobody
+to it (`conflict`, "You’re not on that team any more.").
+An invitation is one address on one team (`team_invitations`, one for each address on a team), and lasts
+`team.invitation_seconds` (30 days) from when it was made or last sent. Alcove emails it
+([Privacy › Email](privacy-keys-and-sessions.md#email)), and an account that signs in with the address finds it in the
+app too ([Privacy › Invitations](privacy-keys-and-sessions.md#invitations)).
 
-**Leaving.** The admin takes people off (`DELETE /v1/team/members/:id`); a member leaves (`POST /v1/team/leave`). A live
-license isn't refunded: they're on Free from then, a fresh period, with `plan.grace_seconds` held to
-`plan.team.storage_bytes`. Notes they made visible to the team stay so. The team's workspaces they pay for stop being the
+An invitation is sent at most once in `team.invitation_resend_seconds` (a day), and one team sends one mailbox at most
+`mail.address_per_team` (3) times in `team.invitation_seconds`. A mailbox is an address in its canonical form
+(`platform/mail.ts › canonicalAddress`: lower-cased, a `+tag` dropped at any domain, and at Gmail the dots in its name
+dropped, `googlemail.com` being `gmail.com`), so every way of writing one counts as one. Those sends are counted in
+`mail_sends`, apart from the invitations and from any team (by keyed hashes of the mailbox and of the team:
+[Privacy › Email](privacy-keys-and-sessions.md#email)), so cancelling and inviting again doesn't start the count again:
+past it, a new invitation is made all the same, and its email held back. Deleting the team takes none of them with it, so
+a mailbox's emails that day still count against `mail.address_per_day` (below); a team made anew counts only its own. Every
+invitation made or sent again is written as an email, sealed and queued alike, and whether it goes is decided as it's
+sent, never in the request, so nothing a request does or how long it takes says: none to a mailbox that stopped Alcove's
+emails, nor past `mail.address_per_day` (1) invitation emails in 24 hours to one mailbox from all of Alcove; and past
+`mail.per_day` (90) emails in a UTC day from all of Alcove, the rest wait for the next. The email goes to the address as it
+was typed. None of this is said back, so an inviter never learns whether an email went, or whether an address has an
+account or is on another team.
+
+`MyTeam.invitations` lists the team's invitations that haven't run out, newest first, to everyone on it: who (as the
+directory or calls know them, or the address), who invited them (`invitedBy`, and `you` when it was you), when they were
+first invited (`madeAt`: invited again it's the same; made anew after it ran out or was cancelled, its own), when it was
+last sent and when it runs out, whether you may send it again or cancel it (`manage`: you invited them, or you're the
+admin), when it can next be sent (`resendAt`: null while it can be now, and its end while this team may send that
+mailbox no more), why not before (`resendWhy`: `recent` while the day's wait holds it, `most` while this team's 3 do,
+whichever ends later when both do; null when it can be sent), and how many times this team has sent it in its 30 days
+(`sends`, by its mailbox). All of it is the team's own doing alone, never whether an email went. **Resend** (`POST
+/v1/team/invitations/:id/resend` → `MyTeam`) sends it again and starts its 30 days again, still from whoever made it,
+once its sends allow (`conflict` otherwise: "That invitation was sent too recently to send again yet.", or "That
+invitation has been sent 3 times, so it can’t be sent again yet."), and counts against the `team.invitations_per_day` of
+whoever pressed it. **Cancel** (`DELETE /v1/team/invitations/:id` → `MyTeam`) deletes it, so its link leads nowhere.
+Both are for whoever made it and the admin (`forbidden`, "Only whoever invited them, or the team’s admin, can do
+that."); another team's invitation, one that ran out and one that never was are the same `not-found` ("That invitation
+doesn’t exist, or it has ended."). Logged `team invitations made` (the team, the inviter's member ID, and how many were
+invited, made new, invited again, held back by this team's sends, over the day's limit and on the team already), `team
+invitation resent` and `team invitation cancelled`.
+
+An invitation ends when it's used, cancelled or runs out (upkeep deletes it then; inviting the address again makes a new
+one, with a new link), with its team, and when whoever made it is off the team: they leave, are taken off it or delete
+their account, and what they asked goes with them (`team_invitations.invited_by` is their member ID), its link leading
+nowhere from then. An email of it still waiting to go goes with it, unsent. The admin can invite them again.
+
+**For whoever it's to.** `GET /v1/team/invitations` → `InvitationForYou[]`: the invitations to the address the caller
+signs in with, as their profile has it, that haven't run out, newest first, put aside or not, and never one to the team
+they're on. Each says who asked (as the team has them now), the team at a glimpse (`TeamGlimpse`: its name, how many are
+on it, and up to 4 of them, who asked first, by name and portrait and never by address), when it was sent and when it runs
+out, and `putAside`. **Not now** (`POST /v1/team/invitations/:id/put-aside`, logged `team invitation put aside`) puts it
+aside for them alone, out of their count: it stays theirs to accept until it runs out, the team's list doesn't change,
+and nobody is told. What they put aside is theirs to know alone, so it's kept in their own sealed profile
+(`Profile.putAside`, the invitations' IDs), never on the invitation, and the route keeps no receipt; reading the list
+forgets each that's no invitation to them any more (used, cancelled, run out, or to an address they've left). **Accept**
+(`POST /v1/team/invitations/:id/accept { leave }` → `MyTeam`) puts them on its team. An invitation to any other address is
+`not-found`.
+
+**Joining** (`joining.ts`) is one transaction, whichever way it comes: accepting an invitation in the app, or
+`POST /v1/team/join { secret, leave }` → `MyTeam` with the secret after `/invite#` of an invitation's own link, from its
+email (anyone holding it can use it once: it needn't be the address it was sent to), or of a team's link (below). It holds
+the joiner's account first (and a link's owner's, the two in the order of their IDs), then the rows of the teams it
+touches, in the order of their IDs, then the joiner's place and the invitation it uses, then the plans. A team's row is
+always held before what hangs off it, as a visit and taking someone off a team hold it, and sending again and cancelling
+hold it too (`FOR KEY SHARE`), and inviting `FOR UPDATE`, before they touch its invitations, reading the caller's place on
+it again once it's held. So two at once never put someone on two teams, two people joining each other's links at once
+never wait on each other, and an invitation used, cancelled, run out or gone with whoever made it meanwhile is the same
+`not-found` as any other that ended. What two changes at once can still run into past the rows they hold (a row made or
+gone under them) is `conflict`, "Someone changed the team at the same moment. Try again.", never a failure of Alcove's.
+Someone on the team already stays as they are by its link, and is refused by an invitation (`conflict`, "You’re on that
+team already."), which is left as it is, for whoever it's for. Someone on another team joins only
+when they asked to leave it, `leave: true`, which the app asks in place first; without it they're refused (`conflict`,
+"You’re on a team already. Leave it to join this one.") and nothing changes. With it, a member leaves it, as leaving does;
+its admin alone on it deletes it, its unconsumed licenses going back to their balance at what was paid ("Team licenses
+refunded, 2") and a live license of theirs not refunded, as deleting does; and its admin with others on it is refused
+(`conflict`, "You admin your team, and 3 others are on it. You can join another once nobody else is on yours."). The
+invitation used, and any other to the joiner's address on that team, are used up. Joining is a visit: a license is taken
+if the team has one to take, and on a free team nothing about licenses changes. Logged `team invitation accepted`, or
+`team joined from a link` with its `kind` (`link` or `invitation`), each with whether they were on the team already and
+what became of the team they left (`left`: `none`, `left` or `deleted`), and for a link whether a team was made for it.
+A refusal names neither team: an error's message is its log line's, and the app has both names.
+
+**The team's link** (`invite-links.ts`, [Privacy › Invite links](privacy-keys-and-sessions.md#invite-links)). A team has
+one invite link, `<web app>/invite#<secret>`, its admin's, the same until it's made again. Everyone on it copies that one
+(`POST /v1/team/link` → `InviteLink { link }`), and only the admin makes a new one (`POST /v1/team/link/new`; a member is
+`forbidden`, "Only the team’s admin can make a new link: it’s everyone’s on the team."), which stops the old one for
+everybody. Whoever opens it, new to Alcove or not, can join the team. Someone at a company and on no team has a link of
+their own: someone joining from it makes their team then, named for their company page, with them as its admin, so their
+link becomes the team's (it's refused to them alone: `invalid`, "That’s your own invite link: whoever you send it to joins
+you."). A member's own link leads nowhere while they're on someone else's team (the same `not-found` as any dead link),
+and works again if they leave. Someone with neither a team nor a company page has none to copy (`forbidden`, "Only
+someone at a company, or on a team, has an invite link. Start a team to have one."), and a link they had leads nowhere.
+Nobody is told who joined from a link: they're on the team. The link is made again, in the same transaction, when its
+admin takes someone off the team, deletes it, or deletes it to join another: a link someone taken off copied leads nowhere,
+and so does a deleted team's, even to a team made anew for its admin (logged `invite link made again`, with `why`).
+`POST /v1/team/link/peek { secret }`, with a session or without, says what a secret after `/invite#` says, read as a link
+first and then as an invitation's (`InvitePeek`: its `kind`, who it's from, `yours` when it's your own link or your team's,
+or an invitation to the team you're on, the team at a glimpse, null for a link whose owner is on no team yet, and
+`invitationId`, an invitation's own ID when you're signed in with the address it's to, so Not now can put it aside, and
+null otherwise). Anything that leads nowhere (made up, used, cancelled, run out, made again since, or its sender
+gone) is one `not-found`, "This link doesn’t lead anywhere any more. Ask whoever sent it for a new one." Seeing what a
+secret says and joining by one share one limit, 60 a minute for each client address.
+
+**Asking the admin to upgrade.** A member of a free team asks its admin to upgrade it (`POST /v1/team/upgrade-ask`): the
+admin is told once for each member every `team.upgrade_ask_seconds` (7 days), and asking again sooner changes nothing.
+Its admin is refused (`conflict`, "You’re the team’s admin: upgrade it from its page."), and so is anyone on a team that's
+on Team (`conflict`, "Your team is on Team already."). The asks are kept in the team's `team-billing` record (`asks`: each
+member's latest, by member ID alone, when, and whether the admin dismissed it, for those still on the team). The admin is
+shown them as `upgrade-asked` plan notices, made from them as the plan is read (`teams.ts › upgradeAsksFor`): each not
+dismissed, from someone still on the team, while the team is free, newest first, with `memberId` for the app to name
+them from `MyTeam.members`. The notice keeps no name. Licenses bought, by any means, answer them: the asks go, and stay
+gone if the licenses are refunded before anyone took one; a member can ask again once the team is free. The usual route
+dismisses one (`POST /v1/plan/notices/:id/dismiss`,
+which looks in the team's record first, then the plan's). They aren't kept in the `plan-account` record with the plan's
+own notices: the previous release reads that record too while a deploy rolls, and parses its notices with its own list of
+kinds, which has no `upgrade-asked`, whereas it reads past the `team-billing` record's `asks`. Logged `team upgrade
+asked`, with whether the admin was told.
+
+**Upkeep** (every 5 minutes) deletes the invitations that ran out, the sends the limits on one mailbox no longer count
+(`mail_sends` older than `team.invitation_seconds`, or a day if that's longer), how many invitations accounts made on days
+before yesterday, and the one-time links to a team the previous release made (`team_invites`) once they've run out, as it
+can still make them while a deploy rolls. It never deletes an invitation that's still live, and it says counts only. It
+sends the email that's due too
+([Privacy › Email](privacy-keys-and-sessions.md#email)).
+
+**Leaving.** The admin takes people off (`DELETE /v1/team/members/:id`, which makes the team's link again); a member
+leaves (`POST /v1/team/leave`). A live license isn't refunded: they're on Free from then, a fresh period, with
+`plan.grace_seconds` held to `plan.team.storage_bytes`, and the team keeps it for them until it would have ended, so back
+on it before then they have it again (above) rather than another. Notes they made visible to the team stay so, and the
+invitations they made go, their links leading nowhere. The team's workspaces they pay for stop being the
 team's (below): they stay theirs, with the people in them, counted against them alone. The admin can't leave or take themselves off, and
 deletes the team (`DELETE /v1/team/mine`) once nobody else is on it: its unconsumed licenses go back to their balance, its
-workspaces stop being the team's. Deleting the admin's account is refused while anyone else is on the team; once nobody
-is, the team goes with it. A member's account going takes their place with it.
+workspaces stop being the team's, its invitations go with it, and its link is made again. Deleting the admin's account
+is refused while anyone
+else is on the team; once nobody is, the team goes with it. A member's account going takes their place with it.
 
-`GET /v1/team/mine` is the team as its caller sees it (`MyTeam`): its members with their licenses (`live`, `ended`,
-`none`, and when they last wanted one), the pool, and for the admin alone the unconsumed licenses, what refunding them
-adds, and auto-purchase. `Plan.team` says which team, the caller's role and whether they're licensed. `GET /v1/team`,
-`POST /v1/team/invites` and your own invite link's `POST /v1/team/link`, `…/peek` and `…/joined` ([Privacy › Invite
-links](privacy-keys-and-sessions.md#invite-links)) are the people directory's, not a team's.
+`GET /v1/team/mine` is the team as its caller sees it (`MyTeam`): its tier, its members with their licenses (`live`,
+`ended`, `none`, and when they last wanted one), in the order they joined (its admin first of those who joined as it was
+made, as joining from the link of someone on no team makes the team and its first member at once), its invitations (every
+member sees them), the pool, and for the admin
+alone the unconsumed licenses, what refunding them adds, and auto-purchase. `Plan.team` says which team, the caller's
+role, its tier and whether they're licensed. `GET /v1/team` (the company page, whose `members[].invited` says there's a
+live invitation for them to the team you're on) and the link's `POST /v1/team/link`, `…/new` and `…/peek` are the people
+directory's (`features/account/routes.ts`), not a team's. Stopping Alcove's emails, `POST /v1/mail/stop`, is the team's
+public route ([Privacy › Email](privacy-keys-and-sessions.md#email)).
 
 What a team shares opens only for someone **live-licensed** on it, checked at each request: `teams.licensedOn` (an
 account) and `teams.licensedBy` (the addresses workspace access knows people by) are the one place that's asked.
@@ -746,8 +936,10 @@ Choosing how many months of Pro (packs of more notes, a team's licenses) and sen
 closing the window: the top-up says what it's for, and the server buys it once the money is in, whoever is watching.
 
 1. **Opening.** `POST /v1/plan/top-ups { routeId, microUsd, buys }`, with `buys` `{ kind: 'pro', months, microUsdPerMonth }`,
-   `{ kind: 'hours', packs, microUsdPerPack, minutesPerPack }` or `{ kind: 'licenses', count, microUsdPerLicense, periods }`
-   (`periods` 1 by default, or a year's at the yearly price; `buys` `null`, the default, only adds money). Before anything
+   `{ kind: 'hours', packs, microUsdPerPack, minutesPerPack }` or `{ kind: 'licenses', count, microUsdPerLicense, periods,
+   autoPurchase }` (`periods` 1 by default, or a year's at the yearly price; `autoPurchase`, null by default, what checkout's
+   "Buy one for each person who joins later" said, set with the licenses once they're bought; `buys` `null`, the default,
+   only adds money). Before anything
    is quoted, `buys` is checked as buying it now would be, but for the balance, with the same refusals and words: past the
    most one purchase buys (`invalid`), a price other than the one in force for it (`conflict`, "The price of Pro has
    changed. Look at it again before buying."), a pack of other minutes (`conflict`), more notes or licenses for a year not
@@ -1008,3 +1200,47 @@ sealed records, the contract and the limits.
   words about the yearly price, and refunds licenses that were only given for nothing, with a $0 line, rather than
   refusing them.
 - A tab opened before the deploy shows a given line as "+$0.00" with a Receipt until it reloads.
+
+**Teams anyone can join** (after the invite links of `0037_invite_links.sql`, the previous release for them):
+
+- `0038_team_invitations.sql` adds six tables, `team_invitations`, `mail_sends`, `team_invitation_days`, `mail_outbox`,
+  `mail_days` and `mail_stops`, with their indexes, and changes nothing that's there. The previous release never reads or
+  writes them, so it keeps serving while the file runs. Every foreign key in them cascades (`team_invitations` to `teams` and
+  `team_members`, `team_invitation_days` to `owners`, and `mail_outbox.invitation_id` to `team_invitations`); `mail_sends`
+  has none, so no team's deletion takes an address's caps with it. Making those keys stops writes to the tables there
+  already that they point at until the file commits, which is quick: there's nothing to check in tables that are empty.
+- `team_invites` (the one-time links) and `invite_link_joins` (who joined from someone's invite link) are no longer read,
+  and a later release drops them. A one-time link the previous release made leads nowhere from the deploy, as any dead link
+  does, and the rows left in `team_invites` mean nothing to this release: upkeep deletes each once it's run out, as the
+  previous release can still make them while the deploy rolls. Every upkeep pass deletes all of
+  `invite_link_joins`, which the previous release can still write while the deploy rolls, so a joiner's name and address
+  don't outlast it ([Privacy › Deletion](privacy-keys-and-sessions.md#deletion)).
+- `team.invite_seconds` is gone: a `service_limits` row for it is ignored with `service limit ignored` at warn. Delete
+  the row. The new limits have defaults and need no row ([Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)).
+- The profile's `invited` list (colleagues marked invited before invitations were a team's) is kept as it is, and read by
+  nothing, for one release: the previous release requires it, and runs beside this one while the deploy rolls. It reads as
+  `[]` where it's missing (`.default`), and a later release takes it out. The company page's `members[].invited` now
+  means a live invitation to the team you're on.
+- A `plan-account` record's notices gain `microUsd` (`.nullable().default(null)`), so a notice from before reads as it
+  was: a `license-replaced-pro` from before has `count` and no `microUsd`. `upgrade-asked` is never kept there (the record's
+  own list of kinds leaves it out), so every record this release writes still parses in the previous one. While both serve,
+  a plan the previous release saves loses its notices' `microUsd`.
+- A `team-billing` record gains `asks` (`.default([])`), `kept` (`.default([])`) and `autoBought`
+  (`.nullable().default(null)`):
+  one from before reads with none of them. While both serve, one the previous release saves drops them all: a member whose
+  ask went that way can ask again, someone back on the team after leaving with a live license takes or is bought one as
+  anyone joining does, and the day's count of licenses auto-purchase bought starts again.
+- A `deposit` record's licenses (`purchase.buys`) gain `autoPurchase` (`.nullable().default(null)`): a payment opened before
+  reads as null, and leaves auto-purchase as it is when it buys. The previous release reads past it, and a record it saves
+  drops it, which leaves auto-purchase as it is too.
+- The profile gains `putAside` (`.default([])`), the invitations its owner put aside: one from before reads with none. The
+  previous release reads past it, and a profile it saves (a setting changed, or a sign-in that brings a new name, address or
+  photo, which writes the profile whole) drops it, so what was put aside comes back into the count.
+- Teams from before read as tier `team` while anyone on one holds a live license or licenses wait for it, and `free`
+  otherwise.
+- A tab opened before the deploy calls `POST /v1/team/invite`, `POST /v1/team/peek`, `POST /v1/team/link/joined` and
+  `POST /v1/team/invites`, which are gone (`404`); its `InviteLink` requires the `joined` the link no longer has; and a
+  free team's admin's can't read a plan holding an `upgrade-asked` notice, a kind it doesn't know. A reload fixes all of
+  them, and nothing stored is harmed.
+- Before deploying, the one-time links still open, which lead nowhere from then:
+  `SELECT count(*) FROM team_invites WHERE expires_at > now();`

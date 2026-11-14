@@ -13,7 +13,7 @@ import { current } from '../../../src/api/state';
 import { setOnline } from '../../../src/browser';
 import { checkout, checkouts, type CheckoutArgs, type CheckoutStory } from '../../../src/checkout';
 import { changing } from '../../../src/page';
-import { addToBalance, noTeamYear, PREVIEW_TOP_UP, PRO_YEAR, purchaseAt, raisePrices, TEAM_SIX, TEAM_SIX_YEAR, withPayments, type PaymentPlay, type PurchaseAt } from '../../../src/world/plans/payments';
+import { addToBalance, noTeamYear, PREVIEW_TOP_UP, PRO_YEAR, purchaseAt, raisePrices, TEAM_SIX, TEAM_THREE, TEAM_THREE_YEAR, withPayments, type PaymentPlay, type PurchaseAt } from '../../../src/world/plans/payments';
 import { ART } from '../../../src/world/people';
 import { planWithTeam, priyasTeam } from '../../../src/world/plans/teams';
 import { LATER, pressable, SOON } from '../../journeys/play';
@@ -163,7 +163,7 @@ export const BoughtWithTheBalance = checkout('/home', 'plan-balance', { plan: 'p
   play: async ({ userEvent }) => { await userEvent.click(await pressable('button', 'Buy with your balance', LATER, within(await win()))); }
 });
 
-/* ---------- Team: starting one ---------- */
+/* ---------- Team ---------- */
 
 /** Presses the window's one filled button, once it can be pressed. */
 const press = (name: string): NonNullable<CheckoutStory['play']> => async ({ userEvent }) => {
@@ -180,148 +180,148 @@ export const BoughtAndClosed: CheckoutStory = {
 };
 export const BoughtAndClosedNight: CheckoutStory = { ...BoughtAndClosed, globals: DARK };
 
+/* ---------- Team: upgrading a free team ---------- */
+
+/** Nothing in the balance, so the licenses are paid for with USDC. */
+const emptied = changing((w) => { w.plan = { ...w.plan, balance: { microUsd: 0, history: [] } }; });
+
 /**
- * Start a team, from Team's card on Plans, on nothing in the balance: its name is the company's, six licenses for the six
- * people at Vandelay on Alcove, the networks, none chosen. The team is made only as Art pays, with Art its admin.
+ * Upgrade, from the free team's page, as its admin: no naming (it's Vandelay Industries), a license for each of the three on
+ * it without one, and Buy a license for each person who joins, as the team has it: off. $180 in the balance covers three
+ * at $40, so Buy with your balance.
  */
-export const StartATeam = checkout('/plans', 'payments', { plan: 'team', from: 'plans' });
-export const StartATeamNight: CheckoutStory = { ...StartATeam, globals: DARK };
-export const StartATeamPhone: CheckoutStory = { ...StartATeam, globals: PHONE };
-export const StartATeamPhoneNight: CheckoutStory = { ...StartATeam, globals: { ...PHONE, ...DARK } };
-/** Base chosen: Get the address makes the team and opens the payment for its licenses. */
-export const StartATeamNetworkChosen = checkout('/plans', 'payments', { plan: 'team', from: 'plans' }, {
-  play: async ({ userEvent }) => { await userEvent.click(await network('Base')); }
-});
-export const StartATeamNetworkChosenNight: CheckoutStory = { ...StartATeamNetworkChosen, globals: DARK };
-/** Another number: a stepper from 1 to 500 licenses, at 7. */
-export const StartATeamAnotherNumber = checkout('/plans', 'payments', { plan: 'team', from: 'plans', licenses: 7 });
-/** Opened from the Team page, away from Plans: Compare plans in the foot. */
-export const StartATeamFromTheTeamPage = checkout('/team', 'payments', { plan: 'team', from: 'team' });
-/** With $300 in the balance: six licenses come from it, with no network to choose, and Buy with your balance. */
-export const StartATeamWithYourBalance = checkout('/plans', 'payments', { plan: 'team', from: 'plans' }, {
-  beforeEach: changing((w) => addToBalance(w, 300_000_000, '300'))
-});
-export const StartATeamWithYourBalanceNight: CheckoutStory = { ...StartATeamWithYourBalance, globals: DARK };
-/**
- * Bought from the balance: Vandelay Industries is on Team. Buying them is a visit, so Art's own license is taken now, and each
- * of the others when the person it's for next opens Alcove.
- */
-export const StartedWithYourBalance: CheckoutStory = { ...StartATeamWithYourBalance, play: press('Buy with your balance') };
-export const StartedWithYourBalanceNight: CheckoutStory = { ...StartedWithYourBalance, globals: DARK };
-/** The name is gone: nothing can be paid until the team has one. */
-export const StartATeamUnnamed = checkout('/plans', 'payments', { plan: 'team', from: 'plans' }, {
+export const Upgrade = checkout('/team', 'team-free-admin', { plan: 'team', from: 'team' });
+export const UpgradeNight: CheckoutStory = { ...Upgrade, globals: DARK };
+export const UpgradePhone: CheckoutStory = { ...Upgrade, globals: PHONE };
+export const UpgradePhoneNight: CheckoutStory = { ...Upgrade, globals: { ...PHONE, ...DARK } };
+/** From Team's card on Plans: the same, with no Compare plans. */
+export const UpgradeFromPlans = checkout('/plans', 'team-free-admin', { plan: 'team', from: 'plans' });
+/** Buy a license for each person who joins, ticked: it's turned on with the licenses, as they're bought. */
+export const UpgradeTicked = checkout('/team', 'team-free-admin', { plan: 'team', from: 'team' }, {
   play: async ({ userEvent }) => {
-    await userEvent.clear(await within(await win()).findByRole('textbox', { name: 'Its name' }, LATER));
-    await userEvent.click(await network('Base'));
+    await userEvent.click(await within(await win()).findByRole('checkbox', { name: 'Buy a license for each person who joins' }, LATER));
   }
 });
-/** A server that takes no payments: six licenses aren't covered by the balance, so nothing can be bought, and it says so. */
-export const StartATeamPaymentsOff = checkout('/plans', 'busy', { plan: 'team', from: 'plans' });
+/** A team that buys a license for each person who joins already: the tick starts ticked, as the team has it. */
+export const UpgradeBuyingAlready = checkout('/team', 'team-free-admin', { plan: 'team', from: 'team' }, {
+  beforeEach: changing((w) => { if (w.myTeam) w.myTeam.autoPurchase = true; })
+});
 /**
- * The price of a license went up after checkout read it: the team is made, the payment is refused, the offers are read again
- * and it says so. Pressing again pays for the team that's made.
+ * Bought from the balance: Vandelay Industries is on Team, and everyone has a license. Buying them is a visit, so Art's own
+ * is taken now, and everyone else's the next time they open Alcove.
  */
-export const StartATeamPriceChanged = checkout('/plans', 'payments', { plan: 'team', from: 'plans' }, {
+export const Upgraded: CheckoutStory = { ...Upgrade, play: press('Buy with your balance') };
+export const UpgradedNight: CheckoutStory = { ...Upgraded, globals: DARK };
+export const UpgradedPhone: CheckoutStory = { ...Upgraded, globals: PHONE };
+/** Then Done: the page under it says once that Vandelay Industries is on Team. */
+export const UpgradedAndClosed: CheckoutStory = { ...Upgrade, play: async (c) => { await press('Buy with your balance')(c); await press('Done')(c); } };
+/**
+ * Two licenses for the three on it, with nothing bought as people join: Done says how many of everyone have one (Art's
+ * taken, one waiting), and where to buy more.
+ */
+export const UpgradedShort = checkout('/team', 'team-free-admin', { plan: 'team', from: 'team', licenses: 2 }, { play: press('Buy with your balance') });
+/** Nothing in the balance: the networks, none chosen. */
+export const UpgradeWithAPayment = checkout('/team', 'team-free-admin', { plan: 'team', from: 'team' }, { beforeEach: emptied });
+export const UpgradeWithAPaymentNight: CheckoutStory = { ...UpgradeWithAPayment, globals: DARK };
+/** Base chosen: the summary says exactly what to send for the three. */
+export const UpgradeNetworkChosen = checkout('/team', 'team-free-admin', { plan: 'team', from: 'team' }, {
+  beforeEach: emptied,
+  play: async ({ userEvent }) => { await userEvent.click(await network('Base')); }
+});
+/** Another number: a stepper, at 5. */
+export const UpgradeAnotherNumber = checkout('/team', 'team-free-admin', { plan: 'team', from: 'team', licenses: 5 });
+/** The price of a license went up after checkout read it: refused, read again, and said; pressing again buys at today's. */
+export const UpgradePriceChanged = checkout('/team', 'team-free-admin', { plan: 'team', from: 'team' }, {
   play: async ({ userEvent }) => {
-    await userEvent.click(await network('Base'));
+    await within(await win()).findByRole('radiogroup', { name: 'How many licenses' }, LATER);
     raisePrices(current());
-    await userEvent.click(await pressable('button', 'Get the address', SOON, within(await win())));
+    await userEvent.click(await pressable('button', 'Buy with your balance', SOON, within(await win())));
   }
 });
 /** Offline, over Record: the button waits, and the foot says why. */
-export const StartATeamOffline = checkout('/record', 'payments', { plan: 'team', from: 'side' }, {
+export const UpgradeOffline = checkout('/record', 'team-free-admin', { plan: 'team', from: 'side' }, {
   parameters: { opening: { signedInHere: true } },
-  play: async ({ userEvent }) => {
-    await userEvent.click(await network('Base'));
-    await within(await win()).findByText('For Vandelay Industries, with you its admin', {}, LATER);
+  play: async () => {
+    await within(await win()).findByText('For Vandelay Industries, on Free now', {}, LATER);
     setOnline(false);
   }
 });
-
-export const StartATeamOfflinePhone: CheckoutStory = { ...StartATeamOffline, globals: PHONE };
+export const UpgradeOfflinePhone: CheckoutStory = { ...UpgradeOffline, globals: PHONE };
+/**
+ * On no team: licenses are for a team, so it's started here first, free, as on Plans: its name, the company's to start
+ * with, then Start the team. No steps, since nothing is bought.
+ */
+export const NoTeamYet = checkout('/plans', 'payments', { plan: 'team', from: 'plans' });
+export const NoTeamYetNight: CheckoutStory = { ...NoTeamYet, globals: DARK };
+export const NoTeamYetPhone: CheckoutStory = { ...NoTeamYet, globals: PHONE };
+/** Start the team: it's made, free, with Art its admin, the window closes, and its page opens, where it's upgraded. */
+export const StartedInCheckout: CheckoutStory = { ...NoTeamYet, play: press('Start the team') };
 
 /* ---------- Team: licenses for a year ---------- */
 
 /**
- * Start a team from Plans on Yearly: checkout opens on licenses for a year, Monthly / Yearly · 20% off over how many. Six for a
- * year are $384 each, $2,304 in all: "6 licenses for a year at $32 a month", each running a year from when it's taken.
+ * Upgrade from Plans on Yearly: licenses for a year, Monthly / Yearly · 20% off over how many. Three for a year are $384
+ * each, $1,152 in all, more than the $180 in the balance: the networks.
  */
-export const StartATeamForAYear = checkout('/plans', 'payments', { plan: 'team', from: 'plans', yearly: true });
-export const StartATeamForAYearNight: CheckoutStory = { ...StartATeamForAYear, globals: DARK };
-export const StartATeamForAYearPhone: CheckoutStory = { ...StartATeamForAYear, globals: PHONE };
-export const StartATeamForAYearPhoneNight: CheckoutStory = { ...StartATeamForAYear, globals: { ...PHONE, ...DARK } };
-/** Monthly, pressed: back to $40 each, one person for 30 days. */
-export const StartATeamForAMonth = checkout('/plans', 'payments', { plan: 'team', from: 'plans', yearly: true }, {
+export const UpgradeForAYear = checkout('/plans', 'team-free-admin', { plan: 'team', from: 'plans', yearly: true });
+export const UpgradeForAYearNight: CheckoutStory = { ...UpgradeForAYear, globals: DARK };
+export const UpgradeForAYearPhone: CheckoutStory = { ...UpgradeForAYear, globals: PHONE };
+/** Monthly, pressed: back to $40 each, one person for 30 days, which the balance covers. */
+export const UpgradeForAMonth = checkout('/plans', 'team-free-admin', { plan: 'team', from: 'plans', yearly: true }, {
   play: async ({ userEvent }) => {
     await userEvent.click(await within(await screen.findByRole('group', { name: 'How long' }, LATER)).findByRole('button', { name: 'Monthly' }, LATER));
   }
 });
-/** Base chosen: the summary says exactly what to send for six licenses for a year. */
-export const StartATeamForAYearNetworkChosen = checkout('/plans', 'payments', { plan: 'team', from: 'plans', yearly: true }, {
+/** Base chosen: the summary says exactly what to send for three licenses for a year. */
+export const UpgradeForAYearNetworkChosen = checkout('/plans', 'team-free-admin', { plan: 'team', from: 'plans', yearly: true }, {
   play: async ({ userEvent }) => { await userEvent.click(await network('Base')); }
 });
-export const StartATeamForAYearNetworkChosenNight: CheckoutStory = { ...StartATeamForAYearNetworkChosen, globals: DARK };
-
-/** Checkout reopened on the payment for a new team's six licenses for a year (2,304 USDC on Base) where it is now: `where`. */
+/** With $1,180 in the balance: the year comes from it, with no network to choose. */
+export const UpgradeForAYearWithYourBalance = checkout('/plans', 'team-free-admin', { plan: 'team', from: 'plans', yearly: true }, {
+  beforeEach: changing((w) => addToBalance(w, 1_000_000_000, '1000'))
+});
+/** Bought from the balance: Vandelay Industries is on Team, three licenses for a year. */
+export const UpgradedForAYear: CheckoutStory = { ...UpgradeForAYearWithYourBalance, play: press('Buy with your balance') };
+export const UpgradedForAYearNight: CheckoutStory = { ...UpgradedForAYear, globals: DARK };
+/** Checkout reopened on the payment for three licenses for a year (1,152 USDC on Base) where it is now: `where`. */
 const teamYear = (where: PurchaseAt, more: Partial<CheckoutStory> = {}): CheckoutStory =>
-  checkout('/plans', 'team-buying', { plan: 'team', licenses: 6, yearly: true, topUpId: PREVIEW_TOP_UP }, { beforeEach: changing(purchaseAt(where, TEAM_SIX_YEAR, 2304)), ...more });
-/** The payment for six licenses for a year, waiting: the amount, the QR code and the address. */
+  checkout('/plans', 'team-buying', { plan: 'team', licenses: 3, yearly: true, topUpId: PREVIEW_TOP_UP }, { beforeEach: changing(purchaseAt(where, TEAM_THREE_YEAR, 1152)), ...more });
+/** The payment for three licenses for a year, waiting: the amount, the QR code and the address. */
 export const TeamForAYearWaiting = teamYear('waiting');
 export const TeamForAYearWaitingNight: CheckoutStory = { ...TeamForAYearWaiting, globals: DARK };
-export const TeamForAYearWaitingPhone: CheckoutStory = { ...TeamForAYearWaiting, globals: PHONE };
-/**
- * Seen, then bought a few seconds later: Vandelay Industries is on Team with six licenses for a year, Art's taken now and each
- * running a year from when it's taken.
- */
-export const TeamForAYearDone = lands('team-buying', { path: '/plans', from: 'plans', licenses: 6, yearly: true }, 'pays', TEAM_SIX_YEAR, 2304);
+/** Seen, then bought a few seconds later: Vandelay Industries is on Team with three licenses for a year. */
+export const TeamForAYearDone = lands('team-buying', { path: '/plans', from: 'plans', licenses: 3, yearly: true }, 'pays', TEAM_THREE_YEAR, 1152);
 export const TeamForAYearDoneNight: CheckoutStory = { ...TeamForAYearDone, globals: DARK };
-export const TeamForAYearDonePhone: CheckoutStory = { ...TeamForAYearDone, globals: PHONE };
-/** Done's Receipt: Team, 6 licenses for a year, $2,304.00. */
-export const TeamForAYearReceipt = lands('team-buying', { path: '/plans', from: 'plans', licenses: 6, yearly: true }, 'pays', TEAM_SIX_YEAR, 2304, {
+/** Done's Receipt: Team, 3 licenses for a year, $1,152.00. */
+export const TeamForAYearReceipt = lands('team-buying', { path: '/plans', from: 'plans', licenses: 3, yearly: true }, 'pays', TEAM_THREE_YEAR, 1152, {
   play: async ({ userEvent }) => { await userEvent.click(await pressable('button', 'Receipt', LATER, within(await win()))); }
 });
-/** With $2,500 in the balance: six for a year come from it, with no network to choose, and Buy with your balance. */
-export const StartATeamForAYearWithYourBalance = checkout('/plans', 'payments', { plan: 'team', from: 'plans', yearly: true }, {
-  beforeEach: changing((w) => addToBalance(w, 2_500_000_000, '2500'))
-});
-export const StartATeamForAYearWithYourBalanceNight: CheckoutStory = { ...StartATeamForAYearWithYourBalance, globals: DARK };
-/** Bought from the balance: Vandelay Industries is on Team, six licenses for a year, Art's taken now. */
-export const StartedForAYearWithYourBalance: CheckoutStory = { ...StartATeamForAYearWithYourBalance, play: press('Buy with your balance') };
-export const StartedForAYearWithYourBalanceNight: CheckoutStory = { ...StartedForAYearWithYourBalance, globals: DARK };
-export const StartedForAYearWithYourBalancePhone: CheckoutStory = { ...StartedForAYearWithYourBalance, globals: PHONE };
 /** Its admin buying three more for a year from a balance of $1,180: 3 more licenses for a year, and Maya gets one. */
 export const BoughtLicensesForAYear = checkout('/plans', 'team-admin-none', { plan: 'team', from: 'plans', licenses: 3, yearly: true }, {
   beforeEach: changing((w) => addToBalance(w, 1_000_000_000, '1000')),
   play: press('Buy with your balance')
 });
 export const BoughtLicensesForAYearNight: CheckoutStory = { ...BoughtLicensesForAYear, globals: DARK };
-/**
- * No license for a year on offer (as it ships at first), though Plans was on Yearly: no How long, and six licenses a period at a
- * time, $40 each.
- */
-export const StartATeamYearOff = checkout('/plans', 'payments', { plan: 'team', from: 'plans', yearly: true }, { beforeEach: changing(noTeamYear) });
+/** No license for a year on offer, though Plans was on Yearly: no How long, and licenses a period at a time, $40 each. */
+export const UpgradeYearOff = checkout('/plans', 'team-free-admin', { plan: 'team', from: 'plans', yearly: true }, { beforeEach: changing(noTeamYear) });
 
-/* ---------- Team: paying for its licenses ---------- */
+/* ---------- Team: paying for an upgrade ---------- */
 
-/** Checkout reopened on the payment for a new team's six licenses (240 USDC on Base) where it is now: `where`. */
+/** Checkout reopened on the payment for the upgrade's three licenses (120 USDC on Base) where it is now: `where`. */
 const team = (where: PurchaseAt, more: Partial<CheckoutStory> = {}): CheckoutStory =>
-  checkout('/plans', 'team-buying', { plan: 'team', licenses: 6, topUpId: PREVIEW_TOP_UP }, { beforeEach: changing(purchaseAt(where, TEAM_SIX, 240)), ...more });
+  checkout('/plans', 'team-buying', { plan: 'team', licenses: 3, topUpId: PREVIEW_TOP_UP }, { beforeEach: changing(purchaseAt(where, TEAM_THREE, 120)), ...more });
 
-/** The payment for the team's first licenses, reopened from the side panel: the amount, the QR code and the address. */
-export const TeamWaiting = checkout('/plans', 'team-buying', { plan: 'team', licenses: 6, topUpId: PREVIEW_TOP_UP });
+/** The payment for the upgrade, reopened from the side panel: the amount, the QR code and the address. */
+export const TeamWaiting = checkout('/plans', 'team-buying', { plan: 'team', licenses: 3, topUpId: PREVIEW_TOP_UP });
 export const TeamWaitingNight: CheckoutStory = { ...TeamWaiting, globals: DARK };
 export const TeamWaitingPhone: CheckoutStory = { ...TeamWaiting, globals: PHONE };
 /** Seen: the licenses are being added. */
 export const TeamSeen = team('seen');
 export const TeamSeenNight: CheckoutStory = { ...TeamSeen, globals: DARK };
-/**
- * Seen, then bought a few seconds later: Vandelay Industries is on Team, with the receipt's row. Art's license is taken as
- * the window says so (the visit after a purchase of licenses).
- */
-export const TeamDone = lands('team-buying', { path: '/plans', from: 'plans', licenses: 6 }, 'pays', TEAM_SIX, 240);
+/** Seen, then bought a few seconds later: Vandelay Industries is on Team, with the receipt's row. */
+export const TeamDone = lands('team-buying', { path: '/plans', from: 'plans', licenses: 3 }, 'pays', TEAM_THREE, 120);
 export const TeamDoneNight: CheckoutStory = { ...TeamDone, globals: DARK };
 export const TeamDonePhone: CheckoutStory = { ...TeamDone, globals: PHONE };
-export const TeamDonePhoneNight: CheckoutStory = { ...TeamDone, globals: { ...PHONE, ...DARK } };
 /** The price of a license went up before the payment arrived: it's in the balance, and checkout chooses again at today's. */
 export const TeamRefused = team('refused');
 /** Nothing arrived in 24 hours: nothing was charged, and a new address is a press away. */
