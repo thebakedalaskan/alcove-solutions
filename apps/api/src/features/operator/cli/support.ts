@@ -1,11 +1,12 @@
 /*
  * The operator CLI's support commands, each one operator route (operator-cli.ts lists them): an account's plan and money added
- * to it, what happened to a top-up and its provider asked again, why an account can't sign in, finding one by its address,
- * signing it out everywhere, and limits. Billing and limits print the lines their own command lines print; a top-up and an
- * account come back as JSON, printed as aligned text, or as the server sent it with --json. An ID is checked here before
- * anything is sent, so an address typed in its place never leaves this machine, nor lands in a URL, which proxies log. An
- * address is sent only by `account find`, in the body, read from a hidden prompt when it isn't given so it needn't land in
- * shell history. An action needs --reason, checked here too, so nothing is sent without one.
+ * to it, a plan given to it for a while, what happened to a top-up and its provider asked again, why an account can't sign in,
+ * finding one by its address, signing it out everywhere, and limits. Billing and limits print the lines their own command
+ * lines print, and a plan given the lines the server says; a top-up and an account come back as JSON, printed as aligned
+ * text, or as the server sent it with --json. An ID is checked here before anything is sent, so an address typed in its
+ * place never leaves this machine, nor lands in a URL, which proxies log. An address is sent only by `account find`, in the
+ * body, read from a hidden prompt when it isn't given so it needn't land in shell history. An action needs --reason, checked
+ * here too, so nothing is sent without one.
  */
 import { AccountAnswer, AccountFound, SignedOut } from '../../account/operator/operator';
 import { TopUpAnswer, TopUpCheckAnswer } from '../../billing/operator/operator';
@@ -100,6 +101,20 @@ const billingCredit: CliCommand = {
   }
 };
 
+/** A plan given for a while, as Alcove: the account by its ID, then `pro <months>` or `team <licenses> <months>`. */
+const planGrant: CliCommand = {
+  words: ['plan', 'grant'],
+  usage: 'plan grant <account id> pro <months> | team <licenses> <months> --reason <ref>   gives months of Pro, or licenses for the team it runs, as Alcove',
+  async run(ctx, args) {
+    const [id, kind, ...counts] = args;
+    if (id === undefined || !((kind === 'pro' && counts.length === 1) || (kind === 'team' && counts.length === 2))) return usage(planGrant);
+    if (!ACCOUNT.test(id)) { warn(NOT_AN_ACCOUNT); return 2; }
+    const reason = reasonOf(ctx);
+    if (!reason) return 2;
+    return answered(ctx, await ctx.call('POST', '/v1/operator/plans/grant', { words: [id, kind, ...counts], ...reason }), lines);
+  }
+};
+
 const topUp: CliCommand = {
   words: ['topup'],
   usage: 'topup <reference>                        what happened to a payment, with no amount or address',
@@ -184,5 +199,5 @@ const limitsSet: CliCommand = {
   }
 };
 
-/** Support's commands: billing, top-ups, accounts and limits. */
-export const support: CliCommand[] = [billingShow, billingCredit, topUp, topUpCheck, account, accountFind, accountSignOut, limitsList, limitsSet];
+/** Support's commands: billing, plans given, top-ups, accounts and limits. */
+export const support: CliCommand[] = [billingShow, billingCredit, planGrant, topUp, topUpCheck, account, accountFind, accountSignOut, limitsList, limitsSet];

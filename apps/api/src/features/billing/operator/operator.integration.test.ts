@@ -4,10 +4,12 @@
  * ID alone and none made for one with no plan yet; credits held to $1,000 each and two a key a day (UTC), counted in the
  * database whichever instance answers; a ticket adding money once, even sent twice at once; a read key refused a credit;
  * what happened to a top-up, with nothing of its payment; and its provider asked again now, saying whether it was, and a 503
- * when it didn't answer. Then the operator CLI's billing and top-up commands end to end. People sign in through the real
- * API, and pay through the 1Click stand-in.
+ * when it didn't answer. A plan given for a while, as Alcove: Pro back to back after the months bought, licenses for the team
+ * an account is the admin of by the license purchase's own rules, nothing of either ever money (a refund gives nothing back
+ * for it), a ticket giving once, each grant held to its most and a key to five a day. Then the operator CLI's billing, grant
+ * and top-up commands end to end. People sign in through the real API, and pay through the 1Click stand-in.
  */
-import type { TopUp } from '@alcove/api';
+import { AlcoveApiError, type TopUp } from '@alcove/api';
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -102,6 +104,16 @@ const stateOf = async (id: string) => (await h.pool.query<{ state: string }>('SE
 const HOUR = /T\d\d:00:00\.000Z$/;
 const TICKET_USED = 'That ticket already added money to this account. Nothing was added.';
 const A_DAYS_MOST = 'A key adds money at most twice a day (UTC), and this one has already today. Nothing was added.';
+/** A refusal from the API as a person's browser gets it: its code and its words. */
+const refusedFor = (p: Promise<unknown>) => p.then(() => 'succeeded', (e: unknown) => (e instanceof AlcoveApiError ? `${e.code}: ${e.message}` : String(e)));
+const LogLine = z.looseObject({ msg: z.string() });
+/** Each line the API logged as `msg` since `from`, with its fields. */
+const loggedAs = (from: number, msg: string) => h.logs.slice(from).flatMap((l) => {
+  const line = LogLine.safeParse(JSON.parse(l));
+  return line.success && line.data.msg === msg ? [line.data] : [];
+});
+/** A period, and a month of Pro: 30 days, as the limits have it. */
+const PERIOD = 30 * 86_400_000;
 /**
  * A read key and a write key of their own, on an instance of their own sharing the database, as a second VM does: a key
  * changes at most 20 things a minute, and makes two credits a day, so each test starts afresh.
@@ -438,6 +450,286 @@ describe('through the operator route', () => {
   });
 });
 
+describe('a plan given through the operator route', () => {
+  // Each test signs as operators of its own (ownOperators): a key gives five plans a day, and makes two credits.
+  let op: Awaited<ReturnType<typeof ownOperators>>;
+  beforeEach(async () => { op = await ownOperators(); });
+  afterEach(async () => { await op.close(); });
+  /** A grant through the route, as `operator plan grant …` sends its words, with a reason when it's given. */
+  const grant = (client: SignedClient, words: string[], reason?: string) => signed(client, 'POST', '/v1/operator/plans/grant', { words, ...(reason === undefined ? {} : { reason }) });
+  /** Dollars support adds to an account, for it to buy with. */
+  const funded = async (who: Account, usd: string, reason: string) => {
+    expect(linesOf(await route(op.write, ['credit', who.session.ownerId, usd], reason))).toEqual([ADDED(who.session.ownerId)]);
+  };
+  const GAVE_PRO = (ownerId: string, months: string, until: string | null) =>
+    `Gave account ${ownerId} ${months} of Pro, after any it had, as “given by Alcove”: Pro runs to ${until?.slice(0, 10) ?? ''} now.`;
+  const ON_TEAM = 'That account is on its team’s plan while its license lasts, so Pro can’t be given now. Nothing was given.';
+  const NO_TEAM = 'That account isn’t a team’s admin, so there’s no team to give licenses to. They start a team first, then licenses can be given to it. Nothing was given.';
+  const TICKET_GAVE = 'That ticket already gave this account a plan. Nothing was given.';
+  const A_DAYS_GRANTS = 'A key gives plans at most 5 times a day (UTC), and this one has already today. Nothing was given.';
+  const joinTeam = async (who: Account, admin: Account) => { await who.api.teams.join((await admin.api.teams.invite()).link.split('#')[1] ?? ''); };
+
+  it('gives Pro after the months bought, back to back as a purchase’s go, for nothing: given by Alcove in the history, nothing added, and renewing still buying after it', async () => {
+    const ann = await account();
+    // Two months bought with $40 support added: the month running and one after it.
+    await funded(ann, '40', 'SUP-1001');
+    const bought = (await ann.api.plans.buyPro(2, PRICE)).pro.months;
+    expect(bought).toHaveLength(2);
+    const logsFrom = h.logs.length;
+    const given = await grant(op.write, [ann.session.ownerId, 'pro', '3'], 'SUP-1002');
+    expect(given.status).toBe(200);
+    const plan = await ann.api.plans.plan();
+    // Three more after the last one bought, each a period long and back to back with it, each paid nothing.
+    const after = Date.parse(bought[1]?.to ?? '');
+    expect(plan.pro.months).toEqual([...bought, ...[0, 1, 2].map((i) => ({ from: new Date(after + i * PERIOD).toISOString(), to: new Date(after + (i + 1) * PERIOD).toISOString(), microUsd: 0 }))]);
+    expect(linesOf(given)).toEqual([GAVE_PRO(ann.session.ownerId, '3 months', plan.pro.until)]);
+    // Nothing was paid, nothing added: its line says Alcove gave it, and a refund would give back the month bought alone.
+    expect(plan).toMatchObject({
+      kind: 'pro',
+      balance: { microUsd: 0, history: [{ label: 'Pro, 3 months, given by Alcove', microUsd: 0 }, { label: 'Pro, 2 months', microUsd: -2 * PRICE }, { label: 'Added by support', microUsd: 2 * PRICE }] },
+      pro: { refundableMicroUsd: PRICE }
+    });
+    // Renewing goes by a month's price as it was when the last month came, not by the nothing it was given for: on, with a
+    // month's money in the balance, it buys the next.
+    await funded(ann, '20', 'SUP-1003');
+    expect((await ann.api.plans.setRenew(true)).pro.renewal).toBe('buys');
+    // Logged with the account, the kind and how much it gave, never an amount.
+    const lines = loggedAs(logsFrom, 'plan given by support');
+    expect(lines).toEqual([expect.objectContaining({ component: 'billing-support', ownerId: ann.session.ownerId, kind: 'pro', months: 3, licenses: null, teamId: null })]);
+    expect(Object.keys(lines[0] ?? {})).not.toContain('microUsd');
+
+    // Bob, on Free, has his from now: on Pro at once, with all of Pro's notes for the period.
+    const bob = await account();
+    const asked = Date.now();
+    expect(linesOf(await grant(op.write, [bob.session.ownerId, 'pro', '1'], 'SUP-1004'))).toHaveLength(1);
+    const his = await bob.api.plans.plan();
+    expect(his).toMatchObject({ kind: 'pro', notes: { minutesPerPeriod: 3000 }, balance: { microUsd: 0, history: [{ label: 'Pro, 1 month, given by Alcove', microUsd: 0 }] } });
+    expect(his.pro.months).toHaveLength(1);
+    expect(Date.parse(his.pro.months[0]?.from ?? '')).toBeGreaterThanOrEqual(asked - 1000);
+    expect(Date.parse(his.pro.months[0]?.from ?? '')).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('gives back nothing for what it gave when it’s refunded: a refund returns what was paid, and is refused when that’s nothing', async () => {
+    // Bob paid nothing for his three months: there's nothing to refund, and asking changes nothing.
+    const bob = await account();
+    expect((await grant(op.write, [bob.session.ownerId, 'pro', '3'], 'SUP-1101')).status).toBe(200);
+    const given = await bob.api.plans.plan();
+    expect(given.pro.refundableMicroUsd).toBe(0);
+    expect(await refusedFor(bob.api.plans.refundPro())).toBe('conflict: Refunding now would give nothing back: nothing was paid for the months that haven’t started.');
+    expect(await bob.api.plans.plan()).toMatchObject({ balance: { microUsd: 0, history: [{ label: 'Pro, 3 months, given by Alcove', microUsd: 0 }] }, pro: { months: given.pro.months } });
+
+    // Ann bought two months and was given three after them: the refund gives back the month bought that hasn't started, and
+    // nothing for the three given, which go with it.
+    const ann = await account();
+    await funded(ann, '40', 'SUP-1102');
+    await ann.api.plans.buyPro(2, PRICE);
+    expect((await grant(op.write, [ann.session.ownerId, 'pro', '3'], 'SUP-1103')).status).toBe(200);
+    expect((await ann.api.plans.plan()).pro.refundableMicroUsd).toBe(PRICE);
+    const refunded = await ann.api.plans.refundPro();
+    expect(refunded).toMatchObject({ kind: 'pro', balance: { microUsd: PRICE, history: [{ label: 'Pro refunded, 4 months', microUsd: PRICE }, {}, {}, {}] }, pro: { refundableMicroUsd: 0 } });
+    expect(refunded.pro.months).toHaveLength(1);
+
+    // A team's licenses given go back for nothing too. With only those to refund, nothing would come back, so nothing is done;
+    // with one bought beside them, the refund gives back what that one cost, and they all go.
+    const carol = await account();
+    await carol.api.teams.create('Vandelay Industries');
+    expect((await grant(op.write, [carol.session.ownerId, 'team', '2', '3'], 'SUP-1104')).status).toBe(200);
+    expect((await carol.api.teams.mine())?.licenses).toEqual({ unconsumed: 2, refundableMicroUsd: 0, autoPurchase: false });
+    expect(await refusedFor(carol.api.teams.refundLicenses())).toBe('conflict: Refunding now would give nothing back: nothing was paid for the licenses nobody has taken.');
+    expect((await carol.api.teams.mine())?.licenses).toMatchObject({ unconsumed: 2 });
+    await funded(carol, '40', 'SUP-1105');
+    expect((await carol.api.teams.buyLicenses(1, LICENSE)).licenses).toEqual({ unconsumed: 3, refundableMicroUsd: LICENSE, autoPurchase: false });
+    expect((await carol.api.teams.refundLicenses()).licenses).toEqual({ unconsumed: 0, refundableMicroUsd: 0, autoPurchase: false });
+    expect((await carol.api.plans.plan()).balance).toMatchObject({
+      microUsd: LICENSE,
+      history: [{ label: 'Team licenses refunded, 3', microUsd: LICENSE }, { label: 'Team, 1 license', microUsd: -LICENSE }, { label: 'Added by support' }, { label: 'Team, 2 licenses for 3 months, given by Alcove', microUsd: 0 }]
+    });
+  });
+
+  it('gives licenses to the team the account is the admin of, by the license purchase’s own rules: each taken on a visit for its months, auto-purchase still buying at what a license last cost, and no Pro over a live license', async () => {
+    const ann = await account();
+    await ann.api.teams.create('Vandelay Industries');
+    // Buying one for a member when none is left, at a license's price now: what it goes by, since none has been bought yet.
+    await ann.api.teams.setAutoPurchase(true);
+    const logsFrom = h.logs.length;
+    const given = await grant(op.write, [ann.session.ownerId, 'team', '1', '2'], 'SUP-1201');
+    const team = await ann.api.teams.mine();
+    expect(linesOf(given)).toEqual([
+      `Gave team ${team?.id ?? ''}, whose admin is account ${ann.session.ownerId}, 1 license for 2 months, as “given by Alcove”: each is taken by someone on it without one as they next open Alcove.`
+    ]);
+    expect(team?.licenses).toEqual({ unconsumed: 1, refundableMicroUsd: 0, autoPurchase: true });
+    // And one for a single month: a license bought for one period is what auto-purchase goes by, but nothing, for one given, isn't.
+    expect((await grant(op.write, [ann.session.ownerId, 'team', '1', '1'], 'SUP-1202')).status).toBe(200);
+    expect((await ann.api.teams.mine())?.licenses).toEqual({ unconsumed: 2, refundableMicroUsd: 0, autoPurchase: true });
+    expect((await ann.api.plans.plan()).balance).toMatchObject({
+      microUsd: 0, history: [{ label: 'Team, 1 license, given by Alcove', microUsd: 0 }, { label: 'Team, 1 license for 2 months, given by Alcove', microUsd: 0 }]
+    });
+    expect(loggedAs(logsFrom, 'plan given by support')).toEqual([
+      expect.objectContaining({ ownerId: ann.session.ownerId, teamId: team?.id, kind: 'team', licenses: 1, months: 2 }),
+      expect.objectContaining({ ownerId: ann.session.ownerId, teamId: team?.id, kind: 'team', licenses: 1, months: 1 })
+    ]);
+    // Given for nothing, they weren't bought: nothing says they were.
+    expect(loggedAs(logsFrom, 'team licenses bought')).toEqual([]);
+
+    // Ann takes the oldest as she next opens Alcove: Team, live for its two months from then. Bob, joining, takes the other.
+    const visited = Date.now();
+    await ann.api.auth.visit();
+    expect((await ann.api.plans.plan()).kind).toBe('team');
+    const hers = (await ann.api.teams.mine())?.members.find((m) => m.you)?.license;
+    expect(hers?.state).toBe('live');
+    expect(Date.parse(hers?.until ?? '') - visited).toBeGreaterThanOrEqual(2 * PERIOD);
+    expect(Date.parse(hers?.until ?? '') - Date.now()).toBeLessThanOrEqual(2 * PERIOD);
+    const bob = await account();
+    await joinTeam(bob, ann);
+    expect((await bob.api.plans.plan()).kind).toBe('team');
+    expect((await ann.api.teams.mine())?.licenses).toMatchObject({ unconsumed: 0 });
+
+    // Carol joins with none left: auto-purchase buys her one from Ann's balance at a license's price, as it would have before
+    // the grants. What was given for nothing didn't become what a license last cost the team.
+    await funded(ann, '40', 'SUP-1203');
+    const carol = await account();
+    await joinTeam(carol, ann);
+    expect((await carol.api.plans.plan()).kind).toBe('team');
+    expect((await ann.api.plans.plan()).balance).toMatchObject({ microUsd: 0, history: [{ label: 'Team license, bought for a member', microUsd: -LICENSE }, {}, {}, {}] });
+
+    // On her team's plan, Ann isn't given Pro: its months would run unused. Nothing is given.
+    expect(refusalOf(await grant(op.write, [ann.session.ownerId, 'pro', '2'], 'SUP-1204'))).toEqual([409, ON_TEAM]);
+    expect((await ann.api.plans.plan()).pro.months).toEqual([]);
+  });
+
+  it('refuses licenses for an account that’s no team’s admin, giving nothing: they start a team first, and then the same ticket gives them', async () => {
+    const carol = await account();
+    expect(refusalOf(await grant(op.write, [carol.session.ownerId, 'team', '5', '3'], 'SUP-1301'))).toEqual([409, NO_TEAM]);
+    // Someone on another's team isn't its admin either.
+    const ann = await account();
+    await ann.api.teams.create('Vandelay Industries');
+    const dave = await account();
+    await joinTeam(dave, ann);
+    expect(refusalOf(await grant(op.write, [dave.session.ownerId, 'team', '1', '1'], 'SUP-1302'))).toEqual([409, NO_TEAM]);
+    expect((await ann.api.teams.mine())?.licenses).toMatchObject({ unconsumed: 0 });
+    expect((await carol.api.plans.plan()).balance.history).toEqual([]);
+    // Nothing was kept for the ticket: once Carol starts a team, it gives the team its licenses.
+    await carol.api.teams.create('Vandelay Industries');
+    expect((await grant(op.write, [carol.session.ownerId, 'team', '5', '3'], 'SUP-1301')).status).toBe(200);
+    expect((await carol.api.teams.mine())?.licenses).toEqual({ unconsumed: 5, refundableMicroUsd: 0, autoPurchase: false });
+  });
+
+  it('gives a ticket’s plan to an account once, whatever its case or what it gives, even sent twice at once; a read key, or none, gives nothing', async () => {
+    const ann = await account();
+    await ann.api.teams.create('Vandelay Industries');
+    const both = await Promise.all([0, 1].map(() => grant(op.write, [ann.session.ownerId, 'pro', '1'], 'SUP-1401')));
+    expect(both.map((r) => r.status).sort((x, y) => x - y)).toEqual([200, 409]);
+    for (const r of both) if (r.status === 409) expect(refusalOf(r)).toEqual([409, TICKET_GAVE]);
+    // However its reference is typed, and whatever it gives this time.
+    for (const words of [['pro', '1'], ['team', '1', '1']]) {
+      for (const reason of ['SUP-1401', 'sup-1401']) expect(refusalOf(await grant(op.write, [ann.session.ownerId, ...words], reason))).toEqual([409, TICKET_GAVE]);
+    }
+    // A ticket is the account's, whichever key sends it; the same ticket gives another account its own.
+    const other = await ownWriter();
+    try {
+      expect(refusalOf(await grant(other.client, [ann.session.ownerId, 'pro', '1'], 'SUP-1401'))).toEqual([409, TICKET_GAVE]);
+    } finally { await other.close(); }
+    const bob = await account();
+    expect((await grant(op.write, [bob.session.ownerId, 'pro', '1'], 'SUP-1401')).status).toBe(200);
+
+    // A read key is refused for its scope, and a request with no key isn't an operator's: neither gives anything.
+    const read = await grant(op.read, [ann.session.ownerId, 'pro', '1'], 'SUP-1402');
+    expect(read.status).toBe(403);
+    expect(Refusal.parse(read.body).code).toBe('forbidden');
+    const unsigned = await fetch(`${h.baseUrl}/v1/operator/plans/grant`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ words: [ann.session.ownerId, 'pro', '1'], reason: 'SUP-1403' })
+    });
+    expect(unsigned.status).toBe(401);
+    expect(Refusal.parse(await unsigned.json()).message).toBe('That isn’t a signed operator request.');
+
+    // Ann has the one month the one grant gave; and each grant is kept as a keyed hash with the key that gave it, nothing more.
+    expect((await ann.api.plans.plan()).pro.months).toHaveLength(1);
+    expect((await ann.api.teams.mine())?.licenses).toMatchObject({ unconsumed: 0 });
+    const kept = await h.pool.query<{ digest: Buffer }>('SELECT digest FROM operator_grants WHERE key_id = $1', [op.write.keyId]);
+    expect(kept.rows).toHaveLength(2);
+    for (const r of kept.rows) expect(r.digest).toHaveLength(32);
+  });
+
+  it('holds a grant to 12 months of Pro, or 25 licenses each for 12 months, and a key to five grants a day (UTC), whichever instance answers', async () => {
+    const ann = await account();
+    await ann.api.teams.create('Vandelay Industries');
+    const MOST_PRO = 'One grant gives at most 12 months of Pro.';
+    const MOST_TEAM = 'One grant gives at most 25 licenses, each for at most 12 months.';
+    const NOT_A_COUNT = 'Months and licenses are whole numbers from 1: pro 3, or team 5 3.';
+    const over: [string[], string][] = [
+      [['pro', '13'], MOST_PRO], [['team', '26', '1'], MOST_TEAM], [['team', '1', '13'], MOST_TEAM],
+      [['pro', '0'], NOT_A_COUNT], [['pro', '1.5'], NOT_A_COUNT], [['pro', '-1'], NOT_A_COUNT], [['team', '2', 'year'], NOT_A_COUNT]
+    ];
+    for (const [words, message] of over) expect(refusalOf(await grant(op.write, [ann.session.ownerId, ...words], 'SUP-1501')), words.join(' ')).toEqual([400, message]);
+    // Words that aren't a grant say how one goes.
+    for (const words of [['gift', '1'], ['pro'], ['pro', '1', '2'], ['team', '1']]) {
+      const r = await grant(op.write, [ann.session.ownerId, ...words], 'SUP-1501');
+      expect(r.status, words.join(' ')).toBe(400);
+      expect(Refusal.parse(r.body).message).toContain('<account id> team <licenses> <months>');
+    }
+    // A key of its own, listed by two instances sharing the database, as two VMs are during a rollout: its day is counted in
+    // the database, so what it gives through either counts on both. The most one grant gives, it gives.
+    const key = makeOperatorKey('write');
+    const first = await h.secondServer({ operatorKeys: [key.key] });
+    const second = await h.secondServer({ operatorKeys: [key.key] });
+    const one = signedClient(first.baseUrl, h.operator.audience, key);
+    const two = signedClient(second.baseUrl, h.operator.audience, key);
+    try {
+      expect((await grant(one, [ann.session.ownerId, 'pro', '12'], 'SUP-1502')).status).toBe(200);
+      expect((await grant(two, [ann.session.ownerId, 'team', '25', '12'], 'SUP-1503')).status).toBe(200);
+      for (const [client, reason] of [[one, 'SUP-1504'], [two, 'SUP-1505'], [one, 'SUP-1506']] as const) {
+        expect((await grant(client, [ann.session.ownerId, 'team', '1', '1'], reason)).status, reason).toBe(200);
+      }
+      // A sixth is refused through either, however little it gives; one whose ticket has given already is said so first.
+      expect(refusalOf(await grant(one, [ann.session.ownerId, 'team', '1', '1'], 'SUP-1507'))).toEqual([403, A_DAYS_GRANTS]);
+      expect(refusalOf(await grant(two, [ann.session.ownerId, 'pro', '1'], 'SUP-1508'))).toEqual([403, A_DAYS_GRANTS]);
+      expect(refusalOf(await grant(two, [ann.session.ownerId, 'pro', '1'], 'SUP-1502'))).toEqual([409, TICKET_GAVE]);
+      // Another key's day is its own; and a day on (UTC), this one gives again.
+      expect((await grant(op.write, [ann.session.ownerId, 'team', '1', '1'], 'SUP-1509')).status).toBe(200);
+      await h.pool.query("UPDATE operator_grants SET created_at = created_at - interval '1 day' WHERE key_id = $1", [key.key.id]);
+      expect((await grant(one, [ann.session.ownerId, 'team', '1', '1'], 'SUP-1510')).status).toBe(200);
+    } finally {
+      await first.close();
+      await second.close();
+    }
+    // What was refused gave nothing: 12 months of Pro, and 25, three of 1 and two more of 1 licenses.
+    expect((await ann.api.plans.plan()).pro.months).toHaveLength(12);
+    expect((await ann.api.teams.mine())?.licenses).toEqual({ unconsumed: 30, refundableMicroUsd: 0, autoPurchase: false });
+  });
+
+  it('refuses an ID nobody has, a workspace’s or a team’s, an address and a top-up’s reference, giving nothing to anyone and saying back nothing typed', async () => {
+    const ann = await account();
+    const { id: workspaceId } = await ann.api.workspaces.create('Vandelay plans');
+    const team = await ann.api.teams.create('Vandelay Industries');
+    const ownerOf = async (sql: string, id: string) => (await h.pool.query<{ owner_id: string }>(sql, [id])).rows[0]?.owner_id ?? '';
+    const workspaceOwner = await ownerOf('SELECT owner_id FROM workspaces WHERE workspace_id = $1', workspaceId);
+    const teamOwner = await ownerOf('SELECT owner_id FROM teams WHERE team_id = $1', team.id);
+    for (const id of [workspaceOwner, teamOwner]) expect(id).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const t = await topUp(ann, 5_000_000);
+    const plans = async () => (await h.pool.query('SELECT owner_id FROM plan_accounts')).rowCount;
+    const before = await plans();
+    const logsFrom = h.logs.length;
+    const answersFrom = answers.length;
+    for (const id of [workspaceOwner, teamOwner, 'A'.repeat(43)]) {
+      for (const words of [['pro', '1'], ['team', '1', '1']]) expect(refusalOf(await grant(op.write, [id, ...words], 'SUP-1601'))).toEqual([404, 'No account has that ID.']);
+    }
+    for (const who of [ann.email, t.id]) expect(refusalOf(await grant(op.write, [who, 'pro', '1'], 'SUP-1602'))).toEqual([400, 'Name the account by its ID.']);
+    // Nothing given to anyone, no plan made, nothing kept for the tickets, and nothing typed said back or logged.
+    expect(await plans()).toBe(before);
+    expect((await ann.api.plans.plan()).pro.months).toEqual([]);
+    expect((await ann.api.teams.mine())?.licenses).toMatchObject({ unconsumed: 0 });
+    expect((await h.pool.query('SELECT digest FROM operator_grants WHERE key_id = $1', [op.write.keyId])).rowCount).toBe(0);
+    for (const text of [...answers.slice(answersFrom), ...h.logs.slice(logsFrom)]) expect(text.toLowerCase()).not.toContain(ann.email.toLowerCase());
+    // A grant to Ann gives Bob nothing, and says nothing of him.
+    const bob = await account();
+    const given = await grant(op.write, [ann.session.ownerId, 'pro', '1'], 'SUP-1603');
+    expect(given.status).toBe(200);
+    expect(JSON.stringify(given.body)).not.toContain(bob.session.ownerId);
+    expect((await ann.api.plans.plan()).pro.months).toHaveLength(1);
+    expect(await bob.api.plans.plan()).toMatchObject({ kind: 'free', pro: { months: [] }, balance: { microUsd: 0, history: [] } });
+  });
+});
+
 describe('billing on the operator CLI', () => {
   /** What the CLI printed in this block: none of it may hold an address or an amount. */
   const outputs: string[] = [];
@@ -504,6 +796,31 @@ describe('billing on the operator CLI', () => {
     h.oneclick.set(t.address, 'SUCCESS', settled(t, 10_000_000));
     await askAgain(t.id);
     expect(await cli.run(['topup', 'check', t.id, '--reason', 'SUP-9002'])).toMatchObject({ code: 0, out: 'It was waiting, and is credited now. Nothing watches it any more.\n' });
+    saidNothingOf(ann.email);
+  });
+
+  it('gives a plan as Alcove, refusing an address, no reason or words that aren’t a grant before sending anything', async () => {
+    const ann = await account();
+    const given = await cli.run(['plan', 'grant', ann.session.ownerId, 'pro', '2', '--reason', 'SUP-9101']);
+    expect(given.code).toBe(0);
+    const plan = await ann.api.plans.plan();
+    expect(given.out).toBe(`Gave account ${ann.session.ownerId} 2 months of Pro, after any it had, as “given by Alcove”: Pro runs to ${plan.pro.until?.slice(0, 10) ?? ''} now.\n`);
+    expect(given.err).toMatch(/^Request [A-Za-z0-9_-]{8,64} on \S+$/m);
+    for (const args of [
+      ['plan', 'grant', ann.session.ownerId, 'pro', '2'],
+      ['plan', 'grant', ann.email, 'pro', '2', '--reason', 'SUP-9102'],
+      ['plan', 'grant', ann.session.ownerId, 'gift', '2', '--reason', 'SUP-9102'],
+      ['plan', 'grant', ann.session.ownerId, 'team', '2', '--reason', 'SUP-9102']
+    ]) {
+      const refused = await cli.run(args);
+      expect(refused.code, args.join(' ')).toBe(2);
+      expect(refused.err).not.toMatch(/^Request /m);
+    }
+    // What the server refuses, the CLI says, and exits 1.
+    const over = await cli.run(['plan', 'grant', ann.session.ownerId, 'team', '26', '1', '--reason', 'SUP-9103']);
+    expect(over.code).toBe(1);
+    expect(over.err).toContain('One grant gives at most 25 licenses, each for at most 12 months.');
+    expect((await ann.api.plans.plan()).pro.months).toHaveLength(2);
     saidNothingOf(ann.email);
   });
 });

@@ -1,7 +1,8 @@
 /*
  * Plans (docs: Plans and usage): which plan each account is on, the USD balance it buys plans with, the months of Pro and
- * more notes bought from it, what its owner is told about them and about their team's licenses, and when upkeep next has
- * something to do for it. A team license (features/billing/teams/teams.ts) puts its member on Team while it's live (`planNow`).
+ * more notes bought from it (or given by Alcove, through support's grant: bought the same way, at nothing), what its owner
+ * is told about them and about their team's licenses, and when upkeep next has something to do for it. A team license
+ * (features/billing/teams/teams.ts) puts its member on Team while it's live (`planNow`).
  * Sealed under Kservice's accounting key, never under owner keys: the row says only whose it is and when it's due. An
  * account's row is made when it signs up, or the first time it's touched after the release that brought plans (on Free,
  * with time to get within Free's limits if it's over them).
@@ -34,9 +35,9 @@ const Entry = z.object({ id: z.string(), at: z.string(), label: z.string(), micr
  */
 const Grace = z.object({ until: z.string(), storageBytes: z.number().int().nullable() });
 /**
- * A month of Pro bought from the balance, and what was paid for it; with the purchase it was one of and a month's price
- * when it was bought, so a refund can tell months bought together at the lower price for a year or more. A month kept
- * before either was has neither: it's a purchase of its own, refunded at what was paid for it.
+ * A month of Pro bought from the balance, and what was paid for it (nothing, for one Alcove gave); with the purchase it was
+ * one of and a month's price when it was bought, so a refund can tell months bought together at the lower price for a year
+ * or more. A month kept before either was has neither: it's a purchase of its own, refunded at what was paid for it.
  */
 const Month = z.object({
   id: z.string(), from: z.string(), to: z.string(), microUsd: z.number().int(),
@@ -529,6 +530,17 @@ async function changing(d: Service, ownerId: string, change: (a: PlanAccount, l:
 }
 
 /**
+ * Who pays for what's bought: its buyer, from their balance, or nobody, as Alcove gives it (support's grant,
+ * features/billing/operator/operator.ts). Given, it's bought by the same rules but for its price, which is nothing, and it
+ * needs no offer for its length: its months and licenses keep what was paid for them, nothing, which is what a refund gives
+ * back, and its line in the history says it was given by Alcove. A month's price when it came is kept as for any month, so
+ * renewing after it goes by that, as it would after a month bought then.
+ */
+export type Source = 'balance' | 'alcove';
+/** What a purchase's line in the history adds for its source: who gave it, when nobody paid for it. */
+const givenBy = (source: Source) => (source === 'alcove' ? ', given by Alcove' : '');
+
+/**
  * Why a purchase from the balance isn't made: what's asked for isn't offered (`off`), is more than one purchase buys
  * (`too-many`), isn't at the price in force for it (`price`), or costs more than the balance (`short`); Pro while a team
  * license is live (`team`); licenses for someone who isn't a team's admin (`not-admin`).
@@ -557,12 +569,13 @@ interface Terms {
 }
 
 /**
- * What `buys` comes to at the limits in force, or why it isn't on offer at the price its buyer was shown. Pro's months go
- * after any already bought (on Free, from now), each keeping what was paid for it, which is what a refund gives back, and
- * end any grace: only Pro's limits apply from then. Licenses are for the team their buyer is the admin of, which keeps
- * them (teams.ts): the balance only pays. More notes go to the period in force, whatever the plan.
+ * What `buys` comes to at the limits in force, or why it isn't on offer at the price its buyer was shown: the price in force,
+ * or nothing for what Alcove gives (`source`). Pro's months go after any already bought (on Free, from now), each keeping
+ * what was paid for it, which is what a refund gives back, and end any grace: only Pro's limits apply from then. Licenses are
+ * for the team their buyer is the admin of, which keeps them (teams.ts): the balance only pays. More notes go to the period
+ * in force, whatever the plan.
  */
-function termsOf(l: Limits, buys: Purchase, buyer: Buyer, now: number): Terms | Refusal {
+function termsOf(l: Limits, buys: Purchase, buyer: Buyer, now: number, source: Source): Terms | Refusal {
   if (buys.kind === 'pro') {
     // While a team license is live it's the plan in force: months of Pro bought now would run unused.
     if (isLive(buyer.license, now)) {
@@ -572,12 +585,12 @@ function termsOf(l: Limits, buys: Purchase, buyer: Buyer, now: number): Terms | 
     if (buys.months > max) {
       return refusal('too-many', `Buy 1 to ${max} months at a time.`, `Since your payment was made, one purchase buys at most ${monthsOf(max)} of Pro. It’s in your balance.`);
     }
-    if (buys.microUsdPerMonth !== proPriceFor(l, buys.months)) {
+    if (buys.microUsdPerMonth !== (source === 'alcove' ? 0 : proPriceFor(l, buys.months))) {
       return refusal('price', 'The price of Pro has changed. Look at it again before buying.', 'The price of Pro changed before your payment arrived. It’s in your balance.');
     }
     const { months, microUsdPerMonth } = buys;
     return {
-      totalMicroUsd: months * microUsdPerMonth, label: `Pro, ${monthsOf(months)}`, what: `${monthsOf(months)} of Pro`, one: months === 1,
+      totalMicroUsd: months * microUsdPerMonth, label: `Pro, ${monthsOf(months)}${givenBy(source)}`, what: `${monthsOf(months)} of Pro`, one: months === 1,
       add: (a, now) => ({ ...withMonths(pruned(a, now), l, months, microUsdPerMonth, now), grace: null })
     };
   }
@@ -591,15 +604,16 @@ function termsOf(l: Limits, buys: Purchase, buyer: Buyer, now: number): Terms | 
     }
     const { count, microUsdPerLicense, periods } = buys;
     const term = forPeriods(periods);
-    // For a year (more than one period) while there's no license for a year on offer.
-    if (periods > 1 && !teamYearlyOf(l)) {
+    // For a year (more than one period) while there's no license for a year on offer. Alcove gives licenses for as many
+    // periods as it gives them for, at nothing, which needs no offer.
+    if (source === 'balance' && periods > 1 && !teamYearlyOf(l)) {
       return refusal('off', `Team licenses${term} can’t be bought right now.`, `Team licenses${term} stopped being offered before your payment arrived. It’s in your balance.`);
     }
     // The price for that many periods, and no other: a period at a license's price, or a year's periods at the yearly one.
-    if (microUsdPerLicense !== licensePriceFor(l, periods)) {
+    if (microUsdPerLicense !== (source === 'alcove' ? 0 : licensePriceFor(l, periods))) {
       return refusal('price', `The price of a team license${term} has changed. Look at it again before buying.`, `The price of a team license${term} changed before your payment arrived. It’s in your balance.`);
     }
-    return { totalMicroUsd: count * periods * microUsdPerLicense, label: `Team, ${licensesOf(count)}${term}`, what: `${teamLicenses(count)}${term}`, one: count === 1, add: (a) => a };
+    return { totalMicroUsd: count * periods * microUsdPerLicense, label: `Team, ${licensesOf(count)}${term}${givenBy(source)}`, what: `${teamLicenses(count)}${term}`, one: count === 1, add: (a) => a };
   }
   const offer = hoursOf(l);
   if (!offer) return refusal('off', 'More notes can’t be bought right now.', 'More notes stopped being offered before your payment arrived. It’s in your balance.');
@@ -607,7 +621,7 @@ function termsOf(l: Limits, buys: Purchase, buyer: Buyer, now: number): Terms | 
     const most = notesTime(offer.maxPacks * offer.minutes);
     return refusal('too-many', `Buy up to ${most} of notes at a time.`, `Since your payment was made, one purchase buys at most ${most} of notes. It’s in your balance.`);
   }
-  if (buys.microUsdPerPack !== offer.microUsd) {
+  if (buys.microUsdPerPack !== (source === 'alcove' ? 0 : offer.microUsd)) {
     return refusal('price', 'The price of more notes has changed. Look at it again before buying.', 'The price of more notes changed before your payment arrived. It’s in your balance.');
   }
   // A pack's size is part of its price: the same price for fewer hours is a dearer pack.
@@ -616,7 +630,7 @@ function termsOf(l: Limits, buys: Purchase, buyer: Buyer, now: number): Terms | 
   }
   const minutes = buys.packs * buys.minutesPerPack;
   return {
-    totalMicroUsd: buys.packs * buys.microUsdPerPack, label: `${notesTime(minutes, 'more ')} of notes`, what: `${notesTime(minutes)} of notes`, one: minutes === 60 || minutes === 1,
+    totalMicroUsd: buys.packs * buys.microUsdPerPack, label: `${notesTime(minutes, 'more ')} of notes${givenBy(source)}`, what: `${notesTime(minutes)} of notes`, one: minutes === 60 || minutes === 1,
     add: (a, at, kept) => withHours(a, l, minutes, at, buyer.license, kept)
   };
 }
@@ -626,7 +640,7 @@ function termsOf(l: Limits, buys: Purchase, buyer: Buyer, now: number): Terms | 
  * it is opened, so a price that has changed is said before anything is paid.
  */
 export function refusalOf(l: Limits, buys: Purchase, buyer: Buyer, now = Date.now()): Refusal | null {
-  const t = termsOf(l, buys, buyer, now);
+  const t = termsOf(l, buys, buyer, now, 'balance');
   return 'why' in t ? t : null;
 }
 
@@ -639,12 +653,12 @@ export type Purchased = { bought: true; totalMicroUsd: number } | { bought: fals
  * isn't on offer at the price its buyer was shown or the balance is short of it. What buyPro and buyHours do, and what a
  * top-up opened to buy something does once its money is added (deposits.ts). Licenses are bought only by their team's
  * admin, which the caller knows by holding the team's row, locked before this one (`admin`); it adds them to the team
- * (teams.ts › licensesBought).
+ * (teams.ts › licensesBought). What Alcove gives (`source`) is bought the same way, at nothing (support's grant).
  */
-export async function purchase(d: Service, db: Db, ownerId: string, buys: Purchase, buyer: Pick<Buyer, 'admin'> = { admin: false }): Promise<Purchased> {
+export async function purchase(d: Service, db: Db, ownerId: string, buys: Purchase, buyer: Pick<Buyer, 'admin'> = { admin: false }, source: Source = 'balance'): Promise<Purchased> {
   const a = await accountOf(d, db, ownerId, true);
   const l = await limitsNow(d, db);
-  const t = termsOf(l, buys, { license: await licenseOf(db, ownerId), admin: buyer.admin }, Date.now());
+  const t = termsOf(l, buys, { license: await licenseOf(db, ownerId), admin: buyer.admin }, Date.now(), source);
   if ('why' in t) return { bought: false, refusal: t };
   if (a.balanceMicroUsd < t.totalMicroUsd) {
     const cost = `${t.what} ${t.one ? 'costs' : 'cost'}`;
@@ -689,15 +703,20 @@ export async function buyHours(d: Service, ownerId: string, packs: number, micro
 
 /**
  * Refunds every month of Pro that hasn't started, at what was paid for it, less the lower price's difference on the months
- * kept of a year or more that ends up shorter (`refundOf`). A month that has started isn't refunded, and nothing is when
- * nothing would come back. Renewing goes off, so upkeep never buys back what was given back (at the reminder, or at the
- * end with the refund in the balance), and a notice that Pro was renewed into a month refunded is taken back: Pro ends
- * when the month running now does, unless its owner turns renewing on again or buys more.
+ * kept of a year or more that ends up shorter (`refundOf`): a month Alcove gave goes with them, and gives back nothing. A
+ * month that has started isn't refunded, and nothing is when nothing would come back. Renewing goes off, so upkeep never
+ * buys back what was given back (at the reminder, or at the end with the refund in the balance), and a notice that Pro was
+ * renewed into a month refunded is taken back: Pro ends when the month running now does, unless its owner turns renewing on
+ * again or buys more.
  */
 export async function refundPro(d: Service, ownerId: string): Promise<void> {
   await changing(d, ownerId, (a, l, now) => {
     const { months, microUsd } = refundOf(a, l, now);
     if (!months.length) throw conflict('There’s no month of Pro to refund that hasn’t started. A month that has started isn’t refunded.', { ownerId });
+    // Nothing was paid for them (Alcove gave them), or what was is owed back on a year or more kept for less.
+    if (microUsd <= 0 && !months.some((m) => m.microUsd > 0)) {
+      throw conflict('Refunding now would give nothing back: nothing was paid for the months that haven’t started.', { ownerId, months: months.length, why: 'unpaid' });
+    }
     if (microUsd <= 0) {
       throw conflict(`Refunding now would give nothing back: kept for fewer than ${monthsOf(l.get('plan.pro.yearly_from_months'))}, Pro bought at its lower price costs a month’s price for each month you’ve had.`, { ownerId, months: months.length });
     }

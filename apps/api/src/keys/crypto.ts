@@ -122,9 +122,11 @@ export const edgeKeySeed = (kmaster: Uint8Array, purpose: 'tls' | 'acme-account'
 /**
  * A keyed hash that lets the server find a person (by sign-in account or email) without storing
  * who they are. Emails are compared trimmed and lower-cased. `operator-credit`: an account and the ticket support credited
- * it for through the operator route (features/billing/support.ts), so one ticket adds money to an account once.
+ * it for through the operator route (features/billing/support.ts), so one ticket adds money to an account once;
+ * `operator-grant`: an account and the ticket support gave it a plan for (features/billing/operator/operator.ts), so one
+ * ticket gives an account a plan once.
  */
-export function blindIndex(indexKey: Uint8Array, purpose: 'subject' | 'email' | 'invite' | 'ring' | 'flag-email' | 'call-code' | 'call-seat' | 'call-workspace' | 'addition-author' | 'note-link-maker' | 'upload-guest' | 'operator-credit', value: string): Uint8Array {
+export function blindIndex(indexKey: Uint8Array, purpose: 'subject' | 'email' | 'invite' | 'ring' | 'flag-email' | 'call-code' | 'call-seat' | 'call-workspace' | 'addition-author' | 'note-link-maker' | 'upload-guest' | 'operator-credit' | 'operator-grant', value: string): Uint8Array {
   const v = purpose === 'email' || purpose === 'invite' || purpose === 'ring' || purpose === 'flag-email' ? value.trim().toLowerCase() : value;
   return hmac(sha256, live(indexKey), concat(utf8(purpose), new Uint8Array([0]), utf8(v)));
 }
