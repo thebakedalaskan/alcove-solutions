@@ -33,6 +33,8 @@ import { rewrapOwners } from './keys/server-keys';
 import { LAUNCHER_SOCKET, createAttester } from './tee/tee';
 
 const slog = log.child({ component: 'server' });
+/** How long a new instance waits before its first upkeep (maintenance.ts). */
+const FIRST_UPKEEP_MS = 60_000;
 
 /**
  * Runs one start step, timed, and says how it went (`boot step`): how long it took, and its error's class and code if it
@@ -130,7 +132,11 @@ export async function startServer(env: NodeJS.ProcessEnv, outside: Outside = OUT
     const upkeep = () => inBackground(mlog.timed('maintenance run', {}, () => maintain(deps), 30_000)
       .then((r) => (r.sessions || r.retried || r.orphans || r.receipts || r.videos || r.notes ? mlog.info('maintenance done', r) : mlog.debug('maintenance done', r)))
       .catch((err: unknown) => mlog.error('maintenance failed', { err })));
-    upkeep();
+    // The first run waits a minute: while a new instance starts, its pool is still opening connections and the instance
+    // it replaces is still serving, and upkeep's sweeps there held every connection until they timed out (14 Nov, at two
+    // deploys), so requests had none. Every five minutes after that.
+    const first = setTimeout(upkeep, FIRST_UPKEEP_MS);
+    first.unref();
     const timer = setInterval(upkeep, 5 * 60_000);
     timer.unref();
     const stopWatchingDeposits = startWatching(deps);
@@ -140,6 +146,7 @@ export async function startServer(env: NodeJS.ProcessEnv, outside: Outside = OUT
     return {
       deps, ports,
       async close() {
+        clearTimeout(first);
         clearInterval(timer);
         stopWatchingDeposits();
         stopEndingOverdue();
