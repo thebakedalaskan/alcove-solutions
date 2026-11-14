@@ -14,9 +14,10 @@
  *   --model ID      the notes model, by NEAR AI's ID (default: NEAR_AI_NOTES_MODEL, as the product uses); see notesModel.
  *                   The report's cost line prices each request at what NEAR AI lists for its model (evalMeter).
  *
- * What becomes of a run (score.ts, Outcome): when the notes service doesn't answer, or answers with a status other than
- * 200, the run waits and tries again, as production waits these out; after ATTEMPTS tries it's "not run" and left out of
- * the scores. When the model answers but its reply can't be used as notes, that's the model's failure: it isn't tried
+ * What becomes of a run (score.ts, Outcome): when the notes service doesn't answer, or answers busy or failing (any
+ * status but 200 and those below), the run waits and tries again, as production waits these out; after ATTEMPTS tries
+ * it's "not run" and left out of the scores. When the model answers but its reply can't be used as notes, or the request
+ * is refused (400, 413, 422) or turned away (401, 403), that's a failure production doesn't wait out either: it isn't tried
  * again (production asks again in a brief style; the eval measures the first try), and it counts as an unusable reply.
  *
  * Each run's folder holds, per case and run, the full record: every request to the notes model as it was sent and its
@@ -212,10 +213,11 @@ async function oneRun(cfg: Config, meter: Meter, client: Anthropic, c: EvalCase,
       error = null;
     } catch (e) {
       error = errorMessage(e);
-      // A 200 means the model answered and its reply couldn't be used: the model's, and trying again would hide it. No
-      // answer at all, or any other status (busy, failing, turned away), is the plumbing's: wait and try again.
+      // A 200 means the model answered and its reply couldn't be used: the model's, and trying again would hide it. So is a
+      // request it refused (400, 413, 422) or a key turned away (401, 403), which production doesn't wait out either
+      // (inference.ts statusError). No answer at all, or any other status (busy, failing), is the plumbing's: wait and try again.
       const last = exchanges.slice(before).at(-1);
-      plumbing = last === undefined || last.status !== 200;
+      plumbing = last === undefined || ![200, 400, 401, 403, 413, 422].includes(last.status);
       if (!plumbing) break;
     }
   }
@@ -413,7 +415,7 @@ async function main(): Promise<void> {
     'held-back cases': held ? `${held} (${HELDOUT_FILE})` : HELD.cases.length ? 'none chosen' : `none (no ${HELDOUT_FILE})`,
     tokens: `notes ${notesIn} in / ${notesOut} out; judge ${judgeTokens((x) => x.inputTokens)} in, ${judgeTokens((x) => x.cacheWriteTokens)} written to the cache, ${judgeTokens((x) => x.cacheReadTokens)} read from it, ${judgeTokens((x) => x.outputTokens)} out`,
     cost: `about $${(judgeUsd + notesUsd).toFixed(2)}: the judge $${judgeUsd.toFixed(2)} (Anthropic), the notes model $${notesUsd.toFixed(2)} (NEAR AI${unpriced.length ? `; not counted, as NEAR AI lists no price: ${unpriced.join(', ')}` : ''})`,
-    // What the evals of a night spent on Anthropic's key, added up by the overnight loop.
+    // The judge's share of the cost as a number, for adding up what several evals spent on Anthropic's key.
     'judge cost (USD)': Number(judgeUsd.toFixed(4))
   };
   const { text, summary } = report(args.label, meta, records);

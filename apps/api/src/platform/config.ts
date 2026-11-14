@@ -138,18 +138,6 @@ const EnvSchema = z.object({
   NEAR_AI_NOTES_MODEL: z.string().min(1).default('deepseek-ai/DeepSeek-V4.1-Flash-1017'),
   /** The default model's own endpoint: requests go to its /ohttp, sealed to the key its attestation vouches for. */
   NEAR_AI_NOTES_URL: z.string().url().default('https://deepseek-v4-1-flash.completions.near.ai'),
-  /**
-   * The model that writes the notes after a call or recording ends when the organizer chose none (inference/models.ts ›
-   * writingModel): any model NEAR AI's catalog lists, whatever its price, private only if NEAR AI runs it in an enclave.
-   * Unset, the default model writes them.
-   */
-  NEAR_AI_WRITING_MODEL: optional,
-  /**
-   * HACKATHON PATCH: remove after the NEAR AI hackathon submission. Shows the notes written after a call as private in the
-   * app even when NEAR AI doesn't run the model that writes them in a secure enclave: no unencrypted use of the writing
-   * model is recorded on the note (notes/writing/writer.ts). For the hackathon deployment only.
-   */
-  HACKATHON_WRITING_SHOWN_PRIVATE: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
   /** The most a model offered as a choice may cost, in US dollars per million input tokens (NEAR AI's catalog price). */
   NEAR_AI_MAX_INPUT_PRICE: z.coerce.number().nonnegative().default(1),
   /**

@@ -236,7 +236,7 @@ async function main(): Promise<void> {
 
   const page = await readFile(PAGE, 'utf8');
   if (page.split('__WORKSHEET__').length !== 2) throw new Error(`${PAGE} needs __WORKSHEET__ exactly once, where the worksheet goes`);
-  // Inside a <script> element, "</script>" in a transcript would end it early; < is the same "<" to JSON.parse.
+  // Inside a <script> element, "</script>" in a transcript would end it early; \u003c is the same "<" to JSON.parse.
   const json = JSON.stringify(worksheet).replace(/</g, '\\u003c');
   const out = join(folder, 'labels.html');
   await writeFile(out, page.replace('__WORKSHEET__', () => json));

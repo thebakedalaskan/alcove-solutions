@@ -57,7 +57,7 @@ export interface Brief {
   boards?: BriefBoard[] | undefined;
   /** The model chosen for this meeting (models.resolveModel); the default when not given. */
   via?: ChatModel | undefined;
-  /** Where each request to the model and its reply go as they happen: only the notes eval (features/notes/eval/run-cli.ts) sets it. */
+  /** Where draft's notes request and its reply go as they happen (not the full summary's, nor the comparison's): only the notes eval (features/notes/eval/run-cli.ts) sets it. */
   trace?: Trace | undefined;
 }
 /** A board as the notes model reads it. */

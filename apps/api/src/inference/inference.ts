@@ -479,7 +479,7 @@ export interface ChatSettings {
 /**
  * One request to a chat model as it went and came back: what it was sent, its settings, and its reply's text before any
  * JSON was taken out of it. Only the notes eval (features/notes/eval) asks for these, through `complete`'s `trace`; they
- * hold content, so they stay in the process and are never logged.
+ * hold content, so they're never logged: the eval writes them to its own results folder, which git ignores.
  */
 export interface Exchange {
   what: string;

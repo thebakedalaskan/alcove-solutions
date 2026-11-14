@@ -65,15 +65,14 @@ async function stopNotes(o: Owner, db: Db, s: Stored, at: number, status: 'pause
 
 /**
  * What writing the call's notes will cost at most so far, for the organizer's allowance to hold while it's live: its
- * seconds recorded, its breakout rooms and its shares kept for the notes, in the call's model, or with none, the model
- * that writes notes after a call (NEAR_AI_WRITING_MODEL, the default unless it's set).
+ * seconds recorded, its breakout rooms and its shares kept for the notes, in the call's model.
  */
 function writingSoFar(o: Owner, row: Row, s: Stored, nowMs: number): { model: string; most: Most } {
   const at = (nowMs - row.started_at.getTime()) / 1000;
   const seconds = capture.recorded(s.notes.history, s.notes.offline, at, at);
   const rooms = (s.breakouts.open?.rooms.length ?? 0) + s.breakouts.held.reduce((n, h) => n + h.rooms.length, 0);
   const shareSeconds = s.shares.filter((x) => x.keep && x.recorded).reduce((n, x) => n + Math.max(0, (x.until ?? at) - x.from), 0);
-  return { model: s.notes.model ?? o.cfg.NEAR_AI_WRITING_MODEL ?? o.cfg.NEAR_AI_NOTES_MODEL, most: writingAtMost({ seconds, rooms, shareSeconds }) };
+  return { model: s.notes.model ?? o.cfg.NEAR_AI_NOTES_MODEL, most: writingAtMost({ seconds, rooms, shareSeconds }) };
 }
 
 /**

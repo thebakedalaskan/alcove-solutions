@@ -35,8 +35,7 @@ Call media is end-to-end encrypted in the browsers, so LiveKit, the media relay,
 are on, the host’s browser also sends what it hears to Alcove’s server, which runs in a confidential VM on Intel TDX: TLS
 ends inside it, Cloud KMS releases its master key only to an attested image signed with Alcove’s key, and your browser
 checks the attestation before it shows the seal. Everything the server stores is sealed under keys for each account, and
-it sends AI work to NEAR AI’s models only after checking their hardware evidence, except the notes written after a call
-on the hackathon deployment ([why](#why-the-hackathon-deployment-writes-notes-with-gpt-61-sol)). [More in How it works →](#how-it-works)
+it sends AI work to NEAR AI’s models only after checking their hardware evidence. [More in How it works →](#how-it-works)
 
 <p align="center">
   <picture>
@@ -99,9 +98,7 @@ a follow-up is only a suggestion until the person it’s for takes it on.
 > verified to Intel’s root, the exact measurements of the published OS image it booted, NVIDIA’s attestation of
 > confidential GPUs for the same nonce, and a signature by the attested key over the model’s encryption key. Only then is
 > the request sent, sealed with Oblivious HTTP (RFC 9458) to that key: Whisper large-v3 transcribes, and the notes model
-> (DeepSeek V4.1 Flash by default) writes. Each note records which verified model did each task and what was checked.
-> On the hackathon deployment, GPT-6.1 Sol writes the notes after a call, outside an enclave, and isn’t recorded
-> ([why](#why-the-hackathon-deployment-writes-notes-with-gpt-61-sol)).
+> (DeepSeek V4.1 Flash by default) writes. Each note records which model did each task and what was checked.
 > [Notes and inference →](docs/engineering/notes-and-inference.md)
 
 ### Catch up on what you missed
@@ -261,12 +258,11 @@ and team licenses paid in USDC through NEAR Intents).
 
 **Where NEAR fits**
 
-- **NEAR AI Cloud, for private inference.** The live transcript (Whisper large-v3) and the AI during a call (DeepSeek
-  V4.1 Flash by default) run on models NEAR AI runs in confidential VMs, on Intel TDX with NVIDIA confidential GPUs. Before
+- **NEAR AI Cloud, for private inference.** The live transcript (Whisper large-v3) and the notes (DeepSeek V4.1 Flash
+  by default) are written by models NEAR AI runs in confidential VMs, on Intel TDX with NVIDIA confidential GPUs. Before
   sending a model anything, Alcove’s server checks its hardware evidence itself, then seals each request to the model’s
   attested key with Oblivious HTTP. Speech always goes this way, and so does everything else unless someone picks a model
-  NEAR AI doesn’t run in an enclave, which the app marks ([how](#ai-runs-on-verified-private-models)). On the hackathon
-  deployment, the notes written after a call are the exception ([why](#why-the-hackathon-deployment-writes-notes-with-gpt-61-sol)). This is what
+  NEAR AI doesn’t run in an enclave, which the app marks ([how](#ai-runs-on-verified-private-models)). This is what
   lets Alcove’s AI work on a meeting while the meeting stays inside verified hardware.
 - **NEAR Intents 1Click, for payments.** Pro months and team licenses are paid in USDC from the network you choose (NEAR,
   Ethereum, Solana, Base, Arbitrum, Polygon, BNB Chain, Optimism or Avalanche), to a one-off deposit address 1Click
@@ -291,9 +287,8 @@ files [near the end of this page](#where-to-look-in-the-code).
    **Notes on**: it says what’s sealed, when the hardware was checked, and that Alcove can’t read the call.
 5. Press **Leave**: when you’re alone, it ends the call at once, and the call’s ended page opens. Within about a minute
    the note is written; press **Read the notes** (it says **Open the notes** while they’re being written) to see the
-   summary, with any decisions and follow-ups. Under the title, press **Transcribed in confidential compute** to see the
-   speech model and when its hardware evidence was checked. GPT-6.1 Sol wrote these notes outside an enclave, so there’s
-   no check of it to show ([why](#why-the-hackathon-deployment-writes-notes-with-gpt-61-sol)).
+   summary, with any decisions and follow-ups. Under the title, press **Written in confidential compute** to see which
+   NEAR AI model did each task and when its hardware evidence was checked.
 6. Press <kbd>⌘</kbd> <kbd>K</kbd> (<kbd>Ctrl</kbd> <kbd>K</kbd> on Windows and Linux), type a question about the call
    and press <kbd>Enter</kbd> to ask it. The answer cites the moment it came from; press it to open the call at that line.
 7. From a clone, after `pnpm install`, run the check in [Verify it yourself](#verify-it-yourself). It prints the commit
@@ -304,26 +299,6 @@ files [near the end of this page](#where-to-look-in-the-code).
 No Google account? Steps 7 and 8 need none, and [Run it yourself](#run-it-yourself) runs the whole app on your machine
 with a demo sign-in (steps 4 to 6 need a NEAR AI key there too).
 
-### Why the hackathon deployment writes notes with GPT-6.1 Sol
-
-On [alcove.solutions](https://alcove.solutions), the notes written after a call or recording ends come from GPT-6.1 Sol
-through NEAR AI’s gateway, not from DeepSeek V4.1 Flash in an enclave.
-
-- **Better notes.** In blind comparisons on 10 real calls, the team preferred Sol’s notes over DeepSeek V4.1 Flash’s on
-  8, and over DeepSeek with thinking at its maximum on 7, with 3 the same.
-- **Faster.** DeepSeek at maximum thinking took about 5 minutes to write a call’s notes, sometimes 10. Sol takes about
-  30 seconds, and judges shouldn’t wait that long.
-- **Not in an enclave.** NEAR AI Cloud doesn’t yet run a model of Sol’s class in its TEEs, so these requests go to Sol
-  through NEAR AI’s gateway (its Incognito tier): over TLS, not sealed with Oblivious HTTP, with no hardware check.
-- **Everything else stays in verified enclaves:** transcription, live notes, catch-up, translation, Ask, boards and
-  documents.
-- **The app doesn’t mark it.** On this deployment the app still describes these notes as written in confidential compute
-  (`HACKATHON_WRITING_SHOWN_PRIVATE`). The seal under a note’s title reads **Transcribed in confidential compute** and
-  lists only the speech model, because there’s no hardware check of Sol to show.
-- **Elsewhere, DeepSeek writes them in an enclave, as before:** Alcove run yourself, or any deployment without
-  `NEAR_AI_WRITING_MODEL`. When NEAR AI runs a model like Sol in a TEE, pointing `NEAR_AI_WRITING_MODEL` at it makes
-  those notes private with no code change.
-
 <br>
 
 ## How it works
@@ -331,8 +306,7 @@ through NEAR AI’s gateway, not from DeepSeek V4.1 Flash in an enclave.
 The goal: readable content exists only in the browsers of the people it belongs to, inside Alcove’s server process while
 it works on it, and inside the verified AI enclaves it sends work to. Everything else (the database, the object store, the
 media relay, the logs, the network) sees ciphertext and metadata, unless someone with access sends it elsewhere: to a model
-outside an enclave, Google Calendar, a Drive export or a connected agent. On the hackathon deployment, the notes written
-after a call also go to a model outside an enclave ([why](#why-the-hackathon-deployment-writes-notes-with-gpt-61-sol)). The [architecture overview](#architecture-overview)
+outside an enclave, Google Calendar, a Drive export or a connected agent. The [architecture overview](#architecture-overview)
 shows the whole path; here’s how each part holds, and [Known limits](#known-limits), at the end, says where it doesn’t yet.
 
 ### Calls are end-to-end encrypted
@@ -384,9 +358,7 @@ A check that passes is reused for up to 10 minutes. Each request is sealed with 
 gateway and load balancers carry only ciphertext; speech always goes this way. If anything doesn’t check out, nothing is
 sent: speech in that stretch isn’t transcribed, and the notes wait until the model checks out. An organizer can choose a
 model that doesn’t run in an enclave for a call’s notes, and anyone can for their own questions; the app marks it wherever
-that choice is made, and each note sent to such a model records it. On the hackathon deployment, the notes written after
-a call or recording ends go to GPT-6.1 Sol through NEAR AI’s gateway, unsealed and unchecked, and the app doesn’t mark
-them ([why](#why-the-hackathon-deployment-writes-notes-with-gpt-61-sol)).
+that choice is made, and each note sent to such a model records it.
 
 ### The life of a note
 
@@ -400,10 +372,8 @@ them ([why](#why-the-hackathon-deployment-writes-notes-with-gpt-61-sol)).
 4. **Live notes keep up** while someone’s watching, refreshed at most every 30 seconds: decided, suggested, still open and
    the follow-ups.
 5. **When the call ends**, the notes worker writes the summary, decisions, open questions, follow-ups and chapters, each
-   with the moments behind it, and retries if a model is busy or can’t be verified yet. On the hackathon deployment
-   GPT-6.1 Sol writes them, outside an enclave ([why](#why-the-hackathon-deployment-writes-notes-with-gpt-61-sol)).
-6. **Everyone invited gets the note**, sealed, with which verified model did each task and when its hardware was checked
-   (on the hackathon deployment, only the speech model).
+   with the moments behind it, and retries if a model is busy or can’t be verified yet.
+6. **Everyone invited gets the note**, sealed, with which model did each task and when its hardware was checked.
 
 ### What each part of the system sees
 
@@ -412,7 +382,7 @@ them ([why](#why-the-hackathon-deployment-writes-notes-with-gpt-61-sol)).
 | Alcove’s server, in the confidential VM | What it works on, in memory: call audio while notes are on, transcripts, notes, documents. Never call media through LiveKit, or the MLS messages it passes on |
 | Postgres and the object store | Sealed records, opaque IDs, keyed hashes, sizes and times |
 | LiveKit Cloud, the media relay | Encrypted media and data, plus who’s connected, when, and who’s speaking (from audio levels and packet timing) |
-| NEAR AI | Requests sealed to models Alcove verified in the last 10 minutes; Alcove’s API key, which model, request sizes and timing. A model someone chose outside an enclave, and on the hackathon deployment the one writing the notes after a call, gets requests over TLS, unsealed |
+| NEAR AI | Requests sealed to models Alcove verified in the last 10 minutes; Alcove’s API key, which model, request sizes and timing. A model someone chose outside an enclave gets requests over TLS, unsealed |
 | Google | Your sign-in; your calendar and Drive exports if you connect them; and, as the cloud Alcove runs in, the sealed database, the logs and the attestation |
 | Logs | Request IDs, codes, counts and durations; never content, keys or session IDs |
 
@@ -441,7 +411,7 @@ Your output names whatever production runs when you check: the commit should be 
 | **API** | Node 24, Hono, Postgres 17 (plain SQL, rows parsed with zod), S3-compatible objects, pino |
 | **Real time** | LiveKit (WebRTC; LiveKit Cloud in production), MLS (ts-mls), Yjs for documents and boards, NDJSON streams |
 | **Cryptography** | @noble/ciphers, @noble/hashes and @noble/curves (XChaCha20-Poly1305, AES-GCM, X25519, HKDF-SHA-256), with HPKE and Oblivious HTTP written on them; WebCrypto in the browser |
-| **AI** | NEAR AI Cloud (Whisper large-v3, DeepSeek V4.1 Flash; GPT-6.1 Sol for the notes after a call on the hackathon deployment), verified with dcap-qvl and NVIDIA’s attestation service |
+| **AI** | NEAR AI Cloud (Whisper large-v3, DeepSeek V4.1 Flash), verified with dcap-qvl and NVIDIA’s attestation service |
 | **Agents** | MCP (`@modelcontextprotocol/server`, Streamable HTTP), OAuth with PKCE and dynamic client registration |
 | **Infrastructure** | Google Cloud Confidential Space (Intel TDX), Cloud KMS, Secret Manager, Workload Identity Federation, Artifact Registry, Cloud SQL, Cloud Run (migrations only), Cloud Logging, Cloudflare R2 and DNS, Let’s Encrypt, Sigstore (cosign and Rekor), GitHub Actions |
 | **Payments** | NEAR Intents 1Click (USDC) |
@@ -606,9 +576,6 @@ and [Notes and inference › What’s left](docs/engineering/notes-and-inference
   in that stretch is never transcribed, and notes wait.
 - Someone can choose a model NEAR AI doesn’t run in an enclave (an organizer for a call’s notes, anyone for their own
   questions). Requests to it go over TLS through NEAR AI’s gateway, unsealed; the app marks it wherever it’s chosen.
-- On the hackathon deployment, GPT-6.1 Sol writes the notes after a call or recording ends, through NEAR AI’s gateway,
-  unsealed, and the app still describes them as written in confidential compute
-  ([why](#why-the-hackathon-deployment-writes-notes-with-gpt-61-sol)).
 - Oblivious HTTP and HPKE are written in [`ohttp.ts`](apps/api/src/inference/ohttp.ts) on @noble’s primitives and work against
   NEAR AI in production and a test receiver, but aren’t yet checked against the RFCs’ test vectors.
 - Transcripts sometimes begin a clip with names or words nobody said

@@ -102,7 +102,7 @@ async function main(): Promise<void> {
   const onlyA = [...idsA].filter((id) => !idsB.has(id));
   const onlyB = [...idsB].filter((id) => !idsA.has(id));
 
-  const keys = [...new Set([...Object.keys(a.saved.meta), ...Object.keys(b.saved.meta)])].filter((k) => k !== 'date' && k !== 'tokens');
+  const keys = [...new Set([...Object.keys(a.saved.meta), ...Object.keys(b.saved.meta)])].filter((k) => k !== 'date' && k !== 'tokens' && k !== 'judge cost (USD)');
   const metaA = (k: string) => String(a.saved.meta[k] ?? '–');
   const metaB = (k: string) => String(b.saved.meta[k] ?? '–');
   const warnings = [

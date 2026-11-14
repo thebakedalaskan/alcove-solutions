@@ -57,10 +57,8 @@ export interface Price { input: number; cached: number; output: number }
 /** Each model's price as NEAR AI last listed it: kept through a failure to list them again, so a price is never forgotten. */
 const prices = new Map<string, Price>();
 const micro = (usd: number) => Math.round(usd * 1_000_000);
-/** How a request reaches each model NEAR AI's catalog lists, offered or not, as last listed: for the writing model. */
-let routes = new Map<string, ChatModel>();
 
-const kept =new Map<string, { until: number; models: ModelEntry[] }>();
+const kept = new Map<string, { until: number; models: ModelEntry[] }>();
 const refused = new Map<string, { until: number; error: UnansweredError }>();
 const running = new Map<string, Promise<ModelEntry[]>>();
 
@@ -112,22 +110,16 @@ async function load(cfg: Config): Promise<ModelEntry[]> {
   }
   const nameOf = (id: string) => entries.find((e) => e.id === id)?.name?.trim() || id;
   const takes = (e: z.infer<typeof CatalogEntry>, what: string) => [...(e.input_modalities ?? []), ...(e.architecture?.inputModalities ?? [])].includes(what);
-  // Sealed to its host when the registry lists one; through the gateway, with the settings its provider takes, when the
-  // registry doesn't name it; none when the registry names it with no host that can be used.
-  routes = new Map(entries.flatMap((e) => {
-    const url = hosts.get(e.id);
-    if (!url && named.has(e.id)) return [];
-    const features = e.supported_features ?? [];
-    const via: ChatModel = url ? { model: e.id, private: true, url }
-      : { model: e.id, private: false, temperature: (e.supported_sampling_parameters ?? []).includes('temperature'), json: features.includes('json_mode') || features.includes('structured_outputs') };
-    return [[e.id, via] as const];
-  }));
   const others = entries
     // A model without a price isn't offered: nothing says what it costs.
     .filter((e) => e.id !== cfg.NEAR_AI_NOTES_MODEL && e.is_ready !== false && takes(e, 'text') && takes(e, 'image') && typeof e.pricing?.input === 'number' && e.pricing.input <= cfg.NEAR_AI_MAX_INPUT_PRICE)
-    .flatMap((e): ModelEntry[] => {
-      const via = routes.get(e.id);
-      return via ? [{ id: e.id, name: nameOf(e.id), private: via.private, via }] : [];
+    .filter((e) => hosts.has(e.id) || !named.has(e.id))
+    .map((e): ModelEntry => {
+      const url = hosts.get(e.id);
+      const features = e.supported_features ?? [];
+      const via: ChatModel = url ? { model: e.id, private: true, url }
+        : { model: e.id, private: false, temperature: (e.supported_sampling_parameters ?? []).includes('temperature'), json: features.includes('json_mode') || features.includes('structured_outputs') };
+      return { id: e.id, name: nameOf(e.id), private: via.private, via };
     })
     // Private ones first, then by name.
     .sort((a, b) => Number(b.private) - Number(a.private) || a.name.localeCompare(b.name));
@@ -224,38 +216,13 @@ export async function resolveModel(cfg: Config, chosen: string | null): Promise<
     mlog.warn('model unavailable', { model: chosen, instead: fallback.model });
     return fallback;
   }
-  return checked(cfg, found.via, 'model unverified');
-}
-
-/** A model's route once a private one's evidence checks out: an unencrypted one has none to check. The default otherwise. */
-async function checked(cfg: Config & { NEAR_AI_API_KEY: string }, via: ChatModel, said: string): Promise<ChatModel> {
-  if (!via.private) return via;
+  if (!found.via.private) return found.via;
   try {
-    await verified(cfg, via.model, 'notes');
+    await verified(cfg, found.id, 'notes');
   } catch (e) {
     if (!(e instanceof UnverifiedError)) throw e;
-    const fallback = defaultModel(cfg);
-    mlog.warn(said, { model: via.model, instead: fallback.model, err: e });
+    mlog.warn('model unverified', { model: found.id, instead: fallback.model, err: e });
     return fallback;
   }
-  return via;
-}
-
-/**
- * The model that writes the notes after a call or recording ends when the organizer chose none (notes/writing/writer.ts):
- * NEAR_AI_WRITING_MODEL, or the default when that's unset. It's the operator's choice, so any model NEAR AI's catalog lists
- * will do, whatever its price, and it goes as any model does: sealed to its endpoint once its evidence checks out when
- * the registry lists one, through the gateway when it doesn't. One the catalog doesn't list, or whose evidence doesn't
- * check out, leaves the default to write them. NEAR AI's lists not answering is thrown, so the notes wait.
- */
-export async function writingModel(cfg: Config): Promise<ChatModel> {
-  const id = cfg.NEAR_AI_WRITING_MODEL;
-  if (id === undefined || id === cfg.NEAR_AI_NOTES_MODEL || !ready(cfg)) return defaultModel(cfg);
-  await aiModels(cfg);
-  const via = routes.get(id);
-  if (!via) {
-    mlog.warn('writing model unavailable', { model: id, instead: cfg.NEAR_AI_NOTES_MODEL });
-    return defaultModel(cfg);
-  }
-  return checked(cfg, via, 'writing model unverified');
+  return found.via;
 }

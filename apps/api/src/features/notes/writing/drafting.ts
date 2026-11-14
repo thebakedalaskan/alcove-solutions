@@ -32,7 +32,7 @@ export interface Written { summary: string; details: string; decisions: Decision
  * READING_OUTPUT says. Each request asks for this, and `writingAtMost` holds it while the call is live, so the two can't
  * drift: a request added to writing the notes belongs here and there.
  */
-export const WRITING_OUTPUT = { notes: 16_000, details: 2500, revisits: 500 } as const;
+export const WRITING_OUTPUT = { notes: 4000, details: 2500, revisits: 500 } as const;
 /** The requests that read a call's whole transcript, once each (a breakout room's notes read the room's). */
 const READ_WHOLE = ['notes', 'details', 'revisits'] as const;
 /** Never the fence a board is sent in, nor the transcript's, so nothing on a board can end either early. */
@@ -108,9 +108,22 @@ const OnScreen = { screen: At, part: At, sure: z.boolean().nullish().catch(null)
 const Backed = { lines: Refs, against: Refs };
 /** The model's reason a decision, question or follow-up doesn't belong in the notes (LEFT_OUT), if it gave one. */
 const Keep = { keep: z.string().nullish().catch(null) };
-const belongs = (x: { keep?: string | null | undefined }) => !LEFT_OUT.some((k) => k === x.keep?.trim().toLowerCase());
-/** How a follow-up to ask or find something out starts (English only): an open question on one of its lines is the same thing, said twice. */
+/**
+ * The reasons that leave out each kind of entry, as the prompt gives them: "twice" says a follow-up holds the decision or
+ * question, so it never leaves out the follow-up itself, and "maybe" is never a question's.
+ */
+const LEAVES_OUT: Record<'decision' | 'question' | 'action', readonly string[]> = {
+  decision: LEFT_OUT,
+  question: LEFT_OUT.filter((k) => k !== 'maybe'),
+  action: LEFT_OUT.filter((k) => k !== 'twice')
+};
+const belongs = (kind: keyof typeof LEAVES_OUT, x: { keep?: string | null | undefined }) => !LEAVES_OUT[kind].includes(x.keep?.trim().toLowerCase() ?? '');
+/** How a follow-up to ask or find something out starts (English only): an open question on one of its lines, about the same thing, is the same thing said twice. */
 const FINDS_OUT = /^(ask|check|find out|confirm|chase|follow up|talk to|speak to|email|message|call)\b/i;
+/** Words of four letters or more that say nothing of what an entry is about, the verbs FINDS_OUT starts with among them. */
+const COMMON = new Set(['about', 'after', 'also', 'been', 'before', 'call', 'chase', 'check', 'confirm', 'could', 'does', 'email', 'find', 'follow', 'from', 'have', 'into', 'just', 'message', 'need', 'should', 'some', 'speak', 'talk', 'than', 'that', 'their', 'them', 'then', 'there', 'they', 'this', 'what', 'when', 'where', 'whether', 'which', 'will', 'with', 'would', 'your']);
+/** What an entry is about, roughly: its words of four letters or more, but the common ones. */
+const aboutOf = (text: string): Set<string> => new Set((text.toLowerCase().match(/\p{L}{4,}/gu) ?? []).filter((w) => !COMMON.has(w)));
 const Said = z.union([z.string().transform((text) => ({ text, screen: null, part: null, sure: null, lines: [], against: [], keep: null })), z.object({ text: z.string(), ...OnScreen, ...Backed, ...Keep })]);
 const Draft = z.object({
   // Words, in any script: the model sometimes answers with the shape and nothing in it ("..."), which isn't notes.
@@ -236,9 +249,9 @@ export async function draft(cfg: Config, meter: Meter, b: Brief, style: NotesSty
     {
       role: 'user', content: `${about(b)}\n\n${known.length ? `Existing follow-ups:\n${listed('F', known.map((a) => ({ id: a.id, text: a.text, ...(a.owner ? { owner: a.owner.name } : {}) })))}\n\n` : ''}${b.settled?.length ? `Already settled (don't list these again):\n${b.settled.map((x) => `- ${x}`).join('\n')}\n\n` : ''}${told.length ? `Ticked during the call:\n${listed('T', told)}\n\n` : ''}${onBoards.length ? `In the boards' Actions frames:\n${listed('B', onBoards)}\n\n` : ''}Transcript:\n${fenced(sent.text)}${boards.length ? `\n\nBoards:\n${boardsText(boards)}` : ''}`
     }
-  // Room for every entry the notes keep, each with its lines, and for a model's hidden reasoning, which counts against it
-  // (one that reasons hit 4,000 on 5 of 15 hour-long meetings): a reply cut off isn't JSON, so the notes wouldn't be written.
-  // Replies run far shorter than this: a timeout never uses up an attempt.
+  // Room for every entry the notes keep, each with its lines: a reply cut off isn't JSON, so the notes wouldn't be written.
+  // At the slowest the model has been seen (about 24 tokens a second), all of it fits well inside the timeout, which
+  // matters since a request that times out once sent is charged what it held and uses up an attempt (writer.ts).
   ], { what: 'notes', maxTokens: WRITING_OUTPUT.notes, timeoutMs: 240_000, via: b.via, trace: b.trace });
   const reply = Draft.safeParse(json);
   if (!reply.success) throw new UnavailableError('The notes came back in the wrong shape.', { context: { what: 'notes', issues: issues(reply.error) } });
@@ -271,7 +284,11 @@ export async function draft(cfg: Config, meter: Meter, b: Brief, style: NotesSty
   const chapters = d.chapters
     .flatMap((c): Chapter[] => {
       const line = lineFor(c.line, sent.kept, b.lines);
-      return line && c.title.trim() ? [{ at: Math.round(line.at), title: clip(c.title.trim(), 60), summary: clip([c.summary.trim(), c.later?.trim() ?? ''].filter(Boolean).join(' '), 300), ...pointAt(c) }] : [];
+      // What becomes of the part later ends its summary, whole: it's what keeps the part from reading as final, so the
+      // part's own words give way to fit the 300 characters, never it.
+      const later = clip(c.later?.trim() ?? '', 140);
+      const summary = [clip(c.summary.trim(), later ? 299 - later.length : 300), later].filter(Boolean).join(' ');
+      return line && c.title.trim() ? [{ at: Math.round(line.at), title: clip(c.title.trim(), 60), summary, ...pointAt(c) }] : [];
     })
     .sort((a, b) => a.at - b.at)
     .filter((c, i, all) => i === 0 || c.at !== all[i - 1]?.at)
@@ -306,7 +323,7 @@ export async function draft(cfg: Config, meter: Meter, b: Brief, style: NotesSty
   // said keeps to the notes' limit, and the board's stickies come on top of it, each once.
   const actions = d.actions.filter((a) => a.text.trim()).map((a) => ({ a, sticky: a.board ? stickyOf(a.board) : undefined }))
     // A sticky, a tick or a change to an existing follow-up stays whatever the model said of it: it's already there.
-    .filter((x) => x.sticky !== undefined || Boolean(x.a.ticked) || Boolean(x.a.id) || belongs(x.a))
+    .filter((x) => x.sticky !== undefined || Boolean(x.a.ticked) || Boolean(x.a.id) || belongs('action', x.a))
     .filter((x) => x.sticky !== undefined || said++ < keeps(style).actions)
     .map(({ a, sticky }): ActionItem => {
       const who = owner(a.owner);
@@ -321,14 +338,20 @@ export async function draft(cfg: Config, meter: Meter, b: Brief, style: NotesSty
       // A sticky in an Actions frame is a follow-up whatever the model made of it: one it left out comes as the board says it, for nobody yet.
       onBoards.filter((x) => !fromBoards.has(x.id) && x.text.trim()).map((x): ActionItem => ({ ...ACCEPTED_FOLLOW_UP, review: 'suggested', revision: id128(), sourceId: x.id, sourceVersion: b64u(sha(utf8(x.text))), id: id128(), text: clip(oneLine(x.text), 300), takenOn: false, lines: [], against: [], done: false, changes: [], from: 'board' }))
     );
-  const askedOn = new Set(actions.filter((a) => FINDS_OUT.test(a.text)).flatMap((a) => a.lines));
+  // The follow-ups to ask or find something out, by the lines they cite and what they're about.
+  const asking = actions.filter((a) => FINDS_OUT.test(a.text)).map((a) => ({ lines: new Set(a.lines), about: aboutOf(a.text) }));
+  /** An open question such a follow-up already holds: it cites one of the question's lines and shares a word with it. */
+  const held = (q: { text: string; lines: string[] }): boolean => {
+    const about = aboutOf(q.text);
+    return asking.some((a) => q.lines.some((l) => a.lines.has(l)) && [...about].some((w) => a.about.has(w)));
+  };
   return {
     summary: clip(d.summary.trim(), 1500),
     details: '',
     // What the notes heard is only proposed: people who have the notes confirm it, or the organizer says it wasn't decided.
-    decisions: d.decisions.filter((x) => x.text.trim() && belongs(x)).slice(0, keeps(style).decisions).map((x): Decision => ({ id: id128(), text: clip(x.text.trim(), 300), ...backed(x), state: 'proposed', ...pointAt(x), disputes: [], changes: [] })),
+    decisions: d.decisions.filter((x) => x.text.trim() && belongs('decision', x)).slice(0, keeps(style).decisions).map((x): Decision => ({ id: id128(), text: clip(x.text.trim(), 300), ...backed(x), state: 'proposed', ...pointAt(x), disputes: [], changes: [] })),
     // Open until someone who has the notes says it was answered, here or in a later call.
-    questions: d.questions.filter((x) => x.text.trim() && belongs(x) && !backed(x).lines.some((l) => askedOn.has(l))).slice(0, keeps(style).questions).map((x): Question => ({ id: id128(), text: clip(x.text.trim(), 300), ...backed(x), state: 'open', ...pointAt(x), changes: [] })),
+    questions: d.questions.filter((x) => x.text.trim() && belongs('question', x) && !held({ text: x.text, lines: backed(x).lines })).slice(0, keeps(style).questions).map((x): Question => ({ id: id128(), text: clip(x.text.trim(), 300), ...backed(x), state: 'open', ...pointAt(x), changes: [] })),
     actions,
     ticks,
     chapters,

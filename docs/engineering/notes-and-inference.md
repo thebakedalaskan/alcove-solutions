@@ -60,7 +60,6 @@ open it, and only whoever opened the request could have sealed it.
 | Write notes, write the full summary, pick the moments to look at shared screens, read a frame of a shared screen, answer a question (about a note, across notes, a call so far or a series), catch up, refresh a call's live notes, translate captions, compare a call with earlier ones in its series, edit a selection, by default | `deepseek-ai/DeepSeek-V4.1-Flash-1017` | `NEAR_AI_NOTES_URL`, `https://deepseek-v4-1-flash.completions.near.ai` |
 | The same, when the model chosen is another private one | one from `GET /v1/models` | its host in `NEAR_AI_ENDPOINTS_URL` ([Choosing the model](#choosing-the-model)) |
 | The same, when the model chosen is unencrypted | one from `GET /v1/models` | not an Oblivious HTTP endpoint: `POST {NEAR_AI_BASE_URL}/chat/completions` over TLS, with the bearer key |
-| The notes written after a call or recording ends (the notes, breakout rooms', the full summary, the screens read for them, the comparison with earlier calls), when nobody chose a model and `NEAR_AI_WRITING_MODEL` is set | `NEAR_AI_WRITING_MODEL` | its host in `NEAR_AI_ENDPOINTS_URL` when NEAR AI lists one; otherwise its gateway, as an unencrypted model ([Choosing the model](#choosing-the-model)) |
 
 These are the endpoints NEAR AI calls "direct completions" and documents as experimental. Its gateway
 also takes chat with end-to-end encrypted fields (E2EE v2), but that protocol encrypts each message to the
@@ -469,8 +468,7 @@ account.
   its time once it was sent (`timedOut`) was charged what it held (Charging, below), so it uses up an attempt like a
   failure: notes that keep timing out are finished without a summary after three, and notes written again stay as they
   were, instead of being charged again every five minutes without end. A draft can take the model
-  well over a minute (about 24 tokens a second at its slowest; replies have run under 4,000 tokens, 167 seconds, though
-  it may send up to 16,000, room for a model's hidden reasoning), so it gets
+  well over a minute (about 24 tokens a second at its slowest, up to 4,000 of them, which is 167 seconds), so it gets
   four minutes, and the job's lease five.
 - **Retries.** A failed attempt (NEAR AI refusing the request, a reply that won't open, or one that isn't the
   expected JSON) puts the job back to `queued`, due 20 seconds later after the first failure and 90 seconds
@@ -1658,7 +1656,8 @@ selection's and a board's in `apps/api/src/features/workspaces/documents/asking.
   hedged or put off; `personal`: personal or social chat; `twice`: a decision that's only a job someone takes on, or a
   question someone takes on finding out, which its follow-up holds). The code leaves out every entry with a reason,
   before the limits below count, except a follow-up that is a board's sticky, a tick or a change to an existing one;
-  `yes`, a missing label or one it doesn't know keeps the entry. Measured on 13 November against the same prompt
+  `yes`, a missing label or one it doesn't know keeps the entry, and so does a reason that isn't that kind's: `twice`
+  on a follow-up (it's the follow-up that holds the entry) and `maybe` on a question. Measured on 13 November against the same prompt
   without it (5 runs of the eval's 24 cases each), quality held at 93% and the never-list breaks fell from 27 to 11:
   answered questions and filler go, while a task written as both a decision and a follow-up mostly stays.
   The prompt says what it writes is only proposed, and never to say someone agreed to what they didn't say. It also says
@@ -1777,8 +1776,10 @@ Replies are checked before anything is kept:
   name. Words such as "unknown" or "the team" mean no owner; anyone else keeps the name the model gave.
 - An open question is dropped, before the limits below count, when a follow-up that starts with asking or finding out
   ("Ask", "Check", "Find out", "Confirm", "Chase", "Follow up", "Talk to", "Speak to", "Email", "Message" or "Call",
-  English only) cites one of its lines, since that follow-up already holds it.
-- Lengths are capped: a summary of 1,500 characters; a chapter's summary, with its `later` sentence, of 300; at most 12 decisions, 12 open questions, 20
+  English only) cites one of its lines and shares a word of four letters or more with it, other than the commonest ones,
+  since that follow-up already holds it. A follow-up on the same line about something else leaves the question be.
+- Lengths are capped: a summary of 1,500 characters; a chapter's summary, with its `later` sentence, of 300, the `later` sentence kept whole (up to 140) and the summary
+  shortened to fit; at most 12 decisions, 12 open questions, 20
   follow-ups, 8 chapters and 3 suggested questions. A chapter starts at the line it names, which must
   be one that was sent (one without is dropped), and chapters are de-duplicated by that time; a cited moment is a line
   that was sent. A cite across notes must name a note that was sent and a line of it that was, and is kept once. During a call, a line number must be one of the lines
@@ -1792,14 +1793,11 @@ The organizer's choice of AI model drives everything after transcription. It sta
 sealed preferences (null is the default model), is copied into the call's `notes.model` when the call starts,
 can be changed on the call's capture panel (`{type: "model", model}`, the organizer's only) and is copied into
 the note's `model` when the call ends. It can be changed again when the notes are written again. The
-speech model is not part of it: Whisper is always private and always the same. When they chose none, the notes written
-after a call or recording ends come from `NEAR_AI_WRITING_MODEL` if it's set, which may not be private. The app knows only
-the default, so it says those notes are written in confidential compute either way: only the note's record of unencrypted
-use, and the verification panel's line from it ("This call was also sent unencrypted to …"), say otherwise.
+speech model is not part of it: Whisper is always private and always the same.
 
 | Work | Model used |
 | --- | --- |
-| Writing the notes, each breakout room's notes, picking moments, reading frames, comparing a call with earlier ones in its series | The note's `model`, or `NEAR_AI_WRITING_MODEL` when that's null and it's set |
+| Writing the notes, each breakout room's notes, picking moments, reading frames, comparing a call with earlier ones in its series | The note's `model` |
 | Asking about a note | The note's `model` |
 | Catching up, live notes, questions during a call, caption translation | The call's `model` |
 | Editing a selection | The call's `model` in a call, else the asker's preference |
@@ -1850,8 +1848,6 @@ shows the default as "<name> (default)".
 | `NEAR_AI_STT_URL` | `https://whisper-large-v3.completions.near.ai` | The speech model's own endpoint, where clips go by Oblivious HTTP |
 | `NEAR_AI_NOTES_MODEL` | `deepseek-ai/DeepSeek-V4.1-Flash-1017` | The default model: everything after transcription when no other is chosen |
 | `NEAR_AI_NOTES_URL` | `https://deepseek-v4-1-flash.completions.near.ai` | The default model's own endpoint, where chat goes by Oblivious HTTP |
-| `NEAR_AI_WRITING_MODEL` | none (the default model) | The model that writes the notes after a call or recording ends when the organizer chose none: the notes, breakout rooms', the full summary, the screens read for them and the comparison with earlier calls. Any model NEAR AI's catalog lists, whatever its price; private only if NEAR AI runs it in an enclave. The live hold for writing a call's notes is priced at it. One the catalog doesn't list, or whose evidence doesn't check out, leaves the default to write them. |
-| `HACKATHON_WRITING_SHOWN_PRIVATE` | `false` | Shows the notes written after a call as private in the app even when NEAR AI doesn't run the model that writes them in a secure enclave. For the hackathon deployment only ([Hackathon patch](#hackathon-patch)). |
 | `NEAR_AI_MAX_INPUT_PRICE` | `1` | The most a model's input may cost, in US dollars per million tokens, to be offered as a choice |
 | `NEAR_AI_ENDPOINTS_URL` | `https://completions.near.ai/endpoints` | NEAR AI's registry of the models it runs itself, and where |
 | `INTEL_PCS_URL` | `https://api.trustedservices.intel.com` | Intel's collateral for TDX quotes |
@@ -1869,7 +1865,7 @@ verified against. The measured OS images aren't configuration at all.
 | --- | --- | --- |
 | Verify a model | `GET /attestation/report`, as in [What is checked](#what-is-checked); then Intel's collateral and `POST {NVIDIA_NRAS_URL}/v3/attest/gpu` with the GPU evidence unchanged | 20 s, 15 s, 30 s |
 | Transcribe a clip | `POST {NEAR_AI_STT_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/audio/transcriptions`, multipart: `model`, `response_format=verbose_json`, `temperature=0`, once the call's language is known `language` (Whisper's code for it, such as `en`: NEAR AI refuses names) and `prompt` (names and the words before, at most 371 bytes), `file` (`clip.wav`, `audio/wav`), with the bearer key | 20 s |
-| Write notes | `POST {NEAR_AI_NOTES_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/chat/completions`, JSON: `model`, a system and a user message, `temperature` 0.2, `max_tokens` 16,000, `response_format: {"type": "json_object"}`, `chat_template_kwargs: {"enable_thinking": false}`, `stream: false`, with the bearer key | 240 s |
+| Write notes | `POST {NEAR_AI_NOTES_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/chat/completions`, JSON: `model`, a system and a user message, `temperature` 0.2, `max_tokens` 4,000, `response_format: {"type": "json_object"}`, `chat_template_kwargs: {"enable_thinking": false}`, `stream: false`, with the bearer key | 240 s |
 | Chat with an unencrypted model | `POST {NEAR_AI_BASE_URL}/chat/completions` over TLS, the same JSON without `chat_template_kwargs`, `temperature` and `response_format` only as the catalog lists them, with the bearer key | The same as the request it stands for |
 | Write the full summary | The same as writing notes, with `max_tokens` 2,500, after the notes | 180 s |
 | Pick the moments of shared screens to look at | The same as writing notes, with `max_tokens` 6,000 | 180 s |
@@ -1901,22 +1897,6 @@ chatter, cut the way the browser cuts them), sending each clip with the call's l
 took the word error rate mid-call from 7.0% to 5.6% and the names heard right from 65% to 81%, with a
 native and an accented speaker together from 26% to 12%, short remarks from 10% to 5.8%, and lines
 invented from noise from 3 of 8 sounds to none. Calls in German, French and Spanish stayed at 1.5 to 2.7%.
-
-## Hackathon patch
-
-The NEAR AI hackathon deployment sets `NEAR_AI_WRITING_MODEL=openai/gpt-6.1-sol`, which NEAR AI doesn't run in an enclave,
-and `HACKATHON_WRITING_SHOWN_PRIVATE=true`, so notes written after a call record no unencrypted use and the app doesn't
-mark them. Sol's notes were preferred in blind comparisons on 10 real calls, and DeepSeek at maximum thinking took 5 to
-10 minutes ([the README says why](../../README.md#why-the-hackathon-deployment-writes-notes-with-gpt-61-sol)). Requests
-still go through NEAR AI's gateway, unsealed, and nothing is shown as checked that wasn't. The API logs a warning when it
-starts with the setting on. To remove it, delete:
-
-- `HACKATHON_WRITING_SHOWN_PRIVATE` in `apps/api/src/platform/config.ts`, and its row in [Models and requests](#models-and-requests);
-- the lines marked `HACKATHON PATCH` in `apps/api/src/features/notes/writing/writer.ts` and `apps/api/src/start.ts`;
-- its test, marked the same way, in `apps/api/src/features/notes/writing/models.integration.test.ts`;
-- this section, and the README's section with the sentences that point to it.
-
-`NEAR_AI_WRITING_MODEL` stays.
 
 ## What's logged
 
@@ -2227,7 +2207,7 @@ reading the long cases).
 
 ```
 pnpm --filter @alcove/server eval:notes:judge-check [--case owners]
-pnpm --filter @alcove/server eval:notes --label baseline [--runs 5] [--case owners] [--concurrency 4]
+pnpm --filter @alcove/server eval:notes --label baseline [--runs 5] [--case owners] [--concurrency 4] [--suite default|missing] [--model <NEAR AI model ID>] [--out <folder>]
 pnpm --filter @alcove/server eval:notes:compare <baseline folder> <variant folder>
 pnpm --filter @alcove/server eval:notes:label <eval folder> [--size 60]
 ```
@@ -2245,14 +2225,22 @@ pnpm --filter @alcove/server eval:notes:label <eval folder> [--size 60]
   run and scored with the rest, but a run's full record of one goes beside that file, reports show only their numbers,
   and the comparison shows them apart: a change that helps the repository's cases and not these fits the cases it was
   tuned on. Without the file the eval runs the repository's cases alone.
+- **Cases for missing notes** (`missing-cases.ts`). Three long, dense meetings kept out of the default run: a planning
+  call that ends with a recap leaving out jobs and reversing one, after two people have left; an operations review with
+  more decisions and follow-ups than the notes keep; and a room recording long enough that the middle of its transcript
+  is cut before the notes model reads it. Run them with `--suite missing`, or one at a time with `--case`.
+- **Another model** (`--model`). Any model in NEAR AI's catalog, by its ID: one NEAR AI runs privately goes sealed to its
+  endpoint once its evidence checks out, as the product sends it, and any other goes through NEAR AI's gateway
+  unencrypted, with only the made-up cases. Without it, the eval measures the default model, as the product uses.
 - **A run.** Each case goes to `draft` as a `Brief` (`brief.ts`), several times, since the model answers differently
   each time. `Brief.trace` collects every request to the notes model, with exactly the settings it was sent, and its
   reply as they went (`Exchange` in `inference/inference.ts`); nothing else sets it, and it is never logged. The eval's
   own `Meter` pays for the requests: it charges no one and adds up what they'd cost at the prices NEAR AI lists
   (`inference/models.ts`), which the report gives beside the judge's cost. The eval holds no keys and needs no database.
-  When the service doesn't answer, or answers with a status other than 200, the run waits and tries again, as production
-  waits these out, and after three tries is "not run", left out of the scores. When the model answers but its reply
-  can't be used as notes, the run is an unusable reply: the model's failure, counted as a rate, not tried again.
+  When the service doesn't answer, or answers busy or failing, the run waits and tries again, as production waits these
+  out, and after three tries is "not run", left out of the scores. When the model answers but its reply can't be used as
+  notes, or the request is refused (400, 413, 422) or turned away (401, 403), which production doesn't wait out either,
+  the run is an unusable reply: the model's failure, counted as a rate, not tried again.
 - **Judging** (`judge.ts`). A stronger model, Claude Sonnet 5.5 at medium effort through Anthropic's API
   (`ANTHROPIC_API_KEY` or `ant auth login`), says which expected item each note item states, whether it repeats an
   earlier one, whether a follow-up's due date matches, whether anything on the never list appears and whether the

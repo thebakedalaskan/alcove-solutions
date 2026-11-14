@@ -429,23 +429,27 @@ function notesReply(model: string, system: string, user: string, images: Buffer[
       const next = heard[heard.indexOf(h) + 1];
       return { lines: [h.ref, `L${nowhere}`, 0], against: next && /^no\b/i.test(next.text) ? [next.ref, nowhere] : [] };
     };
-    const decided = (h: Heard) => ({ ...item(h), ...refs(h), text: again ? `Agreed: ${h.text.replace(/^we (?:agreed|decided) (?:to )?/i, '')}` : h.text, state: 'confirmed', disputes: [{ by: 'the model' }], changes: [{ what: 'confirmed' }] });
+    const decided = (h: Heard) => ({ ...item(h), ...refs(h), ...kept(h), text: again ? `Agreed: ${h.text.replace(/^we (?:agreed|decided) (?:to )?/i, '')}` : h.text, state: 'confirmed', disputes: [{ by: 'the model' }], changes: [{ what: 'confirmed' }] });
     /** A sentence nothing said backs: the model's word alone, which the notes must keep marked as that. */
     const unbacked = /\bunbacked\b/i.test(user) ? [{ text: 'Everyone agreed to double the budget.', at: heard[0]?.at ?? 0, lines: [nowhere], against: [] }] : [];
+    /** Whether an entry belongs in the notes, as a line asks the model to say (keep="aside"): nothing unless it does. */
+    const kept = (h: Heard) => { const k = /\bkeep="([^"]*)"/.exec(h.text)?.[1]; return k === undefined ? {} : { keep: k }; };
+    /** What becomes of a part later in the call, as the line it starts at asks the model to say (later="Later, ..."). */
+    const later = (h: Heard) => /\blater="([^"]*)"/.exec(h.text)?.[1] ?? null;
     return {
       summary: `Heard ${heard.length} lines.${boards ? ` Read ${boards} ${boards === 1 ? 'board' : 'boards'}.` : ''} It ended on: ${heard.at(-1)?.text ?? ''}`,
       decisions: [...heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(decided), ...unbacked],
-      questions: heard.filter((h) => h.text.trim().endsWith('?')).map((h) => ({ ...item(h), ...refs(h) })),
+      questions: heard.filter((h) => h.text.trim().endsWith('?')).map((h) => ({ ...item(h), ...refs(h), ...kept(h) })),
       actions: [...actionsHeard.flatMap((h) => {
         const m = /^(\w+) will (.+?)\.?$/.exec(h.text);
         const told = { ...(existing.length ? { id: which(h.text, existing, 'F') } : {}), ...(ticks.length ? { ticked: which(h.text, ticks, 'T') } : {}), takenOn: true, done: true, changes: [{ what: 'took-on' }] };
-        if (!m) return /ます。$/.test(h.text) ? [{ text: remembered(h.text, reworded.get(h.text) ?? h.text), owner: null, due: null, at: late(h), ...onScreen(h), ...refs(h), ...told }] : [];
+        if (!m) return /ます。$/.test(h.text) ? [{ text: remembered(h.text, reworded.get(h.text) ?? h.text), owner: null, due: null, at: late(h), ...onScreen(h), ...refs(h), ...kept(h), ...told }] : [];
         const rest = m[2] ?? '';
-        return [{ text: remembered(h.text, reworded.get(h.text) ?? rest.charAt(0).toUpperCase() + rest.slice(1)), owner: m[1] ?? null, due: /\bby (\w+day)\b/i.exec(rest)?.[1] ?? null, at: late(h), ...onScreen(h), ...refs(h), ...told }];
+        return [{ text: remembered(h.text, reworded.get(h.text) ?? rest.charAt(0).toUpperCase() + rest.slice(1)), owner: m[1] ?? null, due: /\bby (\w+day)\b/i.exec(rest)?.[1] ?? null, at: late(h), ...onScreen(h), ...refs(h), ...kept(h), ...told }];
       }), ...onBoards],
       // Each part starts at a line (with a stray second of its own, which the notes ignore), and, as a model can, two
       // that start at no line: one that isn't there and one without a line at all, which are dropped.
-      chapters: [...heard.filter((_, i) => i % 2 === 0).map((h, i) => ({ line: h.ref, at: late(h), title: `Part ${i + 1}`, summary: h.text })), { line: nowhere, title: 'Nowhere', summary: '' }, { line: null, title: 'No line', summary: '' }],
+      chapters: [...heard.filter((_, i) => i % 2 === 0).map((h, i) => ({ line: h.ref, at: late(h), title: `Part ${i + 1}`, later: later(h), summary: h.text })), { line: nowhere, title: 'Nowhere', summary: '' }, { line: null, title: 'No line', summary: '' }],
       suggestedQuestions: ['What did we decide?', 'Who is doing what?', 'What happens next?'],
       // Each screen, with what was said while it was up.
       screens: screens.map((x) => ({ n: x.n, description: `${x.title}, shown while: ${heard.find((h) => h.screen?.n === x.n)?.text ?? 'nothing was said'}` }))

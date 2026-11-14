@@ -20,8 +20,9 @@ import type { EvalCase } from './cases';
  */
 export const JUDGE = { model: 'claude-sonnet-5-5', effort: 'medium', price: { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.1 } } as const;
 
-/** One item the notes listed, as the judge and the scoring see it. `lines` are indices into the case's lines. */
+/** What a note item is: a decision, an open question or a follow-up. */
 export type Kind = 'decision' | 'question' | 'action';
+/** One item the notes listed, as the judge and the scoring see it. `lines` are indices into the case's lines. */
 export interface NoteItem { id: string; kind: Kind; text: string; owner: string | null; due: string | null; lines: number[] }
 /** What the notes said besides their items, which a `never` entry can also break. */
 export interface NoteProse { summary: string; chapters: { title: string; summary: string }[] }

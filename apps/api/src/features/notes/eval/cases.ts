@@ -1,6 +1,7 @@
 /*
  * The notes eval's meetings: made-up Vandelay Industries calls, each with what correct notes hold. The runner
- * (not yet written) turns each into a Brief, has `draft` write its notes on the real model, and scores them.
+ * (run-cli.ts) turns each into a Brief (brief.ts), has `draft` write its notes on the real model, has the judge grade them
+ * (judge.ts) and scores them (score.ts).
  *
  * Transcript lines are "[mm:ss] Name: words" ("[mm:ss] words" in a room recording, where nobody can tell who
  * spoke). A line ending "(unclear)" is one Whisper was unsure of. Every person is made up.
@@ -9,7 +10,8 @@
  *  - decisions, questions, actions: what good notes must hold, in any wording. `at` is the line where it was
  *    settled, said or taken on, which the notes' own line citations should point at or near.
  *  - acceptable: things a sensible note-taker might also write, anywhere, that don't count as invented.
- *  - never: what must not appear anywhere in the notes as stated fact: a decision, question or follow-up, or the summary.
+ *  - never: what must not appear anywhere in the notes as stated fact: a decision, question or follow-up, the summary
+ *    or a chapter (one that shows something as settled or open without saying it changes later).
  * Anything else the notes list counts as invented.
  */
 import { NotesLanguageSchema } from '@alcove/api';
