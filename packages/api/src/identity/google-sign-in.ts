@@ -4,6 +4,7 @@ import { NoteLinkSecretSchema } from '../notes/links';
 import { CheckoutParamSchema } from '../plans/schema';
 import { TeamSecretBodySchema } from '../teams/schema';
 import { z } from '../shared/zod';
+import { InviteSecretSchema } from './invite-links';
 
 /** Correlates a popup with its waiting tab; never a session or an OAuth credential. */
 export const GoogleSignInPopupIdSchema = z.uuid();
@@ -26,14 +27,17 @@ export const GoogleSignInSearchSchema = z.object({
  * lands on /ready or /home, so it waits in that tab's sessionStorage (the app's features/account/afterSignIn.ts), never in a URL: a
  * call's code and a link's or an invite's secret are secrets. One at a time, so a sign-in started somewhere else since takes
  * its place. A call's join page (`call`), an agent's request to be let in (`agent`, a pointer with no credential), a link to
- * someone's notes or an invite to a team, whose own pages take the secret (`link`, `team`), or Plans with checkout open on
- * what the welcome page's Get Pro or Start a team chose (`plans`).
+ * someone's notes, an invite to a team or someone's invite link, whose own pages take the secret (`link`, `team`, `invite`),
+ * or Plans with checkout open on what the welcome page's Get Pro or Start a team chose (`plans`). An invite link's page
+ * tells its sender only when the account was just made, which Google's way back says by landing on /ready: `arriving`,
+ * set when it did.
  */
 export const AfterSignInSchema = z.discriminatedUnion('to', [
   z.object({ to: z.literal('call'), code: CallCodeSchema }),
   z.object({ to: z.literal('agent'), requestId: AgentAuthorizationIdSchema }),
   z.object({ to: z.literal('link'), secret: NoteLinkSecretSchema }),
   z.object({ to: z.literal('team'), secret: TeamSecretBodySchema.shape.secret }),
+  z.object({ to: z.literal('invite'), secret: InviteSecretSchema, arriving: z.boolean().optional() }),
   z.object({ to: z.literal('plans'), checkout: CheckoutParamSchema })
 ]);
 export type AfterSignIn = z.infer<typeof AfterSignInSchema>;

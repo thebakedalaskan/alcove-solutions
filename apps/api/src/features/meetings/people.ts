@@ -56,13 +56,19 @@ const PERSONAL = new Set(['gmail.com', 'googlemail.com', 'outlook.com', 'hotmail
 const domainOf = (email: string) => email.slice(email.lastIndexOf('@') + 1);
 const titled = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/**
+ * Whether someone signing in with this address has a company: the demo company's directory, or the colleagues at their work
+ * domain. None at a personal address. Known from the address alone, without reading anyone's calls or calendar.
+ */
+export const hasCompany = (email: string): boolean => inCompany(email) || !PERSONAL.has(domainOf(email));
+
 interface Candidate { email: string; name?: string | undefined; title?: string | undefined; onAlcove: boolean }
 
 /** Who is on the team: the demo directory, or the colleagues at your work domain from your calls and calendar. Null at a personal address. */
 async function candidates(o: Owner, mine: string): Promise<{ name: string; domain: string; people: Candidate[] } | null> {
   if (inCompany(mine)) return { name: COMPANY.name, domain: COMPANY.domain, people: TEAM.filter((c) => c.email !== mine) };
+  if (!hasCompany(mine)) return null;
   const domain = domainOf(mine);
-  if (PERSONAL.has(domain)) return null;
   const seen = new Set<string>([mine]);
   const people: Candidate[] = [];
   const add = (raw: string) => { const email = raw.trim().toLowerCase(); if (domainOf(email) === domain && EMAIL.test(email) && !seen.has(email)) { seen.add(email); people.push({ email, onAlcove: false }); } };

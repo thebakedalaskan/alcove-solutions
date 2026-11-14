@@ -1,4 +1,5 @@
 import { type Patch } from '../client';
+import { type InviteLink, type InvitePeek } from './invite-links';
 import { type PersonSuggestion, type Team } from './people';
 import { type Preferences } from './preferences';
 import { type Session, type SignInResult } from './session';
@@ -43,4 +44,16 @@ export interface PeopleApi {
   team(): Promise<Team | null>;
   /** Invites colleagues to Alcove. */
   inviteToTeam(emails: string[]): Promise<Team>;
+  /**
+   * Your own invite link, the same every time, and who joined Alcove from it, newest first: what the Team page copies and
+   * its invitations carry. Only at a company: refused for someone with no company directory.
+   */
+  inviteLink(): Promise<InviteLink>;
+  /** Who an invite link is from, signed in or not. A made-up link and one whose sender has gone are the same `not-found`. */
+  peekInvite(secret: string): Promise<InvitePeek>;
+  /**
+   * Says your account was made from this invite link, so whoever sent it sees you joined. It counts once, for an account
+   * made in the last hour, and never on your own link: otherwise it changes nothing. `not-found` for a link that leads nowhere.
+   */
+  joinedByInvite(secret: string): Promise<void>;
 }

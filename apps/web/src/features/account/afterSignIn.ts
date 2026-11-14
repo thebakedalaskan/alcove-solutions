@@ -1,7 +1,7 @@
 /*
  * Where this tab goes once it's signed in, when signing in started on a page with somewhere to come back to: a call's join
- * page, an agent's request at Agents, a link to someone's notes, an invite to a team, or Plans with checkout open (Get Pro or
- * Start a team on the welcome page). Google needs the current tab when its popup is blocked or can't report back, and its way
+ * page, an agent's request at Agents, a link to someone's notes, an invite to a team, someone's invite link, or Plans with
+ * checkout open (Get Pro or Start a team on the welcome page). Google needs the current tab when its popup is blocked or can't report back, and its way
  * back lands on /ready or /home, so where to go waits in this tab's sessionStorage (AfterSignInSchema): not in the sign-in
  * URL, because a call's code and a link's or an invite's secret are secrets and the API's request logs keep URLs. It's one
  * slot, so a sign-in started somewhere else since takes its place, and nothing else is waiting to race it. It lasts ten

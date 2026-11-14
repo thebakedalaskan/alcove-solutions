@@ -507,8 +507,9 @@ is, the team goes with it. A member's account going takes their place with it.
 
 `GET /v1/team/mine` is the team as its caller sees it (`MyTeam`): its members with their licenses (`live`, `ended`,
 `none`, and when they last wanted one), the pool, and for the admin alone the unconsumed licenses, what refunding them
-adds, and auto-purchase. `Plan.team` says which team, the caller's role and whether they're licensed. `GET /v1/team` and
-`POST /v1/team/invites` are the people directory's, not a team's.
+adds, and auto-purchase. `Plan.team` says which team, the caller's role and whether they're licensed. `GET /v1/team`,
+`POST /v1/team/invites` and your own invite link's `POST /v1/team/link`, `…/peek` and `…/joined` ([Privacy › Invite
+links](privacy-keys-and-sessions.md#invite-links)) are the people directory's, not a team's.
 
 What a team shares opens only for someone **live-licensed** on it, checked at each request: `teams.licensedOn` (an
 account) and `teams.licensedBy` (the addresses workspace access knows people by) are the one place that's asked.

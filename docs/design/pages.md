@@ -403,7 +403,9 @@ Any workspace opens full screen in Alcove's own evening, not as a stock editor: 
 
 The sun is low and to the left, behind the people.
 
-- **The sky.** Team at the top left. In the middle, the company's name (Newsreader) and Invite people (filled). Everyone
+- **The sky.** Team at the top left. In the middle, the company's name (Newsreader) and Invite people (filled), with Copy
+  invite link beside it on the first day. Once anyone has made their account from your invite link, a quiet line under the
+  buttons says who: their faces, then "Aiko and Maya joined from your link" (`tp-joined`). Everyone
   stands in their arch on the horizon, with you in the middle:
   - someone not on Alcove yet is a dashed arch with their initial
   - the sun stands in an empty arch, or just past the end of the line
@@ -439,6 +441,11 @@ The sun is low and to the left, behind the people.
     on the water under it, the sun set off to the left.
 - **Joining** (`/team/join#…`, `features/team/Join.tsx`) is one card on the team's evening: whose team it is and what
   joining gives you, Join (filled) and Not now; signed out, the ways in first, while the invite waits in the tab.
+- **An invite link** (`/invite#…`, `features/team/Invited.tsx`) is the same card on the same evening (`JoinEvening`,
+  `JoinCard`): signed out, whoever sent it in their arch, "Priya asked you to join them on Alcove", one plain line on what
+  Alcove is for, the ways in, and a quiet See what Alcove does at its foot. An account made there goes on to its arrival, as
+  from the welcome page. Signed in, You're on Alcove already with Go to Home (filled); your own link, This is your invite
+  link with Go to Team. Opening, a link that leads nowhere, no link, offline and a failure each have their own card.
 - Every number on the page is real: a group's calls are calls everyone in it was on. Someone on their own, with no
   company and no team, has no Team page: its address goes Home.
 - The first day, loading, a failed load and offline each have their own look.

@@ -1,15 +1,30 @@
-import { PeopleSearchBodySchema, PreferencesPatchSchema, TeamInviteBodySchema } from '@alcove/api';
+import { InviteSecretBodySchema, PeopleSearchBodySchema, PreferencesPatchSchema, TeamInviteBodySchema } from '@alcove/api';
 import { Hono } from 'hono';
 import { deleteCookie } from 'hono/cookie';
 import * as account from './account';
 import * as profile from '../profile/profile';
 import * as people from '../meetings/people';
+import * as inviteLinks from '../meetings/invite-links';
 import { heldNoteIds } from '../notes/access';
 import { body } from '../../http/body';
-import { type Env } from '../../http/context';
+import { clientAddress, type Env } from '../../http/context';
+import { rateLimit } from '../../http/limits';
 import type { HttpRuntime } from '../../http/runtime';
 
+/**
+ * Before sign-in: who an invite link is from (features/meetings/invite-links.ts), for anyone who opens one. Its secret travels
+ * only in the body, and it keeps no receipt.
+ */
+export function registerAccountPublicRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
+  const { d } = runtime;
+  /** Per client address, as it's public. A link's secret is 256 random bits, so this only keeps it calm. */
+  const opening = rateLimit(60, 60_000);
 
+  app.post('/v1/team/link/peek', async (c) => {
+    opening(clientAddress(c), 'invite link');
+    return c.json(await inviteLinks.peek(d, (await body(c, InviteSecretBodySchema)).secret));
+  });
+}
 
 export function registerAccountRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   const { COOKIE, secure } = runtime.context;
@@ -38,4 +53,13 @@ export function registerAccountRoutes(app: Hono<Env>, runtime: HttpRuntime): voi
   app.get('/v1/team', async (c) => c.json(await people.team(c.get('owner'))));
 
   app.post('/v1/team/invites', async (c) => c.json(await people.inviteToTeam(c.get('owner'), (await body(c, TeamInviteBodySchema)).emails)));
+
+  /* Your own invite link, and saying your account was made from someone's: the answer, or the body, holds a link's secret. */
+  app.post('/v1/team/link', async (c) => c.json(await inviteLinks.mine(c.get('owner'))));
+
+  /* Nothing to say back: whether it counted is the link's sender's to see. */
+  app.post('/v1/team/link/joined', async (c) => {
+    await inviteLinks.joined(c.get('owner'), (await body(c, InviteSecretBodySchema)).secret);
+    return c.body(null, 204);
+  });
 }

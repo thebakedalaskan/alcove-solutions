@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SplatRouteImport } from './routes/$'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as ConnectRouteImport } from './routes/connect'
+import { Route as InviteRouteImport } from './routes/invite'
 import { Route as LinkRouteImport } from './routes/link'
 import { Route as MoveRouteImport } from './routes/move'
 import { Route as PrivacyRouteImport } from './routes/privacy'
@@ -54,6 +55,11 @@ const AppRoute = AppRouteImport.update({
 const ConnectRoute = ConnectRouteImport.update({
   id: '/connect',
   path: '/connect',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InviteRoute = InviteRouteImport.update({
+  id: '/invite',
+  path: '/invite',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LinkRoute = LinkRouteImport.update({
@@ -180,6 +186,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
   '/connect': typeof ConnectRoute
+  '/invite': typeof InviteRoute
   '/link': typeof LinkRoute
   '/move': typeof MoveRoute
   '/privacy': typeof PrivacyRoute
@@ -208,6 +215,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
   '/connect': typeof ConnectRoute
+  '/invite': typeof InviteRoute
   '/link': typeof LinkRoute
   '/move': typeof MoveRoute
   '/privacy': typeof PrivacyRoute
@@ -237,6 +245,7 @@ export interface FileRoutesById {
   '/$': typeof SplatRoute
   '/_app': typeof AppRouteWithChildren
   '/connect': typeof ConnectRoute
+  '/invite': typeof InviteRoute
   '/link': typeof LinkRoute
   '/move': typeof MoveRoute
   '/privacy': typeof PrivacyRoute
@@ -267,6 +276,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$'
     | '/connect'
+    | '/invite'
     | '/link'
     | '/move'
     | '/privacy'
@@ -295,6 +305,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$'
     | '/connect'
+    | '/invite'
     | '/link'
     | '/move'
     | '/privacy'
@@ -323,6 +334,7 @@ export interface FileRouteTypes {
     | '/$'
     | '/_app'
     | '/connect'
+    | '/invite'
     | '/link'
     | '/move'
     | '/privacy'
@@ -353,6 +365,7 @@ export interface RootRouteChildren {
   SplatRoute: typeof SplatRoute
   AppRoute: typeof AppRouteWithChildren
   ConnectRoute: typeof ConnectRoute
+  InviteRoute: typeof InviteRoute
   LinkRoute: typeof LinkRoute
   MoveRoute: typeof MoveRoute
   PrivacyRoute: typeof PrivacyRoute
@@ -392,6 +405,13 @@ declare module '@tanstack/react-router' {
       path: '/connect'
       fullPath: '/connect'
       preLoaderRoute: typeof ConnectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invite': {
+      id: '/invite'
+      path: '/invite'
+      fullPath: '/invite'
+      preLoaderRoute: typeof InviteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/link': {
@@ -608,6 +628,7 @@ const rootRouteChildren: RootRouteChildren = {
   SplatRoute: SplatRoute,
   AppRoute: AppRouteWithChildren,
   ConnectRoute: ConnectRoute,
+  InviteRoute: InviteRoute,
   LinkRoute: LinkRoute,
   MoveRoute: MoveRoute,
   PrivacyRoute: PrivacyRoute,

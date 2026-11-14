@@ -29,6 +29,10 @@
 .tp-acts .ac-btn { height: 46px; padding: 0 22px; font-size: 15px; }
 .tp-acts .ac-btn.is-secondary { background: color-mix(in oklch, var(--ground) 64%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 16%, transparent); color: var(--ink); }
 .tp-acts .ac-btn.is-secondary:hover { background: color-mix(in oklch, var(--ground) 82%, transparent); }
+/* Who joined from your invite link, under the buttons: their faces, then their names. */
+.tp-joined { display: inline-flex; align-items: center; justify-content: center; gap: 10px; max-width: 100%; margin-top: 14px; font: 500 15px/1.35 var(--font-sans); color: var(--ink-2); text-wrap: balance; }
+.tp-joined .ac-faces { flex: none; }
+.tp-joined > span { min-width: 0; overflow-wrap: anywhere; }
 
 /* The line. Everyone's feet are on the horizon, and their name is on the water just below it. */
 .tp-row { position: relative; display: flex; flex: none; align-items: flex-end; justify-content: center; margin: 0 0 calc(-1 * var(--name-h)); padding: 0; list-style: none; }

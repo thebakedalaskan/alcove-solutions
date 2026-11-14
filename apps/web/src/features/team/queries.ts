@@ -1,7 +1,7 @@
 /*
- * The team's data: the company directory and finding people in it, the team you're on with its licenses and notes, and the
- * changes to it. A team's change touches the plan too (a license decides it), and joining or leaving one changes which
- * notes and workspaces are yours to open.
+ * The team's data: the company directory and finding people in it, your own invite link and who an invite link is from, the
+ * team you're on with its licenses and notes, and the changes to it. A team's change touches the plan too (a license decides
+ * it), and joining or leaving one changes which notes and workspaces are yours to open.
  */
 import type { MyTeam } from '@alcove/api';
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
@@ -14,6 +14,13 @@ import { teamKeys } from './queryKeys';
 export const teamQueries = {
   team: () => queryOptions({ queryKey: teamKeys.team, queryFn: () => api.people.team(), staleTime: 5 * 60_000 }),
   people: (query: string) => queryOptions({ queryKey: teamKeys.people(query), queryFn: () => api.people.search(query), staleTime: 30_000, placeholderData: (prev) => prev }),
+  /**
+   * Your own invite link, the same every time, and who joined Alcove from it: what Copy invite link copies and every
+   * invitation carries. Only someone at a company has one, so it's asked for once the company is known.
+   */
+  inviteLink: () => queryOptions({ queryKey: teamKeys.inviteLink, queryFn: () => api.people.inviteLink(), staleTime: 60_000 }),
+  /** Who an invite link is from, signed in or not. Asked once: a link that leads nowhere stays that way. */
+  invitedBy: (secret: string) => queryOptions({ queryKey: teamKeys.invitedBy(secret), queryFn: () => api.people.peekInvite(secret), retry: false, staleTime: Infinity }),
   /** The team you're on, or null: its members and their licenses, and for its admin the licenses left. */
   myTeam: () => queryOptions({ queryKey: teamKeys.myTeam, queryFn: () => api.teams.mine(), staleTime: 60_000 }),
   /** The notes made visible to your team that you can open (a live license needed). */
@@ -25,6 +32,10 @@ export const teamQueries = {
 export function useInviteTeam() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (emails: string[]) => api.people.inviteToTeam(emails), onSuccess: (t) => qc.setQueryData(teamKeys.team, t) });
+}
+/** Says the account just made came from someone's invite link, so they see it joined. Nothing of it is read back here. */
+export function useJoinedByInvite() {
+  return useMutation({ mutationFn: (secret: string) => api.people.joinedByInvite(secret) });
 }
 
 /** What a team's change touches: the team, its notes, and the plan (a license decides it). */

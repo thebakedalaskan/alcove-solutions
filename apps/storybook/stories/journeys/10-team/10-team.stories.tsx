@@ -1,10 +1,14 @@
-/* Journeys on the Team page (docs/product/user-flows.md › 10. Team), from the canvas's Team board (docs/design/canvas/data-team.js). */
+/*
+ * Journeys on the Team page (docs/product/user-flows.md › 10. Team), from the canvas's Team board (docs/design/canvas/data-team.js),
+ * and opening someone's invite link.
+ */
 import { AlcoveApiError } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
+import { withInviteLink } from '../../../src/api/scenarios';
 import { standIn } from '../../../src/api/standin';
 import { isOnline, setOnline } from '../../../src/browser';
-import { page, pages, type PageArgs, type PageStory } from '../../../src/page';
+import { changing, page, pages, type PageArgs, type PageStory } from '../../../src/page';
 import { away, holding, keepMail, LATER, outage, SOON, swap, unreachable } from '../play';
 
 const meta = { title: 'Journeys/10 Team', ...pages } satisfies Meta<PageArgs>;
@@ -144,9 +148,9 @@ export const CopyTheInviteLink: PageStory = {
       await userEvent.click(await screen.findByRole('button', { name: 'Invite people' }, LATER));
       await userEvent.click(within(await screen.findByRole('dialog', { name: 'Invite people' }, SOON)).getByRole('button', { name: 'Copy link' }));
     });
-    await step('The popover closes, and the link to sign in is on your clipboard', async () => {
+    await step('The popover closes, and your own invite link is on your clipboard. Its page says it’s from you', async () => {
       // A browser that won't copy for the page shows the link to copy instead.
-      await screen.findByText(/^(Invite link copied\. It opens the page to sign in\.|Copy this link:)/, {}, SOON);
+      await screen.findByText(/^(Invite link copied\. It says it’s from you\.|Copy this link:)/, {}, SOON);
       await away('dialog', 'Invite people');
     });
   }
@@ -437,6 +441,27 @@ export const OfflineAndGroups: PageStory = {
     await step('If only your groups fail, their section says so. The rest of the page works', async () => {
       await within(await groups()).findByText('Your groups didn’t load.', {}, LATER);
       await screen.findByRole('region', { name: 'Not on Alcove yet' }, SOON);
+    });
+  }
+};
+
+export const OpenAnInviteLink: PageStory = {
+  name: '10.22 Open someone’s invite link and sign in',
+  ...page('/invite', 'first-sign-in'),
+  beforeEach: changing(withInviteLink()),
+  play: async ({ userEvent, step }) => {
+    await step('Priya’s invite link opens on one card: Priya in her arch, what Alcove is for, and the ways in', async () => {
+      await screen.findByRole('heading', { name: 'Priya asked you to join them on Alcove', level: 1 }, LATER);
+    });
+    await step('Continue with Microsoft. The account is new, so Priya’s Team page will say you joined', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Continue with Microsoft' }, SOON));
+    });
+    await step('Then the first sign-in goes on as from the welcome page: the account is made on screen', async () => {
+      await screen.findByRole('dialog', { name: 'Creating your account' }, LATER);
+    });
+    await step('“You’re in”, and the arch opens on the plans to choose from, then Home', async () => {
+      await screen.findByRole('dialog', { name: /^You’re in/ }, LATER);
+      await screen.findByRole('heading', { name: 'Choose a plan', level: 1 }, LATER);
     });
   }
 };

@@ -78,6 +78,16 @@ export const operationCommitKey = (root: Uint8Array, ownerId: string): Uint8Arra
 export const operationResultKey = (root: Uint8Array, ownerId: string): Uint8Array => derive(live(root), unb64u(ownerId, 32), 'alcove/operation-result/v1');
 /** Proves an unwrapped root is the owner's without storing anything that reveals it. */
 export const rootCheck = (root: Uint8Array, ownerId: string): Uint8Array => hmac(sha256, derive(live(root), unb64u(ownerId, 32), 'alcove/root-check/v1'), utf8(ownerId));
+/**
+ * An account's own invite link's secret (features/meetings/invite-links.ts), as base64url: worked out from its root each time,
+ * so it's the same on every ask, and never stored. Only its SHA-256 is kept, to find the link's row.
+ */
+export const inviteLinkSecret = (root: Uint8Array, ownerId: string): string => b64u(derive(live(root), unb64u(ownerId, 32), 'alcove/invite-link-secret/v1'));
+/**
+ * Seals who an invite link is from and who joined from it, from the link's secret alone: whoever holds the link, or its
+ * owner, who can work the secret out, can open them, and nobody else. The caller zeroes it.
+ */
+export const inviteLinkKey = (secret: string): Uint8Array => derive(live(unb64u(secret, 32)), new Uint8Array(0), 'alcove/invite-link/v1');
 export const serviceKey = (kservice: Uint8Array, purpose: 'accounting' | 'agents'): Uint8Array => derive(live(kservice), new Uint8Array(0), `alcove/service/${purpose}/v1`);
 /** Seals what a browser carries between leaving to sign in with a provider and coming back. */
 export const signInAttemptKey = (kmaster: Uint8Array): Uint8Array => derive(live(kmaster), new Uint8Array(0), 'alcove/sign-in-attempt/v1');
@@ -124,9 +134,10 @@ export const edgeKeySeed = (kmaster: Uint8Array, purpose: 'tls' | 'acme-account'
  * who they are. Emails are compared trimmed and lower-cased. `operator-credit`: an account and the ticket support credited
  * it for through the operator route (features/billing/support.ts), so one ticket adds money to an account once;
  * `operator-grant`: an account and the ticket support gave it a plan for (features/billing/operator/operator.ts), so one
- * ticket gives an account a plan once.
+ * ticket gives an account a plan once; `invite-joiner`: an account that joined from someone's invite link
+ * (features/meetings/invite-links.ts), so deleting it finds every row that says so.
  */
-export function blindIndex(indexKey: Uint8Array, purpose: 'subject' | 'email' | 'invite' | 'ring' | 'flag-email' | 'call-code' | 'call-seat' | 'call-workspace' | 'addition-author' | 'note-link-maker' | 'upload-guest' | 'operator-credit' | 'operator-grant', value: string): Uint8Array {
+export function blindIndex(indexKey: Uint8Array, purpose: 'subject' | 'email' | 'invite' | 'ring' | 'flag-email' | 'call-code' | 'call-seat' | 'call-workspace' | 'addition-author' | 'note-link-maker' | 'upload-guest' | 'operator-credit' | 'operator-grant' | 'invite-joiner', value: string): Uint8Array {
   const v = purpose === 'email' || purpose === 'invite' || purpose === 'ring' || purpose === 'flag-email' ? value.trim().toLowerCase() : value;
   return hmac(sha256, live(indexKey), concat(utf8(purpose), new Uint8Array([0]), utf8(v)));
 }

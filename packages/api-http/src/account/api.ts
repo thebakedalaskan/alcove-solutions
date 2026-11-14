@@ -1,9 +1,9 @@
 import { type HttpTransport } from '../transport/http';
-import { type AlcoveApi, FeatureFlagsSchema, MyTeamSchema, NoteSummarySchema, PersonSuggestionSchema, PlanOffersSchema, PlanSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamInvitePeekSchema, TeamInviteSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema } from '@alcove/api';
+import { type AlcoveApi, FeatureFlagsSchema, InviteLinkSchema, InvitePeekSchema, MyTeamSchema, NoteSummarySchema, PersonSuggestionSchema, PlanOffersSchema, PlanSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamInvitePeekSchema, TeamInviteSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema } from '@alcove/api';
 import { z } from 'zod';
 
 export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'plans' | 'teams' | 'featureFlags'> {
-  const { base, req } = t;
+  const { base, req, send } = t;
   return {
     auth: {
       getSession: () => req(SessionSchema.nullable(), 'GET', '/session'),
@@ -26,7 +26,12 @@ export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'ac
       // The query goes in the body so it never appears in URLs or access logs.
       search: (query) => req(z.array(PersonSuggestionSchema), 'POST', '/people/search', { query }),
       team: () => req(TeamSchema.nullable(), 'GET', '/team'),
-      inviteToTeam: (emails) => req(TeamSchema, 'POST', '/team/invites', { emails })
+      inviteToTeam: (emails) => req(TeamSchema, 'POST', '/team/invites', { emails }),
+      // Your own invite link answers with its secret, and the other two take one: always in a body, never in a URL.
+      inviteLink: () => req(InviteLinkSchema, 'POST', '/team/link', {}),
+      peekInvite: (secret) => req(InvitePeekSchema, 'POST', '/team/link/peek', { secret }),
+      // Answered with nothing (204), whether it counted or not.
+      joinedByInvite: async (secret) => { await send('POST', '/team/link/joined', JSON.stringify({ secret }), { 'content-type': 'application/json' }); }
     },
     plans: {
       plan: () => req(PlanSchema, 'GET', '/plan'),
@@ -43,7 +48,7 @@ export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'ac
       cancelTopUp: (id) => req(TopUpSchema, 'POST', `/plan/top-ups/${encodeURIComponent(id)}/cancel`),
       topUps: () => req(z.array(TopUpSchema), 'GET', '/plan/top-ups')
     },
-    // A team's own routes are under /team/ with names of their own: GET /team and POST /team/invites are the people directory's.
+    // A team's own routes are under /team/ with names of their own: GET /team, POST /team/invites and /team/link are the people directory's.
     teams: {
       mine: () => req(MyTeamSchema.nullable(), 'GET', '/team/mine'),
       create: (name) => req(MyTeamSchema, 'POST', '/team/new', { name }),

@@ -17,7 +17,7 @@ import { registerOwnerMiddleware } from './http/authorization';
 import { registerReceiptMiddleware } from './http/receipts';
 import { registerAgentPublicRoutes, registerAgentRoutes } from './features/agents/routes';
 import { registerAccountSessionRoutes } from './features/account/session-routes';
-import { registerAccountRoutes } from './features/account/routes';
+import { registerAccountPublicRoutes, registerAccountRoutes } from './features/account/routes';
 import { registerMeetingRoutes } from './features/meetings/routes';
 import { registerLibraryRoutes } from './features/workspaces/library/routes';
 import { registerCallOwnerRoutes } from './features/calls/owner-routes';
@@ -50,6 +50,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined, attester:
   registerBillingOperatorRoutes(app, runtime);
   registerAccountOperatorRoutes(app, runtime);
   registerAuthRoutes(app, runtime);
+  registerAccountPublicRoutes(app, runtime);
   registerDrivePublicRoutes(app, runtime);
   registerCallRoutes(app, runtime);
   registerWorkspaceReaderRoutes(app, runtime, workspaceCalls);

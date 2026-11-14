@@ -8,7 +8,7 @@ import {
   TopUpSchema, TopUpRoutesSchema, PlanOffersSchema, ISODateSchema, DriveExportChoiceSchema, DriveExportJobSchema, DriveFolderSchema, DriveSettingsSchema, FILE_TYPE, CalendarSchema,
   DocumentLibrarySchema, IncomingRingSchema, IntervalSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PlanSchema, PreferencesSchema, MentionNoticeSchema, SessionSchema, ShareEntrySchema, TeamSchema,
   WorkspaceMediaSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, type DocumentLibrary, type DocumentRole, type Group, type ItemCall, type MentionNotice, type NoteRoom, type NoteWorkedOn,
-  type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole, MyTeamSchema, type PlanNotice
+  type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole, MyTeamSchema, type PlanNotice, InviteJoinedSchema, PersonSchema
 } from '@alcove/api';
 import { tileHintKey } from '~/features/call/layout/view';
 import { returnTo } from '~/features/account/afterSignIn';
@@ -17,6 +17,7 @@ import { openBrowser } from '../browser';
 import { busyCalls, busyEvents, soonCalls } from '../world/calls';
 import { connected, notConnected, writeNote, type NoteSpec } from '../world/build';
 import { iso, on, setClock } from '../world/clock';
+import { JOINED_FROM_ART, PRIYA_INVITE_SECRET, artsLink, priyasLink } from '../world/invite-links';
 import { clipOf, stillOf } from '../media/screens';
 import { PREFS, session, type BoardSpec, type Kept, type Opening, type Page, type Refused, type Space, type World } from '../world/world';
 import { FLOW, RETRO, roomBoard } from '../world/boards';
@@ -305,7 +306,9 @@ function busy(): World {
     meetings: busyCalls(), calendar: connected(busyEvents()), calendars: calendars(), plan: freePlan(), documents: library(), workspaces: spaces, pages: pages(), shares: shares(), boards: boards(),
     mentions: structuredClone(TAGGED), media: files(), rings: [], writing: null,
     // The bandwidth flag is on here and off in every other scenario, so both answers are served.
-    featureFlags: ['call.bandwidth_reduction']
+    featureFlags: ['call.bandwidth_reduction'],
+    // Aiko and Maya came to Alcove from Art's own invite link this week.
+    inviteLink: artsLink(JOINED_FROM_ART)
   };
 }
 
@@ -415,6 +418,15 @@ export const withTeamInvite = (expired = false) => (w: World): void => {
   returnTo({ to: 'team', secret: TEAM_INVITE_SECRET });
 };
 const teamNotice = (id: string, kind: PlanNotice['kind'], count: number | null, at = iso(0, 11, 20)): PlanNotice => ({ id, kind, at, until: null, count, workspaceId: null });
+/**
+ * Priya's invite link in the world, and a link's secret waiting in this tab as it does while signing in from its page
+ * (/invite): Storybook can't put a secret in the page's address. `secret`: Priya's, or another (Art's own, or one that
+ * leads nowhere).
+ */
+export const withInviteLink = (secret = PRIYA_INVITE_SECRET) => (w: World): void => {
+  w.invites = [priyasLink()];
+  returnTo({ to: 'invite', secret });
+};
 
 /* ---------- the scenarios ---------- */
 
@@ -574,7 +586,9 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
       world: {
         drive: disconnectedDrive(), payments: paymentsOff(), session: session({ createdAt: iso(0, 16, 5) }), prefs: PREFS, team: teamOf(DIRECTORY.filter((c) => c.person !== INES && c.person !== AIKO).map((c): Colleague => ({ ...c, onAlcove: false, invited: false }))),
         // Past the plans, which a new account sees first (`plan-choice`), so Home is Home.
-        notes: [], personal: {}, meetings: [], calendar: notConnected, plan: { ...newPlan(), choose: false }, documents: library(), workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null
+        notes: [], personal: {}, meetings: [], calendar: notConnected, plan: { ...newPlan(), choose: false }, documents: library(), workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null,
+        // Art's invite link, which nobody has joined from yet.
+        inviteLink: artsLink()
       },
       opening: { tourSeen: false }
     })
@@ -670,7 +684,9 @@ export function checked(w: World): World {
     ['shares', ShareEntrySchema.array().safeParse(Object.values(w.shares).flat())],
     ['drive', WorkspaceSummarySchema.array().safeParse(w.workspaces.map((x) => summaryOf(x, w.session?.user ?? ART)))], ['mentions', MentionNoticeSchema.array().safeParse(w.mentions)],
     ['media', WorkspaceMediaSchema.array().safeParse(w.media.map((m) => m.media))],
-    ['team', MyTeamSchema.nullable().safeParse(w.myTeam ? teamView(w.myTeam, w.session?.user.email ?? ART.email) : null)]
+    ['team', MyTeamSchema.nullable().safeParse(w.myTeam ? teamView(w.myTeam, w.session?.user.email ?? ART.email) : null)],
+    ['invite links', PersonSchema.array().safeParse([w.inviteLink, ...(w.invites ?? [])].flatMap((l) => (l ? [l.from] : [])))],
+    ['joined from invite links', InviteJoinedSchema.array().safeParse([w.inviteLink, ...(w.invites ?? [])].flatMap((l) => l?.joined ?? []))]
   ] as const;
   const bad = checks.flatMap(([what, r]) => (r.success ? [] : [`${what}: ${r.error.issues.slice(0, 3).map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`]));
   if (bad.length) throw new Error(`The demo world doesn’t fit the contract. ${bad.join(' · ')}`);

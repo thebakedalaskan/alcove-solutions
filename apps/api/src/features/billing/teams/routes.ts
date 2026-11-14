@@ -7,8 +7,9 @@ import { type Env } from '../../../http/context';
 import type { HttpRuntime } from '../../../http/runtime';
 
 /*
- * A team (docs: Plans and usage › Team), as its admin and members use it. `GET /v1/team` and `POST /v1/team/invites` are
- * the people directory's (features/account/routes.ts), so a team's own are under `/v1/team/` with names of their own. An
+ * A team (docs: Plans and usage › Team), as its admin and members use it. `GET /v1/team`, `POST /v1/team/invites` and your
+ * own invite link's `/v1/team/link` routes are the people directory's (features/account/routes.ts), so a team's own are
+ * under `/v1/team/` with names of their own. An
  * invite's secret travels only in bodies, never in a URL, and keeps no receipt (http/receipts.ts).
  */
 export function registerTeamRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
