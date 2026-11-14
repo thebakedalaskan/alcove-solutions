@@ -8,7 +8,7 @@ import { iso } from '../../../src/world/clock';
 import { artsLink } from '../../../src/world/invite-links';
 import { JONAS } from '../../../src/world/people';
 import type { World } from '../../../src/world/world';
-import { keepMail, SOON } from '../../journeys/play';
+import { keepMail, pressable, SOON } from '../../journeys/play';
 import { troubled } from '../changes';
 
 const meta = { title: 'Pages/Team/Team', ...pages } satisfies Meta<PageArgs>;
@@ -40,6 +40,31 @@ export const FirstDaySomeoneJoined = page('/team', 'first-day', { beforeEach: ch
 export const FirstDaySomeoneJoinedPhone = phone(FirstDaySomeoneJoined);
 /** Your invite link hasn't come yet: Copy invite link and every Invite wait for it, rather than send anything without it. */
 export const InviteLinkOnItsWay = page('/team', 'first-day', { beforeEach: changing(troubled({ 'people.inviteLink': 'hold' })) });
+/** Your invite link didn't load: the invites wait, and the sky says why under the buttons, with Try again. */
+export const InviteLinkDidntLoad = page('/team', 'first-day', { beforeEach: changing(troubled({ 'people.inviteLink': 'failed' })) });
+export const InviteLinkDidntLoadNight: PageStory = { ...InviteLinkDidntLoad, globals: { theme: 'dark' } };
+export const InviteLinkDidntLoadPhone = phone(InviteLinkDidntLoad);
+/** The connection went before your invite link came: the invites need one, and wait for it. */
+export const InvitesNeedAConnection = page('/team', 'busy', {
+  beforeEach: changing(troubled({ 'people.inviteLink': 'hold' })),
+  play: async ({ canvas, step }) => {
+    await step('The team is here, then the connection goes, with your invite link still on its way', async () => {
+      await canvas.findByRole('button', { name: 'Invite people' }, SOON);
+      setOnline(false);
+    });
+  }
+});
+/** Make a new link?, asked in place in Invite people: the link you've sent stops working, and who joined from it stays listed. */
+export const MakeANewLink = page('/team', 'busy', {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Press Invite people, then the arrow beside Copy link: Make a new link', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'Invite people' }, SOON));
+      await userEvent.click(await pressable('button', 'Make a new link', SOON, within(await screen.findByRole('dialog', { name: 'Invite people' }, SOON))));
+    });
+  }
+});
+export const MakeANewLinkNight: PageStory = { ...MakeANewLink, globals: { theme: 'dark' } };
+export const MakeANewLinkPhone = phone(MakeANewLink);
 export const Lots = page('/team', 'lots');
 /** A group open, from its tile under the water. */
 export const AGroup = page('/team?group=g-product', 'busy');

@@ -79,13 +79,15 @@ export const operationResultKey = (root: Uint8Array, ownerId: string): Uint8Arra
 /** Proves an unwrapped root is the owner's without storing anything that reveals it. */
 export const rootCheck = (root: Uint8Array, ownerId: string): Uint8Array => hmac(sha256, derive(live(root), unb64u(ownerId, 32), 'alcove/root-check/v1'), utf8(ownerId));
 /**
- * An account's own invite link's secret (features/meetings/invite-links.ts), as base64url: worked out from its root each time,
- * so it's the same on every ask, and never stored. Only its SHA-256 is kept, to find the link's row.
+ * An account's own invite link's secret (features/meetings/invite-links.ts), as base64url: worked out from its root and the
+ * link's generation each time, so it's the same on every ask until its owner makes a new link (the next generation), and
+ * never stored. Only its SHA-256 is kept, to find the link's row.
  */
-export const inviteLinkSecret = (root: Uint8Array, ownerId: string): string => b64u(derive(live(root), unb64u(ownerId, 32), 'alcove/invite-link-secret/v1'));
+export const inviteLinkSecret = (root: Uint8Array, ownerId: string, generation: number): string =>
+  b64u(derive(live(root), unb64u(ownerId, 32), `alcove/invite-link-secret/v1/${generation}`));
 /**
- * Seals who an invite link is from and who joined from it, from the link's secret alone: whoever holds the link, or its
- * owner, who can work the secret out, can open them, and nobody else. The caller zeroes it.
+ * Seals who an invite link is from, from the link's secret alone: whoever holds the link, or its owner, who can work the
+ * secret out, can open it, and nobody else. Who joined from it is sealed under its owner's keys instead. The caller zeroes it.
  */
 export const inviteLinkKey = (secret: string): Uint8Array => derive(live(unb64u(secret, 32)), new Uint8Array(0), 'alcove/invite-link/v1');
 export const serviceKey = (kservice: Uint8Array, purpose: 'accounting' | 'agents'): Uint8Array => derive(live(kservice), new Uint8Array(0), `alcove/service/${purpose}/v1`);

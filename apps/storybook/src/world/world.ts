@@ -152,10 +152,10 @@ export interface World {
 }
 
 /**
- * Someone's own invite link: its secret, who it's from (as anyone else sees them, known by their address), and who joined
- * Alcove from it, newest first.
+ * Someone's own invite link: its secret and generation (one more for each new link), who it's from (as anyone else sees them,
+ * known by their address), and who joined Alcove from it, or a link before it, newest first.
  */
-export interface InviteLinkWorld { secret: string; from: Person; joined: InviteJoined[] }
+export interface InviteLinkWorld { secret: string; generation: number; from: Person; joined: InviteJoined[] }
 
 /**
  * A link to someone's notes: what everyone with them sees of it, its secret, and the note it's to. `note` is the note as

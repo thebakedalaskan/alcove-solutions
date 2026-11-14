@@ -34,6 +34,11 @@ export const SignedOutPhone = phone(SignedOut);
 /** An account made from the card: Priya is told it joined, and the account arrives on screen, as from the welcome page. */
 export const JoinedJustNow = page('/invite', 'first-sign-in', { beforeEach: priyas, play: signingIn });
 export const JoinedJustNowNight = night(JoinedJustNow);
+/**
+ * An account just made from a link that has stopped leading anywhere since (made again, or its sender gone): nobody can be
+ * told, and the account's arrival goes on all the same.
+ */
+export const JoinedJustNowLinkGone = page('/invite', 'first-day', { beforeEach: changing(withInviteLink(NOWHERE_INVITE_SECRET, true)) });
 /** An account from before signs in from the card: nobody is told, and it's on Alcove already. */
 export const AnAccountFromBefore = page('/invite', 'signed-out', { beforeEach: priyas, play: signingIn });
 /** Signed in when the link opens: you're on Alcove already, with Go to Home. */

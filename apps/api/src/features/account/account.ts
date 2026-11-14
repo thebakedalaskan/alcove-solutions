@@ -82,7 +82,7 @@ export async function signIn(d: Deps, { provider, who }: SignIn): Promise<{ owne
       }
       // Their team shows them as their provider has them now, name and address, from this sign-in on.
       await memberChanged(d, c, existing.owner_id, { name: who.name, email: who.email });
-      return { ownerId: existing.owner_id, isNew: false };
+      return { ownerId: existing.owner_id, isNew: false, emailChanged };
     }
     if (provider === 'google' && d.cfg.GOOGLE_SIGNUP_MODE === 'testers' && !d.cfg.GOOGLE_SIGNUP_TESTERS.includes(who.email)) {
       throw new GoogleSignupInviteRequiredError();
@@ -93,24 +93,25 @@ export async function signIn(d: Deps, { provider, who }: SignIn): Promise<{ owne
     const p: Profile = { name: who.name, email: who.email, ...(who.photoUrl ? { photoUrl: who.photoUrl } : {}), sample: who.sample, preferences: DEFAULT_PREFERENCES, invited: [] };
     await createItem(o, c, 'profile', p);
     await openPlan(d, c, ownerId);
-    return { ownerId, isNew: true };
+    return { ownerId, isNew: true, emailChanged: false };
   });
 
   const { id, session } = await openSession(d, found.ownerId, provider);
   const owner = await openOwner(d, found.ownerId, session);
-  if (!found.isNew) await refreshProfile(owner, who);
+  // The invite link's page follows them too: an address that changed is in the profile already, written above.
+  if (!found.isNew && (await refreshProfile(owner, who) || found.emailChanged)) await senderChanged(owner);
   if (who.sample) await seedCalendar(owner);
   alog.info(found.isNew ? 'account created' : 'signed in', { ownerId: found.ownerId, provider });
   return { owner, sessionId: id, isNew: found.isNew };
 }
 
-/** The provider is where someone's name, email and photo are kept; Alcove follows it, and so does their invite link's page. */
-async function refreshProfile(o: Owner, who: Identity): Promise<void> {
+/** The provider is where someone's name, email and photo are kept; Alcove follows it. Says whether anything changed. */
+async function refreshProfile(o: Owner, who: Identity): Promise<boolean> {
   const p = await profile(o);
-  if (p.name === who.name && p.email === who.email && p.photoUrl === who.photoUrl) return;
+  if (p.name === who.name && p.email === who.email && p.photoUrl === who.photoUrl) return false;
   await updateProfile(o, (x) => ({ name: who.name, email: who.email, ...(who.photoUrl ? { photoUrl: who.photoUrl } : {}), sample: x.sample, preferences: x.preferences, invited: x.invited }));
   alog.info('profile updated from provider', { ownerId: o.ownerId });
-  await senderChanged(o);
+  return true;
 }
 
 /** The sample calendar for demo accounts: when nothing of theirs is coming up, the demo day is put on it. */

@@ -19,7 +19,7 @@ import { accountQueries } from '~/features/account/queries';
 import { callQueries } from '~/features/calls/list/queries';
 import { calendarQueries } from '~/features/calls/scheduling/queries';
 import { noteQueries } from '~/features/notes/queries';
-import { teamQueries } from './queries';
+import { teamQueries, useInviteLink } from './queries';
 import { byMeetings, byRecency, knownPeople, meetings, shownOf, type Member } from './data';
 import { Groups, NO_DRAFT, readyToMake, type Draft } from './Groups';
 import { blanks, inLine, lineOf, sunOf, you } from './line';
@@ -52,8 +52,8 @@ export function TeamPage({ group }: { group: string | undefined }) {
   const team = useQuery({ ...teamQueries.team(), retryOnMount: false });
   /* The team you're on, if you're on one: then the page is the team's. */
   const mine = useQuery(teamQueries.myTeam()).data;
-  /* Your own invite link and who joined from it, once there's a company to invite people to. The loader asks for it too. */
-  const invite = useQuery({ ...teamQueries.inviteLink(), enabled: !!team.data }).data;
+  /* Your own invite link and who joined from it, once there's a company and no team of your own. The loader asks for it too. */
+  const invite = useInviteLink();
   const prefs = useQuery(accountQueries.prefs()).data;
   const notes = useQuery(noteQueries.notes()).data ?? NO_NOTES;
   const calls = useQuery(callQueries.upcoming()).data ?? [];
@@ -92,7 +92,10 @@ export function TeamPage({ group }: { group: string | undefined }) {
   const sun = sunOf(line);
   /* One filled button: an open popover has its own, and so does a group ready to be made, while its editor's open. */
   const filled = open === undefined && !(group === NEW_GROUP && readyToMake(draft));
-  const joined = invite?.joined.map((j) => j.person) ?? NO_ONE;
+  const link = invite.data;
+  const joined = link?.joined.map((j) => j.person) ?? NO_ONE;
+  /* Without your link nothing can be sent: the page says why where the invites are, and they wait. Never another address. */
+  const linkTrouble = !here || mine !== null || link ? undefined : !online ? 'offline' : invite.isError ? 'failed' : undefined;
 
   const groups = <Groups open={group} onOpen={openGroup} notes={notes} person={person} shown={shown} draft={draft} onDraft={setDraft} />;
   const shared = <SharedWithGroups notes={notes} me={me} now={now} />;
@@ -109,8 +112,8 @@ export function TeamPage({ group }: { group: string | undefined }) {
           <div className="tp-acts">
             {here && <InvitePeople me={me} team={here} meets={meets} now={now} anchor={<Button variant={filled ? 'primary' : 'secondary'} size="lg" icon="addUser">Invite people</Button>} />}
             {first && (
-              <Button size="lg" icon="link" disabled={!invite} title={invite ? undefined : LINK_ON_ITS_WAY}
-                onClick={() => { if (invite) void copy(invite.link); }}>Copy invite link</Button>
+              <Button size="lg" icon="link" disabled={!link} title={link ? undefined : LINK_ON_ITS_WAY}
+                onClick={() => { if (link) void copy(link.link); }}>Copy invite link</Button>
             )}
             {here && line.recedes && (
               <AllPeople me={me} team={here} onFind={(email) => { setForward(email); setOpen(() => personPop(email)); }}
@@ -118,8 +121,15 @@ export function TeamPage({ group }: { group: string | undefined }) {
             )}
             {trouble && <Button variant="primary" size="lg" icon="retry" onClick={() => void team.refetch()}>Try again</Button>}
           </div>
-          {here && joined.length > 0 && (
+          {here && mine === null && joined.length > 0 && (
             <p className="tp-joined"><Faces people={joined} size={26} max={4} /><span>{someNames(joined)} joined from your link</span></p>
+          )}
+          {linkTrouble === 'offline' && <p className="tp-why is-link"><Icon name="wifiOff" size={18} />Invites need a connection.</p>}
+          {linkTrouble === 'failed' && (
+            <p className="tp-why is-link">
+              <Icon name="alert" size={18} />Your invite link didn’t load.
+              <Button variant="quiet" size="sm" icon="retry" onClick={() => void invite.refetch()}>Try again</Button>
+            </p>
           )}
         </section>
         <PeopleLine line={line} sun={sun} company={here?.name} waiting={!here && !trouble} between={between} />

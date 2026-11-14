@@ -6,7 +6,7 @@ import { errorMessage, type DemoProvider, type SignInProvider } from '@alcove/ap
 import { Button, EASE, Field, ProviderButton, ProviderMark, Spinner, useToast } from '@alcove/ui';
 import { useNavigate, useRouter } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { clearReturn, returnTo } from './afterSignIn';
 import { isEmail } from '~/lib/people';
 import { useGoogleSignIn, useSignIn } from './signIn';
@@ -16,6 +16,21 @@ export type Busy = DemoProvider | 'google' | null;
 export interface Auth { busy: Busy; leaving: boolean; google: () => void; cancelGoogle?: (() => void) | undefined; go: (provider: DemoProvider, email?: string) => Promise<void> }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * Coming back with the browser's Back button can restore a page from the browser's cache as it was left: waiting for Google,
+ * whose own page took the tab. `reset` puts it back as it was before signing in started. Every page with the ways in uses it:
+ * the welcome page and a call's (through `useAuth`), and the pages of an invite and an invite link.
+ */
+export function useRestored(reset: () => void): void {
+  const latest = useRef(reset);
+  useEffect(() => { latest.current = reset; });
+  useEffect(() => {
+    const on = (e: PageTransitionEvent) => { if (e.persisted) latest.current(); };
+    addEventListener('pageshow', on);
+    return () => removeEventListener('pageshow', on);
+  }, []);
+}
 
 /**
  * One sign-in for the whole page, so every set of buttons shows the same busy state. `call`: signing in from that
@@ -42,13 +57,8 @@ export function useAuth(o: { call?: string | undefined; agent?: string | undefin
     await navigate({ to: next, replace: true });
   };
 
-  /* Coming back with the browser's Back button restores this page as it was left: busy, and a Google sign-in started from a
-     join page may have been left there, so its way back is forgotten. */
-  useEffect(() => {
-    const on = (e: PageTransitionEvent) => { if (!e.persisted) return; setBusy(null); if (o.call || o.agent) clearReturn(); };
-    addEventListener('pageshow', on);
-    return () => removeEventListener('pageshow', on);
-  }, [o.call, o.agent]);
+  /* A Google sign-in started from a join page may have been left there, so its way back is forgotten. */
+  useRestored(() => { setBusy(null); if (o.call || o.agent) clearReturn(); });
 
   return {
     busy, leaving,

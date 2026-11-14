@@ -421,11 +421,11 @@ const teamNotice = (id: string, kind: PlanNotice['kind'], count: number | null, 
 /**
  * Priya's invite link in the world, and a link's secret waiting in this tab as it does while signing in from its page
  * (/invite): Storybook can't put a secret in the page's address. `secret`: Priya's, or another (Art's own, or one that
- * leads nowhere).
+ * leads nowhere). `arriving`: the account signed in was just made from it, as Google's way back to /ready says.
  */
-export const withInviteLink = (secret = PRIYA_INVITE_SECRET) => (w: World): void => {
+export const withInviteLink = (secret = PRIYA_INVITE_SECRET, arriving = false) => (w: World): void => {
   w.invites = [priyasLink()];
-  returnTo({ to: 'invite', secret });
+  returnTo({ to: 'invite', secret, ...(arriving ? { arriving } : {}) });
 };
 
 /* ---------- the scenarios ---------- */

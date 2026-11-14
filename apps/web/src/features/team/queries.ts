@@ -4,7 +4,7 @@
  * it), and joining or leaving one changes which notes and workspaces are yours to open.
  */
 import type { MyTeam } from '@alcove/api';
-import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { queryOptions, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { noteKeys } from '~/features/notes/queryKeys';
 import { planKeys } from '~/features/plans/queryKeys';
 import { workspaceKeys } from '~/features/workspace/queryKeys';
@@ -15,12 +15,15 @@ export const teamQueries = {
   team: () => queryOptions({ queryKey: teamKeys.team, queryFn: () => api.people.team(), staleTime: 5 * 60_000 }),
   people: (query: string) => queryOptions({ queryKey: teamKeys.people(query), queryFn: () => api.people.search(query), staleTime: 30_000, placeholderData: (prev) => prev }),
   /**
-   * Your own invite link, the same every time, and who joined Alcove from it: what Copy invite link copies and every
-   * invitation carries. Only someone at a company has one, so it's asked for once the company is known.
+   * Your own invite link, the same every time until you make a new one, and who joined Alcove from it: what Copy invite link
+   * copies and every invitation carries. Asked for through `useInviteLink`, which knows who has one.
    */
   inviteLink: () => queryOptions({ queryKey: teamKeys.inviteLink, queryFn: () => api.people.inviteLink(), staleTime: 60_000 }),
-  /** Who an invite link is from, signed in or not. Asked once: a link that leads nowhere stays that way. */
-  invitedBy: (secret: string) => queryOptions({ queryKey: teamKeys.invitedBy(secret), queryFn: () => api.people.peekInvite(secret), retry: false, staleTime: Infinity }),
+  /**
+   * Who an invite link is from, signed in or not, and whether it's yours. Asked afresh each time, as who's signed in decides
+   * whether it's yours, and once: a link that leads nowhere stays that way.
+   */
+  invitedBy: (secret: string) => queryOptions({ queryKey: teamKeys.invitedBy(secret), queryFn: () => api.people.peekInvite(secret), retry: false, staleTime: 0 }),
   /** The team you're on, or null: its members and their licenses, and for its admin the licenses left. */
   myTeam: () => queryOptions({ queryKey: teamKeys.myTeam, queryFn: () => api.teams.mine(), staleTime: 60_000 }),
   /** The notes made visible to your team that you can open (a live license needed). */
@@ -32,6 +35,27 @@ export const teamQueries = {
 export function useInviteTeam() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (emails: string[]) => api.people.inviteToTeam(emails), onSuccess: (t) => qc.setQueryData(teamKeys.team, t) });
+}
+/**
+ * Your own invite link, asked for only by someone with a company directory and no team of their own: someone on a team sees
+ * the team's page, which never shows it. It waits until both are known.
+ */
+export function useInviteLink() {
+  const company = useQuery(teamQueries.team()).data;
+  const onTeam = useQuery(teamQueries.myTeam()).data;
+  return useQuery({ ...teamQueries.inviteLink(), enabled: !!company && onTeam === null });
+}
+/** A new invite link in place of yours: kept as your link at once, so whatever copies or sends it has the new one. */
+export function useNewInviteLink() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.people.newInviteLink(),
+    onSuccess: async (made) => {
+      // A read of the old link still on its way would put it back over the new one.
+      await qc.cancelQueries({ queryKey: teamKeys.inviteLink });
+      qc.setQueryData(teamKeys.inviteLink, made);
+    }
+  });
 }
 /** Says the account just made came from someone's invite link, so they see it joined. Nothing of it is read back here. */
 export function useJoinedByInvite() {

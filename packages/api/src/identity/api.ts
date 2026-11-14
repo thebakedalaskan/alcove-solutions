@@ -49,7 +49,15 @@ export interface PeopleApi {
    * its invitations carry. Only at a company: refused for someone with no company directory.
    */
   inviteLink(): Promise<InviteLink>;
-  /** Who an invite link is from, signed in or not. A made-up link and one whose sender has gone are the same `not-found`. */
+  /**
+   * A new invite link in place of yours: the one you've sent leads nowhere from then on, and who joined from it stays
+   * listed. Refused for someone with no company directory.
+   */
+  newInviteLink(): Promise<InviteLink>;
+  /**
+   * Who an invite link is from, signed in or not, and whether it's yours. A made-up link, one made again since and one whose
+   * sender has gone are the same `not-found`.
+   */
   peekInvite(secret: string): Promise<InvitePeek>;
   /**
    * Says your account was made from this invite link, so whoever sent it sees you joined. It counts once, for an account

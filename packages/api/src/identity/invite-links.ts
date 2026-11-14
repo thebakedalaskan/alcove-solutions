@@ -18,12 +18,15 @@ export const InviteJoinedSchema = z.object({ person: PersonSchema, at: ISODateSc
 
 export type InviteJoined = z.infer<typeof InviteJoinedSchema>;
 
-/** Your own invite link, the same every time it's asked for, and who joined Alcove from it, newest first. */
+/**
+ * Your own invite link, the same every time it's asked for until you make a new one, and who joined Alcove from it, from
+ * this link or one before it, newest first.
+ */
 export const InviteLinkSchema = z.object({ link: z.string().url(), joined: z.array(InviteJoinedSchema) });
 
 export type InviteLink = z.infer<typeof InviteLinkSchema>;
 
-/** What an invite link says to whoever opens it, signed in or not: who it's from. */
-export const InvitePeekSchema = z.object({ from: PersonSchema });
+/** What an invite link says to whoever opens it, signed in or not: who it's from, and whether it's yours (signed in as its owner). */
+export const InvitePeekSchema = z.object({ from: PersonSchema, yours: z.boolean() });
 
 export type InvitePeek = z.infer<typeof InvitePeekSchema>;

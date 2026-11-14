@@ -29,6 +29,7 @@ export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'ac
       inviteToTeam: (emails) => req(TeamSchema, 'POST', '/team/invites', { emails }),
       // Your own invite link answers with its secret, and the other two take one: always in a body, never in a URL.
       inviteLink: () => req(InviteLinkSchema, 'POST', '/team/link', {}),
+      newInviteLink: () => req(InviteLinkSchema, 'POST', '/team/link/new', {}),
       peekInvite: (secret) => req(InvitePeekSchema, 'POST', '/team/link/peek', { secret }),
       // Answered with nothing (204), whether it counted or not.
       joinedByInvite: async (secret) => { await send('POST', '/team/link/joined', JSON.stringify({ secret }), { 'content-type': 'application/json' }); }

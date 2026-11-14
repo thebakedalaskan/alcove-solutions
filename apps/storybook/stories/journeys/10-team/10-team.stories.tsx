@@ -9,7 +9,7 @@ import { withInviteLink } from '../../../src/api/scenarios';
 import { standIn } from '../../../src/api/standin';
 import { isOnline, setOnline } from '../../../src/browser';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../../src/page';
-import { away, holding, keepMail, LATER, outage, SOON, swap, unreachable } from '../play';
+import { away, holding, keepMail, LATER, outage, pressable, SOON, swap, unreachable } from '../play';
 
 const meta = { title: 'Journeys/10 Team', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -462,6 +462,29 @@ export const OpenAnInviteLink: PageStory = {
     await step('“You’re in”, and the arch opens on the plans to choose from, then Home', async () => {
       await screen.findByRole('dialog', { name: /^You’re in/ }, LATER);
       await screen.findByRole('heading', { name: 'Choose a plan', level: 1 }, LATER);
+    });
+  }
+};
+
+export const MakeANewInviteLink: PageStory = {
+  name: '10.23 Make a new invite link',
+  ...page('/team', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Open Invite people. Beside Copy link, the arrow makes a new link', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Invite people' }, LATER));
+      await userEvent.click(await pressable('button', 'Make a new link', SOON, within(await screen.findByRole('dialog', { name: 'Invite people' }, SOON))));
+    });
+    await step('It asks in place first: the link you’ve sent stops working, and people who joined from it stay listed', async () => {
+      await within(await screen.findByRole('dialog', { name: 'Invite people' })).findByRole('group', { name: 'Make a new link?' }, SOON);
+    });
+    await step('Make a new link. It’s on your clipboard, and the old one no longer works', async () => {
+      await userEvent.click(within(await screen.findByRole('group', { name: 'Make a new link?' })).getByRole('button', { name: 'Make a new link' }));
+      // A browser that won't copy for the page shows the new link to copy instead.
+      await screen.findByText(/^(New invite link copied\. The old one no longer works\.|The old link no longer works\. Copy the new one:)/, {}, SOON);
+      await away('dialog', 'Invite people');
+    });
+    await step('Aiko and Maya, who joined from the old one, are still listed under the buttons', async () => {
+      await screen.findByText('Aiko and Maya joined from your link', {}, SOON);
     });
   }
 };

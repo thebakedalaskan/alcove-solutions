@@ -13,7 +13,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { hoursOfNotes } from '~/features/plans/words';
-import { WaysIn, type Auth, type Busy } from '~/features/account/WaysIn';
+import { WaysIn, useRestored, type Auth, type Busy } from '~/features/account/WaysIn';
 import { clearReturn, returnTo, takeReturnTo } from '~/features/account/afterSignIn';
 import { sessionOrOffline } from '~/features/account/guards';
 import { log } from '~/lib/log';
@@ -56,6 +56,8 @@ export function JoinTeamPage() {
   const googleSignIn = useGoogleSignIn();
   const toast = useToast();
   const [busy, setBusy] = useState<Busy>(null);
+  // Back from Google's own page, this page can come back as it was left, waiting for Google.
+  useRestored(() => setBusy(null));
   const asking = joining.at === 'ask' || joining.at === 'joining';
   const notes = useQuery({ ...planQueries.offers(), enabled: asking }).data?.team.notesMinutes;
 

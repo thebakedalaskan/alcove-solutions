@@ -4,7 +4,7 @@
  * it, a team, and the feature flags on for you.
  */
 import { AlcoveApiError, StartTopUpBodySchema, type AlcoveApi, type DemoProvider, type ID, type Patch, type Plan, type Preferences, type Purchase, type SignInResult, type TopUp } from '@alcove/api';
-import { artsLink } from '../../world/invite-links';
+import { artsLink, artsSecret } from '../../world/invite-links';
 import { personAt } from '../../world/people';
 import { boughtFromBalance, freshEntryId, PREVIEW_BASE_ADDRESS, PREVIEW_DEPOSIT_ADDRESS } from '../../world/plans/payments';
 import { withProMonths, withRenewal } from '../../world/plans/plans';
@@ -17,6 +17,7 @@ import { teamsApi, visit } from './teams';
 
 const noPayments = () => new AlcoveApiError('unavailable', 'Top-ups aren’t available right now.', { requestId: nextId('sb-req') });
 const NOWHERE = 'This invite link doesn’t lead anywhere. Ask whoever sent it to copy it again from their Team page.';
+const NO_COMPANY = 'Only someone at a company has an invite link. Yours is a personal address.';
 /** Every invite link the world has, Art's own among them, as the server finds one by its secret. */
 const inviteLinks = (w: World) => [...(w.inviteLink ? [w.inviteLink] : []), ...(w.invites ?? [])];
 const paymentRoutes = (w: World) => { if (!w.payments.routes) throw noPayments(); return w.payments.routes; };
@@ -88,16 +89,25 @@ export const accountApi: Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'plans'
       w.team = { ...w.team, members: w.team.members.map((m) => (asked.includes(m.person.email) ? { ...m, invited: true } : m)) };
       return w.team;
     }),
-    /* Only someone at a company has one, as on the server; it's the same on every ask. */
+    /* Only someone at a company has one, as on the server; it's the same on every ask until Art makes a new one. */
     inviteLink: () => answer((w) => {
-      if (!w.team) throw refused('forbidden', 'Only someone at a company has an invite link. Yours is a personal address.');
+      if (!w.team) throw refused('forbidden', NO_COMPANY);
       w.inviteLink ??= artsLink();
       return { link: new URL(`/invite#${w.inviteLink.secret}`, location.origin).href, joined: w.inviteLink.joined };
     }),
+    /* The next generation: the link before leads nowhere, and who joined from it stays listed. */
+    newInviteLink: () => answer((w) => {
+      if (!w.team) throw refused('forbidden', NO_COMPANY);
+      const was = w.inviteLink ?? artsLink();
+      const generation = was.generation + 1;
+      w.inviteLink = { ...was, generation, secret: artsSecret(generation) };
+      return { link: new URL(`/invite#${w.inviteLink.secret}`, location.origin).href, joined: w.inviteLink.joined };
+    }),
+    /* Yours when it's Art's link and Art is signed in: the server knows by the account. */
     peekInvite: (secret: string) => answer((w) => {
       const found = inviteLinks(w).find((l) => l.secret === secret);
       if (!found) throw refused('not-found', NOWHERE);
-      return { from: found.from };
+      return { from: found.from, yours: found === w.inviteLink && w.session?.user.email === found.from.email };
     }, 'anyone'),
     /* An account made from someone's link counts once, never on your own: whoever sent it sees it on their Team page, not here. */
     joinedByInvite: (secret: string) => answer((w) => {
