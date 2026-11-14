@@ -1639,27 +1639,13 @@ selection's and a board's in `apps/api/src/features/workspaces/documents/asking.
   one), up to four `regions` (`{label, box: [left, top, right, bottom]}` in fractions of the frame) and `relevance`
   (`key`, `supporting`, `unrelated`).
 - **Writing notes.** One JSON object: `summary` (substance first; two or three plain sentences, for every note: the
-  full summary is the longer account), `decisions` (something only suggested isn't one, nor something
-  said only on a line marked "(unclear)" unless someone then agrees to it or says it again), `questions` (what someone
-  asked that the meeting didn't answer or settle, checked against the summary and decisions just written), `actions` (text that starts with a verb,
+  full summary is the longer account), `decisions` (something only suggested isn't one),
+  `questions` (what someone asked that the meeting didn't answer or settle), `actions` (text that starts with a verb,
   an owner as the transcript names them or null, and a due date as it was said or null), `chapters` (two to six, each
-  with the `line` it starts at, a summary of at most 30 words, and `later`: when a later part of the meeting changes or
-  answers something the chapter shows as chosen, set or open, one sentence starting "Later," that says what it becomes,
-  never about a paused stretch; the code adds it to the end of the chapter's summary, so a chapter read alone doesn't
-  show as final what changes later), three `suggestedQuestions`, and `screens` (for each shared screen given in full in the transcript, a
+  with the `line` it starts at), three `suggestedQuestions`, and `screens` (for each shared screen given in full in the transcript, a
   sentence or two on what it shows and what was said about it then), with `screen`, `part` and `sure` on any
   decision, question, follow-up or chapter about something on a screen, and `lines` and `against` on each
-  decision, question and follow-up: the numbers of the lines it comes from, and of any that cut against it. Each
-  decision, question and follow-up ends with `keep`, which the model gives after looking through the transcript to its
-  end: `yes`, or why it doesn't belong in the notes (`aside`: a joke or passing remark nobody took up, or a how-to
-  answered on the spot; `done`: done, found or answered in the meeting, or said not to matter; `maybe`: only floated,
-  hedged or put off; `personal`: personal or social chat; `twice`: a decision that's only a job someone takes on, or a
-  question someone takes on finding out, which its follow-up holds). The code leaves out every entry with a reason,
-  before the limits below count, except a follow-up that is a board's sticky, a tick or a change to an existing one;
-  `yes`, a missing label or one it doesn't know keeps the entry, and so does a reason that isn't that kind's: `twice`
-  on a follow-up (it's the follow-up that holds the entry) and `maybe` on a question. Measured on 13 November against the same prompt
-  without it (5 runs of the eval's 24 cases each), quality held at 93% and the never-list breaks fell from 27 to 11:
-  answered questions and filler go, while a task written as both a decision and a follow-up mostly stays.
+  decision, question and follow-up: the numbers of the lines it comes from, and of any that cut against it.
   The prompt says what it writes is only proposed, and never to say someone agreed to what they didn't say. It also says
   how many of each the notes keep (12 decisions, 12 questions, 20 follow-ups) and to describe up to 8 screens, the ones
   people talked about most when there are more, so the model doesn't spend its tokens on entries that would be dropped: a
@@ -1669,9 +1655,8 @@ selection's and a board's in `apps/api/src/features/workspaces/documents/asking.
   2,500 tokens and came back cut off; told the limits, it finished in about 2,500, with all 44 entries pointing at lines.
   With 30 shared screens on top, asking for 12 descriptions ran out of 4,000 tokens in one run of three; asking for 8, none
   of eight runs did, the longest at 3,581. How many it describes varies from run to run. Only the key screens are
-  given to it, each with what it reads, shows and (for a change) what changed. In the language the call was held in
-  (a line or two in another language, such as a stock phrase Whisper writes over silence, doesn't decide it, here or
-  in the full summary), or the one chosen in settings (English, Spanish, French, German, Portuguese, Italian, Dutch, Japanese,
+  given to it, each with what it reads, shows and (for a change) what changed. In the language the call was held in,
+  or the one chosen in settings (English, Spanish, French, German, Portuguese, Italian, Dutch, Japanese,
   Chinese, Korean, Hindi or Arabic); only the summary's length changes with the setting. The choices are the
   organizer's for a call and the recorder's for a room recording, read from their profile with keys opened for
   that job and wiped after it (the log says the language code and length, nothing else). Using only what the
@@ -1774,12 +1759,7 @@ Replies are checked before anything is kept:
   stricter, as there's nothing behind its lists: a reply without words in its summary and all four lists fails.
 - Follow-up owners are matched to the organizer and the people invited, by name, by address name or by first
   name. Words such as "unknown" or "the team" mean no owner; anyone else keeps the name the model gave.
-- An open question is dropped, before the limits below count, when a follow-up that starts with asking or finding out
-  ("Ask", "Check", "Find out", "Confirm", "Chase", "Follow up", "Talk to", "Speak to", "Email", "Message" or "Call",
-  English only) cites one of its lines and shares a word of four letters or more with it, other than the commonest ones,
-  since that follow-up already holds it. A follow-up on the same line about something else leaves the question be.
-- Lengths are capped: a summary of 1,500 characters; a chapter's summary, with its `later` sentence, of 300, the `later` sentence kept whole (up to 140) and the summary
-  shortened to fit; at most 12 decisions, 12 open questions, 20
+- Lengths are capped: a summary of 1,500 characters; at most 12 decisions, 12 open questions, 20
   follow-ups, 8 chapters and 3 suggested questions. A chapter starts at the line it names, which must
   be one that was sent (one without is dropped), and chapters are de-duplicated by that time; a cited moment is a line
   that was sent. A cite across notes must name a note that was sent and a line of it that was, and is kept once. During a call, a line number must be one of the lines
@@ -2197,81 +2177,6 @@ note and a call kept before boards were noted; and bringing a board to a call: S
 (someone else's board, a made-up ID and the same one twice refused in the same words), the next call in the series bringing
 what this one brought and the board made in it, and a board scheduled with a call brought to it without opening. The leakage flow sends a board's sticky to the notes model and back as a
 follow-up, and finds it in no row, object or log line, nor on the wire.
-
-## Evaluating the notes
-
-The tests use a stand-in model, so they show the notes are written, kept and shown, not whether they are any good. The
-notes eval (`apps/api/src/features/notes/eval`) measures that against the real notes model. It isn't a test: it runs
-by hand, never in CI, and costs real money (about three dollars for the whole set at five runs, mostly the judge
-reading the long cases).
-
-```
-pnpm --filter @alcove/server eval:notes:judge-check [--case owners]
-pnpm --filter @alcove/server eval:notes --label baseline [--runs 5] [--case owners] [--concurrency 4] [--suite default|missing] [--model <NEAR AI model ID>] [--out <folder>]
-pnpm --filter @alcove/server eval:notes:compare <baseline folder> <variant folder>
-pnpm --filter @alcove/server eval:notes:label <eval folder> [--size 60]
-```
-
-- **Cases** (`cases.ts`). Made-up Vandelay meetings, each written to check one thing notes get wrong: suggestions taken
-  for decisions, a decision overturned later in the call, who owns what, `(unclear)` lines, an instruction read out in the
-  meeting, a room recording, answered and open questions, a call with nothing in it, notes paused, a call in Spanish and
-  due dates. Each lists the decisions, open questions and follow-ups correct notes hold (with the line each was said on,
-  and a follow-up's owner and due date), what may also appear, and what must never appear. Real meetings are never used.
-  Some are written in the cadence of real calls: fragments, filler, many unclear lines, misheard words, people talking
-  over each other and Whisper's stock phrases over silence. The long ones (`long-cases.ts`) run about 45 minutes with 15
-  to 25 expected items each, some of them longer versions of short cases.
-- **Held-back cases** (`heldout.ts`). Eight more cases live outside the repository, in `~/.alcove-eval/heldout.json`
-  (or `NOTES_EVAL_HELDOUT`) with their judge-check plants, so whoever tunes the notes prompt never reads them. They're
-  run and scored with the rest, but a run's full record of one goes beside that file, reports show only their numbers,
-  and the comparison shows them apart: a change that helps the repository's cases and not these fits the cases it was
-  tuned on. Without the file the eval runs the repository's cases alone.
-- **Cases for missing notes** (`missing-cases.ts`). Three long, dense meetings kept out of the default run: a planning
-  call that ends with a recap leaving out jobs and reversing one, after two people have left; an operations review with
-  more decisions and follow-ups than the notes keep; and a room recording long enough that the middle of its transcript
-  is cut before the notes model reads it. Run them with `--suite missing`, or one at a time with `--case`.
-- **Another model** (`--model`). Any model in NEAR AI's catalog, by its ID: one NEAR AI runs privately goes sealed to its
-  endpoint once its evidence checks out, as the product sends it, and any other goes through NEAR AI's gateway
-  unencrypted, with only the made-up cases. Without it, the eval measures the default model, as the product uses.
-- **A run.** Each case goes to `draft` as a `Brief` (`brief.ts`), several times, since the model answers differently
-  each time. `Brief.trace` collects every request to the notes model, with exactly the settings it was sent, and its
-  reply as they went (`Exchange` in `inference/inference.ts`); nothing else sets it, and it is never logged. The eval's
-  own `Meter` pays for the requests: it charges no one and adds up what they'd cost at the prices NEAR AI lists
-  (`inference/models.ts`), which the report gives beside the judge's cost. The eval holds no keys and needs no database.
-  When the service doesn't answer, or answers busy or failing, the run waits and tries again, as production waits these
-  out, and after three tries is "not run", left out of the scores. When the model answers but its reply can't be used as
-  notes, or the request is refused (400, 413, 422) or turned away (401, 403), which production doesn't wait out either,
-  the run is an unusable reply: the model's failure, counted as a rate, not tried again.
-- **Judging** (`judge.ts`). A stronger model, Claude Sonnet 5.5 at medium effort through Anthropic's API
-  (`ANTHROPIC_API_KEY` or `ant auth login`), says which expected item each note item states, whether it repeats an
-  earlier one, whether a follow-up's due date matches, whether anything on the never list appears and whether the
-  notes are in the right language. It gives a few words of reason before each answer, since it writes its answer in
-  order and would otherwise decide before reasoning. It reads each chapter on its own, as someone skimming would: a
-  chapter that shows something as settled or open that changes later in the meeting breaks the never list, unless the
-  chapter says it changes later. Owners and line citations are checked
-  in code. `JUDGE` names the model, its effort and its price together. A refusal, or a verdict from any other model,
-  leaves the run not judged: runs judged by different models or at different effort can't be compared.
-- **Checking the judge** (`judge-check-cli.ts`). Before an eval leans on the judge, it grades notes whose right verdict
-  is known: each case's answer key, which it must find right throughout, and the answer key with each never item
-  planted in turn, which it must flag. Only the judge is called. This shows it's wired up and reads the never list;
-  whether it grades real notes as a person would takes reading its verdicts on an eval's runs.
-- **Checking the judge by hand** (`label-cli.ts`). Writes `labels.html` into an eval's folder: a worksheet that asks a
-  sample of the questions the judge answered about that eval's notes (which expected item a note item states, a repeat,
-  a due date, a never item), one at a time, and shows the judge's answer only after yours. It counts where you differ
-  and which way: a judge kinder than you inflates the scores, a stricter one deflates them. The sample leans on the calls
-  that cost notes points, gives long meetings twice a short one's share, and is the same every time for the same eval.
-  Nothing is sent anywhere; the answers stay in the browser, or in a file it saves.
-- **Scores** (`score.ts`). Quality is F1, from 0 to 1, of the expected items the notes found against how much of what
-  they listed is expected or acceptable, so notes can't score well by listing little. Owners, due dates and citations
-  are reported beside it. Violations (a never item stated, or the wrong language) are counted run by run, apart from
-  quality, as a gate a change mustn't fail. Each case gets its mean quality over the runs with a 95% confidence interval.
-- **Comparing** (`compare-cli.ts`). A change is judged by pairing two evals case by case: each case's value in the
-  variant minus its value in the baseline, and the mean of those differences with its interval. The overall intervals
-  are across cases that differ on purpose, so two of them overlapping says little. Running the baseline twice and
-  comparing the two shows what no change looks like.
-- **Results.** In `.evals/notes/<time>-<label>/` at the repository's root, which git ignores: `report.md` (scores, and
-  what went wrong how often), `summary.json` (every run's scores, which the comparison reads), and each run in full
-  (what the notes model was sent and replied, the notes, the judge's request and answer, the score). The report names
-  the commit and fingerprints the system prompt and settings the notes model was actually sent.
 
 ## What's kept, and for how long
 

@@ -433,62 +433,6 @@ describe('follow-ups', () => {
   });
 });
 
-describe('what the notes leave out', () => {
-  it('leaves out what the model says doesn’t belong, by the reasons each kind of entry can be left out for', async () => {
-    const org = await account(at('organizer'));
-    // Each line asks the stand-in model to say whether what it hears in it belongs in the notes (keep="…").
-    const noteId = await held(org, [
-      'We agreed to ship on Monday.',
-      'We agreed to name the release Banana keep="aside".',
-      'We decided to rent the hall keep=" Done ".',
-      'We agreed to move the review keep="yes".',
-      'We agreed to hire a designer keep="unheard-of".',
-      'We agreed Kofi sends the deck keep="twice".',
-      'Who signs off on the budget keep="maybe"?',
-      'Which printer do we use keep="personal"?',
-      'Priya will draft the memo keep="maybe".',
-      'Kofi will send the deck keep="twice".'
-    ].join(' // '));
-    const note = await org.api.notes.get(noteId);
-    // An aside, something done (however it's written) and a job its follow-up holds go; "yes", no reason or one it doesn't
-    // know keeps a decision.
-    expect(note.decisions.map((d) => d.text)).toEqual(['We agreed to ship on Monday.', 'We agreed to move the review keep="yes".', 'We agreed to hire a designer keep="unheard-of".']);
-    // "maybe" is never a question's reason, so the question stays; personal chat goes.
-    expect(note.questions.map((q) => q.text)).toEqual(['Who signs off on the budget keep="maybe"?']);
-    // Something only floated goes; "twice" says a follow-up holds something else, so the follow-up itself stays.
-    expect(note.actions.map((a) => a.text)).toEqual(['Send the deck keep="twice"']);
-  });
-
-  it('doesn’t list an open question that a follow-up to find it out already holds, and keeps one about something else', async () => {
-    const org = await account(at('organizer'));
-    // Both an open question and a follow-up to email someone, heard in one line: the follow-up is about something else.
-    const unrelated = 'Ade will email the deck, but is the caterer vegan?';
-    h.near.reword(unrelated, 'Email Sam the agenda');
-    try {
-      const noteId = await held(org, ['Kofi will check whether the venue is free?', 'Priya will book the room by Friday?', unrelated].join(' // '));
-      const note = await org.api.notes.get(noteId);
-      expect(note.actions.map((a) => a.text)).toEqual(['Check whether the venue is free?', 'Book the room by Friday?', 'Email Sam the agenda']);
-      // Checking whether the venue is free holds that question. Booking a room finds nothing out, and the email isn't
-      // about the caterer, so those questions stay open.
-      expect(note.questions.map((q) => q.text)).toEqual(['Priya will book the room by Friday?', unrelated]);
-    } finally {
-      h.near.reword(unrelated, null);
-    }
-  });
-
-  it('ends a part’s summary with what becomes of it later in the call, whole, however long the part’s own summary', async () => {
-    const org = await account(at('organizer'));
-    const pencilled = `We pencilled in the second for the offsite, ${'and went over the travel at length, '.repeat(8)}later="Later, the date moves to the ninth."`;
-    const noteId = await held(org, [pencilled, 'Fine by me.', 'We agreed to ship on Monday.'].join(' // '));
-    const [first, second] = (await org.api.notes.get(noteId)).chapters;
-    expect(first?.summary.startsWith('We pencilled in the second for the offsite')).toBe(true);
-    expect(first?.summary.endsWith(' Later, the date moves to the ninth.')).toBe(true);
-    expect(first?.summary.length).toBeLessThanOrEqual(300);
-    // A part nothing changes later keeps its summary as it is.
-    expect(second?.summary).toBe('We agreed to ship on Monday.');
-  });
-});
-
 describe('what backs an entry', () => {
   it('points at the lines it came from, and flags what’s missing, in doubt or said otherwise', async () => {
     const org = await account(at('organizer'));

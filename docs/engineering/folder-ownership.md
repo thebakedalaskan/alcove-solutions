@@ -58,7 +58,7 @@ argument from the caller, or the piece moves down to the feature that owns its d
 4. **meetings**: the schedule, invitations, the calendar, repeats, the people directory and the demo company's week.
 5. **recordings**: audio, screen frames (`screens/`), transcripts.
 6. **notes**: saved notes, additions, writing them (`writing/`), series, personal notes, links, room recordings, Google
-   Drive exports (`drive-exports/`), the notes eval (`eval/`).
+   Drive exports (`drive-exports/`).
 7. **calls**: the running call: lifecycle, state, joining and hosting at its root; `boards/`, `workspace/`, `notes/`
    (live notes and capture), `chat/`, `attention/`, `ringing/`, `timers/`, `moves/`, `mls/`.
 8. **agents**: grants, OAuth, MCP tools (`mcp/`) and what agents did, across everything below.
