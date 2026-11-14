@@ -3,8 +3,8 @@ import { errorCode, OPERATION_HEADER, type Inbox, type Meeting, type Note, type 
 import { MutationObserver, onlineManager, QueryClient } from '@tanstack/query-core';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { answerCallOptions, interactiveWrites, preferenceOptions, readMeeting, readNote, readPreferences, readWorkspaces, renameWorkspaceOptions, updateActionOptions, updateDecisionOptions, type PreferenceChange } from '../../../web/src/lib/queryWrites';
-import { TreeChanges } from '../../../web/src/features/workspace/changes';
-import { speechWav } from '../testing/fake-near';
+import { TreeChanges } from '../../../web/src/features/workspace/tree/changes';
+import { speechWav } from '../testing/fakes/near';
 import { startHarness, type Browser, type Harness } from '../testing/harness';
 
 let h: Harness;

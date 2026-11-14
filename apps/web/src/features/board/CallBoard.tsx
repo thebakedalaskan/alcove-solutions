@@ -1,6 +1,6 @@
 /*
  * A board in a call, loaded only once one is open, so a call without one pays nothing for it: the board inside its frame on the
- * stage (features/call/layout/frame.tsx, whose bar has its name, its menu, Present and Close), with how it stands (its seal, and
+ * stage (features/call/stage/frame.tsx, whose bar has its name, its menu, Present and Close), with how it stands (its seal, and
  * Reconnecting and Couldn't save in its pill, as on its page) and the call's one pill, and ideas from the call. Presented, it's
  * still the whole board, tools and all, for everyone: whoever presents moves round it freely, and steps from frame to frame with
  * the pager at the frame's foot, their notes beside each frame in their side (`CallBoardMine`); everyone following sees their view
@@ -14,7 +14,7 @@ import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, u
 import type { BoardIdeas } from '~/features/call/boards/callBoard';
 import { typing } from '~/lib/keys';
 import { BoardSurface, type BoardHandle, type BoardLanding, type BoardPerson, type BoardPictures } from './BoardSurface';
-import type { BoardCommenting } from './comments';
+import type { BoardCommenting } from './people/comments';
 import type { BoardUpload, BoardWorkspace } from './more/items';
 import type { BoardLinks } from './more/objects';
 import { FollowingPill, type CallPills, type PillKind, type Pills } from './pills';

@@ -14,36 +14,38 @@ import { Button, Dots, Evening, Icon, Modal, Notice, RecDot, Select, Tabs, cn, u
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { OwnNotesCard, SharedNotes, useOwn } from '~/features/personal/OwnNotes';
-import { seriesLabel } from '~/features/series/cards';
+import { OwnNotesCard, SharedNotes, useOwn } from '~/features/notes/personal/OwnNotes';
+import { seriesLabel } from '~/features/notes/series/cards';
 import { useOpenScheduling } from '~/features/calls/scheduling/search';
-import { useNoteOnScreen } from '~/features/shell/notify';
+import { useNoteOnScreen } from '~/features/notifications/notify';
 import { api } from '~/lib/api';
-import { isUnencrypted, modelOf, modelOptions, modelValue } from '~/lib/aiModels';
+import { isUnencrypted, modelOf, modelOptions, modelValue, useAiModels } from '~/features/notes/models';
 import { log } from '~/lib/log';
 import { listNames, sameEmail } from '~/lib/people';
-import { q, qk, useAiModels, useCancelRewrite, useCorrectLine, useDeleteNote, useProposeDecision, useRewriteNotes, useUpdateAction, useUpdateDecision, useUpdateQuestion } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { seriesQueries } from '~/features/notes/series/queries';
+import { noteQueries, useCancelRewrite, useCorrectLine, useDeleteNote, useProposeDecision, useRewriteNotes, useUpdateAction, useUpdateDecision, useUpdateQuestion } from './queries';
+import { noteKeys } from './queryKeys';
 import { callLength, noteAt } from '~/lib/time';
 import type { Answer } from './answer';
-import { DownloadMenu, hasTranscript, useSaveTranscript } from './Download';
-import { DriveExportsModal } from './DriveExports';
+import { DownloadMenu, hasTranscript, useSaveTranscript } from './sharing/Download';
+import { DriveExportsModal } from './sharing/DriveExports';
 import { Propose, useNoteReader, type Seed } from './entries';
 import { Provenance } from './Evidence';
-import { exampleNote } from './example';
+import { askExample, exampleNote } from '~/features/examples/note';
 import { CallHead, CallMore, GonePage, WhoHas } from './Head';
-import { CallLine, marksOf } from './Line';
+import { CallLine, marksOf } from './player/Line';
 import { correctedSince, speakersOf, type Correcting } from './lines';
 import { Made } from './Made';
 import { noteAsText, readerRole, receivedLine } from './meta';
-import { NewFollowUp } from './NoteFollowUps';
+import { NewFollowUp } from './follow-ups/NoteFollowUps';
 import { NotesPane, type Acting } from './NotesPane';
 import { AskBar, type Focus, type LineKinds, type ScreenRefShown, type ScreensShown } from './parts';
-import { usePlayer, useSpaceToPlay, type PlayerState } from './Player';
-import { ScreenMomentRow, ScreenRefChip, ScreenViewer, useScreenViewer } from './screens';
-import { ShareNote, usePinNote } from './share';
-import { Stage, peopleOn } from './Stage';
+import { usePlayer, useSpaceToPlay, type PlayerState } from './player/Player';
+import { ScreenMomentRow, ScreenRefChip, ScreenViewer, useScreenViewer } from './player/screens';
+import { ShareNote, usePinNote } from './sharing/share';
+import { Stage, peopleOn } from './player/Stage';
 import { TranscriptPane } from './TranscriptPane';
-import { askExample } from './example';
 
 const nlog = log.child({ component: 'call-page' });
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -73,7 +75,7 @@ export function useOneColumn(page: RefObject<HTMLElement | null>): boolean {
 export function CallPage({ noteId, at, room, play, tab, onTab, onPlayed }: {
   noteId: string; at: number | undefined; room: string | undefined; play: boolean; tab: CallTab; onTab: (t: CallTab) => void; onPlayed: () => void;
 }) {
-  const me = useQuery(q.session()).data?.user;
+  const me = useQuery(accountQueries.session()).data?.user;
   if (noteId === 'example') return me ? <Example me={me} tab={tab} onTab={onTab} /> : null;
   return <Stored key={noteId} id={noteId} me={me?.email} at={at} room={room} play={play} tab={tab} onTab={onTab} onPlayed={onPlayed} />;
 }
@@ -87,8 +89,8 @@ function Stored({ id, me, at, room, play, tab, onTab, onPlayed }: { id: string; 
   const qc = useQueryClient();
   const [gone, setGone] = useState<GoneInfo | null>(null);
   // A failed read keeps the last answer, which would keep showing notes someone may not read any more.
-  const note = useQuery({ ...q.note(id), enabled: !gone, throwOnError: (e) => errorCode(e) === 'not-found' }).data;
-  useEffect(() => { if (gone) qc.removeQueries({ queryKey: qk.note(id), exact: true }); }, [gone, qc, id]);
+  const note = useQuery({ ...noteQueries.note(id), enabled: !gone, throwOnError: (e) => errorCode(e) === 'not-found' }).data;
+  useEffect(() => { if (gone) qc.removeQueries({ queryKey: noteKeys.note(id), exact: true }); }, [gone, qc, id]);
   useNoteOnScreen(id);
   if (gone) return <Gone {...gone} />;
   if (!note) return null;
@@ -107,7 +109,7 @@ function useProgress(note: Note): NoteProgress | null {
     if (note.status === 'ready' && !note.writingAgain) return;
     let alive = true;
     let again: ReturnType<typeof setTimeout> | undefined;
-    const refresh = () => void qc.invalidateQueries({ queryKey: qk.notes });
+    const refresh = () => void qc.invalidateQueries({ queryKey: noteKeys.notes });
     const follow = async () => {
       let done = -1;
       try {
@@ -353,7 +355,7 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
   const stage = useMemo(() => peopleOn(note, me), [note, me]);
   const words = note.kind === 'room' ? (note.people.length > 1 ? `In the room · ${listNames(note.people.filter((p) => !me || !sameEmail(p, { email: me })))} and you` : 'In the room, only you')
     : sayPeople(stage);
-  const series = useQuery({ ...q.series(note.seriesId ?? ''), enabled: !!note.seriesId }).data;
+  const series = useQuery({ ...seriesQueries.series(note.seriesId ?? ''), enabled: !!note.seriesId }).data;
   const tabs: { value: CallTab; label: string }[] = [
     { value: 'notes', label: 'Notes' }, { value: 'transcript', label: 'Transcript' }, ...(one ? [{ value: 'shared' as const, label: 'Shared' }] : []),
     ...(teamNote ? [] : [{ value: 'yours' as const, label: 'Your notes' }])

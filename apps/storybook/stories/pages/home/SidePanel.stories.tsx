@@ -1,0 +1,86 @@
+/*
+ * The side panel's foot, by plan (docs/design/pages.md › The frame; the canvas's Side board): under the confidential-compute
+ * check, one row. On Free, about how much of the period's notes is left over a meter; on Pro one calm row with its own small
+ * sun and until when; ending, its sun half set and Extend; a payment for a plan on its way, what it's waiting for and Open.
+ * Anything else said (Pro renewed or ended, Team replacing Pro, a workspace you pay for now) is one short line above until it's dismissed. On Plans a
+ * paid plan's row is the place you're on. On Team (the canvas's team, teamLow and teamWait): the same calm row, Team over
+ * the team's name; for its admin while licenses run short, how many are left and Buy, in warm; without a license, "No team
+ * license yet" in caution over your own plan with who has been told (for an admin, that buying licenses gives them one),
+ * then Free's notes left over its meter, and Free's row goes to Team. Each opens on Home, at a laptop's width, by day and
+ * by night (the panel itself is night in both).
+ */
+import type { Meta } from '@storybook/react-vite';
+import { changing, page, pages, type PageArgs, type PageStory } from '../../../src/page';
+import { purchaseAt } from '../../../src/world/plans/payments';
+import { adminWithoutLicense, paysForLaunch, replacedPro } from '../changes';
+
+const meta = { title: 'Pages/Home/The side panel', ...pages } satisfies Meta<PageArgs>;
+export default meta;
+
+const LAPTOP = { viewport: { value: 'laptop', isRotated: false } } as const;
+/** The foot at a laptop's width, by day. */
+const foot = (path: string, scenario: PageArgs['scenario']): PageStory => page(path, scenario, { globals: LAPTOP });
+/** The same at night. */
+const night = (story: PageStory): PageStory => ({ ...story, globals: { ...LAPTOP, theme: 'dark' } });
+
+/** Free: about 3 h 20 min of the period's 5 hours left, over a meter. It opens Settings › Plan. */
+export const Free = foot('/home', 'busy');
+export const FreeNight = night(Free);
+/** Under an hour left: the time and the meter turn warm. */
+export const FreeLow = foot('/home', 'plan-low');
+export const FreeLowNight = night(FreeLow);
+/** None left: until when, in caution, and an empty meter. */
+export const FreeOut = foot('/home', 'plan-stopped');
+export const FreeOutNight = night(FreeOut);
+/** A payment for a year of Pro on its way: what it's waiting for, and the row that opens it again. */
+export const Waiting = foot('/home', 'plan-buying-pro');
+export const WaitingNight = night(Waiting);
+/** Less than asked arrived, and the address has closed: it's being settled into the balance, and its row opens it. */
+export const Settling = page('/home', 'payments', { globals: LAPTOP, beforeEach: changing(purchaseAt('closed-short')) });
+export const SettlingNight = night(Settling);
+/** Pro: the small sun on its line, Pro, and until when. It opens Settings › Plan. */
+export const Pro = foot('/home', 'plan-pro');
+export const ProNight = night(Pro);
+/** Pro extended by a year: the same row, until a year on. */
+export const ProExtended = foot('/home', 'plan-pro-extended');
+/** Pro ending in 6 days and not renewing, told a week before: the sun half set, and Extend, which opens checkout. */
+export const ProEnding = foot('/home', 'plan-pro-ending');
+export const ProEndingNight = night(ProEnding);
+/** Pro ending after its price went up, though renewing is on with the money: the same, since it won't renew at the new price by itself. */
+export const ProEndingPriceRose = foot('/home', 'plan-pro-ending-price');
+/** Pro renewed from the balance: one short line above the row, until it's dismissed in Settings. */
+export const ProRenewed = foot('/home', 'plan-pro-renewed');
+export const ProRenewedNight = night(ProRenewed);
+/** Pro ended: back on Free, said in one short line above the notes left until it's dismissed. */
+export const ProEnded = foot('/home', 'plan-pro-ended');
+export const ProEndedNight = night(ProEnded);
+/** Art pays for Launch now that whoever did left it: one short line over the notes left, by its name, until it's dismissed. */
+export const PayingForAWorkspace = page('/home', 'busy', { globals: LAPTOP, beforeEach: changing(paysForLaunch) });
+export const PayingForAWorkspaceNight = night(PayingForAWorkspace);
+/** On Plans: Free's row (Free plan · See plans) is the place you're on, shaded, as Pro's row is on Pro: one shaded row. */
+export const OnPlans = foot('/plans', 'busy');
+export const OnPlansNight = night(OnPlans);
+export const OnPlansPro = foot('/plans', 'plan-pro');
+
+/* Team */
+/** On a team with a license: the small sun, Team over the team's name. It opens Settings › Plan. */
+export const Team = foot('/home', 'team-member');
+export const TeamNight = night(Team);
+/** The team's admin, with licenses enough: the same calm row. */
+export const TeamAdmin = foot('/home', 'team-admin');
+/** Two licenses left, told and not yet dismissed: the row says so, and Buy, in warm. It opens checkout on Team. */
+export const TeamLicensesLow = foot('/home', 'team-admin-low');
+export const TeamLicensesLowNight = night(TeamLicensesLow);
+/** None left when Maya needed one. */
+export const TeamNoLicensesLeft = foot('/home', 'team-admin-none');
+export const TeamNoLicensesLeftNight = night(TeamNoLicensesLeft);
+/** No license was left for Art: "No team license yet" in caution and "Priya has been told" under it, over Free's notes left and meter; Free's row goes to Team. */
+export const TeamNoLicense = foot('/home', 'team-member-unlicensed');
+export const TeamNoLicenseNight = night(TeamNoLicense);
+/** The admin's own license ran out with none left: the same caution line, with "Buy licenses, and one is yours" under it; Team is where they buy them. */
+export const TeamAdminNoLicense = page('/home', 'team-admin', { globals: LAPTOP, beforeEach: changing(adminWithoutLicense) });
+/** A team license replaced Pro: one short line above the row until it's dismissed in Settings. */
+export const TeamReplacedPro = page('/home', 'team-member', { globals: LAPTOP, beforeEach: changing(replacedPro) });
+export const TeamReplacedProNight = night(TeamReplacedPro);
+/** On Plans, Team's row is the place you're on. */
+export const OnPlansTeam = foot('/plans', 'team-member');

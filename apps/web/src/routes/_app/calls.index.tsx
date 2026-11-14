@@ -6,7 +6,10 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { CallsPage } from '~/features/calls/list/CallsPage';
 import { readCallsSearch } from '~/features/calls/list/address';
-import { q } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { callQueries } from '~/features/calls/list/queries';
+import { calendarQueries } from '~/features/calls/scheduling/queries';
+import { noteQueries } from '~/features/notes/queries';
 
 export const Route = createFileRoute('/_app/calls/')({
   validateSearch: readCallsSearch,
@@ -15,9 +18,9 @@ export const Route = createFileRoute('/_app/calls/')({
    * change under the reader, and no longer.
    */
   loader: async ({ context: { queryClient: qc } }) => {
-    const calendar = qc.ensureQueryData(q.calendar()).catch(() => undefined);
+    const calendar = qc.ensureQueryData(calendarQueries.calendar()).catch(() => undefined);
     await Promise.all([
-      qc.ensureQueryData(q.notes()), qc.ensureQueryData(q.upcoming()), qc.ensureQueryData(q.inbox()), qc.ensureQueryData(q.prefs()),
+      qc.ensureQueryData(noteQueries.notes()), qc.ensureQueryData(callQueries.upcoming()), qc.ensureQueryData(noteQueries.inbox()), qc.ensureQueryData(accountQueries.prefs()),
       Promise.race([calendar, new Promise((r) => setTimeout(r, 1200))])
     ]);
   },

@@ -3,10 +3,10 @@
  * keyed hash of the code (under the index key) and opaque IDs, so the database can't be matched to links.
  */
 import { z } from 'zod';
-import type { Deps } from '../../context';
-import { blindIndex } from '../../crypto';
-import { exec, maybeOne, type Db } from '../../db';
-import { indexKey } from '../../owners';
+import type { Deps } from '../../platform/context';
+import { blindIndex } from '../../keys/crypto';
+import { exec, maybeOne, type Db } from '../../platform/db';
+import { indexKey } from '../../keys/owners';
 
 const hashOf = (d: Deps, code: string) => blindIndex(indexKey(d), 'call-code', code);
 

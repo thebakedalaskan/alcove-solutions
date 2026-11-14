@@ -6,7 +6,7 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
-import { at } from '../../src/api/script';
+import { at } from '../../src/api/call/script';
 import { atTheDoor, phone } from '../../src/call';
 import { page, pages, type PageArgs } from '../../src/page';
 import { iso } from '../../src/world/clock';

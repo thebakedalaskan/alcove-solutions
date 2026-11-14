@@ -5,13 +5,13 @@
  */
 import type { AudioSegment, RecordingProgress } from '@alcove/api';
 import { z } from 'zod';
-import type { Owner } from '../../context';
-import { equalBytes, id128, openKey, openRecord, random, recordPlainBytes, sealKey, sealRecord, sha, type RecordHeader } from '../../crypto';
-import { bytea, exec, maybeOne, rows, tx, type Db } from '../../db';
-import { errorMessage } from '@alcove/api';
-import { InternalError, IntegrityError, NotFoundError, conflict } from '../../errors';
-import { currentLogContext, log } from '../../log';
-import { fromZero, soundStarts } from './stretchFile';
+import type { Owner } from '../../platform/context';
+import { equalBytes, id128, openKey, openRecord, random, recordPlainBytes, sealKey, sealRecord, sha, type RecordHeader } from '../../keys/crypto';
+import { bytea, exec, maybeOne, rows, tx, type Db } from '../../platform/db';
+import { queueDelete } from '../../platform/objects';
+import { InternalError, IntegrityError, NotFoundError, conflict } from '../../platform/errors';
+import { currentLogContext, log } from '../../platform/log';
+import { fromZero, soundStarts } from './stretch-file';
 
 const alog = log.child({ component: 'audio' });
 
@@ -107,16 +107,6 @@ export async function appendPiece(o: Owner, recordingId: string, p: Piece): Prom
   else alog.info('audio piece raced its recording being deleted; dropping it', where);
 }
 
-/** Deletes objects now; anything that fails is queued for the maintenance loop to retry. */
-export async function queueDelete(o: Pick<Owner, 'pool' | 'objects' | 'ownerId'>, objectIds: string[]): Promise<void> {
-  await Promise.all(objectIds.map(async (id) => {
-    try { await o.objects.delete(id); } catch (e) {
-      alog.warn('object delete failed; queued for retry', { objectId: id, err: e });
-      await exec(o.pool, 'INSERT INTO object_gc (object_id, owner_id, last_error) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [id, o.ownerId, errorMessage(e).slice(0, 200)]);
-    }
-  }));
-}
-
 /**
  * Deletes a recording's audio pieces, in the caller's transaction, for a call set not to keep its recording: stored
  * bytes go down to match, and the recording's row stays, since its key seals the call's shared-screen frames. Returns
@@ -129,33 +119,6 @@ export async function purgeAudio(o: Owner, db: Db, recordingId: string): Promise
   await exec(db, 'UPDATE owners SET stored_bytes = greatest(0, stored_bytes - $2), version = version + 1 WHERE owner_id = $1', [o.ownerId, gone.reduce((n, p) => n + p.cipher_bytes, 0)]);
   alog.info('recording deleted, as the call was set to', { recordingId, pieces: gone.length });
   return gone.map((p) => p.object_id);
-}
-
-/** Objects queued at most this many at a time: upkeep comes back every few minutes for the rest. */
-const QUEUE_BATCH = 500;
-/** How many deletes go to the object store at once. */
-const QUEUE_AT_ONCE = 25;
-/**
- * Deletes what's queued in object_gc, the oldest first: everything, or for upkeep, or only these owners', straight after
- * the commit that queued it, so something deleted goes now rather than at the next run. What the store refuses stays
- * queued, with why. Returns how many went.
- */
-export async function deleteQueued(d: Pick<Owner, 'pool' | 'objects'>, ownerIds?: string[] | undefined): Promise<number> {
-  const due = await rows(d.pool, z.object({ object_id: z.string() }), `SELECT object_id FROM object_gc${ownerIds ? ' WHERE owner_id = ANY($2::text[])' : ''} ORDER BY queued_at LIMIT $1`, [QUEUE_BATCH, ...(ownerIds ? [ownerIds] : [])]);
-  let deleted = 0;
-  for (let i = 0; i < due.length; i += QUEUE_AT_ONCE) {
-    await Promise.all(due.slice(i, i + QUEUE_AT_ONCE).map(async (g) => {
-      try {
-        await d.objects.delete(g.object_id);
-        await exec(d.pool, 'DELETE FROM object_gc WHERE object_id = $1', [g.object_id]);
-        deleted++;
-      } catch (e) {
-        alog.warn('object delete failed; it stays queued', { objectId: g.object_id, err: e });
-        await exec(d.pool, 'UPDATE object_gc SET attempts = attempts + 1, last_error = $2 WHERE object_id = $1', [g.object_id, errorMessage(e).slice(0, 200)]);
-      }
-    }));
-  }
-  return deleted;
 }
 
 const Seg = z.object({ segment: z.number(), pieces: z.coerce.number(), ms: z.coerce.number(), mime_type: z.string() });
@@ -261,7 +224,7 @@ type StretchPiece = z.infer<typeof StretchPiece>;
 /**
  * The pieces of one segment from `fromMs` to `toMs` (in the segment, pauses not counted) that `may` lets through, each
  * whole, in an unbroken run: a piece is never cut short, so what's heard is what was recorded, and one the listener may
- * not hear is never sent, nor anything after it. The run opens on its first piece's own sound (stretchFile.ts): a run
+ * not hear is never sent, nor anything after it. The run opens on its first piece's own sound (stretch-file.ts): a run
  * that doesn't start the segment leaves out the end of the piece before it, which its first piece starts with, and is
  * preceded by what the segment's first piece says the recording is, without any of its sound. It ends with the end of
  * its own last piece's sound, which the next piece starts with, once that's here. Its times then count from 0, so it

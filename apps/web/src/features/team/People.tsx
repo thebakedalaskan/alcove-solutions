@@ -8,7 +8,7 @@ import { useEffect, useId, useState, type ReactNode } from 'react';
 import { useTeamAtThirdInvite } from '~/features/plans/teamDoor';
 import { log } from '~/lib/log';
 import { byEmail, callName, fold, isEmail, sameEmail, someNames, typedIn } from '~/lib/people';
-import { useInviteTeam } from '~/lib/queries';
+import { useInviteTeam } from './queries';
 import { addressOnly, byMeetings, callLine, listed, type Meets, type Member } from './data';
 import { useOpen, usePop } from './open';
 

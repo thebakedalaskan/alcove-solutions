@@ -16,16 +16,18 @@ import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { shownUrl, useCopyLink } from '~/features/call/session/links';
-import { pictureOf } from '~/features/drive/Card';
+import { pictureOf } from '~/features/workspace/document/picture';
 import { useOneColumn } from '~/features/notes/Call';
 import { CallHead, GonePage } from '~/features/notes/Head';
-import { MOST_ARCHES, archSize } from '~/features/notes/Stage';
-import { stemOf, uploadInto } from '~/features/workspace/uploads';
-import { useMyModelUnencrypted } from '~/lib/aiModels';
+import { MOST_ARCHES, archSize } from '~/features/notes/player/Stage';
+import { stemOf, uploadInto } from '~/features/workspace/uploads/uploads';
+import { useMyModelUnencrypted } from '~/features/notes/models';
 import { useNow } from '~/lib/live';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
-import { q, useAnswerCall, usePendingRsvp, useReadyCall, useUpdateCall } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { workspaceQueries } from '~/features/workspace/queries';
+import { callQueries, useAnswerCall, usePendingRsvp, useReadyCall, useUpdateCall } from './queries';
 import { daysFromToday, hm, shortDay, weekday } from '~/lib/time';
 import { called } from '../flow/Documents';
 import { useFloodToCall } from '../flow/parts';
@@ -88,7 +90,7 @@ const asAhead = (m: Meeting): Ahead => ({ kind: 'call', id: m.id, title: m.title
 export function CallAhead({ meetingId }: { meetingId: string }) {
   const navigate = useNavigate();
   const seen = useRef(false);
-  const meeting = useQuery({ ...q.meeting(meetingId), throwOnError: (e) => !seen.current || errorCode(e) !== 'not-found' });
+  const meeting = useQuery({ ...callQueries.meeting(meetingId), throwOnError: (e) => !seen.current || errorCode(e) !== 'not-found' });
   const m = meeting.data;
   useEffect(() => { if (m) seen.current = true; }, [m]);
   const gone = meeting.isError && errorCode(meeting.error) === 'not-found';
@@ -103,7 +105,7 @@ export function AheadMissing({ error }: { error: unknown }) {
 }
 
 function AheadView({ m }: { m: Meeting }) {
-  const me = useQuery(q.session()).data?.user;
+  const me = useQuery(accountQueries.session()).data?.user;
   const now = useNow(15_000);
   const page = useRef<HTMLDivElement>(null);
   const one = useOneColumn(page);
@@ -238,7 +240,7 @@ function YourAnswer({ m }: { m: Meeting }) {
 
 /** Where a brought document is, for whoever can open it: the library has every one they can bring, by the ID a call keeps. */
 function usePlaces(documents: readonly CallDocument[]): ReadonlyMap<string, { workspaceId: string; item: string }> {
-  const library = useQuery({ ...q.documents(), enabled: documents.some((d) => d.name !== null) }).data;
+  const library = useQuery({ ...workspaceQueries.documents(), enabled: documents.some((d) => d.name !== null) }).data;
   return useMemo(() => new Map((library?.workspaces ?? []).flatMap((w) => w.documents.map((d) => [d.id, { workspaceId: w.id, item: d.item }] as const))), [library]);
 }
 
@@ -250,7 +252,7 @@ function usePreviews(documents: readonly CallDocument[], places: ReadonlyMap<str
       const at = d.kind === 'doc' ? places.get(d.id) : undefined;
       if (at) by.set(at.workspaceId, [...(by.get(at.workspaceId) ?? []), at.item]);
     }
-    return [...by].map(([workspaceId, items]) => q.previews(workspaceId, [...items].sort()));
+    return [...by].map(([workspaceId, items]) => workspaceQueries.previews(workspaceId, [...items].sort()));
   }, [documents, places]);
   const found = useQueries({ queries: asks });
   return useMemo(() => new Map(found.flatMap((r) => r.data ?? []).map((p) => [p.id, p])), [found]);
@@ -273,7 +275,7 @@ function Agenda({ m, first, quiet }: { m: Meeting; first: boolean; quiet: boolea
   const navigate = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
-  const owner = useQuery(q.session()).data?.ownerId ?? null;
+  const owner = useQuery(accountQueries.session()).data?.ownerId ?? null;
   const ready = useReadyCall();
   const [making, setMaking] = useState<'agenda' | 'board' | 'file' | null>(null);
   const places = usePlaces(m.documents);
@@ -281,7 +283,7 @@ function Agenda({ m, first, quiet }: { m: Meeting; first: boolean; quiet: boolea
   const open = (workspaceId: string, documentId: string) => void navigate({ to: '/drive/$workspaceId/$documentId', params: { workspaceId, documentId }, search: { from: 'calls' } });
   /* The library can be a moment behind what was just brought: it's read again before saying a document can't be found. */
   const openBrought = async (d: CallDocument) => {
-    const at = places.get(d.id) ?? (await qc.fetchQuery(q.documents()).then((l) => l.workspaces.flatMap((w) => w.documents.flatMap((x) => (x.id === d.id ? [{ workspaceId: w.id, item: x.item }] : []))).at(0), () => undefined));
+    const at = places.get(d.id) ?? (await qc.fetchQuery(workspaceQueries.documents()).then((l) => l.workspaces.flatMap((w) => w.documents.flatMap((x) => (x.id === d.id ? [{ workspaceId: w.id, item: x.item }] : []))).at(0), () => undefined));
     if (at) open(at.workspaceId, at.item);
     else toast('That one can’t be opened from here. It opens in the call.', { icon: 'x' });
   };

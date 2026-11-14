@@ -3,8 +3,8 @@
  * rung drops a card in on whatever page is open, over a call too. The people rung answer as the script says.
  */
 import type { Meta } from '@storybook/react-vite';
-import { at, ringFrom, run } from '../../src/api/script';
-import { ringYou } from '../../src/api/standin';
+import { at, ringFrom, run } from '../../src/api/call/script';
+import { ringYou } from '../../src/api/calls/rings';
 import { inCall, phone, rung, type StoryCall } from '../../src/call';
 import { pages, type PageArgs } from '../../src/page';
 import { iso } from '../../src/world/clock';

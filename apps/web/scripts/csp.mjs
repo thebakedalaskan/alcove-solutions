@@ -1,7 +1,7 @@
 // node apps/web/scripts/csp.mjs <dist/client> <api origin> <livekit url>
 // Adds the web app's Content-Security-Policy to the /* rule of dist/client/_headers. Nothing
 // third-party but LiveKit, which carries calls: the app's own origin, plus the API's for requests, audio and
-// photos, and for the hidden frames a file downloads in (features/workspace/DocumentMedia.tsx), plus the LiveKit
+// photos, and for the hidden frames a file downloads in (features/workspace/uploads/DocumentMedia.tsx), plus the LiveKit
 // host (and LiveKit Cloud's media servers) for calls. The check of the server reads Sigstore's public log through
 // the API, which hands its release's entry on (packages/api-http/src/trust/release.ts), so no browser asks the log.
 // Inline scripts only by the hash of exactly what this build produced, so no other inline script can run.

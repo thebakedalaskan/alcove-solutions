@@ -12,9 +12,11 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { openWhenStarted } from '~/features/call/session/opening';
 import { NoNotesLeftDoor } from '~/features/plans/notesDoors';
-import type { BoardToOpen, CallFlow, StartOptions } from '~/features/shell/context';
+import type { BoardToOpen, CallFlow, StartOptions } from '~/features/calls/flow/context';
 import { someNames } from '~/lib/people';
-import { q, useStartNow } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { useStartNow } from '~/features/calls/list/queries';
+import { teamQueries } from '~/features/team/queries';
 import { useOpenScheduling } from '../scheduling/search';
 import { useFloodToCall } from './parts';
 
@@ -31,7 +33,7 @@ export function useCallFlowHost(): { flow: CallFlow; opened: Opened | null; open
   const n = useRef(0);
   const schedule = useOpenScheduling();
   /* Whoever you're with decides what the modal says, so it's ready before it opens. */
-  useQuery(q.team());
+  useQuery(teamQueries.team());
   const flow = useMemo<CallFlow>(() => ({
     start: (o: StartOptions = {}) => {
       if (o.later) { schedule({ schedule: 'new', ...(o.documents?.length ? { bring: o.documents.map((d) => d.id) } : {}) }, (o.people ?? []).map((p) => p.email)); return; }
@@ -52,8 +54,8 @@ export function CallFlowHost({ opened, open, close, back }: { opened: Opened | n
 function StartFlow({ open, onClose, onBack, people, name, documents, board }: {
   open: boolean; onClose: () => void; onBack: () => void; people: Person[]; name: string | undefined; documents: Document[]; board: BoardToOpen | null;
 }) {
-  const team = useQuery(q.team()).data;
-  const me = useQuery(q.session()).data?.user.email;
+  const team = useQuery(teamQueries.team()).data;
+  const me = useQuery(accountQueries.session()).data?.user.email;
   const toast = useToast();
   const schedule = useOpenScheduling();
   const others = people.filter((p) => p.email.toLowerCase() !== me?.toLowerCase());
@@ -83,7 +85,7 @@ function Choice({ people, name, team, documents, board, onClose, onBack, onLater
   const now = useRef<HTMLButtonElement>(null);
   const starting = useRef(false);
   /* A call starts with your notes setting, unless it says otherwise (Start without notes). */
-  const notesOn = useQuery(q.prefs()).data?.notesDefault !== 'off';
+  const notesOn = useQuery(accountQueries.prefs()).data?.notesDefault !== 'off';
   const start = (card: Element | null, notes?: NotesSetting) => {
     if (starting.current) return;
     starting.current = true;

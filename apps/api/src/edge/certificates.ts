@@ -9,9 +9,9 @@
 import { X509Certificate, createPublicKey, type KeyObject } from 'node:crypto';
 import type pg from 'pg';
 import { z } from 'zod';
-import { equalBytes } from '../crypto';
-import { createPool, exec, maybeOne, timestamp, type Db } from '../db';
-import { log } from '../log';
+import { equalBytes } from '../keys/crypto';
+import { createPool, exec, maybeOne, timestamp, type Db } from '../platform/db';
+import { log } from '../platform/log';
 import type { Ordered } from './acme';
 
 const clog = log.child({ component: 'edge' });

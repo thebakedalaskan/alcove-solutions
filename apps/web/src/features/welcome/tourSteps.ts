@@ -6,10 +6,10 @@
  * folded together with no waits, no pointer and every menu shut, and it's what reduced motion shows.
  *
  * The call is the app's call: its top bar, dock, tiles and menus say what the real ones say (TourStage.tsx draws them), and
- * the people stand where the stage's own layout puts them (call/layout/stageLayout.ts and panels.ts), at this size.
+ * the people stand where the stage's own layout puts them (call/stage/stageLayout.ts and panels.ts), at this size.
  */
 import type { IconName } from '@alcove/ui';
-import type { CastId } from '~/features/notes/cast';
+import type { CastId } from '~/features/examples/cast';
 
 /** The stage's design size: everything on it is placed in these pixels. */
 export const STAGE_W = 1120;

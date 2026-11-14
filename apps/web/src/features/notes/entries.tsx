@@ -9,13 +9,13 @@ import { useQuery } from '@tanstack/react-query';
 import { useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { listNames, sameEmail, spokenName } from '~/lib/people';
-import { q } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
 import { hm, position, shortDay } from '~/lib/time';
 import { capital } from '~/lib/words';
 
 /** Who's reading, for what `grants.ts` lets them do with a note they have as `role`. */
 export function useNoteReader(): (role: RecipientRole) => NoteReader {
-  const s = useQuery(q.session()).data;
+  const s = useQuery(accountQueries.session()).data;
   return (role) => ({ id: s?.ownerId ?? '', email: s?.user.email ?? '', role });
 }
 

@@ -8,8 +8,9 @@ import type { IconName } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { uploads } from '~/features/record/uploads';
 import { useLive } from '~/lib/live';
-import { openCount } from '~/features/home/day';
-import { q } from '~/lib/queries';
+import { openCount } from '~/features/notes/inbox';
+import { noteQueries } from '~/features/notes/queries';
+import { workspaceQueries } from '~/features/workspace/queries';
 import type { FileRoutesByTo } from '~/routeTree.gen';
 
 /** A path in the app with nothing to fill in, such as /calls. */
@@ -26,9 +27,9 @@ const TAGS_MS = 60_000;
 export type Counter = 'home' | 'drive' | 'record';
 /** How many there are of each, once they've loaded, and only while there's at least one. */
 export function useCounts(): Record<Counter, number | undefined> {
-  const notes = useQuery(q.notes()).data;
-  const inbox = useQuery(q.inbox()).data;
-  const tags = useQuery({ ...q.mentions(), refetchInterval: TAGS_MS }).data?.length;
+  const notes = useQuery(noteQueries.notes()).data;
+  const inbox = useQuery(noteQueries.inbox()).data;
+  const tags = useQuery({ ...workspaceQueries.mentions(), refetchInterval: TAGS_MS }).data?.length;
   const kept = useLive(uploads);
   const waiting = kept.list.filter((k) => k.status === 'waiting' || k.status === 'uploading' || k.status === 'refused').length;
   return { home: (inbox && openCount(inbox, notes ?? [], Date.now())) || undefined, drive: tags || undefined, record: waiting || undefined };

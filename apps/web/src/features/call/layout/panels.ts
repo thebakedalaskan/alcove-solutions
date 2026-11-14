@@ -22,7 +22,7 @@
  *
  * Everything here is pure: the room and what's open in, rectangles out.
  */
-import type { Box } from './stageLayout';
+import type { Box } from '../stage/stageLayout';
 
 /** How the people stand beside what's open: a column of tiles, or arches (a rail at the window's edge, or a row over it). */
 export type PeopleMode = 'tiles' | 'arches';

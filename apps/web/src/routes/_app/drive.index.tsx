@@ -5,11 +5,11 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { Drive } from '~/features/drive/Drive';
 import { driveSearch } from '~/features/drive/places';
-import { q } from '~/lib/queries';
+import { workspaceQueries } from '~/features/workspace/queries';
 
 export const Route = createFileRoute('/_app/drive/')({
   validateSearch: driveSearch,
-  loader: ({ context }) => context.queryClient.ensureQueryData(q.workspaces()),
+  loader: ({ context }) => context.queryClient.ensureQueryData(workspaceQueries.workspaces()),
   component: DrivePage
 });
 

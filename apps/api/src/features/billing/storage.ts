@@ -5,13 +5,12 @@
  * here, never what's stored.
  */
 import { z } from 'zod';
-import type { Config } from '../../config';
-import type { Deps } from '../../context';
-import { bigintText, maybeOne, rows, timestamp, tx, type Db } from '../../db';
-import { limitsNow } from '../../limits';
-import { publish } from '../../live/hub';
-import { log } from '../../log';
-import { TREE_NOTICE } from '../workspaces/access';
+import type { Config } from '../../platform/config';
+import type { Deps } from '../../platform/context';
+import { bigintText, maybeOne, rows, timestamp, tx, type Db } from '../../platform/db';
+import { limitsNow } from '../../platform/limits';
+import { publish, TREE_NOTICE } from '../../live/hub';
+import { log } from '../../platform/log';
 
 type Service = Pick<Deps, 'pool'> & { cfg: Pick<Config, 'LIMITS_CACHE_MS'> };
 const slog = log.child({ component: 'storage' });
@@ -61,7 +60,7 @@ const Held = z.object({ workspace_id: z.string(), payer_owner_id: z.string().nul
  * Settles who pays for one workspace, in the caller's transaction, holding its row: nothing changes while whoever pays is
  * in it, so nobody keeps paying for a workspace they can't open. Otherwise (its payer left or was taken out, deleted their
  * account, or nobody paid yet) it's paid for by its longest-standing admin with an account (for a new one, whoever made
- * it, or a call's organizer for its own), else by nobody, and then it takes no files (features/workspaces/media.ts). An
+ * it, or a call's organizer for its own), else by nobody, and then it takes no files (features/workspaces/uploads/media.ts). An
  * admin whose account is being deleted at that moment, its row held for that, is passed over rather than waited for: the
  * deletion may be waiting for this workspace. When payment moves from someone to someone else, its files don't count
  * against the new payer for `workspaces.payer_grace_seconds`: what it holds then is on top of their storage until that ends

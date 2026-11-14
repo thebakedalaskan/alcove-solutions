@@ -110,7 +110,7 @@ Every save writes a full new revision with a fresh `Krecord` and compare-and-set
 (`409 conflict` if someone else saved first). Reads decrypt the head revision; listing decrypts every live
 item of a kind. Earlier revisions stay until the item is deleted: correcting a transcript line or changing a
 decision never erases what was there before. The one exception is a note whose call was set not to keep its
-transcript: writing its notes deletes every earlier revision, which hold it (`pruneRevisions` in `apps/api/src/vault.ts`).
+transcript: writing its notes deletes every earlier revision, which hold it (`pruneRevisions` in `apps/api/src/keys/vault.ts`).
 
 ## Workspaces
 
@@ -200,7 +200,7 @@ workspace, the newest. The name of a document is never in the record or on the l
 
 What a document or board holds is a Yjs document: a CRDT, so people can type at once, offline or not, and always end up
 with the same thing. Browsers exchange binary updates through the API, which seals each and keeps it. Only
-`apps/api/src/features/workspaces/document-text.ts` and `documentOps.ts` know what's inside one, and they go by `kind`, so a board says
+`apps/api/src/features/workspaces/documents/text.ts` and `documentOps.ts` know what's inside one, and they go by `kind`, so a board says
 its own words, through `@alcove/board`, which is what knows a board's Y.Doc; everything else below is the same for anything
 that holds a Y.Doc. A document's blocks are the root fragment `content`, its comment threads the root map `comments`, and
 the editor's schema decides the rest. A board's are its root maps `objects` and `comments` and its list `places`
@@ -297,7 +297,7 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   A real block holds about 650 to 1,000 bytes an item once it's open.
 - **Reading it on the server.** Nothing on the event loop opens a document, so other modules ask by name: `readDocument(w, id,
   'todos', { kind })`, and `writeDocument(w, id, 'retitle', { name }, { by, callId, holding })`, which goes through the same log,
-  so what the server writes reaches browsers as an update. `apps/api/src/features/workspaces/document-ops.ts` holds what can be asked: a
+  so what the server writes reaches browsers as an update. `apps/api/src/features/workspaces/documents/ops.ts` holds what can be asked: a
   plain function of the document and plain data, one line each, which a worker can import. Every change the server makes
   goes through `writeDocument`, or `restoreVersion` to put a version back, and both write it only as Yjs clients the log
   hasn't had, asked under the row's lock in the transaction that appends it (`requireNewClients`): two updates that say
@@ -345,7 +345,7 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
 
 ### What gets into a document
 
-`apps/api/src/features/workspaces/document-firewall.ts` reads every update before it's stored, byte by byte, and builds nothing from it.
+`apps/api/src/features/workspaces/documents/firewall.ts` reads every update before it's stored, byte by byte, and builds nothing from it.
 It goes by Yjs's structs and never by what a document means, so a board goes through the same door as a page. Whoever can't
 write there hears so first, before anything of it is read. Refused means a reason in the log and no row, and a browser hears
 which kind it was: `400 invalid` for what no honest client could send, and `413 too-large` for what's only too much, which
@@ -389,7 +389,7 @@ What depends on the log is checked under the document's lock, against `document_
 ### Opening a document
 
 Yjs has no limit on what opening a document can cost, and a shape that takes minutes can't always be told from one that
-doesn't without the whole document. So every Y.Doc on the server is in a worker thread (`live/docPool.ts`, `features/workspaces/document-work.ts`):
+doesn't without the whole document. So every Y.Doc on the server is in a worker thread (`live/doc-pool.ts`, `features/workspaces/documents/work.ts`):
 loading, merging, compacting, encoding a `sync`, restoring, searching, and anything `readDocument` or `writeDocument` asks.
 Sealed rows go in with the document's key, which is wiped when the job ends, and sealed bytes and plain data come out, so big
 records are opened and sealed there too.
@@ -480,7 +480,7 @@ typing stays `saving` and it's tried again. Only if Alcove goes on saying so for
 still be offline with words for one, and nothing in this release prunes them or limits how long someone can stay offline.
 `document()` is async, because Yjs loads with the first document someone opens and stays out of everything else.
 
-Find looks through what `searchText` sends, in this tab's memory (`features/workspace/words.ts`), so nothing typed into it leaves
+Find looks through what `searchText` sends, in this tab's memory (`features/workspace/find/words.ts`), so nothing typed into it leaves
 the browser. It's read as Find opens, if anything in the tree was edited since, at most every 6 seconds, and it stays until the
 session ends: it's never stored. What's on the page is read from the editor instead, so what was just typed is found. Whatever
 leaves someone's tree or goes to Trash goes from there as the tree says so, all of it does on a change of role or when the
@@ -503,7 +503,7 @@ workspace, as a row in `workspace_media`, and is reached only through a document
 `workspace_media_uses`, because what someone can open of a workspace needn't be all of it: a seat reaches that document's
 files and no others, and what a call opens reaches none in what's restricted
 ([Privacy › Files](privacy-keys-and-sessions.md#files)). The API seals uploads, as it seals everything: a file reaches the
-process readable and is sealed there (`apps/api/src/features/workspaces/media.ts`).
+process readable and is sealed there (`apps/api/src/features/workspaces/uploads/media.ts`).
 
 - **What's kept.** A `workspace-media` record: its name, type, size, and its width and height where the browser knew them.
   And its bytes, in pieces of exactly 4 MiB but the last, each a `media-piece` binary record in an object under a random name,
@@ -569,7 +569,7 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   info, never the request. `GET /v1/media/:token?download` (`url`'s `download`) serves it as an attachment under its name,
   whatever its type, so a picture or a film saves rather than opening: the arrow on a file and **Download** in a photo's or a
   video's menu read it so, each file in a hidden frame of its own, half a second apart (`saveFile` in
-  `apps/web/src/features/workspace/DocumentMedia.tsx`; the app's policy has the API's origin in `frame-src`). The page itself
+  `apps/web/src/features/workspace/uploads/DocumentMedia.tsx`; the app's policy has the API's origin in `frame-src`). The page itself
   never follows the link: the API is on an origin of its own, where a link's `download` doesn't count, so the page would
   navigate, which the browser takes for leaving it until the answer turns out to be a download, and a call on the page
   would go. Each frame goes five minutes later, when the browser has long had its download. An answer to a player's range sends at
@@ -586,7 +586,7 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   URL: at most 4 at once for a browser, trying again for minutes when the server's busy. A room of people opening the same
   board at once would otherwise overrun what the process takes on, and an `<img>` can't try again. Video and audio use the URL,
   which a player reads by range.
-- **In a document** (`apps/web/src/features/workspace/uploads.ts`). Files go into a document as blocks: photos a browser can
+- **In a document** (`apps/web/src/features/workspace/uploads/uploads.ts`). Files go into a document as blocks: photos a browser can
   read as one `gallery`, a film it can play as a `video`, anything else as a `file`, however they come: dropped, pasted, or
   chosen from **/** → Photos, Video or File, so a picture chosen from File is a photo. A picture that can't be shown (HEIC,
   SVG, TIFF, or one this browser can't read) is a `file` when it's chosen from File, which is asked for a file
@@ -618,14 +618,14 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   file; that opens the document's session for uploads again.
 - **Shown in a document.** Every picture, a film's frame included, goes through `picture`, read once for as long as anything
   shows it, kept a minute after so a block redrawn or scrolled back to isn't read again, and let go of with `revokeObjectURL`
-  (`apps/web/src/features/workspace/pictures.ts`). A block pasted or dropped from another document, or sent there with Move
+  (`apps/web/src/features/workspace/uploads/pictures.ts`). A block pasted or dropped from another document, or sent there with Move
   to…, has its files attached there first, and its pictures wait for that. A picture that's `not-found` shows as deleted; a file
   or a film does when the workspace's list of files, read after the block was first seen, no longer has it through that
   document, or a player or a download is refused it. Taking a block out (Delete) leaves its file; Delete for good, from the
   block's menu, is `remove`. A version in History draws from the same (`useMediaView` in
   `DocumentMedia.tsx`), so a file deleted for good since shows as deleted there too.
 - **What a process takes on.** Every call runs in the same one process, so what a file can hold there is limited
-  (`MEDIA_LIMITS` in `features/workspaces/media.ts`). At most 16 pieces are coming in at once, 4 for any one person, counted from before
+  (`MEDIA_LIMITS` in `features/workspaces/uploads/media.ts`). At most 16 pieces are coming in at once, 4 for any one person, counted from before
   their bodies are read; past that they're refused with `503 unavailable` and the client tries again. A piece has to keep
   coming: one that brings less than 256 KiB in 10 seconds, stopped or only trickling, is cut, and the client tries again. At
   most 32 reads are open, 8 for any one person, from when they start until their response has gone, whether it finished or the
@@ -830,7 +830,7 @@ readable.
   cancelled. A series that repeats is one recurring event: each call keeps its
   occurrence's ID and which recurring event that is, and the series keeps the event that carries its latest calls.
 - **Busy times** (`POST /v1/calendar/busy`) are read when the app asks, from Google, from the account's own calls,
-  or for a demo account from `apps/api/src/demo.ts`, and go nowhere else: no row, no receipt, and in the logs only
+  or for a demo account from `apps/api/src/features/meetings/demo-week.ts`, and go nowhere else: no row, no receipt, and in the logs only
   how many ([Privacy › Google sign-in and calendar access](privacy-keys-and-sessions.md#google-sign-in-and-calendar-access)).
 - **Documents** brought to a call are IDs in its meeting manifest, and nothing else about them is kept: a name, whether
   it's still there and who can open it are read from its workspace each time the call is

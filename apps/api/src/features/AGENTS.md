@@ -3,8 +3,13 @@
 Read root `AGENTS.md`, `docs/engineering/folder-ownership.md`, `docs/engineering/privacy-keys-and-sessions.md`
 and `docs/engineering/logging-and-errors.md`.
 
-- Choose `account`, `agents`, `meetings`, `calls`, `notes`, `recordings`, `workspaces` or `billing` as the owner.
-  Add a distinct owner only with an updated map, these rules and the structure policy. Never recreate `modules/`.
+- The owners, lowest first: `profile`, `billing`, `workspaces`, `meetings`, `recordings`, `notes`, `calls`, `agents`,
+  `account`. A feature imports only those before it (tests are exempt). When code needs something from a feature after
+  it, take it as an argument from the caller, move the piece down to the feature that owns its data, or compose the flow
+  in `account`, `app.ts`, `start.ts` or `maintenance.ts`. Add an owner only with an updated map, these rules and the
+  structure check. Never recreate `modules/`.
+- A feature with several responsibilities has a subfolder for each (calls: boards, workspace, notes, chat, attention,
+  ringing, timers, moves, mls). A folder holds at most 20 files, integration suites included. Files are kebab-case.
 - Feature HTTP registration belongs with the feature. `app.ts` composes registrars and shared HTTP infrastructure;
   it contains no feature handlers. Preserve registration order around public, guest-readable, signed-in and
   operation-receipt phases. Shared rate-limit budgets must remain the same app-scoped instances.
@@ -12,11 +17,12 @@ and `docs/engineering/logging-and-errors.md`.
   MLS relay, notes/insights, room-board lifecycle and capture cleanup with their actual owners. Import those
   files directly rather than forwarding every export through a service or folder index.
 - Colocate complete API/client integration flows here as `*.integration.test.ts`. Cross-feature/service-wide
-  suites belong in `src/integration`; reusable fixtures belong in `src/testing`. Preserve assertions, real
+  suites belong in `src/integration`; reusable fixtures belong in `src/testing` (fakes of outside services in `src/testing/fakes`). Preserve assertions, real
   Postgres/object-store usage and CI timing keys when moving a suite.
-- Shared database, crypto, server keys, Google Cloud (`gcp.ts`), ownership/session, object store, logging,
-  inference/attestation, start-up (`start.ts`), the edge (`edge/`: TLS, certificates, the web app's files) and worker machinery
-  keep deliberate shared homes. Do not duplicate them per feature or hide them in an undifferentiated utils folder.
+- Shared homes: `platform` (config, context, db, objects, log, errors, limits, flags), `keys` (sealing, owner and server
+  keys, sessions, vault, call passes, media tokens), `tee`, `inference`, `providers` (Google, LiveKit), `http`, `live`
+  (the hub and document worker pool) and `edge`. They never import a feature; composition passes in what they need.
+  Don't duplicate them per feature or hide them in an undifferentiated utils folder.
 - Moving source never changes SQL scope, persisted headers/key labels, schema defaults, migrations, physical
   deletion, safe logging/error contexts, authorization or receipt behavior. Re-read the privacy rules for any change
   that stores data. Preserve worker URLs and server/migrate/limits/document-worker build outputs.

@@ -1,36 +1,36 @@
 import { MAIN_PLACE, type CallCard, type CallRole, type CallState, type CallTicket, type RingReply } from '@alcove/api';
 import { z } from 'zod';
-import { issuePass, readPass, type CallPass } from '../../callPass';
-import type { Deps, Owner } from '../../context';
-import { id128, mac, openJson, sealJson, stateKey, toJson, utf8 } from '../../crypto';
-import { exec, tx } from '../../db';
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../errors';
-import { openOwner } from '../../owners';
-import { limitsNow } from '../../limits';
-import { me, profile } from '../account/account';
-import { NO_BOARDS, NO_SPACE } from './space-state';
-import { NO_LIMIT } from './capture';
+import { issuePass, readPass, type CallPass } from '../../keys/call-pass';
+import type { Deps, Owner } from '../../platform/context';
+import { id128, mac, openJson, sealJson, stateKey, toJson, utf8 } from '../../keys/crypto';
+import { exec, tx } from '../../platform/db';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../platform/errors';
+import { openOwner } from '../../keys/owners';
+import { limitsNow } from '../../platform/limits';
+import { me, profile } from '../profile/profile';
+import { NO_BOARDS, NO_SPACE } from './workspace/space-state';
+import { NO_LIMIT } from './notes/capture';
 import { notesCanGo, syncAccess } from '../meetings/access';
 import { lookupCode } from '../meetings/codes';
 import { MeetingManifest, minutesOf, pickTime, updateManifest } from '../meetings/service';
 import { callFor } from '../meetings/repeats';
-import type { Loaded } from '../../vault';
-import { findItem, getItem } from '../../vault';
+import type { Loaded } from '../../keys/vault';
+import { findItem, getItem } from '../../keys/vault';
 import { mayStandIn } from './hosting';
 import { Joined, admissionFresh, placesTaken } from './places';
-import { attentionPrincipalOf } from './attention';
-import * as rings from './rings';
-import { log, type LogContext } from '../../log';
+import { attentionPrincipalOf } from './attention/attention';
+import * as rings from './ringing/rings';
+import { log, type LogContext } from '../../platform/log';
 import { header, hostHere, key, liveCall, load, notice, save, sharesEnd, tenthsIn, type Row, Stored, withPerson } from './state';
 import { anonymousCapture, view } from './read-model';
-import * as models from '../notes/models';
+import * as models from '../../inference/models';
 import { HOST_GRACE_MS, departed, newGeneration, reconcile } from './lifecycle';
-import { syncBoardSeats } from './room-boards';
-import { tellRoom } from './notifications';
+import { syncBoardSeats } from './boards/room-boards';
+import { tellRoom } from './attention/notifications';
 import { knownUntil, workspaceIn, type Viewer } from './participants';
-import { startNotes } from './recording';
-import { notesBlocked } from '../billing/meter';
-import { appendMls } from './mls-log';
+import { startNotes } from './notes/recording';
+import { notesBlocked } from '../billing/meter/meter';
+import { appendMls } from './mls/mls-log';
 
 const clog = log.child({ component: 'calls' });
 
@@ -192,7 +192,7 @@ async function ticketFor(d: Deps, o: Owner, callId: string, who: Pick<Joined, 'i
   return { ticket, state: await view(viewer, d.pool, callId) };
 }
 
-/* ---------- moving to another device (features/calls/moves.ts keeps the moves; the call lets the new device in) ---------- */
+/* ---------- moving to another device (features/calls/moves/moves.ts keeps the moves; the call lets the new device in) ---------- */
 
 /** Someone in a call, as a move needs them: who they are, and where they stand. */
 export interface Mover { identity: string; person: string; role: CallRole; name: string; email: string | null; status: Joined['status']; replaced: boolean; removed: boolean }
@@ -416,5 +416,5 @@ export async function answerRing(who: Owner, ringId: string, reply: RingReply): 
   if (live) await tellRoom(organizer, live.room_name, live.call_id, { call: true, log: false });
 }
 
-/** The series a call is in, by its link: what carries over into it is read for whoever asks (features/notes/series.ts). */
+/** The series a call is in, by its link: what carries over into it is read for whoever asks (features/notes/series/series.ts). */
 export const seriesOf = async (d: Deps, code: string): Promise<string | undefined> => (await meetingFor(d, code)).meeting.manifest.seriesId;

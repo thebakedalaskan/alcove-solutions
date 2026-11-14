@@ -6,7 +6,7 @@
 import { errorMessage, type AgentScope, type AgentTokenResult } from '@alcove/api';
 import { AgentAction, AgentDisclosure, AgentPermissions, AgentPopHead, AgentPopLine, AgentWell, Field, Segmented } from '@alcove/ui';
 import { useId, useState } from 'react';
-import { useCreateAgentToken } from '~/lib/queries';
+import { useCreateAgentToken } from './queries';
 import { dayMonth } from '~/lib/time';
 import { useCopy } from './copy';
 import { CHIPS, inOrder, PERMISSIONS, READ_SCOPES } from './permissions';

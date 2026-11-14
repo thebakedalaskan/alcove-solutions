@@ -11,7 +11,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import type { Doc } from 'yjs';
 import type { Ws } from '../context';
 import type { EditorCall, EditorHandle } from '../editor/types';
-import { asNamed, withEarlier } from '../ids';
+import { asNamed, withEarlier } from '../sharing/ids';
 import { liveLinesOf, notesOnHere, recentLines, writesLiveBlocks } from './lines';
 
 /** How long each browser waits behind the one before it: longer than an update takes to get round. */

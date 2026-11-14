@@ -2,8 +2,8 @@
  * The workspace in a call: whether it's open, where you are in it, and the panel it's drawn in. The call says which
  * workspace (`CallState.workspace`, settled the first time anyone opens it); nothing here decides who can open what.
  *
- * It's on your stage or it isn't (layout/onStage.ts says which). Closing it and opening it again finds everything as it was:
- * it stays mounted once it's been opened, out of sight (layout/frame.tsx), so the page keeps its caret, its scroll and its
+ * It's on your stage or it isn't (stage/onStage.ts says which). Closing it and opening it again finds everything as it was:
+ * it stays mounted once it's been opened, out of sight (stage/frame.tsx), so the page keeps its caret, its scroll and its
  * undo, and where you were is kept with how you arranged this call (view.ts), so a reload finds that too. Only your screen
  * changes, whatever you do here.
  */
@@ -16,12 +16,13 @@ import type { CallPerson, CallTogether, WorkspaceCall, WorkspacePlace, Workspace
 import type { StopFollowing } from '~/features/workspace/follow';
 import { LiveRows } from '~/features/workspace/live/LiveRows';
 import { OutsideSpace } from '~/features/workspace/live/OutsideSpace';
-import { CallPeopleSheet, PeopleSheetFor, type InTheCall } from '~/features/workspace/Sheets';
+import { CallPeopleSheet, PeopleSheetFor, type InTheCall } from '~/features/workspace/sharing/Sheets';
 import type { LiveCall } from '~/features/workspace/live/types';
 import { Workspace } from '~/features/workspace/Workspace';
 import { moveFocusOut, overlayOpen, shortcut } from '~/lib/keys';
 import { log } from '~/lib/log';
-import { useFirstDocument, q, useMentionSeen, useRenameWorkspace } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { useFirstDocument, workspaceQueries, useMentionSeen, useRenameWorkspace } from '~/features/workspace/queries';
 import { SpacePicker } from './SpacePicker';
 import type { CallView } from '../layout/view';
 
@@ -45,13 +46,13 @@ function firstPlace(w: CallWorkspace): WorkspacePlace {
 
 /**
  * What the call's screen holds about the workspace. One a call has for good: everything in `act` keeps the same identity.
- * `stage` says whether it's on your stage, and puts it there or away (layout/onStage.ts), which is what opening and closing it is.
+ * `stage` says whether it's on your stage, and puts it there or away (stage/onStage.ts), which is what opening and closing it is.
  */
 export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace, view: CallView, stage: { open: boolean; setOpen: (open: boolean) => void }) {
   const push = useToast();
   const qc = useQueryClient();
   /** A workspace's name, as your Drive has it: the call names only the one everyone views. */
-  const spaceName = useCallback((id: string) => qc.getQueryData(q.workspaces().queryKey)?.find((w) => w.id === id)?.name ?? 'the call’s home', [qc]);
+  const spaceName = useCallback((id: string) => qc.getQueryData(workspaceQueries.workspaces().queryKey)?.find((w) => w.id === id)?.name ?? 'the call’s home', [qc]);
   const kept = view.layout.workspace;
   const open = stage.open;
   const setOpen = stage.setOpen;
@@ -151,8 +152,8 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
   }, [push, session, spaceName, setOpen]);
 
   /* Tagged here with the workspace not open: the call says so, and nothing moves until Go there. Someone with no account has only their stream. */
-  const signedIn = !!useQuery(q.session()).data;
-  const waiting = useQuery({ ...q.mentions(), enabled: signedIn && !mounted && workspace.id !== null, refetchInterval: TAGS_MS }).data;
+  const signedIn = !!useQuery(accountQueries.session()).data;
+  const waiting = useQuery({ ...workspaceQueries.mentions(), enabled: signedIn && !mounted && workspace.id !== null, refetchInterval: TAGS_MS }).data;
   const saidSeen = useMentionSeen();
   const seen = saidSeen.mutate;
   const told = useRef(new Set<string>());

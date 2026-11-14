@@ -10,7 +10,8 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { marked } from '~/features/notes/highlight';
 import { noteLine } from '~/features/notes/meta';
 import { useSettled } from '~/lib/live';
-import { q, usePins } from '~/lib/queries';
+import { accountQueries, usePins } from '~/features/account/queries';
+import { noteQueries } from '~/features/notes/queries';
 import { keepInView } from './keepInView';
 import { Nothing } from './Results';
 
@@ -23,16 +24,16 @@ export function PinNotes({ onClose }: { onClose: () => void }) {
   const toast = useToast();
   const qc = useQueryClient();
   const pins = usePins();
-  const all = useQuery(q.notes()).data;
+  const all = useQuery(noteQueries.notes()).data;
   /* A pin whose note is gone (deleted, or removed from yours) is dropped, never sent back. */
-  const pinned = (useQuery(q.prefs()).data?.pinned ?? []).filter((id) => !all || all.some((n) => n.id === id));
+  const pinned = (useQuery(accountQueries.prefs()).data?.pinned ?? []).filter((id) => !all || all.some((n) => n.id === id));
   /* Rows keep their places while you pin and unpin: what was pinned when this opened comes first. */
-  const [before] = useState(() => qc.getQueryData(q.prefs().queryKey)?.pinned ?? []);
+  const [before] = useState(() => qc.getQueryData(accountQueries.prefs().queryKey)?.pinned ?? []);
   const [text, setText] = useState('');
   const [active, setActive] = useState(0);
   const keyed = useRef(false);
   const term = useSettled(text.trim(), 160);
-  const found = useQuery(q.notes(undefined, term || undefined));
+  const found = useQuery(noteQueries.notes(undefined, term || undefined));
   const terms = searchOf(term).terms;
   const first = term ? [] : before.flatMap((id) => all?.filter((n) => n.id === id) ?? []);
   const rest = term ? (found.data ?? []).slice(0, FOUND) : (all ?? []).filter((n) => !before.includes(n.id)).slice(0, RECENT);

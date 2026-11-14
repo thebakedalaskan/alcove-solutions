@@ -11,7 +11,7 @@ import {
 } from '@alcove/api';
 import { Icon, useToast } from '@alcove/ui';
 import type { ReactNode } from 'react';
-import { NoteFollowUpReview } from './NoteFollowUps';
+import { NoteFollowUpReview } from './follow-ups/NoteFollowUps';
 import { Moment, Section, Summary, type ScreenRefShown } from './parts';
 import { RoomSections, type Settling } from './rooms';
 import { DecisionRow, Decisions, FollowUpRow, FollowUps, Questions, isMine } from './rows';

@@ -11,7 +11,14 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { forgetView } from '~/features/call/layout/view';
 import { forgetTour } from '~/features/onboarding/store';
-import { q, topUpOpen, unverifiedBecause, useDeleteAccount, verifiedAt } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { useDeleteAccount } from '~/features/account/signOut';
+import { callQueries } from '~/features/calls/list/queries';
+import { calendarQueries } from '~/features/calls/scheduling/queries';
+import { noteQueries } from '~/features/notes/queries';
+import { planQueries, topUpOpen } from '~/features/plans/queries';
+import { workspaceQueries } from '~/features/workspace/queries';
+import { trustQuery, unverifiedBecause, verifiedAt } from '~/lib/trust';
 import { hm } from '~/lib/time';
 import { plural, usd } from '~/lib/words';
 
@@ -26,7 +33,7 @@ const LEDGER = [
  * when. One that didn't pass says why, beside a shield without its tick. With nothing to show, the row just says what it is.
  */
 function Compute() {
-  const checked = useQuery(q.trust());
+  const checked = useQuery(trustQuery());
   const verified = verifiedAt(checked.data);
   const failed = unverifiedBecause(checked.data);
   if (failed !== null) return <SettingRow mark={<Icon name="shieldOff" />} label="Confidential compute" help={failed} />;
@@ -84,17 +91,17 @@ export function PrivacyGroup({ session }: { session: Session }) {
  * even if you've moved on from Settings meanwhile.
  */
 function DeleteStep({ shared, onClose }: { shared: boolean; onClose: () => void }) {
-  const ownerId = useQuery(q.session()).data?.ownerId;
-  const notes = useQuery(q.notes()).data;
-  const upcoming = useQuery(q.upcoming()).data;
-  const prefs = useQuery(q.prefs()).data;
-  const plan = useQuery(q.plan()).data;
-  const calendar = useQuery(q.calendar()).data;
-  const topUps = useQuery(q.topUps()).data;
+  const ownerId = useQuery(accountQueries.session()).data?.ownerId;
+  const notes = useQuery(noteQueries.notes()).data;
+  const upcoming = useQuery(callQueries.upcoming()).data;
+  const prefs = useQuery(accountQueries.prefs()).data;
+  const plan = useQuery(planQueries.plan()).data;
+  const calendar = useQuery(calendarQueries.calendar()).data;
+  const topUps = useQuery(planQueries.topUps()).data;
   const paying = topUps?.some(topUpOpen) ?? false;
   // 1Click can't cancel a quote: a cancelled top-up's address still takes a payment until it expires.
   const takesPayment = topUps?.some((t) => t.state === 'cancelled' && Date.parse(t.expiresAt) > Date.now()) ?? false;
-  const spaces = useQuery(q.workspaces()).data;
+  const spaces = useQuery(workspaceQueries.workspaces()).data;
   const navigate = useNavigate();
   const toast = useToast();
   const del = useDeleteAccount(() => {

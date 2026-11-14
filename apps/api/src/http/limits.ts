@@ -1,5 +1,10 @@
-import { UnavailableError } from '../errors';
-import * as media from '../features/workspaces/media';
+import { UnavailableError } from '../platform/errors';
+
+/**
+ * What someone can ask of a workspace's files in a minute: each URL and each piece opened, because a byte costs a whole
+ * piece (features/workspaces/uploads/media.ts, MEDIA_LIMITS).
+ */
+export const MEDIA_READS_A_MINUTE = 240;
 
 /**
  * A small fixed-window limiter: at most `max` hits per key in each window. Unauthenticated requests
@@ -197,7 +202,7 @@ export function createHttpLimits() {
   const pieceLimiter = rateLimit(600, 60_000);
 
   /** Reading files, per person, by what it costs: each URL asked for and each piece opened. */
-  const mediaLimiter = rateLimit(media.MEDIA_LIMITS.readsAMinute, 60_000);
+  const mediaLimiter = rateLimit(MEDIA_READS_A_MINUTE, 60_000);
 
   /** Opening a top-up, per account: each one asks 1Click for a quote and is watched until well after its address expires. */
   const topUpLimiter = rateLimit(10, 60_000);

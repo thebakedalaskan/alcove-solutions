@@ -4,13 +4,13 @@ import {
   AgentScopesSchema, AgentTokenBodySchema, type AgentDecisionInput, type AgentScope
 } from '@alcove/api';
 import { z } from 'zod';
-import type { Deps, Owner } from '../../context';
-import { b64u, equalBytes, id128, openJson, random, sealJson, serviceKey, sha, toJson, unb64u, utf8 } from '../../crypto';
-import { bytea, exec, maybeOne, timestamp, tx, type Db } from '../../db';
-import { ForbiddenError, NotFoundError, UnavailableError, ValidationError } from '../../errors';
-import { log } from '../../log';
-import { lockOwner, openOwner } from '../../owners';
-import { profile } from '../account/account';
+import type { Deps, Owner } from '../../platform/context';
+import { b64u, equalBytes, id128, openJson, random, sealJson, serviceKey, sha, toJson, unb64u, utf8 } from '../../keys/crypto';
+import { bytea, exec, maybeOne, timestamp, tx, type Db } from '../../platform/db';
+import { ForbiddenError, NotFoundError, UnavailableError, ValidationError } from '../../platform/errors';
+import { log } from '../../platform/log';
+import { lockOwner, openOwner } from '../../keys/owners';
+import { profile } from '../profile/profile';
 import { createGrant, GRANT_MS, GrantRow, grantInfo, grantKey, issuerUrl, newToken, resourceUrl, storeToken, tokenHash, type Grant } from './service';
 
 const olog = log.child({ component: 'agent-oauth' });

@@ -10,8 +10,8 @@ import { Icon, IconButton, WS_ITEM_ICONS, cn, type IconName } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useState, type ReactNode } from 'react';
-import { namesIn } from '~/features/workspace/List';
-import { q } from '~/lib/queries';
+import { namesIn } from '~/features/workspace/tree/List';
+import { workspaceQueries } from '~/features/workspace/queries';
 import { dayMonth, daysFromToday, hm, weekday } from '~/lib/time';
 import { NameField } from './Card';
 import type { DriveActions } from './actions';
@@ -57,7 +57,7 @@ function foldersAbove(items: readonly WorkspaceItem[], id: string | undefined): 
 
 /** A workspace's folders and files, under its row; a folder opens to what's in it while it's where you are. */
 function SpaceKids({ workspaceId, at, actions }: { workspaceId: string; at: DriveAt; actions: DriveActions }) {
-  const items = useQuery(q.workspaceTree(workspaceId)).data?.items ?? [];
+  const items = useQuery(workspaceQueries.workspaceTree(workspaceId)).data?.items ?? [];
   const open = foldersAbove(items, at.folder);
   const level = (parent: string | null, depth: number): ReactNode => kidsOf(items, parent).map((i) => (
     <div key={i.id}>
@@ -72,7 +72,7 @@ function SpaceKids({ workspaceId, at, actions }: { workspaceId: string; at: Driv
 
 /** What a call's workspace holds, under its row: what the call made, the latest first. */
 function CallKids({ workspaceId, at, actions }: { workspaceId: string; at: DriveAt; actions: DriveActions }) {
-  const items = useQuery(q.workspaceTree(workspaceId)).data?.items ?? [];
+  const items = useQuery(workspaceQueries.workspaceTree(workspaceId)).data?.items ?? [];
   const made = items.filter((i) => i.kind !== 'folder' && i.trashedAt === null).sort((a, b) => b.editedAt.localeCompare(a.editedAt));
   return <>{made.map((i) => <Row key={i.id} icon={WS_ITEM_ICONS[i.kind]} label={fileName(i.kind === 'board' ? 'board' : 'doc', i.name)} depth={1} className="is-sub" current={at.doc === i.id} onPress={() => actions.open({ workspaceId, id: i.id })} />)}</>;
 }

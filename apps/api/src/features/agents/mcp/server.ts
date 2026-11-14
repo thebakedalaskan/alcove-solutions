@@ -1,8 +1,8 @@
 /* The remote agent boundary never accepts a browser cookie as delegation. */
 import { createMcpHandler, isLegacyRequest, WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
-import type { Deps } from '../../../context';
-import { AuthError, ForbiddenError, TooLargeError, ValidationError, toAppError } from '../../../errors';
-import { log } from '../../../log';
+import type { Deps } from '../../../platform/context';
+import { AuthError, ForbiddenError, TooLargeError, ValidationError, toAppError } from '../../../platform/errors';
+import { log } from '../../../platform/log';
 import { authenticateAgent, issuerUrl, type AgentPrincipal } from '../service';
 import { buildServer } from './tools';
 

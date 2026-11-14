@@ -19,11 +19,14 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { useCheckout } from '~/features/plans/checkout';
-import { PLAN_NAMES, endsIn, nextPeriodMinutes, noticesLike, noticesNow, notesLeft, notesLow, notesOut, notesShare, paidFor, payingNow, proEnding, renews, teamLicenses } from '~/features/plans/plan-state';
+import { PLAN_NAMES, endsIn, nextPeriodMinutes, noticesLike, noticesNow, notesLeft, notesLow, notesOut, notesShare, paidFor, payingNow, proEnding, renews, teamLicenses } from '~/features/plans/planState';
 import { checkoutFor, purchaseName, restToSend, tokensExact } from '~/features/plans/purchase';
 import { hoursOfNotes } from '~/features/plans/words';
 import { useNow } from '~/lib/live';
-import { q, topUpOpen, useCancelTopUp, useDismissPlanNotice, useRefundPro, useSetRenew } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { planQueries, topUpOpen, useCancelTopUp, useDismissPlanNotice, useRefundPro, useSetRenew } from '~/features/plans/queries';
+import { teamQueries } from '~/features/team/queries';
+import { workspaceQueries } from '~/features/workspace/queries';
 import { byDay, byWhen, dayFullMonth, fullDate, hm, longDay, shortDate } from '~/lib/time';
 import { plural, roomLabel, usd, usdCents } from '~/lib/words';
 import { AutoBuy, Licenses, RefundLicenses, TeamPlanRow, TeamStorageNote, WaitingNote, balanceBuys, teamNoticeSays, teamNotesHelp, teamStorageHelp } from './PlanTeam';
@@ -31,12 +34,12 @@ import { useSaveState, useSaving } from './save';
 import { AddMoneySheet } from './topup';
 
 export function PlanGroup({ plan }: { plan: Plan }) {
-  const offers = useQuery(q.offers()).data;
+  const offers = useQuery(planQueries.offers()).data;
   // Whether this server takes payments: one that doesn't answers unavailable, and there's no way to add money.
-  const canAdd = useQuery(q.topUpRoutes()).data !== undefined;
+  const canAdd = useQuery(planQueries.topUpRoutes()).data !== undefined;
   // The team you're on, as you see it: its admin, and for the admin its licenses. Someone waiting for one makes Buy
   // licenses the one thing to do here.
-  const team = useQuery({ ...q.myTeam(), enabled: plan.team !== null }).data;
+  const team = useQuery({ ...teamQueries.myTeam(), enabled: plan.team !== null }).data;
   const licenses = teamLicenses(team);
   const waiting = Boolean(licenses?.waiting.length);
   const [sheet, setSheet] = useState<{ open: boolean; topUpId: string | null }>({ open: false, topUpId: null });
@@ -70,7 +73,7 @@ function Notices({ plan, team }: { plan: Plan; team: MyTeam | null | undefined }
   const dismiss = useDismissPlanNotice();
   const toast = useToast();
   // The workspaces you're in, read only while a notice names one: the plan keeps its ID, never its name.
-  const spaces = useQuery({ ...q.workspaces(), enabled: plan.notices.some(payingNow) }).data;
+  const spaces = useQuery({ ...workspaceQueries.workspaces(), enabled: plan.notices.some(payingNow) }).data;
   const shown = noticesNow(plan, team, spaces);
   const close = (n: PlanNotice) => {
     const all = async () => { for (const id of noticesLike(plan, n)) await dismiss.mutateAsync(id); };
@@ -218,7 +221,7 @@ function Paying({ plan, offers, canAdd, team, onAddMoney }: {
   plan: Plan; offers: PlanOffers | undefined; canAdd: boolean; team: MyTeam | null | undefined; onAddMoney: (topUpId: string | null) => void;
 }) {
   // Payments on their way show whether or not 1Click answers right now; a server without payments has none to show.
-  const topUps = (useQuery(q.topUps()).data ?? []).filter(listed(plan));
+  const topUps = (useQuery(planQueries.topUps()).data ?? []).filter(listed(plan));
   const add = useRef<HTMLButtonElement>(null);
   const onPro = plan.kind === 'pro';
   const licenses = team?.licenses ?? null;
@@ -404,7 +407,7 @@ function paymentLine(t: TopUp, now: number): { text: string; tone: 'wait' | 'pro
 
 /** One change to the balance as a receipt, over the page, to print. */
 function Receipt({ entry, onClose }: { entry: BalanceEntry | null; onClose: () => void }) {
-  const me = useQuery(q.session()).data?.user;
+  const me = useQuery(accountQueries.session()).data?.user;
   const lines: ReceiptLine[] = entry ? [
     { label: 'Date', value: `${fullDate(new Date(entry.at))}, ${hm(entry.at)}` },
     { label: entry.microUsd >= 0 ? 'Added to' : 'Paid from', value: 'Your Alcove balance' },

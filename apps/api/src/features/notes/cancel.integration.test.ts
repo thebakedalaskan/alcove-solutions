@@ -7,8 +7,8 @@
  */
 import { AlcoveApiError, type AlcoveApi, type AudioPiece, type Note, type TranscriptClip } from '@alcove/api';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { work } from './writer';
-import { NOTES_MODEL, UNENCRYPTED_MODEL, VISION_MODEL, WRAPPED_UP_S, speechWav } from '../../testing/fake-near';
+import { work } from './writing/writer';
+import { NOTES_MODEL, UNENCRYPTED_MODEL, VISION_MODEL, WRAPPED_UP_S, speechWav } from '../../testing/fakes/near';
 import { startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
 import { acceptNoteSuggestions } from '../../testing/follow-ups';

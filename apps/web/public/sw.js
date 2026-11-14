@@ -14,7 +14,7 @@
  * - /api, every other origin (the API's included) and anything but GET go straight to the network: nothing
  *   from the API is ever cached or answered from the cache.
  * - A new version takes over as soon as it has everything, and deletes the caches of the versions before it.
- * - A click on a notification (shown by apps/web/src/features/shell/notification-delivery.ts) brings a window forward and
+ * - A click on a notification (shown by apps/web/src/features/notifications/delivery.ts) brings a window forward and
  *   tells it where the notification leads. The page goes there itself, so leaving a call or a recording still asks first.
  *   A ring leads nowhere: its card is on whatever page is open, so the account's last-used window comes forward as it is.
  */

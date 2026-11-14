@@ -7,7 +7,7 @@
 import { Faces, Icon, SealedBadge, Segmented, cn, useSceneLoop, type Choice } from '@alcove/ui';
 import { useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
-import { CAST } from '~/features/notes/cast';
+import { CAST } from '~/features/examples/cast';
 import { HELD } from './night';
 
 type View = 'you' | 'alcove';

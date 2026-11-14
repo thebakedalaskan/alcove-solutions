@@ -7,7 +7,7 @@
  */
 import type { Meeting, Note, WorkspaceItem } from '@alcove/api';
 import type { BlockJSON } from '~/features/workspace/editor/types';
-import type { Page, Space, World } from '.';
+import type { Page, Space, World } from './world';
 import { call, writeNote, type NoteSpec } from './build';
 import { homesOn } from './call-page';
 import { iso } from './clock';

@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { BoardSurface, type BoardHandle, type BoardPerson } from '~/features/board/BoardSurface';
-import type { BoardCommenting } from '~/features/board/comments';
+import type { BoardCommenting } from '~/features/board/people/comments';
 import { BOARD_LOOKS, type BoardMode } from '~/features/board/state';
 import type { BoardRun } from '~/features/board/tools/run';
 import './board.css';

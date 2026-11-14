@@ -1,5 +1,5 @@
 /*
- * The board on the call's stage: inside its frame (layout/frame.tsx), drawn small for its tile among the people while it's
+ * The board on the call's stage: inside its frame (stage/frame.tsx), drawn small for its tile among the people while it's
  * presented and isn't on your stage, and your notes beside it in your side while you present it. Its code is loaded the first
  * time a board opens, so a call without one pays nothing for it. Someone it isn't open to sees "A board you can't open", and
  * nothing of its name.

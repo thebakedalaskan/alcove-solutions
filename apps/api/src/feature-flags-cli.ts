@@ -1,14 +1,14 @@
 import { z } from 'zod';
-import { deriveIndexKey, unb64u } from './crypto';
-import { createPool } from './db';
-import { AppError } from './errors';
-import { runFeatureFlagCommand } from './featureFlagCommands';
-import { configureLogging, flushLogs, log } from './log';
+import { deriveIndexKey, unb64u } from './keys/crypto';
+import { createPool } from './platform/db';
+import { AppError } from './platform/errors';
+import { runFeatureFlagCommand } from './platform/feature-flag-commands';
+import { configureLogging, flushLogs, log } from './platform/log';
 
 /**
  * `pnpm --filter @alcove/server feature-flags …` switches feature flags on and off, for everyone, for groups and for people, in
  * whichever database DATABASE_URL names (docs: engineering/feature-flags.md). It runs the same commands the API's operator route
- * does (featureFlagCommands.ts) and prints what they say. Unlike `limits` it needs KMASTER, to hash the addresses it's given as
+ * does (feature-flag-commands.ts) and prints what they say. Unlike `limits` it needs KMASTER, to hash the addresses it's given as
  * the API does, so it's for a database whose KMASTER is at hand: a local one, from .env. Inside the TEE, flags are switched
  * through the operator route instead. Every instance takes a change within FEATURE_FLAGS_CACHE_MS, with no restart. Nothing it
  * says, here or in its log, repeats an address or anything else typed that isn't a flag or a group. It says flags, groups and

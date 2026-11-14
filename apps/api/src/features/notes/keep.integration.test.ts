@@ -7,15 +7,15 @@ import { AlcoveApiError, DEFAULT_NOTES_CHOICES, firstName, type AlcoveApi, type 
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { openJson, openKey } from '../../crypto';
-import { tx } from '../../db';
+import { openJson, openKey } from '../../keys/crypto';
+import { tx } from '../../platform/db';
 import { maintain } from '../../maintenance';
-import { openOwner } from '../../owners';
-import { speechWav } from '../../testing/fake-near';
+import { openOwner } from '../../keys/owners';
+import { speechWav } from '../../testing/fakes/near';
 import { startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit, presentScreen, stopPresenting, type TestParticipant } from '../../testing/livekit';
 import { cut, recordedWebm } from '../../testing/video';
-import { getItem, saveRevision } from '../../vault';
+import { getItem, saveRevision } from '../../keys/vault';
 
 // Sharing a screen goes through a real LiveKit server, which a busy CI runner can be slow to set up.
 vi.setConfig({ testTimeout: 90_000 });

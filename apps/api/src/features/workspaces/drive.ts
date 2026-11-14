@@ -7,12 +7,12 @@
  * is, in a worker (`readDocument`), and goes to the browser and nowhere else: it's never kept, logged or put in a receipt.
  */
 import { MAX_PREVIEWS, PREVIEW_CHARS, PREVIEW_LINES, type DocumentPreview, type Trashed } from '@alcove/api';
-import type { Deps, Owner } from '../../context';
-import { AppError } from '../../errors';
-import { log } from '../../log';
+import type { Deps, Owner } from '../../platform/context';
+import { AppError } from '../../platform/errors';
+import { log } from '../../platform/log';
 import { accountReader, limitKey, roleOf, trashOf, workspaceFor, workspaceVersion, type Reader, type Workspace } from './access';
-import { readDocument } from './documents';
-import { stillThere } from './library';
+import { readDocument } from './documents/documents';
+import { stillThere } from './library/library';
 import { TRASH_MS, list } from './service';
 
 const dlog = log.child({ component: 'drive' });

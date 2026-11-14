@@ -5,7 +5,7 @@
  * says wasn't decided, and four series. `inEveryState` puts them all into a story's world. All made up.
  */
 import type { Meeting, Note, NoteRoom, Person } from '@alcove/api';
-import type { World } from '.';
+import type { World } from './world';
 import { call, changer, writeNote, type NoteSpec } from './build';
 import { iso } from './clock';
 import { AIKO, ART, DIEGO, INES, KOFI, LENA, MAYA, PRIYA } from './people';

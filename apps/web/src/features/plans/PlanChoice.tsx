@@ -10,8 +10,9 @@
 import type { Plan, PlanBrings, PlanOffers } from '@alcove/api';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { SailOutHere } from '~/features/home/SailOut';
-import { q } from '~/lib/queries';
+import { SailOutHere } from '~/features/onboarding/SailOutHere';
+import { noteQueries } from '~/features/notes/queries';
+import { planQueries } from './queries';
 import { fullDate, longDay } from '~/lib/time';
 import { roomLabel } from '~/lib/words';
 import { useCheckout } from './checkout';
@@ -64,9 +65,9 @@ function boughtSince(was: { kind: Plan['kind']; until: string | null }, now: Pla
 
 /** `onLeave`: past the plans, to Home: on with the plan you're on, or once something bought from them is yours. */
 export function PlanChoice({ onLeave }: { onLeave: () => void }) {
-  const plan = useQuery(q.plan()).data;
-  const offers = useQuery(q.offers()).data;
-  const notes = useQuery(q.notes()).data;
+  const plan = useQuery(planQueries.plan()).data;
+  const offers = useQuery(planQueries.offers()).data;
+  const notes = useQuery(noteQueries.notes()).data;
   const { current } = useCheckout();
   const evening = useRef<HTMLDivElement>(null);
   /* Who it's for as it opens: a note written meanwhile doesn't change the head under the reader. */

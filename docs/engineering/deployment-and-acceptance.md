@@ -117,8 +117,8 @@ registration or install as a warning.
 from the cache keeps the headers it was cached with, its CSP included. Every screen's route asks the API for
 the session before it opens. When that can't reach the API (no connection, the request doesn't get through, or, for
 someone signed in on this browser, it hasn't answered in five seconds, since a stalled connection neither answers nor
-fails), someone signed in on this browser carries on offline (`requireAccount` in `apps/web/src/lib/guards.ts`, from
-the flag in `apps/web/src/lib/device.ts`): Record and the stage recorder work, and every other page shows **You're
+fails), someone signed in on this browser carries on offline (`requireAccount` in `apps/web/src/features/account/guards.ts`, from
+the flag in `apps/web/src/features/account/device.ts`): Record and the stage recorder work, and every other page shows **You're
 offline** with the way to Record (`OfflinePage`, also the router's error page for any request that didn't get
 through). Once the connection is back, or the late answer comes, everything is read again. A 401 still signs out. With
 no connection at all, queries aren't retried, so a page says so at once.
@@ -153,7 +153,7 @@ together: a document at its ceilings peaks at about 550 MiB in the big worker. W
 too, at most 128 MiB of updates and 64 MiB of documents (`DOC_SENDING_MB`), plus what's waiting for a worker, at most 128 MiB.
 Before the limits were set from real blocks, a document at its item limit and an 8 MB one, in a 1 GiB container, peaked at
 884 MiB, which is why Cloud Run's instance was 2 GiB. Set a process-wide `--max-old-space-size` on no instance: it overrides what a worker is
-limited to. The bundle has a third file, `dist/live/docWorker.js`, which the image's `dist` already carries. Each instance holds one more Postgres connection, for `LISTEN`, once anyone streams from it, and
+limited to. The bundle has a third file, `dist/live/doc-worker.js`, which the image's `dist` already carries. Each instance holds one more Postgres connection, for `LISTEN`, once anyone streams from it, and
 checks it every 15 seconds (`HUB_CHECK_MS`, `HUB_TIMEOUT_MS`); it needs to reach Postgres directly, as the Cloud SQL
 Auth Proxy in the image does, because `LISTEN` doesn't work through a transaction-mode pooler.
 Files in a workspace are shaped by the same limits. Cloud Run refused an HTTP/1 request or a response that said its length
@@ -161,7 +161,7 @@ over 32 MiB, so a file goes up in pieces of 4 MiB, an answer to a range sends at
 streams without a length ([Data and storage › Media](data-and-storage.md#media)). The API ends a read itself at 280 seconds
 (`MEDIA_READ_MS`), inside the timeout Cloud Run had: a player asks on from where it got to, and so does a browser's download, with the
 file's `ETag` (`If-Range`). Files pass through
-this one process, so what they hold in it and what they take of its core are limited (`MEDIA_LIMITS` in `features/workspaces/media.ts`),
+this one process, so what they hold in it and what they take of its core are limited (`MEDIA_LIMITS` in `features/workspaces/uploads/media.ts`),
 and past those limits a request is refused rather than taken on. At most 96 requests at once are files. The limits were set
 for 1 GiB and stayed when the instance went to 2 GiB, because the rest is for documents' worker threads. Measured on the built
 server with a 1,120 MiB heap and nothing else running, 920 pieces sent at once and 80 readers who stopped took it from 150 MiB
@@ -222,7 +222,7 @@ request URLs.
 Some limits can change while the service runs, with no release and no restart: what each plan brings and costs, what AI
 costs and when it stops, how long a call runs and how many people it takes, and what files can take up
 ([Plans and usage](plans-and-usage.md)). Each has a name, a default that holds while nothing's set, and a floor and a ceiling
-in code (`apps/api/src/limits.ts`) that hold whatever's set, so a typo can't make anything unsafe. A value is a row in
+in code (`apps/api/src/platform/limits.ts`) that hold whatever's set, so a typo can't make anything unsafe. A value is a row in
 `service_limits`, and each instance reads them again every 30 seconds (`LIMITS_CACHE_MS`), so a change is in force
 everywhere within a minute.
 
@@ -372,7 +372,7 @@ live transcript and written notes.
 | Sign in with Google: identity-only scopes, PKCE, state, nonce, signature, audience, expiry, verified email, refusals | API integration tests against a local OpenID provider; verify the real Google round trip on each release |
 | Google Calendar: explicit consent with the signed-in Google account, existing connections across sign-in, the coming week's meetings, scheduled calls placed, changed and cancelled with Google's invitations, an organizer's own event made an Alcove call, when people are busy (a private calendar and a missing scope reading as unknown), expired and withdrawn access | API integration tests against a local Calendar stand-in; verify with a real calendar on each release, a Gmail guest's private calendar included |
 | Calls that repeat on Google Calendar: one recurring event and one invitation, a series across a change of the clocks, one call changed or cancelled, this and later calls from the first call and from a later one, a call made to repeat, and cancelling the whole series | API integration tests against a local Calendar stand-in, which expands rules as its authors understand Google to. Verify with a real calendar on each release that touches them: the stand-in can't show that Google accepts a single event turned recurring by `PATCH`, or a recurring event ended early with `recurrence` alone |
-| Real Microsoft and SSO sign-in | **Not implemented** (demo stand-ins in `apps/api/src/demo.ts`) |
+| Real Microsoft and SSO sign-in | **Not implemented** (demo stand-ins in `apps/api/src/features/account/demo.ts`) |
 | Public DNS, certificates, CORS, CSP, deep links, JavaScript/CSS asset responses and deployed commit; a signed-in session contacts only Alcove's two origins, and pages carry no inserted beacon | Verify for each public release; assets must not redirect to the SPA shell |
 | The app opens offline: after one visit online, a reload without a connection gets the shell and its assets from the service worker, and a new release's worker replaces the previous cache | Verified by hand with headless Chrome against `wrangler pages dev` of a production build (offline through the DevTools protocol, then with the server stopped), when Cloudflare Pages served the app; verify against the deployed app, which the API now serves, for each public release |
 | Recording without a connection: cut the connection mid-recording, keep recording and finish; reload offline (Record lists it under **On this device**); reconnect, and it uploads once, in order, into one note; close the tab mid-upload and reopen it, and it still ends as one note; with the recording's account signed out another way and someone else signed in on the browser, nothing uploads into their account and it stays on the device until its own account signs in | Verified by hand with headless Chrome against a production build served with the API behind `/api` (offline through the DevTools protocol), reading the API log; verify for each public release |

@@ -1,5 +1,5 @@
 /*
- * Timer for everyone, the popover the call timer's button opens (components/call-timer.tsx; the button is CallTimerButton): as
+ * Timer for everyone, the popover the call timer's button opens (call/call-timer.tsx; the button is CallTimerButton): as
  * the host sees it before one runs (CallTimerLength) and while it runs (CallTimerRun), and as everyone else reads it. Always
  * night: it lives on the stage.
  */

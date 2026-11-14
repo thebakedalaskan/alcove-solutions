@@ -30,28 +30,40 @@ pnpm build
 pnpm check          # all of the above
 ```
 
-## Folder ownership (enforced)
+## Folder ownership and structure (enforced)
 
-Read [docs/engineering/folder-ownership.md](docs/engineering/folder-ownership.md) before adding or moving code.
-It defines the target map, feature owners and the composition rules. Run `pnpm check:structure`; this also runs
-in `pnpm typecheck`, `pnpm check` and CI. Scoped `AGENTS.md` files add the rules for each area.
+Read [docs/engineering/folder-ownership.md](docs/engineering/folder-ownership.md) before adding or moving code: it maps
+every owner and says why each rule exists. `scripts/check-structure.mjs` enforces the rules below in `pnpm check:structure`,
+`pnpm typecheck`, `pnpm check` and CI (`node scripts/check-structure.mjs <path>` shows one area). The `code-structure`
+skill (`.claude/skills/code-structure/SKILL.md`) shows the fix for each failure. Scoped `AGENTS.md` files add each area's rules.
 
-- Pick the feature owner first. Colocate its implementation, private helpers/types and server integration suites.
-  Cross-feature/infrastructure suites live in `apps/api/src/integration`; shared fixtures live in `src/testing`.
-- `call` is the running call; `calls` is making, scheduling, listing and entering calls. Use their documented
-  subfeatures, not a new loose file at either root. Backend behavior lives in `apps/api/src/features/<owner>`.
-- Routes, `apps/api/src/app.ts` and the HTTP client entry point compose feature behavior. New HTTP handlers,
-  subscriptions, recorders and capture/connection lifecycles belong to the owning feature. Extract a coherent
-  responsibility with explicit inputs and cleanup; moving a giant entry point intact does not finish a refactor.
-- Import the owning file directly within a package. No folder barrels, old-path re-exports, compatibility shims
-  or generic `utils`, `common`, `misc` and `helpers` buckets. Keep deliberate public package entry points.
-- Shared infrastructure needs a concrete responsibility and callers in more than one feature. Existing crypto,
-  database, logging, ownership, test harness and worker infrastructure stays shared; never duplicate it per feature.
-- Every move updates imports, package export targets, worker/assets/build paths, CI timing keys, existing consumers
-  and docs in the same change. Delete the old path, preserve test discovery/assertions and all other policy guards.
-- For a new feature owner or a changed package responsibility, update the map, scoped rules and structure policy
-  together and explain the decision. Do not loosen a guard merely to make a check green. Review responsibilities
-  and dependencies, not arbitrary file-size limits.
+- **Pick the owner first.** Code lives with the feature whose behaviour it is, beside its private helpers, types and
+  (on the server) integration suites. A helper one feature uses belongs to that feature, whatever its name sounds like.
+  Cross-feature suites live in `apps/api/src/integration`; shared fixtures in `apps/api/src/testing`.
+- **Dependencies point one way.** Server features import only those before them: `profile → billing → workspaces →
+  meetings → recordings → notes → calls → agents → account`. Shared homes (`platform`, `keys`, `tee`, `inference`,
+  `providers`, `http`, `live`, `edge`) never import a feature; `app.ts`, `start.ts`, `maintenance.ts` and the CLIs compose
+  them. In the web app `lib/` never imports a feature, and features never import routes. No runtime import cycle spans two
+  owners. When code needs something from above, it takes it as an argument, or the piece moves down to the owner of its data.
+- **Folders stay small.** At most 20 files in a folder, and no 4 files starting with a word that isn't the folder's own:
+  that word is a subfolder (`drive-*.ts` → `drive-exports/`). Split along what changes together and record the new
+  subfolder in the map. `call` is the running call and `calls` is making, scheduling, listing and entering calls; neither
+  root holds loose files, only their documented subfeatures.
+- **Composition stays thin.** A route file declares the route and renders its feature's page: no state, effects or refs.
+  `apps/api/src/app.ts` composes registrars; the HTTP client's `index.ts` composes feature factories. A component or hook
+  owns at most 10 effects and keeps at most 15 pieces of state: each lifecycle gets a hook with explicit inputs and
+  cleanup, and each part of the screen a component, in the subfeature it belongs to. Moving a giant entry point intact
+  does not finish a refactor.
+- **Names say what a file is.** The API, packages and Storybook helpers use kebab-case files; the web app uses
+  `PascalCase.tsx` for a component and `camelCase.ts(x)` for anything else; every folder is kebab-case.
+- **No buckets, no barrels.** Import the owning file directly. No folder `index.ts`, no `export *` outside a package's
+  entry, no `utils`, `common`, `misc` or `helpers` folders, no forwarding file at an old path. Shared code needs a
+  concrete responsibility and callers in more than one feature; never duplicate shared infrastructure per feature.
+- **Moves are whole.** Move and rename with `node scripts/move-files.mjs <from> <to> …`: it rewrites imports in every
+  package, CI timing keys and doc paths, and lists what it can't decide (worker and build paths). Renaming source never
+  renames record kinds, key labels, tables, wire fields or routes.
+- **Change a rule only with the decision.** A new owner, a changed dependency direction or a new shared home updates the
+  map, the scoped rules and the check together, and says why. Never loosen a rule to get a green check.
 
 ## No backwards compatibility, no legacy code
 
@@ -147,8 +159,10 @@ See `.claude/skills/strict-typescript/SKILL.md` for worked examples.
 
 - The app talks to the backend only through `api` from `apps/web/src/lib/api.ts`, which returns an
   `AlcoveApi`. Never import `@alcove/api-http` anywhere else in the app. There is no mock backend.
-- Screens read data through `apps/web/src/lib/queries.ts` (TanStack Query). Add a query or mutation
-  there instead of calling `api` inside a component, except for streaming and live sessions.
+- Screens read data through TanStack Query, from their feature's `queries.ts`: keys, `queryOptions`, hooks and mutations
+  live with the feature whose data they read, and `apps/web/src/lib` keeps only the query client and the cache plumbing
+  every feature shares. Add a query or mutation there instead of calling `api` inside a component, except for streaming
+  and live sessions.
 - Changing what the backend must provide means changing `packages/api` first, then the server and
   `@alcove/api-http`. Every response is parsed with the contract's schemas on the client.
 - Storybook's stand-in (`apps/storybook/src/api`) implements `AlcoveApi` too, so a contract change doesn't compile until
@@ -177,10 +191,10 @@ Read `docs/engineering/privacy-keys-and-sessions.md` before touching anything th
 Read `docs/engineering/logging-and-errors.md`.
 
 - No `console.*` anywhere except the browser logger's sink; `scripts/check-types.mjs` fails the build.
-  Server code uses `log` from `apps/api/src/log.ts`, app code `log` from `apps/web/src/lib/log.ts`.
+  Server code uses `log` from `apps/api/src/platform/log.ts`, app code `log` from `apps/web/src/lib/log.ts`.
 - Make a child logger per module (`log.child({ component: 'calls' })`) and log events with structured
   context: IDs, codes, states, counts, sizes, durations. Never content, request bodies, keys or session IDs.
-- Throw the most specific `AppError` subclass from `apps/api/src/errors.ts` with `context` (and `cause`
+- Throw the most specific `AppError` subclass from `apps/api/src/platform/errors.ts` with `context` (and `cause`
   when wrapping). Don't throw bare `Error`s from request paths; don't catch and swallow without a log line.
 - Pick the level by meaning: debug for traces, info for events and ordinary refusals, warn for handled
   problems, error when we failed.
@@ -218,7 +232,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `CallOver` (the page a call leaves you on: what happened, who, the notes, the next step, on its own night cove),
   `RingArch` and `RingAddArch` (who to ring), `WaitArch`, `WaitTile`, `RingReply` and `RingAgain` (someone rung, waiting on
   the stage), `RingCard` in a `RingShelf` (being rung, on any page, over a modal), `KnockCard` (someone asking to join),
-  `LinkRow` (a link with Copy), `GuestCard`, `TimeChoice` and `DoneTick` (a public page with one card), `Caption`, `Emoji` (the 8 bundled Fluent Emoji), `Reactions` and `ReactionAdd` (reactions under a chat message), `ReactPicker` (the eight emoji to press), `ReactionBurst` (emoji rising out of the foot of the call and fading at their peak, from React in the dock), `NotesPanel`, `TranscriptLine` (with `Unsure` and `UnsureKey` for what a transcript isn't sure of), `Card`, `Widget` (one card on a page's water: its head with an icon tile, the title, then `end` (tabs, a quiet button at its end), its body, and Show N more at its foot while its list is longer than it shows, with `footEnd` at that foot's end (Upcoming's count of events with only you on them); `bare` without the card, as Recent notes on Home), `NoteCard` (a note in a row of cards: its own small sunset as the cover, from `coverFor`, the people standing on the cover's edge or a microphone's arch, its title as the link that takes the whole card), `Fold`, `ShowMore` (Show 4 more under a list), `ReadMore` (more prose behind a quiet button: a note's full summary), `Evening` (a page on the evening: `Horizon`, the scene behind it, set by `moment`), `Cove` (the land the welcome page looks out of, a `Horizon`'s `land`; `restingBox` and `useCoveFit` measure where the words it keeps clear of rest and draw it again when they move, for anything that draws one) and `SailOut` (signing in, out of that cove to Home, or onto the plans in its place, whose sun sits lower: `sink`), `SidebarNav`, your menu's parts (what your face at the top right opens, in `components/you.tsx`, stateless: `YouButton` (your face, the button that opens it; `until`, while notifications are paused, puts a crossed-out bell on it and says until when in its label and tooltip), `YouMenu` (you on the horizon in the last of the light, then its rows, which ↓ and ↑ move between; `sheet` in the phone's Sheet), `YouRow` (an icon, its words and what ends it; `expanded` turns its chevron), `YouLink` (the same row as a link, which `link` renders as the app's router link: Settings), `YouRule` (a hairline between its groups), `YouPause` (Pause notifications: its choices in place under it, or paused until when, with Resume), `YouTheme` (the three small evenings) and `YouAsk` (Sign out asking in place of the rows)), the palette's parts (Search or ask, in `components/palette.tsx`, stateless: `PaletteLine` with `PaletteToken`, then `PaletteBody` holding the list and the preview beside it, then `PaletteFoot`; each row is the app's own link or option with `paletteRow(kind, lit)` and a row part inside: `PaletteAskLine`, `PalettePersonLine`, `PaletteMomentLine` under a `PaletteCallHead`, `PaletteMoreLine`, `PaletteNoteLine` (with `PalettePin` for Pin a note) and `PaletteAllLine`, in a `PaletteGroup`, with `PalettePeople` before anything's typed; the preview is `PalettePreview` with `PalettePreviewHead`, `PaletteMade`, `PaletteExcerpt` and `PaletteExcerptLine`, `PaletteSummary`, `PalettePersonPreview`, `PaletteAskPreview` or `PaletteAllPreview`; `PaletteAnswer` and `PaletteBack` in place of the list, and `PaletteWaiting` while a search has no list yet; with nothing to list, the kit's `EmptyState` with the palette's dashed arch, `pal-none`), `Field`, `CopyField` (a long value to copy exactly), `CryptoMark` (a stablecoin or network logo), `Select` (a listbox; an option can carry a `mark`, `note` and `tag`), `MonthGrid` (a month to pick a day from, from the keyboard too, in `components/calendar.tsx`), `Unencrypted` (the badge for a model outside a secure enclave), `Tabs`,
+  `LinkRow` (a link with Copy), `GuestCard`, `TimeChoice` and `DoneTick` (a public page with one card), `Caption`, `Emoji` (the 8 bundled Fluent Emoji), `Reactions` and `ReactionAdd` (reactions under a chat message), `ReactPicker` (the eight emoji to press), `ReactionBurst` (emoji rising out of the foot of the call and fading at their peak, from React in the dock), `NotesPanel`, `TranscriptLine` (with `Unsure` and `UnsureKey` for what a transcript isn't sure of), `Card`, `Widget` (one card on a page's water: its head with an icon tile, the title, then `end` (tabs, a quiet button at its end), its body, and Show N more at its foot while its list is longer than it shows, with `footEnd` at that foot's end (Upcoming's count of events with only you on them); `bare` without the card, as Recent notes on Home), `NoteCard` (a note in a row of cards: its own small sunset as the cover, from `coverFor`, the people standing on the cover's edge or a microphone's arch, its title as the link that takes the whole card), `Fold`, `ShowMore` (Show 4 more under a list), `ReadMore` (more prose behind a quiet button: a note's full summary), `Evening` (a page on the evening: `Horizon`, the scene behind it, set by `moment`), `Cove` (the land the welcome page looks out of, a `Horizon`'s `land`; `restingBox` and `useCoveFit` measure where the words it keeps clear of rest and draw it again when they move, for anything that draws one) and `SailOut` (signing in, out of that cove to Home, or onto the plans in its place, whose sun sits lower: `sink`), `SidebarNav`, your menu's parts (what your face at the top right opens, in `you/you.tsx`, stateless: `YouButton` (your face, the button that opens it; `until`, while notifications are paused, puts a crossed-out bell on it and says until when in its label and tooltip), `YouMenu` (you on the horizon in the last of the light, then its rows, which ↓ and ↑ move between; `sheet` in the phone's Sheet), `YouRow` (an icon, its words and what ends it; `expanded` turns its chevron), `YouLink` (the same row as a link, which `link` renders as the app's router link: Settings), `YouRule` (a hairline between its groups), `YouPause` (Pause notifications: its choices in place under it, or paused until when, with Resume), `YouTheme` (the three small evenings) and `YouAsk` (Sign out asking in place of the rows)), the palette's parts (Search or ask, in `palette/palette.tsx`, stateless: `PaletteLine` with `PaletteToken`, then `PaletteBody` holding the list and the preview beside it, then `PaletteFoot`; each row is the app's own link or option with `paletteRow(kind, lit)` and a row part inside: `PaletteAskLine`, `PalettePersonLine`, `PaletteMomentLine` under a `PaletteCallHead`, `PaletteMoreLine`, `PaletteNoteLine` (with `PalettePin` for Pin a note) and `PaletteAllLine`, in a `PaletteGroup`, with `PalettePeople` before anything's typed; the preview is `PalettePreview` with `PalettePreviewHead`, `PaletteMade`, `PaletteExcerpt` and `PaletteExcerptLine`, `PaletteSummary`, `PalettePersonPreview`, `PaletteAskPreview` or `PaletteAllPreview`; `PaletteAnswer` and `PaletteBack` in place of the list, and `PaletteWaiting` while a search has no list yet; with nothing to list, the kit's `EmptyState` with the palette's dashed arch, `pal-none`), `Field`, `CopyField` (a long value to copy exactly), `CryptoMark` (a stablecoin or network logo), `Select` (a listbox; an option can carry a `mark`, `note` and `tag`), `MonthGrid` (a month to pick a day from, from the keyboard too, in `foundation/calendar.tsx`), `Unencrypted` (the badge for a model outside a secure enclave), `Tabs`,
   `Segmented`, `SettingsGroup`, `SettingsPanel`, `SettingRow` and `SettingFact` (Settings: a group's heading over panels, each row a label with its control at the panel's edge; `sub` rows nest under a connection), `SettingTile` (a connection's mark on a row, as on Agents' row), `SettingNote` (a notice inside a panel, with what to do about it at its end when it has an `action`, and × when it has `onDismiss`), `SettingStep` (something opened in place inside a panel: its title and help, then what to do), `SettingFoot` (the foot of something opened in place), `SettingPayments` and `PaymentRow` (payments at a panel's foot, each with Receipt), `AlertTable` (what reaches you: each event once, with an Alert and a Sound tick), `SoundLevel` (silence, volume, play), `SunLine` (time left, on a row's hairline), `SunMark` (a paid plan's small sun in the side panel's icon column, half set while it's ending), `ThemePreview` (a small evening in a theme's own colours; `small`, the window alone, named by its tooltip), `MicLevel`, `RecorderSun` (the recorder on
   the horizon, moved with the microphone by `useVoice`), `RecMeter`, `RecPrint`, `TourDialog`, `Coachmark`,
   `EmptyState`, `EmptyRows` and `EmptyWeek` (small drawings of rows and a week not filled in yet, for a widget with nothing in it yet; `EmptyWeek`'s `blocks` hatches the week as your own time, or leaves it clear), `Hatch` (a small square of hatching: a calendar event with only you on it), `SmallSunset` (Home's small sunset, for all caught up), `Modal` (several questions go one at a time inside one modal; no window ever opens over another),
@@ -230,10 +244,10 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   with `NoNotesLeft` (no notes left this period where a call with notes starts or is scheduled: until when, in caution, the
   ways on under it). Start a call asks Start now or Schedule for later, and scheduling happens on Calls: one sheet, the week
   on the left and the call's editor on the right. The week is `CallsWeek` with `CallsWeekHead` (in
-  `components/calls-week.tsx`: the week on Calls and the week a call is scheduled on; its head is the days it shows, with
+  `calls/calls-week.tsx`: the week on Calls and the week a call is scheduled on; its head is the days it shows, with
   the arrows and Today; the day is a scroll box of 24 hours that opens on 08:00, blocks say their time first and stand side
   by side, busy time is hatched and says whose, the call is a sun block to press, drag to any day and lengthen by its grip,
-  offered times are numbered, and a phone shows three days). The editor's parts are in `components/scheduler.tsx`, all
+  offered times are numbered, and a phone shows three days). The editor's parts are in `calls/scheduler.tsx`, all
   stateless: `SchedPanel` (the column: its pinned top with the kicker and ×, the body, and the foot after it, pinned to the
   bottom when the body scrolls), `SchedTitle` (the call's name, large), `SchedGroup` (a section, a hairline apart),
   `SchedName` (a call being moved, by name, with where it was struck through once it moves), `SchedRow` (an icon and its
@@ -246,19 +260,19 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   and in view, those gone greyed, each end with the length it makes), `SchedPop` (what opens under a field without taking
   its focus), `SchedDoc` (a document the call brings, with ×), `SchedFoot` (what will happen, Cancel and the one filled
   button) and `SchedAsk` (a question asked once in the foot: Cancel this call?).
-  Calls' parts are in `components/calls.tsx`: `SkyBar` and `SkySearch` (the page's title, search and its one filled
+  Calls' parts are in `calls/calls.tsx`: `SkyBar` and `SkySearch` (the page's title, search and its one filled
   button on a short sky), `PlaceTree` with `PlaceHead`, `PlaceRow`, `PlaceFoot` and `PlaceChips` (the rail of places,
   chips on a phone), `CallsSheet` and `SheetHead`, `CallsGroup` and `CallsMore` (a day's calls, and Show N more),
   `CallRow` with `CallReply`, `CallAnswered` and `CallChip` (a call in a list: answers in place, chips only for what waits
   on you), `MomentChip` (▶ a moment that plays), `RowMenu` and `RowAsk` (a row's ⋯ menu, and a question asked in place),
   `CallsAnswer` (Ask's answer across every call) and `CarryRow` (what a series carries over). `FileCard` and `Thumb`
-  (in `components/files.tsx`) show a file as a large preview: a document's first lines, a board, a PDF, photos, or a
+  (in `drive/files.tsx`) show a file as a large preview: a document's first lines, a board, a PDF, photos, or a
   shared screen with play, on a call's page and in the Drive.
   For plans: `PlanCards` and `PlanCard` (the plans side by side, their rows lined up by subgrid; `lifted` for Pro's raised
   card with its warm edge, `waiting` while the prices come), `PlanHere` ("Your plan", nothing to press; `quiet` for Free's
   line on another plan), `PlanCycle` (Monthly / Yearly · 20% off on the sky), `PlanSunset` (the last sliver of the sun,
   drawn through `Evening`'s and `Horizon`'s `sky`), `EveryPlan` and `PayingLine`. Checkout, one window over any page, is in
-  `components/checkout.tsx`: `CheckoutWindow` (on `Modal`, in your theme over a call; `receipt` for the receipt alone) with
+  `plans/checkout.tsx`: `CheckoutWindow` (on `Modal`, in your theme over a call; `receipt` for the receipt alone) with
   `CheckoutPanel`, `CheckoutSteps`, `MonthsPicker`, `HoursPicker`, `NetworkPicker`, `TeamName` (a team being started, its name
   in a box with its label inside), `LicensesPicker` (how many of Team's licenses, Another number up to the most one purchase
   buys, and How long, Monthly / Yearly · 20% off on `Segmented`, over them while a year is offered: its `term`), `LicensesLeft` (the team's people, how many licenses are left and who's waiting), `PlanWindow` (what you're buying
@@ -268,11 +282,11 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   for a team just started), `CheckoutAsk`,
   `CheckoutNote`, `CheckoutBig`, `CheckoutLine`, `PaymentReceipt` (one payment as paper, alone on the page when printed) and
   `ReceiptWindow` (a receipt over Settings).
-  Team on a plan and joining a team by its link are in `components/team-plan.tsx`: `TeamLine` (the team on the horizon, each
+  Team on a plan and joining a team by its link are in `plans/team-plan.tsx`: `TeamLine` (the team on the horizon, each
   under their license), `TeamSection`, `TeamRows`, `TeamPersonRow`, `TeamAsk` (Remove, Leave or Delete asked in place),
   `TeamFoot`, `TeamNotesList` (what's visible to the team), `LicensesCard`, `TeamInvite` (a one-time link with Copy; `bare` for
   under checkout Done's heading), `TeamStartRow` (a quiet Start a team on a company's page), `JoinCard` and `JoinEvening`.
-  The workspace kit is in `components/workspace/`, every part stateless, taking plain data and handlers: `WsPane` holds
+  The workspace kit is in `workspace/`, every part stateless, taking plain data and handlers: `WsPane` holds
   `WsList` (`WsListHead`, or `WsListTools` in a call, where the frame's bar names the workspace; `WsSection` with `add`,
   `WsRow` with the kinds `place` and `call` and their `tag` and `out`, `WsRenameRow`, `WsDropLine`, `WsTrashRow`; the rows
   themselves are `WsTree`) and `WsDoc` (`WsDocHead` with
@@ -280,7 +294,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `WsReadOnlyBar`, `WsVersionBar`, `WsVersionFailed`, `WsScroll`, `WsPage`, `WsDocBy`, `WsTemplates`, `WsTail`, `WsTrash`,
   `WsEmpty`, `WsPickDocument`, `WsCantOpen`, `WsUnavailable`, `WsOfflineEmpty`, `WsNoAccess`, `WsLostSpace`), with
   `WsHistory` beside it. `WsPane`'s `beside` is one document beside the Drive's tree. A workspace full screen is `WsFrame`
-  (in `components/workspace/frame.tsx`): `WsSide` (its side panel, with `WsMark` and `WsSpaceField`), `WsBar` (its top bar,
+  (in `workspace/frame.tsx`): `WsSide` (its side panel, with `WsMark` and `WsSpaceField`), `WsBar` (its top bar,
   with `hereLine`), and its Home's `WsHomeBand`, `WsAbout`, `WsPeopleLine` and `WsHomeSection`, with `WsDocMeta` over a
   document.
   Anything that opens sits on `WsPopover` (a sheet on a phone by itself, and it hands focus back): `WsMenu` and its
@@ -289,14 +303,14 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   own pages are `WsNotesPage`, `WsFollowUps`, `WsTranscript` and `WsNotesOff`. Over the call: `WsFind`, `WsKeyboard`,
   `WsPlayBar`, `WsToasts` (say them with `wsToast`, which has every toast's words), `WsDragGhost`, `WsKeyboardBar`. `WsFade`
   swaps what's inside in place.
-  The board's parts are in `components/board.tsx`, and take data and handlers with no idea of Yjs: `BoardLayout`, `BoardSheet` and
+  The board's parts are in `board/board.tsx`, and take data and handlers with no idea of Yjs: `BoardLayout`, `BoardSheet` and
   `BoardWorld` (`moveBoardCamera` writes its one transform), `BoardRail`, `BoardBar`, `BoardPill`, `BoardPop`, `BoardFlyout`,
   `BoardSelectionBar`, `BoardSelectionBox`, `BoardDots`, `BoardMarquee`, `BoardGuide`, `BoardFrame`, `BoardSticky`, `BoardText`, `BoardShape`,
   `BoardPicture`, `BoardPointer`, `BoardComment`, `BoardLines` with `BoardLine` and `BoardStroke`, `BoardEdit`, `BoardHeard`, `BoardTray`,
   `BoardMap`, `BoardPicker` (the board picker, under Board at the top right of a call and as Share's A board: in this call,
   new, your team's boards), `BoardEmpty`, `BoardLost` (the way back to everything when nothing on the board is in view), `BoardPageActions`, `BoardNoAccess`, `BoardPhoneAdd` and `BoardPhoneSheet`. What's on a
   board is `memo`ised and takes no handlers: `data-id`, `data-h` and `data-p` say what was pressed, for one listener on the sheet.
-  Agents' parts are in `components/agents.tsx`, stateless: an agent is an `AgentWindow` (a square with a rounded top, its mark
+  Agents' parts are in `agents/agents.tsx`, stateless: an agent is an `AgentWindow` (a square with a rounded top, its mark
   by kind: solid, dashed, asking or allowed, with a caution dot or a tick), standing in an `AgentLine` as an `AgentPlace` (its
   name and line under it, and the popover it opens), with `AgentGap` and `AgentWaitingPlace` (an empty window breathing while
   the line loads). A popover is `AgentPopHead`, `AgentPopLine`, `AgentWell` (an address, a command, a token or a question in a
@@ -312,22 +326,22 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   values on `:root`, dark on `.dark` and the night surfaces, `.stage` and `.ac-stage`, with the whole document going dark while a `.stage` or Record (`.rec`) is up so what's portalled out of it stays night (`.light` and `.dark` on any element scope one theme to that part of a page), with Tailwind utilities on the same names (`bg-ground`,
   `bg-surface`, `bg-frame`, `text-ink-2`, `bg-sun`, `text-sun-text`, `shadow-2`, `rounded-lg`,
   `font-display`, `ease-out` ...). Component classes carry the `ac-` prefix and live in
-  `packages/ui/src/styles/kit.css`; the frame around every screen (side panel, the page's rounded edge, search and
-  you at its top right, phone top bar and tab bar) in `styles/shell.css`; your menu, which your face there opens, in `styles/you.css` (`ym-`); the palette Search or ask opens in `styles/palette.css` (`pal-`); the evening behind each page in `styles/horizon.css` (`dusk` the page, `dusk-top` and `dusk-title` its head, `hz-` the scene); the cove the welcome page looks out of, and signing in sailing out of it, in `styles/cove.css` (`cv-`); Home in `styles/home.css` (`hm-`); the Team page in
-  `styles/team.css` (its classes start with `tp-`); Calls in `styles/calls.css` (`cs-`); the Drive in `styles/drive.css` (`dv-`); a call's page in `styles/note.css` (`cd-`, with the
-  transcript line still `nd-l`); a file's large preview in `kit.css` (`fc-`);
-  Settings in `styles/settings.css` (its classes start with `set-`); Agents in `styles/agents.css` (`ag-`, beside the
-  `ac-agent-` chips and consent sheet); Plans in `styles/plans.css` (`pl-`); checkout in `styles/checkout.css` (`ck-`); the doors into checkout in `styles/plan-doors.css` (`pd-`); Team on a plan in `styles/team-plan.css` (`tq-` the page, `tj-` joining); Record in `styles/record.css` (its classes
-  start with `rec-`); Start a call in `styles/flow.css` (`cf-`); the scheduler in `styles/scheduler.css` (`sc-`); the week,
-  on Calls and while scheduling, in `styles/calls-week.css` (`cw-`); the organizer's
-  lobby, ringing and the page for picking a time in `styles/ringing.css` (`rg-`); the workspace in `styles/workspace.css`
+  `packages/ui/src/foundation/kit.css`; the frame around every screen (side panel, the page's rounded edge, search and
+  you at its top right, phone top bar and tab bar) in `shell/shell.css`; your menu, which your face there opens, in `you/you.css` (`ym-`); the palette Search or ask opens in `palette/palette.css` (`pal-`); the evening behind each page in `evening/horizon.css` (`dusk` the page, `dusk-top` and `dusk-title` its head, `hz-` the scene); the cove the welcome page looks out of, and signing in sailing out of it, in `evening/cove.css` (`cv-`); Home in `home/home.css` (`hm-`); the Team page in
+  `team/team.css` (its classes start with `tp-`); Calls in `calls/calls.css` (`cs-`); the Drive in `drive/drive.css` (`dv-`); a call's page in `notes/note.css` (`cd-`, with the
+  transcript line still `nd-l`); a file's large preview in `drive/files.css` (`fc-`);
+  Settings in `settings/settings.css` (its classes start with `set-`); Agents in `agents/agents.css` (`ag-`, beside the
+  `ac-agent-` chips and consent sheet); Plans in `plans/plans.css` (`pl-`); checkout in `plans/checkout.css` (`ck-`); the doors into checkout in `plans/plan-doors.css` (`pd-`); Team on a plan in `plans/team-plan.css` (`tq-` the page, `tj-` joining); Record in `record/record.css` (its classes
+  start with `rec-`); Start a call in `calls/flow.css` (`cf-`); the scheduler in `calls/scheduler.css` (`sc-`); the week,
+  on Calls and while scheduling, in `calls/calls-week.css` (`cw-`); the organizer's
+  lobby, ringing and the page for picking a time in `calls/ringing.css` (`rg-`); the workspace in `workspace/workspace.css`
   (`wt-` the list, `wd-` a document, `wm-` menus, `wv-` popovers, `wh-` history, `wl-` the call's live
-  pages, `wf-` full screen), with a document's own look full screen in `styles/workspace-editor.css`; the board in `styles/board.css` (`bz-` the board and its rail, `bd-` the sheet and its chrome, `bf-` frames,
+  pages, `wf-` full screen), with a document's own look full screen in `workspace/workspace-editor.css`; the board in `board/board.css` (`bz-` the board and its rail, `bd-` the sheet and its chrome, `bf-` frames,
   `bo-` objects, `bc-` pointers, `bs-` selection, `bx-` the bar on what's selected, `bfly-` a tool's options, `bp-` small menus, `bpg-` its own page, `bl-` the
   board picker, `pc-` the phone's add sheet; its tokens are `--bd-*`, `--bf-*`, `--note-*`, and `--line-ink` and `--line-rose` beside the existing
   `--line` and `--line-control`; `.bt`, `.bi`, `.bm`, `.swatch`, `.c-*` and `.k-*` are unscoped there, so those names are taken); the welcome
-  page in `styles/welcome.css`, with its scenes in `welcome-note.css`, `welcome-call.css`, `welcome-team.css` and
-  `welcome-night.css`, and its Plans in `welcome-plans.css` (`lp-`); the other screens in `styles/app.css` and `call.css`; the call's timer in `styles/call-timer.css`; Chat in a call in `styles/call-chat.css` (`ch-`); Notes in a call in `styles/call-notes.css` (`nn-` the panel, `nk-` what's captured); the page a call leaves you on in `styles/call-over.css` (`co-`).
+  page in `welcome/welcome.css`, with its scenes in `welcome/welcome-note.css`, `welcome/welcome-call.css`, `welcome/welcome-team.css` and
+  `welcome/welcome-night.css`, and its Plans in `welcome/welcome-plans.css` (`lp-`); the other screens in `shell/app.css` and `call/call.css`; the call's timer in `call/call-timer.css`; Chat in a call in `call/call-chat.css` (`ch-`); Notes in a call in `call/call-notes.css` (`nn-` the panel, `nk-` what's captured); the page a call leaves you on in `call/call-over.css` (`co-`).
   Truncate to one or two lines with `ac-clamp-1` / `ac-clamp-2` (left-aligned): unlike `nowrap`, long text
   can't make a column wider than the screen.
   No raw hex in the app, except on the always-night call stage and in illustrations.

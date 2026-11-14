@@ -1,27 +1,27 @@
 import { LIVE_TRANSCRIPT_LINES, MAIN_PLACE, type Breakouts, type CallHost, type CallState, type Person, type CallWorkspace } from '@alcove/api';
 import { z } from 'zod';
-import { type Db } from '../../db';
-import { limitsNow } from '../../limits';
-import { me } from '../account/account';
-import * as space from './workspace';
-import * as boards from './boards';
-import { personOf, portraitFor } from '../account/portraits';
+import { type Db } from '../../platform/db';
+import { limitsNow } from '../../platform/limits';
+import { me } from '../profile/profile';
+import * as space from './workspace/workspace';
+import * as boards from './boards/boards';
+import { personOf, portraitFor } from '../profile/portraits';
 import { segments } from '../recordings/audio';
-import * as capture from './capture';
+import * as capture from './notes/capture';
 import { MeetingManifest } from '../meetings/service';
-import { getItem } from '../../vault';
+import { getItem } from '../../keys/vault';
 import { standIns } from './hosting';
 import { admissionFresh, groupOf, placeOf, readerOf, type Room } from './places';
-import * as rings from './rings';
-import { scribeOf } from './scribes';
+import * as rings from './ringing/rings';
+import { scribeOf } from './notes/scribes';
 import * as transcripts from '../recordings/transcripts';
 import { hostAway, load, screensOf, secondsIn, settle, type Row, type Stored } from './state';
-import * as models from '../notes/models';
+import * as models from '../../inference/models';
 import { forViewer, invitedIn, mayRead, personFor, roomsIn, seatKey, seatOf, speakersIn, type Viewer } from './participants';
-import { NO_NOTES, boardFor, notesFor } from './insights';
-import { attentionFor, openAttention } from './attention';
-import { stopLost } from './workspace-state';
-import { chatReadFor } from './chat-read';
+import { NO_NOTES, boardFor, notesFor } from './notes/insights';
+import { attentionFor, openAttention } from './attention/attention';
+import { stopLost } from './workspace/workspace-state';
+import { chatReadFor } from './chat/chat-read';
 
 /**
  * Rooms as the call shows them: the people sent to each, and who's in each now, by identity (the organizer too, in

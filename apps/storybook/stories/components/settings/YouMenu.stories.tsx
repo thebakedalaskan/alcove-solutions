@@ -27,7 +27,7 @@ const until = (id: string): string => (id === 'tomorrow' ? 'tomorrow 9:00' : CHO
 type Waiting = 'recordings' | 'words' | 'both';
 const STAY_RECORDINGS = 'Stay signed in and they upload by themselves once you’re online, then the notes are written.';
 const STAY_WORDS = 'Stay signed in and it stays here until it can go, or copy it first: only your own words come with it.';
-/** What signing out asks, in the words Settings' sky uses (features/settings/SignOut.tsx). */
+/** What signing out asks, in the words Settings' sky and your menu use (features/account/signOut.ts). */
 const ASKS: Record<Waiting, { says: string; lines: readonly string[]; signOutLabel: string }> = {
   recordings: { says: '2 recordings on this device haven’t uploaded. Signing out deletes them.', lines: [STAY_RECORDINGS], signOutLabel: 'Sign out and delete them' },
   words: { says: 'Something you wrote hasn’t reached Alcove yet. Signing out deletes it from this browser.', lines: [STAY_WORDS], signOutLabel: 'Sign out and delete it' },

@@ -1,9 +1,9 @@
 /* A committed pending reservation survives crashes: an uncertain creation is never silently repeated. */
 import { AgentResourceIdSchema } from '@alcove/api';
 import { z } from 'zod';
-import { equalBytes, jcs, mac, openJson, sealJson, stateKey, toJson, utf8 } from '../../../crypto';
-import { bytea, exec, maybeOne } from '../../../db';
-import { ConflictError, InternalError } from '../../../errors';
+import { equalBytes, jcs, mac, openJson, sealJson, stateKey, toJson, utf8 } from '../../../keys/crypto';
+import { bytea, exec, maybeOne } from '../../../platform/db';
+import { ConflictError, InternalError } from '../../../platform/errors';
 import type { AgentPrincipal } from '../service';
 
 const Receipt = z.object({ id: AgentResourceIdSchema });

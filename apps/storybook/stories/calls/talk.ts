@@ -7,7 +7,7 @@ import type { StoryCall } from '../../src/call';
 import { itemId } from '../../src/api/scenarios';
 import { current } from '../../src/api/state';
 import { filmOf } from '../../src/media/film';
-import { line, type Line } from '../../src/api/script';
+import { line, type Line } from '../../src/api/call/script';
 import type { Screen } from '../../src/media/screens';
 import { iso } from '../../src/world/clock';
 import { AIKO, ART, DIEGO, ELENA, FELIX, INES, KOFI, LENA, MANY, MAYA, NADIA, OMAR, PRIYA, SAM, THEO, TOM, ZARA } from '../../src/world/people';

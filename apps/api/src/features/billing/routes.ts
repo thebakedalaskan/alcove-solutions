@@ -1,6 +1,6 @@
 import { BuyHoursBodySchema, BuyProBodySchema, RenewBodySchema, StartTopUpBodySchema } from '@alcove/api';
 import { Hono } from 'hono';
-import * as deposits from './deposits';
+import * as deposits from './top-ups/deposits';
 import { offersOf, planOf } from './plan-view';
 import { buyHours, buyPro, chose, dismissNotice, refundPro, setRenew } from './plans';
 import { body } from '../../http/body';

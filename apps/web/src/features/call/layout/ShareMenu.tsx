@@ -7,10 +7,15 @@
  * step, so it's asked wherever what you present is: on your stage, a tile, or out of sight. On a phone it's a sheet, and a
  * screen can't be shared there.
  */
+import { notesAreOn, type CallState, type CaptureMode } from '@alcove/api';
 import { BoardPicker, DockButton, Popover, ShareKinds, ShareScreenStep, ShareStopStep, cn, type BoardPickerProps, type ShareKeep } from '@alcove/ui';
 import { useEffect, useRef, useState } from 'react';
+import { loadBoard } from '~/features/call/boards/BoardStage';
 import type { ShareChoice, ShareSurface } from '~/features/call/media/media';
-import { SHARE_PROBLEMS, canShareScreen, canShareTabSound, type ShareProblem } from '~/features/call/screen-sharing/share';
+import { SHARE_PROBLEMS, canShareScreen, canShareTabSound, type ShareProblem, type ShareScreen } from '~/features/call/screen-sharing/share';
+import type { Closing } from '~/features/call/stage/closing';
+import { isScreen, type Presented } from '~/features/call/stage/onStage';
+import type { Pop } from './pop';
 
 /** Share's steps: what to share, then Your screen or A board, or stopping what you present. */
 export type ShareStep = 'share' | 'shareScreen' | 'shareBoard' | 'shareStop';
@@ -106,5 +111,53 @@ export function ShareMenu({ step, onStep, phone, presenting, screen, board, work
       anchor={<DockButton icon="screen" label={on ? 'Presenting' : 'Share'} word={on ? 'Presenting' : 'Share'} title={undefined} on={on || step !== null} data-share="" />}>
       {body}
     </Popover>
+  );
+}
+
+/** Whether what someone starts sharing is read for the notes: now, once notes resume, or not. */
+const screenRead = (mode: CaptureMode): 'on' | 'paused' | undefined => (notesAreOn(mode) ? 'on' : mode === 'paused' ? 'paused' : undefined);
+
+/**
+ * Share in the dock, as the call has it: what you present now (Stop stops your screen for everyone, and asks for a board or the
+ * workspace, saying what For everyone closes), your screen (read for the notes, if you say so, while they're on, unless you're in
+ * a breakout room or whoever hosts keeps screens out), A board, which presents what you pick, and The workspace, each with why not
+ * while you can't: a guest starts no board, and while someone else presents here, nobody else does until they stop (`othersWhy`).
+ */
+export function DockShare({ pop, setPop, phone, presented, closing, sharing, full, changing, capture, sharingInRoom, canStartBoard, canPresentWs, othersWhy, picker, presentWorkspace }: {
+  pop: Pop;
+  setPop: (pop: Pop) => void;
+  phone: boolean;
+  /** What's presented here: yours, if anything, is what Stop stops. */
+  presented: readonly Presented[];
+  closing: Pick<Closing, 'closesFor' | 'closeFor'>;
+  sharing: ShareScreen;
+  /** As many screens are shared as there can be. */
+  full: boolean;
+  /** You share a screen already. */
+  changing: boolean;
+  capture: CallState['capture'];
+  /** What you share in a breakout room isn't read for the notes. */
+  sharingInRoom: boolean;
+  canStartBoard: boolean;
+  canPresentWs: boolean;
+  othersWhy: string | null;
+  picker: BoardPickerProps;
+  presentWorkspace: () => void;
+}) {
+  const step = pop === 'share' || pop === 'shareScreen' || pop === 'shareBoard' || pop === 'shareStop' ? pop : null;
+  /** What you present, if anything: Share says so, and its first step offers Stop sharing. */
+  const myThing = presented.find((p) => p.mine) ?? null;
+  return (
+    <ShareMenu step={step} onStep={setPop} phone={phone}
+      presenting={myThing ? {
+        what: isScreen(myThing.id) ? 'your screen' : myThing.id === 'ws' ? 'the workspace' : myThing.name, asks: !isScreen(myThing.id), everyone: closing.closesFor(myThing.id),
+        onStop: (everyone) => { setPop(null); if (isScreen(myThing.id)) sharing.stop(); else closing.closeFor(myThing.id, everyone); }
+      } : null}
+      screen={{
+        full: full ? sharing.fullText : null, onPick: () => sharing.pick(), read: sharingInRoom || !capture.allowScreens ? null : screenRead(capture.mode) ?? null, trouble: sharing.trouble,
+        changing, onShare: sharing.share, onBack: () => { sharing.setTrouble(null); setPop('share'); }
+      }}
+      board={!canStartBoard ? { why: 'Guests can’t start a board here.' } : othersWhy ? { why: othersWhy } : { picker, onPick: loadBoard }}
+      workspace={!canPresentWs ? { why: 'You can’t open this call’s workspace.' } : othersWhy ? { why: othersWhy } : { onPress: presentWorkspace }} />
   );
 }

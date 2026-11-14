@@ -7,7 +7,7 @@
 import type { CallSession } from '@alcove/api';
 import { Navigate } from '@tanstack/react-router';
 import { useState } from 'react';
-import { sessions } from '~/lib/live';
+import { sessions } from './handoff';
 import { CallOverPage, type Left } from './CallOver';
 import { InCall } from './InCall';
 

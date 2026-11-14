@@ -1,5 +1,5 @@
 /*
- * SailOut: signing in from the welcome page, out of its cove to Home. Home renders it over itself (features/home/SailOut.tsx)
+ * SailOut: signing in from the welcome page, out of its cove to Home. Home renders it over itself (features/onboarding/SailOutHere.tsx)
  * when a way in on the welcome page was pressed on the way there: it starts where the welcome page's cove stood, the headlands
  * go by on either side, nearest first, the horizon comes up to Home's and the sun eases to Home's size, only ever rising;
  * then the frame forms round the sea, Home's parts rise in, and the sea clears. A press, a key or the wheel clears it at

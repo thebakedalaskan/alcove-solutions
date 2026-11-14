@@ -1,17 +1,17 @@
 import { MAIN_PLACE, type CallRole, type Person, type Speaker } from '@alcove/api';
-import { type CallPass } from '../../callPass';
-import type { Deps, Owner } from '../../context';
-import { b64u, mac, stateKey, utf8 } from '../../crypto';
-import { ConflictError, ForbiddenError, NotFoundError } from '../../errors';
-import { findOwner, openOwner } from '../../owners';
-import { profile } from '../account/account';
-import * as boards from './boards';
-import * as catchup from './catchup';
-import { personOf, portraitFor } from '../account/portraits';
+import { type CallPass } from '../../keys/call-pass';
+import type { Deps, Owner } from '../../platform/context';
+import { b64u, mac, stateKey, utf8 } from '../../keys/crypto';
+import { ConflictError, ForbiddenError, NotFoundError } from '../../platform/errors';
+import { findOwner, openOwner } from '../../keys/owners';
+import { profile } from '../profile/profile';
+import * as boards from './boards/boards';
+import * as catchup from './notes/catchup';
+import { personOf, portraitFor } from '../profile/portraits';
 import { MeetingManifest } from '../meetings/service';
-import type { Loaded } from '../../vault';
+import type { Loaded } from '../../keys/vault';
 import { mayStandIn } from './hosting';
-import { tx } from '../../db';
+import { tx } from '../../platform/db';
 import { Joined, admissionFresh, placeOf, readableBy } from './places';
 import * as transcripts from '../recordings/transcripts';
 import { load, save, settle, type Stored } from './state';
@@ -200,7 +200,7 @@ export async function addressIn(v: Viewer, seat: string): Promise<string | undef
   return s.people.find((j) => seatOf(key, j) === seat)?.email?.toLowerCase();
 }
 
-/* ---------- a board in a call: what's done is features/calls/boards.ts; the call's row is held here ---------- */
+/* ---------- a board in a call: what's done is features/calls/boards/boards.ts; the call's row is held here ---------- */
 
 /** These connections, once for each person, as a seat on a board names them. */
 export function seatsOf(o: Owner, callId: string, people: Joined[]): boards.Here[] {

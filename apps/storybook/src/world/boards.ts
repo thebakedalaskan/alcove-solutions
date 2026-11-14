@@ -8,8 +8,8 @@
 import type { Person, ScreenMoment } from '@alcove/api';
 import { addObject, addReply, addThread, applyThemes, fillTemplate, readBoard, type BoardAuthor, type BoardTheme, type NewObject, type StickyColour, type TemplateName } from '@alcove/board';
 import * as Y from 'yjs';
-import { colourOf } from '~/features/board/people';
-import type { BoardSpec } from './index';
+import { colourOf } from '~/features/board/people/people';
+import type { BoardSpec } from './world';
 import { LAUNCH_CHECKLIST } from './notes';
 import { AIKO, ART, KOFI, LENA, MAYA, PRIYA, SAM, THEO } from './people';
 

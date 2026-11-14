@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
-import { signedInHere } from '~/lib/device';
-import { sessionOrOffline } from '~/lib/guards';
+import { signedInHere } from '~/features/account/device';
+import { sessionOrOffline } from '~/features/account/guards';
 
 /* The front door: Home when signed in, otherwise the welcome screen. Offline, someone signed in here goes to Record. */
 export const Route = createFileRoute('/')({

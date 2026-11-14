@@ -1,16 +1,18 @@
 import { BusyBodySchema, CalendarRangeSchema, ChangeScopeSchema, MeetingInputSchema, NextCallBodySchema, NotesSettingSchema, ProposalAnswerBodySchema, ProposeBodySchema, RsvpBodySchema, type Meeting } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
-import { ValidationError } from '../../errors';
+import { ValidationError } from '../../platform/errors';
 import * as calendar from './calendar';
 import * as meetings from './service';
 import { type Env } from '../../http/context';
 import { body } from '../../http/body';
 import type { HttpRuntime } from '../../http/runtime';
+import type { Calls } from '../workspaces/calls';
 
 
 
-export function registerMeetingRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
+/** `calls`: what a change to an invite asks of the calls whose homes follow it (features/workspaces/calls.ts). */
+export function registerMeetingRoutes(app: Hono<Env>, runtime: HttpRuntime, calls: Calls): void {
   const { makeLimiter, workspaceListLimiter, busyLimiter } = runtime.limits;
 
   /* meetings */
@@ -42,7 +44,7 @@ export function registerMeetingRoutes(app: Hono<Env>, runtime: HttpRuntime): voi
     if (patch.repeat) makeLimiter(c.get('owner').ownerId, 'calls');
     // Checking what's brought reads the library.
     if (patch.documents?.length) workspaceListLimiter(c.get('owner').ownerId, 'documents');
-    return changedCall(c, await meetings.update(c.get('owner'), c.req.param('id'), patch, scopeOf(c)));
+    return changedCall(c, await meetings.update(c.get('owner'), c.req.param('id'), patch, scopeOf(c), calls));
   });
 
   app.delete('/v1/meetings/:id', async (c) => { await meetings.cancel(c.get('owner'), c.req.param('id'), scopeOf(c)); return c.json({ cancelled: true }); });
@@ -60,7 +62,7 @@ export function registerMeetingRoutes(app: Hono<Env>, runtime: HttpRuntime): voi
   /* The organizer answering a request to move one of their calls: moving it is a change like any other. */
   app.post('/v1/meetings/:id/proposals/answer', async (c) => {
     const { email, answer } = await body(c, ProposalAnswerBodySchema);
-    return changedCall(c, await meetings.answerProposal(c.get('owner'), c.req.param('id'), email, answer));
+    return changedCall(c, await meetings.answerProposal(c.get('owner'), c.req.param('id'), email, answer, calls));
   });
 
   /* calendar: someone's other events, and making one of them an Alcove call */

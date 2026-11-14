@@ -10,7 +10,7 @@ import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { HANDOFF_MS, HOST_GRACE_MS, reconcile } from './lifecycle';
-import { speechWav } from '../../testing/fake-near';
+import { speechWav } from '../../testing/fakes/near';
 import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
 import { connect, disposeLiveKit, participantsDirectly, signWebhook, type TestParticipant } from '../../testing/livekit';
 

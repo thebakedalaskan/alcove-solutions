@@ -12,9 +12,8 @@ import { errorMessage, notesAreOn, type CallRole, type CallState, type CaptureSt
 import { Avatar, Button, CaptureSign, Faces, Icon, IconButton, Popover, RecDot, Select, Unencrypted, cn, useToast } from '@alcove/ui';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { captureHere, changedLine } from '~/lib/capture';
-import { useAiModels } from '~/lib/queries';
-import { modelOf, modelOptions, modelValue } from '~/lib/aiModels';
-import { callName, listNames } from '~/lib/people';
+import { modelOf, modelOptions, modelValue, useAiModels } from '~/features/notes/models';
+import { callName, listNames, sameEmail } from '~/lib/people';
 import { hm } from '~/lib/time';
 import { capital } from '~/lib/words';
 import type { PlanStop } from './PlanStop';
@@ -329,6 +328,16 @@ export function NotesAsks({ state, controls, after }: {
       })}
     </>
   );
+}
+
+/**
+ * Who gets the notes, as far as you can tell: the organizer knows everyone invited (`invited`, which only they can read), anyone
+ * else sees the organizer and whoever's here with an account, and a guest isn't told.
+ */
+export function whoGetsNotes(state: CallState, invited: readonly Person[]): Person[] {
+  const me = state.participants.find((p) => p.isMe);
+  if (state.isOrganizer) return [...(me ? [me.person] : []), ...invited.filter((g) => !me || !sameEmail(g, me.person))];
+  return state.role === 'guest' ? [] : state.participants.flatMap((p) => (p.isOrganizer || p.person.email ? [p.person] : [])).filter((p, k, all) => all.findIndex((x) => x.id === p.id) === k);
 }
 
 /** "Asked for notes", on the asker's row in People, for everyone. */

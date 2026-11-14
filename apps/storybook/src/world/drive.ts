@@ -8,7 +8,7 @@
  */
 import { firstName, type DocumentLibrary, type DocumentRole, type Person, type PortraitStyle, type WorkspaceItem, type WorkspaceRole, type WorkspaceSummary } from '@alcove/api';
 import type { BlockJSON } from '~/features/workspace/editor/types';
-import type { Page, Space, World } from '.';
+import type { Page, Space, World } from './world';
 import { iso } from './clock';
 import { AIKO, ART, DIEGO, INES, KOFI, LENA, MAYA, NADIA, PRIYA } from './people';
 

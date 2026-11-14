@@ -1,0 +1,91 @@
+/* ---- FileCard and Thumb: a file as a large preview (files.tsx) ---- */
+/*
+ * A call's shared screens and what it made, the Drive's sheet and a workspace's home. `--fc-h` is the picture's height: a
+ * page sets its own where it needs to. The picture is drawn: a document's first lines, a board's stickies, a PDF's page,
+ * photos, or a shared screen at night with play over it. Its words end at a word, with an ellipsis (`fc-fit`, which files.tsx
+ * fills with as many words as fit).
+ */
+.fc { --fc-h: 92px; --fc-r: 14px; position: relative; display: grid; align-content: start; gap: 7px; min-width: 0; margin: -6px; padding: 6px 6px 8px; border-radius: var(--fc-r); text-align: left; transition: background-color var(--duration-1) var(--ease-out); }
+.fc.is-lg { --fc-h: 140px; --fc-r: 15px; gap: 9px; margin: -7px; padding: 7px 7px 10px; }
+.fc:hover { background: color-mix(in oklch, var(--ink) 6%, transparent); }
+.fc:has(.fc-open:focus-visible) { outline: 2px solid var(--focus); outline-offset: 0; }
+.fc-fit { display: block; min-width: 0; overflow: hidden; white-space: nowrap; }
+/* The whole of the words, unseen: they size the box, so what's fitted into it never does. */
+.fc-whole { display: block; height: 0; overflow: hidden; visibility: hidden; }
+.fc-name { display: flex; align-items: center; gap: 7px; min-width: 0; font: 600 13.5px/1.25 var(--font-sans); color: var(--ink); }
+.fc.is-lg .fc-name { padding-inline: 3px; font-size: 14px; line-height: 1.3; }
+.fc-name > .ac-i { flex: none; color: var(--ink-2); }
+.fc-open { flex: 1; min-width: 0; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.fc-open:focus-visible { outline: none; }
+/* The name is the card's button, stretched over the whole of it. */
+.fc-open::after { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: var(--fc-r); }
+.fc-by { display: flex; align-items: center; gap: 6px; min-width: 0; font: 400 12.5px/1.3 var(--font-sans); color: var(--ink-2); }
+.fc.is-lg .fc-by { padding-inline: 3px; line-height: 1.35; }
+/* Where it is shrinks to what it shows, so the "·" after it sits right beside it. */
+.fc-by em { flex: 0 1 auto; max-width: 60%; min-width: 0; overflow: hidden; font-style: normal; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
+.fc-by > .fc-fit { flex: 1; }
+.fc-sep { flex: none; color: var(--ink-3); }
+.fc-at { display: inline-flex; flex: none; align-items: center; gap: 4px; height: 22px; padding: 0 7px 0 6px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink) 8%, transparent); font: 600 11.5px/1 var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+/* The menu over the picture's corner, above the stretched button: there on hover and focus, and always on a touch screen. */
+.fc-menu { position: absolute; top: 12px; right: 12px; z-index: 2; opacity: 0; transition: opacity var(--duration-1) var(--ease-out); }
+.fc.is-lg .fc-menu { top: 13px; right: 13px; }
+.fc:hover .fc-menu, .fc:focus-within .fc-menu, .fc-menu:has([aria-expanded="true"]) { opacity: 1; }
+@media (hover: none) { .fc-menu { opacity: 1; } }
+.fc-menu .ac-icon-btn { width: 28px; height: 28px; border-radius: 8px; background: color-mix(in oklch, var(--surface-raised) 92%, transparent); box-shadow: 0 0 0 1px var(--line); }
+.fc-menu .ac-icon-btn:hover { background: var(--surface-raised); }
+/* What's playing or open now. */
+.fc.is-current .fc-thumb { box-shadow: inset 0 0 0 1px var(--line), 0 0 0 2px var(--sun-text); }
+
+/* The picture. */
+.fc-thumb { position: relative; display: block; height: var(--fc-h); overflow: hidden; border-radius: 10px; background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line); }
+.fc-thumb.has-picture > * { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* A document's page: its title, then its first lines, a bullet or a to-do before each where it has one. */
+.fc-page { display: grid; align-content: start; gap: 6px; height: 100%; padding: 12px 12px 0; }
+.fc-thumb.is-lg .fc-page { gap: 9px; padding: 18px 18px 0; }
+.fc-page b { display: block; min-width: 0; margin-bottom: 3px; font: 600 12.5px/1.25 var(--font-sans); color: var(--ink); }
+.fc-thumb.is-lg .fc-page b { font-size: 13.5px; }
+.fc-ln { display: flex; align-items: center; gap: 6px; min-width: 0; font: 400 10.5px/1.35 var(--font-sans); color: var(--ink-2); }
+.fc-ln > .fc-fit { flex: 1; }
+.fc-thumb.is-lg .fc-ln { font-size: 12px; }
+.fc-mk { flex: none; width: 8px; height: 8px; border-radius: 2px; box-shadow: inset 0 0 0 1.2px color-mix(in oklch, var(--ink) 40%, transparent); }
+.fc-thumb.is-lg .fc-mk { width: 9px; height: 9px; }
+.fc-mk.is-dot { width: 4px; height: 4px; margin-inline: 2px; border-radius: 50%; box-shadow: none; background: color-mix(in oklch, var(--ink) 42%, transparent); }
+.fc-thumb.is-lg .fc-mk.is-dot { width: 4px; height: 4px; }
+.fc-mk.is-done { background: color-mix(in oklch, var(--horizon) 80%, transparent); box-shadow: none; }
+.fc-bar { display: block; width: 86%; height: 5px; border-radius: 3px; background: color-mix(in oklch, var(--ink) 12%, transparent); }
+.fc-bar.is-short { width: 58%; }
+/* A board: a few stickies and a line between them, in the board's own colours. */
+.fc-thumb.is-board { background: var(--sunk); }
+.fc-thumb.is-board svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.fc-thumb.is-board path { fill: none; stroke: color-mix(in oklch, var(--ink-2) 55%, transparent); stroke-width: 1.4; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.fc-note { position: absolute; width: 26%; aspect-ratio: 1; border-radius: 3px; box-shadow: var(--note-shadow); }
+.fc-note::before, .fc-note::after { content: ""; position: absolute; left: 14%; right: 22%; height: 3px; border-radius: 2px; background: color-mix(in oklch, var(--note-ink) 18%, transparent); }
+.fc-note::before { top: 24%; }
+.fc-note::after { top: 40%; right: 38%; }
+.fc-note.n1 { left: 9%; top: 14%; background: var(--note-butter); transform: rotate(-3deg); }
+.fc-note.n2 { left: 39%; top: 10%; background: var(--note-rose); transform: rotate(2deg); }
+.fc-note.n3 { left: 66%; top: 18%; background: var(--note-sky); }
+.fc-note.n4 { left: 22%; top: 56%; border-radius: 50%; background: transparent; box-shadow: inset 0 0 0 1.5px color-mix(in oklch, var(--ink-2) 50%, transparent); }
+.fc-note.n4::before, .fc-note.n4::after { content: none; }
+.fc-note.n5 { left: 56%; top: 58%; width: 32%; aspect-ratio: 1.6; background: var(--note-butter); transform: rotate(1deg); }
+/* A PDF: its first page, with lines and its kind on it. */
+.fc-thumb.is-pdf { display: grid; place-items: center; }
+.fc-pdf { position: relative; display: block; width: 44%; max-width: 92px; aspect-ratio: .78; border-radius: 4px; background: var(--stage-ink); box-shadow: 0 6px 16px -8px rgb(0 0 0 / .45), 0 0 0 1px color-mix(in oklch, var(--dawn-1) 10%, transparent); }
+.fc-pdf i { position: absolute; inset: 18% 14% auto; height: 34%; border-radius: 2px; background: repeating-linear-gradient(to bottom, color-mix(in oklch, var(--dawn-1) 30%, transparent) 0 2px, transparent 2px 7px); }
+.fc-pdf b { position: absolute; left: 14%; bottom: 12%; padding: 3px 5px; border-radius: 3px; background: var(--dawn-1); font: 700 8px/1 var(--font-sans); color: var(--stage-ink); letter-spacing: .04em; }
+/* Photos: four of them, with how many there are on the last. */
+.fc-thumb.is-photos { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 3px; padding: 3px; }
+.fc-photo { position: relative; overflow: hidden; border-radius: 6px; background: var(--cover-dawn); }
+.fc-photo:nth-child(2) { background: var(--cover-haze); }
+.fc-photo:nth-child(3) { background: var(--cover-dusk); }
+.fc-photo:nth-child(4) { background: var(--cover-first); }
+.fc-photo::after { content: ""; position: absolute; left: 18%; bottom: 30%; width: 42%; height: 26%; background: color-mix(in oklch, var(--dawn-1) 70%, transparent); clip-path: polygon(0 100%, 0 30%, 30% 0, 60% 30%, 100% 30%, 100% 100%); }
+.fc-count { position: absolute; right: 8px; bottom: 8px; padding: 4px 7px; border-radius: 6px; background: color-mix(in oklch, var(--dawn-1) 78%, transparent); font: 600 11px/1 var(--font-sans); color: var(--stage-ink); font-variant-numeric: tabular-nums; }
+/* A shared screen: always night, the page that was shared, and play over it. */
+.fc-thumb.is-share { background: var(--stage-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07); }
+.fc-sheet { position: absolute; inset: 15% 24% 12%; display: grid; align-content: start; gap: 6px; padding: 10% 9%; border-radius: 3px; background: var(--stage-ink); }
+.fc-sheet i { display: block; height: 4px; border-radius: 2px; background: color-mix(in oklch, var(--dawn-1) 26%, var(--stage-ink)); }
+.fc-sheet i:nth-child(2) { width: 80%; }
+.fc-sheet i:nth-child(3) { width: 60%; }
+.fc-play { position: absolute; left: 50%; top: 50%; display: grid; place-items: center; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; background: color-mix(in oklch, var(--stage) 80%, transparent); color: var(--stage-ink); }
+.fc-play .ac-i { transform: translateX(1px); }

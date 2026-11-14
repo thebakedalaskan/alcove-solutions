@@ -288,3 +288,30 @@ function PointingBar({ marks, share, mine, offer, pointing, onActive }: {
     </div>
   );
 }
+
+/**
+ * The marks store follows the call: the shares shown here (by their picture's track sid, with whose each is and whether others
+ * may point at it), who's in your part of the call, which part that is, and whether pointing is on at all. The part of the call
+ * is the one whose keys this browser holds (the main room, or a room by its ID): someone coming or going changes who's in it, and
+ * only their own pointer and marks go.
+ */
+export function useMarksFollow(marks: ShareMarks | null, { on, shares, people, part }: { on: boolean; shares: readonly { sid: string; owner: string; others: boolean }[]; people: readonly string[]; part: string }): void {
+  const key = [on, part, shares.map((s) => `${s.sid}:${s.owner}:${s.others}`).join(','), [...people].sort().join(',')].join('|');
+  useEffect(() => {
+    marks?.use({ on, shares: new Map(shares.map((s) => [s.sid, { owner: s.owner, others: s.others }])), people: new Set(people), part });
+    // `key` says everything this reads.
+  }, [marks, key]);
+}
+
+/**
+ * Something else shared in place of what was (Change: the same share, a new picture): marks on it were about the old picture, so
+ * they go, for everyone. `screen`: what you share now; `share`: its picture's track sid in the call.
+ */
+export function useMarksGoWithPicture(marks: ShareMarks | null, screen: MediaStream | null, share: string | null): void {
+  const lastScreen = useRef<MediaStream | null>(null);
+  useEffect(() => {
+    const was = lastScreen.current;
+    lastScreen.current = screen;
+    if (was && screen && was !== screen && share) marks?.clear(share);
+  }, [screen, share, marks]);
+}

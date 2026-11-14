@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { createPool, type Db } from './db';
-import { LIMITS, LIMIT_NAMES, isLimitName, limitRows, parseValue, readRows, refusedValue, setLimit, shown } from './limits';
-import { configureLogging, flushLogs, log } from './log';
+import { createPool, type Db } from './platform/db';
+import { LIMITS, LIMIT_NAMES, isLimitName, limitRows, parseValue, readRows, refusedValue, setLimit, shown } from './platform/limits';
+import { configureLogging, flushLogs, log } from './platform/log';
 
 /**
  * `pnpm --filter @alcove/server limits list` says which limits are in force, and `limits set <name> <value>` changes one,

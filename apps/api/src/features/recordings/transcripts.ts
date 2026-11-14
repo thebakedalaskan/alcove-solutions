@@ -18,15 +18,15 @@
  */
 import { InferenceEvidenceSchema, type AudioSegment, type InferenceEvidence, type Speaker, type TranscriptLine } from '@alcove/api';
 import { z } from 'zod';
-import type { Owner } from '../../context';
-import { b64u, id128, mac, openJson, sealJson, stateKey, toJson, utf8 } from '../../crypto';
-import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
-import { speechPrompt, transcribe, type Meter, type SpeechContext } from '../../inference';
-import { log } from '../../log';
-import { findItem } from '../../vault';
-import { profile } from '../account/account';
+import type { Owner } from '../../platform/context';
+import { b64u, id128, mac, openJson, sealJson, stateKey, toJson, utf8 } from '../../keys/crypto';
+import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../platform/db';
+import { speechPrompt, transcribe, type Meter, type SpeechContext } from '../../inference/inference';
+import { log } from '../../platform/log';
+import { findItem } from '../../keys/vault';
+import { profile } from '../profile/profile';
 import { segments } from './audio';
-import { nameOf, personOf } from '../account/portraits';
+import { nameOf, personOf } from '../profile/portraits';
 
 const tlog = log.child({ component: 'transcripts' });
 

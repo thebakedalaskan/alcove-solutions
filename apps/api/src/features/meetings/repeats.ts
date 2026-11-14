@@ -13,13 +13,13 @@
  */
 import { RepeatSchema, type ChangeScope, type MeetingInput, type Patch, type Repeat, type RepeatInput } from '@alcove/api';
 import { z } from 'zod';
-import type { Owner } from '../../context';
-import { exec, maybeOne, tx, type Db } from '../../db';
-import { ConflictError, InternalError, ValidationError, notFound } from '../../errors';
-import { log } from '../../log';
-import { createItem, findItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../../vault';
+import type { Owner } from '../../platform/context';
+import { exec, maybeOne, tx, type Db } from '../../platform/db';
+import { ConflictError, InternalError, ValidationError, notFound } from '../../platform/errors';
+import { log } from '../../platform/log';
+import { createItem, findItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../../keys/vault';
 import { dropProposals, syncAccessOf } from './access';
-import { me } from '../account/account';
+import { me } from '../profile/profile';
 import * as calendar from './calendar';
 import { indexCode } from './codes';
 import { MeetingManifest, all, changeCall, isOver, isPlacing, makeCode, minutesOf, showsOnEvent, updateManifest, validTimes, withChange } from './service';

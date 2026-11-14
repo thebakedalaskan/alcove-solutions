@@ -10,31 +10,29 @@ import {
 } from '@alcove/api';
 import type { StreamingApi } from 'hono/utils/stream';
 import { z } from 'zod';
-import type { Deps, Owner } from '../../context';
-import { b64u, blindIndex, id128, openJson, sealJson, sha, toJson, utf8, type RecordHeader } from '../../crypto';
-import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
-import { AppError, ConflictError, ForbiddenError, invalid, notFound } from '../../errors';
-import { limitsNow } from '../../limits';
-import { publish, type StreamPlace } from '../../live/hub';
-import { announce, roomFor, type Room, type Snapshot } from '../../live/room';
-import { LiveStream, type Line, type Step } from '../../live/stream';
-import { log } from '../../log';
-import { createOwner, findOwner, indexKey, lockOwner, ownerFrom } from '../../owners';
+import type { Deps, Owner } from '../../platform/context';
+import { b64u, blindIndex, id128, openJson, sealJson, sha, toJson, utf8, type RecordHeader } from '../../keys/crypto';
+import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../platform/db';
+import { AppError, ConflictError, ForbiddenError, invalid, notFound } from '../../platform/errors';
+import { limitsNow } from '../../platform/limits';
+import { publish, type StreamPlace, TREE_NOTICE } from '../../live/hub';
+import { announce, roomFor, type Room, type Snapshot } from './live/room';
+import { LiveStream, type Line, type Step } from './live/stream';
+import { log } from '../../platform/log';
+import { createOwner, findOwner, indexKey, lockOwner, ownerFrom } from '../../keys/owners';
 import {
-  TREE_NOTICE, canOpen, change, emailIndex, entriesOn, givenByCall, grant, grantsFor, limitKey, openSharedPerson, openState, personIn, personKey, placeableIn, requireEditable, requireItem, requireRole, requireSharing, roleOf, saveState, sealSharedPerson, sealState, seatEnded, seatIndex,
-  serverWorkspace, standingIn, trashOf, workspaceFor, workspaceKey, type Credentials, type Grant, type MadeFor, type Maker, type Reader, type Standing, type StoredCall, type StoredItem, type Who, type Workspace, type WorkspaceState
+  canOpen, change, emailIndex, entriesOn, givenByCall, grant, grantsFor, limitKey, openSharedPerson, openState, personIn, personKey, placeableIn, requireEditable, requireItem, requireRole, requireSharing, roleOf, saveState, sealSharedPerson, sealState, seatEnded, seatIndex, serverWorkspace, standingIn, trashOf, workspaceFor, workspaceKey, type Credentials, type Grant, type MadeFor, type Maker, type Reader, type Standing, type StoredCall, type StoredItem, type Who, type Workspace, type WorkspaceState
 } from './access';
-import { profile } from '../account/account';
-import { addressesIn, seated } from '../calls/participants';
-import { tellCall } from '../calls/notifications';
-import { roomsOfCalls } from '../calls/room-boards';
-import { collect, copyUses, releaseDocuments, releaseWorkspace } from './media';
-import { personOf, portraitFor } from '../account/portraits';
+import { profile } from '../profile/profile';
+import type { Calls } from './calls';
+import { collect, copyUses, releaseDocuments, releaseWorkspace } from './uploads/media';
+import { personOf, portraitFor } from '../profile/portraits';
 import { settlePayer, type PayerMove } from '../billing/storage';
-import { copyContent, kindOf, moveClientTags, startContent } from './documents';
+import { copyContent, kindOf, startContent } from './documents/documents';
+import { moveClientTags } from './documents/clients';
 import { waitingFor } from './mentions';
 import { tellPayers } from '../billing/plans';
-import { licensedBy, licensedOn } from '../billing/teams';
+import { licensedBy, licensedOn } from '../billing/teams/teams';
 
 const wlog = log.child({ component: 'workspaces' });
 
@@ -395,7 +393,7 @@ export interface InviteChange { add?: string[] | undefined; gone?: string[] | un
  * taken out, or they left); and whoever it took off is taken out, if the invite let them in and nobody has changed their place
  * by hand since. Anyone added or changed by hand stays as they are. In the caller's transaction, which holds the home's row.
  */
-export async function followInvite(w: HeldWorkspace, db: Db, organizer: string, change: InviteChange): Promise<{ added: number; removed: number }> {
+export async function followInvite(w: HeldWorkspace, db: Db, organizer: string, change: InviteChange, calls: Calls): Promise<{ added: number; removed: number }> {
   const made = w.state.madeFor;
   if (!made) return { added: 0, removed: 0 };
   const members = await rows(db, Member, 'SELECT member_id, email_index, role, person_ciphertext, created_at FROM workspace_members WHERE owner_id = $1', [w.owner.ownerId]);
@@ -407,7 +405,7 @@ export async function followInvite(w: HeldWorkspace, db: Db, organizer: string, 
   });
   const joining = inviteesOf(change.add ?? [], organizer).filter((e) => !made.out.includes(e) && !memberOf(e)).slice(0, Math.max(0, MAX_PEOPLE - members.length));
   for (const email of joining) await addMember(w.owner, db, w.workspaceId, email, 'edit', undefined, true);
-  for (const m of leaving) await dropMember(w, db, m, 'taken');
+  for (const m of leaving) await dropMember(w, db, m, 'taken', calls);
   if (joining.length || leaving.length) {
     await saveState(w, db);
     await publish(db, w.workspaceId, TREE_NOTICE);
@@ -500,7 +498,7 @@ export async function people(d: Deps, reader: Reader, workspaceId: string): Prom
 export async function idsOf(d: Deps, reader: Reader, workspaceId: string, emails: string[]): Promise<Record<string, string>> {
   const w = await workspaceFor(d, reader, workspaceId);
   const wanted = [...new Set(emails.map((e) => e.trim().toLowerCase()))];
-  const inCall = w.role === null && reader.seat ? await addressesIn(reader.seat.viewer) : new Set<string>();
+  const inCall = w.role === null && reader.seat ? await reader.seat.call.addresses() : new Set<string>();
   const may = w.role !== null ? wanted : wanted.filter((e) => inCall.has(e));
   wlog.debug('people’s IDs given', { workspaceId, asked: wanted.length, given: may.length, member: w.role !== null });
   return Object.fromEntries(may.map((e) => [e, personKey(w.owner, blindIndex(indexKey(d), 'email', e))]));
@@ -538,7 +536,7 @@ export async function setRole(d: Deps, reader: Reader, workspaceId: string, memb
     await byHand(w, c, m);
   });
 }
-export async function removePerson(d: Deps, reader: Reader, workspaceId: string, memberId: string): Promise<void> {
+export async function removePerson(d: Deps, reader: Reader, workspaceId: string, memberId: string, calls: Calls): Promise<void> {
   const moves = await change(d, reader, workspaceId, async (w, c) => {
     requireRole(w, 'in');
     const m = await memberBy(w, c, memberId);
@@ -546,7 +544,7 @@ export async function removePerson(d: Deps, reader: Reader, workspaceId: string,
     if (!leaving) requireRole(w, 'admin');
     if (!m) throw noOne(w, memberId);
     if (m.role === 'admin' && (await admins(w, c)) <= 1) throw onlyAdmin(w);
-    const dropped = await dropMember(w, c, m, leaving ? 'left' : 'taken');
+    const dropped = await dropMember(w, c, m, leaving ? 'left' : 'taken', calls);
     // A call's invite never puts back someone taken out by hand, or who left. The newest are kept, as many as can be in it.
     const made = w.state.madeFor;
     const { email } = personOfMember(w, m);
@@ -572,7 +570,7 @@ const nobodyToPay = (w: Pick<Workspace, 'workspaceId'>, memberId: string, why: '
  * (`settlePayer`), and when none of the admins left has an account, they can't go: refused, with nothing changed. How much
  * went to its admins or Trash, and whose payment moved, for the caller to tell (plans.ts `tellPayers`) once it's committed.
  */
-async function dropMember(w: HeldWorkspace, c: Db, m: z.infer<typeof Member>, why: 'taken' | 'left'): Promise<{ stranded: number; moves: PayerMove[] }> {
+async function dropMember(w: HeldWorkspace, c: Db, m: z.infer<typeof Member>, why: 'taken' | 'left', calls: Calls): Promise<{ stranded: number; moves: PayerMove[] }> {
   const paying = await maybeOne(c, z.object({ n: z.number() }), 'SELECT 1 AS n FROM workspaces w JOIN identities i ON i.owner_id = w.payer_owner_id WHERE w.owner_id = $1 AND i.email_index = $2 LIMIT 1', [w.owner.ownerId, m.email_index]);
   await exec(c, 'DELETE FROM workspace_members WHERE owner_id = $1 AND member_id = $2', [w.owner.ownerId, m.member_id]);
   await exec(c, 'DELETE FROM workspace_mentions WHERE owner_id = $1 AND principal_index = $2', [w.owner.ownerId, m.email_index]);
@@ -580,7 +578,7 @@ async function dropMember(w: HeldWorkspace, c: Db, m: z.infer<typeof Member>, wh
   if (paying && moved?.to === null) throw nobodyToPay(w, m.member_id, why);
   const { email } = personOfMember(w, m);
   w.state = { ...w.state, items: Object.fromEntries(Object.entries(w.state.items).map(([id, x]) => [id, x.restrictedBy === email ? { ...x, restrictedBy: null } : x])) };
-  return { stranded: why === 'taken' ? await handStranded(w, c) : await trashStranded(w, c), moves: moved ? [moved] : [] };
+  return { stranded: why === 'taken' ? await handStranded(w, c, calls) : await trashStranded(w, c, calls), moves: moved ? [moved] : [] };
 }
 
 /* ---------- the tree ---------- */
@@ -630,13 +628,13 @@ export async function addBoard(w: HeldWorkspace, db: Db, name: string, made: Mak
   await publish(db, w.workspaceId, TREE_NOTICE);
   return id;
 }
-export async function renameItem(d: Deps, reader: Reader, workspaceId: string, itemId: string, name: string): Promise<void> {
+export async function renameItem(d: Deps, reader: Reader, workspaceId: string, itemId: string, name: string, calls: Calls): Promise<void> {
   await change(d, reader, workspaceId, (w) => {
     const { item: it } = requireEditable(reader, w, itemId);
     w.state = withItem(w.state, itemId, { ...it, name, editedAt: new Date().toISOString() });
   });
   // A name changed from a call shows in it, as the board's or what's presented: the call is told to look again.
-  if (reader.seat) await tellCall(d, reader.seat.callId);
+  if (reader.seat) await calls.tell(d, reader.seat.callId);
 }
 export async function moveItem(d: Deps, reader: Reader, workspaceId: string, itemId: string, to: ItemPlace): Promise<void> {
   await change(d, reader, workspaceId, (w) => {
@@ -838,7 +836,7 @@ export async function shareList(d: Deps, reader: Reader, workspaceId: string, do
   });
   /* A seat's hash can't be read back, so it's the seats in this reader's own call that are looked for. */
   const given = new Set(found.filter((r) => r.kind === 'seat').map((r) => b64u(r.principal_index)));
-  const inCall = reader.seat && given.size > 0 ? [...(await seated(reader.seat.viewer)).keys()] : [];
+  const inCall = reader.seat && given.size > 0 ? [...(await reader.seat.call.seated()).keys()] : [];
   const callId = reader.seat?.callId ?? '';
   return { workspace: { name: w.state.name, people: w.people }, restricted: it.restricted, entries, canOpen: await whoCanOpen(w, documentId, it, entries), seats: inCall.filter((s) => given.has(b64u(seatIndex(d, callId, s)))) };
 }
@@ -852,12 +850,12 @@ async function seatedIn(db: Db, ownerId: string, documentId: string): Promise<st
  * so everyone's role there changes then and not at their next read: a board open in a call goes read-only, or opens, in a moment.
  * Only a call that's on hears it.
  */
-async function tellCalls(d: Deps, reader: Reader, seated: readonly string[]): Promise<void> {
-  const calls = new Set(seated);
-  if (reader.seat) calls.add(reader.seat.callId);
-  for (const callId of calls) await tellCall(d, callId);
+async function tellCalls(d: Deps, reader: Reader, seated: readonly string[], calls: Calls): Promise<void> {
+  const told = new Set(seated);
+  if (reader.seat) told.add(reader.seat.callId);
+  for (const callId of told) await calls.tell(d, callId);
 }
-export async function share(d: Deps, reader: Reader, workspaceId: string, documentId: string, to: ShareTarget[], role: DocumentRole): Promise<void> {
+export async function share(d: Deps, reader: Reader, workspaceId: string, documentId: string, to: ShareTarget[], role: DocumentRole, calls: Calls): Promise<void> {
   const grants = await grantsFor(reader, to, role);
   const seated = await change(d, reader, workspaceId, async (w, c) => {
     requireSharing(reader, w, documentId);
@@ -866,20 +864,20 @@ export async function share(d: Deps, reader: Reader, workspaceId: string, docume
     return seatedIn(c, w.owner.ownerId, documentId);
   });
   // What's shared with someone in a call opens by itself, and a role changed in one changes there: its calls look again.
-  await tellCalls(d, reader, seated);
+  await tellCalls(d, reader, seated, calls);
 }
-export async function unshare(d: Deps, reader: Reader, workspaceId: string, documentId: string, accessId: string): Promise<void> {
+export async function unshare(d: Deps, reader: Reader, workspaceId: string, documentId: string, accessId: string, calls: Calls): Promise<void> {
   const seated = await change(d, reader, workspaceId, async (w, c) => {
     requireSharing(reader, w, documentId);
     const removed = await maybeOne(c, z.object({ call_id: z.string().nullable() }), 'DELETE FROM document_access WHERE owner_id = $1 AND document_id = $2 AND access_id = $3 RETURNING call_id', [w.owner.ownerId, documentId, accessId]);
     if (!removed) throw notFound('That person', { workspaceId, documentId });
-    await trashStranded(w, c);
+    await trashStranded(w, c, calls);
     wlog.info('document unshared', { workspaceId, documentId, accessId });
     return [...(removed.call_id ? [removed.call_id] : []), ...await seatedIn(c, w.owner.ownerId, documentId)];
   });
-  await tellCalls(d, reader, seated);
+  await tellCalls(d, reader, seated, calls);
 }
-export async function restrict(d: Deps, reader: Reader, workspaceId: string, documentId: string, restricted: boolean): Promise<void> {
+export async function restrict(d: Deps, reader: Reader, workspaceId: string, documentId: string, restricted: boolean, calls: Calls): Promise<void> {
   const seated = await change(d, reader, workspaceId, async (w, c) => {
     const { item: it } = requireSharing(reader, w, documentId);
     if (it.restricted === restricted) return null;
@@ -891,7 +889,7 @@ export async function restrict(d: Deps, reader: Reader, workspaceId: string, doc
     wlog.info('document restricted', { workspaceId, documentId, restricted });
     return seatedIn(c, w.owner.ownerId, documentId);
   });
-  if (seated) await tellCalls(d, reader, seated);
+  if (seated) await tellCalls(d, reader, seated, calls);
 }
 
 /* ---------- upkeep and deleted accounts ---------- */
@@ -922,13 +920,13 @@ async function liveCalls(db: Db, calls: TreeCall[]): Promise<Set<string>> {
  * board like any other. One whose call, or its organizer, is gone is one already. In the caller's transaction, which holds the
  * workspace's row and saves its state.
  */
-async function keepRoomsOfEndedCalls(w: HeldWorkspace, db: Db): Promise<void> {
+async function keepRoomsOfEndedCalls(w: HeldWorkspace, db: Db, calls: Calls): Promise<void> {
   const marked = Object.entries(w.state.items).flatMap(([id, item]) => (item.room ? [{ id, item, room: item.room }] : []));
   if (!marked.length) return;
   const live = await liveCalls(db, marked.map((m) => m.room));
   const over = marked.filter((m) => !live.has(callKey(m.room)));
   if (!over.length) return;
-  const said = await roomsOfCalls(w.owner, over.map((m) => m.room), db);
+  const said = await calls.roomsOf(w.owner, over.map((m) => m.room), db);
   const items = { ...w.state.items };
   let kept = 0;
   for (const m of over) {
@@ -953,12 +951,12 @@ async function keepRoomsOfEndedCalls(w: HeldWorkspace, db: Db): Promise<void> {
  * The boards calls going on keep for their rooms, of every call with its folder here: a room's board the tree lost the mark of,
  * as a release that didn't know rooms' boards saves the tree, is still its call's.
  */
-async function liveRoomBoards(w: HeldWorkspace, db: Db): Promise<Set<string>> {
-  const calls = Object.values(w.state.items).flatMap((x): TreeCall[] => (x.kind === 'folder' && x.call ? [{ ownerId: x.call.ownerId, callId: x.call.callId }] : []));
-  const live = await liveCalls(db, calls);
-  const going = calls.filter((c) => live.has(callKey(c)));
+async function liveRoomBoards(w: HeldWorkspace, db: Db, calls: Calls): Promise<Set<string>> {
+  const folders = Object.values(w.state.items).flatMap((x): TreeCall[] => (x.kind === 'folder' && x.call ? [{ ownerId: x.call.ownerId, callId: x.call.callId }] : []));
+  const live = await liveCalls(db, folders);
+  const going = folders.filter((c) => live.has(callKey(c)));
   if (!going.length) return new Set();
-  return new Set([...(await roomsOfCalls(w.owner, going, db)).values()].flatMap((x) => (x.live ? x.boards : [])));
+  return new Set([...(await calls.roomsOf(w.owner, going, db)).values()].flatMap((x) => (x.live ? x.boards : [])));
 }
 /**
  * What's restricted and nobody can open any more: no creator or restrictor in the workspace, and nobody it's shared with.
@@ -967,8 +965,8 @@ async function liveRoomBoards(w: HeldWorkspace, db: Db): Promise<Set<string>> {
  * goes on, whatever the tree says of it, since its people come and go; and a call that ended without keeping it has it kept
  * now (`keepRoomsOfEndedCalls`), which is why this is in the caller's transaction, which saves the state.
  */
-async function strandedIn(w: HeldWorkspace, db: Db): Promise<string[]> {
-  await keepRoomsOfEndedCalls(w, db);
+async function strandedIn(w: HeldWorkspace, db: Db, calls: Calls): Promise<string[]> {
+  await keepRoomsOfEndedCalls(w, db, calls);
   const restricted = Object.entries(w.state.items).filter(([, x]) => x.restricted && !x.room);
   if (!restricted.length) return [];
   const members = new Set((await rows(db, z.object({ email_index: bytea }), 'SELECT email_index FROM workspace_members WHERE owner_id = $1', [w.owner.ownerId])).map((r) => b64u(r.email_index)));
@@ -982,7 +980,7 @@ async function strandedIn(w: HeldWorkspace, db: Db): Promise<string[]> {
   };
   const lost = restricted.filter(([id, x]) => !given.has(id) && !inHere(x.by?.email) && !inHere(x.restrictedBy)).map(([id]) => id);
   if (!lost.length) return lost;
-  const rooms = await liveRoomBoards(w, db);
+  const rooms = await liveRoomBoards(w, db, calls);
   return lost.filter((id) => !rooms.has(id));
 }
 /**
@@ -990,14 +988,14 @@ async function strandedIn(w: HeldWorkspace, db: Db): Promise<string[]> {
  * each admin to edit, so they decide its fate and nobody's words go to Trash for a change of people. In the caller's
  * transaction, which holds the workspace's row. How many it gave.
  */
-async function handStranded(w: HeldWorkspace, db: Db): Promise<number> {
-  const stranded = (await strandedIn(w, db)).filter((id) => !w.state.items[id]?.trashedAt);
+async function handStranded(w: HeldWorkspace, db: Db, calls: Calls): Promise<number> {
+  const stranded = (await strandedIn(w, db, calls)).filter((id) => !w.state.items[id]?.trashedAt);
   if (!stranded.length) return 0;
   // Its longest-standing hundred admins at most: any of them can give it on.
   const admins = await rows(db, Member, "SELECT member_id, email_index, role, person_ciphertext, created_at FROM workspace_members WHERE owner_id = $1 AND role = 'admin' ORDER BY created_at, member_id LIMIT 100", [w.owner.ownerId]);
   const to = admins.map((m): Grant => ({ kind: 'email', email: personOfMember(w, m).email, role: 'edit' }));
   // A workspace always keeps an admin, so there's someone to give it to; were there nobody, Trash is all that's left.
-  if (!to.length) return trashStranded(w, db);
+  if (!to.length) return trashStranded(w, db, calls);
   for (const id of stranded) await grant(w, db, id, to);
   wlog.info('restricted things given to the admins', { workspaceId: w.workspaceId, documents: stranded.length, admins: to.length });
   return stranded.length;
@@ -1007,8 +1005,8 @@ async function handStranded(w: HeldWorkspace, db: Db): Promise<number> {
  * see it, so it isn't deleted now, and it isn't given to anyone. Its creator finds it in Trash if they come back within 30
  * days, and after that it goes as anything there does. Returns how many went.
  */
-async function trashStranded(w: HeldWorkspace, db: Db): Promise<number> {
-  const stranded = (await strandedIn(w, db)).filter((id) => !w.state.items[id]?.trashedAt);
+async function trashStranded(w: HeldWorkspace, db: Db, calls: Calls): Promise<number> {
+  const stranded = (await strandedIn(w, db, calls)).filter((id) => !w.state.items[id]?.trashedAt);
   if (!stranded.length) return 0;
   const at = new Date().toISOString();
   const items = { ...w.state.items };
@@ -1060,7 +1058,7 @@ export async function sweepTrash(d: Deps, ageMs: number = TRASH_MS, now: number 
 export interface SeatsEnded { seats: number; workspaces: number }
 const NONE_ENDED: SeatsEnded = { seats: 0, workspaces: 0 };
 /** Takes the seats these rows find out of each workspace, under that workspace's lock, as anything else that changes who has what. */
-async function dropSeats(d: Deps, ownerIds: string[], remove: (db: Db, ownerId: string) => Promise<SeatsEnded>): Promise<SeatsEnded> {
+async function dropSeats(d: Deps, ownerIds: string[], remove: (db: Db, ownerId: string) => Promise<SeatsEnded>, calls: Calls): Promise<SeatsEnded> {
   let seats = 0;
   let workspaces = 0;
   for (const ownerId of ownerIds) {
@@ -1069,7 +1067,7 @@ async function dropSeats(d: Deps, ownerIds: string[], remove: (db: Db, ownerId: 
         const w = await held(d, c, ownerId);
         if (!w) return NONE_ENDED;
         const taken = await remove(c, ownerId);
-        await trashStranded(w, c);
+        await trashStranded(w, c, calls);
         await saveState(w, c);
         await publish(c, w.workspaceId, TREE_NOTICE);
         return taken;
@@ -1089,10 +1087,10 @@ const OPEN_TO_CALLS = 'DELETE FROM workspace_calls WHERE owner_id = $1 AND call_
  * Takes away everything these calls gave people's seats, wherever it was given, and closes every workspace they were open to
  * (`openToCall`). Seats stop opening anything when their call ends, whatever's left here: this is so nothing outlives it.
  */
-export async function endSeats(d: Deps, callIds: string[]): Promise<SeatsEnded> {
+export async function endSeats(d: Deps, callIds: string[], calls: Calls): Promise<SeatsEnded> {
   const found = await rows(d.pool, OwnerRow, `SELECT owner_id FROM document_access WHERE kind = 'seat' AND call_id = ANY($1::text[])
     UNION SELECT owner_id FROM workspace_calls WHERE call_id = ANY($1::text[]) ORDER BY owner_id`, [callIds]);
-  const ended = await dropSeats(d, found.map((r) => r.owner_id), async (db, ownerId) => ({ seats: await exec(db, SEATS_OF_CALLS, [ownerId, callIds]), workspaces: await exec(db, OPEN_TO_CALLS, [ownerId, callIds]) }));
+  const ended = await dropSeats(d, found.map((r) => r.owner_id), async (db, ownerId) => ({ seats: await exec(db, SEATS_OF_CALLS, [ownerId, callIds]), workspaces: await exec(db, OPEN_TO_CALLS, [ownerId, callIds]) }), calls);
   if (ended.seats || ended.workspaces) wlog.info('seats ended', { calls: callIds.length, seats: ended.seats, workspaces: ended.workspaces });
   return ended;
 }
@@ -1101,18 +1099,18 @@ export async function endSeats(d: Deps, callIds: string[]): Promise<SeatsEnded> 
  * everyone in it stays open to everyone else, so no row of that goes; every workspace it reached is told the seat ended
  * (`seatEnded`), and the streams that carry it look again at once, and close for anyone it was all they had.
  */
-export async function endSeat(d: Deps, callId: string, seat: string): Promise<void> {
+export async function endSeat(d: Deps, callId: string, seat: string, calls: Calls): Promise<void> {
   const index = seatIndex(d, callId, seat);
   const found = await rows(d.pool, OwnerRow, 'SELECT owner_id FROM document_access WHERE principal_index = $1 ORDER BY owner_id', [index]);
-  await dropSeats(d, found.map((r) => r.owner_id), async (db, ownerId) => ({ seats: await exec(db, 'DELETE FROM document_access WHERE owner_id = $1 AND principal_index = $2', [ownerId, index]), workspaces: 0 }));
+  await dropSeats(d, found.map((r) => r.owner_id), async (db, ownerId) => ({ seats: await exec(db, 'DELETE FROM document_access WHERE owner_id = $1 AND principal_index = $2', [ownerId, index]), workspaces: 0 }), calls);
   await seatEnded(d, callId, seat);
 }
 /** Ends seats whose call is over, and what it opened, should nothing else have: a call's end does it, but not if the process stopped in between. */
-export async function sweepSeats(d: Deps): Promise<SeatsEnded> {
+export async function sweepSeats(d: Deps, calls: Calls): Promise<SeatsEnded> {
   const over = await rows(d.pool, z.object({ call_id: z.string() }), `SELECT a.call_id FROM document_access a WHERE a.kind = 'seat'
       AND NOT EXISTS (SELECT 1 FROM calls c WHERE c.call_id = a.call_id AND c.state = 'live')
     UNION SELECT w.call_id FROM workspace_calls w WHERE NOT EXISTS (SELECT 1 FROM calls c WHERE c.call_id = w.call_id AND c.state = 'live')`);
-  return over.length ? endSeats(d, over.map((r) => r.call_id)) : NONE_ENDED;
+  return over.length ? endSeats(d, over.map((r) => r.call_id), calls) : NONE_ENDED;
 }
 
 /**
@@ -1127,7 +1125,7 @@ export async function sweepSeats(d: Deps): Promise<SeatsEnded> {
  * two accounts leaving together never deadlock. `owners` are the workspaces it touched, for the caller to collect their
  * files' objects once the transaction commits, and `moves` whose payment moved, for it to tell (plans.ts `tellPayers`).
  */
-export async function forgetAccount(o: Owner, db: Db, email: string, callIds: string[]): Promise<{ workspaces: number; deleted: number; owners: string[]; moves: PayerMove[] }> {
+export async function forgetAccount(o: Owner, db: Db, email: string, callIds: string[], calls: Calls): Promise<{ workspaces: number; deleted: number; owners: string[]; moves: PayerMove[] }> {
   const address = email.trim().toLowerCase();
   const index = blindIndex(indexKey(o), 'email', address);
   const elsewhere = await maybeOne(db, z.object({ n: z.number() }), 'SELECT 1 AS n FROM identities WHERE email_index = $1 AND owner_id <> $2 LIMIT 1', [index, o.ownerId]);
@@ -1156,12 +1154,12 @@ export async function forgetAccount(o: Owner, db: Db, email: string, callIds: st
       const moved = await settlePayer(o, db, ownerId);
       if (moved) moves.push(moved);
       const theirs = (x: StoredItem | undefined) => x?.by?.email === address || x?.restrictedBy === address;
-      const lost = (await strandedIn(w, db)).filter((id) => theirs(w.state.items[id]));
+      const lost = (await strandedIn(w, db, calls)).filter((id) => theirs(w.state.items[id]));
       await removeDocuments(w.owner, db, lost);
       const kept = withoutItems(w.state, lost);
       w.state = { ...kept, items: Object.fromEntries(Object.entries(kept.items).map(([id, x]) => [id, theirs(x) ? { ...x, by: x.by?.email === address ? { ...x.by, email: '' } : x.by, restrictedBy: x.restrictedBy === address ? null : x.restrictedBy } : x])) };
     }
-    await trashStranded(w, db);
+    await trashStranded(w, db, calls);
     await saveState(w, db);
   }
   return { workspaces: found.length, deleted, owners: found.map((f) => f.owner_id), moves };
@@ -1266,8 +1264,8 @@ class TreeStream extends LiveStream<WorkspaceLiveEvent> {
   private tagged = true;
   private shownTags: string | null = null;
 
-  constructor(d: Deps, room: Room, credentials: Credentials, who: Who, first: WorkspaceTree, standing: Standing, version: number, place: StreamPlace, private readonly callId: string | null) {
-    super(d, room, credentials, who, version, place, { workspaceId: room.workspaceId });
+  constructor(d: Deps, room: Room, credentials: Credentials, calls: Calls, who: Who, first: WorkspaceTree, standing: Standing, version: number, place: StreamPlace, private readonly callId: string | null) {
+    super(d, room, credentials, calls, who, version, place, { workspaceId: room.workspaceId });
     this.first = first;
     this.shown = shortHash(JSON.stringify(first));
     this.role = first.role;
@@ -1341,7 +1339,7 @@ class TreeStream extends LiveStream<WorkspaceLiveEvent> {
  * browser goes or says it closed it (`name`, as it calls it), its place is needed, this instance shuts down, or it's time to
  * let go.
  */
-export async function open(d: Deps, credentials: Credentials, reader: Reader, workspaceId: string, address: string, name: string | null): Promise<(out: StreamingApi) => Promise<void>> {
+export async function open(d: Deps, credentials: Credentials, calls: Calls, reader: Reader, workspaceId: string, address: string, name: string | null): Promise<(out: StreamingApi) => Promise<void>> {
   const place = d.hub.admit('workspace', limitKey(reader), address, name);
   const release = place.release;
   try {
@@ -1350,7 +1348,7 @@ export async function open(d: Deps, credentials: Credentials, reader: Reader, wo
     const first = treeFor(reader, known, await callsIn(d.pool, reader, callId, known.state), await teamAccessOf(d.pool, workspaceId));
     // Nothing is awaited between making the room and joining it: a room still empty when the hub says it's listening lets go at once.
     const room = roomFor(d, workspaceId);
-    const stream = new TreeStream(d, room, credentials, { email: reader.email, principals: reader.principals, calls: reader.calls }, first, { role: known.role, grants: known.grants, lasting: known.lasting, call: known.call }, known.version, place, callId);
+    const stream = new TreeStream(d, room, credentials, calls, { email: reader.email, principals: reader.principals, calls: reader.calls }, first, { role: known.role, grants: known.grants, lasting: known.lasting, call: known.call }, known.version, place, callId);
     room.join(stream);
     try {
       await room.ready;

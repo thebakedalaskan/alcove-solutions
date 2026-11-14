@@ -11,7 +11,7 @@ import '../src/styles.css';
 import { begin, isScenario, type ScenarioName } from '../src/api/scenarios';
 import { installBrowser, setOnline, type BrowserSetup } from '../src/browser';
 import { installClock } from '../src/world/clock';
-import type { Opening } from '../src/world';
+import type { Opening } from '../src/world/world';
 
 installClock();
 installBrowser();
@@ -134,7 +134,30 @@ const preview: Preview = {
         wide: { name: 'Wide', styles: { width: '1920px', height: '1080px' }, type: 'desktop' }
       }
     },
-    options: { storySort: { order: ['Foundations', ['Colour', 'Type', 'Icons', 'Scales', 'The evening'], 'Components', ['Icons and marks', 'Actions', 'Forms', 'Feedback', 'Overlays', 'Layout', 'Motion', 'The evening', 'People', 'Starting a call', 'Ringing and waiting', 'In a call', 'Notes and transcript', 'Search', 'Calls', 'Record', 'Settings', 'Agents', 'Plans', 'Checkout', 'Team', 'Workspace', 'Board'], 'Pages', 'Calls', 'Board', ['Surface', 'States', 'Presence'], 'Journeys'] } }
+    options: {
+      storySort: {
+        // A folder's own stories come before its folders ('*'); journeys keep their files' order, which is user-flows'.
+        order: [
+          'Foundations', ['Colour', 'Type', 'Icons', 'Scales', 'The evening'],
+          'Components', [
+            'Icons and marks', 'Actions', 'Forms', 'Feedback', 'Overlays', 'Layout', 'Motion', 'The evening', 'People', 'Starting a call',
+            'Ringing and waiting', 'In a call', ['*', 'Audio and video', 'Chat', 'Sharing'], 'Notes and transcript', 'Search', 'Calls', 'Record',
+            'Settings', 'Agents', 'Plans', 'Checkout', ['*', 'Choose', 'Pay'], 'Team', 'Workspace', ['*', 'No document', 'Unsaved', 'Trash'],
+            'Board', ['*', 'Objects', 'Tools']
+          ],
+          'Pages', [
+            'Signing in', ['Welcome', 'Onboarding', 'Privacy policy'],
+            'Home', ['Home', 'The side panel', 'Your menu', 'Search or ask', 'Offline and errors'],
+            'Calls', ['Calls', 'Start a call', 'Scheduling', 'Pick a time', 'Join a call', 'Move a call here', 'A call', 'Open a link to notes'],
+            'Drive', ['Drive', 'Workspace', 'Board'], 'Team', ['Team', 'Team on a plan', 'Join a team'], 'Record', ['Record', 'Record stage'],
+            'Agents', ['Agents', 'Connect an agent'], 'Account', ['Settings', 'Plans', 'Checkout']
+          ],
+          'Calls', ['*', 'Chat', 'Boards'],
+          'Board', ['Surface', 'States', 'Presence'],
+          'Journeys'
+        ]
+      }
+    }
   }
 };
 

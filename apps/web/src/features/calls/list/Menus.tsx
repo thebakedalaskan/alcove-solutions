@@ -13,12 +13,14 @@ import { useState, type ReactNode } from 'react';
 import { useCopyLink } from '~/features/call/session/links';
 import { useOpenScheduling } from '~/features/calls/scheduling/search';
 import { cancelNote, cancelledLine, pickerName, restoredLine, shortTime } from '~/features/calls/scheduling/words';
-import { useMoveToAlcove } from '~/features/home/parts';
-import { Picker } from '~/features/people/PeoplePicker';
+import { useMoveToAlcove } from '~/features/calls/scheduling/moveToAlcove';
+import { Picker } from '~/features/team/PeoplePicker';
 import { log } from '~/lib/log';
 import { callName, listNames, sameEmail } from '~/lib/people';
-import { q, useCancelCall, useScheduleCall, useShareNote } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { useShareNote } from '~/features/notes/sharing/queries';
 import type { Ahead } from './ahead';
+import { useCancelCall, useScheduleCall } from './queries';
 import { othersIn } from './said';
 
 const clog = log.child({ component: 'calls' });
@@ -134,7 +136,7 @@ const and = (names: string[]) => (names.length <= 1 ? names[0] ?? '' : `${names.
 /** Sharing a call's notes from its row: people by name or address, or one of your groups. The call's page has links too. */
 function ShareAsk({ n, onDone }: { n: NoteSummary; onDone: () => void }) {
   const share = useShareNote();
-  const groups = useQuery(q.prefs()).data?.groups;
+  const groups = useQuery(accountQueries.prefs()).data?.groups;
   const { said, failed } = useSay();
   const have = n.people.map((p) => p.email);
   const done = (people: Person[], group?: Group) => share.mutate({ id: n.id, emails: people.map((p) => p.email), group }, {

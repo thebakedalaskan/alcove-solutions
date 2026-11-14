@@ -1,12 +1,12 @@
 /** Revocable delegations. The bearer is returned once; only its hash reaches Postgres. */
 import { AgentConnectionIdSchema, AgentScopesSchema, type AgentConnection, type AgentEndpoint, type AgentScope, type AgentTokenInput, type AgentUpdateInput } from '@alcove/api';
 import { z } from 'zod';
-import type { Deps, Owner } from '../../context';
-import { b64u, id128, openJson, random, sealJson, sha, stateKey, toJson, utf8 } from '../../crypto';
-import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
-import { AuthError, ForbiddenError, NotFoundError, UnavailableError } from '../../errors';
-import { log } from '../../log';
-import { lockOwner, openOwner } from '../../owners';
+import type { Deps, Owner } from '../../platform/context';
+import { b64u, id128, openJson, random, sealJson, sha, stateKey, toJson, utf8 } from '../../keys/crypto';
+import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../platform/db';
+import { AuthError, ForbiddenError, NotFoundError, UnavailableError } from '../../platform/errors';
+import { log } from '../../platform/log';
+import { lockOwner, openOwner } from '../../keys/owners';
 
 const alog = log.child({ component: 'agents' });
 export const GRANT_MS = 30 * 86_400_000;

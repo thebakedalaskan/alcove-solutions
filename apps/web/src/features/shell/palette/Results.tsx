@@ -118,7 +118,7 @@ export function Sections({ sections, idOf, lit, ...rows }: RowsProps & { section
 
 /**
  * Nothing to list, as the palette says it: the kit's empty state, its art a dashed arch around the icon of what would be
- * there (styles/palette.css sizes it for the window). `caution` for a search that didn't go through.
+ * there (palette/palette.css sizes it for the window). `caution` for a search that didn't go through.
  */
 export function Nothing({ icon, caution = false, title, action, children }: { icon: IconName; caution?: boolean | undefined; title: string; action?: ReactNode; children: ReactNode }) {
   return (

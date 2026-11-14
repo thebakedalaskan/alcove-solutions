@@ -1,5 +1,5 @@
 /*
- * Equal choices in a row inside a menu over the call (components/call.tsx): on your own tile's ⋯, the time a status is for
+ * Equal choices in a row inside a menu over the call (call/call.tsx): on your own tile's ⋯, the time a status is for
  * (none chosen until one is) and where you see yourself. Always night: the menus open over the stage.
  */
 import { CallMenuChips } from '@alcove/ui';

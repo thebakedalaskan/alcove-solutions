@@ -13,7 +13,10 @@ import { animate, useReducedMotion, type AnimationPlaybackControls } from 'motio
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { usePlansFirst } from '~/features/plans/choice';
 import { listNames } from '~/lib/people';
-import { q } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { callQueries } from '~/features/calls/list/queries';
+import { calendarQueries } from '~/features/calls/scheduling/queries';
+import { teamQueries } from '~/features/team/queries';
 import { daysFromToday, hm } from '~/lib/time';
 import { arrival, useArrival, useArrivalHost } from './store';
 
@@ -46,12 +49,12 @@ function today(calls: Meeting[], events: CalendarEvent[], now: number) {
 }
 
 function useRows(): Row[] {
-  const session = useQuery(q.session()).data;
-  const calendar = useQuery(q.calendar());
-  const upcoming = useQuery(q.upcoming());
+  const session = useQuery(accountQueries.session()).data;
+  const calendar = useQuery(calendarQueries.calendar());
+  const upcoming = useQuery(callQueries.upcoming());
   // The team isn't waited for (a Google work account's can take a few seconds to put together), and the rows are laid
   // out once: it's a row only when it was here as the screen went up.
-  const teamNow = useQuery(q.team()).data ?? null;
+  const teamNow = useQuery(teamQueries.team()).data ?? null;
   const [team] = useState(teamNow);
   if (!session) return [];
   const rows: Row[] = [];
@@ -112,7 +115,7 @@ function Creating() {
   const { over } = useArrival();
   /* Over the welcome page the screen fades in; with the app's first render it's there at once (the store's `over`). */
   const rise = !reduce && over;
-  const session = useQuery(q.session()).data;
+  const session = useQuery(accountQueries.session()).data;
   const rows = useRows();
   /* What the arch opens onto: Home, or the plans first, as Home itself decides. */
   const opens = usePlansFirst() ? 'Opening Plans' : 'Opening Home';

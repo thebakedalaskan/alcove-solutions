@@ -6,9 +6,9 @@ import { Avatar, CallTile, Icon, NotesSign, cn, type AvatarPerson, type IconName
 import { useQuery } from '@tanstack/react-query';
 import { animate, useReducedMotion } from 'motion/react';
 import { useEffect, useState, type CSSProperties } from 'react';
-import { CAST, firstOf, type CastId } from '~/features/notes/cast';
+import { CAST, firstOf, type CastId } from '~/features/examples/cast';
 import { shortcut } from '~/lib/keys';
-import { q } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
 
 /** Seconds into a loop of `period` seconds, or `still` under reduced motion. */
 function useClock(period: number, still: number): number {
@@ -272,7 +272,7 @@ export function ArtRoom() {
 /** Bring your agent: its window and you on the horizon, joined while it asks; you allow Book calls, and it books one. */
 export function ArtAgents() {
   const t = useClock(6.8, 5.3);
-  const session = useQuery(q.session()).data;
+  const session = useQuery(accountQueries.session()).data;
   const you: AvatarPerson = session?.user ?? CAST.art;
   const gone = 1 - ramp(t, 6.3, 0.3, in2);
   const asking = span(t, 0.6, 0.45, 2.85, 0.3) * gone;

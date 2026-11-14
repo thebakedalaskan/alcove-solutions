@@ -14,7 +14,7 @@
 import { Avatar, Button, Check, Chip, Dots, EASE, Faces, Icon, SealedBadge, TranscriptLine, Unsure, Words, buttonClass, cn, useSceneLoop } from '@alcove/ui';
 import { animate, motion, useReducedMotion, type Transition } from 'motion/react';
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type MouseEvent } from 'react';
-import { CAST, firstOf, type CastId } from '~/features/notes/cast';
+import { CAST, firstOf, type CastId } from '~/features/examples/cast';
 import { position } from '~/lib/time';
 import { CHAPTERS, DECIDED, FOLLOW_UPS, GLINTS, HEAD, LENGTH, SAID, START, STOPS, SUMMARY, type Said } from './note';
 

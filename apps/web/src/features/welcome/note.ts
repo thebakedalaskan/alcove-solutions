@@ -2,7 +2,7 @@
  * The call behind the welcome page's note: a design review on Thursday. What it decided and who's doing what, each at the
  * moment it was said, the chapters it ran through, what was said around those moments, and where people spoke.
  */
-import type { CastId } from '~/features/notes/cast';
+import type { CastId } from '~/features/examples/cast';
 
 /** How long the recording runs, in seconds (45:10). */
 export const LENGTH = 2710;

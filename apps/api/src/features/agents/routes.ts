@@ -1,7 +1,7 @@
 import { AgentActivityQuerySchema, AgentAuthorizeInputSchema, AgentClientInputSchema, AgentDecisionInputSchema, AgentRevokeBodySchema, AgentTokenBodySchema, AgentTokenInputSchema, AgentUpdateInputSchema } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { ZodError, z } from 'zod';
-import { log } from '../../log';
+import { log } from '../../platform/log';
 import { body, capped } from '../../http/body';
 import { clientAddress, type Env } from '../../http/context';
 import type { HttpRuntime } from '../../http/runtime';

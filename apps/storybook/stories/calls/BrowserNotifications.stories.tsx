@@ -1,10 +1,10 @@
 import type { SoundPreferences } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
-import { at, chats, knocks, raisesHand, type CallScript } from '../../src/api/script';
+import { at, chats, knocks, raisesHand, type CallScript } from '../../src/api/call/script';
 import { current } from '../../src/api/state';
 import { inCall, light, phone, settings } from '../../src/call';
 import { App } from '../../src/app';
-import { NotificationReport } from '../../src/notificationReport';
+import { NotificationReport } from '../../src/notification-report';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { pressable } from '../journeys/play';
 import { AIKO, CHECK_IN, DIEGO, KOFI, LAUNCH_REVIEW, PRIYA } from './talk';

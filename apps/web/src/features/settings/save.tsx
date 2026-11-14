@@ -6,7 +6,7 @@ import { errorMessage, type Preferences } from '@alcove/api';
 import { SettingRow, Switch, useToast, type SettingRowProps } from '@alcove/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
-import { q, usePreferences } from '~/lib/queries';
+import { accountQueries, usePreferences } from '~/features/account/queries';
 import { withPreferenceChange, type PreferenceChange } from '~/lib/queryWrites';
 
 const SAVED_MS = 2200;
@@ -78,7 +78,7 @@ export function useSave() {
   const saving = useSaving();
   const { rows } = useContext(Saved);
   return (name: string, change: PreferenceChange | ((now: Preferences) => PreferenceChange)) => {
-    const now = qc.getQueryData(q.prefs().queryKey);
+    const now = qc.getQueryData(accountQueries.prefs().queryKey);
     if (!now) return;
     const patch = typeof change === 'function' ? change(now) : change;
     // The choice already made, picked again: nothing to save.

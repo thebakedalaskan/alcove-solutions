@@ -4,9 +4,9 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
 import { z } from 'zod';
-import { exec, rows } from './db';
-import { IntegrityError } from './errors';
-import { log } from './log';
+import { exec, rows } from './platform/db';
+import { IntegrityError } from './platform/errors';
+import { log } from './platform/log';
 
 const DIR = fileURLToPath(new URL('../migrations/', import.meta.url));
 /** Any fixed number. Every run takes this advisory lock, so two runs (the deploy's job, an API starting) never interleave. */

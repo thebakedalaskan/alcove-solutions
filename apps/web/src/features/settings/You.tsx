@@ -6,7 +6,7 @@ import type { Session } from '@alcove/api';
 import { Icon, ProviderMark, SettingFact, SettingRow, SettingsGroup, SettingsPanel, THEMES, ThemePreview, useTheme, type ThemeChoice } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { q } from '~/lib/queries';
+import { teamQueries } from '~/features/team/queries';
 import { timeZone } from '~/lib/time';
 import { Setting, useSaved } from './save';
 
@@ -27,7 +27,7 @@ function zoneName(): string {
 
 export function YouGroup({ session }: { session: Session }) {
   // Someone at a personal address has no team, so no company to open.
-  const team = useQuery(q.team()).data;
+  const team = useQuery(teamQueries.team()).data;
   const { theme, setTheme } = useTheme();
   const saved = useSaved();
   const pick = (t: ThemeChoice) => { if (t !== theme) { setTheme(t); saved('Theme'); } };

@@ -1,13 +1,15 @@
 /*
  * A file on the Drive's sheet, as the kit's `FileCard` draws it: a large picture of it, then its name with its kind's icon,
  * then where it is and who touched it last ("From Team standup · Kofi, 10:12"), said once: a card inside a workspace doesn't
- * say which. The picture is the document's first lines as it is now, read for whoever can open it (`q.previews`); a board is
- * drawn as one, a document that's photos shows them, one that's a PDF its page. Pressing the card opens it; its ⋯ has what
- * else can be done, and Rename asks for the name in the same menu. Grid or list, as the sheet's switch says.
+ * say which. The picture is the document's first lines as it is now, read for whoever can open it (`pictureOf`, from
+ * features/workspace/document/picture.ts); a board is drawn as one, a document that's photos shows them, one that's a PDF
+ * its page. Pressing the card opens it; its ⋯ has what else can be done, and Rename asks for the name in the same menu.
+ * Grid or list, as the sheet's switch says.
  */
-import type { DocumentPreview, PreviewLine } from '@alcove/api';
-import { FileCard, Icon, IconButton, WsMenu, WsPopover, type IconName, type ThumbKind, type ThumbLine, type ThumbProps, type WsMenuRow } from '@alcove/ui';
+import type { DocumentPreview } from '@alcove/api';
+import { FileCard, Icon, IconButton, WsMenu, WsPopover, type WsMenuRow } from '@alcove/ui';
 import { useRef, useState, type ReactNode } from 'react';
+import { pictureOf } from '~/features/workspace/document/picture';
 import { KIND_ICON, fileName, type DriveFile } from './places';
 
 /** What can be done with a card, from its ⋯: leave out what this reader can't do. */
@@ -17,28 +19,6 @@ export interface CardActions {
   onCopyLink: () => void;
   onRename?: ((name: string) => void) | undefined;
   onTrash?: (() => void) | undefined;
-}
-
-/* ---------- what the picture shows ---------- */
-
-const MARK: Partial<Record<PreviewLine['kind'], ThumbLine['mark']>> = { bullet: 'dot', todo: 'todo', done: 'done' };
-/**
- * How a file's card draws it, from what its preview says: a board; a document of photos, a PDF, another file or a video when
- * that's all it holds; otherwise its page, with a heading it starts with as the page's title. Before the preview comes, an
- * empty page.
- */
-export function pictureOf(file: Pick<DriveFile, 'kind'>, preview: DocumentPreview | undefined): { kind: ThumbKind; icon?: IconName | undefined; thumb?: Omit<ThumbProps, 'kind' | 'size'> | undefined } {
-  if (file.kind === 'board') return { kind: 'board' };
-  if (preview && preview.lines.length === 0) {
-    if (preview.pictures > 0) return { kind: 'photos', thumb: { count: preview.pictures } };
-    if (preview.file === 'PDF') return { kind: 'pdf' };
-    if (preview.file) return { kind: 'doc', icon: 'clip' };
-    if (preview.videos > 0) return { kind: 'share', icon: 'film' };
-  }
-  const lines = preview?.lines ?? [];
-  const [first, ...rest] = lines;
-  const title = first?.kind === 'heading' ? first.text : undefined;
-  return { kind: 'doc', thumb: { title, lines: (title === undefined ? lines : rest).map((l): ThumbLine => ({ text: l.text, mark: MARK[l.kind] })) } };
 }
 
 /* ---------- naming in place ---------- */

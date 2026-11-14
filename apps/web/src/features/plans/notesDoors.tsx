@@ -10,10 +10,10 @@ import { Button, NoNotesLeft, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { log } from '~/lib/log';
-import { q } from '~/lib/queries';
+import { planQueries } from './queries';
 import { dayFullMonth } from '~/lib/time';
 import { useCheckout, type CheckoutFor } from './checkout';
-import { notesLow, notesOut } from './plan-state';
+import { notesLow, notesOut } from './planState';
 import { tellOnce } from './hourLeft';
 import { hoursLabel } from './words';
 
@@ -24,7 +24,7 @@ const plog = log.child({ component: 'plan-doors' });
  * none: the period's end, when they come back. A call after that has notes again. Undefined until the plan has been read.
  */
 export function useNotesLeft(at?: Date | undefined): { none: boolean; until: Date | null; plan: Plan | undefined } {
-  const plan = useQuery(q.plan()).data;
+  const plan = useQuery(planQueries.plan()).data;
   if (!plan || !notesOut(plan)) return { none: false, until: null, plan };
   const until = new Date(plan.period.to);
   return { none: (at ?? new Date()).getTime() < until.getTime(), until, plan };
@@ -38,7 +38,7 @@ export interface MoreNotes { label: string; what: CheckoutFor }
  */
 export function useMoreNotes(plan: Plan | undefined, wanted: boolean): MoreNotes | null | undefined {
   const paid = plan !== undefined && plan.kind !== 'free';
-  const offers = useQuery({ ...q.offers(), enabled: wanted && paid });
+  const offers = useQuery({ ...planQueries.offers(), enabled: wanted && paid });
   if (!plan) return undefined;
   if (plan.kind === 'free') return { label: 'Get Pro', what: { plan: 'pro' } };
   if (offers.isPending) return undefined;
@@ -87,7 +87,7 @@ export function useAskRanOut(): { out: boolean; refused: (e: unknown) => boolean
   const refused = useCallback((e: unknown) => {
     if (errorCode(e) !== 'plan-limit') return false;
     const said = () => toast(errorMessage(e), { icon: 'x' });
-    void qc.fetchQuery({ ...q.plan(), staleTime: 0 }).then((plan) => {
+    void qc.fetchQuery({ ...planQueries.plan(), staleTime: 0 }).then((plan) => {
       if (!notesOut(plan)) { said(); return; }
       plog.info('a question met no notes left', { kind: plan.kind });
       setOut(true);
@@ -103,7 +103,7 @@ export function useAskRanOut(): { out: boolean; refused: (e: unknown) => boolean
  * round every page, so never in a call; the plan is read again every minute, so it comes as a call's notes use it up.
  */
 export function HourLeft({ ownerId }: { ownerId: string }) {
-  const plan = useQuery(q.plan()).data;
+  const plan = useQuery(planQueries.plan()).data;
   const low = plan !== undefined && notesLow(plan);
   const more = useMoreNotes(plan, low);
   const toast = useToast();

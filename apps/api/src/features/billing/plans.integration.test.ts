@@ -8,14 +8,14 @@ import { AlcoveApiError, DEFAULT_NOTES_CHOICES, type AlcoveApi, type AudioPiece,
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
+import { openJson, sealJson, serviceKey, toJson, unb64u } from '../../keys/crypto';
 import { maintain } from '../../maintenance';
-import { speechWav } from '../../testing/fake-near';
+import { speechWav } from '../../testing/fakes/near';
 import { startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
 import { endOverdue } from '../calls/lifecycle';
 import { header as callHeader, key as callKey } from '../calls/state';
-import { openOwner } from '../../owners';
+import { openOwner } from '../../keys/owners';
 import { creditBySupport } from './support';
 import { createHttpApi } from '@alcove/api-http';
 

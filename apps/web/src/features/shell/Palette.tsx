@@ -20,20 +20,22 @@ import { useAnswer, type Cite } from '~/features/notes/answer';
 import { inNote } from '~/features/notes/parts';
 import { NoNotesLeftDoor, useAskRanOut } from '~/features/plans/notesDoors';
 import { api } from '~/lib/api';
-import { isUnencrypted } from '~/lib/aiModels';
+import { isUnencrypted, useAiModels } from '~/features/notes/models';
 import { useMedia, useOnline, useSettled } from '~/lib/live';
 import { callName } from '~/lib/people';
-import { isNoteSearch, q, useAiModels } from '~/lib/queries';
-import type { PaletteStart } from './context';
+import { accountQueries } from '~/features/account/queries';
+import { isNoteSearch, noteQueries } from '~/features/notes/queries';
+import { teamQueries } from '~/features/team/queries';
 import { Answered } from './palette/Answered';
 import { keepInView } from './palette/keepInView';
 import { PinNotes } from './palette/PinNotes';
 import { Asking, Preview } from './palette/Preview';
 import { Results } from './palette/Results';
-import { citedOf, listOf, peopleOf, searchFor, type Row } from './palette/rows';
+import { citedOf, listOf, searchFor, type Row } from './palette/rows';
+import { peopleOf } from '~/features/team/data';
 
 const askAll = (question: string): AsyncIterable<AnswerPart> => api.notes.askAll(question);
-/** From this width the lit row's preview sits beside the list (styles/palette.css); narrower, the list is alone. */
+/** From this width the lit row's preview sits beside the list (palette/palette.css); narrower, the list is alone. */
 const WIDE = '(min-width: 1101px)';
 /** A phone, where the window takes the screen and the line has room for fewer words. */
 const PHONE = '(max-width: 860px)';
@@ -72,6 +74,9 @@ const toPanelPlace = (): boolean => {
   return true;
 };
 
+/** What the palette opens for: finding a note or asking your notes, or picking notes to pin. */
+export type PaletteStart = { mode: 'find' } | { mode: 'pin' };
+
 export function Palette({ open, onOpenChange, start }: { open: boolean; onOpenChange: (open: boolean) => void; start: PaletteStart }) {
   const close = () => onOpenChange(false);
   /* Escape is the window's: it closes it, unless what's in it goes back a step first (an answer, to its results). */
@@ -103,12 +108,12 @@ function Find({ onClose, back }: { onClose: () => void; back: RefObject<Escape |
   const online = useOnline();
   const wide = useMedia(WIDE);
   const phone = useMedia(PHONE);
-  const me = useQuery(q.session()).data?.user.email;
-  const notes = useQuery(q.notes()).data;
-  const team = useQuery(q.team()).data;
-  const inbox = useQuery(q.inbox()).data;
+  const me = useQuery(accountQueries.session()).data?.user.email;
+  const notes = useQuery(noteQueries.notes()).data;
+  const team = useQuery(teamQueries.team()).data;
+  const inbox = useQuery(noteQueries.inbox()).data;
   const models = useAiModels();
-  const outside = isUnencrypted(models.data, useQuery(q.prefs()).data?.model ?? null);
+  const outside = isUnencrypted(models.data, useQuery(accountQueries.prefs()).data?.model ?? null);
   const people = useMemo(() => peopleOf(notes ?? [], team, me), [notes, team, me]);
 
   const typed = text.trim();
@@ -119,7 +124,7 @@ function Find({ onClose, back }: { onClose: () => void; back: RefObject<Escape |
   const now = searchFor(text, token);
   const wanted = searchFor(searched, token);
   const search = useQuery({
-    ...q.notes(undefined, wanted?.text, wanted?.by),
+    ...noteQueries.notes(undefined, wanted?.text, wanted?.by),
     enabled: !!wanted && online,
     /* While the next search is on its way, the last search's list stays, dimmed: never the whole list of notes. */
     placeholderData: (prev, last) => (last && isNoteSearch(last.queryKey) ? prev : undefined)
@@ -137,7 +142,7 @@ function Find({ onClose, back }: { onClose: () => void; back: RefObject<Escape |
   /* An answer cites moments in notes: each note is read for the lines it cites. */
   const cites = answer?.cites ?? NO_CITES;
   const citedIds = [...new Set(cites.flatMap((c) => (c.type === 'cite' ? [c.noteId] : [])))];
-  const reads = useQueries({ queries: citedIds.map((id) => ({ ...q.note(id), retry: false })), combine: readOf });
+  const reads = useQueries({ queries: citedIds.map((id) => ({ ...noteQueries.note(id), retry: false })), combine: readOf });
   /*
    * The list and an answer's rows are worked out again only when what they come from changes: not as the lit row moves,
    * nor as an answer's words arrive, so the rows (memoised in Results.tsx) stay the same objects.

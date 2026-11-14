@@ -12,9 +12,9 @@ import { Icon, Spinner } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { canChooseSpeaker, readPrefs } from '~/features/call/media/devices';
-import { usePlayer, usePlayerAt } from '~/features/notes/Player';
+import { usePlayer, usePlayerAt } from '~/features/notes/player/Player';
 import { log } from '~/lib/log';
-import { q } from '~/lib/queries';
+import { noteQueries } from '~/features/notes/queries';
 
 const hlog = log.child({ component: 'hear-it' });
 
@@ -151,7 +151,7 @@ function FromTheNote({ note, line, call }: { note: string; line: string; call?: 
   const liveNext = useSyncExternalStore(call?.subscribe ?? nothing, () => liveAt(call, note, line, 1));
   /* Nobody but whoever has the notes can read them, and that isn't worth asking twice. */
   const read = useQuery({
-    ...q.note(note), retry: false, staleTime: 60_000,
+    ...noteQueries.note(note), retry: false, staleTime: 60_000,
     refetchInterval: (query) => (query.state.data?.status === 'recording' && query.state.data.audio.length === 0 ? RECORDING_READ_MS : false)
   }).data;
   const lines = read?.transcript ?? [];

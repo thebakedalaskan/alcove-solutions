@@ -8,9 +8,10 @@
  * was said call by call, the notes that have the words only in what was written about them, and See all at the end.
  * A question lights Ask; anything else lights the first thing found.
  */
-import { MAX_SEARCH_TEXT, isAcceptedFollowUp, namesIn, searchOf, type Note, type NoteAction, type NoteDecision, type NoteFound, type NoteSaid, type Person, type RoomRef, type Team, type TranscriptLine } from '@alcove/api';
+import { MAX_SEARCH_TEXT, isAcceptedFollowUp, namesIn, searchOf, type Note, type NoteAction, type NoteDecision, type NoteFound, type NoteSaid, type Person, type RoomRef, type TranscriptLine } from '@alcove/api';
 import type { Cite } from '~/features/notes/answer';
 import { byTime, heardAt } from '~/features/calls/list/said';
+import type { Someone } from '~/features/team/data';
 import { callName } from '~/lib/people';
 import { plural } from '~/lib/words';
 
@@ -35,48 +36,6 @@ const WRITTEN = 5;
 function allLabel(counts: Counts, hiddenMoments: number, notesLeftOut: boolean): string {
   if (hiddenMoments > 0 || notesLeftOut) return `See all ${counts.moments ? plural(counts.moments, 'moment') : plural(counts.notes, 'note')} in Calls`;
   return `Open ${counts.moments + counts.notes === 1 ? 'it' : 'these'} in Calls`;
-}
-
-/** Someone you have notes with, as search offers them. */
-export interface Someone {
-  person: Person;
-  /** Their title on your team, when they're on it. */
-  title: string | undefined;
-  /** Calls you have the notes of together (a recording in the room isn't a call). */
-  calls: number;
-  /** Notes you have together, calls or not. */
-  notes: number;
-  /** When your newest note with them started. */
-  last: string;
-}
-
-/**
- * Everyone in your notes but you, named and titled as your team has them, the people you have most calls with first.
- * Someone on your team you have no notes with has nothing to find, so isn't offered. One pass over your notes, which come
- * newest first, so the first note someone's in is their newest.
- */
-export function peopleOf(notes: NoteFound[], team: Team | null | undefined, me: string | undefined): Someone[] {
-  const mine = me?.toLowerCase();
-  const found = new Map<string, Omit<Someone, 'title'>>();
-  for (const n of notes) {
-    for (const p of n.people) {
-      const key = p.email.toLowerCase();
-      if (key === mine) continue;
-      const known = found.get(key);
-      if (!known) { found.set(key, { person: p, calls: n.kind === 'call' ? 1 : 0, notes: 1, last: n.startedAt }); continue; }
-      // Someone known only by their address in one note may have a name in another.
-      if (known.person.name === known.person.email) known.person = p;
-      if (n.kind === 'call') known.calls++;
-      known.notes++;
-    }
-  }
-  const members = new Map((team?.members ?? []).map((m) => [m.person.email.toLowerCase(), m] as const));
-  return [...found].map(([key, s]): Someone => {
-    const member = members.get(key);
-    // Known only by their address in your notes, but by name on your team.
-    const named = member && s.person.name === s.person.email ? { ...s.person, name: member.person.name } : s.person;
-    return { ...s, person: named, title: member?.title };
-  }).sort((a, b) => b.calls - a.calls || b.notes - a.notes || a.person.name.localeCompare(b.person.name));
 }
 
 /** "4 calls together", or the notes together when none of them is a call. */

@@ -5,7 +5,7 @@
  */
 import { AlcoveApiError } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
-import { at, chats, knocks, raisesHand, shares, stopsSharing } from '../../src/api/script';
+import { at, chats, knocks, raisesHand, shares, stopsSharing } from '../../src/api/call/script';
 import { MORE, inCall, light, phone, press } from '../../src/call';
 import { pages, type PageArgs } from '../../src/page';
 import { AIKO, CHECK_IN, CHECKLIST, DIEGO, KOFI, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK } from './talk';

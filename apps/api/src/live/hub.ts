@@ -12,9 +12,9 @@
  * it something on a clock, and treats one that doesn't answer as gone.
  */
 import pg from 'pg';
-import { exec, type Db } from '../db';
-import { InternalError, UnavailableError } from '../errors';
-import { log } from '../log';
+import { exec, type Db } from '../platform/db';
+import { InternalError, UnavailableError } from '../platform/errors';
+import { log } from '../platform/log';
 
 const hlog = log.child({ component: 'hub' });
 const CHANNEL = 'alcove_workspace';
@@ -34,6 +34,9 @@ const after = <T>(ms: number, value: T): { done: Promise<T>; cancel: () => void 
   let timer: ReturnType<typeof setTimeout> | undefined;
   return { done: new Promise<T>((resolve) => { timer = setTimeout(() => resolve(value), ms); }), cancel: () => clearTimeout(timer) };
 };
+
+/** The notice that a workspace's tree, or who can open what in it, changed: every stream of the workspace looks again. */
+export const TREE_NOTICE = 'tree';
 
 /** Tells every instance, this one too, once `db`'s transaction commits (at once outside a transaction). */
 export async function publish(db: Db, workspaceId: string, notice: string): Promise<void> {

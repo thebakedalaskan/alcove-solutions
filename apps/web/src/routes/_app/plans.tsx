@@ -7,7 +7,7 @@ import { CheckoutParamSchema, type CheckoutParam } from '@alcove/api';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useCallback } from 'react';
 import { Plans } from '~/features/plans/Plans';
-import { q } from '~/lib/queries';
+import { planQueries } from '~/features/plans/queries';
 
 export const Route = createFileRoute('/_app/plans')({
   validateSearch: (s: Record<string, unknown>): { checkout?: CheckoutParam | undefined } => {
@@ -21,7 +21,7 @@ export const Route = createFileRoute('/_app/plans')({
   loader: async ({ context: { queryClient: qc } }) => {
     if (!navigator.onLine) return;
     await Promise.race([
-      Promise.allSettled([qc.ensureQueryData(q.offers()), qc.ensureQueryData(q.plan())]),
+      Promise.allSettled([qc.ensureQueryData(planQueries.offers()), qc.ensureQueryData(planQueries.plan())]),
       new Promise((r) => setTimeout(r, 1200))
     ]);
   },

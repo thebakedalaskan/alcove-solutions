@@ -4,7 +4,7 @@
  * full screen it's the frame's bar, which starts with the way back to where the workspace was opened from.
  */
 import { WsDocHead, type WsCrumb, type WsFace, type WsPop, type WsSave } from '@alcove/ui';
-import { PageBar } from './Bar';
+import { PageBar } from './full-screen/Bar';
 import { useWs, type Ws } from './context';
 
 export interface PaneHeadProps {

@@ -4,8 +4,8 @@
  * settled, made for it when it has none, with an agenda, a board or a document for files at the top, brought to the call.
  */
 import { AlcoveApiError, type CallAheadHome, type CallAheadMake, type Meeting, type Note } from '@alcove/api';
-import { createItem } from '../api/workspaces';
-import type { Space, World } from './index';
+import { createItem } from '../api/workspaces/workspaces';
+import type { Space, World } from './world';
 import { HIRING_SYNC, withHiringSync } from './scheduling';
 
 /** Each note's home, from the workspaces: the one whose call folder is the note's, when you're in it. */

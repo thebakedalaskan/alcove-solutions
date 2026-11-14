@@ -3,7 +3,7 @@
  * a frame holds has to change as it's drawn and sized, as well as when things are carried in and out.
  */
 import { addObject, holds, moveObjects, sitsIn } from '@alcove/board';
-import type { ToolPress } from '../gestures';
+import type { ToolPress } from '../input/gestures';
 import { movable } from '../selection';
 import type { Board } from '../useBoard';
 import { drawGesture } from './draw';

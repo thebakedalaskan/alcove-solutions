@@ -1,5 +1,5 @@
-import type { Deps } from '../context';
-import type { Attester } from '../tee';
+import type { Deps } from '../platform/context';
+import type { Attester } from '../tee/tee';
 import { createHttpContext } from './context';
 import { createHttpLimits } from './limits';
 

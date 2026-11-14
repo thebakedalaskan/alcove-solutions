@@ -6,9 +6,8 @@ import type { NotesLanguage, NotesSetting, Preferences } from '@alcove/api';
 import { Icon, Segmented, Select, SettingRow, SettingsGroup, SettingsPanel, type SelectOption } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { uploads } from '~/features/record/uploads';
-import { isUnencrypted, modelOf, modelOptions, modelValue } from '~/lib/aiModels';
+import { isUnencrypted, modelOf, modelOptions, modelValue, useAiModels } from '~/features/notes/models';
 import { useLive } from '~/lib/live';
-import { useAiModels } from '~/lib/queries';
 import { plural, sizeLabel } from '~/lib/words';
 import { Setting, SwitchSetting, useSave } from './save';
 

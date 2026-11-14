@@ -3,8 +3,8 @@
  * are in, through Cloudflare's API, and the wait until a public resolver sees them, which is when the CA can.
  */
 import { z } from 'zod';
-import { UnavailableError } from '../errors';
-import { log } from '../log';
+import { UnavailableError } from '../platform/errors';
+import { log } from '../platform/log';
 
 const dlog = log.child({ component: 'edge' });
 

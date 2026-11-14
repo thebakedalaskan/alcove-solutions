@@ -8,9 +8,9 @@ import { firstName, type Person } from '@alcove/api';
 import { wsToast, type WsToastData } from '@alcove/ui';
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { overlayOpen } from '~/lib/keys';
-import type { WorkspacePlace } from './context';
+import type { OpenPage, WorkspaceCall, WorkspacePlace } from './context';
 import { pageName, type Someone } from './presence';
-import { nameOf, type Tree } from './tree';
+import { nameOf, type Tree } from './tree/tree';
 
 /**
  * Who you're following and where they are now. `document` and `block` only ever name what you can open. `quiet`: they're
@@ -92,4 +92,64 @@ export function useFollow({ others, presenter, tree, at, goWith, say, pane }: Fo
     document: target, block: target !== null ? someone?.block ?? null : null, quiet
   };
   return { following, follow, stopFollowing: stop };
+}
+
+/**
+ * The workspace and the call's tiles. The tiles show who's here, who's writing and who you're following. The call asks to follow
+ * from a tile. Where each is is said while it's put away too: a presented workspace's tile says where its presenter is. Out of
+ * sight, put away or behind what it takes turns with, there's nothing to go with; leaving with the call's workspace, it's said:
+ * they'd otherwise just stop going with whoever they followed.
+ */
+export function useCallTiles({ call, others, tree, following, follow, stopFollowing, go, page, closed }: {
+  call: WorkspaceCall | undefined;
+  others: readonly Someone[];
+  tree: Tree;
+  following: Following | null;
+  follow: (person: string) => void;
+  stopFollowing: (how?: StopFollowing) => void;
+  go: (to: WorkspacePlace) => void;
+  /** The page open now, which tags someone. */
+  page: RefObject<OpenPage | null>;
+  /** Out of sight: put away, or behind what it takes turns with. */
+  closed: boolean;
+}): void {
+  const followable = closed ? '' : others.flatMap((o) => (o.callIdentity !== null && (o.document !== null || o.page !== null || o.elsewhere) ? [o.callIdentity] : [])).join(' ');
+  const writing = others.flatMap((o) => (o.typing && o.callIdentity !== null ? [o.callIdentity] : [])).join(' ');
+  const followingIn = following ? others.find((o) => o.person.id === following.person.id)?.callIdentity ?? null : null;
+  const placed = others.flatMap((o): [string, string][] => {
+    if (o.callIdentity === null) return [];
+    const doc = o.document === null ? undefined : tree.all.get(o.document);
+    return doc ? [[o.callIdentity, nameOf(doc)]] : o.page ? [[o.callIdentity, pageName(o.page)]] : o.elsewhere ? [[o.callIdentity, 'A document you can’t open']] : [];
+  });
+  const placedNow = useRef(placed);
+  placedNow.current = placed;
+  const where = JSON.stringify(placed);
+  const reachable = closed ? '' : others.flatMap((o) => (o.callIdentity !== null && o.document !== null && tree.all.has(o.document) ? [o.callIdentity] : [])).join(' ');
+  const tellTiles = call?.onTogether;
+  useEffect(() => {
+    tellTiles?.({ followable: followable ? followable.split(' ') : [], following: followingIn, writing: writing ? writing.split(' ') : [], where: Object.fromEntries(placedNow.current), reachable: reachable ? reachable.split(' ') : [] });
+  }, [tellTiles, followable, followingIn, writing, where, reachable]);
+  const othersNow = useRef(others);
+  othersNow.current = others;
+  const treeNow = useRef(tree);
+  treeNow.current = tree;
+  const togetherRef = call?.together;
+  useEffect(() => {
+    if (!togetherRef) return;
+    const someone = (connection: string) => othersNow.current.find((x) => x.callIdentity === connection);
+    togetherRef.current = {
+      follow: (connection) => { const o = someone(connection); if (o) follow(o.person.id); },
+      stop: (how) => stopFollowing(how),
+      /* To the line they're on, as Go there on their card does. */
+      go: (connection) => {
+        const o = someone(connection);
+        if (o?.document && treeNow.current.all.has(o.document)) go({ kind: 'document', id: o.document, block: o.block ?? undefined });
+      },
+      tag: (connection) => { const o = someone(connection); if (o) page.current?.tag(o.person); },
+      canTag: () => page.current?.canTag === true
+    };
+    return () => { togetherRef.current = null; };
+  }, [togetherRef, follow, stopFollowing, go]);
+  const leaving = call?.leaving ?? false;
+  useEffect(() => { if (closed) stopFollowing(leaving ? 'moved' : 'quiet'); }, [closed, leaving, stopFollowing]);
 }

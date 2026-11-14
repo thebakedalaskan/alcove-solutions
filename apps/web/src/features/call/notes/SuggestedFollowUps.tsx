@@ -5,13 +5,13 @@
  * or pen points at these, a finger is on them or was a moment ago (../layout/touchHold.ts), focus from the keyboard is in
  * them, or a decision is on its way, the rows stay as they were shown, anything new waits behind "N more suggested", and a
  * decision goes with the revision that was shown (useFollowUpReview). They catch up once none of that is so: focus a click
- * leaves behind doesn't hold them, as Chat's questions are held (../layout/ChatQuestions.tsx).
+ * leaves behind doesn't hold them, as Chat's questions are held (../chat/ChatQuestions.tsx).
  */
 import type { FollowUpReview as Review } from '@alcove/api';
 import { Avatar, Button, DURATION, EASE, IconButton, cn, type AvatarPerson } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type FocusEvent, type ReactNode, type RefObject } from 'react';
-import { useFollowUpReview, type FollowUpProposal } from '~/features/notes/useFollowUpReview';
+import { useFollowUpReview, type FollowUpProposal } from '~/features/notes/follow-ups/useFollowUpReview';
 import { useTouchHold } from '../layout/touchHold';
 
 /** A suggestion as the panel shows it. `evidence` is the times it was said, which open the transcript there. */

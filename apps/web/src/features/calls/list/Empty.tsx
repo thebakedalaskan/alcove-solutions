@@ -8,9 +8,9 @@ import type { Person } from '@alcove/api';
 import { Avatar, Button, EmptyState, Icon, buttonClass, type IconName } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
-import { useCallFlow } from '~/features/shell/context';
+import { useCallFlow } from '~/features/calls/flow/context';
 import { callName } from '~/lib/people';
-import { calendarConnectUrl } from '~/lib/queries';
+import { calendarConnectUrl } from '~/features/calls/scheduling/queries';
 
 /** An empty arch, dashed, with what would be there. */
 const Arch = ({ icon }: { icon: IconName }) => <span className="cs-empty-arch" aria-hidden="true"><Icon name={icon} size={24} /></span>;

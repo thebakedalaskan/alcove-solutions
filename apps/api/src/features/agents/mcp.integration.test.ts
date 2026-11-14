@@ -1,10 +1,10 @@
 import { AGENT_TOOLS, AgentPastCallSchema, AgentWriteResultSchema, type AgentScope, type AlcoveApi } from '@alcove/api';
 import { request as httpRequest } from 'node:http';
 import { z } from 'zod';
-import { id128, sealJson, stateKey } from '../../crypto';
-import { openOwner } from '../../owners';
-import { getItem, saveRevision } from '../../vault';
-import { speechWav } from '../../testing/fake-near';
+import { id128, sealJson, stateKey } from '../../keys/crypto';
+import { openOwner } from '../../keys/owners';
+import { getItem, saveRevision } from '../../keys/vault';
+import { speechWav } from '../../testing/fakes/near';
 import { connectGoogleCalendar, ORIGIN, type Browser } from '../../testing/harness';
 import { Client, SdkHttpError, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

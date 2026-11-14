@@ -7,7 +7,9 @@
  * the call (never a name or an address). A reload of the tab keeps them; leaving the call or closing the tab forgets
  * them. Someone with an account who comes back on a new connection keeps their level, matched in memory only.
  */
-import { CallVolumesSchema, type CallSession, type LiveStore } from '@alcove/api';
+import { CallVolumesSchema, type CallSession, type CallState, type LiveStore } from '@alcove/api';
+import { useEffect, useState } from 'react';
+import { useLive } from '~/lib/live';
 import { log } from '~/lib/log';
 
 const vlog = log.child({ component: 'call-volume' });
@@ -125,4 +127,13 @@ export function volumesFor(session: CallSession): CallVolumes {
   let v = stores.get(session);
   if (!v) { v = new CallVolumes(session.ticket.callId); stores.set(session, v); }
   return v;
+}
+
+/** How loud each person is for you (only your playback), kept for this call in this tab, following who's in it. */
+export function useVolumes(session: CallSession, participants: CallState['participants']): { volumes: CallVolumes; levels: Levels; canVolume: boolean } {
+  const volumes = volumesFor(session);
+  const levels = useLive(volumes);
+  const [canVolume] = useState(canSetVolume);
+  useEffect(() => { volumes.follow(participants); }, [volumes, participants]);
+  return { volumes, levels, canVolume };
 }

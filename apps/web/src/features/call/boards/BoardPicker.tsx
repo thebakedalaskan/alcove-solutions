@@ -12,13 +12,13 @@
  * Nobody can make or bring in a board while someone else presents one here, and a guest can't start one. In Share, where
  * what's picked is presented, nothing is picked while someone else presents a board or the workspace here.
  */
-import { AlcoveApiError, errorCode, firstName, type BoardCheck, type BoardOpen, type CallBrought, type CallPresent, type CallSession } from '@alcove/api';
-import { type BoardPickerAccess, type BoardPickerRecent, type BoardPickerInCall, type BoardPickerProps, type BoardTemplate, type PresentAskProps } from '@alcove/ui';
+import { AlcoveApiError, errorCode, firstName, type BoardCheck, type BoardOpen, type CallBrought, type CallPresent, type CallSession, type CallState, type CallWorkspace } from '@alcove/api';
+import { wsToast, type BoardPickerAccess, type BoardPickerRecent, type BoardPickerInCall, type BoardPickerProps, type BoardTemplate, type PresentAskProps, type WsToastData } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { log } from '~/lib/log';
-import { listNames } from '~/lib/people';
-import { q, type BoardToBring } from '~/lib/queries';
+import { callName, listNames } from '~/lib/people';
+import { workspaceQueries, type BoardToBring } from '~/features/workspace/queries';
 import { pastDay } from '~/lib/time';
 import type { CallBoard } from './callBoard';
 
@@ -115,8 +115,8 @@ interface PickerFrom {
 /** What the board picker offers and does, wherever it opens. `reset` forgets the access question, as the picker closes. */
 export function useBoardPicker({ session, board, mode, inRoom, account, brought, spaceName, showing, blocked, inCall, onOpenCall, onMade, onPresented, onDone, failed }: PickerFrom): { picker: BoardPickerProps; reset: () => void } {
   // Your Drive's workspaces, which reaching for the picker read already, then the boards in the newest of them.
-  const spaces = useQuery({ ...q.workspaces(), enabled: showing && !inRoom && account }).data;
-  const drive = useQuery({ ...q.boardsToBring(spaces ?? []), enabled: showing && !inRoom && account && spaces !== undefined });
+  const spaces = useQuery({ ...workspaceQueries.workspaces(), enabled: showing && !inRoom && account }).data;
+  const drive = useQuery({ ...workspaceQueries.boardsToBring(spaces ?? []), enabled: showing && !inRoom && account && spaces !== undefined });
   const [access, setAccess] = useState<BoardPickerAccess | null>(null);
   const [busy, setBusy] = useState(false);
   const rows = offered(brought, drive.data ?? [], spaceName);
@@ -171,4 +171,47 @@ export function useBoardPicker({ session, board, mode, inRoom, account, brought,
     picker: { inCall: callRow, blocked, inRoom, recents, access: access ?? undefined, busy, onTemplate, onRecent },
     reset: () => setAccess(null)
   };
+}
+
+/**
+ * Board's picker, under Board at the top right (in More on a phone), and Share's A board: the same boards, the one opening what's
+ * picked on your stage (`open`), the other presenting it (`share`). Nobody makes or brings in a board while someone else presents
+ * one here (the server's rule), and a guest starts none; in Share, nothing's picked while someone else presents a board or the
+ * workspace (`othersWhy`). Its first row is the board in the call, while you can open it, with who presents it or brought it.
+ */
+export function useBoardPickers({ session, board, state, space, inRoom, spaceName, showing, othersWhy, show, closeOpen, closeShare, say, failed }: {
+  session: CallSession;
+  board: CallBoard;
+  state: CallState;
+  space: CallWorkspace;
+  inRoom: boolean;
+  spaceName: (workspaceId: string) => string | null;
+  /** Which picker is showing, so its boards are fetched. */
+  showing: { open: boolean; share: boolean };
+  othersWhy: string | null;
+  /** Puts the board in the call on your stage. */
+  show: () => void;
+  /** Each picker put away once something's chosen. */
+  closeOpen: () => void;
+  closeShare: () => void;
+  say: (toast: WsToastData) => void;
+  failed: (e: unknown) => void;
+}) {
+  const presentNow = space.present;
+  const boardBy = presentNow?.kind === 'board' && !presentNow.mine ? firstName(presentNow.by.name) : null;
+  const blocked = state.role === 'guest' ? 'Guests can’t start a board here.' : boardBy ? `${boardBy} is presenting a board. You can start one once they stop.` : undefined;
+  const callBoardOpen = state.board.open;
+  const inCall = callBoardOpen && callBoardOpen.role !== null ? {
+    name: callBoardOpen.name ?? 'Untitled board',
+    by: presentNow?.kind === 'board' && presentNow.id === callBoardOpen.documentId ? (presentNow.mine ? 'You’re presenting it' : `${firstName(presentNow.by.name)} is presenting it`)
+      : board.opener ? `${callName(board.opener)} · brought it` : 'In this call'
+  } : null;
+  const picked = { onOpenCall: show, onMade: show, onPresented: (name: string) => { show(); say(wsToast.boardOn(name)); }, failed };
+  const open = useBoardPicker({
+    session, board, mode: 'open', inRoom, account: state.role !== 'guest', brought: space.documents, spaceName, showing: showing.open, blocked, inCall, onDone: closeOpen, ...picked
+  });
+  const share = useBoardPicker({
+    session, board, mode: 'present', inRoom, account: state.role !== 'guest', brought: space.documents, spaceName, showing: showing.share, blocked: othersWhy ?? blocked, inCall, onDone: closeShare, ...picked
+  });
+  return { open, share };
 }

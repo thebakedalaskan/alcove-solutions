@@ -1,5 +1,5 @@
 import { DEFAULT_SOUND_PREFERENCES, SoundPreferencesInputSchema, SoundPreferencesSchema } from './sounds';
-import { NotesSettingSchema } from '../calls/settings';
+import { NotesSettingSchema } from '../calls/notes/settings';
 import { ModelIdSchema } from '../notes/models';
 import { IDSchema, ISODateSchema } from '../shared/ids';
 import { z } from '../shared/zod';

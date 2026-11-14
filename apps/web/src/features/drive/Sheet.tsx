@@ -8,7 +8,8 @@ import { IconButton, cn } from '@alcove/ui';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { log } from '~/lib/log';
-import { q } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { workspaceQueries } from '~/features/workspace/queries';
 import { canEdit, type DriveActions } from './actions';
 import { DriveCard, FileRow, Files, type CardActions } from './Card';
 import { byLine, whereOf, type DriveFile } from './places';
@@ -67,7 +68,7 @@ export function usePreviews(files: readonly DriveFile[]): Map<string, DocumentPr
   const asks = useMemo(() => {
     const by = new Map<string, string[]>();
     for (const f of files) if (f.kind === 'doc') by.set(f.workspaceId, [...(by.get(f.workspaceId) ?? []), f.id]);
-    return [...by].map(([workspaceId, ids]) => q.previews(workspaceId, [...ids].sort()));
+    return [...by].map(([workspaceId, ids]) => workspaceQueries.previews(workspaceId, [...ids].sort()));
   }, [files]);
   const found = useQueries({ queries: asks });
   return useMemo(() => new Map(found.flatMap((r) => r.data ?? []).map((p) => [p.id, p])), [found]);
@@ -93,7 +94,7 @@ export function cardActions(f: DriveFile, w: WorkspaceSummary | undefined, a: Dr
 export function FileList({ files, spaces, actions, list, inside = false, tail }: {
   files: readonly DriveFile[]; spaces: readonly WorkspaceSummary[]; actions: DriveActions; list: boolean; inside?: boolean | undefined; tail?: ReactNode;
 }) {
-  const me = useQuery(q.session()).data?.user.name;
+  const me = useQuery(accountQueries.session()).data?.user.name;
   const previews = usePreviews(files);
   const now = new Date();
   return (

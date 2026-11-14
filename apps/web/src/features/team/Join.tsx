@@ -3,7 +3,7 @@
  * The link's secret is in its fragment, which no server sees, and it leaves the address bar at once. Signed in, the card asks
  * whose team it is and says what joining gives you, with Not now and Join; nothing happens until Join. Joining takes one of
  * the team's licenses if one is left, and the card says so, or that none was and the admin has been told. Signed out, it asks
- * you to sign in first: the invite waits in this tab while you do (lib/afterSignIn.ts), Google's way back included, and the
+ * you to sign in first: the invite waits in this tab while you do (features/account/afterSignIn.ts), Google's way back included, and the
  * card asks once you're back. A used or expired invite, being on a team already, no invite at all and no connection each say
  * so, and what to do.
  */
@@ -13,12 +13,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { hoursOfNotes } from '~/features/plans/words';
-import { WaysIn, type Auth, type Busy } from '~/features/welcome/WaysIn';
-import { clearReturn, returnTo, takeReturnTo } from '~/lib/afterSignIn';
-import { sessionOrOffline } from '~/lib/guards';
+import { WaysIn, type Auth, type Busy } from '~/features/account/WaysIn';
+import { clearReturn, returnTo, takeReturnTo } from '~/features/account/afterSignIn';
+import { sessionOrOffline } from '~/features/account/guards';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
-import { q, useGoogleSignIn, useJoinTeam, useSignIn } from '~/lib/queries';
+import { useGoogleSignIn, useSignIn } from '~/features/account/signIn';
+import { planQueries } from '~/features/plans/queries';
+import { teamQueries, useJoinTeam } from './queries';
 import { byWhen, dayFullMonth } from '~/lib/time';
 
 const jlog = log.child({ component: 'team-join' });
@@ -55,7 +57,7 @@ export function JoinTeamPage() {
   const toast = useToast();
   const [busy, setBusy] = useState<Busy>(null);
   const asking = joining.at === 'ask' || joining.at === 'joining';
-  const notes = useQuery({ ...q.offers(), enabled: asking }).data?.team.notesMinutes;
+  const notes = useQuery({ ...planQueries.offers(), enabled: asking }).data?.team.notesMinutes;
 
   /** Why the invite wasn't used: said on the card, and logged by its code alone. */
   const refused = async (e: unknown, peek: TeamInvitePeek | null) => {
@@ -65,7 +67,7 @@ export function JoinTeamPage() {
     if (code === 'unauthenticated') { setJoining({ at: 'sign-in' }); return; }
     if (code === 'not-found') { setJoining({ at: 'used' }); return; }
     if (code === 'conflict' && peek) {
-      const mine = await qc.fetchQuery({ ...q.myTeam(), staleTime: 0 }).catch(() => null);
+      const mine = await qc.fetchQuery({ ...teamQueries.myTeam(), staleTime: 0 }).catch(() => null);
       if (mine) { setJoining({ at: 'other', peek, mine }); return; }
     }
     setJoining({ at: 'failed', message: errorMessage(e) });
@@ -78,7 +80,7 @@ export function JoinTeamPage() {
     if (s === 'offline') { setJoining({ at: 'unreachable' }); return; }
     if (!s) { setJoining({ at: 'sign-in' }); return; }
     try {
-      const [peek, mine] = await Promise.all([qc.fetchQuery(q.teamInvite(secret)), qc.fetchQuery(q.myTeam())]);
+      const [peek, mine] = await Promise.all([qc.fetchQuery(teamQueries.teamInvite(secret)), qc.fetchQuery(teamQueries.myTeam())]);
       if (!mine) setJoining({ at: 'ask', peek });
       else if (sameEmail(peek.admin, s.user) || mine.name === peek.name) setJoining({ at: 'same', peek, yours: sameEmail(peek.admin, s.user) });
       else setJoining({ at: 'other', peek, mine });

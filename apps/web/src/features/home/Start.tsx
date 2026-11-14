@@ -8,9 +8,9 @@ import { Button, Faces, Icon, buttonClass, useToast } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { useId, useRef } from 'react';
 import { useFloodToCall } from '~/features/calls/flow/parts';
-import { useCallFlow } from '~/features/shell/context';
-import { useStartNow } from '~/lib/queries';
-import { peopleOn, whenLine, type Ahead } from './day';
+import { useCallFlow } from '~/features/calls/flow/context';
+import { useStartNow } from '~/features/calls/list/queries';
+import { peopleOn, whenLine, type Ahead } from '~/features/calls/list/ahead';
 
 export function Start({ first, soon, me, now }: { first: boolean; soon: Ahead | undefined; me: string | undefined; now: number }) {
   const flow = useCallFlow();

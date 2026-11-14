@@ -16,7 +16,7 @@ import type { Writable } from 'node:stream';
 import { extname, join, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { brotliCompress, constants, gzip } from 'node:zlib';
-import { log } from '../log';
+import { log } from '../platform/log';
 
 const slog = log.child({ component: 'edge' });
 const brotli = promisify(brotliCompress);

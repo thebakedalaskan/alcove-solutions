@@ -1,7 +1,7 @@
 /*
  * The tour, renewed: the old tour's card, spotlight, arrow and art, pointed at Alcove as it is now. AH.TR holds the
  * stops (what each says and the real thing it points at), the card's placement (ported from TourDialog in
- * packages/ui/src/components/guidance.tsx) and the journeys. Everyone is made up: you are Art Vandelay at Vandelay
+ * packages/ui/src/onboarding/guidance.tsx) and the journeys. Everyone is made up: you are Art Vandelay at Vandelay
  * Industries, on Wednesday 4 November.
  */
 (function () {

@@ -1,17 +1,103 @@
 /*
- * The calls ahead, as Calls lists them: your Alcove calls and the ones you're invited to, and, with Google Calendar
- * connected, the meetings on it with someone else on them (Home's own `aheadOf` puts them in order, a series by its next call
- * only). Grouped by day, with the calls waiting for a guest to pick a time apart from the rest, and said in words: who's on
- * each, and how the people invited have answered.
+ * The calls ahead: your Alcove calls and the ones you're invited to, and, with Google Calendar connected, the other meetings
+ * on it, soonest first and a series by its next call only (`aheadOf`). What Home and the side panel show of them
+ * (`aheadShown`), what can be joined right now (`joinable`), and how Calls lists them: grouped by day, with the calls waiting
+ * for a guest to pick a time apart from the rest, and said in words (who's on each, and how the people invited have answered).
  */
 import type { CalendarEvent, Meeting, Person, Rsvp } from '@alcove/api';
-import { aheadOf, isOffered, isSolo, peopleOn, seriesIdOf, type Ahead } from '~/features/home/day';
 import { repeatLineHere } from '~/features/calls/scheduling/words';
 import { byEmail, callName, sameEmail } from '~/lib/people';
-import { daysFromToday, hm, hoursAndMinutes, shortDay, weekday } from '~/lib/time';
+import { daysFromToday, hm, hoursAndMinutes, minutesUntil, shortDay, untilLabel, weekday } from '~/lib/time';
 import { plural } from '~/lib/words';
 
-export type { Ahead };
+/** Something ahead: one of your Alcove calls, or another meeting on your calendar. */
+export type Ahead =
+  | { kind: 'call'; id: string; title: string; startsAt: string; endsAt: string; call: Meeting }
+  | { kind: 'event'; id: string; title: string; startsAt: string; endsAt: string; event: CalendarEvent };
+
+/** A call that's offering times: `startsAt` means nothing until someone picks one. */
+export const isOffered = (a: Ahead) => a.kind === 'call' && !!a.call.offer;
+
+/** Still to come: a call offering times until the last of them has gone, anything else until it ends. */
+const stillOn = (m: Meeting, now: number) => {
+  if (m.status === 'live') return true;
+  if (m.status !== 'scheduled') return false;
+  const last = m.offer?.times.at(-1);
+  return new Date(last ?? m.endsAt).getTime() > now;
+};
+
+/**
+ * Alcove calls that are going or still to come, and calendar meetings that haven't ended, soonest first. A series
+ * shows its next call only, and a calendar event that's a copy of a listed call, as someone invited has in their
+ * own calendar, isn't listed twice.
+ */
+export function aheadOf(calls: readonly Meeting[], events: readonly CalendarEvent[], now: number): Ahead[] {
+  const series = new Set<string>();
+  const listed = [...calls].filter((m) => stillOn(m, now)).sort((a, b) => a.startsAt.localeCompare(b.startsAt)).filter((m) => {
+    if (!m.seriesId) return true;
+    if (series.has(m.seriesId)) return false;
+    series.add(m.seriesId);
+    return true;
+  });
+  const codes = new Set(calls.flatMap((m) => [m.code, ...(m.seriesCode ? [m.seriesCode] : [])]));
+  return [
+    ...listed.map((m): Ahead => ({ kind: 'call', id: m.id, title: m.title, startsAt: m.startsAt, endsAt: m.endsAt, call: m })),
+    ...events.filter((e) => new Date(e.endsAt).getTime() > now && !(e.alcoveCode && codes.has(e.alcoveCode)))
+      .map((e): Ahead => ({ kind: 'event', id: e.id, title: e.title, startsAt: e.startsAt, endsAt: e.endsAt, event: e }))
+  ].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+}
+
+/**
+ * What's ahead as Home and the side panel list it: your Alcove calls, and the other meetings on your calendar unless
+ * Show my other meetings on Home is off.
+ */
+export const aheadShown = (calls: readonly Meeting[] | undefined, events: readonly CalendarEvent[] | undefined, showOthers: boolean | undefined, now: number): Ahead[] =>
+  aheadOf(calls ?? [], showOthers === false ? [] : events ?? [], now);
+
+/** The series it continues, when it's in one: an Alcove call's, or a recurring meeting's you've held in Alcove. */
+export const seriesIdOf = (a: Ahead) => (a.kind === 'call' ? a.call.seriesId : a.event.seriesId);
+
+/** It has started: a live call, or a meeting whose time has come. A call nobody has picked a time for hasn't. */
+export const started = (a: Ahead, now: number) => !isOffered(a) && ((a.kind === 'call' && a.call.status === 'live') || new Date(a.startsAt).getTime() <= now);
+
+const organizerOf = (a: Ahead) => (a.kind === 'call' ? a.call.organizer : a.event.organizer);
+const yours = (a: Ahead) => (a.kind === 'call' ? a.call.isOrganizer : a.event.isOrganizer);
+
+/** Everyone else on it: the guests, and the organizer when that isn't you. */
+export function peopleOn(a: Ahead, me: string | undefined): Person[] {
+  const guests = a.kind === 'call' ? a.call.guests : a.event.guests;
+  const all = yours(a) ? guests : [organizerOf(a), ...guests];
+  return me ? all.filter((p) => !sameEmail(p, { email: me })) : all;
+}
+
+/**
+ * A calendar event with nobody else on it: your own time, not a call. Upcoming counts these at its foot and lists them,
+ * quieter, only when you ask (Show my own events on Home); Calls' list and week leave them out.
+ */
+export const isSolo = (a: Ahead, me: string | undefined) => a.kind === 'event' && peopleOn(a, me).length === 0;
+
+/** How long before a call Home offers to join it. */
+const JOIN_AHEAD_MS = 5 * 60_000;
+
+/** It starts in the next few minutes, when Home offers to join it and Upcoming counts down to it. */
+export const startsSoon = (a: Ahead, now: number) => !isOffered(a) && !started(a, now) && new Date(a.startsAt).getTime() - now <= JOIN_AHEAD_MS;
+
+/**
+ * The call to offer at the top of Home: one that's going, or else one with someone else on it that starts in the next
+ * few minutes. A meeting needs a link to join by. Anything further off stays out of the way: people join from their
+ * calendar. `within` is how far ahead it looks: Home's few minutes, unless the side panel asks for its ten.
+ */
+export function joinable(ahead: readonly Ahead[], me: string | undefined, now: number, within = JOIN_AHEAD_MS): Ahead | undefined {
+  return ahead.find((a) => a.kind === 'call' && a.call.status === 'live') ?? ahead.find((a) => {
+    if (isOffered(a) || (a.kind === 'event' && !a.event.join)) return false;
+    return new Date(a.startsAt).getTime() - now <= within && peopleOn(a, me).length > 0;
+  });
+}
+
+/** A call is going once someone's in it. A meeting elsewhere goes by the clock. */
+export const going = (a: Ahead, now: number) => (a.kind === 'call' ? a.call.status === 'live' : started(a, now));
+/** When it starts, as Home's line and the side panel say it: "Starts in 4 min", or "Happening now". */
+export const whenLine = (a: Ahead, now: number) => (going(a, now) ? 'Happening now' : `Starts ${untilLabel(minutesUntil(a.startsAt, now))}`);
 
 /** What Calls lists ahead: every Alcove call, and the calendar's meetings with someone else on them. */
 export const listedAhead = (calls: readonly Meeting[], events: readonly CalendarEvent[], me: string | undefined, now: number): Ahead[] =>

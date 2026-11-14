@@ -10,7 +10,7 @@ import type { CallCrypto, CallSession, CallState } from '@alcove/api';
 import { useEffect } from 'react';
 import { LocalMedia } from '~/features/call/media/media';
 import { api } from '~/lib/api';
-import { sessions, useClosingWithPage } from '~/lib/live';
+import { sessions, useClosingWithPage } from './handoff';
 import { lastPass, rememberPass } from './pass';
 
 /** Joins `code` with this tab's last pass for it, if it has one, and keeps the pass this join is given. */

@@ -8,7 +8,7 @@ import { Dots, Icon, Popover, SchedDoc, SchedQuiet, SchedRow, cn } from '@alcove
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { fold } from '~/lib/people';
-import { q } from '~/lib/queries';
+import { workspaceQueries } from '~/features/workspace/queries';
 import { called, placesIn } from '../flow/Documents';
 
 export function Bring({ picked, open, onOpenChange, onChange }: {
@@ -18,7 +18,7 @@ export function Bring({ picked, open, onOpenChange, onChange }: {
   onChange: (docs: Document[]) => void;
 }) {
   const [term, setTerm] = useState('');
-  const library = useQuery({ ...q.documents(), enabled: open });
+  const library = useQuery({ ...workspaceQueries.documents(), enabled: open });
   const places = useMemo(() => placesIn(library.data?.workspaces ?? []), [library.data]);
   const looking = fold(term.trim());
   const full = picked.length >= MAX_CALL_DOCUMENTS;

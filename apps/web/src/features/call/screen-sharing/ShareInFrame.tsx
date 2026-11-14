@@ -1,5 +1,5 @@
 /*
- * A screen in its frame (layout/frame.tsx): someone's share looked at your own way (ShareSurface.tsx: zoom, a picture held
+ * A screen in its frame (stage/frame.tsx): someone's share looked at your own way (ShareSurface.tsx: zoom, a picture held
  * still, earlier pictures, its own window), with everyone's pointers and marks on it (SharePointing.tsx), and your own share as
  * it goes out. The frame is one tab stop: its keys are the share's (LOOK_KEYS, L to point, and while pointing, the pointer's),
  * and its name menu (`ShareMenuRows`) lists them. What's kept of each share (`useShareLooks`) is this screen's only, let go of
@@ -11,8 +11,8 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, 
 import { createPortal } from 'react-dom';
 import { useLive } from '~/lib/live';
 import { callName } from '~/lib/people';
-import { screenOf } from '../layout/onStage';
-import type { StageShare } from '../layout/Stage';
+import { screenOf } from '../stage/onStage';
+import type { StageShare } from '../stage/Stage';
 import { FeedVideo } from '../media/Video';
 import type { ShareMarks } from './marks';
 import { popKind } from './popOut';

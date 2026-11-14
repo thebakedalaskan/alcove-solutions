@@ -15,8 +15,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Moments, cautionsOf, EvidenceFlags } from '~/features/notes/entries';
 import { MomentLink, decisionLine, proposedLine } from '~/features/notes/parts';
 import { sameEmail } from '~/lib/people';
-import { q, useUpdateAction, useUpdateDecision } from '~/lib/queries';
-import { dueFrom, dueLabel, dueOf, groupOf, sharedLately } from './day';
+import { accountQueries } from '~/features/account/queries';
+import { useUpdateAction, useUpdateDecision } from '~/features/notes/queries';
+import { dueFrom, dueLabel, dueOf, groupOf } from '~/features/notes/follow-ups/due';
+import { sharedLately } from '~/features/notes/inbox';
 
 export type Item =
   | { kind: 'decision'; key: string; at: string; d: PendingDecision }
@@ -47,7 +49,7 @@ export function useWaiting(items: Item[]) {
   const toast = useToast();
   const decide = useUpdateDecision();
   const act = useUpdateAction();
-  const me = useQuery(q.session()).data?.user.email;
+  const me = useQuery(accountQueries.session()).data?.user.email;
   /* What you answered this visit, with the item as it was, so it stays where it is after the inbox lets go of it. */
   const [answered, setAnswered] = useState<ReadonlyMap<string, { item: Item; outcome: Outcome }>>(new Map());
   /* Items whose answer is on its way; several can be, when you answer one after another. */

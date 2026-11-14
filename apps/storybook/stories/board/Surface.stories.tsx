@@ -119,7 +119,7 @@ export const OnItsPageDark: BoardStory = { ...OnItsPage, name: 'On its page, dar
 /**
  * For someone given view access, in a call: the tools and undo go away, and they can still look round, follow people, read
  * comments and talk. The bar keeps More, which has nothing in it that changes the board. With the call's vote round it, Vote
- * stays where it is too, disabled, saying why in its tip (Components/Board/BoardBar, View only, in a call).
+ * stays where it is too, disabled, saying why in its tip (Components/Board/Tools/BoardBar, View only, in a call).
  */
 export const ViewOnly: BoardStory = { name: 'View only', args: { mode: 'read', seal: 'View only', sealIcon: 'eye', acts: true, board: () => retroWithComments() } };
 /** More, for someone with view access: a link, the board as an image or a PDF, and Night board. */

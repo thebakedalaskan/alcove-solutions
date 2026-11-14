@@ -3,7 +3,7 @@
  * stories of a scheduled call's card, a guest picking a time and moving a call here. All made up.
  */
 import type { Meeting } from '@alcove/api';
-import type { MoveSpec } from '.';
+import type { MoveSpec } from './world';
 import { call } from './build';
 import { iso } from './clock';
 import { ANA, ART, JONAS, KOFI, LENA, MAYA, PRIYA } from './people';

@@ -1,21 +1,21 @@
 import { CALL_TIMER_MAX_SECONDS, CallTimerSchema, MAIN_PLACE, ModelIdSchema, firstName } from '@alcove/api';
 import { z } from 'zod';
-import type { Owner } from '../../context';
-import { id128, openJson, sealJson, stateKey, toJson } from '../../crypto';
-import { bytea, exec, maybeOne, timestamp, type Db } from '../../db';
-import { notFound } from '../../errors';
-import { CallBoards, CallSpace, NO_BOARDS, NO_SPACE, withOpenBoards } from './space-state';
-import * as space from './workspace';
-import * as boards from './boards';
-import * as capture from './capture';
+import type { Owner } from '../../platform/context';
+import { id128, openJson, sealJson, stateKey, toJson } from '../../keys/crypto';
+import { bytea, exec, maybeOne, timestamp, type Db } from '../../platform/db';
+import { notFound } from '../../platform/errors';
+import { CallBoards, CallSpace, NO_BOARDS, NO_SPACE, withOpenBoards } from './workspace/space-state';
+import * as space from './workspace/workspace';
+import * as boards from './boards/boards';
+import * as capture from './notes/capture';
 import { noticesFor, type HostChange } from './hosting';
 import { BreakoutState, Joined, placesOf, relocate } from './places';
-import { keepRooms } from './scribes';
-import * as screens from '../recordings/screens';
-import { carryModel } from '../notes/carryModel';
-import { carryFrameCapture, FrameCapture } from '../recordings/storedFrames';
-import { log } from '../../log';
-import { syncAttention } from './attention';
+import { keepRooms } from './notes/scribes';
+import * as screens from '../recordings/screens/screens';
+import { carryModel } from '../profile/carry-model';
+import { carryFrameCapture, FrameCapture } from './notes/stored-frames';
+import { log } from '../../platform/log';
+import { syncAttention } from './attention/attention';
 
 const clog = log.child({ component: 'calls' });
 
@@ -85,7 +85,7 @@ export const Stored = z.preprocess((v) => withTimer(withHost(v)), z.object({
    */
   moving: z.object({ until: z.number() }).nullable().default(null),
   notes: z.preprocess((v) => carryFrameCapture(carryModel(v)), z.object({
-    /** What the call captures now (features/calls/capture.ts): notes off, on, or on and paused by the organizer. */
+    /** What the call captures now (features/calls/notes/capture.ts): notes off, on, or on and paused by the organizer. */
     status: capture.CaptureStatus, everOn: z.boolean(), noteId: z.string().nullable(), recordingId: z.string().nullable(), segment: z.number(),
     /**
      * When the current segment of the recording began, in seconds since the call started, on this server's clock. A
@@ -100,7 +100,7 @@ export const Stored = z.preprocess((v) => withTimer(withHost(v)), z.object({
     /** What the organizer's current connection says it can't capture now (no microphone, or a browser that can't record or listen). */
     unavailable: z.array(capture.CapturePartName),
     /**
-     * Shared screens kept for the notes (features/recordings/screens.ts): every time a kept share started going with none
+     * Shared screens kept for the notes (features/recordings/screens/screens.ts): every time a kept share started going with none
      * before, or the last one stopped. A call stored before shares were asked about has none.
      */
     screenHistory: z.array(capture.ScreenChange).default([]),
@@ -131,7 +131,7 @@ export const Stored = z.preprocess((v) => withTimer(withHost(v)), z.object({
   pointing: z.boolean(),
   othersPointOff: z.array(z.string()),
   /**
-   * Shares started in the call (features/recordings/screens.ts), the latest MAX_SHARES: whose (`identity`), whether the
+   * Shares started in the call (features/recordings/screens/screens.ts), the latest MAX_SHARES: whose (`identity`), whether the
    * presenter said it goes in the notes and it still does (`keep`), whether it has a row with the recording
    * (`recorded`), and when it started and ended (seconds since the call started; `until` null while it's going).
    */
@@ -145,7 +145,7 @@ export const Stored = z.preprocess((v) => withTimer(withHost(v)), z.object({
   workspace: CallSpace.default(NO_SPACE),
   /** Which board is open in each part of the call, and which boards it lets everyone into. */
   board: CallBoards.default(NO_BOARDS),
-  /** The call's timer, the same for everyone in it (features/calls/timers.ts), or null while none runs. */
+  /** The call's timer, the same for everyone in it (features/calls/timers/timers.ts), or null while none runs. */
   timer: CallTimerSchema.nullable().default(null)
 }));
 
@@ -308,7 +308,7 @@ export const capturing = (row: Pick<Row, 'state'>, s: Stored, place: string = MA
   return { live: row.state === 'live', status, noteId: s.notes.noteId, recordingId: s.notes.recordingId, room: status !== s.notes.status };
 };
 
-/* ---------- shared screens: each share, and the video of those kept for the notes (features/recordings/screens.ts) ---------- */
+/* ---------- shared screens: each share, and the video of those kept for the notes (features/recordings/screens/screens.ts) ---------- */
 
 /** At most this many shares are remembered in a call (its sealed state stays small): the oldest ended ones go first. */
 const MAX_SHARES = 200;

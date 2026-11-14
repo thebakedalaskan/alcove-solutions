@@ -3,7 +3,7 @@ import { firstName, isAcceptedFollowUp, notesAreOn, type CallState, type Person,
 import { captureHere } from '~/lib/capture';
 import { hm } from '~/lib/time';
 import type { LiveLine, MomentLine } from '../editor/types';
-import { asNamed, type PersonIds } from '../ids';
+import { asNamed, type PersonIds } from '../sharing/ids';
 
 /** What's captured where you are. */
 export const modeHere = (s: CallState) => captureHere(s.capture).mode;

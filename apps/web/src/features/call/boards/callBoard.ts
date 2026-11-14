@@ -1,7 +1,7 @@
 /*
  * The board in a call, as this browser holds it (docs: Calls and recordings › A board in a call): the board in the part of the
  * call you're in (`CallState.board`), which votes, ideas from the call and breakout rooms hang on, or a saved board on your
- * stage only (`SavedBoard`), which touches nothing in the call. Whichever is on your stage (layout/onStage.ts) has its session open
+ * stage only (`SavedBoard`), which touches nothing in the call. Whichever is on your stage (stage/onStage.ts) has its session open
  * while you can open it; so does the call's board while it's in the call, for its presented tile. Who you're following on it,
  * and what you're told as it closes, are here too. What's drawn is features/board/CallBoard.tsx, loaded the first time it's
  * needed.
@@ -10,7 +10,7 @@
  * confidential compute unless notes are paused (docs: Calls and recordings › A board in a call).
  */
 import {
-  BOARD_SHOT_TOPIC, BoardShotMessageSchema, DocCallerStateSchema, errorCode, type CallBoardIdea, type CallBoardOpen, type CallSession, type CallState, type DocSession, type DocStatus,
+  BOARD_SHOT_LIMITS, BOARD_SHOT_TOPIC, BoardShotMessageSchema, DocCallerStateSchema, errorCode, type CallBoardIdea, type CallBoardOpen, type CallSession, type CallState, type DocSession, type DocStatus,
   type Person
 } from '@alcove/api';
 import type { BoardStep } from '@alcove/board';
@@ -20,21 +20,22 @@ import { useReducedMotion } from 'motion/react';
 import { useToast, wsToast, type BoardIdea } from '@alcove/ui';
 import { boardPictures, boardUpload, linkableIn } from '~/features/board/around';
 import type { BoardHandle, BoardPerson, BoardPictures } from '~/features/board/BoardSurface';
-import type { BoardCommenting } from '~/features/board/comments';
+import type { BoardCommenting } from '~/features/board/people/comments';
 import type { BoardUpload } from '~/features/board/more/items';
 import type { BoardItem } from '~/features/board/more/objects';
 import type { SortAsk } from '~/features/board/useBoard';
 import { useStorageRefusal } from '~/features/plans/storageFull';
-import { usePersonIds } from '~/features/workspace/ids';
-import { canKeepEdits } from '~/features/workspace/keep';
+import { usePersonIds } from '~/features/workspace/sharing/ids';
+import { canKeepEdits } from '~/features/workspace/offline/keep';
 import { useOpensAgain } from '~/features/workspace/opened';
 import { openDocument } from '~/features/workspace/session';
 import { api } from '~/lib/api';
 import { captureHere } from '~/lib/capture';
 import { log } from '~/lib/log';
 import { callName } from '~/lib/people';
-import { q, useSortStickies } from '~/lib/queries';
+import { workspaceQueries, useSortStickies } from '~/features/workspace/queries';
 import { agoLabel } from '~/lib/time';
+import type { CallRoom } from '../media/livekit';
 
 const blog = log.child({ component: 'call-board' });
 
@@ -176,7 +177,7 @@ export interface SavedBoard { workspaceId: string; documentId: string; name: str
 
 /**
  * What's said when the board in the call leaves it for everyone, but not as a presentation closing for everyone, which the stage
- * says (layout/onStage.ts). Moving to a room, or back, brings that part's board, unsaid. Otherwise it was closed for everyone
+ * says (stage/onStage.ts). Moving to a room, or back, brings that part's board, unsaid. Otherwise it was closed for everyone
  * by whoever opened it or the organizer (`board-close`), and it's still saved where it was; or it was moved to Trash, alone or
  * in a folder, or deleted, its workspace with it, which the board's own session says as it hears it.
  */
@@ -207,20 +208,15 @@ export interface CallBoardFacts {
   spaceName: (workspaceId: string) => string | null;
 }
 
-export function useCallBoard({ session, stage, saved, state, me, owner, talking, say, place, cameBack, spaceName }: CallBoardFacts) {
-  const open = state.board.open;
-  const pass = session.ticket.pass;
+/**
+ * Closed for everyone while it's shown to you, a board sinks before it goes: drawn as it was for `SINK_MS`, its session still
+ * open, and then the faces come back. Not when another opens in its place, nor for someone who hid it, nor with reduced motion.
+ * `latest` is the open board as it last read: renamed while it's open, it closes under its new name.
+ */
+function useSinking(open: CallBoardOpen | null, key: string, hidden: boolean): { sinking: CallBoardOpen | null; latest: RefObject<CallBoardOpen | null> } {
   const reduce = useReducedMotion();
-  const onStage = stage === 'call';
-  const hidden = !onStage;
-  const key = open ? `${open.workspaceId ?? ''}/${open.documentId ?? ''}/${open.openedBy ?? ''}` : '';
-  /** The open board as it last read: renamed while it's open, it closes under its new name. */
   const latest = useRef<CallBoardOpen | null>(null);
   useEffect(() => { if (open) latest.current = open; });
-  /*
-   * Closed for everyone while it's shown to you, a board sinks before it goes: drawn as it was for `SINK_MS`, its session still
-   * open, and then the faces come back. Not when another opens in its place, nor for someone who hid it, nor with reduced motion.
-   */
   const [shut, setShut] = useState<{ key: string; sinking: CallBoardOpen | null }>({ key, sinking: null });
   if (shut.key !== key) setShut({ key, sinking: key === '' && !hidden && !reduce && latest.current?.role ? latest.current : null });
   const sinking = shut.key === key ? shut.sinking : null;
@@ -229,13 +225,93 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
     const t = setTimeout(() => setShut((was) => (was.sinking === sinking ? { ...was, sinking: null } : was)), SINK_MS);
     return () => clearTimeout(t);
   }, [sinking]);
+  return { sinking, latest };
+}
+
+/** A board that's just opened, or come back, rises: `fresh` for `RISE_MS`, from each `rise`. */
+function useRise(): { fresh: boolean; rise: () => void } {
+  const [fresh, setFresh] = useState(false);
+  const riseTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const rise = useCallback(() => {
+    setFresh(true);
+    clearTimeout(riseTimer.current);
+    riseTimer.current = setTimeout(() => setFresh(false), RISE_MS);
+  }, []);
+  useEffect(() => () => clearTimeout(riseTimer.current), []);
+  return { fresh, rise };
+}
+
+/** A board you can't open is said to be so only once it's been so for a moment (`NO_ACCESS_WAIT_MS`), and one that opens to you meanwhile just opens. */
+function useRefused(blocked: boolean, key: string): boolean {
+  const [refused, setRefused] = useState(false);
+  useEffect(() => {
+    if (!blocked) { setRefused(false); return undefined; }
+    const t = setTimeout(() => setRefused(true), NO_ACCESS_WAIT_MS);
+    return () => clearTimeout(t);
+  }, [blocked, key]);
+  return refused;
+}
+
+/**
+ * Where the board's view lands once it's drawn here, whose code loads a moment after its session, so each waits for it. On the
+ * board every room shares, you land on your room's frame, and when rooms close it glides out to all of it. Whoever stays in the
+ * main room sees all of it as the rooms' frames arrive, to watch them fill up (`roomIds`, read as the rooms open, with `shared`).
+ * And `showFrame` brings a frame into view, as someone joins a vote on it from the call.
+ */
+function useBoardLanding({ doc, frame, shared, roomIds, handle }: { doc: DocSession | null; frame: string | null; shared: boolean; roomIds: string; handle: RefObject<BoardHandle | null> }): (id: string) => void {
+  const framed = useRef<{ doc: DocSession | null; frame: string | null; shared: boolean }>({ doc: null, frame: null, shared: false });
+  useEffect(() => {
+    if (!doc) return undefined;
+    const last = framed.current;
+    if (last.doc === doc && last.frame === frame && last.shared === shared) return undefined;
+    framed.current = { doc, frame, shared };
+    const opened = shared && !last.shared && frame === null;
+    if (frame === null && last.doc !== doc && !opened) return undefined;
+    if (frame === null && last.frame === null && !opened) return undefined;
+    let raf = 0;
+    let tries = 0;
+    const go = () => {
+      const h = handle.current;
+      if (!h) { if (tries++ < 240) raf = requestAnimationFrame(go); return; }
+      if (frame) h.focusFrame(frame);
+      else if (opened) h.showRooms(roomIds.split(' ').filter(Boolean));
+      else h.fit();
+    };
+    go();
+    return () => cancelAnimationFrame(raf);
+    // `roomIds` is read as the rooms open, with `shared`.
+  }, [doc, frame, shared]);
+
+  const [toFrame, setToFrame] = useState<{ id: string; n: number } | null>(null);
+  useEffect(() => {
+    if (!toFrame) return undefined;
+    let raf = 0;
+    let tries = 0;
+    const go = () => {
+      const h = handle.current;
+      if (!h) { if (tries++ < 240) raf = requestAnimationFrame(go); return; }
+      h.focusFrame(toFrame.id);
+    };
+    go();
+    return () => cancelAnimationFrame(raf);
+  }, [toFrame]);
+  return useCallback((id: string) => setToFrame((was) => ({ id, n: (was?.n ?? 0) + 1 })), []);
+}
+
+export function useCallBoard({ session, stage, saved, state, me, owner, talking, say, place, cameBack, spaceName }: CallBoardFacts) {
+  const open = state.board.open;
+  const pass = session.ticket.pass;
+  const onStage = stage === 'call';
+  const hidden = !onStage;
+  const key = open ? `${open.workspaceId ?? ''}/${open.documentId ?? ''}/${open.openedBy ?? ''}` : '';
+  const { sinking, latest } = useSinking(open, key, hidden);
   /*
    * A saved board just for you is opened as yours, with your account, not the call's pass: the call has nothing to do with it.
    * It's what's drawn while it's on your stage; otherwise the call's board is, or the one sinking as it closes. It's named as
    * its workspace names it now (read as it's drawn, for its links, so it costs nothing more), not as it was named when it
    * opened: a rename, here or anywhere else, holds.
    */
-  const savedTree = useQuery({ ...q.workspaceTree(saved?.workspaceId ?? ''), enabled: saved !== null }).data;
+  const savedTree = useQuery({ ...workspaceQueries.workspaceTree(saved?.workspaceId ?? ''), enabled: saved !== null }).data;
   const liveName = saved ? savedTree?.items.find((i) => i.id === saved.documentId)?.name : undefined;
   const savedName = liveName === undefined ? saved?.name : liveName || 'Untitled board';
   const savedOpen = useMemo((): CallBoardOpen | null => (saved ? {
@@ -258,9 +334,6 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
   const talkingSet = useMemo(() => new Set(talkingKey ? talkingKey.split(' ') : []), [talkingKey]);
   const handle = useRef<BoardHandle | null>(null);
   const [following, setFollowing] = useState<string | null>(null);
-  const [fresh, setFresh] = useState(false);
-  /** A board you can't open is said to be so only once it's been so for a moment (`NO_ACCESS_WAIT_MS`). */
-  const [refused, setRefused] = useState(false);
   /**
    * How many times a board came to you with the rest of your part of the call (rooms opening or closing, or rooms that share it
    * opening while you oversee them): it opens on your stage.
@@ -270,7 +343,7 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
   const shownNow = useRef(false);
   /**
    * The last presentation of a board here. Closing that for everyone closes the board as it ends, in the same change, and the
-   * stage says so (layout/onStage.ts), so the board doesn't say it again.
+   * stage says so (stage/onStage.ts), so the board doesn't say it again.
    */
   const presentedBoard = useRef<{ key: string; documentId: string } | null>(null);
   const presentNow = state.workspace.present;
@@ -282,13 +355,7 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
   const wasAt = useRef(place);
   /** What the next board to open says in place of the usual, from whoever opened it here: who it let in, say. */
   const next = useRef<string | null>(null);
-  const riseTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const rise = useCallback(() => {
-    setFresh(true);
-    clearTimeout(riseTimer.current);
-    riseTimer.current = setTimeout(() => setFresh(false), RISE_MS);
-  }, []);
-  useEffect(() => () => clearTimeout(riseTimer.current), []);
+  const { fresh, rise } = useRise();
   const openedBy = open?.openedBy ?? null;
   const opener = openedBy ? state.participants.find((p) => p.id === openedBy) ?? null : null;
   useEffect(() => {
@@ -324,17 +391,9 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
   useEffect(() => { shownNow.current = onStage && open !== null; });
   /* A board you can't open is shown so once it's held a moment, and one that opens to you meanwhile just opens. */
   const blocked = open !== null && open.role === null;
-  useEffect(() => {
-    if (!blocked) { setRefused(false); return undefined; }
-    const t = setTimeout(() => setRefused(true), NO_ACCESS_WAIT_MS);
-    return () => clearTimeout(t);
-  }, [blocked, key]);
+  const refused = useRefused(blocked, key);
 
-  /*
-   * On the board every room shares, you land on your room's frame, and when rooms close it glides out to all of it. Whoever
-   * stays in the main room sees all of it as the rooms' frames arrive, to watch them fill up. The board's code loads a moment
-   * after its session, so this waits for it.
-   */
+  /* Where the board's view lands: your room's frame, all of the rooms, or a frame someone's voting on (`useBoardLanding`). */
   const frame = open?.frame ?? null;
   const shared = state.breakouts.open?.board === 'shared';
   const roomIds = state.breakouts.open?.rooms.map((r) => r.id).join(' ') ?? '';
@@ -344,47 +403,7 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
    */
   const sharedFrom = state.isOrganizer && shared && open !== null ? state.breakouts.open?.from ?? null : null;
   useEffect(() => { if (sharedFrom !== null) setArrived((n) => n + 1); }, [sharedFrom]);
-  const framed = useRef<{ doc: DocSession | null; frame: string | null; shared: boolean }>({ doc: null, frame: null, shared: false });
-  useEffect(() => {
-    if (!doc) return undefined;
-    const last = framed.current;
-    if (last.doc === doc && last.frame === frame && last.shared === shared) return undefined;
-    framed.current = { doc, frame, shared };
-    const opened = shared && !last.shared && frame === null;
-    if (frame === null && last.doc !== doc && !opened) return undefined;
-    if (frame === null && last.frame === null && !opened) return undefined;
-    let raf = 0;
-    let tries = 0;
-    const go = () => {
-      const h = handle.current;
-      if (!h) { if (tries++ < 240) raf = requestAnimationFrame(go); return; }
-      if (frame) h.focusFrame(frame);
-      else if (opened) h.showRooms(roomIds.split(' ').filter(Boolean));
-      else h.fit();
-    };
-    go();
-    return () => cancelAnimationFrame(raf);
-    // `roomIds` is read as the rooms open, with `shared`.
-  }, [doc, frame, shared]);
-
-  /*
-   * A frame to bring into view once the board's drawn here, as someone joins a vote on it from the call: its code loads a moment
-   * after it opens, so this waits for it, as landing on a room's frame does.
-   */
-  const [toFrame, setToFrame] = useState<{ id: string; n: number } | null>(null);
-  useEffect(() => {
-    if (!toFrame) return undefined;
-    let raf = 0;
-    let tries = 0;
-    const go = () => {
-      const h = handle.current;
-      if (!h) { if (tries++ < 240) raf = requestAnimationFrame(go); return; }
-      h.focusFrame(toFrame.id);
-    };
-    go();
-    return () => cancelAnimationFrame(raf);
-  }, [toFrame]);
-  const showFrame = useCallback((id: string) => setToFrame((was) => ({ id, n: (was?.n ?? 0) + 1 })), []);
+  const showFrame = useBoardLanding({ doc, frame, shared, roomIds, handle });
 
   /* Following someone on the board, or going to them once. The board says if they aren't on it. */
   const follow = useCallback((id: string | null) => {
@@ -408,7 +427,7 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
    * The board's workspace as you can open it, read once it's open to you: each link's name for you, and what More links to.
    * Someone it isn't open to reads nothing of it.
    */
-  const tree = useQuery({ ...q.workspaceTree(workspaceId ?? '', drawnPass), enabled: workspaceId !== null && drawnOpen?.role != null }).data;
+  const tree = useQuery({ ...workspaceQueries.workspaceTree(workspaceId ?? '', drawnPass), enabled: workspaceId !== null && drawnOpen?.role != null }).data;
   const linkable = useMemo(() => (tree ? linkableIn(tree.items) : null), [tree]);
   const named = useMemo(() => new Map((linkable ?? []).map((i) => [i.id, i])), [linkable]);
   const itemFor = useCallback((item: string): BoardItem | null => named.get(item) ?? null, [named]);
@@ -422,9 +441,8 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
   const editing = open?.role === 'edit' && doc !== null && !mineDrawn;
   // Whoever has it open looks for ideas, and the server looks once a minute at most, for everyone here.
   const watching = editing && notes === 'on' && state.phase === 'in-call';
-  useEffect(() => (watching ? session.watchIdeas() : undefined), [session, watching]);
   // By the board alone: whoever brought it can come and go, and what you put aside stays aside.
-  const ideas = useBoardIdeas(session, state, handle, me, `${open?.workspaceId ?? ''}/${open?.documentId ?? ''}`, say);
+  const ideas = useBoardIdeas(session, state, handle, me, `${open?.workspaceId ?? ''}/${open?.documentId ?? ''}`, say, watching);
   const { mutateAsync: sortIn } = useSortStickies(pass);
   const sort = useMemo((): SortAsk | undefined => {
     if (!editing || notes === 'paused' || !workspaceId || !documentId) return undefined;
@@ -482,7 +500,9 @@ const samePerson = (a: Person, b: Person): boolean => (a.email && b.email ? a.em
  * since. An idea's sticky has an ID made from the idea, so two people adding it at once make one sticky, and one someone else
  * has already added counts as added. What you put aside stays aside for you; nobody else's tray changes.
  */
-function useBoardIdeas(session: CallSession, state: CallState, handle: RefObject<BoardHandle | null>, me: string, board: string, say: CallBoardFacts['say']): BoardIdeas {
+function useBoardIdeas(session: CallSession, state: CallState, handle: RefObject<BoardHandle | null>, me: string, board: string, say: CallBoardFacts['say'], watching: boolean): BoardIdeas {
+  /* Whoever has it open while notes are on here asks the call to look for ideas, and the server looks once a minute at most, for everyone here. */
+  useEffect(() => (watching ? session.watchIdeas() : undefined), [session, watching]);
   const offered = state.board.ideas;
   const [aside, setAside] = useState<ReadonlySet<string>>(() => new Set());
   const [added, setAdded] = useState<ReadonlySet<string>>(() => new Set());
@@ -632,3 +652,11 @@ export function shotHeard(payload: Uint8Array): string | null {
   }
 }
 export { BOARD_SHOT_TOPIC };
+
+/** Someone put a picture of your screen on the board: you're told, so nothing of your screen goes there without you knowing. */
+export function useShotHeard({ room, myShare, whoIs, toast }: { room: CallRoom; myShare: string | null; whoIs: (id: string) => Person; toast: ReturnType<typeof useToast> }): void {
+  useEffect(() => room.receive(BOARD_SHOT_TOPIC, (payload, from) => {
+    const share = shotHeard(payload);
+    if (share && share === myShare) toast(`${callName(whoIs(from))} put a picture of your screen on the board.`, { icon: 'image' });
+  }, BOARD_SHOT_LIMITS), [room, myShare]);
+}

@@ -7,7 +7,7 @@
 import { Chip, CheckDraw, EASE, Faces, Icon, Spinner, useSceneLoop } from '@alcove/ui';
 import { motion, useReducedMotion } from 'motion/react';
 import { useRef, useState, type ReactNode } from 'react';
-import { CAST } from '~/features/notes/cast';
+import { CAST } from '~/features/examples/cast';
 
 const ASK = 'What did we decide about the onboarding launch? Then book 45 minutes with Priya and Kofi next week to go over it.';
 /**

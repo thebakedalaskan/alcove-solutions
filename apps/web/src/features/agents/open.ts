@@ -8,7 +8,7 @@
 import type { AgentConnection } from '@alcove/api';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { q } from '~/lib/queries';
+import { agentQueries } from './queries';
 
 /** What an open popover shows: how to connect, a token being made, a connection, asking before disconnecting it, or that it's just connected. */
 export type View = 'connect' | 'token' | 'conn' | 'off' | 'joined';
@@ -24,7 +24,7 @@ export function useAgentsLine() {
   /** The connections there were when it started looking out, by ID. */
   const [before, setBefore] = useState<ReadonlySet<string> | undefined>(undefined);
   /* The loader has tried it; a list that didn't load waits for Try again. */
-  const agents = useQuery({ ...q.agents(), retryOnMount: false, refetchInterval: before ? LOOKING_MS : IDLE_MS });
+  const agents = useQuery({ ...agentQueries.agents(), retryOnMount: false, refetchInterval: before ? LOOKING_MS : IDLE_MS });
   const fresh = before && agents.data ? agents.data.filter((c) => !before.has(c.id)).sort(newest)[0] : undefined;
   if (fresh) {
     setBefore(undefined);

@@ -8,7 +8,7 @@ import type { TopUp } from '@alcove/api';
 import { spawn } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
-import { watch } from './deposits';
+import { watch } from './top-ups/deposits';
 
 vi.setConfig({ testTimeout: 90_000 });
 

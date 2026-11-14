@@ -10,7 +10,7 @@ import { useLive } from '~/lib/live';
 import { sameEmail } from '~/lib/people';
 import { NO_DATE, dayWords, dueWords } from './dates';
 import type { LiveHost } from './host';
-import { earlierIds, type PersonIds } from '../ids';
+import { earlierIds, type PersonIds } from '../sharing/ids';
 import { clockAt, personNamed, sameName } from './lines';
 
 /** A row, what it takes to tick it, and whether it's yours. */

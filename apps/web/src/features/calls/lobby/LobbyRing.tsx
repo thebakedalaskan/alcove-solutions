@@ -8,9 +8,9 @@ import { RingAddArch, RingArch } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { motion, useReducedMotion } from 'motion/react';
 import { useMemo, useState } from 'react';
-import { PeoplePicker } from '~/features/people/PeoplePicker';
+import { PeoplePicker } from '~/features/team/PeoplePicker';
 import { callName, listNames, sameEmail, someNames } from '~/lib/people';
-import { busyNow } from '~/lib/queries';
+import { busyNow } from '~/features/calls/scheduling/queries';
 
 /** How many arches fit beside Add. Anyone picked past that still shows. */
 const ARCHES = 4;

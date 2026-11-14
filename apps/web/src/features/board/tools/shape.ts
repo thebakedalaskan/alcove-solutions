@@ -1,6 +1,6 @@
 /* The Shape tool: drag to size it, or click for a standard one, and type straight onto it. */
 import { addObject } from '@alcove/board';
-import type { ToolPress } from '../gestures';
+import type { ToolPress } from '../input/gestures';
 import { drawGesture } from './draw';
 
 const STANDARD = { w: 170, h: 84 };

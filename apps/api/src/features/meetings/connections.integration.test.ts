@@ -8,14 +8,14 @@ import { DEFAULT_NOTES_CHOICES, errorCode, errorMessage, errorRequestId, type Au
 import pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { createPool, tx } from '../../db';
+import { createPool, tx } from '../../platform/db';
 import { maintain } from '../../maintenance';
 import { HANDOFF_MS, endOverdue, reconcile } from '../calls/lifecycle';
-import { openOwner } from '../../owners';
-import { speechWav } from '../../testing/fake-near';
+import { openOwner } from '../../keys/owners';
+import { speechWav } from '../../testing/fakes/near';
 import { ORIGIN, cookieFetch, startHarness, type Harness } from '../../testing/harness';
 import { connect, disposeLiveKit, participantsDirectly, signWebhook, type TestParticipant } from '../../testing/livekit';
-import { getItem, saveRevision } from '../../vault';
+import { getItem, saveRevision } from '../../keys/vault';
 
 vi.setConfig({ testTimeout: 60_000 });
 

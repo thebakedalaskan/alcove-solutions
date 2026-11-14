@@ -6,12 +6,12 @@ import { TeamStartRow } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useCheckout } from '~/features/plans/checkout';
 import { licenseRuns } from '~/features/plans/purchase';
-import { q } from '~/lib/queries';
+import { planQueries } from '~/features/plans/queries';
 import { plural, usd } from '~/lib/words';
 
 export function StartTeam() {
   const checkout = useCheckout();
-  const offers = useQuery(q.offers()).data;
+  const offers = useQuery(planQueries.offers()).data;
   /* A period's price, and a year's while one is offered: "$40 for 30 days, or $384 for a year". */
   const year = offers?.team.yearly;
   const each = offers

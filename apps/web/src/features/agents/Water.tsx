@@ -10,7 +10,11 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useId, type ReactNode } from 'react';
 import { callName, listNames } from '~/lib/people';
-import { q } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { callQueries } from '~/features/calls/list/queries';
+import { noteQueries } from '~/features/notes/queries';
+import { teamQueries } from '~/features/team/queries';
+import { agentQueries } from './queries';
 import { daysFromToday, hm, noteDay, shortDay } from '~/lib/time';
 import { plural } from '~/lib/words';
 import { useCopy } from './copy';
@@ -50,9 +54,9 @@ function byDay(items: readonly AgentActivity[], now: Date): { day: string; items
 /** What they did, or one row where the first will be: nothing yet, its dots on the way, or Try again. */
 function WhatTheyDid({ connections, now }: { connections: readonly AgentConnection[] | undefined; now: Date }) {
   const head = useId();
-  const activity = useInfiniteQuery(q.agentActivity());
-  const notes = useQuery(q.notes()).data ?? NO_NOTES;
-  const calls = useQuery(q.upcoming()).data ?? NO_CALLS;
+  const activity = useInfiniteQuery(agentQueries.agentActivity());
+  const notes = useQuery(noteQueries.notes()).data ?? NO_NOTES;
+  const calls = useQuery(callQueries.upcoming()).data ?? NO_CALLS;
   const items = activity.data?.pages.flatMap((p) => p.items) ?? [];
 
   const row = (a: AgentActivity) => {
@@ -141,9 +145,9 @@ function peopleYouWorkWith(me: Person | undefined, team: readonly Person[] | und
 
 function AskYourAgent({ connections }: { connections: readonly AgentConnection[] }) {
   const head = useId();
-  const me = useQuery(q.session()).data?.user;
-  const team = useQuery(q.team()).data;
-  const notes = useQuery(q.notes()).data ?? NO_NOTES;
+  const me = useQuery(accountQueries.session()).data?.user;
+  const team = useQuery(teamQueries.team()).data;
+  const notes = useQuery(noteQueries.notes()).data ?? NO_NOTES;
   const { copy, problem } = useCopy();
   const people = peopleYouWorkWith(me, team ? team.members.filter((m) => m.onAlcove).map((m) => m.person) : undefined, notes);
   return (

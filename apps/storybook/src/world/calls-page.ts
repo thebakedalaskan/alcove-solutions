@@ -5,7 +5,7 @@
  * runs. All made up.
  */
 import type { CalendarEvent, Meeting, Rsvp } from '@alcove/api';
-import type { World } from '.';
+import type { World } from './world';
 import { calendarEvent } from './build';
 import { iso } from './clock';
 import { INVITATIONS } from './invitations';

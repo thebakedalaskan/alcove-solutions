@@ -8,7 +8,7 @@ import { errorMessage, type CameraBackground } from '@alcove/api';
 import { BackgroundModal, BackgroundPicker, BackgroundStatus, Button, backgroundLabel, type AvatarPerson } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { q } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
 import { BACKGROUND_TYPES, MAX_BACKGROUNDS, SCENES, canKeepBackgrounds, keepPicture, removePicture, useKeptPictures } from './backgrounds';
 import type { LocalMedia, MediaSnapshot } from '../media';
 import { Video } from '../Video';
@@ -23,7 +23,7 @@ export function ChooseBackground({ media, m, me, open, onOpenChange, backTo }: {
   media: LocalMedia; m: MediaSnapshot; me: AvatarPerson; open: boolean; onOpenChange: (open: boolean) => void;
   backTo?: (() => HTMLElement | null) | undefined;
 }) {
-  const owner = useQuery(q.session()).data?.ownerId ?? null;
+  const owner = useQuery(accountQueries.session()).data?.ownerId ?? null;
   const keeps = owner !== null && canKeepBackgrounds();
   const supported = m.backgroundSupport === 'supported';
   const effectOn = m.background.kind !== 'none';

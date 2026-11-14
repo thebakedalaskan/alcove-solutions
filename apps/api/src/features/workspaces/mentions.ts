@@ -7,14 +7,13 @@
  */
 import { PersonSchema, type MentionBody, type MentionNotice, type WorkspaceMention } from '@alcove/api';
 import { z } from 'zod';
-import type { Deps, Owner } from '../../context';
-import { b64u, id128, openJson, sealJson, toJson, type RecordHeader } from '../../crypto';
-import { bytea, exec, rows, timestamp, tx, type Db } from '../../db';
-import { AppError } from '../../errors';
-import { addressIn } from '../calls/participants';
+import type { Deps, Owner } from '../../platform/context';
+import { b64u, id128, openJson, sealJson, toJson, type RecordHeader } from '../../keys/crypto';
+import { bytea, exec, rows, timestamp, tx, type Db } from '../../platform/db';
+import { AppError } from '../../platform/errors';
 import { publish } from '../../live/hub';
-import { TOLD } from '../../live/room';
-import { log } from '../../log';
+import { TOLD } from './live/room';
+import { log } from '../../platform/log';
 import {
   grantsFor, holdersOf, personIn, principalOf, requireDocument, roleOf, standingIn, trashOf, whoInCall, workspaceFor, workspaceKey, type Reader, type Who, type Workspace
 } from './access';
@@ -40,7 +39,7 @@ export async function mention(d: Deps, reader: Reader, workspaceId: string, docu
   const [target] = await grantsFor(reader, [tag.to], 'read');
   if (!target) return;
   /* Someone in a seat may be signed in too, and have what their address gives them: it's where they'll hear of it after the call. */
-  const email = target.kind === 'email' ? target.email : reader.seat && await addressIn(reader.seat.viewer, target.seat);
+  const email = target.kind === 'email' ? target.email : reader.seat && await reader.seat.call.addressOf(target.seat);
   const seat = principalOf(d, target);
   const principal = email ? principalOf(d, { kind: 'email', email, role: 'read' }) : seat;
   /* Someone in the tagger's call has what the call opens to everyone in it too: the workspace it uses now, the same as the tagger's. */

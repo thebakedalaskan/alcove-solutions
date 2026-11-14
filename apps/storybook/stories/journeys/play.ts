@@ -9,7 +9,7 @@
 import { AlcoveApiError } from '@alcove/api';
 import { screen, waitFor } from 'storybook/test';
 import { current } from '../../src/api/state';
-import type { World } from '../../src/world';
+import type { World } from '../../src/world/world';
 
 type Role = Parameters<typeof screen.findByRole>[0];
 

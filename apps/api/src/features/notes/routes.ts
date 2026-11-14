@@ -2,18 +2,22 @@ import { FollowUpReviewSchema, ActionPatchSchema, ActionProposalSchema, AskBodyS
 import { Hono, type Context } from 'hono';
 import { stream } from 'hono/streaming';
 import { z } from 'zod';
-import { NotFoundError } from '../../errors';
-import { currentLogContext, log } from '../../log';
-import * as screens from '../recordings/screens';
-import * as models from './models';
+import { NotFoundError } from '../../platform/errors';
+import { currentLogContext, log } from '../../platform/log';
+import * as screens from '../recordings/screens/screens';
+import * as models from '../../inference/models';
 import * as additions from './additions';
-import * as links from './links';
+import * as links from './links/links';
 import * as audioMod from '../recordings/audio';
 import * as notes from './service';
-import * as personal from './personal';
-import * as series from './series';
-import * as writer from './writer';
-import { AUDIO_TYPES, ID128, MOST_AUDIO_PER_REPLY, body, byteRange, capped, videoByteRange } from '../../http/body';
+import * as entries from './entries';
+import * as corrections from './corrections';
+import * as sharing from './sharing';
+import * as personal from './personal/personal';
+import * as series from './series/series';
+import * as writer from './writing/writer';
+import { AUDIO_TYPES, ID128, MOST_AUDIO_PER_REPLY, body, byteRange, capped } from '../../http/body';
+import { videoByteRange } from '../recordings/requests';
 import { type Env } from '../../http/context';
 import type { HttpRuntime } from '../../http/runtime';
 
@@ -142,40 +146,40 @@ export function registerNoteRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   app.post('/v1/notes/:id/decisions', async (c) => {
     const o = changing(c);
     const id = c.req.param('id');
-    await notes.proposeDecision(o, id, await body(c, DecisionProposalSchema));
+    await entries.proposeDecision(o, id, await body(c, DecisionProposalSchema));
     return c.json(await notes.get(o, id));
   });
 
-  app.post('/v1/notes/:id/actions/review', async (c) => c.json(await notes.reviewAction(changing(c), c.req.param('id'), await body(c, FollowUpReviewSchema))));
+  app.post('/v1/notes/:id/actions/review', async (c) => c.json(await entries.reviewAction(changing(c), c.req.param('id'), await body(c, FollowUpReviewSchema))));
 
   app.post('/v1/notes/:id/actions', async (c) => {
     const o = changing(c);
     const id = c.req.param('id');
-    await notes.proposeAction(o, id, await body(c, ActionProposalSchema));
+    await entries.proposeAction(o, id, await body(c, ActionProposalSchema));
     return c.json(await notes.get(o, id));
   });
 
-  app.patch('/v1/notes/:id/decisions/:decisionId', async (c) => c.json(await notes.updateDecision(changing(c), c.req.param('id'), c.req.param('decisionId'), await body(c, DecisionPatchSchema))));
+  app.patch('/v1/notes/:id/decisions/:decisionId', async (c) => c.json(await entries.updateDecision(changing(c), c.req.param('id'), c.req.param('decisionId'), await body(c, DecisionPatchSchema))));
 
-  app.patch('/v1/notes/:id/actions/:actionId', async (c) => c.json(await notes.updateAction(changing(c), c.req.param('id'), c.req.param('actionId'), await body(c, ActionPatchSchema))));
+  app.patch('/v1/notes/:id/actions/:actionId', async (c) => c.json(await entries.updateAction(changing(c), c.req.param('id'), c.req.param('actionId'), await body(c, ActionPatchSchema))));
 
-  app.patch('/v1/notes/:id/questions/:questionId', async (c) => c.json(await notes.updateQuestion(changing(c), c.req.param('id'), c.req.param('questionId'), await body(c, QuestionPatchSchema))));
+  app.patch('/v1/notes/:id/questions/:questionId', async (c) => c.json(await entries.updateQuestion(changing(c), c.req.param('id'), c.req.param('questionId'), await body(c, QuestionPatchSchema))));
 
-  app.patch('/v1/notes/:id/lines/:lineId', async (c) => c.json(await notes.correctLine(changing(c), c.req.param('id'), c.req.param('lineId'), await body(c, LinePatchSchema))));
+  app.patch('/v1/notes/:id/lines/:lineId', async (c) => c.json(await corrections.correctLine(changing(c), c.req.param('id'), c.req.param('lineId'), await body(c, LinePatchSchema))));
 
-  app.patch('/v1/notes/:id/revisits/:revisitId', async (c) => c.json(await notes.updateRevisit(changing(c), c.req.param('id'), c.req.param('revisitId'), await body(c, RevisitPatchSchema))));
+  app.patch('/v1/notes/:id/revisits/:revisitId', async (c) => c.json(await entries.updateRevisit(changing(c), c.req.param('id'), c.req.param('revisitId'), await body(c, RevisitPatchSchema))));
 
   app.post('/v1/notes/:id/rewrite', async (c) => {
     const o = c.get('owner');
     // Writing the notes again is paid from the organizer's notes like any request, and shares the questions' rate limit.
     askLimiter(o.ownerId, 'rewrite');
     const { model } = await body(c, RewriteBodySchema);
-    const note = await notes.rewrite(o, c.req.param('id'), model === undefined ? {} : { model });
+    const note = await corrections.rewrite(o, c.req.param('id'), model === undefined ? {} : { model });
     writer.kick(o, o.ownerId);
     return c.json(note);
   });
 
-  app.delete('/v1/notes/:id/rewrite', async (c) => c.json(await notes.cancelRewrite(c.get('owner'), c.req.param('id'))));
+  app.delete('/v1/notes/:id/rewrite', async (c) => c.json(await corrections.cancelRewrite(c.get('owner'), c.req.param('id'))));
 
   /* The models to choose from for the AI work, and the default one. */
   app.get('/v1/models', async (c) => c.json(await models.list(runtime.d.cfg)));
@@ -204,7 +208,7 @@ export function registerNoteRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
 
   app.get('/v1/team/notes', async (c) => c.json(await notes.teamList(c.get('owner'))));
 
-  app.post('/v1/notes/:id/share', async (c) => c.json(await notes.share(c.get('owner'), c.req.param('id'), await body(c, ShareInputSchema))));
+  app.post('/v1/notes/:id/share', async (c) => c.json(await sharing.share(c.get('owner'), c.req.param('id'), await body(c, ShareInputSchema))));
 
   /*
    * Links to the notes: listed, made and revoked on the note, and opened by their secret, which travels in the body and

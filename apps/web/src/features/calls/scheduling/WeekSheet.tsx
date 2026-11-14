@@ -13,7 +13,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 import { useNow } from '~/lib/live';
 import { sameEmail } from '~/lib/people';
-import { q } from '~/lib/queries';
+import { callQueries } from '~/features/calls/list/queries';
+import { noteQueries } from '~/features/notes/queries';
+import { calendarQueries } from './queries';
 import { daysSpan, hm, longDay, shortDay, weekday } from '~/lib/time';
 import { joined } from '~/lib/words';
 import { busyFor, pageOf, pageRange, useBusy } from './availability';
@@ -103,9 +105,9 @@ export function WeekSheet({ guests: given, calls, title, was, except, onMove, on
 
   const emails = useMemo(() => guests.map((g) => g.email), [guests]);
   const taken = useBusy(emails, except, ranges);
-  const events = useQuery(q.calendarRange(range)).data?.events;
-  const upcoming = useQuery(q.upcoming()).data;
-  const notes = useQuery(q.notes()).data;
+  const events = useQuery(calendarQueries.calendarRange(range)).data?.events;
+  const upcoming = useQuery(callQueries.upcoming()).data;
+  const notes = useQuery(noteQueries.notes()).data;
 
   const days = useMemo<CallsWeekDay[]>(() => dates.map((d, i) => ({
     weekday: weekday(d).slice(0, 3), date: d.getDate(), label: longDay(d), short: page === 0 && i < 2 ? (i === 0 ? 'Today' : 'Tomorrow') : shortDay(d),

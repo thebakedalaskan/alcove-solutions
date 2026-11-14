@@ -22,16 +22,22 @@ its address.
 ```
 .storybook/main.ts        Vite: the app's ~ alias, Tailwind, and the two stand-ins (below)
 .storybook/preview.tsx    styles and fonts, the toolbar, viewports, providers; starts each story's scenario
-src/api/                  the stand-in AlcoveApi (standin.ts), its live stores, and the scenarios (scenarios.ts)
-src/api/call.ts           a call played from its script: the server's side (who's in it, notes, rings, rooms, the host)
-src/api/script.ts         what a call's script says: who's here, what's said and done when, how rings are answered
-src/api/trouble.ts        a part of Alcove that fails, can't be reached or keeps a page waiting, as the story's world says
-src/api/kept.ts           recordings kept on this device that haven't uploaded, through the app's own way of keeping them
-src/api/move.ts           a call being moved to this device, as /move sees it
-src/api/payments.ts       payments opened to buy something, played out by 1Click's side and the server's as the scenario says
-src/api/attestation.ts    what the stand-in's server runs on: Confidential Space, attested with anchors Storybook makes at
-                          first use (a test root, a token, the release in a log of its own), and the app's check with them
-src/world/                the demo world, in the contract's types: people, notes, calls, the demo clock
+src/api/api.ts            what main.ts puts in place of the app's lib/api.ts: the stand-in through its troubles, and checkServer
+src/api/standin.ts        the stand-in AlcoveApi, composed of its parts, and stopping what the last story left open
+src/api/answer.ts         how every answer comes back: after a moment, refused offline or signed out, as a copy
+src/api/state.ts, live.ts the world served now, and live stores; scenarios.ts the scenarios; trouble.ts a part of Alcove
+                          that fails, can't be reached or keeps a page waiting, as the story's world says
+src/api/<part>/api.ts     each part of AlcoveApi, laid out as @alcove/api-http is: account/ (signing in, preferences, people,
+                          your plan and payments.ts, a team), agents/, meetings/ (calls ahead, calendars), calls/ (making and
+                          entering calls, a move to this device, rings.ts), recordings/ (recording.ts, kept.ts: what's kept on
+                          this device), notes/ (asking.ts: searching and asking; drive.ts: Google Drive exports; personal.ts),
+                          workspaces/ (workspaces.ts: the world's workspaces and documents as Y.Docs; previews.ts; writers.ts)
+                          and trust/ (attestation.ts: Confidential Space, attested with anchors Storybook makes at first use)
+src/api/call/             a call played from its script (script.ts says who's here, what's said and done when, how rings
+                          are answered): the server's side, a responsibility per file (base.ts says how they stack), what's
+                          left going when you leave (going-on.ts), its private messages and notifications
+src/world/                the demo world, in the contract's types (world.ts): people, notes, calls, the demo clock; plans/ the
+                          plan, payments and a team
 src/world/boards.ts       the boards in it, written by the board package's own writes: in-memory for board stories, and into
                           the stand-in's workspaces for the board's page
 src/media/livekit.ts      a scripted room in place of LiveKit: microphones, speaking, shares, your connection
@@ -48,21 +54,29 @@ src/board.tsx             what board stories share: `BoardScene`, the real surfa
 src/scheduling.ts         what scheduling stories share: the week pressed, pointed at, dragged and held at its edge where a
                           person's pointer would be, and the steps of a scheduling play (`playing()`, `adding()`, `pressingAt()`)
 stories/foundations/      colour, type, icons, scales, the evening and what passes through
-stories/components/       one file per @alcove/ui component, a story per state, in a folder per group
-stories/pages/            one file per page, a story per state
+stories/components/       one file per @alcove/ui component, a story per state, in a folder per group, and a folder in a group
+                          for each of its areas (In a call's chat/, sharing/, audio-and-video/; the board's objects/, tools/)
+stories/pages/            one file per page, a story per state, in a folder per part of the app: signing-in/, home/ (with the
+                          frame round every page), calls/, drive/, team/, record/, agents/, account/ (Settings, Plans, Checkout)
 stories/calls/            the call: the lobby and waiting, ringing, the call itself and every moment of its canvas (`TheCall`, with the
                           plays it shares in `plays.ts`), how a presentation ends (a reload, a room, closed, replaced, a share
-                          stopped), floating calls at the native browser hand-off, notes, sharing, rooms with what's open beside them, its workspace, a board (closed for
-                          everyone, moved to Trash), leaving
+                          stopped), floating calls at the native browser hand-off, notes, sharing, rooms, its workspace, leaving;
+                          chat/ (messages, mentions, questions, threads, private messages) and boards/ (a board in the call, closed for
+                          everyone or moved to Trash, its ideas and More, presenting one, and boards in breakout rooms)
 stories/board/            the board: its surface in each place it shows, its states, and who else is on it
-stories/journeys/         one file per section of docs/product/user-flows.md, and per part of one with steps of its own
+stories/journeys/         a folder per section of docs/product/user-flows.md (`06-in-the-call/`), a file per part of it with
+                          journeys of its own, and `play.ts`, what they share
 ```
 
+Every folder holds at most 20 files (`scripts/check-structure.mjs`), and a story's title follows its folder: the group's
+name for each folder (`components/call/chat/` is `Components/In a call/Chat`), then what the file shows. A title is never
+the start of another, so a group never has stories of its own.
+
 **The stand-ins.** `main.ts` swaps two of the app's files for Storybook's, by the file an import lands on (so `~/lib/api`,
-`./api` and `../lib/api` all get it): `apps/web/src/lib/api.ts` becomes `src/api/index.ts`, and
+`./api` and `../lib/api` all get it): `apps/web/src/lib/api.ts` becomes `src/api/api.ts`, and
 `apps/web/src/features/call/media/livekit.ts` becomes `src/media/livekit.ts`. Nothing else in the app changes, and nothing in
 `apps/web` or `packages/*` knows Storybook exists. The app's check of the server comes through the same swap: the real
-module checks with production's anchors, and `src/api/index.ts` hands it `checkServer` from `src/api/attestation.ts`, the
+module checks with production's anchors, and `src/api/api.ts` hands it `checkServer` from `src/api/trust/attestation.ts`, the
 same `verifyServer` with Storybook's own, so every page says Confidential compute · verified unless a story changes it
 (`notAttested`, or `checkFails` for each kind of reason a check doesn't pass, in `stories/pages/changes.ts`).
 
@@ -144,9 +158,12 @@ Product, then the follow-ups from the retro board's Actions frame.
 `stories/components/<group>/<Component>.stories.tsx`, one per component, a story per state, titled
 `Components/<Group>/<Component>`. The groups run from the basics to whole surfaces: icons and marks, actions, forms,
 feedback, overlays, layout, motion, the evening, people, starting a call, ringing and waiting, in a call, notes and
-transcript, search, the Calls page, record, settings, the workspace and the board. Put a new component in the group a person would look for it in, and
-add a new group to `storySort` in `.storybook/preview.tsx` only when none fits. The preview gives it what the app's
-root would (theme, tooltips, toasts). People come from the world, never made up on the spot:
+transcript, search, the Calls page, record, settings, the workspace and the board. Put a new component in the group a
+person would look for it in, and add a new group to `storySort` in `.storybook/preview.tsx` only when none fits. A group
+with more than 20 files has a folder for each of its areas, titled under the group: In a call's `chat/`
+(`Components/In a call/Chat/ChatMessage`), `sharing/` and `audio-and-video/`; Checkout's `choose/` and `pay/`, its steps;
+the board's `objects/` (what's on a board) and `tools/` (the rail, the bar and what they open). The preview gives a story
+what the app's root would (theme, tooltips, toasts). People come from the world, never made up on the spot:
 
 ```tsx
 import { Button } from '@alcove/ui';
@@ -166,19 +183,23 @@ Give every prop worth playing with an arg, so it has a control (react-docgen is 
 that changes when pressed (`checked`, `open`, `value`) is kept with `useArgs` from `storybook/preview-api`, so pressing
 it moves the control too. What only exists at night (the call stage, Record) spreads `...onStage` into its meta and
 stands on the stage in both themes; what only shows inside a popover or the call modal can stand on a `PopSurface` or in
-a `ModalFrame`. The workspace kit is grouped by surface, in `stories/components/workspace/`. The board kit draws on a
+a `ModalFrame`. The workspace kit is grouped by surface, in `stories/components/workspace/`, and the parts with stories
+of their own by what they say: `trash/`, `unsaved/` (what didn't reach Alcove) and `no-document/` (what's in a document's
+place when there's nothing to open). The board kit draws on a
 piece of board, `KitSheet` in `stories/components/board/parts.tsx`, with pieces of the canvas's launch retro to stand on,
 and puts what sits over the sheet (a selection, its bar, the dots) where the surface would, with the surface's own helpers.
 
 ## Add a page story
 
-`stories/pages/<Page>.stories.tsx`. A page story is an address and a scenario:
+`stories/pages/<area>/<Page>.stories.tsx`, titled `Pages/<Area>/<Page>`: the area is the part of the app the page is
+in (`signing-in`, `home`, `calls`, `drive`, `team`, `record`, `agents`, `account`), in the order `storySort` gives them. A
+page story is an address and a scenario:
 
 ```tsx
 import type { Meta } from '@storybook/react-vite';
-import { page, pages, type PageArgs } from '../../src/page';
+import { page, pages, type PageArgs } from '../../../src/page';
 
-const meta = { title: 'Pages/Calls', ...pages } satisfies Meta<PageArgs>;
+const meta = { title: 'Pages/Calls/Calls', ...pages } satisfies Meta<PageArgs>;
 export default meta;
 
 export const Busy = page('/calls', 'busy');
@@ -213,14 +234,21 @@ over the page is found with `screen` from `storybook/test`, since it isn't insid
 
 ## Add a journey
 
-`stories/journeys/<nn>-<section>.stories.tsx`, one file per section of `docs/product/user-flows.md` (`04-start-a-call`,
-title `Journeys/4 Start or schedule a call`), a story per journey, named with its number there. A part of a section with
-numbered steps of its own gets a file after its section's, its journeys numbered on from the section's own
-(`06b-a-board-in-the-call`, title `Journeys/6 A board in the call`, with `6.13 Start a board` to `6.21 On a phone` after the
-call's `6.1` to `6.12`). The play function clicks
-the way a person would, finding what it clicks by role and label, in labelled steps that say what happens, as the canvas's
-journey captions do. It never checks: no `expect` (the policy script refuses it). `findBy…` waits for what the next step
-needs.
+A folder per section of `docs/product/user-flows.md`, its number and its name (`04-start-or-schedule-a-call/`), and a story
+per journey, named with its number there (`4.1 Start now`). The section's numbers are user-flows', which is where a new
+journey's number comes from: no two journeys share one, and several stories of one journey (6.22's opening and its
+refusal) are each named for their part of it.
+
+- A section played in one file: `04-start-or-schedule-a-call/04-start-or-schedule-a-call.stories.tsx`, titled
+  `Journeys/4 Start or schedule a call`.
+- A section with parts that have journeys of their own: a file for each part, named for it, and lettered in the order of
+  their first journey's number: `06-in-the-call/06-the-call.stories.tsx` (6.1 to 6.17, 6.32 and 6.36), `06b-floating-call` (6.22),
+  `06d-timer` (6.26 to 6.28) ... `06j-a-board-in-the-call` (6.37 to 6.46). Each is titled under its section, by its part:
+  `Journeys/6 In the call/Timer`.
+
+The play function clicks the way a person would, finding what it clicks by role and label, in labelled steps that say what
+happens, as the canvas's journey captions do. It never checks: no `expect` (the policy script refuses it). `findBy…` waits
+for what the next step needs.
 
 ```tsx
 const meta = { title: 'Journeys/4 Start or schedule a call', ...pages, globals: LAPTOP } satisfies Meta<PageArgs>;
@@ -277,7 +305,9 @@ the call puts over the sheet (a pill, a menu) goes in `children`.
 
 ## Add a call story
 
-`stories/calls/<Part>.stories.tsx`. LiveKit can't run here, so a call is played from a script (`src/api/script.ts`):
+`stories/calls/<Part>.stories.tsx`, or `stories/calls/chat/` and `stories/calls/boards/` for Chat's and a board's
+(`Calls/Chat/Threads`, `Calls/Boards/Presenting a board`). LiveKit can't run here, so a call is played from a script
+(`src/api/call/script.ts`):
 who's in it when you come in, what's said and done and when, how the people you ring answer, and what the call's link
 says while you wait. The scripted call plays the server's side; the scripted room (`src/media/livekit.ts`) plays
 LiveKit's, and the call screen drives it exactly as it drives LiveKit's room. Your own microphone, camera and screen are
@@ -361,11 +391,11 @@ as the server passes them on, their pointer and view with them, so their tiles f
 (`closedToYou`) says who brought it and nothing else. The script's `board` says what the others put on whatever board opens,
 a sticky at a time on a frame by its title, and how they vote when a vote ends; `addsSticky` puts one on at a moment of its
 own. The vote runs as the server keeps it (`startsVote`, `endsVote`, `clearsVote`), and whatever you do on the board (open
-one, close it, start a vote, vote, end it) changes the call as the server would. `stories/calls/boards.ts` has the launch retro the board stories share, for any call story to put on its stage.
+one, close it, start a vote, vote, end it) changes the call as the server would. `stories/calls/boards/retro.ts` has the launch retro the board stories share, for any call story to put on its stage.
 What More puts on a board works here as it does in the app: a picture goes into the board's own files (`media.upload`) and
 back through `media.picture`, From your workspace lists the board's workspace as the stand-in's tree has it, and the
-downloads save a file. `stories/calls/BoardMore.stories.tsx` has each of More's items on the launch review, held in Product so
-its documents are there to link, and `6.21 On a phone` in the board's journeys adds a sticky through +, and starts a timer and a
+downloads save a file. `stories/calls/boards/BoardMore.stories.tsx` has each of More's items on the launch review, held in Product so
+its documents are there to link, and `6.46 On a phone` in the board's journeys adds a sticky through +, and starts a timer and a
 vote, at a phone's size.
 
 ```tsx
@@ -388,8 +418,8 @@ owns no call session, audio or camera. Its pictures are made-up preview content.
 a person to press. The other scenarios change shares, reconnect, receive a hand, chat and someone asking to join, end the
 call, refuse leaving or changing the raised hand, and block devices. Unsupported and Opening blocked show More's visible,
 described fallback and its permission guidance with a manual retry, in light/dark and wide/phone variants. A blocked
-opening keeps More open and leaves the call running. **Journeys / 6 Floating call / 6.22 Open a floating
-call** plays up to this same hand-off. Automatic opening follows the browser's native permission, without a separate
+opening keeps More open and leaves the call running. **Journeys / 6 In the call / Floating call / 6.22 Open a
+floating call** plays up to this same hand-off. Automatic opening follows the browser's native permission, without a separate
 Alcove preference or explanatory control in More. Open the preview
 as its own tab before clicking: Document Picture-in-Picture requires a top-level document and a real browser gesture.
 Native-opening scenarios return the browser's real API unchanged. Explicit unsupported/refused scenarios only hide the
@@ -407,9 +437,11 @@ navigation and reading remain in the full call.
 
 ## Extend the stand-in
 
-- **The contract changed.** `standIn` is typed `AlcoveApi`, so the compiler fails until `src/api/standin.ts` answers the new
-  method. Answer with `answer((w) => …)`: it waits a moment, refuses offline and signed out as the client does, and hands
-  back a copy. New data gets a field on `World` (`src/world/index.ts`), a value in each scenario, and a line in
+- **The contract changed.** `standIn` is typed `AlcoveApi`, so the compiler fails until the part of the stand-in that
+  answers for it does: the same folder as @alcove/api-http's (`src/api/notes/api.ts` for `notes`, as
+  `packages/api-http/src/notes/api.ts`), each part typed `Pick<AlcoveApi, …>` and composed in `src/api/standin.ts`. Answer
+  with `answer((w) => …)` (`src/api/answer.ts`): it waits a moment, refuses offline and signed out as the client does, and
+  hands back a copy. New data gets a field on `World` (`src/world/world.ts`), a value in each scenario, and a line in
   `checked()` in `scenarios.ts`.
 - **A new state.** Add a scenario to `SCENARIOS` in `src/api/scenarios.ts` and to the table above, give one story its own
   `opening`, or change its world as it opens (`changing()`, above).
@@ -417,9 +449,12 @@ navigation and reading remain in the full call.
   (`src/api/trouble.ts`): the app gets the stand-in through it, so a page shows its error, offline or loading look as it
   would. A trouble can be a function of what was asked (`notes.list` fails only for a search).
 - **Something live.** Extend `Snapshots` (`src/api/live.ts`): push whole snapshots on a script with `after()` and `every()`,
-  and `halt()` when it closes. A call is `src/api/call.ts` (its people, notes and transcript), its `livekit` side, which
-  `src/media/livekit.ts` plays (mics, who's speaking, shares, your connection), and a new beat in `src/api/script.ts`; a
-  room recording is `src/api/recording.ts`.
+  and `halt()` when it closes. A call is `ScriptedCall` (`src/api/call/scripted-call.ts`), built up a responsibility per
+  file, each extending the one before it and reaching only down (`base.ts` → `attention.ts` → `capture.ts` → `notes.ts`
+  → `chat.ts` → `stage.ts` → `workspace.ts` → `boards.ts` → `people.ts` → `rooms.ts` → `hosting.ts`): add a control to the
+  file it's about, and a new beat to `src/api/call/script.ts` and to `play()` in `scripted-call.ts`, which hands each beat to
+  the part it's about. Its `livekit` side is what `src/media/livekit.ts` plays (mics, who's speaking, shares, your
+  connection); a room recording is `src/api/recordings/recording.ts`.
 
 ## Rules
 
@@ -443,9 +478,9 @@ navigation and reading remain in the full call.
   script's times (counted from joining) can be well under way by then.
 
 
-Agents is under **Pages / Agents** and its parts under **Components / Agents**, with the permission chips, the disclosure
-and the sheet `/connect` signs you in on; `/connect` is under **Pages / Connect an agent**, and Settings' one Agents row
-in **Pages / Settings**. **Journeys / 14 Agent access** (14.1 to 14.12) plays Agents from the side panel: connecting
+Agents is under **Pages / Agents / Agents** and its parts under **Components / Agents**, with the permission chips, the disclosure
+and the sheet `/connect` signs you in on; `/connect` is under **Pages / Agents / Connect an agent**, and Settings' one Agents
+row in **Pages / Account / Settings**. **Journeys / 14 Agent access** (14.1 to 14.12) plays Agents from the side panel: connecting
 Claude, Cursor and Claude Code, allowing Claude with less than it asks for, changing, disconnecting and keeping an agent,
 what your agents did, a token for a script, a request that ended, Settings' way there, and a phone. No tab or app opens
 (`keepTabs()` in `stories/journeys/play.ts`), the stand-in connects an agent as one would, and the hand-off back to the
@@ -455,14 +490,14 @@ connect to a real Alcove account.
 ## Follow-up review
 
 `src/world/follow-ups.ts` supplies one actual task, a new suggestion and a proposed change, reused before and after the call.
-`Calls/Notes/Review in workspace` and `Pages/A call/Reviewing follow-up proposals` open the real app's review, with phone and
-theme variants beside them. `Journeys/6 Follow-up proposals` (6.23–6.25) plays adding and dismissing, an incoming proposal
+`Calls/Notes/Review in workspace` and `Pages/Calls/A call/Reviewing follow-up proposals` open the real app's review, with phone and
+theme variants beside them. `Journeys/6 In the call/Follow-up proposals` (6.23–6.25) plays adding and dismissing, an incoming proposal
 waiting behind a fixed batch, and a changed actual task refusing a stale amendment. A call's journeys 8.34–8.36 show the same
 review after the call and keep “I'll do it” as a separate choice. The shared editor and review controls have their own
 stories in `Components/Notes and transcript`.
 
 
-Google Drive previews live in **Pages / Settings / Google Drive…** and **Pages / A call / Google Drive…** (from More), including phone,
+Google Drive previews live in **Pages / Account / Settings / Google Drive…** and **Pages / Calls / A call / Google Drive…** (from More), including phone,
 night, folder loading failure and reconnect states. **Journeys / 15 Google Drive exports** shows choosing explicit file
 formats, a shared-drive destination, a per-call override, a retry, independent disconnection and a shared reader’s own exports with organizer-only audio. The stand-in holds no
 provider credentials; Google consent and additional folder authorization stop at the external hand-off.
@@ -484,7 +519,7 @@ pending and failed departures with a retry, and every state of the page a call l
 you or without you (the page names nobody as having ended it), left with notes on, paused or off, left with someone hosting,
 ended while you were on it, the notes being written, written or slow, and Rejoin, straight back in as you were, with J muted
 and the camera off, or refused. The stand-in keeps a call you
-leave going (`GoingOn` in `src/api/call.ts`): what's left of its script plays on far enough to end it, which writes its note
+leave going (`GoingOn` in `src/api/call/going-on.ts`): what's left of its script plays on far enough to end it, which writes its note
 for everyone invited, and joining it again picks it up where it's got to, the pass you left with letting you straight back
 in. Calls / Floating call / Participant ready to open and Participant leave refused keep the real native window hand-off
 available for manual checks of the same behavior.
@@ -495,7 +530,7 @@ Browser notifications (#88): Calls/Browser notifications shows explicit opt-in, 
 Native two tabs is the explicit browser-receipt scene: open it twice, enable once and background both before20seconds. It preserves opaque browser state and shares one demo-clock anchor, like real tabs share a wall clock. Stable event IDs demonstrate cross-tab/reload deduplication; reopening the same scene does not replay those IDs. Native browser uses a new call ID for a fresh delivery demonstration. The report can start/stop the exact application service worker on this development origin; Stop unregisters it and closes its test alerts. Open delivered alert invokes the native notification's actual click callback for routing checks; this is distinct from an OS notification-centre click.
 
 
-The plan lives under **Pages / Settings / Plan**, **Notes nearly out**, **No notes left**, **Over Free's limits (in
+The plan lives under **Pages / Account / Settings / Plan**, **Notes nearly out**, **No notes left**, **Over Free's limits (in
 grace)**, **Over Pro's storage** (Make room filled, as the way out) and **A balance**. Top-ups live under **Payments**, **Add money picker** and **Payment…**: waiting, arriving,
 short, short after the address expired, added, held, failed, cancelled and expired, plus the deletion warnings.
 Phone and night variants show the picker and waiting address, and the expired-short phone at night. The default scenarios
@@ -508,7 +543,7 @@ reading and cancelling top-ups; receipt changes come from the story's made-up pr
 
 ## Checkout
 
-**Pages / Checkout** is the app's own checkout window over the app (`src/checkout.tsx`, which opens it as a door does: Get
+**Pages / Account / Checkout** is the app's own checkout window over the app (`src/checkout.tsx`, which opens it as a door does: Get
 Pro, Extend, Add 10 hours, a waiting payment's Open), in every stage: choosing (a year at 20% off, a month, another length,
 a network's least above what's needed, part of it from the balance, the balance covering it, payments off, a price that
 changed, offline, extending, more notes), then paying (waiting, Cancel payment asking first, less arrived, seen, done, more
@@ -517,17 +552,18 @@ arrived, refused, expired, cancelled, failed, the receipt), and closed from Done
 (its name, how many licenses, from the balance or a payment, unnamed, a changed price, payments off, offline), its first
 licenses' payment (`team-buying`) waiting, seen, bought, refused and expired, and its admin's Buy licenses (`team-admin-*`:
 who's waiting, from the balance, bought, with a payment), a member, and an admin who stopped being one (before buying, or while their payment was on its way), with nothing to buy and no steps. The stand-in plays
-a payment opened to buy something by itself (`src/api/payments.ts`): seen, then added and bought, a step every 5 seconds
+a payment opened to buy something by itself (`src/api/account/payments.ts`): seen, then added and bought, a step every 5 seconds
 from when it was opened, or as the `payment-*` scenarios say; nothing runs on a timer, so nothing carries into the next
 story. `purchaseAt()` and `playsOut()` put one where a story needs it. Every address is a made-up preview no wallet takes.
-**Components / Checkout** has each part of the kit's window, and **Paying, in motion**, the canvas's player, with Slow
-motion and Play again. Section 16's journeys are **Journeys / 16 Plans and paying** (16.1, from the side panel to Plans),
-**16 Checkout** (16.2 to 16.6), **16 Your plan** (16.7, 16.8 and 16.14, in the side panel and Settings), **16 Where
-checkout shows** (16.9 to 16.13, the doors), **16 Team** (16.15, starting a team from Plans) and **16 The plan choice** (16.20:
+**Components / Checkout** has each part of the kit's window, and **Pay / Paying, in motion**, the canvas's player, with Slow
+motion and Play again. Section 16's journeys are under **Journeys / 16 Plans and paying**: **Plans** (16.1, from the side panel to Plans),
+**Checkout** (16.2 to 16.6), **Your plan** (16.7, 16.8 and 16.14, in the side panel and Settings), **Where checkout
+shows** (16.9 to 16.13, the doors, and 16.21), **Team** (16.15, starting a team from Plans), **Your team** (16.16 and
+16.17), **Team in Settings** (16.18 and 16.19) and **The plan choice** (16.20:
 a new account's arrival onto the plans, saying "Opening Plans", Continue on Free, then Home and its tour; Get Pro from them, paid,
 then Home; and signing in from the welcome page, sailing out of its cove onto them).
 
-**Pages / Plans / Plan Choice…** is the plan choice, Plans in Home's place once while `Plan.choose` is true (the `plan-choice`
+**Pages / Account / Plans / Plan Choice…** is the plan choice, Plans in Home's place once while `Plan.choose` is true (the `plan-choice`
 and `plan-choice-before` scenarios): a new account, an account from before plans and one over Free's storage, on a team (where
 Pro says not while you're on your team's plan, as **Team Admin** and **Team Member** show on Plans), Pro bought from it, payments
 off, telling Alcove the plans were seen failing (they aren't shown again in that tab), and the prices loading, not loaded and
@@ -537,7 +573,7 @@ SailOut / Onto the plans** sails out of the cove onto a stand-in for it, the sun
 
 ## Scheduling
 
-**Pages / Scheduling** is the scheduler on the Calls page in every state its design
+**Pages / Calls / Scheduling** is the scheduler on the Calls page in every state its design
 (`docs/superpowers/specs/2026-11-13-scheduling-rethought-design.md`) names: **New**, open on the soonest half hour Art is
 free (at night, at 1024 at night, and on a phone), **Pointing** (the call's outline under the pointer), **With Priya And
 Kofi** (the call follows them; wide, night and phone too), **Clash** and **Clash With Yours** (who's busy, and Next free),
@@ -553,8 +589,8 @@ get a link to send to Jonas."), **A Big Call** (Everyone joins muted), **From Th
 **Reading Calendars**, **Calendars Unreadable** (the busy times failed), **On A Sample Calendar** ("Priya and Kofi get an
 invitation."), **Schedule Failed**, **Meet Again**, **Move A Call** (with Aiko's ask), **Move It There**, **Move A Call
 Nobody Else** ("Nobody else is invited."), **Move A Series Call**, **Cancel This Call**, **Propose Another Time**, **No
-Notes Left** and **Call Gone**. Their dark variants are named Night, as every page's are. **Pages / Calls** has the Calls
-page's own week: **Week** (2 – 8 Nov, at night and on a phone too), **Week After** (9 – 15 Nov, with Today) and **Week
+Notes Left** and **Call Gone**. Their dark variants are named Night, as every page's are. **Pages / Calls / Calls** has the
+Calls page's own week: **Week** (2 – 8 Nov, at night and on a phone too), **Week After** (9 – 15 Nov, with Today) and **Week
 Evening** (scrolled to midnight).
 
 **Journeys / 4 Start or schedule a call** plays flow 4 as user-flows numbers its journeys: 4.1 to 4.15, then the design
@@ -563,7 +599,7 @@ it into next week** (the call held at the week's right edge until the next week 
 day, pick a start**, **4.21 Go to another week, or day**, **4.22 Find the next free time** and **4.23 Choose the times to
 offer**; then **4.24 Stop letting a guest pick** (the call keeps the time that was lit, turned off or with someone added)
 and **4.25 Type the time** (typed starts and ends, and the times that can't be used).
-**Journeys / 8 Calls / 8.3 See the week** walks the Calls page's week.
+**Journeys / 8 Calls / The Calls page / 8.3 See the week** walks the Calls page's week.
 
 The week works out a time from where the pointer is, so `src/scheduling.ts` presses, points and drags where a person's
 pointer would be: the middle of a half hour (found by how its name starts, "Thursday 5 November, 14:00"), on whatever is on

@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import { deleteCookie, getCookie } from 'hono/cookie';
-import { AuthError } from '../errors';
-import { addLogContext } from '../log';
-import { openOwner } from '../owners';
-import { findSession } from '../sessions';
+import { AuthError } from '../platform/errors';
+import { addLogContext } from '../platform/log';
+import { openOwner } from '../keys/owners';
+import { findSession } from '../keys/sessions';
 import { type Env } from './context';
 import type { HttpRuntime } from './runtime';
 

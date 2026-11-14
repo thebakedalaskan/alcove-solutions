@@ -1,10 +1,10 @@
 import { CallAheadBodySchema, InstantCallInputSchema, RingAnswerBodySchema } from '@alcove/api';
 import { Hono } from 'hono';
-import { notFound } from '../../errors';
-import * as ahead from './ahead';
+import { notFound } from '../../platform/errors';
+import * as ahead from './workspace/ahead';
 import * as callsJoining from './joining';
 import * as meetings from '../meetings/service';
-import * as rings from './rings';
+import * as rings from './ringing/rings';
 import { ID128, body } from '../../http/body';
 import { type Env } from '../../http/context';
 import type { HttpRuntime } from '../../http/runtime';

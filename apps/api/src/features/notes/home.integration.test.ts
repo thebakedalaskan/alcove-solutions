@@ -6,7 +6,7 @@
  */
 import { AlcoveApiError, type CallSession, type Note, type TranscriptClip } from '@alcove/api';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { speechWav } from '../../testing/fake-near';
+import { speechWav } from '../../testing/fakes/near';
 import { startHarness, type Browser, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
 

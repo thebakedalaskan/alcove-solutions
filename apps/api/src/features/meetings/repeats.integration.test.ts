@@ -7,11 +7,11 @@
 import { AlcoveApiError, MAX_SERIES_CALLS, REQUEST_ID_HEADER, type CallSession, type CallState, type Meeting, type MeetingInput, type RepeatInput, type RepeatRule } from '@alcove/api';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { openOwner } from '../../owners';
-import type { FakeEvent } from '../../testing/fake-google';
+import { openOwner } from '../../keys/owners';
+import type { FakeEvent } from '../../testing/fakes/google';
 import { connectGoogleCalendar, cookieFetch, ORIGIN, startHarness, type Browser, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
-import { findItem } from '../../vault';
+import { findItem } from '../../keys/vault';
 
 vi.setConfig({ testTimeout: 90_000 });
 

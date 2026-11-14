@@ -5,7 +5,7 @@
  */
 import { AgentWell } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { PREVIEW_AGENT_TOKEN, PREVIEW_MCP_ENDPOINT } from '../../../src/api/agents';
+import { PREVIEW_AGENT_TOKEN, PREVIEW_MCP_ENDPOINT } from '../../../src/api/agents/agents';
 import { did } from '../../../src/component';
 import { inAPopover } from './frames';
 

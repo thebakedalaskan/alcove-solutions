@@ -22,8 +22,9 @@ Alcove checks first, and the server runs in Google Cloud Confidential Space.
    written for the earlier desktop design; still the reference for NEAR AI's encrypted request mode, Phala and
    1Click details. How Alcove calls NEAR AI today is in [Notes and inference](engineering/notes-and-inference.md).
 
-The design system the app uses is [`packages/ui`](../packages/ui): tokens in `src/styles.css`, `ac-`
-components in `src/styles/kit.css` and `src/components/`, rules in [`AGENTS.md`](../AGENTS.md#design-system).
+The design system the app uses is [`packages/ui`](../packages/ui): tokens in `src/styles.css`, `ac-` components in
+`src/foundation/kit.css`, every component in a folder for its area beside its styles ([the map](../packages/ui/AGENTS.md)),
+rules in [`AGENTS.md`](../AGENTS.md#design-system).
 How the app is designed, page by page, and the design canvas every new design starts from are in [`design/`](design/README.md).
 What's built, every component, page and journey in each of its states, is in Storybook ([`apps/storybook`](../apps/storybook/README.md)).
 Rules for anyone changing the code, people or agents, are in [`AGENTS.md`](../AGENTS.md).

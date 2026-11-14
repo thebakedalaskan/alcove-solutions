@@ -1,8 +1,9 @@
 /*
  * What call stories share. A call story is a page story whose `beforeEach` does what the lobby does before the call
  * screen opens: your microphone and camera start (from the browser's made-up devices), you join through the stand-in
- * (src/api/call.ts), and the people you picked are rung. Then the app opens at the call's address with you in it, and
- * the call plays its script (src/api/script.ts). A door story stops at the call's link, before joining.
+ * (src/api/call/scripted-call.ts), and the people you picked are rung. Then the app opens at the call's address with
+ * you in it, and the call plays its script (src/api/call/script.ts). A door story stops at the call's link, before
+ * joining.
  *
  *   export const Speaking = inCall({ scenario: 'call-soon', call: 'dsn-revw-pka', script: { here: [...], talk: {...} } });
  *   export const Waiting = atTheDoor({ scenario: 'busy', call: CHECK_IN, script: { door: { hostArrives: 8 } } });
@@ -15,13 +16,14 @@
 import type { CallSession, Meeting, NotesChoices, Person } from '@alcove/api';
 import { screen } from 'storybook/test';
 import { LocalMedia } from '~/features/call/media/media';
-import { sessions } from '~/lib/live';
+import { sessions } from '~/features/call/session/handoff';
 import type { ScenarioName } from './api/scenarios';
-import { ringFrom, scriptCall, type CallScript } from './api/script';
-import { ringYou, standIn } from './api/standin';
+import { ringFrom, scriptCall, type CallScript } from './api/call/script';
+import { ringYou } from './api/calls/rings';
+import { standIn } from './api/standin';
 import { current, me } from './api/state';
 import { page, type PageStory } from './page';
-import type { World } from './world';
+import type { World } from './world/world';
 import { call, type CallSpec } from './world/build';
 
 /**

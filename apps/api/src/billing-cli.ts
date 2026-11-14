@@ -1,14 +1,14 @@
 import { z } from 'zod';
-import { createPool } from './db';
-import { AppError } from './errors';
+import { createPool } from './platform/db';
+import { AppError } from './platform/errors';
 import { creditBySupport, named, standingOf, type Support } from './features/billing/support';
-import { configureLogging, flushLogs, log } from './log';
+import { configureLogging, flushLogs, log } from './platform/log';
 
 /**
  * `pnpm --filter @alcove/server billing …` is support's way into an account's plan (docs: Plans and usage › Support), in
  * whichever database DATABASE_URL names. It opens and seals plans with KSERVICE, and needs nothing else of the API's settings,
  * so it runs where KSERVICE is at hand, as it is outside a TEE (locally, from .env). Inside Confidential Space KSERVICE is in
- * the API's sealed server keys (serverKeys.ts), so no deploy runs this as a job. An account is named by a top-up's reference
+ * the API's sealed server keys (server-keys.ts), so no deploy runs this as a job. An account is named by a top-up's reference
  * or by its ID, never by an address where a run is recorded, as a job's arguments are kept with its execution and in Cloud
  * Audit Logs. Where KMASTER is set too, which is locally, an address finds one as sign-in does, by the index key derived from
  * it, so a developer can give an account money to buy with, without 1Click. What it prints and logs says only what a log may

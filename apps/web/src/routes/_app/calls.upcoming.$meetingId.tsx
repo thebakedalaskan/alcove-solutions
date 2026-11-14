@@ -4,10 +4,10 @@
  */
 import { createFileRoute, type ErrorComponentProps } from '@tanstack/react-router';
 import { AheadMissing, CallAhead } from '~/features/calls/list/Upcoming';
-import { q } from '~/lib/queries';
+import { callQueries } from '~/features/calls/list/queries';
 
 export const Route = createFileRoute('/_app/calls/upcoming/$meetingId')({
-  loader: ({ context, params }) => context.queryClient.ensureQueryData(q.meeting(params.meetingId)),
+  loader: ({ context, params }) => context.queryClient.ensureQueryData(callQueries.meeting(params.meetingId)),
   errorComponent: ({ error }: ErrorComponentProps) => <AheadMissing error={error} />,
   component: AheadRoute
 });

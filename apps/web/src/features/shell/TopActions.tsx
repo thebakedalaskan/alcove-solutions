@@ -4,7 +4,7 @@
  */
 import { Icon, Kbd } from '@alcove/ui';
 import { ariaShortcut, shortcut } from '~/lib/keys';
-import { YourFace } from './YouMenu';
+import { YourFace } from '~/features/account/YouMenu';
 
 /** ⌘K opens it. A workspace full screen has a frame of its own, with its own Search. */
 export function TopActions({ onSearch }: { onSearch: () => void }) {

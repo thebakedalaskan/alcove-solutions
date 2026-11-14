@@ -1,9 +1,9 @@
 import { type CallAction } from '@alcove/api';
-import { ConflictError } from '../../errors';
-import * as space from './workspace';
-import * as boards from './boards';
+import { ConflictError } from '../../platform/errors';
+import * as space from './workspace/workspace';
+import * as boards from './boards/boards';
 import { type Viewer } from './participants';
-import { anyonesAttention } from './attention';
+import { anyonesAttention } from './attention/attention';
 import { type Stored } from './state';
 
 /* ---------- during the call: the organizer's controls, and what anyone in it can do ---------- */

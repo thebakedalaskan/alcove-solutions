@@ -6,7 +6,7 @@
 import { errorCode } from '@alcove/api';
 import { useEffect, useRef } from 'react';
 import { log } from '~/lib/log';
-import { useVisit } from '~/lib/queries';
+import { useVisit } from '~/features/team/queries';
 
 const vlog = log.child({ component: 'visits' });
 /** How long a tab is hidden before coming back to it is a visit. */

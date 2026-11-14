@@ -7,7 +7,8 @@ import { firstName, type Trashed, type WorkspaceSummary } from '@alcove/api';
 import { Button, Dots, EmptyState, Icon, WS_ITEM_ICONS } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useNow } from '~/lib/live';
-import { q } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { workspaceQueries } from '~/features/workspace/queries';
 import { cardWhen, callTitle, isCallSpace, type DriveFile } from './places';
 import type { DriveActions } from './actions';
 import { SheetHead } from './Sheet';
@@ -23,8 +24,8 @@ function wasIn(t: Trashed, spaces: readonly WorkspaceSummary[]): string {
 }
 
 export function TrashSheet({ spaces, actions }: { spaces: readonly WorkspaceSummary[]; actions: DriveActions }) {
-  const trash = useQuery(q.trashed());
-  const me = useQuery(q.session()).data?.user.name;
+  const trash = useQuery(workspaceQueries.trashed());
+  const me = useQuery(accountQueries.session()).data?.user.name;
   const now = useNow(60_000);
   const head = <SheetHead title="Trash" meta={<p>Kept for 30 days, then deleted for everyone</p>} />;
   if (trash.isError) {

@@ -1,5 +1,5 @@
 {
- "src/features/account/notifications.integration.test.ts": {
+ "src/features/profile/notifications.integration.test.ts": {
   "seconds": 0.7,
   "groups": {
    "browser notification preferences": 0.7
@@ -21,27 +21,27 @@
    "what agents did": 4.8
   }
  },
- "src/features/billing/topups.integration.test.ts": {
+ "src/features/billing/top-ups/top-ups.integration.test.ts": {
   "seconds": 6.9,
   "groups": {
    "top-ups": 6.8,
    "top-ups a release before plans added": 0.1
   }
  },
- "src/features/calls/attention-delivery.integration.test.ts": {
+ "src/features/calls/attention/attention-delivery.integration.test.ts": {
   "seconds": 1.7,
   "groups": {
    "attention delivered through the live HTTP client": 1.7
   }
  },
- "src/features/calls/attention.integration.test.ts": {
+ "src/features/calls/attention/attention.integration.test.ts": {
   "seconds": 11.7,
   "groups": {
    "nudges and status": 4.8,
    "call attention": 6.8
   }
  },
- "src/features/calls/board-votes.integration.test.ts": {
+ "src/features/calls/boards/board-votes.integration.test.ts": {
   "seconds": 28.3,
   "groups": {
    "a vote": 14.8,
@@ -52,14 +52,14 @@
    "what the previous release stored": 1.4
   }
  },
- "src/features/calls/boardHelps.integration.test.ts": {
+ "src/features/calls/boards/board-helps.integration.test.ts": {
   "seconds": 21.5,
   "groups": {
    "ideas from the call": 19.4,
    "Sort into themes": 2.2
   }
  },
- "src/features/calls/boards-in-calls.integration.test.ts": {
+ "src/features/calls/boards/boards-in-calls.integration.test.ts": {
   "seconds": 149.5,
   "groups": {
    "a new board": 31.9,
@@ -78,14 +78,14 @@
    "what the previous release stored": 9.2
   }
  },
- "src/features/calls/boardsAfter.integration.test.ts": {
+ "src/features/calls/boards/boards-after.integration.test.ts": {
   "seconds": 9.8,
   "groups": {
    "the note after a call with a board": 8.7,
    "bringing a board to a call": 1.2
   }
  },
- "src/features/calls/callHomes.integration.test.ts": {
+ "src/features/calls/workspace/call-homes.integration.test.ts": {
   "seconds": 17,
   "groups": {
    "a call’s home": 5.7,
@@ -96,7 +96,7 @@
    "what the previous release stored": 0.2
   }
  },
- "src/features/calls/callWorkspace.integration.test.ts": {
+ "src/features/calls/workspace/call-workspace.integration.test.ts": {
   "seconds": 108,
   "groups": {
    "which workspace a call uses": 8.6,
@@ -130,19 +130,19 @@
    "screen sharing": 2.4
   }
  },
- "src/features/calls/capture.integration.test.ts": {
+ "src/features/calls/notes/capture.integration.test.ts": {
   "seconds": 8.9,
   "groups": {
    "what a call captures": 8.9
   }
  },
- "src/features/calls/catchup.integration.test.ts": {
+ "src/features/calls/notes/catchup.integration.test.ts": {
   "seconds": 86.1,
   "groups": {
    "catching up during a call": 86.1
   }
  },
- "src/features/calls/direct-messages.integration.test.ts": {
+ "src/features/calls/chat/direct-messages.integration.test.ts": {
   "seconds": 15.6,
   "groups": {
    "private messages inside a call": 15.6
@@ -158,7 +158,7 @@
    "what a guest’s pass reaches": 1.7
   }
  },
- "src/features/calls/hearIt.integration.test.ts": {
+ "src/features/calls/notes/hear-it.integration.test.ts": {
   "seconds": 15,
   "groups": {
    "Hear it during a call": 15
@@ -170,7 +170,7 @@
    "host hand-off": 43.5
   }
  },
- "src/features/calls/liveNotes.integration.test.ts": {
+ "src/features/calls/notes/live-notes.integration.test.ts": {
   "seconds": 108.6,
   "groups": {
    "one set of live notes for the call": 14,
@@ -190,20 +190,20 @@
    "follow-up mutation budgets": 1.8
   }
  },
- "src/features/calls/mentions.integration.test.ts": {
+ "src/features/calls/chat/mentions.integration.test.ts": {
   "seconds": 9.8,
   "groups": {
    "selected call mentions": 9.8
   }
  },
- "src/features/calls/moves.integration.test.ts": {
+ "src/features/calls/moves/moves.integration.test.ts": {
   "seconds": 17.5,
   "groups": {
    "moving to another device": 11.4,
    "coming back after a connection drops": 6.1
   }
  },
- "src/features/calls/notifications.integration.test.ts": {
+ "src/features/calls/attention/notifications.integration.test.ts": {
   "seconds": 8.3,
   "groups": {
    "authorized browser notification candidates": 8.3
@@ -215,13 +215,13 @@
    "pointing at shared screens": 13.9
   }
  },
- "src/features/calls/private-threads.integration.test.ts": {
+ "src/features/calls/chat/private-threads.integration.test.ts": {
   "seconds": 6.6,
   "groups": {
    "private conversation threads": 6.6
   }
  },
- "src/features/calls/rings.integration.test.ts": {
+ "src/features/calls/ringing/rings.integration.test.ts": {
   "seconds": 83.2,
   "groups": {
    "ringing": 18.4,
@@ -230,13 +230,13 @@
    "privacy": 1.5
   }
  },
- "src/features/calls/threads.integration.test.ts": {
+ "src/features/calls/chat/threads.integration.test.ts": {
   "seconds": 9.2,
   "groups": {
    "call conversation threads": 9.2
   }
  },
- "src/features/calls/timers.integration.test.ts": {
+ "src/features/calls/timers/timers.integration.test.ts": {
   "seconds": 6.5,
   "groups": {
    "the call timer through the real API": 6.5
@@ -297,7 +297,7 @@
    "notes written again": 2.3
   }
  },
- "src/features/notes/carryover.integration.test.ts": {
+ "src/features/notes/series/carryover.integration.test.ts": {
   "seconds": 62.6,
   "groups": {
    "what carries over into a call": 6,
@@ -328,7 +328,7 @@
    "the full summary": 4.3
   }
  },
- "src/features/notes/drive-exports.integration.test.ts": {
+ "src/features/notes/drive-exports/drive-exports.integration.test.ts": {
   "seconds": 44.8,
   "groups": {
    "automatic Google Drive call exports": 44.8
@@ -344,19 +344,19 @@
    "what a call keeps unless it’s told otherwise": 2.7
   }
  },
- "src/features/notes/links.integration.test.ts": {
+ "src/features/notes/links/links.integration.test.ts": {
   "seconds": 8.4,
   "groups": {
    "links to a call’s notes": 8.4
   }
  },
- "src/features/notes/models.integration.test.ts": {
+ "src/features/notes/writing/models.integration.test.ts": {
   "seconds": 5.1,
   "groups": {
    "choosing the AI model": 5.1
   }
  },
- "src/features/notes/personal.integration.test.ts": {
+ "src/features/notes/personal/personal.integration.test.ts": {
   "seconds": 66.7,
   "groups": {
    "your own notes in a call": 5.4,
@@ -376,25 +376,25 @@
    "what a line became": 3.3
   }
  },
- "src/features/notes/series.integration.test.ts": {
+ "src/features/notes/series/series.integration.test.ts": {
   "seconds": 19,
   "groups": {
    "memory across a series": 19
   }
  },
- "src/features/recordings/screenUpgrade.integration.test.ts": {
+ "src/features/recordings/screens/screen-upgrade.integration.test.ts": {
   "seconds": 3,
   "groups": {
    "screen captures through a live-call upgrade": 3
   }
  },
- "src/features/recordings/screenUpkeep.integration.test.ts": {
+ "src/features/recordings/screens/screen-upkeep.integration.test.ts": {
   "seconds": 35.4,
   "groups": {
    "shared screens around the notes": 35.4
   }
  },
- "src/features/recordings/screens.integration.test.ts": {
+ "src/features/recordings/screens/screens.integration.test.ts": {
   "seconds": 312.7,
   "groups": {
    "shared screens kept for the notes": 27,
@@ -424,14 +424,14 @@
    "a transcript that says what it isn’t sure of": 13.3
   }
  },
- "src/features/workspaces/board-at-once.integration.test.ts": {
+ "src/features/workspaces/boards/board-at-once.integration.test.ts": {
   "seconds": 5.5,
   "groups": {
    "ideas from the call added at the same moment": 4.5,
    "two branches from one idea at once": 1
   }
  },
- "src/features/workspaces/board-more.integration.test.ts": {
+ "src/features/workspaces/boards/board-more.integration.test.ts": {
   "seconds": 11,
   "groups": {
    "a table": 3.9,
@@ -443,7 +443,7 @@
    "what More adds": 0.6
   }
  },
- "src/features/workspaces/boards.integration.test.ts": {
+ "src/features/workspaces/boards/boards.integration.test.ts": {
   "seconds": 39,
   "groups": {
    "people at a board at once": 3.2,
@@ -459,7 +459,7 @@
    "a board’s own page": 4.5
   }
  },
- "src/features/workspaces/library.integration.test.ts": {
+ "src/features/workspaces/library/library.integration.test.ts": {
   "seconds": 8.3,
   "groups": {
    "the library": 3.5,
@@ -467,7 +467,7 @@
    "guests in a call": 0.9
   }
  },
- "src/features/workspaces/media.integration.test.ts": {
+ "src/features/workspaces/uploads/media.integration.test.ts": {
   "seconds": 168.1,
   "groups": {
    "a file in a document": 7.4,
@@ -504,7 +504,7 @@
    "what a process takes on at once > asks again as a long read goes on, so someone who loses the document part way through stops": 1.2
   }
  },
- "src/features/workspaces/workspaceDocuments.integration.test.ts": {
+ "src/features/workspaces/documents/documents.integration.test.ts": {
   "seconds": 287.7,
   "groups": {
    "a document": 5.4,
@@ -537,7 +537,7 @@
    "a code block’s language": 1
   }
  },
- "src/features/workspaces/workspaceTags.integration.test.ts": {
+ "src/features/workspaces/tags.integration.test.ts": {
   "seconds": 10.2,
   "groups": {
    "a tag": 4.5,
@@ -606,7 +606,7 @@
    "migrations": 0.8
   }
  },
- "src/integration/nextRelease.integration.test.ts": {
+ "src/integration/next-release.integration.test.ts": {
   "seconds": 3.5,
   "groups": {
    "what the next release stores": 3.5
@@ -618,7 +618,7 @@
    "immediate query actions through the real API": 7.4
   }
  },
- "src/features/billing/meter.integration.test.ts": {
+ "src/features/billing/meter/meter.integration.test.ts": {
   "seconds": 22,
   "groups": {
    "who pays": 7.7,
@@ -634,7 +634,7 @@
    "deleting an account": 1.2
   }
  },
- "src/features/billing/teams.integration.test.ts": {
+ "src/features/billing/teams/teams.integration.test.ts": {
   "seconds": 20.5,
   "groups": {
    "making a team and its licenses": 3,
@@ -666,7 +666,7 @@
    "billing on the command line": 12.6
   }
  },
- "src/features/calls/ahead.integration.test.ts": {
+ "src/features/calls/workspace/ahead.integration.test.ts": {
   "seconds": 0.7,
   "groups": {
    "a call before it starts": 0.7
@@ -693,7 +693,7 @@
    "one Trash": 0.2
   }
  },
- "src/features/workspaces/workspaceAbout.integration.test.ts": {
+ "src/features/workspaces/about.integration.test.ts": {
   "seconds": 0.5,
   "groups": {
    "what a workspace is for": 0.5

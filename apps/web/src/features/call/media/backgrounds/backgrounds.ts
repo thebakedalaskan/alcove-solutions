@@ -1,7 +1,7 @@
 /*
  * What can show behind someone on camera: Alcove's own pictures, and pictures they add themselves. Those stay in this
  * browser: each is made into a 1920×1080 JPEG here and sealed, as edits and recordings kept on this device are
- * (workspace/keep.ts), with AES-GCM under a key made on this device that can't be exported, a fresh IV each time and
+ * (workspace/offline/keep.ts), with AES-GCM under a key made on this device that can't be exported, a fresh IV each time and
  * whose picture it is bound in. They're never sent anywhere; only the picture with someone in front of it reaches a
  * call. Signing out or deleting the account here deletes them, and the key goes with the last.
  */
@@ -9,6 +9,7 @@ import { AlcoveApiError, BACKGROUND_SCENES, DeviceGenerationSchema, KeptBackgrou
 import { SCENE_PICTURES } from '@alcove/ui';
 import { useEffect, useState } from 'react';
 import { log } from '~/lib/log';
+import type { LocalMedia } from '../media';
 import { accountGeneration, accountReadFence, activatePictureAccount, onSignedOutElsewhere, signedOut } from '~/lib/signedOut';
 
 const blog = log.child({ component: 'backgrounds' });
@@ -407,4 +408,9 @@ export function useKeptPictures(owner: string | null): KeptPicture[] | null {
     return () => { active = false; listeners.delete(read); };
   }, [owner]);
   return snapshot.owner === owner ? snapshot.pictures : owner ? null : [];
+}
+
+/** Whose pictures can show behind the camera in a call: the account signed in here, once that's known, or none for a guest (null). */
+export function useBackgroundsOf(media: LocalMedia, owner: string | null | undefined): void {
+  useEffect(() => { if (owner !== undefined) media.setAccount(owner); }, [media, owner]);
 }

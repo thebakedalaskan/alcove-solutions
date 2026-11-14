@@ -9,10 +9,10 @@ import { AlcoveApiError, type AlcoveApi, type CallSession, type CallState, type 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { createApp } from '../../app';
-import { openJson, sealJson, toJson } from '../../crypto';
+import { openJson, sealJson, toJson } from '../../keys/crypto';
 import { maintain } from '../../maintenance';
-import { openOwner } from '../../owners';
-import { speechWav } from '../../testing/fake-near';
+import { openOwner } from '../../keys/owners';
+import { speechWav } from '../../testing/fakes/near';
 import { ORIGIN, cookieFetch, startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
 import { header as callHeader, key as callKey } from './state';

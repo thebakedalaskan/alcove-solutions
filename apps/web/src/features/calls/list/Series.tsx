@@ -14,10 +14,11 @@ import { repeatLineHere } from '~/features/calls/scheduling/words';
 import { useNoteReader } from '~/features/notes/entries';
 import { readerRole } from '~/features/notes/meta';
 import { AskBar, decisionLine, inNote, notDecided } from '~/features/notes/parts';
-import { NextOnCalendar, useScheduleNextCall } from '~/features/series/carried';
+import { NextOnCalendar, useScheduleNextCall } from '~/features/notes/series/carried';
 import { api } from '~/lib/api';
 import { sameEmail, spokenName } from '~/lib/people';
-import { q, useUpdateAction, useUpdateDecision, useUpdateQuestion, useUpdateRevisit } from '~/lib/queries';
+import { useUpdateAction, useUpdateDecision, useUpdateQuestion, useUpdateRevisit } from '~/features/notes/queries';
+import { seriesQueries } from '~/features/notes/series/queries';
 import { dayMonth, hm, position, shortDay, timeZone } from '~/lib/time';
 import { plural } from '~/lib/words';
 import { type Ahead } from './ahead';
@@ -37,7 +38,7 @@ export function SeriesView({ id, next, notes, inbox, pinned, me, now, toAll }: {
   toAll: ReactNode;
 }) {
   // A read that fails keeps the last answer, which would keep showing calls someone may not read any more.
-  const read = useQuery({ ...q.series(id), retry: (n, e) => errorCode(e) !== 'not-found' && n < 2 });
+  const read = useQuery({ ...seriesQueries.series(id), retry: (n, e) => errorCode(e) !== 'not-found' && n < 2 });
   const gone = read.isError && errorCode(read.error) === 'not-found';
   const s = read.isError ? undefined : read.data;
   if (read.isPending) return <SheetHead title={next?.title ?? 'Series'} />;

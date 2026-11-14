@@ -11,7 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useId, useState } from 'react';
 import { PayAdded, PayNow, PayOver, PaySeen, isOver, payingOf, useSeenWhileOpen } from '~/features/plans/paying';
 import { useNow } from '~/lib/live';
-import { q, useCancelTopUp, useStartTopUp } from '~/lib/queries';
+import { planQueries, useCancelTopUp, useStartTopUp } from '~/features/plans/queries';
 import { usd } from '~/lib/words';
 
 const tokens = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 6, useGrouping: false });
@@ -68,7 +68,7 @@ function Body({ topUpId, onClose }: { topUpId: string | null; onClose: () => voi
 
 /** Choosing how much, then the network to send USDC on, then getting an address for one payment of it. */
 function Pick({ onStarted }: { onStarted: (id: string) => void }) {
-  const routes = useQuery(q.topUpRoutes());
+  const routes = useQuery(planQueries.topUpRoutes());
   const start = useStartTopUp();
   const group = useId();
   const ownId = useId();
@@ -80,7 +80,7 @@ function Pick({ onStarted }: { onStarted: (id: string) => void }) {
   /*
    * Nothing is chosen for them: they pick the network. Every route offered is USDC, one per network, so the list shows
    * only networks and the legend and prices say USDC. If the server offers another token again (its allowlist in
-   * apps/api/src/features/billing/oneclick.ts), bring back a token choice here first.
+   * apps/api/src/features/billing/top-ups/oneclick.ts), bring back a token choice here first.
    */
   const chainOptions: SelectOption<string>[] = list.map((r) => ({ value: r.id, label: r.chainName, mark: <CryptoMark name={r.chain} /> }));
   const route = list.find((r) => r.id === routeId);
@@ -147,7 +147,7 @@ function Pick({ onStarted }: { onStarted: (id: string) => void }) {
  * how it stands and until when, what to send and where, then seen, added, or over and why, read again until it's done.
  */
 function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose: () => void }) {
-  const topUp = useQuery(q.topUp(id));
+  const topUp = useQuery(planQueries.topUp(id));
   const cancel = useCancelTopUp();
   const now = useNow();
   const t = topUp.data;

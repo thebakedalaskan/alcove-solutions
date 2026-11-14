@@ -25,7 +25,9 @@ import { useNavigate, useRouter } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
-import { q, qk } from '~/lib/queries';
+import { accountQueries } from '~/features/account/queries';
+import { accountKeys } from '~/features/account/queryKeys';
+import { noteKeys } from '~/features/notes/queryKeys';
 import {
   Unreadable, canKeep, dropKept, forgetKept, heldNow, keptClips, keptPieces, keptRecording, keptRecordings, onKeptChange, takeLock, updateKept,
   within, type KeptSummary, type Release
@@ -425,7 +427,7 @@ export function useKeptUploads(owner: string | null) {
     return () => { removeEventListener('online', kick); document.removeEventListener('visibilitychange', seen); };
   }, []);
   useEffect(() => uploads.onNews((n) => {
-    void qc.invalidateQueries({ queryKey: qk.notes });
+    void qc.invalidateQueries({ queryKey: noteKeys.notes });
     if (n.kind === 'uploaded') toast(`“${n.title}” uploaded. Its notes are being written.`, { icon: 'check' });
     else toast(`“${n.title}” was deleted on Alcove, so what was left of it on this device is deleted too.`, { icon: 'trash' });
   }), [qc, toast]);
@@ -434,7 +436,7 @@ export function useKeptUploads(owner: string | null) {
     // Who's signed in now, for the app (and what it lists here) to follow. Until that's known it's asked again, a while
     // after each try, so uploads don't stay stopped until the page reloads.
     const readWho = (wait: number) => {
-      void qc.fetchQuery({ ...q.session(), staleTime: 0 }).then((s) => { uploads.follow(s?.ownerId ?? null); return router.invalidate(); }, (e: unknown) => {
+      void qc.fetchQuery({ ...accountQueries.session(), staleTime: 0 }).then((s) => { uploads.follow(s?.ownerId ?? null); return router.invalidate(); }, (e: unknown) => {
         ulog.info('couldn’t read who’s signed in here; asking again later', { wait, err: e });
         timer = setTimeout(() => readWho(Math.min(wait * 2, MOST_WAIT)), wait);
       });
@@ -442,7 +444,7 @@ export function useKeptUploads(owner: string | null) {
     const off = uploads.onAccountTrouble((why) => {
       clearTimeout(timer);
       if (why === 'other') { readWho(FIRST_WAIT); return; }
-      qc.setQueryData(qk.session, null);
+      qc.setQueryData(accountKeys.session, null);
       void navigate({ to: '/welcome' });
     });
     return () => { off(); clearTimeout(timer); };

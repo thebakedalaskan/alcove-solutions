@@ -6,7 +6,7 @@
  * Workspace at the top right closing the workspace keeps them, where Close on its bar hands them on.
  */
 import { useCallback, useEffect, useRef } from 'react';
-import { isScreen, type ThingId } from './onStage';
+import { isScreen, type ThingId } from '../stage/onStage';
 
 export type KeysTo =
   /** Into its frame, which says what it is: its bar and what's in it come next with Tab. */

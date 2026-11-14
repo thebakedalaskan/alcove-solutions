@@ -16,9 +16,9 @@ import {
 } from '@alcove/ui';
 import { AnimatePresence, motion } from 'motion/react';
 import { Fragment, memo, type ReactNode } from 'react';
-import { NUDGES, NUDGE_KINDS } from '~/features/call/layout/nudges';
-import { STATUS, STATUS_KINDS, STATUS_MINUTES } from '~/features/call/layout/status';
-import { CAST, firstOf } from '~/features/notes/cast';
+import { NUDGES, NUDGE_KINDS } from '~/features/call/attention/nudges';
+import { STATUS, STATUS_KINDS, STATUS_MINUTES } from '~/features/call/attention/status';
+import { CAST, firstOf } from '~/features/examples/cast';
 import {
   DOC_LINE, LAYOUTS, LINES, LINKS, ORDER, REPLY, ROOMS, SCREEN, alcoveX, clock, type Box, type Point, type PopId, type Stage,
   type Who

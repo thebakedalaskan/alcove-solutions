@@ -11,14 +11,14 @@ import {
   type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole, MyTeamSchema, type PlanNotice
 } from '@alcove/api';
 import { tileHintKey } from '~/features/call/layout/view';
-import { returnTo } from '~/lib/afterSignIn';
-import { sessions } from '~/lib/live';
+import { returnTo } from '~/features/account/afterSignIn';
+import { sessions } from '~/features/call/session/handoff';
 import { openBrowser } from '../browser';
 import { busyCalls, busyEvents, soonCalls } from '../world/calls';
 import { connected, notConnected, writeNote, type NoteSpec } from '../world/build';
 import { iso, on, setClock } from '../world/clock';
 import { clipOf, stillOf } from '../media/screens';
-import { PREFS, session, type BoardSpec, type Kept, type Opening, type Page, type Refused, type Space, type World } from '../world';
+import { PREFS, session, type BoardSpec, type Kept, type Opening, type Page, type Refused, type Space, type World } from '../world/world';
 import { FLOW, RETRO, roomBoard } from '../world/boards';
 import {
   COMPETITORS, EMPTY_STATES, EXPENSES, FIRST_DRAFT, HOLIDAYS, INTERVIEWS, LAUNCH_CHECKLIST, LAUNCH_PLAN, MEDIA, OLD_ROADMAP, ONBOARDING_FIXES, PRICING_COPY,
@@ -27,18 +27,18 @@ import {
 import { busyNotes, pricingFollowUp, pricingFollowUpWritten, standupAdditions, standupOwn, walkthrough } from '../world/notes';
 import { AIKO, ANA, ART, DIEGO, DIRECTORY, INES, JONAS, KOFI, LENA, MANY, MAYA, ME_ID, NADIA, PRIYA, SAM, THEO, teamOf, type Colleague } from '../world/people';
 import { QUIET } from './empty';
-import { forgetKeptHere } from './kept';
+import { forgetKeptHere } from './recordings/kept';
 import { drawnPicture, forgetAudio } from './media';
 import { stopLive } from './standin';
-import { buyingWith, paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, PRO_YEAR, purchaseTopUp, raisePrices, TEAM_SIX, topUpOf, withPayments, type PaymentPlay } from '../world/payments';
-import { carriedOver, freePlan, inGrace, newPlan, notesStopped, overLimits, proEnded, proEnding, proEndingPriceRose, proExtended, proPlan, proRenewed, PRO_YEARLY_PRICE, withBalance, withNotesLeft } from '../world/plans';
+import { buyingWith, paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, PRO_YEAR, purchaseTopUp, raisePrices, TEAM_SIX, topUpOf, withPayments, type PaymentPlay } from '../world/plans/payments';
+import { carriedOver, freePlan, inGrace, newPlan, notesStopped, overLimits, proEnded, proEnding, proEndingPriceRose, proExtended, proPlan, proRenewed, PRO_YEARLY_PRICE, withBalance, withNotesLeft } from '../world/plans/plans';
 import { disconnectedDrive, withDriveExports } from '../world/drive-exports';
 import { homesOn } from '../world/call-page';
 import { calendars } from '../world/scheduling';
-import { withAgentConnections, withAgentEnding, withClaudeJustConnected } from './agents';
-import { planWithTeam, priyasTeam, startedTeam, teamView, vandelayTeam, type TeamWorld } from '../world/teams';
+import { withAgentConnections, withAgentEnding, withClaudeJustConnected } from './agents/agents';
+import { planWithTeam, priyasTeam, startedTeam, teamView, vandelayTeam, type TeamWorld } from '../world/plans/teams';
 import { serve } from './state';
-import { forgetDocuments, summaryOf } from './workspaces';
+import { forgetDocuments, summaryOf } from './workspaces/workspaces';
 
 export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'agents-ending' | 'agents-just-connected' | 'drive-connected' | 'payments'
   | 'plan-low' | 'plan-stopped' | 'plan-grace' | 'plan-over' | 'plan-balance' | 'plan-pro' | 'plan-pro-ending' | 'plan-pro-ending-price' | 'plan-pro-renewed' | 'plan-pro-ended'
@@ -380,7 +380,7 @@ function onTheirOwn(): World {
 /** The secret of the invite `team-join` opens. Made up: it joins nothing outside Storybook. */
 export const TEAM_INVITE_SECRET = 'VandelayInviteStorybook0001';
 /**
- * The busy afternoon on Vandelay's team (src/world/teams.ts): `team` as it stands, `admin` whether Art runs it, `change`
+ * The busy afternoon on Vandelay's team (src/world/plans/teams.ts): `team` as it stands, `admin` whether Art runs it, `change`
  * anything else, and the plan as the team makes it, with $180 in the balance.
  */
 function onTeam(team: TeamWorld, change: (t: TeamWorld, w: World) => void = () => {}): World {

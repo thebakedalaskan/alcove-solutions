@@ -5,13 +5,13 @@
  * licenses. All made up, in the demo world.
  */
 import { NOTE_LINK_DAYS, type PersonalEntry } from '@alcove/api';
-import { returnTo } from '~/lib/afterSignIn';
-import { UNENCRYPTED_MODEL } from '../../src/api/script';
-import { attested, type Broken } from '../../src/api/attestation';
+import { returnTo } from '~/features/account/afterSignIn';
+import { UNENCRYPTED_MODEL } from '../../src/api/call/script';
+import { attested, type Broken } from '../../src/api/trust/attestation';
 import { standIn } from '../../src/api/standin';
 import type { Troubles } from '../../src/api/trouble';
-import { keepHere, type KeptSpec } from '../../src/api/kept';
-import type { World } from '../../src/world';
+import { keepHere, type KeptSpec } from '../../src/api/recordings/kept';
+import type { World } from '../../src/world/world';
 import { calendarEvent, changer, connected, notConnected, writeNote } from '../../src/world/build';
 import { firstDayEvents, ownWeekEvents } from '../../src/world/calls';
 import { pricingFollowUp, pricingFollowUpWritten } from '../../src/world/notes';
@@ -19,7 +19,7 @@ import { iso } from '../../src/world/clock';
 import { INVITATIONS, MOVING } from '../../src/world/invitations';
 import { withDriveExports } from '../../src/world/drive-exports';
 import { AIKO, ART, DIEGO, ELENA, LENA, MAYA, ME_ID, NADIA, OMAR, PRIYA, SAM, THEO } from '../../src/world/people';
-import { planWithTeam } from '../../src/world/teams';
+import { planWithTeam } from '../../src/world/plans/teams';
 import { LAUNCH, withWorkspaces } from '../../src/world/workspaces';
 import { swap } from '../journeys/play';
 
@@ -261,7 +261,7 @@ export const fromALink = (w: World): void => {
   if (!n.people.some((p) => p.email === THEO.email)) n.people.push(THEO);
 };
 
-/* ---------- a team (src/world/teams.ts) ---------- */
+/* ---------- a team (src/world/plans/teams.ts) ---------- */
 
 /** Maya needed a license this morning when none was left, and is waiting for one. */
 export const mayaWaits = (w: World): void => {

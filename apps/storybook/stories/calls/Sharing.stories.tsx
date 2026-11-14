@@ -6,7 +6,7 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
-import { at, says, shares, stopsSharing } from '../../src/api/script';
+import { at, says, shares, stopsSharing } from '../../src/api/call/script';
 import { inCall, phone, type InCall } from '../../src/call';
 import { pages, type PageArgs } from '../../src/page';
 import { SOON, frameOf, settle, shareATab, tileOf } from './plays';

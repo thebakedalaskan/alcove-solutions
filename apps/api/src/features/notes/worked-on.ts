@@ -4,17 +4,17 @@
  * it is kept as the workspace knows them (`personIn`), so the reader is found among them the same way, and told it's them.
  *
  * A board open in the call is here too, with the part of the call it was open in, and the notes of that part read it
- * (features/notes/writer.ts) when everyone the note went to can open it: one summary goes to everyone, so a board someone couldn't
+ * (features/notes/writing/writer.ts) when everyone the note went to can open it: one summary goes to everyone, so a board someone couldn't
  * open stays out of it, and the note says which boards everyone can open.
  */
 import { MAIN_PLACE, type NoteWorkedOn } from '@alcove/api';
-import type { Deps, Owner } from '../../context';
-import { NotFoundError } from '../../errors';
-import { log } from '../../log';
-import type { WorkedDocument } from '../calls/space-state';
-import { portraitFor } from '../account/portraits';
+import type { Deps, Owner } from '../../platform/context';
+import { NotFoundError } from '../../platform/errors';
+import { log } from '../../platform/log';
+import { type WorkedDocument } from '../workspaces/worked';
+import { portraitFor } from '../profile/portraits';
 import { accountReader, cantOpen, emailIndex, personIn, roleOf, serverWorkspace, trashOf, workspaceFor, type HeldWorkspace, type Reader, type Workspace } from '../workspaces/access';
-import { readDocument } from '../workspaces/documents';
+import { readDocument } from '../workspaces/documents/documents';
 
 const wlog = log.child({ component: 'worked-on' });
 

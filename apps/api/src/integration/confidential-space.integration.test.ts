@@ -1,8 +1,8 @@
 /*
  * The API in Google Cloud Confidential Space (docs: privacy-keys-and-sessions › Moving to confidential computing, and
  * system-architecture › The edge), started as production starts it (start.ts), against stand-ins for Google Cloud and the
- * launcher (testing/fake-gcp.ts), Sigstore's public log (testing/fake-rekor.ts), an ACME CA and Cloudflare's DNS
- * (testing/fake-acme.ts). Its secrets and the old keys come from Secret Manager through its attestation and nowhere else, its
+ * launcher (testing/fakes/gcp.ts), Sigstore's public log (testing/fakes/rekor.ts), an ACME CA and Cloudflare's DNS
+ * (testing/fakes/acme.ts). Its secrets and the old keys come from Secret Manager through its attestation and nowhere else, its
  * master is wrapped by Cloud KMS, it carries the accounts made before it, it hands out one attestation token naming its TLS
  * key and build with its release from the log, which a browser checks (`verifyServer`) without asking anyone, and it serves
  * the web app and the API over its own TLS, behind the load balancer's PROXY protocol. Browsers reach it as they would:
@@ -20,15 +20,15 @@ import { join } from 'node:path';
 import { brotliDecompressSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { unb64u } from '../crypto';
-import { acmeAccountKey, tlsKey } from '../edge/tlsKeys';
-import { DatabaseError, KeyError, UnavailableError } from '../errors';
+import { unb64u } from '../keys/crypto';
+import { acmeAccountKey, tlsKey } from '../edge/tls-keys';
+import { DatabaseError, KeyError, UnavailableError } from '../platform/errors';
 import { startServer, type Outside, type Running } from '../start';
 import { edgeFetch, edgeHttp1, edgeSession, plainRequest, presented, rawConnection, withoutProxyLine, type EdgeTarget } from '../testing/edge-client';
-import { startFakeAcme, type FakeAcme } from '../testing/fake-acme';
-import { PRODUCTION_IMAGE, spkiHash, startFakeGcp, type FakeGcp, type TokenSpoil } from '../testing/fake-gcp';
-import type { GoogleUser } from '../testing/fake-google';
-import { startFakeRekor, type FakeRekor } from '../testing/fake-rekor';
+import { startFakeAcme, type FakeAcme } from '../testing/fakes/acme';
+import { PRODUCTION_IMAGE, spkiHash, startFakeGcp, type FakeGcp, type TokenSpoil } from '../testing/fakes/gcp';
+import type { GoogleUser } from '../testing/fakes/google';
+import { startFakeRekor, type FakeRekor } from '../testing/fakes/rekor';
 import { cookieFetch, startHarness, type Browser, type Harness } from '../testing/harness';
 
 const COMMIT = '3f9c2a1b7d4e5f60718293a4b5c6d7e8f9012345';

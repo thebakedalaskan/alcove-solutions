@@ -14,7 +14,7 @@ How to find out what went wrong, anywhere in Alcove, without logging anything pr
 - Browser warnings and errors are sent to the API (`POST /v1/telemetry`) and appear in the same log
   with `source: "browser"`, including the request ID of any failed request they mention.
 
-## Server: `apps/api/src/log.ts`
+## Server: `apps/api/src/platform/log.ts`
 
 One pino logger. Import `log` and make a child per component; never use `console` (the policy
 script fails the build on it).
@@ -64,7 +64,7 @@ The production image has no SSH and shows nothing of a failed workload but its e
 The load balancer keeps no request logs, so client addresses aren't logged there either. The migration job still runs
 on Cloud Run, and logs there.
 
-## Errors: `apps/api/src/errors.ts`
+## Errors: `apps/api/src/platform/errors.ts`
 
 Throw the most specific `AppError` subclass. Each has a stable client code, an HTTP status, a log level
 and optional `context` (logged, never sent) and `cause` (logged with its stack).

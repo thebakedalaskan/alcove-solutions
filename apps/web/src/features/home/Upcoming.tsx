@@ -14,12 +14,14 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { pickerName } from '~/features/calls/scheduling/words';
-import { freshCalls } from '~/features/shell/context';
-import { calendarConnectUrl, q, usePreferences } from '~/lib/queries';
+import { freshCalls } from '~/features/calls/scheduling/fresh';
+import { accountQueries, usePreferences } from '~/features/account/queries';
+import { calendarConnectUrl, calendarQueries } from '~/features/calls/scheduling/queries';
 import { dayMonth, daysFromToday, hm, longDay, minutesUntil, shortMonth, weekday } from '~/lib/time';
 import { capital } from '~/lib/words';
-import { isOffered, isSolo, peopleOn, seriesIdOf, started, startsSoon, type Ahead } from './day';
-import { useMoveToAlcove, useShowMore } from './parts';
+import { isOffered, isSolo, peopleOn, seriesIdOf, started, startsSoon, type Ahead } from '~/features/calls/list/ahead';
+import { useShowMore } from './parts';
+import { useMoveToAlcove } from '~/features/calls/scheduling/moveToAlcove';
 
 /**
  * Google's way back to Home (`?calendar=`, `inAddress`): its result, kept for this visit once it's gone from the address,
@@ -28,7 +30,7 @@ import { useMoveToAlcove, useShowMore } from './parts';
 export function useCalendarReturn(inAddress: CalendarConnectResult | undefined): CalendarConnectResult | undefined {
   const navigate = useNavigate();
   const toast = useToast();
-  const calendar = useQuery(q.calendar()).data;
+  const calendar = useQuery(calendarQueries.calendar()).data;
   const [result] = useState(inAddress);
   const told = useRef(false);
   const connected = calendar !== undefined && calendar.source !== 'none' && !calendar.needsAccess;
@@ -79,8 +81,8 @@ const ROOMY = 8;
 const picking = (m: Meeting) => (m.isOrganizer ? `${capital(pickerName(m))} is picking a time` : 'A time is being picked');
 
 export function Upcoming({ ahead, me, now, result }: { ahead: readonly Ahead[]; me: string | undefined; now: number; result: CalendarConnectResult | undefined }) {
-  const calendar = useQuery(q.calendar());
-  const prefs = useQuery(q.prefs()).data;
+  const calendar = useQuery(calendarQueries.calendar());
+  const prefs = useQuery(accountQueries.prefs()).data;
   const others = prefs?.showOtherMeetings !== false;
   const showSolo = prefs?.showSoloEvents === true;
   const save = usePreferences();

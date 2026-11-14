@@ -1,5 +1,5 @@
-import { loadBoot, type Boot } from './config';
-import { configureLogging, flushLogs, log } from './log';
+import { loadBoot, type Boot } from './platform/config';
+import { configureLogging, flushLogs, log } from './platform/log';
 import { startServer } from './start';
 
 const slog = log.child({ component: 'server' });

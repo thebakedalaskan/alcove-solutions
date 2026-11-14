@@ -1,32 +1,33 @@
 import { MAIN_PLACE, firstName, type CallAction, type CallState } from '@alcove/api';
 import type { z } from 'zod';
-import { id128 } from '../../crypto';
-import { exec, tx } from '../../db';
-import { ConflictError, ValidationError } from '../../errors';
-import { CallBoards } from './space-state';
-import * as space from './workspace';
-import * as boards from './boards';
+import { id128 } from '../../keys/crypto';
+import { exec, tx } from '../../platform/db';
+import { ConflictError, ValidationError } from '../../platform/errors';
+import { CallBoards } from './workspace/space-state';
+import * as space from './workspace/workspace';
+import * as boards from './boards/boards';
 import { MeetingManifest } from '../meetings/service';
-import { getItem } from '../../vault';
-import { me } from '../account/account';
-import { addedFromLink, takeOffInvite } from '../meetings/invites';
+import { getItem } from '../../keys/vault';
+import { me } from '../profile/profile';
+import { addedFromLink, takeOffInvite } from './invites';
 import { placeOf, relocate, type Room } from './places';
-import * as rings from './rings';
-import { readerInCall } from '../workspaces/access';
+import * as rings from './ringing/rings';
 import { endSeat } from '../workspaces/service';
-import { log } from '../../log';
+import { readerInCall, workspaceCalls } from './workspace/seats';
+import { followHome } from '../meetings/homes';
+import { log } from '../../platform/log';
 import { hereIn, invitedIn, knownIn, seatKey, seatOf, seatsOf, type Viewer, whereIs } from './participants';
-import { actOnWorkspace, openWorkspace } from './workspace-actions';
-import { actOnBoard, runOnBoard } from './board-actions';
+import { actOnWorkspace, openWorkspace } from './workspace/workspace-actions';
+import { actOnBoard, runOnBoard } from './boards/board-actions';
 import { closeRooms, load, notice, saveSettled, screensOf, secondsIn, settle, sharesEnd, tenthsIn, type Stored, withPerson } from './state';
 import { anyone, stillHosting } from './permissions';
 import { view } from './read-model';
-import { addFollowUp, editFollowUp, reviewFollowUp, tickFollowUp } from './insights';
-import { ROOMS_ON_NEW_BOARD, afterClosing, landRooms, syncBoardSeats, syncRoomBoards } from './room-boards';
-import { changeCapture } from './recording';
-import { tellRoom } from './notifications';
-import { changeAttention, changeStatus, isAttentionAction } from './attention';
-import { readChat } from './chat-read';
+import { addFollowUp, editFollowUp, reviewFollowUp, tickFollowUp } from './notes/insights';
+import { ROOMS_ON_NEW_BOARD, afterClosing, landRooms, syncBoardSeats, syncRoomBoards } from './boards/room-boards';
+import { changeCapture } from './notes/recording';
+import { tellRoom } from './attention/notifications';
+import { changeAttention, changeStatus, isAttentionAction } from './attention/attention';
+import { readChat } from './chat/chat-read';
 
 const clog = log.child({ component: 'calls' });
 
@@ -212,10 +213,10 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
   }).then(async ({ room, gone, moved, removed, board, shifted, only }) => {
     if (room) for (const who of gone) await o.livekit.removeParticipant(room, who).catch((e: unknown) => clog.info('removed person already gone', { callId, err: e }));
     // What the call gave them in a workspace goes with them.
-    if (removed) await endSeat(o, callId, removed);
+    if (removed) await endSeat(o, callId, removed, workspaceCalls);
     // So does a place in a home made for the call that the invite gave them; someone rung is on the invite, so in it. And a
     // room's board they had by address, as they don't get that room's notes.
-    if (invite) await space.followHome(o, invite.meetingId, invite, invite.made);
+    if (invite) await followHome(o, invite.meetingId, invite, workspaceCalls, invite.made);
     if (invite?.gone.length) await boards.offRoomBoards(o, board, invite.gone);
     // Each room's board goes with whoever's in its room before anyone's told, so whoever's moved out has lost it by then.
     if (shifted) await syncRoomBoards({ organizer: o, callId });

@@ -6,7 +6,7 @@
  */
 import { BOARD_LIMITS, addObject, removeObjects, type InkColour, type InkObject } from '@alcove/board';
 import type { SheetPoint } from '../camera';
-import type { Gesture, ToolPress } from '../gestures';
+import type { Gesture, ToolPress } from '../input/gestures';
 import type { Board } from '../useBoard';
 
 type Point = readonly [number, number];

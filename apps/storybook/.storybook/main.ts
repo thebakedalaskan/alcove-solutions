@@ -2,7 +2,7 @@
  * Storybook for Alcove: the real components and the real pages, on made-up data. The app is compiled from its own source
  * (`~` is apps/web/src, as in the app), with Tailwind as the app uses it, and two of its modules stood in for:
  *
- *   apps/web/src/lib/api.ts              → src/api/index.ts, the stand-in AlcoveApi serving the story's scenario
+ *   apps/web/src/lib/api.ts              → src/api/api.ts, the stand-in AlcoveApi serving the story's scenario
  *   apps/web/src/features/call/media/livekit.ts → src/media/livekit.ts, a scripted room in place of LiveKit
  *
  * They're found by the file an import lands on, not by how it's spelled, so `~/lib/api`, `./api` and `../lib/api` all
@@ -22,7 +22,7 @@ const cameraWasm = join(dirname(createRequire(here('../../web/package.json')).re
 
 /** The app's modules Storybook replaces, by the file they are, and what replaces each. */
 const STAND_INS = new Map([
-  [here('../../web/src/lib/api.ts'), here('../src/api/index.ts')],
+  [here('../../web/src/lib/api.ts'), here('../src/api/api.ts')],
   [here('../../web/src/features/call/media/livekit.ts'), here('../src/media/livekit.ts')]
 ]);
 /** Only imports that could land on one of them are looked at twice. */

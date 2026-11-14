@@ -1,55 +1,79 @@
+/*
+ * @alcove/ui: the one entry. It exports every component file directly, area by area, as packages/ui/AGENTS.md maps them;
+ * no folder has an index of its own. Its stylesheet is the separate `@alcove/ui/styles.css`.
+ */
 import './css-vars';
-export * from './components/tab-attention';
-export { cn } from './cn';
-export * from './components/icon';
-export * from './components/emoji';
-export * from './components/reactions';
-export * from './components/brand';
-export * from './components/people';
-export * from './components/pick';
-export * from './components/calendar';
-export * from './components/primitives';
-export * from './components/overlay';
-export * from './components/toast';
-export * from './components/motion';
-export * from './components/scene';
-export * from './components/theme';
-export * from './components/illustrations';
-export * from './components/horizon';
-export * from './components/cove';
-export * from './components/recorder';
-export * from './components/empty';
-export * from './components/call';
-export * from './components/call-over';
-export * from './components/floating-call';
-export * from './components/capture';
-export * from './components/ringing';
-export * from './components/screens';
-export * from './components/app';
-export * from './components/palette';
-export * from './components/team-plan';
-export * from './components/settings';
-export * from './components/you';
-export * from './components/agents';
-export * from './components/guidance';
-export * from './components/workspace';
-export { useSettledPress } from './components/settle';
-export * from './components/qr';
-export * from './components/board';
-export * from './components/settle';
-export * from './components/follow-ups';
-export * from './components/flow';
-export * from './components/scheduler';
-export * from './components/plan-doors';
-export * from './components/backgrounds';
-export * from './components/drive-exports';
-export * from './components/call-timer';
-export * from './components/call-chat';
-export * from './components/call-questions';
-export * from './components/plans';
-export * from './components/checkout';
 
-export * from './components/calls';
-export * from './components/calls-week';
-export * from './components/files';
-export * from './components/workspace/frame';
+/* What every area builds on. */
+export { cn } from './foundation/cn';
+export * from './foundation/icon';
+export * from './foundation/primitives';
+export * from './foundation/overlay';
+export * from './foundation/toast';
+export * from './foundation/motion';
+export * from './foundation/theme';
+export * from './foundation/people';
+export * from './foundation/brand';
+export * from './foundation/illustrations';
+export * from './foundation/empty';
+export * from './foundation/emoji';
+export * from './foundation/calendar';
+export * from './foundation/qr';
+export * from './foundation/settle';
+export * from './foundation/tab-attention';
+export * from './foundation/app';
+
+/* The evening behind every page, and the frame around it. */
+export * from './evening/horizon';
+export * from './evening/cove';
+export * from './shell/sidebar';
+export * from './you/you';
+export * from './palette/palette';
+
+/* A call. */
+export * from './call/call';
+export * from './call/call-over';
+export * from './call/call-timer';
+export * from './call/call-chat';
+export * from './call/call-questions';
+export * from './call/reactions';
+export * from './call/capture';
+export * from './call/backgrounds';
+export * from './call/floating-call';
+
+/* Making, scheduling and listing calls. */
+export * from './calls/calls';
+export * from './calls/calls-week';
+export * from './calls/scheduler';
+export * from './calls/flow';
+export * from './calls/ringing';
+
+/* Notes, the Drive, the workspace and the board. */
+export * from './notes/notes-panel';
+export * from './notes/transcript';
+export * from './notes/note-card';
+export * from './notes/screens';
+export * from './notes/follow-ups';
+export * from './drive/files';
+export * from './workspace/list';
+export * from './workspace/document';
+export * from './workspace/popover';
+export * from './workspace/sheets';
+export * from './workspace/present';
+export * from './workspace/live';
+export * from './workspace/toasts';
+export * from './workspace/frame';
+export * from './board/board';
+
+/* The rest of the app's pages. */
+export * from './team/pick';
+export * from './plans/plans';
+export * from './plans/checkout';
+export * from './plans/plan-doors';
+export * from './plans/team-plan';
+export * from './settings/settings';
+export * from './settings/drive-exports';
+export * from './agents/agents';
+export * from './record/recorder';
+export * from './onboarding/guidance';
+export * from './welcome/scene';

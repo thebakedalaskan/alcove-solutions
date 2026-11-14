@@ -7,15 +7,15 @@ import { errorMessage, type WorkspaceHere } from '@alcove/api';
 import { wsToast, type WsToastData } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { q } from '~/lib/queries';
+import { workspaceQueries } from '~/features/workspace/queries';
 import type { Ws, WorkspacePlace } from '../context';
 import type { BlockJSON } from '../editor/types';
-import { placesOf } from '../places';
+import { placesOf } from '../tree/places';
 import { withDocument } from '../session';
-import { nameOf, type Tree } from '../tree';
+import { nameOf, type Tree } from '../tree/tree';
 import { decidedBlock, followUpBlock, quoteBlocks } from './blocks';
 import { dateOf } from './dates';
-import { asNamed, type PersonIds } from '../ids';
+import { asNamed, type PersonIds } from '../sharing/ids';
 import { momentOf, personNamed, sameName } from './lines';
 import type { LiveCall, LivePut } from './types';
 
@@ -48,7 +48,7 @@ export function useSending({ live, workspaceId, pass, owner, tree, at, member, h
   const targetId = target?.id ?? null;
   const targetName = target ? nameOf(target) : null;
 
-  const people = useQuery({ ...q.workspacePeople(workspaceId), enabled: live !== undefined && member }).data;
+  const people = useQuery({ ...workspaceQueries.workspacePeople(workspaceId), enabled: live !== undefined && member }).data;
   /* What sending reads changes all the time, and the arrows' labels shouldn't be drawn again for it. */
   const latest = useRef({ people, here, closed, go, say, ids });
   latest.current = { people, here, closed, go, say, ids };

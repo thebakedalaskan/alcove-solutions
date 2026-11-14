@@ -8,8 +8,7 @@
 import type { InferenceEvidence, Note, NoteKind } from '@alcove/api';
 import { Dots, Icon, Popover, SealedButton, Unencrypted } from '@alcove/ui';
 import { useState } from 'react';
-import { isUnencrypted } from '~/lib/aiModels';
-import { useAiModels } from '~/lib/queries';
+import { isUnencrypted, useAiModels } from '~/features/notes/models';
 import { daysFromToday, hm, shortDay } from '~/lib/time';
 
 /** The tasks in the order they happen, and what each one did. */

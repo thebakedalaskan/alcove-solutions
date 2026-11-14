@@ -9,7 +9,7 @@ import { errorCode, errorMessage, type AgentAuthorization } from '@alcove/api';
 import { AgentDisclosure, AgentLevels, AgentPair, Button, Dots, Icon, type AvatarPerson } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
-import { q, useAgentDecision } from '~/lib/queries';
+import { agentQueries, useAgentDecision } from './queries';
 import { kindNamed, type AgentKind } from './catalogue';
 import { choiceFor, picked, rowsOf, scopesOf, switched } from './levels';
 
@@ -32,7 +32,7 @@ type Outcome = { request: string; how: 'allowed'; redirectUrl: string; before: R
 
 /** The request an agent sent you here with, and how it's gone so far. */
 export function useAsk(request: string | undefined, ownerId: string | undefined) {
-  const authorization = useQuery({ ...q.agentAuthorization(request ?? '', ownerId ?? ''), enabled: Boolean(request && ownerId) });
+  const authorization = useQuery({ ...agentQueries.agentAuthorization(request ?? '', ownerId ?? ''), enabled: Boolean(request && ownerId) });
   const [outcome, setOutcome] = useState<Outcome | undefined>(undefined);
   const now = request && outcome?.request === request ? outcome : undefined;
   const phase: AskPhase | undefined = !request ? undefined : now ? now.how

@@ -1,7 +1,11 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { arrival } from '~/features/onboarding/store';
-import { requireAccount } from '~/lib/guards';
-import { q } from '~/lib/queries';
+import { requireAccount } from '~/features/account/guards';
+import { callQueries } from '~/features/calls/list/queries';
+import { calendarQueries } from '~/features/calls/scheduling/queries';
+import { planQueries } from '~/features/plans/queries';
+import { teamQueries } from '~/features/team/queries';
+import { trustQuery } from '~/lib/trust';
 
 /*
  * Where a new account lands after its first sign-in. What came with it is fetched first, so the
@@ -14,9 +18,9 @@ import { q } from '~/lib/queries';
 export const Route = createFileRoute('/ready')({
   beforeLoad: async ({ context: { queryClient: qc }, preload }) => {
     await requireAccount(qc, preload);
-    void qc.prefetchQuery(q.trust());
-    void qc.prefetchQuery(q.team());
-    await Promise.allSettled([qc.ensureQueryData(q.calendar()), qc.ensureQueryData(q.upcoming()), qc.ensureQueryData(q.plan())]);
+    void qc.prefetchQuery(trustQuery());
+    void qc.prefetchQuery(teamQueries.team());
+    await Promise.allSettled([qc.ensureQueryData(calendarQueries.calendar()), qc.ensureQueryData(callQueries.upcoming()), qc.ensureQueryData(planQueries.plan())]);
     await arrival.begin();
     throw redirect({ to: '/home', replace: true });
   }
