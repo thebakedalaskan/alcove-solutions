@@ -5,8 +5,13 @@ import type { Env } from './http/context';
 import { createHttpRuntime } from './http/runtime';
 import { registerMiddleware } from './http/middleware';
 import { registerSystemRoutes } from './http/system-routes';
+import { registerOperatorRoutes } from './features/operator/routes';
+import { registerAccountOperatorRoutes } from './features/account/operator/routes';
+import { registerBillingOperatorRoutes } from './features/billing/operator/routes';
 import { registerAuthRoutes } from './features/account/auth-routes';
 import { registerCallRoutes } from './features/calls/routes';
+import { registerCallOperatorRoutes } from './features/calls/operator/routes';
+import { registerNoteOperatorRoutes } from './features/notes/operator/routes';
 import { registerWorkspaceReaderRoutes } from './features/workspaces/reader-routes';
 import { registerOwnerMiddleware } from './http/authorization';
 import { registerReceiptMiddleware } from './http/receipts';
@@ -23,11 +28,13 @@ import { registerWorkspaceRoutes } from './features/workspaces/routes';
 import { registerBillingRoutes } from './features/billing/routes';
 import { registerTeamRoutes } from './features/billing/teams/routes';
 import { createAttester, type Attester } from './tee/tee';
+import { migrationCheck } from './migrate';
 
 /**
- * Registration order is an access boundary: guest routes precede sign-in and stored receipts. `attester`: what says what's
- * running, the launcher's token inside a TEE (tee.ts). What workspaces and meetings ask of calls, which sit above them, the
- * calls answer (`workspaceCalls`), handed in here.
+ * Registration order is an access boundary: guest routes, and operators' signed routes, precede sign-in and stored receipts.
+ * `attester`: what says what's running, the launcher's token inside a TEE (tee.ts). What workspaces and meetings ask of
+ * calls, which sit above them, the calls answer (`workspaceCalls`), handed in here, as is where the database's migrations
+ * stand, for operators (`migrationCheck`).
  */
 export function createApp(d: Deps, stopping?: AbortSignal | undefined, attester: Attester = createAttester(d)) {
   const app = new Hono<Env>();
@@ -36,6 +43,12 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined, attester:
   registerMiddleware(app, runtime);
   registerAgentPublicRoutes(app, runtime);
   registerSystemRoutes(app, runtime);
+  // Operators, by signed requests alone (http/operator.ts): before sign-in, which they never use.
+  registerCallOperatorRoutes(app, runtime);
+  registerNoteOperatorRoutes(app, runtime);
+  registerOperatorRoutes(app, runtime, migrationCheck);
+  registerBillingOperatorRoutes(app, runtime);
+  registerAccountOperatorRoutes(app, runtime);
   registerAuthRoutes(app, runtime);
   registerDrivePublicRoutes(app, runtime);
   registerCallRoutes(app, runtime);

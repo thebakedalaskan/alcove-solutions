@@ -17,6 +17,8 @@ Alcove checks first, and the server runs in Google Cloud Confidential Space.
    [Google Drive exports](engineering/drive-exports.md) covers readable copies, folder consent and durable upload jobs.
    [Feature flags](engineering/feature-flags.md) covers building behind a flag, switching it for people, releasing and retiring it.
 4. **Shipping.** [Deployment and acceptance](engineering/deployment-and-acceptance.md) and [infra/README.md](../infra/README.md).
+   [Operating Alcove](engineering/operating-alcove.md) covers finding out what's wrong in production from outside the
+   enclave and putting a few things right: operator keys, the signed operator routes and their CLI, and runbooks.
 5. **Planning.** [Roadmap](delivery/roadmap.md) and [Decisions and provider assumptions](delivery/decisions-and-provider-assumptions.md).
 6. **Background.** [Stack and provider setup](references/stack-and-provider-setup.md) and [Source evidence](references/source-evidence.md),
    written for the earlier desktop design; still the reference for NEAR AI's encrypted request mode, Phala and

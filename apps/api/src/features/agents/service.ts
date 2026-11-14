@@ -10,6 +10,10 @@ import { lockOwner, openOwner } from '../../keys/owners';
 
 const alog = log.child({ component: 'agents' });
 export const GRANT_MS = 30 * 86_400_000;
+/** The most connections an account has at once: another is refused until one is disconnected or runs out. */
+export const MAX_CONNECTIONS = 50;
+/** A client normally refreshes hourly: this persists a finite bound across addresses, restarts and instances. */
+export const MAX_TOKEN_HISTORY = 4096;
 export const GrantInfo = z.object({ name: z.string(), kind: z.enum(['token', 'oauth']), scopes: AgentScopesSchema, clientId: z.string().nullable().default(null) });
 export const GrantRow = z.object({ id: z.string(), owner_id: z.string(), info_ciphertext: bytea, created_at: timestamp, expires_at: timestamp, last_used_at: timestamp.nullable() });
 export type Grant = z.infer<typeof GrantRow>;
@@ -47,7 +51,7 @@ export async function createToken(o: Owner, input: AgentTokenInput) {
   const row = await tx(o.pool, async (db) => {
     await lockOwner(o, db);
     const count = await maybeOne(db, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM agent_grants WHERE owner_id = $1 AND expires_at > now()', [o.ownerId]);
-    if ((count?.n ?? 0) >= 50) throw new UnavailableError('Disconnect an agent before adding another.');
+    if ((count?.n ?? 0) >= MAX_CONNECTIONS) throw new UnavailableError('Disconnect an agent before adding another.');
     const grant = await createGrant(o, db, { name: input.name, kind: 'token', scopes: input.scopes, clientId: null }, new Date(Date.now() + input.expiresInDays * 86_400_000));
     await storeToken(db, o, grant, token, 'personal', grant.expires_at);
     return grant;
@@ -106,16 +110,13 @@ export async function authenticateAgent(d: Deps, token: string): Promise<AgentPr
 export function requireScope(principal: AgentPrincipal, scope: AgentScope): void {
   if (!principal.connection.scopes.includes(scope)) throw new ForbiddenError('This agent does not have that permission.', { context: { grantId: principal.connection.id, scope } });
 }
+/**
+ * The tables of agents' rows that run out, each row at its `expires_at`: what the sweep removes, and what an operator's report
+ * counts (features/operator/work.ts). Every credential past its end goes with them: a used refresh token's end is when a
+ * replay of it stops being caught, its connection's end, or the one it had when it was kept longer.
+ */
+export const AGENT_ROWS = ['agent_grants', 'agent_codes', 'agent_authorizations', 'agent_clients', 'agent_operations', 'agent_tokens'] as const;
 export async function sweep(d: Deps): Promise<number> {
-  const counts = await Promise.all([
-    exec(d.pool, 'DELETE FROM agent_grants WHERE expires_at <= now()'),
-    exec(d.pool, 'DELETE FROM agent_codes WHERE expires_at <= now()'),
-    exec(d.pool, 'DELETE FROM agent_authorizations WHERE expires_at <= now()'),
-    exec(d.pool, 'DELETE FROM agent_clients WHERE expires_at <= now()'),
-    exec(d.pool, 'DELETE FROM agent_operations WHERE expires_at <= now()'),
-    // Every credential past its end. A used refresh token's end is when a replay of it stops being caught: its connection's
-    // end, or the one it had when it was kept longer.
-    exec(d.pool, 'DELETE FROM agent_tokens WHERE expires_at <= now()')
-  ]);
+  const counts = await Promise.all(AGENT_ROWS.map((table) => exec(d.pool, `DELETE FROM ${table} WHERE expires_at <= now()`)));
   return counts.reduce((n, count) => n + count, 0);
 }

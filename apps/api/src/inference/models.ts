@@ -72,7 +72,7 @@ async function fetchJson(url: string, apiKey: string | undefined, what: string):
   }
   if (!res.ok) {
     await res.body?.cancel().catch(() => undefined);
-    throw new UnansweredError('NEAR AI’s list of models can’t be reached right now.', { context: { what, status: res.status, ms: Math.round(performance.now() - t0) } });
+    throw new UnansweredError('NEAR AI’s list of models can’t be reached right now.', { context: { what, upstreamStatus: res.status, ms: Math.round(performance.now() - t0) } });
   }
   return res.json().catch(() => null);
 }

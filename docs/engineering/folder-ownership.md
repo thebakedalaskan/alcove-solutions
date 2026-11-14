@@ -30,9 +30,9 @@ The `code-structure` skill (`.claude/skills/code-structure/SKILL.md`) shows the 
 
 | Rule | Limit |
 | --- | --- |
-| Server features import only those before them | `profile → billing → workspaces → meetings → recordings → notes → calls → agents → account` |
+| Server features import only those before them | `profile → billing → workspaces → meetings → recordings → notes → calls → agents → account → operator` |
 | Shared server homes never import a feature | `platform`, `keys`, `tee`, `inference`, `providers`, `http`, `live`, `edge` |
-| `apps/api/src` holds only composition and build entries | `app.ts`, `server.ts`, `start.ts`, `maintenance.ts`, `migrate.ts`, the CLIs |
+| `apps/api/src` holds only composition and build entries | `app.ts`, `server.ts`, `start.ts`, `maintenance.ts`, `migrate.ts`, the CLIs, the checks job |
 | Web `lib/` never imports a feature; features never import routes | |
 | No runtime import cycle spans two owners | type-only imports don't count |
 | Files in one folder | at most 20 |
@@ -62,19 +62,24 @@ argument from the caller, or the piece moves down to the feature that owns its d
 7. **calls**: the running call: lifecycle, state, joining and hosting at its root; `boards/`, `workspace/`, `notes/`
    (live notes and capture), `chat/`, `attention/`, `ringing/`, `timers/`, `moves/`, `mls/`.
 8. **agents**: grants, OAuth, MCP tools (`mcp/`) and what agents did, across everything below.
-9. **account**: an account's whole life: signing in, sessions, deleting it. It reaches into every feature, so it's
-   last. Deleting an account calls each feature's delete step from one place.
+9. **account**: an account's whole life: signing in, sessions, deleting it. It reaches into every feature, so it comes
+   after them. Deleting an account calls each feature's delete step from one place.
+10. **operator**: operating the service from outside the enclave ([Operating Alcove](operating-alcove.md)): the
+    service-wide operator routes (who's asking, the live checks, feature flags and limits), the diagnostics (`release`,
+    `work`, `errors`, `requests`) and the operator CLI's commands (`cli/`). What an operator may see or do about one
+    feature is that feature's own, in its `operator/` subfolder (`account`, `billing`, `calls`, `notes`), registered with
+    `operatorRoute()` (`http/operator.ts`). The CLI and the reports read every one of those, so this comes last.
 
 ## Package responsibilities
 
 | Location | Owns |
 | --- | --- |
-| `apps/api/src` | Composition and build entries only: `app.ts` (middleware and feature registrars, in their phases), `start.ts`, `server.ts`, `maintenance.ts`, `migrate.ts` and the CLIs. esbuild's outputs and the migrations URL depend on these paths. |
-| `apps/api/src/platform` | Configuration, the request context (`Deps`, `Owner`), the database, objects, logging, errors, limits, feature flags, time zones. |
-| `apps/api/src/keys` | Sealing (`crypto.ts`), owner and server keys, sessions, the vault, signed call passes and media tokens. |
+| `apps/api/src` | Composition and build entries only: `app.ts` (middleware and feature registrars, in their phases), `start.ts`, `server.ts`, `maintenance.ts`, `migrate.ts`, the CLIs (the operator's, `operator-cli.ts`, among them) and the checks job (`operator-job.ts`, which the image runs instead of the server when an API won't start). esbuild's outputs and the migrations URL depend on these paths. |
+| `apps/api/src/platform` | Configuration, the request context (`Deps`, `Owner`), the database, objects, logging (with the ring of recent failures it feeds operators, `recent.ts`), each loop's runs and what this instance last learned (`runs.ts`), errors, limits and their commands, feature flags and theirs, time zones. |
+| `apps/api/src/keys` | Sealing (`crypto.ts`), owner and server keys, sessions, the vault, signed call passes and media tokens, and operators' keys and the requests they sign (`operator-keys.ts`, which the operator CLI shares). |
 | `apps/api/src/tee`, `inference`, `providers` | Confidential Space and its images; NEAR AI with Oblivious HTTP and model attestation; Google and LiveKit. |
-| `apps/api/src/http`, `live`, `edge` | Request infrastructure; the realtime hub and document worker pool (a feature hands it its tasks); TLS, certificates and the web app's files. |
-| `apps/api/src/features` | The nine features above, each with its HTTP registration and integration suites. |
+| `apps/api/src/http`, `live`, `edge` | Request infrastructure, with checking operators' signed requests and registering every operator route (`http/operator.ts`); the realtime hub and document worker pool (a feature hands it its tasks); TLS, certificates and the web app's files. |
+| `apps/api/src/features` | The ten features above, each with its HTTP registration and integration suites. |
 | `apps/api/src/integration`, `testing` | Cross-feature suites; the harness and fakes of outside services (`testing/fakes/`). |
 | `apps/web/src/routes` | Route declarations: loaders, guards, search schemas, and the feature page each renders. |
 | `apps/web/src/features` | Every screen and its data access, by feature (below). |

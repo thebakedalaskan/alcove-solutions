@@ -22,6 +22,7 @@ import { bytea, exec, maybeOne, tx } from '../../../platform/db';
 import { NotFoundError, PlanLimitError, UnansweredError, UnverifiedError } from '../../../platform/errors';
 import { inference, lostOnceSent, type ChatModel, type Meter } from '../../../inference/inference';
 import { log } from '../../../platform/log';
+import { failureCode, runs, tracked } from '../../../platform/runs';
 import { openOwner } from '../../../keys/owners';
 import { getItem, lockItem, pruneRevisions } from '../../../keys/vault';
 import { me, profile } from '../../profile/profile';
@@ -44,6 +45,22 @@ import { boardsToRead, type BoardRead } from '../worked-on';
 import { noteFinal } from '../drive-exports/worker';
 
 const wlog = log.child({ component: 'writer' });
+/**
+ * The writer's runs, as operators see them (platform/runs.ts): one each time it works, with the jobs it took, and each job's
+ * failure by its code.
+ */
+const WRITER = 'notes-writer';
+/**
+ * What the writer says as it finishes a note without a summary, for good: its last attempt failed, or a job outlived it (its
+ * worker stopped part way). Both lines carry `final: FINAL` and the note's and the job's IDs, and the operators' ring keeps
+ * such lines apart, for the work report's finals (platform/recent.ts, features/operator/work.ts).
+ */
+const WITHOUT_SUMMARY = {
+  failed: 'notes could not be written after three attempts; finishing the note without a summary',
+  outlived: 'notes job outlived its last attempt; finishing the note without a summary'
+} as const;
+/** The kind of work given up for good that those lines say they are. */
+const FINAL = 'notes-without-summary';
 const ATTEMPTS = 3;
 /** Longer than the slowest draft (four minutes) and checking the model first; a worker that dies mid-job frees it after this. */
 const LEASE_SECONDS = 300;
@@ -61,13 +78,23 @@ class Cancelled extends Error {}
 /** Each verification once: a model checked again with a new key is a verification of its own, and the note keeps it. */
 const onceEach = (xs: InferenceEvidence[]) => xs.filter((e, i) => xs.findIndex((x) => x.task === e.task && verificationKey(x) === verificationKey(e)) === i);
 
+/**
+ * The writer's rule for a notes job it can take now (claim), as SQL on `t`, the statement's alias for content_jobs: no lease,
+ * or one that has run out, by the statement's own clock, whatever its state (a worker that stopped part way leaves its job
+ * `writing`). Whatever says whether the writer can take a job says it with this (the operators' views), so it says what the
+ * writer does.
+ */
+export function claimableNotes(t: string): string {
+  return `(${t}.lease_until IS NULL OR ${t}.lease_until < now())`;
+}
+
 /** The next job that's due, leased to this worker. `tried` is how many attempts came before this one. */
 async function claim(d: Deps, ownerId: string | null): Promise<Claimed | undefined> {
   return maybeOne(d.pool, Claimed, `
     WITH due AS (
-      SELECT owner_id, job_id, attempt FROM content_jobs
-      WHERE kind = 'notes' AND (lease_until IS NULL OR lease_until < now()) AND ($1::text IS NULL OR owner_id = $1)
-      ORDER BY lease_until NULLS FIRST LIMIT 1 FOR UPDATE SKIP LOCKED)
+      SELECT q.owner_id, q.job_id, q.attempt FROM content_jobs q
+      WHERE q.kind = 'notes' AND ${claimableNotes('q')} AND ($1::text IS NULL OR q.owner_id = $1)
+      ORDER BY q.lease_until NULLS FIRST LIMIT 1 FOR UPDATE SKIP LOCKED)
     UPDATE content_jobs j SET state = 'writing', lease_until = now() + make_interval(secs => $2), attempt = LEAST(j.attempt + 1, $3)
     FROM due WHERE j.owner_id = due.owner_id AND j.job_id = due.job_id
     RETURNING j.owner_id, j.job_id, j.revision_id, j.job_ciphertext, j.attempt, due.attempt AS tried`, [ownerId, LEASE_SECONDS, ATTEMPTS]);
@@ -414,7 +441,7 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
         wlog.warn('shared screens not joined into video before finishing the note', { ...at, err: e });
       }
       if (job.tried >= ATTEMPTS) {
-        wlog.error('notes job outlived its last attempt; finishing the note without a summary', at);
+        wlog.error(WITHOUT_SUMMARY.outlived, { ...at, final: FINAL });
         if (!(await settle(o, job.job_id, noteId, was, undefined, await readSoFar()))) await stopped('finishing');
         return;
       }
@@ -502,6 +529,8 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
     } catch (e) {
       if (e instanceof Cancelled) { await stopped('writing'); return; }
       if (e instanceof NotFoundError) { await drop('note deleted while its notes were written'); return; }
+      // The writer's own failures, by code, for operators (platform/runs.ts): waiting on the model, or an attempt used up.
+      if (!(e instanceof PlanLimitError)) runs.failed(WRITER, failureCode(e));
       if (e instanceof UnverifiedError || (e instanceof UnansweredError && !lostOnceSent(e))) {
         // Unverified: nothing was sent (an outage at Intel or NVIDIA, or NEAR AI out of date). Unanswered: NEAR AI couldn't
         // be reached or was busy, and nothing was charged. Neither is the note's fault, so neither uses the attempts up. A
@@ -520,7 +549,7 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
         return;
       }
       if (job.attempt >= ATTEMPTS) {
-        wlog.error('notes could not be written after three attempts; finishing the note without a summary', { ...at, err: e });
+        wlog.error(WITHOUT_SUMMARY.failed, { ...at, final: FINAL, err: e });
         if (!(await settle(o, job.job_id, noteId, was, undefined, await readSoFar(), analysed?.left))) await stopped('finishing');
         return;
       }
@@ -540,13 +569,15 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
 /** Writes notes that are due, one at a time: an owner's, or anyone's. Returns how many jobs it took. */
 export async function work(d: Deps, o: { ownerId?: string | undefined; limit?: number } = {}): Promise<number> {
   if (!inference(d.cfg).configured) return 0;
-  let taken = 0;
-  for (; taken < (o.limit ?? 20); taken++) {
-    const job = await claim(d, o.ownerId ?? null);
-    if (!job) break;
-    await attempt(d, job);
-  }
-  return taken;
+  return tracked(WRITER, async () => {
+    let taken = 0;
+    for (; taken < (o.limit ?? 20); taken++) {
+      const job = await claim(d, o.ownerId ?? null);
+      if (!job) break;
+      await attempt(d, job);
+    }
+    return taken;
+  }, (jobs) => ({ jobs }));
 }
 
 /** Owners with a worker running, and whether more work was queued for them while it ran. */

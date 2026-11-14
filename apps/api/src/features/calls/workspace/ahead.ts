@@ -49,7 +49,7 @@ async function settle(o: Owner, meetingId: string, timeZone: string | undefined,
     await lockItem(o, c, meetingId);
     const now = await getItem(o, c, 'meeting', meetingId, MeetingManifest, 'That meeting');
     if (now.manifest.workspaceId !== chosen) return { again: true } as const;
-    if (now.manifest.status !== 'scheduled') throw new ConflictError('This call has started. Its workspace opens in the call.', { context: { meetingId, status: now.manifest.status } });
+    if (now.manifest.status !== 'scheduled') throw new ConflictError('This call has started. Its workspace opens in the call.', { context: { meetingId, state: now.manifest.status } });
     const startsAt = new Date(now.manifest.startsAt);
     const { id } = await makeHome(o, c, { name: space.homeName(now.manifest.title, startsAt, zone), madeFor: space.madeForCall(now, startsAt) });
     await updateManifest(o, c, meetingId, (x) => ({ ...x, workspaceId: id }));
@@ -73,7 +73,7 @@ async function settle(o: Owner, meetingId: string, timeZone: string | undefined,
  */
 export async function ready(viewer: Owner, meetingId: string, body: CallAheadBody): Promise<CallAheadHome> {
   const { organizer, meeting } = await callOf(viewer, meetingId);
-  if (meeting.manifest.status !== 'scheduled') throw new ConflictError('This call has started. Its workspace opens in the call.', { context: { meetingId, status: meeting.manifest.status } });
+  if (meeting.manifest.status !== 'scheduled') throw new ConflictError('This call has started. Its workspace opens in the call.', { context: { meetingId, state: meeting.manifest.status } });
   const home = await settle(organizer, meetingId, body.timeZone);
   const reader = await accountReader(viewer);
   const made = body.make === 'board' ? { kind: 'board', name: 'Board' } as const : { kind: 'document', name: body.make === 'agenda' ? 'Agenda' : body.name } as const;

@@ -59,7 +59,7 @@ export async function correctLine(o: Owner, noteId: string, lineId: string, patc
   await tx(owner.pool, (c) => updateNote(owner, c, noteId, (n) => {
     // Checked again holding the note, and stamped holding it: notes written again read the transcript holding it too,
     // so a correction after that is later than when they read it, and the app offers writing them again.
-    if (n.status !== 'ready') throw new ConflictError('These notes are still being written.', { context: { noteId, status: n.status } });
+    if (n.status !== 'ready') throw new ConflictError('These notes are still being written.', { context: { noteId, state: n.status } });
     const at = new Date().toISOString();
     const inRoom = n.rooms.find((r) => r.transcript.some((x) => x.id === lineId));
     const line = (inRoom ? inRoom.transcript : n.transcript ?? []).find((x) => x.id === lineId);

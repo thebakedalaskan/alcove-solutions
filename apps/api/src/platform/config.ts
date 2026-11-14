@@ -3,8 +3,9 @@ import { MAX_DOC_ITEMS } from '@alcove/api';
 import type pg from 'pg';
 import { z } from 'zod';
 import { KeyError } from './errors';
+import { parseOperatorKeys, type OperatorKey } from '../keys/operator-keys';
 import { INTEL_SGX_ROOT_CA, NVIDIA_NRAS_ROOT_CA } from '../inference/roots';
-import { resolveKeys, type KeyWrapper, type LegacyKeys, type OpensAccounting } from '../keys/server-keys';
+import { resolveKeys, type KeySource, type KeyWrapper, type LegacyKeys, type OpensAccounting } from '../keys/server-keys';
 
 /** An optional setting: unset, or set to nothing (as in .env.example), means it isn't configured. */
 const blank = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
@@ -112,10 +113,12 @@ const EnvSchema = z.object({
   /** A Cloudflare API token that can edit that zone's DNS. A secret: inside a TEE it comes through SECRETS. */
   CLOUDFLARE_API_TOKEN: optional,
   /**
-   * The SHA-256, as 64 lowercase hex characters, of the token operators switch feature flags with through the API
-   * (POST /v1/operator/feature-flags). A hash, never the token. Unset, that route isn't there.
+   * Who can operate the service from outside it, by signed requests (http/operator.ts): each operator's own Ed25519
+   * public key and what it may do, `read:<public key>` or `write:<public key>`, base64url, comma-separated
+   * (keys/operator-keys.ts). Built into the image, so the attestation says who can operate. Unset, every operator route
+   * answers 404, as if it weren't there.
    */
-  OPERATOR_TOKEN_SHA256: z.preprocess(blank, z.string().regex(/^[0-9a-f]{64}$/, 'OPERATOR_TOKEN_SHA256 must be 64 lowercase hex characters, a SHA-256').optional()),
+  OPERATOR_KEYS: optional,
   /** ws:// or wss:// URL of the LiveKit server, handed to clients with their join tickets. */
   LIVEKIT_URL: z.string().regex(/^wss?:\/\/\S+$/, 'LIVEKIT_URL must be a ws:// or wss:// URL'),
   LIVEKIT_API_KEY: z.string().min(1),
@@ -210,6 +213,11 @@ type Settings = z.infer<typeof EnvSchema>;
 /** Settings only a TEE reads, before anything else: how it reaches Google Cloud through its attestation (gcp.ts). */
 const TEE_ONLY = ['GCP_PROJECT', 'KMS_MASTER_KEY', 'WIF_PROVIDER', 'SECRETS', 'LEGACY_SECRETS'] as const;
 /**
+ * Every setting the server runs with, by name, for `operator release` to say whether each is set (features/operator/release.ts).
+ * Not what a TEE reads before its configuration, through its attestation, which it doesn't keep.
+ */
+export const SETTING_NAMES: readonly string[] = Object.keys(EnvSchema.shape).filter((name) => name !== 'RETIRE_LEGACY_KMASTER' && !TEE_ONLY.some((t) => t === name));
+/**
  * The settings SECRETS may name, inside a TEE: the credentials the providers give Alcove, and Google's tester list, which
  * holds addresses. Nothing else comes from Secret Manager: what decides where people sign in, or what's trusted, is the
  * environment's, which the image's launch policy limits and the attestation shows.
@@ -229,13 +237,21 @@ export interface EdgeSettings { hosts: readonly string[]; zone: string; token: s
  */
 export type KeyMode = { tee: 'none'; kmaster: string; kservice: string } | { tee: 'confidential-space'; retire: boolean };
 /** The settings, from the environment and the secrets, with what depends on where the API runs parsed once, here. */
-export type Env = Omit<Settings, 'KMASTER' | 'KSERVICE' | 'RETIRE_LEGACY_KMASTER' | 'TLS_HOSTS' | 'CLOUDFLARE_ZONE' | 'CLOUDFLARE_API_TOKEN' | (typeof TEE_ONLY)[number]> & {
+export type Env = Omit<Settings, 'KMASTER' | 'KSERVICE' | 'RETIRE_LEGACY_KMASTER' | 'TLS_HOSTS' | 'CLOUDFLARE_ZONE' | 'CLOUDFLARE_API_TOKEN' | 'OPERATOR_KEYS' | (typeof TEE_ONLY)[number]> & {
   keys: KeyMode;
   /** With TLS_HOSTS, which a TEE always has: where TLS ends in the process. Unset, it listens on API_PORT, plain, behind something else's TLS. */
   edge: EdgeSettings | undefined;
+  /** The keys OPERATOR_KEYS lists, each with what it may do. None: there are no operator routes. */
+  operatorKeys: readonly OperatorKey[];
 };
+/**
+ * The settings without a key: all that reaching another service takes. Operator checks have these alone
+ * (features/operator/checks.ts), so they can't touch a key, and the checks job (operator-job.ts) runs them whether or
+ * not the keys open.
+ */
+export type Keyless = Omit<Env, 'keys'>;
 /** The settings the server runs with: the environment, and its keys from wherever they come from (server-keys.ts). Each key is base64url of 32 bytes. */
-export type Config = Omit<Env, 'keys'> & {
+export type Config = Keyless & {
   /**
    * The master key now: the environment's outside a TEE; inside one, made there and kept wrapped by Cloud KMS. Inside a TEE it
    * wraps root keys (root_envelope_v2); the keys of call passes, media tokens and sign-in attempts derive from it, and the TLS
@@ -359,12 +375,19 @@ export function loadEnv(env: NodeJS.ProcessEnv = process.env, overrides: Partial
     if (s.CLOUDFLARE_ZONE && s.CLOUDFLARE_API_TOKEN) edge = { hosts: s.TLS_HOSTS, zone: s.CLOUDFLARE_ZONE, token: s.CLOUDFLARE_API_TOKEN };
     else problems.push('CLOUDFLARE_ZONE, CLOUDFLARE_API_TOKEN: with TLS_HOSTS, certificates come through Cloudflare’s DNS, which needs both.');
   }
+  // A list it can't read, or a key listed twice, is refused by the entry's position: never its value.
+  let operatorKeys: readonly OperatorKey[] = [];
+  try {
+    operatorKeys = s.OPERATOR_KEYS === undefined ? [] : parseOperatorKeys(s.OPERATOR_KEYS);
+  } catch (err) {
+    problems.push(err instanceof Error ? err.message : 'OPERATOR_KEYS: the list can’t be read.');
+  }
   if (problems.length || !keys) throw invalid(problems);
   const {
     KMASTER: _kmaster, KSERVICE: _kservice, RETIRE_LEGACY_KMASTER: _retire, TLS_HOSTS: _hosts, CLOUDFLARE_ZONE: _zone, CLOUDFLARE_API_TOKEN: _token,
-    GCP_PROJECT: _project, KMS_MASTER_KEY: _kmsKey, WIF_PROVIDER: _provider, SECRETS: _secrets, LEGACY_SECRETS: _legacy, ...settings
+    GCP_PROJECT: _project, KMS_MASTER_KEY: _kmsKey, WIF_PROVIDER: _provider, SECRETS: _secrets, LEGACY_SECRETS: _legacy, OPERATOR_KEYS: _operatorKeys, ...settings
   } = s;
-  return { ...settings, keys, edge };
+  return { ...settings, keys, edge, operatorKeys };
 }
 
 /**
@@ -374,13 +397,18 @@ export function loadEnv(env: NodeJS.ProcessEnv = process.env, overrides: Partial
 export interface TeeKeys { wrapper: KeyWrapper; legacy: LegacyKeys | undefined; opensAccounting: OpensAccounting }
 
 /**
- * The settings with the server's keys (server-keys.ts). Outside a TEE they come from the environment. Inside one the master is
- * unwrapped by Cloud KMS (`tee.wrapper`), and the other keys come from what's sealed under it in the database (`pool`,
- * migrated), carried over the first time from the old keys a database's accounts were made under (`tee.legacy`).
+ * Where the server's keys come from (server-keys.ts). Outside a TEE, the environment. Inside one, the master as Cloud
+ * KMS unwraps it (`tee.wrapper`) and the other keys sealed under it in the database, carried over the first time from
+ * the old keys a database's accounts were made under (`tee.legacy`), which `tee.opensAccounting` checks.
  */
+export function keySource(keys: KeyMode, tee: TeeKeys | undefined): KeySource {
+  if (keys.tee === 'none') return keys;
+  if (!tee) throw new KeyError('Inside a TEE the master is wrapped by Cloud KMS, and nothing here can wrap or unwrap it.');
+  return { tee: 'confidential-space', wrapper: tee.wrapper, legacy: tee.legacy, retire: keys.retire, opensAccounting: tee.opensAccounting };
+}
+
+/** The settings with the server's keys, from where keySource says, in the database `pool` (migrated). */
 export async function loadConfig(e: Env, pool: pg.Pool, tee: TeeKeys | undefined): Promise<Config> {
   const { keys, ...settings } = e;
-  if (keys.tee === 'none') return { ...settings, ...(await resolveKeys(pool, keys)) };
-  if (!tee) throw new KeyError('Inside a TEE the master is wrapped by Cloud KMS, and nothing here can wrap or unwrap it.');
-  return { ...settings, ...(await resolveKeys(pool, { tee: 'confidential-space', wrapper: tee.wrapper, legacy: tee.legacy, retire: keys.retire, opensAccounting: tee.opensAccounting })) };
+  return { ...settings, ...(await resolveKeys(pool, keySource(keys, tee))) };
 }

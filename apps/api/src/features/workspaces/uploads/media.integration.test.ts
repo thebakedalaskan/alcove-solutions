@@ -2389,7 +2389,7 @@ describe('storage limits', () => {
     expect(lines[0]).toEqual(expect.objectContaining({ workspaceId: id, ownerId: ann.ownerId, limitBytes: 10 * MiB }));
     expect(lines[2]).toEqual(expect.objectContaining({ ownerId: ann.ownerId, uploadedBytes: 11.5 * MiB, limitBytes: 12 * MiB }));
     // Sizes and IDs, and nothing anyone wrote.
-    for (const l of lines) expect(Object.keys(l).filter((k) => !['level', 'severity', 'time', 'service', 'msg', 'component', 'requestId', 'method', 'path', 'ownerId', 'workspaceId', 'storedBytes', 'uploadedBytes', 'limitBytes'].includes(k))).toEqual([]);
+    for (const l of lines) expect(Object.keys(l).filter((k) => !['level', 'severity', 'time', 'service', 'msg', 'component', 'requestId', 'method', 'path', 'route', 'ownerId', 'workspaceId', 'storedBytes', 'uploadedBytes', 'limitBytes'].includes(k))).toEqual([]);
   });
 
   it('keeps a day’s count through a restart, forgets it after two days, and deletes it with the account', async () => {

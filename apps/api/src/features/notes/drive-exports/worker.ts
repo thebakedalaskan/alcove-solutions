@@ -12,6 +12,23 @@ import { heldNoteIds, locate } from '../access';
 import * as provider from './provider';
 
 const dlog = log.child({ component: 'drive-exports' });
+/**
+ * What an export that's never tried again by itself says, as its line's message. That line alone carries `final: FINAL`, with
+ * its code and the export's and the note's IDs, and the operators' ring keeps such lines apart, for the work report's finals
+ * (platform/recent.ts, features/operator/work.ts).
+ */
+const EXPORT_FAILED = 'export failed for good';
+/** The kind of work given up for good that its line says it is. */
+const FINAL = 'drive-export-failed';
+
+/**
+ * An exporter's rule for a Drive export it can take now (upload), as SQL on `t`, the statement's alias for drive_export_jobs:
+ * waiting to be sent (or left part sent by an exporter that stopped), due, and its lease free, by the statement's own clock.
+ * Whatever says whether an export can be taken says it with this (the operators' views), so it says what the exporters do.
+ */
+export function claimableExports(t: string): string {
+  return `((${t}.state = 'pending' OR ${t}.state = 'uploading') AND ${t}.due_at <= now() AND (${t}.lease_until IS NULL OR ${t}.lease_until < now()))`;
+}
 
 /**
  * Whether an account's automatic exports cover a call that ended at `endedAt` (not yet, while it's going): they're on,
@@ -121,7 +138,12 @@ async function run(o: Owner, row: JobRow): Promise<void> {
     }
     const status = failure.why === 'reconnect' ? (refreshed ? 'pending' : 'reconnect') : failure.why === 'transient' && row.attempt < 8 ? 'pending' : 'failed';
     await saveJob(o, row, { ...state, reason: refreshed ? null : failure.message }, status, Math.min(3600, 20 * 2 ** Math.min(row.attempt, 7)));
-    dlog.warn('export waiting', { jobId: row.job_id, noteId: row.note_id, reason: failure.why, attempt: row.attempt, ...(error instanceof provider.DriveFailure || error instanceof NotFoundError ? {} : { err: error }) });
+    // One that's never tried again says so, with its code, and that it's final: the work report's finals list it.
+    const forGood = status === 'failed';
+    dlog.warn(forGood ? EXPORT_FAILED : 'export waiting', {
+      jobId: row.job_id, noteId: row.note_id, reason: failure.why, ...(forGood ? { code: failure.why, final: FINAL } : {}), attempt: row.attempt,
+      ...(error instanceof provider.DriveFailure || error instanceof NotFoundError ? {} : { err: error })
+    });
   }
 }
 /** Upkeep: every connected account's calls looked at again, then the jobs that are due. Opens and wipes each owner's keys for each scan and job, just like the notes writer. */
@@ -148,7 +170,7 @@ async function upload(d: Deps, ownerId?: string): Promise<number> {
   let completed = 0;
   for (let count = 0; count < 30; count++) {
     const row = await maybeOne(d.pool, JobRow.extend({ owner_id: z.string() }), `WITH due AS (
-      SELECT owner_id, job_id FROM drive_export_jobs WHERE (state = 'pending' OR state = 'uploading') AND due_at <= now() AND (lease_until IS NULL OR lease_until < now()) AND ($1::text IS NULL OR owner_id = $1) ORDER BY due_at LIMIT 1 FOR UPDATE SKIP LOCKED)
+      SELECT x.owner_id, x.job_id FROM drive_export_jobs x WHERE ${claimableExports('x')} AND ($1::text IS NULL OR x.owner_id = $1) ORDER BY x.due_at LIMIT 1 FOR UPDATE SKIP LOCKED)
       UPDATE drive_export_jobs j SET state = 'uploading', lease_id = $2, lease_until = now() + interval '5 minutes', attempt = j.attempt + 1 FROM due WHERE j.owner_id = due.owner_id AND j.job_id = due.job_id RETURNING j.*`, [ownerId ?? null, id128()]);
     if (!row) break;
     const owner = await findOwner(d, row.owner_id, undefined);

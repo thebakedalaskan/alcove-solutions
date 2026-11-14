@@ -3,11 +3,15 @@ import { type Context } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
 import type { Deps, Owner } from '../platform/context';
 import { AuthError } from '../platform/errors';
-import type { Level } from '../platform/log';
+import type { Level, LogContext } from '../platform/log';
 import { openOwner } from '../keys/owners';
 import { ABSOLUTE_MS, cookieName, findSession } from '../keys/sessions';
 
-export type Env = { Bindings: HttpBindings; Variables: { owner: Owner; requestId: string; receipt: string | undefined; refusedAt: Level | undefined } };
+/**
+ * `refusedAt`: the level a request's error was logged at; `failure`: what that error says that the request's own line says
+ * again for the operators' ring (http/middleware.ts).
+ */
+export type Env = { Bindings: HttpBindings; Variables: { owner: Owner; requestId: string; receipt: string | undefined; refusedAt: Level | undefined; failure: LogContext | undefined } };
 
 /**
  * The client's address as the front end saw it: the last x-forwarded-for entry. Behind the edge (edge/listen.ts) that's the

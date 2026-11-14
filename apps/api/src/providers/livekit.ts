@@ -5,7 +5,7 @@
  */
 import { AccessToken, DataPacket_Kind, RoomServiceClient, TrackSource, WebhookReceiver } from 'livekit-server-sdk';
 import { AuthError } from '../platform/errors';
-import type { Config } from '../platform/config';
+import type { Config, Keyless } from '../platform/config';
 import { log } from '../platform/log';
 
 const llog = log.child({ component: 'livekit' });
@@ -48,6 +48,11 @@ export interface LiveKit {
   deleteRoom(roomName: string): Promise<void>;
   /** Which of these rooms LiveKit still has. */
   existingRooms(names: string[]): Promise<Set<string>>;
+  /**
+   * Who is connected to the room now, by identity, and whether each publishes anything; null when LiveKit has no room by that
+   * name. No names: it's for counting, as an operator's look at a call does (features/calls/operator/operator.ts).
+   */
+  occupants(roomName: string): Promise<{ identity: string; publishing: boolean }[] | null>;
   /** Checks a webhook's signature (a JWT from our key over the body's SHA-256) and reads the event. */
   verifyWebhook(body: string, authorization: string | undefined): Promise<LiveKitEvent>;
 }
@@ -61,7 +66,17 @@ export const ROOM_EMPTY_TIMEOUT = 300;
 export const ROOM_DEPARTURE_TIMEOUT = 20;
 
 /** LiveKit's server API: LIVEKIT_URL with ws → http and wss → https. */
-export const apiUrl = (cfg: Config): string => cfg.LIVEKIT_URL.replace(/^ws/, 'http');
+export const apiUrl = (cfg: Keyless): string => cfg.LIVEKIT_URL.replace(/^ws/, 'http');
+
+/**
+ * How many rooms LiveKit has open, for operator checks: asked on a client of its own, with 5 seconds at most and no failover
+ * to another region, so it says how the host Alcove is set up with answers. Never a room's name, LiveKit's key to its
+ * dashboards. Throws LiveKit's error, which says its status.
+ */
+export async function livekitProbe(cfg: Keyless): Promise<{ rooms: number }> {
+  const rooms = new RoomServiceClient(apiUrl(cfg), cfg.LIVEKIT_API_KEY, cfg.LIVEKIT_API_SECRET, { requestTimeout: 5, failover: false });
+  return { rooms: (await rooms.listRooms()).length };
+}
 
 export function createLiveKit(cfg: Config): LiveKit {
   const rooms = new RoomServiceClient(apiUrl(cfg), cfg.LIVEKIT_API_KEY, cfg.LIVEKIT_API_SECRET);
@@ -112,6 +127,10 @@ export function createLiveKit(cfg: Config): LiveKit {
     async existingRooms(names) {
       if (!names.length) return new Set();
       return new Set((await rooms.listRooms(names)).map((r) => r.name));
+    },
+    async occupants(roomName) {
+      if (!(await rooms.listRooms([roomName])).length) return null;
+      return (await rooms.listParticipants(roomName)).map((p) => ({ identity: p.identity, publishing: p.tracks.length > 0 }));
     },
     async verifyWebhook(body, authorization) {
       const ev = await webhooks.receive(body, authorization, false, CLOCK_SKEW_S).catch((e: unknown) => { throw new AuthError('Webhook signature is not valid.', { cause: e, level: 'warn' }); });

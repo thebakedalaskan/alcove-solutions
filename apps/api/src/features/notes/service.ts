@@ -293,7 +293,7 @@ export async function ask(o: Owner, id: string, question: string): Promise<Answe
   const l = await locateToRead(o, id);
   const { owner, note } = l;
   const m = note.manifest;
-  if (m.status !== 'ready') throw new ConflictError('You can ask about a call once its notes are written.', { context: { noteId: id, status: m.status } });
+  if (m.status !== 'ready') throw new ConflictError('You can ask about a call once its notes are written.', { context: { noteId: id, state: m.status } });
   const read = asRead(l);
   if (!said(read) && m.writtenAt === null) {
     throw new ConflictError(said(m) ? 'These notes aren’t written yet, so there’s nothing to ask about.' : 'Nothing was said while notes were on, so there’s nothing to ask about.', { context: { noteId: id } });
@@ -333,7 +333,7 @@ export async function askAll(o: Owner, question: string, refs: readonly string[]
   // Each reference is opened as anything else is: one this person can't read is `not-found`, the same for one that never was.
   for (const id of wanted) {
     const l = all.find((x) => x.note.itemId === id) ?? await locateToRead(o, id);
-    if (!answerable(l)) throw new ConflictError('A note you referred to isn’t written yet. Ask again once it’s ready.', { context: { noteId: id, status: l.note.manifest.status } });
+    if (!answerable(l)) throw new ConflictError('A note you referred to isn’t written yet. Ask again once it’s ready.', { context: { noteId: id, state: l.note.manifest.status } });
   }
   const ready = all.filter(answerable);
   if (!ready.length) {

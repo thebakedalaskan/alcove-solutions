@@ -1,7 +1,8 @@
-import { CheckoutDone, CheckoutLine, CheckoutNote, CheckoutWindow, Button, MonthsPicker, NetworkPicker, PayAddress, PayAmount, PayArrived, PayStatus, PayTrack, type CheckoutStage } from '@alcove/ui';
+import { CheckoutDone, CheckoutLine, CheckoutNote, CheckoutWindow, Button, MonthsPicker, NetworkPicker, PayAddress, PayAmount, PayArrived, PayStatus, PayTrack, RequestRef, type CheckoutStage } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import type { ReactNode } from 'react';
 import { did } from '../../../src/component';
+import { PREVIEW_TOP_UP } from '../../../src/world/plans/payments';
 import { LENGTHS, NETWORKS, PREVIEW_BASE_ADDRESS, PRO_YEAR_SUMMARY, TEAM_FOLK } from './parts';
 
 /**
@@ -29,6 +30,7 @@ const send: ReactNode = (
     <PayAmount amount="192.00" chain="base" chainName="Base" />
     <PayAddress address={PREVIEW_BASE_ADDRESS} chainName="Base" tag="new" walletHref={null} listening />
     <CheckoutNote>Only send USDC on Base. Anything else may be lost. Sending from an exchange? Add its withdrawal fee on top.</CheckoutNote>
+    <RequestRef id={PREVIEW_TOP_UP} className="ck-ref" />
   </>
 );
 const seen: ReactNode = (
@@ -37,11 +39,12 @@ const seen: ReactNode = (
     <PayArrived amount="192.00" value={192} chainName="Base" />
     <CheckoutLine>Starting Pro. This takes a minute or two.</CheckoutLine>
     <PayTrack steps={['Sent', 'Seen on Base', 'Pro starts']} />
+    <RequestRef id={PREVIEW_TOP_UP} className="ck-ref" />
   </>
 );
 const done: ReactNode = (
   <CheckoutDone title="You’re on Pro" lines={['Until Saturday 30 October 2027.']} reminder="Nothing renews by itself. Alcove reminds you before it ends."
-    receipt={{ title: '192.00 USDC on Base', sub: '4 Nov 2026 · Pro, 12 months', reference: 'k3Fq9xZ2', onOpen: did('onReceipt') }} />
+    receipt={{ title: '192.00 USDC on Base', sub: '4 Nov 2026 · Pro, 12 months', reference: PREVIEW_TOP_UP, onOpen: did('onReceipt') }} />
 );
 const close = <Button variant="secondary" onClick={did('onClose')}>Close</Button>;
 const at = (stage: CheckoutStage, step: 1 | 2 | 3, children: ReactNode, foot: ReactNode): Story => ({ args: { stage, step, children, foot } });

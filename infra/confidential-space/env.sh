@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034 # The values here are read by the scripts that source this file, not by this file.
 # Alcove in Confidential Space, described once: the names of its resources, and the environment and secrets each
-# deployment runs with. setup.sh, build.sh, sign.sh, deploy.sh and dns.sh source this file, and the deploy workflows run
-# them, so changing a value here changes it everywhere. To see what an environment's VMs get:
+# deployment runs with. setup.sh, build.sh, sign.sh, deploy.sh, dns.sh and job.sh source this file, and the deploy
+# workflows run most of them, so changing a value here changes it everywhere. To see what an environment's VMs get:
 #   infra/confidential-space/env.sh production
 #
 # Nothing here is secret, and nothing secret may be added. Every variable of the container's environment (these, the
@@ -90,9 +90,6 @@ CS_CLOUDFLARE_ZONE=a96d9d49874e54172ee6b923d7daa57a
 CS_DNS_TOKEN_SECRET=alcove-cloudflare-dns-token
 CS_ACME_DIRECTORY=https://acme-v02.api.letsencrypt.org/directory
 
-# The SHA-256 of the operator token that switches feature flags (POST /v1/operator/feature-flags). A hash, never the token.
-CS_OPERATOR_TOKEN_SHA256=17041d165d94f04dd885afcefa118a0d51ac299cc633fc1a566161b1a9581b08
-
 CS_DEPLOY_SA="$CS_DEPLOY_SA_NAME@$CS_PROJECT.iam.gserviceaccount.com"
 CS_SIGNING_KEY_URI="gcpkms://projects/$CS_PROJECT/locations/$CS_REGION/keyRings/$CS_KEYRING/cryptoKeys/$CS_SIGNING_KEY/cryptoKeyVersions/$CS_SIGNING_KEY_VERSION"
 CS_WIF_PROVIDER="projects/$CS_PROJECT_NUMBER/locations/global/workloadIdentityPools/$CS_POOL/providers/$CS_PROVIDER"
@@ -123,6 +120,11 @@ cs_env() {
       CS_GOOGLE_SIGNUP_MODE="${ALCOVE_GOOGLE_SIGNUP_MODE:-testers}"
       CS_NEAR_AI="${ALCOVE_NEAR_AI_ENABLED:-true}"
       CS_TREASURY_ACCOUNT=alcove-treasury.near
+      # Who can operate production from outside the enclave (apps/api/src/http/operator.ts): each operator's own Ed25519 public
+      # key, read:<public key> or write:<public key>, one an entry, with a comment saying what the key is for, never whose it
+      # is. `pnpm --filter @alcove/server operator keygen` makes one and says its line. Most keys should be read. The list is
+      # built into the image (CS_BUILD_ARGS), so adding or removing a key is a reviewed pull request and a deploy.
+      CS_OPERATOR_KEYS=()
       # The KMASTER and KSERVICE from before Confidential Space, which production's accounts were made under, were carried
       # (carry: the API read them once, LEGACY_SECRETS, and re-wrapped every account under its own master), then retired on
       # 2026-11-13, once all 28 accounts had moved and the user confirmed the switch: every deploy forgets the old master
@@ -160,6 +162,9 @@ cs_env() {
       CS_NEAR_AI=false
       # Credit top-ups stay off: they'd watch production's treasury.
       CS_TREASURY_ACCOUNT=''
+      # Who can operate staging, as production's list says (read:<public key> or write:<public key>, one an entry, each with
+      # a comment saying what it's for). A request signed for one environment is refused by the other.
+      CS_OPERATOR_KEYS=()
       # Old keys of its own, made fresh by setup.sh, so its first start carries them as production's does.
       CS_LEGACY_KEY_SECRETS=(alcove-kmaster-staging alcove-kservice-staging)
       CS_LEGACY=carry
@@ -220,7 +225,7 @@ cs_secrets() {
 }
 
 # cs_settings: everything an environment's VMs run with (after cs_env): its secrets (cs_secrets), CS_TEE_ENV, the
-# tee-env-* metadata, and CS_BUILD_ARGS, what its web app is built with.
+# tee-env-* metadata, and CS_BUILD_ARGS, what its image is built with: its web app, and who can operate it.
 cs_settings() {
   local bad=()
   [[ "$CS_LIVEKIT_URL" =~ ^wss://[A-Za-z0-9.-]+$ ]] || bad+=("ALCOVE_LIVEKIT_URL must be the LiveKit Cloud project's URL, wss://<project>.livekit.cloud (repository variable LIVEKIT_URL)")
@@ -231,7 +236,7 @@ cs_settings() {
   fi
   cs_secrets || return 1
 
-  local hosts secrets legacy
+  local hosts secrets legacy operators=''
   hosts="$(IFS=,; printf '%s' "${CS_HOSTS[*]}")"
   secrets="$(IFS=,; printf '%s' "${CS_SECRETS[*]}")"
   legacy="$(IFS=,; printf '%s' "${CS_LEGACY_SECRETS[*]}")"
@@ -260,17 +265,34 @@ cs_settings() {
     "GOOGLE_SIGNUP_MODE=$CS_GOOGLE_SIGNUP_MODE"
     "DEMO_AUTH_ENABLED=$CS_DEMO_AUTH"
     NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1
-    "OPERATOR_TOKEN_SHA256=$CS_OPERATOR_TOKEN_SHA256"
     LOG_FORMAT=json
     LOG_LEVEL=info
   )
   if [[ -n "$CS_TREASURY_ACCOUNT" ]]; then CS_TEE_ENV+=("TREASURY_INTENTS_ACCOUNT=$CS_TREASURY_ACCOUNT"); fi
 
-  # The web app is built for its API's origin, with that origin and LiveKit's host in its Content-Security-Policy.
+  # Each operator key is listed once, as read:<public key> or write:<public key>, and is a key someone holds the private
+  # half of: the API refuses to start otherwise. The small-order points (keys/operator-keys.ts › SMALL_ORDER, each with and
+  # without its sign bit) are keys anyone can sign for, such as a placeholder of A's.
+  local small=' AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA JuiVj8KyJ7BFw_SJ8u-Y8NXfrAXTxjM5sTgCiG1T_AU JuiVj8KyJ7BFw_SJ8u-Y8NXfrAXTxjM5sTgCiG1T_IU xxdqcD1N2E-6PAt2DRBnDyogU_osOczGTsf9d5KsA3o xxdqcD1N2E-6PAt2DRBnDyogU_osOczGTsf9d5KsA_o 7P_______________________________________38 7P________________________________________8 7f_______________________________________38 7f________________________________________8 7v_______________________________________38 7v________________________________________8 '
+  if ((${#CS_OPERATOR_KEYS[@]})); then
+    local key seen=' '
+    for key in "${CS_OPERATOR_KEYS[@]}"; do
+      [[ "$key" =~ ^(read|write):[A-Za-z0-9_-]{43}$ ]] || { printf "CS_OPERATOR_KEYS: %s isn't read:<public key> or write:<public key>\n" "$key" >&2; return 1; }
+      [[ "$small" != *" ${key#*:} "* ]] || { printf 'CS_OPERATOR_KEYS: %s is a key anyone can sign for: list a key operator keygen made\n' "${key#*:}" >&2; return 1; }
+      [[ "$seen" != *" ${key#*:} "* ]] || { printf 'CS_OPERATOR_KEYS: %s is listed twice\n' "${key#*:}" >&2; return 1; }
+      seen+="${key#*:} "
+    done
+    operators="$(IFS=,; printf '%s' "${CS_OPERATOR_KEYS[*]}")"
+  fi
+
+  # The web app is built for its API's origin, with that origin and LiveKit's host in its Content-Security-Policy. The
+  # operator keys are built into the image (its ENV), not set per VM: the image's digest, which Confidential Space attests
+  # and cosign signs, then says who can operate, and no instance template can add a key.
   CS_BUILD_ARGS=(
     "WEB_API_URL=$CS_API_URL"
     "WEB_LIVEKIT_URL=$CS_LIVEKIT_URL"
     "WEB_DEMO_AUTH_ENABLED=$CS_DEMO_AUTH"
+    "OPERATOR_KEYS=$operators"
   )
 }
 
@@ -284,6 +306,6 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   printf '  %s\n' "${CS_TEE_ENV[@]}"
   printf '\nSecrets the API reads (ENV=secret), granted to %s alone:\n' "$CS_PRINCIPAL_SET"
   printf '  %s\n' "${CS_SECRETS[@]}" ${CS_LEGACY_SECRETS[@]+"${CS_LEGACY_SECRETS[@]/#/legacy: }"}
-  printf '\nWeb build:\n'
+  printf '\nImage build:\n'
   printf '  %s\n' "${CS_BUILD_ARGS[@]}"
 fi

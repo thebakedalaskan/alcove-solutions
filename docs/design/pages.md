@@ -636,8 +636,10 @@ One window over any page, a call included, where it opens in your own theme: at 
 you're buying on the right, under its own small evening (`PlanWindow`) whose sun rises as the payment lands.
 - **Steps:** Choose, Pay, Done (`CheckoutSteps`). Choose is the lengths (`MonthsPicker`, with its 20% off bracket) or the
   hours (`HoursPicker`), then the network (`NetworkPicker`) only when money is needed; Pay is the status, the amount to send,
-  the address with its QR code and the track (`PayStatus`, `PayAmount`, `PayAddress`, `PayTrack`); Done draws its tick
-  (`CheckoutDone`), with the receipt (`PaymentReceipt`) in the same window, as paper.
+  the address with its QR code and the track (`PayStatus`, `PayAmount`, `PayAddress`, `PayTrack`), with the payment's
+  reference last from the start, a quiet line that copies when pressed (`RequestRef`), for support; Done draws its tick
+  (`CheckoutDone`), with the receipt's row (that reference whole on a line of its own) and the receipt
+  (`PaymentReceipt`) in the same window, as paper.
 - **One filled button per view:** Get the address, or Buy with your balance; on a phone while paying, Open in wallet.
   Cancel payment asks in the foot (`CheckoutAsk`), with Keep waiting filled, while nothing has arrived. Once part of the
   payment has (Less than asked arrived), the foot has Close alone, though the board's has Cancel payment beside it: the server

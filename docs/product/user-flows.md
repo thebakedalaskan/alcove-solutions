@@ -1970,8 +1970,9 @@ Settings can name a group or one of the places other pages point at (**Recording
 place shows in a soft blue that fades as the page settles, and the index lights its group. Every control changes immediately and
 says **Saving…** while its request is pending. **Saved** shows for a moment just left of the control, only once its
 latest choice is confirmed (**Saved for new notes** for the language). A refusal says **Couldn’t confirm**, with a
-toast explaining why; it removes only that attempt, keeping later choices. Pick the setting again to retry. Panels that
-don't load say so, with **Try again**, and the rest of the page still works. Journey **11.23** shows Off → On → Off for
+toast explaining why and **Copy reference**, to quote if it keeps happening; it removes only that attempt, keeping later
+choices. Pick the setting again to retry. Panels that don't load say so, with **Try again**, and the rest of the page still
+works. Journey **11.23** shows Off → On → Off for
 notes on new calls while the oldest request fails.
 
 - **You**: your name and photo, from your sign-in, with a link to change them at Google or Microsoft (they update
@@ -2084,9 +2085,10 @@ Open **Settings → Plan → Add money** beside **Balance**, choose **$20**, **$
 then the network to send it on, under **Pay with USDC**. A USDC is a dollar, so $20 is 20 USDC. **Get an address** follows
 the payment as checkout's Pay step does (16.2), with the same parts and words: "Waiting for your payment" and until when
 the address is open, **Send exactly** the amount with Copy, the QR code and the address made for this one payment, its
-first six and last four characters in bold (on a phone, **Open in wallet** in place of the code), and "Only send USDC on
-Base". A short payment says "Less than asked arrived", with **Send the rest** to the same address before it closes; after
-that it asks for no more money, and what arrived goes into the balance once the payment settles. Seen, the amount that
+first six and last four characters in bold (on a phone, **Open in wallet** in place of the code), "Only send USDC on
+Base", and the payment's reference to give support. A short payment says "Less than asked arrived", with **Send the
+rest** to the same address before it closes; after that it asks for no more money, and what arrived goes into the balance
+once the payment settles. Seen, the amount that
 arrived counts up and the line runs to "Added to your balance"; then the tick, and how much is in the balance now. A
 payment on its way stays under the balance in **Payments** with **Open**, as do failed and held payments with their support
 reference; once it's added it shows as "Added, 20 USDC" with **Receipt**. **Cancel payment** stops a waiting one; a payment
@@ -2651,13 +2653,14 @@ instead, once (16.20).
 2. **Pay.** "Waiting for your payment", open for 24 hours. **Send exactly** the total, with Copy; the QR code with the USDC
    mark in its middle; the address made for this payment, its first six and last four characters in bold, with **Copy
    address**; "Only send USDC on Base. Anything else may be lost." On a phone, **Open in wallet** instead of the code where
-   the network has a wallet link, else **Copy address**. The summary's sun waits on its horizon. You can close this: Pro
-   starts as soon as the payment arrives.
+   the network has a wallet link, else **Copy address**. Under it, the payment's reference (**Ref**), to give support if
+   you ask about it; pressing it copies it. The summary's sun waits on its horizon. You can close this: Pro starts as soon
+   as the payment arrives.
 3. **Seen.** The payment arrives: "Payment seen", the amount counts up, "Starting Pro. This takes a minute or two.", and the
    line Sent → Seen on Base → Pro starts. The sun lifts. There's nothing to press.
-4. **Done.** The sun clears the horizon and a tick draws in: "You're on Pro", until when, the receipt row with **Receipt**, a
-   receipt to print, "Nothing renews by itself. Alcove reminds you before it ends.", and **Done**. Pro starts at once with a
-   fresh period and all of Pro's notes.
+4. **Done.** The sun clears the horizon and a tick draws in: "You're on Pro", until when, the receipt row (the payment's
+   reference on it whole) with **Receipt**, a receipt to print, "Nothing renews by itself. Alcove reminds you before it
+   ends.", and **Done**. Pro starts at once with a fresh period and all of Pro's notes.
 5. **Closed.** However the window is closed from Done, the page under it says once what was bought, in the server's dates:
    "You're on Pro until 4 Nov 2027." (extending, "Pro runs to 10 Nov 2027."; more notes, "10 hours of notes added."; a team,
    "Vandelay Industries is on Team." or "6 licenses added to Vandelay Industries."). Over a call, notes coming on again say

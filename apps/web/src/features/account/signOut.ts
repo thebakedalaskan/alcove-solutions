@@ -10,7 +10,7 @@
  * Settings' sky (features/settings/SignOut.tsx) and your menu at the top right (features/account/YouMenu.tsx) are two ways of
  * showing it.
  */
-import { AlcoveApiError, errorMessage } from '@alcove/api';
+import { AlcoveApiError } from '@alcove/api';
 import { useToast } from '@alcove/ui';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
@@ -26,6 +26,7 @@ import { forgetEdits, keptDocuments } from '~/features/workspace/offline/keep';
 import { unsentText } from '~/features/workspace/offline/sendKept';
 import { forgetPlaces } from '~/features/workspace/tree/places';
 import { api } from '~/lib/api';
+import { toastFailure } from '~/lib/failed';
 import { useLive } from '~/lib/live';
 import { log } from '~/lib/log';
 import { announceSignOut } from '~/lib/signedOut';
@@ -146,7 +147,7 @@ export function useSigningOut({ back, holding }: { back: () => void; holding: ()
   const [words, setWords] = useState(0);
   const [copying, setCopying] = useState(false);
   const [asking, setAsking] = useState(false);
-  const go = () => signOut.mutate(undefined, { onError: (e) => toast(errorMessage(e), { icon: 'x' }) });
+  const go = () => signOut.mutate(undefined, { onError: (e) => toastFailure(toast, e) });
   const stay = () => { setAsking(false); back(); };
   // Decided on what's really here: a list not read yet would look empty, and sign out without a word.
   const press = () => {
@@ -167,7 +168,7 @@ export function useSigningOut({ back, holding }: { back: () => void; holding: ()
         toast('Copied. Paste it wherever you like.', { icon: 'copy' });
       })
       .then(() => keptDocuments(owner))
-      .then((kept) => { setWords(kept.length); }, (e: unknown) => { toast(errorMessage(e), { icon: 'x' }); })
+      .then((kept) => { setWords(kept.length); }, (e: unknown) => { toastFailure(toast, e); })
       .finally(() => { setCopying(false); });
   };
   // Nothing waits any more (it uploaded or reached Alcove meanwhile), so the question has nothing left to say: it closes

@@ -33,7 +33,7 @@ import { log } from '../../../platform/log';
 import { priceOf, type Price } from '../../../inference/models';
 import { mayStore } from './held';
 import { keptOf, MeterRow, openMeter, sealMeter, type Hold, type MeterState } from './meter-state';
-import { planWith, type InForce } from '../plans';
+import { planWith, type Accounting, type InForce } from '../plans';
 
 const alog = log.child({ component: 'ai-allowance' });
 /** A source (a call or room recording) nothing has charged for this long is over, and what it held goes. */
@@ -345,13 +345,14 @@ export async function close(d: Service, payer: string, source: Source): Promise<
  * as the meter will be the next time it's touched (`current`). `leftNano` and `stopped` are what the meter decides by:
  * what requests in flight and live calls' notes hold counts at the most it could cost, so nothing spends past the
  * allowance. `unspentNano` and `ranOut` are what the plan shows: only what's been spent, so notes left only ever go down
- * in a period, and don't dip while something is held and come back when it's charged at what it actually cost.
+ * in a period, and don't dip while something is held and come back when it's charged at what it actually cost. It reads
+ * only what plans do, so support's command line can say whether notes have stopped (support.ts).
  */
 export interface Standing {
   leftNano: number; unspentNano: number; allowanceNano: number; spentNano: number; byKind: Readonly<Record<string, number>>;
   stopped: boolean; ranOut: boolean; plan: PlanKind; from: number; to: number;
 }
-export async function standing(d: Service, db: Db, ownerId: string): Promise<Standing> {
+export async function standing(d: Accounting, db: Db, ownerId: string): Promise<Standing> {
   const l = await limitsNow(d, db);
   const now = Date.now();
   const r = await maybeOne(db, MeterRow, 'SELECT state_ciphertext FROM ai_meters WHERE owner_id = $1', [ownerId]);

@@ -54,9 +54,15 @@ export type Db = pg.Pool | pg.PoolClient;
 const CONNECTION_WAIT_MS = 10_000;
 /** The longest one statement may run, lock waits included. */
 export const STATEMENT_TIMEOUT_MS = 15_000;
-/** Connections to the database: ten for the API's work, or `max`, as for the one the edge holds its certificate lock on. */
-export function createPool(url: string, max = 10): pg.Pool {
-  const pool = new pg.Pool({ connectionString: url, max, statement_timeout: STATEMENT_TIMEOUT_MS, connectionTimeoutMillis: CONNECTION_WAIT_MS });
+/**
+ * Connections to the database: ten for the API's work, or `max`, as for the one the edge holds its certificate lock on.
+ * `readOnly`: Postgres refuses every write on them (the checks job, operator-job.ts, which never writes).
+ */
+export function createPool(url: string, max = 10, o: { readOnly?: boolean } = {}): pg.Pool {
+  const pool = new pg.Pool({
+    connectionString: url, max, statement_timeout: STATEMENT_TIMEOUT_MS, connectionTimeoutMillis: CONNECTION_WAIT_MS,
+    ...(o.readOnly ? { options: '-c default_transaction_read_only=on' } : {})
+  });
   pool.on('error', (e) => dblog.error('idle database client failed', { err: e }));
   pool.on('acquire', (c) => { c.on('error', lent); });
   pool.on('release', (_e, c) => { c.off('error', lent); });
@@ -79,6 +85,19 @@ function connectFailure(e: unknown): string {
   if (e instanceof Error && e.message === 'Connection terminated due to connection timeout') return 'connect-timeout';
   if (e instanceof Error && GONE_MESSAGES.has(e.message)) return 'connection-ended';
   return 'unknown';
+}
+/** What the system says when a connection to the database can't be made at all: nobody there, or no way there. */
+const UNREACHED = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH']);
+/**
+ * Whether a failure says the database can't be reached now, rather than that what was asked of it was wrong: a connection
+ * lost (LostConnectionError) or none free (DatabaseBusyError), or one that couldn't be made, as a start's tries tell them
+ * apart (`connectFailure`, PASSING_CLASSES). What an operator's read falls back on memory for (http/operator.ts).
+ */
+export function unreachable(e: unknown): boolean {
+  if (e instanceof LostConnectionError || e instanceof DatabaseBusyError) return true;
+  if (!(e instanceof DatabaseError)) return false;
+  const code = connectFailure(e.cause);
+  return UNREACHED.has(code) || PASSING_CLASSES.has(code.slice(0, 2)) || code === 'connect-timeout' || code === 'connection-ended';
 }
 
 /**
