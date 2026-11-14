@@ -400,6 +400,9 @@ describe('a transcript made while NEAR AI refuses Whisper’s detail', () => {
   });
   /** The formats the clips sent since `from` asked Whisper for. */
   const formats = (from: number) => h.near.transcriptions.slice(from).map((t) => t.format);
+  /** What a clip that couldn't be transcribed says, wherever it's shown: why, and what that costs. */
+  const DOWN = 'Transcription isn’t available right now, so what’s said won’t be in the transcript or the notes. It picks up again as soon as it can.';
+  const failed = (e: unknown) => [code(e), e instanceof AlcoveApiError ? e.message : null];
   /** How many times the speech model's evidence was checked since log line `from`. */
   const verifiedSince = (from: number) => h.logs.slice(from).filter((l) => l.includes('"msg":"model verified"') && l.includes('"task":"transcript"')).length;
 
@@ -411,7 +414,7 @@ describe('a transcript made while NEAR AI refuses Whisper’s detail', () => {
     const rec = await org.api.recordings.start({ title: 'Refused' });
     await rec.appendAudio(piece('refused', 0, 0));
     const from = h.near.transcriptions.length;
-    expect(code(await rec.transcribe(speech('We ship on Friday.', 0, 0)).catch((e: unknown) => e))).toBe('unavailable');
+    expect(failed(await rec.transcribe(speech('We ship on Friday.', 0, 0)).catch((e: unknown) => e))).toEqual(['unavailable', DOWN]);
     expect(formats(from)).toEqual(['verbose_json']);
     // The model answered, so its evidence still holds: the next clip isn't checked all over again, only refused.
     const logged = h.logs.length;
@@ -522,7 +525,7 @@ describe('a transcript made while NEAR AI refuses Whisper’s detail', () => {
     h.near.refuseModel('transcript', 502);
     const rec = await org.api.recordings.start({ title: 'Down' });
     await rec.appendAudio(piece('down', 0, 0));
-    expect(code(await rec.transcribe(speech('Nobody hears this.', 0, 0)).catch((e: unknown) => e))).toBe('unavailable');
+    expect(failed(await rec.transcribe(speech('Nobody hears this.', 0, 0)).catch((e: unknown) => e))).toEqual(['unavailable', DOWN]);
     expect(rec.getSnapshot()).toMatchObject({ transcript: [], transcriptReduced: false });
   });
 });

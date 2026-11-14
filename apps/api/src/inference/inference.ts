@@ -102,17 +102,29 @@ class KeyRefused extends Error {
 }
 
 /**
+ * Why a clip wasn't transcribed, where it's shown: over a call's notes and transcript in the browser that hears it, and
+ * on the Record stage while what's said can't be kept on the device. Either way the clips after it are sent as ever, and
+ * the words go once one is transcribed.
+ */
+const TRANSCRIPTION_DOWN = 'Transcription isn’t available right now, so what’s said won’t be in the transcript or the notes. It picks up again as soon as it can.';
+/** What a request that went unanswered says: a clip's own words, or `words` for everything else. */
+const unanswered = (what: string | number | undefined, words: string) => (what === 'transcribe' ? TRANSCRIPTION_DOWN : words);
+/**
  * An answer's status as Alcove's error: what was sent was unreadable, the key was refused, or the service is busy or down.
  * The status NEAR AI answered goes in the context as `upstreamStatus`, so a revoked key, an account out of credit and an
  * outage there don't read alike: the error's own status is the one Alcove answers with. NEAR AI refusing Whisper's detail
  * (`refused: 'detail'`, see detailRefused) is busy too, but answered: the model's verification holds, so the next request
  * doesn't check its evidence all over again, as it would after an UnansweredError (withVerified).
+ *
+ * A clip that can't be transcribed says so in its own words (TRANSCRIPTION_DOWN): nobody asked for it, so there's nothing
+ * to try again, and what it costs is what's said meanwhile. So does one that can't reach the model, or whose reply can't
+ * be read; evidence that doesn't check out, or a sealed request or reply that doesn't open, says so as for anything else.
  */
 function statusError(status: number, context: Record<string, string | number>): AppError {
   const said = { ...context, upstreamStatus: status };
   if (status === 400 || status === 413 || status === 422) return new ValidationError('The notes service couldn’t read that.', { context: said });
   if (status === 401 || status === 403) return new InternalError('The notes service turned Alcove away.', { context: said });
-  const busy = 'Alcove’s notes service is busy. Try again in a moment.';
+  const busy = unanswered(context['what'], 'Alcove’s notes service is busy. Try again in a moment.');
   return context['refused'] === 'detail' ? new UnavailableError(busy, { context: said }) : new UnansweredError(busy, { context: said });
 }
 
@@ -136,7 +148,7 @@ async function sealed(cfg: Ready, v: Verified, endpoint: string, o: { path: stri
       });
     } catch (e) {
       const timedOut = e instanceof DOMException && e.name === 'TimeoutError';
-      const error = new UnansweredError('Alcove’s notes service can’t be reached right now.', { cause: e, context: { what: o.what, timedOut, ms: Math.round(performance.now() - t0) } });
+      const error = new UnansweredError(unanswered(o.what, 'Alcove’s notes service can’t be reached right now.'), { cause: e, context: { what: o.what, timedOut, ms: Math.round(performance.now() - t0) } });
       if (timedOut) throw error;
       throw new KeyRefused(error);
     }
@@ -488,7 +500,7 @@ export async function transcribe(cfg: Config, meter: Meter, wav: Uint8Array, dur
       input: input ?? windows * WINDOW_TOKENS + (prompt ? tokensAbout(prompt.text) : 0), cached: 0,
       output: output ?? (r.success ? tokensAbout(r.data.segments?.map((s) => s.text).join(' ') ?? r.data.text) : 0)
     }, input === undefined || output === undefined);
-    if (!r.success) throw new UnavailableError('The notes service sent back something unexpected.', { context: { what: 'transcribe', reply: 'unparseable' } });
+    if (!r.success) throw new UnavailableError(TRANSCRIPTION_DOWN, { context: { what: 'transcribe', reply: 'unparseable' } });
     const segments = r.data.segments ?? (r.data.text.trim() ? [{ start: 0, end: durationMs / 1000, text: r.data.text }] : []);
     const { heard, namesTrimmed } = keepSpeech(segments, prompt);
     const words = heard.reduce((n, h) => n + h.text.split(/\s+/).filter(Boolean).length, 0);
