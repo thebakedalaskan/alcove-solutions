@@ -1,14 +1,14 @@
 /*
  * The call's workspace: its home, settled the first time Workspace opens (the meeting's own, with the call's folder at
- * its top, or one made for the call), what everyone views and what's brought to the call, who's where in it, and what's
- * played for everyone.
+ * its top, or one made for the call), what everyone views and what's brought to the call, who's where in it, who follows
+ * you while you present it, and what's played for everyone.
  */
 import { AlcoveApiError, type CallPage, type CallWorkspace, type CallWorkspaceSwitch, type Person, type WorkspaceHere, type WorkspaceItem } from '@alcove/api';
 import type { Space } from '../../world/world';
 import { current, nextId } from '../state';
-import { hereIn, peopleIn, tagYou, treeOf } from '../workspaces/workspaces';
+import { hereIn, onYourMoves, peopleIn, tagYou, treeOf, yourPlaceIn } from '../workspaces/workspaces';
 import { firstOf } from './base';
-import { CallWithStage } from './stage';
+import { CallWithStage, type Presented } from './stage';
 
 /** What a call's new home and its folder are called: the call, and the day it started, 'Design review · 4 Nov'. */
 const homeName = (title: string, startedAt: string) =>
@@ -19,6 +19,10 @@ export abstract class CallWithWorkspace extends CallWithStage {
   protected where = new Map<string, { document: string | null; typing: boolean; page: CallPage | null }>();
   /** The call's home, once it's settled. */
   protected homeId: string | null = null;
+  /** Who went their own way while you present the workspace. */
+  protected readonly ownWay = new Set<string>();
+  /** You moved in the workspace you present: whoever follows you goes with you. */
+  private readonly stopYourMoves = onYourMoves((id) => { if (id === this.getSnapshot().workspace.id && this.youPresentTheWorkspace()) this.sayWhere(); });
 
   private organizerOnly(): Promise<void> | null {
     return this.getSnapshot().isOrganizer ? null : Promise.reject(new AlcoveApiError('forbidden', 'Only the organizer chooses the call’s workspace.'));
@@ -71,9 +75,10 @@ export abstract class CallWithWorkspace extends CallWithStage {
     const tree = everyone ? this.openedToCall(id) : treeOf(id);
     if (was !== null && was !== id) {
       treeOf(was).inCall = false;
-      hereIn(was, []);
       for (const [k, v] of this.where) this.where.set(k, { ...v, document: v.document !== null && this.itemIn(id, v.document) ? v.document : null });
       for (const [place, p] of [...this.presented]) this.endIt(place, p, false);
+      // Nobody's in the one it used before: said after what was presented ends, which says who's where once more.
+      hereIn(was, []);
     }
     const shut = !everyone && this.getSnapshot().role === 'guest';
     this.space((w) => (shut ? { ...w, id: null, home: this.homeId, name: null, canOpen: false, role: null, everyone: false, play: null }
@@ -81,16 +86,41 @@ export abstract class CallWithWorkspace extends CallWithStage {
     this.showBoard();
     this.sayWhere();
   }
-  /** Who's where in the workspace everyone views, as its stream says it. */
+  /**
+   * Who's where in the workspace everyone views, as its stream says it. While you present it, everyone else in your part of the
+   * call is where you are, following you, until they go their own way.
+   */
   protected sayWhere(): void {
     const id = this.getSnapshot().workspace.id;
     if (id === null) return;
+    const presenting = this.youPresentTheWorkspace();
+    const yours = presenting ? yourPlaceIn(id) : null;
+    const mine = this.whereIs(this.getSnapshot().participants.find((p) => p.isMe)?.id ?? '');
     const here = this.getSnapshot().participants.flatMap((p): WorkspaceHere[] => {
-      const at = this.where.get(p.id);
-      if (p.isMe || !at) return [];
-      return [{ person: p.person, connection: `c_${p.id}`, callIdentity: p.id, document: at.document, block: null, typing: at.typing, page: at.page, elsewhere: false, isMe: false }];
+      if (p.isMe) return [];
+      const withYou = presenting && !this.ownWay.has(p.id) && this.whereIs(p.id) === mine;
+      const at = withYou ? { document: yours?.document ?? null, typing: false, page: yours?.page ?? null } : this.where.get(p.id);
+      if (!at) return [];
+      return [{ person: p.person, connection: `c_${p.id}`, callIdentity: p.id, document: at.document, block: null, typing: at.typing, page: at.page, elsewhere: false, followsYou: withYou, isMe: false }];
     });
     hereIn(id, here);
+  }
+  /** A presentation starts: who follows you is said again, in the workspace and on the board. Presenting the workspace, everyone starts with you. */
+  protected override startsHere(place: string, p: Presented): void {
+    super.startsHere(place, p);
+    if (p.kind === 'workspace' && this.isMine(p)) this.ownWay.clear();
+    this.sayWhere();
+    this.sayWhoIsOn();
+  }
+  /** A presentation ends: nobody follows you in it any more, which is said at once. */
+  protected override endIt(place: string, p: Presented, close: boolean): void {
+    super.endIt(place, p, close);
+    this.sayWhere();
+    this.sayWhoIsOn();
+  }
+  override close(): void {
+    this.stopYourMoves();
+    super.close();
   }
   /* Someone else playing or tagging you in it has opened Workspace, so the home is settled by then. */
   protected theyPlay(who: Person, documentId: string, mediaId: string): void {

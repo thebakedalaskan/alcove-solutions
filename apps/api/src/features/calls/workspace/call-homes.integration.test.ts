@@ -339,27 +339,87 @@ describe('the call’s folder', () => {
     await until(() => [annSees, kofiIs, lenaSees].every((s) => s.getSnapshot().status === 'live'), 'everyone’s stream');
     const of = (s: typeof annSees, email: string) => s.getSnapshot().here.find((x) => x.person.email === email);
 
-    kofiIs.present({ document: null, block: null, typing: false, page: 'transcript' });
+    kofiIs.present({ document: null, block: null, typing: false, page: 'transcript', following: null });
     await until(() => of(annSees, kofi.email)?.page === 'transcript', 'Ann to see Kofi on the transcript');
     expect(of(annSees, kofi.email)).toMatchObject({ document: null, page: 'transcript', elsewhere: false, callIdentity: k.ticket.identity });
     await until(() => of(lenaSees, kofi.email)?.elsewhere === true, 'Lena to see Kofi elsewhere');
     expect(of(lenaSees, kofi.email)).toMatchObject({ document: null, page: null, elsewhere: true, callIdentity: null });
     // From one page to another, and off them.
-    kofiIs.present({ document: null, block: null, typing: false, page: 'notes' });
+    kofiIs.present({ document: null, block: null, typing: false, page: 'notes', following: null });
     await until(() => of(annSees, kofi.email)?.page === 'notes', 'Ann to see Kofi on the notes');
-    kofiIs.present({ document: null, block: null, typing: false, page: null });
+    kofiIs.present({ document: null, block: null, typing: false, page: null, following: null });
     await until(() => of(annSees, kofi.email)?.page === null, 'Ann to see Kofi leave the notes');
     await until(() => of(lenaSees, kofi.email)?.elsewhere === false, 'Lena to see Kofi back');
 
     // Someone who isn't in the call can't be on its pages: what they say of it is dropped, and the rest of it holds.
     const plan = (await ann.api.workspaces.items.create(home, { kind: 'document', name: 'Plan', parent: null })).id;
-    lenaSees.present({ document: plan, block: null, typing: false, page: 'notes' });
+    lenaSees.present({ document: plan, block: null, typing: false, page: 'notes', following: null });
     const lenaIn = () => annSees.getSnapshot().here.find((x) => x.person.email === lena.email && x.document === plan);
     await until(() => lenaIn() !== undefined, 'Ann to see Lena in the plan');
     expect(lenaIn()).toMatchObject({ page: null, elsewhere: false });
     await until(() => of(kofiIs, lena.email)?.document === plan, 'Kofi to see Lena in the plan');
     expect(of(kofiIs, lena.email)).toMatchObject({ page: null, elsewhere: false });
     for (const s of [annSees, kofiIs, lenaSees]) s.close();
+    await host.leave();
+  });
+
+  it('tells whoever someone follows that they do, and nobody else, only while they’re both in the call, so whoever presents knows who’s still with them', async () => {
+    const ann = await account();
+    const kofi = await account();
+    const bo = await account();
+    const lena = await account();
+    const { host, code: c } = await callBy(ann, { guests: [kofi.email, bo.email], title: 'Roadmap' });
+    const k = await invited(host, c, kofi);
+    const b = await invited(host, c, bo);
+    await host.openWorkspace();
+    const home = (await space(host)).home ?? '';
+    // Lena's in the workspace and not in the call.
+    await ann.api.workspaces.addPerson(home, lena.email, 'edit');
+    const annSees = ann.api.workspaces.live(home, { pass: host.ticket.pass });
+    const kofiIs = kofi.api.workspaces.live(home, { pass: k.ticket.pass });
+    const boSees = bo.api.workspaces.live(home, { pass: b.ticket.pass });
+    const lenaIs = lena.api.workspaces.live(home);
+    const everyone = [annSees, kofiIs, boSees, lenaIs];
+    await until(() => everyone.every((s) => s.getSnapshot().status === 'live'), 'everyone’s stream');
+    const of = (s: typeof annSees, email: string) => s.getSnapshot().here.find((x) => x.person.email === email);
+    await until(() => of(kofiIs, ann.email) !== undefined && of(lenaIs, ann.email) !== undefined, 'Kofi and Lena to see Ann here');
+    // What the workspace knows Ann by is the same whoever looks: that's whom Kofi says he follows.
+    const annIs = of(kofiIs, ann.email)?.person.id ?? null;
+    expect(annIs).not.toBeNull();
+    expect(of(lenaIs, ann.email)?.person.id).toBe(annIs);
+
+    // Kofi follows Ann onto the notes: she's told, and Bo, in the call with them both, isn't.
+    kofiIs.present({ document: null, block: null, typing: false, page: 'notes', following: annIs });
+    await until(() => of(annSees, kofi.email)?.followsYou === true, 'Ann to see Kofi following her');
+    await until(() => of(boSees, kofi.email)?.page === 'notes', 'Bo to see Kofi on the notes');
+    expect(of(boSees, kofi.email)?.followsYou).toBe(false);
+    await until(() => of(lenaIs, kofi.email)?.elsewhere === true, 'Lena to see Kofi elsewhere');
+    expect(of(lenaIs, kofi.email)?.followsYou).toBe(false);
+    expect(of(kofiIs, kofi.email)).toMatchObject({ isMe: true, followsYou: false });
+
+    // Kofi goes his own way: Ann's told at once that he isn't with her any more.
+    kofiIs.present({ document: null, block: null, typing: false, page: 'transcript', following: null });
+    await until(() => of(annSees, kofi.email)?.page === 'transcript', 'Ann to see Kofi on the transcript');
+    expect(of(annSees, kofi.email)?.followsYou).toBe(false);
+
+    // Lena isn't in the call: whom she follows isn't said, even to Ann.
+    const plan = (await ann.api.workspaces.items.create(home, { kind: 'document', name: 'Plan', parent: null })).id;
+    lenaIs.present({ document: plan, block: null, typing: false, page: null, following: annIs });
+    await until(() => of(annSees, lena.email)?.document === plan, 'Ann to see Lena in the plan');
+    expect(of(annSees, lena.email)?.followsYou).toBe(false);
+
+    // Kofi leaves the call: following Ann from outside it, he isn't counted as with her.
+    kofiIs.present({ document: plan, block: null, typing: false, page: null, following: annIs });
+    await until(() => of(annSees, kofi.email)?.followsYou === true, 'Ann to see Kofi following her again');
+    await k.leave();
+    kofiIs.close();
+    const kofiAfter = kofi.api.workspaces.live(home);
+    await until(() => kofiAfter.getSnapshot().status === 'live', 'Kofi’s stream outside the call');
+    kofiAfter.present({ document: plan, block: null, typing: false, page: null, following: annIs });
+    const kofiNow = () => annSees.getSnapshot().here.filter((x) => x.person.email === kofi.email);
+    await until(() => kofiNow().length === 1 && kofiNow()[0]?.callIdentity === null && kofiNow()[0]?.document === plan, 'Ann to see Kofi only in the plan, outside the call');
+    expect(kofiNow()[0]?.followsYou).toBe(false);
+    for (const s of [annSees, boSees, lenaIs, kofiAfter]) s.close();
     await host.leave();
   });
 

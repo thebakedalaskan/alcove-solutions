@@ -108,7 +108,7 @@ export function ScreenFrame({ id, box, place, share: s, looks, pointing, popOut,
   };
   const bar: FrameBar = {
     icon: 'screen', name: s.mine ? 'Your screen' : s.name, by: { person: s.presenter, first: s.mine ? 'You' : callName(s.presenter), mine: s.mine },
-    followers: place.followers, follow: null, present: null, focus: place.focus, phone: place.phone, onClose: () => closing.closeThing(id), clears: place.clears, ask: null, access: null,
+    followers: 0, follow: null, present: null, focus: place.focus, phone: place.phone, onClose: () => closing.closeThing(id), clears: place.clears, ask: null, access: null,
     rows: (close) => (s.mine
       ? <MyShareMenuRows read={myShareRead} othersPoint={yours.pointingOn ? yours.othersPoint : null} marksOn={yours.marksOn} onOthersPoint={flipOthersPoint}
         onClear={() => { if (yours.sid) marks?.clear(yours.sid); }} onChange={yours.onChange} onDone={close} />

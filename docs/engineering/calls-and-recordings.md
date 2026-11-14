@@ -1301,8 +1301,10 @@ access is never copied into the call. Organizing a call opens nothing more.
   `stage/onStage.ts`: [The call screen](#the-call-screen)).
   - *The workspace presented* is in its frame on the stage of everyone following it, and the frame's bar says who's
     presenting it. Following takes you to the presenter's page and line, through the workspace's own Follow and presence
-    (`features/workspace/follow.ts`), so nothing new goes to the server. Unfollow takes you back to where you were before
-    you followed; a click, a scroll, a key or Escape in it leaves you where you are, on your own (`onOwn`). Only in it:
+    (`features/workspace/follow.ts`); your browser says whom it follows with where it is, and only they're told
+    (`followsYou`), which is what their bar counts. Unfollow takes you back to where you were before you followed; a click,
+    a scroll, a key or Escape in it, on a document or the call's own pages, going somewhere, or following someone else,
+    leaves you where you are, on your own (`onOwn`). Only in it:
     `useFollow` takes Escape from inside the workspace's pane alone, so an Escape anywhere else (focus, the chat box, your
     side) stays the call's. Present, on the workspace's frame, or Share › The workspace, presents it; Close, while you
     present it, asks whom it ends for.
@@ -2098,7 +2100,8 @@ and the page a call leaves you on (`session/CallOver.tsx`).
 - **The frame** (`frame.tsx`, drawing `CallFrame` from the kit) is one for a screen, a board or the workspace, with one bar;
   it rises into its place as it opens, and glides as the room round it changes (`FrameBox`). On the left, the presenter's
   face (or the kind's icon while nobody presents), the name as a menu of the kind's own commands, and a line: Only on your
-  screen, You're presenting · 3 following (everyone else in your part of the call), You're presenting · a tab with sound
+  screen, You're presenting · 3 following (whoever says they follow you on it; nobody following, with none), You're
+  presenting · a tab with sound
   (Starting to share… until LiveKit has it), or Priya is presenting. Beside it, on the workspace, who can edit it, which
   opens who's in it: Everyone in the call can edit, for its people, or You can edit while you're in the call, for a guest
   or anyone else who isn't in the workspace. The board in the call says it too while everyone here can edit it
@@ -2142,8 +2145,9 @@ and the page a call leaves you on (`session/CallOver.tsx`).
   retro, and you're following." or "Priya is presenting their screen."); someone watching another gets it as a tile, with a
   toast ("Priya is presenting their screen. It's with the people.") and Show it, which goes once it's been taken up some
   other way. Someone who can't open it gets no frame and no tile, only who's presenting. Following the workspace is the
-  workspace's own Follow, through presence (`features/workspace/follow.ts`), so nothing new goes to the server; following a
-  board is seeing the presenter's frame. Unfollow takes you back: in the workspace to where you were before you followed, on
+  workspace's own Follow, through presence (`features/workspace/follow.ts`), which says whom you follow to them alone;
+  following a board is seeing the presenter's frame, said on its awareness (`withPresenter`): that's what the presenter's bar
+  counts. Unfollow takes you back: in the workspace to where you were before you followed, on
   a board to your own view as you left it. A click, scroll or key in the workspace, or a scroll, drag or pinch on a board,
   works on your own from where you are. Follow, with where the presenter is, brings you back; a screen can't be unfollowed.
   Close on someone else's makes it a tile for you while they present. When it ends, its tile goes, and followers stay in it

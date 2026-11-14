@@ -348,7 +348,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, onExpand,
   const others = useMemo(() => othersIn(view.here), [view.here]);
   const goWith = useCallback((to: WorkspacePlace) => { setPhoneList(false); onGo(to, { replace: true }); }, [onGo]);
   const pane = useRef<HTMLElement>(null);
-  const { following, follow, stopFollowing } = useFollow({ others, presenter: call?.presenter ?? null, tree, at, goWith, say, pane });
+  const { following, follow, stopFollowing } = useFollow({ others, presenter: call?.presenter ?? null, tree, at, goWith, say, pane, onOwn: call?.onOwn });
   /*
    * Going anywhere puts a phone's list away, even to what's already open behind it, and going yourself stops following. Full
    * screen, a workspace's Home is a page like any other, so going there puts the list away too.
@@ -389,13 +389,19 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, onExpand,
     mode, at, documentId, empty, sent: view.tree, tree, owner, workspaceId, phone, inCall: call !== undefined, member, onGo, setPhoneList
   });
 
-  /* The call's tiles: who's here, who's writing and who you follow, and what the call asks of the workspace from them (follow.ts). */
+  /*
+   * The call's tiles: who's here, who's writing, who you follow and who follows you, and what the call asks of the workspace
+   * from them (follow.ts).
+   */
   const closed = call?.closed ?? false;
-  useCallTiles({ call, others, tree, following, follow, stopFollowing, go, page, closed });
+  useCallTiles({ call, here: view.here, others, tree, following, follow, stopFollowing, go, page, closed });
 
-  /* Everyone can see you're in a document from the moment it's open, and that you've left once it's out of sight. The editor says which line. */
+  /*
+   * Everyone can see you're in a document from the moment it's open, and that you've left once it's out of sight. The editor
+   * says which line. Whom you follow goes with it (presence.ts).
+   */
   const livePage = at.kind === 'live' ? at.page : null;
-  const present = usePresence(store, documentId, livePage, closed);
+  const present = usePresence(store, documentId, livePage, closed, closed ? null : following?.person.id ?? null);
   useOpenDocument({ documentId, item, tree, owner, workspaceId, justMade, openAll });
 
   /* A folder is named in the list, so the list has to be showing: in a call, wherever the call shows it, and never hidden. */
