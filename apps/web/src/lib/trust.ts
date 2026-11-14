@@ -32,11 +32,22 @@ async function attestation(): Promise<Attestation | undefined> {
  * shows it too. A server that can't be asked isn't verified, so a check that passed before never stays on screen for it.
  */
 async function checkTrust(): Promise<Trust> {
+  let t = await askAndCheck();
+  // A check that took more than a minute was most likely paused (a computer asleep mid-check): the token it was handed has aged
+  // meanwhile, so the server is asked again, once, before anything is said about it.
+  if (t.trust.state === 'unverified' && t.ms > SLEPT_MS) t = await askAndCheck();
+  // A server that couldn't be asked was said already (`attestation`).
+  if (t.trust.state === 'unverified' && t.trust.reason !== UNASKED) trustLog.warn('the server’s attestation didn’t check out', { reason: t.trust.reason, commit: t.trust.commit, digest: t.trust.digest ?? null, ms: t.ms });
+  return t.trust;
+}
+/** A check that takes longer than this, start to finish, was paused rather than slow. */
+const SLEPT_MS = 60_000;
+/** Asks the server what it runs on and checks it, and how long that took. */
+async function askAndCheck(): Promise<{ trust: Trust; ms: number }> {
+  const t0 = Date.now();
   const a = await attestation();
-  if (!a) return { state: 'unverified', reason: UNASKED, commit: 'unknown', at: Date.now() };
-  const t = await checkServer(a);
-  if (t.state === 'unverified') trustLog.warn('the server’s attestation didn’t check out', { reason: t.reason, commit: t.commit, digest: t.digest ?? null });
-  return t;
+  const trust: Trust = a ? await checkServer(a) : { state: 'unverified', reason: UNASKED, commit: 'unknown', at: Date.now() };
+  return { trust, ms: Date.now() - t0 };
 }
 
 /** Checked when the app opens (the side panel and the call both show it), then every ten minutes. */
