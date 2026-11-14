@@ -104,13 +104,16 @@ class KeyRefused extends Error {
 /**
  * An answer's status as Alcove's error: what was sent was unreadable, the key was refused, or the service is busy or down.
  * The status NEAR AI answered goes in the context as `upstreamStatus`, so a revoked key, an account out of credit and an
- * outage there don't read alike: the error's own status is the one Alcove answers with.
+ * outage there don't read alike: the error's own status is the one Alcove answers with. NEAR AI refusing Whisper's detail
+ * (`refused: 'detail'`, see detailRefused) is busy too, but answered: the model's verification holds, so the next request
+ * doesn't check its evidence all over again, as it would after an UnansweredError (withVerified).
  */
 function statusError(status: number, context: Record<string, string | number>): AppError {
   const said = { ...context, upstreamStatus: status };
   if (status === 400 || status === 413 || status === 422) return new ValidationError('The notes service couldn’t read that.', { context: said });
   if (status === 401 || status === 403) return new InternalError('The notes service turned Alcove away.', { context: said });
-  return new UnansweredError('Alcove’s notes service is busy. Try again in a moment.', { context: said });
+  const busy = 'Alcove’s notes service is busy. Try again in a moment.';
+  return context['refused'] === 'detail' ? new UnavailableError(busy, { context: said }) : new UnansweredError(busy, { context: said });
 }
 
 /**
@@ -451,7 +454,9 @@ export async function transcribe(cfg: Config, meter: Meter, wav: Uint8Array, dur
   const language = context.language && LANGUAGE_CODE.test(context.language) ? context.language : undefined;
   const prompt = context.prompt?.text.trim() ? { ...context.prompt, text: endWithin(context.prompt.text.trim(), PROMPT_BYTES) } : undefined;
   const ask = (format: SpeechFormat) => speechForm(cfg, format, wav, 'clip.wav', { language, prompt: prompt?.text });
-  const detailed = await ask('verbose_json');
+  // Built once, when it's first sent: a clip that goes plain at once never asks for the detail.
+  let detailedForm: ReturnType<typeof ask> | undefined;
+  const detailed = () => (detailedForm ??= ask('verbose_json'));
   const t0 = performance.now();
   const windows = Math.max(1, Math.ceil(durationMs / WINDOW_MS));
   const told = prompt ? tokensAtMost(prompt.text) : 0;
@@ -461,7 +466,7 @@ export async function transcribe(cfg: Config, meter: Meter, wav: Uint8Array, dur
     const send = (form: { type: string; body: Uint8Array }) => sealed(cfg, v, cfg.NEAR_AI_STT_URL, { path: '/v1/audio/transcriptions', type: form.type, body: form.body, timeoutMs: 20_000, what: 'transcribe' });
     // While NEAR AI refuses the detail, a clip that may go without it goes plain at once: asking first would be refused.
     let reduced = (plainUntil.get(id) ?? 0) > Date.now() && await mayFallBack();
-    let form = reduced ? await ask('json') : detailed;
+    let form = await (reduced ? ask('json') : detailed());
     let reply = await send(form);
     const refused = !reduced && detailRefused(reply);
     // Handled here, not thrown: withVerified would take the refusal for a model in trouble and verify it all over again.

@@ -159,9 +159,9 @@ export function CallLine({ player, span, chapters, marks, shares, gaps, here, ed
       <span className="cd-end" title={hasAudio ? 'The recording is encrypted. Only the people who have these notes can play it.' : undefined}>{position(end)}</span>
       <span className="cd-ctl">
         {hasAudio && <Select value={String(player.rate)} onChange={(r) => player.setRate(Number(r))} options={SPEEDS} label="Speed" align="end" container={fullScreen} className="cd-speed" />}
-        {/* Subtitles, named on hover, and filled while they're on. */}
+        {/* Subtitles, named on hover (in full screen too, as Speed's list is), and filled while they're on. */}
         {captions && (
-          <Tooltip label="Subtitles">
+          <Tooltip label="Subtitles" container={fullScreen}>
             <IconButton icon={captions.on ? 'captionsOn' : 'captions'} label="Subtitles" title={undefined} size={17} on={captions.on} aria-pressed={captions.on} onClick={captions.toggle} />
           </Tooltip>
         )}

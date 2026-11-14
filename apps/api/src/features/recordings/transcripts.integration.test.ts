@@ -400,6 +400,8 @@ describe('a transcript made while NEAR AI refuses Whisper’s detail', () => {
   });
   /** The formats the clips sent since `from` asked Whisper for. */
   const formats = (from: number) => h.near.transcriptions.slice(from).map((t) => t.format);
+  /** How many times the speech model's evidence was checked since log line `from`. */
+  const verifiedSince = (from: number) => h.logs.slice(from).filter((l) => l.includes('"msg":"model verified"') && l.includes('"task":"transcript"')).length;
 
   // Clips stop asking for the detail for a while once NEAR AI refuses it, for every test in this file at once. So what's
   // asserted holds whether or not a test before this one was refused: what came back, and that a second clip didn't ask.
@@ -411,6 +413,11 @@ describe('a transcript made while NEAR AI refuses Whisper’s detail', () => {
     const from = h.near.transcriptions.length;
     expect(code(await rec.transcribe(speech('We ship on Friday.', 0, 0)).catch((e: unknown) => e))).toBe('unavailable');
     expect(formats(from)).toEqual(['verbose_json']);
+    // The model answered, so its evidence still holds: the next clip isn't checked all over again, only refused.
+    const logged = h.logs.length;
+    expect(code(await rec.transcribe(speech('The launch moves to the 18th.', 0, 5000)).catch((e: unknown) => e))).toBe('unavailable');
+    expect(verifiedSince(logged)).toBe(0);
+    expect(formats(from)).toEqual(['verbose_json', 'verbose_json']);
     expect(rec.getSnapshot()).toMatchObject({ transcript: [], transcriptReduced: false });
     const { pendingNoteId } = await rec.stop();
     await written(org.api, pendingNoteId);
@@ -454,6 +461,43 @@ describe('a transcript made while NEAR AI refuses Whisper’s detail', () => {
     const note = await org.api.notes.get(noteId);
     expect(note.transcriptReduced).toBe(true);
     expect(marked(note.transcript ?? [])).toEqual([[me, 'We agreed the budget is final. the vendor wants eighty something', null], ['Kofi', 'That works for me.', null]]);
+  });
+
+  it('with the fallback, a clip heard without it never counts as asking Whisper what its speaker speaks', async () => {
+    const email = unique('organizer');
+    const org = await account(email);
+    await fallbackFor(email);
+    const kofiEmail = invitee('kofi');
+    const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [kofiEmail] });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const kofi = await (await account(kofiEmail)).api.calls.join(c, { mic: true, cam: false });
+    await inGroup(kofi);
+    await settle(host, (x) => x.capture.mode === 'on' && x.participants.some((p) => p.id === kofi.ticket.identity));
+    await host.appendAudio(piece('never-asked', 0, 0));
+
+    // Kofi speaks at length while NEAR AI refuses the detail: heard without it, the clip says nothing of Kofi's language.
+    h.near.refuseSpeechDetail(true);
+    await host.transcribe(speech('I can take the slides and the handout by Friday.', 0, 0), kofi.ticket.identity);
+    expect(host.getSnapshot().transcriptReduced).toBe(true);
+
+    // The detail is back: a clip whose payer has no fallback asks for it, and its answer ends the wait for every clip.
+    h.near.refuseSpeechDetail(false);
+    const rec = await (await account(unique('recorder'))).api.recordings.start({ title: 'Detail again' });
+    await rec.appendAudio(piece('detail-again', 0, 0));
+    await rec.transcribe(speech('The detail came back for everyone this afternoon.', 0, 0));
+
+    // The organizer's clips settle the call's language, and the organizer's next clip goes in it.
+    const said = ['We should look at the launch plan first today.', 'The beta went out to forty customers on Monday.', 'Most of them finished onboarding within a single day.'];
+    for (const [i, words] of said.entries()) await host.transcribe(speech(words, 0, 5000 + i * 5000), host.ticket.identity);
+    let from = h.near.transcriptions.length;
+    await host.transcribe(speech('Then we can tell the sales team on Friday.', 0, 20_000), host.ticket.identity);
+    expect(h.near.transcriptions.slice(from).map((t) => [t.language, t.format])).toEqual([['en', 'verbose_json']]);
+    // Kofi was never heard with the detail, so Whisper is asked what Kofi speaks, rather than told it's the call's language.
+    from = h.near.transcriptions.length;
+    await host.transcribe(speech('Happy to send the handout round on Thursday too.', 0, 25_000), kofi.ticket.identity);
+    expect(h.near.transcriptions.slice(from)).toEqual([{ language: null, prompt: null, format: 'verbose_json' }]);
+    await host.leave();
   });
 
   it('with the fallback, a room recording’s clips are too, and its note says so', async () => {

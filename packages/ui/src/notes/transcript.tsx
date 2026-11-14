@@ -99,5 +99,5 @@ export function reducedWords(when: 'now' | 'then'): string {
 }
 /** The notice above a transcript some of which was made at reduced quality (reducedWords). */
 export function TranscriptReduced({ when, className }: { when: 'now' | 'then'; className?: string | undefined }) {
-  return <Notice tone="caution" icon="alert" className={cn('ac-reduced', className)}>{reducedWords(when)}</Notice>;
+  return <Notice tone="caution" icon="alert" className={className}>{reducedWords(when)}</Notice>;
 }

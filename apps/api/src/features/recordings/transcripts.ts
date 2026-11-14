@@ -66,6 +66,7 @@ const Stored = z.object({
   /**
    * The clip asked Whisper what its speaker speaks: it went without the call's language, and Whisper was sure of its
    * language or it was long enough to tell (RECHECK_MS). Heard at length but unsure is how Whisper hears accented speech.
+   * A reduced clip never asks: without Whisper's detail it names no language, however long it is.
    */
   asked: z.boolean().optional(),
   /** Transcribed without Whisper's detail (inference's `reduced`). False in a clip kept before the fallback. */
@@ -135,7 +136,7 @@ export async function hear(o: Owner, meter: Meter, t: Target, clip: Clip, by?: H
     ...(by ? { speaker: by.speaker, ...(by.room ? { room: by.room } : {}), ...(by.readers ? { readers: by.readers } : {}), when: Math.round(by.began + x.start * 1000) } : {}),
     ...(x.unsure ? { unsure: true as const } : {})
   }));
-  const stored: Stored = { segment: clip.segment, lines, evidence, ...(by ? { speaker: by.speaker } : {}), ...(language ? { language } : {}), ...(!context.language && (language || clip.durationMs >= RECHECK_MS) ? { asked: true } : {}), reduced };
+  const stored: Stored = { segment: clip.segment, lines, evidence, ...(by ? { speaker: by.speaker } : {}), ...(language ? { language } : {}), ...(!context.language && !reduced && (language || clip.durationMs >= RECHECK_MS) ? { asked: true } : {}), reduced };
   const kept = await tx(o.pool, async (c) => {
     // Stopping takes this row's lock to move the transcript into the note. Sharing it here means
     // a clip either lands before the move, or sees the recording stopped and stays out.
