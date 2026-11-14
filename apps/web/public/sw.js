@@ -27,18 +27,36 @@ const SHELL = '/';
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
-    const files = await Promise.all(BUILD.files.map(arrived));
-    const cache = await caches.open(CACHE);
-    await Promise.all(files.map(({ path, response }) => cache.put(path, response)));
+    try {
+      const files = await Promise.all(BUILD.files.map(arrived));
+      const cache = await caches.open(CACHE);
+      await Promise.all(files.map(({ path, response }) => cache.put(path, response)));
+    } catch (e) {
+      // The app logs why (apps/web/src/lib/serviceWorker.ts): which file of the build, and what came back.
+      const failed = e instanceof Missing ? e : { path: '', status: null };
+      const message = { type: 'alcove.install-failed', version: BUILD.version, path: failed.path, status: failed.status };
+      for (const win of await self.clients.matchAll({ includeUncontrolled: true, type: 'window' })) win.postMessage(message);
+      throw e;
+    }
     await self.skipWaiting();
   })());
 });
 
+/** A file of the build that didn't arrive as itself: its path, and the status it came with (null: nothing came back). */
+class Missing extends Error {
+  constructor(path, status) { super(`${path} didn't arrive as itself: ${status ?? 'no answer'}`); this.path = path; this.status = status; }
+}
+
 /** One file of this build, as itself. Hashed assets may come from the HTTP cache; the rest are checked with the server. */
 async function arrived(path) {
-  const response = await fetch(new Request(path, { cache: path.startsWith('/assets/') ? 'default' : 'no-cache' }));
+  let response;
+  try {
+    response = await fetch(new Request(path, { cache: path.startsWith('/assets/') ? 'default' : 'no-cache' }));
+  } catch {
+    throw new Missing(path, null);
+  }
   const html = (response.headers.get('content-type') ?? '').includes('text/html');
-  if (!response.ok || html !== (path === SHELL)) throw new Error(`${path} didn't arrive as itself: ${response.status}`);
+  if (!response.ok || html !== (path === SHELL)) throw new Missing(path, response.status);
   return { path, response };
 }
 

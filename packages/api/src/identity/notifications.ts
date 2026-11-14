@@ -32,13 +32,17 @@ export const NotificationOpenSchema = z.discriminatedUnion('to', [
 export type NotificationOpen = z.infer<typeof NotificationOpenSchema>;
 
 /**
- * What the service worker (apps/web/public/sw.js) posts to the app's windows when a notification is clicked: it asks
- * each where it is, answered on the port it sends, then tells the one it brought forward where the notification leads.
+ * What the service worker (apps/web/public/sw.js) posts to the app's windows: when a notification is clicked, it asks
+ * each where it is, answered on the port it sends, then tells the one it brought forward where the notification leads;
+ * when its install fails, it says which file didn't arrive.
  */
 export const WorkerMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('alcove.where') }),
   z.object({ type: z.literal('alcove.notification'), open: NotificationOpenSchema, ownerId: IDSchema.nullable() }),
-  z.object({ type: z.literal('alcove.ready') })
+  z.object({ type: z.literal('alcove.ready') }),
+  // An install that failed, said to the windows it would have served: the build, and the first of its files that didn't
+  // arrive as itself (a path of the build, and the status it came with, or null when nothing came back).
+  z.object({ type: z.literal('alcove.install-failed'), version: z.string().max(64), path: z.string().max(300), status: z.number().int().nullable() })
 ]);
 
 /** Minimal OS data; keys, scope and destinations are opaque IDs, never previews or access-bearing links. */
