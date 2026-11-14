@@ -140,7 +140,8 @@ const EnvSchema = z.object({
   NEAR_AI_NOTES_URL: z.string().url().default('https://deepseek-v4-1-flash.completions.near.ai'),
   /**
    * How hard the default model thinks before it writes the notes after a call or a recording (each breakout room's too),
-   * from 1 to 100; 0 turns thinking off. Nothing else it's asked thinks, and a model an organizer chose never does.
+   * from 1 to 100, and at most 75 for a part whose transcript is over 18,000 characters; 0 turns thinking off. Nothing
+   * else it's asked thinks, and a model an organizer chose never does.
    */
   NEAR_AI_NOTES_EFFORT: z.coerce.number().int().min(0).max(100).default(100),
   /** The most a model offered as a choice may cost, in US dollars per million input tokens (NEAR AI's catalog price). */

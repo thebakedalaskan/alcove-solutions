@@ -27,6 +27,8 @@ async function account(email = unique('person')) {
 }
 const audio = (i: number): AudioPiece => ({ data: new Blob([new Uint8Array(2048)]), segment: 0, seq: i, at: i * 5, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
 const speech = (words: string, at: number): TranscriptClip => ({ data: new Blob([speechWav(words, 3000)], { type: 'audio/wav' }), segment: 0, at, durationMs: 3000 });
+/** About 29,000 characters said in one clip: past LONG_TRANSCRIPT's 18,000 in any transcript it's part of. */
+const longTalk = Array.from({ length: 3_000 }, (_, i) => `point${i}`).join(' ');
 async function written(api: AlcoveApi, noteId: string): Promise<void> {
   for await (const p of api.notes.progress(noteId)) void p;
 }
@@ -173,10 +175,11 @@ async function settle(call: CallSession, pred: (s: CallState) => boolean): Promi
 }
 
 describe('thinking first (NEAR_AI_NOTES_EFFORT)', () => {
-  it('thinks at the most effort only to write the notes after a call, each breakout room’s too, with the room thinking takes', async () => {
+  it('thinks only to write the notes after a call, each breakout room’s too, with the room thinking takes: at the most effort, or 75 for a part whose transcript is over 18,000 characters', async () => {
     const org = await account(unique('organizer'));
     const kofiEmail = unique('kofi');
     const chatsFrom = h.near.chats.length;
+    const promptsFrom = h.near.prompts.length;
     const noteId = await configured({ NEAR_AI_NOTES_EFFORT: 100 }, async () => {
       const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [kofiEmail] });
       const host = await org.api.calls.join(c, { mic: true, cam: false });
@@ -185,6 +188,7 @@ describe('thinking first (NEAR_AI_NOTES_EFFORT)', () => {
       await inGroup(kofi);
       await host.appendAudio(audio(0));
       await host.transcribe(speech('We agreed to ship the beta on Friday.', 1), host.ticket.identity);
+      await host.transcribe(speech(longTalk, 4), host.ticket.identity);
       // Catching up and asking in the call don't think.
       await host.catchUp({ kind: 'all' });
       await host.askSoFar('When does the beta ship?', { kind: 'all' });
@@ -199,9 +203,12 @@ describe('thinking first (NEAR_AI_NOTES_EFFORT)', () => {
       return id;
     });
     const chats = h.near.chats.slice(chatsFrom).filter((x) => x.model === NOTES_MODEL);
-    const notes = notesOf(chats);
+    const asked = h.near.chats.slice(chatsFrom).map((c, i) => ({ ...c, user: h.near.prompts[promptsFrom + i] ?? '' }));
+    // Filtered inline, not with notesOf: its type would drop `user`.
+    const notes = asked.filter((x) => x.model === NOTES_MODEL && x.system.startsWith('You write the notes'));
     expect(notes).toHaveLength(2);
-    expect(notes.map((x) => [x.thinking, x.maxTokens])).toEqual([[100, 64_000], [100, 64_000]]);
+    expect(notes.filter((x) => x.user.includes('ship the beta on Friday')).map((x) => [x.thinking, x.maxTokens])).toEqual([[75, 64_000]]);
+    expect(notes.filter((x) => !x.user.includes('ship the beta on Friday')).map((x) => [x.thinking, x.maxTokens])).toEqual([[100, 64_000]]);
     const rest = restOf(chats);
     expect(rest.some((x) => x.system.startsWith('You write the full summary'))).toBe(true);
     expect(rest.some((x) => x.system.startsWith('You help someone catch up'))).toBe(true);
@@ -210,6 +217,19 @@ describe('thinking first (NEAR_AI_NOTES_EFFORT)', () => {
     const note = await org.api.notes.get(noteId);
     expect(note.summary).not.toBe('');
     expect(note.rooms.find((r) => r.name === 'Design')?.summary).not.toBe('');
+  });
+
+  it('never thinks harder than NEAR_AI_NOTES_EFFORT about a long transcript, a recording’s too', async () => {
+    const org = await account(unique('organizer'));
+    const chatsFrom = h.near.chats.length;
+    await configured({ NEAR_AI_NOTES_EFFORT: 50 }, async () => {
+      const rec = await org.api.recordings.start({ title: 'A long one' });
+      await rec.transcribe(speech('We agreed to start on Monday.', 0));
+      await rec.transcribe(speech(longTalk, 4));
+      const { pendingNoteId } = await rec.stop();
+      await written(org.api, pendingNoteId);
+    });
+    expect(notesOf(h.near.chats.slice(chatsFrom)).map((x) => x.thinking)).toEqual([50]);
   });
 
   it('writes the notes without thinking when NEAR_AI_NOTES_EFFORT is 0', async () => {
