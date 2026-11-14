@@ -108,7 +108,7 @@ const turningOff: NonNullable<PageStory['play']> = async ({ canvas, userEvent, s
 };
 /** Every control saves as it changes: Saved shows for a moment, just left of the control. */
 export const Saved = page('/settings#recording', 'busy', { play: turningOff });
-/** A change Alcove refuses goes back, and a toast says why. */
+/** A change Alcove refuses goes back, and a toast says why, with Copy reference to quote it. */
 export const SaveRefused = page('/settings#recording', 'busy', { beforeEach: changing(troubled({ 'account.updatePreferences': 'failed' })), play: turningOff });
 /** The selected setting changes while its own write is still pending. Later choices stay usable. */
 export const Saving = page('/settings#recording', 'busy', { beforeEach: changing(troubled({ 'account.updatePreferences': 'hold' })), play: turningOff });
@@ -195,7 +195,7 @@ const exportingAgain: NonNullable<PageStory['play']> = async (context) => {
 };
 /** The change waits on Alcove: the switch has moved, and the row says Saving…. */
 export const GoogleDriveSaving = page('/settings#google-drive', 'drive-connected', { beforeEach: changing(paused, troubled({ 'drive.update': 'hold' })), play: exportingAgain });
-/** Alcove refuses it: the switch goes back, the row says Couldn’t confirm, and a toast says why. */
+/** Alcove refuses it: the switch goes back, the row says Couldn’t confirm, and a toast says why, with Copy reference. */
 export const GoogleDriveSaveRefused = page('/settings#google-drive', 'drive-connected', { beforeEach: changing(paused, troubled({ 'drive.update': 'failed' })), play: exportingAgain });
 export const GoogleDriveReconnect = page('/settings#google-drive', 'busy', { beforeEach: changing(withDriveReconnect) });
 export const GoogleDriveUnavailable = page('/settings#google-drive', 'busy', { beforeEach: changing(troubled({ 'drive.get': 'failed' })) });

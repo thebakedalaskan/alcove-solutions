@@ -70,7 +70,9 @@ Beside every page, dark in both themes, in two groups: your work at the top, and
 - **Home**, **Calls** (flow 8), **Drive**, every workspace, where you write together (flow 12), and **Record**, where
   recording in the room starts (flow 9). A count beside a place says something is waiting on you there: on Home, what's
   for you; in the Drive, tags you haven't seen; on Record, recordings on this device waiting to upload. Nothing counts a
-  total, such as every call or everyone on Team.
+  total, such as every call or everyone on Team. Home's count is a link of its own: pointing at it says what's waiting in
+  each of **For you**'s tabs ("For you: 3 to answer, 2 follow-ups"), and pressing it, from Home or any other page, brings
+  **For you** into view on the tab where things wait, with focus there and its edge glowing for a moment (flow 3).
 - **Pinned**, under them, once you've pinned a note: the notes you pinned, in the order you pinned them, up to 8. A pinned
   note that was deleted, or that you removed from your notes, isn't listed. A call's page pins its notes; the pin at the end
   of the heading, which shows while you point at Pinned, opens the palette to pick notes to pin or unpin, and with 8 pinned
@@ -186,8 +188,11 @@ visitors: a boat far out, stars after dark and now and then a shooting star. Wit
   minutes before until then, the call at the foot of the side panel offers **Join**, as on every page, and it makes way
   for this line while the line is there.
 - **For you** holds what's yours in two tabs, **To answer** and **Follow-ups**, each with how many are open; the side
-  panel's **Home** shows the two together. It opens on **To answer** when anything's there, else on **Follow-ups** when
-  anything's there, else on **To answer**. Each tab shows its first five, then **Show N more**.
+  panel's **Home** shows the two together, and pressing that count lands here, on **To answer** when anything's open there,
+  else on **Follow-ups**. It opens on **To answer** when anything's there, else on **Follow-ups** when anything's there,
+  else on **To answer**. Each tab shows its first five, then **Show N more**. Every row keeps the place it had when Home
+  opened until you leave Home, so answering, ticking or undoing never moves a row; something new while you're there goes
+  where it falls among the rest.
 - **To answer**: what needs an answer from you, newest first, a row each with its kind, its words, the faces of whoever
   was on the call (a microphone for a room recording) and the answer at the right. A row's words open its note at the
   moment they were said, when the notes know it, and the call's name is the row's tooltip. What a decision or follow-up
@@ -201,7 +206,8 @@ visitors: a boat far out, stars after dark and now and then a shooting star. Wit
     gives it back to you, taken on).
   - **Notes shared with you** in the last 7 days ("Aiko shared the notes from Board prep"): **Read** opens them.
   - What you answer stays where it is until you leave Home, saying what you did in a word or two: **Confirmed**, **Not
-    decided**, **Disputed**, **In your follow-ups** or **Not yours**.
+    decided**, **Disputed**, **In your follow-ups** or **Not yours**. **Undo** puts it back to be answered, still in its
+    place. An answer whose reply doesn't come back says why in a toast, and the row stays where it is, to answer again.
 - **Follow-ups**: the ones you took on and haven't done, from every note you have, soonest first, with the rest after
   them. Each row has the box to tick, the words, the call it came from and when it's due. The due words count from when
   they were said: the last time the due date was changed, or else the call. A day ("today", "EOD", "tomorrow", "Friday",
@@ -283,7 +289,8 @@ Inviting your team is on the Team page (flow 10).
 
 Storybook's journeys use these numbers: **3.1 Start a call now**, **3.2 Schedule a call**, **3.3 A call is about to
 start**, **3.4 Move a meeting to Alcove**, **3.5 Clear what’s waiting**, **3.6 Tick off a follow-up**, **3.7 Your
-first day**, **3.8 See your own events** and **3.9 A week of only your own events**.
+first day**, **3.8 See your own events**, **3.9 A week of only your own events** and **3.10 What’s waiting, from the
+side panel**.
 
 ## 4. Start or schedule a call
 
@@ -508,10 +515,15 @@ and **All of it**, the series, in a new tab so the camera here stays on. It come
 the same for everyone. Someone newly invited and a guest with the link see nothing, not even that there's a series.
 
 - **The organizer** gets the lobby, which rises in two beats: until the call has started they can rename it (the
-  pencil; Enter or clicking away saves, Escape puts it back) and turn notes on or off, and a change that can't be
-  saved says so and goes back. Once it's live both are read-only. On a team, a call started just now shows arches of
-  people on Alcove, free first and busy dimmed, with **Add** for anyone else; pressing one picks them (anyone the call
-  was started with comes picked), and the button says **Join and ring 2**. With nobody picked it says **Join**.
+  pencil; Enter or clicking away saves, Escape puts it back), turn notes on or off, and, while they're on, choose what
+  they keep: **What the notes keep** opens in place under Notes with the switches scheduling has (**Keep the
+  transcript**, **Keep the recording**, **Read shared screens**, then who writes the notes), and shut, it says what
+  won't be kept. Each switch saves as it's pressed, and a change that can't be saved says so and goes back; **Join**
+  waits for what's still saving (the name too), with nothing switchable meanwhile, so the call starts as the lobby
+  shows it, and a change that couldn't be saved stops it there. Once it's live all of it is read-only. On a
+  team, a call started just now shows arches of people on Alcove, free first and busy dimmed, with **Add** for anyone
+  else; pressing one picks them (anyone the call was started with comes picked), and the button says **Join and ring
+  2**. With nobody picked it says **Join**.
   **Copy link** sits quietly under the button, on a team or on your own; there's no link box, since the address the
   organizer is on is the call's link too. A scheduled call shows the
   time and who is invited, without the arches. **Home** out of a call started just now cancels it; reloading doesn't.
@@ -1701,6 +1713,10 @@ another call while in one; 7.7 the call ends while they're on its page; 7.8 alon
   the first of the recording arrives; **Space** plays and pauses it, as in most players, with nothing focused, and the page
   doesn't scroll. While a call is still recording, the line ends at a recording-coloured edge where it has got to. A call
   that didn't keep its recording has the line and nothing to play, and says the recording was deleted when the call ended.
+  A call set to keep neither its recording nor its transcript has nothing to play back, so it has no stage and no line,
+  even while its transcript is still there to write the notes from: **Nothing to play back** stands in their place and
+  says the call was set not to keep them, and nothing on the page offers to play a moment (no ▶ chips, scrubbing, or
+  playing from a shared screen).
 - Every ▶ chip on the page (a decision's, a follow-up's, a chapter's, an answer's) plays its moment on the stage without
   changing the tab, and a moment opened from a link (`?at=`, from an answer or a search) opens the Transcript at the line
   said then, lit, playing only when the link says so.
@@ -1970,8 +1986,9 @@ Settings can name a group or one of the places other pages point at (**Recording
 place shows in a soft blue that fades as the page settles, and the index lights its group. Every control changes immediately and
 says **Saving…** while its request is pending. **Saved** shows for a moment just left of the control, only once its
 latest choice is confirmed (**Saved for new notes** for the language). A refusal says **Couldn’t confirm**, with a
-toast explaining why; it removes only that attempt, keeping later choices. Pick the setting again to retry. Panels that
-don't load say so, with **Try again**, and the rest of the page still works. Journey **11.23** shows Off → On → Off for
+toast explaining why and **Copy reference**, to quote if it keeps happening; it removes only that attempt, keeping later
+choices. Pick the setting again to retry. Panels that don't load say so, with **Try again**, and the rest of the page still
+works. Journey **11.23** shows Off → On → Off for
 notes on new calls while the oldest request fails.
 
 - **You**: your name and photo, from your sign-in, with a link to change them at Google or Microsoft (they update
@@ -2084,9 +2101,10 @@ Open **Settings → Plan → Add money** beside **Balance**, choose **$20**, **$
 then the network to send it on, under **Pay with USDC**. A USDC is a dollar, so $20 is 20 USDC. **Get an address** follows
 the payment as checkout's Pay step does (16.2), with the same parts and words: "Waiting for your payment" and until when
 the address is open, **Send exactly** the amount with Copy, the QR code and the address made for this one payment, its
-first six and last four characters in bold (on a phone, **Open in wallet** in place of the code), and "Only send USDC on
-Base". A short payment says "Less than asked arrived", with **Send the rest** to the same address before it closes; after
-that it asks for no more money, and what arrived goes into the balance once the payment settles. Seen, the amount that
+first six and last four characters in bold (on a phone, **Open in wallet** in place of the code), "Only send USDC on
+Base", and the payment's reference to give support. A short payment says "Less than asked arrived", with **Send the
+rest** to the same address before it closes; after that it asks for no more money, and what arrived goes into the balance
+once the payment settles. Seen, the amount that
 arrived counts up and the line runs to "Added to your balance"; then the tick, and how much is in the balance now. A
 payment on its way stays under the balance in **Payments** with **Open**, as do failed and held payments with their support
 reference; once it's added it shows as "Added, 20 USDC" with **Receipt**. **Cancel payment** stops a waiting one; a payment
@@ -2652,13 +2670,14 @@ instead, once (16.20).
 2. **Pay.** "Waiting for your payment", open for 24 hours. **Send exactly** the total, with Copy; the QR code with the USDC
    mark in its middle; the address made for this payment, its first six and last four characters in bold, with **Copy
    address**; "Only send USDC on Base. Anything else may be lost." On a phone, **Open in wallet** instead of the code where
-   the network has a wallet link, else **Copy address**. The summary's sun waits on its horizon. You can close this: Pro
-   starts as soon as the payment arrives.
+   the network has a wallet link, else **Copy address**. Under it, the payment's reference (**Ref**), to give support if
+   you ask about it; pressing it copies it. The summary's sun waits on its horizon. You can close this: Pro starts as soon
+   as the payment arrives.
 3. **Seen.** The payment arrives: "Payment seen", the amount counts up, "Starting Pro. This takes a minute or two.", and the
    line Sent → Seen on Base → Pro starts. The sun lifts. There's nothing to press.
-4. **Done.** The sun clears the horizon and a tick draws in: "You're on Pro", until when, the receipt row with **Receipt**, a
-   receipt to print, "Nothing renews by itself. Alcove reminds you before it ends.", and **Done**. Pro starts at once with a
-   fresh period and all of Pro's notes.
+4. **Done.** The sun clears the horizon and a tick draws in: "You're on Pro", until when, the receipt row (the payment's
+   reference on it whole) with **Receipt**, a receipt to print, "Nothing renews by itself. Alcove reminds you before it
+   ends.", and **Done**. Pro starts at once with a fresh period and all of Pro's notes.
 5. **Closed.** However the window is closed from Done, the page under it says once what was bought, in the server's dates:
    "You're on Pro until 4 Nov 2027." (extending, "Pro runs to 10 Nov 2027."; more notes, "10 hours of notes added."; a team,
    "Vandelay Industries is on Team." or "6 licenses added to Vandelay Industries."). Over a call, notes coming on again say

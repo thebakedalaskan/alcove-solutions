@@ -3,23 +3,25 @@
  * player, which never scrolls: the call on its stage, always night, and under it its line, then what was shared and made in
  * it. On the right, tabs: Notes, Transcript and Your notes (and Shared, in one column, where what was shared and made moves
  * into a tab), with Ask about this call at the foot. Every ▶ chip plays its moment on the stage without changing the tab.
- * Narrower than the two halves fit, it's one column: the stage, the line, then the tabs. Until the notes are written the page
- * says how they're coming along; a call deleted or removed says what went.
+ * Narrower than the two halves fit, it's one column: the stage, the line, then the tabs. A call set to keep neither its
+ * recording nor its transcript has no stage or line: Nothing to play back stands in their place. Until the notes are
+ * written the page says how they're coming along; a call deleted or removed says what went.
  */
 import {
-  errorCode, errorMessage, firstName, minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type Note, type NoteProgress, type Person,
+  errorCode, errorMessage, errorRequestId, firstName, minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type Note, type NoteProgress, type Person,
   type PersonalPoint, type Question, type QuestionPatch, type TranscriptLine
 } from '@alcove/api';
-import { Button, Dots, Evening, Icon, Modal, Notice, RecDot, Select, Tabs, cn, useToast } from '@alcove/ui';
+import { Button, Dots, Evening, Icon, Modal, Notice, RecDot, RequestRef, Select, Tabs, cn, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { OwnNotesCard, SharedNotes, useOwn } from '~/features/notes/personal/OwnNotes';
 import { seriesLabel } from '~/features/notes/series/cards';
 import { useOpenScheduling } from '~/features/calls/scheduling/search';
 import { useNoteOnScreen } from '~/features/notifications/notify';
 import { api } from '~/lib/api';
 import { isUnencrypted, modelOf, modelOptions, modelValue, useAiModels } from '~/features/notes/models';
+import { toastFailure } from '~/lib/failed';
 import { log } from '~/lib/log';
 import { listNames, sameEmail } from '~/lib/people';
 import { accountQueries } from '~/features/account/queries';
@@ -238,6 +240,9 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
   const settled = ready && written;
   // The transcript went with the notes written, as the call was set to: no transcript here is no sign nothing was said.
   const deleted = !note.kept.transcript && !lines.length;
+  // A call set to keep neither its recording nor its transcript has nothing to play back, even while its transcript is
+  // still there to write the notes from: no stage and no line, and nothing offers to play a moment.
+  const playback = note.kept.recording || note.kept.transcript;
 
   /* Where the call is: the player's clock, or for a note with no recording, where someone last went. */
   const hasAudio = audio.length > 0;
@@ -251,7 +256,7 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
   }, [hasAudio, moveTo]);
   const playMoment = (s: number) => go(s, true);
   useOpenAt(note.id, room !== undefined && note.rooms.some((r) => r.id === room) ? undefined : at, play, player, go, onPlayed);
-  const canGo = hasAudio || lines.length > 0;
+  const canGo = playback && (hasAudio || lines.length > 0);
   const seek = canGo ? playMoment : undefined;
 
   // What was on shared screens: among the transcript lines, wherever the notes point at it, and in the viewer.
@@ -268,9 +273,9 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
       setGoing(true);
       await sleep(620);
       onGone({ kind: mine ? 'deleted' : 'removed', transcript: lines.length > 0, audio: hasAudio ? minutesLabel(note.duration) : null, screens: note.screens.length, rooms: note.rooms.length, roomsSaid, organizer: organizer ? firstName(organizer.name) : 'The organizer' });
-    } catch (e) { toast(errorMessage(e), { icon: 'x' }); }
+    } catch (e) { toastFailure(toast, e); }
   };
-  const failed = (e: unknown) => toast(errorMessage(e), { icon: 'x' });
+  const failed = (e: unknown) => toastFailure(toast, e);
   /** Each change says what went wrong itself, and rejects, so whoever asked can say what worked. */
   const tell = <T,>(p: Promise<T>): Promise<T> => p.catch((e: unknown) => { failed(e); throw e; });
   const act: Acting = {
@@ -393,13 +398,15 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
       </CallHead>
       <div className="cd-cols" style={{ '--d': 1 }}>
         <div className="cd-left">
-          {/* Full screen is night whatever the theme, so the line under the stage, and the speeds it opens, take night's colours. */}
-          <div ref={fullBox} className={cn('cd-player', full?.on && 'is-full dark')}>
-            <Stage note={note} me={me} player={player} here={here} captions={captions && shownTab !== 'transcript'} />
-            <CallLine player={player} span={span} chapters={settled ? note.chapters : []} marks={marks} shares={note.shares} gaps={note.gaps} here={here} edge={live ? heard : undefined}
-              onScrub={canGo ? (s) => go(s) : undefined} captions={lines.length ? { on: captions, toggle: () => setCaptions((c) => !c) } : undefined} full={full} />
-            {!note.kept.recording && !live && <p className="cd-kept"><Icon name="mic" size={15} />The recording was deleted when the call ended.</p>}
-          </div>
+          {playback ? (
+            /* Full screen is night whatever the theme, so the line under the stage, and the speeds it opens, take night's colours. */
+            <div ref={fullBox} className={cn('cd-player', full?.on && 'is-full dark')}>
+              <Stage note={note} me={me} player={player} here={here} captions={captions && shownTab !== 'transcript'} />
+              <CallLine player={player} span={span} chapters={settled ? note.chapters : []} marks={marks} shares={note.shares} gaps={note.gaps} here={here} edge={live ? heard : undefined}
+                onScrub={canGo ? (s) => go(s) : undefined} captions={lines.length ? { on: captions, toggle: () => setCaptions((c) => !c) } : undefined} full={full} />
+              {!note.kept.recording && !live && <p className="cd-kept"><Icon name="mic" size={15} />The recording was deleted when the call ended.</p>}
+            </div>
+          ) : <NothingToPlay />}
           {!one && !going && <Made note={note} player={player} onPlay={playMoment} />}
         </div>
         <aside className="cd-right" aria-label="What came of the call">
@@ -425,6 +432,18 @@ function CallView({ note, me, at, room, play, tab, onTab, onPlayed, onGone }: {
       <WriteAgain open={mine && choosing && !note.writingAgain} model={model} busy={rewrite.isPending} onModel={setModel} onCancel={() => setChoosing(false)} onWrite={writeAgain} />
       {note.kind === 'call' && !teamNote && <DriveExportsModal open={drive} onClose={() => setDrive(false)} noteId={note.id} recordingAllowed={mine && note.kept.recording} recordingKept={note.kept.recording} />}
     </Evening>
+  );
+}
+
+/** In the player's place, for a call set to keep neither its recording nor its transcript: why there's nothing to play. */
+function NothingToPlay() {
+  const heading = useId();
+  return (
+    <section className="cd-unplayed" aria-labelledby={heading}>
+      <Icon name="micOff" size={18} />
+      <h2 id={heading}>Nothing to play back</h2>
+      <p>This call was set not to keep its recording or its transcript.</p>
+    </section>
   );
 }
 
@@ -480,10 +499,15 @@ function Gone({ kind, transcript, audio, screens, rooms, roomsSaid, organizer }:
   return <GonePage title="Deleted" lead="Gone from Alcove, for everyone who had them."><ul>{went.map((w) => <li key={w}><Icon name="check" size={16} />{w}</li>)}</ul></GonePage>;
 }
 
-/** A call that isn't here, or couldn't be read: why, and the way back. */
+/** A call that isn't here, or couldn't be read: why, the reference to quote when Alcove answered, and the way back. */
 export function Missing({ error }: { error: unknown }) {
   const notFound = errorCode(error) === 'not-found';
-  return <GonePage title={notFound ? 'This call isn’t here' : 'Couldn’t open this call'} lead={notFound ? 'Its notes were deleted, or they were never shared with you.' : errorMessage(error)} />;
+  const ref = errorRequestId(error);
+  return (
+    <GonePage title={notFound ? 'This call isn’t here' : 'Couldn’t open this call'} lead={notFound ? 'Its notes were deleted, or they were never shared with you.' : errorMessage(error)}>
+      {ref && <RequestRef id={ref} />}
+    </GonePage>
+  );
 }
 
 /* The call from the welcome screen, written out: its notes to read and tick, and its transcript. Nothing to play, share or delete. */

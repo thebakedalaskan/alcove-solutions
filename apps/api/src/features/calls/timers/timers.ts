@@ -53,5 +53,5 @@ function next(current: CallTimer | null, input: CallTimerControl, now: number, c
       return { ...changed, durationSeconds };
     }
   }
-  throw new ConflictError('That isn’t something the timer can do right now.', { context: { ...context, status: current.status } });
+  throw new ConflictError('That isn’t something the timer can do right now.', { context: { ...context, state: current.status } });
 }

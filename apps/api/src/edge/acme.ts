@@ -46,7 +46,7 @@ export async function orderCertificate(o: Order): Promise<Ordered> {
     const pending: { challenge: (typeof authorizations)[number]['challenges'][number]; name: string; value: string }[] = [];
     for (const authz of authorizations.filter((a) => a.status !== 'valid')) {
       const challenge = authz.challenges.find((c) => c.type === 'dns-01');
-      if (!challenge) throw new UnavailableError('The CA offered no dns-01 challenge for a host.', { context: { status: authz.status } });
+      if (!challenge) throw new UnavailableError('The CA offered no dns-01 challenge for a host.', { context: { state: authz.status } });
       const name = `_acme-challenge.${authz.identifier.value}`;
       const value = await client.getChallengeKeyAuthorization(challenge);
       const cleared = await o.zone.clear(name);

@@ -1,11 +1,11 @@
 /*
  * To answer, in For you: decisions nobody has confirmed, on your own notes ones someone disputes, follow-ups the notes
  * suggest are yours (or someone gave you, or changed since), and notes shared with you this past week, newest first. Each
- * is one row, answered in place. What you answer stays where it is, saying what you did, until you leave Home, so nothing
- * moves under your pointer.
+ * is one row, answered in place. Every row keeps the place it was first shown in until you leave Home: what you answer
+ * stays there, saying what you did, and Undo leaves it there too, so nothing moves under your pointer.
  */
 import {
-  errorMessage, firstName, isAcceptedFollowUp, mayDecide, proposerOf, type ActionPatch, type Changer, type DecisionPatch, type Inbox, type NoteReader,
+  errorCode, errorMessage, firstName, isAcceptedFollowUp, mayDecide, proposerOf, type ActionPatch, type Changer, type DecisionPatch, type Inbox, type NoteReader,
   type NoteSummary, type OpenAction, type PendingDecision, type Person
 } from '@alcove/api';
 import { Avatar, Faces, Icon, Popover, cn, useToast, type AvatarPerson } from '@alcove/ui';
@@ -19,6 +19,7 @@ import { accountQueries } from '~/features/account/queries';
 import { useUpdateAction, useUpdateDecision } from '~/features/notes/queries';
 import { dueFrom, dueLabel, dueOf, groupOf } from '~/features/notes/follow-ups/due';
 import { sharedLately } from '~/features/notes/inbox';
+import { useInPlace } from './parts';
 
 export type Item =
   | { kind: 'decision'; key: string; at: string; d: PendingDecision }
@@ -42,30 +43,38 @@ export function waitingOf(inbox: Inbox, notes: readonly NoteSummary[], now: numb
 }
 
 /**
- * What's to answer as it stands this visit: `items` from the inbox, with what you answered kept where it was after the inbox
- * lets go of it, and the answering. `outcomeOf` says what you did with one; `busy` holds those whose answer is on its way.
+ * What's to answer as it stands this visit: `items` from the inbox, each in the place it was first shown, with what you're
+ * answering or answered kept there after the inbox lets go of it, and the answering. `outcomeOf` says what you did with one;
+ * `busy` holds those whose answer is on its way.
  */
 export function useWaiting(items: Item[]) {
   const toast = useToast();
   const decide = useUpdateDecision();
   const act = useUpdateAction();
   const me = useQuery(accountQueries.session()).data?.user.email;
-  /* What you answered this visit, with the item as it was, so it stays where it is after the inbox lets go of it. */
-  const [answered, setAnswered] = useState<ReadonlyMap<string, { item: Item; outcome: Outcome }>>(new Map());
-  /* Items whose answer is on its way; several can be, when you answer one after another. */
-  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
+  /*
+   * What you answered this visit, with the item as it was, so it stays where it is after the inbox lets go of it; and, with
+   * no outcome, what you tried to answer when the reply didn't come back, which may have been saved all the same.
+   */
+  const [answered, setAnswered] = useState<ReadonlyMap<string, { item: Item; outcome: Outcome | undefined }>>(new Map());
+  /*
+   * Items whose answer is on its way, as they were; several can be, when you answer one after another. They're kept too:
+   * the inbox can let go of one before its answer comes back, and it mustn't drop out of its place meanwhile.
+   */
+  const [busy, setBusy] = useState<ReadonlyMap<string, Item>>(new Map());
 
-  const shown = [...items];
-  for (const [key, { item }] of answered) if (!items.some((i) => i.key === key)) shown.push(item);
-  shown.sort(newestFirst);
+  const here = new Map(items.map((i) => [i.key, i]));
+  for (const [key, { item }] of answered) if (!here.has(key)) here.set(key, item);
+  for (const [key, item] of busy) if (!here.has(key)) here.set(key, item);
+  const shown = useInPlace([...here.values()], newestFirst);
   const outcomeOf = (key: string) => { const o = answered.get(key)?.outcome; return o === 'reopened' ? undefined : o; };
 
   const settle = (item: Item, outcome: Outcome) => setAnswered((m) => new Map(m).set(item.key, { item, outcome }));
-  const mark = (key: string, on: boolean) => setBusy((s) => { const n = new Set(s); if (on) n.add(key); else n.delete(key); return n; });
+  const mark = (item: Item, on: boolean) => setBusy((m) => { const n = new Map(m); if (on) n.set(item.key, item); else n.delete(item.key); return n; });
   /* Each answer waits for its own reply, so answering several in a row never loses what one of them did. */
   const run = async (item: Item, answer: Answer) => {
     if (answer === 'mine' && !me) return;
-    mark(item.key, true);
+    mark(item, true);
     try {
       if (item.kind === 'decision') {
         // Taking back a dispute is the undo of a dispute, and everything else moves the decision. Agreeing says what was read.
@@ -82,8 +91,11 @@ export function useWaiting(items: Item[]) {
       settle(item, answer === 'mine' ? 'taken' : answer);
     } catch (e) {
       toast(errorMessage(e), { icon: 'x' });
+      // Saved or not, the inbox may let go of it: it stays where it is, as it was, to answer again (answering twice changes
+      // nothing). A note that's gone takes its rows with it.
+      if (errorCode(e) !== 'not-found') setAnswered((m) => (m.has(item.key) ? m : new Map(m).set(item.key, { item, outcome: undefined })));
     } finally {
-      mark(item.key, false);
+      mark(item, false);
     }
   };
   return { shown, outcomeOf, busy, me, run };

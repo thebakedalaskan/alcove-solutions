@@ -33,7 +33,8 @@
 
 /* ------------------------------------------------------------ the water: three widgets */
 .hm-water { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); grid-template-areas: "for up" "notes notes"; align-items: stretch; gap: 20px; margin-top: 72px; }
-.hm-for { grid-area: for; }
+/* Brought into view by the side panel's Home count, For you keeps clear of the page's rounded edge. */
+.hm-for { grid-area: for; scroll-margin: 32px; }
 .hm-up { grid-area: up; }
 .hm-notes { grid-area: notes; margin-top: 18px; }
 

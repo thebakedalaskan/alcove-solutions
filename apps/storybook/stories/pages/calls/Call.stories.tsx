@@ -238,8 +238,14 @@ export const WrittenAgain = page(`/calls/${STATES.again}`, 'busy', everyState);
 export const Unwritten = page(`/calls/${STATES.unwritten}`, 'busy', everyState);
 /** Nothing was said while notes were on. */
 export const NothingSaid = page(`/calls/${STATES.quiet}`, 'busy', everyState);
-/** The call kept neither its transcript nor its recording: the line has nothing to play, and it says the recording went. */
+/**
+ * The call was set to keep neither its transcript nor its recording, so there's nothing to play back: no stage or line,
+ * and Nothing to play back says why in their place. What was decided and handed out stands on its own.
+ */
 export const NoTranscriptOrRecording = page(`/calls/${STATES.unkept}`, 'busy', everyState);
+export const NoTranscriptOrRecordingNight = page(`/calls/${STATES.unkept}`, 'busy', { ...everyState, globals: night });
+/** In one column: Nothing to play back over the tabs, with what was shared and made in its own tab. */
+export const NoTranscriptOrRecordingPhone = phone(NoTranscriptOrRecording);
 /** Breakout rooms: How it went has each room under its chapter, and the Transcript says which room you were in. */
 export const Rooms = page(`/calls/${STATES.rooms}`, 'busy', everyState);
 export const RoomsTranscript = page(`/calls/${STATES.rooms}?tab=transcript`, 'busy', everyState);
@@ -305,9 +311,9 @@ export const Deleted = page('/calls/n1', 'busy', { play: inMore(/Delete notes/, 
 export const Removed = page('/calls/n3', 'busy', { play: inMore(/Remove from your notes/, 'Remove') });
 /** Eight notes are pinned already, the most there can be: pinning another says to unpin one first. */
 export const PinsFull = page('/calls/lot-20', 'lots', { play: inMore(/Pin to the side panel/) });
-/** A call that isn't there any more. */
+/** A call that isn't there any more, with the request's reference to quote (pressing it copies it). */
 export const Gone = page('/calls/n-gone', 'busy');
-/** Alcove couldn't answer: the page says so. */
+/** Alcove couldn't answer: the page says so, with the request's reference to quote. */
 export const CouldntOpen = page('/calls/n3', 'busy', { beforeEach: changing(troubled({ 'notes.get': (id) => (id === 'n3' ? 'failed' : null) })) });
 /** Opened without a connection: a call's page needs one, and Record still works. */
 export const Offline = page('/calls/n2', 'offline');
@@ -393,5 +399,5 @@ export const BeforeACallMore = page(`/calls/upcoming/${HIRING_SYNC.id}`, 'busy',
     });
   }
 });
-/** A call ahead that isn't there: cancelled, or never one you were invited to. */
+/** A call ahead that isn't there: cancelled, or never one you were invited to, with the request's reference to quote. */
 export const ACallAheadThatsGone = page('/calls/upcoming/m-gone', 'busy');

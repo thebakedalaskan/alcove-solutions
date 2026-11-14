@@ -1,11 +1,13 @@
 /*
- * RequestRef: a failed request's reference, to quote when reporting the problem. It finds that request's lines in the
- * server's log and says nothing about anyone. Pressing it copies it, and its icon becomes a tick. It sits under what went
- * wrong, in a notice or on the page a link couldn't open.
+ * RequestRef: a reference to quote when reporting a problem. A failed request's finds that request's lines in the server's
+ * log; a payment's, its top-up's ID, finds the top-up. Neither says anything about anyone. Pressing it copies it, and its
+ * icon becomes a tick. It sits under what went wrong: in a notice, or on the page that didn't load, a link couldn't open or
+ * a call that's gone. A payment's sits under it from the moment it's opened, and on Done's receipt. A long one wraps.
  */
 import { Notice, RequestRef } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Box } from '../../../src/component';
+import { PREVIEW_TOP_UP } from '../../../src/world/plans/payments';
 
 const meta = {
   title: 'Components/Feedback/RequestRef',
@@ -32,7 +34,9 @@ export const InANotice: Story = {
     </Box>
   )
 };
-/** A long reference in a narrow space: it ends in an ellipsis, and pressing it copies all of it. */
+/** A payment's reference: its top-up's ID, all 22 characters, to give support while it waits and after. */
+export const APayment: Story = { name: 'A payment', args: { id: PREVIEW_TOP_UP } };
+/** A long reference in a narrow space: it wraps, so all of it can be read, and pressing it copies all of it. */
 export const Long: Story = {
   args: { id: 'web-7f3a9c2b-41d0-4e8a-9b6c-2d5e8f1a3c47' },
   render: (args) => <Box width={200} height="auto"><RequestRef {...args} /></Box>

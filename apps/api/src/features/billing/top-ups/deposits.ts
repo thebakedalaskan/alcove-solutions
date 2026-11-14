@@ -11,6 +11,7 @@ import { id128, openJson, sealJson, serviceKey, toJson, unb64u } from '../../../
 import { bytea, exec, maybeOne, rows, STATEMENT_TIMEOUT_MS, timestamp, tx, type Db } from '../../../platform/db';
 import { conflict, DatabaseError, invalid, notFound, NotFoundError, UnavailableError } from '../../../platform/errors';
 import { log } from '../../../platform/log';
+import { tracked } from '../../../platform/runs';
 import {
   depositProviders, formatUnits, fromMicroUsd, PROVIDER_TIMEOUT_MS, toMicroUsd, type DepositAddress, type DepositCheck, type DepositProviderName,
   type DepositProvider, type DepositRoute, type DoubtReason, type OpenDepositState
@@ -34,7 +35,8 @@ const MAX_A_DAY = 30;
 const REACHED_BPS = 9_850n;
 /** Amounts the app offers first, in periods of Pro at its price now. */
 const PRESET_PERIODS = [1, 3, 6];
-const OPEN: readonly TopUpState[] = ['waiting', 'arriving', 'short'];
+/** The states of a top-up a payment can still be on its way to: open (provider.ts › OpenDepositState). */
+export const OPEN: readonly TopUpState[] = ['waiting', 'arriving', 'short'];
 const isOpen = (s: TopUpState): s is OpenDepositState => s === 'waiting' || s === 'arriving' || s === 'short';
 /**
  * Not given up on: open, or cancelled, since 1Click can't cancel a quote and a payment sent to a cancelled top-up's
@@ -204,21 +206,32 @@ export async function start(d: Deps, ownerId: string, routeId: string, microUsd:
 const Row = z.object({ deposit_id: z.string(), state: TopUpStateSchema, record_ciphertext: bytea, created_at: timestamp });
 /** A deposit's row as a change locks it, and whether anything still watches it (`check_after` isn't infinity). */
 const Locked = Row.extend({ closed: z.boolean() });
-const record = (d: Deps, ownerId: string, r: z.infer<typeof Row>) => openJson(key(d), header(ownerId, r.deposit_id), r.record_ciphertext, DepositRecord);
+export const record = (d: Deps, ownerId: string, r: z.infer<typeof Row>) => openJson(key(d), header(ownerId, r.deposit_id), r.record_ciphertext, DepositRecord);
 const open = (d: Deps, ownerId: string, r: z.infer<typeof Row>) => toTopUp(r.deposit_id, record(d, ownerId, r), r.state);
 /** Where the deposit is paid, to ask its provider about it. */
 const addressOf = (r: DepositRecord): DepositAddress => ({ route: { ...r.route, minimum: BigInt(r.route.minimum) }, address: r.address, memo: r.memo });
 
 const find = (db: Db, ownerId: string, depositId: string) =>
-  maybeOne(db, Row, 'SELECT deposit_id, state, record_ciphertext, created_at FROM deposits WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId]);
+  maybeOne(db, Locked, "SELECT deposit_id, state, record_ciphertext, created_at, check_after = 'infinity' AS closed FROM deposits WHERE owner_id = $1 AND deposit_id = $2", [ownerId, depositId]);
 /** States a deposit never leaves: whatever its provider says later, nothing changes. */
-const FINAL: readonly TopUpState[] = ['credited', 'held'];
+export const FINAL: readonly TopUpState[] = ['credited', 'held'];
 
 /**
- * A top-up, asking its provider first while it's still watched and hasn't been asked in the last 5 seconds. The
- * 5-second slot is claimed in one statement before asking, so requests at once ask the provider once between them.
+ * A top-up, and what asking its provider about it came to (`ask`): `answered`, asked now and its answer applied; not asked,
+ * and why: `recently`, asked in the last 5 seconds (by its owner's checkout, the watcher or an operator's check), `unwatched`,
+ * as nothing asks about it any more, or `no-provider`, as its provider isn't one this server is set up with; or `failed`,
+ * asked and not answered, with what that threw, the top-up as it was.
  */
-export async function get(d: Deps, ownerId: string, depositId: string): Promise<TopUp> {
+export type Asked =
+  | { topUp: TopUp; asked: 'answered' | 'recently' | 'unwatched' | 'no-provider' }
+  | { topUp: TopUp; asked: 'failed'; provider: DepositProviderName; error: unknown };
+
+/**
+ * A top-up, its provider asked about it first while it's still watched and hasn't been asked in the last 5 seconds, and
+ * whether it was asked (`Asked`). The 5-second slot is claimed in one statement before asking, so requests at once ask the
+ * provider once between them. What the provider says is applied as every check's answer is (`apply`).
+ */
+export async function ask(d: Deps, ownerId: string, depositId: string): Promise<Asked> {
   const all = providers(d); // off here: unavailable, even for a top-up opened before
   if (!ID128.test(depositId)) throw notFound('That top-up');
   const r = await maybeOne(d.pool, Row, `
@@ -229,22 +242,31 @@ export async function get(d: Deps, ownerId: string, depositId: string): Promise<
   if (!r) {
     const now = await find(d.pool, ownerId, depositId);
     if (!now) throw notFound('That top-up');
-    return open(d, ownerId, now);
+    return { topUp: open(d, ownerId, now), asked: now.closed || FINAL.includes(now.state) ? 'unwatched' : 'recently' };
   }
   const rec = record(d, ownerId, r);
   const p = all.find((x) => x.name === rec.route.provider);
-  if (!p) return toTopUp(depositId, rec, r.state);
+  if (!p) return { topUp: toTopUp(depositId, rec, r.state), asked: 'no-provider' };
   let check: DepositCheck;
   try {
     check = await p.check(addressOf(rec));
   } catch (e) {
-    dlog.warn('top-up check failed', { depositId, provider: p.name, err: e });
-    return toTopUp(depositId, rec, r.state);
+    return { topUp: toTopUp(depositId, rec, r.state), asked: 'failed', provider: p.name, error: e };
   }
   await apply(d, ownerId, depositId, check);
   const now = await find(d.pool, ownerId, depositId);
   if (!now) throw notFound('That top-up');
-  return open(d, ownerId, now);
+  return { topUp: open(d, ownerId, now), asked: 'answered' };
+}
+
+/**
+ * A top-up as its owner's checkout sees it, asked about first as `ask` asks: when its provider doesn't answer, that's logged,
+ * and the top-up is as it was.
+ */
+export async function get(d: Deps, ownerId: string, depositId: string): Promise<TopUp> {
+  const r = await ask(d, ownerId, depositId);
+  if (r.asked === 'failed') dlog.warn('top-up check failed', { depositId, provider: r.provider, err: r.error });
+  return r.topUp;
 }
 
 /**
@@ -400,7 +422,7 @@ const WATCH_AT_ONCE = 4;
  */
 const LEASE_S = Math.ceil((Math.ceil(WATCH_BATCH / WATCH_AT_ONCE) * (PROVIDER_TIMEOUT_MS + 8 * STATEMENT_TIMEOUT_MS) * 1.5) / 1000);
 /** Every state the watcher asks about; `credited` and `held` are never asked about again. */
-const WATCHED: readonly TopUpState[] = ['waiting', 'arriving', 'short', 'cancelled', 'failed', 'expired'];
+export const WATCHED: readonly TopUpState[] = ['waiting', 'arriving', 'short', 'cancelled', 'failed', 'expired'];
 /**
  * When a deposit nobody is paying any more is next asked about: hourly for the first day after `give_up_at`, every 6
  * hours for a week, then daily. Most of what the watcher asks about is this long tail, so it thins out over time.
@@ -560,7 +582,8 @@ export async function watch(d: Deps): Promise<{ checked: number; credited: numbe
 
 /**
  * Checks open top-ups with their provider every 5 seconds while top-ups are on: one pass at a time here, and other
- * instances' passes skip the deposits this one has claimed. Returns what stops it.
+ * instances' passes skip the deposits this one has claimed. Each pass is a run operators see (`deposits`). Returns what
+ * stops it.
  */
 export function startWatching(d: Deps): () => void {
   if (!depositProviders(d.cfg)) return () => undefined;
@@ -570,7 +593,7 @@ export function startWatching(d: Deps): () => void {
     watching = true;
     const t0 = performance.now();
     try {
-      const r = await watch(d);
+      const r = await tracked('deposits', () => watch(d), (counted) => counted);
       if (r.checked) dlog.info('deposits watched', { ...r, ms: Math.round(performance.now() - t0) });
     } catch (e) {
       dlog.error('watching deposits failed', { err: e });

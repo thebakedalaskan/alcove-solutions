@@ -1,16 +1,16 @@
 /*
  * Feature flags (docs: engineering/feature-flags.md): what a browser hears from /v1/feature-flags, signed in or not, as flags are
  * switched on for everyone, for groups and for people, from the same functions the feature-flags CLI calls, and through the
- * operator route inside the API.
+ * operator route inside the API, by requests an operator's key signs.
  */
 import { spawn } from 'node:child_process';
-import { createHash, randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { b64u } from '../keys/crypto';
 import { addMembers, createGroup, deleteGroup, flagHash, grantGroup, grantPerson, revokeGroup, setEveryone } from '../platform/feature-flags';
 import { indexKey } from '../keys/owners';
 import { startHarness, type Harness } from '../testing/harness';
+import { signedClient } from '../testing/operator';
 
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
@@ -234,65 +234,82 @@ describe('feature flags', () => {
     for (const email of [ann.email, bob.email]) expect(said.join('\n')).not.toContain(email);
   });
 
-  it('switches flags through the operator route', async () => {
-    /** As an operator's curl sends it: no cookie, no Origin, a bearer token. */
-    const operator = (baseUrl: string, words: unknown, token?: string) => fetch(`${baseUrl}/v1/operator/feature-flags`, {
-      method: 'POST', headers: { 'content-type': 'application/json', ...(token === undefined ? {} : { authorization: `Bearer ${token}` }) }, body: JSON.stringify({ words })
-    });
+  it('switches flags through the operator route, by signed requests', async () => {
     const Lines = z.object({ lines: z.array(z.string()) });
+    const flags = (words: unknown, o: { by?: 'read' | 'write'; reason?: string } = {}) =>
+      h.operator[o.by ?? 'write'].post('/v1/operator/feature-flags', { words, ...(o.reason === undefined ? {} : { reason: o.reason }) });
     const from = h.logs.length;
-    // Off, as if it weren't there, until the API has a token's hash.
-    expect((await operator(h.baseUrl, ['list'], 'anything')).status).toBe(404);
-    const token = randomBytes(32).toString('base64url');
-    const server = await h.secondServer({ OPERATOR_TOKEN_SHA256: createHash('sha256').update(token).digest('hex') });
+    // Off, as if it weren't there, on a server that lists no operator's key; and nothing without a signature.
+    const off = await h.secondServer({ operatorKeys: [] });
     try {
-      expect((await operator(server.baseUrl, ['list'])).status).toBe(401);
-      expect((await operator(server.baseUrl, ['list'], randomBytes(32).toString('base64url'))).status).toBe(401);
-      const said: string[] = [];
-      const run = async (words: string[]) => {
-        const r = await operator(server.baseUrl, words, token);
-        expect(r.status).toBe(200);
-        const { lines } = Lines.parse(await r.json());
-        said.push(...lines);
-        return lines;
-      };
-      const ann = await account('ann@vandelay.test');
-      const bob = await account();
-      expect(await run(['everyone', 'call.bandwidth_reduction', 'on'])).toEqual(['call.bandwidth_reduction is on for everyone.']);
-      expect(await ann.api.featureFlags.on()).toEqual(['call.bandwidth_reduction']);
-      expect(await run(['group', 'create', 'staff'])).toEqual(['Created staff.']);
-      expect(await run(['group', 'add', 'staff', 'ann@vandelay.test'])).toEqual(['Added 1 of 1 to staff.']);
-      expect(await run(['grant', 'call.screen_share_quality', 'group', 'staff'])).toEqual(['call.screen_share_quality is on for staff.']);
-      expect(await ann.api.featureFlags.on()).toEqual(['call.bandwidth_reduction', 'call.screen_share_quality']);
-      expect(await bob.api.featureFlags.on()).toEqual(['call.bandwidth_reduction']);
-      // What it won't run is refused with what the command line would say, and words it won't take aren't run at all.
-      const misplaced = await operator(server.baseUrl, ['grant', 'ann@vandelay.test', 'group', 'staff'], token);
-      expect(misplaced.status).toBe(400);
-      said.push(z.object({ message: z.string() }).parse(await misplaced.json()).message);
-      expect((await operator(server.baseUrl, [], token)).status).toBe(400);
-      expect((await operator(server.baseUrl, Array.from({ length: 101 }, () => 'list'), token)).status).toBe(400);
-      expect((await operator(server.baseUrl, ['group', 'add', 'staff', 'x'.repeat(321)], token)).status).toBe(400);
-      // Words that aren't a command at all are refused, and logged as no command: what was typed first may be an address.
-      const typed = await operator(server.baseUrl, ['ann@vandelay.test', 'staff'], token);
-      expect(typed.status).toBe(400);
-      said.push(await typed.text());
-      // Nothing it answers or logs says an address back, and it logs only the command and whether it ran.
-      expect(said.join('\n')).not.toContain('ann@vandelay.test');
-      expect(h.logs.slice(from).join('\n')).not.toContain('ann@vandelay.test');
-      const ran = logsSince(from).filter((l) => l.msg === 'operator feature flags').map((l) => ({ command: l['command'], ok: l['ok'] }));
-      expect(ran).toEqual([
-        { command: 'everyone', ok: true }, { command: 'group', ok: true }, { command: 'group', ok: true }, { command: 'grant', ok: true }, { command: 'grant', ok: false },
-        { command: 'unknown', ok: false }
-      ]);
-      // What it keeps for an address is flags' own hash: it joins to no account, so a flag switched for someone says nothing
-      // of whose account is whose to anyone who reads the database.
-      const kept = z.array(z.object({ email_index: z.instanceof(Uint8Array) })).parse((await h.pool.query("SELECT email_index FROM feature_flag_group_members WHERE group_name = 'staff'")).rows);
-      expect(kept.map((k) => Buffer.from(k.email_index).toString('hex'))).toEqual([Buffer.from(hash('ann@vandelay.test')).toString('hex')]);
-      expect(await count('SELECT count(*)::int AS n FROM identities i JOIN feature_flag_group_members m ON m.email_index = i.email_index', [])).toBe(0);
-      expect(await count('SELECT count(*)::int AS n FROM identities WHERE owner_id = $1', [ann.ownerId])).toBe(1);
-    } finally {
-      await server.close();
-    }
+      expect((await signedClient(off.baseUrl, h.operator.audience, h.operator.keys.write).post('/v1/operator/feature-flags', { words: ['list'] })).status).toBe(404);
+    } finally { await off.close(); }
+    expect((await fetch(`${h.baseUrl}/v1/operator/feature-flags`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ words: ['list'] }) })).status).toBe(401);
+    const said: string[] = [];
+    const run = async (words: string[]) => {
+      const r = await flags(words, { reason: 'SUP-1182' });
+      expect(r.status).toBe(200);
+      const { lines } = Lines.parse(await r.json());
+      said.push(...lines);
+      return lines;
+    };
+    const ann = await account('ann@vandelay.test');
+    const bob = await account();
+    // Listing reads, so a read key may, with no reason. Switching changes something: it takes a write key, and a reason.
+    const listed = await flags(['list'], { by: 'read' });
+    expect(listed.status).toBe(200);
+    said.push(...Lines.parse(await listed.json()).lines);
+    expect((await flags(['everyone', 'call.bandwidth_reduction', 'on'], { by: 'read', reason: 'SUP-1182' })).status).toBe(403);
+    expect((await flags(['everyone', 'call.bandwidth_reduction', 'on'])).status).toBe(400);
+    expect(await ann.api.featureFlags.on()).toEqual([]);
+    expect(await run(['everyone', 'call.bandwidth_reduction', 'on'])).toEqual(['call.bandwidth_reduction is on for everyone.']);
+    expect(await ann.api.featureFlags.on()).toEqual(['call.bandwidth_reduction']);
+    expect(await run(['group', 'create', 'staff'])).toEqual(['Created staff.']);
+    expect(await run(['group', 'add', 'staff', 'ann@vandelay.test'])).toEqual(['Added 1 of 1 to staff.']);
+    expect(await run(['grant', 'call.screen_share_quality', 'group', 'staff'])).toEqual(['call.screen_share_quality is on for staff.']);
+    expect(await ann.api.featureFlags.on()).toEqual(['call.bandwidth_reduction', 'call.screen_share_quality']);
+    expect(await bob.api.featureFlags.on()).toEqual(['call.bandwidth_reduction']);
+    // Asking whether an address is in a group finds out something about a person by their address, as finding an account by
+    // one does: it takes a write key and a reason, and says nothing back but yes or no. Counting a group's members reads.
+    expect((await flags(['group', 'members', 'staff', 'ann@vandelay.test'], { by: 'read', reason: 'SUP-1182' })).status).toBe(403);
+    const member = await flags(['group', 'members', 'staff', 'ann@vandelay.test'], { reason: 'SUP-1182' });
+    expect(member.status).toBe(200);
+    expect(Lines.parse(await member.json()).lines).toEqual(['That address is in staff.']);
+    const counted = await flags(['group', 'members', 'staff'], { by: 'read' });
+    expect(counted.status).toBe(200);
+    expect(Lines.parse(await counted.json()).lines).toEqual([expect.stringMatching(/^staff has 1 members\. /)]);
+    // What it won't run is refused with what the command line would say, and words it won't take aren't run at all.
+    const misplaced = await flags(['grant', 'ann@vandelay.test', 'group', 'staff'], { reason: 'SUP-1182' });
+    expect(misplaced.status).toBe(400);
+    said.push(z.object({ message: z.string() }).parse(await misplaced.json()).message);
+    expect((await flags([], { reason: 'SUP-1182' })).status).toBe(400);
+    expect((await flags(Array.from({ length: 101 }, () => 'list'), { reason: 'SUP-1182' })).status).toBe(400);
+    expect((await flags(['group', 'add', 'staff', 'x'.repeat(321)], { reason: 'SUP-1182' })).status).toBe(400);
+    // Words that aren't a command at all are refused, and logged as no command: what was typed first may be an address.
+    const typed = await flags(['ann@vandelay.test', 'staff'], { reason: 'SUP-1182' });
+    expect(typed.status).toBe(400);
+    said.push(await typed.text());
+    // Nothing it answers or logs says an address back, and it logs only the command and whether it ran.
+    expect(said.join('\n')).not.toContain('ann@vandelay.test');
+    expect(h.logs.slice(from).join('\n')).not.toContain('ann@vandelay.test');
+    const ran = logsSince(from).filter((l) => l.msg === 'operator feature flags').map((l) => ({ command: l['command'], ok: l['ok'] }));
+    expect(ran).toEqual([
+      { command: 'list', ok: true }, { command: 'everyone', ok: true }, { command: 'group', ok: true }, { command: 'group', ok: true }, { command: 'grant', ok: true },
+      { command: 'group', ok: true }, { command: 'group', ok: true }, { command: 'grant', ok: false }, { command: 'unknown', ok: false }
+    ]);
+    // Each call's audit line names the key and the route, with the reason for a change, and never the words.
+    const audit = logsSince(from).filter((l) => l.msg === 'operator call' && l['outcome'] === 'ok');
+    expect(audit.map((l) => [l['keyId'], l['route'], l['reason'] ?? null])).toEqual([
+      [h.operator.keys.read.key.id, 'POST /v1/operator/feature-flags', null],
+      ...['everyone', 'group create', 'group add', 'grant', 'group members <address>'].map(() => [h.operator.keys.write.key.id, 'POST /v1/operator/feature-flags', 'SUP-1182']),
+      [h.operator.keys.read.key.id, 'POST /v1/operator/feature-flags', null]
+    ]);
+    // What it keeps for an address is flags' own hash: it joins to no account, so a flag switched for someone says nothing
+    // of whose account is whose to anyone who reads the database.
+    const kept = z.array(z.object({ email_index: z.instanceof(Uint8Array) })).parse((await h.pool.query("SELECT email_index FROM feature_flag_group_members WHERE group_name = 'staff'")).rows);
+    expect(kept.map((k) => Buffer.from(k.email_index).toString('hex'))).toEqual([Buffer.from(hash('ann@vandelay.test')).toString('hex')]);
+    expect(await count('SELECT count(*)::int AS n FROM identities i JOIN feature_flag_group_members m ON m.email_index = i.email_index', [])).toBe(0);
+    expect(await count('SELECT count(*)::int AS n FROM identities WHERE owner_id = $1', [ann.ownerId])).toBe(1);
   });
 
   it('never log an address or its hash', async () => {

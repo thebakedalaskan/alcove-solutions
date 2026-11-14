@@ -1,6 +1,7 @@
 /*
- * Follow-ups, in For you: the ones you took on and haven't done, from every note you have, soonest first. Ticking one off
- * crosses it out where it is until you leave Home; ticking it again puts it back.
+ * Follow-ups, in For you: the ones you took on and haven't done, from every note you have, soonest first. Each keeps the
+ * place it was first shown in until you leave Home: ticking one off crosses it out where it is, and ticking it again puts it
+ * back, still there.
  */
 import { errorCode, errorMessage, type OpenAction } from '@alcove/api';
 import { Check, cn, useToast } from '@alcove/ui';
@@ -10,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { log } from '~/lib/log';
 import { noteQueries, useUpdateAction } from '~/features/notes/queries';
 import { dueFrom, dueLabel, dueOf, groupOf, type Due, type DueGroup } from '~/features/notes/follow-ups/due';
+import { useInPlace } from './parts';
 
 const RANK: Record<DueGroup, number> = { overdue: 0, week: 1, later: 2, none: 3 };
 
@@ -26,9 +28,9 @@ function order(x: Todo, y: Todo): number {
 const keyOf = (a: OpenAction) => `${a.noteId}:${a.id}`;
 
 /**
- * Your follow-ups as they stand this visit: `open` from the inbox (undefined until it answers), with those ticked or
- * unticked here kept where they were, and the ticking. `isNew` says one arrived while you were here (taken on from To
- * answer), so it rises in, once: `rose` says it has.
+ * Your follow-ups as they stand this visit: `open` from the inbox (undefined until it answers), each in the place it was
+ * first shown, with those ticked or unticked here kept there, and the ticking. `isNew` says one arrived while you were here
+ * (taken on from To answer), so it rises in, once, where it falls among the rest: `rose` says it has.
  */
 export function useInboxFollowUps(open: OpenAction[] | undefined, now: number) {
   const toast = useToast();
@@ -45,7 +47,7 @@ export function useInboxFollowUps(open: OpenAction[] | undefined, now: number) {
 
   const byKey = new Map<string, OpenAction>((open ?? []).map((a) => [keyOf(a), a]));
   for (const [key, a] of touched) if (!byKey.has(key)) byKey.set(key, a);
-  const todos: Todo[] = [...byKey].map(([key, a]) => { const due = dueOf(a.due, dueFrom(a)); return { key, a, due, group: groupOf(due, today) }; }).sort(order);
+  const todos = useInPlace([...byKey].map(([key, a]): Todo => { const due = dueOf(a.due, dueFrom(a)); return { key, a, due, group: groupOf(due, today) }; }), order);
 
   /* Each tick waits for its own answer, so ticking several in a row can't lose one's rollback. */
   const tick = async (t: Todo, on: boolean) => {

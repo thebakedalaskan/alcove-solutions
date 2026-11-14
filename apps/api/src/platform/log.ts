@@ -11,10 +11,14 @@
  *   Two backstops catch mistakes: known secret field names are redacted, and every string (messages,
  *   fields, errors and their causes) is scrubbed of email addresses, bearer credentials, signed
  *   tokens and files' URLs. Postgres errors keep their codes but never echo row values.
+ * - Operators: warn and error lines, and every request's own line once it's refused or failed, also go to this instance's
+ *   ring (platform/recent.ts), scrubbed as the line is and reduced to a few fields, unless their logger was made with
+ *   `{ ring: false }`.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
 import pino, { type DestinationStream, type Logger as Pino } from 'pino';
 import pretty from 'pino-pretty';
+import { recent } from './recent';
 
 export type Level = 'debug' | 'info' | 'warn' | 'error';
 type Value = string | number | boolean | null | undefined | readonly string[] | readonly number[];
@@ -38,10 +42,15 @@ export interface LogOptions { level?: Level | 'silent'; format?: 'json' | 'prett
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
 const CREDENTIAL = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
 const SIGNED_TOKEN = /\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g;
-/** Where a file is read from, as a browser's report of a picture that failed might quote it, whole or cut short. */
+/**
+ * Where a file is read from, and where someone's sign-in photo is, as a browser's report of a picture that failed might quote
+ * either, whole or cut short: each token opens what it names, and a photo's names whose face it is.
+ */
 const FILE_URL = /\/v1\/media\/[A-Za-z0-9_.-]+/g;
+const PHOTO_URL = /\/v1\/photos\/[A-Za-z0-9_.-]+/g;
 /** What a string may not carry into a log line, wherever it came from. */
-export const scrubText = (s: string): string => s.replace(EMAIL, '[email]').replace(CREDENTIAL, '$1 [redacted]').replace(SIGNED_TOKEN, '[token]').replace(FILE_URL, '/v1/media/[token]');
+export const scrubText = (s: string): string => s.replace(EMAIL, '[email]').replace(CREDENTIAL, '$1 [redacted]').replace(SIGNED_TOKEN, '[token]')
+  .replace(FILE_URL, '/v1/media/[token]').replace(PHOTO_URL, '/v1/photos/[token]');
 function scrubValue(v: unknown, depth: number): unknown {
   if (typeof v === 'string') return scrubText(v);
   // pino calls this before its own serializers, so errors (and their causes) are serialized here first.
@@ -87,8 +96,13 @@ const state: { root: Pino } = { root: build({ level: (process.env['LOG_LEVEL'] ?
 export function configureLogging(o: LogOptions) { state.root = build(o); }
 
 export class Logger {
-  constructor(private readonly bound: LogContext = {}) {}
-  child(ctx: LogContext): Logger { return new Logger({ ...this.bound, ...ctx }); }
+  /** `ring`: whether its lines reach the operators' ring (platform/recent.ts). */
+  constructor(private readonly bound: LogContext = {}, private readonly ring = true) {}
+  /**
+   * A logger with more fields bound. `{ ring: false }` keeps its lines, and its children's, out of the operators' ring
+   * whatever fields they carry: for lines whose fields someone outside chose, as the browser's telemetry's are.
+   */
+  child(ctx: LogContext, o: { ring?: boolean } = {}): Logger { return new Logger({ ...this.bound, ...ctx }, this.ring && o.ring !== false); }
   debug(msg: string, ctx: LogContext = {}) { this.emit('debug', msg, ctx); }
   info(msg: string, ctx: LogContext = {}) { this.emit('info', msg, ctx); }
   warn(msg: string, ctx: LogContext = {}) { this.emit('warn', msg, ctx); }
@@ -104,7 +118,13 @@ export class Logger {
       if (ms > slowMs) this.warn(`${msg} (slow)`, { ...ctx, ms }); else if (this.isDebug()) this.debug(msg, { ...ctx, ms });
     }
   }
-  private emit(level: Level, msg: string, ctx: LogContext) { state.root[level]({ ...this.bound, ...ctx }, scrubText(msg)); }
+  private emit(level: Level, msg: string, ctx: LogContext) {
+    const fields = { ...this.bound, ...ctx };
+    const text = scrubText(msg);
+    state.root[level](fields, text);
+    // What says something went wrong goes to the operators' ring too, with the request's context, scrubbed as the line is.
+    if (this.ring && level !== 'debug' && recent.keeps(level, text)) recent.record(scrubObject({ ...store.getStore(), ...fields }), level, text);
+  }
 }
 
 export const log = new Logger();

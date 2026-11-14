@@ -79,7 +79,16 @@ identity, by the names in `SECRETS` (`ENV=secret`), and the old keys by `LEGACY_
 
 The image accepts exactly the variables named in its `tee.launch_policy.allow_env_override` label; the launcher refuses to
 start it with any other, and the VM powers off. deploy.sh checks env.sh against the Dockerfile's label before it changes
-anything. Adding a variable means adding it to both.
+anything. Adding a variable means adding it to both. One name in the label isn't in env.sh: `ALCOVE_JOB`, which only job.sh
+sets, on a VM of its own ([The checks job](#the-checks-job)).
+
+Who can operate is built into the image instead of set per VM: each environment's `CS_OPERATOR_KEYS` in env.sh, operators'
+own public keys (`read:<public key>` or `write:<public key>`, each with a comment saying what it's for, never whose it is),
+which build.sh passes as a build argument and the Dockerfile sets as `ENV OPERATOR_KEYS`. It isn't in
+`allow_env_override`, so no template can change it: the image's digest, which Confidential Space attests and cosign signs,
+says who can operate, and the token's claims list the keys. Adding or removing one is a pull request and a deploy. With
+none, the API has no operator routes, and each answers 404
+([Operating Alcove › Who can operate](../../docs/engineering/operating-alcove.md#who-can-operate)).
 
 Five of production's values were GitHub repository variables before env.sh and still are. The deploy workflow passes them;
 a deploy by hand to production needs them exported (staging needs none, and a refresh reuses what the group's template has):
@@ -290,7 +299,10 @@ the rest is Cloud Run starting a container from an image it hasn't pulled before
   they're retired (production's were, and their secrets deleted, on 2026-11-13). Within that, roll onto one of the five kept templates, which hold the environment and account their
   image was deployed with: `gcloud --project=alcove-solutions compute instance-groups managed rolling-action start-update
   alcove-api --zone=us-central1-a --version=template=<template> --max-surge=1 --max-unavailable=0`. (`deploy.sh` with an
-  earlier image would make its template from this checkout's env.sh, which that image's label may not allow.)
+  earlier image would make its template from this checkout's env.sh, which that image's label may not allow.) A kept
+  template's image also lists the operator keys it was built with, so rolling back onto one brings back any key revoked
+  since: delete those templates once a key is revoked
+  ([Operating Alcove › Revoking a key](../../docs/engineering/operating-alcove.md#revoking-a-key)).
 - **The switch.** There's no going back to Cloud Run: on 2026-11-13 its service was deleted and the old master retired,
   and its release couldn't start on the migrated database anyway. Fix forward.
 
@@ -426,6 +438,68 @@ ports, and the full claims of each attestation token it refreshes, environment i
 a workload that fails shows only "workload finished with a non-zero return code", so the API's own log lines are what to
 read. `gcloud compute instances get-serial-port-output <instance> --zone=us-central1-a` shows the VM's boot. The load
 balancer keeps no request logs, so it logs no client addresses either.
+
+Each start says every step as it ends (`boot step`), and `refused to start` with the error that stopped it. Operators also
+read an instance's start, its recent failures and its background work from inside it, through the signed operator routes,
+and the runbooks there hold the Cloud Logging queries for each case
+([Operating Alcove › Runbooks](../../docs/engineering/operating-alcove.md#runbooks)). When an API won't start and its lines
+aren't enough, the checks job runs every start step and live check on a VM of its own ([The checks job](#the-checks-job)).
+
+## The checks job
+
+When the API won't start, its log says which start step failed and why (`boot step`, then `refused to start`), and nothing
+of the steps after it. [job.sh](job.sh) runs the checks job on a VM of its own: every start step on its own, carrying on past
+one that fails, then the live checks `operator checks` runs, and prints what they found. With the `alcove` gcloud
+configuration:
+
+```sh
+CLOUDSDK_ACTIVE_CONFIG_NAME=alcove infra/confidential-space/job.sh production checks --dry-run   # what it would make
+CLOUDSDK_ACTIVE_CONFIG_NAME=alcove infra/confidential-space/job.sh production checks
+```
+
+1. It reads the group's current template: a rollout's, while one is under way, so it runs the release that won't start.
+2. It refuses up front when the region's C3 quota can't hold one VM more. A rollout holds two VMs until its old one has
+   gone, about eight minutes after deploy.sh finishes. While the job's VM runs, deploy.sh refuses for the same reason, and
+   names it.
+3. It makes `alcove-job-<UTC time>-<4 hex>` (staging's `alcove-job-staging-<UTC time>-<4 hex>`) from that template: the
+   same image, account and environment, plus `ALCOVE_JOB=checks` and `tee-restart-policy=Never`. The VM isn't in the group,
+   so the load balancer sends it nothing. The image runs the job in the server's place
+   ([apps/api/entrypoint.sh](../../apps/api/entrypoint.sh)), with the Cloud SQL Auth Proxy beside it as ever. A proxy that
+   doesn't come up stops nothing: the job's database step says so.
+4. It waits up to fifteen minutes for the job's last line. The VM boots, pulls the image and attests first, about a minute
+   and a half ([How long a rollout takes](#how-long-a-rollout-takes)). The job then takes seconds, or up to about four
+   minutes when the database doesn't answer, whose first connection it waits for as long as a start would.
+5. It prints the job's lines from Cloud Logging, found by the VM's instance ID, as a report on stdout, and the command that
+   reads the VM's whole log.
+6. It deletes the VM, whatever happened, a run stopped by hand included.
+
+It exits 0 when the job said everything passed, and 1 otherwise. On staging that's never: it has no LiveKit or NEAR AI, so
+those checks always fail there, and its steps are what to read. A job that never says it's done, as on an image built
+before the label allowed `ALCOVE_JOB` (its launcher refuses the variable and the VM stops at once), gets the launcher's last
+lines printed instead.
+
+The job ([apps/api/src/operator-job.ts](../../apps/api/src/operator-job.ts)) takes the steps in a start's order. A failed
+step's code is the most specific in its error, as `boot step` says it:
+
+| Step | What it does | Its code when it fails |
+| --- | --- | --- |
+| `google-cloud` | Inside a TEE: the attested identity, the secrets, and the old keys while they're carried | The Security Token Service's error (the attestation policy), or a secret's refusal: `PERMISSION_DENIED` (a grant), `NOT_FOUND` (a missing version) |
+| `config` | The settings, read as a start reads them | None: the server's own `refused to start` names the setting |
+| `database` | The first connection, waited for as a start waits for it (`DATABASE_WAIT_MS`) | The connection's (`ECONNREFUSED`, `connect-timeout`), or Postgres's |
+| `migrations` | Compared with the image's, checksums too, never applied: `notApplied` a start would apply, and `unknown` and `changed` it would refuse | `removed`: the database applied a migration this image doesn't have, a release behind it; `changed`: one changed since it was applied; `untracked`: a database from before checksums |
+| `keys` | The master unwrapped by Cloud KMS and the server keys opened under it, read only; where a start would forget the old master (`retiring`), what it would refuse that over, counted | Cloud KMS's refusal; `no-master` and `no-server-keys` where a first start would make them; `not-rewrapped` where accounts are still under the old master alone |
+| `objects` | Whether the bucket answers, never made | S3's error, by name (`NotFound` for a bucket that isn't there) |
+| `edge` | With `TLS_HOSTS`: the certificate stored, never ordered | `none-stored`, `expired`, `host-missing`, `other-key` (not for the TLS key the master makes), `unreadable` |
+
+Each step and each check is one JSON line, `operator job step` (`step`, `ok`, `ms`, `errorClass`, `code`, `detail`) or
+`operator job check` (`check`, `ok`, `ms`, `code`, `detail`), then `operator job done` (`ok`, `failed`, and `stopped`: the
+step nothing after could be taken without, `config` or `google-cloud`). They hold what `boot step` and `operator checks`
+hold: names, states, codes, counts and times, never a message or a secret.
+
+It only reads. Postgres refuses any write on its connections (`default_transaction_read_only`); it never listens, migrates,
+seals, orders a certificate or makes the bucket; and the live checks send NEAR AI, 1Click and Google only what `operator
+checks` sends. What it risks: a second VM with the environment's attested identity, which reads its secrets and unwraps its
+master as the group's VM does, running code already in the signed image.
 
 ## Known limits
 

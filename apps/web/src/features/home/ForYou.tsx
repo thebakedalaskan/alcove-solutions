@@ -1,8 +1,9 @@
 /*
  * For you: what's yours to answer, and your follow-ups to tick off, as two tabs of one widget. It opens on To answer when
  * anything's there, else on Follow-ups when anything's there, and stays on the tab you pick. Each tab counts what's still
- * open in it (the side panel's Home count is the inbox's). The first five show, then Show N more. Before your first notes,
- * and once everything's done, it says so with a small drawing.
+ * open in it; the side panel's Home count is the two together, and pressing it lands here (landing.ts), on the tab where
+ * things wait. The first five show, then Show N more. Before your first notes, and once everything's done, it says so with a
+ * small drawing.
  */
 import { isAcceptedFollowUp, type NoteSummary } from '@alcove/api';
 import { Button, EmptyRows, EmptyState, Icon, SmallSunset, Tabs, Widget, cn } from '@alcove/ui';
@@ -11,6 +12,7 @@ import { useId, useState } from 'react';
 import { useNoteReader } from '~/features/notes/entries';
 import { noteQueries, usePendingActions } from '~/features/notes/queries';
 import { TodoRow, useInboxFollowUps } from './FollowUps';
+import { FOR_YOU, useLandOnForYou } from './landing';
 import { useShowMore } from './parts';
 import { AskRow, settling, useWaiting, waitingOf } from './Waiting';
 
@@ -36,6 +38,12 @@ export function ForYou({ notes, now }: { notes: readonly NoteSummary[]; now: num
   const openAsks = asks.filter((i) => waiting.outcomeOf(i.key) === undefined).length;
   const openTodos = todos.filter((t) => !t.a.done).length;
   const byId = new Map(notes.map((n) => [n.id, n]));
+  /* Landed on from the side panel's count: the tab where things wait, To answer first, with focus on it. */
+  const landed = useLandOnForYou(() => {
+    const to: Tab = openAsks || !openTodos ? 'ask' : 'todo';
+    if (to !== on) { setTab(to); show.close(); }
+    return document.getElementById(`${id}-${to}`);
+  });
 
   /*
    * Nothing in this tab. Both empty once notes are written: all caught up, under Home's small sunset. Before any notes are
@@ -58,8 +66,8 @@ export function ForYou({ notes, now }: { notes: readonly NoteSummary[]; now: num
       options={[{ value: 'ask', label: <>To answer{count(openAsks)}</> }, { value: 'todo', label: <>Follow-ups{count(openTodos)}</> }]} />
   );
   return (
-    <Widget icon="inbox" title="For you" className="hm-for" end={tabs} body={{ id: `${id}-panel`, role: 'tabpanel', 'aria-labelledby': `${id}-${on}` }}
-      more={show.more}>
+    <Widget icon="inbox" title="For you" className="hm-for" id={FOR_YOU} landed={landed} end={tabs}
+      body={{ id: `${id}-panel`, role: 'tabpanel', 'aria-labelledby': `${id}-${on}` }} more={show.more}>
       {!data ? inbox.isError ? (
         <EmptyState className="hm-empty" role="status" art={<span className="hm-warn"><Icon name="alert" size={20} /></span>} title="This didn’t load"
           action={<Button variant="secondary" size="sm" loading={inbox.isFetching} onClick={() => void inbox.refetch()}>Try again</Button>} />

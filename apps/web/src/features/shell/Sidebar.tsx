@@ -2,12 +2,13 @@
  * The side panel, beside every page and dark in both themes, in two groups. At the top, your work: Start a call, then
  * Home, Calls, Drive and Record, and what you've pinned under them. At the foot, who works with you (Team and Agents),
  * then a call that's about to start, with Join, the confidential-compute check and your plan: one row, with a short line
- * above it only while there's something to say. A count means something waits on you. Someone on their own, with no
+ * above it only while there's something to say. A count means something waits on you; Home's is a link of its own, which
+ * says what's waiting when pointed at and lands on For you (features/home/landing.ts). Someone on their own, with no
  * company and no team, has no Team page. It can be hidden. At 860px and narrower the phone's top bar and tab bar (TabBar.tsx) take its place, and the plan
  * is said in Settings.
  */
 import type { MyTeam, Plan, PlanNotice, WorkspaceSummary } from '@alcove/api';
-import { ArchThumb, Dots, Icon, IconButton, Kbd, Logo, Meter, NavItemContent, SidebarNav, SunMark, buttonClass, cn, coverFor } from '@alcove/ui';
+import { ArchThumb, Dots, Icon, IconButton, Kbd, Logo, Meter, NavCount, NavItemContent, SidebarNav, SunMark, buttonClass, cn, coverFor } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type RefObject } from 'react';
@@ -93,7 +94,20 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
   const team = useQuery(teamQueries.team()).data;
   const mine = useQuery(teamQueries.myTeam()).data;
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const link = (p: NavPlace) => <Link key={p.to} to={p.to} className="ac-nav-item" data-tour={p.tour}><NavItemContent icon={p.icon} label={p.label} count={p.count && counts[p.count]} /></Link>;
+  /*
+   * A place, with its count at its end; a count that leads somewhere of its own (Home's, to For you) is a link of its own,
+   * which leaves no history behind when it's pressed on that place's own page.
+   */
+  const link = (p: NavPlace) => {
+    const count = p.count && counts[p.count];
+    const row = <Link key={p.to} to={p.to} className="ac-nav-item" data-tour={p.tour}><NavItemContent icon={p.icon} label={p.label} count={count && !count.to ? count.n : undefined} /></Link>;
+    if (!count?.to) return row;
+    const { hash, says } = count.to;
+    return (
+      <NavCount key={p.to} row={row} n={count.n} says={says}
+        link={(props) => <Link {...props} to={p.to} hash={hash} replace={path === p.to} hashScrollIntoView={false} activeOptions={{ includeHash: true }} />} />
+    );
+  };
   return (
     <aside className="sb dark" aria-label="Side panel" inert={hidden}>
       <div className="sb-in">

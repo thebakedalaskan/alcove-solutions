@@ -37,9 +37,13 @@ export const PREVIEW_DEPOSIT_ADDRESS = 'storybook-preview-only-not-a-payment-add
  * isn't one (it isn't hex): no wallet takes it, so nothing can be sent to it.
  */
 export const PREVIEW_BASE_ADDRESS = '0xStorybookPreviewOnlyNotAPaymentAddress00';
-export const PREVIEW_TOP_UP = 'storybook-top-up';
+/**
+ * The top-up a story has on its way. Its ID is made up, but as long as the server's (22 characters), so the reference the
+ * Pay step and Done show for support reads as it would.
+ */
+export const PREVIEW_TOP_UP = 'Hx4mQ8vT2nLp7WkR3sZbYc';
 /** A top-up that has been added to the balance already, beside the one a story has on its way. */
-export const PREVIEW_PAID_TOP_UP = 'storybook-top-up-paid';
+export const PREVIEW_PAID_TOP_UP = 'Zr8kW2pN5vXq1TmB7cLsGd';
 
 const route = (id: string, chain: string, chainName: string, token: TopUpRoute['token'], minimum = 5): TopUpRoute => ({
   id, chain, chainName, token, minimum: String(minimum)

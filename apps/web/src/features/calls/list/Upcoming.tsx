@@ -8,9 +8,9 @@
  * writes notes, and who can open them. Its organizer has Change (the scheduler) and, in More, what the list's menu
  * offers (cancelling it among them); someone invited answers Yes, Maybe or No, and More proposes another time.
  */
-import { errorCode, errorMessage, type CallDocument, type ChangeScope, type DocumentPreview, type Meeting, type NotesChoices, type NotesSetting, type Person, type Rsvp } from '@alcove/api';
+import { errorCode, errorMessage, errorRequestId, type CallDocument, type ChangeScope, type DocumentPreview, type Meeting, type NotesChoices, type NotesSetting, type Person, type Rsvp } from '@alcove/api';
 import {
-  Avatar, Button, CallAnswered, CallReply, Evening, Faces, FileCard, GhostArch, Icon, NotesSwitches, ScopeBar, buttonClass, cn, useToast
+  Avatar, Button, CallAnswered, CallReply, Evening, Faces, FileCard, GhostArch, Icon, NotesSwitches, RequestRef, ScopeBar, buttonClass, cn, useToast
 } from '@alcove/ui';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
@@ -22,6 +22,7 @@ import { CallHead, GonePage } from '~/features/notes/Head';
 import { MOST_ARCHES, archSize } from '~/features/notes/player/Stage';
 import { stemOf, uploadInto } from '~/features/workspace/uploads/uploads';
 import { useMyModelUnencrypted } from '~/features/notes/models';
+import { toastFailure } from '~/lib/failed';
 import { useNow } from '~/lib/live';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
@@ -98,10 +99,15 @@ export function CallAhead({ meetingId }: { meetingId: string }) {
   return m && !gone ? <AheadView key={m.id} m={m} /> : null;
 }
 
-/** A call ahead that isn't here, or couldn't be read: why, and the way back. */
+/** A call ahead that isn't here, or couldn't be read: why, the reference to quote when Alcove answered, and the way back. */
 export function AheadMissing({ error }: { error: unknown }) {
   const notFound = errorCode(error) === 'not-found';
-  return <GonePage title={notFound ? 'This call isn’t here' : 'Couldn’t open this call'} lead={notFound ? 'It was cancelled, or it isn’t one you were invited to.' : errorMessage(error)} />;
+  const ref = errorRequestId(error);
+  return (
+    <GonePage title={notFound ? 'This call isn’t here' : 'Couldn’t open this call'} lead={notFound ? 'It was cancelled, or it isn’t one you were invited to.' : errorMessage(error)}>
+      {ref && <RequestRef id={ref} />}
+    </GonePage>
+  );
 }
 
 function AheadView({ m }: { m: Meeting }) {
@@ -173,7 +179,7 @@ function Lobby({ m, people, more, now }: { m: Meeting; people: Invited[]; more: 
     <div className="cd-join"><Link to="/join/$code" params={{ code: m.code }} className={buttonClass({ variant: 'primary' })}><Icon name="calClock" size={18} />Pick a time</Link></div>
   )) : join ? (
     <div className="cd-join">
-      <Button variant="primary" icon="video" onClick={(e) => { go(e.currentTarget, () => Promise.resolve(m.code)).catch((err: unknown) => toast(errorMessage(err), { icon: 'x' })); }}>Join</Button>
+      <Button variant="primary" icon="video" onClick={(e) => { go(e.currentTarget, () => Promise.resolve(m.code)).catch((err: unknown) => toastFailure(toast, err)); }}>Join</Button>
     </div>
   ) : <p className="cd-wait">Join shows here five minutes before it starts.</p>;
   return (
@@ -219,8 +225,8 @@ function YourAnswer({ m }: { m: Meeting }) {
     const before = m.rsvp;
     setChanging(false);
     answer.mutateAsync({ id: m.id, answer: a }).then(
-      () => toast(`${ANSWERED[a]}. ${callName(m.organizer)} sees your answer.`, { icon: 'check', ms: 6000, action: before && before !== a ? { label: 'Undo', onClick: () => void answer.mutateAsync({ id: m.id, answer: before }).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' })) } : undefined }),
-      (e: unknown) => toast(`Couldn’t say you’re coming. ${errorMessage(e)}`, { icon: 'x' })
+      () => toast(`${ANSWERED[a]}. ${callName(m.organizer)} sees your answer.`, { icon: 'check', ms: 6000, action: before && before !== a ? { label: 'Undo', onClick: () => void answer.mutateAsync({ id: m.id, answer: before }).catch((e: unknown) => toastFailure(toast, e)) } : undefined }),
+      (e: unknown) => toastFailure(toast, e, 'Couldn’t say you’re coming.')
     );
   };
   const choices: { value: Rsvp; label: string }[] = [{ value: 'yes', label: 'Yes' }, { value: 'maybe', label: 'Maybe' }, { value: 'no', label: 'No' }];
@@ -298,13 +304,13 @@ function Agenda({ m, first, quiet }: { m: Meeting; first: boolean; quiet: boolea
         if (what === 'file') {
           uploadInto({ workspaceId: home.workspaceId, documentId: home.itemId, owner, pass: undefined }, files, name ?? null).catch((e: unknown) => {
             ulog.warn('files for a call ahead weren’t uploaded', { meetingId: m.id, workspaceId: home.workspaceId, documentId: home.itemId, count: files.length, err: e });
-            toast(errorMessage(e), { icon: 'x' });
+            toastFailure(toast, e);
           });
         }
       },
       onError: (e) => {
         ulog.info('a call ahead wasn’t made ready', { meetingId: m.id, make: what, code: errorCode(e) });
-        toast(errorMessage(e), { icon: 'x' });
+        toastFailure(toast, e);
       },
       onSettled: () => setMaking(null)
     });
@@ -381,7 +387,7 @@ function NotesOn({ m, others, unseen }: { m: Meeting; others: Person[]; unseen: 
     if (same) { setChanging(false); return; }
     update.mutate({ id: m.id, input: { ...(notes !== m.notes ? { notes } : {}), ...(notes === 'on' ? { choices } : {}) }, scope: series ? scope : undefined }, {
       onSuccess: () => { setChanging(false); toast('Saved.', { icon: 'check' }); },
-      onError: (e) => toast(errorMessage(e), { icon: 'x' })
+      onError: (e) => toastFailure(toast, e)
     });
   };
   const start = () => { setNotes(m.notes); setChoices(m.choices); setScope('this'); setChanging(true); };

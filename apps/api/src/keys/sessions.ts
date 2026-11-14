@@ -65,7 +65,13 @@ export async function closeSession(d: Deps, s: Session): Promise<void> {
   slog.info('session closed', { ownerId: s.ownerId, reason: 'sign-out', ageH: Math.round((Date.now() - s.createdAt.getTime()) / 3_600_000) });
 }
 
+/**
+ * The sessions that have ended, on table alias `t`: past their absolute end, or idle longer than IDLE_MS. What the sweep
+ * removes, and what an operator's report counts (features/operator/work.ts, the account lookup).
+ */
+export const sessionEnded = (t: string): string => `(${t}.expires_at < now() OR ${t}.last_seen_at < now() - make_interval(secs => ${IDLE_MS / 1000}))`;
+
 /** Removes sessions that have ended, so they don't linger in the table. */
 export function sweepSessions(d: Deps): Promise<number> {
-  return exec(d.pool, `DELETE FROM sessions WHERE expires_at < now() OR last_seen_at < now() - interval '14 days'`);
+  return exec(d.pool, `DELETE FROM sessions s WHERE ${sessionEnded('s')}`);
 }

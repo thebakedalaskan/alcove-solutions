@@ -8,6 +8,8 @@ export const callKeys = {
   meetings: ['meetings'] as const,
   upcoming: ['meetings', 'upcoming'] as const,
   byCode: (code: string) => ['meetings', 'code', code] as const,
+  /** Every call read by its link: a call can be read by its own link and by its series'. */
+  byCodes: ['meetings', 'code'] as const,
   card: (code: string) => ['calls', 'card', code] as const,
   calendar: ['meetings', 'calendar'] as const,
   meeting: (id: string) => ['meetings', 'one', id] as const,

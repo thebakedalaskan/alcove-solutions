@@ -162,17 +162,27 @@ export function readRows(found: LimitRow[]): Reading {
 
 /**
  * One instance's copy of the limits: when it was read, what it said, and which rows it has already said it can't use; the
- * read through the pool on its way, if one is; and how many reads have started, and which of them is in force.
+ * read through the pool on its way, if one is; and how many reads have started, and which of them is in force. For
+ * operators, in Unix ms: when it was last read, and last read successfully, and how many reads have failed since.
  */
-interface Copy { at: number; values: Map<LimitName, number>; noted: Set<string>; pooled: Promise<void> | undefined; started: number; applied: number }
+interface Copy {
+  at: number; values: Map<LimitName, number>; noted: Set<string>; pooled: Promise<void> | undefined; started: number; applied: number;
+  readAt: number | null; okAt: number | null; failures: number;
+}
 /** One copy per database, which is one per process outside tests. */
 const copies = new WeakMap<Db, Copy>();
 function copyFor(pool: Db): Copy {
   const found = copies.get(pool);
   if (found) return found;
-  const copy: Copy = { at: -Infinity, values: readRows([]).values, noted: new Set(), pooled: undefined, started: 0, applied: 0 };
+  const copy: Copy = { at: -Infinity, values: readRows([]).values, noted: new Set(), pooled: undefined, started: 0, applied: 0, readAt: null, okAt: null, failures: 0 };
   copies.set(pool, copy);
   return copy;
+}
+
+/** How this instance's copy of the limits has been read (operator release), or undefined before it first is. Times are Unix ms. */
+export function limitsCache(pool: Db): { readAt: number | null; okAt: number | null; failures: number } | undefined {
+  const copy = copies.get(pool);
+  return copy ? { readAt: copy.readAt, okAt: copy.okAt, failures: copy.failures } : undefined;
 }
 
 /**
@@ -186,6 +196,8 @@ async function read(db: Db, copy: Copy): Promise<void> {
   const turn = ++copy.started;
   try {
     const r = readRows(await rowsOn(db));
+    copy.okAt = Date.now();
+    copy.failures = 0;
     if (turn < copy.applied) return;
     copy.applied = turn;
     const noted = new Set<string>();
@@ -207,9 +219,11 @@ async function read(db: Db, copy: Copy): Promise<void> {
     }
     copy.values = r.values;
   } catch (e) {
+    copy.failures++;
     llog.warn('service limits not read; keeping what was in force', { err: e });
   } finally {
     copy.at = performance.now();
+    copy.readAt = Date.now();
   }
 }
 

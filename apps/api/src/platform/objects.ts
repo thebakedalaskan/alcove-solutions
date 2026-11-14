@@ -29,21 +29,38 @@ export interface ObjectStore {
   delete(objectId: string): Promise<void>;
   /** Every stored object with its upload time, for garbage collection. */
   list(): AsyncGenerator<{ id: string; lastModified: Date }>;
+  /**
+   * Whether the bucket answers, by a HeadBucket: nothing is read or written (operator checks). Throws ObjectStoreError, whose
+   * cause is S3's error, by name. `signal` stops it waiting.
+   */
+  ping(signal?: AbortSignal | undefined): Promise<void>;
 }
 
-export async function createObjectStore(cfg: Pick<Config, 'OBJECTS_ENDPOINT' | 'OBJECTS_BUCKET' | 'OBJECTS_ACCESS_KEY' | 'OBJECTS_SECRET_KEY'>): Promise<ObjectStore> {
-  const s3 = new S3Client({
-    endpoint: cfg.OBJECTS_ENDPOINT, region: 'us-east-1', forcePathStyle: true,
-    credentials: { accessKeyId: cfg.OBJECTS_ACCESS_KEY, secretAccessKey: cfg.OBJECTS_SECRET_KEY },
-    // Checksums only where S3 requires one: Google Cloud Storage's S3 interoperability (staging) refuses the SDK's default
-    // CRC32 trailers, and R2 and RustFS take either way.
-    requestChecksumCalculation: 'WHEN_REQUIRED', responseChecksumValidation: 'WHEN_REQUIRED'
-  });
+type StoreSettings = Pick<Config, 'OBJECTS_ENDPOINT' | 'OBJECTS_BUCKET' | 'OBJECTS_ACCESS_KEY' | 'OBJECTS_SECRET_KEY'>;
+
+const client = (cfg: StoreSettings) => new S3Client({
+  endpoint: cfg.OBJECTS_ENDPOINT, region: 'us-east-1', forcePathStyle: true,
+  credentials: { accessKeyId: cfg.OBJECTS_ACCESS_KEY, secretAccessKey: cfg.OBJECTS_SECRET_KEY },
+  // Checksums only where S3 requires one: Google Cloud Storage's S3 interoperability (staging) refuses the SDK's default
+  // CRC32 trailers, and R2 and RustFS take either way.
+  requestChecksumCalculation: 'WHEN_REQUIRED', responseChecksumValidation: 'WHEN_REQUIRED'
+});
+
+/** The store, its bucket made first if it isn't there yet. */
+export async function createObjectStore(cfg: StoreSettings): Promise<ObjectStore> {
+  const s3 = client(cfg);
   const Bucket = cfg.OBJECTS_BUCKET;
   try { await s3.send(new HeadBucketCommand({ Bucket })); } catch {
     olog.info('creating bucket', { bucket: Bucket });
     await call('create-bucket', undefined, () => s3.send(new CreateBucketCommand({ Bucket })));
   }
+  return storeOn(s3, Bucket);
+}
+
+/** The store as it is: nothing is asked of it until it's used, and its bucket is never made (operator-job.ts). */
+export const openObjectStore = (cfg: StoreSettings): ObjectStore => storeOn(client(cfg), cfg.OBJECTS_BUCKET);
+
+function storeOn(s3: S3Client, Bucket: string): ObjectStore {
   const key = (id: string) => `o/${id}`;
   return {
     async put(id, bytes) { await call('put', id, () => s3.send(new PutObjectCommand({ Bucket, Key: key(id), Body: bytes, ContentType: 'application/octet-stream' })), bytes.length); },
@@ -61,7 +78,8 @@ export async function createObjectStore(cfg: Pick<Config, 'OBJECTS_ENDPOINT' | '
         for (const o of r.Contents ?? []) if (o.Key && o.LastModified) yield { id: o.Key.slice(2), lastModified: o.LastModified };
         token = r.IsTruncated ? r.NextContinuationToken : undefined;
       } while (token);
-    }
+    },
+    async ping(signal) { await call('ping', undefined, () => s3.send(new HeadBucketCommand({ Bucket }), signal ? { abortSignal: signal } : {})); }
   };
 }
 

@@ -428,7 +428,7 @@ export const showsOnEvent = (p: Patch<MeetingInput>) => [p.title, p.startsAt, p.
  * its own to move, and the times offered stay as they are: cancelling it and offering others is how they change.
  */
 export function withChange(m: MeetingManifest, patch: Patch<MeetingInput>, organizerEmail: string, meetingId: string): MeetingManifest {
-  if (m.status !== 'scheduled') throw new ConflictError('Only a call that hasn’t started can be changed.', { context: { meetingId, status: m.status } });
+  if (m.status !== 'scheduled') throw new ConflictError('Only a call that hasn’t started can be changed.', { context: { meetingId, state: m.status } });
   if (m.offer && patch.startsAt !== undefined) throw new ConflictError('This call is waiting for someone to pick a time. Cancel it to set one yourself.', { context: { meetingId } });
   const times = patch.startsAt !== undefined || patch.durationMinutes !== undefined ? validTimes(patch.startsAt ?? m.startsAt, patch.durationMinutes ?? minutesOf(m)) : {};
   return {

@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { equalBytes } from '../keys/crypto';
 import { createPool, exec, maybeOne, timestamp, type Db } from '../platform/db';
 import { log } from '../platform/log';
+import { facts, failureCode, runs } from '../platform/runs';
 import type { Ordered } from './acme';
 
 const clog = log.child({ component: 'edge' });
@@ -26,26 +27,67 @@ const WAITING_MS = 3_000;
 const FIRST_RETRY_MS = 30_000;
 const LONGEST_RETRY_MS = 30 * 60_000;
 
-export interface Certificate { chainPem: string; notAfter: Date }
+/** A certificate, its chain as PEM, when it runs out, and when it was stored. */
+export interface Certificate { chainPem: string; notAfter: Date; storedAt: Date }
 
-const Stored = z.object({ chain_pem: z.string(), not_after: timestamp });
+const Stored = z.object({ chain_pem: z.string(), not_after: timestamp, updated_at: timestamp });
 async function stored(db: Db): Promise<Certificate | undefined> {
-  const r = await maybeOne(db, Stored, "SELECT chain_pem, not_after FROM tls_certificates WHERE id = 'current'");
-  return r ? { chainPem: r.chain_pem, notAfter: r.not_after } : undefined;
+  const r = await maybeOne(db, Stored, "SELECT chain_pem, not_after, updated_at FROM tls_certificates WHERE id = 'current'");
+  return r ? { chainPem: r.chain_pem, notAfter: r.not_after, storedAt: r.updated_at } : undefined;
 }
 async function store(db: Db, c: Certificate): Promise<void> {
   await exec(db, `INSERT INTO tls_certificates (id, chain_pem, not_after) VALUES ('current', $1, $2)
     ON CONFLICT (id) DO UPDATE SET chain_pem = EXCLUDED.chain_pem, not_after = EXCLUDED.not_after, updated_at = now()`, [c.chainPem, c.notAfter]);
 }
 
-/** Whether `c` can be served: for this key, naming every host, and not run out. */
-function servable(c: Certificate, key: KeyObject, hosts: readonly string[]): boolean {
+/** Why a certificate can't be served: it doesn't read as one, it's for another key, it leaves out a host, or it ran out. */
+export type Unservable = 'unreadable' | 'other-key' | 'host-missing' | 'expired';
+/**
+ * What `c` is, for `hosts` and the TLS key: how many host names it names, whether it's for `key` (null without one), and why
+ * it can't be served, or null when it can.
+ */
+function judged(c: Certificate, key: KeyObject | undefined, hosts: readonly string[]): { hosts: number; spkiMatches: boolean | null; unservable: Unservable | null } {
   let cert: X509Certificate;
-  try { cert = new X509Certificate(c.chainPem); } catch { return false; }
-  const ours = createPublicKey(key).export({ type: 'spki', format: 'der' });
-  return equalBytes(cert.publicKey.export({ type: 'spki', format: 'der' }), ours) && hosts.every((h) => cert.checkHost(h) !== undefined) && new Date(cert.validTo).getTime() > Date.now();
+  try { cert = new X509Certificate(c.chainPem); } catch { return { hosts: 0, spkiMatches: null, unservable: 'unreadable' }; }
+  const named = (cert.subjectAltName ?? '').split(',').filter((n) => n.trim().startsWith('DNS:')).length;
+  const spkiMatches = key === undefined ? null : equalBytes(cert.publicKey.export({ type: 'spki', format: 'der' }), createPublicKey(key).export({ type: 'spki', format: 'der' }));
+  const unservable = spkiMatches === false ? 'other-key' : !hosts.every((h) => cert.checkHost(h) !== undefined) ? 'host-missing'
+    : new Date(cert.validTo).getTime() <= Date.now() ? 'expired' : null;
+  return { hosts: named, spkiMatches, unservable };
 }
+/** Whether `c` can be served: for this key, naming every host, and not run out. */
+const servable = (c: Certificate, key: KeyObject, hosts: readonly string[]): boolean => judged(c, key, hosts).unservable === null;
 const due = (c: Certificate) => c.notAfter.getTime() - Date.now() < RENEW_MS;
+
+/**
+ * Whether a certificate running out at `notAfter` (Unix ms) is due a new one, as this edge orders them: not due while more
+ * than RENEW_MS is left; due for the day after that, two looks (CHECK_MS) in which one instance orders it; past due once
+ * that day has gone by without a newer one being served (operator release).
+ */
+export function renewalOf(notAfter: number, now: number): 'not due' | 'due' | 'past due' {
+  const late = now - (notAfter - RENEW_MS);
+  return late < 0 ? 'not due' : late < 2 * CHECK_MS ? 'due' : 'past due';
+}
+
+/**
+ * Records the certificate this instance serves, for operators (operator release): how many hosts it names, whether its key
+ * is ours, and how the last look at whether a newer one is due went.
+ */
+function recordServing(c: Certificate, key: KeyObject, lastCheck: { at: number; ok: boolean; code: string | null } | null): void {
+  const { hosts, spkiMatches, unservable } = judged(c, key, []);
+  if (unservable === 'unreadable') clog.warn('the tls certificate served couldn’t be read for operators');
+  facts.set('certificate', { notAfter: c.notAfter.getTime(), storedAt: c.storedAt.getTime(), hosts, spkiMatches: spkiMatches ?? false, lastCheck });
+}
+
+/**
+ * The certificate stored, as a start would find it, read only (the checks job, operator-job.ts): when it runs out, when it
+ * was stored, and what it is for `hosts` and the TLS key (judged). A start that can't serve it orders another, which this
+ * never does. `key`: the TLS key, when the master opened. Undefined when none is stored.
+ */
+export async function storedCertificate(db: Db, hosts: readonly string[], key: KeyObject | undefined) {
+  const c = await stored(db);
+  return c ? { notAfter: c.notAfter.getTime(), storedAt: c.storedAt.getTime(), ...judged(c, key, hosts) } : undefined;
+}
 
 /**
  * As the one instance holding the lock, orders a certificate unless one stored meanwhile will do: what's stored then.
@@ -61,8 +103,9 @@ async function orderAsTheOne(lock: pg.Pool, wanted: (c: Certificate | undefined)
       const now = await stored(c);
       if (now && !wanted(now)) return now;
       const { chainPem, notAfter } = await order();
-      await store(c, { chainPem, notAfter });
-      return { chainPem, notAfter };
+      const ordered = { chainPem, notAfter, storedAt: new Date() };
+      await store(c, ordered);
+      return ordered;
     } finally {
       await exec(c, 'SELECT pg_advisory_unlock($1)', [LOCK]).catch((e: unknown) => {
         // A connection that may still hold the lock never goes back to the pool.
@@ -112,11 +155,15 @@ export async function certificates(o: { pool: pg.Pool; databaseUrl: string; host
     throw e;
   }
   let serving: Certificate = current;
+  recordServing(serving, o.key, null);
 
   let checking = false;
+  // Each check is a run operators see (`certificates`), and how it went is this instance's last check (operator release).
   const check = async () => {
     if (checking) return;
     checking = true;
+    const run = runs.begin('certificates');
+    let code: string | null = null;
     try {
       const latest = await stored(o.pool);
       if (usable(latest) && latest.chainPem !== serving.chainPem && latest.notAfter >= serving.notAfter) {
@@ -132,9 +179,12 @@ export async function certificates(o: { pool: pg.Pool; databaseUrl: string; host
         clog.info('tls certificate renewed', { notAfter: got.notAfter.toISOString() });
       }
     } catch (e) {
+      code = failureCode(e);
       clog.error('tls certificate not renewed; trying again later', { notAfter: serving.notAfter.toISOString(), err: e });
     } finally {
       checking = false;
+      run.end(code === null ? { ok: true } : { ok: false, code });
+      recordServing(serving, o.key, { at: Date.now(), ok: code === null, code });
     }
   };
   // Once now, for a certificate that's already due, then twice a day.

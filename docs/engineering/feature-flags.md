@@ -21,7 +21,7 @@ Making it unconditional in the code comes later, in its own pull request.
 Where it lives: the names in `packages/api/src/feature-flags/names.ts`; the server side in `apps/api/src/platform/feature-flags.ts`; the endpoint
 `GET /v1/feature-flags` in `apps/api/src/http/system-routes.ts`; `useFeatureFlag` in `apps/web/src/lib/featureFlags.ts`; the commands in
 `apps/api/src/platform/feature-flag-commands.ts`, which the CLI (`apps/api/src/feature-flags-cli.ts`) and the operator route
-(`POST /v1/operator/feature-flags`, in `system-routes.ts`) both run; the tables in [Data and storage](data-and-storage.md).
+(`POST /v1/operator/feature-flags`, in `apps/api/src/features/operator/routes.ts`) both run; the tables in [Data and storage](data-and-storage.md).
 
 ## Building a feature behind a flag
 
@@ -94,29 +94,32 @@ it, how many people have it directly and how many through those groups) when it 
 
 Production flags are switched through the API itself, which hashes addresses where nothing outside it can see them:
 `POST /v1/operator/feature-flags` takes a command's words and answers with the lines the CLI would print for them, from the
-same commands. It isn't part of the app's API: operators call it with curl and a token. It's off, answering 404 as if it
-weren't there, until the API has `OPERATOR_TOKEN_SHA256`, the SHA-256 of that token as 64 lowercase hex characters. Any other
-token gets 401, compared in constant time. Make a token, and the hash the API is given:
+same commands. It isn't part of the app's API: operators call it with the operator CLI, which signs each request with the
+operator's own key (`apps/api/src/http/operator.ts`). Without `OPERATOR_KEYS` it answers 404, as if it weren't there.
+Make a key once, on your own machine, and have its line added to the environment's `CS_OPERATOR_KEYS` in
+`infra/confidential-space/env.sh` (a pull request, then a deploy; [Operating Alcove › Who can operate](operating-alcove.md#who-can-operate)):
 
 ```
-TOKEN=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')
-printf %s "$TOKEN" | shasum -a 256 | cut -d' ' -f1
+pnpm --filter @alcove/server operator keygen
 ```
 
-Then send the command's words as JSON, 1 to 100 of them, each at most 320 characters:
+Then send a command's words, 1 to 100 of them, each at most 320 characters. Listing flags and groups, and counting a
+group's members, reads, and any key may. Asking whether an address is in a group (`group members <group> <email>`) finds
+something out about a person by their address, as finding an account by one does, so it needs a `write` key and a reason,
+as anything that changes flags does. A reason is a ticket's reference:
 
 ```
-curl -sS https://api.alcove.solutions/v1/operator/feature-flags -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' -d '{"words":["group","add","staff","ann@vandelay.test"]}'
-{"lines":["Added 1 of 1 to staff."]}
+pnpm --filter @alcove/server operator feature-flags list
+pnpm --filter @alcove/server operator feature-flags group add staff ann@vandelay.test --reason SUP-1182
+Added 1 of 1 to staff.
 ```
 
 Words it can't run (a name that isn't a flag, no such group, words that aren't a command) are refused with the API's usual
-error, `{ code, message, requestId }`, whose message is what the CLI would print. It takes 30 requests a minute from an
-address, and, unlike the app's routes, needs no `Origin` (the body must still be JSON). The addresses you send are hashed
-inside the API, under flags' own purpose, and kept nowhere else: not in a row, an argument list or a log line, and the
-hash stored joins to nothing but a flag. It logs `operator feature flags` with the command (`unknown` for words that
-aren't one) and whether it ran, and nothing else.
+error, `{ code, message, requestId }`, whose message is what the CLI would print. The addresses you send are in the request's
+body, hashed inside the API under flags' own purpose, and kept nowhere else: not in a row, a URL or a log line, and the hash
+stored joins to nothing but a flag. It logs `operator feature flags` with the command (`unknown` for words that aren't one)
+and whether it ran, and nothing else, beside the `operator call` line every operator request logs: the key's ID, the route,
+the outcome and the reason.
 
 Flags' hashes had the `email` purpose before (the hash `identities` holds); a group member or person grant made then no
 longer matches anyone. Production had none when that changed, so nothing was converted: add such an address again with
@@ -126,7 +129,8 @@ the commands above.
 
 Two separate steps, so a release never waits on code:
 
-1. **Release:** `feature-flags everyone <feature-flag> on`. Everyone, signed in or not, has it within 30 seconds.
+1. **Release:** `feature-flags everyone <feature-flag> on`, and in production
+   `operator feature-flags everyone <feature-flag> on --reason <ref>`. Everyone, signed in or not, has it within 30 seconds.
 2. **Retire, later, in one pull request:** delete the flag's name from `FEATURE_FLAGS`. The typecheck now fails at every check that
    used it, in the API and the app. Fix each by keeping the "on" path: delete `requireFeatureFlag`, delete the `useFeatureFlag` check and
    whatever showed while it was off. Remove it from Storybook's scenarios. Once that's deployed, its rows are unknown names,

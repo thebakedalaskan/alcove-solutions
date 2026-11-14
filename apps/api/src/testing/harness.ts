@@ -3,7 +3,8 @@
  * through, a stand-in NEAR AI Cloud to transcribe and write notes (with stand-ins for the Intel and
  * NVIDIA services that vouch for it, under test roots) and a stand-in 1Click to add money with,
  * and gives tests "browsers":
- * each with its own cookie jar, sending the web app's Origin, talking through @alcove/api-http.
+ * each with its own cookie jar, sending the web app's Origin, talking through @alcove/api-http. And operators, signing
+ * requests with a read key and a write key the server lists (testing/operator.ts).
  */
 import type { AlcoveApi, CallSession } from '@alcove/api';
 import { createHttpApi, type ClientEvent } from '@alcove/api-http';
@@ -28,6 +29,7 @@ import { startFakeGoogle, type FakeGoogle, type GoogleUser, type Spoil } from '.
 import { fakeKms } from './fakes/kms';
 import { startFakeNear, type FakeNear } from './fakes/near';
 import { startFakeOneClick, type FakeOneClick } from './fakes/oneclick';
+import { signedClient, makeOperatorKey, type SignedClient, type TestKey } from './operator';
 
 // An HTTPS web origin, so the API applies its production cookie rules (__Host- names, Secure) over the test transport.
 export const ORIGIN = 'https://localhost:3000';
@@ -84,6 +86,11 @@ export interface Harness {
   near: FakeNear;
   /** The NEAR Intents 1Click that quotes deposit addresses for credit top-ups. */
   oneclick: FakeOneClick;
+  /**
+   * Operators: clients signing requests to this server with a `read` key and a `write` key, both of which it lists
+   * (operatorKeys), and those keys with the audience they sign for (its API_URL's origin), to sign for a second server too.
+   */
+  operator: { read: SignedClient; write: SignedClient; audience: string; keys: { read: TestKey; write: TestKey } };
   /** A fresh browser with its own cookie jar, or one around a fetch the test supplies. */
   browser(o?: { fetch?: typeof fetch | undefined; onEvent?: ((e: ClientEvent) => void) | undefined; callPollMs?: number | undefined; callNotesMs?: number | undefined; callRekeyMs?: number | undefined; ringSilenceMs?: number | undefined }): Browser;
   /** Stops every call session, workspace stream and document this harness's browsers opened from keeping up (nobody leaves). */
@@ -151,7 +158,9 @@ export async function startHarness(): Promise<Harness> {
   const pool = createPool(url);
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(pool);
-  const cfg = await loadConfig(loadEnv(process.env, {
+  // The server lists a read key and a write key of the harness's own, and nothing from the environment.
+  const operatorKeys = { read: makeOperatorKey('read'), write: makeOperatorKey('write') };
+  const settings = await loadConfig(loadEnv(process.env, {
     DATABASE_URL: url, OBJECTS_BUCKET: bucket, WEB_ORIGIN: ORIGIN, API_URL: 'http://127.0.0.1',
     GOOGLE_ISSUER: google.issuer, GOOGLE_API_URL: google.issuer, GOOGLE_CLIENT_ID: google.clientId, GOOGLE_CLIENT_SECRET: google.clientSecret,
     // NEAR AI, and the stand-in Intel and NVIDIA roots its evidence is checked against.
@@ -163,8 +172,10 @@ export async function startHarness(): Promise<Harness> {
     // A limit a test sets is in force on its next request, and gone once the test is: tests that look at the window set their own.
     LIMITS_CACHE_MS: '0',
     // Likewise a feature flag switched on or off.
-    FEATURE_FLAGS_CACHE_MS: '0'
+    FEATURE_FLAGS_CACHE_MS: '0',
+    OPERATOR_KEYS: ''
   }), pool, undefined);
+  const cfg: Config = { ...settings, operatorKeys: [operatorKeys.read.key, operatorKeys.write.key] };
   const resetLimits = async () => { await pool.query('DELETE FROM service_limits'); };
   const setLimit = async (name: LimitName, value: number) => {
     await pool.query('INSERT INTO service_limits (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = excluded.value, updated_at = now()', [name, value]);
@@ -176,12 +187,15 @@ export async function startHarness(): Promise<Harness> {
   deps.cfg = { ...cfg, API_URL: baseUrl };
   google.register(`${baseUrl}/v1/auth/google/callback`);
   google.register(`${baseUrl}/v1/drive/callback`);
+  // Operators sign for the API's origin, which a second server shares, as instances do.
+  const audience = new URL(baseUrl).origin;
+  const operator = { read: signedClient(baseUrl, audience, operatorKeys.read), write: signedClient(baseUrl, audience, operatorKeys.write), audience, keys: operatorKeys };
   // Every call session a browser joins, so a test's sessions can be stopped once it's done instead of polling on.
   const calls: CallSession[] = [];
   const streams: { close(): void }[] = [];
   const closeCalls = () => { for (const s of [...calls.splice(0), ...streams.splice(0)]) s.close(); };
   return {
-    baseUrl, pool, objects, deps, logs, google, near, oneclick,
+    baseUrl, pool, objects, deps, logs, google, near, oneclick, operator,
     browser(o = {}) {
       const f = o.fetch ?? cookieFetch(ORIGIN);
       // Calls keep up with their keys and notes quickly here; browsers wait 1.5 s between checks while nothing nudges them, and 5 s between looks at the notes.

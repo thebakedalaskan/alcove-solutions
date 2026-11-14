@@ -219,7 +219,7 @@ export async function moveIn(d: Deps, o: Owner, callId: string, from: { identity
   const { row, state } = await load(o, o.pool, callId);
   const was = state.people.find((j) => j.identity === from.identity && j.person === from.person);
   if (row.state !== 'live' || !was || was.replaced || state.removed.includes(was.person) || (was.status !== 'in' && was.status !== 'left')) {
-    throw new ConflictError('Your place in this call can’t move here any more.', { context: { callId, reason: 'moved-from', status: was?.status ?? 'none' } });
+    throw new ConflictError('Your place in this call can’t move here any more.', { context: { callId, reason: 'moved-from', state: was?.status ?? 'none' } });
   }
   const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
   const host = was.role === 'host';
@@ -238,7 +238,7 @@ export async function reissue(d: Deps, o: Owner, callId: string, identity: strin
   const { row, state } = await load(o, o.pool, callId);
   const j = state.people.find((x) => x.identity === identity);
   if (row.state !== 'live' || !row.room_name || !j || state.removed.includes(j.person) || j.replaced || (j.status !== 'in' && j.status !== 'waiting')) {
-    throw new ConflictError('Your place in this call can’t move here any more.', { context: { callId, reason: 'reissue', status: j?.status ?? 'none' } });
+    throw new ConflictError('Your place in this call can’t move here any more.', { context: { callId, reason: 'reissue', state: j?.status ?? 'none' } });
   }
   return ticketFor(d, o, callId, { ...j, inCall: j.status === 'in', hosts: state.host === j.identity }, row.room_name);
 }

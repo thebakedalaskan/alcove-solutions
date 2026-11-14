@@ -587,8 +587,9 @@ export const ACallThatDidntKeepEverything: PageStory = {
       await fromCalls(userEvent, 'Budget check');
       await screen.findByText('The recording was deleted when the call ended.', {}, SOON);
     });
-    await step('Neither. You can still ask about what the notes say', async () => {
+    await step('Neither: nothing to play back, so no stage or line, and it says why. You can still ask about what the notes say', async () => {
       await fromCalls(userEvent, 'Legal review');
+      await screen.findByRole('heading', { name: 'Nothing to play back' }, SOON);
       await screen.findByRole('textbox', { name: 'Ask about this call, for you alone' }, SOON);
     });
     await step('Where nothing was captured is a point on the line, and the Transcript says when', async () => {
