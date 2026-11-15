@@ -77,7 +77,7 @@ export const NewFromTheEmail: PageStory = {
     await step('Its first sign-in goes on as from the welcome page: the account is made on screen', async () => {
       await screen.findByRole('dialog', { name: 'Creating your account' }, LATER);
     });
-    await step('“You’re in”, and the arch opens onto Home, not the plans: someone joining a team doesn’t choose one. Home says which team Art is on', async () => {
+    await step('“You’re in”, and the arch opens onto Home, which says which team Art is on', async () => {
       await screen.findByRole('dialog', { name: /^You’re in/ }, LATER);
       await screen.findByText('You’re on Vandelay Industries.', {}, LATER);
     });

@@ -69,7 +69,7 @@ export const PlanAccount = z.object({
   history: z.array(Entry),
   /** Where Free's periods are counted from, unless Pro ended since. */
   freeFrom: z.string(),
-  /** Whether the account hasn't been shown the plans to pick from yet. */
+  /** Whether Home opens on the plans, once: an account from before plans that hasn't been shown them yet. Never a new account. */
   choose: z.boolean(),
   grace: Grace.nullable(),
   /** Months of Pro bought, back to back, oldest first: those that haven't ended, and the latest one that has. */
@@ -120,9 +120,9 @@ export function opensAccounting(kservice: Uint8Array, kind: 'plan-account' | 'bi
 }
 const Row = z.object({ state_ciphertext: bytea });
 
-/** An account's plan as it starts: Free from `freeFrom`, nothing bought. */
-const fresh = (freeFrom: string, grace: PlanAccount['grace']): PlanAccount =>
-  ({ balanceMicroUsd: 0, history: [], freeFrom, choose: true, grace, pro: [], renew: false, notices: [], reminded: null, remindedAgain: null, ended: null, hours: null });
+/** An account's plan as it starts: Free from `freeFrom`, nothing bought; `choose`, whether Home opens on the plans once. */
+const fresh = (freeFrom: string, grace: PlanAccount['grace'], choose: boolean): PlanAccount =>
+  ({ balanceMicroUsd: 0, history: [], freeFrom, choose, grace, pro: [], renew: false, notices: [], reminded: null, remindedAgain: null, ended: null, hours: null });
 
 /** What a plan brings: notes as minutes a period, storage and the largest file. */
 export interface PlanBrings { notesMinutes: number; storageBytes: number; fileBytes: number }
@@ -293,22 +293,25 @@ function dueAt(a: PlanAccount, l: Limits): Date | null {
   return at.length ? new Date(Math.min(...at)) : null;
 }
 
-/** A new account's plan, in the sign-up transaction: Free from now, with the plans to pick from shown first. */
+/**
+ * A new account's plan, in the sign-up transaction: Free from now. Its first sign-in goes on to Home and the tour, so the
+ * plans aren't put in its way; Plans is in the side panel whenever it wants them.
+ */
 export async function open(d: Pick<Accounting, 'cfg'>, db: Db, ownerId: string): Promise<void> {
-  await exec(db, 'INSERT INTO plan_accounts (owner_id, state_ciphertext, due_at) VALUES ($1,$2,NULL)', [ownerId, seal(d, ownerId, fresh(new Date().toISOString(), null))]);
+  await exec(db, 'INSERT INTO plan_accounts (owner_id, state_ciphertext, due_at) VALUES ($1,$2,NULL)', [ownerId, seal(d, ownerId, fresh(new Date().toISOString(), null, false))]);
 }
 
 /**
- * The row for an account from before plans, on Free from now. If it's already over Free's limits it keeps working as it
- * did for the grace period: no limit on storage until then. Nothing happens if another request made
- * the row first.
+ * The row for an account from before plans, on Free from now, with the plans shown once in Home's place, since it hadn't
+ * had any. If it's already over Free's limits it keeps working as it did for the grace period: no limit on storage until
+ * then. Nothing happens if another request made the row first.
  */
 async function carryOver(d: Service, db: Db, ownerId: string): Promise<void> {
   const l = await limitsNow(d, db);
   const now = Date.now();
   const over = (await usedBytes(db, ownerId)) > l.get('plan.free.storage_bytes');
   const grace = over ? { until: new Date(now + l.get('plan.grace_seconds') * 1000).toISOString(), storageBytes: null } : null;
-  const a = fresh(new Date(now).toISOString(), grace);
+  const a = fresh(new Date(now).toISOString(), grace, true);
   const made = await exec(db, 'INSERT INTO plan_accounts (owner_id, state_ciphertext, due_at) VALUES ($1,$2,$3) ON CONFLICT (owner_id) DO NOTHING', [ownerId, seal(d, ownerId, a), dueAt(a, l)]);
   if (made) plog.info('plan account carried over', { ownerId, grace: over });
 }

@@ -1,11 +1,11 @@
 /*
  * Where the plan choice shows (docs/design/pages.md › Plans; docs/product/user-flows.md 16.20), decided here and nowhere else.
  * The plan choice is Plans opened by itself once (PlanChoice.tsx): while the server says the plans haven't been shown to the
- * account yet (`Plan.choose`: true for every new account and, once, for every account from before plans), Home opens on them
- * in its place. Only Home, reached as the app opens or after the arrival of a new account: a deep link (a call, a call's page,
- * a join link, agent consent, a public page, a team invite, or any other page of the app) is never interrupted, and the plans
- * wait for the next time Home is reached. Signing in from a call's link or for an agent goes on there, never to Home, so they
- * wait then too.
+ * account yet (`Plan.choose`: true, once, for an account from before plans; never for a new account, whose first sign-in goes
+ * on to Home and the tour), Home opens on them in its place. Only Home, reached as the app opens: a deep link (a call, a call's
+ * page, a join link, agent consent, a public page, a team invite, or any other page of the app) is never interrupted, and the
+ * plans wait for the next time Home is reached. Signing in from a call's link or for an agent goes on there, never to Home, so
+ * they wait then too.
  *
  * Once the plans have been on screen (here, or on Plans itself), the server is told (`useChosePlans`), and this tab remembers
  * it for the account, so they never show again in it, even when telling the server fails. Left before they were seen (their
@@ -92,16 +92,6 @@ export async function planChoiceReady(qc: QueryClient): Promise<void> {
   const plan = await Promise.race([qc.ensureQueryData(planQueries.plan()).catch(() => undefined), moment()]);
   if (!plan?.choose) return;
   await Promise.race([qc.ensureQueryData(planQueries.offers()).catch(() => undefined), moment()]);
-}
-
-/**
- * Whether Home opens on the plans for whoever is signed in, as things stand: what the arrival of a new account says opens
- * (`Opening Plans`), decided as Home decides, from the plan /ready reads before the account screen goes up.
- */
-export function usePlansFirst(): boolean {
-  const owner = useQuery(accountQueries.session()).data?.ownerId ?? null;
-  const choose = useQuery(planQueries.plan()).data?.choose;
-  return owner !== null && planChoiceShows({ page: '/home', choose, doneHere: doneHere(owner) });
 }
 
 /**

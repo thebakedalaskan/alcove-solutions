@@ -2,16 +2,14 @@
  * The account being created, after a first sign-in. One arch carries the moment: its outline draws
  * itself, dawn fills it from the horizon, the sun rises and the stars fade, while what came with the
  * account arrives a row at a time, each with a check. Then "You’re in" and the arch opens into Home,
- * which has been loading behind it, or onto the plans in its place while they haven't been shown, as for
- * every new account (features/plans/choice.ts). Skip, Escape or Enter goes straight to the opening; under
- * reduced motion the finished screen shows for a moment and Home follows without the opening.
+ * which has been loading behind it, and the tour of Home follows. Skip, Escape or Enter goes straight to
+ * the opening; under reduced motion the finished screen shows for a moment and Home follows without the opening.
  */
 import { firstName, type Meeting, type CalendarEvent, type SignInProvider } from '@alcove/api';
 import { Button, CheckDraw, Faces, Icon, ProviderMark, cn } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { animate, useReducedMotion, type AnimationPlaybackControls } from 'motion/react';
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { usePlansFirst } from '~/features/plans/choice';
 import { listNames } from '~/lib/people';
 import { accountQueries } from '~/features/account/queries';
 import { callQueries } from '~/features/calls/list/queries';
@@ -117,8 +115,6 @@ function Creating() {
   const rise = !reduce && over;
   const session = useQuery(accountQueries.session()).data;
   const rows = useRows();
-  /* What the arch opens onto: Home, or the plans first, as Home itself decides. */
-  const opens = usePlansFirst() ? 'Opening Plans' : 'Opening Home';
   const id = useId().replace(/:/g, '');
   const [done, setDone] = useState(0);
   const [inside, setInside] = useState(false);
@@ -288,7 +284,7 @@ function Creating() {
         </div>
         <div ref={el.head} className="cr-head" aria-live="polite">
           <h2 ref={el.title} id={`${id}t`} className="cr-title" style={hidden}>{inside ? `You’re in, ${first}` : 'Creating your account'}</h2>
-          <p ref={el.sub} className="cr-sub" style={hidden}>{inside ? opens : session ? VIA[session.provider] : ''}</p>
+          <p ref={el.sub} className="cr-sub" style={hidden}>{inside ? 'Opening Home' : session ? VIA[session.provider] : ''}</p>
         </div>
         <ul ref={el.list} className="cr-list">
           {rows.map((r, i) => (

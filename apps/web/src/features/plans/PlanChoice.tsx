@@ -1,6 +1,7 @@
 /*
  * The plan choice (docs/design/pages.md › Plans; docs/product/user-flows.md 16.20): Plans, opened by itself once in Home's
- * place, for every new account and, once, for every account from before plans. Where and when it shows is choice.ts's.
+ * place, once, for every account from before plans (a new account goes straight on to Home). Where and when it shows is
+ * choice.ts's.
  * Its head says what it's for in the page's own type, a title and one line: to someone with no notes yet, how the plans
  * differ; to someone who has used Alcove, that it has plans now and which one they're on. The plan you're on leads straight
  * on, to Home. Get Pro opens checkout over it, as Plans does, and once what was bought is yours and checkout has closed,
@@ -48,8 +49,8 @@ function onNow(plan: Plan, offers: PlanOffers | undefined): string {
 }
 
 /**
- * What the head says. Someone with no notes yet (a new account, or one that has never had any) is asked to choose, and told how
- * the plans differ; someone who has used Alcove is told it has plans now, and which they're on.
+ * What the head says. Someone with no notes yet (an account from before plans that has never had any) is asked to choose, and
+ * told how the plans differ; someone who has used Alcove is told it has plans now, and which they're on.
  */
 export function headOf(plan: Plan | undefined, offers: PlanOffers | undefined, fresh: boolean): ChoiceHead {
   if (fresh || !plan) {

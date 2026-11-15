@@ -89,7 +89,10 @@ export const PlanSchema = z.object({
   over: z.object({ storage: z.boolean() }),
   /** The USD balance plans are bought with, and its latest changes, newest first. */
   balance: z.object({ microUsd: MicroUsdSchema, history: z.array(BalanceEntrySchema) }),
-  /** Whether the account hasn't been shown the plans to pick from yet. */
+  /**
+   * Whether Home opens on the plans, once: true for an account from before plans until they've been shown, never for a new
+   * account, whose first sign-in goes on to Home.
+   */
   choose: z.boolean(),
   pro: z.object({
     /** The month running now and those bought after it, oldest first. Empty when not on Pro. */

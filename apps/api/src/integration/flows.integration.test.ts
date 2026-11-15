@@ -186,8 +186,8 @@ describe('signing in', () => {
     expect(inMinutes).toBeLessThanOrEqual(17);
     expect(day[0]).toMatchObject({ isOrganizer: true, organizer: { name: 'Art Vandelay', id: r.session.ownerId }, status: 'scheduled' });
     expect(day[2]?.guests.map((g) => g.name)).toEqual(['Priya Raman', 'Inès Moreau', 'Kofi Asante', 'Sam Ortiz']);
-    // A new account is on Free, with all of a period's notes, nothing in its balance, and the plans to pick from first.
-    expect(await first.api.plans.plan()).toMatchObject({ kind: 'free', notes: { minutesLeft: 300, minutesPerPeriod: 300, stopped: false }, balance: { microUsd: 0 }, choose: true });
+    // A new account is on Free, with all of a period's notes and nothing in its balance, and goes on to Home, not the plans.
+    expect(await first.api.plans.plan()).toMatchObject({ kind: 'free', notes: { minutesLeft: 300, minutesPerPeriod: 300, stopped: false }, balance: { microUsd: 0 }, choose: false });
 
     // Another browser is the same person: both sessions stay open, and the calendar isn't placed twice.
     const second = h.browser();
@@ -3494,7 +3494,7 @@ describe('deleting an account', () => {
     const fresh = h.browser();
     expect(landed(await viaGoogle(fresh, lena))).toBe('/ready');
     expect((await fresh.api.auth.getSession())?.ownerId).not.toBe(ownerId);
-    expect(await fresh.api.plans.plan()).toMatchObject({ kind: 'free', balance: { microUsd: 0, history: [] }, choose: true });
+    expect(await fresh.api.plans.plan()).toMatchObject({ kind: 'free', balance: { microUsd: 0, history: [] }, choose: false });
     expect(await fresh.api.notes.list()).toEqual([]);
     expect(await fresh.api.meetings.upcoming()).toEqual([]);
     expect(await fresh.api.account.preferences()).toMatchObject({ pinned: [], groups: [] });

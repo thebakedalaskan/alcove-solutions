@@ -50,8 +50,8 @@ export const TeamsLinkSignedOutPhone = phone(TeamsLinkSignedOut);
 /** The link of someone on no team yet: joining from it starts theirs. */
 export const SomeonesLinkSignedOut = page('/invite', 'signed-out', { beforeEach: changing(withInviteLink(JONAS_INVITE_SECRET)) });
 /**
- * An account made from the card: it joins Vandelay Industries at once, is shown no plans to choose (someone joining a team
- * doesn't choose one), and arrives as from the welcome page, onto Home, which says "You’re on Vandelay Industries."
+ * An account made from the card: it joins Vandelay Industries at once, and arrives as from the welcome page, onto Home, which
+ * says "You’re on Vandelay Industries."
  */
 export const NewAccountJoins = page('/invite', 'first-sign-in', { beforeEach: invitation, play: signingIn });
 export const NewAccountJoinsNight = night(NewAccountJoins);

@@ -150,7 +150,8 @@ export const OfflineBeforeTheyLoaded = page('/plans', 'busy', {
 
 /* ------------------------------------------------------------------ the plan choice */
 /*
- * Plans opened by itself once, in Home's place, while the plans haven't been shown to the account (user-flows 16.20): its head
+ * Plans opened by itself once, in Home's place, while the plans haven't been shown to an account from before them (user-flows
+ * 16.20; a new account goes straight on to Home): its head
  * a short title and one line, the plan you're on leading straight on, and checkout over it for the rest. Every story opens
  * Home, as the app does.
  */
@@ -159,7 +160,7 @@ const card = (name: string) => screen.findByRole('article', { name }, { timeout:
 /** What the checkout window says, once it says it. */
 const windowSays = async (text: string | RegExp, timeout = 8000) => within(await screen.findByRole('dialog', {}, { timeout: 8000 })).findByText(text, {}, { timeout });
 
-/** A new account: Choose a plan, what every plan has and what they differ in. Continue on Free leads on; Get Pro is the one filled button. */
+/** From before plans, with no notes yet: Choose a plan, what every plan has and what they differ in. Continue on Free leads on; Get Pro is the one filled button. */
 export const PlanChoice = page('/home', 'plan-choice');
 export const PlanChoiceNight = night(PlanChoice);
 export const PlanChoicePhone = phone(PlanChoice);

@@ -29,16 +29,16 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    team at** the company, with its size and faces, when it has people in it and has arrived by then (the screen
    doesn't wait for it), with who already uses Alcove, or **Invite them from Team** while nobody does. **Notes are
    written in confidential compute**, and only the people invited to a call get its notes. Then
-   "You’re in" and the arch opens into Home, where the plans to choose from come first, once (16.20): the screen says
-   "Opening Plans" then, and "Opening Home" when Home is next. An account made from an invitation or a team's link (10)
-   joins that team first and isn't shown the plans: Home says "You're on Vandelay Industries." **Skip**,
+   "You’re in", "Opening Home", and the arch opens into Home. A new account isn't shown the plans first: they're in the
+   side panel when it wants them (16). An account made from an invitation or a team's link (10) joins that team first:
+   Home says "You're on Vandelay Industries." **Skip**,
    **Escape** or **Enter** opens it straight away; with
    reduced motion the finished screen shows for a moment and Home follows. After that, signing in goes
    straight to Home. From the welcome page it sails out of the cove: the headlands go by, the horizon comes up to
    Home's, the side panel and the page's frame form round the sea, and Home rises in, in about three and a half
-   seconds (a press, a key or the wheel ends it at once; with reduced motion Home just opens). While the plans haven't
-   been shown, it sails onto them in Home's place instead, the sun sinking to their last sliver (16.20).
-4. On first arriving in Home (past the plans), a tour goes through it, one stop at a time: a card with a short animation on the dawn sky,
+   seconds (a press, a key or the wheel ends it at once; with reduced motion Home just opens). For an account from before
+   plans that hasn't been shown them, it sails onto them in Home's place instead, the sun sinking to their last sliver (16.20).
+4. On first arriving in Home, a tour goes through it, one stop at a time: a card with a short animation on the dawn sky,
    and the page dimmed around the real thing the stop is about, with a ring round it and an arrow to it. **Start or
    schedule a call** (Start now and Schedule, on Home's sky); **Join a call** (the line on Home that offers an Alcove
    call, only while it does, from its last few minutes); **Notes for your calls** (the example note's card in Recent
@@ -2164,8 +2164,8 @@ Signed out, the card adds what Alcove is for, "Alcove is for calls: each one get
 then the ways in, with **See what Alcove does** under them, which opens the welcome page. The link waits in the tab while
 you sign in, Google's way back included, and while you look at the welcome page: **Back** brings the card again, and
 signing in there comes back to it. A new account made from the card joins the team at once, since signing in from it
-said yes, and its first sign-in goes on as it would from the welcome page but without the plans (someone joining a team
-doesn't choose a plan, 16.20): the account is made on screen, then Home, with the toast "You're on Vandelay Industries."
+said yes, and its first sign-in goes on as it would from the welcome page: the account is made on screen, then Home, with
+the toast "You're on Vandelay Industries."
 An account that was there already comes back to the card signed in.
 
 Signed in, **Not now** goes Home (an invitation's own link to you is put aside first, as on Team, the toast saying until
@@ -3088,7 +3088,7 @@ with, or at a personal address "Art's team", then **Cancel** and **Start the tea
 you its admin, and opens its page, where **Invite people** is, and **Upgrade** once someone else is on it (flow 10, 16.16).
 Nothing is bought: licenses are for a team that exists. Checkout opened on Team with no team (a door or a link that leads
 there) starts one the same way, in its window: "Licenses are for a team, and you're not on one yet.", the team's name, and
-**Start the team**, which closes it and opens the team's page. The plan choice a new account sees is the same card (16.20),
+**Start the team**, which closes it and opens the team's page. The plan choice is the same card (16.20),
 and the welcome page's **Start a team** signs in first, then opens Plans with the popover open (16.13). A team also starts
 by itself, named the same way, at your first invitation from the Team page, a company's or your own (where **Name your
 team** starts it as this does), or when someone joins from your invite link (flow 10).
@@ -3172,10 +3172,9 @@ everyone's on their own plan (flow 10).
 
 ### 16.20 Choose a plan
 
-The first time Home opens for an account, it opens on the plans instead, once: the plan choice, Plans in Home's place with a
-head of its own. That's every new account, after its arrival (1), and every account from before plans, the first time it opens
-Alcove normally after plans came. An account made from an invite link joins its team instead and isn't shown them (flow 10):
-someone joining a team doesn't choose a plan.
+For an account from before plans, the first time it opens Alcove normally after plans came, Home opens on the plans instead,
+once: the plan choice, Plans in Home's place with a head of its own. A new account never sees it: its first sign-in goes on to
+Home and the tour (1), and Plans is in the side panel whenever it wants them.
 
 1. Someone with no notes yet reads **Choose a plan**: "Every plan has calls, workspaces and confidential compute. They differ in
    hours of notes and storage." Someone who has used Alcove reads **Alcove has plans now** and which plan they're on, in the
@@ -3187,11 +3186,11 @@ someone joining a team doesn't choose a plan.
    has closed, Home follows, with nothing more to choose. Closing checkout without buying leaves the plans as they were.
    **Start a team** names the team in place on Team's card, as on Plans (16.15), and starting it opens the team's page
    instead of Home.
-4. A new account's tour of Home (1, step 4) starts once Home is there, never over the plans.
+4. The tour of Home (1, step 4), if it hasn't been taken on this browser, starts once Home is there, never over the plans.
 5. Only Home opens on them. A link to a call, a call's page, a join link, an agent's consent page, a public page or an invite
    link is never interrupted, and nor is signing in from a call's link or for an agent: the plans wait for the next time Home
    is reached. Signing in from the welcome page sails out of its cove onto them, as it would onto Home (1, step 3), the sun
-   sinking to their last sliver; a new account's arrival says "Opening Plans" and its arch opens onto them.
+   sinking to their last sliver.
 6. Once the plans have been on screen for a moment (the tab showing, nothing open over them), Alcove is told, and they aren't
    shown again. Plans itself counts too. If telling Alcove fails, it's tried again quietly, and this tab doesn't show them again;
    a later visit does. Left before their prices came (still loading, offline, or not loaded), they show again on a later visit.

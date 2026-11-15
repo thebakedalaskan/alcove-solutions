@@ -707,12 +707,11 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
   },
   busy: { title: 'A busy team', about: 'Wednesday afternoon at Vandelay Industries: a day of notes, things waiting on you, a design sync at 17:30.', make: () => ({ world: busy(), opening: {} }) },
   'first-day': {
-    title: 'A first day', about: 'Art has just signed in for the first time and carried on with Free: no notes, no calls, a team that isn’t on Alcove yet, and no calendar access.',
+    title: 'A first day', about: 'Art has just signed in for the first time, on Free: no notes, no calls, a team that isn’t on Alcove yet, and no calendar access.',
     make: () => ({
       world: {
         drive: disconnectedDrive(), payments: paymentsOff(), session: session({ createdAt: iso(0, 16, 5) }), prefs: PREFS, team: teamOf(DIRECTORY.filter((c) => c.person !== INES && c.person !== AIKO).map((c): Colleague => ({ ...c, onAlcove: false, invited: false }))),
-        // Past the plans, which a new account sees first (`plan-choice`), so Home is Home.
-        notes: [], personal: {}, meetings: [], calendar: notConnected, plan: { ...newPlan(), choose: false }, documents: library(), workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null,
+        notes: [], personal: {}, meetings: [], calendar: notConnected, plan: newPlan(), documents: library(), workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null,
         // Art's own invite link, with Art on no team.
         inviteLink: artsLink()
       },
@@ -720,10 +719,11 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     })
   },
   'plan-choice': {
-    title: 'Choosing a plan', about: 'Art’s account was made a few minutes ago, and the plans haven’t been shown yet: Home opens on them, once. Payments are taken.',
+    title: 'Choosing a plan', about: 'Art made an account weeks before plans and has no notes yet, and the release that brought them put it on Free two days ago: Home opens on them, once, asking Art to choose. Payments are taken.',
     make: () => {
       const { world, opening } = SCENARIOS['first-day'].make();
-      world.plan = newPlan();
+      world.session = session({ createdAt: iso(-21, 10, 0) });
+      world.plan = carriedOver();
       withPayments(world);
       return { world, opening };
     }
@@ -780,7 +780,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     }
   },
   'first-sign-in': {
-    title: 'Signing in for the first time', about: 'Nobody is signed in, and Art has no account yet: signing in makes it on screen and opens on the plans to choose from, then Art’s first day, and the tour of Home follows.',
+    title: 'Signing in for the first time', about: 'Nobody is signed in, and Art has no account yet: signing in makes it on screen and opens onto Art’s first day, and the tour of Home follows.',
     make: () => ({ world: { ...SCENARIOS['first-day'].make().world, session: null, plan: newPlan() }, opening: { tourSeen: false } })
   },
   'team-buying': {

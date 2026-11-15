@@ -22,7 +22,6 @@ import { WaysIn, useRestored, type Auth, type Busy } from '~/features/account/Wa
 import { clearReturn, returnTo, takeReturnTo } from '~/features/account/afterSignIn';
 import { sessionOrOffline } from '~/features/account/guards';
 import { useGoogleSignIn, useSignIn } from '~/features/account/signIn';
-import { useChosePlans } from '~/features/plans/queries';
 import { log } from '~/lib/log';
 import { callName } from '~/lib/people';
 import { UNDO_MS } from './invitations/aside';
@@ -73,7 +72,6 @@ export function InvitedPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const join = useJoinTeam();
-  const chose = useChosePlans();
   const signIn = useSignIn();
   const googleSignIn = useGoogleSignIn();
   const notNow = useNotNow();
@@ -97,9 +95,9 @@ export function InvitedPage() {
     setOpening(code === 'network' ? { at: 'unreachable' } : code === 'not-found' ? { at: 'ended', from: said.current?.from ?? null } : { at: 'failed', message: errorMessage(e) });
   };
   /**
-   * An account just made from the card joins its team at once, and isn't asked to choose a plan; then its first sign-in goes
-   * on as from the welcome page, onto Home, which says which team it's on. The arrival is never skipped because the link
-   * stopped leading anywhere or didn't join: then the plans are offered as they are to anyone new.
+   * An account just made from the card joins its team at once; then its first sign-in goes on as from the welcome page, onto
+   * Home, which says which team it's on. The arrival is never skipped because the link stopped leading anywhere or didn't
+   * join: then it's Home as for anyone new.
    */
   const arrive = async (secret: string) => {
     setOpening({ at: 'arriving', team: said.current?.team?.name ?? null });
@@ -107,7 +105,6 @@ export function InvitedPage() {
       const team = await join.mutateAsync({ secret, leave: false });
       const name = team.name || said.current?.team?.name;
       if (name) sayOnArrival(name);
-      await chose.mutateAsync().catch((e: unknown) => ilog.info('the plan choice wasn’t skipped', { code: errorCode(e) }));
     } catch (e) {
       ilog.info('a new account didn’t join from its invite', { code: errorCode(e) });
     }

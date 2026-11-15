@@ -68,13 +68,13 @@ export const freePlan = (): Plan => ({
   team: null
 });
 
-/** A new account on Free: all of the period's notes, nothing stored, and the plans not shown yet. */
+/** A new account on Free: all of the period's notes and nothing stored. It goes on to Home, never the plans first. */
 export const newPlan = (): Plan => ({
   ...freePlan(),
   period: { from: iso(0, 16, 5), to: iso(30, 16, 5) },
   notes: { minutesLeft: FREE.minutes, minutesPerPeriod: FREE.minutes, stopped: false },
   storage: { usedBytes: 0, limitBytes: FREE.storage, fileBytes: FREE.file },
-  choose: true
+  choose: false
 });
 
 /**

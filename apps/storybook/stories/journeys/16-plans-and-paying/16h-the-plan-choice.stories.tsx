@@ -1,7 +1,7 @@
 /*
  * The plan choice (docs/product/user-flows.md › 16. Plans and paying, 16.20): Plans, opened by itself once in Home's place,
- * for a new account and, once, for an account from before plans. A new account's arrival opens on it, and the tour of Home
- * waits for Home; Get Pro opens checkout over it, and once Pro is bought, Done goes on to Home. Signing in from the welcome page
+ * for an account from before plans (a new account goes straight on to Home). The tour of Home, while this browser hasn't
+ * taken it, waits for Home; Get Pro opens checkout over it, and once Pro is bought, Done goes on to Home. Signing in from the welcome page
  * sails out of its cove onto them, as it would onto Home. The payment's other side is the stand-in's: a payment opened to buy
  * something is seen, added and bought a few seconds apart, and the window, which reads it every few seconds, follows it.
  */
@@ -9,7 +9,7 @@ import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { page, pages, type PageArgs, type PageStory } from '../../../src/page';
 import { carriedOver } from '../../../src/world/plans/plans';
-import { away, before, first, LAPTOP, LATER, pause, pressable, SOON } from '../play';
+import { before, first, LAPTOP, LATER, pause, pressable, SOON } from '../play';
 
 /** Signing in from the welcome page sails out of its cove: about three and a half seconds. */
 const SAILING_OUT = 3600;
@@ -28,18 +28,16 @@ const says = async (text: string | RegExp) => (await win()).findByText(text, {},
 
 export const ChooseAPlan: PageStory = {
   name: '16.20 Choose a plan',
-  ...page('/ready', 'plan-choice'),
+  ...page('/home', 'plan-choice'),
   play: async ({ userEvent, step }) => {
-    await step('A new account is made on screen. “You’re in”, and the arch opens on the plans, in Home’s place: Choose a plan', async () => {
-      await screen.findByRole('dialog', { name: /^You’re in/ }, LATER);
+    await step('Art’s account is from before plans and has no notes yet. Home opens on the plans, in its place: Choose a plan', async () => {
       await screen.findByRole('heading', { name: 'Choose a plan', level: 1 }, LATER);
-      await away('dialog', /^You’re in/, LATER);
     });
     await step('Free, Pro and Team side by side, priced for a year. Monthly shows Pro a month at a time', async () => {
       await userEvent.click(within(await cycle()).getByRole('button', { name: 'Monthly' }));
       await within(await plan('Pro')).findByText('$20', {}, SOON);
     });
-    await step('Continue on Free, on Free’s card. Home opens on the first day, and the plans aren’t shown again', async () => {
+    await step('Continue on Free, on Free’s card. Home opens, and the plans aren’t shown again', async () => {
       await userEvent.click(await pressable('button', 'Continue on Free', SOON, within(await plan('Free'))));
       await screen.findByRole('region', { name: 'Start your first call' }, LATER);
     });

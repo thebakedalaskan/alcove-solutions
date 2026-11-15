@@ -160,8 +160,8 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `team-buying` | Art's free team (Art, Priya and Kofi), upgrading: Art opened a payment of 120 USDC on Base for three licenses at a period's price with Buy a license for each person who joins ticked (`TEAM_THREE`, `autoPurchase: true`; `PREVIEW_TOP_UP`) and closed checkout; nothing is bought yet, and the payment waits, in the side panel and in checkout. Once it's bought, auto-purchase is on |
 | `agents-connected` | Art has Claude signed in (it booked the onboarding review 4 minutes ago) and Cursor signed in to read, and a Weekly digest personal token, with three weeks of what they did |
 | `agents-ending` | The same three agents, with Cursor's access ending tomorrow |
-| `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, the plans to choose from, Art's first day, and Home's tour |
-| `plan-choice` | Art's account was made a few minutes ago and the plans haven't been shown yet (`Plan.choose`): Home opens on them once. Payments are taken |
+| `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, then Art's first day, and Home's tour |
+| `plan-choice` | Art's account is from before plans and has no notes yet, and the plans haven't been shown (`Plan.choose`): Home opens on them once, asking Art to choose. Payments are taken |
 | `plan-choice-before` | Art has used Alcove for weeks, from before plans, and was put on Free two days ago: the busy afternoon, and Home opens on the plans once. Payments are taken |
 
 ## Add a component story
@@ -578,14 +578,15 @@ motion and Play again. Section 16's journeys are under **Journeys / 16 Plans and
 **Checkout** (16.2 to 16.6), **Your plan** (16.7, 16.8 and 16.14, in the side panel and Settings), **Where checkout
 shows** (16.9 to 16.13, the doors), **Team** (16.15, starting a team on Plans, free), **Your team** (16.16, upgrading a
 team, and 16.17), **Team in Settings** (16.18, 16.19 and 16.21, asked to upgrade) and **The plan choice** (16.20:
-a new account's arrival onto the plans, saying "Opening Plans", Continue on Free, then Home and its tour; Get Pro from them, paid,
-then Home; and signing in from the welcome page, sailing out of its cove onto them).
+an account from before plans with no notes yet, Home opening on the plans, Continue on Free, then Home and its tour; Get Pro
+from them, paid, then Home; and signing in from the welcome page, sailing out of its cove onto them).
 
-**Pages / Account / Plans / Plan Choice…** is the plan choice, Plans in Home's place once while `Plan.choose` is true (the `plan-choice`
-and `plan-choice-before` scenarios): a new account, an account from before plans and one over Free's storage, on a team (where
-Pro says not while you're on your team's plan, as **Team Admin** and **Team Member** show on Plans), Pro bought from it, payments
-off, telling Alcove the plans were seen failing (they aren't shown again in that tab), and the prices loading, not loaded and
-offline, in both themes and on a phone. The first sign-in's journeys (1.1, 1.2) pass through it too. **Components / The evening /
+**Pages / Account / Plans / Plan Choice…** is the plan choice, Plans in Home's place once while `Plan.choose` is true, which is
+only ever for an account from before plans (the `plan-choice` and `plan-choice-before` scenarios): one with no notes yet, one
+that has used Alcove and one over Free's storage, on a team (where Pro says not while you're on your team's plan, as **Team
+Admin** and **Team Member** show on Plans), Pro bought from it, payments off, telling Alcove the plans were seen failing (they
+aren't shown again in that tab), and the prices loading, not loaded and offline, in both themes and on a phone. A new
+account's first sign-in (1.1, 1.2) goes straight on to Home. **Components / The evening /
 SailOut / Onto the plans** sails out of the cove onto a stand-in for it, the sun easing down to the plans' last sliver.
 
 

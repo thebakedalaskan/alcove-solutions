@@ -6,8 +6,8 @@ export interface PlansApi {
   /** The plans on offer, what each brings and what Pro costs now. */
   offers(): Promise<PlanOffers>;
   /**
-   * Says the plans were shown to the account, so `Plan.choose` is false from now. The app calls it once the tier screen
-   * has been seen; saying it again changes nothing.
+   * Says the plans were shown to the account, so `Plan.choose` is false from now. The app calls it once the plan choice
+   * (or Plans) has been seen while it was true; saying it again changes nothing.
    */
   chose(): Promise<Plan>;
   /**

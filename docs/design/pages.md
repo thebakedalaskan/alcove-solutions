@@ -758,17 +758,17 @@ The last of the sunset, with the plans on the water: a page you compare on, so m
 - While you're here, the side panel's plan row is the place you're on: Free's row (Free plan · See plans), Pro's or Team's,
   or a payment's.
 - **The first time** (the plan choice, `features/plans/PlanChoice.tsx`): Home opens on Plans once, in its place, while the
-  server says the plans haven't been shown (`Plan.choose`): every new account, after its arrival, and once every account from
-  before plans. Its head is a short title in the page's own type (`dusk-title`) with one line under it (`pl-lede`), in place
-  of Plans: "Choose a plan" and how the plans differ for someone with no notes yet, "Alcove has plans now" and which one
-  they're on for someone who has used Alcove. The head and the sky are one block down to the horizon (`pl-lead`), so the
+  server says the plans haven't been shown (`Plan.choose`): once for every account from before plans. A new account never
+  sees it: its arrival opens onto Home and the tour. Its head is a short title in the page's own type (`dusk-title`) with
+  one line under it (`pl-lede`), in place of Plans: "Choose a plan" and how the plans differ for someone with no notes yet,
+  "Alcove has plans now" and which one they're on for someone who has used Alcove. The head and the sky are one block down to the horizon (`pl-lead`), so the
   switch keeps its place over the sun however long the line. The plan you're on leads straight on, quiet, on its card
   (Continue on Free, there even while the prices wait, and beside Try again or offline); Get Pro stays the one filled button,
   and checkout opens over it as it does on Plans. Home follows once something bought is yours and checkout has closed.
   Where it shows is decided in one place, `features/plans/choice.ts`: Home only, never over a deep link, and never twice in a
-  tab. Once the plans have been on screen there, or on Plans, the server is told. The tour of Home waits for Home. A new
-  account's arrival says "Opening Plans" and opens onto it; signing in from the welcome page sails out of the cove onto it, the
-  sun easing down to the plans' last sliver (`PlanSunset` marks its sun `data-sun`, which the sail lands on).
+  tab. Once the plans have been on screen there, or on Plans, the server is told. The tour of Home waits for Home. Signing
+  in from the welcome page sails out of the cove onto it, the sun easing down to the plans' last sliver (`PlanSunset` marks
+  its sun `data-sun`, which the sail lands on).
 
 ## Checkout
 
